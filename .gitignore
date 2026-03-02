@@ -20,3 +20,5 @@ data/
 
 # Environment variables (create .env from .env.example)
 .env
+
+*coverage*
