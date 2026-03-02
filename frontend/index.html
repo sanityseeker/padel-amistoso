@@ -499,7 +499,15 @@
 </head>
 <body>
 <div class="container">
-  <h1>🏓 Padel Tournament Manager</h1>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+    <h1 style="margin:0">🏓 Padel Tournament Manager</h1>
+    <div id="auth-status" style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem"></div>
+  </div>
+
+  <!-- Demo Site Banner (shown when DEMO_MODE=true on backend) -->
+  <div id="demo-banner" style="display:none;background:linear-gradient(135deg,#f59e0b,#ef4444);border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem;text-align:center;color:#fff;font-size:0.9rem;box-shadow:0 2px 8px rgba(239,68,68,0.3)">
+    <strong>⚠️ Demo Instance</strong> — Free tier sleeps after <strong>15 minutes</strong> of inactivity. All tournament data will be lost when the app restarts. Login: <code style="background:rgba(255,255,255,0.2);padding:0.15rem 0.35rem;border-radius:4px;font-weight:600">admin / admin</code>
+  </div>
 
   <!-- Navigation tabs -->
   <div class="tabs">
@@ -507,7 +515,7 @@
     <button class="tab-btn" data-tab="create">Create</button>
     <button class="tab-btn" data-tab="tools">Tools</button>
     <div id="tournament-chips" class="tournament-chips"></div>
-    <label class="theme-chooser" for="theme-select">
+    <label class="theme-chooser" for="theme-select" style="margin-left:auto">
       Theme
       <select id="theme-select" onchange="setTheme(this.value)">
         <option value="dark">Dark</option>
@@ -740,9 +748,44 @@ Hank</textarea>
   </div>
 </div>
 
+<!-- Authentication Dialog -->
+<div id="auth-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9998"></div>
+<div id="auth-dialog" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:2px solid var(--border);border-radius:12px;padding:2rem;min-width:320px;max-width:400px;z-index:9999;box-shadow:0 10px 40px rgba(0,0,0,0.5)">
+  <h2 style="margin-bottom:1rem;text-align:center;color:var(--accent)">🔐 Login Required</h2>
+  <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1.2rem;text-align:center">Please log in to create or modify tournaments</p>
+  <form onsubmit="handleLogin(event)">
+    <div style="margin-bottom:0.8rem">
+      <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600">Username</label>
+      <input type="text" id="auth-username" placeholder="admin" autocomplete="username" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
+    </div>
+    <div style="margin-bottom:1rem">
+      <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600">Password</label>
+      <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
+    </div>
+    <div id="auth-error" style="color:var(--red);font-size:0.8rem;margin-bottom:0.8rem;min-height:1.2rem;text-align:center"></div>
+    <button type="submit" id="auth-login-btn" class="btn btn-primary" style="width:100%">Login</button>
+  </form>
+  <p style="color:var(--text-muted);font-size:0.75rem;margin-top:1rem;text-align:center">Default: admin / admin</p>
+</div>
+
 <script src="/shared.js"></script>
+<script src="/auth.js"></script>
 <script>
 const API = '';  // same origin
+
+// Check if running in demo mode and show warning banner
+(async function checkDemoMode() {
+  try {
+    const response = await fetch('/api/config');
+    const config = await response.json();
+    const demoBanner = document.getElementById('demo-banner');
+    if (config.demo_mode && demoBanner) {
+      demoBanner.style.display = 'block';
+    }
+  } catch (err) {
+    console.warn('Could not fetch config:', err);
+  }
+})();
 
 // ─── Tab switching ─────────────────────────────────────────
 function setActiveTab(tabName) {
@@ -888,16 +931,9 @@ function _schemaCardHtml(prefix, placeholder, generateFn) {
 }
 
 // ─── API helper ────────────────────────────────────────────
+// Use authenticated API wrapper from auth.js
 async function api(path, opts = {}) {
-  const res = await fetch(API + path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || res.statusText);
-  }
-  return res.json();
+  return apiAuth(API + path, opts);
 }
 
 // ─── Home: list tournaments ───────────────────────────────
@@ -2616,12 +2652,38 @@ function _renderTvControls(tvSettings) {
     </label>`;
   };
 
+  // Get current tournament alias
+  const currentAlias = _tournamentMeta[currentTid]?.alias || '';
+  
   let html = `<details class="card" id="tv-controls-panel">`;
   html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">`;
   html += `<span style="font-size:1.1rem;font-weight:700">📺 TV Mode Controls</span>`;
   html += `<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="event.preventDefault();window.open('/tv?tid='+currentTid,'padel_tv_'+currentTid,'noopener noreferrer')">Open TV display ↗</button>`;
   html += `</summary>`;
   html += `<div style="margin-top:0.65rem">`;
+  
+  // Tournament Alias Section
+  html += `<div style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)">`;
+  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">🔗 Tournament Alias</label>`;
+  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">Set a memorable alias for this tournament's TV URL (e.g., "summer-cup"). Only letters, numbers, hyphens, and underscores.</p>`;
+  html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
+  html += `<input type="text" id="tournament-alias-input" placeholder="my-tournament" value="${esc(currentAlias)}" 
+    pattern="[a-zA-Z0-9_-]+" maxlength="64" 
+    style="flex:1;min-width:200px;font-family:monospace;font-size:0.85rem">`;
+  html += `<button class="btn btn-primary btn-sm" onclick="_setTournamentAlias()" style="white-space:nowrap">Set Alias</button>`;
+  if (currentAlias) {
+    html += `<button class="btn btn-danger btn-sm" onclick="_deleteTournamentAlias()" style="white-space:nowrap">✕ Remove</button>`;
+  }
+  html += `</div>`;
+  if (currentAlias) {
+    html += `<div style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:0.78rem">`;
+    html += `<span style="color:var(--text-muted)">TV URL:</span> <code style="color:var(--accent);font-size:0.85rem">/tv?t=${esc(currentAlias)}</code>`;
+    html += ` <button onclick="navigator.clipboard.writeText(window.location.origin+'/tv?t=${esc(currentAlias)}');alert('URL copied!')" 
+      style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:3px;padding:0.1rem 0.4rem;cursor:pointer;font-size:0.75rem;margin-left:0.3rem">📋 Copy</button>`;
+    html += `</div>`;
+  }
+  html += `</div>`;
+  
   html += `<p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:0.65rem">Toggle which sections appear on the TV screen. Changes take effect on the TV display's next auto-refresh.</p>`;
   html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem 1.5rem">`;
   html += chkRow('show_past_matches',   'Past matches',            true);
@@ -2677,7 +2739,70 @@ async function _updateTvSetting(key, value) {
   }
 }
 
+/** Set tournament alias */
+async function _setTournamentAlias() {
+  if (!currentTid) return;
+  const input = document.getElementById('tournament-alias-input');
+  const alias = input.value.trim();
+  
+  if (!alias) {
+    alert('Please enter an alias');
+    return;
+  }
+  
+  // Validate pattern
+  if (!/^[a-zA-Z0-9_-]+$/.test(alias)) {
+    alert('Alias can only contain letters, numbers, hyphens, and underscores');
+    return;
+  }
+  
+  try {
+    await api(`/api/tournaments/${currentTid}/alias`, {
+      method: 'PUT',
+      body: JSON.stringify({ alias }),
+    });
+    // Update the meta cache
+    if (_tournamentMeta[currentTid]) {
+      _tournamentMeta[currentTid].alias = alias;
+    }
+    // Reload tournaments list to update all views
+    await loadTournaments();
+    // Re-render current view to show updated alias section
+    await _rerenderCurrentViewPreserveDrafts();
+    alert(`Alias "${alias}" set successfully!`);
+  } catch (e) {
+    alert(`Failed to set alias: ${e.message}`);
+  }
+}
+
+/** Delete tournament alias */
+async function _deleteTournamentAlias() {
+  if (!currentTid) return;
+  if (!confirm('Remove the alias from this tournament?')) return;
+  
+  try {
+    await api(`/api/tournaments/${currentTid}/alias`, {
+      method: 'DELETE',
+    });
+    // Update the meta cache
+    if (_tournamentMeta[currentTid]) {
+      delete _tournamentMeta[currentTid].alias;
+    }
+    // Clear the input
+    const input = document.getElementById('tournament-alias-input');
+    if (input) input.value = '';
+    // Reload tournaments list to update all views
+    await loadTournaments();
+    // Re-render current view to show updated alias section
+    await _rerenderCurrentViewPreserveDrafts();
+    alert('Alias removed successfully');
+  } catch (e) {
+    alert(`Failed to remove alias: ${e.message}`);
+  }
+}
+
 // Init\ninitTheme();
+initAuth();
 updateActiveTournamentUI();
 setCreateMode('gp');
 loadTournaments();

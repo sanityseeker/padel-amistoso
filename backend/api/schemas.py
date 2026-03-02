@@ -76,6 +76,12 @@ class TvSettingsRequest(BaseModel):
     schema_title_font_scale: float | None = Field(default=None, ge=0.3, le=5.0)
 
 
+class SetAliasRequest(BaseModel):
+    """Set a human-friendly alias for a tournament (used in TV URLs)."""
+
+    alias: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
+
+
 class RecordScoreRequest(BaseModel):
     match_id: str
     score1: int = Field(ge=0)

@@ -151,135 +151,74 @@ def distribute_players_to_groups(
     return groups
 
 
+def _match_player_ids(m: Match) -> set[str]:
+    """Return all player IDs participating in a match."""
+    return {p.id for p in m.team1 + m.team2}
+
+
 def assign_courts(matches: list[Match], courts: list[Court]) -> list[Match]:
     """
-    Assign courts greedily slot by slot, court by court.
+    Assign courts to unassigned matches, distributing them across time slots.
 
     Algorithm
     ---------
-    Maintain a pool of all unassigned matches.  For each time slot, iterate
-    through courts in order:
+    Build a pool of unassigned matches.  For each slot, cycle through courts
+    (rotated by *slot index* so the starting court advances each slot) and
+    for each court:
 
-    * Collect *candidates* — matches in the pool whose participants are not
-      yet busy in this slot.
-    * If no candidates exist for a court, leave it empty this slot.
-    * Otherwise pick the candidate that best balances participant exposure on
-      this specific court:
-        a) Minimise the maximum number of times any participant has already
-           played on *this* court.
-        b) Minimise the total such count (secondary).
-        c) Stable tie-break by original pool order (first in wins).
-    * Assign the chosen match to the court, mark its participants as busy,
-      remove it from the pool, and proceed to the next court.
+    1. Collect candidate matches whose players are all free this slot.
+    2. Prefer matches whose players were NOT in the previous slot (rest).
+    3. Pick a random candidate and assign it.
 
-    Move to the next slot once all courts have been visited; repeat until
-    the pool is empty.
+    If no candidate fits any court in a slot, the court stays empty.
+    If an entire slot produces zero assignments but the pool is non-empty,
+    remaining matches are force-assigned one per slot to guarantee termination.
 
     Each assigned match gets ``slot_number`` set to its 0-based slot index.
-    Courts skipped within a slot produce no match entry; the frontend uses
-    ``slot_number`` to detect these gaps and renders them as "(empty)"
-    placeholders.
-
-    Matches that already have a court are absorbed into the balance-tracking
-    state but otherwise left untouched.  Matches with an empty roster are
-    skipped entirely.
+    Matches that already have a court are left untouched.
     """
     if not courts:
         return matches
 
-    participant_court_count: dict[str, dict[str, int]] = {}
-    court_load: dict[str, int] = {c.name: 0 for c in courts}
-
-    # Absorb already-assigned matches into tracking state.
-    for m in matches:
-        if not m.team1 or not m.team2 or m.court is None:
-            continue
-        c_name = m.court.name
-        court_load[c_name] = court_load.get(c_name, 0) + 1
-        for p in m.team1 + m.team2:
-            per_court = participant_court_count.setdefault(p.id, {})
-            per_court[c_name] = per_court.get(c_name, 0) + 1
-
-    # Pool of unassigned matches with known teams (preserves input order).
     pool: list[Match] = [m for m in matches if m.court is None and m.team1 and m.team2]
+    if not pool:
+        return matches
 
+    n_courts = len(courts)
+    previous_slot_players: set[str] = set()
     current_slot = 0
+
     while pool:
-        slot_busy: set[str] = set()  # participant IDs committed this slot
-        assigned_this_slot = False
+        slot_busy: set[str] = set()
+        assigned_any = False
 
-        # Visit courts in ascending load order so that when only one match
-        # can be assigned per slot (few players), the load spreads evenly.
-        courts_this_slot = sorted(courts, key=lambda c: court_load[c.name])
+        for i in range(n_courts):
+            court = courts[(current_slot + i) % n_courts]
 
-        for court in courts_this_slot:
-            # Candidates: pool matches whose players are all free this slot.
-            candidates = [
-                m for m in pool
-                if not ({p.id for p in m.team1 + m.team2} & slot_busy)
-            ]
+            candidates = [m for m in pool if not (_match_player_ids(m) & slot_busy)]
             if not candidates:
-                continue  # no valid match for this court — leave it empty
+                continue
 
-            # Pick the candidate that balances participant exposure on this court.
-            # Among tied candidates, pick randomly to avoid group-ordering bias.
-            c_name = court.name
-            best_score: tuple[int, int] | None = None
-            best_tied: list[Match] = []
-            for m in candidates:
-                participants = m.team1 + m.team2
-                counts = [participant_court_count.get(p.id, {}).get(c_name, 0) for p in participants]
-                score: tuple[int, int] = (max(counts, default=0), sum(counts))
-                if best_score is None or score < best_score:
-                    best_score = score
-                    best_tied = [m]
-                elif score == best_score:
-                    best_tied.append(m)
-            best_match = random.choice(best_tied)
+            preferred = [m for m in candidates if not (_match_player_ids(m) & previous_slot_players)]
+            chosen = random.choice(preferred if preferred else candidates)
 
-            # Commit the assignment.
-            best_match.court = court
-            best_match.slot_number = current_slot
-            pool = [m for m in pool if m is not best_match]
-            participants = best_match.team1 + best_match.team2
-            slot_busy |= {p.id for p in participants}
-            court_load[c_name] += 1
-            for p in participants:
-                per_court = participant_court_count.setdefault(p.id, {})
-                per_court[c_name] = per_court.get(c_name, 0) + 1
-            assigned_this_slot = True
+            chosen.court = court
+            chosen.slot_number = current_slot
+            slot_busy |= _match_player_ids(chosen)
+            pool.remove(chosen)
+            assigned_any = True
 
-        if not assigned_this_slot:
-            # Safety valve: every remaining match conflicts with every court
-            # in this slot (circular dependency — should not occur with valid
-            # round-robin input).  Force-assign to avoid an infinite loop.
+        if not assigned_any:
+            # Safety: every remaining match conflicts — force-assign one per slot.
+            court_cycle = itertools.cycle(courts)
             for m in pool:
-                participants = m.team1 + m.team2
-                best_court = courts[0]
-                best_force_score: tuple[int, int, int] = (
-                    max(
-                        (participant_court_count.get(p.id, {}).get(courts[0].name, 0) for p in participants),
-                        default=0,
-                    ),
-                    sum(participant_court_count.get(p.id, {}).get(courts[0].name, 0) for p in participants),
-                    court_load[courts[0].name],
-                )
-                for court in courts[1:]:
-                    c_name = court.name
-                    counts = [participant_court_count.get(p.id, {}).get(c_name, 0) for p in participants]
-                    force_score: tuple[int, int, int] = (max(counts, default=0), sum(counts), court_load[c_name])
-                    if force_score < best_force_score:
-                        best_force_score = force_score
-                        best_court = court
-                m.court = best_court
+                m.court = next(court_cycle)
                 m.slot_number = current_slot
-                court_load[best_court.name] += 1
-                for p in participants:
-                    per_court = participant_court_count.setdefault(p.id, {})
-                    per_court[best_court.name] = per_court.get(best_court.name, 0) + 1
                 current_slot += 1
+            pool.clear()
             break
 
+        previous_slot_players = slot_busy
         current_slot += 1
 
     return matches

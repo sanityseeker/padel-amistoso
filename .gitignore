@@ -1,16 +1,22 @@
 # Python-generated files
 __pycache__/
-.github
 *.py[oc]
 build/
 dist/
 wheels/
 *.egg-info
 
+.github/copilot-instructions.md
+
 # Virtual environments
 .venv
 
+# IDE
 .vscode
+.idea
 
 # Tournament state (pickle cache — do not commit)
 data/
+
+# Environment variables (create .env from .env.example)
+.env

@@ -2,29 +2,10 @@
 Integration tests for the FastAPI REST API.
 
 Uses httpx + FastAPI TestClient to exercise the full request/response cycle.
+Fixtures (client, auth_headers, _clean_state) are provided by conftest.py.
 """
 
 import pytest
-from fastapi.testclient import TestClient
-
-from backend.api import app
-
-
-@pytest.fixture(autouse=True)
-def _clean_state():
-    """Reset in-memory state between tests."""
-    import backend.api.state as state_mod
-
-    state_mod._tournaments.clear()
-    state_mod._counter = 0
-    yield
-    state_mod._tournaments.clear()
-    state_mod._counter = 0
-
-
-@pytest.fixture
-def client():
-    return TestClient(app)
 
 
 # ── General ────────────────────────────────────────────────
@@ -56,19 +37,19 @@ class TestGroupPlayoffAPI:
         "double_elimination": False,
     }
 
-    def _create(self, client):
-        r = client.post("/api/tournaments/group-playoff", json=self.GP_BODY)
+    def _create(self, client, auth_headers):
+        r = client.post("/api/tournaments/group-playoff", json=self.GP_BODY, headers=auth_headers)
         assert r.status_code == 200
         return r.json()["id"]
 
-    def test_create(self, client):
-        r = client.post("/api/tournaments/group-playoff", json=self.GP_BODY)
+    def test_create(self, client, auth_headers):
+        r = client.post("/api/tournaments/group-playoff", json=self.GP_BODY, headers=auth_headers)
         assert r.status_code == 200
         data = r.json()
         assert "id" in data
         assert data["phase"] == "groups"
 
-    def test_create_team_mode(self, client):
+    def test_create_team_mode(self, client, auth_headers):
         body = {
             **self.GP_BODY,
             "team_mode": True,
@@ -76,32 +57,32 @@ class TestGroupPlayoffAPI:
             "num_groups": 2,
             "top_per_group": 1,
         }
-        r = client.post("/api/tournaments/group-playoff", json=body)
+        r = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers)
         assert r.status_code == 200
 
-    def test_appears_in_list(self, client):
-        self._create(client)
+    def test_appears_in_list(self, client, auth_headers):
+        self._create(client, auth_headers)
         r = client.get("/api/tournaments")
         assert len(r.json()) == 1
         assert r.json()[0]["type"] == "group_playoff"
 
-    def test_status(self, client):
-        tid = self._create(client)
+    def test_status(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
         r = client.get(f"/api/tournaments/{tid}/gp/status")
         assert r.status_code == 200
         assert r.json()["phase"] == "groups"
         assert r.json()["num_groups"] == 2
 
-    def test_groups_endpoint(self, client):
-        tid = self._create(client)
+    def test_groups_endpoint(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
         r = client.get(f"/api/tournaments/{tid}/gp/groups")
         assert r.status_code == 200
         data = r.json()
         assert "standings" in data
         assert "matches" in data
 
-    def test_record_group_score(self, client):
-        tid = self._create(client)
+    def test_record_group_score(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
         groups = client.get(f"/api/tournaments/{tid}/gp/groups").json()
         # Find a match from any group
         match_id = None
@@ -118,11 +99,12 @@ class TestGroupPlayoffAPI:
                 "score1": 6,
                 "score2": 3,
             },
+            headers=auth_headers,
         )
         assert r.status_code == 200
 
-    def test_record_bad_match_id(self, client):
-        tid = self._create(client)
+    def test_record_bad_match_id(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
         r = client.post(
             f"/api/tournaments/{tid}/gp/record-group",
             json={
@@ -130,16 +112,17 @@ class TestGroupPlayoffAPI:
                 "score1": 6,
                 "score2": 3,
             },
+            headers=auth_headers,
         )
         assert r.status_code == 400
 
-    def test_start_playoffs_requires_completed_groups(self, client):
-        tid = self._create(client)
-        r = client.post(f"/api/tournaments/{tid}/gp/start-playoffs")
+    def test_start_playoffs_requires_completed_groups(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        r = client.post(f"/api/tournaments/{tid}/gp/start-playoffs", headers=auth_headers)
         assert r.status_code == 400  # matches not completed
 
-    def test_full_flow_to_playoffs(self, client):
-        tid = self._create(client)
+    def test_full_flow_to_playoffs(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
         # Complete all group matches
         groups = client.get(f"/api/tournaments/{tid}/gp/groups").json()
         for gname, matches in groups["matches"].items():
@@ -152,10 +135,11 @@ class TestGroupPlayoffAPI:
                             "score1": 6,
                             "score2": 3,
                         },
+                        headers=auth_headers,
                     )
 
         # Start playoffs
-        r = client.post(f"/api/tournaments/{tid}/gp/start-playoffs")
+        r = client.post(f"/api/tournaments/{tid}/gp/start-playoffs", headers=auth_headers)
         assert r.status_code == 200
         assert r.json()["phase"] == "playoffs"
 
@@ -164,8 +148,8 @@ class TestGroupPlayoffAPI:
         assert r.status_code == 200
         assert len(r.json()["matches"]) > 0
 
-    def test_playoffs_schema_endpoint_returns_image(self, client):
-        tid = self._create(client)
+    def test_playoffs_schema_endpoint_returns_image(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
         groups = client.get(f"/api/tournaments/{tid}/gp/groups").json()
         for matches in groups["matches"].values():
             for m in matches:
@@ -173,9 +157,10 @@ class TestGroupPlayoffAPI:
                     client.post(
                         f"/api/tournaments/{tid}/gp/record-group",
                         json={"match_id": m["id"], "score1": 6, "score2": 3},
+                        headers=auth_headers,
                     )
 
-        start = client.post(f"/api/tournaments/{tid}/gp/start-playoffs")
+        start = client.post(f"/api/tournaments/{tid}/gp/start-playoffs", headers=auth_headers)
         assert start.status_code == 200
 
         r = client.get(f"/api/tournaments/{tid}/gp/playoffs-schema?fmt=png")
@@ -183,14 +168,14 @@ class TestGroupPlayoffAPI:
         assert r.headers["content-type"].startswith("image/png")
         assert len(r.content) > 0
 
-    def test_delete_tournament(self, client):
-        tid = self._create(client)
-        r = client.delete(f"/api/tournaments/{tid}")
+    def test_delete_tournament(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        r = client.delete(f"/api/tournaments/{tid}", headers=auth_headers)
         assert r.status_code == 200
         assert client.get("/api/tournaments").json() == []
 
-    def test_delete_nonexistent(self, client):
-        r = client.delete("/api/tournaments/fake")
+    def test_delete_nonexistent(self, client, auth_headers):
+        r = client.delete("/api/tournaments/fake", headers=auth_headers)
         assert r.status_code == 404
 
 
@@ -207,43 +192,43 @@ class TestMexicanoAPI:
         "randomness": 0.1,
     }
 
-    def _create(self, client):
-        r = client.post("/api/tournaments/mexicano", json=self.MEX_BODY)
+    def _create(self, client, auth_headers):
+        r = client.post("/api/tournaments/mexicano", json=self.MEX_BODY, headers=auth_headers)
         assert r.status_code == 200
         return r.json()["id"]
 
-    def test_create(self, client):
-        r = client.post("/api/tournaments/mexicano", json=self.MEX_BODY)
+    def test_create(self, client, auth_headers):
+        r = client.post("/api/tournaments/mexicano", json=self.MEX_BODY, headers=auth_headers)
         assert r.status_code == 200
         assert r.json()["current_round"] == 1
 
-    def test_bad_player_count_too_few(self, client):
+    def test_bad_player_count_too_few(self, client, auth_headers):
         body = {**self.MEX_BODY, "player_names": ["A", "B", "C"]}
-        r = client.post("/api/tournaments/mexicano", json=body)
+        r = client.post("/api/tournaments/mexicano", json=body, headers=auth_headers)
         assert r.status_code == 422
 
-    def test_non_div4_player_count_ok(self, client):
+    def test_non_div4_player_count_ok(self, client, auth_headers):
         body = {**self.MEX_BODY, "player_names": ["A", "B", "C", "D", "E"]}
-        r = client.post("/api/tournaments/mexicano", json=body)
+        r = client.post("/api/tournaments/mexicano", json=body, headers=auth_headers)
         assert r.status_code == 200
 
-    def test_status_shows_leaderboard(self, client):
-        tid = self._create(client)
+    def test_status_shows_leaderboard(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
         r = client.get(f"/api/tournaments/{tid}/mex/status")
         assert r.status_code == 200
         data = r.json()
         assert data["current_round"] == 1
         assert len(data["leaderboard"]) == 8
 
-    def test_matches_endpoint(self, client):
-        tid = self._create(client)
+    def test_matches_endpoint(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
         r = client.get(f"/api/tournaments/{tid}/mex/matches")
         assert r.status_code == 200
         data = r.json()
         assert len(data["current_matches"]) == 2
 
-    def test_record_score(self, client):
-        tid = self._create(client)
+    def test_record_score(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
         matches = client.get(f"/api/tournaments/{tid}/mex/matches").json()
         m = matches["current_matches"][0]
         r = client.post(
@@ -253,11 +238,12 @@ class TestMexicanoAPI:
                 "score1": 20,
                 "score2": 12,
             },
+            headers=auth_headers,
         )
         assert r.status_code == 200
 
-    def test_record_bad_sum(self, client):
-        tid = self._create(client)
+    def test_record_bad_sum(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
         matches = client.get(f"/api/tournaments/{tid}/mex/matches").json()
         m = matches["current_matches"][0]
         r = client.post(
@@ -267,16 +253,17 @@ class TestMexicanoAPI:
                 "score1": 20,
                 "score2": 10,
             },
+            headers=auth_headers,
         )
         assert r.status_code == 400
 
-    def test_next_round_requires_completed(self, client):
-        tid = self._create(client)
-        r = client.post(f"/api/tournaments/{tid}/mex/next-round")
+    def test_next_round_requires_completed(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        r = client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
         assert r.status_code == 400  # pending matches
 
-    def test_full_mexicano_flow(self, client):
-        tid = self._create(client)
+    def test_full_mexicano_flow(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
 
         for rnd in range(3):
             # Get current matches
@@ -290,11 +277,12 @@ class TestMexicanoAPI:
                             "score1": 18,
                             "score2": 14,
                         },
+                        headers=auth_headers,
                     )
 
             status = client.get(f"/api/tournaments/{tid}/mex/status").json()
             if rnd < 2:
-                r = client.post(f"/api/tournaments/{tid}/mex/next-round")
+                r = client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
                 assert r.status_code == 200
 
         # Verify final leaderboard
@@ -302,14 +290,14 @@ class TestMexicanoAPI:
         assert status["is_finished"]
         assert status["leaderboard"][0]["total_points"] > 0
 
-    def test_skill_gap_accepted(self, client):
+    def test_skill_gap_accepted(self, client, auth_headers):
         body = {**self.MEX_BODY, "skill_gap": 50}
-        r = client.post("/api/tournaments/mexicano", json=body)
+        r = client.post("/api/tournaments/mexicano", json=body, headers=auth_headers)
         assert r.status_code == 200
 
-    def test_invalid_skill_gap_rejected(self, client):
+    def test_invalid_skill_gap_rejected(self, client, auth_headers):
         body = {**self.MEX_BODY, "skill_gap": -1}
-        r = client.post("/api/tournaments/mexicano", json=body)
+        r = client.post("/api/tournaments/mexicano", json=body, headers=auth_headers)
         assert r.status_code == 422
 
     def test_nonexistent_tournament(self, client):

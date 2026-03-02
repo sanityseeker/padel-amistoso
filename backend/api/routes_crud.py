@@ -4,9 +4,10 @@ Tournament CRUD routes — list, delete, and TV settings for tournaments.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
-from .schemas import TvSettingsRequest
+from ..auth.deps import get_current_user
+from .schemas import SetAliasRequest, TvSettingsRequest
 from . import state
 from .state import _save_state, _tournaments
 
@@ -35,13 +36,14 @@ async def list_tournaments():
                 "id": tid,
                 "name": data["name"],
                 "type": data["type"],
+                "alias": data.get("alias"),
             }
         )
     return out
 
 
 @router.delete("/{tournament_id}")
-async def delete_tournament(tournament_id: str):
+async def delete_tournament(tournament_id: str, _user=Depends(get_current_user)):
     if tournament_id not in _tournaments:
         raise HTTPException(404, "Tournament not found")
     del _tournaments[tournament_id]
@@ -70,7 +72,7 @@ async def get_tv_settings(tid: str):
 
 
 @router.patch("/{tid}/tv-settings")
-async def update_tv_settings(tid: str, req: TvSettingsRequest):
+async def update_tv_settings(tid: str, req: TvSettingsRequest, _user=Depends(get_current_user)):
     """Partially update TV display settings (only supplied fields are changed)."""
     if tid not in _tournaments:
         raise HTTPException(404, "Tournament not found")
@@ -80,3 +82,36 @@ async def update_tv_settings(tid: str, req: TvSettingsRequest):
     _tournaments[tid]["tv_settings"] = current
     _save_state()
     return current
+
+
+@router.put("/{tid}/alias")
+async def set_alias(tid: str, req: SetAliasRequest, _user=Depends(get_current_user)):
+    """Set a human-friendly alias for a tournament (used in TV URLs like /tv?t=my-tourney)."""
+    if tid not in _tournaments:
+        raise HTTPException(404, "Tournament not found")
+    # Check uniqueness: no other tournament should have this alias.
+    for other_tid, data in _tournaments.items():
+        if other_tid != tid and data.get("alias") == req.alias:
+            raise HTTPException(409, f"Alias '{req.alias}' is already used by tournament {other_tid}")
+    _tournaments[tid]["alias"] = req.alias
+    _save_state()
+    return {"ok": True, "alias": req.alias}
+
+
+@router.delete("/{tid}/alias")
+async def delete_alias(tid: str, _user=Depends(get_current_user)):
+    """Remove the alias from a tournament."""
+    if tid not in _tournaments:
+        raise HTTPException(404, "Tournament not found")
+    _tournaments[tid].pop("alias", None)
+    _save_state()
+    return {"ok": True}
+
+
+@router.get("/resolve-alias/{alias}")
+async def resolve_alias(alias: str):
+    """Resolve a tournament alias to its ID. Public (used by TV page)."""
+    for tid, data in _tournaments.items():
+        if data.get("alias") == alias:
+            return {"id": tid, "name": data["name"], "type": data["type"]}
+    raise HTTPException(404, f"No tournament with alias '{alias}'")

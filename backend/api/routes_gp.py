@@ -6,8 +6,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from ..auth.deps import get_current_user
 from ..models import Court, Player, TournamentType
 from ..tournaments import GroupPlayoffTournament
 from ..viz import render_playoff_schema
@@ -25,7 +26,7 @@ _GP = TournamentType.GROUP_PLAYOFF.value
 
 
 @router.post("/group-playoff")
-async def create_group_playoff(req: CreateGroupPlayoffRequest):
+async def create_group_playoff(req: CreateGroupPlayoffRequest, _user=Depends(get_current_user)):
     players = [Player(name=n) for n in req.player_names]
     courts = [Court(name=n) for n in req.court_names]
 
@@ -69,7 +70,7 @@ async def gp_groups(tid: str):
 
 
 @router.post("/{tid}/gp/record-group")
-async def gp_record_group(tid: str, req: RecordScoreRequest):
+async def gp_record_group(tid: str, req: RecordScoreRequest, _user=Depends(get_current_user)):
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     try:
         t.record_group_result(req.match_id, (req.score1, req.score2))
@@ -80,7 +81,7 @@ async def gp_record_group(tid: str, req: RecordScoreRequest):
 
 
 @router.post("/{tid}/gp/record-group-tennis")
-async def gp_record_group_tennis(tid: str, req: RecordTennisScoreRequest):
+async def gp_record_group_tennis(tid: str, req: RecordTennisScoreRequest, _user=Depends(get_current_user)):
     """Record a group match using tennis-style set scores.
     Score = sum of game differences across all sets."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
@@ -104,7 +105,7 @@ async def gp_record_group_tennis(tid: str, req: RecordTennisScoreRequest):
 
 
 @router.post("/{tid}/gp/start-playoffs")
-async def gp_start_playoffs(tid: str):
+async def gp_start_playoffs(tid: str, _user=Depends(get_current_user)):
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     try:
         t.start_playoffs()
@@ -159,7 +160,7 @@ async def gp_playoffs_schema(
 
 
 @router.post("/{tid}/gp/record-playoff")
-async def gp_record_playoff(tid: str, req: RecordScoreRequest):
+async def gp_record_playoff(tid: str, req: RecordScoreRequest, _user=Depends(get_current_user)):
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     try:
         t.record_playoff_result(req.match_id, (req.score1, req.score2))
@@ -170,7 +171,7 @@ async def gp_record_playoff(tid: str, req: RecordScoreRequest):
 
 
 @router.post("/{tid}/gp/record-playoff-tennis")
-async def gp_record_playoff_tennis(tid: str, req: RecordTennisScoreRequest):
+async def gp_record_playoff_tennis(tid: str, req: RecordTennisScoreRequest, _user=Depends(get_current_user)):
     """Record a playoff match using tennis-style set scores."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)

@@ -344,6 +344,88 @@
   }
   .tv-loading { color: var(--text-muted); font-size: 1.1rem; padding: 2rem 0; text-align: center; }
 
+  /* ── Tournament picker ── */
+  .tv-picker {
+    max-width: 480px;
+    margin: 4rem auto;
+    text-align: center;
+  }
+  .tv-picker h1 {
+    font-size: 1.8rem;
+    font-weight: 800;
+    margin-bottom: 0.3rem;
+  }
+  .tv-picker .subtitle {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    margin-bottom: 2rem;
+  }
+  .tv-picker-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-bottom: 2rem;
+  }
+  .tv-picker-item {
+    display: block;
+    padding: 0.85rem 1.2rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 1rem;
+    font-weight: 600;
+    text-align: left;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .tv-picker-item:hover {
+    border-color: var(--accent);
+    background: var(--surface2);
+  }
+  .tv-picker-item .picker-type {
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-left: 0.5rem;
+  }
+  .tv-picker-item .picker-alias {
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: var(--accent);
+    margin-left: 0.5rem;
+  }
+  .tv-picker-form {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+  .tv-picker-form input {
+    flex: 1;
+    padding: 0.6rem 0.8rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.95rem;
+  }
+  .tv-picker-form input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .tv-picker-form button {
+    padding: 0.6rem 1.2rem;
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .tv-picker-form button:hover { opacity: 0.9; }
+
   /* ── Collapsible sections ── */
   details.tv-collapsible { margin-bottom: 1rem; }
   summary.tv-collapsible-header {
@@ -426,7 +508,8 @@ function _toggleTheme() {
 
 // ── URL params ────────────────────────────────────────────
 const _params = new URLSearchParams(location.search);
-const TID = _params.get('tid');
+let TID = _params.get('tid');
+const _aliasParam = _params.get('t');  // human-friendly alias
 
 // ── State ─────────────────────────────────────────────────
 let _tournamentType = null;
@@ -526,8 +609,7 @@ async function loadTV() {
 
   try {
     if (!TID) {
-      document.getElementById('tv-root').innerHTML =
-        `<div class="tv-error">No tournament ID in URL. Add <code>?tid=&lt;id&gt;</code></div>`;
+      await _showPicker();
       return;
     }
 
@@ -944,15 +1026,72 @@ function _phaseLabel(phase) {
 }
 
 // ── Bootstrap ─────────────────────────────────────────────
-if (!TID) {
-  document.getElementById('tv-root').innerHTML =
-    `<div class="tv-error">
-      <strong>No tournament selected.</strong><br>
-      Open the TV mode from the admin panel or add <code>?tid=&lt;tournament-id&gt;</code> to the URL.
-    </div>`;
-} else {
-  loadTV();
+
+async function _resolveAlias() {
+  if (_aliasParam && !TID) {
+    try {
+      const data = await api(`/api/tournaments/resolve-alias/${encodeURIComponent(_aliasParam)}`);
+      TID = data.id;
+    } catch (_) {
+      document.getElementById('tv-root').innerHTML =
+        `<div class="tv-error">No tournament found with alias: <strong>${esc(_aliasParam)}</strong></div>`;
+      return false;
+    }
+  }
+  return true;
 }
+
+async function _showPicker() {
+  let tournaments = [];
+  try { tournaments = await api('/api/tournaments'); } catch (_) {}
+
+  let html = `<div class="tv-picker">`;
+  html += `<h1>Padel TV</h1>`;
+  html += `<div class="subtitle">Select a tournament to display</div>`;
+
+  if (tournaments.length > 0) {
+    html += `<ul class="tv-picker-list">`;
+    for (const t of tournaments) {
+      const typeLabel = t.type === 'group_playoff' ? 'Group + Playoff' : 'Mexicano';
+      const aliasTag = t.alias ? `<span class="picker-alias">${esc(t.alias)}</span>` : '';
+      html += `<a class="tv-picker-item" href="/tv?tid=${encodeURIComponent(t.id)}">`;
+      html += `${esc(t.name)}<span class="picker-type">${typeLabel}</span>${aliasTag}`;
+      html += `</a>`;
+    }
+    html += `</ul>`;
+  } else {
+    html += `<p style="color:var(--text-muted);margin-bottom:1.5rem">No tournaments available.</p>`;
+  }
+
+  html += `<div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.5rem">Or enter a tournament ID / alias directly:</div>`;
+  html += `<form class="tv-picker-form" onsubmit="return _goToTournament(event)">`;
+  html += `<input type="text" id="picker-input" placeholder="Tournament ID or alias…">`;
+  html += `<button type="submit">Go</button>`;
+  html += `</form>`;
+  html += `</div>`;
+
+  document.getElementById('tv-root').innerHTML = html;
+}
+
+function _goToTournament(e) {
+  e.preventDefault();
+  const val = document.getElementById('picker-input').value.trim();
+  if (!val) return false;
+  // If it looks like a tournament ID (e.g. t1, t2) use tid=, otherwise use t= (alias)
+  const param = /^t\d+$/.test(val) ? 'tid' : 't';
+  location.href = `/tv?${param}=${encodeURIComponent(val)}`;
+  return false;
+}
+
+(async () => {
+  if (!TID && !_aliasParam) {
+    await _showPicker();
+    return;
+  }
+  const resolved = await _resolveAlias();
+  if (!resolved) return;
+  loadTV();
+})();
 </script>
 </body>
 </html>

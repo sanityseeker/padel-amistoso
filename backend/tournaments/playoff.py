@@ -8,6 +8,7 @@ Byes are inserted automatically when the bracket size is not a power of 2.
 from __future__ import annotations
 
 import math
+from collections import defaultdict
 
 from ..models import Court, Match, MatchStatus, Player
 
@@ -232,9 +233,7 @@ class DoubleEliminationBracket:
         self._losses: dict[str, int] = {}
         self._all_matches: list[Match] = []
         # Advancement bookkeeping
-        self._advancement: dict[
-            str, list[tuple[str, int, bool]]
-        ] = {}  # match_id -> [(next_id, slot, is_loser)]
+        self._advancement: defaultdict[str, list[tuple[str, int, bool]]] = defaultdict(list)
         self._generate()
 
     def _next_court(self) -> Court | None:
@@ -339,7 +338,7 @@ class DoubleEliminationBracket:
         )
 
     def _add_advancement(self, from_id: str, to_id: str, slot: int, is_loser: bool):
-        self._advancement.setdefault(from_id, []).append((to_id, slot, is_loser))
+        self._advancement[from_id].append((to_id, slot, is_loser))
 
     @property
     def all_matches(self) -> list[Match]:

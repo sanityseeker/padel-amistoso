@@ -77,6 +77,70 @@ configured in the **Admin → TV Settings** panel:
 The TV view is served from `frontend/tv.html` and uses the same REST API as
 the main UI.
 
+### Tournament aliases
+
+Each tournament can optionally have a **human-friendly alias** that provides
+a short, memorable URL for the TV display mode (or API access).
+
+**Setting an alias:**
+
+*Via the web UI:* Open any tournament and expand the **📺 TV Mode Controls**
+card. Enter your desired alias in the input field and click "Set Alias".
+The alias is displayed alongside the full URL you can copy.
+
+*Via the API:*
+
+```bash
+curl -X PUT http://localhost:8000/api/tournaments/t123/alias \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"alias": "summer-cup"}'
+```
+
+**Using the alias:**
+
+Instead of `/tv?tid=t123`, you can now use:
+- `/tv?t=summer-cup`
+
+Aliases work in the TV picker as well — you can type an alias directly into
+the input field.
+
+**Alias rules:**
+- Must be 1-64 characters
+- Only alphanumeric characters, hyphens, and underscores: `[a-zA-Z0-9_-]`
+- Must be unique across all tournaments
+- Can be changed or removed at any time
+
+**Deleting an alias:**
+
+*Via the web UI:* Click the "✕ Remove" button next to the alias input field.
+
+*Via the API:*
+
+```bash
+curl -X DELETE http://localhost:8000/api/tournaments/t123/alias \
+  -H "Authorization: Bearer <token>"
+```
+
+**Resolving an alias** (public endpoint):
+
+```bash
+curl http://localhost:8000/api/tournaments/resolve-alias/summer-cup
+```
+
+Returns:
+```json
+{
+  "id": "t123",
+  "name": "Summer Championship 2026",
+  "type": "group_playoff"
+}
+```
+
+Aliases are particularly useful for TV displays where you want a stable,
+memorable URL that won't change even if you need to recreate tournaments
+or manage multiple events throughout a season.
+
 ### Export outcome
 
 The **Export** card (visible once the tournament has a champion) lets you
@@ -105,6 +169,105 @@ The engine can be tuned with these parameters:
 
 When players have unequal games played (sit-outs), estimated-score logic is used
 to keep grouping/strength effects fair.
+
+---
+
+## Authentication
+
+All tournament mutations (creating tournaments, recording scores, advancing
+rounds) require authentication. Read-only endpoints (viewing tournaments,
+fetching standings) are public.
+
+### Default credentials
+
+On first startup, a default admin user is created automatically:
+
+- **Username**: `admin`
+- **Password**: `admin`
+
+**⚠️ Change this password immediately in production!**
+
+### Logging in
+
+**Via the web UI**: When you try to create a tournament or perform any action
+that requires authentication, a login dialog will appear automatically. Enter
+your credentials and the JWT token will be stored in your browser's localStorage.
+
+You can also click the **Login** button in the top navigation bar at any time.
+
+**Via the API**: POST credentials to `/api/auth/login`:
+
+```bash
+curl -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin"}'
+```
+
+Response:
+```json
+{
+  "access_token": "eyJhbGciOi...",
+  "token_type": "bearer",
+  "username": "admin"
+}
+```
+
+**Use the token**: Include it in the `Authorization` header for protected endpoints:
+
+```bash
+curl -X POST http://localhost:8000/api/tournaments/group-playoff \
+  -H "Authorization: Bearer eyJhbGciOi..." \
+  -H "Content-Type: application/json" \
+  -d '{ ... }'
+```
+
+Tokens expire after **7 days** by default.
+
+**Logging out**: Click the **Logout** button in the top navigation bar to clear
+your authentication token and return to the logged-out state.
+
+### Managing users
+
+Admin users can create, delete, and change passwords for other users:
+
+```bash
+# List all users
+GET /api/auth/users
+
+# Get current user info
+GET /api/auth/me
+
+# Create a new user
+POST /api/auth/users
+{
+  "username": "referee",
+  "password": "secure-password-123"
+}
+
+# Change a user's password
+PATCH /api/auth/users/{username}/password
+{
+  "new_password": "new-secure-password"
+}
+
+# Delete a user (cannot delete yourself)
+DELETE /api/auth/users/{username}
+```
+
+All user management endpoints require authentication and are admin-only.
+
+### Security notes
+
+- Passwords are hashed with **bcrypt** before storage
+- JWT tokens are signed with **HS256**
+- The JWT secret is read from `PADEL_JWT_SECRET` environment variable, or
+  auto-generated and persisted to `data/.jwt_secret` on first run
+- User data is stored in `data/users.pkl` (separate from tournament data)
+- For production use:
+  - Set a strong `PADEL_JWT_SECRET` via environment variable
+  - Change the default admin password immediately
+  - Consider setting up HTTPS with a reverse proxy (e.g., nginx, Caddy)
+  - Review `ACCESS_TOKEN_EXPIRE_MINUTES` in `backend/auth/security.py`
 
 ---
 
@@ -168,7 +331,7 @@ To avoid accidentally stopping the server (e.g. by closing the terminal),
 run it inside a [GNU screen](https://www.gnu.org/software/screen/) session:
 
 ```bash
-screen -dmS padel uv run uvicorn backend.api:app --reload --port 8000
+screen -dmS padel uv run python -m uvicorn backend.api:app --reload --port 8000
 ```
 
 Useful screen commands:
@@ -180,11 +343,6 @@ Useful screen commands:
 | Stop the server | `screen -XS padel quit` |
 | List sessions | `screen -ls` |
 
-### Running on a different port
-
-```bash
-uv run uvicorn backend.api:app --reload --port 9000
-```
 
 ### Running multiple independent instances in parallel
 
@@ -195,22 +353,22 @@ variable:
 
 ```bash
 # Instance A — port 8000, data in data/instance_a/
-PADEL_DATA_DIR=data/instance_a uv run uvicorn backend.api:app --port 8000
+PADEL_DATA_DIR=data/instance_a uv run python -m uvicorn backend.api:app --port 8000
 
 # Instance B — port 8001, data in data/instance_b/
-PADEL_DATA_DIR=data/instance_b uv run uvicorn backend.api:app --port 8001
+PADEL_DATA_DIR=data/instance_b uv run python -m uvicorn backend.api:app --port 8001
 ```
 
 Or as detached screen sessions:
 
 ```bash
-screen -dmS padel_a bash -c 'PADEL_DATA_DIR=data/instance_a uv run uvicorn backend.api:app --port 8000'
-screen -dmS padel_b bash -c 'PADEL_DATA_DIR=data/instance_b uv run uvicorn backend.api:app --port 8001'
+screen -dmS padel_a bash -c 'PADEL_DATA_DIR=data/instance_a uv run python -m uvicorn backend.api:app --port 8000'
+screen -dmS padel_b bash -c 'PADEL_DATA_DIR=data/instance_b uv run python -m uvicorn backend.api:app --port 8001'
 ```
 
 Each instance saves and restores its own tournaments independently.
 
-Then open <http://localhost:9000>.
+Then open <http://localhost:8000>.
 
 ---
 
@@ -239,8 +397,6 @@ data/
 frontend/
   index.html               – Single-page UI (vanilla HTML/CSS/JS)
   tv.html                  – Read-only TV display view
-api-playground/
-  index.html               – Interactive API request tester (manual calls)
 tests/
   test_api.py
   test_group_playoff.py
@@ -248,29 +404,6 @@ tests/
   test_mexicano.py
   test_playoff.py
 ```
-
-## API section
-
-### Interactive API testing
-
-This repo includes a dedicated interactive tester at:
-
-- `/api-playground`
-
-It is served from:
-
-- `api-playground/index.html`
-
-Use it to manually test endpoints with custom method/path/body and inspect raw
-responses quickly. It also includes a few starter presets (list tournaments,
-create GP, create Mexicano).
-
-### OpenAPI docs
-
-FastAPI auto-docs are also available:
-
-- `/docs` (Swagger UI)
-- `/redoc` (ReDoc)
 
 ## Running tests
 
@@ -280,49 +413,27 @@ uv run pytest tests/ -v
 
 ---
 
-## API overview
+## API Documentation
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| **CRUD** | | |
-| `GET` | `/api/tournaments` | List all tournaments |
-| `POST` | `/api/tournaments/group-playoff` | Create group+playoff tournament |
-| `POST` | `/api/tournaments/mexicano` | Create Mexicano tournament |
-| `DELETE` | `/api/tournaments/{id}` | Delete a tournament |
-| `GET` | `/api/tournaments/{id}/version` | Version counter (TV polling) |
-| `GET` | `/api/tournaments/{id}/tv-settings` | Get TV display settings |
-| `PATCH` | `/api/tournaments/{id}/tv-settings` | Update TV display settings |
-| **Group + Play-off** | | |
-| `GET` | `/api/tournaments/{id}/gp/status` | GP phase & champion status |
-| `GET` | `/api/tournaments/{id}/gp/groups` | Group standings & matches |
-| `POST` | `/api/tournaments/{id}/gp/record-group` | Record a group match score |
-| `POST` | `/api/tournaments/{id}/gp/record-group-tennis` | Record group score from tennis sets |
-| `POST` | `/api/tournaments/{id}/gp/start-playoffs` | Transition to play-offs |
-| `GET` | `/api/tournaments/{id}/gp/playoffs` | Play-off bracket & matches |
-| `GET` | `/api/tournaments/{id}/gp/playoffs-schema` | Render play-off bracket image |
-| `POST` | `/api/tournaments/{id}/gp/record-playoff` | Record a play-off match score |
-| `POST` | `/api/tournaments/{id}/gp/record-playoff-tennis` | Record play-off score from tennis sets |
-| **Mexicano** | | |
-| `GET` | `/api/tournaments/{id}/mex/status` | Leaderboard, phase & champion |
-| `GET` | `/api/tournaments/{id}/mex/matches` | Current & past matches |
-| `POST` | `/api/tournaments/{id}/mex/record` | Record a Mexicano match score |
-| `GET` | `/api/tournaments/{id}/mex/propose-pairings` | Propose pairing options |
-| `POST` | `/api/tournaments/{id}/mex/next-round` | Commit next Mexicano round |
-| `POST` | `/api/tournaments/{id}/mex/custom-round` | Commit manually edited next round |
-| `POST` | `/api/tournaments/{id}/mex/end` | End Mexicano rounds (open play-off decision) |
-| `POST` | `/api/tournaments/{id}/mex/finish` | Finish tournament without play-offs |
-| `GET` | `/api/tournaments/{id}/mex/recommend-playoffs` | Suggest play-off seeds |
-| `POST` | `/api/tournaments/{id}/mex/start-playoffs` | Start Mexicano play-offs |
-| `GET` | `/api/tournaments/{id}/mex/playoffs` | Play-off bracket & matches |
-| `GET` | `/api/tournaments/{id}/mex/playoffs-schema` | Render Mexicano play-off bracket image |
-| `POST` | `/api/tournaments/{id}/mex/record-playoff` | Record Mexicano play-off score |
-| `POST` | `/api/tournaments/{id}/mex/record-playoff-tennis` | Record Mexicano play-off score from tennis sets |
-| **Schema / Visualisation** | | |
-| `GET` | `/api/schema/preview` | Bracket diagram (query params) |
-| `POST` | `/api/schema/preview` | Bracket diagram (JSON body) |
+This project uses FastAPI's built-in automatic API documentation. Once the server is running, you can explore and test all endpoints interactively:
 
-All `*-schema` endpoints accept optional query parameters to control rendering:
-`box_scale`, `line_width`, `arrow_scale`, `title_font_scale`.
+- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)  
+  Interactive API explorer with request/response schemas and "Try it out" functionality
+  
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)  
+  Clean, three-panel documentation with search and deep linking
+
+Both interfaces are automatically generated from route definitions and stay in sync with the code.
+
+### Quick Reference
+
+- **Authentication**: JWT-based auth with user management (`/api/auth/*`)
+- **Tournaments**: CRUD operations for Group+Playoff and Mexicano formats (`/api/tournaments/*`)
+- **Group+Playoff**: Group stage matches, standings, and playoff brackets (`/api/tournaments/{id}/gp/*`)
+- **Mexicano**: Round-based scoring, pairing proposals, and optional playoffs (`/api/tournaments/{id}/mex/*`)
+- **Visualization**: SVG bracket rendering with customizable styling (`/api/schema/*`)
+
+All endpoints requiring authentication accept a JWT token via the `Authorization: Bearer <token>` header.
 
 ## What's next (iteration ideas)
 
@@ -330,4 +441,4 @@ All `*-schema` endpoints accept optional query parameters to control rendering:
 - Add player-registration / check-in flow
 - WebSocket push for automatic live-table refresh
 - Print-friendly draw sheets
-- Authentication for tournament admins
+- Role-based access control (viewer vs. admin roles)

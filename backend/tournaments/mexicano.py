@@ -197,14 +197,13 @@ class MexicanoTournament:
         """
         for team, other_team in [(t1, t2), (t2, t1)]:
             for p in team:
-                detail = accumulator.setdefault(
-                    p.name,
-                    {
+                if p.name not in accumulator:
+                    accumulator[p.name] = {
                         "player_id": p.id,
                         "partner_repeats": [],
                         "opponent_repeats": [],
-                    },
-                )
+                    }
+                detail = accumulator[p.name]
                 partner = [x for x in team if x.id != p.id]
                 if partner:
                     cnt = self._partner_history[p.id].get(partner[0].id, 0)

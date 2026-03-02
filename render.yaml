@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: padel-tournament-manager
+    runtime: python
+    plan: free
+    buildCommand: "pip install uv && uv sync"
+    startCommand: "uv run fastapi run backend/api --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PADEL_JWT_SECRET
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: DEMO_MODE
+        value: "true"
+    healthCheckPath: /api/tournaments
+    autoDeploy: true
+
+# Note: Free tier spins down after 15 minutes of inactivity
+# First request after spin-down takes ~30 seconds to wake up
+# Data stored in memory/pickle will be lost on each spin-down

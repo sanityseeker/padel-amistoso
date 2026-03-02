@@ -4,6 +4,7 @@ Shared helpers for route modules.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Literal
 
 from fastapi import HTTPException
@@ -104,9 +105,9 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
 
     def _label_round_matches(match_list: list, prefix: str) -> None:
         """Group *match_list* by round, then write labels keyed ``{prefix}_r{r}_p{p}``."""
-        by_round: dict[int, list] = {}
+        by_round: defaultdict[int, list] = defaultdict(list)
         for m in match_list:
-            by_round.setdefault(m.round_number, []).append(m)
+            by_round[m.round_number].append(m)
         for round_num, rmatches in sorted(by_round.items()):
             r = round_num - 1
             for p_idx, m in enumerate(rmatches):
