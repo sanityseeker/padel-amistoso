@@ -55,7 +55,6 @@ async def schema_preview(
         title_font_scale=title_font_scale,
     )
 
-    media = {"png": "image/png", "svg": "image/svg+xml", "pdf": "application/pdf"}
     return _schema_image_response(img, fmt)
 
 
