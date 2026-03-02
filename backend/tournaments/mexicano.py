@@ -158,9 +158,7 @@ class MexicanoTournament:
         self._match_credits: dict[str, dict[str, dict]] = {}
 
         # Optional play-off bracket (created via start_playoffs)
-        self.playoff_bracket: (
-            SingleEliminationBracket | DoubleEliminationBracket | None
-        ) = None
+        self.playoff_bracket: SingleEliminationBracket | DoubleEliminationBracket | None = None
         self._phase: MexPhase = MexPhase.MEXICANO
         self._mexicano_ended: bool = False
 
@@ -232,9 +230,7 @@ class MexicanoTournament:
                     return m
         raise KeyError(f"Match {match_id} not found")
 
-    def _update_wdl(
-        self, team: list[Player], own_score: int, other_score: int, delta: int = 1
-    ) -> None:
+    def _update_wdl(self, team: list[Player], own_score: int, other_score: int, delta: int = 1) -> None:
         """Update win/draw/loss counters for all players in *team*."""
         for p in team:
             if own_score > other_score:
@@ -313,12 +309,8 @@ class MexicanoTournament:
                 "player_id": p.id,
                 "partners": sorted(partners, key=lambda x: -x["count"]),
                 "opponents": sorted(opponents, key=lambda x: -x["count"]),
-                "total_partner_repeats": sum(
-                    max(0, c - 1) for c in self._partner_history[p.id].values()
-                ),
-                "total_opponent_repeats": sum(
-                    max(0, c - 1) for c in self._opponent_history[p.id].values()
-                ),
+                "total_partner_repeats": sum(max(0, c - 1) for c in self._partner_history[p.id].values()),
+                "total_opponent_repeats": sum(max(0, c - 1) for c in self._opponent_history[p.id].values()),
             }
         return stats
 
@@ -475,9 +467,7 @@ class MexicanoTournament:
                 4,
             )
 
-    def _projected_round_objective(
-        self, playing: list[Player], *, strategy: str
-    ) -> tuple[float, int, int, float, int]:
+    def _projected_round_objective(self, playing: list[Player], *, strategy: str) -> tuple[float, int, int, float, int]:
         """Compute proposal-style objective tuple for a candidate playing set.
 
         Returns tuple matching weighted ranking semantics:
@@ -495,9 +485,7 @@ class MexicanoTournament:
 
         for group in groups:
             t1, t2 = self._best_pairing(group)
-            score_imbalance += abs(
-                self._team_total(est, t1) - self._team_total(est, t2)
-            )
+            score_imbalance += abs(self._team_total(est, t1) - self._team_total(est, t2))
             repeat_count += self._pairing_repeat_count(t1, t2)
             fp = self._match_fingerprint([p.id for p in t1], [p.id for p in t2])
             if fp in previous:
@@ -598,9 +586,7 @@ class MexicanoTournament:
 
         while len(remaining) >= 4:
             anchor_est = est[remaining[0].id]
-            within_gap = [
-                p for p in remaining if abs(anchor_est - est[p.id]) <= self.skill_gap
-            ]
+            within_gap = [p for p in remaining if abs(anchor_est - est[p.id]) <= self.skill_gap]
             group = within_gap[:4] if len(within_gap) >= 4 else remaining[:4]
             groups.append(group)
             taken = {p.id for p in group}
@@ -651,25 +637,17 @@ class MexicanoTournament:
         for (a, b), (c, d) in self._PAIRING_SCHEMES:
             t1 = [group[a], group[b]]
             t2 = [group[c], group[d]]
-            gap_excess = self._team_pair_gap_excess(
-                t1, estimated_scores
-            ) + self._team_pair_gap_excess(t2, estimated_scores)
-            imbalance = abs(
-                sum(self.scores[p.id] for p in t1) - sum(self.scores[p.id] for p in t2)
+            gap_excess = self._team_pair_gap_excess(t1, estimated_scores) + self._team_pair_gap_excess(
+                t2, estimated_scores
             )
+            imbalance = abs(sum(self.scores[p.id] for p in t1) - sum(self.scores[p.id] for p in t2))
             repeats = self._pairing_repeat_count(t1, t2)
             candidates.append((gap_excess, imbalance, repeats, t1, t2))
 
         min_excess = min(c[0] for c in candidates)
-        filtered = [
-            (imb, rep, t1, t2)
-            for exc, imb, rep, t1, t2 in candidates
-            if exc == min_excess
-        ]
+        filtered = [(imb, rep, t1, t2) for exc, imb, rep, t1, t2 in candidates if exc == min_excess]
         min_imbalance = min(c[0] for c in filtered)
-        filtered = [
-            (rep, t1, t2) for imb, rep, t1, t2 in filtered if imb == min_imbalance
-        ]
+        filtered = [(rep, t1, t2) for imb, rep, t1, t2 in filtered if imb == min_imbalance]
         min_repeats = min(c[0] for c in filtered)
         best = [(t1, t2) for rep, t1, t2 in filtered if rep == min_repeats]
         return random.choice(best)
@@ -760,9 +738,7 @@ class MexicanoTournament:
                 worst_excess = max(worst_excess, spread - self.skill_gap)
         return violating, worst_excess
 
-    def _optimize_groups(
-        self, groups: list[list[Player]], max_passes: int = 3
-    ) -> list[list[Player]]:
+    def _optimize_groups(self, groups: list[list[Player]], max_passes: int = 3) -> list[list[Player]]:
         """
         Hill-climb over the initial grouping by swapping players between
         groups to reduce the total repeat count across the whole round.
@@ -798,10 +774,7 @@ class MexicanoTournament:
                             )
                             new_repeats = self._total_repeat_count(groups)
                             new_imbalance = self._total_imbalance(groups)
-                            if (
-                                new_repeats < cur_repeats
-                                and new_imbalance <= imbalance_cap
-                            ):
+                            if new_repeats < cur_repeats and new_imbalance <= imbalance_cap:
                                 # Accept the swap
                                 cur_repeats = new_repeats
                                 improved = True
@@ -836,9 +809,7 @@ class MexicanoTournament:
         if getattr(self, "_forced_sit_out_ids", None) is not None:
             sitting = [self._player_map[pid] for pid in self._forced_sit_out_ids]
         else:
-            sitting = self._choose_sit_outs(
-                ranked
-            )  # read-only — does not mutate counters
+            sitting = self._choose_sit_outs(ranked)  # read-only — does not mutate counters
         sitting_ids = {p.id for p in sitting}
         playing = [p for p in ranked if p.id not in sitting_ids]
 
@@ -875,9 +846,7 @@ class MexicanoTournament:
             "per_person_repeats": per_person_repeats,
             "skill_gap_violations": violating_groups,
             "skill_gap_worst_excess": round(worst_gap_excess, 2),
-            "exact_prev_round_repeats": self._annotate_exact_previous_round_repeats(
-                match_plans
-            ),
+            "exact_prev_round_repeats": self._annotate_exact_previous_round_repeats(match_plans),
             "strategy": "balanced",
         }
 
@@ -897,14 +866,11 @@ class MexicanoTournament:
         for (a, b), (c, d) in self._PAIRING_SCHEMES:
             t1 = [group[a], group[b]]
             t2 = [group[c], group[d]]
-            gap_excess = self._team_pair_gap_excess(
-                t1, estimated_scores
-            ) + self._team_pair_gap_excess(t2, estimated_scores)
-            repeats = self._pairing_repeat_count(t1, t2)
-            imbalance = abs(
-                self._team_total(estimated_scores, t1)
-                - self._team_total(estimated_scores, t2)
+            gap_excess = self._team_pair_gap_excess(t1, estimated_scores) + self._team_pair_gap_excess(
+                t2, estimated_scores
             )
+            repeats = self._pairing_repeat_count(t1, t2)
+            imbalance = abs(self._team_total(estimated_scores, t1) - self._team_total(estimated_scores, t2))
             seed_penalty = 0
             if {a, b} != {0, 1}:
                 seed_penalty += 1
@@ -918,11 +884,7 @@ class MexicanoTournament:
             candidates.sort(key=lambda x: (x[0], x[3], x[1], x[2]))
 
         best_key = candidates[0][:4]
-        best = [
-            (t1, t2)
-            for exc, rep, imb, sp, t1, t2 in candidates
-            if (exc, rep, imb, sp) == best_key
-        ]
+        best = [(t1, t2) for exc, rep, imb, sp, t1, t2 in candidates if (exc, rep, imb, sp) == best_key]
         return random.choice(best)
 
     def _plan_round_seeded_position(
@@ -944,11 +906,7 @@ class MexicanoTournament:
         sitting_ids = {p.id for p in sitting}
         playing = [p for p in ranked if p.id not in sitting_ids]
 
-        groups = [
-            playing[i : i + 4]
-            for i in range(0, len(playing), 4)
-            if len(playing[i : i + 4]) == 4
-        ]
+        groups = [playing[i : i + 4] for i in range(0, len(playing), 4) if len(playing[i : i + 4]) == 4]
         est = self._estimated_scores()
         per_person_repeats: dict[str, dict] = {}
         match_plans: list[dict] = []
@@ -960,9 +918,7 @@ class MexicanoTournament:
             else:
                 seeded_group = list(group)
 
-            t1, t2 = self._seeded_group_pairing(
-                seeded_group, minimize_repeats=minimize_repeats
-            )
+            t1, t2 = self._seeded_group_pairing(seeded_group, minimize_repeats=minimize_repeats)
             court = self.courts[i % len(self.courts)] if self.courts else None
             imb = abs(self._team_total(est, t1) - self._team_total(est, t2))
             rep = self._pairing_repeat_count(t1, t2)
@@ -989,11 +945,7 @@ class MexicanoTournament:
         violating_pairs = sum(1 for x in pair_excesses if x > 0)
         worst_gap_excess = max(pair_excesses, default=0.0)
 
-        variant_name = (
-            "base"
-            if swap_variant == 0
-            else ("swap_a" if swap_variant == 1 else "swap_b")
-        )
+        variant_name = "base" if swap_variant == 0 else ("swap_a" if swap_variant == 1 else "swap_b")
         return {
             "sit_out_ids": [p.id for p in sitting],
             "sit_out_names": [p.name for p in sitting],
@@ -1003,9 +955,7 @@ class MexicanoTournament:
             "per_person_repeats": per_person_repeats,
             "skill_gap_violations": violating_pairs,
             "skill_gap_worst_excess": round(worst_gap_excess, 2),
-            "exact_prev_round_repeats": self._annotate_exact_previous_round_repeats(
-                match_plans
-            ),
+            "exact_prev_round_repeats": self._annotate_exact_previous_round_repeats(match_plans),
             "strategy": "seeded",
             "variant": variant_name,
             "variant_repeats": minimize_repeats,
@@ -1013,15 +963,10 @@ class MexicanoTournament:
 
     def _plan_fingerprint(self, plan: dict) -> frozenset:
         """Canonical key used to detect duplicate proposals."""
-        return frozenset(
-            frozenset([frozenset(m["team1_ids"]), frozenset(m["team2_ids"])])
-            for m in plan["matches"]
-        )
+        return frozenset(frozenset([frozenset(m["team1_ids"]), frozenset(m["team2_ids"])]) for m in plan["matches"])
 
     @staticmethod
-    def _match_fingerprint(
-        team1_ids: list[str], team2_ids: list[str]
-    ) -> frozenset[frozenset[str]]:
+    def _match_fingerprint(team1_ids: list[str], team2_ids: list[str]) -> frozenset[frozenset[str]]:
         """Canonical unordered representation of a 2v2 match."""
         return frozenset([frozenset(team1_ids), frozenset(team2_ids)])
 
@@ -1043,9 +988,7 @@ class MexicanoTournament:
         previous = self._previous_round_match_fingerprints()
         exact_count = 0
         for match_plan in match_plans:
-            fp = self._match_fingerprint(
-                match_plan["team1_ids"], match_plan["team2_ids"]
-            )
+            fp = self._match_fingerprint(match_plan["team1_ids"], match_plan["team2_ids"])
             is_exact = fp in previous
             match_plan["exact_prev_round_repeat"] = is_exact
             if is_exact:
@@ -1078,9 +1021,7 @@ class MexicanoTournament:
         if self._mexicano_ended:
             raise RuntimeError("Mexicano phase has ended")
         if self.pending_matches():
-            raise RuntimeError(
-                "Complete the current round before proposing next pairings"
-            )
+            raise RuntimeError("Complete the current round before proposing next pairings")
 
         # Validate forced sit-outs
         self._forced_sit_out_ids = None
@@ -1091,8 +1032,7 @@ class MexicanoTournament:
                     raise ValueError(f"Unknown player ID: {pid}")
             if len(forced_sit_out_ids) != self._sit_out_count:
                 raise ValueError(
-                    f"Must specify exactly {self._sit_out_count} sit-out player(s), "
-                    f"got {len(forced_sit_out_ids)}"
+                    f"Must specify exactly {self._sit_out_count} sit-out player(s), got {len(forced_sit_out_ids)}"
                 )
             self._forced_sit_out_ids = forced_sit_out_ids
 
@@ -1168,12 +1108,8 @@ class MexicanoTournament:
         self._annotate_weighted_scores(balanced, "balanced")
         self._annotate_weighted_scores(seeded, "seeded")
 
-        balanced.sort(
-            key=lambda p: (p["weighted_score"], p["score_imbalance"], p["repeat_count"])
-        )
-        seeded.sort(
-            key=lambda p: (p["weighted_score"], p["score_imbalance"], p["repeat_count"])
-        )
+        balanced.sort(key=lambda p: (p["weighted_score"], p["score_imbalance"], p["repeat_count"]))
+        seeded.sort(key=lambda p: (p["weighted_score"], p["score_imbalance"], p["repeat_count"]))
 
         balanced = balanced[:target_per_strategy]
         seeded = seeded[:target_per_strategy]
@@ -1182,9 +1118,7 @@ class MexicanoTournament:
         if target_total > 6:
             bi = 0
             si = 0
-            while len(proposals) < target_total and (
-                bi < len(balanced) or si < len(seeded)
-            ):
+            while len(proposals) < target_total and (bi < len(balanced) or si < len(seeded)):
                 if bi < len(balanced):
                     proposals.append(balanced[bi])
                     bi += 1
@@ -1356,16 +1290,12 @@ class MexicanoTournament:
             t1_ids = spec.get("team1_ids", [])
             t2_ids = spec.get("team2_ids", [])
             if len(t1_ids) != 2 or len(t2_ids) != 2:
-                raise ValueError(
-                    f"Match {i + 1}: each team must have exactly 2 players"
-                )
+                raise ValueError(f"Match {i + 1}: each team must have exactly 2 players")
             for pid in t1_ids + t2_ids:
                 if pid not in pmap:
                     raise ValueError(f"Unknown player ID: {pid}")
                 if pid in used_ids:
-                    raise ValueError(
-                        f"Player {pmap[pid].name} appears in multiple matches"
-                    )
+                    raise ValueError(f"Player {pmap[pid].name} appears in multiple matches")
                 used_ids.add(pid)
 
             court = self.courts[i % len(self.courts)] if self.courts else None
@@ -1406,9 +1336,7 @@ class MexicanoTournament:
         Each such player adds an extra penalty equal to the minimum overlap
         count, making the optimiser strongly prefer any alternative pairing.
         """
-        return self._half_repeat_count(team1, team2) + self._half_repeat_count(
-            team2, team1
-        )
+        return self._half_repeat_count(team1, team2) + self._half_repeat_count(team2, team1)
 
     def _half_repeat_count(self, team: list[Player], opponents: list[Player]) -> int:
         """Repeat penalty contribution from one side of a match."""
@@ -1440,10 +1368,7 @@ class MexicanoTournament:
         m = self._find_match_by_id(match_id)
         s1, s2 = score
         if s1 + s2 != self.total_points_per_match:
-            raise ValueError(
-                f"Scores must sum to {self.total_points_per_match}, "
-                f"got {s1} + {s2} = {s1 + s2}"
-            )
+            raise ValueError(f"Scores must sum to {self.total_points_per_match}, got {s1} + {s2} = {s1 + s2}")
 
         # ── Undo previous result if re-recording ──
         was_completed = m.status == MatchStatus.COMPLETED
@@ -1537,9 +1462,7 @@ class MexicanoTournament:
     def all_match_breakdowns(self) -> dict[str, dict]:
         """Return breakdowns for all recorded matches."""
         return {
-            mid: {
-                pid: self._normalize_credit(detail) for pid, detail in credits.items()
-            }
+            mid: {pid: self._normalize_credit(detail) for pid, detail in credits.items()}
             for mid, credits in self._match_credits.items()
         }
 
@@ -1548,21 +1471,13 @@ class MexicanoTournament:
         for team in [team1, team2]:
             for i, p1 in enumerate(team):
                 for p2 in team[i + 1 :]:
-                    self._partner_history[p1.id][p2.id] = (
-                        self._partner_history[p1.id].get(p2.id, 0) + 1
-                    )
-                    self._partner_history[p2.id][p1.id] = (
-                        self._partner_history[p2.id].get(p1.id, 0) + 1
-                    )
+                    self._partner_history[p1.id][p2.id] = self._partner_history[p1.id].get(p2.id, 0) + 1
+                    self._partner_history[p2.id][p1.id] = self._partner_history[p2.id].get(p1.id, 0) + 1
         # Opponent history
         for p1 in team1:
             for p2 in team2:
-                self._opponent_history[p1.id][p2.id] = (
-                    self._opponent_history[p1.id].get(p2.id, 0) + 1
-                )
-                self._opponent_history[p2.id][p1.id] = (
-                    self._opponent_history[p2.id].get(p1.id, 0) + 1
-                )
+                self._opponent_history[p1.id][p2.id] = self._opponent_history[p1.id].get(p2.id, 0) + 1
+                self._opponent_history[p2.id][p1.id] = self._opponent_history[p2.id].get(p1.id, 0) + 1
 
     # ------------------------------------------------------------------ #
     # Queries
@@ -1584,10 +1499,7 @@ class MexicanoTournament:
     @property
     def is_finished(self) -> bool:
         if self._phase == MexPhase.PLAYOFFS:
-            return (
-                self.playoff_bracket is not None
-                and self.playoff_bracket.champion() is not None
-            )
+            return self.playoff_bracket is not None and self.playoff_bracket.champion() is not None
         if self._phase == MexPhase.FINISHED:
             return True
         if self.num_rounds == 0:  # rolling mode — never "done" by round count
@@ -1664,9 +1576,7 @@ class MexicanoTournament:
             key=lambda pair: est.get(pair[0], 0.0) + est.get(pair[1], 0.0),
             reverse=True,
         )
-        teams = [
-            [self._player_by_id(pid1), self._player_by_id(pid2)] for pid1, pid2 in pairs
-        ]
+        teams = [[self._player_by_id(pid1), self._player_by_id(pid2)] for pid1, pid2 in pairs]
         if len(teams) < 2:
             raise RuntimeError("Need at least 2 teams to start play-offs")
 

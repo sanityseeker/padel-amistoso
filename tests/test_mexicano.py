@@ -80,18 +80,14 @@ class TestMexicanoRoundGeneration:
 
 class TestMexicanoScoring:
     def test_scores_must_sum_to_total(self):
-        t = MexicanoTournament(
-            _make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=3
-        )
+        t = MexicanoTournament(_make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=3)
         t.generate_next_round()
         m = t.current_round_matches()[0]
         with pytest.raises(ValueError, match="sum to 32"):
             t.record_result(m.id, (20, 10))  # sums to 30
 
     def test_scores_are_accumulated(self):
-        t = MexicanoTournament(
-            _make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=3
-        )
+        t = MexicanoTournament(_make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=3)
         t.generate_next_round()
         m = t.current_round_matches()[0]
         t.record_result(m.id, (20, 12))
@@ -117,9 +113,7 @@ class TestMexicanoScoring:
 
 class TestMexicanoLeaderboard:
     def test_leaderboard_sorted_descending(self):
-        t = MexicanoTournament(
-            _make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=3
-        )
+        t = MexicanoTournament(_make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=3)
         t.generate_next_round()
         m = t.current_round_matches()[0]
         t.record_result(m.id, (24, 8))
@@ -140,9 +134,7 @@ class TestMexicanoLeaderboard:
 
 class TestMexicanoMultiRound:
     def test_full_three_rounds(self):
-        t = MexicanoTournament(
-            _make_players(8), _make_courts(2), total_points_per_match=32, num_rounds=3
-        )
+        t = MexicanoTournament(_make_players(8), _make_courts(2), total_points_per_match=32, num_rounds=3)
 
         for rnd in range(3):
             t.generate_next_round()
@@ -244,9 +236,7 @@ class TestMexicanoMultiRound:
     )
     def test_snake_draft_group_count(self, n_players, n_courts, expected_groups):
         """Snake draft produces the correct number of groups."""
-        t = MexicanoTournament(
-            _make_players(n_players), _make_courts(n_courts), num_rounds=1
-        )
+        t = MexicanoTournament(_make_players(n_players), _make_courts(n_courts), num_rounds=1)
         ranked = t._ranked_players(t.players)
         groups = t._snake_draft_groups(ranked)
         assert len(groups) == expected_groups
@@ -254,9 +244,7 @@ class TestMexicanoMultiRound:
 
     def test_snake_draft_spreads_top_players(self):
         """With 8 players and 2 courts, ranks 1 and 2 should be on different courts."""
-        t = MexicanoTournament(
-            _make_players(8), _make_courts(2), num_rounds=1, randomness=0.0
-        )
+        t = MexicanoTournament(_make_players(8), _make_courts(2), num_rounds=1, randomness=0.0)
         # Set distinct scores so ranking is deterministic
         for i, p in enumerate(t.players):
             t.scores[p.id] = 100 - i * 10
@@ -265,15 +253,9 @@ class TestMexicanoMultiRound:
         groups = t._snake_draft_groups(ranked)
         rank1_id = ranked[0].id
         rank2_id = ranked[1].id
-        group_for_rank1 = next(
-            i for i, g in enumerate(groups) if any(p.id == rank1_id for p in g)
-        )
-        group_for_rank2 = next(
-            i for i, g in enumerate(groups) if any(p.id == rank2_id for p in g)
-        )
-        assert group_for_rank1 != group_for_rank2, (
-            "Ranks 1 and 2 should be on different courts (snake draft)"
-        )
+        group_for_rank1 = next(i for i, g in enumerate(groups) if any(p.id == rank1_id for p in g))
+        group_for_rank2 = next(i for i, g in enumerate(groups) if any(p.id == rank2_id for p in g))
+        assert group_for_rank1 != group_for_rank2, "Ranks 1 and 2 should be on different courts (snake draft)"
 
 
 class TestMexicanoSitOut:
@@ -288,12 +270,8 @@ class TestMexicanoSitOut:
             (9, 2, 2, 1),
         ],
     )
-    def test_sit_out_count(
-        self, n_players, n_courts, expected_matches, expected_sit_outs
-    ):
-        t = MexicanoTournament(
-            _make_players(n_players), _make_courts(n_courts), num_rounds=3
-        )
+    def test_sit_out_count(self, n_players, n_courts, expected_matches, expected_sit_outs):
+        t = MexicanoTournament(_make_players(n_players), _make_courts(n_courts), num_rounds=3)
         matches = t.generate_next_round()
         assert len(matches) == expected_matches
         assert len(t.sit_outs) == 1
@@ -320,9 +298,7 @@ class TestMexicanoSitOut:
 
     def test_all_players_in_match_pool(self):
         """Playing + sitting should always equal total players."""
-        t = MexicanoTournament(
-            _make_players(6), _make_courts(1), total_points_per_match=32, num_rounds=3
-        )
+        t = MexicanoTournament(_make_players(6), _make_courts(1), total_points_per_match=32, num_rounds=3)
         for _ in range(3):
             t.generate_next_round()
             playing = set()
@@ -336,9 +312,7 @@ class TestMexicanoSitOut:
                 t.record_result(m.id, (16, 16))
 
     def test_leaderboard_includes_sat_out(self):
-        t = MexicanoTournament(
-            _make_players(5), _make_courts(1), total_points_per_match=32, num_rounds=1
-        )
+        t = MexicanoTournament(_make_players(5), _make_courts(1), total_points_per_match=32, num_rounds=1)
         t.generate_next_round()
         for m in t.current_round_matches():
             t.record_result(m.id, (16, 16))
@@ -358,9 +332,7 @@ class TestMexicanoRollingMode:
 
     def test_can_play_many_rounds(self):
         """Rolling mode should allow an arbitrary number of rounds."""
-        t = MexicanoTournament(
-            _make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=0
-        )
+        t = MexicanoTournament(_make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=0)
         for _ in range(20):
             t.generate_next_round()
             for m in t.current_round_matches():
@@ -369,9 +341,7 @@ class TestMexicanoRollingMode:
         assert not t.is_finished
 
     def test_never_finished_without_playoffs(self):
-        t = MexicanoTournament(
-            _make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=0
-        )
+        t = MexicanoTournament(_make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=0)
         t.generate_next_round()
         for m in t.current_round_matches():
             t.record_result(m.id, (16, 16))
@@ -379,9 +349,7 @@ class TestMexicanoRollingMode:
 
     def test_can_start_playoffs_any_time(self):
         """In rolling mode, playoffs can start after any completed round."""
-        t = MexicanoTournament(
-            _make_players(8), _make_courts(2), total_points_per_match=32, num_rounds=0
-        )
+        t = MexicanoTournament(_make_players(8), _make_courts(2), total_points_per_match=32, num_rounds=0)
         t.generate_next_round()
         for m in t.current_round_matches():
             t.record_result(m.id, (20, 12))
@@ -391,9 +359,7 @@ class TestMexicanoRollingMode:
 
     def test_cannot_start_playoffs_with_pending(self):
         """Even in rolling mode, pending matches must be completed first."""
-        t = MexicanoTournament(
-            _make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=0
-        )
+        t = MexicanoTournament(_make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=0)
         t.generate_next_round()
         with pytest.raises(RuntimeError, match="current round"):
             t.start_playoffs(n_teams=2)
@@ -401,9 +367,7 @@ class TestMexicanoRollingMode:
     def test_start_playoffs_pairs_individuals_into_teams(self):
         """Selected individual seeds are paired then sorted by combined score."""
         players = _make_players(8)
-        t = MexicanoTournament(
-            players, _make_courts(2), total_points_per_match=32, num_rounds=0
-        )
+        t = MexicanoTournament(players, _make_courts(2), total_points_per_match=32, num_rounds=0)
         t.generate_next_round()
         for m in t.current_round_matches():
             t.record_result(m.id, (20, 12))
@@ -426,9 +390,7 @@ class TestMexicanoRollingMode:
     def test_start_playoffs_odd_individual_count_drops_last_seed(self):
         """If seed count is odd, the last seed is excluded before pairing."""
         players = _make_players(5)
-        t = MexicanoTournament(
-            players, _make_courts(1), total_points_per_match=32, num_rounds=0
-        )
+        t = MexicanoTournament(players, _make_courts(1), total_points_per_match=32, num_rounds=0)
         t.generate_next_round()
         for m in t.current_round_matches():
             t.record_result(m.id, (16, 16))
@@ -446,9 +408,7 @@ class TestMexicanoRollingMode:
     def test_start_playoffs_duplicate_individual_id_rejected(self):
         """Duplicate player IDs should fail playoff creation."""
         players = _make_players(4)
-        t = MexicanoTournament(
-            players, _make_courts(1), total_points_per_match=32, num_rounds=0
-        )
+        t = MexicanoTournament(players, _make_courts(1), total_points_per_match=32, num_rounds=0)
         t.generate_next_round()
         for m in t.current_round_matches():
             t.record_result(m.id, (16, 16))
@@ -460,9 +420,7 @@ class TestMexicanoRollingMode:
 
     def test_propose_pairings_in_rolling(self):
         """Proposal engine works in rolling mode."""
-        t = MexicanoTournament(
-            _make_players(8), _make_courts(2), total_points_per_match=32, num_rounds=0
-        )
+        t = MexicanoTournament(_make_players(8), _make_courts(2), total_points_per_match=32, num_rounds=0)
         # Play a round first
         t.generate_next_round()
         for m in t.current_round_matches():
@@ -513,9 +471,7 @@ class TestMexicanoWinBonus:
             assert t.scores[p.id] == 16  # no bonus on draw
 
     def test_no_bonus_by_default(self):
-        t = MexicanoTournament(
-            _make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=1
-        )
+        t = MexicanoTournament(_make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=1)
         t.generate_next_round()
         m = t.current_round_matches()[0]
         t.record_result(m.id, (20, 12))
@@ -689,9 +645,7 @@ class TestMexicanoLossDiscount:
             assert t.scores[p.id] - before[p.id] == 0
 
     def test_default_no_discount(self):
-        t = MexicanoTournament(
-            _make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=1
-        )
+        t = MexicanoTournament(_make_players(4), _make_courts(1), total_points_per_match=32, num_rounds=1)
         t.generate_next_round()
         m = t.current_round_matches()[0]
         before = {p.id: t.scores[p.id] for p in t.players}
@@ -760,10 +714,7 @@ class TestMexicanoCrossGroupOptimization:
         # The max repeat count should be <= 4 (without optimisation it
         # would be 6 — the same pairs every round with deterministic ranking)
         max_repeat = max(pair_counts.values())
-        assert max_repeat <= 5, (
-            f"Expected cross-group optimiser to limit repeats, "
-            f"but max repeat count is {max_repeat}"
-        )
+        assert max_repeat <= 5, f"Expected cross-group optimiser to limit repeats, but max repeat count is {max_repeat}"
 
     def test_optimize_groups_returns_same_players(self):
         """Optimisation must not lose or duplicate any players."""
@@ -828,9 +779,7 @@ class TestMexicanoCrossGroupOptimization:
                 if v > 0:
                     seen_violation = True
                 elif seen_violation:
-                    raise AssertionError(
-                        f"Found non-violating {strategy} proposal after a violating one"
-                    )
+                    raise AssertionError(f"Found non-violating {strategy} proposal after a violating one")
 
     def test_exact_previous_round_repeats_are_annotated(self):
         """A plan should flag matches that are exact repeats of previous round."""
@@ -967,10 +916,7 @@ class TestMexicanoCrossGroupOptimization:
         proposals = t.propose_pairings(n_options=2)
 
         assert len(proposals) >= 2
-        assert (
-            proposals[0]["exact_prev_round_repeats"]
-            <= proposals[1]["exact_prev_round_repeats"]
-        )
+        assert proposals[0]["exact_prev_round_repeats"] <= proposals[1]["exact_prev_round_repeats"]
         assert proposals[0]["recommended"] is True
         assert proposals[0]["exact_prev_round_repeats"] == 0
 
@@ -1059,9 +1005,7 @@ class TestMexicanoCustomRound:
 
     def test_custom_round_basic(self):
         players = _make_players(8)
-        t = MexicanoTournament(
-            players, _make_courts(2), total_points_per_match=32, num_rounds=4
-        )
+        t = MexicanoTournament(players, _make_courts(2), total_points_per_match=32, num_rounds=4)
         t.generate_next_round()
         for m in t.current_round_matches():
             t.record_result(m.id, (16, 16))
@@ -1081,9 +1025,7 @@ class TestMexicanoCustomRound:
     def test_custom_round_auto_sitout(self):
         """Players not in any match automatically sit out."""
         players = _make_players(5)
-        t = MexicanoTournament(
-            players, _make_courts(1), total_points_per_match=32, num_rounds=2
-        )
+        t = MexicanoTournament(players, _make_courts(1), total_points_per_match=32, num_rounds=2)
         t.generate_next_round()
         for m in t.current_round_matches():
             t.record_result(m.id, (20, 12))
@@ -1103,9 +1045,7 @@ class TestMexicanoCustomRound:
 
     def test_custom_round_rejects_duplicate_player(self):
         players = _make_players(4)
-        t = MexicanoTournament(
-            players, _make_courts(1), total_points_per_match=32, num_rounds=2
-        )
+        t = MexicanoTournament(players, _make_courts(1), total_points_per_match=32, num_rounds=2)
         with pytest.raises(ValueError, match="multiple matches"):
             t.generate_custom_round(
                 [
@@ -1118,9 +1058,7 @@ class TestMexicanoCustomRound:
 
     def test_custom_round_rejects_wrong_team_size(self):
         players = _make_players(4)
-        t = MexicanoTournament(
-            players, _make_courts(1), total_points_per_match=32, num_rounds=2
-        )
+        t = MexicanoTournament(players, _make_courts(1), total_points_per_match=32, num_rounds=2)
         with pytest.raises(ValueError, match="exactly 2"):
             t.generate_custom_round(
                 [
@@ -1133,9 +1071,7 @@ class TestMexicanoCustomRound:
 
     def test_custom_round_rejects_unknown_player(self):
         players = _make_players(4)
-        t = MexicanoTournament(
-            players, _make_courts(1), total_points_per_match=32, num_rounds=2
-        )
+        t = MexicanoTournament(players, _make_courts(1), total_points_per_match=32, num_rounds=2)
         with pytest.raises(ValueError, match="Unknown player"):
             t.generate_custom_round(
                 [
@@ -1152,9 +1088,7 @@ class TestMexicanoProposalCommit:
 
     def test_option_id_commits_cached_plan(self):
         players = _make_players(8)
-        t = MexicanoTournament(
-            players, _make_courts(2), total_points_per_match=32, num_rounds=4
-        )
+        t = MexicanoTournament(players, _make_courts(2), total_points_per_match=32, num_rounds=4)
         t.generate_next_round()
         for m in t.current_round_matches():
             t.record_result(m.id, (16, 16))
@@ -1201,9 +1135,7 @@ class TestMexicanoPerPersonRepeats:
 
     def test_no_repeats_first_round(self):
         players = _make_players(8)
-        t = MexicanoTournament(
-            players, _make_courts(2), total_points_per_match=32, num_rounds=2
-        )
+        t = MexicanoTournament(players, _make_courts(2), total_points_per_match=32, num_rounds=2)
         proposals = t.propose_pairings(n_options=1)
         p = proposals[0]
         # First round — nobody has played yet, all repeat lists should be empty
@@ -1249,9 +1181,7 @@ class TestMexicanoReRecord:
 
     def test_rerecord_updates_scores(self):
         players = _make_players(4)
-        t = MexicanoTournament(
-            players, _make_courts(1), total_points_per_match=32, num_rounds=2
-        )
+        t = MexicanoTournament(players, _make_courts(1), total_points_per_match=32, num_rounds=2)
         t.generate_next_round()
         m = t.current_round_matches()[0]
 
@@ -1269,9 +1199,7 @@ class TestMexicanoReRecord:
 
     def test_rerecord_doesnt_double_count_matches(self):
         players = _make_players(4)
-        t = MexicanoTournament(
-            players, _make_courts(1), total_points_per_match=32, num_rounds=2
-        )
+        t = MexicanoTournament(players, _make_courts(1), total_points_per_match=32, num_rounds=2)
         t.generate_next_round()
         m = t.current_round_matches()[0]
 
@@ -1283,9 +1211,7 @@ class TestMexicanoReRecord:
 
     def test_rerecord_doesnt_double_history(self):
         players = _make_players(4)
-        t = MexicanoTournament(
-            players, _make_courts(1), total_points_per_match=32, num_rounds=2
-        )
+        t = MexicanoTournament(players, _make_courts(1), total_points_per_match=32, num_rounds=2)
         t.generate_next_round()
         m = t.current_round_matches()[0]
 
@@ -1301,9 +1227,7 @@ class TestMexicanoForcedSitOut:
 
     def test_forced_sit_out(self):
         players = _make_players(5)  # 5 players → 1 must sit out
-        t = MexicanoTournament(
-            players, _make_courts(1), total_points_per_match=32, num_rounds=2
-        )
+        t = MexicanoTournament(players, _make_courts(1), total_points_per_match=32, num_rounds=2)
         # Force a specific player to sit out
         target = players[0]
         proposals = t.propose_pairings(n_options=1, forced_sit_out_ids=[target.id])
@@ -1313,19 +1237,13 @@ class TestMexicanoForcedSitOut:
 
     def test_forced_sit_out_wrong_count_raises(self):
         players = _make_players(5)  # 1 must sit
-        t = MexicanoTournament(
-            players, _make_courts(1), total_points_per_match=32, num_rounds=2
-        )
+        t = MexicanoTournament(players, _make_courts(1), total_points_per_match=32, num_rounds=2)
         with pytest.raises(ValueError, match="exactly 1"):
-            t.propose_pairings(
-                n_options=1, forced_sit_out_ids=[players[0].id, players[1].id]
-            )
+            t.propose_pairings(n_options=1, forced_sit_out_ids=[players[0].id, players[1].id])
 
     def test_forced_sit_out_unknown_id_raises(self):
         players = _make_players(5)
-        t = MexicanoTournament(
-            players, _make_courts(1), total_points_per_match=32, num_rounds=2
-        )
+        t = MexicanoTournament(players, _make_courts(1), total_points_per_match=32, num_rounds=2)
         with pytest.raises(ValueError, match="Unknown player"):
             t.propose_pairings(n_options=1, forced_sit_out_ids=["nonexistent"])
 
@@ -1335,9 +1253,7 @@ class TestMexicanoEndFlow:
 
     def test_start_playoffs_requires_end_mexicano_first(self):
         players = _make_players(8)
-        t = MexicanoTournament(
-            players, _make_courts(2), total_points_per_match=32, num_rounds=0
-        )
+        t = MexicanoTournament(players, _make_courts(2), total_points_per_match=32, num_rounds=0)
         t.generate_next_round()
         for m in t.current_round_matches():
             t.record_result(m.id, (16, 16))
@@ -1347,9 +1263,7 @@ class TestMexicanoEndFlow:
 
     def test_end_mexicano_blocks_new_rounds(self):
         players = _make_players(8)
-        t = MexicanoTournament(
-            players, _make_courts(2), total_points_per_match=32, num_rounds=0
-        )
+        t = MexicanoTournament(players, _make_courts(2), total_points_per_match=32, num_rounds=0)
         t.generate_next_round()
         for m in t.current_round_matches():
             t.record_result(m.id, (16, 16))
@@ -1361,9 +1275,7 @@ class TestMexicanoEndFlow:
 
     def test_finish_without_playoffs_marks_finished(self):
         players = _make_players(8)
-        t = MexicanoTournament(
-            players, _make_courts(2), total_points_per_match=32, num_rounds=0
-        )
+        t = MexicanoTournament(players, _make_courts(2), total_points_per_match=32, num_rounds=0)
         t.generate_next_round()
         for m in t.current_round_matches():
             t.record_result(m.id, (16, 16))
@@ -1375,9 +1287,7 @@ class TestMexicanoEndFlow:
 
     def test_record_playoff_result_stores_tennis_sets(self):
         players = _make_players(8)
-        t = MexicanoTournament(
-            players, _make_courts(2), total_points_per_match=32, num_rounds=0
-        )
+        t = MexicanoTournament(players, _make_courts(2), total_points_per_match=32, num_rounds=0)
         t.generate_next_round()
         for m in t.current_round_matches():
             t.record_result(m.id, (16, 16))
@@ -1398,9 +1308,7 @@ class TestMexicanoEndFlow:
     def test_no_sitout_needed_returns_empty(self):
         """When player count is divisible by 4, no sit-out is needed."""
         players = _make_players(8)
-        t = MexicanoTournament(
-            players, _make_courts(2), total_points_per_match=32, num_rounds=2
-        )
+        t = MexicanoTournament(players, _make_courts(2), total_points_per_match=32, num_rounds=2)
         proposals = t.propose_pairings(n_options=1)
         assert proposals[0]["sit_out_ids"] == []
 

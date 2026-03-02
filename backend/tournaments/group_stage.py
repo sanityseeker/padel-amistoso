@@ -80,9 +80,7 @@ class Group:
 
     def standings(self) -> list[GroupStanding]:
         """Compute current standings for this group."""
-        table: dict[str, GroupStanding] = {
-            p.id: GroupStanding(player=p) for p in self.players
-        }
+        table: dict[str, GroupStanding] = {p.id: GroupStanding(player=p) for p in self.players}
 
         for m in self.matches:
             if m.status != MatchStatus.COMPLETED or m.score is None:
@@ -141,11 +139,7 @@ def distribute_players_to_groups(
     for g in range(num_groups):
         size = base_size + (1 if g < remainder else 0)
         group_name = chr(ord("A") + g)
-        groups.append(
-            Group(
-                name=group_name, players=players[idx : idx + size], team_mode=team_mode
-            )
-        )
+        groups.append(Group(name=group_name, players=players[idx : idx + size], team_mode=team_mode))
         idx += size
 
     return groups

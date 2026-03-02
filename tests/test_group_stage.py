@@ -26,9 +26,7 @@ class TestDistributePlayers:
         ],
     )
     def test_group_sizes(self, n_players, n_groups, expected_sizes):
-        groups = distribute_players_to_groups(
-            _make_players(n_players), n_groups, shuffle=False
-        )
+        groups = distribute_players_to_groups(_make_players(n_players), n_groups, shuffle=False)
         assert len(groups) == n_groups
         sizes = sorted(len(g.players) for g in groups)
         assert sizes == expected_sizes
@@ -191,6 +189,7 @@ class TestCourtAssignment:
         assign_courts(matches, courts)
 
         from collections import defaultdict
+
         by_slot: dict[int, list] = defaultdict(list)
         for m in matches:
             assert m.court is not None
@@ -208,6 +207,7 @@ class TestCourtAssignment:
     def test_no_conflict_across_multiple_groups(self):
         """Conflict constraint holds even when matches from multiple groups are mixed."""
         from backend.tournaments import distribute_players_to_groups
+
         players = _make_players(8)
         groups = distribute_players_to_groups(players, num_groups=2, shuffle=False)
         all_matches = [m for g in groups for m in g.generate_round_robin()]
@@ -215,6 +215,7 @@ class TestCourtAssignment:
         assign_courts(all_matches, courts)
 
         from collections import defaultdict
+
         by_slot: dict[int, list] = defaultdict(list)
         for m in all_matches:
             assert m.court is not None

@@ -42,10 +42,10 @@ class TestTennisSetsToScores:
     @pytest.mark.parametrize(
         "raw, expected_total1, expected_total2, expected_decided",
         [
-            ([[6, 0], [6, 0]], 12, 0, False),            # 2-set clean win
-            ([[6, 4], [4, 6], [6, 4]], 16, 14, True),    # 3-set, totals differ → decided
-            ([[6, 3], [3, 6], [6, 3]], 15, 12, True),    # 3-set, totals differ → decided
-            ([[6, 4], [2, 6], [7, 5]], 16, 15, True),    # 3-set equal → adjusted + decided
+            ([[6, 0], [6, 0]], 12, 0, False),  # 2-set clean win
+            ([[6, 4], [4, 6], [6, 4]], 16, 14, True),  # 3-set, totals differ → decided
+            ([[6, 3], [3, 6], [6, 3]], 15, 12, True),  # 3-set, totals differ → decided
+            ([[6, 4], [2, 6], [7, 5]], 16, 15, True),  # 3-set equal → adjusted + decided
         ],
     )
     def test_parametrized_cases(

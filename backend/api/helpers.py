@@ -95,6 +95,7 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
     Returns:
         Dict mapping node IDs to ``{team1, team2, score, round}`` dicts.
     """
+
     def _fmt_team(team: list) -> str:
         return " & ".join(p.name for p in team) if team else "TBD"
 

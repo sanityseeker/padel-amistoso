@@ -20,17 +20,13 @@ class TestGroupPlayoffCreation:
         assert t.phase == GPPhase.SETUP
 
     def test_generate_moves_to_groups(self):
-        t = GroupPlayoffTournament(
-            _make_players(8), num_groups=2, courts=_make_courts(2)
-        )
+        t = GroupPlayoffTournament(_make_players(8), num_groups=2, courts=_make_courts(2))
         t.generate()
         assert t.phase == GPPhase.GROUPS
         assert len(t.groups) == 2
 
     def test_group_matches_created(self):
-        t = GroupPlayoffTournament(
-            _make_players(8), num_groups=2, courts=_make_courts(2)
-        )
+        t = GroupPlayoffTournament(_make_players(8), num_groups=2, courts=_make_courts(2))
         t.generate()
         matches = t.all_group_matches()
         assert len(matches) > 0
@@ -52,9 +48,7 @@ class TestGroupPlayoffCreation:
             assert len(m.team2) == 1
 
     def test_group_courts_all_used_and_no_conflict(self):
-        t = GroupPlayoffTournament(
-            _make_players(8), num_groups=2, courts=_make_courts(4)
-        )
+        t = GroupPlayoffTournament(_make_players(8), num_groups=2, courts=_make_courts(4))
         t.generate()
         assert len(t.groups) == 2
 
@@ -65,6 +59,7 @@ class TestGroupPlayoffCreation:
 
         # No participant plays two matches in the same slot.
         from collections import defaultdict
+
         by_slot: dict[int, list] = defaultdict(list)
         for m in all_matches:
             by_slot[m.slot_number].append(m)
@@ -72,9 +67,7 @@ class TestGroupPlayoffCreation:
             seen: set[str] = set()
             for m in slot_matches:
                 for p in m.team1 + m.team2:
-                    assert p.id not in seen, (
-                        f"Player {p.name} plays two matches in slot {slot_idx}"
-                    )
+                    assert p.id not in seen, f"Player {p.name} plays two matches in slot {slot_idx}"
                     seen.add(p.id)
 
         # All 4 courts should be used at least once.
@@ -84,7 +77,9 @@ class TestGroupPlayoffCreation:
     def test_odd_court_count_fills_all_courts(self):
         """In team mode (2 participants/match), 3 courts should all fill."""
         t = GroupPlayoffTournament(
-            _make_players(8), num_groups=2, courts=_make_courts(3),
+            _make_players(8),
+            num_groups=2,
+            courts=_make_courts(3),
             team_mode=True,
         )
         t.generate()
@@ -96,6 +91,7 @@ class TestGroupPlayoffCreation:
 
         # No participant plays two matches in the same slot.
         from collections import defaultdict
+
         by_slot: dict[int, list] = defaultdict(list)
         for m in all_matches:
             by_slot[m.slot_number].append(m)
@@ -105,25 +101,20 @@ class TestGroupPlayoffCreation:
         # participants, so 3 non-conflicting matches easily fit).
         max_courts_in_slot = max(len(ms) for ms in by_slot.values())
         assert max_courts_in_slot == 3, (
-            f"Expected at least one slot filling all 3 courts, "
-            f"but max was {max_courts_in_slot}"
+            f"Expected at least one slot filling all 3 courts, but max was {max_courts_in_slot}"
         )
 
         for slot_idx, slot_matches in by_slot.items():
             seen: set[str] = set()
             for m in slot_matches:
                 for p in m.team1 + m.team2:
-                    assert p.id not in seen, (
-                        f"Player {p.name} plays two matches in slot {slot_idx}"
-                    )
+                    assert p.id not in seen, f"Player {p.name} plays two matches in slot {slot_idx}"
                     seen.add(p.id)
 
 
 class TestGroupPhase:
     def _make_tournament(self):
-        t = GroupPlayoffTournament(
-            _make_players(8), num_groups=2, courts=_make_courts(2), top_per_group=2
-        )
+        t = GroupPlayoffTournament(_make_players(8), num_groups=2, courts=_make_courts(2), top_per_group=2)
         t.generate()
         return t
 
@@ -163,9 +154,7 @@ class TestGroupPhase:
 
 class TestPlayoffPhase:
     def _advance_to_playoffs(self):
-        t = GroupPlayoffTournament(
-            _make_players(8), num_groups=2, courts=_make_courts(2), top_per_group=2
-        )
+        t = GroupPlayoffTournament(_make_players(8), num_groups=2, courts=_make_courts(2), top_per_group=2)
         t.generate()
         # Complete all group matches
         for m in t.all_group_matches():
@@ -200,9 +189,7 @@ class TestTennisThirdSetConsolation:
     """Group stage standings give the 3rd-set loser 1 consolation match point."""
 
     def _make_simple_tournament(self):
-        t = GroupPlayoffTournament(
-            _make_players(4), num_groups=1, top_per_group=2
-        )
+        t = GroupPlayoffTournament(_make_players(4), num_groups=1, top_per_group=2)
         t.generate()
         return t
 

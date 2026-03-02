@@ -12,7 +12,13 @@ from ..auth.deps import get_current_user
 from ..models import Court, Player, TournamentType
 from ..tournaments import GroupPlayoffTournament
 from ..viz import render_playoff_schema
-from .helpers import _get_tournament, _serialize_match, _tennis_sets_to_scores, _build_match_labels, _schema_image_response
+from .helpers import (
+    _get_tournament,
+    _serialize_match,
+    _tennis_sets_to_scores,
+    _build_match_labels,
+    _schema_image_response,
+)
 from .schemas import (
     CreateGroupPlayoffRequest,
     RecordScoreRequest,
@@ -139,9 +145,7 @@ async def gp_playoffs_schema(
     if t.playoff_bracket is None:
         raise HTTPException(400, "Play-offs have not started")
 
-    participant_names = [
-        " & ".join(p.name for p in team) for team in t.playoff_bracket.original_teams
-    ]
+    participant_names = [" & ".join(p.name for p in team) for team in t.playoff_bracket.original_teams]
     if len(participant_names) < 2:
         raise HTTPException(400, "Need at least 2 participants for play-off schema")
 

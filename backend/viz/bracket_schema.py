@@ -183,6 +183,7 @@ def _round_label(num_rounds: int, r: int) -> str:
 
 def _label_from_match_data(data: dict, max_name: int = 16) -> str:
     """Format team names (and optional score) as a compact multiline node label."""
+
     def trunc(s: str) -> str:
         return s if len(s) <= max_name else s[: max_name - 1] + "…"
 
@@ -336,9 +337,7 @@ def _compute_playoff_layout(
         positions[node_id] = (x_participants, y_start - idx * slot_spacing)
         participant_nodes.append(node_id)
 
-    stages.append(
-        {"name": "Participants", "x": x_participants, "nodes": list(participant_nodes)}
-    )
+    stages.append({"name": "Participants", "x": x_participants, "nodes": list(participant_nodes)})
 
     if elimination == "single":
         _build_single_elim_bracket(
@@ -430,8 +429,7 @@ def _build_single_elim_bracket(
     # same-group players land on opposite sides of the bracket.
     seed_order = _make_seed_order(bracket_size)
     prev_round_nodes: list[Optional[str]] = [
-        advance_nodes[seed_idx] if seed_idx < n_teams else None
-        for seed_idx in seed_order
+        advance_nodes[seed_idx] if seed_idx < n_teams else None for seed_idx in seed_order
     ]
 
     # ── Reorder advance-node y-positions to match bracket slot order ─────
@@ -581,10 +579,7 @@ def _build_double_elim_bracket(
 
     # Apply standard tournament seeding.
     seed_order = _make_seed_order(bracket_size)
-    w_prev: list[Optional[str]] = [
-        advance_nodes[seed_idx] if seed_idx < n_teams else None
-        for seed_idx in seed_order
-    ]
+    w_prev: list[Optional[str]] = [advance_nodes[seed_idx] if seed_idx < n_teams else None for seed_idx in seed_order]
 
     # ── Reorder advance-node y-positions to match bracket slot order ─────
     y_pool = sorted((positions[n][1] for n in advance_nodes), reverse=True)
@@ -655,9 +650,7 @@ def _build_double_elim_bracket(
         w_match_nodes_per_round.append(round_match_nodes)
         stage_nodes = [n for n in w_curr if n and n.startswith("w_")]
         if stage_nodes:
-            stages.append(
-                {"name": f"Winners R{r + 1}", "x": x_round, "nodes": stage_nodes}
-            )
+            stages.append({"name": f"Winners R{r + 1}", "x": x_round, "nodes": stage_nodes})
         w_prev = w_curr
 
     winners_final_node = w_prev[0] if w_prev else None
@@ -674,8 +667,7 @@ def _build_double_elim_bracket(
     lowest_winners_y = min(
         positions[n][1]
         for n in positions
-        if node_meta.get(n, {}).get("kind")
-        in ("winners_match", "advance", "group", "bye")
+        if node_meta.get(n, {}).get("kind") in ("winners_match", "advance", "group", "bye")
     )
     losers_gap = 2.0
     y_losers_top = lowest_winners_y - losers_gap
@@ -728,9 +720,7 @@ def _build_double_elim_bracket(
         x_lr = (
             losers_x_slots[lr_idx]
             if lr_idx < len(losers_x_slots)
-            else (
-                losers_x_slots[-1] + w_step if losers_x_slots else x_start + w_step / 2
-            )
+            else (losers_x_slots[-1] + w_step if losers_x_slots else x_start + w_step / 2)
         )
 
         num_pairs = len(pool) // 2
@@ -1091,46 +1081,70 @@ def _draw(
         if round_header and meta.get("has_teams"):
             # 3-line: italic round header, separator, team names + score
             ax.text(
-                x, y + bh / 2 - 0.13 * box_scale,
+                x,
+                y + bh / 2 - 0.13 * box_scale,
                 round_header,
-                ha="center", va="top",
-                fontsize=header_fs, fontstyle="italic",
-                color=style["tc"], alpha=0.85, zorder=4,
+                ha="center",
+                va="top",
+                fontsize=header_fs,
+                fontstyle="italic",
+                color=style["tc"],
+                alpha=0.85,
+                zorder=4,
             )
             ax.plot(
                 [x - bw / 2 + 0.15, x + bw / 2 - 0.15],
                 [y + bh / 2 - 0.38 * box_scale, y + bh / 2 - 0.38 * box_scale],
-                color=style["tc"], alpha=0.25, linewidth=0.6, zorder=4,
+                color=style["tc"],
+                alpha=0.25,
+                linewidth=0.6,
+                zorder=4,
             )
             # Team names + score in the main body
             ax.text(
-                x, y - 0.05 * box_scale,
+                x,
+                y - 0.05 * box_scale,
                 label,
-                ha="center", va="center",
-                fontsize=9 * box_scale, fontweight="bold",
-                color=style["tc"], zorder=4,
+                ha="center",
+                va="center",
+                fontsize=9 * box_scale,
+                fontweight="bold",
+                color=style["tc"],
+                zorder=4,
             )
         elif round_header:
             # 2-line: italic round header at top, optional match label below
             ax.text(
-                x, y + bh / 2 - 0.13 * box_scale,
+                x,
+                y + bh / 2 - 0.13 * box_scale,
                 round_header,
-                ha="center", va="top",
-                fontsize=header_fs, fontstyle="italic",
-                color=style["tc"], alpha=0.85, zorder=4,
+                ha="center",
+                va="top",
+                fontsize=header_fs,
+                fontstyle="italic",
+                color=style["tc"],
+                alpha=0.85,
+                zorder=4,
             )
             if label:
                 ax.plot(
                     [x - bw / 2 + 0.15, x + bw / 2 - 0.15],
                     [y + bh / 2 - 0.38 * box_scale, y + bh / 2 - 0.38 * box_scale],
-                    color=style["tc"], alpha=0.25, linewidth=0.6, zorder=4,
+                    color=style["tc"],
+                    alpha=0.25,
+                    linewidth=0.6,
+                    zorder=4,
                 )
                 ax.text(
-                    x, y - 0.05 * box_scale,
+                    x,
+                    y - 0.05 * box_scale,
                     label,
-                    ha="center", va="center",
-                    fontsize=7 * box_scale, fontweight="bold",
-                    color=style["tc"], zorder=4,
+                    ha="center",
+                    va="center",
+                    fontsize=7 * box_scale,
+                    fontweight="bold",
+                    color=style["tc"],
+                    zorder=4,
                 )
         else:
             ax.text(

@@ -405,11 +405,63 @@ tests/
   test_playoff.py
 ```
 
-## Running tests
+## Linting & formatting
+
+This project uses [`ruff`](https://docs.astral.sh/ruff/) for both linting and formatting.
 
 ```bash
-uv run pytest tests/ -v
+# Check for lint errors
+uv run ruff check .
+
+# Fix auto-fixable lint errors
+uv run ruff check . --fix
+
+# Check formatting
+uv run ruff format --check .
+
+# Apply formatting
+uv run ruff format .
 ```
+
+---
+
+## Running tests
+
+The test suite uses `pytest` and covers the full API, tournament logic, and
+authentication flows via FastAPI's `TestClient` (no running server needed).
+
+```bash
+# Run all tests
+uv run pytest tests/
+
+# Verbose output (shows each test name)
+uv run pytest tests/ -v
+
+# Run a specific test file
+uv run pytest tests/test_api.py -v
+
+# Run a specific test class or function
+uv run pytest tests/test_api.py::TestGroupPlayoffAPI -v
+uv run pytest tests/test_api.py::TestGroupPlayoffAPI::test_create -v
+
+# Run with coverage report
+uv run pytest tests/ --cov=backend --cov-report=term-missing
+
+# Stop on first failure
+uv run pytest tests/ -x
+```
+
+### Test files
+
+| File | What it covers |
+| --- | --- |
+| `tests/test_api.py` | Full HTTP API (tournaments, auth, scores) |
+| `tests/test_auth.py` | JWT authentication, user management |
+| `tests/test_group_stage.py` | Group stage round-robin logic |
+| `tests/test_group_playoff.py` | Group + playoff flow, bracket seeding |
+| `tests/test_mexicano.py` | Mexicano scoring and pairing logic |
+| `tests/test_playoff.py` | Single/double elimination bracket logic |
+| `tests/test_helpers.py` | Shared helper utilities |
 
 ---
 

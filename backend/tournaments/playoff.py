@@ -70,9 +70,7 @@ class SingleEliminationBracket:
         self.original_teams = list(teams)
         self.matches: list[Match] = []
         self._match_map: dict[str, Match] = {}
-        self._next_match: dict[
-            str, tuple[str, int]
-        ] = {}  # match_id -> (next_match_id, slot 0 or 1)
+        self._next_match: dict[str, tuple[str, int]] = {}  # match_id -> (next_match_id, slot 0 or 1)
         self._generate()
 
     # ------------------------------------------------------------------ #
@@ -193,11 +191,7 @@ class SingleEliminationBracket:
 
     def pending_matches(self) -> list[Match]:
         """Return matches not yet completed *and* with both teams filled in."""
-        return [
-            m
-            for m in self.matches
-            if m.status != MatchStatus.COMPLETED and m.team1 and m.team2
-        ]
+        return [m for m in self.matches if m.status != MatchStatus.COMPLETED and m.team1 and m.team2]
 
     def champion(self) -> list[Player] | None:
         if not self.matches:
@@ -333,9 +327,7 @@ class DoubleEliminationBracket:
         )
         self._match_map[self.grand_final.id] = self.grand_final
 
-        self._all_matches = (
-            list(self.winners_matches) + list(self.losers_matches) + [self.grand_final]
-        )
+        self._all_matches = list(self.winners_matches) + list(self.losers_matches) + [self.grand_final]
 
     def _add_advancement(self, from_id: str, to_id: str, slot: int, is_loser: bool):
         self._advancement[from_id].append((to_id, slot, is_loser))
@@ -434,26 +426,17 @@ class DoubleEliminationBracket:
 
         # Losers bracket champion = last person standing in losers queue
         # with exactly 1 loss (simplified)
-        completed_losers = [
-            m for m in self.losers_matches if m.status == MatchStatus.COMPLETED
-        ]
+        completed_losers = [m for m in self.losers_matches if m.status == MatchStatus.COMPLETED]
         if completed_losers:
             last_l = completed_losers[-1]
             if last_l.winner_team:
                 self.grand_final.team2 = last_l.winner_team
 
     def pending_matches(self) -> list[Match]:
-        return [
-            m
-            for m in self.all_matches
-            if m.status != MatchStatus.COMPLETED and m.team1 and m.team2
-        ]
+        return [m for m in self.all_matches if m.status != MatchStatus.COMPLETED and m.team1 and m.team2]
 
     def champion(self) -> list[Player] | None:
-        if (
-            self.grand_final_reset
-            and self.grand_final_reset.status == MatchStatus.COMPLETED
-        ):
+        if self.grand_final_reset and self.grand_final_reset.status == MatchStatus.COMPLETED:
             return self.grand_final_reset.winner_team
         if self.grand_final and self.grand_final.status == MatchStatus.COMPLETED:
             w = self.grand_final.winner_team

@@ -39,9 +39,7 @@ class GroupPlayoffTournament:
         self.team_mode = team_mode
 
         self.groups: list[Group] = []
-        self.playoff_bracket: (
-            SingleEliminationBracket | DoubleEliminationBracket | None
-        ) = None
+        self.playoff_bracket: SingleEliminationBracket | DoubleEliminationBracket | None = None
 
         self._phase: GPPhase = GPPhase.SETUP
 
@@ -83,9 +81,7 @@ class GroupPlayoffTournament:
         return matches
 
     def pending_group_matches(self) -> list[Match]:
-        return [
-            m for m in self.all_group_matches() if m.status != MatchStatus.COMPLETED
-        ]
+        return [m for m in self.all_group_matches() if m.status != MatchStatus.COMPLETED]
 
     def record_group_result(
         self,

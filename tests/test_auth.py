@@ -151,13 +151,16 @@ class TestAuthAPI:
         assert r.status_code == 204
 
     def test_protected_endpoint_without_auth(self, client):
-        r = client.post("/api/tournaments/group-playoff", json={
-            "name": "Test",
-            "player_names": ["A", "B", "C", "D"],
-            "court_names": ["C1"],
-            "num_groups": 1,
-            "top_per_group": 2,
-        })
+        r = client.post(
+            "/api/tournaments/group-playoff",
+            json={
+                "name": "Test",
+                "player_names": ["A", "B", "C", "D"],
+                "court_names": ["C1"],
+                "num_groups": 1,
+                "top_per_group": 2,
+            },
+        )
         assert r.status_code == 401
 
 
