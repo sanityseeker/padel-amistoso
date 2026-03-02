@@ -6,7 +6,6 @@ Fixtures (client, auth_headers, _clean_state) are provided by conftest.py.
 """
 
 
-
 # ── General ────────────────────────────────────────────────
 
 
