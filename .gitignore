@@ -1,0 +1,14 @@
+# Python-generated files
+__pycache__/
+.github
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Tournament state (pickle cache — do not commit)
+data/

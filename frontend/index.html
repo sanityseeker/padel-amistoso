@@ -1,0 +1,2359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Padel Tournament Manager</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --border: #334155;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --green: #22c55e;
+    --yellow: #eab308;
+    --red: #ef4444;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+  }
+  :root[data-theme="light"] {
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --border: #cbd5e1;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --green: #16a34a;
+    --yellow: #ca8a04;
+    --red: #dc2626;
+    --text: #0f172a;
+    --text-muted: #475569;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; padding: 1rem;
+  }
+  h1 { text-align: center; margin-bottom: 1.5rem; font-size: 1.6rem; }
+  h2 { font-size: 1.2rem; margin-bottom: 0.75rem; color: var(--accent); }
+  h3 { font-size: 1rem; margin: 0.75rem 0 0.5rem; }
+
+  .container { max-width: 900px; margin: 0 auto; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .theme-chooser {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+  }
+  .theme-chooser select {
+    min-width: 120px;
+    width: auto;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.82rem;
+  }
+  .tab-btn {
+    padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.9rem;
+  }
+  .tab-btn:hover { border-color: var(--accent); }
+  .tab-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .tab-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    border-color: var(--border);
+  }
+  .active-tournament-indicator {
+    margin-bottom: 0.9rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    padding: 0.45rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(59,130,246,0.05);
+  }
+  .active-tournament-indicator strong {
+    color: var(--text);
+  }
+  .subtabs {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 0.85rem;
+  }
+  .subtab-btn {
+    padding: 0.45rem 0.85rem;
+    border: none;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .subtab-btn:last-child { border-right: none; }
+  .subtab-btn.active {
+    background: var(--accent);
+    color: #fff;
+  }
+  .subtab-panel { display: none; }
+  .subtab-panel.active { display: block; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* Forms */
+  .form-group { margin-bottom: 0.75rem; }
+  label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.25rem; }
+  input, select, textarea {
+    width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text); font-size: 0.9rem;
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 80px; }
+  .inline-group { display: flex; gap: 0.5rem; }
+  .inline-group > * { flex: 1; }
+
+  /* Buttons */
+  .btn {
+    padding: 0.5rem 1rem; border: none; border-radius: 6px; cursor: pointer;
+    font-size: 0.9rem; font-weight: 600;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-success { background: var(--green); color: #000; }
+  .btn-success:hover { opacity: 0.9; }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-danger:hover { opacity: 0.9; }
+  .btn-sm { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+  th, td { padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+  th { color: var(--text-muted); font-weight: 600; }
+  tr:hover { background: rgba(59,130,246,0.05); }
+
+  /* Cards */
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1rem; margin-bottom: 1rem;
+  }
+  .match-card {
+    display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+    padding: 0.5rem 0; border-bottom: 1px solid var(--border);
+  }
+  .match-card:last-child { border-bottom: none; }
+  .match-teams { flex: 1; min-width: 200px; }
+  .match-teams .vs { color: var(--text-muted); margin: 0 0.3rem; }
+  .match-court { color: var(--text-muted); font-size: 0.8rem; min-width: 80px; }
+  .match-score { font-weight: 700; color: var(--green); min-width: 60px; }
+  .match-score.sets-stack {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    line-height: 1.1;
+  }
+  .match-score.sets-stack .set-row {
+    white-space: nowrap;
+  }
+  .match-actions { display: flex; gap: 0.3rem; align-items: center; }
+  .match-actions input { width: 50px; text-align: center; }
+  .court-board {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.6rem;
+  }
+  .court-column {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.55rem;
+    background: var(--bg);
+  }
+  .court-title {
+    font-weight: 700;
+    color: var(--accent);
+    font-size: 0.85rem;
+    margin-bottom: 0.35rem;
+  }
+  .court-match-item {
+    font-size: 0.8rem;
+    padding: 0.25rem 0;
+    border-top: 1px solid rgba(148, 163, 184, 0.18);
+  }
+  .court-match-item:first-of-type { border-top: none; }
+  .court-slot {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    margin-right: 0.3rem;
+  }
+  .court-round {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    margin-left: 0.35rem;
+  }
+
+  .badge {
+    display: inline-block; padding: 0.15rem 0.5rem; border-radius: 10px;
+    font-size: 0.75rem; font-weight: 600;
+  }
+  .badge-scheduled { background: var(--border); color: var(--text); }
+  .badge-completed { background: var(--green); color: #000; }
+  .badge-phase { background: var(--yellow); color: #000; }
+
+  .alert { padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
+  .alert-info { background: rgba(59,130,246,0.15); border: 1px solid var(--accent); }
+  .alert-success { background: rgba(34,197,94,0.15); border: 1px solid var(--green); }
+  .alert-error { background: rgba(239,68,68,0.15); border: 1px solid var(--red); }
+
+  .refresh-row { display: flex; justify-content: flex-end; margin-bottom: 0.5rem; }
+  .hidden { display: none !important; }
+
+  /* Pairing proposal cards */
+  .proposal-cards { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+  .proposal-card {
+    flex: 1; min-width: 200px; max-width: 340px;
+    background: var(--bg); border: 2px solid var(--border); border-radius: 8px;
+    padding: 0.75rem; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  }
+  .proposal-card:hover { border-color: var(--accent); }
+  .proposal-card.selected {
+    border-color: var(--accent); background: rgba(59,130,246,0.1);
+  }
+  .proposal-card-header {
+    display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.5rem;
+  }
+  .proposal-card-header h4 { font-size: 0.9rem; margin: 0; flex: 1; }
+  .badge-best { background: var(--green); color: #000; }
+  .proposal-metrics { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.4rem; line-height: 1.6; }
+  .proposal-match {
+    font-size: 0.8rem; padding: 0.25rem 0;
+    border-top: 1px solid var(--border);
+  }
+  .proposal-match .court-tag { color: var(--text-muted); font-size: 0.72rem; }
+  .proposal-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .proposal-display-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+    margin: 0.2rem 0 0.7rem;
+  }
+  .proposal-display-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.3rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+  .proposal-display-toggle input {
+    margin: 0;
+    accent-color: var(--accent);
+  }
+  .proposal-inline-action {
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-muted);
+    border-radius: 999px;
+    padding: 0.28rem 0.55rem;
+    font-size: 0.76rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .proposal-inline-action:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .proposal-inline-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: auto;
+  }
+  .proposal-section-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+  }
+  .proposal-section-row h3 {
+    margin: 0;
+  }
+  .proposal-display-history {
+    margin: 0;
+  }
+  .proposal-display-history > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.3rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .proposal-display-history > summary::-webkit-details-marker { display: none; }
+  .proposal-display-history[open] {
+    flex-basis: 100%;
+  }
+  .proposal-display-history[open] > summary {
+    margin-bottom: 0.45rem;
+  }
+  @media (max-width: 900px) {
+    .proposal-display-controls {
+      flex-wrap: wrap;
+    }
+  }
+
+  /* Manual editor */
+  .manual-sel { padding: 0.25rem 0.3rem; border-radius: 4px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 0.85rem; min-width: 100px; }
+
+  /* Stats panel */
+  .stats-toggle { margin-bottom: 0.5rem; }
+  .stats-panel { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem; max-height: 300px; overflow-y: auto; }
+  .stats-panel h4 { margin: 0 0 0.5rem; font-size: 0.9rem; }
+  .stats-player { margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+  .stats-player:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .stats-player strong { color: var(--accent); font-size: 0.85rem; }
+  .stats-player .stat-list { font-size: 0.75rem; color: var(--text-muted); }
+
+  /* Playoff team editor */
+  .playoff-team-list { margin-bottom: 0.75rem; }
+  .playoff-team-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; }
+  .playoff-team-item .seed { color: var(--text-muted); min-width: 20px; font-size: 0.8rem; }
+  .playoff-team-item input { flex: 1; }
+  /* Missed games / sit-out management */
+  .sitout-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.4rem; margin-bottom: 0.75rem; }
+  .sitout-item {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); font-size: 0.82rem; cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .sitout-item:hover { border-color: var(--accent); }
+  .sitout-item.forced {
+    border-color: var(--red); background: rgba(239,68,68,0.12);
+  }
+  .sitout-item .missed-badge {
+    background: var(--border); color: var(--text); border-radius: 4px;
+    padding: 0.1rem 0.35rem; font-size: 0.72rem; font-weight: 600;
+  }
+  .sitout-item.forced .missed-badge { background: var(--red); color: #fff; }
+
+  /* Per-person repeats in proposals */
+  .repeat-detail { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem; padding-top: 0.3rem; border-top: 1px dashed var(--border); }
+  .repeat-detail .rp-name { color: var(--yellow); font-weight: 600; }
+
+  /* Editable completed match */
+  .match-edit-btn { background: none; border: 1px solid var(--border); color: var(--text-muted); padding: 0.15rem 0.4rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+  .match-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Score breakdown panel */
+  .breakdown-panel { margin-top: 0.4rem; padding: 0.4rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+  .breakdown-table { width: 100%; font-size: 0.78rem; }
+  .breakdown-table th { font-size: 0.72rem; color: var(--text-muted); }
+  .breakdown-table td, .breakdown-table th { padding: 0.2rem 0.4rem; }
+
+  /* Tennis set inputs */
+  .tennis-sets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    align-items: center;
+    margin-bottom: 0.35rem;
+  }
+  .tennis-set-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.15rem 0.25rem;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 6px;
+    background: rgba(15, 23, 42, 0.35);
+  }
+  .tennis-set-label {
+    font-size: 0.8rem;
+    color: var(--text);
+    min-width: 24px;
+    font-weight: 600;
+  }
+  .tennis-set-sep {
+    color: var(--text);
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+  .tennis-set-input {
+    width: 56px !important;
+    min-height: 42px;
+    text-align: center;
+    font-size: 1rem;
+    font-weight: 700;
+    padding: 0.35rem 0.25rem;
+  }
+
+  /* ── Segmented toggle (Points / Sets) ── */
+  .score-mode-toggle {
+    display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+    font-size: 0.78rem; margin-right: 0.4rem;
+  }
+  .score-mode-toggle button {
+    padding: 0.3rem 0.6rem; border: none; background: var(--surface); color: var(--text-muted);
+    cursor: pointer; transition: background 0.15s, color 0.15s;
+  }
+  .score-mode-toggle button.active { background: var(--accent); color: #fff; }
+
+  /* ── Collapsible advanced section ── */
+  details.advanced-section { margin-bottom: 0.75rem; }
+  details.advanced-section summary {
+    cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--text-muted);
+    padding: 0.5rem 0; user-select: none; list-style: none;
+  }
+  details.advanced-section summary::before { content: '⚙️ '; }
+  details.advanced-section summary::marker { display: none; }
+  details.advanced-section summary::-webkit-details-marker { display: none; }
+  details.advanced-section[open] summary { color: var(--accent); }
+
+  /* ── Score breakdown as <details> ── */
+  details.breakdown-details { width: 100%; margin-top: 0.3rem; }
+  details.breakdown-details summary {
+    cursor: pointer; font-size: 0.78rem; color: var(--text-muted); user-select: none;
+  }
+  details.breakdown-details summary:hover { color: var(--accent); }
+
+  /* ── Round accordion ── */
+  details.round-group { margin-bottom: 0.4rem; }
+  details.round-group summary {
+    cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--text-muted);
+    padding: 0.4rem 0; user-select: none;
+  }
+  details.round-group summary:hover { color: var(--accent); }
+  details.round-group[open] summary { color: var(--text); }
+
+  /* ── Per-player history dropdown ── */
+  .player-stats-dropdown { display: flex; gap: 0.5rem; align-items: flex-start; flex-wrap: wrap; margin-bottom: 0.5rem; }
+  .player-stats-dropdown select { min-width: 160px; }
+  .player-stats-detail { font-size: 0.82rem; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+  .player-stats-detail .stat-row { padding: 0.15rem 0; }
+  .player-stats-detail .stat-label { color: var(--text-muted); font-size: 0.78rem; }
+
+  /* ── Mobile touch targets ── */
+  @media (max-width: 600px) {
+    .match-actions input { width: 56px !important; height: 44px; font-size: 1rem; }
+    .btn-sm { min-height: 44px; padding: 0.5rem 0.8rem; font-size: 0.85rem; }
+    .match-edit-btn { min-height: 40px; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
+    .score-mode-toggle button { min-height: 40px; padding: 0.4rem 0.7rem; font-size: 0.85rem; }
+    .sitout-item { padding: 0.5rem 0.6rem; font-size: 0.9rem; min-height: 44px; }
+    .tab-btn { min-height: 44px; font-size: 0.95rem; }
+    .proposal-card { min-width: 100%; max-width: 100%; }
+    .manual-sel { min-height: 44px; font-size: 0.9rem; }
+    input, select, textarea { min-height: 44px; font-size: 1rem; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🏓 Padel Tournament Manager</h1>
+
+  <!-- Navigation tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="home">Tournaments</button>
+    <button class="tab-btn" data-tab="create">Create</button>
+    <button class="tab-btn" data-tab="tools">Tools</button>
+    <button class="tab-btn" data-tab="view" id="tab-view" disabled>Active Tournament</button>
+    <label class="theme-chooser" for="theme-select">
+      Theme
+      <select id="theme-select" onchange="setTheme(this.value)">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
+    </label>
+  </div>
+  <div class="active-tournament-indicator" id="active-tournament-indicator">
+    Active tournament: <strong>None selected</strong>
+  </div>
+
+  <!-- ─── HOME ──────────────────────────────────────────── -->
+  <div class="tab-panel active" id="panel-home">
+    <div class="card">
+      <h2>Active Tournaments</h2>
+      <div id="tournament-list"><em>Loading…</em></div>
+    </div>
+  </div>
+
+  <!-- ─── CREATE ─────────────────────────────────────────── -->
+  <div class="tab-panel" id="panel-create">
+    <div class="card">
+      <h2>Create Tournament</h2>
+      <div class="subtabs" role="tablist" aria-label="Create tournament type">
+        <button class="subtab-btn active" id="create-tab-gp" onclick="setCreateMode('gp')">Group + Play‑off</button>
+        <button class="subtab-btn" id="create-tab-mex" onclick="setCreateMode('mex')">Mexicano + Play‑offs</button>
+      </div>
+
+      <div class="subtab-panel active" id="create-panel-gp">
+        <div class="form-group">
+          <label>Tournament Name</label>
+          <input id="gp-name" value="Padel Cup 2026">
+        </div>
+        <div class="form-group">
+          <label><input type="checkbox" id="gp-team-mode" checked onchange="toggleGpTeamMode()"> <strong>Team Mode</strong> — each entry is a fixed pair (e.g. "Alice & Bob")</label>
+        </div>
+        <div class="form-group">
+          <label id="gp-players-label">Team Names (one per line, e.g. "Alice & Bob")</label>
+          <textarea id="gp-players">Alice & Bob
+Charlie & Diana
+Eve & Frank
+Grace & Hank</textarea>
+        </div>
+        <div class="inline-group">
+          <div class="form-group">
+            <label>Courts (comma-separated)</label>
+            <input id="gp-courts" value="Court 1, Court 2">
+          </div>
+          <div class="form-group">
+            <label>Number of Groups</label>
+            <input id="gp-num-groups" type="number" value="2" min="1">
+          </div>
+        </div>
+        <div class="inline-group">
+          <div class="form-group">
+            <label>Top players per group advancing</label>
+            <input id="gp-top" type="number" value="2" min="1">
+          </div>
+          <div class="form-group">
+            <label>Play‑off format</label>
+            <select id="gp-double-elim">
+              <option value="false">Single Elimination</option>
+              <option value="true">Double Elimination</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="createGP()">Create Tournament</button>
+        <div id="gp-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
+      </div>
+
+      <div class="subtab-panel" id="create-panel-mex">
+        <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem">Play Mexicano rounds first, then optionally start seeded play-offs.</p>
+        <div class="form-group">
+          <label>Tournament Name</label>
+          <input id="mex-name" value="Mexicano Night">
+        </div>
+        <div class="form-group">
+          <label><input type="checkbox" id="mex-team-mode" onchange="toggleMexTeamMode()"> <strong>Team Mode</strong> — each entry is a fixed pair (e.g. "Alice & Bob")</label>
+        </div>
+        <div class="form-group">
+          <label id="mex-players-label">Player Names (one per line)</label>
+          <textarea id="mex-players">Alice
+Bob
+Charlie
+Diana
+Eve
+Frank
+Grace
+Hank</textarea>
+        </div>
+        <div class="inline-group">
+          <div class="form-group">
+            <label>Courts (comma-separated)</label>
+            <input id="mex-courts" value="Court 1, Court 2">
+          </div>
+          <div class="form-group">
+            <label>Total points per match</label>
+            <input id="mex-pts" type="number" value="32" min="1">
+          </div>
+        </div>
+        <div class="inline-group">
+          <div class="form-group">
+            <label>Number of rounds</label>
+            <input id="mex-rounds" type="number" value="8" min="1">
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:0.5rem">
+            <label><input type="checkbox" id="mex-rolling" onchange="toggleMexRolling()"> <strong>Rolling mode</strong> (unlimited rounds)</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Randomness (0-1)</label>
+          <small>How much to shuffle pairings away from pure leaderboard order. 0 = strictly rank-based matchups, 1 = fully random. E.g. 0.15 means mostly skill-based with a small shuffle so the same players don't always face each other.</small>
+          <input id="mex-rand" type="number" value="0.15" min="0" max="1" step="0.05">
+        </div>
+        <details class="advanced-section">
+          <summary>Advanced Settings</summary>
+          <div class="form-group">
+            <label>Skill Gap — max point diff to be in same group (leave blank = snake-draft)</label>
+            <input id="mex-skill-gap" type="number" placeholder="e.g. 50  (blank = disabled)" min="0">
+          </div>
+          <div class="inline-group">
+            <div class="form-group">
+              <label>Win bonus pts <small style="color:var(--text-muted)">(0 = off)</small></label>
+              <input id="mex-win-bonus" type="number" value="0" min="0">
+              <small style="color:var(--text-muted)">Flat extra points added to the winner's leaderboard score each match, on top of what they played. Draws get nothing. E.g. <em>5</em> means winning 20–12 credits 25 pts instead of 20.</small>
+            </div>
+            <div class="form-group">
+              <label>Rival strength weight <small style="color:var(--text-muted)">(0 = off, 1 = full)</small></label>
+              <input id="mex-strength-weight" type="number" value="0" min="0" max="1" step="0.05">
+              <small style="color:var(--text-muted)">Boosts points earned based on how highly ranked your opponents are right now. At <em>1.0</em>: beating the top team doubles your points; beating last place gives raw score. At <em>0.5</em>: top opponent gives ×1.5, bottom gives ×1.0.</small>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Loss discount <small style="color:var(--text-muted)">(1 = no penalty)</small></label>
+            <input id="mex-loss-discount" type="number" value="1" min="0" max="1" step="0.05">
+            <small style="color:var(--text-muted)">Multiplier applied to the losing team's scored points before crediting their leaderboard total. Draws are not affected. E.g. <em>0.75</em> — losing 12–20 credits only 9 pts instead of 12. <em>0</em> = losers earn nothing.</small>
+          </div>
+          <div class="form-group">
+            <label>Balance tolerance <small style="color:var(--text-muted)">(0 = strict, higher = more variety)</small></label>
+            <input id="mex-balance-tol" type="number" value="0.2" min="0" max="2" step="0.1">
+            <small style="color:var(--text-muted)">How much extra score imbalance the optimiser may accept to avoid repeat matchups. 0 = never sacrifice competitiveness; 0.2 (default) = allow up to 20% looser balance; 1.0 = strongly prefer new opponents even if matches are less even.</small>
+          </div>
+        </details>
+        <button class="btn btn-primary" onclick="createMex()">Create Tournament</button>
+        <div id="mex-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── TOURNAMENT VIEW ───────────────────────────────── -->
+  <div class="tab-panel" id="panel-view">
+    <div id="view-content"></div>
+  </div>
+
+  <!-- ─── TOOLS ─────────────────────────────────────────── -->
+  <div class="tab-panel" id="panel-tools">
+    <div class="card">
+      <h2>Tools</h2>
+      <p style="color:var(--text-muted);font-size:0.85rem">Planning and preview utilities that are independent from an active tournament.</p>
+    </div>
+    <div class="card">
+      <h2>Tournament Bracket Schema</h2>
+      <p style="color:var(--text-muted);font-size:0.85rem">Generate a visual diagram of the tournament structure before creating it.</p>
+      <div class="inline-group">
+        <div class="form-group">
+          <label>Group sizes <small style="color:var(--text-muted)">(comma-separated)</small></label>
+          <input id="schema-groups" type="text" value="4,4" placeholder="e.g. 4,4,4">
+        </div>
+        <div class="form-group">
+          <label>Advance per group</label>
+          <input id="schema-advance" type="number" value="2" min="1" max="8">
+        </div>
+      </div>
+      <div class="inline-group">
+        <div class="form-group">
+          <label>Elimination</label>
+          <select id="schema-elim">
+            <option value="single" selected>Single Elimination</option>
+            <option value="double">Double Elimination</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Title <small style="color:var(--text-muted)">(optional)</small></label>
+          <input id="schema-title" type="text" placeholder="My Tournament">
+        </div>
+      </div>
+      <div class="inline-group">
+        <div class="form-group">
+          <label>Format</label>
+          <select id="schema-fmt">
+            <option value="png" selected>PNG</option>
+            <option value="svg">SVG</option>
+            <option value="pdf">PDF (download)</option>
+          </select>
+        </div>
+      </div>
+      <details style="margin-bottom:0.75rem">
+        <summary style="cursor:pointer;color:var(--text-muted);font-size:0.85rem;user-select:none">
+          ⚙ Rendering options
+        </summary>
+        <div style="margin-top:0.5rem">
+          <div class="inline-group">
+            <div class="form-group">
+              <label>Box size <span id="schema-box-val" style="color:var(--text-muted)">1.0</span></label>
+              <input id="schema-box" type="range" min="0.3" max="3.0" step="0.1" value="1.0"
+                     oninput="document.getElementById('schema-box-val').textContent=this.value">
+            </div>
+            <div class="form-group">
+              <label>Line width <span id="schema-lw-val" style="color:var(--text-muted)">1.0</span></label>
+              <input id="schema-lw" type="range" min="0.3" max="5.0" step="0.1" value="1.0"
+                     oninput="document.getElementById('schema-lw-val').textContent=this.value">
+            </div>
+            <div class="form-group">
+              <label>Arrow size <span id="schema-arrow-val" style="color:var(--text-muted)">1.0</span></label>
+              <input id="schema-arrow" type="range" min="0.3" max="5.0" step="0.1" value="1.0"
+                     oninput="document.getElementById('schema-arrow-val').textContent=this.value">
+            </div>
+          </div>
+        </div>
+      </details>
+      <button class="btn btn-primary" onclick="generateSchema()">Generate Schema</button>
+      <div id="schema-msg" class="alert alert-error hidden" style="margin-top:0.75rem"></div>
+      <div id="schema-result" style="margin-top:1rem; text-align:center"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';  // same origin
+
+// ─── Tab switching ─────────────────────────────────────────
+function setActiveTab(tabName) {
+  if (tabName === 'view' && !currentTid) return;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  const btn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+  const panel = document.getElementById('panel-' + tabName);
+  if (!btn || !panel) return;
+  btn.classList.add('active');
+  panel.classList.add('active');
+  if (tabName === 'home') loadTournaments();
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.disabled) return;
+    setActiveTab(btn.dataset.tab);
+  });
+});
+
+function setCreateMode(mode) {
+  const isGp = mode === 'gp';
+  document.getElementById('create-tab-gp')?.classList.toggle('active', isGp);
+  document.getElementById('create-tab-mex')?.classList.toggle('active', !isGp);
+  document.getElementById('create-panel-gp')?.classList.toggle('active', isGp);
+  document.getElementById('create-panel-mex')?.classList.toggle('active', !isGp);
+}
+
+function setTheme(theme) {
+  const normalized = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', normalized);
+  try {
+    localStorage.setItem('padel_theme', normalized);
+  } catch (_) {}
+
+  const sel = document.getElementById('theme-select');
+  if (sel && sel.value !== normalized) {
+    sel.value = normalized;
+  }
+}
+
+function initTheme() {
+  let initial = 'dark';
+  try {
+    initial = localStorage.getItem('padel_theme') || 'dark';
+  } catch (_) {}
+  setTheme(initial);
+}
+
+// ─── Schema preview ────────────────────────────────────────
+
+/** Shared helper that powers all three schema download flows. */
+async function _fetchSchema(prefix, apiUrl, defaultFilename) {
+  const msg = document.getElementById(prefix + '-msg');
+  const result = document.getElementById(prefix + '-result');
+  if (!msg || !result) return;
+
+  msg.classList.add('hidden');
+  result.innerHTML = '<em>Generating…</em>';
+
+  const fmt = document.getElementById(prefix + '-fmt').value;
+  const boxScale = document.getElementById(prefix + '-box').value;
+  const lineWidth = document.getElementById(prefix + '-lw').value;
+  const arrowScale = document.getElementById(prefix + '-arrow').value;
+  const title = document.getElementById(prefix + '-title').value.trim();
+
+  let url = apiUrl + (apiUrl.includes('?') ? '&' : '?')
+    + `fmt=${fmt}&box_scale=${boxScale}&line_width=${lineWidth}&arrow_scale=${arrowScale}`;
+  if (title) url += `&title=${encodeURIComponent(title)}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Failed to generate schema');
+    }
+
+    if (fmt === 'pdf') {
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (title || defaultFilename) + '.pdf';
+      a.click();
+      result.innerHTML = '<em>PDF downloaded.</em>';
+    } else if (fmt === 'svg') {
+      result.innerHTML = await res.text();
+    } else {
+      const blob = await res.blob();
+      result.innerHTML = `<img src="${URL.createObjectURL(blob)}" alt="Schema" style="max-width:100%; border:1px solid var(--border); border-radius:6px;">`;
+    }
+  } catch (e) {
+    result.innerHTML = '';
+    msg.textContent = e.message;
+    msg.classList.remove('hidden');
+  }
+}
+
+function generateSchema() {
+  const groups = document.getElementById('schema-groups').value.trim();
+  const advance = document.getElementById('schema-advance').value;
+  const elim = document.getElementById('schema-elim').value;
+  const url = `/api/schema/preview?group_sizes=${encodeURIComponent(groups)}&advance_per_group=${advance}&elimination=${elim}`;
+  _fetchSchema('schema', url, 'bracket');
+}
+
+function generateGpPlayoffSchema() {
+  if (!currentTid) return;
+  _fetchSchema('gp-playoff-schema', `/api/tournaments/${currentTid}/gp/playoffs-schema`, 'playoffs');
+}
+
+function generateMexPlayoffSchema() {
+  if (!currentTid) return;
+  _fetchSchema('mex-playoff-schema', `/api/tournaments/${currentTid}/mex/playoffs-schema`, 'mex-playoffs');
+}
+
+/** Build the collapsible Play-offs Schema card HTML. */
+function _schemaCardHtml(prefix, placeholder, generateFn) {
+  let h = `<details class="card">`;
+  h += `<summary>Play-offs Schema</summary>`;
+  h += `<div style="margin-top:0.6rem">`;
+  h += `<div class="form-grid">`;
+  h += `<label>Title</label><input id="${prefix}-title" type="text" placeholder="${placeholder}">`;
+  h += `<label>Format</label><select id="${prefix}-fmt"><option value="png">PNG</option><option value="svg">SVG</option><option value="pdf">PDF</option></select>`;
+  h += `</div>`;
+  h += `<details style="margin-bottom:0.75rem">`;
+  h += `<summary style="cursor:pointer;color:var(--text-muted);font-size:0.85rem;user-select:none">⚙ Rendering options</summary>`;
+  h += `<div style="margin-top:0.5rem">`;
+  h += `<label>Box size <span id="${prefix}-box-val" style="color:var(--text-muted)">1.0</span></label>`;
+  h += `<input id="${prefix}-box" type="range" min="0.3" max="3.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-box-val').textContent=this.value">`;
+  h += `<label>Line width <span id="${prefix}-lw-val" style="color:var(--text-muted)">1.0</span></label>`;
+  h += `<input id="${prefix}-lw" type="range" min="0.3" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-lw-val').textContent=this.value">`;
+  h += `<label>Arrow size <span id="${prefix}-arrow-val" style="color:var(--text-muted)">1.0</span></label>`;
+  h += `<input id="${prefix}-arrow" type="range" min="0.3" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-arrow-val').textContent=this.value">`;
+  h += `</div>`;
+  h += `</details>`;
+  h += `<button class="btn btn-primary" onclick="${generateFn}()">Generate Play-offs Schema</button>`;
+  h += `<div id="${prefix}-msg" class="alert alert-error hidden" style="margin-top:0.75rem"></div>`;
+  h += `<div id="${prefix}-result" style="margin-top:1rem; text-align:center"></div>`;
+  h += `</div>`;
+  h += `</details>`;
+  return h;
+}
+
+// ─── API helper ────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || res.statusText);
+  }
+  return res.json();
+}
+
+// ─── Home: list tournaments ───────────────────────────────
+async function loadTournaments() {
+  try {
+    const list = await api('/api/tournaments');
+    _tournamentMeta = {};
+    for (const t of list) _tournamentMeta[t.id] = t;
+    const el = document.getElementById('tournament-list');
+    if (!list.length) { el.innerHTML = '<em>No tournaments yet.</em>'; return; }
+    el.innerHTML = list.map(t => `
+      <div class="match-card">
+        <div class="match-teams"><strong>${esc(t.name)}</strong></div>
+        <span class="badge badge-scheduled">${t.type === 'mexicano' ? 'mexicano + play-offs' : t.type}</span>
+        <button class="btn btn-primary btn-sm" onclick="openTournament('${t.id}','${t.type}')">Open</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteTournament('${t.id}')">✕</button>
+      </div>
+    `).join('');
+  } catch (e) { console.error(e); }
+}
+
+async function deleteTournament(id) {
+  if (!confirm('Delete this tournament?')) return;
+  await api('/api/tournaments/' + id, { method: 'DELETE' });
+  if (id === currentTid) {
+    currentTid = null;
+    currentType = null;
+    currentTournamentName = null;
+    updateActiveTournamentUI();
+    setActiveTab('home');
+  }
+  loadTournaments();
+}
+
+// ─── Open a tournament ────────────────────────────────────
+let currentTid = null, currentType = null;
+let currentTournamentName = null;
+let _tournamentMeta = {};
+let _totalPts = 0;  // set per Mexicano tournament for auto-fill
+let _gpScoreMode = { 'gp-group': 'points', 'gp-playoff': 'points', 'mex-playoff': 'points' };
+let _mexPlayers = [];  // [{id, name}] for manual editor
+let _mexBreakdowns = {};  // {match_id: {player_id: {raw, strength_mult, loss_disc, win_bonus, final}}}
+let _mexPlayerMap = {};  // {player_id: player_name}
+
+function updateActiveTournamentUI() {
+  const indicator = document.getElementById('active-tournament-indicator');
+  const tabView = document.getElementById('tab-view');
+  const hasActive = Boolean(currentTid);
+  if (hasActive) {
+    const shownName = currentTournamentName || `#${String(currentTid).slice(0, 8)}`;
+    indicator.innerHTML = `Active tournament: <strong>${esc(shownName)}</strong>`;
+    tabView.disabled = false;
+    tabView.textContent = `Active: ${shownName}`;
+    tabView.title = shownName;
+  } else {
+    indicator.innerHTML = 'Active tournament: <strong>None selected</strong>';
+    tabView.disabled = true;
+    tabView.textContent = 'Active Tournament';
+    tabView.title = '';
+  }
+}
+
+function _autoFillScore(matchId, total) {
+  const s1El = document.getElementById('s1-' + matchId);
+  const s2El = document.getElementById('s2-' + matchId);
+  const changed = document.activeElement === s1El ? 's1' : 's2';
+  if (changed === 's1') {
+    const v = Math.max(0, Math.min(total, +s1El.value || 0));
+    s2El.value = total - v;
+  } else {
+    const v = Math.max(0, Math.min(total, +s2El.value || 0));
+    s1El.value = total - v;
+  }
+}
+
+function openTournament(id, type, name = null) {
+  currentTid = id;
+  currentType = type;
+  currentTournamentName = name || _tournamentMeta[id]?.name || null;
+  updateActiveTournamentUI();
+  setActiveTab('view');
+  if (type === 'group_playoff') renderGP();
+  else renderMex();
+}
+
+// ─── Create Group+Playoff ─────────────────────────────────
+async function createGP() {
+  const msg = document.getElementById('gp-msg');
+  try {
+    const body = {
+      name: document.getElementById('gp-name').value,
+      player_names: document.getElementById('gp-players').value.split('\n').map(s=>s.trim()).filter(Boolean),
+      team_mode: document.getElementById('gp-team-mode').checked,
+      court_names: document.getElementById('gp-courts').value.split(',').map(s=>s.trim()).filter(Boolean),
+      num_groups: +document.getElementById('gp-num-groups').value,
+      top_per_group: +document.getElementById('gp-top').value,
+      double_elimination: document.getElementById('gp-double-elim').value === 'true',
+    };
+    const res = await api('/api/tournaments/group-playoff', { method: 'POST', body: JSON.stringify(body) });
+    msg.className = 'alert alert-success'; msg.textContent = `Created! ID: ${res.id}`;
+    msg.classList.remove('hidden');
+    openTournament(res.id, 'group_playoff', body.name || 'Group + Playoff Tournament');
+  } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
+}
+
+// ─── GP Team Mode toggle ────────────────────────────────
+function toggleTeamMode(checkboxId, labelId) {
+  const chk = document.getElementById(checkboxId);
+  const label = document.getElementById(labelId);
+  if (chk.checked) {
+    label.textContent = 'Team Names (one per line, e.g. "Alice & Bob")';
+  } else {
+    label.textContent = 'Player Names (one per line)';
+  }
+}
+function toggleGpTeamMode() { toggleTeamMode('gp-team-mode', 'gp-players-label'); }
+
+// ─── Create Mexicano ──────────────────────────────────────
+async function createMex() {
+  const msg = document.getElementById('mex-msg');
+  try {
+    const skillGapRaw = document.getElementById('mex-skill-gap').value.trim();
+    const rolling = document.getElementById('mex-rolling').checked;
+    const body = {
+      name: document.getElementById('mex-name').value,
+      player_names: document.getElementById('mex-players').value.split('\n').map(s=>s.trim()).filter(Boolean),
+      court_names: document.getElementById('mex-courts').value.split(',').map(s=>s.trim()).filter(Boolean),
+      total_points_per_match: +document.getElementById('mex-pts').value,
+      num_rounds: rolling ? 0 : +document.getElementById('mex-rounds').value,
+      randomness: +document.getElementById('mex-rand').value,
+      skill_gap: skillGapRaw === '' ? null : +skillGapRaw,
+      win_bonus: +document.getElementById('mex-win-bonus').value,
+      strength_weight: +document.getElementById('mex-strength-weight').value,
+      loss_discount: +document.getElementById('mex-loss-discount').value,
+      balance_tolerance: +document.getElementById('mex-balance-tol').value,
+    };
+    const res = await api('/api/tournaments/mexicano', { method: 'POST', body: JSON.stringify(body) });
+    msg.className = 'alert alert-success'; msg.textContent = `Created! ID: ${res.id}`;
+    msg.classList.remove('hidden');
+    openTournament(res.id, 'mexicano', body.name || 'Mexicano Tournament');
+  } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
+}
+
+// ─── Render Group+Playoff ─────────────────────────────────
+async function renderGP() {
+  _totalPts = 0;  // GP matches have no fixed total
+  const el = document.getElementById('view-content');
+  try {
+    const [status, groups, playoffs] = await Promise.all([
+      api(`/api/tournaments/${currentTid}/gp/status`),
+      api(`/api/tournaments/${currentTid}/gp/groups`),
+      api(`/api/tournaments/${currentTid}/gp/playoffs`).catch(()=>null),
+    ]);
+
+    let html = `<div class="refresh-row"><button class="btn btn-primary btn-sm" onclick="renderGP()">↻ Refresh</button></div>`;
+    html += `<div class="alert alert-info">Phase: <span class="badge badge-phase">${status.phase}</span></div>`;
+
+    const groupPending = _sortTbdLast(Object.values(groups.matches)
+      .flat()
+      .filter(m => m.status !== 'completed'));
+    const playoffPending = _sortTbdLast((playoffs?.pending || []).filter(m => m.status !== 'completed'));
+    const assignmentMatches = (status.phase === 'groups') ? groupPending : playoffPending;
+    html += _renderCourtAssignmentsCard(
+      assignmentMatches,
+      status.phase === 'groups' ? 'Court Assignments — Group Stage' : 'Court Assignments — Play-offs',
+    );
+
+    const groupFormatLabel = _gpScoreMode['gp-group'] === 'sets' ? '🎾 Sets' : 'Points';
+    if (status.phase === 'groups') {
+      html += `<div class="card">`;
+      html += `<h3>Group Stage Input Format</h3>`;
+      html += `<div class="score-mode-toggle">`;
+      html += `<button class="${_gpScoreMode['gp-group'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('gp-group','points')">Points</button>`;
+      html += `<button class="${_gpScoreMode['gp-group'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('gp-group','sets')">🎾 Sets</button>`;
+      html += `</div>`;
+      html += `</div>`;
+    }
+
+    if (status.champion) {
+      html += `<div class="alert alert-success">🏆 Champion: <strong>${esc(status.champion.join(', '))}</strong></div>`;
+    }
+
+    if (status.phase === 'finished') {
+      html += `<div class="card">`;
+      html += `<h3>Export Outcome</h3>`;
+      html += `<label><input type="checkbox" id="export-include-history" checked> Include match history</label>`;
+      html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem">`;
+      html += `<button class="btn btn-primary" onclick="exportTournamentOutcome('html')">Export HTML</button>`;
+      html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="exportTournamentOutcome('pdf')">Export PDF</button>`;
+      html += `</div>`;
+      html += `</div>`;
+    }
+
+    const shouldCollapseGroups = status.phase !== 'groups';
+    if (shouldCollapseGroups) {
+      html += `<details class="card"><summary>Group Stage Results — Format: ${groupFormatLabel}</summary>`;
+    }
+
+    // Group standings
+    for (const [gName, rows] of Object.entries(groups.standings)) {
+      html += `<div class="card"><h3>Group ${esc(gName)}</h3>`;
+      html += `<table><thead><tr><th>Player</th><th>P</th><th>W</th><th>D</th><th>L</th><th>PF</th><th>PA</th><th>Diff</th><th>Pts</th></tr></thead><tbody>`;
+      for (const r of rows) {
+        html += `<tr><td>${esc(r.player)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td><td>${r.points_for}</td><td>${r.points_against}</td><td>${r.point_diff}</td><td><strong>${r.match_points}</strong></td></tr>`;
+      }
+      html += `</tbody></table>`;
+
+      // Group matches
+      const gMatches = _sortTbdLast(groups.matches[gName] || []);
+      for (const m of gMatches) {
+        html += matchRow(m, 'gp-group');
+      }
+      html += `</div>`;
+    }
+
+    if (shouldCollapseGroups) {
+      html += `</details>`;
+    }
+
+    // Start playoffs button
+    if (status.phase === 'groups') {
+      const pending = Object.values(groups.matches).flat().filter(m => m.status !== 'completed');
+      if (pending.length === 0) {
+        html += `<button class="btn btn-success" onclick="startPlayoffs()">Start Play‑offs →</button>`;
+      } else {
+        html += `<div class="alert alert-info">${pending.length} group match(es) remaining</div>`;
+      }
+    }
+
+    // Playoff bracket
+    if (status.phase === 'playoffs' || status.phase === 'finished') {
+      html += `<div class="card">`;
+      html += `<h3>Play‑offs Input Format</h3>`;
+      html += `<div class="score-mode-toggle">`;
+      html += `<button class="${_gpScoreMode['gp-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('gp-playoff','points')">Points</button>`;
+      html += `<button class="${_gpScoreMode['gp-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('gp-playoff','sets')">🎾 Sets</button>`;
+      html += `</div>`;
+      html += `</div>`;
+
+      html += _schemaCardHtml('gp-playoff-schema', 'Play-offs bracket', 'generateGpPlayoffSchema');
+
+      html += `<div class="card"><h2>Play‑offs</h2>`;
+      if (playoffs && playoffs.matches) {
+        for (const m of _sortTbdLast(playoffs.matches)) {
+          html += matchRow(m, 'gp-playoff');
+        }
+      }
+      html += `</div>`;
+    }
+
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+function matchRow(m, ctx) {
+  const t1 = m.team1.join(' & ') || 'TBD';
+  const t2 = m.team2.join(' & ') || 'TBD';
+  const court = m.court ? `<span class="match-court">${esc(m.court)}</span>` : '';
+  const roundLabel = m.round_label ? `<span class="badge badge-scheduled">${esc(m.round_label)}</span>` : '';
+
+  if (m.status === 'completed') {
+    // Score display — show sets if available, else plain score
+    let scoreDisplay;
+    let scoreClass = 'match-score';
+    if (m.sets && m.sets.length > 0) {
+      scoreClass = 'match-score sets-stack';
+      scoreDisplay = m.sets
+        .map(s => `<span class="set-row">${s[0]}-${s[1]}</span>`)
+        .join('');
+    } else {
+      scoreDisplay = `${m.score[0]} – ${m.score[1]}`;
+    }
+
+    let html = `<div class="match-card" style="flex-wrap:wrap">`;
+    html += `${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
+    html += ` <span class="${scoreClass}" id="mscore-${m.id}">${scoreDisplay}</span>`;
+    html += ` <span class="badge badge-completed">✓</span>`;
+    html += ` <button class="match-edit-btn" id="medit-btn-${m.id}" onclick="_toggleEditMatch('${m.id}','${ctx}',${m.score[0]},${m.score[1]})">Edit</button>`;
+
+    // Inline edit form (hidden)
+    const autoCalc = _totalPts > 0 && (ctx === 'mex' || ctx === 'mex-playoff');
+    const onInput = autoCalc ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"` : '';
+    html += `<div class="match-actions hidden" id="medit-${m.id}">`;
+    html += `<input type="number" id="s1-${m.id}" min="0" value="${m.score[0]}" style="width:50px" ${onInput}>`;
+    html += `<span>–</span>`;
+    html += `<input type="number" id="s2-${m.id}" min="0" value="${m.score[1]}" style="width:50px" ${onInput}>`;
+    html += `<button class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">Save</button>`;
+    html += `<button class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_cancelEditMatch('${m.id}')">✕</button>`;
+    html += `</div>`;
+
+    // Breakdown toggle for Mexicano matches
+    const isMex = ctx === 'mex' || ctx === 'mex-playoff';
+    const bd = isMex ? _mexBreakdowns[m.id] : null;
+    if (bd && Object.keys(bd).length > 0) {
+      html += `<details class="breakdown-details">`;
+      html += `<summary>📊 Score breakdown</summary>`;
+      html += `<div class="breakdown-panel">`;
+      html += `<table class="breakdown-table"><thead><tr><th>Player</th><th>Raw</th><th>Strength ×</th><th>Loss disc ×</th><th>Win bonus</th><th>Final</th></tr></thead><tbody>`;
+      for (const [pid, d] of Object.entries(bd)) {
+        const pname = _mexPlayerMap[pid] || pid;
+        html += `<tr><td>${esc(pname)}</td><td>${d.raw}</td><td>${d.strength_mult !== 1 ? '×' + d.strength_mult.toFixed(2) : '—'}</td><td>${d.loss_disc !== 1 ? '×' + d.loss_disc.toFixed(2) : '—'}</td><td>${d.win_bonus > 0 ? '+' + d.win_bonus : '—'}</td><td><strong>${d.final}</strong></td></tr>`;
+      }
+      html += `</tbody></table></div>`;
+      html += `</details>`;
+    }
+
+    html += `</div>`;
+    return html;
+  }
+
+  // Not yet completed — show input form
+  const isMex = ctx === 'mex' || ctx === 'mex-playoff';
+  const isSetScoringCtx = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff';
+  const autoCalc = _totalPts > 0 && isMex;
+  const onInput = autoCalc
+    ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"`
+    : '';
+
+  let html = `<div class="match-card" style="flex-wrap:wrap">${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
+
+  // Points / tennis-set scoring toggle for playoff/group contexts
+  if (isSetScoringCtx) {
+    const stageMode = _gpScoreMode[ctx] || 'points';
+    html += `<div class="match-actions" id="score-input-${m.id}">`;
+    html += `<div id="score-normal-${m.id}" class="${stageMode === 'sets' ? 'hidden' : ''}">`;
+    html += `<input type="number" id="s1-${m.id}" min="0" value="0" style="width:50px">`;
+    html += `<span>–</span>`;
+    html += `<input type="number" id="s2-${m.id}" min="0" value="0" style="width:50px">`;
+    html += `<button class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">Save</button>`;
+    html += `</div>`;
+    html += `<div id="score-tennis-${m.id}" class="${stageMode === 'sets' ? '' : 'hidden'}">`;
+    html += `<div class="tennis-sets" id="tennis-sets-${m.id}">`;
+    html += _renderTennisSetInputs(m.id, 3);
+    html += `</div>`;
+    html += `<button class="btn btn-success btn-sm" onclick="submitTennisScore('${m.id}','${ctx}')">Save Sets</button>`;
+    html += `</div>`;
+    html += `</div>`;
+  } else {
+    html += `<div class="match-actions">`;
+    html += `<input type="number" id="s1-${m.id}" min="0" value="0" style="width:50px" ${onInput}>`;
+    html += `<span>–</span>`;
+    html += `<input type="number" id="s2-${m.id}" min="0" value="${autoCalc ? _totalPts : 0}" style="width:50px" ${onInput}>`;
+    html += `<button class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">Save</button>`;
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+function _is_tbd_team(team) {
+  if (!Array.isArray(team) || team.length === 0) {
+    return true;
+  }
+  return team.every(name => !name || String(name).trim().toUpperCase() === 'TBD');
+}
+
+function _sortTbdLast(matches) {
+  return [...matches].sort((a, b) => {
+    const aTbd = _is_tbd_team(a.team1) || _is_tbd_team(a.team2);
+    const bTbd = _is_tbd_team(b.team1) || _is_tbd_team(b.team2);
+    return Number(aTbd) - Number(bTbd);
+  });
+}
+
+function _captureViewDrafts() {
+  const root = document.getElementById('view-content');
+  if (!root) return {};
+
+  const drafts = {};
+  root.querySelectorAll('input, textarea, select').forEach(el => {
+    if (el.type === 'button' || el.type === 'submit') return;
+
+    let key = '';
+    if (el.id) {
+      key = `id:${el.id}`;
+    } else if (el.dataset?.match !== undefined && el.dataset?.slot !== undefined) {
+      key = `manual:${el.dataset.match}:${el.dataset.slot}`;
+    } else {
+      return;
+    }
+
+    drafts[key] = (el.type === 'checkbox' || el.type === 'radio') ? el.checked : el.value;
+  });
+  return drafts;
+}
+
+function _restoreViewDrafts(drafts) {
+  const root = document.getElementById('view-content');
+  if (!root || !drafts) return;
+
+  for (const [key, value] of Object.entries(drafts)) {
+    let el = null;
+    if (key.startsWith('id:')) {
+      el = document.getElementById(key.slice(3));
+    } else if (key.startsWith('manual:')) {
+      const [, match, slot] = key.split(':');
+      el = root.querySelector(`.manual-sel[data-match="${match}"][data-slot="${slot}"]`);
+    }
+    if (!el) continue;
+
+    if (el.type === 'checkbox' || el.type === 'radio') {
+      el.checked = Boolean(value);
+    } else {
+      el.value = value;
+    }
+  }
+}
+
+async function _rerenderCurrentViewPreserveDrafts() {
+  const drafts = _captureViewDrafts();
+  if (currentType === 'group_playoff') {
+    await renderGP();
+  } else {
+    await renderMex();
+  }
+  _restoreViewDrafts(drafts);
+}
+
+/** Map scoring context to API path suffix. */
+const _SCORE_ENDPOINTS = {
+  'gp-group':   { points: 'gp/record-group',           tennis: 'gp/record-group-tennis' },
+  'gp-playoff': { points: 'gp/record-playoff',         tennis: 'gp/record-playoff-tennis' },
+  'mex-playoff':{ points: 'mex/record-playoff',        tennis: 'mex/record-playoff-tennis' },
+  'mex':        { points: 'mex/record',                 tennis: null },
+};
+
+function _scoreApiPath(ctx, isTennis) {
+  const entry = _SCORE_ENDPOINTS[ctx] || _SCORE_ENDPOINTS['mex'];
+  return `/api/tournaments/${currentTid}/${isTennis ? entry.tennis : entry.points}`;
+}
+
+async function submitScore(matchId, ctx) {
+  const s1 = +document.getElementById('s1-' + matchId).value;
+  const s2 = +document.getElementById('s2-' + matchId).value;
+  try {
+    await api(_scoreApiPath(ctx, false), {
+      method: 'POST', body: JSON.stringify({ match_id: matchId, score1: s1, score2: s2 })
+    });
+    await _rerenderCurrentViewPreserveDrafts();
+  } catch (e) { alert(e.message); }
+}
+
+function _renderTennisSetInputs(matchId, numSets) {
+  let html = '';
+  for (let i = 0; i < numSets; i++) {
+    html += `<div class="tennis-set-row">`;
+    html += `<span class="tennis-set-label">S${i + 1}:</span>`;
+    html += `<input class="tennis-set-input" type="number" id="ts1-${matchId}-${i}" min="0" max="13" value="" placeholder="0">`;
+    html += `<span class="tennis-set-sep">-</span>`;
+    html += `<input class="tennis-set-input" type="number" id="ts2-${matchId}-${i}" min="0" max="13" value="" placeholder="0">`;
+    html += `</div>`;
+  }
+  return html;
+}
+
+async function _setStageScoreMode(ctx, mode) {
+  if (!(ctx in _gpScoreMode)) return;
+  _gpScoreMode[ctx] = mode;
+  if (currentType === 'group_playoff' || currentType === 'mexicano') {
+    await _rerenderCurrentViewPreserveDrafts();
+  }
+}
+
+async function submitTennisScore(matchId, ctx) {
+  // Gather set scores
+  const sets = [];
+  for (let i = 0; i < 10; i++) {
+    const e1 = document.getElementById('ts1-' + matchId + '-' + i);
+    const e2 = document.getElementById('ts2-' + matchId + '-' + i);
+    if (!e1 || !e2) break;
+    const v1 = +e1.value || 0;
+    const v2 = +e2.value || 0;
+    if (v1 === 0 && v2 === 0) continue;  // skip empty sets
+    sets.push([v1, v2]);
+  }
+  if (sets.length === 0) { alert('Enter at least one set score.'); return; }
+
+  try {
+    await api(_scoreApiPath(ctx, true), {
+      method: 'POST', body: JSON.stringify({ match_id: matchId, sets })
+    });
+    await _rerenderCurrentViewPreserveDrafts();
+  } catch (e) { alert(e.message); }
+}
+
+async function startPlayoffs() {
+  try {
+    await api(`/api/tournaments/${currentTid}/gp/start-playoffs`, { method: 'POST' });
+    renderGP();
+  } catch (e) { alert(e.message); }
+}
+
+// ─── Render Mexicano ──────────────────────────────────────
+async function renderMex() {
+  const el = document.getElementById('view-content');
+  try {
+    const [status, matches] = await Promise.all([
+      api(`/api/tournaments/${currentTid}/mex/status`),
+      api(`/api/tournaments/${currentTid}/mex/matches`),
+    ]);
+
+    _totalPts = status.total_points_per_match || 0;
+    _mexPlayers = status.players || [];
+    _mexBreakdowns = matches.breakdowns || {};
+    _mexPlayerMap = {};
+    for (const p of _mexPlayers) _mexPlayerMap[p.id] = p.name;
+
+    let html = `<div class="refresh-row"><button class="btn btn-primary btn-sm" onclick="renderMex()">↻ Refresh</button></div>`;
+
+    // Phase-aware header
+    const isPlayoffs = status.phase === 'playoffs';
+    const isFinished = status.phase === 'finished';
+    const isRolling = status.rolling;
+    const mexicanoEnded = Boolean(status.mexicano_ended);
+    const mexRoundsDone = !isRolling && status.current_round >= status.num_rounds && matches.pending.length === 0;
+    const playoffsData = (isPlayoffs || isFinished)
+      ? await api(`/api/tournaments/${currentTid}/mex/playoffs`).catch(() => ({ matches: [], pending: [] }))
+      : { matches: [], pending: [] };
+    const hasPlayoffBracket = (playoffsData.matches || []).length > 0;
+
+    if (isPlayoffs) {
+      html += `<div class="alert alert-info">Phase: <span class="badge badge-phase">Mexicano Play-offs</span></div>`;
+    } else if (isFinished && hasPlayoffBracket) {
+      html += `<div class="alert alert-info">Tournament finished after play-offs.</div>`;
+    } else if (isFinished) {
+      html += `<div class="alert alert-info">Tournament finished from Mexicano standings (no play-offs).</div>`;
+    } else if (mexicanoEnded) {
+      html += `<div class="alert alert-info">Mexicano phase ended. Choose next step: start optional play-offs or finish as-is.</div>`;
+    } else if (isRolling) {
+      html += `<div class="alert alert-info">Mexicano Round ${status.current_round} <span class="badge badge-phase">Rolling</span></div>`;
+    } else {
+      html += `<div class="alert alert-info">Mexicano Round ${status.current_round} / ${status.num_rounds}${mexRoundsDone ? ' — <strong>Mexicano Rounds Complete! Ready for Play-offs.</strong>' : ''}</div>`;
+    }
+
+    if (status.champion) {
+      html += `<div class="alert alert-success">🏆 Champion: <strong>${esc(status.champion.join(', '))}</strong></div>`;
+    }
+
+    if (isFinished) {
+      html += `<div class="card">`;
+      html += `<h3>Export Outcome</h3>`;
+      html += `<label><input type="checkbox" id="export-include-history" checked> Include match history</label>`;
+      html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem">`;
+      html += `<button class="btn btn-primary" onclick="exportTournamentOutcome('html')">Export HTML</button>`;
+      html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="exportTournamentOutcome('pdf')">Export PDF</button>`;
+      html += `</div>`;
+      html += `</div>`;
+    }
+
+    if (isPlayoffs || hasPlayoffBracket) {
+      const pendingPo = (playoffsData.pending || []).filter(m => m.status !== 'completed');
+      html += _renderCourtAssignmentsCard(pendingPo, 'Court Assignments — Mexicano Play-offs');
+
+      html += `<div class="card">`;
+      html += `<h3>Play-offs Input Format</h3>`;
+      html += `<div class="score-mode-toggle">`;
+      html += `<button class="${_gpScoreMode['mex-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','points')">Points</button>`;
+      html += `<button class="${_gpScoreMode['mex-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','sets')">🎾 Sets</button>`;
+      html += `</div>`;
+      html += `</div>`;
+
+      html += _schemaCardHtml('mex-playoff-schema', 'Mexicano play-offs bracket', 'generateMexPlayoffSchema');
+
+      html += `<div class="card"><h2>Mexicano Play-off Bracket</h2>`;
+      for (const m of playoffsData.matches) {
+        html += matchRow(m, 'mex-playoff');
+      }
+      html += `</div>`;
+    } else {
+      html += _renderCourtAssignmentsCard(matches.current_matches, 'Court Assignments — Current Round');
+    }
+
+    // Leaderboard
+    html += `<div class="card"><h2>Leaderboard</h2>`;
+    const byAvg = status.leaderboard.length > 0 && status.leaderboard[0].ranked_by_avg;
+    const hTotal = byAvg ? 'Total Pts' : '<strong>Total Pts ↓</strong>';
+    const hAvg   = byAvg ? '<strong>Avg Pts ↓</strong>' : 'Avg Pts';
+    html += `<table><thead><tr><th>#</th><th>Player</th><th>${hTotal}</th><th>Played</th><th>W</th><th>D</th><th>L</th><th>${hAvg}</th></tr></thead><tbody>`;
+    for (const r of status.leaderboard) {
+      const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
+      const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
+      html += `<tr><td>${r.rank}</td><td>${esc(r.player)}</td><td>${totalCell}</td><td>${r.matches_played}</td><td>${r.wins || 0}</td><td>${r.draws || 0}</td><td>${r.losses || 0}</td><td>${avgCell}</td></tr>`;
+    }
+    html += `</tbody></table></div>`;
+
+    // Phase: Mexicano rounds
+    if (!(isPlayoffs || isFinished)) {
+      // Phase: Mexicano rounds
+      if (matches.current_matches.length > 0) {
+        html += `<div class="card"><h2>Current Round Matches</h2>`;
+        for (const m of matches.current_matches) {
+          html += matchRow(m, 'mex');
+        }
+        html += `</div>`;
+      }
+
+      // Next round / end / playoffs controls
+      const pending = matches.pending.length;
+      const canGenerateRound = isRolling || status.current_round < status.num_rounds;
+
+      if (pending === 0 && !mexicanoEnded && canGenerateRound) {
+        // Missed games / sit-out management panel
+        if (status.sit_out_count > 0 && status.missed_games) {
+          html += `<div class="card" id="mex-sitout-panel">`;
+          html += `<h3>🪑 Missed Games &amp; Sit-out Override</h3>`;
+          html += `<p style="color:var(--text-muted);font-size:0.82rem">Click a player to force them to sit out in the next round (${status.sit_out_count} must sit). Pairings regenerate automatically.</p>`;
+          html += `<div class="sitout-grid">`;
+          // Sort by most missed first
+          const mgList = Object.entries(status.missed_games)
+            .map(([id, d]) => ({id, name: d.name, sat_out: d.sat_out, played: d.matches_played}))
+            .sort((a, b) => b.sat_out - a.sat_out || a.played - b.played);
+          for (const mg of mgList) {
+            const forced = _forcedSitOuts.has(mg.id);
+            html += `<div class="sitout-item${forced ? ' forced' : ''}" onclick="_toggleForcedSitOut('${mg.id}', ${status.sit_out_count})">`;
+            html += `<span class="missed-badge">${mg.sat_out} missed</span>`;
+            html += `<span>${esc(mg.name)}</span>`;
+            html += `<span style="color:var(--text-muted);font-size:0.72rem">(${mg.played} played)</span>`;
+            html += `</div>`;
+          }
+          html += `</div>`;
+          html += `<div id="sitout-selection-info" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.5rem"></div>`;
+          html += `</div>`;
+        }
+
+        html += `<div id="mex-next-section">`;
+        html += `<button class="btn btn-success" onclick="proposeMexPairings()">⚡ Propose Next Round…</button>`;
+        if (status.current_round > 0) {
+          html += ` <button class="btn btn-primary" onclick="endMexicano()" style="margin-left:0.5rem">🛑 End Mexicano</button>`;
+        }
+        html += `</div>`;
+      } else if (pending > 0) {
+        html += `<div class="alert alert-info">${pending} match(es) remaining this round</div>`;
+      } else if (pending === 0 && !mexicanoEnded && !canGenerateRound) {
+        html += `<div id="mex-next-section">`;
+        html += `<button class="btn btn-primary" onclick="endMexicano()">🛑 End Mexicano</button>`;
+        html += `</div>`;
+      }
+
+      if (mexicanoEnded && !isPlayoffs && !isFinished) {
+        html += `<div id="mex-playoffs-section" class="card">`;
+        html += `<h3>Post-Mexicano Decision</h3>`;
+        html += `<p style="color:var(--text-muted);font-size:0.85rem">You can start optional play-offs, or finish the tournament with current leaderboard standings.</p>`;
+        html += `<div class="proposal-actions">`;
+        html += `<button class="btn btn-success" onclick="proposeMexPlayoffs()">🏆 Start Optional Play-offs…</button>`;
+        html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="finishMexicanoAsIs()">✓ Finish As-Is</button>`;
+        html += `</div>`;
+        html += `</div>`;
+      }
+
+      // History — grouped by round as collapsible accordion
+      if (matches.all_matches.length > matches.current_matches.length) {
+        html += `<div class="card"><h3>Previous Rounds</h3>`;
+        const prev = matches.all_matches.filter(m => !matches.current_matches.some(c => c.id === m.id));
+        // Group by round_number
+        const byRound = {};
+        for (const m of prev) {
+          const rn = m.round_number || 0;
+          if (!byRound[rn]) byRound[rn] = [];
+          byRound[rn].push(m);
+        }
+        // Sort rounds descending (most recent first)
+        const roundNums = Object.keys(byRound).map(Number).sort((a, b) => b - a);
+        for (let ri = 0; ri < roundNums.length; ri++) {
+          const rn = roundNums[ri];
+          const rMatches = byRound[rn];
+          const label = rMatches[0]?.round_label || `Round ${rn}`;
+          const openAttr = ri === 0 ? ' open' : '';
+          html += `<details class="round-group"${openAttr}>`;
+          html += `<summary>${esc(label)} — ${rMatches.length} match${rMatches.length > 1 ? 'es' : ''}</summary>`;
+          for (const m of rMatches) {
+            html += matchRow(m, 'mex');
+          }
+          html += `</details>`;
+        }
+        html += `</div>`;
+      }
+    }
+
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+function _renderCourtAssignmentsCard(matches, title) {
+  if (!matches || matches.length === 0) {
+    return `<div class="card"><h3>${esc(title)}</h3><em>No pending assignments.</em></div>`;
+  }
+
+  const byCourt = {};
+  for (const m of matches) {
+    const c = m.court || 'Unassigned';
+    if (!byCourt[c]) byCourt[c] = [];
+    byCourt[c].push(m);
+  }
+
+  const courtNames = Object.keys(byCourt).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  let html = `<div class="card"><h3>${esc(title)}</h3><div class="court-board">`;
+  for (const courtName of courtNames) {
+    html += `<div class="court-column">`;
+    html += `<div class="court-title">${esc(courtName)}</div>`;
+    byCourt[courtName].forEach((m, idx) => {
+      const t1 = (m.team1 || []).join(' & ') || 'TBD';
+      const t2 = (m.team2 || []).join(' & ') || 'TBD';
+      const r = m.round_label ? `<span class="court-round">${esc(m.round_label)}</span>` : '';
+      html += `<div class="court-match-item"><span class="court-slot">#${idx + 1}</span>${esc(t1)} <span style="color:var(--text-muted)">vs</span> ${esc(t2)}${r}</div>`;
+    });
+    html += `</div>`;
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+async function nextMexRound() {
+  try {
+    await api(`/api/tournaments/${currentTid}/mex/next-round`, { method: 'POST' });
+    renderMex();
+  } catch (e) { alert(e.message); }
+}
+
+// ─── Pairing proposal picker ──────────────────────────────
+let _selectedOptionId = null;
+let _currentPlayerStats = null;
+let _forcedSitOuts = new Set();
+let _currentPairingProposals = [];
+let _showRepeatDetails = false;
+let _mexProposalRequestedCount = 3;
+let _showExtraMexProposals = false;
+
+// ─── Sit-out override toggle ──────────────────────────────
+async function _toggleForcedSitOut(playerId, maxSitOuts) {
+  if (_forcedSitOuts.has(playerId)) {
+    _forcedSitOuts.delete(playerId);
+  } else {
+    if (_forcedSitOuts.size >= maxSitOuts) {
+      // Remove the first one added
+      const first = _forcedSitOuts.values().next().value;
+      _forcedSitOuts.delete(first);
+    }
+    _forcedSitOuts.add(playerId);
+  }
+  // Update visual state without full re-render
+  document.querySelectorAll('.sitout-item').forEach(el => {
+    const onclick = el.getAttribute('onclick');
+    const match = onclick && onclick.match(/_toggleForcedSitOut\('([^']+)'/);
+    if (match) {
+      el.classList.toggle('forced', _forcedSitOuts.has(match[1]));
+    }
+  });
+  const info = document.getElementById('sitout-selection-info');
+  if (info) {
+    if (_forcedSitOuts.size > 0) {
+      const names = [..._forcedSitOuts].map(id => {
+        const p = _mexPlayers.find(x => x.id === id);
+        return p ? p.name : id;
+      });
+      info.innerHTML = `<strong>Forced sit-out:</strong> ${esc(names.join(', '))} (${_forcedSitOuts.size}/${maxSitOuts})`;
+    } else {
+      info.innerHTML = `<em>No override — automatic selection</em>`;
+    }
+  }
+
+  const nextSection = document.getElementById('mex-next-section');
+  if (nextSection) {
+    nextSection.innerHTML = `<em style="color:var(--text-muted)">Updating proposals…</em>`;
+  }
+  try {
+    await proposeMexPairings(_mexProposalRequestedCount);
+  } catch (e) {
+    if (nextSection) {
+      nextSection.innerHTML = `<div class="alert alert-error">${esc(e.message || 'Failed to refresh proposals')}</div>`;
+    }
+  }
+}
+
+// ─── Edit completed match ─────────────────────────────────
+function _toggleEditMatch(matchId, ctx, s1, s2) {
+  const editDiv = document.getElementById('medit-' + matchId);
+  const scoreSpan = document.getElementById('mscore-' + matchId);
+  const editBtn = document.getElementById('medit-btn-' + matchId);
+  if (editDiv) {
+    editDiv.classList.remove('hidden');
+    document.getElementById('s1-' + matchId).value = s1;
+    document.getElementById('s2-' + matchId).value = s2;
+  }
+  if (scoreSpan) scoreSpan.classList.add('hidden');
+  if (editBtn) editBtn.classList.add('hidden');
+}
+
+function _cancelEditMatch(matchId) {
+  const editDiv = document.getElementById('medit-' + matchId);
+  const scoreSpan = document.getElementById('mscore-' + matchId);
+  const editBtn = document.getElementById('medit-btn-' + matchId);
+  if (editDiv) editDiv.classList.add('hidden');
+  if (scoreSpan) scoreSpan.classList.remove('hidden');
+  if (editBtn) editBtn.classList.remove('hidden');
+}
+
+async function proposeMexPairings(requestedCount = 3) {
+  try {
+    _mexProposalRequestedCount = requestedCount;
+    let url = `/api/tournaments/${currentTid}/mex/propose-pairings?n=${requestedCount}`;
+    if (_forcedSitOuts.size > 0) {
+      url += `&sit_out_ids=${[..._forcedSitOuts].join(',')}`;
+    }
+    const data = await api(url);
+    const proposals = data.proposals;
+    _currentPairingProposals = proposals;
+    _currentPlayerStats = data.player_stats || null;
+    _selectedOptionId = (proposals.find(p => p.recommended) || proposals[0])?.option_id || null;
+
+    // Replace only the next-section div so the rest of the view stays intact
+    const section = document.getElementById('mex-next-section');
+    if (section) {
+      section.innerHTML = _renderProposalPicker(proposals);
+    }
+  } catch (e) { alert(e.message); }
+}
+
+async function _loadMoreMexPairings() {
+  const previousSelected = _selectedOptionId;
+  await proposeMexPairings(10);
+  if (previousSelected && _currentPairingProposals.some(p => p.option_id === previousSelected)) {
+    _selectedOptionId = previousSelected;
+  }
+  _showExtraMexProposals = true;
+  const section = document.getElementById('mex-next-section');
+  if (section && _currentPairingProposals.length > 0) {
+    section.innerHTML = _renderProposalPicker(_currentPairingProposals);
+  }
+}
+
+function _toggleExtraMexProposals() {
+  _showExtraMexProposals = !_showExtraMexProposals;
+  const section = document.getElementById('mex-next-section');
+  if (section && _currentPairingProposals.length > 0) {
+    section.innerHTML = _renderProposalPicker(_currentPairingProposals);
+  }
+}
+
+function _renderProposalPicker(proposals) {
+  let html = `<div class="card">`;
+  html += `<h2>Choose Pairings for Next Round</h2>`;
+  html += `<div class="proposal-display-controls">`;
+
+  if (_currentPlayerStats) {
+    html += `<details class="proposal-display-history">`;
+    html += `<summary>Player Match History</summary>`;
+    html += `<div id="stats-panel">${_renderPlayerStats(_currentPlayerStats)}</div>`;
+    html += `</details>`;
+  }
+
+  html += `<label class="proposal-display-toggle"><input type="checkbox" ${_showRepeatDetails ? 'checked' : ''} onchange="_toggleRepeatDetails(this.checked)"> Show per-player repeat details</label>`;
+  html += `</div>`;
+
+  const bestOption = proposals.find(p => p.recommended) || proposals[0] || null;
+  const allAlternatives = proposals
+    .filter(p => !bestOption || p.option_id !== bestOption.option_id);
+
+  const proposalLabelNumber = (proposal) => {
+    const match = String(proposal?.label || '').match(/(\d+)\s*$/);
+    return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+  };
+
+  const sortByLabelNumber = (left, right) => {
+    const numDiff = proposalLabelNumber(left) - proposalLabelNumber(right);
+    if (numDiff !== 0) return numDiff;
+    return String(left.label || '').localeCompare(String(right.label || ''));
+  };
+
+  const allBalancedOptions = allAlternatives.filter(p => p.strategy === 'balanced').sort(sortByLabelNumber);
+  const allSeededOptions = allAlternatives.filter(p => p.strategy === 'seeded').sort(sortByLabelNumber);
+
+  let balancedOptions = allBalancedOptions;
+  let seededOptions = allSeededOptions;
+  if (!_showExtraMexProposals) {
+    let remaining = 5;
+    balancedOptions = allBalancedOptions.slice(0, remaining);
+    remaining -= balancedOptions.length;
+    seededOptions = allSeededOptions.slice(0, Math.max(0, remaining));
+  }
+
+  const shownAlternatives = balancedOptions.length + seededOptions.length;
+  const hiddenAlternatives = Math.max(0, allAlternatives.length - shownAlternatives);
+  const hasLoadedMore = _mexProposalRequestedCount >= 10;
+
+  const renderProposalCard = (p) => {
+    const fmt2 = (value) => {
+      const num = Number(value);
+      return Number.isFinite(num) ? num.toFixed(2) : '0.00';
+    };
+    const sel = p.option_id === _selectedOptionId;
+    let card = `<div class="proposal-card${sel ? ' selected' : ''}" onclick="_selectProposal('${p.option_id}')">`;
+    card += `<div class="proposal-card-header">`;
+    card += `<h4>${esc(p.label)}</h4>`;
+    if (p.strategy === 'seeded') {
+      card += `<span class="badge badge-scheduled">Seeded</span>`;
+    }
+    if (p.recommended) card += `<span class="badge badge-best">★ Best</span>`;
+    card += `</div>`;
+    card += `<div class="proposal-metrics">`;
+    card += `⚖️ Score gap: <strong>${fmt2(p.score_imbalance)} pts</strong><br>`;
+    const repLabel = p.repeat_count === 0
+      ? '✅ No repeated match-ups'
+      : `⚠️ ${p.repeat_count} repeat(s)`;
+    card += `${repLabel}`;
+    if ((p.exact_prev_round_repeats || 0) > 0) {
+      card += `<br>🔁 Exact rematch from previous round in ${p.exact_prev_round_repeats} match(es) — avoid if possible`;
+    }
+    if ((p.skill_gap_violations || 0) > 0) {
+      const excess = fmt2(p.skill_gap_worst_excess || 0);
+      card += `<br>🚫 Skill-gap violation in ${p.skill_gap_violations} group(s) (worst +${excess})`;
+    }
+    if (p.sit_out_names && p.sit_out_names.length > 0) {
+      card += `<br>🪑 Sitting out: <em>${esc(p.sit_out_names.join(', '))}</em>`;
+    }
+    card += `</div>`;
+
+    for (const m of p.matches) {
+      const t1 = m.team1_names.join(' & ');
+      const t2 = m.team2_names.join(' & ');
+      const court = m.court_name ? ` <span class="court-tag">[${esc(m.court_name)}]</span>` : '';
+      card += `<div class="proposal-match">${esc(t1)} <span style="color:var(--text-muted)">vs</span> ${esc(t2)}${court}</div>`;
+    }
+
+    // Per-person repeat details
+    if (_showRepeatDetails && p.per_person_repeats && p.repeat_count > 0) {
+      card += `<div class="repeat-detail">`;
+      for (const [name, detail] of Object.entries(p.per_person_repeats)) {
+        const parts = [];
+        for (const pr of (detail.partner_repeats || [])) {
+          parts.push(`partner ${pr.player} ×${pr.count}`);
+        }
+        for (const or_ of (detail.opponent_repeats || [])) {
+          parts.push(`vs ${or_.player} ×${or_.count}`);
+        }
+        if (parts.length > 0) {
+          card += `<span class="rp-name">${esc(name)}</span>: ${parts.join(', ')}<br>`;
+        }
+      }
+      card += `</div>`;
+    }
+
+    card += `</div>`;
+    return card;
+  };
+
+  if (bestOption) {
+    html += `<h3 style="margin-top:0.2rem">Best</h3>`;
+    html += `<p style="margin:0.1rem 0 0.5rem;color:var(--text-muted);font-size:0.82rem">Top recommended option based on skill-gap compliance, score gap, and repeats.</p>`;
+    html += `<div class="proposal-cards">`;
+    html += renderProposalCard(bestOption);
+    html += `</div>`;
+  }
+
+  if (allAlternatives.length > 0) {
+    html += `<div class="proposal-section-row">`;
+    html += `<h3>Alternatives</h3>`;
+    html += `<div class="proposal-inline-actions">`;
+    if (!hasLoadedMore) {
+      html += `<button class="proposal-inline-action" type="button" onclick="_loadMoreMexPairings()">⬇ Load more combos (up to 10)</button>`;
+    }
+    if (hiddenAlternatives > 0 || hasLoadedMore) {
+      const arrow = _showExtraMexProposals ? '▾' : '▸';
+      const suffix = hiddenAlternatives > 0 ? ` (${hiddenAlternatives})` : '';
+      html += `<button class="proposal-inline-action" type="button" onclick="_toggleExtraMexProposals()">${arrow} More combinations${suffix}</button>`;
+    }
+    html += `</div>`;
+    html += `</div>`;
+  }
+
+  if (balancedOptions.length > 0) {
+    html += `<h3 style="margin-top:0.3rem">Balanced</h3>`;
+    html += `<p style="margin:0.1rem 0 0.5rem;color:var(--text-muted);font-size:0.82rem">Focuses on minimizing score gap and repeats while respecting constraints.</p>`;
+    html += `<div class="proposal-cards">`;
+    for (const p of balancedOptions) {
+      html += renderProposalCard(p);
+    }
+    html += `</div>`;
+  }
+
+  if (seededOptions.length > 0 || _showExtraMexProposals) {
+    html += `<h3 style="margin-top:0.4rem">Seeded</h3>`;
+    html += `<p style="margin:0.1rem 0 0.5rem;color:var(--text-muted);font-size:0.82rem">Focuses on a stricted separation by the current ranking.</p>`;
+    if (seededOptions.length > 0) {
+      html += `<div class="proposal-cards">`;
+      for (const p of seededOptions) {
+        html += renderProposalCard(p);
+      }
+      html += `</div>`;
+    } else {
+      html += `<p style="margin:0.1rem 0 0.5rem;color:var(--text-muted);font-size:0.82rem"><em>No seeded alternatives available for this expansion.</em></p>`;
+    }
+  }
+
+  html += `<div class="proposal-actions">`;
+  html += `<button class="btn btn-success" onclick="_confirmMexRound()">✓ Confirm Selection</button>`;
+  html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="renderMex()">✕ Cancel</button>`;
+  html += ` <button class="btn" style="background:var(--text-muted);color:#fff" onclick="_showManualEditor()">✏️ Manual Override</button>`;
+  html += `</div>`;
+  html += `</div>`; // .card
+  return html;
+}
+
+function _toggleRepeatDetails(show) {
+  _showRepeatDetails = Boolean(show);
+  const section = document.getElementById('mex-next-section');
+  if (section && _currentPairingProposals.length > 0) {
+    section.innerHTML = _renderProposalPicker(_currentPairingProposals);
+  }
+}
+
+function _selectProposal(optionId) {
+  _selectedOptionId = optionId;
+  document.querySelectorAll('.proposal-card').forEach(c => {
+    c.classList.toggle('selected', c.getAttribute('onclick') === `_selectProposal('${optionId}')`);
+  });
+}
+
+async function _confirmMexRound() {
+  if (!_selectedOptionId) { alert('Select a pairing option first.'); return; }
+  try {
+    await api(`/api/tournaments/${currentTid}/mex/next-round`, {
+      method: 'POST',
+      body: JSON.stringify({ option_id: _selectedOptionId }),
+    });
+    _selectedOptionId = null;
+    _currentPlayerStats = null;
+    renderMex();
+  } catch (e) { alert(e.message); }
+}
+
+// ─── Manual pairing editor ───────────────────────────────
+let _manualMatchCount = 0;
+
+function _showManualEditor() {
+  const section = document.getElementById('mex-next-section');
+  if (!section) return;
+
+  const numCourts = Math.floor(_mexPlayers.length / 4);
+  _manualMatchCount = numCourts;
+
+  let html = `<div class="card">`;
+  html += `<h2>✏️ Manual Pairing Editor</h2>`;
+  html += `<p style="color:var(--text-muted);font-size:0.85rem">Assign players to teams using the dropdowns. Players not assigned to any match will sit out.</p>`;
+
+  html += `<div id="manual-matches">`;
+  for (let i = 0; i < numCourts; i++) {
+    html += _renderManualMatch(i);
+  }
+  html += `</div>`;
+
+  html += `<div style="margin: 0.5rem 0; display:flex; gap:0.5rem; flex-wrap:wrap">`;
+  html += `<button class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_addManualMatch()">+ Add Match</button>`;
+  html += `<button class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_removeManualMatch()">− Remove Match</button>`;
+  html += `</div>`;
+
+  html += `<div id="manual-sitout" style="margin:0.5rem 0; font-size:0.85rem; color:var(--text-muted)"></div>`;
+
+  html += `<div class="proposal-actions">`;
+  html += `<button class="btn btn-success" onclick="_commitManualRound()">✓ Commit Manual Round</button>`;
+  html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="proposeMexPairings()">← Back to Proposals</button>`;
+  html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="renderMex()">✕ Cancel</button>`;
+  html += `</div>`;
+  html += `</div>`;
+
+  section.innerHTML = html;
+  _updateManualSitout();
+}
+
+function _renderManualMatch(idx) {
+  const opts = _mexPlayers.map(p =>
+    `<option value="${p.id}">${esc(p.name)}</option>`
+  ).join('');
+  const blank = `<option value="">— pick —</option>`;
+  return `<div class="manual-match-row" style="margin-bottom:0.6rem; padding:0.5rem; border:1px solid var(--border); border-radius:6px;">
+    <strong>Match ${idx + 1}</strong>
+    <div style="display:flex; gap:0.3rem; flex-wrap:wrap; margin-top:0.3rem; align-items:center">
+      <select class="manual-sel" data-match="${idx}" data-slot="t1a" onchange="_updateManualSitout()">${blank}${opts}</select>
+      <span>&amp;</span>
+      <select class="manual-sel" data-match="${idx}" data-slot="t1b" onchange="_updateManualSitout()">${blank}${opts}</select>
+      <span style="margin:0 0.3rem; color:var(--text-muted)">vs</span>
+      <select class="manual-sel" data-match="${idx}" data-slot="t2a" onchange="_updateManualSitout()">${blank}${opts}</select>
+      <span>&amp;</span>
+      <select class="manual-sel" data-match="${idx}" data-slot="t2b" onchange="_updateManualSitout()">${blank}${opts}</select>
+    </div>
+  </div>`;
+}
+
+function _addManualMatch() {
+  _manualMatchCount++;
+  const container = document.getElementById('manual-matches');
+  container.insertAdjacentHTML('beforeend', _renderManualMatch(_manualMatchCount - 1));
+  _updateManualSitout();
+}
+
+function _removeManualMatch() {
+  if (_manualMatchCount <= 1) return;
+  _manualMatchCount--;
+  const container = document.getElementById('manual-matches');
+  container.removeChild(container.lastElementChild);
+  _updateManualSitout();
+}
+
+function _updateManualSitout() {
+  const used = new Set();
+  document.querySelectorAll('.manual-sel').forEach(sel => {
+    if (sel.value) used.add(sel.value);
+  });
+  const sitting = _mexPlayers.filter(p => !used.has(p.id));
+  const el = document.getElementById('manual-sitout');
+  if (el) {
+    if (sitting.length > 0) {
+      el.innerHTML = `🪑 Sitting out: <em>${esc(sitting.map(p => p.name).join(', '))}</em>`;
+    } else {
+      el.innerHTML = `All players assigned.`;
+    }
+  }
+}
+
+async function _commitManualRound() {
+  // Gather selections
+  const matches = [];
+  const allUsed = new Set();
+  const errors = [];
+
+  for (let i = 0; i < _manualMatchCount; i++) {
+    const get = (slot) => {
+      const sel = document.querySelector(`.manual-sel[data-match="${i}"][data-slot="${slot}"]`);
+      return sel ? sel.value : '';
+    };
+    const t1a = get('t1a'), t1b = get('t1b'), t2a = get('t2a'), t2b = get('t2b');
+    const ids = [t1a, t1b, t2a, t2b];
+
+    if (ids.some(id => !id)) {
+      errors.push(`Match ${i + 1}: all 4 player slots must be filled`);
+      continue;
+    }
+    for (const id of ids) {
+      if (allUsed.has(id)) {
+        const name = _mexPlayers.find(p => p.id === id)?.name || id;
+        errors.push(`${name} is assigned to multiple matches`);
+      }
+      allUsed.add(id);
+    }
+
+    matches.push({ team1_ids: [t1a, t1b], team2_ids: [t2a, t2b] });
+  }
+
+  if (errors.length > 0) {
+    alert(errors.join('\\n'));
+    return;
+  }
+
+  try {
+    await api(`/api/tournaments/${currentTid}/mex/custom-round`, {
+      method: 'POST',
+      body: JSON.stringify({ matches }),
+    });
+    renderMex();
+  } catch (e) { alert(e.message); }
+}
+
+function _renderPlayerStats(stats) {
+  const names = Object.keys(stats).sort();
+  let opts = names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  let html = `<h4>Partner &amp; Opponent History</h4>`;
+  html += `<div class="player-stats-dropdown">`;
+  html += `<select onchange="_showPlayerDetail(this.value)" id="stats-player-select"><option value="">— select player —</option>${opts}</select>`;
+  html += `</div>`;
+  html += `<div id="stats-player-detail"></div>`;
+  return html;
+}
+
+function _showPlayerDetail(name) {
+  const el = document.getElementById('stats-player-detail');
+  if (!el || !name || !_currentPlayerStats || !_currentPlayerStats[name]) {
+    if (el) el.innerHTML = '';
+    return;
+  }
+  const data = _currentPlayerStats[name];
+  const partnerList = data.partners.map(x => `${esc(x.player)} (×${x.count})`).join(', ') || 'none yet';
+  const opponentList = data.opponents.map(x => `${esc(x.player)} (×${x.count})`).join(', ') || 'none yet';
+  el.innerHTML = `<div class="player-stats-detail">
+    <div class="stat-row"><span class="stat-label">Partners:</span> ${partnerList}</div>
+    <div class="stat-row"><span class="stat-label">Opponents:</span> ${opponentList}</div>
+    <div class="stat-row"><span class="stat-label">Partner repeats:</span> ${data.total_partner_repeats}</div>
+    <div class="stat-row"><span class="stat-label">Opponent repeats:</span> ${data.total_opponent_repeats}</div>
+  </div>`;
+}
+
+// ─── Mexicano Playoffs ───────────────────────────────
+let _playoffTeams = [];
+let _mexPlayoffTeamCount = 4;
+
+async function proposeMexPlayoffs(teamCount = null) {
+  try {
+    const maxTeams = Math.max(2, Math.floor((_mexPlayers || []).length / 2));
+    const requestedTeams = Math.max(2, Math.min(maxTeams, Number(teamCount || _mexPlayoffTeamCount || 4)));
+    _mexPlayoffTeamCount = requestedTeams;
+    const participantsToRecommend = requestedTeams * 2;
+    const data = await api(`/api/tournaments/${currentTid}/mex/recommend-playoffs?n_teams=${participantsToRecommend}`);
+    _playoffTeams = data.recommended_teams.map(t => ({ id: t.player_id, name: t.player }));
+    const section = document.getElementById('mex-playoffs-section') || document.getElementById('mex-next-section');
+    if (section) {
+      section.innerHTML = _renderPlayoffEditor();
+    }
+  } catch (e) { alert(e.message); }
+}
+
+async function _changeMexPlayoffTeamCount(value) {
+  await proposeMexPlayoffs(Number(value));
+}
+
+async function endMexicano() {
+  try {
+    await api(`/api/tournaments/${currentTid}/mex/end`, { method: 'POST' });
+    renderMex();
+  } catch (e) { alert(e.message); }
+}
+
+async function finishMexicanoAsIs() {
+  try {
+    await api(`/api/tournaments/${currentTid}/mex/finish`, { method: 'POST' });
+    renderMex();
+  } catch (e) { alert(e.message); }
+}
+
+function _renderPlayoffEditor() {
+  let html = `<div class="card">`;
+  html += `<h2>Configure Mexicano Play-offs</h2>`;
+  html += `<p style="color:var(--text-muted);font-size:0.85rem">Each team is one row. Pick both players from participants below (defaults are preselected by seed order).</p>`;
+
+  const maxTeams = Math.max(2, Math.floor((_mexPlayers || []).length / 2));
+  html += `<div class="inline-group" style="margin-bottom:0.75rem">`;
+  html += `<div class="form-group"><label>Teams participating</label><select id="playoff-team-count" onchange="_changeMexPlayoffTeamCount(this.value)">`;
+  for (let teams = 2; teams <= maxTeams; teams++) {
+    const selected = teams === _mexPlayoffTeamCount ? ' selected' : '';
+    html += `<option value="${teams}"${selected}>${teams} teams</option>`;
+  }
+  html += `</select></div>`;
+  html += `</div>`;
+
+  const participantOptions = (selectedId) => {
+    let options = `<option value="">— pick —</option>`;
+    for (let i = 0; i < _playoffTeams.length; i++) {
+      const p = _playoffTeams[i];
+      const selected = p.id === selectedId ? ' selected' : '';
+      options += `<option value="${p.id}"${selected}>#${i + 1} ${esc(p.name)}</option>`;
+    }
+    return options;
+  };
+
+  const teamCount = Math.floor(_playoffTeams.length / 2);
+  html += `<div class="playoff-team-list">`;
+  for (let i = 0; i < teamCount; i++) {
+    const leftDefault = _playoffTeams[i * 2]?.id || '';
+    const rightDefault = _playoffTeams[i * 2 + 1]?.id || '';
+    html += `<div class="playoff-team-item" style="align-items:center; gap:0.6rem; flex-wrap:wrap">`;
+    html += `<span class="seed" style="min-width:58px">Team ${i + 1}</span>`;
+    html += `<select id="playoff-team-${i}-a" class="manual-sel" style="min-width:220px">${participantOptions(leftDefault)}</select>`;
+    html += `<span style="color:var(--text-muted)">+</span>`;
+    html += `<select id="playoff-team-${i}-b" class="manual-sel" style="min-width:220px">${participantOptions(rightDefault)}</select>`;
+    html += `</div>`;
+  }
+  html += `</div>`;
+  html += `<div class="inline-group" style="margin-bottom:0.75rem">`;
+  html += `<div class="form-group"><label>Format</label><select id="playoff-format"><option value="single">Single Elimination</option><option value="double">Double Elimination</option></select></div>`;
+  html += `</div>`;
+  html += `<div class="proposal-actions">`;
+  html += `<button class="btn btn-success" onclick="_startMexPlayoffs()">✓ Start Mexicano Play-offs</button>`;
+  html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="renderMex()">✕ Cancel</button>`;
+  html += `</div>`;
+  html += `</div>`;
+  return html;
+}
+
+async function _startMexPlayoffs() {
+  const teamIds = [];
+  const used = new Set();
+  const teamCount = Math.floor(_playoffTeams.length / 2);
+  for (let i = 0; i < teamCount; i++) {
+    const left = document.getElementById(`playoff-team-${i}-a`)?.value || '';
+    const right = document.getElementById(`playoff-team-${i}-b`)?.value || '';
+
+    if (!left || !right) {
+      alert(`Team ${i + 1}: select both players.`);
+      return;
+    }
+    if (left === right) {
+      alert(`Team ${i + 1}: players must be different.`);
+      return;
+    }
+    if (used.has(left) || used.has(right)) {
+      alert(`A player is assigned to multiple teams. Please fix duplicates.`);
+      return;
+    }
+    used.add(left);
+    used.add(right);
+    teamIds.push(left, right);
+  }
+  const fmt = document.getElementById('playoff-format')?.value || 'single';
+  try {
+    await api(`/api/tournaments/${currentTid}/mex/start-playoffs`, {
+      method: 'POST',
+      body: JSON.stringify({
+        team_player_ids: teamIds,
+        double_elimination: fmt === 'double',
+      }),
+    });
+    _playoffTeams = [];
+    renderMex();
+  } catch (e) { alert(e.message); }
+}
+
+// ─── Team Mode toggle ────────────────────────────────
+function toggleMexTeamMode() { toggleTeamMode('mex-team-mode', 'mex-players-label'); }
+
+// ─── Rolling Mode toggle ────────────────────────────────
+function toggleMexRolling() {
+  const chk = document.getElementById('mex-rolling');
+  const roundsInput = document.getElementById('mex-rounds');
+  roundsInput.disabled = chk.checked;
+  roundsInput.style.opacity = chk.checked ? '0.4' : '1';
+}
+
+function _export_include_history() {
+  const input = document.getElementById('export-include-history');
+  return input ? Boolean(input.checked) : true;
+}
+
+function _format_match_score(m) {
+  if (m.sets && m.sets.length > 0) {
+    return m.sets.map(s => `${s[0]}-${s[1]}`).join(', ');
+  }
+  if (m.score && m.score.length === 2) {
+    return `${m.score[0]}-${m.score[1]}`;
+  }
+  return '—';
+}
+
+function _report_table(headers, rows) {
+  const thead = `<tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr>`;
+  const tbody = rows.map(row => `<tr>${row.map(c => `<td>${esc(String(c))}</td>`).join('')}</tr>`).join('');
+  return `<table><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+}
+
+function _build_report_document(title, bodyHtml) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${esc(title)}</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; margin: 24px; color: #1f2937; }
+    h1 { margin: 0 0 8px; }
+    h2 { margin: 24px 0 8px; color: #1d4ed8; }
+    .muted { color: #6b7280; font-size: 0.92rem; margin-bottom: 16px; }
+    .champ { margin: 12px 0 18px; padding: 10px; background: #ecfdf5; border: 1px solid #86efac; border-radius: 6px; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; }
+    th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; font-size: 0.9rem; }
+    th { background: #f3f4f6; }
+  </style>
+</head>
+<body>${bodyHtml}</body>
+</html>`;
+}
+
+function _download_text_file(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
+function _open_printable_pdf(htmlDoc) {
+  const w = window.open('', '_blank');
+  if (!w) {
+    alert('Popup blocked. Allow popups to export PDF.');
+    return;
+  }
+  w.document.open();
+  w.document.write(htmlDoc);
+  w.document.close();
+  setTimeout(() => w.print(), 250);
+}
+
+async function exportTournamentOutcome(format) {
+  if (!currentTid || !currentType) return;
+  const includeHistory = _export_include_history();
+  const now = new Date().toLocaleString();
+  const name = currentTournamentName || `Tournament ${currentTid}`;
+
+  try {
+    let body = `<h1>${esc(name)} — Results</h1>`;
+    body += `<div class="muted">Generated: ${esc(now)}</div>`;
+
+    if (currentType === 'group_playoff') {
+      const [status, groups, playoffs] = await Promise.all([
+        api(`/api/tournaments/${currentTid}/gp/status`),
+        api(`/api/tournaments/${currentTid}/gp/groups`),
+        api(`/api/tournaments/${currentTid}/gp/playoffs`).catch(() => ({ matches: [] })),
+      ]);
+
+      if (status.champion) {
+        body += `<div class="champ">🏆 Champion: <strong>${esc(status.champion.join(', '))}</strong></div>`;
+      }
+
+      body += `<h2>Group Standings</h2>`;
+      for (const [gName, rows] of Object.entries(groups.standings || {})) {
+        body += `<h3>Group ${esc(gName)}</h3>`;
+        body += _report_table(
+          ['Player', 'Played', 'W', 'D', 'L', 'PF', 'PA', 'Diff', 'Pts'],
+          rows.map(r => [r.player, r.played, r.wins, r.draws, r.losses, r.points_for, r.points_against, r.point_diff, r.match_points]),
+        );
+      }
+
+      if (includeHistory) {
+        body += `<h2>Group Match History</h2>`;
+        const gMatches = Object.values(groups.matches || {}).flat();
+        body += _report_table(
+          ['Round', 'Team 1', 'Team 2', 'Score', 'Status', 'Court'],
+          gMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.status || '', m.court || '']),
+        );
+
+        body += `<h2>Play-off Match History</h2>`;
+        const pMatches = playoffs?.matches || [];
+        body += _report_table(
+          ['Round', 'Team 1', 'Team 2', 'Score', 'Status', 'Court'],
+          pMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.status || '', m.court || '']),
+        );
+      }
+    } else {
+      const [status, matches, playoffs] = await Promise.all([
+        api(`/api/tournaments/${currentTid}/mex/status`),
+        api(`/api/tournaments/${currentTid}/mex/matches`),
+        api(`/api/tournaments/${currentTid}/mex/playoffs`).catch(() => ({ matches: [] })),
+      ]);
+
+      if (status.champion) {
+        body += `<div class="champ">🏆 Champion: <strong>${esc(status.champion.join(', '))}</strong></div>`;
+      }
+
+      body += `<h2>Leaderboard</h2>`;
+      body += _report_table(
+        ['Rank', 'Player', 'Total Pts', 'Played', 'W', 'D', 'L', 'Avg Pts'],
+        (status.leaderboard || []).map(r => [r.rank, r.player, r.total_points, r.matches_played, r.wins || 0, r.draws || 0, r.losses || 0, r.avg_points]),
+      );
+
+      if (includeHistory) {
+        body += `<h2>Mexicano Round History</h2>`;
+        body += _report_table(
+          ['Round', 'Team 1', 'Team 2', 'Score', 'Status', 'Court'],
+          (matches.all_matches || []).map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.status || '', m.court || '']),
+        );
+
+        const playoffMatches = playoffs.matches || [];
+        if (playoffMatches.length > 0) {
+          body += `<h2>Play-off Match History</h2>`;
+          body += _report_table(
+            ['Round', 'Team 1', 'Team 2', 'Score', 'Status', 'Court'],
+            playoffMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.status || '', m.court || '']),
+          );
+        }
+      }
+    }
+
+    const htmlDoc = _build_report_document(`${name} Results`, body);
+    const slug = String(name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'tournament';
+
+    if (format === 'pdf') {
+      _open_printable_pdf(htmlDoc);
+    } else {
+      _download_text_file(`${slug}-results.html`, htmlDoc, 'text/html;charset=utf-8');
+    }
+  } catch (e) {
+    alert(`Export failed: ${e.message}`);
+  }
+}
+
+// ─── Utils ────────────────────────────────────────────────
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// Init
+initTheme();
+updateActiveTournamentUI();
+setCreateMode('gp');
+loadTournaments();
+</script>
+</body>
+</html>
