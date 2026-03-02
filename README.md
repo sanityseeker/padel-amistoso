@@ -8,7 +8,7 @@ Two tournament formats are supported:
 | **Group + Play-off** | Round-robin group stage → single or double-elimination bracket |
 | **Mexicano + Play-offs** | Rating-based pairing each round, fixed total points per match, with optional seeded play-offs |
 
-**Live demo:** [padel-tournament-manager.onrender.com](https://padel-tournament-manager.onrender.com) — login with `admin` / `admin`
+**Live demo:** [padel-amistoso.onrender.com](https://padel-amistoso.onrender.com) — login with `admin` / `admin`
 > Free tier -- app may take ~30 seconds to wake up after inactivity. Data resets on restart. **DO NOT use for actual tournaments!**
 
 ---
