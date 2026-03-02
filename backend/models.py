@@ -84,6 +84,12 @@ class Match:
     status: MatchStatus = MatchStatus.SCHEDULED
     score: tuple[int, int] | None = None
     sets: list[tuple[int, int]] | None = None  # Tennis format: [(6,4),(3,6),(7,5)]
+    # True when total games were tied and the 3rd set decided the winner.
+    # In group stage standings the losing team receives 1 consolation match point.
+    third_set_loss: bool = False
+    # Index of the concurrent "time slot" this match belongs to (0-based).
+    # Matches sharing the same slot_number are played simultaneously on different courts.
+    slot_number: int = 0
     round_number: int = 0
     round_label: str = ""
 
@@ -117,13 +123,14 @@ class GroupStanding:
     wins: int = 0
     draws: int = 0
     losses: int = 0
+    third_set_losses: int = 0
     points_for: int = 0
     points_against: int = 0
 
     @property
     def match_points(self) -> int:
-        """3 pts for win, 1 for draw, 0 for loss."""
-        return self.wins * 3 + self.draws * 1
+        """3 pts for win, 1 for draw or 3rd-set loss, 0 for regular loss."""
+        return self.wins * 3 + self.draws * 1 + self.third_set_losses * 1
 
     @property
     def point_diff(self) -> int:

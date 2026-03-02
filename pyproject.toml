@@ -1,5 +1,5 @@
 [project]
-name = "padel-code"
+name = "padel-amistoso"
 version = "0.1.0"
 description = "Padel tournament manager — group+playoff and Mexicano formats"
 readme = "README.md"

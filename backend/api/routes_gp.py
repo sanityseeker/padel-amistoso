@@ -7,12 +7,11 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import Response
 
 from ..models import Court, Player, TournamentType
 from ..tournaments import GroupPlayoffTournament
 from ..viz import render_playoff_schema
-from .helpers import _get_tournament, _serialize_match, _tennis_sets_to_scores
+from .helpers import _get_tournament, _serialize_match, _tennis_sets_to_scores, _build_match_labels, _schema_image_response
 from .schemas import (
     CreateGroupPlayoffRequest,
     RecordScoreRequest,
@@ -85,9 +84,14 @@ async def gp_record_group_tennis(tid: str, req: RecordTennisScoreRequest):
     """Record a group match using tennis-style set scores.
     Score = sum of game differences across all sets."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
-    total1, total2, sets_tuples = _tennis_sets_to_scores(req.sets)
+    total1, total2, sets_tuples, third_set_decided = _tennis_sets_to_scores(req.sets)
     try:
-        t.record_group_result(req.match_id, (total1, total2), sets=sets_tuples)
+        t.record_group_result(
+            req.match_id,
+            (total1, total2),
+            sets=sets_tuples,
+            third_set_loss=third_set_decided,
+        )
     except (KeyError, RuntimeError) as e:
         raise HTTPException(400, str(e))
     _save_state()
@@ -95,6 +99,7 @@ async def gp_record_group_tennis(tid: str, req: RecordTennisScoreRequest):
         "ok": True,
         "score": [total1, total2],
         "sets": [list(s) for s in sets_tuples],
+        "third_set_decided": third_set_decided,
     }
 
 
@@ -127,6 +132,7 @@ async def gp_playoffs_schema(
     box_scale: float = Query(1.0, ge=0.3, le=3.0),
     line_width: float = Query(1.0, ge=0.3, le=5.0),
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
+    title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
 ):
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     if t.playoff_bracket is None:
@@ -141,19 +147,15 @@ async def gp_playoffs_schema(
     img = render_playoff_schema(
         participant_names=participant_names,
         elimination="double" if t.double_elimination else "single",
+        match_labels=_build_match_labels(t.playoff_bracket),
         title=title,
         fmt=fmt,
         box_scale=box_scale,
         line_width=line_width,
         arrow_scale=arrow_scale,
+        title_font_scale=title_font_scale,
     )
-
-    media = {
-        "png": "image/png",
-        "svg": "image/svg+xml",
-        "pdf": "application/pdf",
-    }
-    return Response(content=img, media_type=media[fmt])
+    return _schema_image_response(img, fmt)
 
 
 @router.post("/{tid}/gp/record-playoff")
@@ -171,7 +173,7 @@ async def gp_record_playoff(tid: str, req: RecordScoreRequest):
 async def gp_record_playoff_tennis(tid: str, req: RecordTennisScoreRequest):
     """Record a playoff match using tennis-style set scores."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
-    total1, total2, sets_tuples = _tennis_sets_to_scores(req.sets)
+    total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
     try:
         t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)
     except (KeyError, RuntimeError, ValueError) as e:

@@ -67,61 +67,14 @@ class GroupPlayoffTournament:
         self._phase = GPPhase.GROUPS
 
     def _assign_group_courts(self) -> None:
-        """Distribute courts across groups, respecting dedicated + shared pools.
+        """Assign courts across all group matches using the global greedy algorithm.
 
-        Each group gets a contiguous block of courts (``total // num_groups``).
-        Remainder courts are shared between groups but never assigned to two
-        groups in the same concurrent slot.  Falls back to global sharing when
-        there are fewer courts than groups.
+        All group-stage matches are pooled together and assigned via
+        ``assign_courts``, which greedily fills every available court in each
+        time slot while ensuring no participant plays two matches
+        simultaneously and balancing court exposure across participants.
         """
-        n_groups = max(len(self.groups), 1)
-        courts_per_group = len(self.courts) // n_groups
-
-        if courts_per_group <= 0:
-            assign_courts(self.all_group_matches(), self.courts)
-            return
-
-        dedicated: list[list[Court]] = [
-            self.courts[gi * courts_per_group : (gi + 1) * courts_per_group] for gi in range(n_groups)
-        ]
-        shared = self.courts[courts_per_group * n_groups :]
-
-        if not shared:
-            for gi, g in enumerate(self.groups):
-                assign_courts(g.matches, dedicated[gi] or self.courts)
-            return
-
-        shared_names = {c.name for c in shared}
-        pools: list[list[Court]] = [
-            (dedicated[gi] + shared) if dedicated[gi] else list(shared) for gi in range(n_groups)
-        ]
-        cursors = [0] * n_groups
-        max_slots = max((len(g.matches) for g in self.groups), default=0)
-
-        for slot in range(max_slots):
-            used_shared_this_slot: set[str] = set()
-            for gi, g in enumerate(self.groups):
-                if slot >= len(g.matches):
-                    continue
-                pool = pools[gi]
-                if not pool:
-                    continue
-
-                chosen: Court | None = None
-                for _ in range(len(pool)):
-                    cand = pool[cursors[gi] % len(pool)]
-                    cursors[gi] += 1
-                    if cand.name in shared_names and cand.name in used_shared_this_slot:
-                        continue
-                    chosen = cand
-                    break
-
-                if chosen is None:
-                    chosen = dedicated[gi][0] if dedicated[gi] else pool[0]
-
-                g.matches[slot].court = chosen
-                if chosen.name in shared_names:
-                    used_shared_this_slot.add(chosen.name)
+        assign_courts(self.all_group_matches(), self.courts)
 
     def all_group_matches(self) -> list[Match]:
         matches: list[Match] = []
@@ -139,12 +92,14 @@ class GroupPlayoffTournament:
         match_id: str,
         score: tuple[int, int],
         sets: list[tuple[int, int]] | None = None,
+        third_set_loss: bool = False,
     ):
         for g in self.groups:
             for m in g.matches:
                 if m.id == match_id:
                     m.score = score
                     m.sets = sets
+                    m.third_set_loss = third_set_loss
                     m.status = MatchStatus.COMPLETED
                     return
         raise KeyError(f"Match {match_id} not found in any group")
@@ -162,6 +117,7 @@ class GroupPlayoffTournament:
                     "wins": s.wins,
                     "draws": s.draws,
                     "losses": s.losses,
+                    "third_set_losses": s.third_set_losses,
                     "points_for": s.points_for,
                     "points_against": s.points_against,
                     "match_points": s.match_points,

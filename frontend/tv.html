@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Padel TV Display</title>
+<style>
+  :root {
+    --bg: #0b1220;
+    --surface: #162032;
+    --surface2: #1e293b;
+    --border: #2d3f57;
+    --accent: #3b82f6;
+    --green: #22c55e;
+    --yellow: #eab308;
+    --red: #ef4444;
+    --text: #e8f0fe;
+    --text-muted: #94a3b8;
+    --court-bg: #0f1e35;
+  }
+  html[data-theme="light"] {
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --surface2: #f1f5f9;
+    --border: #e2e8f0;
+    --accent: #2563eb;
+    --green: #16a34a;
+    --yellow: #b45309;
+    --red: #dc2626;
+    --text: #0f172a;
+    --text-muted: #64748b;
+    --court-bg: #eff6ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 1.2rem 1.5rem 2rem;
+  }
+
+  /* ── Header ── */
+  .tv-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.8rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .tv-title {
+    flex: 1;
+    min-width: 0;
+  }
+  .tv-title h1 {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tv-title .subtitle {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    margin-top: 0.2rem;
+  }
+  .tv-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+  }
+  .tv-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 0.3rem 0.8rem;
+    border-radius: 999px;
+    letter-spacing: 0.03em;
+  }
+  .tv-badge-phase {
+    background: rgba(234, 179, 8, 0.18);
+    border: 1px solid var(--yellow);
+    color: var(--yellow);
+  }
+  .tv-badge-live {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid var(--red);
+    color: var(--red);
+  }
+  .tv-badge-champion {
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid var(--green);
+    color: var(--green);
+  }
+  .refresh-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .refresh-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+  .refresh-dot.refreshing {
+    background: var(--green);
+    animation: none;
+  }
+
+  /* ── Section wrapper ── */
+  .tv-section {
+    margin-bottom: 2rem;
+  }
+  .tv-section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.9rem;
+  }
+  .tv-section-header h2 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.01em;
+  }
+
+  /* ── Court board ── */
+  .court-board {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+  .court-card {
+    background: var(--court-bg);
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    padding: 1rem 1.2rem;
+    box-shadow: 0 0 18px rgba(59, 130, 246, 0.12);
+  }
+  .court-name {
+    font-size: 0.9rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin-bottom: 0.7rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .court-match {
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .court-match:last-child { border-bottom: none; }
+  .court-match-empty {
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 0.9rem;
+  }
+  .court-match-empty:last-child { border-bottom: none; }
+  .court-match-teams {
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+  .court-match-vs {
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin: 0 0.3rem;
+  }
+  .court-match-meta {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+  }
+  .no-courts {
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 1rem;
+  }
+
+  /* ── Standings ── */
+  .standings-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 1rem;
+  }
+  .standings-table th {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-align: left;
+    padding: 0.45rem 0.75rem;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+  }
+  .standings-table td {
+    padding: 0.45rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .standings-table tr:first-child td { padding-top: 0.65rem; }
+  .standings-table .rank-cell {
+    font-weight: 800;
+    font-size: 1.05rem;
+    color: var(--text-muted);
+    min-width: 32px;
+  }
+  .standings-table .player-cell { font-weight: 700; max-width: 240px; }
+  .standings-table .pts-cell {
+    font-weight: 800;
+    font-size: 1.1rem;
+    color: var(--green);
+    white-space: nowrap;
+  }
+  .standings-table tr:hover td { background: rgba(59, 130, 246, 0.06); }
+  .group-block { margin-bottom: 1.4rem; }
+  .group-block h3 {
+    font-size: 1rem;
+    color: var(--yellow);
+    margin-bottom: 0.5rem;
+  }
+
+  /* ── Past matches / history ── */
+  .round-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 0.6rem;
+    overflow: hidden;
+  }
+  .round-summary {
+    cursor: pointer;
+    padding: 0.7rem 1rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    list-style: none;
+  }
+  .round-summary::-webkit-details-marker { display: none; }
+  details[open] > .round-summary { color: var(--text); border-bottom: 1px solid var(--border); }
+  .round-body { padding: 0.5rem 0.75rem; }
+
+  .history-match {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding: 0.55rem 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    font-size: 0.95rem;
+  }
+  .history-match:last-child { border-bottom: none; }
+  .history-teams { flex: 1; min-width: 200px; font-weight: 600; }
+  .history-vs { color: var(--text-muted); margin: 0 0.3rem; font-weight: 400; }
+  .history-score {
+    font-weight: 800;
+    color: var(--green);
+    min-width: 70px;
+    font-size: 1rem;
+  }
+  .history-score.sets-stack {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.05rem;
+    line-height: 1.2;
+  }
+  .history-court {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    min-width: 80px;
+  }
+  .history-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+  }
+  .badge-completed { background: var(--green); color: #000; }
+  .badge-scheduled { background: var(--border); color: var(--text); }
+
+  /* ── Score breakdown (nested) ── */
+  .breakdown-toggle {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+  }
+  .breakdown-toggle:hover { color: var(--accent); }
+  .breakdown-toggle::-webkit-details-marker { display: none; }
+  details[open] > .breakdown-toggle { color: var(--accent); }
+  .breakdown-panel {
+    margin-top: 0.4rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.82rem;
+  }
+  .breakdown-table { width: 100%; border-collapse: collapse; }
+  .breakdown-table th { font-size: 0.72rem; color: var(--text-muted); padding: 0.2rem 0.4rem; font-weight: 600; text-align: left; }
+  .breakdown-table td { padding: 0.25rem 0.4rem; border-bottom: 1px solid rgba(148, 163, 184, 0.1); }
+  .breakdown-table tr:last-child td { border-bottom: none; }
+
+  /* ── Bracket ── */
+  .bracket-img {
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: block;
+    margin: 0 auto;
+  }
+
+  /* ── Error / empty states ── */
+  .tv-empty { color: var(--text-muted); font-style: italic; font-size: 0.95rem; padding: 0.5rem 0; }
+  .tv-error {
+    padding: 1rem;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid var(--red);
+    border-radius: 8px;
+    color: var(--red);
+    font-size: 0.95rem;
+  }
+  .tv-loading { color: var(--text-muted); font-size: 1.1rem; padding: 2rem 0; text-align: center; }
+
+  /* ── Collapsible sections ── */
+  details.tv-collapsible { margin-bottom: 1rem; }
+  summary.tv-collapsible-header {
+    cursor: pointer;
+    list-style: none;
+    padding: 0.55rem 0;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  summary.tv-collapsible-header::-webkit-details-marker { display: none; }
+  summary.tv-collapsible-header h2 { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
+  summary.tv-collapsible-header .chevron { color: var(--text-muted); font-size: 0.9rem; transition: transform 0.2s; }
+  details.tv-collapsible[open] summary.tv-collapsible-header .chevron { transform: rotate(90deg); }
+
+  /* ── Champion banner ── */
+  .champion-banner {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(59, 130, 246, 0.1) 100%);
+    border: 2px solid var(--green);
+    border-radius: 12px;
+    padding: 1rem 1.4rem;
+    margin-bottom: 1.8rem;
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: var(--green);
+    text-align: center;
+    letter-spacing: -0.01em;
+  }
+
+  html[data-theme="light"] .court-card {
+    box-shadow: 0 1px 6px rgba(37, 99, 235, 0.10);
+  }
+  html[data-theme="light"] .standings-table tr:hover td {
+    background: rgba(37, 99, 235, 0.05);
+  }
+
+  /* ── Theme toggle button ── */
+  .theme-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 6px;
+    padding: 0.25rem 0.55rem;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .theme-btn:hover { border-color: var(--accent); color: var(--text); }
+
+  /* ── Responsive ── */
+  @media (max-width: 600px) {
+    body { padding: 0.8rem; }
+    .tv-title h1 { font-size: 1.4rem; }
+    .court-match-teams { font-size: 1rem; }
+  }
+</style>
+</head>
+<body>
+<div id="tv-root">
+  <div class="tv-loading">Loading tournament display…</div>
+</div>
+
+<script src="/shared.js"></script>
+<script>
+const API = '';
+
+// ── Theme ─────────────────────────────────────────────────
+let _theme = _loadSavedTheme();
+_applyTheme(_theme);
+
+function _toggleTheme() {
+  _theme = _theme === 'dark' ? 'light' : 'dark';
+  _applyTheme(_theme);
+  _saveTheme(_theme);
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn) btn.textContent = _theme === 'dark' ? '☀️' : '🌙';
+}
+
+// ── URL params ────────────────────────────────────────────
+const _params = new URLSearchParams(location.search);
+const TID = _params.get('tid');
+
+// ── State ─────────────────────────────────────────────────
+let _tournamentType = null;
+let _tournamentName = '';
+let _refreshIntervalSecs = 15;
+let _countdown = 15;
+let _refreshInterval = null;
+let _countdownInterval = null;
+let _isRefreshing = false;
+let _breakdowns = {}; // {match_id: {...}} for Mex breakdowns
+let _tvPlayerMap = {}; // {player_id: player_name}
+let _sectionOpenState = {}; // {data-tv-key: boolean} — persisted across refreshes
+let _lastKnownVersion = null; // for on-update mode
+let _versionPollTimer = null; // setInterval handle for version polling
+
+// ── API ───────────────────────────────────────────────────
+async function api(path) {
+  const res = await fetch(API + path);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || res.statusText);
+  }
+  return res.json();
+}
+
+
+// ── Open-state persistence ───────────────────────────────
+function _captureOpenState() {
+  document.querySelectorAll('details[data-tv-key]').forEach(el => {
+    _sectionOpenState[el.dataset.tvKey] = el.open;
+  });
+}
+
+function _applyOpenState() {
+  document.querySelectorAll('details[data-tv-key]').forEach(el => {
+    const key = el.dataset.tvKey;
+    if (key in _sectionOpenState) el.open = _sectionOpenState[key];
+  });
+}
+
+// ── Refresh scheduling ────────────────────────────────────────────
+
+function _stopAllSchedules() {
+  if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null; }
+  if (_versionPollTimer) { clearInterval(_versionPollTimer); _versionPollTimer = null; }
+}
+
+function _updateCountdownEl(text) {
+  const el = document.getElementById('tv-countdown');
+  if (el) el.textContent = text;
+}
+
+function _startCountdown() {
+  _stopAllSchedules();
+  if (_refreshIntervalSecs === 0) {
+    // “Never” — no auto-refresh
+    _updateCountdownEl('Manual only');
+    return;
+  }
+  if (_refreshIntervalSecs === -1) {
+    // “On update” — poll version endpoint every 2 s
+    _updateCountdownEl('Watching for updates…');
+    _versionPollTimer = setInterval(async () => {
+      if (_isRefreshing || !TID) return;
+      try {
+        const data = await fetch(`/api/tournaments/${TID}/version`).then(r => r.json());
+        if (_lastKnownVersion !== null && data.version !== _lastKnownVersion) {
+          loadTV();
+        }
+        _lastKnownVersion = data.version;
+      } catch (_) { /* network blip — ignore */ }
+    }, 2000);
+    return;
+  }
+  // Timer mode
+  _countdown = _refreshIntervalSecs;
+  _updateCountdownEl(`↻ in ${_countdown}s`);
+  _countdownInterval = setInterval(() => {
+    _countdown--;
+    _updateCountdownEl(`↻ in ${_countdown}s`);
+    if (_countdown <= 0) {
+      clearInterval(_countdownInterval);
+      _countdownInterval = null;
+      loadTV();
+    }
+  }, 1000);
+}
+
+// ── Load & render ─────────────────────────────────────────
+async function loadTV() {
+  if (_isRefreshing) return;
+  _isRefreshing = true;
+  if (_countdownInterval) clearInterval(_countdownInterval);
+
+  const dot = document.getElementById('refresh-dot');
+  if (dot) dot.classList.add('refreshing');
+
+  try {
+    if (!TID) {
+      document.getElementById('tv-root').innerHTML =
+        `<div class="tv-error">No tournament ID in URL. Add <code>?tid=&lt;id&gt;</code></div>`;
+      return;
+    }
+
+    // Resolve tournament type from list
+    const list = await api('/api/tournaments');
+    const meta = list.find(t => t.id === TID);
+    if (!meta) {
+      document.getElementById('tv-root').innerHTML =
+        `<div class="tv-error">Tournament not found: ${esc(TID)}</div>`;
+      return;
+    }
+    _tournamentType = meta.type;
+    _tournamentName = meta.name;
+    document.title = `Padel TV | ${meta.name}`;
+
+    // Load TV settings and tournament data in parallel
+    const [tvSettings, ...dataResults] = await Promise.all([
+      api(`/api/tournaments/${TID}/tv-settings`),
+      ...(
+        _tournamentType === 'group_playoff'
+          ? [
+              api(`/api/tournaments/${TID}/gp/status`),
+              api(`/api/tournaments/${TID}/gp/groups`),
+              api(`/api/tournaments/${TID}/gp/playoffs`).catch(() => ({ matches: [], pending: [] })),
+            ]
+          : [
+              api(`/api/tournaments/${TID}/mex/status`),
+              api(`/api/tournaments/${TID}/mex/matches`),
+              api(`/api/tournaments/${TID}/mex/playoffs`).catch(() => ({ matches: [], pending: [] })),
+            ]
+      ),
+    ]);
+
+    _refreshIntervalSecs = tvSettings.refresh_interval ?? 15;
+    // Seed _lastKnownVersion so first poll doesn’t trigger an immediate reload
+    if (_refreshIntervalSecs === -1 && _lastKnownVersion === null) {
+      try {
+        const vd = await fetch(`/api/tournaments/${TID}/version`).then(r => r.json());
+        _lastKnownVersion = vd.version;
+      } catch (_) {}
+    }
+    if (_tournamentType === 'group_playoff') {
+      const [status, groups, playoffs] = dataResults;
+      _captureOpenState();
+      _renderGP(tvSettings, status, groups, playoffs);
+      _applyOpenState();
+    } else {
+      const [status, matches, playoffs] = dataResults;
+      _breakdowns = matches.breakdowns || {};
+      _tvPlayerMap = {};
+      for (const p of (status.players || [])) _tvPlayerMap[p.id] = p.name;
+      _captureOpenState();
+      _renderMex(tvSettings, status, matches, playoffs);
+      _applyOpenState();
+    }
+  } catch (e) {
+    const root = document.getElementById('tv-root');
+    if (root) root.innerHTML = `<div class="tv-error">Error loading data: ${esc(e.message)}</div>`;
+  } finally {
+    _isRefreshing = false;
+    const dot = document.getElementById('refresh-dot');
+    if (dot) dot.classList.remove('refreshing');
+    _startCountdown();
+  }
+}
+
+// ── GP tournament renderer ────────────────────────────────
+function _renderGP(tvSettings, status, groups, playoffs) {
+  const phase = status.phase || '';
+  const isPlayoffs = phase === 'playoffs' || phase === 'finished';
+  const champion = status.champion;
+
+  // Court assignments: pending group OR playoff matches
+  const pendingGroup = _sortTbdLast(
+    Object.values(groups.matches || {}).flat().filter(m => m.status !== 'completed')
+  );
+  const pendingPlayoff = _sortTbdLast(
+    (playoffs?.pending || []).filter(m => m.status !== 'completed')
+  );
+  const assignmentMatches = isPlayoffs ? pendingPlayoff : pendingGroup;
+  const courtTitle = isPlayoffs ? 'Court Assignments — Play-offs' : 'Court Assignments — Group Stage';
+
+  let html = _buildHeader(_tournamentName, phase, champion);
+
+  if (champion) {
+    html += `<div class="champion-banner">🏆 Champion: ${esc(champion.join(' & '))}</div>`;
+  }
+
+  // Courts (always shown)
+  html += _buildCourts(assignmentMatches, courtTitle);
+
+  if (isPlayoffs) {
+    // Play-offs phase: past playoff matches → bracket → group past
+    if (tvSettings.show_past_matches) {
+      const playoffPast = (playoffs?.matches || []).filter(m => m.status === 'completed');
+      if (playoffPast.length > 0)
+        html += _buildPastMatches(playoffPast, tvSettings, false, 'Play-off Matches', 'past-playoffs');
+    }
+
+  if (tvSettings.show_bracket) {
+      const bs = tvSettings.schema_box_scale   || 1.0;
+      const lw = tvSettings.schema_line_width  || 1.0;
+      const as_ = tvSettings.schema_arrow_scale || 1.0;
+      const tfs = tvSettings.schema_title_font_scale || 1.0;
+      const imgUrl = `/api/tournaments/${TID}/gp/playoffs-schema?fmt=png&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
+      html += `<details class="tv-collapsible" data-tv-key="bracket" open>`;
+      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>Play-off Bracket</h2></summary>`;
+      html += `<div class="tv-section">`;
+      html += `<img class="bracket-img" src="${imgUrl}" alt="Play-off bracket" onerror="this.style.display='none'">`;
+      html += `</div></details>`;
+    }
+
+    if (tvSettings.show_past_matches) {
+      const groupPast = Object.values(groups.matches || {}).flat().filter(m => m.status === 'completed');
+      if (groupPast.length > 0)
+        html += _buildPastMatches(groupPast, tvSettings, false, 'Group Stage Matches', 'past-groups');
+    }
+  } else {
+    // Group phase: standings → group past matches
+    if (tvSettings.show_standings) {
+      html += `<details class="tv-collapsible" data-tv-key="standings" open>`;
+      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>Group Standings</h2></summary>`;
+      html += `<div class="tv-section">`;
+      for (const [gName, rows] of Object.entries(groups.standings || {})) {
+        html += `<div class="group-block"><h3>Group ${esc(gName)}</h3>`;
+        html += `<table class="standings-table"><thead><tr>`;
+        html += `<th>#</th><th>Player</th><th>W</th><th>D</th><th>L</th><th>PF</th><th>PA</th><th>Pts</th>`;
+        html += `</tr></thead><tbody>`;
+        rows.forEach((r, i) => {
+          html += `<tr><td class="rank-cell">${i + 1}</td><td class="player-cell">${esc(r.player)}</td>`;
+          html += `<td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td>`;
+          html += `<td>${r.points_for}</td><td>${r.points_against}</td>`;
+          html += `<td class="pts-cell">${r.match_points}</td></tr>`;
+        });
+        html += `</tbody></table></div>`;
+      }
+      html += `</div></details>`;
+    }
+
+    if (tvSettings.show_past_matches) {
+      const groupPast = Object.values(groups.matches || {}).flat().filter(m => m.status === 'completed');
+      if (groupPast.length > 0)
+        html += _buildPastMatches(groupPast, tvSettings, false, 'Group Stage Matches', 'past-groups');
+    }
+  }
+
+  document.getElementById('tv-root').innerHTML = html;
+}
+
+// ── Mex tournament renderer ───────────────────────────────
+function _renderMex(tvSettings, status, matches, playoffs) {
+  const phase = status.phase || '';
+  const isPlayoffs = phase === 'playoffs' || phase === 'finished';
+  const champion = status.champion;
+
+  const pendingCurrent = _sortTbdLast((matches.current_matches || []).filter(m => m.status !== 'completed'));
+  const pendingPlayoff = _sortTbdLast((playoffs?.pending || []).filter(m => m.status !== 'completed'));
+  const assignmentMatches = isPlayoffs ? pendingPlayoff : pendingCurrent;
+  const courtTitle = isPlayoffs ? 'Court Assignments — Mexicano Play-offs' : `Court Assignments — Round ${status.current_round}`;
+
+  let html = _buildHeader(_tournamentName, phase, champion);
+
+  if (champion) {
+    html += `<div class="champion-banner">🏆 Champion: ${esc(champion.join(' & '))}</div>`;
+  }
+
+  // Courts (always shown)
+  html += _buildCourts(assignmentMatches, courtTitle);
+
+  if (isPlayoffs) {
+    // Play-offs phase: past playoff matches → bracket → leaderboard → mexicano rounds
+    if (tvSettings.show_past_matches) {
+      const playoffPast = (playoffs?.matches || []).filter(m => m.status === 'completed');
+      if (playoffPast.length > 0)
+        html += _buildPastMatches(playoffPast, tvSettings, false, 'Play-off Matches', 'past-playoffs');
+    }
+
+    if (tvSettings.show_bracket) {
+      const bs = tvSettings.schema_box_scale   || 1.0;
+      const lw = tvSettings.schema_line_width  || 1.0;
+      const as_ = tvSettings.schema_arrow_scale || 1.0;
+      const tfs = tvSettings.schema_title_font_scale || 1.0;
+      const imgUrl = `/api/tournaments/${TID}/mex/playoffs-schema?fmt=png&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
+      html += `<details class="tv-collapsible" data-tv-key="bracket" open>`;
+      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>Play-off Bracket</h2></summary>`;
+      html += `<div class="tv-section">`;
+      html += `<img class="bracket-img" src="${imgUrl}" alt="Play-off bracket" onerror="this.style.display='none'">`;
+      html += `</div></details>`;
+    }
+
+    if (tvSettings.show_standings) {
+      html += _buildMexLeaderboard(status);
+    }
+
+    if (tvSettings.show_past_matches) {
+      const mexPast = (matches.all_matches || []).filter(m => m.status === 'completed');
+      if (mexPast.length > 0)
+        html += _buildPastMatches(mexPast, tvSettings, true, 'Mexicano Rounds', 'past-mexicano');
+    }
+  } else {
+    // Mexicano phase: leaderboard → mexicano rounds
+    if (tvSettings.show_standings) {
+      html += _buildMexLeaderboard(status);
+    }
+
+    if (tvSettings.show_past_matches) {
+      const mexPast = (matches.all_matches || []).filter(m => m.status === 'completed');
+      if (mexPast.length > 0)
+        html += _buildPastMatches(mexPast, tvSettings, true, 'Mexicano Rounds', 'past-mexicano');
+    }
+  }
+
+  document.getElementById('tv-root').innerHTML = html;
+}
+
+// ── Shared builders ───────────────────────────────────────
+
+function _buildMexLeaderboard(status) {
+  const lb = status.leaderboard || [];
+  const byAvg = lb.length > 0 && lb[0].ranked_by_avg;
+  let html = `<details class="tv-collapsible" data-tv-key="standings" open>`;
+  html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>Leaderboard</h2></summary>`;
+  html += `<div class="tv-section">`;
+  html += `<table class="standings-table"><thead><tr>`;
+  html += `<th>#</th><th>Player</th><th>Total Pts</th><th>Played</th><th>W</th><th>D</th><th>L</th><th>Avg Pts</th>`;
+  html += `</tr></thead><tbody>`;
+  for (const r of lb) {
+    html += `<tr><td class="rank-cell">${r.rank}</td><td class="player-cell">${esc(r.player)}</td>`;
+    const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
+    const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
+    html += `<td class="${byAvg ? '' : 'pts-cell'}">${totalCell}</td>`;
+    html += `<td>${r.matches_played}</td><td>${r.wins ?? 0}</td><td>${r.draws ?? 0}</td><td>${r.losses ?? 0}</td>`;
+    html += `<td class="${byAvg ? 'pts-cell' : ''}">${avgCell}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  html += `</div></details>`;
+  return html;
+}
+
+function _buildHeader(name, phase, champion) {
+  const phaseLabel = _phaseLabel(phase);
+  return `
+    <div class="tv-header">
+      <div class="tv-title">
+        <h1>${esc(name)}</h1>
+        <div class="subtitle">Padel Tournament — TV Display</div>
+      </div>
+      <div class="tv-meta">
+        ${phaseLabel ? `<span class="tv-badge tv-badge-phase">${esc(phaseLabel)}</span>` : ''}
+        ${champion ? `<span class="tv-badge tv-badge-champion">🏆 Finished</span>` : `<span class="tv-badge tv-badge-live">● LIVE</span>`}
+        <div class="refresh-indicator">
+          <div class="refresh-dot" id="refresh-dot"></div>
+          <span id="tv-countdown">↻ in ${_refreshIntervalSecs}s</span>
+          <button onclick="loadTV()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;font-size:0.8rem;line-height:1" title="Refresh now">↻</button>
+          <button id="theme-toggle-btn" class="theme-btn" onclick="_toggleTheme()" title="Toggle light / dark mode">${_theme === 'dark' ? '☀️' : '🌙'}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function _buildCourts(matches, title) {
+  let html = `<div class="tv-section">`;
+  html += `<div class="tv-section-header"><h2>${esc(title)}</h2></div>`;
+  if (!matches || matches.length === 0) {
+    html += `<p class="tv-empty">No pending court assignments.</p>`;
+    html += `</div>`;
+    return html;
+  }
+
+  const byCourt = {};
+  for (const m of matches) {
+    const c = m.court || 'Unassigned';
+    if (!byCourt[c]) byCourt[c] = [];
+    byCourt[c].push(m);
+  }
+
+  // Build slot grid (same logic as index.html)
+  const slotMap = {};
+  for (const m of matches) {
+    if (!m.court) continue;
+    const s = m.slot_number ?? 0;
+    if (!slotMap[s]) slotMap[s] = {};
+    slotMap[s][m.court] = m;
+  }
+  const courtNames = Object.keys(byCourt).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const presentSlots = Object.keys(slotMap).map(Number).sort((a, b) => a - b);
+  const useSlotGrid = courtNames.length > 1 && presentSlots.length > 0;
+
+  html += `<div class="court-board">`;
+  for (const courtName of courtNames.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))) {
+    html += `<div class="court-card">`;
+    html += `<div class="court-name">${esc(courtName)}</div>`;
+    if (useSlotGrid) {
+      for (const slot of presentSlots) {
+        const m = slotMap[slot]?.[courtName];
+        if (m) {
+          const t1 = (m.team1 || []).join(' & ') || 'TBD';
+          const t2 = (m.team2 || []).join(' & ') || 'TBD';
+          html += `<div class="court-match">`;
+          html += `<div class="court-match-teams">${esc(t1)}<span class="court-match-vs">vs</span>${esc(t2)}</div>`;
+          if (m.round_label) html += `<div class="court-match-meta">${esc(m.round_label)}</div>`;
+          html += `</div>`;
+        } else {
+          html += `<div class="court-match-empty">(empty)</div>`;
+        }
+      }
+    } else {
+      for (const m of byCourt[courtName]) {
+        const t1 = (m.team1 || []).join(' & ') || 'TBD';
+        const t2 = (m.team2 || []).join(' & ') || 'TBD';
+        html += `<div class="court-match">`;
+        html += `<div class="court-match-teams">${esc(t1)}<span class="court-match-vs">vs</span>${esc(t2)}</div>`;
+        if (m.round_label) html += `<div class="court-match-meta">${esc(m.round_label)}</div>`;
+        html += `</div>`;
+      }
+    }
+    html += `</div>`;
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = 'Past Matches', tvKey = 'past-matches') {
+  if (!matches || matches.length === 0) return '';
+
+  // Group by round_label first (more descriptive), fall back to round_number
+  const byRound = {};
+  const roundOrder = [];
+  for (const m of matches) {
+    const key = m.round_label || `Round ${m.round_number ?? 0}`;
+    if (!byRound[key]) { byRound[key] = []; roundOrder.push(key); }
+    byRound[key].push(m);
+  }
+  // Reverse so most recent is first; dedupe while preserving order
+  const orderedKeys = [...new Set(roundOrder)].reverse();
+
+  let html = `<details class="tv-collapsible" data-tv-key="${tvKey}" open>`;
+  html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${esc(sectionTitle)}</h2></summary>`;
+  html += `<div class="tv-section">`;
+
+  for (let ri = 0; ri < orderedKeys.length; ri++) {
+    const key = orderedKeys[ri];
+    const rMatches = byRound[key];
+    const openAttr = ri === 0 ? ' open' : ''; // most recent open by default
+
+    html += `<details class="round-block" data-tv-key="${tvKey}-${esc(key)}"${openAttr}>`;
+    html += `<summary class="round-summary">▶ ${esc(key)} — ${rMatches.length} match${rMatches.length > 1 ? 'es' : ''}</summary>`;
+    html += `<div class="round-body">`;
+    for (const m of rMatches) {
+      html += _buildHistoryMatch(m, tvSettings, isMex);
+    }
+    html += `</div></details>`;
+  }
+
+  html += `</div></details>`;
+  return html;
+}
+
+function _buildHistoryMatch(m, tvSettings, isMex) {
+  const t1 = (m.team1 || []).join(' & ') || 'TBD';
+  const t2 = (m.team2 || []).join(' & ') || 'TBD';
+  const court = m.court ? `<span class="history-court">${esc(m.court)}</span>` : '';
+
+  let scoreHtml;
+  if (m.score) {
+    if (m.sets && m.sets.length > 0) {
+      scoreHtml = `<span class="history-score sets-stack">`;
+      scoreHtml += m.sets.map(s => `<span>${s[0]}-${s[1]}</span>`).join('');
+      scoreHtml += `</span>`;
+    } else {
+      scoreHtml = `<span class="history-score">${m.score[0]} – ${m.score[1]}</span>`;
+    }
+  } else {
+    scoreHtml = `<span class="history-score" style="color:var(--text-muted)">—</span>`;
+  }
+
+  let html = `<div class="history-match">`;
+  html += `<div class="history-teams">${esc(t1)}<span class="history-vs">vs</span>${esc(t2)}</div>`;
+  html += scoreHtml;
+  html += court;
+  html += `</div>`;
+
+  // Score breakdown for Mexicano matches
+  if (isMex && tvSettings.show_score_breakdown) {
+    const bd = _breakdowns[m.id];
+    if (bd && Object.keys(bd).length > 0) {
+      html += `<details style="margin-top:-0.3rem;margin-bottom:0.4rem">`;
+      html += `<summary class="breakdown-toggle">📊 Score breakdown</summary>`;
+      html += `<div class="breakdown-panel">`;
+      html += `<table class="breakdown-table"><thead><tr>`;
+      html += `<th>Player</th><th>Raw</th><th>Str ×</th><th>LossDisc ×</th><th>Bonus</th><th>Final</th>`;
+      html += `</tr></thead><tbody>`;
+      for (const [pid, d] of Object.entries(bd)) {
+        html += `<tr><td>${esc(_tvPlayerMap[pid] || pid)}</td><td>${d.raw}</td>`;
+        html += `<td>${d.strength_mult !== 1 ? '×' + d.strength_mult.toFixed(2) : '—'}</td>`;
+        html += `<td>${d.loss_disc !== 1 ? '×' + d.loss_disc.toFixed(2) : '—'}</td>`;
+        html += `<td>${d.win_bonus > 0 ? '+' + d.win_bonus : '—'}</td>`;
+        html += `<td><strong>${d.final}</strong></td></tr>`;
+      }
+      html += `</tbody></table></div></details>`;
+    }
+  }
+
+  return html;
+}
+
+// ── Helpers ───────────────────────────────────────────────
+function _phaseLabel(phase) {
+  const map = {
+    setup: 'Setup', groups: 'Group Stage', playoffs: 'Play-offs',
+    finished: 'Finished', mexicano: 'Mexicano',
+  };
+  return map[phase] || phase;
+}
+
+// ── Bootstrap ─────────────────────────────────────────────
+if (!TID) {
+  document.getElementById('tv-root').innerHTML =
+    `<div class="tv-error">
+      <strong>No tournament selected.</strong><br>
+      Open the TV mode from the admin panel or add <code>?tid=&lt;tournament-id&gt;</code> to the URL.
+    </div>`;
+} else {
+  loadTV();
+}
+</script>
+</body>
+</html>

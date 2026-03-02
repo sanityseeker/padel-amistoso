@@ -72,9 +72,27 @@ async def serve_frontend():
     return "<h1>Frontend not found</h1>"
 
 
+@app.get("/tv", response_class=HTMLResponse)
+async def serve_tv():
+    page = FRONTEND_DIR / "tv.html"
+    if page.exists():
+        return page.read_text()
+    return "<h1>TV page not found</h1>"
+
+
 @app.get("/api-playground", response_class=HTMLResponse)
 async def serve_api_playground():
     index = API_PLAYGROUND_DIR / "index.html"
     if index.exists():
         return index.read_text()
     return "<h1>API playground not found</h1>"
+
+
+@app.get("/shared.js")
+async def serve_shared_js():
+    """Serve the shared JS utilities used by index.html and tv.html."""
+    from fastapi.responses import Response
+
+    path = FRONTEND_DIR / "shared.js"
+    content = path.read_text() if path.exists() else ""
+    return Response(content=content, media_type="application/javascript")

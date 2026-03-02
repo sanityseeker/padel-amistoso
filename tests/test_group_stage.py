@@ -181,3 +181,50 @@ class TestCourtAssignment:
         # Greedy balanced assignment may differ by up to 2 when respecting
         # participant exposure fairness across courts.
         assert max(counts.values()) - min(counts.values()) <= 2
+
+    def test_no_participant_plays_two_courts_simultaneously(self):
+        """No player may appear in two matches with the same slot_number."""
+        players = _make_players(8)
+        group = Group("A", players)
+        matches = group.generate_round_robin()
+        courts = [Court(name="C1"), Court(name="C2"), Court(name="C3")]
+        assign_courts(matches, courts)
+
+        from collections import defaultdict
+        by_slot: dict[int, list] = defaultdict(list)
+        for m in matches:
+            assert m.court is not None
+            by_slot[m.slot_number].append(m)
+
+        for slot_idx, slot_matches in by_slot.items():
+            slot_participants: set[str] = set()
+            for m in slot_matches:
+                for p in m.team1 + m.team2:
+                    assert p.id not in slot_participants, (
+                        f"Player {p.name} plays two matches simultaneously in slot {slot_idx + 1}"
+                    )
+                    slot_participants.add(p.id)
+
+    def test_no_conflict_across_multiple_groups(self):
+        """Conflict constraint holds even when matches from multiple groups are mixed."""
+        from backend.tournaments import distribute_players_to_groups
+        players = _make_players(8)
+        groups = distribute_players_to_groups(players, num_groups=2, shuffle=False)
+        all_matches = [m for g in groups for m in g.generate_round_robin()]
+        courts = [Court(name="C1"), Court(name="C2")]
+        assign_courts(all_matches, courts)
+
+        from collections import defaultdict
+        by_slot: dict[int, list] = defaultdict(list)
+        for m in all_matches:
+            assert m.court is not None
+            by_slot[m.slot_number].append(m)
+
+        for slot_idx, slot_matches in by_slot.items():
+            slot_participants: set[str] = set()
+            for m in slot_matches:
+                for p in m.team1 + m.team2:
+                    assert p.id not in slot_participants, (
+                        f"Player {p.name} plays two matches simultaneously in slot {slot_idx + 1}"
+                    )
+                    slot_participants.add(p.id)

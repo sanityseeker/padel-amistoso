@@ -68,6 +68,17 @@
     cursor: not-allowed;
     border-color: var(--border);
   }
+  /* Tournament quick-switch chips in the nav bar */
+  .tournament-chips { display: contents; }
+  .tournament-chip { position: relative; padding-right: 1.75rem !important; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tournament-chip .chip-check { display: none; }
+  .tournament-chip.active .chip-check { display: inline; margin-right: 0.2rem; }
+  .chip-close {
+    position: absolute; right: 0.35rem; top: 50%; transform: translateY(-50%);
+    font-size: 0.8rem; line-height: 1; opacity: 0.55;
+    background: none; border: none; cursor: pointer; color: inherit; padding: 0 0.1rem;
+  }
+  .chip-close:hover { opacity: 1; }
   .active-tournament-indicator {
     margin-bottom: 0.9rem;
     font-size: 0.85rem;
@@ -186,6 +197,7 @@
     border-top: 1px solid rgba(148, 163, 184, 0.18);
   }
   .court-match-item:first-of-type { border-top: none; }
+  .court-empty-slot { color: var(--text-muted); font-style: italic; }
   .court-slot {
     color: var(--text-muted);
     font-size: 0.72rem;
@@ -320,7 +332,8 @@
   }
 
   /* Manual editor */
-  .manual-sel { padding: 0.25rem 0.3rem; border-radius: 4px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 0.85rem; min-width: 100px; }
+  .manual-sel { padding: 0.25rem 0.3rem; border-radius: 4px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.85rem; min-width: 100px; }
+  .manual-sel option, select option { background: var(--surface); color: var(--text); }
 
   /* Stats panel */
   .stats-toggle { margin-bottom: 0.5rem; }
@@ -416,6 +429,26 @@
   }
   .score-mode-toggle button.active { background: var(--accent); color: #fff; }
 
+  /* ── Pill switch toggle ── */
+  .switch-label {
+    display: inline-flex; align-items: center; gap: 0.55rem;
+    cursor: pointer; user-select: none; font-size: 0.88rem; color: var(--text-muted);
+  }
+  .switch-label input[type=checkbox] { display: none; }
+  .switch-track {
+    position: relative; width: 36px; height: 20px;
+    background: var(--border); border-radius: 20px;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .switch-track::after {
+    content: ''; position: absolute; top: 3px; left: 3px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #fff; transition: transform 0.2s;
+  }
+  .switch-label input:checked + .switch-track { background: var(--accent); }
+  .switch-label input:checked + .switch-track::after { transform: translateX(16px); }
+
   /* ── Collapsible advanced section ── */
   details.advanced-section { margin-bottom: 0.75rem; }
   details.advanced-section summary {
@@ -473,7 +506,7 @@
     <button class="tab-btn active" data-tab="home">Tournaments</button>
     <button class="tab-btn" data-tab="create">Create</button>
     <button class="tab-btn" data-tab="tools">Tools</button>
-    <button class="tab-btn" data-tab="view" id="tab-view" disabled>Active Tournament</button>
+    <div id="tournament-chips" class="tournament-chips"></div>
     <label class="theme-chooser" for="theme-select">
       Theme
       <select id="theme-select" onchange="setTheme(this.value)">
@@ -509,7 +542,7 @@
           <input id="gp-name" value="Padel Cup 2026">
         </div>
         <div class="form-group">
-          <label><input type="checkbox" id="gp-team-mode" checked onchange="toggleGpTeamMode()"> <strong>Team Mode</strong> — each entry is a fixed pair (e.g. "Alice & Bob")</label>
+          <label class="switch-label"><input type="checkbox" id="gp-team-mode" checked onchange="toggleGpTeamMode()"><span class="switch-track"></span><span><strong>Team Mode</strong> — each entry is a fixed pair (e.g. "Alice & Bob")</span></label>
         </div>
         <div class="form-group">
           <label id="gp-players-label">Team Names (one per line, e.g. "Alice & Bob")</label>
@@ -552,7 +585,7 @@ Grace & Hank</textarea>
           <input id="mex-name" value="Mexicano Night">
         </div>
         <div class="form-group">
-          <label><input type="checkbox" id="mex-team-mode" onchange="toggleMexTeamMode()"> <strong>Team Mode</strong> — each entry is a fixed pair (e.g. "Alice & Bob")</label>
+          <label class="switch-label"><input type="checkbox" id="mex-team-mode" onchange="toggleMexTeamMode()"><span class="switch-track"></span><span><strong>Team Mode</strong> — each entry is a fixed pair (e.g. "Alice & Bob")</span></label>
         </div>
         <div class="form-group">
           <label id="mex-players-label">Player Names (one per line)</label>
@@ -692,6 +725,11 @@ Hank</textarea>
               <input id="schema-arrow" type="range" min="0.3" max="5.0" step="0.1" value="1.0"
                      oninput="document.getElementById('schema-arrow-val').textContent=this.value">
             </div>
+            <div class="form-group">
+              <label>Header size <span id="schema-title-scale-val" style="color:var(--text-muted)">1.0</span></label>
+              <input id="schema-title-scale" type="range" min="0.3" max="3.0" step="0.1" value="1.0"
+                     oninput="document.getElementById('schema-title-scale-val').textContent=this.value">
+            </div>
           </div>
         </div>
       </details>
@@ -702,20 +740,28 @@ Hank</textarea>
   </div>
 </div>
 
+<script src="/shared.js"></script>
 <script>
 const API = '';  // same origin
 
 // ─── Tab switching ─────────────────────────────────────────
 function setActiveTab(tabName) {
   if (tabName === 'view' && !currentTid) return;
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  // Deactivate main tabs (but not chips — they manage their own active state)
+  document.querySelectorAll('.tab-btn:not(.tournament-chip)').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  const btn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
   const panel = document.getElementById('panel-' + tabName);
-  if (!btn || !panel) return;
-  btn.classList.add('active');
+  if (!panel) return;
   panel.classList.add('active');
-  if (tabName === 'home') loadTournaments();
+  if (tabName === 'view') {
+    // Highlight the chip for the currently active tournament
+    document.querySelectorAll('.tournament-chip').forEach(b => b.classList.toggle('active', b.dataset.tid === currentTid));
+  } else {
+    document.querySelectorAll('.tournament-chip').forEach(b => b.classList.remove('active'));
+    const btn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+    if (btn) btn.classList.add('active');
+    if (tabName === 'home') loadTournaments();
+  }
 }
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -734,24 +780,14 @@ function setCreateMode(mode) {
 }
 
 function setTheme(theme) {
-  const normalized = theme === 'light' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', normalized);
-  try {
-    localStorage.setItem('padel_theme', normalized);
-  } catch (_) {}
-
+  const t = _applyTheme(theme);
+  _saveTheme(t);
   const sel = document.getElementById('theme-select');
-  if (sel && sel.value !== normalized) {
-    sel.value = normalized;
-  }
+  if (sel && sel.value !== t) sel.value = t;
 }
 
 function initTheme() {
-  let initial = 'dark';
-  try {
-    initial = localStorage.getItem('padel_theme') || 'dark';
-  } catch (_) {}
-  setTheme(initial);
+  setTheme(_loadSavedTheme());
 }
 
 // ─── Schema preview ────────────────────────────────────────
@@ -769,10 +805,11 @@ async function _fetchSchema(prefix, apiUrl, defaultFilename) {
   const boxScale = document.getElementById(prefix + '-box').value;
   const lineWidth = document.getElementById(prefix + '-lw').value;
   const arrowScale = document.getElementById(prefix + '-arrow').value;
+  const titleFontScale = document.getElementById(prefix + '-title-scale')?.value || '1.0';
   const title = document.getElementById(prefix + '-title').value.trim();
 
   let url = apiUrl + (apiUrl.includes('?') ? '&' : '?')
-    + `fmt=${fmt}&box_scale=${boxScale}&line_width=${lineWidth}&arrow_scale=${arrowScale}`;
+    + `fmt=${fmt}&box_scale=${boxScale}&line_width=${lineWidth}&arrow_scale=${arrowScale}&title_font_scale=${titleFontScale}`;
   if (title) url += `&title=${encodeURIComponent(title)}`;
 
   try {
@@ -838,6 +875,8 @@ function _schemaCardHtml(prefix, placeholder, generateFn) {
   h += `<input id="${prefix}-lw" type="range" min="0.3" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-lw-val').textContent=this.value">`;
   h += `<label>Arrow size <span id="${prefix}-arrow-val" style="color:var(--text-muted)">1.0</span></label>`;
   h += `<input id="${prefix}-arrow" type="range" min="0.3" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-arrow-val').textContent=this.value">`;
+  h += `<label>Header size <span id="${prefix}-title-scale-val" style="color:var(--text-muted)">1.0</span></label>`;
+  h += `<input id="${prefix}-title-scale" type="range" min="0.3" max="3.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-title-scale-val').textContent=this.value">`;
   h += `</div>`;
   h += `</details>`;
   h += `<button class="btn btn-primary" onclick="${generateFn}()">Generate Play-offs Schema</button>`;
@@ -871,7 +910,7 @@ async function loadTournaments() {
     if (!list.length) { el.innerHTML = '<em>No tournaments yet.</em>'; return; }
     el.innerHTML = list.map(t => `
       <div class="match-card">
-        <div class="match-teams"><strong>${esc(t.name)}</strong></div>
+        <div class="match-teams"><strong>${esc(t.name)}</strong>${t.id === currentTid ? ' <span class="badge badge-completed" title="Currently active">✓ active</span>' : ''}</div>
         <span class="badge badge-scheduled">${t.type === 'mexicano' ? 'mexicano + play-offs' : t.type}</span>
         <button class="btn btn-primary btn-sm" onclick="openTournament('${t.id}','${t.type}')">Open</button>
         <button class="btn btn-danger btn-sm" onclick="deleteTournament('${t.id}')">✕</button>
@@ -883,12 +922,15 @@ async function loadTournaments() {
 async function deleteTournament(id) {
   if (!confirm('Delete this tournament?')) return;
   await api('/api/tournaments/' + id, { method: 'DELETE' });
+  _openTournaments = _openTournaments.filter(t => t.id !== id);
   if (id === currentTid) {
     currentTid = null;
     currentType = null;
     currentTournamentName = null;
     updateActiveTournamentUI();
     setActiveTab('home');
+  } else {
+    updateActiveTournamentUI();
   }
   loadTournaments();
 }
@@ -897,6 +939,7 @@ async function deleteTournament(id) {
 let currentTid = null, currentType = null;
 let currentTournamentName = null;
 let _tournamentMeta = {};
+let _openTournaments = [];  // [{id, type, name}] for quick-switch chips
 let _totalPts = 0;  // set per Mexicano tournament for auto-fill
 let _gpScoreMode = { 'gp-group': 'points', 'gp-playoff': 'points', 'mex-playoff': 'points' };
 let _mexPlayers = [];  // [{id, name}] for manual editor
@@ -905,19 +948,48 @@ let _mexPlayerMap = {};  // {player_id: player_name}
 
 function updateActiveTournamentUI() {
   const indicator = document.getElementById('active-tournament-indicator');
-  const tabView = document.getElementById('tab-view');
   const hasActive = Boolean(currentTid);
   if (hasActive) {
     const shownName = currentTournamentName || `#${String(currentTid).slice(0, 8)}`;
     indicator.innerHTML = `Active tournament: <strong>${esc(shownName)}</strong>`;
-    tabView.disabled = false;
-    tabView.textContent = `Active: ${shownName}`;
-    tabView.title = shownName;
   } else {
     indicator.innerHTML = 'Active tournament: <strong>None selected</strong>';
-    tabView.disabled = true;
-    tabView.textContent = 'Active Tournament';
-    tabView.title = '';
+  }
+  _renderTournamentChips();
+}
+
+function _renderTournamentChips() {
+  const container = document.getElementById('tournament-chips');
+  if (!container) return;
+  container.innerHTML = _openTournaments.map(t =>
+    `<button class="tab-btn tournament-chip${t.id === currentTid ? ' active' : ''}" data-tid="${t.id}" data-type="${t.type}" title="${esc(t.name)}">
+      <span class="chip-check">✓</span>${esc(t.name)}
+      <span class="chip-close" data-close-tid="${t.id}" title="Remove from bar">×</span>
+    </button>`
+  ).join('');
+  container.querySelectorAll('.tournament-chip').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const closeTid = e.target.closest('[data-close-tid]')?.dataset.closeTid;
+      if (closeTid) { _unpinTournament(closeTid); return; }
+      const t = _openTournaments.find(t => t.id === btn.dataset.tid);
+      if (t) openTournament(t.id, t.type, t.name);
+    });
+  });
+}
+
+function _unpinTournament(id) {
+  _openTournaments = _openTournaments.filter(t => t.id !== id);
+  if (id === currentTid) {
+    if (_openTournaments.length > 0) {
+      const next = _openTournaments[_openTournaments.length - 1];
+      openTournament(next.id, next.type, next.name);
+    } else {
+      currentTid = null; currentType = null; currentTournamentName = null;
+      updateActiveTournamentUI();
+      setActiveTab('home');
+    }
+  } else {
+    _renderTournamentChips();
   }
 }
 
@@ -938,6 +1010,13 @@ function openTournament(id, type, name = null) {
   currentTid = id;
   currentType = type;
   currentTournamentName = name || _tournamentMeta[id]?.name || null;
+  // Track in the open-tournament list for quick-switch chips
+  const existing = _openTournaments.find(t => t.id === id);
+  if (existing) {
+    existing.name = currentTournamentName || existing.name;
+  } else {
+    _openTournaments.push({ id, type, name: currentTournamentName || id });
+  }
   updateActiveTournamentUI();
   setActiveTab('view');
   if (type === 'group_playoff') renderGP();
@@ -1007,13 +1086,15 @@ async function renderGP() {
   _totalPts = 0;  // GP matches have no fixed total
   const el = document.getElementById('view-content');
   try {
-    const [status, groups, playoffs] = await Promise.all([
+    const [status, groups, playoffs, tvSettings] = await Promise.all([
       api(`/api/tournaments/${currentTid}/gp/status`),
       api(`/api/tournaments/${currentTid}/gp/groups`),
       api(`/api/tournaments/${currentTid}/gp/playoffs`).catch(()=>null),
+      api(`/api/tournaments/${currentTid}/tv-settings`).catch(() => ({})),
     ]);
 
     let html = `<div class="refresh-row"><button class="btn btn-primary btn-sm" onclick="renderGP()">↻ Refresh</button></div>`;
+    html += _renderTvControls(tvSettings);
     html += `<div class="alert alert-info">Phase: <span class="badge badge-phase">${status.phase}</span></div>`;
 
     const groupPending = _sortTbdLast(Object.values(groups.matches)
@@ -1044,7 +1125,7 @@ async function renderGP() {
     if (status.phase === 'finished') {
       html += `<div class="card">`;
       html += `<h3>Export Outcome</h3>`;
-      html += `<label><input type="checkbox" id="export-include-history" checked> Include match history</label>`;
+      html += `<label class="switch-label"><input type="checkbox" id="export-include-history" checked><span class="switch-track"></span>Include match history</label>`;
       html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem">`;
       html += `<button class="btn btn-primary" onclick="exportTournamentOutcome('html')">Export HTML</button>`;
       html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="exportTournamentOutcome('pdf')">Export PDF</button>`;
@@ -1090,17 +1171,15 @@ async function renderGP() {
 
     // Playoff bracket
     if (status.phase === 'playoffs' || status.phase === 'finished') {
-      html += `<div class="card">`;
-      html += `<h3>Play‑offs Input Format</h3>`;
-      html += `<div class="score-mode-toggle">`;
-      html += `<button class="${_gpScoreMode['gp-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('gp-playoff','points')">Points</button>`;
-      html += `<button class="${_gpScoreMode['gp-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('gp-playoff','sets')">🎾 Sets</button>`;
-      html += `</div>`;
-      html += `</div>`;
-
       html += _schemaCardHtml('gp-playoff-schema', 'Play-offs bracket', 'generateGpPlayoffSchema');
 
       html += `<div class="card"><h2>Play‑offs</h2>`;
+      html += `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem">`;
+      html += `<span style="font-size:0.82rem;color:var(--text-muted)">Score format:</span>`;
+      html += `<div class="score-mode-toggle">`;
+      html += `<button class="${_gpScoreMode['gp-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('gp-playoff','points')">Points</button>`;
+      html += `<button class="${_gpScoreMode['gp-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('gp-playoff','sets')">🎾 Sets</button>`;
+      html += `</div></div>`;
       if (playoffs && playoffs.matches) {
         for (const m of _sortTbdLast(playoffs.matches)) {
           html += matchRow(m, 'gp-playoff');
@@ -1207,21 +1286,6 @@ function matchRow(m, ctx) {
 
   html += `</div>`;
   return html;
-}
-
-function _is_tbd_team(team) {
-  if (!Array.isArray(team) || team.length === 0) {
-    return true;
-  }
-  return team.every(name => !name || String(name).trim().toUpperCase() === 'TBD');
-}
-
-function _sortTbdLast(matches) {
-  return [...matches].sort((a, b) => {
-    const aTbd = _is_tbd_team(a.team1) || _is_tbd_team(a.team2);
-    const bTbd = _is_tbd_team(b.team1) || _is_tbd_team(b.team2);
-    return Number(aTbd) - Number(bTbd);
-  });
 }
 
 function _captureViewDrafts() {
@@ -1356,9 +1420,10 @@ async function startPlayoffs() {
 async function renderMex() {
   const el = document.getElementById('view-content');
   try {
-    const [status, matches] = await Promise.all([
+    const [status, matches, tvSettings] = await Promise.all([
       api(`/api/tournaments/${currentTid}/mex/status`),
       api(`/api/tournaments/${currentTid}/mex/matches`),
+      api(`/api/tournaments/${currentTid}/tv-settings`).catch(() => ({})),
     ]);
 
     _totalPts = status.total_points_per_match || 0;
@@ -1368,6 +1433,7 @@ async function renderMex() {
     for (const p of _mexPlayers) _mexPlayerMap[p.id] = p.name;
 
     let html = `<div class="refresh-row"><button class="btn btn-primary btn-sm" onclick="renderMex()">↻ Refresh</button></div>`;
+    html += _renderTvControls(tvSettings);
 
     // Phase-aware header
     const isPlayoffs = status.phase === 'playoffs';
@@ -1401,7 +1467,7 @@ async function renderMex() {
     if (isFinished) {
       html += `<div class="card">`;
       html += `<h3>Export Outcome</h3>`;
-      html += `<label><input type="checkbox" id="export-include-history" checked> Include match history</label>`;
+      html += `<label class="switch-label"><input type="checkbox" id="export-include-history" checked><span class="switch-track"></span>Include match history</label>`;
       html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem">`;
       html += `<button class="btn btn-primary" onclick="exportTournamentOutcome('html')">Export HTML</button>`;
       html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="exportTournamentOutcome('pdf')">Export PDF</button>`;
@@ -1413,17 +1479,15 @@ async function renderMex() {
       const pendingPo = (playoffsData.pending || []).filter(m => m.status !== 'completed');
       html += _renderCourtAssignmentsCard(pendingPo, 'Court Assignments — Mexicano Play-offs');
 
-      html += `<div class="card">`;
-      html += `<h3>Play-offs Input Format</h3>`;
-      html += `<div class="score-mode-toggle">`;
-      html += `<button class="${_gpScoreMode['mex-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','points')">Points</button>`;
-      html += `<button class="${_gpScoreMode['mex-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','sets')">🎾 Sets</button>`;
-      html += `</div>`;
-      html += `</div>`;
-
       html += _schemaCardHtml('mex-playoff-schema', 'Mexicano play-offs bracket', 'generateMexPlayoffSchema');
 
       html += `<div class="card"><h2>Mexicano Play-off Bracket</h2>`;
+      html += `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem">`;
+      html += `<span style="font-size:0.82rem;color:var(--text-muted)">Score format:</span>`;
+      html += `<div class="score-mode-toggle">`;
+      html += `<button class="${_gpScoreMode['mex-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','points')">Points</button>`;
+      html += `<button class="${_gpScoreMode['mex-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','sets')">🎾 Sets</button>`;
+      html += `</div></div>`;
       for (const m of playoffsData.matches) {
         html += matchRow(m, 'mex-playoff');
       }
@@ -1547,24 +1611,54 @@ function _renderCourtAssignmentsCard(matches, title) {
     return `<div class="card"><h3>${esc(title)}</h3><em>No pending assignments.</em></div>`;
   }
 
+  // Group real matches by court name.
   const byCourt = {};
   for (const m of matches) {
-    const c = m.court || 'Unassigned';
-    if (!byCourt[c]) byCourt[c] = [];
-    byCourt[c].push(m);
+    if (!m.court) continue;
+    if (!byCourt[m.court]) byCourt[m.court] = [];
+    byCourt[m.court].push(m);
   }
 
   const courtNames = Object.keys(byCourt).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  // Build slot → {courtName: match} index so we can detect empty slots.
+  // A slot_number is set by the backend for matches assigned by assign_courts.
+  const slotMap = {};  // slot_number → {courtName: match}
+  for (const m of matches) {
+    if (!m.court) continue;
+    const s = m.slot_number ?? 0;
+    if (!slotMap[s]) slotMap[s] = {};
+    slotMap[s][m.court] = m;
+  }
+  const presentSlots = Object.keys(slotMap).map(Number).sort((a, b) => a - b);
+  // Only use the slot-grid layout when there is more than one court
+  // (empty slots only make sense when multiple courts run in parallel).
+  const useSlotGrid = courtNames.length > 1 && presentSlots.length > 0;
+
   let html = `<div class="card"><h3>${esc(title)}</h3><div class="court-board">`;
   for (const courtName of courtNames) {
     html += `<div class="court-column">`;
     html += `<div class="court-title">${esc(courtName)}</div>`;
-    byCourt[courtName].forEach((m, idx) => {
-      const t1 = (m.team1 || []).join(' & ') || 'TBD';
-      const t2 = (m.team2 || []).join(' & ') || 'TBD';
-      const r = m.round_label ? `<span class="court-round">${esc(m.round_label)}</span>` : '';
-      html += `<div class="court-match-item"><span class="court-slot">#${idx + 1}</span>${esc(t1)} <span style="color:var(--text-muted)">vs</span> ${esc(t2)}${r}</div>`;
-    });
+    if (useSlotGrid) {
+      presentSlots.forEach((slot, idx) => {
+        const m = slotMap[slot]?.[courtName];
+        if (m) {
+          const t1 = (m.team1 || []).join(' & ') || 'TBD';
+          const t2 = (m.team2 || []).join(' & ') || 'TBD';
+          const r = m.round_label ? `<span class="court-round">${esc(m.round_label)}</span>` : '';
+          html += `<div class="court-match-item"><span class="court-slot">#${idx + 1}</span>${esc(t1)} <span style="color:var(--text-muted)">vs</span> ${esc(t2)}${r}</div>`;
+        } else {
+          html += `<div class="court-match-item court-empty-slot"><span class="court-slot">#${idx + 1}</span><em>(empty)</em></div>`;
+        }
+      });
+    } else {
+      byCourt[courtName].forEach((m, idx) => {
+        const t1 = (m.team1 || []).join(' & ') || 'TBD';
+        const t2 = (m.team2 || []).join(' & ') || 'TBD';
+        const r = m.round_label ? `<span class="court-round">${esc(m.round_label)}</span>` : '';
+        html += `<div class="court-match-item"><span class="court-slot">#${idx + 1}</span>${esc(t1)} <span style="color:var(--text-muted)">vs</span> ${esc(t2)}${r}</div>`;
+      });
+    }
     html += `</div>`;
   }
   html += `</div></div>`;
@@ -2052,6 +2146,8 @@ function _showPlayerDetail(name) {
 // ─── Mexicano Playoffs ───────────────────────────────
 let _playoffTeams = [];
 let _mexPlayoffTeamCount = 4;
+let _playoffScoreMap = {};  // player_id → total_points
+let _savedPlayoffTeams = {};  // teamIndex → { a: playerId, b: playerId }
 
 async function proposeMexPlayoffs(teamCount = null) {
   try {
@@ -2060,7 +2156,10 @@ async function proposeMexPlayoffs(teamCount = null) {
     _mexPlayoffTeamCount = requestedTeams;
     const participantsToRecommend = requestedTeams * 2;
     const data = await api(`/api/tournaments/${currentTid}/mex/recommend-playoffs?n_teams=${participantsToRecommend}`);
-    _playoffTeams = data.recommended_teams.map(t => ({ id: t.player_id, name: t.player }));
+    _savedPlayoffTeams = {};  // reset saved state when editor re-initialises
+    _playoffTeams = data.recommended_teams.map(t => ({ id: t.player_id, name: t.player, score: t.total_points ?? 0, estimatedScore: t.estimated_points ?? t.total_points ?? 0, rankedByAvg: t.ranked_by_avg, avgScore: t.avg_points ?? 0 }));
+    // Use estimated score for display/sorting when match counts differ
+    _playoffScoreMap = Object.fromEntries(_playoffTeams.map(p => [p.id, p.rankedByAvg ? p.estimatedScore : p.score]));
     const section = document.getElementById('mex-playoffs-section') || document.getElementById('mex-next-section');
     if (section) {
       section.innerHTML = _renderPlayoffEditor();
@@ -2089,7 +2188,9 @@ async function finishMexicanoAsIs() {
 function _renderPlayoffEditor() {
   let html = `<div class="card">`;
   html += `<h2>Configure Mexicano Play-offs</h2>`;
-  html += `<p style="color:var(--text-muted);font-size:0.85rem">Each team is one row. Pick both players from participants below (defaults are preselected by seed order).</p>`;
+  const _useEstNote = _playoffTeams.length > 0 && _playoffTeams[0].rankedByAvg;
+  const estNote = _useEstNote ? `<span style="color:var(--text-muted);font-size:0.8rem">* Estimated points (players have played different numbers of matches)</span>` : '';
+  html += `<p style="color:var(--text-muted);font-size:0.85rem">Each team is one row. Pick both players from participants below (defaults are preselected by seed order). ${estNote}</p>`;
 
   const maxTeams = Math.max(2, Math.floor((_mexPlayers || []).length / 2));
   html += `<div class="inline-group" style="margin-bottom:0.75rem">`;
@@ -2101,14 +2202,23 @@ function _renderPlayoffEditor() {
   html += `</select></div>`;
   html += `</div>`;
 
+  const useEst = _playoffTeams.length > 0 && _playoffTeams[0].rankedByAvg;
+
   const participantOptions = (selectedId) => {
     let options = `<option value="">— pick —</option>`;
     for (let i = 0; i < _playoffTeams.length; i++) {
       const p = _playoffTeams[i];
       const selected = p.id === selectedId ? ' selected' : '';
-      options += `<option value="${p.id}"${selected}>#${i + 1} ${esc(p.name)}</option>`;
+      const pts = useEst ? `${p.estimatedScore.toFixed(1)}*` : `${p.score}`;
+      options += `<option value="${p.id}"${selected}>#${i + 1} ${esc(p.name)} (${pts} pts)</option>`;
     }
     return options;
+  };
+
+  const teamScore = (aid, bid) => {
+    if (!aid || !bid) return '—';
+    const total = (_playoffScoreMap[aid] || 0) + (_playoffScoreMap[bid] || 0);
+    return useEst ? `${total.toFixed(1)}* pts` : `${total} pts`;
   };
 
   const teamCount = Math.floor(_playoffTeams.length / 2);
@@ -2116,11 +2226,16 @@ function _renderPlayoffEditor() {
   for (let i = 0; i < teamCount; i++) {
     const leftDefault = _playoffTeams[i * 2]?.id || '';
     const rightDefault = _playoffTeams[i * 2 + 1]?.id || '';
+    const initScore = teamScore(leftDefault, rightDefault);
     html += `<div class="playoff-team-item" style="align-items:center; gap:0.6rem; flex-wrap:wrap">`;
     html += `<span class="seed" style="min-width:58px">Team ${i + 1}</span>`;
-    html += `<select id="playoff-team-${i}-a" class="manual-sel" style="min-width:220px">${participantOptions(leftDefault)}</select>`;
+    html += `<select id="playoff-team-${i}-a" class="manual-sel" style="min-width:220px" onchange="_updateTeamScore(${i})">${participantOptions(leftDefault)}</select>`;
     html += `<span style="color:var(--text-muted)">+</span>`;
-    html += `<select id="playoff-team-${i}-b" class="manual-sel" style="min-width:220px">${participantOptions(rightDefault)}</select>`;
+    html += `<select id="playoff-team-${i}-b" class="manual-sel" style="min-width:220px" onchange="_updateTeamScore(${i})">${participantOptions(rightDefault)}</select>`;
+    html += `<span id="team-score-${i}" class="tag" style="min-width:70px;text-align:center;font-variant-numeric:tabular-nums">${initScore}</span>`;
+    html += `<button id="playoff-save-${i}" class="btn btn-success" style="padding:0.25rem 0.65rem;font-size:0.82rem" onclick="_savePlayoffTeam(${i})">✓ Save</button>`;
+    html += `<button id="playoff-edit-${i}" class="btn" style="padding:0.25rem 0.65rem;font-size:0.82rem;display:none;background:var(--border);color:var(--text)" onclick="_editPlayoffTeam(${i})">✎ Edit</button>`;
+    html += `<span id="playoff-saved-badge-${i}" style="display:none;color:var(--success);font-size:0.82rem;font-weight:600">✓ saved</span>`;
     html += `</div>`;
   }
   html += `</div>`;
@@ -2171,6 +2286,94 @@ async function _startMexPlayoffs() {
     _playoffTeams = [];
     renderMex();
   } catch (e) { alert(e.message); }
+}
+
+function _updateTeamScore(i) {
+  const aId = document.getElementById(`playoff-team-${i}-a`)?.value || '';
+  const bId = document.getElementById(`playoff-team-${i}-b`)?.value || '';
+  const el = document.getElementById(`team-score-${i}`);
+  if (!el) return;
+  if (!aId || !bId) { el.textContent = '—'; return; }
+  const total = (_playoffScoreMap[aId] || 0) + (_playoffScoreMap[bId] || 0);
+  const useEst = _playoffTeams.length > 0 && _playoffTeams[0].rankedByAvg;
+  el.textContent = useEst ? `${total.toFixed(1)}* pts` : `${total} pts`;
+}
+
+function _getLockedPlayoffIds(exceptTeamIdx = -1) {
+  const ids = new Set();
+  for (const [idx, team] of Object.entries(_savedPlayoffTeams)) {
+    if (Number(idx) === exceptTeamIdx) continue;
+    if (team.a) ids.add(team.a);
+    if (team.b) ids.add(team.b);
+  }
+  return ids;
+}
+
+function _savePlayoffTeam(i) {
+  const aEl = document.getElementById(`playoff-team-${i}-a`);
+  const bEl = document.getElementById(`playoff-team-${i}-b`);
+  const a = aEl?.value || '';
+  const b = bEl?.value || '';
+  if (!a || !b) { alert(`Team ${i + 1}: select both players before saving.`); return; }
+  if (a === b) { alert(`Team ${i + 1}: players must be different.`); return; }
+  _savedPlayoffTeams[i] = { a, b };
+  _refreshPlayoffOptions();
+}
+
+function _editPlayoffTeam(i) {
+  delete _savedPlayoffTeams[i];
+  _refreshPlayoffOptions();
+}
+
+function _refreshPlayoffOptions() {
+  const useEst = _playoffTeams.length > 0 && _playoffTeams[0].rankedByAvg;
+  const teamCount = Math.floor(_playoffTeams.length / 2);
+
+  for (let i = 0; i < teamCount; i++) {
+    const aEl = document.getElementById(`playoff-team-${i}-a`);
+    const bEl = document.getElementById(`playoff-team-${i}-b`);
+    const saveBtn  = document.getElementById(`playoff-save-${i}`);
+    const editBtn  = document.getElementById(`playoff-edit-${i}`);
+    const badge    = document.getElementById(`playoff-saved-badge-${i}`);
+    if (!aEl || !bEl) continue;
+
+    const saved = _savedPlayoffTeams[i];
+    if (saved) {
+      aEl.disabled = true;
+      bEl.disabled = true;
+      if (saveBtn) saveBtn.style.display = 'none';
+      if (editBtn) editBtn.style.display = '';
+      if (badge)   badge.style.display = '';
+    } else {
+      const locked = _getLockedPlayoffIds(i);
+      const curA = aEl.value;
+      const curB = bEl.value;
+
+      const buildOptions = (selectedId) => {
+        let opts = `<option value="">— pick —</option>`;
+        for (let j = 0; j < _playoffTeams.length; j++) {
+          const p = _playoffTeams[j];
+          if (locked.has(p.id)) continue;  // hide players already locked in other rows
+          const sel = p.id === selectedId ? ' selected' : '';
+          const pts = useEst ? `${p.estimatedScore.toFixed(1)}*` : `${p.score}`;
+          opts += `<option value="${p.id}"${sel}>#${j + 1} ${esc(p.name)} (${pts} pts)</option>`;
+        }
+        return opts;
+      };
+
+      aEl.innerHTML = buildOptions(curA);
+      bEl.innerHTML = buildOptions(curB);
+      aEl.disabled = false;
+      bEl.disabled = false;
+      if (saveBtn) saveBtn.style.display = '';
+      if (editBtn) editBtn.style.display = 'none';
+      if (badge)   badge.style.display = 'none';
+      // If the previously selected player was just taken by another row, clear the selection
+      if (locked.has(curA)) aEl.value = '';
+      if (locked.has(curB)) bEl.value = '';
+      _updateTeamScore(i);
+    }
+  }
 }
 
 // ─── Team Mode toggle ────────────────────────────────
@@ -2249,6 +2452,20 @@ function _open_printable_pdf(htmlDoc) {
   setTimeout(() => w.print(), 250);
 }
 
+async function _fetch_image_as_base64(url) {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result); // data:image/png;base64,...
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
 async function exportTournamentOutcome(format) {
   if (!currentTid || !currentType) return;
   const includeHistory = _export_include_history();
@@ -2260,16 +2477,40 @@ async function exportTournamentOutcome(format) {
     body += `<div class="muted">Generated: ${esc(now)}</div>`;
 
     if (currentType === 'group_playoff') {
-      const [status, groups, playoffs] = await Promise.all([
+      const schemaUrl = `/api/tournaments/${currentTid}/gp/playoffs-schema?fmt=png`
+        + `&box_scale=${(document.getElementById('tv-schema-box')?.value || 1.0)}`
+        + `&line_width=${(document.getElementById('tv-schema-lw')?.value || 1.0)}`
+        + `&arrow_scale=${(document.getElementById('tv-schema-arrow')?.value || 1.0)}`
+        + `&title_font_scale=${(document.getElementById('tv-schema-title-scale')?.value || 1.0)}`;
+      const [status, groups, playoffs, schemaSrc] = await Promise.all([
         api(`/api/tournaments/${currentTid}/gp/status`),
         api(`/api/tournaments/${currentTid}/gp/groups`),
         api(`/api/tournaments/${currentTid}/gp/playoffs`).catch(() => ({ matches: [] })),
+        _fetch_image_as_base64(schemaUrl),
       ]);
 
       if (status.champion) {
         body += `<div class="champ">🏆 Champion: <strong>${esc(status.champion.join(', '))}</strong></div>`;
       }
 
+      // ── Play-offs (above group content) ───────────────────────
+      if (schemaSrc) {
+        body += `<h2>Play-off Bracket</h2>`;
+        body += `<img src="${schemaSrc}" alt="Play-off bracket" style="max-width:100%;height:auto;margin:8px 0 18px">`;
+      }
+
+      if (includeHistory) {
+        const pMatches = (playoffs?.matches || []).filter(m => m.status === 'completed');
+        if (pMatches.length > 0) {
+          body += `<h2>Play-off Match History</h2>`;
+          body += _report_table(
+            ['Round', 'Team 1', 'Team 2', 'Score', 'Court'],
+            pMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.court || '']),
+          );
+        }
+      }
+
+      // ── Group stage (below) ───────────────────────────────────
       body += `<h2>Group Standings</h2>`;
       for (const [gName, rows] of Object.entries(groups.standings || {})) {
         body += `<h3>Group ${esc(gName)}</h3>`;
@@ -2280,31 +2521,50 @@ async function exportTournamentOutcome(format) {
       }
 
       if (includeHistory) {
-        body += `<h2>Group Match History</h2>`;
-        const gMatches = Object.values(groups.matches || {}).flat();
-        body += _report_table(
-          ['Round', 'Team 1', 'Team 2', 'Score', 'Status', 'Court'],
-          gMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.status || '', m.court || '']),
-        );
-
-        body += `<h2>Play-off Match History</h2>`;
-        const pMatches = playoffs?.matches || [];
-        body += _report_table(
-          ['Round', 'Team 1', 'Team 2', 'Score', 'Status', 'Court'],
-          pMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.status || '', m.court || '']),
-        );
+        const gMatches = Object.values(groups.matches || {}).flat().filter(m => m.status === 'completed');
+        if (gMatches.length > 0) {
+          body += `<h2>Group Match History</h2>`;
+          body += _report_table(
+            ['Round', 'Team 1', 'Team 2', 'Score', 'Court'],
+            gMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.court || '']),
+          );
+        }
       }
     } else {
-      const [status, matches, playoffs] = await Promise.all([
+      const schemaUrl = `/api/tournaments/${currentTid}/mex/playoffs-schema?fmt=png`
+        + `&box_scale=${(document.getElementById('tv-schema-box')?.value || 1.0)}`
+        + `&line_width=${(document.getElementById('tv-schema-lw')?.value || 1.0)}`
+        + `&arrow_scale=${(document.getElementById('tv-schema-arrow')?.value || 1.0)}`
+        + `&title_font_scale=${(document.getElementById('tv-schema-title-scale')?.value || 1.0)}`;
+      const [status, matches, playoffs, schemaSrc] = await Promise.all([
         api(`/api/tournaments/${currentTid}/mex/status`),
         api(`/api/tournaments/${currentTid}/mex/matches`),
         api(`/api/tournaments/${currentTid}/mex/playoffs`).catch(() => ({ matches: [] })),
+        _fetch_image_as_base64(schemaUrl),
       ]);
 
       if (status.champion) {
         body += `<div class="champ">🏆 Champion: <strong>${esc(status.champion.join(', '))}</strong></div>`;
       }
 
+      // ── Play-offs (above leaderboard/rounds) ──────────────────
+      if (schemaSrc) {
+        body += `<h2>Play-off Bracket</h2>`;
+        body += `<img src="${schemaSrc}" alt="Play-off bracket" style="max-width:100%;height:auto;margin:8px 0 18px">`;
+      }
+
+      if (includeHistory) {
+        const playoffMatches = (playoffs?.matches || []).filter(m => m.status === 'completed');
+        if (playoffMatches.length > 0) {
+          body += `<h2>Play-off Match History</h2>`;
+          body += _report_table(
+            ['Round', 'Team 1', 'Team 2', 'Score', 'Court'],
+            playoffMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.court || '']),
+          );
+        }
+      }
+
+      // ── Mexicano (below) ──────────────────────────────────────
       body += `<h2>Leaderboard</h2>`;
       body += _report_table(
         ['Rank', 'Player', 'Total Pts', 'Played', 'W', 'D', 'L', 'Avg Pts'],
@@ -2312,18 +2572,12 @@ async function exportTournamentOutcome(format) {
       );
 
       if (includeHistory) {
-        body += `<h2>Mexicano Round History</h2>`;
-        body += _report_table(
-          ['Round', 'Team 1', 'Team 2', 'Score', 'Status', 'Court'],
-          (matches.all_matches || []).map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.status || '', m.court || '']),
-        );
-
-        const playoffMatches = playoffs.matches || [];
-        if (playoffMatches.length > 0) {
-          body += `<h2>Play-off Match History</h2>`;
+        const mexMatches = (matches.all_matches || []).filter(m => m.status === 'completed');
+        if (mexMatches.length > 0) {
+          body += `<h2>Mexicano Round History</h2>`;
           body += _report_table(
-            ['Round', 'Team 1', 'Team 2', 'Score', 'Status', 'Court'],
-            playoffMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.status || '', m.court || '']),
+            ['Round', 'Team 1', 'Team 2', 'Score', 'Court'],
+            mexMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.court || '']),
           );
         }
       }
@@ -2342,15 +2596,88 @@ async function exportTournamentOutcome(format) {
   }
 }
 
-// ─── Utils ────────────────────────────────────────────────
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
+// ─── TV Mode ─────────────────────────────────────────────
+
+/**
+ * Render the TV Mode control card for the admin panel.
+ * tvSettings is the object returned by GET /api/tournaments/{tid}/tv-settings.
+ */
+function _renderTvControls(tvSettings) {
+  if (!currentTid) return '';
+  const s = tvSettings || {};
+  const def = (k, d) => (s[k] !== undefined ? s[k] : d);
+
+  const chkRow = (key, label, defaultVal) => {
+    const checked = def(key, defaultVal) ? 'checked' : '';
+    return `<label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;font-size:0.84rem;">
+      <input type="checkbox" style="width:auto;min-height:auto;margin:0" ${checked}
+        onchange="_updateTvSetting('${key}', this.checked)">
+      ${label}
+    </label>`;
+  };
+
+  let html = `<details class="card" id="tv-controls-panel">`;
+  html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">`;
+  html += `<span style="font-size:1.1rem;font-weight:700">📺 TV Mode Controls</span>`;
+  html += `<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="event.preventDefault();window.open('/tv?tid='+currentTid,'padel_tv_'+currentTid,'noopener noreferrer')">Open TV display ↗</button>`;
+  html += `</summary>`;
+  html += `<div style="margin-top:0.65rem">`;
+  html += `<p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:0.65rem">Toggle which sections appear on the TV screen. Changes take effect on the TV display's next auto-refresh.</p>`;
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem 1.5rem">`;
+  html += chkRow('show_past_matches',   'Past matches',            true);
+  html += chkRow('show_score_breakdown','Score breakdowns',        false);
+  html += chkRow('show_standings',      'Standings / leaderboard', true);
+  html += chkRow('show_bracket',        'Play-off bracket',        true);
+  html += `</div>`;
+  const currentInterval = def('refresh_interval', 15);
+  html += `<div style="margin-top:0.65rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">`;
+  html += `<label style="font-size:0.84rem;color:var(--text-muted);white-space:nowrap">Auto-refresh every</label>`;
+  html += `<select style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem" onchange="_updateTvSetting('refresh_interval', +this.value)">`;
+  [[-1,'On update'],[0,'Never'],[5,'5 s'],[10,'10 s'],[15,'15 s'],[30,'30 s'],[60,'1 min'],[120,'2 min'],[300,'5 min']].forEach(([secs, lbl]) => {
+    html += `<option value="${secs}"${currentInterval === secs ? ' selected' : ''}>${lbl}</option>`;
+  });
+  html += `</select></div>`;
+
+  // Schema rendering controls
+  const boxScale   = def('schema_box_scale',   1.0);
+  const lineWidth  = def('schema_line_width',  1.0);
+  const arrowScale = def('schema_arrow_scale', 1.0);
+  const titleFontScale = def('schema_title_font_scale', 1.0);
+  html += `<details style="margin-top:0.65rem">`;
+  html += `<summary style="cursor:pointer;color:var(--text-muted);font-size:0.82rem;user-select:none">⚙ Bracket schema rendering</summary>`;
+  html += `<div style="margin-top:0.5rem;display:grid;grid-template-columns:1fr 1fr;gap:0.4rem 1rem;align-items:center">`;
+  const sliders = [
+    ['schema_box_scale',        'tv-schema-box',         'Box size',    0.3, 3.0, boxScale],
+    ['schema_line_width',       'tv-schema-lw',          'Line width',  0.3, 5.0, lineWidth],
+    ['schema_arrow_scale',      'tv-schema-arrow',       'Arrow size',  0.3, 5.0, arrowScale],
+    ['schema_title_font_scale', 'tv-schema-title-scale', 'Header size', 0.3, 3.0, titleFontScale],
+  ];
+  sliders.forEach(([key, elId, label, min, max, val]) => {
+    html += `<label style="font-size:0.83rem;color:var(--text-muted);white-space:nowrap">${label} <span id="${elId}-val" style="color:var(--text)">${val.toFixed(1)}</span></label>`;
+    html += `<input type="range" id="${elId}" min="${min}" max="${max}" step="0.1" value="${val}" style="width:100%;min-height:auto"
+      oninput="document.getElementById('${elId}-val').textContent=(+this.value).toFixed(1)"
+      onchange="_updateTvSetting('${key}', +this.value)">`;
+  });
+  html += `</div></details>`;
+  html += `</div>`;
+  html += `</details>`;
+  return html;
 }
 
-// Init
-initTheme();
+/** Persist a single TV setting toggle to the backend. */
+async function _updateTvSetting(key, value) {
+  if (!currentTid) return;
+  try {
+    await api(`/api/tournaments/${currentTid}/tv-settings`, {
+      method: 'PATCH',
+      body: JSON.stringify({ [key]: value }),
+    });
+  } catch (e) {
+    console.error('TV setting update failed:', e.message);
+  }
+}
+
+// Init\ninitTheme();
 updateActiveTournamentUI();
 setCreateMode('gp');
 loadTournaments();

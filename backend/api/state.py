@@ -29,6 +29,7 @@ from pathlib import Path
 
 _tournaments: dict[str, dict] = {}
 _counter: int = 0
+_state_version: int = 0  # bumped on every _save_state() call; used by TV "on-update" mode
 
 _default_data_dir = Path(__file__).resolve().parent.parent.parent / "data"
 DATA_DIR = Path(os.environ.get("PADEL_DATA_DIR", _default_data_dir))
@@ -93,6 +94,8 @@ def _release_lock() -> None:
 
 def _save_state() -> None:
     """Persist the full tournament store to disk (best-effort, atomic write)."""
+    global _state_version
+    _state_version += 1
     try:
         DATA_DIR.mkdir(exist_ok=True)
         tmp = STATE_FILE.with_suffix(".tmp")

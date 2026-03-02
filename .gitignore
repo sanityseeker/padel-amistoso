@@ -10,5 +10,7 @@ wheels/
 # Virtual environments
 .venv
 
+.vscode
+
 # Tournament state (pickle cache — do not commit)
 data/

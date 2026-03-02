@@ -7,12 +7,11 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import Response
 
 from ..models import Court, Player, TournamentType
 from ..tournaments import MexicanoTournament
 from ..viz import render_playoff_schema
-from .helpers import _get_tournament, _serialize_match, _tennis_sets_to_scores
+from .helpers import _get_tournament, _serialize_match, _build_match_labels, _tennis_sets_to_scores, _schema_image_response
 from .schemas import (
     CreateMexicanoRequest,
     CustomRoundRequest,
@@ -237,6 +236,7 @@ async def mex_playoffs_schema(
     box_scale: float = Query(1.0, ge=0.3, le=3.0),
     line_width: float = Query(1.0, ge=0.3, le=5.0),
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
+    title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
 ):
     """Generate a schema image/document for the active Mexicano play-off bracket."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
@@ -252,19 +252,15 @@ async def mex_playoffs_schema(
     img = render_playoff_schema(
         participant_names=participant_names,
         elimination="double" if hasattr(t.playoff_bracket, "all_matches") else "single",
+        match_labels=_build_match_labels(t.playoff_bracket),
         title=title,
         fmt=fmt,
         box_scale=box_scale,
         line_width=line_width,
         arrow_scale=arrow_scale,
+        title_font_scale=title_font_scale,
     )
-
-    media = {
-        "png": "image/png",
-        "svg": "image/svg+xml",
-        "pdf": "application/pdf",
-    }
-    return Response(content=img, media_type=media[fmt])
+    return _schema_image_response(img, fmt)
 
 
 @router.post("/{tid}/mex/record-playoff")
@@ -283,7 +279,7 @@ async def mex_record_playoff(tid: str, req: RecordScoreRequest):
 async def mex_record_playoff_tennis(tid: str, req: RecordTennisScoreRequest):
     """Record a Mexicano play-off match using tennis-style set scores."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
-    total1, total2, sets_tuples = _tennis_sets_to_scores(req.sets)
+    total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
     try:
         t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)
     except (KeyError, RuntimeError, ValueError) as e:

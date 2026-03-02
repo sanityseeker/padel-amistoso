@@ -51,56 +51,72 @@ class TestGroupPlayoffCreation:
             assert len(m.team1) == 1
             assert len(m.team2) == 1
 
-    def test_group_courts_partitioned_by_group(self):
+    def test_group_courts_all_used_and_no_conflict(self):
         t = GroupPlayoffTournament(
             _make_players(8), num_groups=2, courts=_make_courts(4)
         )
         t.generate()
         assert len(t.groups) == 2
 
-        # With 4 courts and 2 groups => 2 courts per group
-        group_a_courts = {"C1", "C2"}
-        group_b_courts = {"C3", "C4"}
-
-        for m in t.groups[0].matches:
+        all_matches = t.all_group_matches()
+        # Every match must have a court assigned.
+        for m in all_matches:
             assert m.court is not None
-            assert m.court.name in group_a_courts
 
-        for m in t.groups[1].matches:
-            assert m.court is not None
-            assert m.court.name in group_b_courts
+        # No participant plays two matches in the same slot.
+        from collections import defaultdict
+        by_slot: dict[int, list] = defaultdict(list)
+        for m in all_matches:
+            by_slot[m.slot_number].append(m)
+        for slot_idx, slot_matches in by_slot.items():
+            seen: set[str] = set()
+            for m in slot_matches:
+                for p in m.team1 + m.team2:
+                    assert p.id not in seen, (
+                        f"Player {p.name} plays two matches in slot {slot_idx}"
+                    )
+                    seen.add(p.id)
 
-    def test_odd_shared_court_available_for_both_groups_not_same_slot(self):
+        # All 4 courts should be used at least once.
+        used_courts = {m.court.name for m in all_matches}
+        assert used_courts == {"C1", "C2", "C3", "C4"}
+
+    def test_odd_court_count_fills_all_courts(self):
+        """In team mode (2 participants/match), 3 courts should all fill."""
         t = GroupPlayoffTournament(
-            _make_players(8), num_groups=2, courts=_make_courts(3)
+            _make_players(8), num_groups=2, courts=_make_courts(3),
+            team_mode=True,
         )
         t.generate()
         assert len(t.groups) == 2
 
-        a_allowed = {"C1", "C3"}
-        b_allowed = {"C2", "C3"}
-
-        for m in t.groups[0].matches:
+        all_matches = t.all_group_matches()
+        for m in all_matches:
             assert m.court is not None
-            assert m.court.name in a_allowed
 
-        for m in t.groups[1].matches:
-            assert m.court is not None
-            assert m.court.name in b_allowed
+        # No participant plays two matches in the same slot.
+        from collections import defaultdict
+        by_slot: dict[int, list] = defaultdict(list)
+        for m in all_matches:
+            by_slot[m.slot_number].append(m)
 
-        max_slots = max(len(t.groups[0].matches), len(t.groups[1].matches))
-        for i in range(max_slots):
-            c1 = (
-                t.groups[0].matches[i].court.name
-                if i < len(t.groups[0].matches) and t.groups[0].matches[i].court
-                else None
-            )
-            c2 = (
-                t.groups[1].matches[i].court.name
-                if i < len(t.groups[1].matches) and t.groups[1].matches[i].court
-                else None
-            )
-            assert not (c1 == "C3" and c2 == "C3")
+        # With 8 teams (2 groups of 4, team_mode) and 3 courts, some slots
+        # should fill all 3 courts simultaneously (each match is only 2
+        # participants, so 3 non-conflicting matches easily fit).
+        max_courts_in_slot = max(len(ms) for ms in by_slot.values())
+        assert max_courts_in_slot == 3, (
+            f"Expected at least one slot filling all 3 courts, "
+            f"but max was {max_courts_in_slot}"
+        )
+
+        for slot_idx, slot_matches in by_slot.items():
+            seen: set[str] = set()
+            for m in slot_matches:
+                for p in m.team1 + m.team2:
+                    assert p.id not in seen, (
+                        f"Player {p.name} plays two matches in slot {slot_idx}"
+                    )
+                    seen.add(p.id)
 
 
 class TestGroupPhase:
@@ -178,6 +194,55 @@ class TestPlayoffPhase:
         t = self._advance_to_playoffs()
         with pytest.raises(RuntimeError):
             t.start_playoffs()
+
+
+class TestTennisThirdSetConsolation:
+    """Group stage standings give the 3rd-set loser 1 consolation match point."""
+
+    def _make_simple_tournament(self):
+        t = GroupPlayoffTournament(
+            _make_players(4), num_groups=1, top_per_group=2
+        )
+        t.generate()
+        return t
+
+    def test_third_set_loss_flag_set_on_match(self):
+        t = self._make_simple_tournament()
+        m = t.all_group_matches()[0]
+        # 6-4 2-6 7-5 → games 15-15, team1 wins 2 sets
+        t.record_group_result(m.id, (16, 15), sets=[(6, 4), (2, 6), (7, 5)], third_set_loss=True)
+        assert m.third_set_loss is True
+
+    def test_winner_gets_win_loser_gets_consolation_point(self):
+        t = self._make_simple_tournament()
+        m = t.all_group_matches()[0]
+        t.record_group_result(m.id, (16, 15), sets=[(6, 4), (2, 6), (7, 5)], third_set_loss=True)
+
+        standings = t.group_standings()
+        rows = standings["A"]
+        winner_row = next(r for r in rows if r["player"] in [p.name for p in m.team1])
+        loser_row = next(r for r in rows if r["player"] in [p.name for p in m.team2])
+
+        assert winner_row["wins"] == 1
+        assert winner_row["match_points"] == 3
+        assert loser_row["third_set_losses"] == 1
+        assert loser_row["draws"] == 0
+        assert loser_row["losses"] == 0
+        assert loser_row["match_points"] == 1
+
+    def test_normal_loss_gives_zero_points(self):
+        t = self._make_simple_tournament()
+        m = t.all_group_matches()[0]
+        # Regular 2-set match, no consolation
+        t.record_group_result(m.id, (12, 7), sets=[(6, 4), (6, 3)], third_set_loss=False)
+
+        standings = t.group_standings()
+        rows = standings["A"]
+        loser_row = next(r for r in rows if r["player"] in [p.name for p in m.team2])
+
+        assert loser_row["losses"] == 1
+        assert loser_row["draws"] == 0
+        assert loser_row["match_points"] == 0
 
 
 class TestDoubleElimination:

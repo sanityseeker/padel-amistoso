@@ -485,7 +485,7 @@ wheels = [
 ]
 
 [[package]]
-name = "padel-code"
+name = "padel-amistoso"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

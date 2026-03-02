@@ -7,9 +7,9 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import Response
 
 from ..viz import render_schema
+from .helpers import _schema_image_response
 from .schemas import SchemaPreviewRequest
 
 router = APIRouter(prefix="/api/schema", tags=["schema"])
@@ -28,6 +28,7 @@ async def schema_preview(
     box_scale: float = Query(1.0, ge=0.3, le=3.0),
     line_width: float = Query(1.0, ge=0.3, le=5.0),
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
+    title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
 ):
     """
     Generate a tournament block-scheme preview image.
@@ -51,10 +52,11 @@ async def schema_preview(
         box_scale=box_scale,
         line_width=line_width,
         arrow_scale=arrow_scale,
+        title_font_scale=title_font_scale,
     )
 
     media = {"png": "image/png", "svg": "image/svg+xml", "pdf": "application/pdf"}
-    return Response(content=img, media_type=media[fmt])
+    return _schema_image_response(img, fmt)
 
 
 @router.post("/preview")
@@ -69,6 +71,7 @@ async def schema_preview_post(req: SchemaPreviewRequest):
         box_scale=req.box_scale,
         line_width=req.line_width,
         arrow_scale=req.arrow_scale,
+        title_font_scale=req.title_font_scale,
     )
 
-    return Response(content=img, media_type="image/png")
+    return _schema_image_response(img, "png")

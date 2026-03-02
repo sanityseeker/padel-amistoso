@@ -52,6 +52,7 @@ def render_schema(
     box_scale: float = 1.0,
     line_width: float = 1.0,
     arrow_scale: float = 1.0,
+    title_font_scale: float = 1.0,
 ) -> bytes:
     """
     Generate a tournament block‑scheme and return it as image bytes.
@@ -94,6 +95,7 @@ def render_schema(
         box_scale=box_scale,
         line_width=line_width,
         arrow_scale=arrow_scale,
+        title_font_scale=title_font_scale,
     )
     buf = io.BytesIO()
     fig.savefig(
@@ -113,6 +115,7 @@ def render_playoff_schema(
     participant_names: list[str],
     elimination: Literal["single", "double"] = "single",
     *,
+    match_labels: dict[str, dict] | None = None,
     title: Optional[str] = None,
     fmt: Literal["png", "svg", "pdf"] = "png",
     dpi: int = 150,
@@ -120,12 +123,13 @@ def render_playoff_schema(
     box_scale: float = 1.0,
     line_width: float = 1.0,
     arrow_scale: float = 1.0,
+    title_font_scale: float = 1.0,
 ) -> bytes:
     """Generate a play-off bracket schema from participant names."""
     if len(participant_names) < 2:
         raise ValueError("Need at least 2 participants")
 
-    layout = _compute_playoff_layout(participant_names, elimination)
+    layout = _compute_playoff_layout(participant_names, elimination, match_labels=match_labels)
     fig = _draw(
         layout,
         title=title,
@@ -134,6 +138,7 @@ def render_playoff_schema(
         box_scale=box_scale,
         line_width=line_width,
         arrow_scale=arrow_scale,
+        title_font_scale=title_font_scale,
     )
     buf = io.BytesIO()
     fig.savefig(
@@ -174,6 +179,19 @@ def _round_label(num_rounds: int, r: int) -> str:
     """Human label for round *r* (0-based) out of *num_rounds* total."""
     remaining = num_rounds - r
     return _ROUND_LABELS.get(remaining, f"Round of {2**remaining}")
+
+
+def _label_from_match_data(data: dict, max_name: int = 16) -> str:
+    """Format team names (and optional score) as a compact multiline node label."""
+    def trunc(s: str) -> str:
+        return s if len(s) <= max_name else s[: max_name - 1] + "…"
+
+    t1 = trunc(data.get("team1") or "TBD")
+    t2 = trunc(data.get("team2") or "TBD")
+    score = data.get("score")
+    if score:
+        return f"{t1}\n{score}\n{t2}"
+    return f"{t1}\nvs\n{t2}"
 
 
 def _next_power_of_two(n: int) -> int:
@@ -292,6 +310,8 @@ def _compute_layout(
 def _compute_playoff_layout(
     participant_names: list[str],
     elimination: str,
+    *,
+    match_labels: dict[str, dict] | None = None,
 ) -> dict:
     """Build a bracket-only layout from named participants."""
     G = nx.DiGraph()
@@ -300,7 +320,8 @@ def _compute_playoff_layout(
     stages: list[dict] = []
 
     x_participants = 0.0
-    slot_spacing = 0.9
+    # Use wider slot spacing when team names will be rendered inside boxes
+    slot_spacing = 1.6 if match_labels else 0.9
     y_start = (len(participant_names) - 1) * slot_spacing / 2
 
     participant_nodes: list[str] = []
@@ -329,6 +350,7 @@ def _compute_playoff_layout(
             len(participant_names),
             x_start=2.5,
             slot_spacing=slot_spacing,
+            match_labels=match_labels,
         )
     else:
         _build_double_elim_bracket(
@@ -340,6 +362,7 @@ def _compute_playoff_layout(
             len(participant_names),
             x_start=2.5,
             slot_spacing=slot_spacing,
+            match_labels=match_labels,
         )
 
     return {
@@ -398,6 +421,7 @@ def _build_single_elim_bracket(
     n_teams: int,
     x_start: float,
     slot_spacing: float,
+    match_labels: dict[str, dict] | None = None,
 ):
     bracket_size = _next_power_of_two(n_teams)
     num_rounds = int(math.log2(bracket_size)) if bracket_size > 1 else 1
@@ -470,16 +494,20 @@ def _build_single_elim_bracket(
                 continue
 
             # Create match node
-            label = round_label
-            if num_pairs > 1:
-                label = f"{round_label}\nMatch {p_idx + 1}"
+            label = f"Match {p_idx + 1}" if num_pairs > 1 else ""
             G.add_node(mid)
             node_meta[mid] = {
                 "label": label,
                 "kind": "match",
                 "stage": 2 + r,
                 "round": round_label,
+                "round_header": round_label,
             }
+            # Overlay actual team names + score if available
+            md = (match_labels or {}).get(mid)
+            if md:
+                node_meta[mid]["label"] = _label_from_match_data(md)
+                node_meta[mid]["has_teams"] = True
             positions[mid] = (x_round, y_mid)
 
             # Edges from feeders
@@ -494,7 +522,7 @@ def _build_single_elim_bracket(
             round_nodes.append(mid)
 
         # Ensure match nodes in this round don't overlap
-        _enforce_min_spacing(positions, round_nodes)
+        _enforce_min_spacing(positions, round_nodes, min_gap=1.8 if match_labels else 1.2)
 
         stage_nodes = [n for n in round_nodes if n and n.startswith("match_")]
         if stage_nodes:
@@ -538,6 +566,7 @@ def _build_double_elim_bracket(
     n_teams: int,
     x_start: float,
     slot_spacing: float,
+    match_labels: dict[str, dict] | None = None,
 ):
     """
     Build a double-elimination bracket layout.
@@ -605,11 +634,14 @@ def _build_double_elim_bracket(
                 continue
 
             round_name = f"Winners R{r + 1}"
-            label = round_name
-            if num_pairs > 1:
-                label = f"{round_name}\nMatch {p_idx + 1}"
+            label = f"Match {p_idx + 1}" if num_pairs > 1 else ""
             G.add_node(mid)
-            node_meta[mid] = {"label": label, "kind": "winners_match", "stage": 2 + r}
+            node_meta[mid] = {"label": label, "kind": "winners_match", "stage": 2 + r, "round_header": round_name}
+            # Overlay actual team names + score if available
+            md = (match_labels or {}).get(mid)
+            if md:
+                node_meta[mid]["label"] = _label_from_match_data(md)
+                node_meta[mid]["has_teams"] = True
             positions[mid] = (x_round, y_mid)
 
             for feeder in (n1, n2):
@@ -743,14 +775,13 @@ def _build_double_elim_bracket(
                 y_mid = _y_losers_cursor
                 _y_losers_cursor -= _LOSERS_STACK_GAP
 
-            label = round_name
-            if num_pairs > 1:
-                label = f"{round_name}\nMatch {p_idx + 1}"
+            label = f"Match {p_idx + 1}" if num_pairs > 1 else ""
             G.add_node(mid)
             node_meta[mid] = {
                 "label": label,
                 "kind": "losers_match",
                 "stage": losers_stage_offset + lr_idx,
+                "round_header": round_name,
             }
             positions[mid] = (x_lr, y_mid)
 
@@ -829,7 +860,12 @@ def _build_double_elim_bracket(
     y_gf = 0.0
     gf_id = "grand_final"
     G.add_node(gf_id)
-    node_meta[gf_id] = {"label": "Grand Final", "kind": "grand_final", "stage": 90}
+    gf_meta: dict = {"label": "", "kind": "grand_final", "stage": 90, "round_header": "Grand Final"}
+    gf_md = (match_labels or {}).get("grand_final")
+    if gf_md:
+        gf_meta["label"] = _label_from_match_data(gf_md)
+        gf_meta["has_teams"] = True
+    node_meta[gf_id] = gf_meta
     positions[gf_id] = (x_gf, y_gf)
 
     if winners_final_node:
@@ -913,6 +949,7 @@ def _draw(
     box_scale: float = 1.0,
     line_width: float = 1.0,
     arrow_scale: float = 1.0,
+    title_font_scale: float = 1.0,
 ) -> plt.Figure:
     """Render the layout dict to a matplotlib Figure."""
     G = layout["graph"]
@@ -954,7 +991,7 @@ def _draw(
             return 1.3 * box_scale, 0.5 * box_scale
         if kind == "bye":
             return 0.9 * box_scale, 0.4 * box_scale
-        return 1.6 * box_scale, 0.65 * box_scale
+        return 1.6 * box_scale, 0.85 * box_scale
 
     def _edge_center_anchor(
         cx: float,
@@ -975,7 +1012,12 @@ def _draw(
     for nid in G.nodes():
         meta = node_meta.get(nid, {})
         kind = meta.get("kind", "match")
-        node_sizes[nid] = _node_box_size(kind)
+        bw, bh = _node_box_size(kind)
+        if meta.get("has_teams"):
+            # Taller & slightly wider box to fit 3-line team display
+            bh = 1.8 * box_scale
+            bw = max(bw, 2.1 * box_scale)
+        node_sizes[nid] = (bw, bh)
 
     # ── Draw edges ──────────────────────────────────────────────────────
     _base_arrow_ms = 15 * arrow_scale
@@ -1006,6 +1048,7 @@ def _draw(
             zorder=2,
         )
         ax.add_patch(arrow)
+        ax.plot(sx, sy, "o", color=es["color"], markersize=_base_arrow_ms * 0.25, zorder=5)
 
     # ── Draw nodes ──────────────────────────────────────────────────────
     for nid in G.nodes():
@@ -1043,17 +1086,64 @@ def _draw(
         ax.add_patch(box)
 
         fontsize = (7 if kind == "bye" else (8 if kind == "advance" else 9)) * box_scale
-        ax.text(
-            x,
-            y,
-            label,
-            ha="center",
-            va="center",
-            fontsize=fontsize,
-            fontweight="bold",
-            color=style["tc"],
-            zorder=4,
-        )
+        round_header = meta.get("round_header", "")
+        header_fs = 8 * box_scale * title_font_scale
+        if round_header and meta.get("has_teams"):
+            # 3-line: italic round header, separator, team names + score
+            ax.text(
+                x, y + bh / 2 - 0.13 * box_scale,
+                round_header,
+                ha="center", va="top",
+                fontsize=header_fs, fontstyle="italic",
+                color=style["tc"], alpha=0.85, zorder=4,
+            )
+            ax.plot(
+                [x - bw / 2 + 0.15, x + bw / 2 - 0.15],
+                [y + bh / 2 - 0.38 * box_scale, y + bh / 2 - 0.38 * box_scale],
+                color=style["tc"], alpha=0.25, linewidth=0.6, zorder=4,
+            )
+            # Team names + score in the main body
+            ax.text(
+                x, y - 0.05 * box_scale,
+                label,
+                ha="center", va="center",
+                fontsize=9 * box_scale, fontweight="bold",
+                color=style["tc"], zorder=4,
+            )
+        elif round_header:
+            # 2-line: italic round header at top, optional match label below
+            ax.text(
+                x, y + bh / 2 - 0.13 * box_scale,
+                round_header,
+                ha="center", va="top",
+                fontsize=header_fs, fontstyle="italic",
+                color=style["tc"], alpha=0.85, zorder=4,
+            )
+            if label:
+                ax.plot(
+                    [x - bw / 2 + 0.15, x + bw / 2 - 0.15],
+                    [y + bh / 2 - 0.38 * box_scale, y + bh / 2 - 0.38 * box_scale],
+                    color=style["tc"], alpha=0.25, linewidth=0.6, zorder=4,
+                )
+                ax.text(
+                    x, y - 0.05 * box_scale,
+                    label,
+                    ha="center", va="center",
+                    fontsize=7 * box_scale, fontweight="bold",
+                    color=style["tc"], zorder=4,
+                )
+        else:
+            ax.text(
+                x,
+                y,
+                label,
+                ha="center",
+                va="center",
+                fontsize=fontsize,
+                fontweight="bold",
+                color=style["tc"],
+                zorder=4,
+            )
 
     # ── Stage column labels (top) ───────────────────────────────────────
     y_top = max(p[1] for p in positions.values()) + 1.5

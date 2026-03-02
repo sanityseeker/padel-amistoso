@@ -399,7 +399,7 @@ class TestMexicanoRollingMode:
             t.start_playoffs(n_teams=2)
 
     def test_start_playoffs_pairs_individuals_into_teams(self):
-        """Selected individual seeds should be paired before playoffs."""
+        """Selected individual seeds are paired then sorted by combined score."""
         players = _make_players(8)
         t = MexicanoTournament(
             players, _make_courts(2), total_points_per_match=32, num_rounds=0
@@ -416,8 +416,12 @@ class TestMexicanoRollingMode:
         teams = t.playoff_bracket.original_teams
         assert len(teams) == 4
         assert all(len(team) == 2 for team in teams)
-        assert [p.id for p in teams[0]] == seed_ids[:2]
-        assert [p.id for p in teams[1]] == seed_ids[2:4]
+        # Every selected player appears exactly once
+        all_ids = [p.id for team in teams for p in team]
+        assert sorted(all_ids) == sorted(seed_ids)
+        # Teams must be sorted by combined score descending
+        team_scores = [sum(t.scores[p.id] for p in team) for team in teams]
+        assert team_scores == sorted(team_scores, reverse=True)
 
     def test_start_playoffs_odd_individual_count_drops_last_seed(self):
         """If seed count is odd, the last seed is excluded before pairing."""

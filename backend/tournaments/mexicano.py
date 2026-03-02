@@ -258,6 +258,7 @@ class MexicanoTournament:
         ``ranked_by_avg`` boolean so the frontend can highlight the active
         sort column.
         """
+        est = self._estimated_scores()
         board = []
         for p in self.players:
             played = self._matches_played[p.id]
@@ -267,6 +268,7 @@ class MexicanoTournament:
                     "player": p.name,
                     "player_id": p.id,
                     "total_points": total,
+                    "estimated_points": round(est[p.id], 2),
                     "matches_played": played,
                     "avg_points": round(total / played, 2) if played > 0 else 0.0,
                     "sat_out": self._sit_out_counts[p.id],
@@ -1656,6 +1658,13 @@ class MexicanoTournament:
 
         self._validate_unique_ids(team_player_ids)
         pairs = self._pair_playoff_player_ids(team_player_ids)
+        # Seed teams by combined (estimated) score so sit-out players aren't
+        # unfairly penalised — mirrors the leaderboard ranked_by_avg logic.
+        est = self._estimated_scores()
+        pairs.sort(
+            key=lambda pair: est.get(pair[0], 0.0) + est.get(pair[1], 0.0),
+            reverse=True,
+        )
         teams = [
             [self._player_by_id(pid1), self._player_by_id(pid2)] for pid1, pid2 in pairs
         ]

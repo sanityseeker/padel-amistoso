@@ -33,7 +33,9 @@ is refined.
 - View standings, pending matches, round history, and champion state
 - Generate tournament schema diagrams (Tools tab)
 - Generate play-off schema directly from the GP play-offs page
+- Export tournament outcome as an HTML or PDF document (with embedded bracket)
 - Choose UI theme (Dark/Light), persisted in browser storage
+- Display a read-only **TV view** optimised for a wall screen (`/tv?tid=<id>`)
 
 ### Group + Play-off flow
 
@@ -59,6 +61,32 @@ is refined.
 4. After configured rounds (or rolling mode), tournament can move to play-offs.
 5. In **individual mode**, selected players are paired into teams
    (`#1+#2`, `#3+#4`, …) before entering play-offs.
+
+### TV display mode
+
+Each tournament can be displayed on a secondary screen via the TV view at
+`/tv?tid=<tournament-id>`.  Content, layout, and refresh behaviour are
+configured in the **Admin → TV Settings** panel:
+
+- Toggle which sections appear: standings/groups, bracket, match list, round history
+- Set the **refresh mode**: *On-update* (polls the version counter and reloads
+  only when the tournament changes), *Never* (static snapshot), or a fixed
+  interval (1 s – 10 min)
+- Adjust schema rendering: box scale, line width, arrow scale, title font scale
+
+The TV view is served from `frontend/tv.html` and uses the same REST API as
+the main UI.
+
+### Export outcome
+
+The **Export** card (visible once the tournament has a champion) lets you
+download a self-contained summary document:
+
+- **Format**: HTML (single file) or PDF (via browser print)
+- **Embedded bracket diagram** — PNG preview of the play-off schema
+- **Match history toggle** — optionally include all recorded match results
+
+---
 
 ### Mexicano tuning variants (brief)
 
@@ -98,7 +126,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```bash
 # 1. Clone the repo (or download and unzip)
 git clone <repo-url>
-cd padel-code
+cd padel-amistoso
 
 # 2. Install dependencies (creates .venv automatically)
 uv sync
@@ -210,6 +238,7 @@ data/
   tournaments.pkl          – Auto-generated; persists all tournament state
 frontend/
   index.html               – Single-page UI (vanilla HTML/CSS/JS)
+  tv.html                  – Read-only TV display view
 api-playground/
   index.html               – Interactive API request tester (manual calls)
 tests/
@@ -260,6 +289,9 @@ uv run pytest tests/ -v
 | `POST` | `/api/tournaments/group-playoff` | Create group+playoff tournament |
 | `POST` | `/api/tournaments/mexicano` | Create Mexicano tournament |
 | `DELETE` | `/api/tournaments/{id}` | Delete a tournament |
+| `GET` | `/api/tournaments/{id}/version` | Version counter (TV polling) |
+| `GET` | `/api/tournaments/{id}/tv-settings` | Get TV display settings |
+| `PATCH` | `/api/tournaments/{id}/tv-settings` | Update TV display settings |
 | **Group + Play-off** | | |
 | `GET` | `/api/tournaments/{id}/gp/status` | GP phase & champion status |
 | `GET` | `/api/tournaments/{id}/gp/groups` | Group standings & matches |
@@ -288,6 +320,9 @@ uv run pytest tests/ -v
 | **Schema / Visualisation** | | |
 | `GET` | `/api/schema/preview` | Bracket diagram (query params) |
 | `POST` | `/api/schema/preview` | Bracket diagram (JSON body) |
+
+All `*-schema` endpoints accept optional query parameters to control rendering:
+`box_scale`, `line_width`, `arrow_scale`, `title_font_scale`.
 
 ## What's next (iteration ideas)
 

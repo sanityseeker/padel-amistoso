@@ -61,6 +61,21 @@ class CreateMexicanoRequest(BaseModel):
         return v
 
 
+class TvSettingsRequest(BaseModel):
+    """Partial update for TV display settings."""
+
+    show_courts: bool | None = None
+    show_past_matches: bool | None = None
+    show_score_breakdown: bool | None = None
+    show_standings: bool | None = None
+    show_bracket: bool | None = None
+    refresh_interval: int | None = Field(default=None, ge=-1, le=300)
+    schema_box_scale: float | None = Field(default=None, ge=0.3, le=3.0)
+    schema_line_width: float | None = Field(default=None, ge=0.3, le=5.0)
+    schema_arrow_scale: float | None = Field(default=None, ge=0.3, le=5.0)
+    schema_title_font_scale: float | None = Field(default=None, ge=0.3, le=5.0)
+
+
 class RecordScoreRequest(BaseModel):
     match_id: str
     score1: int = Field(ge=0)
@@ -114,6 +129,7 @@ class SchemaPreviewRequest(BaseModel):
     box_scale: float = Field(default=1.0, ge=0.3, le=3.0)
     line_width: float = Field(default=1.0, ge=0.3, le=5.0)
     arrow_scale: float = Field(default=1.0, ge=0.3, le=5.0)
+    title_font_scale: float = Field(default=1.0, ge=0.3, le=5.0)
 
     @field_validator("group_sizes")
     @classmethod
