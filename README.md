@@ -423,6 +423,18 @@ uv run ruff format --check .
 uv run ruff format .
 ```
 
+A **pre-commit hook** is included to run these checks automatically before every commit:
+
+```bash
+# Install the hook (one-time setup after cloning)
+uv run pre-commit install
+
+# Run manually against all files
+uv run pre-commit run --all-files
+```
+
+Once installed, `ruff` will lint and format your staged files on every `git commit`. The commit is blocked if any issues can't be auto-fixed.
+
 ---
 
 ## Running tests
