@@ -53,6 +53,7 @@ def render_schema(
     line_width: float = 1.0,
     arrow_scale: float = 1.0,
     title_font_scale: float = 1.0,
+    output_scale: float = 1.0,
 ) -> bytes:
     """
     Generate a tournament block‑scheme and return it as image bytes.
@@ -80,6 +81,8 @@ def render_schema(
         Multiplier for edge/border line thickness (1.0 = default).
     arrow_scale:
         Multiplier for arrowhead size (1.0 = default).
+    output_scale:
+        Multiplier for final figure size (1.0 = default).
 
     Returns
     -------
@@ -96,6 +99,7 @@ def render_schema(
         line_width=line_width,
         arrow_scale=arrow_scale,
         title_font_scale=title_font_scale,
+        output_scale=output_scale,
     )
     buf = io.BytesIO()
     fig.savefig(
@@ -124,6 +128,7 @@ def render_playoff_schema(
     line_width: float = 1.0,
     arrow_scale: float = 1.0,
     title_font_scale: float = 1.0,
+    output_scale: float = 1.0,
 ) -> bytes:
     """Generate a play-off bracket schema from participant names."""
     if len(participant_names) < 2:
@@ -139,6 +144,7 @@ def render_playoff_schema(
         line_width=line_width,
         arrow_scale=arrow_scale,
         title_font_scale=title_font_scale,
+        output_scale=output_scale,
     )
     buf = io.BytesIO()
     fig.savefig(
@@ -947,6 +953,7 @@ def _draw(
     line_width: float = 1.0,
     arrow_scale: float = 1.0,
     title_font_scale: float = 1.0,
+    output_scale: float = 1.0,
 ) -> plt.Figure:
     """Render the layout dict to a matplotlib Figure."""
     G = layout["graph"]
@@ -967,6 +974,7 @@ def _draw(
     y_span = max(ys) - min(ys) + 4
     if figsize is None:
         figsize = (max(12, x_span * 1.3), max(6, y_span * 1.1))
+    figsize = (max(4.0, figsize[0] * output_scale), max(3.0, figsize[1] * output_scale))
 
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
     fig.set_facecolor("#FAFAFA")

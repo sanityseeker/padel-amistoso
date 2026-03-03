@@ -85,14 +85,14 @@ async function login(username, password) {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      return { success: false, error: err.detail || t('Login failed') };
+      return { success: false, error: err.detail || t('txt_txt_login_failed') };
     }
 
     const data = await res.json();
     _saveAuthToken(data.access_token, data.username);
     return { success: true, username: data.username };
   } catch (e) {
-    return { success: false, error: e.message || t('Network error') };
+    return { success: false, error: e.message || t('txt_txt_network_error') };
   }
 }
 
@@ -206,7 +206,7 @@ async function handleLogin(event) {
   const password = passwordInput?.value;
 
   if (!username || !password) {
-    if (errorDiv) errorDiv.textContent = t('Please enter username and password');
+    if (errorDiv) errorDiv.textContent = t('txt_txt_please_enter_username_and_password');
     return;
   }
 
@@ -225,7 +225,7 @@ async function handleLogin(event) {
     // Update UI to show logged-in state
     updateAuthUI();
   } else {
-    if (errorDiv) errorDiv.textContent = result.error || t('Login failed');
+    if (errorDiv) errorDiv.textContent = result.error || t('txt_txt_login_failed');
     if (loginBtn) loginBtn.disabled = false;
   }
 }
@@ -240,13 +240,13 @@ function updateAuthUI() {
   if (authStatus) {
     if (username) {
       authStatus.innerHTML = `
-        <span style="color:var(--text-muted);font-size:0.85rem">${t('Logged in as')}</span>
+        <span style="color:var(--text-muted);font-size:0.85rem">${t('txt_txt_logged_in_as')}</span>
         <strong style="margin:0 0.5rem">${esc(username)}</strong>
-        <button class="btn btn-sm" onclick="logout()" style="padding:0.3rem 0.6rem">${t('Logout')}</button>
+        <button class="btn btn-sm" onclick="logout()" style="padding:0.3rem 0.6rem">${t('txt_txt_logout')}</button>
       `;
     } else {
       authStatus.innerHTML = `
-        <button class="btn btn-sm" onclick="showLoginDialog()" style="background:var(--green);color:#fff;border:none;padding:0.4rem 0.8rem;font-weight:600">🔓 ${t('Login')}</button>
+        <button class="btn btn-sm" onclick="showLoginDialog()" style="background:var(--green);color:#fff;border:none;padding:0.4rem 0.8rem;font-weight:600">🔓 ${t('txt_txt_login')}</button>
       `;
     }
   }

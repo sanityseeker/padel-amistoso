@@ -113,10 +113,6 @@ function t(text, params = {}) {
   return text.replace(/\{(\w+)\}/g, (_, key) => String(params[key] ?? `{${key}}`));
 }
 
-function _hasSpanishTranslation(text) {
-  return Boolean(window.__i18n?.hasEs?.(text));
-}
-
 /** @returns {'en'|'es'} */
 function getAppLanguage() {
   return _currentLang;
@@ -158,72 +154,6 @@ function applyI18n(root = document) {
     const key = el.getAttribute('data-i18n-aria-label');
     if (!key) return;
     el.setAttribute('aria-label', t(key));
-  });
-
-  root.querySelectorAll('[placeholder]').forEach((el) => {
-    const original = el.getAttribute('placeholder');
-    if (!original) return;
-    if (_currentLang === 'es' && _hasSpanishTranslation(original)) {
-      el.setAttribute('placeholder', t(original));
-      return;
-    }
-    if (_currentLang === 'en' && el.dataset?.i18nPlaceholderOriginal) {
-      el.setAttribute('placeholder', el.dataset.i18nPlaceholderOriginal);
-    } else if (_currentLang === 'es' && !el.dataset?.i18nPlaceholderOriginal) {
-      el.dataset.i18nPlaceholderOriginal = original;
-    }
-  });
-
-  root.querySelectorAll('[title]').forEach((el) => {
-    const original = el.getAttribute('title');
-    if (!original) return;
-    if (_currentLang === 'es' && _hasSpanishTranslation(original)) {
-      el.setAttribute('title', t(original));
-      return;
-    }
-    if (_currentLang === 'en' && el.dataset?.i18nTitleOriginal) {
-      el.setAttribute('title', el.dataset.i18nTitleOriginal);
-    } else if (_currentLang === 'es' && !el.dataset?.i18nTitleOriginal) {
-      el.dataset.i18nTitleOriginal = original;
-    }
-  });
-
-  root.querySelectorAll('[aria-label]').forEach((el) => {
-    const original = el.getAttribute('aria-label');
-    if (!original) return;
-    if (_currentLang === 'es' && _hasSpanishTranslation(original)) {
-      el.setAttribute('aria-label', t(original));
-      return;
-    }
-    if (_currentLang === 'en' && el.dataset?.i18nAriaOriginal) {
-      el.setAttribute('aria-label', el.dataset.i18nAriaOriginal);
-    } else if (_currentLang === 'es' && !el.dataset?.i18nAriaOriginal) {
-      el.dataset.i18nAriaOriginal = original;
-    }
-  });
-
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  const textNodes = [];
-  while (walker.nextNode()) textNodes.push(walker.currentNode);
-
-  textNodes.forEach((node) => {
-    const parentTag = node.parentElement?.tagName;
-    if (parentTag === 'SCRIPT' || parentTag === 'STYLE') return;
-    const raw = node.nodeValue || '';
-    const trimmed = raw.trim();
-    if (!trimmed) return;
-    if (!_hasSpanishTranslation(trimmed)) return;
-
-    if (_currentLang === 'es') {
-      if (!node.parentElement?.dataset?.i18nTextOriginal) {
-        if (node.parentElement) node.parentElement.dataset.i18nTextOriginal = raw;
-      }
-      node.nodeValue = raw.replace(trimmed, t(trimmed));
-      return;
-    }
-
-    const original = node.parentElement?.dataset?.i18nTextOriginal;
-    if (original) node.nodeValue = original;
   });
 }
 

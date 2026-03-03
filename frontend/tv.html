@@ -479,9 +479,32 @@
 
   /* ── Responsive ── */
   @media (max-width: 600px) {
-    body { padding: 0.8rem; }
-    .tv-title h1 { font-size: 1.4rem; }
+    body { padding: 0.7rem 0.75rem 1.5rem; }
+
+    /* Header: tighter, title wraps */
+    .tv-header { margin-bottom: 1rem; padding-bottom: 0.6rem; gap: 0.6rem; }
+    .tv-title h1 { font-size: 1.25rem; white-space: normal; }
+    .tv-title .subtitle { font-size: 0.82rem; }
+    .tv-meta { gap: 0.4rem; flex-wrap: wrap; }
+
+    /* Court board: single column on phones */
+    .court-board { grid-template-columns: 1fr; gap: 0.75rem; }
     .court-match-teams { font-size: 1rem; }
+
+    /* Standings table: scrollable, smaller text */
+    .tv-section { overflow-x: auto; }
+    .standings-table { font-size: 0.8rem; }
+    .standings-table th,
+    .standings-table td { padding: 0.3rem 0.4rem; }
+
+    /* Picker: less wasted vertical space */
+    .tv-picker { margin: 2rem auto; padding: 0 0.5rem; }
+    .tv-picker h1 { font-size: 1.4rem; }
+
+    /* Touch targets */
+    .theme-btn { min-height: 44px; min-width: 44px; }
+    .tv-picker-form input,
+    .tv-picker-form button { min-height: 44px; font-size: 1rem; }
   }
 </style>
 </head>
@@ -524,10 +547,10 @@ function _toggleLanguage() {
 
 function _languageToggleMeta() {
   const current = getAppLanguage();
-  const currentLabel = current === 'es' ? t('Spanish') : t('English');
+  const currentLabel = current === 'es' ? t('txt_txt_spanish') : t('txt_txt_english');
   return {
     icon: current === 'es' ? '🇪🇸' : '🇬🇧',
-    label: `${t('Language')}: ${currentLabel}`,
+    label: `${t('txt_txt_language')}: ${currentLabel}`,
   };
 }
 
@@ -591,12 +614,12 @@ function _startCountdown() {
   _stopAllSchedules();
   if (_refreshIntervalSecs === 0) {
     // “Never” — no auto-refresh
-    _updateCountdownEl(t('Manual only'));
+    _updateCountdownEl(t('txt_txt_manual_only'));
     return;
   }
   if (_refreshIntervalSecs === -1) {
     // “On update” — poll version endpoint every 2 s
-    _updateCountdownEl(t('Watching for updates…'));
+    _updateCountdownEl('');
     _versionPollTimer = setInterval(async () => {
       if (_isRefreshing || !TID) return;
       try {
@@ -643,12 +666,12 @@ async function loadTV() {
     const meta = list.find(t => t.id === TID);
     if (!meta) {
       document.getElementById('tv-root').innerHTML =
-        `<div class="tv-error">${t('Tournament not found: {value}', { value: esc(TID) })}</div>`;
+        `<div class="tv-error">${t('txt_txt_tournament_not_found_value', { value: esc(TID) })}</div>`;
       return;
     }
     _tournamentType = meta.type;
     _tournamentName = meta.name;
-    document.title = `${t('Padel TV')} | ${meta.name}`;
+    document.title = `${t('txt_txt_padel_tv')} | ${meta.name}`;
 
     // Load TV settings and tournament data in parallel
     const [tvSettings, ...dataResults] = await Promise.all([
@@ -692,7 +715,7 @@ async function loadTV() {
     }
   } catch (e) {
     const root = document.getElementById('tv-root');
-    if (root) root.innerHTML = `<div class="tv-error">${t('Error loading data: {value}', { value: esc(e.message) })}</div>`;
+    if (root) root.innerHTML = `<div class="tv-error">${t('txt_txt_error_loading_data_value', { value: esc(e.message) })}</div>`;
   } finally {
     _isRefreshing = false;
     const dot = document.getElementById('refresh-dot');
@@ -715,12 +738,12 @@ function _renderGP(tvSettings, status, groups, playoffs) {
     (playoffs?.pending || []).filter(m => m.status !== 'completed')
   );
   const assignmentMatches = isPlayoffs ? pendingPlayoff : pendingGroup;
-  const courtTitle = isPlayoffs ? t('Court Assignments — Play-offs') : t('Court Assignments — Group Stage');
+  const courtTitle = isPlayoffs ? t('txt_txt_court_assignments_play_offs') : t('txt_txt_court_assignments_group_stage');
 
   let html = _buildHeader(_tournamentName, phase, champion);
 
   if (champion) {
-    html += `<div class="champion-banner">🏆 ${t('Champion')}: ${esc(champion.join(' & '))}</div>`;
+    html += `<div class="champion-banner">🏆 ${t('txt_txt_champion')}: ${esc(champion.join(' & '))}</div>`;
   }
 
   // Courts (always shown)
@@ -731,7 +754,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
     if (tvSettings.show_past_matches) {
       const playoffPast = (playoffs?.matches || []).filter(m => m.status === 'completed');
       if (playoffPast.length > 0)
-        html += _buildPastMatches(playoffPast, tvSettings, false, t('Play-off Matches'), 'past-playoffs');
+        html += _buildPastMatches(playoffPast, tvSettings, false, t('txt_txt_play_off_matches'), 'past-playoffs');
     }
 
   if (tvSettings.show_bracket) {
@@ -741,25 +764,25 @@ function _renderGP(tvSettings, status, groups, playoffs) {
       const tfs = tvSettings.schema_title_font_scale || 1.0;
       const imgUrl = `/api/tournaments/${TID}/gp/playoffs-schema?fmt=png&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
       html += `<details class="tv-collapsible" data-tv-key="bracket" open>`;
-      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('Play-off Bracket')}</h2></summary>`;
+      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2></summary>`;
       html += `<div class="tv-section">`;
-      html += `<img class="bracket-img" src="${imgUrl}" alt="${t('Play-off Bracket')}" onerror="this.style.display='none'">`;
+      html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onerror="this.style.display='none'">`;
       html += `</div></details>`;
     }
 
     if (tvSettings.show_past_matches) {
       const groupPast = Object.values(groups.matches || {}).flat().filter(m => m.status === 'completed');
       if (groupPast.length > 0)
-        html += _buildPastMatches(groupPast, tvSettings, false, t('Group Stage Matches'), 'past-groups');
+        html += _buildPastMatches(groupPast, tvSettings, false, t('txt_txt_group_stage_matches'), 'past-groups');
     }
   } else {
     // Group phase: standings → group past matches
     if (tvSettings.show_standings) {
       html += `<details class="tv-collapsible" data-tv-key="standings" open>`;
-      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('Group Standings')}</h2></summary>`;
+      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_group_standings')}</h2></summary>`;
       html += `<div class="tv-section">`;
       for (const [gName, rows] of Object.entries(groups.standings || {})) {
-        html += `<div class="group-block"><h3>${t('Group Stage')} ${esc(gName)}</h3>`;
+        html += `<div class="group-block"><h3>${t('txt_txt_group_stage')} ${esc(gName)}</h3>`;
         html += `<table class="standings-table"><thead><tr>`;
         html += `<th>#</th><th>Player</th><th>W</th><th>D</th><th>L</th><th>PF</th><th>PA</th><th>Pts</th>`;
         html += `</tr></thead><tbody>`;
@@ -777,7 +800,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
     if (tvSettings.show_past_matches) {
       const groupPast = Object.values(groups.matches || {}).flat().filter(m => m.status === 'completed');
       if (groupPast.length > 0)
-        html += _buildPastMatches(groupPast, tvSettings, false, t('Group Stage Matches'), 'past-groups');
+        html += _buildPastMatches(groupPast, tvSettings, false, t('txt_txt_group_stage_matches'), 'past-groups');
     }
   }
 
@@ -793,12 +816,12 @@ function _renderMex(tvSettings, status, matches, playoffs) {
   const pendingCurrent = _sortTbdLast((matches.current_matches || []).filter(m => m.status !== 'completed'));
   const pendingPlayoff = _sortTbdLast((playoffs?.pending || []).filter(m => m.status !== 'completed'));
   const assignmentMatches = isPlayoffs ? pendingPlayoff : pendingCurrent;
-  const courtTitle = isPlayoffs ? t('Court Assignments — Mexicano Play-offs') : `${t('Court Assignments — Group Stage')} ${status.current_round}`;
+  const courtTitle = isPlayoffs ? t('txt_txt_court_assignments_mexicano_play_offs') : `${t('txt_txt_court_assignments_group_stage')} ${status.current_round}`;
 
   let html = _buildHeader(_tournamentName, phase, champion);
 
   if (champion) {
-    html += `<div class="champion-banner">🏆 ${t('Champion')}: ${esc(champion.join(' & '))}</div>`;
+    html += `<div class="champion-banner">🏆 ${t('txt_txt_champion')}: ${esc(champion.join(' & '))}</div>`;
   }
 
   // Courts (always shown)
@@ -809,7 +832,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
     if (tvSettings.show_past_matches) {
       const playoffPast = (playoffs?.matches || []).filter(m => m.status === 'completed');
       if (playoffPast.length > 0)
-        html += _buildPastMatches(playoffPast, tvSettings, false, t('Play-off Matches'), 'past-playoffs');
+        html += _buildPastMatches(playoffPast, tvSettings, false, t('txt_txt_play_off_matches'), 'past-playoffs');
     }
 
     if (tvSettings.show_bracket) {
@@ -819,9 +842,9 @@ function _renderMex(tvSettings, status, matches, playoffs) {
       const tfs = tvSettings.schema_title_font_scale || 1.0;
       const imgUrl = `/api/tournaments/${TID}/mex/playoffs-schema?fmt=png&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
       html += `<details class="tv-collapsible" data-tv-key="bracket" open>`;
-      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('Play-off Bracket')}</h2></summary>`;
+      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2></summary>`;
       html += `<div class="tv-section">`;
-      html += `<img class="bracket-img" src="${imgUrl}" alt="${t('Play-off Bracket')}" onerror="this.style.display='none'">`;
+      html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onerror="this.style.display='none'">`;
       html += `</div></details>`;
     }
 
@@ -832,7 +855,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
     if (tvSettings.show_past_matches) {
       const mexPast = (matches.all_matches || []).filter(m => m.status === 'completed');
       if (mexPast.length > 0)
-        html += _buildPastMatches(mexPast, tvSettings, true, t('Mexicano Rounds'), 'past-mexicano');
+        html += _buildPastMatches(mexPast, tvSettings, true, t('txt_txt_mexicano_rounds'), 'past-mexicano');
     }
   } else {
     // Mexicano phase: leaderboard → mexicano rounds
@@ -843,7 +866,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
     if (tvSettings.show_past_matches) {
       const mexPast = (matches.all_matches || []).filter(m => m.status === 'completed');
       if (mexPast.length > 0)
-        html += _buildPastMatches(mexPast, tvSettings, true, t('Mexicano Rounds'), 'past-mexicano');
+        html += _buildPastMatches(mexPast, tvSettings, true, t('txt_txt_mexicano_rounds'), 'past-mexicano');
     }
   }
 
@@ -856,7 +879,7 @@ function _buildMexLeaderboard(status) {
   const lb = status.leaderboard || [];
   const byAvg = lb.length > 0 && lb[0].ranked_by_avg;
   let html = `<details class="tv-collapsible" data-tv-key="standings" open>`;
-  html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('Leaderboard')}</h2></summary>`;
+  html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_leaderboard')}</h2></summary>`;
   html += `<div class="tv-section">`;
   html += `<table class="standings-table"><thead><tr>`;
   html += `<th>#</th><th>Player</th><th>Total Pts</th><th>Played</th><th>W</th><th>D</th><th>L</th><th>Avg Pts</th>`;
@@ -880,18 +903,19 @@ function _buildHeader(name, phase, champion) {
   return `
     <div class="tv-header">
       <div class="tv-title">
+        <button type="button" onclick="_backToTournaments()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.25rem 0.6rem;cursor:pointer;font-size:0.82rem;line-height:1;white-space:nowrap" title="${t('txt_txt_back_to_tournaments')}">← ${t('txt_txt_tournaments')}</button>
         <h1>${esc(name)}</h1>
-        <div class="subtitle">${t('Padel Tournament — TV Display')}</div>
+        <div class="subtitle">${t('txt_txt_padel_tournament_tv_display')}</div>
       </div>
       <div class="tv-meta">
         ${phaseLabel ? `<span class="tv-badge tv-badge-phase">${esc(phaseLabel)}</span>` : ''}
-        ${champion ? `<span class="tv-badge tv-badge-champion">🏆 ${t('Finished')}</span>` : `<span class="tv-badge tv-badge-live">● ${t('LIVE')}</span>`}
+        ${champion ? `<span class="tv-badge tv-badge-champion">🏆 ${t('txt_txt_finished')}</span>` : `<span class="tv-badge tv-badge-live">● ${t('txt_txt_live')}</span>`}
         <div class="refresh-indicator">
           <div class="refresh-dot" id="refresh-dot"></div>
           <span id="tv-countdown">↻ ${_refreshIntervalSecs}s</span>
-          <button onclick="loadTV()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;font-size:0.8rem;line-height:1" title="${t('Refresh now')}">↻</button>
-          <button id="lang-toggle-btn" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button>
-          <button id="theme-toggle-btn" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('Toggle light / dark mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>
+          <button type="button" onclick="loadTV()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;font-size:0.8rem;line-height:1" title="${t('txt_txt_refresh_now')}">↻</button>
+          <button type="button" id="lang-toggle-btn" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button>
+          <button type="button" id="theme-toggle-btn" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>
         </div>
       </div>
     </div>`;
@@ -901,14 +925,14 @@ function _buildCourts(matches, title) {
   let html = `<div class="tv-section">`;
   html += `<div class="tv-section-header"><h2>${esc(title)}</h2></div>`;
   if (!matches || matches.length === 0) {
-    html += `<p class="tv-empty">${t('No pending court assignments.')}</p>`;
+    html += `<p class="tv-empty">${t('txt_txt_no_pending_court_assignments')}</p>`;
     html += `</div>`;
     return html;
   }
 
   const byCourt = {};
   for (const m of matches) {
-    const c = m.court || t('Unassigned');
+    const c = m.court || t('txt_txt_unassigned');
     if (!byCourt[c]) byCourt[c] = [];
     byCourt[c].push(m);
   }
@@ -936,11 +960,11 @@ function _buildCourts(matches, title) {
           const t1 = (m.team1 || []).join(' & ') || 'TBD';
           const t2 = (m.team2 || []).join(' & ') || 'TBD';
           html += `<div class="court-match">`;
-          html += `<div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('vs')}</span>${esc(t2)}</div>`;
+          html += `<div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(t2)}</div>`;
           if (m.round_label) html += `<div class="court-match-meta">${esc(m.round_label)}</div>`;
           html += `</div>`;
         } else {
-          html += `<div class="court-match-empty">${t('(empty)')}</div>`;
+          html += `<div class="court-match-empty">${t('txt_txt_empty')}</div>`;
         }
       }
     } else {
@@ -948,7 +972,7 @@ function _buildCourts(matches, title) {
         const t1 = (m.team1 || []).join(' & ') || 'TBD';
         const t2 = (m.team2 || []).join(' & ') || 'TBD';
         html += `<div class="court-match">`;
-        html += `<div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('vs')}</span>${esc(t2)}</div>`;
+        html += `<div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(t2)}</div>`;
         if (m.round_label) html += `<div class="court-match-meta">${esc(m.round_label)}</div>`;
         html += `</div>`;
       }
@@ -959,7 +983,7 @@ function _buildCourts(matches, title) {
   return html;
 }
 
-function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = t('Past Matches'), tvKey = 'past-matches') {
+function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = t('txt_txt_past_matches'), tvKey = 'past-matches') {
   if (!matches || matches.length === 0) return '';
 
   // Group by round_label first (more descriptive), fall back to round_number
@@ -983,7 +1007,7 @@ function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = t('Past Ma
     const openAttr = ri === 0 ? ' open' : ''; // most recent open by default
 
     html += `<details class="round-block" data-tv-key="${tvKey}-${esc(key)}"${openAttr}>`;
-    html += `<summary class="round-summary">▶ ${esc(key)} — ${rMatches.length} ${rMatches.length > 1 ? t('matches') : t('match')}</summary>`;
+    html += `<summary class="round-summary">▶ ${esc(key)} — ${rMatches.length} ${rMatches.length > 1 ? t('txt_txt_matches') : t('txt_txt_match')}</summary>`;
     html += `<div class="round-body">`;
     for (const m of rMatches) {
       html += _buildHistoryMatch(m, tvSettings, isMex);
@@ -1014,7 +1038,7 @@ function _buildHistoryMatch(m, tvSettings, isMex) {
   }
 
   let html = `<div class="history-match">`;
-  html += `<div class="history-teams">${esc(t1)}<span class="history-vs">${t('vs')}</span>${esc(t2)}</div>`;
+  html += `<div class="history-teams">${esc(t1)}<span class="history-vs">${t('txt_txt_vs')}</span>${esc(t2)}</div>`;
   html += scoreHtml;
   html += court;
   html += `</div>`;
@@ -1024,7 +1048,7 @@ function _buildHistoryMatch(m, tvSettings, isMex) {
     const bd = _breakdowns[m.id];
     if (bd && Object.keys(bd).length > 0) {
       html += `<details style="margin-top:-0.3rem;margin-bottom:0.4rem">`;
-      html += `<summary class="breakdown-toggle">📊 ${t('Score breakdown')}</summary>`;
+      html += `<summary class="breakdown-toggle">📊 ${t('txt_txt_score_breakdown')}</summary>`;
       html += `<div class="breakdown-panel">`;
       html += `<table class="breakdown-table"><thead><tr>`;
       html += `<th>Player</th><th>Raw</th><th>Str ×</th><th>LossDisc ×</th><th>Bonus</th><th>Final</th>`;
@@ -1046,8 +1070,8 @@ function _buildHistoryMatch(m, tvSettings, isMex) {
 // ── Helpers ───────────────────────────────────────────────
 function _phaseLabel(phase) {
   const map = {
-    setup: t('Setup'), groups: t('Group Stage'), playoffs: t('Play-offs'),
-    finished: t('Finished'), mexicano: t('Mexicano'),
+    setup: t('txt_txt_setup'), groups: t('txt_txt_group_stage'), playoffs: t('txt_txt_play_offs'),
+    finished: t('txt_txt_finished'), mexicano: t('txt_txt_mexicano'),
   };
   return map[phase] || phase;
 }
@@ -1061,7 +1085,7 @@ async function _resolveAlias() {
       TID = data.id;
     } catch (_) {
       document.getElementById('tv-root').innerHTML =
-        `<div class="tv-error">${t('No tournament found with alias:')} <strong>${esc(_aliasParam)}</strong></div>`;
+        `<div class="tv-error">${t('txt_txt_no_tournament_found_with_alias')} <strong>${esc(_aliasParam)}</strong></div>`;
       return false;
     }
   }
@@ -1075,16 +1099,16 @@ async function _showPicker() {
   const langToggle = _languageToggleMeta();
   let html = `<div class="tv-picker">`;
   html += `<div style="display:flex;justify-content:flex-end;gap:0.45rem;margin-bottom:0.75rem">`;
-  html += `<button class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button>`;
-  html += `<button data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('Toggle light / dark mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>`;
+  html += `<button type="button" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button>`;
+  html += `<button type="button" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>`;
   html += `</div>`;
-  html += `<h1>${t('Padel TV')}</h1>`;
-  html += `<div class="subtitle">${t('Select a tournament to display')}</div>`;
+  html += `<h1>${t('txt_txt_padel_tv')}</h1>`;
+  html += `<div class="subtitle">${t('txt_txt_select_a_tournament_to_display')}</div>`;
 
   if (tournaments.length > 0) {
     html += `<ul class="tv-picker-list">`;
     for (const tournament of tournaments) {
-      const typeLabel = tournament.type === 'group_playoff' ? t('Group + Playoff') : t('Mexicano');
+      const typeLabel = tournament.type === 'group_playoff' ? t('txt_txt_group_playoff') : t('txt_txt_mexicano');
       const aliasTag = tournament.alias ? `<span class="picker-alias">${esc(tournament.alias)}</span>` : '';
       html += `<a class="tv-picker-item" href="/tv?tid=${encodeURIComponent(tournament.id)}">`;
       html += `${esc(tournament.name)}<span class="picker-type">${typeLabel}</span>${aliasTag}`;
@@ -1092,17 +1116,24 @@ async function _showPicker() {
     }
     html += `</ul>`;
   } else {
-    html += `<p style="color:var(--text-muted);margin-bottom:1.5rem">${t('No tournaments available.')}</p>`;
+    html += `<p style="color:var(--text-muted);margin-bottom:1.5rem">${t('txt_txt_no_tournaments_available')}</p>`;
   }
 
-  html += `<div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.5rem">${t('Or enter a tournament ID / alias directly:')}</div>`;
+  html += `<div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.5rem">${t('txt_txt_or_enter_a_tournament_id_alias_directly')}</div>`;
   html += `<form class="tv-picker-form" onsubmit="return _goToTournament(event)">`;
-  html += `<input type="text" id="picker-input" placeholder="${t('Tournament ID or alias…')}">`;
-  html += `<button type="submit">${t('Go')}</button>`;
+  html += `<input type="text" id="picker-input" placeholder="${t('txt_txt_tournament_id_or_alias')}">`;
+  html += `<button type="submit">${t('txt_txt_go')}</button>`;
   html += `</form>`;
   html += `</div>`;
 
   document.getElementById('tv-root').innerHTML = html;
+}
+
+function _backToTournaments() {
+  _stopAllSchedules();
+  TID = null;
+  history.replaceState(null, '', '/tv');
+  _showPicker();
 }
 
 function _goToTournament(e) {

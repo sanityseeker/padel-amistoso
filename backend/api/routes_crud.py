@@ -24,6 +24,7 @@ _DEFAULT_TV_SETTINGS: dict = {
     "schema_line_width": 1.0,
     "schema_arrow_scale": 1.0,
     "schema_title_font_scale": 1.0,
+    "schema_output_scale": 1.0,
 }
 
 

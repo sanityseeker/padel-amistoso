@@ -29,6 +29,7 @@ async def schema_preview(
     line_width: float = Query(1.0, ge=0.3, le=5.0),
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
+    output_scale: float = Query(1.0, ge=0.5, le=3.0),
 ):
     """
     Generate a tournament block-scheme preview image.
@@ -53,6 +54,7 @@ async def schema_preview(
         line_width=line_width,
         arrow_scale=arrow_scale,
         title_font_scale=title_font_scale,
+        output_scale=output_scale,
     )
 
     return _schema_image_response(img, fmt)
@@ -71,6 +73,7 @@ async def schema_preview_post(req: SchemaPreviewRequest):
         line_width=req.line_width,
         arrow_scale=req.arrow_scale,
         title_font_scale=req.title_font_scale,
+        output_scale=req.output_scale,
     )
 
     return _schema_image_response(img, "png")

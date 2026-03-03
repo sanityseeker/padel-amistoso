@@ -74,6 +74,7 @@ class TvSettingsRequest(BaseModel):
     schema_line_width: float | None = Field(default=None, ge=0.3, le=5.0)
     schema_arrow_scale: float | None = Field(default=None, ge=0.3, le=5.0)
     schema_title_font_scale: float | None = Field(default=None, ge=0.3, le=5.0)
+    schema_output_scale: float | None = Field(default=None, ge=0.5, le=3.0)
 
 
 class SetAliasRequest(BaseModel):
@@ -136,6 +137,7 @@ class SchemaPreviewRequest(BaseModel):
     line_width: float = Field(default=1.0, ge=0.3, le=5.0)
     arrow_scale: float = Field(default=1.0, ge=0.3, le=5.0)
     title_font_scale: float = Field(default=1.0, ge=0.3, le=5.0)
+    output_scale: float = Field(default=1.0, ge=0.5, le=3.0)
 
     @field_validator("group_sizes")
     @classmethod

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Padel Tournament Manager</title>
+<title data-i18n="txt_txt_padel_tournament_manager">Padel Tournament Manager</title>
 <style>
   :root {
     --bg: #0f172a;
@@ -436,6 +436,9 @@
   }
   .score-mode-toggle button.active { background: var(--accent); color: #fff; }
 
+  #mex-rounds-toggle { font-size: 0.9rem; }
+  #mex-rounds-toggle button { padding: 0.45rem 1rem; }
+
   /* ── Pill switch toggle ── */
   .switch-label {
     display: inline-flex; align-items: center; gap: 0.55rem;
@@ -490,77 +493,190 @@
   .player-stats-detail .stat-row { padding: 0.15rem 0; }
   .player-stats-detail .stat-label { color: var(--text-muted); font-size: 0.78rem; }
 
-  /* ── Mobile touch targets ── */
+  /* ── Page header ── */
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .page-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+    min-width: 0;
+  }
+  .page-header-left h1 {
+    margin: 0;
+    font-size: 1.4rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .page-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    font-size: 0.85rem;
+  }
+
+  /* ── Form grid (used in schema / playoff panels) ── */
+  .form-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.4rem 0.6rem;
+    align-items: center;
+    margin-bottom: 0.6rem;
+  }
+  .form-grid label { font-size: 0.85rem; color: var(--text-muted); white-space: nowrap; }
+
+  /* ── Table scroll wrapper ── */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* ── TV settings grid (toggles inside TV controls card) ── */
+  .tv-settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 1.5rem; }
+  .tv-sliders-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 1rem; align-items: center; }
+  @media (max-width: 540px) {
+    .tv-settings-grid { grid-template-columns: 1fr; }
+    .tv-sliders-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── Mobile: touch targets, layout & responsive ── */
   @media (max-width: 600px) {
+    body { padding: 0.5rem; }
+    h1 { font-size: 1.3rem; }
+    h2 { font-size: 1.05rem; }
+
+    /* Header */
+    .page-header { gap: 0.5rem; }
+    .page-header-left { gap: 0.45rem; }
+    .page-header-left h1 { font-size: 1.05rem; }
+
+    /* Tabs: scroll horizontally instead of wrapping awkwardly */
+    .tabs {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 0.3rem;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .tabs::-webkit-scrollbar { height: 3px; }
+    .tabs::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .tab-btn, .tournament-chip, .compact-controls { flex-shrink: 0; }
+
+    /* Stacked form layout */
+    .inline-group { flex-direction: column; gap: 0; }
+
+    /* Cards can scroll if content (e.g. a table) is wider than screen */
+    .card { overflow-x: auto; }
+
+    /* Table: tighten up on mobile */
+    table { font-size: 0.78rem; }
+    th, td { padding: 0.3rem 0.4rem; }
+
+    /* Court board: single column on very small screens */
+    .court-board { grid-template-columns: 1fr; }
+
+    /* Match card: ensure team name gets full row before score */
+    .match-teams { min-width: 100%; }
+    .match-card { padding: 0.6rem 0; }
+
+    /* Touch targets */
     .match-actions input { width: 56px !important; height: 44px; font-size: 1rem; }
+    .btn { min-height: 44px; }
     .btn-sm { min-height: 44px; padding: 0.5rem 0.8rem; font-size: 0.85rem; }
     .match-edit-btn { min-height: 40px; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
-    .score-mode-toggle button { min-height: 40px; padding: 0.4rem 0.7rem; font-size: 0.85rem; }
+    .score-mode-toggle button { min-height: 40px; padding: 0.4rem 0.75rem; font-size: 0.85rem; }
     .sitout-item { padding: 0.5rem 0.6rem; font-size: 0.9rem; min-height: 44px; }
-    .tab-btn { min-height: 44px; font-size: 0.95rem; }
+    .tab-btn { min-height: 44px; font-size: 0.9rem; padding: 0.5rem 0.75rem; }
     .proposal-card { min-width: 100%; max-width: 100%; }
     .manual-sel { min-height: 44px; font-size: 0.9rem; }
     input, select, textarea { min-height: 44px; font-size: 1rem; }
+
+    /* Tennis sets: bigger inputs */
+    .tennis-set-input { width: 60px !important; min-height: 48px; font-size: 1.1rem; }
+    .tennis-set-row { padding: 0.25rem 0.35rem; }
+
+    /* Subtabs */
+    .subtab-btn { padding: 0.45rem 0.65rem; font-size: 0.82rem; }
+    .subtabs { width: 100%; }
+    .subtab-btn { flex: 1; text-align: center; }
+
+    /* Proposal controls wrap cleanly */
+    .proposal-section-row { flex-wrap: wrap; }
+    .proposal-display-controls { flex-wrap: wrap; }
+
+    /* Sitout grid: 2 columns on small screens */
+    .sitout-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+
+    /* Active tournament indicator: compact */
+    .active-tournament-indicator { font-size: 0.8rem; padding: 0.35rem 0.5rem; }
   }
 </style>
 </head>
 <body>
 <div class="container">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
-    <div style="display:flex;align-items:center;gap:1rem">
-      <a href="/tv" class="btn btn-sm" style="display:inline-block;text-decoration:none;white-space:nowrap;padding:0.4rem 0.8rem;font-weight:600;background:var(--accent-hover);color:#fff" data-i18n="TV View">📺 TV View</a>
-      <h1 style="margin:0" data-i18n="Padel Tournament Manager">Padel Tournament Manager</h1>
+  <div class="page-header">
+    <div class="page-header-left">
+      <a href="/tv" class="btn btn-sm" style="display:inline-block;text-decoration:none;white-space:nowrap;padding:0.4rem 0.8rem;font-weight:600;background:var(--accent-hover);color:#fff;flex-shrink:0" data-i18n="txt_txt_tv_view">📺 TV View</a>
+      <h1 data-i18n="txt_txt_padel_tournament_manager">Padel Tournament Manager</h1>
     </div>
-    <div id="auth-status" style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem"></div>
+    <div id="auth-status" class="page-header-right"></div>
   </div>
 
   <!-- Demo Site Banner (shown when DEMO_MODE=true on backend) -->
   <div id="demo-banner" style="display:none;background:linear-gradient(135deg,#f59e0b,#ef4444);border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem;text-align:center;color:#fff;font-size:0.9rem;box-shadow:0 2px 8px rgba(239,68,68,0.3)">
-    <strong data-i18n="⚠️ Demo Instance">⚠️ Demo Instance</strong> — <span data-i18n="Free tier sleeps after">Free tier sleeps after</span> <strong>15 minutes</strong> <span data-i18n="of inactivity. All tournament data will be lost when the app restarts. Login:">of inactivity. All tournament data will be lost when the app restarts. Login:</span> <code style="background:rgba(255,255,255,0.2);padding:0.15rem 0.35rem;border-radius:4px;font-weight:600">admin / admin</code>
+    <strong data-i18n="txt_txt_demo_instance">⚠️ Demo Instance</strong> — <span data-i18n="txt_txt_free_tier_sleeps_after">Free tier sleeps after</span> <strong>15 minutes</strong> <span data-i18n="txt_txt_of_inactivity_all_tournament_data_will_be_lost_when_the_app_restarts_login">of inactivity. All tournament data will be lost when the app restarts. Login:</span> <code style="background:rgba(255,255,255,0.2);padding:0.15rem 0.35rem;border-radius:4px;font-weight:600">admin / admin</code>
   </div>
 
   <!-- Navigation tabs -->
   <div class="tabs">
-    <button class="tab-btn active" data-tab="home" data-i18n="Tournaments">Tournaments</button>
-    <button class="tab-btn" data-tab="create" data-i18n="Create">Create</button>
-    <button class="tab-btn" data-tab="tools" data-i18n="Tools">Tools</button>
+    <button type="button" class="tab-btn active" data-tab="home" data-i18n="txt_txt_tournaments">Tournaments</button>
+    <button type="button" class="tab-btn" data-tab="create" data-i18n="txt_txt_create">Create</button>
+    <button type="button" class="tab-btn" data-tab="tools" data-i18n="txt_txt_tools">Tools</button>
     <div id="tournament-chips" class="tournament-chips"></div>
     <div class="compact-controls">
-      <button id="lang-toggle-btn" class="compact-icon-btn" onclick="toggleLanguage()" title="Language">🇬🇧</button>
-      <button id="theme-toggle-btn" class="compact-icon-btn" onclick="toggleTheme()" title="Toggle light / dark mode">☀️</button>
+      <button type="button" id="lang-toggle-btn" class="compact-icon-btn" onclick="toggleLanguage()" title="Language">🇬🇧</button>
+      <button type="button" id="theme-toggle-btn" class="compact-icon-btn" onclick="toggleTheme()" title="Toggle light / dark mode">☀️</button>
     </div>
   </div>
   <div class="active-tournament-indicator" id="active-tournament-indicator">
-    <span data-i18n="Active tournament:">Active tournament:</span> <strong data-i18n="None selected">None selected</strong>
+    <span data-i18n="txt_txt_active_tournament">Active tournament:</span> <strong data-i18n="txt_txt_none_selected">None selected</strong>
   </div>
 
   <!-- ─── HOME ──────────────────────────────────────────── -->
   <div class="tab-panel active" id="panel-home">
     <div class="card">
-      <h2 data-i18n="Active Tournaments">Active Tournaments</h2>
-      <div id="tournament-list"><em data-i18n="Loading…">Loading…</em></div>
+      <h2 data-i18n="txt_txt_active_tournaments">Active Tournaments</h2>
+      <div id="tournament-list"><em data-i18n="txt_txt_loading">Loading…</em></div>
     </div>
   </div>
 
   <!-- ─── CREATE ─────────────────────────────────────────── -->
   <div class="tab-panel" id="panel-create">
     <div class="card">
-      <h2 data-i18n="Create Tournament">Create Tournament</h2>
-      <div class="subtabs" role="tablist" aria-label="Create tournament type" data-i18n-aria-label="Create tournament type">
-        <button class="subtab-btn active" id="create-tab-gp" onclick="setCreateMode('gp')" data-i18n="Group + Play‑off">Group + Play‑off</button>
-        <button class="subtab-btn" id="create-tab-mex" onclick="setCreateMode('mex')" data-i18n="Mexicano + Play‑offs">Mexicano + Play‑offs</button>
+      <h2 data-i18n="txt_txt_create_tournament">Create Tournament</h2>
+      <div class="subtabs" role="tablist" aria-label="Create tournament type" data-i18n-aria-label="txt_txt_create_tournament_type">
+        <button type="button" class="subtab-btn active" id="create-tab-gp" onclick="setCreateMode('gp')" data-i18n="txt_txt_group_play_off">Group + Play‑off</button>
+        <button type="button" class="subtab-btn" id="create-tab-mex" onclick="setCreateMode('mex')" data-i18n="txt_txt_mexicano_play_offs">Mexicano + Play‑offs</button>
       </div>
 
       <div class="subtab-panel active" id="create-panel-gp">
         <div class="form-group">
-          <label data-i18n="Tournament Name">Tournament Name</label>
+          <label data-i18n="txt_txt_tournament_name">Tournament Name</label>
           <input id="gp-name" value="Padel Cup 2026">
         </div>
         <div class="form-group">
-          <label class="switch-label"><input type="checkbox" id="gp-team-mode" checked onchange="toggleGpTeamMode()"><span class="switch-track"></span><span><strong data-i18n="Team Mode">Team Mode</strong> — each entry is a fixed pair (e.g. "Alice & Bob")</span></label>
+          <label class="switch-label"><input type="checkbox" id="gp-team-mode" checked onchange="toggleGpTeamMode()"><span class="switch-track"></span><span><strong data-i18n="txt_txt_team_mode">Team Mode</strong> — <span data-i18n="txt_txt_team_mode_description">each entry is a fixed pair (e.g. "Alice & Bob")</span></span></label>
         </div>
         <div class="form-group">
-          <label id="gp-players-label">Team Names (one per line, e.g. "Alice & Bob")</label>
+          <label id="gp-players-label" data-i18n="txt_txt_team_names_one_per_line_e_g_alice_bob">Team Names (one per line, e.g. "Alice & Bob")</label>
           <textarea id="gp-players">Alice & Bob
 Charlie & Diana
 Eve & Frank
@@ -568,42 +684,42 @@ Grace & Hank</textarea>
         </div>
         <div class="inline-group">
           <div class="form-group">
-            <label data-i18n="Courts (comma-separated)">Courts (comma-separated)</label>
+            <label data-i18n="txt_txt_courts_comma_separated">Courts (comma-separated)</label>
             <input id="gp-courts" value="Court 1, Court 2">
           </div>
           <div class="form-group">
-            <label data-i18n="Number of Groups">Number of Groups</label>
+            <label data-i18n="txt_txt_number_of_groups">Number of Groups</label>
             <input id="gp-num-groups" type="number" value="2" min="1">
           </div>
         </div>
         <div class="inline-group">
           <div class="form-group">
-            <label data-i18n="Top players per group advancing">Top players per group advancing</label>
+            <label data-i18n="txt_txt_top_players_per_group_advancing">Top players per group advancing</label>
             <input id="gp-top" type="number" value="2" min="1">
           </div>
           <div class="form-group">
-            <label data-i18n="Play‑off format">Play‑off format</label>
+            <label data-i18n="txt_txt_play_off_format">Play‑off format</label>
             <select id="gp-double-elim">
-              <option value="false" data-i18n="Single Elimination">Single Elimination</option>
-              <option value="true" data-i18n="Double Elimination">Double Elimination</option>
+              <option value="false" data-i18n="txt_txt_single_elimination">Single Elimination</option>
+              <option value="true" data-i18n="txt_txt_double_elimination">Double Elimination</option>
             </select>
           </div>
         </div>
-        <button class="btn btn-primary" onclick="createGP()" data-i18n="Create Tournament">Create Tournament</button>
+        <button type="button" class="btn btn-primary" onclick="createGP()" data-i18n="txt_txt_create_tournament">Create Tournament</button>
         <div id="gp-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
 
       <div class="subtab-panel" id="create-panel-mex">
-        <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="Play Mexicano rounds first, then optionally start seeded play-offs.">Play Mexicano rounds first, then optionally start seeded play-offs.</p>
+        <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_txt_play_mexicano_rounds_first_then_optionally_start_seeded_play_offs">Play Mexicano rounds first, then optionally start seeded play-offs.</p>
         <div class="form-group">
-          <label data-i18n="Tournament Name">Tournament Name</label>
+          <label data-i18n="txt_txt_tournament_name">Tournament Name</label>
           <input id="mex-name" value="Mexicano Night">
         </div>
         <div class="form-group">
-          <label class="switch-label"><input type="checkbox" id="mex-team-mode" onchange="toggleMexTeamMode()"><span class="switch-track"></span><span><strong data-i18n="Team Mode">Team Mode</strong> — each entry is a fixed pair (e.g. "Alice & Bob")</span></label>
+          <label class="switch-label"><input type="checkbox" id="mex-team-mode" onchange="toggleMexTeamMode()"><span class="switch-track"></span><span><strong data-i18n="txt_txt_team_mode">Team Mode</strong> — each entry is a fixed pair (e.g. "Alice & Bob")</span></label>
         </div>
         <div class="form-group">
-          <label id="mex-players-label" data-i18n="Player Names (one per line)">Player Names (one per line)</label>
+          <label id="mex-players-label" data-i18n="txt_txt_player_names_one_per_line">Player Names (one per line)</label>
           <textarea id="mex-players">Alice
 Bob
 Charlie
@@ -615,58 +731,59 @@ Hank</textarea>
         </div>
         <div class="inline-group">
           <div class="form-group">
-            <label data-i18n="Courts (comma-separated)">Courts (comma-separated)</label>
+            <label data-i18n="txt_txt_courts_comma_separated">Courts (comma-separated)</label>
             <input id="mex-courts" value="Court 1, Court 2">
           </div>
           <div class="form-group">
-            <label data-i18n="Total points per match">Total points per match</label>
+            <label data-i18n="txt_txt_total_points_per_match">Total points per match</label>
             <input id="mex-pts" type="number" value="32" min="1">
           </div>
         </div>
-        <div class="inline-group">
-          <div class="form-group">
-            <label data-i18n="Number of rounds">Number of rounds</label>
-            <input id="mex-rounds" type="number" value="8" min="1">
-          </div>
-          <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:0.5rem">
-            <label><input type="checkbox" id="mex-rolling" onchange="toggleMexRolling()"> <strong data-i18n="Rolling mode">Rolling mode</strong> <span data-i18n="(unlimited rounds)">(unlimited rounds)</span></label>
+        <div class="form-group">
+          <label data-i18n="txt_txt_number_of_rounds">Number of rounds</label>
+          <div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.25rem;flex-wrap:wrap">
+            <div class="score-mode-toggle" id="mex-rounds-toggle" style="flex-shrink:0">
+              <button type="button" class="active" onclick="_setMexRoundsMode('unlimited')" data-i18n="txt_txt_unlimited">∞ Unlimited</button>
+              <button type="button" onclick="_setMexRoundsMode('fixed')" data-i18n="txt_txt_fixed">Fixed</button>
+            </div>
+            <input id="mex-rounds" type="number" value="8" min="1" style="width:80px;display:none" aria-label="Number of rounds">
           </div>
         </div>
         <div class="form-group">
-          <label data-i18n="Randomness (0-1)">Randomness (0-1)</label>
-          <small>How much to shuffle pairings away from pure leaderboard order. 0 = strictly rank-based matchups, 1 = fully random. E.g. 0.15 means mostly skill-based with a small shuffle so the same players don't always face each other.</small>
+          <label data-i18n="txt_txt_randomness_0_1">Randomness (0-1)</label>
+          <small data-i18n="txt_txt_randomness_help">How much to shuffle pairings away from pure leaderboard order. 0 = strictly rank-based matchups, 1 = fully random. E.g. 0.15 means mostly skill-based with a small shuffle so the same players don't always face each other.</small>
           <input id="mex-rand" type="number" value="0.15" min="0" max="1" step="0.05">
         </div>
         <details class="advanced-section">
-          <summary data-i18n="Advanced Settings">Advanced Settings</summary>
+          <summary data-i18n="txt_txt_advanced_settings">Advanced Settings</summary>
           <div class="form-group">
-            <label>Skill Gap — max point diff to be in same group (leave blank = snake-draft)</label>
-            <input id="mex-skill-gap" type="number" placeholder="e.g. 50  (blank = disabled)" min="0">
+            <label data-i18n="txt_txt_skill_gap_label">Skill Gap — max point diff to be in same group (leave blank = snake-draft)</label>
+            <input id="mex-skill-gap" type="number" data-i18n-placeholder="txt_txt_skill_gap_placeholder" placeholder="e.g. 50  (blank = disabled)" min="0">
           </div>
           <div class="inline-group">
             <div class="form-group">
-              <label>Win bonus pts <small style="color:var(--text-muted)">(0 = off)</small></label>
+              <label data-i18n="txt_txt_win_bonus_label">Win bonus pts <small style="color:var(--text-muted)">(0 = off)</small></label>
               <input id="mex-win-bonus" type="number" value="0" min="0">
-              <small style="color:var(--text-muted)">Flat extra points added to the winner's leaderboard score each match, on top of what they played. Draws get nothing. E.g. <em>5</em> means winning 20–12 credits 25 pts instead of 20.</small>
+              <small style="color:var(--text-muted)" data-i18n="txt_txt_win_bonus_help">Flat extra points added to the winner's leaderboard score each match, on top of what they played. Draws get nothing. E.g. <em>5</em> means winning 20–12 credits 25 pts instead of 20.</small>
             </div>
             <div class="form-group">
-              <label>Rival strength weight <small style="color:var(--text-muted)">(0 = off, 1 = full)</small></label>
+              <label data-i18n="txt_txt_rival_strength_label">Rival strength weight <small style="color:var(--text-muted)">(0 = off, 1 = full)</small></label>
               <input id="mex-strength-weight" type="number" value="0" min="0" max="1" step="0.05">
-              <small style="color:var(--text-muted)">Boosts points earned based on how highly ranked your opponents are right now. At <em>1.0</em>: beating the top team doubles your points; beating last place gives raw score. At <em>0.5</em>: top opponent gives ×1.5, bottom gives ×1.0.</small>
+              <small style="color:var(--text-muted)" data-i18n="txt_txt_rival_strength_help">Boosts points earned based on how highly ranked your opponents are right now. At <em>1.0</em>: beating the top team doubles your points; beating last place gives raw score. At <em>0.5</em>: top opponent gives ×1.5, bottom gives ×1.0.</small>
             </div>
           </div>
           <div class="form-group">
-            <label>Loss discount <small style="color:var(--text-muted)">(1 = no penalty)</small></label>
+            <label data-i18n="txt_txt_loss_discount_label">Loss discount <small style="color:var(--text-muted)">(1 = no penalty)</small></label>
             <input id="mex-loss-discount" type="number" value="1" min="0" max="1" step="0.05">
-            <small style="color:var(--text-muted)">Multiplier applied to the losing team's scored points before crediting their leaderboard total. Draws are not affected. E.g. <em>0.75</em> — losing 12–20 credits only 9 pts instead of 12. <em>0</em> = losers earn nothing.</small>
+            <small style="color:var(--text-muted)" data-i18n="txt_txt_loss_discount_help">Multiplier applied to the losing team's scored points before crediting their leaderboard total. Draws are not affected. E.g. <em>0.75</em> — losing 12–20 credits only 9 pts instead of 12. <em>0</em> = losers earn nothing.</small>
           </div>
           <div class="form-group">
-            <label>Balance tolerance <small style="color:var(--text-muted)">(0 = strict, higher = more variety)</small></label>
+            <label data-i18n="txt_txt_balance_tolerance_label">Balance tolerance <small style="color:var(--text-muted)">(0 = strict, higher = more variety)</small></label>
             <input id="mex-balance-tol" type="number" value="0.2" min="0" max="2" step="0.1">
-            <small style="color:var(--text-muted)">How much extra score imbalance the optimiser may accept to avoid repeat matchups. 0 = never sacrifice competitiveness; 0.2 (default) = allow up to 20% looser balance; 1.0 = strongly prefer new opponents even if matches are less even.</small>
+            <small style="color:var(--text-muted)" data-i18n="txt_txt_balance_tolerance_help">How much extra score imbalance the optimiser may accept to avoid repeat matchups. 0 = never sacrifice competitiveness; 0.2 (default) = allow up to 20% looser balance; 1.0 = strongly prefer new opponents even if matches are less even.</small>
           </div>
         </details>
-        <button class="btn btn-primary" onclick="createMex()" data-i18n="Create Tournament">Create Tournament</button>
+        <button type="button" class="btn btn-primary" onclick="createMex()" data-i18n="txt_txt_create_tournament">Create Tournament</button>
         <div id="mex-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
     </div>
@@ -680,38 +797,38 @@ Hank</textarea>
   <!-- ─── TOOLS ─────────────────────────────────────────── -->
   <div class="tab-panel" id="panel-tools">
     <div class="card">
-      <h2 data-i18n="Tools">Tools</h2>
-      <p style="color:var(--text-muted);font-size:0.85rem" data-i18n="Planning and preview utilities that are independent from an active tournament.">Planning and preview utilities that are independent from an active tournament.</p>
+      <h2 data-i18n="txt_txt_tools">Tools</h2>
+      <p style="color:var(--text-muted);font-size:0.85rem" data-i18n="txt_txt_planning_and_preview_utilities_that_are_independent_from_an_active_tournament">Planning and preview utilities that are independent from an active tournament.</p>
     </div>
     <div class="card">
-      <h2 data-i18n="Tournament Bracket Schema">Tournament Bracket Schema</h2>
-      <p style="color:var(--text-muted);font-size:0.85rem" data-i18n="Generate a visual diagram of the tournament structure before creating it.">Generate a visual diagram of the tournament structure before creating it.</p>
+      <h2 data-i18n="txt_txt_tournament_bracket_schema">Tournament Bracket Schema</h2>
+      <p style="color:var(--text-muted);font-size:0.85rem" data-i18n="txt_txt_generate_a_visual_diagram_of_the_tournament_structure_before_creating_it">Generate a visual diagram of the tournament structure before creating it.</p>
       <div class="inline-group">
         <div class="form-group">
-          <label><span data-i18n="Group sizes">Group sizes</span> <small style="color:var(--text-muted)" data-i18n="(comma-separated)">(comma-separated)</small></label>
+          <label><span data-i18n="txt_txt_group_sizes">Group sizes</span> <small style="color:var(--text-muted)" data-i18n="txt_txt_comma_separated">(comma-separated)</small></label>
           <input id="schema-groups" type="text" value="4,4" placeholder="e.g. 4,4,4">
         </div>
         <div class="form-group">
-          <label data-i18n="Advance per group">Advance per group</label>
+          <label data-i18n="txt_txt_advance_per_group">Advance per group</label>
           <input id="schema-advance" type="number" value="2" min="1" max="8">
         </div>
       </div>
       <div class="inline-group">
         <div class="form-group">
-          <label data-i18n="Elimination">Elimination</label>
+          <label data-i18n="txt_txt_elimination">Elimination</label>
           <select id="schema-elim">
-            <option value="single" selected>Single Elimination</option>
-            <option value="double">Double Elimination</option>
+            <option value="single" selected data-i18n="txt_txt_single_elimination">Single Elimination</option>
+            <option value="double" data-i18n="txt_txt_double_elimination">Double Elimination</option>
           </select>
         </div>
         <div class="form-group">
-          <label><span data-i18n="Title">Title</span> <small style="color:var(--text-muted)" data-i18n="(optional)">(optional)</small></label>
-          <input id="schema-title" type="text" placeholder="My Tournament">
+          <label><span data-i18n="txt_txt_title">Title</span> <small style="color:var(--text-muted)" data-i18n="txt_txt_optional">(optional)</small></label>
+          <input id="schema-title" type="text" data-i18n-placeholder="txt_txt_my_tournament_placeholder" placeholder="My Tournament">
         </div>
       </div>
       <div class="inline-group">
         <div class="form-group">
-          <label data-i18n="Format">Format</label>
+          <label data-i18n="txt_txt_format">Format</label>
           <select id="schema-fmt">
             <option value="png" selected>PNG</option>
             <option value="svg">SVG</option>
@@ -721,34 +838,34 @@ Hank</textarea>
       </div>
       <details style="margin-bottom:0.75rem">
         <summary style="cursor:pointer;color:var(--text-muted);font-size:0.85rem;user-select:none">
-          ⚙ Rendering options
+          <span data-i18n="txt_txt_rendering_options">⚙ Rendering options</span>
         </summary>
         <div style="margin-top:0.5rem">
           <div class="inline-group">
             <div class="form-group">
-              <label>Box size <span id="schema-box-val" style="color:var(--text-muted)">1.0</span></label>
+              <label><span data-i18n="txt_txt_box_size">Box size</span> <span id="schema-box-val" style="color:var(--text-muted)">1.0</span></label>
               <input id="schema-box" type="range" min="0.3" max="3.0" step="0.1" value="1.0"
                      oninput="document.getElementById('schema-box-val').textContent=this.value">
             </div>
             <div class="form-group">
-              <label>Line width <span id="schema-lw-val" style="color:var(--text-muted)">1.0</span></label>
+              <label><span data-i18n="txt_txt_line_width">Line width</span> <span id="schema-lw-val" style="color:var(--text-muted)">1.0</span></label>
               <input id="schema-lw" type="range" min="0.3" max="5.0" step="0.1" value="1.0"
                      oninput="document.getElementById('schema-lw-val').textContent=this.value">
             </div>
             <div class="form-group">
-              <label>Arrow size <span id="schema-arrow-val" style="color:var(--text-muted)">1.0</span></label>
+              <label><span data-i18n="txt_txt_arrow_size">Arrow size</span> <span id="schema-arrow-val" style="color:var(--text-muted)">1.0</span></label>
               <input id="schema-arrow" type="range" min="0.3" max="5.0" step="0.1" value="1.0"
                      oninput="document.getElementById('schema-arrow-val').textContent=this.value">
             </div>
             <div class="form-group">
-              <label>Header size <span id="schema-title-scale-val" style="color:var(--text-muted)">1.0</span></label>
+              <label><span data-i18n="txt_txt_header_size">Header size</span> <span id="schema-title-scale-val" style="color:var(--text-muted)">1.0</span></label>
               <input id="schema-title-scale" type="range" min="0.3" max="3.0" step="0.1" value="1.0"
                      oninput="document.getElementById('schema-title-scale-val').textContent=this.value">
             </div>
           </div>
         </div>
       </details>
-      <button class="btn btn-primary" onclick="generateSchema()" data-i18n="Generate Schema">Generate Schema</button>
+      <button type="button" class="btn btn-primary" onclick="generateSchema()" data-i18n="txt_txt_generate_schema">Generate Schema</button>
       <div id="schema-msg" class="alert alert-error hidden" style="margin-top:0.75rem"></div>
       <div id="schema-result" style="margin-top:1rem; text-align:center"></div>
     </div>
@@ -757,24 +874,24 @@ Hank</textarea>
 
 <!-- Authentication Dialog -->
 <div id="auth-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9998"></div>
-<div id="auth-dialog" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:2px solid var(--border);border-radius:12px;padding:2rem;min-width:320px;max-width:400px;z-index:9999;box-shadow:0 10px 40px rgba(0,0,0,0.5)">
-  <h2 style="margin-bottom:1rem;text-align:center;color:var(--accent)">🔐 <span data-i18n="Login Required">Login Required</span></h2>
-  <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1.2rem;text-align:center" data-i18n="Please log in to create or modify tournaments">Please log in to create or modify tournaments</p>
+<div id="auth-dialog" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:2px solid var(--border);border-radius:12px;padding:2rem;width:min(400px, calc(100vw - 2rem));z-index:9999;box-shadow:0 10px 40px rgba(0,0,0,0.5)">
+  <h2 style="margin-bottom:1rem;text-align:center;color:var(--accent)">🔐 <span data-i18n="txt_txt_login_required">Login Required</span></h2>
+  <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1.2rem;text-align:center" data-i18n="txt_txt_please_log_in_to_create_or_modify_tournaments">Please log in to create or modify tournaments</p>
   <form onsubmit="handleLogin(event)">
     <div style="margin-bottom:0.8rem">
-      <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600" data-i18n="Username">Username</label>
+      <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600" data-i18n="txt_txt_username">Username</label>
       <input type="text" id="auth-username" placeholder="admin" autocomplete="username" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
     </div>
     <div style="margin-bottom:1rem">
-      <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600" data-i18n="Password">Password</label>
+      <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600" data-i18n="txt_txt_password">Password</label>
       <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
     </div>
     <div id="auth-error" style="color:var(--red);font-size:0.8rem;margin-bottom:0.8rem;min-height:1.2rem;text-align:center"></div>
-    <button type="submit" id="auth-login-btn" class="btn btn-primary" style="width:100%" data-i18n="Login">Login</button>
+    <button type="submit" id="auth-login-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_login">Login</button>
   </form>
-  <p style="color:var(--text-muted);font-size:0.75rem;margin-top:1rem;text-align:center" data-i18n="Default: admin / admin">Default: admin / admin</p>
+  <p style="color:var(--text-muted);font-size:0.75rem;margin-top:1rem;text-align:center" data-i18n="txt_txt_default_admin_admin">Default: admin / admin</p>
   <p style="margin-top:0.75rem;text-align:center;font-size:0.85rem">
-    <a href="/tv" style="color:var(--accent);text-decoration:none">📺 <span data-i18n="TV View">TV View</span></a>
+    <a href="/tv" style="color:var(--accent);text-decoration:none">📺 <span data-i18n="txt_txt_tv_view">TV View</span></a>
   </p>
 </div>
 
@@ -839,7 +956,7 @@ function setTheme(theme) {
   const btn = document.getElementById('theme-toggle-btn');
   if (btn) {
     btn.textContent = themeValue === 'dark' ? '🌙' : '☀️';
-    btn.title = t('Toggle light / dark mode');
+    btn.title = t('txt_txt_toggle_light_dark_mode');
   }
 }
 
@@ -873,10 +990,10 @@ function _refreshLanguageToggleButton() {
   const btn = document.getElementById('lang-toggle-btn');
   if (!btn) return;
   const current = getAppLanguage();
-  const currentLabel = current === 'es' ? t('Spanish') : t('English');
+  const currentLabel = current === 'es' ? t('txt_txt_spanish') : t('txt_txt_english');
   btn.textContent = current === 'es' ? '🇪🇸' : '🇬🇧';
-  btn.title = `${t('Language')}: ${currentLabel}`;
-  btn.setAttribute('aria-label', `${t('Language')}: ${currentLabel}`);
+  btn.title = `${t('txt_txt_language')}: ${currentLabel}`;
+  btn.setAttribute('aria-label', `${t('txt_txt_language')}: ${currentLabel}`);
 }
 
 function initLanguageSelector() {
@@ -893,7 +1010,7 @@ async function _fetchSchema(prefix, apiUrl, defaultFilename) {
   if (!msg || !result) return;
 
   msg.classList.add('hidden');
-  result.innerHTML = `<em>${t('Generating…')}</em>`;
+  result.innerHTML = `<em>${t('txt_txt_generating')}</em>`;
 
   const fmt = document.getElementById(prefix + '-fmt').value;
   const boxScale = document.getElementById(prefix + '-box').value;
@@ -910,7 +1027,7 @@ async function _fetchSchema(prefix, apiUrl, defaultFilename) {
     const res = await fetch(url);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || t('Failed to generate schema'));
+      throw new Error(err.detail || t('txt_txt_failed_to_generate_schema'));
     }
 
     if (fmt === 'pdf') {
@@ -919,7 +1036,7 @@ async function _fetchSchema(prefix, apiUrl, defaultFilename) {
       a.href = URL.createObjectURL(blob);
       a.download = (title || defaultFilename) + '.pdf';
       a.click();
-      result.innerHTML = `<em>${t('PDF downloaded.')}</em>`;
+      result.innerHTML = `<em>${t('txt_txt_pdf_downloaded')}</em>`;
     } else if (fmt === 'svg') {
       result.innerHTML = await res.text();
     } else {
@@ -954,26 +1071,26 @@ function generateMexPlayoffSchema() {
 /** Build the collapsible Play-offs Schema card HTML. */
 function _schemaCardHtml(prefix, placeholder, generateFn) {
   let h = `<details class="card">`;
-  h += `<summary>Play-offs Schema</summary>`;
+  h += `<summary>${t('txt_txt_play_offs_schema')}</summary>`;
   h += `<div style="margin-top:0.6rem">`;
   h += `<div class="form-grid">`;
-  h += `<label>Title</label><input id="${prefix}-title" type="text" placeholder="${placeholder}">`;
-  h += `<label>Format</label><select id="${prefix}-fmt"><option value="png">PNG</option><option value="svg">SVG</option><option value="pdf">PDF</option></select>`;
+  h += `<label>${t('txt_txt_title')}</label><input id="${prefix}-title" type="text" placeholder="${placeholder}">`;
+  h += `<label>${t('txt_txt_format')}</label><select id="${prefix}-fmt"><option value="png">PNG</option><option value="svg">SVG</option><option value="pdf">PDF</option></select>`;
   h += `</div>`;
   h += `<details style="margin-bottom:0.75rem">`;
-  h += `<summary style="cursor:pointer;color:var(--text-muted);font-size:0.85rem;user-select:none">⚙ Rendering options</summary>`;
+  h += `<summary style="cursor:pointer;color:var(--text-muted);font-size:0.85rem;user-select:none">⚙ ${t('txt_txt_rendering_options')}</summary>`;
   h += `<div style="margin-top:0.5rem">`;
-  h += `<label>Box size <span id="${prefix}-box-val" style="color:var(--text-muted)">1.0</span></label>`;
+  h += `<label>${t('txt_txt_box_size')} <span id="${prefix}-box-val" style="color:var(--text-muted)">1.0</span></label>`;
   h += `<input id="${prefix}-box" type="range" min="0.3" max="3.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-box-val').textContent=this.value">`;
-  h += `<label>Line width <span id="${prefix}-lw-val" style="color:var(--text-muted)">1.0</span></label>`;
+  h += `<label>${t('txt_txt_line_width')} <span id="${prefix}-lw-val" style="color:var(--text-muted)">1.0</span></label>`;
   h += `<input id="${prefix}-lw" type="range" min="0.3" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-lw-val').textContent=this.value">`;
-  h += `<label>Arrow size <span id="${prefix}-arrow-val" style="color:var(--text-muted)">1.0</span></label>`;
+  h += `<label>${t('txt_txt_arrow_size')} <span id="${prefix}-arrow-val" style="color:var(--text-muted)">1.0</span></label>`;
   h += `<input id="${prefix}-arrow" type="range" min="0.3" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-arrow-val').textContent=this.value">`;
-  h += `<label>Header size <span id="${prefix}-title-scale-val" style="color:var(--text-muted)">1.0</span></label>`;
+  h += `<label>${t('txt_txt_header_size')} <span id="${prefix}-title-scale-val" style="color:var(--text-muted)">1.0</span></label>`;
   h += `<input id="${prefix}-title-scale" type="range" min="0.3" max="3.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-title-scale-val').textContent=this.value">`;
   h += `</div>`;
   h += `</details>`;
-  h += `<button class="btn btn-primary" onclick="${generateFn}()">Generate Play-offs Schema</button>`;
+  h += `<button type="button" class="btn btn-primary" onclick="${generateFn}()">${t('txt_txt_generate_playoffs_schema')}</button>`;
   h += `<div id="${prefix}-msg" class="alert alert-error hidden" style="margin-top:0.75rem"></div>`;
   h += `<div id="${prefix}-result" style="margin-top:1rem; text-align:center"></div>`;
   h += `</div>`;
@@ -994,20 +1111,20 @@ async function loadTournaments() {
     _tournamentMeta = {};
     for (const tournament of list) _tournamentMeta[tournament.id] = tournament;
     const el = document.getElementById('tournament-list');
-    if (!list.length) { el.innerHTML = `<em>${t('No tournaments yet.')}</em>`; return; }
+    if (!list.length) { el.innerHTML = `<em>${t('txt_txt_no_tournaments_yet')}</em>`; return; }
     el.innerHTML = list.map(tournament => `
       <div class="match-card">
-        <div class="match-teams"><strong>${esc(tournament.name)}</strong>${tournament.id === currentTid ? ` <span class="badge badge-completed" title="${esc(t('Currently active'))}">✓ ${esc(t('active'))}</span>` : ''}</div>
-        <span class="badge badge-scheduled">${tournament.type === 'mexicano' ? 'mexicano + play-offs' : tournament.type}</span>
-        <button class="btn btn-primary btn-sm" onclick="openTournament('${tournament.id}','${tournament.type}')">${t('Open')}</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteTournament('${tournament.id}')">✕</button>
+        <div class="match-teams"><strong>${esc(tournament.name)}</strong>${tournament.id === currentTid ? ` <span class="badge badge-completed" title="${esc(t('txt_txt_currently_active'))}">✓ ${esc(t('txt_txt_active'))}</span>` : ''}</div>
+        <span class="badge badge-scheduled">${tournament.type === 'mexicano' ? t('txt_txt_mexicano_plus_playoffs') : tournament.type}</span>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openTournament('${tournament.id}','${tournament.type}')">${t('txt_txt_open')}</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="deleteTournament('${tournament.id}')">✕</button>
       </div>
     `).join('');
   } catch (e) { console.error(e); }
 }
 
 async function deleteTournament(id) {
-  if (!confirm(t('Delete this tournament?'))) return;
+  if (!confirm(t('txt_txt_delete_this_tournament'))) return;
   await api('/api/tournaments/' + id, { method: 'DELETE' });
   _openTournaments = _openTournaments.filter(t => t.id !== id);
   if (id === currentTid) {
@@ -1038,9 +1155,9 @@ function updateActiveTournamentUI() {
   const hasActive = Boolean(currentTid);
   if (hasActive) {
     const shownName = currentTournamentName || `#${String(currentTid).slice(0, 8)}`;
-    indicator.innerHTML = `${t('Active tournament:')} <strong>${esc(shownName)}</strong>`;
+    indicator.innerHTML = `${t('txt_txt_active_tournament')} <strong>${esc(shownName)}</strong>`;
   } else {
-    indicator.innerHTML = `${t('Active tournament:')} <strong>${t('None selected')}</strong>`;
+    indicator.innerHTML = `${t('txt_txt_active_tournament')} <strong>${t('txt_txt_none_selected')}</strong>`;
   }
   _renderTournamentChips();
 }
@@ -1049,9 +1166,9 @@ function _renderTournamentChips() {
   const container = document.getElementById('tournament-chips');
   if (!container) return;
   container.innerHTML = _openTournaments.map(tournament =>
-    `<button class="tab-btn tournament-chip${tournament.id === currentTid ? ' active' : ''}" data-tid="${tournament.id}" data-type="${tournament.type}" title="${esc(tournament.name)}">
+    `<button type="button" class="tab-btn tournament-chip${tournament.id === currentTid ? ' active' : ''}" data-tid="${tournament.id}" data-type="${tournament.type}" title="${esc(tournament.name)}">
       <span class="chip-check">✓</span>${esc(tournament.name)}
-      <span class="chip-close" data-close-tid="${tournament.id}" title="${t('Remove')}">×</span>
+      <span class="chip-close" data-close-tid="${tournament.id}" title="${t('txt_txt_remove')}">×</span>
     </button>`
   ).join('');
   container.querySelectorAll('.tournament-chip').forEach(btn => {
@@ -1124,9 +1241,9 @@ async function createGP() {
       double_elimination: document.getElementById('gp-double-elim').value === 'true',
     };
     const res = await api('/api/tournaments/group-playoff', { method: 'POST', body: JSON.stringify(body) });
-    msg.className = 'alert alert-success'; msg.textContent = t('Created! ID: {id}', { id: res.id });
+    msg.className = 'alert alert-success'; msg.textContent = t('txt_txt_created_id_id', { id: res.id });
     msg.classList.remove('hidden');
-    openTournament(res.id, 'group_playoff', body.name || t('Group + Playoff Tournament'));
+    openTournament(res.id, 'group_playoff', body.name || t('txt_txt_group_playoff_tournament'));
   } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
 }
 
@@ -1135,9 +1252,9 @@ function toggleTeamMode(checkboxId, labelId) {
   const chk = document.getElementById(checkboxId);
   const label = document.getElementById(labelId);
   if (chk.checked) {
-    label.textContent = t('Team Names (one per line, e.g. "Alice & Bob")');
+    label.textContent = t('txt_txt_team_names_one_per_line_e_g_alice_bob');
   } else {
-    label.textContent = t('Player Names (one per line)');
+    label.textContent = t('txt_txt_player_names_one_per_line');
   }
 }
 function toggleGpTeamMode() { toggleTeamMode('gp-team-mode', 'gp-players-label'); }
@@ -1147,7 +1264,7 @@ async function createMex() {
   const msg = document.getElementById('mex-msg');
   try {
     const skillGapRaw = document.getElementById('mex-skill-gap').value.trim();
-    const rolling = document.getElementById('mex-rolling').checked;
+    const rolling = document.getElementById('mex-rounds-toggle').querySelectorAll('button')[0].classList.contains('active');
     const body = {
       name: document.getElementById('mex-name').value,
       player_names: document.getElementById('mex-players').value.split('\n').map(s=>s.trim()).filter(Boolean),
@@ -1162,9 +1279,9 @@ async function createMex() {
       balance_tolerance: +document.getElementById('mex-balance-tol').value,
     };
     const res = await api('/api/tournaments/mexicano', { method: 'POST', body: JSON.stringify(body) });
-    msg.className = 'alert alert-success'; msg.textContent = t('Created! ID: {id}', { id: res.id });
+    msg.className = 'alert alert-success'; msg.textContent = t('txt_txt_created_id_id', { id: res.id });
     msg.classList.remove('hidden');
-    openTournament(res.id, 'mexicano', body.name || t('Mexicano Tournament'));
+    openTournament(res.id, 'mexicano', body.name || t('txt_txt_mexicano_tournament'));
   } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
 }
 
@@ -1180,9 +1297,9 @@ async function renderGP() {
       api(`/api/tournaments/${currentTid}/tv-settings`).catch(() => ({})),
     ]);
 
-    let html = `<div class="refresh-row"><button class="btn btn-primary btn-sm" onclick="renderGP()">↻ Refresh</button></div>`;
+    let html = `<div class="refresh-row"><button type="button" class="btn btn-primary btn-sm" onclick="renderGP()">↻ ${t('txt_txt_refresh')}</button></div>`;
     html += _renderTvControls(tvSettings);
-    html += `<div class="alert alert-info">Phase: <span class="badge badge-phase">${status.phase}</span></div>`;
+    html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${status.phase}</span></div>`;
 
     const groupPending = _sortTbdLast(Object.values(groups.matches)
       .flat()
@@ -1191,44 +1308,44 @@ async function renderGP() {
     const assignmentMatches = (status.phase === 'groups') ? groupPending : playoffPending;
     html += _renderCourtAssignmentsCard(
       assignmentMatches,
-      status.phase === 'groups' ? 'Court Assignments — Group Stage' : 'Court Assignments — Play-offs',
+      status.phase === 'groups' ? t('txt_txt_court_assignments_group_stage') : t('txt_txt_court_assignments_play_offs'),
     );
 
-    const groupFormatLabel = _gpScoreMode['gp-group'] === 'sets' ? '🎾 Sets' : 'Points';
+    const groupFormatLabel = _gpScoreMode['gp-group'] === 'sets' ? `🎾 ${t('txt_txt_sets')}` : t('txt_txt_points_label');
     if (status.phase === 'groups') {
       html += `<div class="card">`;
-      html += `<h3>Group Stage Input Format</h3>`;
+      html += `<h3>${t('txt_txt_group_stage_input_format')}</h3>`;
       html += `<div class="score-mode-toggle">`;
-      html += `<button class="${_gpScoreMode['gp-group'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('gp-group','points')">Points</button>`;
-      html += `<button class="${_gpScoreMode['gp-group'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('gp-group','sets')">🎾 Sets</button>`;
+      html += `<button type="button" class="${_gpScoreMode['gp-group'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('gp-group','points')">${t('txt_txt_points_label')}</button>`;
+      html += `<button type="button" class="${_gpScoreMode['gp-group'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('gp-group','sets')">🎾 ${t('txt_txt_sets')}</button>`;
       html += `</div>`;
       html += `</div>`;
     }
 
     if (status.champion) {
-      html += `<div class="alert alert-success">🏆 Champion: <strong>${esc(status.champion.join(', '))}</strong></div>`;
+      html += `<div class="alert alert-success">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
     }
 
     if (status.phase === 'finished') {
       html += `<div class="card">`;
-      html += `<h3>Export Outcome</h3>`;
-      html += `<label class="switch-label"><input type="checkbox" id="export-include-history" checked><span class="switch-track"></span>Include match history</label>`;
+      html += `<h3>${t('txt_txt_export_outcome')}</h3>`;
+      html += `<label class="switch-label"><input type="checkbox" id="export-include-history" checked><span class="switch-track"></span>${t('txt_txt_include_match_history')}</label>`;
       html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem">`;
-      html += `<button class="btn btn-primary" onclick="exportTournamentOutcome('html')">Export HTML</button>`;
-      html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="exportTournamentOutcome('pdf')">Export PDF</button>`;
+      html += `<button type="button" class="btn btn-primary" onclick="exportTournamentOutcome('html')">${t('txt_txt_export_html')}</button>`;
+      html += `<button type="button" class="btn" style="background:var(--border);color:var(--text)" onclick="exportTournamentOutcome('pdf')">${t('txt_txt_export_pdf')}</button>`;
       html += `</div>`;
       html += `</div>`;
     }
 
     const shouldCollapseGroups = status.phase !== 'groups';
     if (shouldCollapseGroups) {
-      html += `<details class="card"><summary>Group Stage Results — Format: ${groupFormatLabel}</summary>`;
+      html += `<details class="card"><summary>${t('txt_txt_group_stage_results_format_value', { value: groupFormatLabel })}</summary>`;
     }
 
     // Group standings
     for (const [gName, rows] of Object.entries(groups.standings)) {
-      html += `<div class="card"><h3>Group ${esc(gName)}</h3>`;
-      html += `<table><thead><tr><th>Player</th><th>P</th><th>W</th><th>D</th><th>L</th><th>PF</th><th>PA</th><th>Diff</th><th>Pts</th></tr></thead><tbody>`;
+      html += `<div class="card"><h3>${t('txt_txt_group_name_value', { value: esc(gName) })}</h3>`;
+      html += `<table><thead><tr><th>${t('txt_txt_player')}</th><th>${t('txt_txt_p_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_diff_abbrev')}</th><th>${t('txt_txt_pts_abbrev')}</th></tr></thead><tbody>`;
       for (const r of rows) {
         html += `<tr><td>${esc(r.player)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td><td>${r.points_for}</td><td>${r.points_against}</td><td>${r.point_diff}</td><td><strong>${r.match_points}</strong></td></tr>`;
       }
@@ -1250,22 +1367,22 @@ async function renderGP() {
     if (status.phase === 'groups') {
       const pending = Object.values(groups.matches).flat().filter(m => m.status !== 'completed');
       if (pending.length === 0) {
-        html += `<button class="btn btn-success" onclick="startPlayoffs()">Start Play‑offs →</button>`;
+        html += `<button type="button" class="btn btn-success" onclick="startPlayoffs()">${t('txt_txt_start_playoffs')} →</button>`;
       } else {
-        html += `<div class="alert alert-info">${pending.length} group match(es) remaining</div>`;
+        html += `<div class="alert alert-info">${t('txt_txt_n_match_remaining', { n: pending.length })}</div>`;
       }
     }
 
     // Playoff bracket
     if (status.phase === 'playoffs' || status.phase === 'finished') {
-      html += _schemaCardHtml('gp-playoff-schema', 'Play-offs bracket', 'generateGpPlayoffSchema');
+      html += _schemaCardHtml('gp-playoff-schema', t('txt_txt_play_off_bracket'), 'generateGpPlayoffSchema');
 
-      html += `<div class="card"><h2>Play‑offs</h2>`;
+      html += `<div class="card"><h2>${t('txt_txt_play_offs')}</h2>`;
       html += `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem">`;
-      html += `<span style="font-size:0.82rem;color:var(--text-muted)">Score format:</span>`;
+      html += `<span style="font-size:0.82rem;color:var(--text-muted)">${t('txt_txt_score_format')}:</span>`;
       html += `<div class="score-mode-toggle">`;
-      html += `<button class="${_gpScoreMode['gp-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('gp-playoff','points')">Points</button>`;
-      html += `<button class="${_gpScoreMode['gp-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('gp-playoff','sets')">🎾 Sets</button>`;
+      html += `<button type="button" class="${_gpScoreMode['gp-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('gp-playoff','points')">${t('txt_txt_points_label')}</button>`;
+      html += `<button type="button" class="${_gpScoreMode['gp-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('gp-playoff','sets')">🎾 ${t('txt_txt_sets')}</button>`;
       html += `</div></div>`;
       if (playoffs && playoffs.matches) {
         for (const m of _sortTbdLast(playoffs.matches)) {
@@ -1302,7 +1419,7 @@ function matchRow(m, ctx) {
     html += `${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
     html += ` <span class="${scoreClass}" id="mscore-${m.id}">${scoreDisplay}</span>`;
     html += ` <span class="badge badge-completed">✓</span>`;
-    html += ` <button class="match-edit-btn" id="medit-btn-${m.id}" onclick="_toggleEditMatch('${m.id}','${ctx}',${m.score[0]},${m.score[1]})">Edit</button>`;
+    html += `<button type="button" class="match-edit-btn" id="medit-btn-${m.id}" onclick="_toggleEditMatch('${m.id}','${ctx}',${m.score[0]},${m.score[1]})">${t('txt_txt_edit')}</button>`;
 
     // Inline edit form (hidden)
     const autoCalc = _totalPts > 0 && (ctx === 'mex' || ctx === 'mex-playoff');
@@ -1311,8 +1428,8 @@ function matchRow(m, ctx) {
     html += `<input type="number" id="s1-${m.id}" min="0" value="${m.score[0]}" style="width:50px" ${onInput}>`;
     html += `<span>–</span>`;
     html += `<input type="number" id="s2-${m.id}" min="0" value="${m.score[1]}" style="width:50px" ${onInput}>`;
-    html += `<button class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">Save</button>`;
-    html += `<button class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_cancelEditMatch('${m.id}')">✕</button>`;
+    html += `<button type="button" class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
+    html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_cancelEditMatch('${m.id}')">✕</button>`;
     html += `</div>`;
 
     // Breakdown toggle for Mexicano matches
@@ -1320,9 +1437,9 @@ function matchRow(m, ctx) {
     const bd = isMex ? _mexBreakdowns[m.id] : null;
     if (bd && Object.keys(bd).length > 0) {
       html += `<details class="breakdown-details">`;
-      html += `<summary>📊 Score breakdown</summary>`;
+      html += `<summary>📊 ${t('txt_txt_score_breakdown')}</summary>`;
       html += `<div class="breakdown-panel">`;
-      html += `<table class="breakdown-table"><thead><tr><th>Player</th><th>Raw</th><th>Strength ×</th><th>Loss disc ×</th><th>Win bonus</th><th>Final</th></tr></thead><tbody>`;
+      html += `<table class="breakdown-table"><thead><tr><th>${t('txt_txt_player')}</th><th>${t('txt_txt_raw')}</th><th>${t('txt_txt_strength_multiplier')}</th><th>${t('txt_txt_loss_disc_multiplier')}</th><th>${t('txt_txt_win_bonus_header')}</th><th>${t('txt_txt_final')}</th></tr></thead><tbody>`;
       for (const [pid, d] of Object.entries(bd)) {
         const pname = _mexPlayerMap[pid] || pid;
         html += `<tr><td>${esc(pname)}</td><td>${d.raw}</td><td>${d.strength_mult !== 1 ? '×' + d.strength_mult.toFixed(2) : '—'}</td><td>${d.loss_disc !== 1 ? '×' + d.loss_disc.toFixed(2) : '—'}</td><td>${d.win_bonus > 0 ? '+' + d.win_bonus : '—'}</td><td><strong>${d.final}</strong></td></tr>`;
@@ -1353,13 +1470,13 @@ function matchRow(m, ctx) {
     html += `<input type="number" id="s1-${m.id}" min="0" value="0" style="width:50px">`;
     html += `<span>–</span>`;
     html += `<input type="number" id="s2-${m.id}" min="0" value="0" style="width:50px">`;
-    html += `<button class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">Save</button>`;
+    html += `<button type="button" class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
     html += `</div>`;
     html += `<div id="score-tennis-${m.id}" class="${stageMode === 'sets' ? '' : 'hidden'}">`;
     html += `<div class="tennis-sets" id="tennis-sets-${m.id}">`;
     html += _renderTennisSetInputs(m.id, 3);
     html += `</div>`;
-    html += `<button class="btn btn-success btn-sm" onclick="submitTennisScore('${m.id}','${ctx}')">Save Sets</button>`;
+    html += `<button type="button" class="btn btn-success btn-sm" onclick="submitTennisScore('${m.id}','${ctx}')">${t('txt_txt_save_sets')}</button>`;
     html += `</div>`;
     html += `</div>`;
   } else {
@@ -1367,7 +1484,7 @@ function matchRow(m, ctx) {
     html += `<input type="number" id="s1-${m.id}" min="0" value="0" style="width:50px" ${onInput}>`;
     html += `<span>–</span>`;
     html += `<input type="number" id="s2-${m.id}" min="0" value="${autoCalc ? _totalPts : 0}" style="width:50px" ${onInput}>`;
-    html += `<button class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">Save</button>`;
+    html += `<button type="button" class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
     html += `</div>`;
   }
 
@@ -1486,7 +1603,7 @@ async function submitTennisScore(matchId, ctx) {
     if (v1 === 0 && v2 === 0) continue;  // skip empty sets
     sets.push([v1, v2]);
   }
-  if (sets.length === 0) { alert(t('Enter at least one set score.')); return; }
+  if (sets.length === 0) { alert(t('txt_txt_enter_at_least_one_set_score')); return; }
 
   try {
     await api(_scoreApiPath(ctx, true), {
@@ -1519,7 +1636,7 @@ async function renderMex() {
     _mexPlayerMap = {};
     for (const p of _mexPlayers) _mexPlayerMap[p.id] = p.name;
 
-    let html = `<div class="refresh-row"><button class="btn btn-primary btn-sm" onclick="renderMex()">↻ Refresh</button></div>`;
+    let html = `<div class="refresh-row"><button type="button" class="btn btn-primary btn-sm" onclick="renderMex()">↻ ${t('txt_txt_refresh')}</button></div>`;
     html += _renderTvControls(tvSettings);
 
     // Phase-aware header
@@ -1534,61 +1651,61 @@ async function renderMex() {
     const hasPlayoffBracket = (playoffsData.matches || []).length > 0;
 
     if (isPlayoffs) {
-      html += `<div class="alert alert-info">Phase: <span class="badge badge-phase">Mexicano Play-offs</span></div>`;
+      html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${t('txt_txt_mexicano_play_offs')}</span></div>`;
     } else if (isFinished && hasPlayoffBracket) {
-      html += `<div class="alert alert-info">Tournament finished after play-offs.</div>`;
+      html += `<div class="alert alert-info">${t('txt_txt_tournament_finished_after_playoffs')}</div>`;
     } else if (isFinished) {
-      html += `<div class="alert alert-info">Tournament finished from Mexicano standings (no play-offs).</div>`;
+      html += `<div class="alert alert-info">${t('txt_txt_tournament_finished_no_playoffs')}</div>`;
     } else if (mexicanoEnded) {
-      html += `<div class="alert alert-info">Mexicano phase ended. Choose next step: start optional play-offs or finish as-is.</div>`;
+      html += `<div class="alert alert-info">${t('txt_txt_mexicano_phase_ended')}</div>`;
     } else if (isRolling) {
-      html += `<div class="alert alert-info">Mexicano Round ${status.current_round} <span class="badge badge-phase">Rolling</span></div>`;
+      html += `<div class="alert alert-info">${t('txt_txt_mexicano_round_n', { n: status.current_round })} <span class="badge badge-phase">${t('txt_txt_rolling')}</span></div>`;
     } else {
-      html += `<div class="alert alert-info">${t('Mexicano')} ${t('Round')} ${status.current_round} / ${status.num_rounds}${mexRoundsDone ? ` — <strong>${t('Mexicano Rounds Complete! Ready for Play-offs.')}</strong>` : ''}</div>`;
+      html += `<div class="alert alert-info">${t('txt_txt_mexicano')} ${t('txt_txt_round')} ${status.current_round} / ${status.num_rounds}${mexRoundsDone ? ` — <strong>${t('txt_txt_mexicano_rounds_complete_ready_for_play_offs')}</strong>` : ''}</div>`;
     }
 
     if (status.champion) {
-      html += `<div class="alert alert-success">🏆 Champion: <strong>${esc(status.champion.join(', '))}</strong></div>`;
+      html += `<div class="alert alert-success">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
     }
 
     if (isFinished) {
       html += `<div class="card">`;
-      html += `<h3>Export Outcome</h3>`;
-      html += `<label class="switch-label"><input type="checkbox" id="export-include-history" checked><span class="switch-track"></span>Include match history</label>`;
+      html += `<h3>${t('txt_txt_export_outcome')}</h3>`;
+      html += `<label class="switch-label"><input type="checkbox" id="export-include-history" checked><span class="switch-track"></span>${t('txt_txt_include_match_history')}</label>`;
       html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem">`;
-      html += `<button class="btn btn-primary" onclick="exportTournamentOutcome('html')">Export HTML</button>`;
-      html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="exportTournamentOutcome('pdf')">Export PDF</button>`;
+      html += `<button type="button" class="btn btn-primary" onclick="exportTournamentOutcome('html')">${t('txt_txt_export_html')}</button>`;
+      html += `<button type="button" class="btn" style="background:var(--border);color:var(--text)" onclick="exportTournamentOutcome('pdf')">${t('txt_txt_export_pdf')}</button>`;
       html += `</div>`;
       html += `</div>`;
     }
 
     if (isPlayoffs || hasPlayoffBracket) {
       const pendingPo = (playoffsData.pending || []).filter(m => m.status !== 'completed');
-      html += _renderCourtAssignmentsCard(pendingPo, 'Court Assignments — Mexicano Play-offs');
+      html += _renderCourtAssignmentsCard(pendingPo, t('txt_txt_court_assignments_mexicano_play_offs'));
 
-      html += _schemaCardHtml('mex-playoff-schema', 'Mexicano play-offs bracket', 'generateMexPlayoffSchema');
+      html += _schemaCardHtml('mex-playoff-schema', t('txt_txt_mexicano_play_offs_bracket'), 'generateMexPlayoffSchema');
 
-      html += `<div class="card"><h2>${t('Mexicano Play-off Bracket')}</h2>`;
+      html += `<div class="card"><h2>${t('txt_txt_mexicano_play_off_bracket')}</h2>`;
       html += `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem">`;
-      html += `<span style="font-size:0.82rem;color:var(--text-muted)">Score format:</span>`;
+      html += `<span style="font-size:0.82rem;color:var(--text-muted)">${t('txt_txt_score_format')}:</span>`;
       html += `<div class="score-mode-toggle">`;
-      html += `<button class="${_gpScoreMode['mex-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','points')">Points</button>`;
-      html += `<button class="${_gpScoreMode['mex-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','sets')">🎾 Sets</button>`;
+      html += `<button type="button" class="${_gpScoreMode['mex-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','points')">${t('txt_txt_points_label')}</button>`;
+      html += `<button type="button" class="${_gpScoreMode['mex-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','sets')">🎾 ${t('txt_txt_sets')}</button>`;
       html += `</div></div>`;
       for (const m of playoffsData.matches) {
         html += matchRow(m, 'mex-playoff');
       }
       html += `</div>`;
     } else {
-      html += _renderCourtAssignmentsCard(matches.current_matches, 'Court Assignments — Current Round');
+      html += _renderCourtAssignmentsCard(matches.current_matches, t('txt_txt_court_assignments_current_round'));
     }
 
     // Leaderboard
-    html += `<div class="card"><h2>Leaderboard</h2>`;
+    html += `<div class="card"><h2>${t('txt_txt_leaderboard')}</h2>`;
     const byAvg = status.leaderboard.length > 0 && status.leaderboard[0].ranked_by_avg;
-    const hTotal = byAvg ? 'Total Pts' : '<strong>Total Pts ↓</strong>';
-    const hAvg   = byAvg ? '<strong>Avg Pts ↓</strong>' : 'Avg Pts';
-    html += `<table><thead><tr><th>#</th><th>Player</th><th>${hTotal}</th><th>Played</th><th>W</th><th>D</th><th>L</th><th>${hAvg}</th></tr></thead><tbody>`;
+    const hTotal = byAvg ? t('txt_txt_total_pts') : `<strong>${t('txt_txt_total_pts')} ↓</strong>`;
+    const hAvg   = byAvg ? `<strong>${t('txt_txt_avg_pts')} ↓</strong>` : t('txt_txt_avg_pts');
+    html += `<table><thead><tr><th>${t('txt_txt_rank')}</th><th>${t('txt_txt_player')}</th><th>${hTotal}</th><th>${t('txt_txt_played')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${hAvg}</th></tr></thead><tbody>`;
     for (const r of status.leaderboard) {
       const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
       const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
@@ -1600,7 +1717,7 @@ async function renderMex() {
     if (!(isPlayoffs || isFinished)) {
       // Phase: Mexicano rounds
       if (matches.current_matches.length > 0) {
-        html += `<div class="card"><h2>Current Round Matches</h2>`;
+        html += `<div class="card"><h2>${t('txt_txt_current_round_matches')}</h2>`;
         for (const m of matches.current_matches) {
           html += matchRow(m, 'mex');
         }
@@ -1615,8 +1732,8 @@ async function renderMex() {
         // Missed games / sit-out management panel
         if (status.sit_out_count > 0 && status.missed_games) {
           html += `<div class="card" id="mex-sitout-panel">`;
-          html += `<h3>🪑 Missed Games &amp; Sit-out Override</h3>`;
-          html += `<p style="color:var(--text-muted);font-size:0.82rem">Click a player to force them to sit out in the next round (${status.sit_out_count} must sit). Pairings regenerate automatically.</p>`;
+          html += `<h3>🪑 ${t('txt_txt_missed_games_sitout')}</h3>`;
+          html += `<p style="color:var(--text-muted);font-size:0.82rem">${t('txt_txt_sitout_instructions', { n: status.sit_out_count })}</p>`;
           html += `<div class="sitout-grid">`;
           // Sort by most missed first
           const mgList = Object.entries(status.missed_games)
@@ -1625,9 +1742,9 @@ async function renderMex() {
           for (const mg of mgList) {
             const forced = _forcedSitOuts.has(mg.id);
             html += `<div class="sitout-item${forced ? ' forced' : ''}" onclick="_toggleForcedSitOut('${mg.id}', ${status.sit_out_count})">`;
-            html += `<span class="missed-badge">${mg.sat_out} missed</span>`;
+            html += `<span class="missed-badge">${t('txt_txt_n_missed', { n: mg.sat_out })}</span>`;
             html += `<span>${esc(mg.name)}</span>`;
-            html += `<span style="color:var(--text-muted);font-size:0.72rem">(${mg.played} played)</span>`;
+            html += `<span style="color:var(--text-muted);font-size:0.72rem">${t('txt_txt_n_played', { n: mg.played })}</span>`;
             html += `</div>`;
           }
           html += `</div>`;
@@ -1636,33 +1753,33 @@ async function renderMex() {
         }
 
         html += `<div id="mex-next-section">`;
-        html += `<button class="btn btn-success" onclick="proposeMexPairings()">⚡ Propose Next Round…</button>`;
+        html += `<button type="button" class="btn btn-success" onclick="proposeMexPairings()">⚡ ${t('txt_txt_propose_next_round')}</button>`;
         if (status.current_round > 0) {
-          html += ` <button class="btn btn-primary" onclick="endMexicano()" style="margin-left:0.5rem">🛑 End Mexicano</button>`;
+          html += ` <button type="button" class="btn btn-primary" onclick="endMexicano()" style="margin-left:0.5rem">🛑 ${t('txt_txt_end_mexicano')}</button>`;
         }
         html += `</div>`;
       } else if (pending > 0) {
-        html += `<div class="alert alert-info">${pending} match(es) remaining this round</div>`;
+        html += `<div class="alert alert-info">${t('txt_txt_n_match_remaining', { n: pending })}</div>`;
       } else if (pending === 0 && !mexicanoEnded && !canGenerateRound) {
         html += `<div id="mex-next-section">`;
-        html += `<button class="btn btn-primary" onclick="endMexicano()">🛑 End Mexicano</button>`;
+        html += `<button type="button" class="btn btn-primary" onclick="endMexicano()">🛑 ${t('txt_txt_end_mexicano')}</button>`;
         html += `</div>`;
       }
 
       if (mexicanoEnded && !isPlayoffs && !isFinished) {
         html += `<div id="mex-playoffs-section" class="card">`;
-        html += `<h3>Post-Mexicano Decision</h3>`;
-        html += `<p style="color:var(--text-muted);font-size:0.85rem">You can start optional play-offs, or finish the tournament with current leaderboard standings.</p>`;
+        html += `<h3>${t('txt_txt_post_mexicano_decision')}</h3>`;
+        html += `<p style="color:var(--text-muted);font-size:0.85rem">${t('txt_txt_post_mexicano_instructions')}</p>`;
         html += `<div class="proposal-actions">`;
-        html += `<button class="btn btn-success" onclick="proposeMexPlayoffs()">🏆 Start Optional Play-offs…</button>`;
-        html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="finishMexicanoAsIs()">✓ Finish As-Is</button>`;
+        html += `<button type="button" class="btn btn-success" onclick="proposeMexPlayoffs()">🏆 ${t('txt_txt_start_optional_playoffs')}</button>`;
+        html += `<button type="button" class="btn" style="background:var(--border);color:var(--text)" onclick="finishMexicanoAsIs()">✓ ${t('txt_txt_finish_as_is')}</button>`;
         html += `</div>`;
         html += `</div>`;
       }
 
       // History — grouped by round as collapsible accordion
       if (matches.all_matches.length > matches.current_matches.length) {
-        html += `<div class="card"><h3>Previous Rounds</h3>`;
+        html += `<div class="card"><h3>${t('txt_txt_previous_rounds')}</h3>`;
         const prev = matches.all_matches.filter(m => !matches.current_matches.some(c => c.id === m.id));
         // Group by round_number
         const byRound = {};
@@ -1679,7 +1796,7 @@ async function renderMex() {
           const label = rMatches[0]?.round_label || `Round ${rn}`;
           const openAttr = ri === 0 ? ' open' : '';
           html += `<details class="round-group"${openAttr}>`;
-          html += `<summary>${esc(label)} — ${rMatches.length} ${rMatches.length > 1 ? t('matches') : t('match')}</summary>`;
+          html += `<summary>${esc(label)} — ${rMatches.length} ${rMatches.length > 1 ? t('txt_txt_matches') : t('txt_txt_match')}</summary>`;
           for (const m of rMatches) {
             html += matchRow(m, 'mex');
           }
@@ -1695,7 +1812,7 @@ async function renderMex() {
 
 function _renderCourtAssignmentsCard(matches, title) {
   if (!matches || matches.length === 0) {
-    return `<div class="card"><h3>${esc(title)}</h3><em>${t('No pending assignments.')}</em></div>`;
+    return `<div class="card"><h3>${esc(title)}</h3><em>${t('txt_txt_no_pending_assignments')}</em></div>`;
   }
 
   // Group real matches by court name.
@@ -1735,7 +1852,7 @@ function _renderCourtAssignmentsCard(matches, title) {
           const r = m.round_label ? `<span class="court-round">${esc(m.round_label)}</span>` : '';
           html += `<div class="court-match-item"><span class="court-slot">#${idx + 1}</span>${esc(t1)} <span style="color:var(--text-muted)">vs</span> ${esc(t2)}${r}</div>`;
         } else {
-          html += `<div class="court-match-item court-empty-slot"><span class="court-slot">#${idx + 1}</span><em>(empty)</em></div>`;
+          html += `<div class="court-match-item court-empty-slot"><span class="court-slot">#${idx + 1}</span><em>${t('txt_txt_empty')}</em></div>`;
         }
       });
     } else {
@@ -1795,21 +1912,21 @@ async function _toggleForcedSitOut(playerId, maxSitOuts) {
         const p = _mexPlayers.find(x => x.id === id);
         return p ? p.name : id;
       });
-      info.innerHTML = `<strong>Forced sit-out:</strong> ${esc(names.join(', '))} (${_forcedSitOuts.size}/${maxSitOuts})`;
+      info.innerHTML = `<strong>${t('txt_txt_forced_sitout')}</strong> ${esc(names.join(', '))} (${_forcedSitOuts.size}/${maxSitOuts})`;
     } else {
-      info.innerHTML = `<em>No override — automatic selection</em>`;
+      info.innerHTML = `<em>${t('txt_txt_no_override_automatic')}</em>`;
     }
   }
 
   const nextSection = document.getElementById('mex-next-section');
   if (nextSection) {
-    nextSection.innerHTML = `<em style="color:var(--text-muted)">Updating proposals…</em>`;
+    nextSection.innerHTML = `<em style="color:var(--text-muted)">${t('txt_txt_updating_proposals')}</em>`;
   }
   try {
     await proposeMexPairings(_mexProposalRequestedCount);
   } catch (e) {
     if (nextSection) {
-      nextSection.innerHTML = `<div class="alert alert-error">${esc(e.message || 'Failed to refresh proposals')}</div>`;
+      nextSection.innerHTML = `<div class="alert alert-error">${esc(e.message || t('txt_txt_failed_refresh_proposals'))}</div>`;
     }
   }
 }
@@ -1881,17 +1998,17 @@ function _toggleExtraMexProposals() {
 
 function _renderProposalPicker(proposals) {
   let html = `<div class="card">`;
-  html += `<h2>Choose Pairings for Next Round</h2>`;
+  html += `<h2>${t('txt_txt_choose_pairings')}</h2>`;
   html += `<div class="proposal-display-controls">`;
 
   if (_currentPlayerStats) {
     html += `<details class="proposal-display-history">`;
-    html += `<summary>Player Match History</summary>`;
+    html += `<summary>${t('txt_txt_player_match_history')}</summary>`;
     html += `<div id="stats-panel">${_renderPlayerStats(_currentPlayerStats)}</div>`;
     html += `</details>`;
   }
 
-  html += `<label class="proposal-display-toggle"><input type="checkbox" ${_showRepeatDetails ? 'checked' : ''} onchange="_toggleRepeatDetails(this.checked)"> Show per-player repeat details</label>`;
+  html += `<label class="proposal-display-toggle"><input type="checkbox" ${_showRepeatDetails ? 'checked' : ''} onchange="_toggleRepeatDetails(this.checked)"> ${t('txt_txt_show_repeat_details')}</label>`;
   html += `</div>`;
 
   const bestOption = proposals.find(p => p.recommended) || proposals[0] || null;
@@ -1935,25 +2052,25 @@ function _renderProposalPicker(proposals) {
     card += `<div class="proposal-card-header">`;
     card += `<h4>${esc(p.label)}</h4>`;
     if (p.strategy === 'seeded') {
-      card += `<span class="badge badge-scheduled">Seeded</span>`;
+      card += `<span class="badge badge-scheduled">${t('txt_txt_seeded')}</span>`;
     }
-    if (p.recommended) card += `<span class="badge badge-best">★ Best</span>`;
+    if (p.recommended) card += `<span class="badge badge-best">★ ${t('txt_txt_best')}</span>`;
     card += `</div>`;
     card += `<div class="proposal-metrics">`;
-    card += `⚖️ Score gap: <strong>${fmt2(p.score_imbalance)} pts</strong><br>`;
+    card += `⚖️ ${t('txt_txt_score_gap')}: <strong>${fmt2(p.score_imbalance)} pts</strong><br>`;
     const repLabel = p.repeat_count === 0
-      ? '✅ No repeated match-ups'
-      : `⚠️ ${p.repeat_count} repeat(s)`;
+      ? `✅ ${t('txt_txt_no_repeated_matchups')}`
+      : `⚠️ ${t('txt_txt_n_repeats', { n: p.repeat_count })}`;
     card += `${repLabel}`;
     if ((p.exact_prev_round_repeats || 0) > 0) {
-      card += `<br>🔁 Exact rematch from previous round in ${p.exact_prev_round_repeats} match(es) — avoid if possible`;
+      card += `<br>🔁 ${t('txt_txt_exact_rematch_warning', { n: p.exact_prev_round_repeats })}`;
     }
     if ((p.skill_gap_violations || 0) > 0) {
       const excess = fmt2(p.skill_gap_worst_excess || 0);
-      card += `<br>🚫 Skill-gap violation in ${p.skill_gap_violations} group(s) (worst +${excess})`;
+      card += `<br>🚫 ${t('txt_txt_skill_gap_violation', { n: p.skill_gap_violations, excess })}`;
     }
     if (p.sit_out_names && p.sit_out_names.length > 0) {
-      card += `<br>🪑 Sitting out: <em>${esc(p.sit_out_names.join(', '))}</em>`;
+      card += `<br>🪑 ${t('txt_txt_sitting_out')}: <em>${esc(p.sit_out_names.join(', '))}</em>`;
     }
     card += `</div>`;
 
@@ -1970,10 +2087,10 @@ function _renderProposalPicker(proposals) {
       for (const [name, detail] of Object.entries(p.per_person_repeats)) {
         const parts = [];
         for (const pr of (detail.partner_repeats || [])) {
-          parts.push(`partner ${pr.player} ×${pr.count}`);
+          parts.push(t('txt_txt_partner_n_times', { player: pr.player, count: pr.count }));
         }
         for (const or_ of (detail.opponent_repeats || [])) {
-          parts.push(`vs ${or_.player} ×${or_.count}`);
+          parts.push(t('txt_txt_vs_n_times', { player: or_.player, count: or_.count }));
         }
         if (parts.length > 0) {
           card += `<span class="rp-name">${esc(name)}</span>: ${parts.join(', ')}<br>`;
@@ -1987,8 +2104,8 @@ function _renderProposalPicker(proposals) {
   };
 
   if (bestOption) {
-    html += `<h3 style="margin-top:0.2rem">Best</h3>`;
-    html += `<p style="margin:0.1rem 0 0.5rem;color:var(--text-muted);font-size:0.82rem">Top recommended option based on skill-gap compliance, score gap, and repeats.</p>`;
+    html += `<h3 style="margin-top:0.2rem">${t('txt_txt_best')}</h3>`;
+    html += `<p style="margin:0.1rem 0 0.5rem;color:var(--text-muted);font-size:0.82rem">${t('txt_txt_best_description')}</p>`;
     html += `<div class="proposal-cards">`;
     html += renderProposalCard(bestOption);
     html += `</div>`;
@@ -1996,23 +2113,23 @@ function _renderProposalPicker(proposals) {
 
   if (allAlternatives.length > 0) {
     html += `<div class="proposal-section-row">`;
-    html += `<h3>Alternatives</h3>`;
+    html += `<h3>${t('txt_txt_alternatives')}</h3>`;
     html += `<div class="proposal-inline-actions">`;
     if (!hasLoadedMore) {
-      html += `<button class="proposal-inline-action" type="button" onclick="_loadMoreMexPairings()">⬇ Load more combos (up to 10)</button>`;
+      html += `<button class="proposal-inline-action" type="button" onclick="_loadMoreMexPairings()">⬇ ${t('txt_txt_load_more_combos')}</button>`;
     }
     if (hiddenAlternatives > 0 || hasLoadedMore) {
       const arrow = _showExtraMexProposals ? '▾' : '▸';
       const suffix = hiddenAlternatives > 0 ? ` (${hiddenAlternatives})` : '';
-      html += `<button class="proposal-inline-action" type="button" onclick="_toggleExtraMexProposals()">${arrow} More combinations${suffix}</button>`;
+      html += `<button class="proposal-inline-action" type="button" onclick="_toggleExtraMexProposals()">${arrow} ${t('txt_txt_more_combinations')}${suffix}</button>`;
     }
     html += `</div>`;
     html += `</div>`;
   }
 
   if (balancedOptions.length > 0) {
-    html += `<h3 style="margin-top:0.3rem">Balanced</h3>`;
-    html += `<p style="margin:0.1rem 0 0.5rem;color:var(--text-muted);font-size:0.82rem">Focuses on minimizing score gap and repeats while respecting constraints.</p>`;
+    html += `<h3 style="margin-top:0.3rem">${t('txt_txt_balanced')}</h3>`;
+    html += `<p style="margin:0.1rem 0 0.5rem;color:var(--text-muted);font-size:0.82rem">${t('txt_txt_balanced_description')}</p>`;
     html += `<div class="proposal-cards">`;
     for (const p of balancedOptions) {
       html += renderProposalCard(p);
@@ -2021,8 +2138,8 @@ function _renderProposalPicker(proposals) {
   }
 
   if (seededOptions.length > 0 || _showExtraMexProposals) {
-    html += `<h3 style="margin-top:0.4rem">Seeded</h3>`;
-    html += `<p style="margin:0.1rem 0 0.5rem;color:var(--text-muted);font-size:0.82rem">Focuses on a stricted separation by the current ranking.</p>`;
+    html += `<h3 style="margin-top:0.4rem">${t('txt_txt_seeded')}</h3>`;
+    html += `<p style="margin:0.1rem 0 0.5rem;color:var(--text-muted);font-size:0.82rem">${t('txt_txt_seeded_description')}</p>`;
     if (seededOptions.length > 0) {
       html += `<div class="proposal-cards">`;
       for (const p of seededOptions) {
@@ -2030,14 +2147,14 @@ function _renderProposalPicker(proposals) {
       }
       html += `</div>`;
     } else {
-      html += `<p style="margin:0.1rem 0 0.5rem;color:var(--text-muted);font-size:0.82rem"><em>No seeded alternatives available for this expansion.</em></p>`;
+      html += `<p style="margin:0.1rem 0 0.5rem;color:var(--text-muted);font-size:0.82rem"><em>${t('txt_txt_no_seeded_alternatives')}</em></p>`;
     }
   }
 
   html += `<div class="proposal-actions">`;
-  html += `<button class="btn btn-success" onclick="_confirmMexRound()">✓ Confirm Selection</button>`;
-  html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="renderMex()">✕ Cancel</button>`;
-  html += ` <button class="btn" style="background:var(--text-muted);color:#fff" onclick="_showManualEditor()">✏️ Manual Override</button>`;
+  html += `<button type="button" class="btn btn-success" onclick="_confirmMexRound()">✓ ${t('txt_txt_confirm_selection')}</button>`;
+  html += `<button type="button" class="btn" style="background:var(--border);color:var(--text)" onclick="renderMex()">✕ ${t('txt_txt_cancel')}</button>`;
+  html += ` <button type="button" class="btn" style="background:var(--text-muted);color:#fff" onclick="_showManualEditor()">✏️ ${t('txt_txt_manual_override')}</button>`;
   html += `</div>`;
   html += `</div>`; // .card
   return html;
@@ -2059,7 +2176,7 @@ function _selectProposal(optionId) {
 }
 
 async function _confirmMexRound() {
-  if (!_selectedOptionId) { alert(t('Select a pairing option first.')); return; }
+  if (!_selectedOptionId) { alert(t('txt_txt_select_a_pairing_option_first')); return; }
   try {
     await api(`/api/tournaments/${currentTid}/mex/next-round`, {
       method: 'POST',
@@ -2082,8 +2199,8 @@ function _showManualEditor() {
   _manualMatchCount = numCourts;
 
   let html = `<div class="card">`;
-  html += `<h2>✏️ Manual Pairing Editor</h2>`;
-  html += `<p style="color:var(--text-muted);font-size:0.85rem">Assign players to teams using the dropdowns. Players not assigned to any match will sit out.</p>`;
+  html += `<h2>✏️ ${t('txt_txt_manual_pairing_editor')}</h2>`;
+  html += `<p style="color:var(--text-muted);font-size:0.85rem">${t('txt_txt_manual_editor_instructions')}</p>`;
 
   html += `<div id="manual-matches">`;
   for (let i = 0; i < numCourts; i++) {
@@ -2092,16 +2209,16 @@ function _showManualEditor() {
   html += `</div>`;
 
   html += `<div style="margin: 0.5rem 0; display:flex; gap:0.5rem; flex-wrap:wrap">`;
-  html += `<button class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_addManualMatch()">+ Add Match</button>`;
-  html += `<button class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_removeManualMatch()">− Remove Match</button>`;
+  html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_addManualMatch()">+ ${t('txt_txt_add_match')}</button>`;
+  html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_removeManualMatch()">− ${t('txt_txt_remove_match')}</button>`;
   html += `</div>`;
 
   html += `<div id="manual-sitout" style="margin:0.5rem 0; font-size:0.85rem; color:var(--text-muted)"></div>`;
 
   html += `<div class="proposal-actions">`;
-  html += `<button class="btn btn-success" onclick="_commitManualRound()">✓ Commit Manual Round</button>`;
-  html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="proposeMexPairings()">← Back to Proposals</button>`;
-  html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="renderMex()">✕ Cancel</button>`;
+  html += `<button type="button" class="btn btn-success" onclick="_commitManualRound()">✓ ${t('txt_txt_commit_manual_round')}</button>`;
+  html += `<button type="button" class="btn" style="background:var(--border);color:var(--text)" onclick="proposeMexPairings()">← ${t('txt_txt_back_to_proposals')}</button>`;
+  html += `<button type="button" class="btn" style="background:var(--border);color:var(--text)" onclick="renderMex()">✕ ${t('txt_txt_cancel')}</button>`;
   html += `</div>`;
   html += `</div>`;
 
@@ -2113,9 +2230,9 @@ function _renderManualMatch(idx) {
   const opts = _mexPlayers.map(p =>
     `<option value="${p.id}">${esc(p.name)}</option>`
   ).join('');
-  const blank = `<option value="">— pick —</option>`;
+  const blank = `<option value="">${t('txt_txt_pick_placeholder')}</option>`;
   return `<div class="manual-match-row" style="margin-bottom:0.6rem; padding:0.5rem; border:1px solid var(--border); border-radius:6px;">
-    <strong>Match ${idx + 1}</strong>
+    <strong>${t('txt_txt_match_n', { n: idx + 1 })}</strong>
     <div style="display:flex; gap:0.3rem; flex-wrap:wrap; margin-top:0.3rem; align-items:center">
       <select class="manual-sel" data-match="${idx}" data-slot="t1a" onchange="_updateManualSitout()">${blank}${opts}</select>
       <span>&amp;</span>
@@ -2152,9 +2269,9 @@ function _updateManualSitout() {
   const el = document.getElementById('manual-sitout');
   if (el) {
     if (sitting.length > 0) {
-      el.innerHTML = `🪑 Sitting out: <em>${esc(sitting.map(p => p.name).join(', '))}</em>`;
+      el.innerHTML = `🪑 ${t('txt_txt_sitting_out')}: <em>${esc(sitting.map(p => p.name).join(', '))}</em>`;
     } else {
-      el.innerHTML = `All players assigned.`;
+      el.innerHTML = t('txt_txt_all_players_assigned');
     }
   }
 }
@@ -2174,13 +2291,13 @@ async function _commitManualRound() {
     const ids = [t1a, t1b, t2a, t2b];
 
     if (ids.some(id => !id)) {
-      errors.push(`Match ${i + 1}: all 4 player slots must be filled`);
+      errors.push(t('txt_txt_match_n_slots_required', { n: i + 1 }));
       continue;
     }
     for (const id of ids) {
       if (allUsed.has(id)) {
         const name = _mexPlayers.find(p => p.id === id)?.name || id;
-        errors.push(`${name} is assigned to multiple matches`);
+        errors.push(t('txt_txt_player_assigned_multiple', { value: name }));
       }
       allUsed.add(id);
     }
@@ -2205,9 +2322,9 @@ async function _commitManualRound() {
 function _renderPlayerStats(stats) {
   const names = Object.keys(stats).sort();
   let opts = names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
-  let html = `<h4>Partner &amp; Opponent History</h4>`;
+  let html = `<h4>${t('txt_txt_partner_opponent_history')}</h4>`;
   html += `<div class="player-stats-dropdown">`;
-  html += `<select onchange="_showPlayerDetail(this.value)" id="stats-player-select"><option value="">— select player —</option>${opts}</select>`;
+  html += `<select onchange="_showPlayerDetail(this.value)" id="stats-player-select"><option value="">${t('txt_txt_select_player')}</option>${opts}</select>`;
   html += `</div>`;
   html += `<div id="stats-player-detail"></div>`;
   return html;
@@ -2220,13 +2337,13 @@ function _showPlayerDetail(name) {
     return;
   }
   const data = _currentPlayerStats[name];
-  const partnerList = data.partners.map(x => `${esc(x.player)} (×${x.count})`).join(', ') || 'none yet';
-  const opponentList = data.opponents.map(x => `${esc(x.player)} (×${x.count})`).join(', ') || 'none yet';
+  const partnerList = data.partners.map(x => `${esc(x.player)} (×${x.count})`).join(', ') || t('txt_txt_none_yet');
+  const opponentList = data.opponents.map(x => `${esc(x.player)} (×${x.count})`).join(', ') || t('txt_txt_none_yet');
   el.innerHTML = `<div class="player-stats-detail">
-    <div class="stat-row"><span class="stat-label">Partners:</span> ${partnerList}</div>
-    <div class="stat-row"><span class="stat-label">Opponents:</span> ${opponentList}</div>
-    <div class="stat-row"><span class="stat-label">Partner repeats:</span> ${data.total_partner_repeats}</div>
-    <div class="stat-row"><span class="stat-label">Opponent repeats:</span> ${data.total_opponent_repeats}</div>
+    <div class="stat-row"><span class="stat-label">${t('txt_txt_partners')}:</span> ${partnerList}</div>
+    <div class="stat-row"><span class="stat-label">${t('txt_txt_opponents')}:</span> ${opponentList}</div>
+    <div class="stat-row"><span class="stat-label">${t('txt_txt_partner_repeats')}:</span> ${data.total_partner_repeats}</div>
+    <div class="stat-row"><span class="stat-label">${t('txt_txt_opponent_repeats')}:</span> ${data.total_opponent_repeats}</div>
   </div>`;
 }
 
@@ -2274,17 +2391,17 @@ async function finishMexicanoAsIs() {
 
 function _renderPlayoffEditor() {
   let html = `<div class="card">`;
-  html += `<h2>Configure Mexicano Play-offs</h2>`;
+  html += `<h2>${t('txt_txt_configure_mexicano_playoffs')}</h2>`;
   const _useEstNote = _playoffTeams.length > 0 && _playoffTeams[0].rankedByAvg;
-  const estNote = _useEstNote ? `<span style="color:var(--text-muted);font-size:0.8rem">* Estimated points (players have played different numbers of matches)</span>` : '';
-  html += `<p style="color:var(--text-muted);font-size:0.85rem">Each team is one row. Pick both players from participants below (defaults are preselected by seed order). ${estNote}</p>`;
+  const estNote = _useEstNote ? `<span style="color:var(--text-muted);font-size:0.8rem">${t('txt_txt_estimated_points_note')}</span>` : '';
+  html += `<p style="color:var(--text-muted);font-size:0.85rem">${t('txt_txt_team_row_instructions')} ${estNote}</p>`;
 
   const maxTeams = Math.max(2, Math.floor((_mexPlayers || []).length / 2));
   html += `<div class="inline-group" style="margin-bottom:0.75rem">`;
-  html += `<div class="form-group"><label>Teams participating</label><select id="playoff-team-count" onchange="_changeMexPlayoffTeamCount(this.value)">`;
+  html += `<div class="form-group"><label>${t('txt_txt_teams_participating')}</label><select id="playoff-team-count" onchange="_changeMexPlayoffTeamCount(this.value)">`;
   for (let teams = 2; teams <= maxTeams; teams++) {
     const selected = teams === _mexPlayoffTeamCount ? ' selected' : '';
-    html += `<option value="${teams}"${selected}>${teams} teams</option>`;
+    html += `<option value="${teams}"${selected}>${t('txt_txt_n_teams', { n: teams })}</option>`;
   }
   html += `</select></div>`;
   html += `</div>`;
@@ -2292,7 +2409,7 @@ function _renderPlayoffEditor() {
   const useEst = _playoffTeams.length > 0 && _playoffTeams[0].rankedByAvg;
 
   const participantOptions = (selectedId) => {
-    let options = `<option value="">— pick —</option>`;
+    let options = `<option value="">${t('txt_txt_pick_placeholder')}</option>`;
     for (let i = 0; i < _playoffTeams.length; i++) {
       const p = _playoffTeams[i];
       const selected = p.id === selectedId ? ' selected' : '';
@@ -2315,23 +2432,23 @@ function _renderPlayoffEditor() {
     const rightDefault = _playoffTeams[i * 2 + 1]?.id || '';
     const initScore = teamScore(leftDefault, rightDefault);
     html += `<div class="playoff-team-item" style="align-items:center; gap:0.6rem; flex-wrap:wrap">`;
-    html += `<span class="seed" style="min-width:58px">Team ${i + 1}</span>`;
+    html += `<span class="seed" style="min-width:58px">${t('txt_txt_team_n', { n: i + 1 })}</span>`;
     html += `<select id="playoff-team-${i}-a" class="manual-sel" style="min-width:220px" onchange="_updateTeamScore(${i})">${participantOptions(leftDefault)}</select>`;
     html += `<span style="color:var(--text-muted)">+</span>`;
     html += `<select id="playoff-team-${i}-b" class="manual-sel" style="min-width:220px" onchange="_updateTeamScore(${i})">${participantOptions(rightDefault)}</select>`;
     html += `<span id="team-score-${i}" class="tag" style="min-width:70px;text-align:center;font-variant-numeric:tabular-nums">${initScore}</span>`;
-    html += `<button id="playoff-save-${i}" class="btn btn-success" style="padding:0.25rem 0.65rem;font-size:0.82rem" onclick="_savePlayoffTeam(${i})">✓ Save</button>`;
-    html += `<button id="playoff-edit-${i}" class="btn" style="padding:0.25rem 0.65rem;font-size:0.82rem;display:none;background:var(--border);color:var(--text)" onclick="_editPlayoffTeam(${i})">✎ Edit</button>`;
-    html += `<span id="playoff-saved-badge-${i}" style="display:none;color:var(--success);font-size:0.82rem;font-weight:600">✓ saved</span>`;
+    html += `<button type="button" id="playoff-save-${i}" class="btn btn-success" style="padding:0.25rem 0.65rem;font-size:0.82rem" onclick="_savePlayoffTeam(${i})">✓ ${t('txt_txt_save')}</button>`;
+    html += `<button type="button" id="playoff-edit-${i}" class="btn" style="padding:0.25rem 0.65rem;font-size:0.82rem;display:none;background:var(--border);color:var(--text)" onclick="_editPlayoffTeam(${i})">✎ ${t('txt_txt_edit')}</button>`;
+    html += `<span id="playoff-saved-badge-${i}" style="display:none;color:var(--success);font-size:0.82rem;font-weight:600">✓ ${t('txt_txt_saved')}</span>`;
     html += `</div>`;
   }
   html += `</div>`;
   html += `<div class="inline-group" style="margin-bottom:0.75rem">`;
-  html += `<div class="form-group"><label>Format</label><select id="playoff-format"><option value="single">Single Elimination</option><option value="double">Double Elimination</option></select></div>`;
+  html += `<div class="form-group"><label>${t('txt_txt_format')}</label><select id="playoff-format"><option value="single">${t('txt_txt_single_elimination')}</option><option value="double">${t('txt_txt_double_elimination')}</option></select></div>`;
   html += `</div>`;
   html += `<div class="proposal-actions">`;
-  html += `<button class="btn btn-success" onclick="_startMexPlayoffs()">✓ Start Mexicano Play-offs</button>`;
-  html += `<button class="btn" style="background:var(--border);color:var(--text)" onclick="renderMex()">✕ Cancel</button>`;
+  html += `<button type="button" class="btn btn-success" onclick="_startMexPlayoffs()">✓ ${t('txt_txt_start_mexicano_playoffs')}</button>`;
+  html += `<button type="button" class="btn" style="background:var(--border);color:var(--text)" onclick="renderMex()">✕ ${t('txt_txt_cancel')}</button>`;
   html += `</div>`;
   html += `</div>`;
   return html;
@@ -2346,15 +2463,15 @@ async function _startMexPlayoffs() {
     const right = document.getElementById(`playoff-team-${i}-b`)?.value || '';
 
     if (!left || !right) {
-      alert(t('Team {n}: select both players.', { n: i + 1 }));
+      alert(t('txt_txt_team_n_select_both_players', { n: i + 1 }));
       return;
     }
     if (left === right) {
-      alert(t('Team {n}: players must be different.', { n: i + 1 }));
+      alert(t('txt_txt_team_n_players_must_be_different', { n: i + 1 }));
       return;
     }
     if (used.has(left) || used.has(right)) {
-      alert(t('A player is assigned to multiple teams. Please fix duplicates.'));
+      alert(t('txt_txt_a_player_is_assigned_to_multiple_teams_please_fix_duplicates'));
       return;
     }
     used.add(left);
@@ -2401,8 +2518,8 @@ function _savePlayoffTeam(i) {
   const bEl = document.getElementById(`playoff-team-${i}-b`);
   const a = aEl?.value || '';
   const b = bEl?.value || '';
-  if (!a || !b) { alert(t('Team {n}: select both players before saving.', { n: i + 1 })); return; }
-  if (a === b) { alert(t('Team {n}: players must be different.', { n: i + 1 })); return; }
+  if (!a || !b) { alert(t('txt_txt_team_n_select_both_players_before_saving', { n: i + 1 })); return; }
+  if (a === b) { alert(t('txt_txt_team_n_players_must_be_different', { n: i + 1 })); return; }
   _savedPlayoffTeams[i] = { a, b };
   _refreshPlayoffOptions();
 }
@@ -2437,7 +2554,7 @@ function _refreshPlayoffOptions() {
       const curB = bEl.value;
 
       const buildOptions = (selectedId) => {
-        let opts = `<option value="">— pick —</option>`;
+        let opts = `<option value="">${t('txt_txt_pick_placeholder')}</option>`;
         for (let j = 0; j < _playoffTeams.length; j++) {
           const p = _playoffTeams[j];
           if (locked.has(p.id)) continue;  // hide players already locked in other rows
@@ -2467,11 +2584,20 @@ function _refreshPlayoffOptions() {
 function toggleMexTeamMode() { toggleTeamMode('mex-team-mode', 'mex-players-label'); }
 
 // ─── Rolling Mode toggle ────────────────────────────────
-function toggleMexRolling() {
-  const chk = document.getElementById('mex-rolling');
+function _setMexRoundsMode(mode) {
+  const toggle = document.getElementById('mex-rounds-toggle');
   const roundsInput = document.getElementById('mex-rounds');
-  roundsInput.disabled = chk.checked;
-  roundsInput.style.opacity = chk.checked ? '0.4' : '1';
+  const [btnUnlimited, btnFixed] = toggle.querySelectorAll('button');
+  if (mode === 'unlimited') {
+    btnUnlimited.classList.add('active');
+    btnFixed.classList.remove('active');
+    roundsInput.style.display = 'none';
+  } else {
+    btnFixed.classList.add('active');
+    btnUnlimited.classList.remove('active');
+    roundsInput.style.display = '';
+    roundsInput.focus();
+  }
 }
 
 function _export_include_history() {
@@ -2530,7 +2656,7 @@ function _download_text_file(filename, content, mimeType) {
 function _open_printable_pdf(htmlDoc) {
   const w = window.open('', '_blank');
   if (!w) {
-    alert('Popup blocked. Allow popups to export PDF.');
+    alert(t('txt_txt_popup_blocked_allow_popups_to_export_pdf'));
     return;
   }
   w.document.open();
@@ -2560,8 +2686,8 @@ async function exportTournamentOutcome(format) {
   const name = currentTournamentName || `Tournament ${currentTid}`;
 
   try {
-    let body = `<h1>${esc(name)} — Results</h1>`;
-    body += `<div class="muted">Generated: ${esc(now)}</div>`;
+    let body = `<h1>${esc(name)} — ${t('txt_txt_results')}</h1>`;
+    body += `<div class="muted">${t('txt_txt_generated_value', { value: esc(now) })}</div>`;
 
     if (currentType === 'group_playoff') {
       const schemaUrl = `/api/tournaments/${currentTid}/gp/playoffs-schema?fmt=png`
@@ -2577,32 +2703,32 @@ async function exportTournamentOutcome(format) {
       ]);
 
       if (status.champion) {
-        body += `<div class="champ">🏆 Champion: <strong>${esc(status.champion.join(', '))}</strong></div>`;
+        body += `<div class="champ">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
       }
 
       // ── Play-offs (above group content) ───────────────────────
       if (schemaSrc) {
-        body += `<h2>${t('Play-off Bracket')}</h2>`;
-        body += `<img src="${schemaSrc}" alt="${t('Play-off Bracket')}" style="max-width:100%;height:auto;margin:8px 0 18px">`;
+        body += `<h2>${t('txt_txt_play_off_bracket')}</h2>`;
+        body += `<img src="${schemaSrc}" alt="${t('txt_txt_play_off_bracket')}" style="max-width:100%;height:auto;margin:8px 0 18px">`;
       }
 
       if (includeHistory) {
         const pMatches = (playoffs?.matches || []).filter(m => m.status === 'completed');
         if (pMatches.length > 0) {
-          body += `<h2>Play-off Match History</h2>`;
+          body += `<h2>${t('txt_txt_play_off_match_history')}</h2>`;
           body += _report_table(
-            ['Round', 'Team 1', 'Team 2', 'Score', 'Court'],
+            [t('txt_txt_round'), t('txt_txt_team_1'), t('txt_txt_team_2'), t('txt_txt_score'), t('txt_txt_court')],
             pMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.court || '']),
           );
         }
       }
 
       // ── Group stage (below) ───────────────────────────────────
-      body += `<h2>Group Standings</h2>`;
+      body += `<h2>${t('txt_txt_group_standings')}</h2>`;
       for (const [gName, rows] of Object.entries(groups.standings || {})) {
-        body += `<h3>Group ${esc(gName)}</h3>`;
+        body += `<h3>${t('txt_txt_group_name_value', { value: esc(gName) })}</h3>`;
         body += _report_table(
-          ['Player', 'Played', 'W', 'D', 'L', 'PF', 'PA', 'Diff', 'Pts'],
+          [t('txt_txt_player'), t('txt_txt_played'), t('txt_txt_w_abbrev'), t('txt_txt_d_abbrev'), t('txt_txt_l_abbrev'), t('txt_txt_pf_abbrev'), t('txt_txt_pa_abbrev'), t('txt_txt_diff_abbrev'), t('txt_txt_pts_abbrev')],
           rows.map(r => [r.player, r.played, r.wins, r.draws, r.losses, r.points_for, r.points_against, r.point_diff, r.match_points]),
         );
       }
@@ -2610,9 +2736,9 @@ async function exportTournamentOutcome(format) {
       if (includeHistory) {
         const gMatches = Object.values(groups.matches || {}).flat().filter(m => m.status === 'completed');
         if (gMatches.length > 0) {
-          body += `<h2>Group Match History</h2>`;
+          body += `<h2>${t('txt_txt_group_match_history')}</h2>`;
           body += _report_table(
-            ['Round', 'Team 1', 'Team 2', 'Score', 'Court'],
+            [t('txt_txt_round'), t('txt_txt_team_1'), t('txt_txt_team_2'), t('txt_txt_score'), t('txt_txt_court')],
             gMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.court || '']),
           );
         }
@@ -2631,46 +2757,46 @@ async function exportTournamentOutcome(format) {
       ]);
 
       if (status.champion) {
-        body += `<div class="champ">🏆 Champion: <strong>${esc(status.champion.join(', '))}</strong></div>`;
+        body += `<div class="champ">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
       }
 
       // ── Play-offs (above leaderboard/rounds) ──────────────────
       if (schemaSrc) {
-        body += `<h2>${t('Play-off Bracket')}</h2>`;
-        body += `<img src="${schemaSrc}" alt="${t('Play-off Bracket')}" style="max-width:100%;height:auto;margin:8px 0 18px">`;
+        body += `<h2>${t('txt_txt_play_off_bracket')}</h2>`;
+        body += `<img src="${schemaSrc}" alt="${t('txt_txt_play_off_bracket')}" style="max-width:100%;height:auto;margin:8px 0 18px">`;
       }
 
       if (includeHistory) {
         const playoffMatches = (playoffs?.matches || []).filter(m => m.status === 'completed');
         if (playoffMatches.length > 0) {
-          body += `<h2>Play-off Match History</h2>`;
+          body += `<h2>${t('txt_txt_play_off_match_history')}</h2>`;
           body += _report_table(
-            ['Round', 'Team 1', 'Team 2', 'Score', 'Court'],
+            [t('txt_txt_round'), t('txt_txt_team_1'), t('txt_txt_team_2'), t('txt_txt_score'), t('txt_txt_court')],
             playoffMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.court || '']),
           );
         }
       }
 
       // ── Mexicano (below) ──────────────────────────────────────
-      body += `<h2>Leaderboard</h2>`;
+      body += `<h2>${t('txt_txt_leaderboard')}</h2>`;
       body += _report_table(
-        ['Rank', 'Player', 'Total Pts', 'Played', 'W', 'D', 'L', 'Avg Pts'],
+        [t('txt_txt_rank'), t('txt_txt_player'), t('txt_txt_total_pts'), t('txt_txt_played'), t('txt_txt_w_abbrev'), t('txt_txt_d_abbrev'), t('txt_txt_l_abbrev'), t('txt_txt_avg_pts')],
         (status.leaderboard || []).map(r => [r.rank, r.player, r.total_points, r.matches_played, r.wins || 0, r.draws || 0, r.losses || 0, r.avg_points]),
       );
 
       if (includeHistory) {
         const mexMatches = (matches.all_matches || []).filter(m => m.status === 'completed');
         if (mexMatches.length > 0) {
-          body += `<h2>Mexicano Round History</h2>`;
+          body += `<h2>${t('txt_txt_mexicano_round_history')}</h2>`;
           body += _report_table(
-            ['Round', 'Team 1', 'Team 2', 'Score', 'Court'],
+            [t('txt_txt_round'), t('txt_txt_team_1'), t('txt_txt_team_2'), t('txt_txt_score'), t('txt_txt_court')],
             mexMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.court || '']),
           );
         }
       }
     }
 
-    const htmlDoc = _build_report_document(`${name} Results`, body);
+    const htmlDoc = _build_report_document(`${name} ${t('txt_txt_results')}`, body);
     const slug = String(name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'tournament';
 
     if (format === 'pdf') {
@@ -2679,7 +2805,7 @@ async function exportTournamentOutcome(format) {
       _download_text_file(`${slug}-results.html`, htmlDoc, 'text/html;charset=utf-8');
     }
   } catch (e) {
-    alert(`Export failed: ${e.message}`);
+    alert(t('txt_txt_export_failed_value', { value: e.message }));
   }
 }
 
@@ -2708,45 +2834,45 @@ function _renderTvControls(tvSettings) {
   
   let html = `<details class="card" id="tv-controls-panel">`;
   html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">`;
-  html += `<span style="font-size:1.1rem;font-weight:700">📺 TV Mode Controls</span>`;
-  html += `<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="event.preventDefault();window.open('/tv?tid='+currentTid,'padel_tv_'+currentTid,'noopener noreferrer')">${t('Open TV display ↗')}</button>`;
+  html += `<span style="font-size:1.1rem;font-weight:700">📺 ${t('txt_txt_tv_mode_controls')}</span>`;
+  html += `<button type="button" class="btn btn-primary btn-sm" style="margin-left:auto" onclick="event.preventDefault();window.open('/tv?tid='+currentTid,'padel_tv_'+currentTid,'noopener noreferrer')">${t('txt_txt_open_tv_display')}</button>`;
   html += `</summary>`;
   html += `<div style="margin-top:0.65rem">`;
   
   // Tournament Alias Section
   html += `<div style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)">`;
   html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">🔗 Tournament Alias</label>`;
-  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('Set a memorable alias for this tournament\'s TV URL (e.g., "summer-cup"). Only letters, numbers, hyphens, and underscores.')}</p>`;
+  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_tv_alias_help')}</p>`;
   html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
   html += `<input type="text" id="tournament-alias-input" placeholder="my-tournament" value="${esc(currentAlias)}" 
     pattern="[a-zA-Z0-9_-]+" maxlength="64" 
     style="flex:1;min-width:200px;font-family:monospace;font-size:0.85rem">`;
-  html += `<button class="btn btn-primary btn-sm" onclick="_setTournamentAlias()" style="white-space:nowrap">${t('Set Alias')}</button>`;
+  html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setTournamentAlias()" style="white-space:nowrap">${t('txt_txt_set_alias')}</button>`;
   if (currentAlias) {
-    html += `<button class="btn btn-danger btn-sm" onclick="_deleteTournamentAlias()" style="white-space:nowrap">✕ ${t('Remove')}</button>`;
+    html += `<button type="button" class="btn btn-danger btn-sm" onclick="_deleteTournamentAlias()" style="white-space:nowrap">✕ ${t('txt_txt_remove')}</button>`;
   }
   html += `</div>`;
   if (currentAlias) {
     html += `<div style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:0.78rem">`;
-    html += `<span style="color:var(--text-muted)">${t('TV URL:')}</span> <code style="color:var(--accent);font-size:0.85rem">/tv?t=${esc(currentAlias)}</code>`;
-    html += ` <button onclick="navigator.clipboard.writeText(window.location.origin+'/tv?t=${esc(currentAlias)}');alert('${t('URL copied!')}')" 
-      style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:3px;padding:0.1rem 0.4rem;cursor:pointer;font-size:0.75rem;margin-left:0.3rem">📋 ${t('Copy')}</button>`;
+    html += `<span style="color:var(--text-muted)">${t('txt_txt_tv_url')}</span> <code style="color:var(--accent);font-size:0.85rem">/tv?t=${esc(currentAlias)}</code>`;
+    html += ` <button type="button" onclick="navigator.clipboard.writeText(window.location.origin+'/tv?t=${esc(currentAlias)}');alert('${t('txt_txt_url_copied')}')"
+      style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:3px;padding:0.1rem 0.4rem;cursor:pointer;font-size:0.75rem;margin-left:0.3rem">📋 ${t('txt_txt_copy')}</button>`;
     html += `</div>`;
   }
   html += `</div>`;
   
-  html += `<p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:0.65rem">${t('Toggle which sections appear on the TV screen. Changes take effect on the TV display\'s next auto-refresh.')}</p>`;
-  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem 1.5rem">`;
-  html += chkRow('show_past_matches',   'Past matches',            true);
-  html += chkRow('show_score_breakdown','Score breakdowns',        false);
-  html += chkRow('show_standings',      'Standings / leaderboard', true);
-  html += chkRow('show_bracket',        t('Play-off Bracket'),        true);
+  html += `<p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:0.65rem">${t('txt_tv_sections_help')}</p>`;
+  html += `<div class="tv-settings-grid">`;
+  html += chkRow('show_past_matches',   t('txt_txt_past_matches'),            true);
+  html += chkRow('show_score_breakdown',t('txt_tv_score_breakdowns'),         false);
+  html += chkRow('show_standings',      t('txt_tv_standings_leaderboard'),    true);
+  html += chkRow('show_bracket',        t('txt_txt_play_off_bracket'),        true);
   html += `</div>`;
   const currentInterval = def('refresh_interval', 15);
   html += `<div style="margin-top:0.65rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">`;
-  html += `<label style="font-size:0.84rem;color:var(--text-muted);white-space:nowrap">Auto-refresh every</label>`;
+  html += `<label style="font-size:0.84rem;color:var(--text-muted);white-space:nowrap">${t('txt_txt_auto_refresh_every')}</label>`;
   html += `<select style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem" onchange="_updateTvSetting('refresh_interval', +this.value)">`;
-  [[-1,'On update'],[0,'Never'],[5,'5 s'],[10,'10 s'],[15,'15 s'],[30,'30 s'],[60,'1 min'],[120,'2 min'],[300,'5 min']].forEach(([secs, lbl]) => {
+  [[-1,t('txt_tv_on_update')],[0,t('txt_tv_never')],[5,'5 s'],[10,'10 s'],[15,'15 s'],[30,'30 s'],[60,'1 min'],[120,'2 min'],[300,'5 min']].forEach(([secs, lbl]) => {
     html += `<option value="${secs}"${currentInterval === secs ? ' selected' : ''}>${lbl}</option>`;
   });
   html += `</select></div>`;
@@ -2757,13 +2883,13 @@ function _renderTvControls(tvSettings) {
   const arrowScale = def('schema_arrow_scale', 1.0);
   const titleFontScale = def('schema_title_font_scale', 1.0);
   html += `<details style="margin-top:0.65rem">`;
-  html += `<summary style="cursor:pointer;color:var(--text-muted);font-size:0.82rem;user-select:none">⚙ Bracket schema rendering</summary>`;
-  html += `<div style="margin-top:0.5rem;display:grid;grid-template-columns:1fr 1fr;gap:0.4rem 1rem;align-items:center">`;
+  html += `<summary style="cursor:pointer;color:var(--text-muted);font-size:0.82rem;user-select:none">⚙ ${t('txt_txt_rendering_options')}</summary>`;
+  html += `<div class="tv-sliders-grid">`;
   const sliders = [
-    ['schema_box_scale',        'tv-schema-box',         'Box size',    0.3, 3.0, boxScale],
-    ['schema_line_width',       'tv-schema-lw',          'Line width',  0.3, 5.0, lineWidth],
-    ['schema_arrow_scale',      'tv-schema-arrow',       'Arrow size',  0.3, 5.0, arrowScale],
-    ['schema_title_font_scale', 'tv-schema-title-scale', 'Header size', 0.3, 3.0, titleFontScale],
+    ['schema_box_scale',        'tv-schema-box',         t('txt_txt_box_size'),    0.3, 3.0, boxScale],
+    ['schema_line_width',       'tv-schema-lw',          t('txt_txt_line_width'),  0.3, 5.0, lineWidth],
+    ['schema_arrow_scale',      'tv-schema-arrow',       t('txt_txt_arrow_size'),  0.3, 5.0, arrowScale],
+    ['schema_title_font_scale', 'tv-schema-title-scale', t('txt_txt_header_size'), 0.3, 3.0, titleFontScale],
   ];
   sliders.forEach(([key, elId, label, min, max, val]) => {
     html += `<label style="font-size:0.83rem;color:var(--text-muted);white-space:nowrap">${label} <span id="${elId}-val" style="color:var(--text)">${val.toFixed(1)}</span></label>`;
@@ -2797,13 +2923,13 @@ async function _setTournamentAlias() {
   const alias = input.value.trim();
   
   if (!alias) {
-    alert('Please enter an alias');
+    alert(t('txt_txt_please_enter_an_alias'));
     return;
   }
   
   // Validate pattern
   if (!/^[a-zA-Z0-9_-]+$/.test(alias)) {
-    alert('Alias can only contain letters, numbers, hyphens, and underscores');
+    alert(t('txt_txt_alias_can_only_contain_letters_numbers_hyphens_and_underscores'));
     return;
   }
   
@@ -2820,16 +2946,16 @@ async function _setTournamentAlias() {
     await loadTournaments();
     // Re-render current view to show updated alias section
     await _rerenderCurrentViewPreserveDrafts();
-    alert(t('Alias "{value}" set successfully!', { value: alias }));
+    alert(t('txt_txt_alias_value_set_successfully', { value: alias }));
   } catch (e) {
-    alert(t('Failed to set alias: {value}', { value: e.message }));
+    alert(t('txt_txt_failed_to_set_alias_value', { value: e.message }));
   }
 }
 
 /** Delete tournament alias */
 async function _deleteTournamentAlias() {
   if (!currentTid) return;
-  if (!confirm(t('Remove the alias from this tournament?'))) return;
+  if (!confirm(t('txt_txt_remove_the_alias_from_this_tournament'))) return;
   
   try {
     await api(`/api/tournaments/${currentTid}/alias`, {
@@ -2846,9 +2972,9 @@ async function _deleteTournamentAlias() {
     await loadTournaments();
     // Re-render current view to show updated alias section
     await _rerenderCurrentViewPreserveDrafts();
-    alert('Alias removed successfully');
+    alert(t('txt_txt_alias_removed_successfully'));
   } catch (e) {
-    alert(t('Failed to remove alias: {value}', { value: e.message }));
+    alert(t('txt_txt_failed_to_remove_alias_value', { value: e.message }));
   }
 }
 

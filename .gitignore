@@ -25,3 +25,5 @@ data/
 
 # Local admin notebook
 notebooks
+
+docker-compose.nas.yml

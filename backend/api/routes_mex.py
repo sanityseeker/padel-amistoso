@@ -244,6 +244,7 @@ async def mex_playoffs_schema(
     line_width: float = Query(1.0, ge=0.3, le=5.0),
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
+    output_scale: float = Query(1.0, ge=0.5, le=3.0),
 ):
     """Generate a schema image/document for the active Mexicano play-off bracket."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
@@ -264,6 +265,7 @@ async def mex_playoffs_schema(
         line_width=line_width,
         arrow_scale=arrow_scale,
         title_font_scale=title_font_scale,
+        output_scale=output_scale,
     )
     return _schema_image_response(img, fmt)
 
