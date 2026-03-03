@@ -15,6 +15,11 @@ RUN uv sync --frozen --no-dev
 # ── Stage 2: runtime image ───────────────────────────────────────────────────
 FROM python:3.12-slim
 
+# Link image to the GitHub repo — GHCR uses this to inherit the repo's visibility.
+LABEL org.opencontainers.image.source="https://github.com/sanityseeker/padel-amistoso"
+LABEL org.opencontainers.image.description="Padel Tournament Manager"
+LABEL org.opencontainers.image.licenses="MIT"
+
 WORKDIR /app
 
 # Copy virtual env from builder stage
