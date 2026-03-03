@@ -22,3 +22,6 @@ data/
 .env
 
 *coverage*
+
+# Local admin notebook
+notebooks

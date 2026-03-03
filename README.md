@@ -38,7 +38,10 @@ is refined.
 - Generate play-off schema directly from the GP play-offs page
 - Export tournament outcome as an HTML or PDF document (with embedded bracket)
 - Choose UI theme (Dark/Light), persisted in browser storage
-- Display a read-only **TV view** optimised for a wall screen (`/tv?tid=<id>`)
+- Switch UI language (English/Spanish) from the admin and TV views
+  - Default language is **English**
+  - Language preference is persisted per browser session/profile (localStorage)
+- Display a read-only **TV view** optimised for a guest view of a tournament (`/tv?tid=<id>`)
 
 ### Group + Play-off flow
 
@@ -79,6 +82,15 @@ configured in the **Admin → TV Settings** panel:
 
 The TV view is served from `frontend/tv.html` and uses the same REST API as
 the main UI.
+
+### UI preferences persistence
+
+The frontend persists user-level display preferences in browser localStorage:
+
+- `padel-theme` → selected theme (`dark` / `light`)
+- `padel-lang` → selected language (`en` / `es`)
+
+If no language is stored yet, the app defaults to English.
 
 ### Tournament aliases
 

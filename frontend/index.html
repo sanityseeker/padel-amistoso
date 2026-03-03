@@ -43,19 +43,26 @@
 
   /* Tabs */
   .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
-  .theme-chooser {
+  .compact-controls {
     margin-left: auto;
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    color: var(--text-muted);
-    font-size: 0.82rem;
+    gap: 0.35rem;
   }
-  .theme-chooser select {
-    min-width: 120px;
-    width: auto;
-    padding: 0.35rem 0.5rem;
-    font-size: 0.82rem;
+  .compact-icon-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 6px;
+    padding: 0.25rem 0.55rem;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .compact-icon-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
   }
   .tab-btn {
     padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 6px;
@@ -501,59 +508,56 @@
 <div class="container">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
     <div style="display:flex;align-items:center;gap:1rem">
-      <a href="/tv" class="btn btn-sm" style="display:inline-block;text-decoration:none;white-space:nowrap;padding:0.4rem 0.8rem;font-weight:600;background:var(--accent-hover);color:#fff">📺 TV View</a>
-      <h1 style="margin:0">Padel Tournament Manager</h1>
+      <a href="/tv" class="btn btn-sm" style="display:inline-block;text-decoration:none;white-space:nowrap;padding:0.4rem 0.8rem;font-weight:600;background:var(--accent-hover);color:#fff" data-i18n="TV View">📺 TV View</a>
+      <h1 style="margin:0" data-i18n="Padel Tournament Manager">Padel Tournament Manager</h1>
     </div>
     <div id="auth-status" style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem"></div>
   </div>
 
   <!-- Demo Site Banner (shown when DEMO_MODE=true on backend) -->
   <div id="demo-banner" style="display:none;background:linear-gradient(135deg,#f59e0b,#ef4444);border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem;text-align:center;color:#fff;font-size:0.9rem;box-shadow:0 2px 8px rgba(239,68,68,0.3)">
-    <strong>⚠️ Demo Instance</strong> — Free tier sleeps after <strong>15 minutes</strong> of inactivity. All tournament data will be lost when the app restarts. Login: <code style="background:rgba(255,255,255,0.2);padding:0.15rem 0.35rem;border-radius:4px;font-weight:600">admin / admin</code>
+    <strong data-i18n="⚠️ Demo Instance">⚠️ Demo Instance</strong> — <span data-i18n="Free tier sleeps after">Free tier sleeps after</span> <strong>15 minutes</strong> <span data-i18n="of inactivity. All tournament data will be lost when the app restarts. Login:">of inactivity. All tournament data will be lost when the app restarts. Login:</span> <code style="background:rgba(255,255,255,0.2);padding:0.15rem 0.35rem;border-radius:4px;font-weight:600">admin / admin</code>
   </div>
 
   <!-- Navigation tabs -->
   <div class="tabs">
-    <button class="tab-btn active" data-tab="home">Tournaments</button>
-    <button class="tab-btn" data-tab="create">Create</button>
-    <button class="tab-btn" data-tab="tools">Tools</button>
+    <button class="tab-btn active" data-tab="home" data-i18n="Tournaments">Tournaments</button>
+    <button class="tab-btn" data-tab="create" data-i18n="Create">Create</button>
+    <button class="tab-btn" data-tab="tools" data-i18n="Tools">Tools</button>
     <div id="tournament-chips" class="tournament-chips"></div>
-    <label class="theme-chooser" for="theme-select" style="margin-left:auto">
-      Theme
-      <select id="theme-select" onchange="setTheme(this.value)">
-        <option value="dark">Dark</option>
-        <option value="light">Light</option>
-      </select>
-    </label>
+    <div class="compact-controls">
+      <button id="lang-toggle-btn" class="compact-icon-btn" onclick="toggleLanguage()" title="Language">🇬🇧</button>
+      <button id="theme-toggle-btn" class="compact-icon-btn" onclick="toggleTheme()" title="Toggle light / dark mode">☀️</button>
+    </div>
   </div>
   <div class="active-tournament-indicator" id="active-tournament-indicator">
-    Active tournament: <strong>None selected</strong>
+    <span data-i18n="Active tournament:">Active tournament:</span> <strong data-i18n="None selected">None selected</strong>
   </div>
 
   <!-- ─── HOME ──────────────────────────────────────────── -->
   <div class="tab-panel active" id="panel-home">
     <div class="card">
-      <h2>Active Tournaments</h2>
-      <div id="tournament-list"><em>Loading…</em></div>
+      <h2 data-i18n="Active Tournaments">Active Tournaments</h2>
+      <div id="tournament-list"><em data-i18n="Loading…">Loading…</em></div>
     </div>
   </div>
 
   <!-- ─── CREATE ─────────────────────────────────────────── -->
   <div class="tab-panel" id="panel-create">
     <div class="card">
-      <h2>Create Tournament</h2>
-      <div class="subtabs" role="tablist" aria-label="Create tournament type">
-        <button class="subtab-btn active" id="create-tab-gp" onclick="setCreateMode('gp')">Group + Play‑off</button>
-        <button class="subtab-btn" id="create-tab-mex" onclick="setCreateMode('mex')">Mexicano + Play‑offs</button>
+      <h2 data-i18n="Create Tournament">Create Tournament</h2>
+      <div class="subtabs" role="tablist" aria-label="Create tournament type" data-i18n-aria-label="Create tournament type">
+        <button class="subtab-btn active" id="create-tab-gp" onclick="setCreateMode('gp')" data-i18n="Group + Play‑off">Group + Play‑off</button>
+        <button class="subtab-btn" id="create-tab-mex" onclick="setCreateMode('mex')" data-i18n="Mexicano + Play‑offs">Mexicano + Play‑offs</button>
       </div>
 
       <div class="subtab-panel active" id="create-panel-gp">
         <div class="form-group">
-          <label>Tournament Name</label>
+          <label data-i18n="Tournament Name">Tournament Name</label>
           <input id="gp-name" value="Padel Cup 2026">
         </div>
         <div class="form-group">
-          <label class="switch-label"><input type="checkbox" id="gp-team-mode" checked onchange="toggleGpTeamMode()"><span class="switch-track"></span><span><strong>Team Mode</strong> — each entry is a fixed pair (e.g. "Alice & Bob")</span></label>
+          <label class="switch-label"><input type="checkbox" id="gp-team-mode" checked onchange="toggleGpTeamMode()"><span class="switch-track"></span><span><strong data-i18n="Team Mode">Team Mode</strong> — each entry is a fixed pair (e.g. "Alice & Bob")</span></label>
         </div>
         <div class="form-group">
           <label id="gp-players-label">Team Names (one per line, e.g. "Alice & Bob")</label>
@@ -564,42 +568,42 @@ Grace & Hank</textarea>
         </div>
         <div class="inline-group">
           <div class="form-group">
-            <label>Courts (comma-separated)</label>
+            <label data-i18n="Courts (comma-separated)">Courts (comma-separated)</label>
             <input id="gp-courts" value="Court 1, Court 2">
           </div>
           <div class="form-group">
-            <label>Number of Groups</label>
+            <label data-i18n="Number of Groups">Number of Groups</label>
             <input id="gp-num-groups" type="number" value="2" min="1">
           </div>
         </div>
         <div class="inline-group">
           <div class="form-group">
-            <label>Top players per group advancing</label>
+            <label data-i18n="Top players per group advancing">Top players per group advancing</label>
             <input id="gp-top" type="number" value="2" min="1">
           </div>
           <div class="form-group">
-            <label>Play‑off format</label>
+            <label data-i18n="Play‑off format">Play‑off format</label>
             <select id="gp-double-elim">
-              <option value="false">Single Elimination</option>
-              <option value="true">Double Elimination</option>
+              <option value="false" data-i18n="Single Elimination">Single Elimination</option>
+              <option value="true" data-i18n="Double Elimination">Double Elimination</option>
             </select>
           </div>
         </div>
-        <button class="btn btn-primary" onclick="createGP()">Create Tournament</button>
+        <button class="btn btn-primary" onclick="createGP()" data-i18n="Create Tournament">Create Tournament</button>
         <div id="gp-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
 
       <div class="subtab-panel" id="create-panel-mex">
-        <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem">Play Mexicano rounds first, then optionally start seeded play-offs.</p>
+        <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="Play Mexicano rounds first, then optionally start seeded play-offs.">Play Mexicano rounds first, then optionally start seeded play-offs.</p>
         <div class="form-group">
-          <label>Tournament Name</label>
+          <label data-i18n="Tournament Name">Tournament Name</label>
           <input id="mex-name" value="Mexicano Night">
         </div>
         <div class="form-group">
-          <label class="switch-label"><input type="checkbox" id="mex-team-mode" onchange="toggleMexTeamMode()"><span class="switch-track"></span><span><strong>Team Mode</strong> — each entry is a fixed pair (e.g. "Alice & Bob")</span></label>
+          <label class="switch-label"><input type="checkbox" id="mex-team-mode" onchange="toggleMexTeamMode()"><span class="switch-track"></span><span><strong data-i18n="Team Mode">Team Mode</strong> — each entry is a fixed pair (e.g. "Alice & Bob")</span></label>
         </div>
         <div class="form-group">
-          <label id="mex-players-label">Player Names (one per line)</label>
+          <label id="mex-players-label" data-i18n="Player Names (one per line)">Player Names (one per line)</label>
           <textarea id="mex-players">Alice
 Bob
 Charlie
@@ -611,30 +615,30 @@ Hank</textarea>
         </div>
         <div class="inline-group">
           <div class="form-group">
-            <label>Courts (comma-separated)</label>
+            <label data-i18n="Courts (comma-separated)">Courts (comma-separated)</label>
             <input id="mex-courts" value="Court 1, Court 2">
           </div>
           <div class="form-group">
-            <label>Total points per match</label>
+            <label data-i18n="Total points per match">Total points per match</label>
             <input id="mex-pts" type="number" value="32" min="1">
           </div>
         </div>
         <div class="inline-group">
           <div class="form-group">
-            <label>Number of rounds</label>
+            <label data-i18n="Number of rounds">Number of rounds</label>
             <input id="mex-rounds" type="number" value="8" min="1">
           </div>
           <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:0.5rem">
-            <label><input type="checkbox" id="mex-rolling" onchange="toggleMexRolling()"> <strong>Rolling mode</strong> (unlimited rounds)</label>
+            <label><input type="checkbox" id="mex-rolling" onchange="toggleMexRolling()"> <strong data-i18n="Rolling mode">Rolling mode</strong> <span data-i18n="(unlimited rounds)">(unlimited rounds)</span></label>
           </div>
         </div>
         <div class="form-group">
-          <label>Randomness (0-1)</label>
+          <label data-i18n="Randomness (0-1)">Randomness (0-1)</label>
           <small>How much to shuffle pairings away from pure leaderboard order. 0 = strictly rank-based matchups, 1 = fully random. E.g. 0.15 means mostly skill-based with a small shuffle so the same players don't always face each other.</small>
           <input id="mex-rand" type="number" value="0.15" min="0" max="1" step="0.05">
         </div>
         <details class="advanced-section">
-          <summary>Advanced Settings</summary>
+          <summary data-i18n="Advanced Settings">Advanced Settings</summary>
           <div class="form-group">
             <label>Skill Gap — max point diff to be in same group (leave blank = snake-draft)</label>
             <input id="mex-skill-gap" type="number" placeholder="e.g. 50  (blank = disabled)" min="0">
@@ -662,7 +666,7 @@ Hank</textarea>
             <small style="color:var(--text-muted)">How much extra score imbalance the optimiser may accept to avoid repeat matchups. 0 = never sacrifice competitiveness; 0.2 (default) = allow up to 20% looser balance; 1.0 = strongly prefer new opponents even if matches are less even.</small>
           </div>
         </details>
-        <button class="btn btn-primary" onclick="createMex()">Create Tournament</button>
+        <button class="btn btn-primary" onclick="createMex()" data-i18n="Create Tournament">Create Tournament</button>
         <div id="mex-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
     </div>
@@ -676,38 +680,38 @@ Hank</textarea>
   <!-- ─── TOOLS ─────────────────────────────────────────── -->
   <div class="tab-panel" id="panel-tools">
     <div class="card">
-      <h2>Tools</h2>
-      <p style="color:var(--text-muted);font-size:0.85rem">Planning and preview utilities that are independent from an active tournament.</p>
+      <h2 data-i18n="Tools">Tools</h2>
+      <p style="color:var(--text-muted);font-size:0.85rem" data-i18n="Planning and preview utilities that are independent from an active tournament.">Planning and preview utilities that are independent from an active tournament.</p>
     </div>
     <div class="card">
-      <h2>Tournament Bracket Schema</h2>
-      <p style="color:var(--text-muted);font-size:0.85rem">Generate a visual diagram of the tournament structure before creating it.</p>
+      <h2 data-i18n="Tournament Bracket Schema">Tournament Bracket Schema</h2>
+      <p style="color:var(--text-muted);font-size:0.85rem" data-i18n="Generate a visual diagram of the tournament structure before creating it.">Generate a visual diagram of the tournament structure before creating it.</p>
       <div class="inline-group">
         <div class="form-group">
-          <label>Group sizes <small style="color:var(--text-muted)">(comma-separated)</small></label>
+          <label><span data-i18n="Group sizes">Group sizes</span> <small style="color:var(--text-muted)" data-i18n="(comma-separated)">(comma-separated)</small></label>
           <input id="schema-groups" type="text" value="4,4" placeholder="e.g. 4,4,4">
         </div>
         <div class="form-group">
-          <label>Advance per group</label>
+          <label data-i18n="Advance per group">Advance per group</label>
           <input id="schema-advance" type="number" value="2" min="1" max="8">
         </div>
       </div>
       <div class="inline-group">
         <div class="form-group">
-          <label>Elimination</label>
+          <label data-i18n="Elimination">Elimination</label>
           <select id="schema-elim">
             <option value="single" selected>Single Elimination</option>
             <option value="double">Double Elimination</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Title <small style="color:var(--text-muted)">(optional)</small></label>
+          <label><span data-i18n="Title">Title</span> <small style="color:var(--text-muted)" data-i18n="(optional)">(optional)</small></label>
           <input id="schema-title" type="text" placeholder="My Tournament">
         </div>
       </div>
       <div class="inline-group">
         <div class="form-group">
-          <label>Format</label>
+          <label data-i18n="Format">Format</label>
           <select id="schema-fmt">
             <option value="png" selected>PNG</option>
             <option value="svg">SVG</option>
@@ -744,7 +748,7 @@ Hank</textarea>
           </div>
         </div>
       </details>
-      <button class="btn btn-primary" onclick="generateSchema()">Generate Schema</button>
+      <button class="btn btn-primary" onclick="generateSchema()" data-i18n="Generate Schema">Generate Schema</button>
       <div id="schema-msg" class="alert alert-error hidden" style="margin-top:0.75rem"></div>
       <div id="schema-result" style="margin-top:1rem; text-align:center"></div>
     </div>
@@ -754,26 +758,27 @@ Hank</textarea>
 <!-- Authentication Dialog -->
 <div id="auth-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9998"></div>
 <div id="auth-dialog" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:2px solid var(--border);border-radius:12px;padding:2rem;min-width:320px;max-width:400px;z-index:9999;box-shadow:0 10px 40px rgba(0,0,0,0.5)">
-  <h2 style="margin-bottom:1rem;text-align:center;color:var(--accent)">🔐 Login Required</h2>
-  <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1.2rem;text-align:center">Please log in to create or modify tournaments</p>
+  <h2 style="margin-bottom:1rem;text-align:center;color:var(--accent)">🔐 <span data-i18n="Login Required">Login Required</span></h2>
+  <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1.2rem;text-align:center" data-i18n="Please log in to create or modify tournaments">Please log in to create or modify tournaments</p>
   <form onsubmit="handleLogin(event)">
     <div style="margin-bottom:0.8rem">
-      <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600">Username</label>
+      <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600" data-i18n="Username">Username</label>
       <input type="text" id="auth-username" placeholder="admin" autocomplete="username" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
     </div>
     <div style="margin-bottom:1rem">
-      <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600">Password</label>
+      <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600" data-i18n="Password">Password</label>
       <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
     </div>
     <div id="auth-error" style="color:var(--red);font-size:0.8rem;margin-bottom:0.8rem;min-height:1.2rem;text-align:center"></div>
-    <button type="submit" id="auth-login-btn" class="btn btn-primary" style="width:100%">Login</button>
+    <button type="submit" id="auth-login-btn" class="btn btn-primary" style="width:100%" data-i18n="Login">Login</button>
   </form>
-  <p style="color:var(--text-muted);font-size:0.75rem;margin-top:1rem;text-align:center">Default: admin / admin</p>
+  <p style="color:var(--text-muted);font-size:0.75rem;margin-top:1rem;text-align:center" data-i18n="Default: admin / admin">Default: admin / admin</p>
   <p style="margin-top:0.75rem;text-align:center;font-size:0.85rem">
-    <a href="/tv" style="color:var(--accent);text-decoration:none">📺 TV View</a>
+    <a href="/tv" style="color:var(--accent);text-decoration:none">📺 <span data-i18n="TV View">TV View</span></a>
   </p>
 </div>
 
+<script src="/i18n.js"></script>
 <script src="/shared.js"></script>
 <script src="/auth.js"></script>
 <script>
@@ -829,14 +834,54 @@ function setCreateMode(mode) {
 }
 
 function setTheme(theme) {
-  const t = _applyTheme(theme);
-  _saveTheme(t);
-  const sel = document.getElementById('theme-select');
-  if (sel && sel.value !== t) sel.value = t;
+  const themeValue = _applyTheme(theme);
+  _saveTheme(themeValue);
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn) {
+    btn.textContent = themeValue === 'dark' ? '🌙' : '☀️';
+    btn.title = t('Toggle light / dark mode');
+  }
 }
 
 function initTheme() {
   setTheme(_loadSavedTheme());
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  setTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+function setLanguage(lang) {
+  setAppLanguage(lang);
+  _refreshLanguageToggleButton();
+  updateActiveTournamentUI();
+  updateAuthUI();
+  if (currentTid) {
+    if (currentType === 'group_playoff') renderGP();
+    else if (currentType === 'mexicano') renderMex();
+  } else {
+    loadTournaments();
+  }
+}
+
+function toggleLanguage() {
+  setLanguage(getAppLanguage() === 'es' ? 'en' : 'es');
+}
+
+function _refreshLanguageToggleButton() {
+  const btn = document.getElementById('lang-toggle-btn');
+  if (!btn) return;
+  const current = getAppLanguage();
+  const currentLabel = current === 'es' ? t('Spanish') : t('English');
+  btn.textContent = current === 'es' ? '🇪🇸' : '🇬🇧';
+  btn.title = `${t('Language')}: ${currentLabel}`;
+  btn.setAttribute('aria-label', `${t('Language')}: ${currentLabel}`);
+}
+
+function initLanguageSelector() {
+  initLanguage();
+  _refreshLanguageToggleButton();
 }
 
 // ─── Schema preview ────────────────────────────────────────
@@ -848,7 +893,7 @@ async function _fetchSchema(prefix, apiUrl, defaultFilename) {
   if (!msg || !result) return;
 
   msg.classList.add('hidden');
-  result.innerHTML = '<em>Generating…</em>';
+  result.innerHTML = `<em>${t('Generating…')}</em>`;
 
   const fmt = document.getElementById(prefix + '-fmt').value;
   const boxScale = document.getElementById(prefix + '-box').value;
@@ -865,7 +910,7 @@ async function _fetchSchema(prefix, apiUrl, defaultFilename) {
     const res = await fetch(url);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || 'Failed to generate schema');
+      throw new Error(err.detail || t('Failed to generate schema'));
     }
 
     if (fmt === 'pdf') {
@@ -874,7 +919,7 @@ async function _fetchSchema(prefix, apiUrl, defaultFilename) {
       a.href = URL.createObjectURL(blob);
       a.download = (title || defaultFilename) + '.pdf';
       a.click();
-      result.innerHTML = '<em>PDF downloaded.</em>';
+      result.innerHTML = `<em>${t('PDF downloaded.')}</em>`;
     } else if (fmt === 'svg') {
       result.innerHTML = await res.text();
     } else {
@@ -947,22 +992,22 @@ async function loadTournaments() {
   try {
     const list = await api('/api/tournaments');
     _tournamentMeta = {};
-    for (const t of list) _tournamentMeta[t.id] = t;
+    for (const tournament of list) _tournamentMeta[tournament.id] = tournament;
     const el = document.getElementById('tournament-list');
-    if (!list.length) { el.innerHTML = '<em>No tournaments yet.</em>'; return; }
-    el.innerHTML = list.map(t => `
+    if (!list.length) { el.innerHTML = `<em>${t('No tournaments yet.')}</em>`; return; }
+    el.innerHTML = list.map(tournament => `
       <div class="match-card">
-        <div class="match-teams"><strong>${esc(t.name)}</strong>${t.id === currentTid ? ' <span class="badge badge-completed" title="Currently active">✓ active</span>' : ''}</div>
-        <span class="badge badge-scheduled">${t.type === 'mexicano' ? 'mexicano + play-offs' : t.type}</span>
-        <button class="btn btn-primary btn-sm" onclick="openTournament('${t.id}','${t.type}')">Open</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteTournament('${t.id}')">✕</button>
+        <div class="match-teams"><strong>${esc(tournament.name)}</strong>${tournament.id === currentTid ? ` <span class="badge badge-completed" title="${esc(t('Currently active'))}">✓ ${esc(t('active'))}</span>` : ''}</div>
+        <span class="badge badge-scheduled">${tournament.type === 'mexicano' ? 'mexicano + play-offs' : tournament.type}</span>
+        <button class="btn btn-primary btn-sm" onclick="openTournament('${tournament.id}','${tournament.type}')">${t('Open')}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteTournament('${tournament.id}')">✕</button>
       </div>
     `).join('');
   } catch (e) { console.error(e); }
 }
 
 async function deleteTournament(id) {
-  if (!confirm('Delete this tournament?')) return;
+  if (!confirm(t('Delete this tournament?'))) return;
   await api('/api/tournaments/' + id, { method: 'DELETE' });
   _openTournaments = _openTournaments.filter(t => t.id !== id);
   if (id === currentTid) {
@@ -993,9 +1038,9 @@ function updateActiveTournamentUI() {
   const hasActive = Boolean(currentTid);
   if (hasActive) {
     const shownName = currentTournamentName || `#${String(currentTid).slice(0, 8)}`;
-    indicator.innerHTML = `Active tournament: <strong>${esc(shownName)}</strong>`;
+    indicator.innerHTML = `${t('Active tournament:')} <strong>${esc(shownName)}</strong>`;
   } else {
-    indicator.innerHTML = 'Active tournament: <strong>None selected</strong>';
+    indicator.innerHTML = `${t('Active tournament:')} <strong>${t('None selected')}</strong>`;
   }
   _renderTournamentChips();
 }
@@ -1003,10 +1048,10 @@ function updateActiveTournamentUI() {
 function _renderTournamentChips() {
   const container = document.getElementById('tournament-chips');
   if (!container) return;
-  container.innerHTML = _openTournaments.map(t =>
-    `<button class="tab-btn tournament-chip${t.id === currentTid ? ' active' : ''}" data-tid="${t.id}" data-type="${t.type}" title="${esc(t.name)}">
-      <span class="chip-check">✓</span>${esc(t.name)}
-      <span class="chip-close" data-close-tid="${t.id}" title="Remove from bar">×</span>
+  container.innerHTML = _openTournaments.map(tournament =>
+    `<button class="tab-btn tournament-chip${tournament.id === currentTid ? ' active' : ''}" data-tid="${tournament.id}" data-type="${tournament.type}" title="${esc(tournament.name)}">
+      <span class="chip-check">✓</span>${esc(tournament.name)}
+      <span class="chip-close" data-close-tid="${tournament.id}" title="${t('Remove')}">×</span>
     </button>`
   ).join('');
   container.querySelectorAll('.tournament-chip').forEach(btn => {
@@ -1079,9 +1124,9 @@ async function createGP() {
       double_elimination: document.getElementById('gp-double-elim').value === 'true',
     };
     const res = await api('/api/tournaments/group-playoff', { method: 'POST', body: JSON.stringify(body) });
-    msg.className = 'alert alert-success'; msg.textContent = `Created! ID: ${res.id}`;
+    msg.className = 'alert alert-success'; msg.textContent = t('Created! ID: {id}', { id: res.id });
     msg.classList.remove('hidden');
-    openTournament(res.id, 'group_playoff', body.name || 'Group + Playoff Tournament');
+    openTournament(res.id, 'group_playoff', body.name || t('Group + Playoff Tournament'));
   } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
 }
 
@@ -1090,9 +1135,9 @@ function toggleTeamMode(checkboxId, labelId) {
   const chk = document.getElementById(checkboxId);
   const label = document.getElementById(labelId);
   if (chk.checked) {
-    label.textContent = 'Team Names (one per line, e.g. "Alice & Bob")';
+    label.textContent = t('Team Names (one per line, e.g. "Alice & Bob")');
   } else {
-    label.textContent = 'Player Names (one per line)';
+    label.textContent = t('Player Names (one per line)');
   }
 }
 function toggleGpTeamMode() { toggleTeamMode('gp-team-mode', 'gp-players-label'); }
@@ -1117,9 +1162,9 @@ async function createMex() {
       balance_tolerance: +document.getElementById('mex-balance-tol').value,
     };
     const res = await api('/api/tournaments/mexicano', { method: 'POST', body: JSON.stringify(body) });
-    msg.className = 'alert alert-success'; msg.textContent = `Created! ID: ${res.id}`;
+    msg.className = 'alert alert-success'; msg.textContent = t('Created! ID: {id}', { id: res.id });
     msg.classList.remove('hidden');
-    openTournament(res.id, 'mexicano', body.name || 'Mexicano Tournament');
+    openTournament(res.id, 'mexicano', body.name || t('Mexicano Tournament'));
   } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
 }
 
@@ -1441,7 +1486,7 @@ async function submitTennisScore(matchId, ctx) {
     if (v1 === 0 && v2 === 0) continue;  // skip empty sets
     sets.push([v1, v2]);
   }
-  if (sets.length === 0) { alert('Enter at least one set score.'); return; }
+  if (sets.length === 0) { alert(t('Enter at least one set score.')); return; }
 
   try {
     await api(_scoreApiPath(ctx, true), {
@@ -1499,7 +1544,7 @@ async function renderMex() {
     } else if (isRolling) {
       html += `<div class="alert alert-info">Mexicano Round ${status.current_round} <span class="badge badge-phase">Rolling</span></div>`;
     } else {
-      html += `<div class="alert alert-info">Mexicano Round ${status.current_round} / ${status.num_rounds}${mexRoundsDone ? ' — <strong>Mexicano Rounds Complete! Ready for Play-offs.</strong>' : ''}</div>`;
+      html += `<div class="alert alert-info">${t('Mexicano')} ${t('Round')} ${status.current_round} / ${status.num_rounds}${mexRoundsDone ? ` — <strong>${t('Mexicano Rounds Complete! Ready for Play-offs.')}</strong>` : ''}</div>`;
     }
 
     if (status.champion) {
@@ -1523,7 +1568,7 @@ async function renderMex() {
 
       html += _schemaCardHtml('mex-playoff-schema', 'Mexicano play-offs bracket', 'generateMexPlayoffSchema');
 
-      html += `<div class="card"><h2>Mexicano Play-off Bracket</h2>`;
+      html += `<div class="card"><h2>${t('Mexicano Play-off Bracket')}</h2>`;
       html += `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem">`;
       html += `<span style="font-size:0.82rem;color:var(--text-muted)">Score format:</span>`;
       html += `<div class="score-mode-toggle">`;
@@ -1634,7 +1679,7 @@ async function renderMex() {
           const label = rMatches[0]?.round_label || `Round ${rn}`;
           const openAttr = ri === 0 ? ' open' : '';
           html += `<details class="round-group"${openAttr}>`;
-          html += `<summary>${esc(label)} — ${rMatches.length} match${rMatches.length > 1 ? 'es' : ''}</summary>`;
+          html += `<summary>${esc(label)} — ${rMatches.length} ${rMatches.length > 1 ? t('matches') : t('match')}</summary>`;
           for (const m of rMatches) {
             html += matchRow(m, 'mex');
           }
@@ -1650,7 +1695,7 @@ async function renderMex() {
 
 function _renderCourtAssignmentsCard(matches, title) {
   if (!matches || matches.length === 0) {
-    return `<div class="card"><h3>${esc(title)}</h3><em>No pending assignments.</em></div>`;
+    return `<div class="card"><h3>${esc(title)}</h3><em>${t('No pending assignments.')}</em></div>`;
   }
 
   // Group real matches by court name.
@@ -2014,7 +2059,7 @@ function _selectProposal(optionId) {
 }
 
 async function _confirmMexRound() {
-  if (!_selectedOptionId) { alert('Select a pairing option first.'); return; }
+  if (!_selectedOptionId) { alert(t('Select a pairing option first.')); return; }
   try {
     await api(`/api/tournaments/${currentTid}/mex/next-round`, {
       method: 'POST',
@@ -2301,15 +2346,15 @@ async function _startMexPlayoffs() {
     const right = document.getElementById(`playoff-team-${i}-b`)?.value || '';
 
     if (!left || !right) {
-      alert(`Team ${i + 1}: select both players.`);
+      alert(t('Team {n}: select both players.', { n: i + 1 }));
       return;
     }
     if (left === right) {
-      alert(`Team ${i + 1}: players must be different.`);
+      alert(t('Team {n}: players must be different.', { n: i + 1 }));
       return;
     }
     if (used.has(left) || used.has(right)) {
-      alert(`A player is assigned to multiple teams. Please fix duplicates.`);
+      alert(t('A player is assigned to multiple teams. Please fix duplicates.'));
       return;
     }
     used.add(left);
@@ -2356,8 +2401,8 @@ function _savePlayoffTeam(i) {
   const bEl = document.getElementById(`playoff-team-${i}-b`);
   const a = aEl?.value || '';
   const b = bEl?.value || '';
-  if (!a || !b) { alert(`Team ${i + 1}: select both players before saving.`); return; }
-  if (a === b) { alert(`Team ${i + 1}: players must be different.`); return; }
+  if (!a || !b) { alert(t('Team {n}: select both players before saving.', { n: i + 1 })); return; }
+  if (a === b) { alert(t('Team {n}: players must be different.', { n: i + 1 })); return; }
   _savedPlayoffTeams[i] = { a, b };
   _refreshPlayoffOptions();
 }
@@ -2537,8 +2582,8 @@ async function exportTournamentOutcome(format) {
 
       // ── Play-offs (above group content) ───────────────────────
       if (schemaSrc) {
-        body += `<h2>Play-off Bracket</h2>`;
-        body += `<img src="${schemaSrc}" alt="Play-off bracket" style="max-width:100%;height:auto;margin:8px 0 18px">`;
+        body += `<h2>${t('Play-off Bracket')}</h2>`;
+        body += `<img src="${schemaSrc}" alt="${t('Play-off Bracket')}" style="max-width:100%;height:auto;margin:8px 0 18px">`;
       }
 
       if (includeHistory) {
@@ -2591,8 +2636,8 @@ async function exportTournamentOutcome(format) {
 
       // ── Play-offs (above leaderboard/rounds) ──────────────────
       if (schemaSrc) {
-        body += `<h2>Play-off Bracket</h2>`;
-        body += `<img src="${schemaSrc}" alt="Play-off bracket" style="max-width:100%;height:auto;margin:8px 0 18px">`;
+        body += `<h2>${t('Play-off Bracket')}</h2>`;
+        body += `<img src="${schemaSrc}" alt="${t('Play-off Bracket')}" style="max-width:100%;height:auto;margin:8px 0 18px">`;
       }
 
       if (includeHistory) {
@@ -2664,38 +2709,38 @@ function _renderTvControls(tvSettings) {
   let html = `<details class="card" id="tv-controls-panel">`;
   html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">`;
   html += `<span style="font-size:1.1rem;font-weight:700">📺 TV Mode Controls</span>`;
-  html += `<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="event.preventDefault();window.open('/tv?tid='+currentTid,'padel_tv_'+currentTid,'noopener noreferrer')">Open TV display ↗</button>`;
+  html += `<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="event.preventDefault();window.open('/tv?tid='+currentTid,'padel_tv_'+currentTid,'noopener noreferrer')">${t('Open TV display ↗')}</button>`;
   html += `</summary>`;
   html += `<div style="margin-top:0.65rem">`;
   
   // Tournament Alias Section
   html += `<div style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)">`;
   html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">🔗 Tournament Alias</label>`;
-  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">Set a memorable alias for this tournament's TV URL (e.g., "summer-cup"). Only letters, numbers, hyphens, and underscores.</p>`;
+  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('Set a memorable alias for this tournament\'s TV URL (e.g., "summer-cup"). Only letters, numbers, hyphens, and underscores.')}</p>`;
   html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
   html += `<input type="text" id="tournament-alias-input" placeholder="my-tournament" value="${esc(currentAlias)}" 
     pattern="[a-zA-Z0-9_-]+" maxlength="64" 
     style="flex:1;min-width:200px;font-family:monospace;font-size:0.85rem">`;
-  html += `<button class="btn btn-primary btn-sm" onclick="_setTournamentAlias()" style="white-space:nowrap">Set Alias</button>`;
+  html += `<button class="btn btn-primary btn-sm" onclick="_setTournamentAlias()" style="white-space:nowrap">${t('Set Alias')}</button>`;
   if (currentAlias) {
-    html += `<button class="btn btn-danger btn-sm" onclick="_deleteTournamentAlias()" style="white-space:nowrap">✕ Remove</button>`;
+    html += `<button class="btn btn-danger btn-sm" onclick="_deleteTournamentAlias()" style="white-space:nowrap">✕ ${t('Remove')}</button>`;
   }
   html += `</div>`;
   if (currentAlias) {
     html += `<div style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:0.78rem">`;
-    html += `<span style="color:var(--text-muted)">TV URL:</span> <code style="color:var(--accent);font-size:0.85rem">/tv?t=${esc(currentAlias)}</code>`;
-    html += ` <button onclick="navigator.clipboard.writeText(window.location.origin+'/tv?t=${esc(currentAlias)}');alert('URL copied!')" 
-      style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:3px;padding:0.1rem 0.4rem;cursor:pointer;font-size:0.75rem;margin-left:0.3rem">📋 Copy</button>`;
+    html += `<span style="color:var(--text-muted)">${t('TV URL:')}</span> <code style="color:var(--accent);font-size:0.85rem">/tv?t=${esc(currentAlias)}</code>`;
+    html += ` <button onclick="navigator.clipboard.writeText(window.location.origin+'/tv?t=${esc(currentAlias)}');alert('${t('URL copied!')}')" 
+      style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:3px;padding:0.1rem 0.4rem;cursor:pointer;font-size:0.75rem;margin-left:0.3rem">📋 ${t('Copy')}</button>`;
     html += `</div>`;
   }
   html += `</div>`;
   
-  html += `<p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:0.65rem">Toggle which sections appear on the TV screen. Changes take effect on the TV display's next auto-refresh.</p>`;
+  html += `<p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:0.65rem">${t('Toggle which sections appear on the TV screen. Changes take effect on the TV display\'s next auto-refresh.')}</p>`;
   html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem 1.5rem">`;
   html += chkRow('show_past_matches',   'Past matches',            true);
   html += chkRow('show_score_breakdown','Score breakdowns',        false);
   html += chkRow('show_standings',      'Standings / leaderboard', true);
-  html += chkRow('show_bracket',        'Play-off bracket',        true);
+  html += chkRow('show_bracket',        t('Play-off Bracket'),        true);
   html += `</div>`;
   const currentInterval = def('refresh_interval', 15);
   html += `<div style="margin-top:0.65rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">`;
@@ -2775,16 +2820,16 @@ async function _setTournamentAlias() {
     await loadTournaments();
     // Re-render current view to show updated alias section
     await _rerenderCurrentViewPreserveDrafts();
-    alert(`Alias "${alias}" set successfully!`);
+    alert(t('Alias "{value}" set successfully!', { value: alias }));
   } catch (e) {
-    alert(`Failed to set alias: ${e.message}`);
+    alert(t('Failed to set alias: {value}', { value: e.message }));
   }
 }
 
 /** Delete tournament alias */
 async function _deleteTournamentAlias() {
   if (!currentTid) return;
-  if (!confirm('Remove the alias from this tournament?')) return;
+  if (!confirm(t('Remove the alias from this tournament?'))) return;
   
   try {
     await api(`/api/tournaments/${currentTid}/alias`, {
@@ -2803,11 +2848,12 @@ async function _deleteTournamentAlias() {
     await _rerenderCurrentViewPreserveDrafts();
     alert('Alias removed successfully');
   } catch (e) {
-    alert(`Failed to remove alias: ${e.message}`);
+    alert(t('Failed to remove alias: {value}', { value: e.message }));
   }
 }
 
 // Init\ninitTheme();
+initLanguageSelector();
 initAuth();
 updateActiveTournamentUI();
 setCreateMode('gp');

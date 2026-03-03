@@ -7,12 +7,13 @@ Run with:
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 from ..auth import auth_router
 from ..auth.store import user_store
@@ -76,10 +77,8 @@ app.include_router(schema_router)
 
 
 @app.get("/api/config")
-async def get_config():
+async def get_config() -> dict:
     """Return application configuration for frontend."""
-    import os
-
     return {"demo_mode": os.environ.get("DEMO_MODE", "").lower() in ("true", "1", "yes")}
 
 
@@ -90,8 +89,15 @@ async def get_config():
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
 
 
+def _serve_js_file(filename: str) -> Response:
+    """Serve a JS file from the frontend directory with the correct MIME type."""
+    path = FRONTEND_DIR / filename
+    content = path.read_text() if path.exists() else ""
+    return Response(content=content, media_type="application/javascript")
+
+
 @app.get("/", response_class=HTMLResponse)
-async def serve_frontend():
+async def serve_frontend() -> str:
     index = FRONTEND_DIR / "index.html"
     if index.exists():
         return index.read_text()
@@ -99,7 +105,7 @@ async def serve_frontend():
 
 
 @app.get("/tv", response_class=HTMLResponse)
-async def serve_tv():
+async def serve_tv() -> str:
     page = FRONTEND_DIR / "tv.html"
     if page.exists():
         return page.read_text()
@@ -107,20 +113,18 @@ async def serve_tv():
 
 
 @app.get("/shared.js")
-async def serve_shared_js():
+async def serve_shared_js() -> Response:
     """Serve the shared JS utilities used by index.html and tv.html."""
-    from fastapi.responses import Response
-
-    path = FRONTEND_DIR / "shared.js"
-    content = path.read_text() if path.exists() else ""
-    return Response(content=content, media_type="application/javascript")
+    return _serve_js_file("shared.js")
 
 
 @app.get("/auth.js")
-async def serve_auth_js():
+async def serve_auth_js() -> Response:
     """Serve the authentication module used by index.html."""
-    from fastapi.responses import Response
+    return _serve_js_file("auth.js")
 
-    path = FRONTEND_DIR / "auth.js"
-    content = path.read_text() if path.exists() else ""
-    return Response(content=content, media_type="application/javascript")
+
+@app.get("/i18n.js")
+async def serve_i18n_js() -> Response:
+    """Serve the translation catalog used by the frontend i18n runtime."""
+    return _serve_js_file("i18n.js")

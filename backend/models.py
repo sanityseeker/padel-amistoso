@@ -53,10 +53,10 @@ class Player:
     name: str
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.id)
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, Player):
             return self.id == other.id
         return NotImplemented
@@ -136,6 +136,6 @@ class GroupStanding:
     def point_diff(self) -> int:
         return self.points_for - self.points_against
 
-    def sort_key(self):
+    def sort_key(self) -> tuple[int, int, int]:
         """Higher is better."""
         return (self.match_points, self.point_diff, self.points_for)

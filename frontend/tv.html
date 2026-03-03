@@ -490,6 +490,7 @@
   <div class="tv-loading">Loading tournament display…</div>
 </div>
 
+<script src="/i18n.js"></script>
 <script src="/shared.js"></script>
 <script>
 const API = '';
@@ -497,13 +498,37 @@ const API = '';
 // ── Theme ─────────────────────────────────────────────────
 let _theme = _loadSavedTheme();
 _applyTheme(_theme);
+let _lang = _loadSavedLanguage();
+setAppLanguage(_lang);
+
+function _refreshThemeToggleButtons() {
+  const icon = _theme === 'dark' ? '🌙' : '☀️';
+  document.querySelectorAll('[data-theme-toggle-icon]').forEach((btn) => {
+    btn.textContent = icon;
+  });
+}
 
 function _toggleTheme() {
   _theme = _theme === 'dark' ? 'light' : 'dark';
   _applyTheme(_theme);
   _saveTheme(_theme);
-  const btn = document.getElementById('theme-toggle-btn');
-  if (btn) btn.textContent = _theme === 'dark' ? '☀️' : '🌙';
+  _refreshThemeToggleButtons();
+}
+
+function _toggleLanguage() {
+  _lang = _lang === 'es' ? 'en' : 'es';
+  setAppLanguage(_lang);
+  if (TID) loadTV();
+  else _showPicker();
+}
+
+function _languageToggleMeta() {
+  const current = getAppLanguage();
+  const currentLabel = current === 'es' ? t('Spanish') : t('English');
+  return {
+    icon: current === 'es' ? '🇪🇸' : '🇬🇧',
+    label: `${t('Language')}: ${currentLabel}`,
+  };
 }
 
 // ── URL params ────────────────────────────────────────────
@@ -566,12 +591,12 @@ function _startCountdown() {
   _stopAllSchedules();
   if (_refreshIntervalSecs === 0) {
     // “Never” — no auto-refresh
-    _updateCountdownEl('Manual only');
+    _updateCountdownEl(t('Manual only'));
     return;
   }
   if (_refreshIntervalSecs === -1) {
     // “On update” — poll version endpoint every 2 s
-    _updateCountdownEl('Watching for updates…');
+    _updateCountdownEl(t('Watching for updates…'));
     _versionPollTimer = setInterval(async () => {
       if (_isRefreshing || !TID) return;
       try {
@@ -586,10 +611,10 @@ function _startCountdown() {
   }
   // Timer mode
   _countdown = _refreshIntervalSecs;
-  _updateCountdownEl(`↻ in ${_countdown}s`);
+  _updateCountdownEl(`↻ ${_countdown}s`);
   _countdownInterval = setInterval(() => {
     _countdown--;
-    _updateCountdownEl(`↻ in ${_countdown}s`);
+    _updateCountdownEl(`↻ ${_countdown}s`);
     if (_countdown <= 0) {
       clearInterval(_countdownInterval);
       _countdownInterval = null;
@@ -618,12 +643,12 @@ async function loadTV() {
     const meta = list.find(t => t.id === TID);
     if (!meta) {
       document.getElementById('tv-root').innerHTML =
-        `<div class="tv-error">Tournament not found: ${esc(TID)}</div>`;
+        `<div class="tv-error">${t('Tournament not found: {value}', { value: esc(TID) })}</div>`;
       return;
     }
     _tournamentType = meta.type;
     _tournamentName = meta.name;
-    document.title = `Padel TV | ${meta.name}`;
+    document.title = `${t('Padel TV')} | ${meta.name}`;
 
     // Load TV settings and tournament data in parallel
     const [tvSettings, ...dataResults] = await Promise.all([
@@ -667,7 +692,7 @@ async function loadTV() {
     }
   } catch (e) {
     const root = document.getElementById('tv-root');
-    if (root) root.innerHTML = `<div class="tv-error">Error loading data: ${esc(e.message)}</div>`;
+    if (root) root.innerHTML = `<div class="tv-error">${t('Error loading data: {value}', { value: esc(e.message) })}</div>`;
   } finally {
     _isRefreshing = false;
     const dot = document.getElementById('refresh-dot');
@@ -690,12 +715,12 @@ function _renderGP(tvSettings, status, groups, playoffs) {
     (playoffs?.pending || []).filter(m => m.status !== 'completed')
   );
   const assignmentMatches = isPlayoffs ? pendingPlayoff : pendingGroup;
-  const courtTitle = isPlayoffs ? 'Court Assignments — Play-offs' : 'Court Assignments — Group Stage';
+  const courtTitle = isPlayoffs ? t('Court Assignments — Play-offs') : t('Court Assignments — Group Stage');
 
   let html = _buildHeader(_tournamentName, phase, champion);
 
   if (champion) {
-    html += `<div class="champion-banner">🏆 Champion: ${esc(champion.join(' & '))}</div>`;
+    html += `<div class="champion-banner">🏆 ${t('Champion')}: ${esc(champion.join(' & '))}</div>`;
   }
 
   // Courts (always shown)
@@ -706,7 +731,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
     if (tvSettings.show_past_matches) {
       const playoffPast = (playoffs?.matches || []).filter(m => m.status === 'completed');
       if (playoffPast.length > 0)
-        html += _buildPastMatches(playoffPast, tvSettings, false, 'Play-off Matches', 'past-playoffs');
+        html += _buildPastMatches(playoffPast, tvSettings, false, t('Play-off Matches'), 'past-playoffs');
     }
 
   if (tvSettings.show_bracket) {
@@ -716,25 +741,25 @@ function _renderGP(tvSettings, status, groups, playoffs) {
       const tfs = tvSettings.schema_title_font_scale || 1.0;
       const imgUrl = `/api/tournaments/${TID}/gp/playoffs-schema?fmt=png&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
       html += `<details class="tv-collapsible" data-tv-key="bracket" open>`;
-      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>Play-off Bracket</h2></summary>`;
+      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('Play-off Bracket')}</h2></summary>`;
       html += `<div class="tv-section">`;
-      html += `<img class="bracket-img" src="${imgUrl}" alt="Play-off bracket" onerror="this.style.display='none'">`;
+      html += `<img class="bracket-img" src="${imgUrl}" alt="${t('Play-off Bracket')}" onerror="this.style.display='none'">`;
       html += `</div></details>`;
     }
 
     if (tvSettings.show_past_matches) {
       const groupPast = Object.values(groups.matches || {}).flat().filter(m => m.status === 'completed');
       if (groupPast.length > 0)
-        html += _buildPastMatches(groupPast, tvSettings, false, 'Group Stage Matches', 'past-groups');
+        html += _buildPastMatches(groupPast, tvSettings, false, t('Group Stage Matches'), 'past-groups');
     }
   } else {
     // Group phase: standings → group past matches
     if (tvSettings.show_standings) {
       html += `<details class="tv-collapsible" data-tv-key="standings" open>`;
-      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>Group Standings</h2></summary>`;
+      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('Group Standings')}</h2></summary>`;
       html += `<div class="tv-section">`;
       for (const [gName, rows] of Object.entries(groups.standings || {})) {
-        html += `<div class="group-block"><h3>Group ${esc(gName)}</h3>`;
+        html += `<div class="group-block"><h3>${t('Group Stage')} ${esc(gName)}</h3>`;
         html += `<table class="standings-table"><thead><tr>`;
         html += `<th>#</th><th>Player</th><th>W</th><th>D</th><th>L</th><th>PF</th><th>PA</th><th>Pts</th>`;
         html += `</tr></thead><tbody>`;
@@ -752,7 +777,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
     if (tvSettings.show_past_matches) {
       const groupPast = Object.values(groups.matches || {}).flat().filter(m => m.status === 'completed');
       if (groupPast.length > 0)
-        html += _buildPastMatches(groupPast, tvSettings, false, 'Group Stage Matches', 'past-groups');
+        html += _buildPastMatches(groupPast, tvSettings, false, t('Group Stage Matches'), 'past-groups');
     }
   }
 
@@ -768,12 +793,12 @@ function _renderMex(tvSettings, status, matches, playoffs) {
   const pendingCurrent = _sortTbdLast((matches.current_matches || []).filter(m => m.status !== 'completed'));
   const pendingPlayoff = _sortTbdLast((playoffs?.pending || []).filter(m => m.status !== 'completed'));
   const assignmentMatches = isPlayoffs ? pendingPlayoff : pendingCurrent;
-  const courtTitle = isPlayoffs ? 'Court Assignments — Mexicano Play-offs' : `Court Assignments — Round ${status.current_round}`;
+  const courtTitle = isPlayoffs ? t('Court Assignments — Mexicano Play-offs') : `${t('Court Assignments — Group Stage')} ${status.current_round}`;
 
   let html = _buildHeader(_tournamentName, phase, champion);
 
   if (champion) {
-    html += `<div class="champion-banner">🏆 Champion: ${esc(champion.join(' & '))}</div>`;
+    html += `<div class="champion-banner">🏆 ${t('Champion')}: ${esc(champion.join(' & '))}</div>`;
   }
 
   // Courts (always shown)
@@ -784,7 +809,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
     if (tvSettings.show_past_matches) {
       const playoffPast = (playoffs?.matches || []).filter(m => m.status === 'completed');
       if (playoffPast.length > 0)
-        html += _buildPastMatches(playoffPast, tvSettings, false, 'Play-off Matches', 'past-playoffs');
+        html += _buildPastMatches(playoffPast, tvSettings, false, t('Play-off Matches'), 'past-playoffs');
     }
 
     if (tvSettings.show_bracket) {
@@ -794,9 +819,9 @@ function _renderMex(tvSettings, status, matches, playoffs) {
       const tfs = tvSettings.schema_title_font_scale || 1.0;
       const imgUrl = `/api/tournaments/${TID}/mex/playoffs-schema?fmt=png&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
       html += `<details class="tv-collapsible" data-tv-key="bracket" open>`;
-      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>Play-off Bracket</h2></summary>`;
+      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('Play-off Bracket')}</h2></summary>`;
       html += `<div class="tv-section">`;
-      html += `<img class="bracket-img" src="${imgUrl}" alt="Play-off bracket" onerror="this.style.display='none'">`;
+      html += `<img class="bracket-img" src="${imgUrl}" alt="${t('Play-off Bracket')}" onerror="this.style.display='none'">`;
       html += `</div></details>`;
     }
 
@@ -807,7 +832,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
     if (tvSettings.show_past_matches) {
       const mexPast = (matches.all_matches || []).filter(m => m.status === 'completed');
       if (mexPast.length > 0)
-        html += _buildPastMatches(mexPast, tvSettings, true, 'Mexicano Rounds', 'past-mexicano');
+        html += _buildPastMatches(mexPast, tvSettings, true, t('Mexicano Rounds'), 'past-mexicano');
     }
   } else {
     // Mexicano phase: leaderboard → mexicano rounds
@@ -818,7 +843,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
     if (tvSettings.show_past_matches) {
       const mexPast = (matches.all_matches || []).filter(m => m.status === 'completed');
       if (mexPast.length > 0)
-        html += _buildPastMatches(mexPast, tvSettings, true, 'Mexicano Rounds', 'past-mexicano');
+        html += _buildPastMatches(mexPast, tvSettings, true, t('Mexicano Rounds'), 'past-mexicano');
     }
   }
 
@@ -831,7 +856,7 @@ function _buildMexLeaderboard(status) {
   const lb = status.leaderboard || [];
   const byAvg = lb.length > 0 && lb[0].ranked_by_avg;
   let html = `<details class="tv-collapsible" data-tv-key="standings" open>`;
-  html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>Leaderboard</h2></summary>`;
+  html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('Leaderboard')}</h2></summary>`;
   html += `<div class="tv-section">`;
   html += `<table class="standings-table"><thead><tr>`;
   html += `<th>#</th><th>Player</th><th>Total Pts</th><th>Played</th><th>W</th><th>D</th><th>L</th><th>Avg Pts</th>`;
@@ -851,20 +876,22 @@ function _buildMexLeaderboard(status) {
 
 function _buildHeader(name, phase, champion) {
   const phaseLabel = _phaseLabel(phase);
+  const langToggle = _languageToggleMeta();
   return `
     <div class="tv-header">
       <div class="tv-title">
         <h1>${esc(name)}</h1>
-        <div class="subtitle">Padel Tournament — TV Display</div>
+        <div class="subtitle">${t('Padel Tournament — TV Display')}</div>
       </div>
       <div class="tv-meta">
         ${phaseLabel ? `<span class="tv-badge tv-badge-phase">${esc(phaseLabel)}</span>` : ''}
-        ${champion ? `<span class="tv-badge tv-badge-champion">🏆 Finished</span>` : `<span class="tv-badge tv-badge-live">● LIVE</span>`}
+        ${champion ? `<span class="tv-badge tv-badge-champion">🏆 ${t('Finished')}</span>` : `<span class="tv-badge tv-badge-live">● ${t('LIVE')}</span>`}
         <div class="refresh-indicator">
           <div class="refresh-dot" id="refresh-dot"></div>
-          <span id="tv-countdown">↻ in ${_refreshIntervalSecs}s</span>
-          <button onclick="loadTV()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;font-size:0.8rem;line-height:1" title="Refresh now">↻</button>
-          <button id="theme-toggle-btn" class="theme-btn" onclick="_toggleTheme()" title="Toggle light / dark mode">${_theme === 'dark' ? '☀️' : '🌙'}</button>
+          <span id="tv-countdown">↻ ${_refreshIntervalSecs}s</span>
+          <button onclick="loadTV()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;font-size:0.8rem;line-height:1" title="${t('Refresh now')}">↻</button>
+          <button id="lang-toggle-btn" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button>
+          <button id="theme-toggle-btn" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('Toggle light / dark mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>
         </div>
       </div>
     </div>`;
@@ -874,14 +901,14 @@ function _buildCourts(matches, title) {
   let html = `<div class="tv-section">`;
   html += `<div class="tv-section-header"><h2>${esc(title)}</h2></div>`;
   if (!matches || matches.length === 0) {
-    html += `<p class="tv-empty">No pending court assignments.</p>`;
+    html += `<p class="tv-empty">${t('No pending court assignments.')}</p>`;
     html += `</div>`;
     return html;
   }
 
   const byCourt = {};
   for (const m of matches) {
-    const c = m.court || 'Unassigned';
+    const c = m.court || t('Unassigned');
     if (!byCourt[c]) byCourt[c] = [];
     byCourt[c].push(m);
   }
@@ -909,11 +936,11 @@ function _buildCourts(matches, title) {
           const t1 = (m.team1 || []).join(' & ') || 'TBD';
           const t2 = (m.team2 || []).join(' & ') || 'TBD';
           html += `<div class="court-match">`;
-          html += `<div class="court-match-teams">${esc(t1)}<span class="court-match-vs">vs</span>${esc(t2)}</div>`;
+          html += `<div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('vs')}</span>${esc(t2)}</div>`;
           if (m.round_label) html += `<div class="court-match-meta">${esc(m.round_label)}</div>`;
           html += `</div>`;
         } else {
-          html += `<div class="court-match-empty">(empty)</div>`;
+          html += `<div class="court-match-empty">${t('(empty)')}</div>`;
         }
       }
     } else {
@@ -921,7 +948,7 @@ function _buildCourts(matches, title) {
         const t1 = (m.team1 || []).join(' & ') || 'TBD';
         const t2 = (m.team2 || []).join(' & ') || 'TBD';
         html += `<div class="court-match">`;
-        html += `<div class="court-match-teams">${esc(t1)}<span class="court-match-vs">vs</span>${esc(t2)}</div>`;
+        html += `<div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('vs')}</span>${esc(t2)}</div>`;
         if (m.round_label) html += `<div class="court-match-meta">${esc(m.round_label)}</div>`;
         html += `</div>`;
       }
@@ -932,7 +959,7 @@ function _buildCourts(matches, title) {
   return html;
 }
 
-function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = 'Past Matches', tvKey = 'past-matches') {
+function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = t('Past Matches'), tvKey = 'past-matches') {
   if (!matches || matches.length === 0) return '';
 
   // Group by round_label first (more descriptive), fall back to round_number
@@ -956,7 +983,7 @@ function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = 'Past Matc
     const openAttr = ri === 0 ? ' open' : ''; // most recent open by default
 
     html += `<details class="round-block" data-tv-key="${tvKey}-${esc(key)}"${openAttr}>`;
-    html += `<summary class="round-summary">▶ ${esc(key)} — ${rMatches.length} match${rMatches.length > 1 ? 'es' : ''}</summary>`;
+    html += `<summary class="round-summary">▶ ${esc(key)} — ${rMatches.length} ${rMatches.length > 1 ? t('matches') : t('match')}</summary>`;
     html += `<div class="round-body">`;
     for (const m of rMatches) {
       html += _buildHistoryMatch(m, tvSettings, isMex);
@@ -987,7 +1014,7 @@ function _buildHistoryMatch(m, tvSettings, isMex) {
   }
 
   let html = `<div class="history-match">`;
-  html += `<div class="history-teams">${esc(t1)}<span class="history-vs">vs</span>${esc(t2)}</div>`;
+  html += `<div class="history-teams">${esc(t1)}<span class="history-vs">${t('vs')}</span>${esc(t2)}</div>`;
   html += scoreHtml;
   html += court;
   html += `</div>`;
@@ -997,7 +1024,7 @@ function _buildHistoryMatch(m, tvSettings, isMex) {
     const bd = _breakdowns[m.id];
     if (bd && Object.keys(bd).length > 0) {
       html += `<details style="margin-top:-0.3rem;margin-bottom:0.4rem">`;
-      html += `<summary class="breakdown-toggle">📊 Score breakdown</summary>`;
+      html += `<summary class="breakdown-toggle">📊 ${t('Score breakdown')}</summary>`;
       html += `<div class="breakdown-panel">`;
       html += `<table class="breakdown-table"><thead><tr>`;
       html += `<th>Player</th><th>Raw</th><th>Str ×</th><th>LossDisc ×</th><th>Bonus</th><th>Final</th>`;
@@ -1019,8 +1046,8 @@ function _buildHistoryMatch(m, tvSettings, isMex) {
 // ── Helpers ───────────────────────────────────────────────
 function _phaseLabel(phase) {
   const map = {
-    setup: 'Setup', groups: 'Group Stage', playoffs: 'Play-offs',
-    finished: 'Finished', mexicano: 'Mexicano',
+    setup: t('Setup'), groups: t('Group Stage'), playoffs: t('Play-offs'),
+    finished: t('Finished'), mexicano: t('Mexicano'),
   };
   return map[phase] || phase;
 }
@@ -1034,7 +1061,7 @@ async function _resolveAlias() {
       TID = data.id;
     } catch (_) {
       document.getElementById('tv-root').innerHTML =
-        `<div class="tv-error">No tournament found with alias: <strong>${esc(_aliasParam)}</strong></div>`;
+        `<div class="tv-error">${t('No tournament found with alias:')} <strong>${esc(_aliasParam)}</strong></div>`;
       return false;
     }
   }
@@ -1045,28 +1072,33 @@ async function _showPicker() {
   let tournaments = [];
   try { tournaments = await api('/api/tournaments'); } catch (_) {}
 
+  const langToggle = _languageToggleMeta();
   let html = `<div class="tv-picker">`;
-  html += `<h1>Padel TV</h1>`;
-  html += `<div class="subtitle">Select a tournament to display</div>`;
+  html += `<div style="display:flex;justify-content:flex-end;gap:0.45rem;margin-bottom:0.75rem">`;
+  html += `<button class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button>`;
+  html += `<button data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('Toggle light / dark mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>`;
+  html += `</div>`;
+  html += `<h1>${t('Padel TV')}</h1>`;
+  html += `<div class="subtitle">${t('Select a tournament to display')}</div>`;
 
   if (tournaments.length > 0) {
     html += `<ul class="tv-picker-list">`;
-    for (const t of tournaments) {
-      const typeLabel = t.type === 'group_playoff' ? 'Group + Playoff' : 'Mexicano';
-      const aliasTag = t.alias ? `<span class="picker-alias">${esc(t.alias)}</span>` : '';
-      html += `<a class="tv-picker-item" href="/tv?tid=${encodeURIComponent(t.id)}">`;
-      html += `${esc(t.name)}<span class="picker-type">${typeLabel}</span>${aliasTag}`;
+    for (const tournament of tournaments) {
+      const typeLabel = tournament.type === 'group_playoff' ? t('Group + Playoff') : t('Mexicano');
+      const aliasTag = tournament.alias ? `<span class="picker-alias">${esc(tournament.alias)}</span>` : '';
+      html += `<a class="tv-picker-item" href="/tv?tid=${encodeURIComponent(tournament.id)}">`;
+      html += `${esc(tournament.name)}<span class="picker-type">${typeLabel}</span>${aliasTag}`;
       html += `</a>`;
     }
     html += `</ul>`;
   } else {
-    html += `<p style="color:var(--text-muted);margin-bottom:1.5rem">No tournaments available.</p>`;
+    html += `<p style="color:var(--text-muted);margin-bottom:1.5rem">${t('No tournaments available.')}</p>`;
   }
 
-  html += `<div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.5rem">Or enter a tournament ID / alias directly:</div>`;
+  html += `<div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.5rem">${t('Or enter a tournament ID / alias directly:')}</div>`;
   html += `<form class="tv-picker-form" onsubmit="return _goToTournament(event)">`;
-  html += `<input type="text" id="picker-input" placeholder="Tournament ID or alias…">`;
-  html += `<button type="submit">Go</button>`;
+  html += `<input type="text" id="picker-input" placeholder="${t('Tournament ID or alias…')}">`;
+  html += `<button type="submit">${t('Go')}</button>`;
   html += `</form>`;
   html += `</div>`;
 
