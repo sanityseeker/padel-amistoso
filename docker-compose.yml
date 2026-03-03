@@ -1,0 +1,17 @@
+services:
+  padel:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: padel-amistoso:latest
+    container_name: padel-amistoso
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    volumes:
+      # Persist tournament and user data on the NAS host
+      - ./data:/app/data
+    environment:
+      PADEL_JWT_SECRET: ${PADEL_JWT_SECRET}
+      DEMO_MODE: ${DEMO_MODE:-false}
+      PADEL_DATA_DIR: /app/data

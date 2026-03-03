@@ -1,0 +1,33 @@
+# Python artefacts
+__pycache__/
+*.py[cod]
+*.pyo
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+coverage.xml
+.coverage
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tests (not needed in the image)
+tests/
+
+# Development / CI config
+.pre-commit-config.yaml
+.github/
+
+# Git
+.git/
+.gitignore
+
+# Secrets
+.env
+
+# Editor / OS
+.vscode/
+.idea/
+*.DS_Store
