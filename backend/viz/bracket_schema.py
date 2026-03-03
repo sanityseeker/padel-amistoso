@@ -691,6 +691,7 @@ def _build_double_elim_bracket(
         losers_x_slots.append(last + w_step)
 
     lr_idx = 0  # running losers-round counter (for node IDs & x-slots)
+    _losers_match_global_idx = 0  # sequential index matching bracket.losers_matches order
 
     # Running vertical cursor: each "dropper" match (both feeders from
     # the winners bracket) gets the next slot so that independent losers
@@ -714,7 +715,7 @@ def _build_double_elim_bracket(
           drop-downs) → use a global stacking cursor so each such match
           gets a unique y slot, preventing edge-through-cell collisions.
         """
-        nonlocal lr_idx, _y_losers_cursor
+        nonlocal lr_idx, _y_losers_cursor, _losers_match_global_idx
         round_num = lr_idx + 1
         round_name = f"Losers R{round_num}"
         x_lr = (
@@ -773,6 +774,12 @@ def _build_double_elim_bracket(
                 "stage": losers_stage_offset + lr_idx,
                 "round_header": round_name,
             }
+            # Overlay actual team names + score if available
+            md = (match_labels or {}).get(f"l_{_losers_match_global_idx}")
+            if md:
+                node_meta[mid]["label"] = _label_from_match_data(md)
+                node_meta[mid]["has_teams"] = True
+            _losers_match_global_idx += 1
             positions[mid] = (x_lr, y_mid)
 
             if n1:

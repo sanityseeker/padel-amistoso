@@ -87,6 +87,7 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
     Keys match the node IDs created by bracket builders in bracket_schema.py:
     - Single-elim matches: ``"match_r{r}_p{p}"`` (r and p are 0-based)
     - Double-elim winners matches: ``"w_r{r}_p{p}"``
+    - Double-elim losers matches: ``"l_{i}"`` (sequential index across all losers matches)
     - Double-elim grand final: ``"grand_final"``
 
     Args:
@@ -123,6 +124,13 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
 
     if hasattr(bracket, "winners_matches"):
         _label_round_matches(bracket.winners_matches, "w")
+        for i, m in enumerate(bracket.losers_matches):
+            labels[f"l_{i}"] = {
+                "team1": _fmt_team(m.team1),
+                "team2": _fmt_team(m.team2),
+                "score": _fmt_score(m),
+                "round": m.round_label,
+            }
         if bracket.grand_final:
             gf = bracket.grand_final
             labels["grand_final"] = {
