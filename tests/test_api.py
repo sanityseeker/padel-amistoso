@@ -40,6 +40,22 @@ class TestGroupPlayoffAPI:
         assert r.status_code == 200
         return r.json()["id"]
 
+    def _complete_all_group_rounds(self, client, auth_headers, tid):
+        """Record all group matches across all rounds via API."""
+        while True:
+            groups = client.get(f"/api/tournaments/{tid}/gp/groups").json()
+            pending = [m for matches in groups["matches"].values() for m in matches if m["status"] != "completed"]
+            for m in pending:
+                client.post(
+                    f"/api/tournaments/{tid}/gp/record-group",
+                    json={"match_id": m["id"], "score1": 6, "score2": 3},
+                    headers=auth_headers,
+                )
+            if not groups.get("has_more_rounds", False):
+                break
+            r = client.post(f"/api/tournaments/{tid}/gp/next-group-round", headers=auth_headers)
+            assert r.status_code == 200
+
     def test_create(self, client, auth_headers):
         r = client.post("/api/tournaments/group-playoff", json=self.GP_BODY, headers=auth_headers)
         assert r.status_code == 200
@@ -121,20 +137,8 @@ class TestGroupPlayoffAPI:
 
     def test_full_flow_to_playoffs(self, client, auth_headers):
         tid = self._create(client, auth_headers)
-        # Complete all group matches
-        groups = client.get(f"/api/tournaments/{tid}/gp/groups").json()
-        for gname, matches in groups["matches"].items():
-            for m in matches:
-                if m["status"] != "completed":
-                    client.post(
-                        f"/api/tournaments/{tid}/gp/record-group",
-                        json={
-                            "match_id": m["id"],
-                            "score1": 6,
-                            "score2": 3,
-                        },
-                        headers=auth_headers,
-                    )
+        # Complete all group rounds
+        self._complete_all_group_rounds(client, auth_headers, tid)
 
         # Start playoffs
         r = client.post(f"/api/tournaments/{tid}/gp/start-playoffs", headers=auth_headers)
@@ -148,15 +152,7 @@ class TestGroupPlayoffAPI:
 
     def test_playoffs_schema_endpoint_returns_image(self, client, auth_headers):
         tid = self._create(client, auth_headers)
-        groups = client.get(f"/api/tournaments/{tid}/gp/groups").json()
-        for matches in groups["matches"].values():
-            for m in matches:
-                if m["status"] != "completed":
-                    client.post(
-                        f"/api/tournaments/{tid}/gp/record-group",
-                        json={"match_id": m["id"], "score1": 6, "score2": 3},
-                        headers=auth_headers,
-                    )
+        self._complete_all_group_rounds(client, auth_headers, tid)
 
         start = client.post(f"/api/tournaments/{tid}/gp/start-playoffs", headers=auth_headers)
         assert start.status_code == 200
@@ -187,7 +183,6 @@ class TestMexicanoAPI:
         "court_names": ["Court 1", "Court 2"],
         "total_points_per_match": 32,
         "num_rounds": 3,
-        "randomness": 0.1,
     }
 
     def _create(self, client, auth_headers):
@@ -297,6 +292,40 @@ class TestMexicanoAPI:
         body = {**self.MEX_BODY, "skill_gap": -1}
         r = client.post("/api/tournaments/mexicano", json=body, headers=auth_headers)
         assert r.status_code == 422
+
+    def test_team_mode_creates_1v1_matches(self, client, auth_headers):
+        body = {
+            "name": "Team Mex",
+            "player_names": ["Alice & Bob", "Carlos & Diana", "Eve & Frank", "Gina & Hugo"],
+            "court_names": ["Court 1", "Court 2"],
+            "total_points_per_match": 32,
+            "num_rounds": 2,
+            "team_mode": True,
+        }
+        r = client.post("/api/tournaments/mexicano", json=body, headers=auth_headers)
+        assert r.status_code == 200
+        tid = r.json()["id"]
+
+        status = client.get(f"/api/tournaments/{tid}/mex/status").json()
+        assert status["team_mode"] is True
+
+        matches = client.get(f"/api/tournaments/{tid}/mex/matches").json()
+        for m in matches["current_matches"]:
+            assert len(m["team1"]) == 1
+            assert len(m["team2"]) == 1
+
+    def test_team_mode_3_players_ok_with_sitout(self, client, auth_headers):
+        """3 teams → 1 sit-out per round, 1 match."""
+        body = {
+            "name": "Odd Teams",
+            "player_names": ["A & B", "C & D", "E & F"],
+            "court_names": ["Court 1"],
+            "total_points_per_match": 32,
+            "num_rounds": 2,
+            "team_mode": True,
+        }
+        r = client.post("/api/tournaments/mexicano", json=body, headers=auth_headers)
+        assert r.status_code == 200
 
     def test_nonexistent_tournament(self, client):
         r = client.get("/api/tournaments/fake/mex/status")

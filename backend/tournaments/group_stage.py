@@ -2,7 +2,14 @@
 Group‑stage logic.
 
 Supports variable number of players and groups.
-Generates round‑robin matches inside each group and computes standings.
+
+Two match-generation modes:
+  * **team_mode** (fixed teams) — ``generate_round_robin()`` creates all
+    round-robin matches at once (fast, few matches).
+  * **individual mode** — ``generate_next_round()`` creates one round at a
+    time, rotating partnerships so every player partners with every other
+    player exactly once, and opponents are selected by similar cumulative
+    score (Mexicano-style).
 """
 
 from __future__ import annotations
@@ -11,6 +18,7 @@ import itertools
 import random
 
 from ..models import Court, GroupStanding, Match, MatchStatus, Player
+from . import pairing as pairing_mod
 
 
 class Group:
@@ -22,6 +30,16 @@ class Group:
         self.team_mode = team_mode
         self.matches: list[Match] = []
         self._standings_cache: list[GroupStanding] | None = None
+
+        # Partnership / opponent tracking for round-by-round generation.
+        self._partner_history: dict[str, dict[str, int]] = pairing_mod.make_history(self.players)
+        self._opponent_history: dict[str, dict[str, int]] = pairing_mod.make_history(self.players)
+        self._used_partnerships: set[frozenset[str]] = set()
+        self._round_count: int = 0
+        self._sit_out_counts: dict[str, int] = {p.id: 0 for p in self.players}
+        self._all_partnerships: set[frozenset[str]] = {
+            frozenset([a.id, b.id]) for a, b in itertools.combinations(self.players, 2)
+        }
 
     # ------------------------------------------------------------------ #
     # Match generation
@@ -73,6 +91,81 @@ class Group:
         self.matches = matches
         self._standings_cache = None
         return matches
+
+    def generate_next_round(self) -> list[Match]:
+        """Generate one round of matches using Mexicano-style pairing.
+
+        Each round:
+          1. Rank players by cumulative score.
+          2. Choose sit-outs if the group size isn't divisible by 4.
+          3. Form groups of 4 from the remaining players.
+          4. Use ``best_2v2_split`` to pick the most balanced 2v2
+             pairing within each group, minimising score imbalance
+             first and partner/opponent repeats second.
+
+        Returns an empty list when all C(N, 2) partnerships have been
+        covered.
+        """
+        if self.team_mode:
+            raise RuntimeError("Use generate_round_robin() for team mode")
+
+        if not self.has_more_rounds:
+            return []
+
+        # Current per-player scores from standings.
+        scores: dict[str, float] = {p.id: 0.0 for p in self.players}
+        for row in self.standings():
+            scores[row.player.id] = float(row.points_for)
+
+        ranked = sorted(self.players, key=lambda p: -scores[p.id])
+
+        # Sit-outs (group size not divisible by 4).
+        num_sit = len(ranked) % 4
+        if num_sit:
+            sitting = pairing_mod.choose_sit_outs(ranked, self._sit_out_counts, num_sit)
+            for p in sitting:
+                self._sit_out_counts[p.id] += 1
+            sitting_ids = {p.id for p in sitting}
+            playing = [p for p in ranked if p.id not in sitting_ids]
+        else:
+            playing = ranked
+
+        # Form groups of 4 and pick best 2v2 splits.
+        groups = [playing[i : i + 4] for i in range(0, len(playing), 4)]
+        self._round_count += 1
+        new_matches: list[Match] = []
+        for group in groups:
+            if len(group) < 4:
+                continue
+            t1, t2 = pairing_mod.best_2v2_split(
+                group,
+                scores,
+                self._partner_history,
+                self._opponent_history,
+            )
+            m = Match(
+                team1=t1,
+                team2=t2,
+                round_number=self._round_count,
+                round_label=f"Group {self.name} R{self._round_count}",
+            )
+            new_matches.append(m)
+
+            for team in [t1, t2]:
+                if len(team) == 2:
+                    self._used_partnerships.add(frozenset([team[0].id, team[1].id]))
+            pairing_mod.update_history(t1, t2, self._partner_history, self._opponent_history)
+
+        self.matches.extend(new_matches)
+        self._standings_cache = None
+        return new_matches
+
+    @property
+    def has_more_rounds(self) -> bool:
+        """Whether there are still uncovered partnerships."""
+        if self.team_mode:
+            return False
+        return bool(self._all_partnerships - self._used_partnerships)
 
     # ------------------------------------------------------------------ #
     # Standings
@@ -150,7 +243,12 @@ def _match_player_ids(m: Match) -> set[str]:
     return {p.id for p in m.team1 + m.team2}
 
 
-def assign_courts(matches: list[Match], courts: list[Court]) -> list[Match]:
+def assign_courts(
+    matches: list[Match],
+    courts: list[Court],
+    *,
+    court_offset: int = 0,
+) -> list[Match]:
     """
     Assign courts to unassigned matches, distributing them across time slots.
 
@@ -170,6 +268,12 @@ def assign_courts(matches: list[Match], courts: list[Court]) -> list[Match]:
 
     Each assigned match gets ``slot_number`` set to its 0-based slot index.
     Matches that already have a court are left untouched.
+
+    Parameters
+    ----------
+    court_offset:
+        Rotate the court list by this many positions so that successive
+        batches of assignments spread across all courts.
     """
     if not courts:
         return matches
@@ -187,7 +291,7 @@ def assign_courts(matches: list[Match], courts: list[Court]) -> list[Match]:
         assigned_any = False
 
         for i in range(n_courts):
-            court = courts[(current_slot + i) % n_courts]
+            court = courts[(current_slot + i + court_offset) % n_courts]
 
             candidates = [m for m in pool if not (_match_player_ids(m) & slot_busy)]
             if not candidates:

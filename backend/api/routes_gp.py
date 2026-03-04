@@ -23,6 +23,7 @@ from .schemas import (
     CreateGroupPlayoffRequest,
     RecordScoreRequest,
     RecordTennisScoreRequest,
+    StartGroupPlayoffsRequest,
 )
 from .state import _next_id, _save_state, _tournaments
 
@@ -72,6 +73,7 @@ async def gp_groups(tid: str):
     return {
         "standings": t.group_standings(),
         "matches": {g.name: [_serialize_match(m) for m in g.matches] for g in t.groups},
+        "has_more_rounds": t.has_more_group_rounds,
     }
 
 
@@ -110,12 +112,46 @@ async def gp_record_group_tennis(tid: str, req: RecordTennisScoreRequest, _user=
     }
 
 
-@router.post("/{tid}/gp/start-playoffs")
-async def gp_start_playoffs(tid: str, _user=Depends(get_current_user)):
+@router.post("/{tid}/gp/next-group-round")
+async def gp_next_group_round(tid: str, _user=Depends(get_current_user)):
+    """Generate the next round of group-stage matches (individual mode only).
+
+    Requires all current-round matches to be completed so cumulative scores
+    can be used for opponent selection.
+    """
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     try:
-        t.start_playoffs()
+        new_matches = t.generate_next_group_round()
     except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    _save_state()
+    return {
+        "matches": [_serialize_match(m) for m in new_matches],
+        "has_more_rounds": t.has_more_group_rounds,
+    }
+
+
+@router.get("/{tid}/gp/recommend-playoffs")
+async def gp_recommend_playoffs(tid: str):
+    """Get all group-stage participants ranked for playoff selection."""
+    t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+    return {"recommended_participants": t.recommend_playoff_participants()}
+
+
+@router.post("/{tid}/gp/start-playoffs")
+async def gp_start_playoffs(
+    tid: str,
+    req: StartGroupPlayoffsRequest = StartGroupPlayoffsRequest(),
+    _user=Depends(get_current_user),
+):
+    t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+    try:
+        t.start_playoffs(
+            advancing_player_ids=req.advancing_player_ids,
+            extra_players=[(ep.name, ep.score) for ep in req.extra_participants] if req.extra_participants else None,
+            double_elimination=req.double_elimination,
+        )
+    except (RuntimeError, KeyError, ValueError) as e:
         raise HTTPException(400, str(e))
     _save_state()
     return {"phase": t.phase}

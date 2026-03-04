@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class CreateGroupPlayoffRequest(BaseModel):
@@ -37,9 +37,9 @@ class CreateMexicanoRequest(BaseModel):
     name: str = "My Mexicano"
     player_names: list[str]
     court_names: list[str] = ["Court 1"]
+    team_mode: bool = False
     total_points_per_match: int = Field(default=32, ge=1)
     num_rounds: int = Field(default=8, ge=0)
-    randomness: float = Field(default=0.15, ge=0.0, le=1.0)
     skill_gap: int | None = Field(default=None, ge=0)
     win_bonus: int = Field(default=0, ge=0)
     strength_weight: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -48,10 +48,16 @@ class CreateMexicanoRequest(BaseModel):
 
     @field_validator("player_names")
     @classmethod
-    def at_least_four_players(cls, v: list[str]) -> list[str]:
-        if len(v) < 4:
-            raise ValueError("Need at least 4 players for Mexicano format")
+    def at_least_two_players(cls, v: list[str]) -> list[str]:
+        if len(v) < 2:
+            raise ValueError("Need at least 2 entries for Mexicano format")
         return v
+
+    @model_validator(mode="after")
+    def validate_player_count_for_mode(self) -> "CreateMexicanoRequest":
+        if not self.team_mode and len(self.player_names) < 4:
+            raise ValueError("Need at least 4 players for Mexicano format (or enable team mode)")
+        return self
 
     @field_validator("court_names")
     @classmethod
@@ -122,10 +128,25 @@ class CustomRoundRequest(BaseModel):
     sit_out_ids: list[str] | None = None
 
 
+class ExternalParticipant(BaseModel):
+    """An external participant added to play-offs with an optional seed score."""
+
+    name: str
+    score: int = 0
+    placeholder_id: str | None = None
+
+
 class StartMexicanoPlayoffsRequest(BaseModel):
     team_player_ids: list[str] | None = None
     n_teams: int = Field(default=4, ge=2)
     double_elimination: bool = False
+    extra_participants: list[ExternalParticipant] | None = None
+
+
+class StartGroupPlayoffsRequest(BaseModel):
+    advancing_player_ids: list[str] | None = None
+    extra_participants: list[ExternalParticipant] | None = None
+    double_elimination: bool | None = None
 
 
 class SchemaPreviewRequest(BaseModel):

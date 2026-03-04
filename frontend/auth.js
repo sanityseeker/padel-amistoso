@@ -240,8 +240,7 @@ function updateAuthUI() {
   if (authStatus) {
     if (username) {
       authStatus.innerHTML = `
-        <span style="color:var(--text-muted);font-size:0.85rem">${t('txt_txt_logged_in_as')}</span>
-        <strong style="margin:0 0.5rem">${esc(username)}</strong>
+        <strong style="margin-right:0.5rem">${esc(username)}</strong>
         <button class="btn btn-sm" onclick="logout()" style="padding:0.3rem 0.6rem">${t('txt_txt_logout')}</button>
       `;
     } else {

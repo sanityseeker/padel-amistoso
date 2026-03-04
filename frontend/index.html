@@ -64,6 +64,36 @@
     border-color: var(--accent);
     color: var(--text);
   }
+  /* ── TV Live button ── */
+  .btn-tv-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    text-decoration: none;
+    white-space: nowrap;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .btn-tv-live:hover { border-color: var(--accent); color: var(--accent); }
+  .tv-live-dot {
+    width: 7px;
+    height: 7px;
+    background: var(--red);
+    border-radius: 50%;
+    flex-shrink: 0;
+    animation: tv-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes tv-pulse {
+    0%, 100% { opacity: 1;   transform: scale(1); }
+    50%       { opacity: 0.35; transform: scale(0.7); }
+  }
   .tab-btn {
     padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 6px;
     background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.9rem;
@@ -229,7 +259,6 @@
   .alert-success { background: rgba(34,197,94,0.15); border: 1px solid var(--green); }
   .alert-error { background: rgba(239,68,68,0.15); border: 1px solid var(--red); }
 
-  .refresh-row { display: flex; justify-content: flex-end; margin-bottom: 0.5rem; }
   .hidden { display: none !important; }
 
   /* Pairing proposal cards */
@@ -496,9 +525,36 @@
   /* ── Page header ── */
   .page-header {
     display: flex;
+    flex-direction: column;
+    margin-bottom: 1.5rem;
+    gap: 0.4rem;
+  }
+  /* Title bar: [lang] [Padel Amistoso centered] [theme]
+     flex-wrap: wrap lets title drop to its own row on very narrow screens,
+     leaving buttons facing each other with space-between on the first row. */
+  .page-header-title-bar {
+    display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .page-header-title-bar .page-title-text {
+    flex: 1 1 auto;
+    min-width: min(240px, 100%);
+    text-align: center;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .page-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 0.75rem;
     flex-wrap: wrap;
   }
@@ -507,14 +563,6 @@
     align-items: center;
     gap: 0.75rem;
     flex: 1;
-    min-width: 0;
-  }
-  .page-header-left h1 {
-    margin: 0;
-    font-size: 1.4rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     min-width: 0;
   }
   .page-header-right {
@@ -546,6 +594,124 @@
     .tv-sliders-grid { grid-template-columns: 1fr; }
   }
 
+  /* ── GP Playoff Editor ── */
+  .gp-editor-intro {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+  }
+  .gp-groups-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .gp-group-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.65rem 0.75rem;
+  }
+  .gp-group-title {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--accent);
+    margin-bottom: 0.4rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .gp-player-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.25rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .gp-player-row:hover {
+    background: rgba(59,130,246,0.07);
+  }
+  .gp-player-row input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .gp-player-name {
+    flex: 1;
+    font-size: 0.88rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .gp-player-stats {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .gp-external-section {
+    border-top: 1px solid var(--border);
+    padding-top: 0.85rem;
+    margin-top: 0.25rem;
+    margin-bottom: 1rem;
+  }
+  .gp-external-section h3 {
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+  }
+  .gp-external-hint {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    margin-bottom: 0.5rem;
+  }
+  .gp-external-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0;
+    flex-wrap: wrap;
+  }
+  .gp-external-row .gp-player-name {
+    min-width: 120px;
+  }
+  .gp-external-row label {
+    display: inline;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin: 0;
+    white-space: nowrap;
+  }
+  .gp-external-row input[type="number"] {
+    width: 70px;
+    min-height: auto;
+  }
+  .gp-add-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .gp-add-row input[type="text"] {
+    flex: 1;
+    min-width: 160px;
+  }
+  .gp-add-row input[type="number"] {
+    width: 70px;
+    min-height: auto;
+  }
+  .gp-format-row {
+    margin-bottom: 0.85rem;
+  }
+  .gp-format-row .form-group {
+    max-width: 280px;
+    margin-bottom: 0;
+  }
+
   /* ── Mobile: touch targets, layout & responsive ── */
   @media (max-width: 600px) {
     body { padding: 0.5rem; }
@@ -553,9 +719,10 @@
     h2 { font-size: 1.05rem; }
 
     /* Header */
-    .page-header { gap: 0.5rem; }
-    .page-header-left { gap: 0.45rem; }
-    .page-header-left h1 { font-size: 1.05rem; }
+    .page-header { gap: 0.3rem; }
+    .page-header-row { gap: 0.4rem; }
+    .page-header-left { gap: 0.4rem; }
+    .page-header-title-bar .page-title-text { min-width: 100%; text-align: center; }
 
     /* Tabs: scroll horizontally instead of wrapping awkwardly */
     .tabs {
@@ -617,17 +784,33 @@
 
     /* Active tournament indicator: compact */
     .active-tournament-indicator { font-size: 0.8rem; padding: 0.35rem 0.5rem; }
+
+    /* GP Playoff editor */
+    .gp-groups-container { grid-template-columns: 1fr; }
+    .gp-player-row { padding: 0.45rem 0.25rem; }
+    .gp-player-row input[type="checkbox"] { width: 22px; height: 22px; }
+    .gp-external-row { gap: 0.4rem; }
+    .gp-add-row { flex-direction: column; align-items: stretch; }
+    .gp-add-row input[type="text"] { min-width: 100%; }
+    .gp-add-row input[type="number"] { width: 100%; }
+    .gp-format-row .form-group { max-width: 100%; }
   }
 </style>
 </head>
 <body>
 <div class="container">
   <div class="page-header">
-    <div class="page-header-left">
-      <a href="/tv" class="btn btn-sm" style="display:inline-block;text-decoration:none;white-space:nowrap;padding:0.4rem 0.8rem;font-weight:600;background:var(--accent-hover);color:#fff;flex-shrink:0" data-i18n="txt_txt_tv_view">📺 TV View</a>
-      <h1 data-i18n="txt_txt_padel_tournament_manager">Padel Tournament Manager</h1>
+    <div class="page-header-title-bar">
+      <button type="button" id="lang-toggle-btn" class="compact-icon-btn" onclick="toggleLanguage()" title="Language">🇬🇧</button>
+      <span class="page-title-text">Padel Amistoso</span>
+      <button type="button" id="theme-toggle-btn" class="compact-icon-btn" onclick="toggleTheme()" title="Toggle light / dark mode">☀️</button>
     </div>
-    <div id="auth-status" class="page-header-right"></div>
+    <div class="page-header-row">
+      <div class="page-header-left">
+        <a href="/tv" class="btn-tv-live" title="TV view"><span class="tv-live-dot"></span>📺 <span data-i18n="txt_txt_tv_view">TV view</span></a>
+      </div>
+      <div id="auth-status" class="page-header-right"></div>
+    </div>
   </div>
 
   <!-- Demo Site Banner (shown when DEMO_MODE=true on backend) -->
@@ -642,8 +825,7 @@
     <button type="button" class="tab-btn" data-tab="tools" data-i18n="txt_txt_tools">Tools</button>
     <div id="tournament-chips" class="tournament-chips"></div>
     <div class="compact-controls">
-      <button type="button" id="lang-toggle-btn" class="compact-icon-btn" onclick="toggleLanguage()" title="Language">🇬🇧</button>
-      <button type="button" id="theme-toggle-btn" class="compact-icon-btn" onclick="toggleTheme()" title="Toggle light / dark mode">☀️</button>
+      <button type="button" id="admin-refresh-btn" class="compact-icon-btn" onclick="_refreshCurrentView()" title="Refresh" style="display:none">↻</button>
     </div>
   </div>
   <div class="active-tournament-indicator" id="active-tournament-indicator">
@@ -692,19 +874,6 @@ Grace & Hank</textarea>
             <input id="gp-num-groups" type="number" value="2" min="1">
           </div>
         </div>
-        <div class="inline-group">
-          <div class="form-group">
-            <label data-i18n="txt_txt_top_players_per_group_advancing">Top players per group advancing</label>
-            <input id="gp-top" type="number" value="2" min="1">
-          </div>
-          <div class="form-group">
-            <label data-i18n="txt_txt_play_off_format">Play‑off format</label>
-            <select id="gp-double-elim">
-              <option value="false" data-i18n="txt_txt_single_elimination">Single Elimination</option>
-              <option value="true" data-i18n="txt_txt_double_elimination">Double Elimination</option>
-            </select>
-          </div>
-        </div>
         <button type="button" class="btn btn-primary" onclick="createGP()" data-i18n="txt_txt_create_tournament">Create Tournament</button>
         <div id="gp-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
@@ -716,7 +885,7 @@ Grace & Hank</textarea>
           <input id="mex-name" value="Mexicano Night">
         </div>
         <div class="form-group">
-          <label class="switch-label"><input type="checkbox" id="mex-team-mode" onchange="toggleMexTeamMode()"><span class="switch-track"></span><span><strong data-i18n="txt_txt_team_mode">Team Mode</strong> — each entry is a fixed pair (e.g. "Alice & Bob")</span></label>
+          <label class="switch-label"><input type="checkbox" id="mex-team-mode" onchange="toggleMexTeamMode()"><span class="switch-track"></span><span><strong data-i18n="txt_txt_team_mode">Team Mode</strong> — <span data-i18n="txt_txt_team_mode_description">each entry is a fixed pair (e.g. "Alice & Bob")</span></span></label>
         </div>
         <div class="form-group">
           <label id="mex-players-label" data-i18n="txt_txt_player_names_one_per_line">Player Names (one per line)</label>
@@ -748,11 +917,6 @@ Hank</textarea>
             </div>
             <input id="mex-rounds" type="number" value="8" min="1" style="width:80px;display:none" aria-label="Number of rounds">
           </div>
-        </div>
-        <div class="form-group">
-          <label data-i18n="txt_txt_randomness_0_1">Randomness (0-1)</label>
-          <small data-i18n="txt_txt_randomness_help">How much to shuffle pairings away from pure leaderboard order. 0 = strictly rank-based matchups, 1 = fully random. E.g. 0.15 means mostly skill-based with a small shuffle so the same players don't always face each other.</small>
-          <input id="mex-rand" type="number" value="0.15" min="0" max="1" step="0.05">
         </div>
         <details class="advanced-section">
           <summary data-i18n="txt_txt_advanced_settings">Advanced Settings</summary>
@@ -862,6 +1026,11 @@ Hank</textarea>
               <input id="schema-title-scale" type="range" min="0.3" max="3.0" step="0.1" value="1.0"
                      oninput="document.getElementById('schema-title-scale-val').textContent=this.value">
             </div>
+            <div class="form-group">
+              <label><span data-i18n="txt_txt_output_scale">Output scale</span> <span id="schema-output-scale-val" style="color:var(--text-muted)">0.7</span></label>
+              <input id="schema-output-scale" type="range" min="0.5" max="3.0" step="0.1" value="0.7"
+                     oninput="document.getElementById('schema-output-scale-val').textContent=this.value">
+            </div>
           </div>
         </div>
       </details>
@@ -891,7 +1060,7 @@ Hank</textarea>
   </form>
   <p style="color:var(--text-muted);font-size:0.75rem;margin-top:1rem;text-align:center" data-i18n="txt_txt_default_admin_admin">Default: admin / admin</p>
   <p style="margin-top:0.75rem;text-align:center;font-size:0.85rem">
-    <a href="/tv" style="color:var(--accent);text-decoration:none">📺 <span data-i18n="txt_txt_tv_view">TV View</span></a>
+    <a href="/tv" class="btn-tv-live" title="TV view"><span class="tv-live-dot"></span>📺 <span data-i18n="txt_txt_tv_view">TV view</span></a>
   </p>
 </div>
 
@@ -924,6 +1093,8 @@ function setActiveTab(tabName) {
   const panel = document.getElementById('panel-' + tabName);
   if (!panel) return;
   panel.classList.add('active');
+  const refreshBtn = document.getElementById('admin-refresh-btn');
+  if (refreshBtn) refreshBtn.style.display = (tabName === 'view' && currentTid) ? '' : 'none';
   if (tabName === 'view') {
     // Highlight the chip for the currently active tournament
     document.querySelectorAll('.tournament-chip').forEach(b => b.classList.toggle('active', b.dataset.tid === currentTid));
@@ -1017,10 +1188,11 @@ async function _fetchSchema(prefix, apiUrl, defaultFilename) {
   const lineWidth = document.getElementById(prefix + '-lw').value;
   const arrowScale = document.getElementById(prefix + '-arrow').value;
   const titleFontScale = document.getElementById(prefix + '-title-scale')?.value || '1.0';
+  const outputScale = document.getElementById(prefix + '-output-scale')?.value || '0.7';
   const title = document.getElementById(prefix + '-title').value.trim();
 
   let url = apiUrl + (apiUrl.includes('?') ? '&' : '?')
-    + `fmt=${fmt}&box_scale=${boxScale}&line_width=${lineWidth}&arrow_scale=${arrowScale}&title_font_scale=${titleFontScale}`;
+    + `fmt=${fmt}&box_scale=${boxScale}&line_width=${lineWidth}&arrow_scale=${arrowScale}&title_font_scale=${titleFontScale}&output_scale=${outputScale}`;
   if (title) url += `&title=${encodeURIComponent(title)}`;
 
   try {
@@ -1088,6 +1260,8 @@ function _schemaCardHtml(prefix, placeholder, generateFn) {
   h += `<input id="${prefix}-arrow" type="range" min="0.3" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-arrow-val').textContent=this.value">`;
   h += `<label>${t('txt_txt_header_size')} <span id="${prefix}-title-scale-val" style="color:var(--text-muted)">1.0</span></label>`;
   h += `<input id="${prefix}-title-scale" type="range" min="0.3" max="3.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-title-scale-val').textContent=this.value">`;
+  h += `<label>${t('txt_txt_output_scale')} <span id="${prefix}-output-scale-val" style="color:var(--text-muted)">0.7</span></label>`;
+  h += `<input id="${prefix}-output-scale" type="range" min="0.5" max="3.0" step="0.1" value="0.7" oninput="document.getElementById('${prefix}-output-scale-val').textContent=this.value">`;
   h += `</div>`;
   h += `</details>`;
   h += `<button type="button" class="btn btn-primary" onclick="${generateFn}()">${t('txt_txt_generate_playoffs_schema')}</button>`;
@@ -1126,7 +1300,7 @@ async function loadTournaments() {
 async function deleteTournament(id) {
   if (!confirm(t('txt_txt_delete_this_tournament'))) return;
   await api('/api/tournaments/' + id, { method: 'DELETE' });
-  _openTournaments = _openTournaments.filter(t => t.id !== id);
+  _openTournaments = _openTournaments.filter(tournament => tournament.id !== id);
   if (id === currentTid) {
     currentTid = null;
     currentType = null;
@@ -1149,10 +1323,19 @@ let _gpScoreMode = { 'gp-group': 'points', 'gp-playoff': 'points', 'mex-playoff'
 let _mexPlayers = [];  // [{id, name}] for manual editor
 let _mexBreakdowns = {};  // {match_id: {player_id: {raw, strength_mult, loss_disc, win_bonus, final}}}
 let _mexPlayerMap = {};  // {player_id: player_name}
+let _mexTeamMode = false;  // true when each participant is a pre-formed pair
+
+function _refreshCurrentView() {
+  if (!currentTid) return;
+  if (currentType === 'group_playoff') renderGP();
+  else renderMex();
+}
 
 function updateActiveTournamentUI() {
   const indicator = document.getElementById('active-tournament-indicator');
   const hasActive = Boolean(currentTid);
+  const refreshBtn = document.getElementById('admin-refresh-btn');
+  if (refreshBtn) refreshBtn.style.display = hasActive ? '' : 'none';
   if (hasActive) {
     const shownName = currentTournamentName || `#${String(currentTid).slice(0, 8)}`;
     indicator.innerHTML = `${t('txt_txt_active_tournament')} <strong>${esc(shownName)}</strong>`;
@@ -1175,14 +1358,14 @@ function _renderTournamentChips() {
     btn.addEventListener('click', e => {
       const closeTid = e.target.closest('[data-close-tid]')?.dataset.closeTid;
       if (closeTid) { _unpinTournament(closeTid); return; }
-      const t = _openTournaments.find(t => t.id === btn.dataset.tid);
-      if (t) openTournament(t.id, t.type, t.name);
+      const tournament = _openTournaments.find(entry => entry.id === btn.dataset.tid);
+      if (tournament) openTournament(tournament.id, tournament.type, tournament.name);
     });
   });
 }
 
 function _unpinTournament(id) {
-  _openTournaments = _openTournaments.filter(t => t.id !== id);
+  _openTournaments = _openTournaments.filter(tournament => tournament.id !== id);
   if (id === currentTid) {
     if (_openTournaments.length > 0) {
       const next = _openTournaments[_openTournaments.length - 1];
@@ -1237,8 +1420,6 @@ async function createGP() {
       team_mode: document.getElementById('gp-team-mode').checked,
       court_names: document.getElementById('gp-courts').value.split(',').map(s=>s.trim()).filter(Boolean),
       num_groups: +document.getElementById('gp-num-groups').value,
-      top_per_group: +document.getElementById('gp-top').value,
-      double_elimination: document.getElementById('gp-double-elim').value === 'true',
     };
     const res = await api('/api/tournaments/group-playoff', { method: 'POST', body: JSON.stringify(body) });
     msg.className = 'alert alert-success'; msg.textContent = t('txt_txt_created_id_id', { id: res.id });
@@ -1271,7 +1452,7 @@ async function createMex() {
       court_names: document.getElementById('mex-courts').value.split(',').map(s=>s.trim()).filter(Boolean),
       total_points_per_match: +document.getElementById('mex-pts').value,
       num_rounds: rolling ? 0 : +document.getElementById('mex-rounds').value,
-      randomness: +document.getElementById('mex-rand').value,
+      team_mode: document.getElementById('mex-team-mode').checked,
       skill_gap: skillGapRaw === '' ? null : +skillGapRaw,
       win_bonus: +document.getElementById('mex-win-bonus').value,
       strength_weight: +document.getElementById('mex-strength-weight').value,
@@ -1297,7 +1478,7 @@ async function renderGP() {
       api(`/api/tournaments/${currentTid}/tv-settings`).catch(() => ({})),
     ]);
 
-    let html = `<div class="refresh-row"><button type="button" class="btn btn-primary btn-sm" onclick="renderGP()">↻ ${t('txt_txt_refresh')}</button></div>`;
+    let html = '';
     html += _renderTvControls(tvSettings);
     html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${status.phase}</span></div>`;
 
@@ -1363,11 +1544,18 @@ async function renderGP() {
       html += `</details>`;
     }
 
-    // Start playoffs button
+    // Next round / Start playoffs controls
     if (status.phase === 'groups') {
       const pending = Object.values(groups.matches).flat().filter(m => m.status !== 'completed');
       if (pending.length === 0) {
-        html += `<button type="button" class="btn btn-success" onclick="startPlayoffs()">${t('txt_txt_start_playoffs')} →</button>`;
+        html += `<div id="gp-playoffs-section">`;
+        html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">`;
+        if (groups.has_more_rounds) {
+          html += `<button type="button" class="btn btn-primary" onclick="nextGpGroupRound()">⚡ ${t('txt_txt_generate_next_group_round')}</button>`;
+        }
+        html += `<button type="button" class="btn btn-success" onclick="proposeGpPlayoffs()">🏆 ${t('txt_txt_start_playoffs')} →</button>`;
+        html += `</div>`;
+        html += `</div>`;
       } else {
         html += `<div class="alert alert-info">${t('txt_txt_n_match_remaining', { n: pending.length })}</div>`;
       }
@@ -1613,11 +1801,152 @@ async function submitTennisScore(matchId, ctx) {
   } catch (e) { alert(e.message); }
 }
 
-async function startPlayoffs() {
+// ─── GP Playoff Configuration ─────────────────────────────
+let _gpRecommended = [];
+let _gpAdvancingIds = new Set();
+let _gpExternalParticipants = [];
+
+async function nextGpGroupRound() {
   try {
-    await api(`/api/tournaments/${currentTid}/gp/start-playoffs`, { method: 'POST' });
+    await api(`/api/tournaments/${currentTid}/gp/next-group-round`, { method: 'POST' });
     renderGP();
   } catch (e) { alert(e.message); }
+}
+
+async function proposeGpPlayoffs() {
+  try {
+    const data = await api(`/api/tournaments/${currentTid}/gp/recommend-playoffs`);
+    _gpRecommended = data.recommended_participants || [];
+    _gpAdvancingIds = new Set(_gpRecommended.map(r => r.player_id));
+    _gpExternalParticipants = [];
+    const section = document.getElementById('gp-playoffs-section');
+    if (section) section.innerHTML = _renderGpPlayoffEditor();
+  } catch (e) { alert(e.message); }
+}
+
+function _renderGpPlayoffEditor() {
+  let html = `<div class="card">`;
+  html += `<h2>${t('txt_txt_configure_gp_playoffs')}</h2>`;
+  html += `<p class="gp-editor-intro">${t('txt_txt_select_advancing_players')}</p>`;
+
+  // Participant checkboxes grouped by group — grid layout
+  const byGroup = {};
+  for (const r of _gpRecommended) {
+    if (!byGroup[r.group]) byGroup[r.group] = [];
+    byGroup[r.group].push(r);
+  }
+  html += `<div class="gp-groups-container">`;
+  for (const [gName, rows] of Object.entries(byGroup)) {
+    html += `<div class="gp-group-box">`;
+    html += `<div class="gp-group-title">${esc(gName)}</div>`;
+    for (const r of rows) {
+      const checked = _gpAdvancingIds.has(r.player_id) ? ' checked' : '';
+      html += `<label class="gp-player-row">`;
+      html += `<input type="checkbox" value="${r.player_id}" class="gp-advancing-cb"${checked} onchange="_gpToggleAdvancing(this)">`;
+      html += `<span class="gp-player-name">${esc(r.player)}</span>`;
+      html += `<span class="gp-player-stats">${r.match_points} ${t('txt_txt_pts_abbrev')}, diff ${r.point_diff >= 0 ? '+' : ''}${r.point_diff}</span>`;
+      html += `</label>`;
+    }
+    html += `</div>`;
+  }
+  html += `</div>`;
+
+  // External participants section
+  html += `<div class="gp-external-section">`;
+  html += `<h3>${t('txt_txt_external_participants')}</h3>`;
+  html += `<p class="gp-external-hint">${t('txt_txt_external_participants_hint')}</p>`;
+  html += `<div id="gp-external-list">`;
+  for (let i = 0; i < _gpExternalParticipants.length; i++) {
+    const ep = _gpExternalParticipants[i];
+    html += `<div class="gp-external-row">`;
+    html += `<span class="gp-player-name">${esc(ep.name)}</span>`;
+    html += `<label>${t('txt_txt_score')}:</label>`;
+    html += `<input type="number" value="${ep.score}" onchange="_gpUpdateExternalScore(${i}, this.value)">`;
+    html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_gpRemoveExternal(${i})">✕ ${t('txt_txt_remove')}</button>`;
+    html += `</div>`;
+  }
+  html += `</div>`;
+  html += `<div class="gp-add-row">`;
+  html += `<input type="text" id="gp-external-name" placeholder="${t('txt_txt_add_external_participant')}" onkeydown="if(event.key==='Enter')_gpAddExternal()">`;
+  html += `<input type="number" id="gp-external-score" placeholder="${t('txt_txt_score')}" value="0">`;
+  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_gpAddExternal()">+ ${t('txt_txt_add_external_participant')}</button>`;
+  html += `</div>`;
+  html += `</div>`;
+
+  // Format selector
+  html += `<div class="gp-format-row">`;
+  html += `<div class="form-group"><label>${t('txt_txt_format')}</label><select id="gp-playoff-format"><option value="single">${t('txt_txt_single_elimination')}</option><option value="double">${t('txt_txt_double_elimination')}</option></select></div>`;
+  html += `</div>`;
+
+  // Action buttons
+  html += `<div class="proposal-actions">`;
+  html += `<button type="button" class="btn btn-success" onclick="_confirmGpPlayoffs()">✓ ${t('txt_txt_start_playoffs')}</button>`;
+  html += `<button type="button" class="btn" style="background:var(--border);color:var(--text)" onclick="renderGP()">✕ ${t('txt_txt_cancel')}</button>`;
+  html += `</div>`;
+  html += `</div>`;
+  return html;
+}
+
+function _gpToggleAdvancing(cb) {
+  if (cb.checked) _gpAdvancingIds.add(cb.value);
+  else _gpAdvancingIds.delete(cb.value);
+}
+
+function _gpAddExternal() {
+  const input = document.getElementById('gp-external-name');
+  const scoreInput = document.getElementById('gp-external-score');
+  const name = (input?.value || '').trim();
+  if (!name) return;
+  const score = parseInt(scoreInput?.value || '0', 10) || 0;
+  _gpExternalParticipants.push({ name, score });
+  input.value = '';
+  if (scoreInput) scoreInput.value = '0';
+  const section = document.getElementById('gp-playoffs-section');
+  if (section) section.innerHTML = _renderGpPlayoffEditor();
+}
+
+function _gpRemoveExternal(idx) {
+  _gpExternalParticipants.splice(idx, 1);
+  const section = document.getElementById('gp-playoffs-section');
+  if (section) section.innerHTML = _renderGpPlayoffEditor();
+}
+
+function _gpUpdateExternalScore(idx, value) {
+  if (idx >= 0 && idx < _gpExternalParticipants.length) {
+    _gpExternalParticipants[idx].score = parseInt(value, 10) || 0;
+  }
+}
+
+async function _confirmGpPlayoffs() {
+  const ids = [..._gpAdvancingIds];
+  const fmt = document.getElementById('gp-playoff-format')?.value || 'single';
+  const extra = _gpExternalParticipants.length > 0
+    ? _gpExternalParticipants.map(ep => ({ name: ep.name, score: ep.score }))
+    : null;
+  const totalParticipants = ids.length + (extra ? extra.length : 0);
+  if (totalParticipants < 2) {
+    alert(t('txt_txt_team_n_select_both_players', { n: 1 }));
+    return;
+  }
+  try {
+    await api(`/api/tournaments/${currentTid}/gp/start-playoffs`, {
+      method: 'POST',
+      body: JSON.stringify({
+        advancing_player_ids: ids.length > 0 ? ids : null,
+        extra_participants: extra,
+        double_elimination: fmt === 'double',
+      }),
+    });
+    _gpRecommended = [];
+    _gpAdvancingIds = new Set();
+    _gpExternalParticipants = [];
+    renderGP();
+  } catch (e) { alert(e.message); }
+}
+
+async function startPlayoffs() {
+  // Direct start (backwards compat) — delegates to confirm flow
+  await _confirmGpPlayoffs();
 }
 
 // ─── Render Mexicano ──────────────────────────────────────
@@ -1632,11 +1961,12 @@ async function renderMex() {
 
     _totalPts = status.total_points_per_match || 0;
     _mexPlayers = status.players || [];
+    _mexTeamMode = status.team_mode || false;
     _mexBreakdowns = matches.breakdowns || {};
     _mexPlayerMap = {};
     for (const p of _mexPlayers) _mexPlayerMap[p.id] = p.name;
 
-    let html = `<div class="refresh-row"><button type="button" class="btn btn-primary btn-sm" onclick="renderMex()">↻ ${t('txt_txt_refresh')}</button></div>`;
+    let html = '';
     html += _renderTvControls(tvSettings);
 
     // Phase-aware header
@@ -2352,23 +2682,48 @@ let _playoffTeams = [];
 let _mexPlayoffTeamCount = 4;
 let _playoffScoreMap = {};  // player_id → total_points
 let _savedPlayoffTeams = {};  // teamIndex → { a: playerId, b: playerId }
+let _mexExternalParticipants = [];  // {name, score, id}[] external participants for mex playoffs
+let _mexExtCounter = 0;  // counter for generating unique temp IDs
 
 async function proposeMexPlayoffs(teamCount = null) {
   try {
-    const maxTeams = Math.max(2, Math.floor((_mexPlayers || []).length / 2));
+    const regularCount = (_mexPlayers || []).length;
+    const extCount = _mexExternalParticipants.length;
+    const totalPool = regularCount + extCount;
+    const maxTeams = _mexTeamMode
+      ? Math.max(2, totalPool)
+      : Math.max(2, Math.floor(totalPool / 2));
     const requestedTeams = Math.max(2, Math.min(maxTeams, Number(teamCount || _mexPlayoffTeamCount || 4)));
     _mexPlayoffTeamCount = requestedTeams;
-    const participantsToRecommend = requestedTeams * 2;
-    const data = await api(`/api/tournaments/${currentTid}/mex/recommend-playoffs?n_teams=${participantsToRecommend}`);
+    // Cap API fetch to available regular players
+    const regularMaxTeams = _mexTeamMode ? regularCount : Math.floor(regularCount / 2);
+    const apiTeamsToFetch = Math.max(0, Math.min(requestedTeams, regularMaxTeams));
+    const participantsToRecommend = _mexTeamMode ? apiTeamsToFetch : apiTeamsToFetch * 2;
+    if (participantsToRecommend > 0) {
+      const data = await api(`/api/tournaments/${currentTid}/mex/recommend-playoffs?n_teams=${participantsToRecommend}`);
+      _playoffTeams = data.recommended_teams.map(t => ({ id: t.player_id, name: t.player, score: t.total_points ?? 0, estimatedScore: t.estimated_points ?? t.total_points ?? 0, rankedByAvg: t.ranked_by_avg, avgScore: t.avg_points ?? 0 }));
+    } else {
+      _playoffTeams = [];
+    }
     _savedPlayoffTeams = {};  // reset saved state when editor re-initialises
-    _playoffTeams = data.recommended_teams.map(t => ({ id: t.player_id, name: t.player, score: t.total_points ?? 0, estimatedScore: t.estimated_points ?? t.total_points ?? 0, rankedByAvg: t.ranked_by_avg, avgScore: t.avg_points ?? 0 }));
     // Use estimated score for display/sorting when match counts differ
     _playoffScoreMap = Object.fromEntries(_playoffTeams.map(p => [p.id, p.rankedByAvg ? p.estimatedScore : p.score]));
+    // Inject external participants into the available pool
+    _syncExternalsToPlayoffTeams();
     const section = document.getElementById('mex-playoffs-section') || document.getElementById('mex-next-section');
     if (section) {
       section.innerHTML = _renderPlayoffEditor();
     }
   } catch (e) { alert(e.message); }
+}
+
+function _syncExternalsToPlayoffTeams() {
+  for (const ext of _mexExternalParticipants) {
+    if (!_playoffTeams.some(p => p.id === ext.id)) {
+      _playoffTeams.push({ id: ext.id, name: ext.name, score: ext.score, estimatedScore: ext.score, rankedByAvg: false, avgScore: 0, isExternal: true });
+    }
+    _playoffScoreMap[ext.id] = ext.score;
+  }
 }
 
 async function _changeMexPlayoffTeamCount(value) {
@@ -2394,9 +2749,14 @@ function _renderPlayoffEditor() {
   html += `<h2>${t('txt_txt_configure_mexicano_playoffs')}</h2>`;
   const _useEstNote = _playoffTeams.length > 0 && _playoffTeams[0].rankedByAvg;
   const estNote = _useEstNote ? `<span style="color:var(--text-muted);font-size:0.8rem">${t('txt_txt_estimated_points_note')}</span>` : '';
-  html += `<p style="color:var(--text-muted);font-size:0.85rem">${t('txt_txt_team_row_instructions')} ${estNote}</p>`;
+  html += `<p style="color:var(--text-muted);font-size:0.85rem">${_mexTeamMode ? t('txt_txt_participant_row_instructions') : t('txt_txt_team_row_instructions')} ${estNote}</p>`;
 
-  const maxTeams = Math.max(2, Math.floor((_mexPlayers || []).length / 2));
+  const regularCount = (_mexPlayers || []).length;
+  const extCount = _mexExternalParticipants.length;
+  const totalPool = regularCount + extCount;
+  const maxTeams = _mexTeamMode
+    ? Math.max(2, totalPool)
+    : Math.max(2, Math.floor(totalPool / 2));
   html += `<div class="inline-group" style="margin-bottom:0.75rem">`;
   html += `<div class="form-group"><label>${t('txt_txt_teams_participating')}</label><select id="playoff-team-count" onchange="_changeMexPlayoffTeamCount(this.value)">`;
   for (let teams = 2; teams <= maxTeams; teams++) {
@@ -2406,6 +2766,29 @@ function _renderPlayoffEditor() {
   html += `</select></div>`;
   html += `</div>`;
 
+  // External participants — add section (between team count and team rows)
+  html += `<div style="margin-bottom:0.75rem;border:1px solid var(--border);border-radius:6px;padding:0.75rem">`;
+  html += `<h3 style="font-size:0.95rem;margin-top:0">${t('txt_txt_external_participants')}</h3>`;
+  if (_mexExternalParticipants.length > 0) {
+    html += `<div id="mex-external-list" style="margin-bottom:0.5rem">`;
+    for (let i = 0; i < _mexExternalParticipants.length; i++) {
+      const ep = _mexExternalParticipants[i];
+      html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem">`;
+      html += `<span style="min-width:140px">★ ${esc(ep.name)}</span>`;
+      html += `<label style="font-size:0.82rem;color:var(--text-muted)">${t('txt_txt_score')}:</label>`;
+      html += `<input type="number" value="${ep.score}" style="width:70px" onchange="_mexUpdateExternalScore(${i}, this.value)">`;
+      html += `<button type="button" class="btn btn-sm" style="padding:0.15rem 0.5rem;background:var(--border);color:var(--text)" onclick="_mexRemoveExternal(${i})">✕ ${t('txt_txt_remove')}</button>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+  html += `<div style="display:flex;align-items:center;gap:0.5rem">`;
+  html += `<input type="text" id="mex-external-name" placeholder="${_mexTeamMode ? t('txt_txt_add_external_team') : t('txt_txt_add_external_player')}" style="min-width:200px" onkeydown="if(event.key==='Enter')_mexAddExternal()">`;
+  html += `<input type="number" id="mex-external-score" placeholder="${t('txt_txt_score')}" value="0" style="width:70px">`;
+  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_mexAddExternal()">+ ${t('txt_txt_add')}</button>`;
+  html += `</div>`;
+  html += `</div>`;
+
   const useEst = _playoffTeams.length > 0 && _playoffTeams[0].rankedByAvg;
 
   const participantOptions = (selectedId) => {
@@ -2413,36 +2796,55 @@ function _renderPlayoffEditor() {
     for (let i = 0; i < _playoffTeams.length; i++) {
       const p = _playoffTeams[i];
       const selected = p.id === selectedId ? ' selected' : '';
-      const pts = useEst ? `${p.estimatedScore.toFixed(1)}*` : `${p.score}`;
-      options += `<option value="${p.id}"${selected}>#${i + 1} ${esc(p.name)} (${pts} pts)</option>`;
+      const pts = p.isExternal ? `${p.score}` : (useEst ? `${p.estimatedScore.toFixed(1)}*` : `${p.score}`);
+      const prefix = p.isExternal ? '★' : `#${i + 1}`;
+      options += `<option value="${p.id}"${selected}>${prefix} ${esc(p.name)} (${pts} pts)</option>`;
     }
     return options;
   };
 
+  // Regular mode only: combined score for a 2-player team
   const teamScore = (aid, bid) => {
     if (!aid || !bid) return '—';
     const total = (_playoffScoreMap[aid] || 0) + (_playoffScoreMap[bid] || 0);
     return useEst ? `${total.toFixed(1)}* pts` : `${total} pts`;
   };
 
-  const teamCount = Math.floor(_playoffTeams.length / 2);
+  // Team mode: score for a single participant
+  const singleScore = (aid) => {
+    if (!aid) return '—';
+    const val = _playoffScoreMap[aid] || 0;
+    return useEst ? `${val.toFixed(1)}* pts` : `${val} pts`;
+  };
+
+  const teamCount = _mexPlayoffTeamCount;
   html += `<div class="playoff-team-list">`;
   for (let i = 0; i < teamCount; i++) {
-    const leftDefault = _playoffTeams[i * 2]?.id || '';
-    const rightDefault = _playoffTeams[i * 2 + 1]?.id || '';
-    const initScore = teamScore(leftDefault, rightDefault);
     html += `<div class="playoff-team-item" style="align-items:center; gap:0.6rem; flex-wrap:wrap">`;
     html += `<span class="seed" style="min-width:58px">${t('txt_txt_team_n', { n: i + 1 })}</span>`;
-    html += `<select id="playoff-team-${i}-a" class="manual-sel" style="min-width:220px" onchange="_updateTeamScore(${i})">${participantOptions(leftDefault)}</select>`;
-    html += `<span style="color:var(--text-muted)">+</span>`;
-    html += `<select id="playoff-team-${i}-b" class="manual-sel" style="min-width:220px" onchange="_updateTeamScore(${i})">${participantOptions(rightDefault)}</select>`;
-    html += `<span id="team-score-${i}" class="tag" style="min-width:70px;text-align:center;font-variant-numeric:tabular-nums">${initScore}</span>`;
+    if (_mexTeamMode) {
+      // Team mode: one participant = one playoff slot
+      const defaultId = _playoffTeams[i]?.id || '';
+      const initScore = singleScore(defaultId);
+      html += `<select id="playoff-team-${i}-a" class="manual-sel" style="min-width:220px" onchange="_updateTeamScore(${i})">${participantOptions(defaultId)}</select>`;
+      html += `<span id="team-score-${i}" class="tag" style="min-width:70px;text-align:center;font-variant-numeric:tabular-nums">${initScore}</span>`;
+    } else {
+      // Regular mode: two players form a team
+      const leftDefault = _playoffTeams[i * 2]?.id || '';
+      const rightDefault = _playoffTeams[i * 2 + 1]?.id || '';
+      const initScore = teamScore(leftDefault, rightDefault);
+      html += `<select id="playoff-team-${i}-a" class="manual-sel" style="min-width:220px" onchange="_updateTeamScore(${i})">${participantOptions(leftDefault)}</select>`;
+      html += `<span style="color:var(--text-muted)">+</span>`;
+      html += `<select id="playoff-team-${i}-b" class="manual-sel" style="min-width:220px" onchange="_updateTeamScore(${i})">${participantOptions(rightDefault)}</select>`;
+      html += `<span id="team-score-${i}" class="tag" style="min-width:70px;text-align:center;font-variant-numeric:tabular-nums">${initScore}</span>`;
+    }
     html += `<button type="button" id="playoff-save-${i}" class="btn btn-success" style="padding:0.25rem 0.65rem;font-size:0.82rem" onclick="_savePlayoffTeam(${i})">✓ ${t('txt_txt_save')}</button>`;
     html += `<button type="button" id="playoff-edit-${i}" class="btn" style="padding:0.25rem 0.65rem;font-size:0.82rem;display:none;background:var(--border);color:var(--text)" onclick="_editPlayoffTeam(${i})">✎ ${t('txt_txt_edit')}</button>`;
     html += `<span id="playoff-saved-badge-${i}" style="display:none;color:var(--success);font-size:0.82rem;font-weight:600">✓ ${t('txt_txt_saved')}</span>`;
     html += `</div>`;
   }
   html += `</div>`;
+
   html += `<div class="inline-group" style="margin-bottom:0.75rem">`;
   html += `<div class="form-group"><label>${t('txt_txt_format')}</label><select id="playoff-format"><option value="single">${t('txt_txt_single_elimination')}</option><option value="double">${t('txt_txt_double_elimination')}</option></select></div>`;
   html += `</div>`;
@@ -2455,52 +2857,133 @@ function _renderPlayoffEditor() {
 }
 
 async function _startMexPlayoffs() {
-  const teamIds = [];
+  const allIds = [];  // all selected IDs (real + ext_ placeholders)
   const used = new Set();
-  const teamCount = Math.floor(_playoffTeams.length / 2);
+  const teamCount = _mexPlayoffTeamCount;
   for (let i = 0; i < teamCount; i++) {
     const left = document.getElementById(`playoff-team-${i}-a`)?.value || '';
-    const right = document.getElementById(`playoff-team-${i}-b`)?.value || '';
 
-    if (!left || !right) {
-      alert(t('txt_txt_team_n_select_both_players', { n: i + 1 }));
-      return;
+    if (_mexTeamMode) {
+      // Team mode: one participant per playoff slot
+      if (!left) {
+        alert(t('txt_txt_team_n_select_both_players', { n: i + 1 }));
+        return;
+      }
+      if (used.has(left)) {
+        alert(t('txt_txt_a_player_is_assigned_to_multiple_teams_please_fix_duplicates'));
+        return;
+      }
+      used.add(left);
+      allIds.push(left);
+    } else {
+      // Regular mode: two players form a team
+      const right = document.getElementById(`playoff-team-${i}-b`)?.value || '';
+      if (!left || !right) {
+        alert(t('txt_txt_team_n_select_both_players', { n: i + 1 }));
+        return;
+      }
+      if (left === right) {
+        alert(t('txt_txt_team_n_players_must_be_different', { n: i + 1 }));
+        return;
+      }
+      if (used.has(left) || used.has(right)) {
+        alert(t('txt_txt_a_player_is_assigned_to_multiple_teams_please_fix_duplicates'));
+        return;
+      }
+      used.add(left);
+      used.add(right);
+      allIds.push(left, right);
     }
-    if (left === right) {
-      alert(t('txt_txt_team_n_players_must_be_different', { n: i + 1 }));
-      return;
+  }
+  // Separate real player IDs from ext_ placeholder IDs
+  const teamIds = [];
+  const extParticipants = [];
+  for (const pid of allIds) {
+    if (pid.startsWith('ext_')) {
+      const ext = _mexExternalParticipants.find(e => e.id === pid);
+      if (ext) extParticipants.push({ name: ext.name, score: ext.score, placeholder_id: pid });
+      teamIds.push(pid);  // keep in position so backend can replace
+    } else {
+      teamIds.push(pid);
     }
-    if (used.has(left) || used.has(right)) {
-      alert(t('txt_txt_a_player_is_assigned_to_multiple_teams_please_fix_duplicates'));
-      return;
-    }
-    used.add(left);
-    used.add(right);
-    teamIds.push(left, right);
   }
   const fmt = document.getElementById('playoff-format')?.value || 'single';
+  const extra = extParticipants.length > 0 ? extParticipants : null;
   try {
     await api(`/api/tournaments/${currentTid}/mex/start-playoffs`, {
       method: 'POST',
       body: JSON.stringify({
         team_player_ids: teamIds,
         double_elimination: fmt === 'double',
+        extra_participants: extra,
       }),
     });
     _playoffTeams = [];
+    _mexExternalParticipants = [];
+    _mexExtCounter = 0;
     renderMex();
   } catch (e) { alert(e.message); }
 }
 
 function _updateTeamScore(i) {
   const aId = document.getElementById(`playoff-team-${i}-a`)?.value || '';
-  const bId = document.getElementById(`playoff-team-${i}-b`)?.value || '';
   const el = document.getElementById(`team-score-${i}`);
   if (!el) return;
-  if (!aId || !bId) { el.textContent = '—'; return; }
-  const total = (_playoffScoreMap[aId] || 0) + (_playoffScoreMap[bId] || 0);
   const useEst = _playoffTeams.length > 0 && _playoffTeams[0].rankedByAvg;
-  el.textContent = useEst ? `${total.toFixed(1)}* pts` : `${total} pts`;
+  if (_mexTeamMode) {
+    if (!aId) { el.textContent = '—'; return; }
+    const val = _playoffScoreMap[aId] || 0;
+    el.textContent = useEst ? `${val.toFixed(1)}* pts` : `${val} pts`;
+  } else {
+    const bId = document.getElementById(`playoff-team-${i}-b`)?.value || '';
+    if (!aId || !bId) { el.textContent = '—'; return; }
+    const total = (_playoffScoreMap[aId] || 0) + (_playoffScoreMap[bId] || 0);
+    el.textContent = useEst ? `${total.toFixed(1)}* pts` : `${total} pts`;
+  }
+}
+
+function _mexAddExternal() {
+  const input = document.getElementById('mex-external-name');
+  const scoreInput = document.getElementById('mex-external-score');
+  const name = (input?.value || '').trim();
+  if (!name) return;
+  const score = parseInt(scoreInput?.value || '0', 10) || 0;
+  const id = `ext_${_mexExtCounter++}`;
+  _mexExternalParticipants.push({ name, score, id });
+  // Inject into playoff teams pool so it appears in dropdowns
+  _playoffTeams.push({ id, name, score, estimatedScore: score, rankedByAvg: false, avgScore: 0, isExternal: true });
+  _playoffScoreMap[id] = score;
+  input.value = '';
+  if (scoreInput) scoreInput.value = '0';
+  const section = document.getElementById('mex-playoffs-section') || document.getElementById('mex-next-section');
+  if (section) section.innerHTML = _renderPlayoffEditor();
+}
+
+function _mexRemoveExternal(idx) {
+  const removed = _mexExternalParticipants.splice(idx, 1)[0];
+  if (removed) {
+    _playoffTeams = _playoffTeams.filter(p => p.id !== removed.id);
+    delete _playoffScoreMap[removed.id];
+    // Clear any saved teams using the removed external
+    for (const [teamIdx, team] of Object.entries(_savedPlayoffTeams)) {
+      if (team.a === removed.id || team.b === removed.id) {
+        delete _savedPlayoffTeams[teamIdx];
+      }
+    }
+  }
+  const section = document.getElementById('mex-playoffs-section') || document.getElementById('mex-next-section');
+  if (section) section.innerHTML = _renderPlayoffEditor();
+}
+
+function _mexUpdateExternalScore(idx, value) {
+  if (idx >= 0 && idx < _mexExternalParticipants.length) {
+    const newScore = parseInt(value, 10) || 0;
+    _mexExternalParticipants[idx].score = newScore;
+    const extId = _mexExternalParticipants[idx].id;
+    const pt = _playoffTeams.find(p => p.id === extId);
+    if (pt) { pt.score = newScore; pt.estimatedScore = newScore; }
+    _playoffScoreMap[extId] = newScore;
+  }
 }
 
 function _getLockedPlayoffIds(exceptTeamIdx = -1) {
@@ -2508,19 +2991,24 @@ function _getLockedPlayoffIds(exceptTeamIdx = -1) {
   for (const [idx, team] of Object.entries(_savedPlayoffTeams)) {
     if (Number(idx) === exceptTeamIdx) continue;
     if (team.a) ids.add(team.a);
-    if (team.b) ids.add(team.b);
+    if (!_mexTeamMode && team.b) ids.add(team.b);
   }
   return ids;
 }
 
 function _savePlayoffTeam(i) {
   const aEl = document.getElementById(`playoff-team-${i}-a`);
-  const bEl = document.getElementById(`playoff-team-${i}-b`);
   const a = aEl?.value || '';
-  const b = bEl?.value || '';
-  if (!a || !b) { alert(t('txt_txt_team_n_select_both_players_before_saving', { n: i + 1 })); return; }
-  if (a === b) { alert(t('txt_txt_team_n_players_must_be_different', { n: i + 1 })); return; }
-  _savedPlayoffTeams[i] = { a, b };
+  if (_mexTeamMode) {
+    if (!a) { alert(t('txt_txt_team_n_select_both_players_before_saving', { n: i + 1 })); return; }
+    _savedPlayoffTeams[i] = { a };
+  } else {
+    const bEl = document.getElementById(`playoff-team-${i}-b`);
+    const b = bEl?.value || '';
+    if (!a || !b) { alert(t('txt_txt_team_n_select_both_players_before_saving', { n: i + 1 })); return; }
+    if (a === b) { alert(t('txt_txt_team_n_players_must_be_different', { n: i + 1 })); return; }
+    _savedPlayoffTeams[i] = { a, b };
+  }
   _refreshPlayoffOptions();
 }
 
@@ -2531,50 +3019,53 @@ function _editPlayoffTeam(i) {
 
 function _refreshPlayoffOptions() {
   const useEst = _playoffTeams.length > 0 && _playoffTeams[0].rankedByAvg;
-  const teamCount = Math.floor(_playoffTeams.length / 2);
+  const teamCount = _mexPlayoffTeamCount;
 
   for (let i = 0; i < teamCount; i++) {
     const aEl = document.getElementById(`playoff-team-${i}-a`);
-    const bEl = document.getElementById(`playoff-team-${i}-b`);
+    const bEl = _mexTeamMode ? null : document.getElementById(`playoff-team-${i}-b`);
     const saveBtn  = document.getElementById(`playoff-save-${i}`);
     const editBtn  = document.getElementById(`playoff-edit-${i}`);
     const badge    = document.getElementById(`playoff-saved-badge-${i}`);
-    if (!aEl || !bEl) continue;
+    if (!aEl) continue;
 
     const saved = _savedPlayoffTeams[i];
     if (saved) {
       aEl.disabled = true;
-      bEl.disabled = true;
+      if (bEl) bEl.disabled = true;
       if (saveBtn) saveBtn.style.display = 'none';
       if (editBtn) editBtn.style.display = '';
       if (badge)   badge.style.display = '';
     } else {
       const locked = _getLockedPlayoffIds(i);
       const curA = aEl.value;
-      const curB = bEl.value;
+      const curB = bEl ? bEl.value : '';
 
       const buildOptions = (selectedId) => {
         let opts = `<option value="">${t('txt_txt_pick_placeholder')}</option>`;
         for (let j = 0; j < _playoffTeams.length; j++) {
           const p = _playoffTeams[j];
-          if (locked.has(p.id)) continue;  // hide players already locked in other rows
+          if (locked.has(p.id)) continue;  // hide participants already locked in other rows
           const sel = p.id === selectedId ? ' selected' : '';
-          const pts = useEst ? `${p.estimatedScore.toFixed(1)}*` : `${p.score}`;
-          opts += `<option value="${p.id}"${sel}>#${j + 1} ${esc(p.name)} (${pts} pts)</option>`;
+          const pts = p.isExternal ? `${p.score}` : (useEst ? `${p.estimatedScore.toFixed(1)}*` : `${p.score}`);
+          const prefix = p.isExternal ? '★' : `#${j + 1}`;
+          opts += `<option value="${p.id}"${sel}>${prefix} ${esc(p.name)} (${pts} pts)</option>`;
         }
         return opts;
       };
 
       aEl.innerHTML = buildOptions(curA);
-      bEl.innerHTML = buildOptions(curB);
       aEl.disabled = false;
-      bEl.disabled = false;
+      if (bEl) {
+        bEl.innerHTML = buildOptions(curB);
+        bEl.disabled = false;
+        if (locked.has(curB)) bEl.value = '';
+      }
       if (saveBtn) saveBtn.style.display = '';
       if (editBtn) editBtn.style.display = 'none';
       if (badge)   badge.style.display = 'none';
-      // If the previously selected player was just taken by another row, clear the selection
+      // If the previously selected participant was just taken by another row, clear the selection
       if (locked.has(curA)) aEl.value = '';
-      if (locked.has(curB)) bEl.value = '';
       _updateTeamScore(i);
     }
   }
@@ -2841,7 +3332,7 @@ function _renderTvControls(tvSettings) {
   
   // Tournament Alias Section
   html += `<div style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)">`;
-  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">🔗 Tournament Alias</label>`;
+  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">🔗 ${t('txt_txt_tournament_alias')}</label>`;
   html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_tv_alias_help')}</p>`;
   html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
   html += `<input type="text" id="tournament-alias-input" placeholder="my-tournament" value="${esc(currentAlias)}" 

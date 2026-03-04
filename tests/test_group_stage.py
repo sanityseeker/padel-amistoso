@@ -86,6 +86,115 @@ class TestGroupRoundRobin:
             assert len(m.team2) == 1
 
 
+# ── Round-by-round generation ─────────────────────────────
+
+
+class TestGenerateNextRound:
+    def test_four_players_three_rounds(self):
+        """With 4 players, exactly 3 rounds exhaust all partnerships."""
+        group = Group("A", _make_players(4))
+        all_matches = []
+        for _ in range(3):
+            matches = group.generate_next_round()
+            assert len(matches) == 1
+            m = matches[0]
+            assert len(m.team1) == 2 and len(m.team2) == 2
+            all_matches.extend(matches)
+            # Record dummy score so standings update.
+            m.score = (6, 3)
+            m.status = MatchStatus.COMPLETED
+        assert len(all_matches) == 3
+        # Fourth round should return empty — all partnerships used.
+        assert group.generate_next_round() == []
+        assert not group.has_more_rounds
+
+    def test_every_player_partners_with_every_other_exactly_once(self):
+        """Each unique pair of players should partner exactly once."""
+        players = _make_players(4)
+        group = Group("A", players)
+        partnerships: list[frozenset] = []
+        for _ in range(3):
+            matches = group.generate_next_round()
+            for m in matches:
+                partnerships.append(frozenset(p.id for p in m.team1))
+                partnerships.append(frozenset(p.id for p in m.team2))
+                m.score = (6, 3)
+                m.status = MatchStatus.COMPLETED
+        # 4 choose 2 = 6 unique partnerships
+        assert len(partnerships) == 6
+        assert len(set(partnerships)) == 6
+
+    def test_has_more_rounds_tracks_correctly(self):
+        group = Group("A", _make_players(4))
+        assert group.has_more_rounds
+        for _ in range(3):
+            for m in group.generate_next_round():
+                m.score = (6, 3)
+                m.status = MatchStatus.COMPLETED
+        assert not group.has_more_rounds
+
+    def test_opponents_selected_by_score_proximity(self):
+        """After round 1, teams should be balanced by cumulative score."""
+        players = _make_players(4)
+        group = Group("A", players)
+
+        # Round 1: random (all scores 0).
+        r1 = group.generate_next_round()
+        m = r1[0]
+        # Give one team a big win.
+        m.score = (10, 2)
+        m.status = MatchStatus.COMPLETED
+
+        # Round 2: should pair the high-scorers on opposite teams to balance.
+        r2 = group.generate_next_round()
+        m2 = r2[0]
+        scores = {p.id: 0 for p in players}
+        for p in m.team1:
+            scores[p.id] += 10
+        for p in m.team2:
+            scores[p.id] += 2
+        t1_score = sum(scores[p.id] for p in m2.team1)
+        t2_score = sum(scores[p.id] for p in m2.team2)
+        # Both teams should have similar total scores (12 total → ideally 6 vs 6).
+        assert abs(t1_score - t2_score) <= 8  # allows some slack
+
+    def test_team_mode_raises_on_generate_next_round(self):
+        """generate_next_round is only for individual mode."""
+        teams = [Player(name=n) for n in ["A & B", "C & D", "E & F"]]
+        group = Group("A", teams, team_mode=True)
+        import pytest
+
+        with pytest.raises(RuntimeError, match="team mode"):
+            group.generate_next_round()
+
+    def test_matches_accumulate_across_rounds(self):
+        group = Group("A", _make_players(4))
+        for i in range(3):
+            matches = group.generate_next_round()
+            for m in matches:
+                m.score = (6, 3)
+                m.status = MatchStatus.COMPLETED
+        assert len(group.matches) == 3
+
+    def test_five_players_round_by_round(self):
+        """With 5 players some sit out each round, but partnerships still rotate."""
+        group = Group("A", _make_players(5))
+        all_partnerships: set[frozenset[str]] = set()
+        rounds = 0
+        while group.has_more_rounds:
+            matches = group.generate_next_round()
+            for m in matches:
+                assert len(m.team1) == 2 and len(m.team2) == 2
+                all_partnerships.add(frozenset(p.id for p in m.team1))
+                all_partnerships.add(frozenset(p.id for p in m.team2))
+                m.score = (6, 3)
+                m.status = MatchStatus.COMPLETED
+            rounds += 1
+        # All 10 partnerships (5 choose 2) should be used.
+        assert len(all_partnerships) == 10
+        assert rounds > 0
+
+
 # ── Standings ──────────────────────────────────────────────
 
 

@@ -171,7 +171,6 @@ download a self-contained summary document:
 
 The engine can be tuned with these parameters:
 
-- `randomness`: adds jitter to reduce deterministic repeat pairings.
 - `skill_gap`:
   - `None` → snake-draft distribution across courts/groups,
   - integer → groups constrained by absolute estimated-score gap.
@@ -392,8 +391,16 @@ Then open <http://localhost:8000>.
 ```text
 backend/
   models.py                – Core data models (Player, Match, Court, …)
+  auth/                    – Authentication (JWT, bcrypt, user management)
+    deps.py                – FastAPI dependency: get_current_user
+    models.py              – User data model
+    routes.py              – Auth endpoints (login, user CRUD)
+    schemas.py             – Auth request/response schemas
+    security.py            – JWT helpers and password hashing
+    store.py               – User persistence (users.pkl)
   tournaments/             – Tournament logic
     group_stage.py         – Group-stage round-robin logic
+    pairing.py             – Shared 2v2 pairing and history utilities
     playoff.py             – Single & double elimination brackets
     group_playoff.py       – Orchestrator: groups → play-offs
     mexicano.py            – Mexicano tournament engine (+ play-off support)
@@ -401,7 +408,7 @@ backend/
     state.py               – In-memory state & pickle persistence
     schemas.py             – Pydantic request/response models
     helpers.py             – Shared serialisation utilities
-    routes_crud.py         – List & delete tournaments
+    routes_crud.py         – List, delete, TV settings, and alias endpoints
     routes_gp.py           – Group+play-off endpoints
     routes_mex.py          – Mexicano endpoints
     routes_schema.py       – Bracket diagram preview endpoint
@@ -409,15 +416,21 @@ backend/
     bracket_schema.py      – networkx/matplotlib bracket diagram renderer
 data/
   tournaments.pkl          – Auto-generated; persists all tournament state
+  users.pkl                – Auto-generated; persists user accounts
 frontend/
-  index.html               – Single-page UI (vanilla HTML/CSS/JS)
+  index.html               – Single-page admin UI (vanilla HTML/CSS/JS)
   tv.html                  – Read-only TV display view
+  auth.js                  – Auth module (login, token storage, API helpers)
+  shared.js                – Shared utilities (theme, i18n, HTML escaping)
+  i18n.js                  – Internationalisation engine (en/es translations)
 tests/
-  test_api.py
-  test_group_playoff.py
-  test_group_stage.py
-  test_mexicano.py
-  test_playoff.py
+  test_api.py              – Full HTTP API (tournaments, auth, scores)
+  test_auth.py             – JWT authentication and user management
+  test_group_playoff.py    – Group + playoff flow and bracket seeding
+  test_group_stage.py      – Group stage round-robin logic
+  test_helpers.py          – Shared helper utilities
+  test_mexicano.py         – Mexicano scoring and pairing logic
+  test_playoff.py          – Single/double elimination bracket logic
 ```
 
 ## Linting & formatting

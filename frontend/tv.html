@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Padel TV Display</title>
+<title data-i18n="txt_txt_padel_tv">Padel TV</title>
 <style>
   :root {
     --bg: #0b1220;
@@ -43,29 +43,57 @@
   /* ── Header ── */
   .tv-header {
     display: flex;
-    align-items: center;
-    gap: 1rem;
+    flex-direction: column;
+    gap: 0.4rem;
     margin-bottom: 1.8rem;
     padding-bottom: 1rem;
     border-bottom: 2px solid var(--border);
+  }
+  /* Title row: [lang] [centered title text] [theme]
+     When title is long, flex-wrap causes it to drop to a new full-width row;
+     the two buttons stay on the first row with space-between. */
+  .tv-header-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .tv-title-center {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.1rem 0.5rem;
+    flex: 1 1 auto;
+    min-width: min(260px, 100%);
+    min-width: 0;
+  }
+  .tv-app-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .tv-tournament-name {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    min-width: 0;
+    margin: 0;
+  }
+  .tv-header-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
     flex-wrap: wrap;
   }
   .tv-title {
     flex: 1;
     min-width: 0;
-  }
-  .tv-title h1 {
-    font-size: 2rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .tv-title .subtitle {
-    font-size: 0.95rem;
-    color: var(--text-muted);
-    margin-top: 0.2rem;
   }
   .tv-meta {
     display: flex;
@@ -482,9 +510,9 @@
     body { padding: 0.7rem 0.75rem 1.5rem; }
 
     /* Header: tighter, title wraps */
-    .tv-header { margin-bottom: 1rem; padding-bottom: 0.6rem; gap: 0.6rem; }
-    .tv-title h1 { font-size: 1.25rem; white-space: normal; }
-    .tv-title .subtitle { font-size: 0.82rem; }
+    .tv-header { margin-bottom: 1rem; padding-bottom: 0.6rem; gap: 0.3rem; }
+    .tv-header-row { gap: 0.6rem; }
+    .tv-tournament-name { font-size: 1.25rem; }
     .tv-meta { gap: 0.4rem; flex-wrap: wrap; }
 
     /* Court board: single column on phones */
@@ -510,7 +538,7 @@
 </head>
 <body>
 <div id="tv-root">
-  <div class="tv-loading">Loading tournament display…</div>
+  <div class="tv-loading" data-i18n="txt_txt_loading_tournament_display">Loading tournament display…</div>
 </div>
 
 <script src="/i18n.js"></script>
@@ -663,7 +691,7 @@ async function loadTV() {
 
     // Resolve tournament type from list
     const list = await api('/api/tournaments');
-    const meta = list.find(t => t.id === TID);
+    const meta = list.find(entry => entry.id === TID);
     if (!meta) {
       document.getElementById('tv-root').innerHTML =
         `<div class="tv-error">${t('txt_txt_tournament_not_found_value', { value: esc(TID) })}</div>`;
@@ -784,7 +812,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
       for (const [gName, rows] of Object.entries(groups.standings || {})) {
         html += `<div class="group-block"><h3>${t('txt_txt_group_stage')} ${esc(gName)}</h3>`;
         html += `<table class="standings-table"><thead><tr>`;
-        html += `<th>#</th><th>Player</th><th>W</th><th>D</th><th>L</th><th>PF</th><th>PA</th><th>Pts</th>`;
+        html += `<th>#</th><th>${t('txt_txt_player')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_pts_abbrev')}</th>`;
         html += `</tr></thead><tbody>`;
         rows.forEach((r, i) => {
           html += `<tr><td class="rank-cell">${i + 1}</td><td class="player-cell">${esc(r.player)}</td>`;
@@ -882,7 +910,7 @@ function _buildMexLeaderboard(status) {
   html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_leaderboard')}</h2></summary>`;
   html += `<div class="tv-section">`;
   html += `<table class="standings-table"><thead><tr>`;
-  html += `<th>#</th><th>Player</th><th>Total Pts</th><th>Played</th><th>W</th><th>D</th><th>L</th><th>Avg Pts</th>`;
+  html += `<th>#</th><th>${t('txt_txt_player')}</th><th>${t('txt_txt_total_pts')}</th><th>${t('txt_txt_played')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_avg_pts')}</th>`;
   html += `</tr></thead><tbody>`;
   for (const r of lb) {
     html += `<tr><td class="rank-cell">${r.rank}</td><td class="player-cell">${esc(r.player)}</td>`;
@@ -902,20 +930,26 @@ function _buildHeader(name, phase, champion) {
   const langToggle = _languageToggleMeta();
   return `
     <div class="tv-header">
-      <div class="tv-title">
-        <button type="button" onclick="_backToTournaments()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.25rem 0.6rem;cursor:pointer;font-size:0.82rem;line-height:1;white-space:nowrap" title="${t('txt_txt_back_to_tournaments')}">← ${t('txt_txt_tournaments')}</button>
-        <h1>${esc(name)}</h1>
-        <div class="subtitle">${t('txt_txt_padel_tournament_tv_display')}</div>
+      <div class="tv-header-title-row">
+        <button type="button" id="lang-toggle-btn" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button>
+        <div class="tv-title-center">
+          <span class="tv-app-label">${t('txt_txt_padel_tv')} —</span>
+          <h1 class="tv-tournament-name">${esc(name)}</h1>
+        </div>
+        <button type="button" id="theme-toggle-btn" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>
       </div>
-      <div class="tv-meta">
-        ${phaseLabel ? `<span class="tv-badge tv-badge-phase">${esc(phaseLabel)}</span>` : ''}
-        ${champion ? `<span class="tv-badge tv-badge-champion">🏆 ${t('txt_txt_finished')}</span>` : `<span class="tv-badge tv-badge-live">● ${t('txt_txt_live')}</span>`}
-        <div class="refresh-indicator">
-          <div class="refresh-dot" id="refresh-dot"></div>
-          <span id="tv-countdown">↻ ${_refreshIntervalSecs}s</span>
-          <button type="button" onclick="loadTV()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;font-size:0.8rem;line-height:1" title="${t('txt_txt_refresh_now')}">↻</button>
-          <button type="button" id="lang-toggle-btn" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button>
-          <button type="button" id="theme-toggle-btn" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>
+      <div class="tv-header-row">
+        <div class="tv-title">
+          <button type="button" onclick="_backToTournaments()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.25rem 0.6rem;cursor:pointer;font-size:0.82rem;line-height:1;white-space:nowrap" title="${t('txt_txt_back_to_tournaments')}">← ${t('txt_txt_tournaments')}</button>
+        </div>
+        <div class="tv-meta">
+          ${phaseLabel && phase !== 'finished' ? `<span class="tv-badge tv-badge-phase">${esc(phaseLabel)}</span>` : ''}
+          ${champion || phase === 'finished' ? `<span class="tv-badge tv-badge-champion">🏆 ${t('txt_txt_finished')}</span>` : `<span class="tv-badge tv-badge-live"><span style="font-size:0.7em">●</span> ${t('txt_txt_live')}</span>`}
+          <div class="refresh-indicator">
+            <div class="refresh-dot" id="refresh-dot"></div>
+            <span id="tv-countdown">↻ ${_refreshIntervalSecs}s</span>
+            <button type="button" onclick="loadTV()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;font-size:0.8rem;line-height:1" title="${t('txt_txt_refresh_now')}">↻</button>
+          </div>
         </div>
       </div>
     </div>`;
@@ -1051,7 +1085,7 @@ function _buildHistoryMatch(m, tvSettings, isMex) {
       html += `<summary class="breakdown-toggle">📊 ${t('txt_txt_score_breakdown')}</summary>`;
       html += `<div class="breakdown-panel">`;
       html += `<table class="breakdown-table"><thead><tr>`;
-      html += `<th>Player</th><th>Raw</th><th>Str ×</th><th>LossDisc ×</th><th>Bonus</th><th>Final</th>`;
+      html += `<th>${t('txt_txt_player')}</th><th>${t('txt_txt_raw')}</th><th>${t('txt_txt_strength_multiplier')}</th><th>${t('txt_txt_loss_disc_multiplier')}</th><th>${t('txt_txt_win_bonus_header')}</th><th>${t('txt_txt_final')}</th>`;
       html += `</tr></thead><tbody>`;
       for (const [pid, d] of Object.entries(bd)) {
         html += `<tr><td>${esc(_tvPlayerMap[pid] || pid)}</td><td>${d.raw}</td>`;

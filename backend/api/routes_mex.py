@@ -45,12 +45,12 @@ async def create_mexicano(req: CreateMexicanoRequest, _user=Depends(get_current_
             courts=courts,
             total_points_per_match=req.total_points_per_match,
             num_rounds=req.num_rounds,
-            randomness=req.randomness,
             skill_gap=req.skill_gap,
             win_bonus=req.win_bonus,
             strength_weight=req.strength_weight,
             loss_discount=req.loss_discount,
             balance_tolerance=req.balance_tolerance,
+            team_mode=req.team_mode,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -76,6 +76,7 @@ async def mex_status(tid: str):
         "rolling": t.num_rounds == 0,
         "mexicano_ended": t.mexicano_ended,
         "total_points_per_match": t.total_points_per_match,
+        "team_mode": t.team_mode,
         "phase": t.phase,
         "is_finished": t.is_finished,
         "leaderboard": t.leaderboard(),
@@ -192,6 +193,7 @@ async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, _user=
             team_player_ids=req.team_player_ids,
             n_teams=req.n_teams,
             double_elimination=req.double_elimination,
+            extra_participants=[ep.model_dump() for ep in req.extra_participants] if req.extra_participants else None,
         )
     except (RuntimeError, ValueError, KeyError) as e:
         raise HTTPException(400, str(e))

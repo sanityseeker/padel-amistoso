@@ -379,8 +379,13 @@ class DoubleEliminationBracket:
         if m.round_label.startswith("Losers"):
             self._losers_queue.append(winner)
             self._try_create_losers_match()
+            # If all winners matches are done and no new losers match could be
+            # paired, the sole queue occupant is the losers bracket champion.
+            all_w_done = all(wm.status == MatchStatus.COMPLETED for wm in self.winners_matches)
+            if all_w_done and len(self._losers_queue) == 1:
+                self.grand_final.team2 = self._losers_queue.pop(0)
 
-        # Check if we can populate grand final
+        # Populate winners-bracket side of grand final
         self._try_populate_grand_final()
 
         # Grand final logic
@@ -405,7 +410,7 @@ class DoubleEliminationBracket:
             m = Match(
                 team1=t1,
                 team2=t2,
-                court=self._next_court(),
+                court=None,  # assigned lazily by _assign_courts_to_pending_playoff_matches
                 round_number=r,
                 round_label=f"Losers R{r}",
             )
@@ -423,14 +428,8 @@ class DoubleEliminationBracket:
                 last_w = list(last_round.values())[-1]
                 if last_w.status == MatchStatus.COMPLETED and last_w.winner_team:
                     self.grand_final.team1 = last_w.winner_team
-
-        # Losers bracket champion = last person standing in losers queue
-        # with exactly 1 loss (simplified)
-        completed_losers = [m for m in self.losers_matches if m.status == MatchStatus.COMPLETED]
-        if completed_losers:
-            last_l = completed_losers[-1]
-            if last_l.winner_team:
-                self.grand_final.team2 = last_l.winner_team
+        # grand_final.team2 is set in record_result once the losers bracket is
+        # fully resolved — see the losers-match winner handling above.
 
     def pending_matches(self) -> list[Match]:
         return [m for m in self.all_matches if m.status != MatchStatus.COMPLETED and m.team1 and m.team2]

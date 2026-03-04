@@ -34,7 +34,7 @@ from .state import (  # noqa: F401  — re-exported for tests
 
 
 @asynccontextmanager
-async def _lifespan(app: FastAPI):
+async def _lifespan(_app: FastAPI):
     _load_state()
     user_store.load()
     user_store.bootstrap_default_admin()

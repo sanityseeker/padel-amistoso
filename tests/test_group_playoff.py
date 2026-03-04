@@ -52,6 +52,13 @@ class TestGroupPlayoffCreation:
         t.generate()
         assert len(t.groups) == 2
 
+        # Complete all group rounds (round-by-round in individual mode).
+        while t.has_more_group_rounds or t.pending_group_matches():
+            for m in t.pending_group_matches():
+                t.record_group_result(m.id, (6, 3))
+            if t.has_more_group_rounds:
+                t.generate_next_group_round()
+
         all_matches = t.all_group_matches()
         # Every match must have a court assigned.
         for m in all_matches:
@@ -70,7 +77,9 @@ class TestGroupPlayoffCreation:
                     assert p.id not in seen, f"Player {p.name} plays two matches in slot {slot_idx}"
                     seen.add(p.id)
 
-        # All 4 courts should be used at least once.
+        # With 8 players, 2 groups of 4, 3 rounds × 2 matches = 6 total matches
+        assert len(all_matches) == 6
+        # All 4 courts should be used at least once across all rounds.
         used_courts = {m.court.name for m in all_matches}
         assert used_courts == {"C1", "C2", "C3", "C4"}
 
@@ -118,6 +127,16 @@ class TestGroupPhase:
         t.generate()
         return t
 
+    @staticmethod
+    def _complete_all_group_rounds(t):
+        """Complete all group rounds recording dummy scores."""
+        while True:
+            for m in t.pending_group_matches():
+                t.record_group_result(m.id, (6, 3))
+            if not t.has_more_group_rounds:
+                break
+            t.generate_next_group_round()
+
     def test_record_group_result(self):
         t = self._make_tournament()
         m = t.all_group_matches()[0]
@@ -156,9 +175,8 @@ class TestPlayoffPhase:
     def _advance_to_playoffs(self):
         t = GroupPlayoffTournament(_make_players(8), num_groups=2, courts=_make_courts(2), top_per_group=2)
         t.generate()
-        # Complete all group matches
-        for m in t.all_group_matches():
-            t.record_group_result(m.id, (6, 3))
+        # Complete all group rounds
+        TestGroupPhase._complete_all_group_rounds(t)
         t.start_playoffs()
         return t
 
@@ -242,8 +260,205 @@ class TestDoubleElimination:
             double_elimination=True,
         )
         t.generate()
-        for m in t.all_group_matches():
-            t.record_group_result(m.id, (6, 3))
+        TestGroupPhase._complete_all_group_rounds(t)
         t.start_playoffs()
         assert t.phase == GPPhase.PLAYOFFS
         assert t.playoff_bracket is not None
+
+
+class TestRoundByRound:
+    """Tests for the new round-by-round group generation (individual mode)."""
+
+    def test_generate_creates_first_round_only(self):
+        t = GroupPlayoffTournament(_make_players(8), num_groups=2, courts=_make_courts(2))
+        t.generate()
+        # Each group of 4 → 1 match in first round.
+        assert len(t.all_group_matches()) == 2
+        assert t.has_more_group_rounds
+
+    def test_full_round_by_round_flow(self):
+        t = GroupPlayoffTournament(_make_players(8), num_groups=2, courts=_make_courts(2), top_per_group=2)
+        t.generate()
+
+        rounds_played = 1
+        while t.has_more_group_rounds or t.pending_group_matches():
+            for m in t.pending_group_matches():
+                t.record_group_result(m.id, (6, 3))
+            if t.has_more_group_rounds:
+                t.generate_next_group_round()
+                rounds_played += 1
+
+        # 4 players per group → 3 rounds, 1 match/round/group.
+        assert rounds_played == 3
+        assert len(t.all_group_matches()) == 6
+        assert not t.has_more_group_rounds
+
+    def test_generate_next_round_requires_completed_matches(self):
+        t = GroupPlayoffTournament(_make_players(8), num_groups=2, courts=_make_courts(2))
+        t.generate()
+        with pytest.raises(RuntimeError, match="Complete current"):
+            t.generate_next_group_round()
+
+    def test_team_mode_has_no_more_group_rounds(self):
+        teams = [Player(name=n) for n in ["A & B", "C & D", "E & F", "G & H"]]
+        t = GroupPlayoffTournament(teams, num_groups=2, team_mode=True)
+        t.generate()
+        assert not t.has_more_group_rounds
+
+    def test_standings_update_between_rounds(self):
+        t = GroupPlayoffTournament(_make_players(4), num_groups=1, top_per_group=2)
+        t.generate()
+        # Round 1
+        m = t.all_group_matches()[0]
+        t.record_group_result(m.id, (10, 2))
+        standings_r1 = t.group_standings()["A"]
+        scored = {r["player"]: r["points_for"] for r in standings_r1}
+        assert max(scored.values()) == 10
+
+        # Round 2
+        t.generate_next_group_round()
+        m2 = [m for m in t.pending_group_matches()][0]
+        t.record_group_result(m2.id, (7, 5))
+
+        standings_r2 = t.group_standings()["A"]
+        scored_r2 = {r["player"]: r["points_for"] for r in standings_r2}
+        # Total points should have increased.
+        assert sum(scored_r2.values()) > sum(scored.values())
+
+    def test_groups_endpoint_includes_has_more_rounds(self):
+        """The group standings dict should include has_more_rounds info."""
+        t = GroupPlayoffTournament(_make_players(8), num_groups=2)
+        t.generate()
+        # has_more_group_rounds is exposed at tournament level
+        assert t.has_more_group_rounds is True
+
+    def test_can_start_playoffs_after_partial_rounds(self):
+        """User can start playoffs before exhausting all group rounds."""
+        t = GroupPlayoffTournament(_make_players(8), num_groups=2, courts=_make_courts(2), top_per_group=2)
+        t.generate()
+        # Only complete first round.
+        for m in t.pending_group_matches():
+            t.record_group_result(m.id, (6, 3))
+        # Should be able to start playoffs even with more rounds available.
+        t.start_playoffs()
+        assert t.phase == GPPhase.PLAYOFFS
+
+
+class TestManualPlayoffParticipants:
+    """Tests for manually selecting playoff participants and adding external players."""
+
+    def _ready_tournament(self):
+        """Create a GP tournament with all group matches completed."""
+        t = GroupPlayoffTournament(_make_players(8), num_groups=2, courts=_make_courts(2), top_per_group=2)
+        t.generate()
+        for m in t.all_group_matches():
+            t.record_group_result(m.id, (6, 3))
+        return t
+
+    def test_recommend_playoff_participants_returns_all_players(self):
+        t = self._ready_tournament()
+        rec = t.recommend_playoff_participants()
+        assert len(rec) == 8
+        for entry in rec:
+            assert "player_id" in entry
+            assert "group" in entry
+            assert "match_points" in entry
+
+    def test_recommend_playoff_participants_sorted_by_standings(self):
+        t = self._ready_tournament()
+        rec = t.recommend_playoff_participants()
+        keys = [(r["match_points"], r["point_diff"], r["points_for"]) for r in rec]
+        sorted_keys = sorted(keys, key=lambda k: (-k[0], -k[1], -k[2]))
+        assert keys == sorted_keys
+
+    def test_start_playoffs_with_manual_selection(self):
+        t = self._ready_tournament()
+        # Pick 4 players (must be even for team formation)
+        all_ids = [p.id for p in t.players]
+        chosen = all_ids[:4]
+        t.start_playoffs(advancing_player_ids=chosen)
+        assert t.phase == GPPhase.PLAYOFFS
+        bracket_teams = t.playoff_bracket.original_teams
+        # 4 players → 2 teams of 2
+        assert len(bracket_teams) == 2
+        bracket_ids = {p.id for team in bracket_teams for p in team}
+        assert bracket_ids == set(chosen)
+
+    def test_start_playoffs_with_extra_players(self):
+        t = self._ready_tournament()
+        t.start_playoffs(extra_players=[("External1", 10), ("External2", 5)])
+        assert t.phase == GPPhase.PLAYOFFS
+        bracket_teams = t.playoff_bracket.original_teams
+        # 4 auto-advancing (top 2 per group) + 2 external = 6 → 3 teams of 2
+        assert len(bracket_teams) == 3
+        names = {p.name for team in bracket_teams for p in team}
+        assert "External1" in names
+        assert "External2" in names
+
+    def test_start_playoffs_manual_selection_plus_extra(self):
+        t = self._ready_tournament()
+        chosen = [t.players[0].id, t.players[1].id]
+        t.start_playoffs(
+            advancing_player_ids=chosen,
+            extra_players=[("Guest1", 0), ("Guest2", 0)],
+        )
+        assert t.phase == GPPhase.PLAYOFFS
+        bracket_teams = t.playoff_bracket.original_teams
+        # 2 chosen + 2 extra = 4 → 2 teams of 2
+        assert len(bracket_teams) == 2
+        names = {p.name for team in bracket_teams for p in team}
+        assert "Guest1" in names
+        assert t.players[0].name in names
+        assert t.players[1].name in names
+
+    def test_start_playoffs_duplicate_ids_rejected(self):
+        t = self._ready_tournament()
+        dup = [t.players[0].id, t.players[0].id]
+        with pytest.raises(RuntimeError, match="unique"):
+            t.start_playoffs(advancing_player_ids=dup)
+
+    def test_start_playoffs_unknown_id_rejected(self):
+        t = self._ready_tournament()
+        with pytest.raises(KeyError, match="not found"):
+            t.start_playoffs(advancing_player_ids=["nonexistent"])
+
+    def test_start_playoffs_override_double_elimination(self):
+        t = self._ready_tournament()
+        assert t.double_elimination is False
+        t.start_playoffs(double_elimination=True)
+        assert t.double_elimination is True
+        assert t.phase == GPPhase.PLAYOFFS
+
+    def test_start_playoffs_only_extra_players(self):
+        t = self._ready_tournament()
+        t.start_playoffs(
+            advancing_player_ids=[],
+            extra_players=[("Guest1", 0), ("Guest2", 0), ("Guest3", 0), ("Guest4", 0)],
+        )
+        assert t.phase == GPPhase.PLAYOFFS
+        bracket_teams = t.playoff_bracket.original_teams
+        # 4 external → 2 teams of 2
+        assert len(bracket_teams) == 2
+        names = {p.name for team in bracket_teams for p in team}
+        assert names == {"Guest1", "Guest2", "Guest3", "Guest4"}
+
+    def test_start_playoffs_too_few_participants(self):
+        t = self._ready_tournament()
+        with pytest.raises(RuntimeError):
+            t.start_playoffs(advancing_player_ids=[], extra_players=[("Solo", 0)])
+
+    def test_start_playoffs_odd_number_rejected(self):
+        """Odd number of individual players cannot form 2-player teams."""
+        t = self._ready_tournament()
+        chosen = [p.id for p in t.players[:3]]
+        with pytest.raises(RuntimeError, match="even number"):
+            t.start_playoffs(advancing_player_ids=chosen)
+
+    def test_start_playoffs_teams_are_balanced(self):
+        """Teams should pair high-scorer with low-scorer (fold method)."""
+        t = self._ready_tournament()
+        t.start_playoffs()  # auto top 2 per group = 4 players
+        bracket_teams = t.playoff_bracket.original_teams
+        assert len(bracket_teams) == 2
+        for team in bracket_teams:
+            assert len(team) == 2

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from ..models import Court, GPPhase, Match, MatchStatus, Player
 from .group_stage import Group, assign_courts, distribute_players_to_groups
+from . import pairing as pairing_mod
 from .playoff import DoubleEliminationBracket, SingleEliminationBracket
 
 
@@ -52,17 +53,66 @@ class GroupPlayoffTournament:
         return self._phase
 
     def generate(self):
-        """Create groups and generate round‑robin matches."""
+        """Create groups and generate matches.
+
+        * **team_mode** — generates all round-robin matches at once.
+        * **individual mode** — generates only the first round of matches.
+          Call ``generate_next_group_round()`` after recording scores to
+          produce subsequent rounds with score-based opponent matching.
+        """
         self.groups = distribute_players_to_groups(
             self.players,
             self.num_groups,
             team_mode=self.team_mode,
         )
-        for g in self.groups:
-            g.generate_round_robin()
-        if self.courts:
-            self._assign_group_courts()
+        if self.team_mode:
+            for g in self.groups:
+                g.generate_round_robin()
+            if self.courts:
+                self._assign_group_courts()
+        else:
+            for g in self.groups:
+                g.generate_next_round()
+            if self.courts:
+                assign_courts(self.all_group_matches(), self.courts)
         self._phase = GPPhase.GROUPS
+
+    def generate_next_group_round(self) -> list[Match]:
+        """Generate the next round of group matches across all groups.
+
+        Requires all pending matches from the previous round to be completed
+        first so that cumulative scores can inform opponent selection.
+
+        Returns:
+            Newly generated matches (empty if all partnerships exhausted).
+
+        Raises:
+            RuntimeError: If not in group phase or pending matches remain.
+        """
+        if self._phase != GPPhase.GROUPS:
+            raise RuntimeError("Must be in group phase to generate rounds")
+        if self.pending_group_matches():
+            raise RuntimeError("Complete current round matches before generating next round")
+
+        new_matches: list[Match] = []
+        for g in self.groups:
+            new_matches.extend(g.generate_next_round())
+        if self.courts and new_matches:
+            # Offset slot numbers so they don't collide with previous rounds.
+            max_slot = self._max_slot_number()
+            start_slot = max_slot + 1 if max_slot >= 0 else 0
+            # Rotate courts so successive rounds use different physical courts.
+            assign_courts(new_matches, self.courts, court_offset=start_slot)
+            for m in new_matches:
+                m.slot_number += start_slot
+        return new_matches
+
+    @property
+    def has_more_group_rounds(self) -> bool:
+        """Whether any group still has unused partnerships to form matches."""
+        if self.team_mode:
+            return False
+        return any(g.has_more_rounds for g in self.groups)
 
     def _assign_group_courts(self) -> None:
         """Assign courts across all group matches using the global greedy algorithm.
@@ -73,6 +123,30 @@ class GroupPlayoffTournament:
         simultaneously and balancing court exposure across participants.
         """
         assign_courts(self.all_group_matches(), self.courts)
+
+    def _max_slot_number(self) -> int:
+        """Return the highest slot_number across all existing group matches."""
+        matches = self.all_group_matches()
+        if not matches:
+            return -1
+        return max(m.slot_number for m in matches)
+
+    def _player_scores(self) -> dict[str, tuple[float, float, float]]:
+        """Aggregate standings data across all groups for seeding.
+
+        Returns:
+            Dict mapping player ID to ``(match_points, point_diff, points_for)``
+            tuple — the same ranking criteria used in standings.
+        """
+        scores: dict[str, tuple[float, float, float]] = {p.id: (0.0, 0.0, 0.0) for p in self.players}
+        for g in self.groups:
+            for row in g.standings():
+                scores[row.player.id] = (
+                    float(row.match_points),
+                    float(row.point_diff),
+                    float(row.points_for),
+                )
+        return scores
 
     def all_group_matches(self) -> list[Match]:
         matches: list[Match] = []
@@ -123,24 +197,119 @@ class GroupPlayoffTournament:
             ]
         return result
 
-    def start_playoffs(self):
-        """Seed the play‑off bracket from group results."""
+    def recommend_playoff_participants(self) -> list[dict]:
+        """Return all group-stage participants ranked by standings.
+
+        Each entry contains player info and group standings data so the
+        frontend can present a selection UI for playoff configuration.
+        """
+        ranked: list[dict] = []
+        all_standings = self.group_standings()
+        for group_name, rows in all_standings.items():
+            for row in rows:
+                ranked.append({**row, "group": group_name})
+        ranked.sort(key=lambda r: (-r["match_points"], -r["point_diff"], -r["points_for"]))
+        return ranked
+
+    def start_playoffs(
+        self,
+        advancing_player_ids: list[str] | None = None,
+        extra_players: list[tuple[str, float]] | None = None,
+        double_elimination: bool | None = None,
+    ):
+        """Seed the play‑off bracket from group results.
+
+        In **individual mode** (``team_mode=False``), advancing players
+        are paired into balanced teams of 2 using the fold method (best
+        with worst, second-best with second-worst, etc.) based on their
+        group-stage cumulative scores.  An even number of total
+        advancing participants is required.
+
+        In **team mode**, each advancing entry is already a team and
+        enters the bracket directly.
+
+        All teams (or individual-mode formed pairs) are sorted by
+        combined score descending before seeding into the bracket so
+        that the strongest team gets seed #1.
+
+        Parameters
+        ----------
+        advancing_player_ids : list[str] | None
+            Manually chosen player IDs from the group stage.  If ``None``,
+            the top ``top_per_group`` players per group are selected
+            automatically.
+        extra_players : list[tuple[str, float]] | None
+            External participants as ``(name, score)`` tuples.  The
+            score is used for seeding alongside group-stage participants.
+        double_elimination : bool | None
+            Override the tournament-level setting.  ``None`` keeps the
+            value from ``__init__``.
+        """
         if self._phase != GPPhase.GROUPS:
             raise RuntimeError("Must be in group phase to start play‑offs")
         if self.pending_group_matches():
             raise RuntimeError("All group matches must be completed first")
 
-        # Collect top players from each group
-        advancing: list[Player] = []
-        for g in self.groups:
-            advancing.extend(g.top_players(self.top_per_group))
+        if double_elimination is not None:
+            self.double_elimination = double_elimination
 
-        # Build teams of 2 for play‑offs from the advancing players
-        # Simple approach: pair them up as seeded (best from each group together)
-        # Or alternatively, each player forms a new pair — configurable later.
-        # For now, each advancing player is treated as a "single‑player team"
-        # wrapped in a list for API consistency.
-        teams = [[p] for p in advancing]
+        # Build player lookup from group-stage participants
+        player_map: dict[str, Player] = {p.id: p for p in self.players}
+
+        # Resolve advancing participants
+        if advancing_player_ids is not None:
+            if len(set(advancing_player_ids)) != len(advancing_player_ids):
+                raise RuntimeError("Advancing player IDs must be unique")
+            advancing: list[Player] = []
+            for pid in advancing_player_ids:
+                if pid not in player_map:
+                    raise KeyError(f"Player {pid} not found in tournament")
+                advancing.append(player_map[pid])
+        else:
+            advancing = []
+            for g in self.groups:
+                advancing.extend(g.top_players(self.top_per_group))
+
+        # Aggregate scores for seeding (match_points, point_diff, points_for)
+        scores = self._player_scores()
+
+        # Add external participants
+        if extra_players:
+            for name, ext_score in extra_players:
+                p = Player(name=name)
+                advancing.append(p)
+                player_map[p.id] = p
+                # External score is treated as match_points for seeding
+                scores[p.id] = (float(ext_score), 0.0, 0.0)
+
+        if len(advancing) < 2:
+            raise RuntimeError("Need at least 2 participants to start play‑offs")
+
+        def _seed_key(team: list[Player]) -> tuple[float, float, float]:
+            """Combined (match_points, point_diff, points_for) for a team."""
+            combined = [scores.get(p.id, (0.0, 0.0, 0.0)) for p in team]
+            return (
+                sum(c[0] for c in combined),
+                sum(c[1] for c in combined),
+                sum(c[2] for c in combined),
+            )
+
+        if self.team_mode:
+            # In team mode each advancing entry IS a team already.
+            # Sort by standings criteria descending for proper seeding.
+            teams = sorted(
+                [[p] for p in advancing],
+                key=lambda t: tuple(-x for x in _seed_key(t)),
+            )
+        else:
+            # Individual mode: form balanced teams of 2 using group-stage scores.
+            if len(advancing) % 2 != 0:
+                raise RuntimeError(f"Need an even number of advancing players to form teams (got {len(advancing)})")
+            # form_playoff_teams uses a flat score for fold-pairing
+            flat_scores = {pid: s[0] for pid, s in scores.items()}
+            teams = pairing_mod.form_playoff_teams(advancing, flat_scores)
+            # Sort formed teams by combined standings for proper bracket seeding.
+            teams.sort(key=lambda t: tuple(-x for x in _seed_key(t)))
 
         if self.double_elimination:
             self.playoff_bracket = DoubleEliminationBracket(teams, courts=self.courts)

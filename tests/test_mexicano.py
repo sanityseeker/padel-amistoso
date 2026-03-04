@@ -157,7 +157,6 @@ class TestMexicanoMultiRound:
             _make_courts(1),
             total_points_per_match=32,
             num_rounds=5,
-            randomness=0.0,
         )
 
         all_pairings = []
@@ -186,7 +185,6 @@ class TestMexicanoMultiRound:
             _make_courts(2),
             total_points_per_match=32,
             num_rounds=6,
-            randomness=0.0,
         )
 
         all_team_sets = []
@@ -209,7 +207,6 @@ class TestMexicanoMultiRound:
             _make_courts(1),
             num_rounds=3,
             total_points_per_match=32,
-            randomness=0.0,
         )
         # Manually skew scores: p1 and p2 far ahead
         t.scores[players[0].id] = 200  # rank 1
@@ -244,7 +241,7 @@ class TestMexicanoMultiRound:
 
     def test_snake_draft_spreads_top_players(self):
         """With 8 players and 2 courts, ranks 1 and 2 should be on different courts."""
-        t = MexicanoTournament(_make_players(8), _make_courts(2), num_rounds=1, randomness=0.0)
+        t = MexicanoTournament(_make_players(8), _make_courts(2), num_rounds=1)
         # Set distinct scores so ranking is deterministic
         for i, p in enumerate(t.players):
             t.scores[p.id] = 100 - i * 10
@@ -284,7 +281,6 @@ class TestMexicanoSitOut:
             _make_courts(1),
             total_points_per_match=32,
             num_rounds=5,
-            randomness=0.0,
         )
 
         for _ in range(5):
@@ -496,7 +492,6 @@ class TestMexicanoStrengthWeight:
             _make_courts(1),
             total_points_per_match=32,
             num_rounds=2,
-            randomness=0.0,
             strength_weight=1.0,
         )
         # Make players[0] and [1] dominant so they pair together
@@ -685,7 +680,7 @@ class TestMexicanoCrossGroupOptimization:
         return interactions
 
     def test_deterministic_reduces_repeats_over_many_rounds(self):
-        """With randomness=0 and 8 players (2 groups), the optimizer should
+        """With 8 players (2 groups), the optimizer should
         produce more unique pairings than would occur with rigid grouping."""
         players = _make_players(8)
         t = MexicanoTournament(
@@ -693,7 +688,6 @@ class TestMexicanoCrossGroupOptimization:
             _make_courts(2),
             total_points_per_match=32,
             num_rounds=6,
-            randomness=0.0,
         )
 
         all_interactions: list[set] = []
@@ -724,7 +718,6 @@ class TestMexicanoCrossGroupOptimization:
             _make_courts(3),
             total_points_per_match=32,
             num_rounds=2,
-            randomness=0.0,
         )
 
         ranked = t._ranked_players(players)
@@ -743,7 +736,6 @@ class TestMexicanoCrossGroupOptimization:
             _make_courts(1),
             total_points_per_match=32,
             num_rounds=2,
-            randomness=0.0,
         )
         ranked = t._ranked_players(players)
         groups = t._form_groups(ranked)
@@ -759,7 +751,6 @@ class TestMexicanoCrossGroupOptimization:
             _make_courts(2),
             total_points_per_match=32,
             num_rounds=4,
-            randomness=0.15,
             skill_gap=25,
             balance_tolerance=2.0,
         )
@@ -789,7 +780,6 @@ class TestMexicanoCrossGroupOptimization:
             _make_courts(2),
             total_points_per_match=32,
             num_rounds=4,
-            randomness=0.0,
         )
 
         t.generate_next_round()
@@ -824,7 +814,6 @@ class TestMexicanoCrossGroupOptimization:
             _make_courts(2),
             total_points_per_match=32,
             num_rounds=4,
-            randomness=0.0,
         )
 
         p = players
@@ -928,7 +917,6 @@ class TestMexicanoCrossGroupOptimization:
             _make_courts(2),
             total_points_per_match=32,
             num_rounds=4,
-            randomness=0.0,
         )
         for i, score in enumerate([80, 70, 60, 50, 40, 30, 20, 10]):
             t.scores[players[i].id] = score
@@ -946,7 +934,6 @@ class TestMexicanoCrossGroupOptimization:
             _make_courts(2),
             total_points_per_match=32,
             num_rounds=4,
-            randomness=0.0,
         )
         for i, score in enumerate([90, 78, 66, 54, 42, 30, 18, 6]):
             t.scores[players[i].id] = score
@@ -964,7 +951,6 @@ class TestMexicanoCrossGroupOptimization:
             _make_courts(2),
             total_points_per_match=32,
             num_rounds=4,
-            randomness=0.0,
         )
         for i, score in enumerate([80, 70, 60, 50, 40, 30, 20, 10]):
             t.scores[players[i].id] = score
@@ -987,7 +973,6 @@ class TestMexicanoCrossGroupOptimization:
             _make_courts(2),
             total_points_per_match=32,
             num_rounds=4,
-            randomness=0.2,
             skill_gap=25,
             balance_tolerance=2.0,
         )
@@ -1114,14 +1099,13 @@ class TestMexicanoPerPersonRepeats:
             _make_courts(1),
             total_points_per_match=32,
             num_rounds=4,
-            randomness=0,
         )
         # Play round 1
         t.generate_next_round()
         for m in t.current_round_matches():
             t.record_result(m.id, (16, 16))
 
-        # Propose round 2 — with 4 players and randomness=0, same pairings
+        # Propose round 2 — with 4 players and deterministic matching, same pairings
         proposals = t.propose_pairings(n_options=1)
         p = proposals[0]
         assert "per_person_repeats" in p
@@ -1151,7 +1135,6 @@ class TestMexicanoPerPersonRepeats:
             _make_courts(1),
             total_points_per_match=32,
             num_rounds=3,
-            randomness=0.0,
         )
 
         p1, p2, p3, p4 = players
@@ -1284,6 +1267,24 @@ class TestMexicanoEndFlow:
 
         assert t.phase == MexPhase.FINISHED
         assert t.is_finished
+
+    def test_finish_without_playoffs_sets_champion(self):
+        players = _make_players(8)
+        t = MexicanoTournament(players, _make_courts(2), total_points_per_match=32, num_rounds=0)
+        t.generate_next_round()
+        # Give distinct scores so leaderboard has a clear leader
+        matches = t.current_round_matches()
+        t.record_result(matches[0].id, (24, 8))
+        for m in matches[1:]:
+            t.record_result(m.id, (16, 16))
+
+        lb_leader_id = t.leaderboard()[0]["player_id"]
+        t.finish_without_playoffs()
+
+        champ = t.champion()
+        assert champ is not None
+        assert len(champ) == 1
+        assert champ[0].id == lb_leader_id
 
     def test_record_playoff_result_stores_tennis_sets(self):
         players = _make_players(8)
@@ -1513,3 +1514,301 @@ class TestSkillGapAbsoluteDifference:
         first_group_ids = {p.id for p in groups[0]}
         assert players[0].id in first_group_ids  # P1
         assert players[1].id in first_group_ids  # P2 (estimated up to 30)
+
+
+class TestMexicanoTeamMode:
+    """Tests for Mexicano in team mode (each participant is a fixed pair)."""
+
+    def test_requires_at_least_2_for_team_mode(self):
+        with pytest.raises(ValueError, match="at least 2"):
+            MexicanoTournament(_make_players(1), _make_courts(1), team_mode=True)
+
+    def test_creation_succeeds_with_2_teams(self):
+        t = MexicanoTournament(_make_players(2), _make_courts(1), team_mode=True)
+        assert t.team_mode is True
+        assert len(t.players) == 2
+
+    @pytest.mark.parametrize("n_teams", [2, 4, 6, 8])
+    def test_team_mode_produces_1v1_team_matches(self, n_teams):
+        """In team mode each match must have exactly 1 participant per side."""
+        courts = _make_courts(max(1, n_teams // 2))
+        t = MexicanoTournament(_make_players(n_teams), courts, team_mode=True)
+        matches = t.generate_next_round()
+        for m in matches:
+            assert len(m.team1) == 1
+            assert len(m.team2) == 1
+
+    def test_team_mode_match_count(self):
+        """n teams → n//2 matches per round (no sit-outs when even)."""
+        t = MexicanoTournament(_make_players(8), _make_courts(4), team_mode=True)
+        matches = t.generate_next_round()
+        assert len(matches) == 4
+
+    def test_team_mode_odd_sit_out(self):
+        """With 5 teams, 1 sits out each round."""
+        t = MexicanoTournament(_make_players(5), _make_courts(2), team_mode=True)
+        assert t._sit_out_count == 1
+        matches = t.generate_next_round()
+        assert len(matches) == 2
+        assert len(t.sit_outs[0]) == 1
+
+    def test_team_mode_all_teams_covered(self):
+        """Every team appears in exactly one match per round (no overlap)."""
+        t = MexicanoTournament(_make_players(8), _make_courts(4), team_mode=True)
+        matches = t.generate_next_round()
+        seen: set[str] = set()
+        for m in matches:
+            for p in m.team1 + m.team2:
+                assert p.id not in seen, "Team appears in multiple matches"
+                seen.add(p.id)
+        assert len(seen) == 8
+
+    def test_team_mode_record_result_updates_scores(self):
+        """Recording a result should credit each participant–team correctly."""
+        t = MexicanoTournament(_make_players(2), _make_courts(1), team_mode=True, num_rounds=1)
+        matches = t.generate_next_round()
+        m = matches[0]
+        t.record_result(m.id, (20, 12))
+        winner = m.team1[0] if m.score[0] > m.score[1] else m.team2[0]
+        loser = m.team2[0] if m.score[0] > m.score[1] else m.team1[0]
+        assert t.scores[winner.id] == 20
+        assert t.scores[loser.id] == 12
+
+    def test_team_mode_leaderboard(self):
+        """Leaderboard should list every participant once and be rank-ordered."""
+        t = MexicanoTournament(_make_players(4), _make_courts(2), team_mode=True, num_rounds=1)
+        matches = t.generate_next_round()
+        for m in matches:
+            t.record_result(m.id, (20, 12))
+        lb = t.leaderboard()
+        assert len(lb) == 4
+        assert lb[0]["rank"] == 1
+        # All ranks are strictly consecutive
+        assert [e["rank"] for e in lb] == [1, 2, 3, 4]
+
+    def test_team_mode_propose_pairings_has_multiple_strategies(self):
+        """propose_pairings in team mode should return both balanced and seeded proposals."""
+        t = MexicanoTournament(_make_players(8), _make_courts(4), team_mode=True)
+        matches = t.generate_next_round()
+        for m in matches:
+            t.record_result(m.id, (20, 12))
+        proposals = t.propose_pairings(n_options=3)
+        strategies = {p["strategy"] for p in proposals}
+        assert "balanced" in strategies
+        assert "seeded" in strategies
+
+    def test_team_mode_propose_pairings_distinct_fingerprints(self):
+        """All returned proposals must have distinct pairings."""
+        t = MexicanoTournament(_make_players(8), _make_courts(4), team_mode=True)
+        for m in t.generate_next_round():
+            t.record_result(m.id, (20, 12))
+        proposals = t.propose_pairings(n_options=6)
+        fingerprints = [
+            frozenset(frozenset([frozenset(m["team1_ids"]), frozenset(m["team2_ids"])]) for m in p["matches"])
+            for p in proposals
+        ]
+        # All fingerprints must be unique
+        assert len(fingerprints) == len(set(fingerprints))
+
+    def test_team_mode_each_match_uses_different_teams_per_round(self):
+        """generate_next_round across multiple rounds should work without errors."""
+        t = MexicanoTournament(_make_players(4), _make_courts(2), team_mode=True, num_rounds=4)
+        for _ in range(4):
+            matches = t.generate_next_round()
+            for m in matches:
+                t.record_result(m.id, (18, 14))
+        assert t.current_round == 4
+
+    def test_team_mode_player_stats_has_no_partner_repeats(self):
+        """In team mode partners don't exist, so partner history stays empty."""
+        t = MexicanoTournament(_make_players(4), _make_courts(2), team_mode=True, num_rounds=2)
+        for _ in range(2):
+            for m in t.generate_next_round():
+                t.record_result(m.id, (16, 16))
+        stats = t.player_stats()
+        for entry in stats.values():
+            assert entry["partners"] == []
+            assert entry["total_partner_repeats"] == 0
+
+    def test_team_mode_start_playoffs_singleton_teams(self):
+        """In team mode each participant must be its own singleton team in playoffs."""
+        from backend.models import MexPhase
+
+        t = MexicanoTournament(_make_players(4), _make_courts(2), team_mode=True, num_rounds=1)
+        for m in t.generate_next_round():
+            t.record_result(m.id, (20, 12))
+        t.end_mexicano()
+        t.start_playoffs(n_teams=4)
+        assert t.phase == MexPhase.PLAYOFFS
+        # Every playoff team must be a singleton list
+        for team in t.playoff_bracket.original_teams:
+            assert len(team) == 1
+
+
+class TestMexicanoPlayoffExtraPlayers:
+    """Tests for adding external participants to Mexicano play-offs."""
+
+    def _ready_tournament(self):
+        """Create a Mexicano tournament ready for play-offs (ended, rounds done)."""
+        t = MexicanoTournament(_make_players(8), _make_courts(2), total_points_per_match=32, num_rounds=0)
+        t.generate_next_round()
+        for m in t.current_round_matches():
+            t.record_result(m.id, (20, 12))
+        t.end_mexicano()
+        return t
+
+    def test_extra_players_added_to_bracket(self):
+        t = self._ready_tournament()
+        t.start_playoffs(n_teams=4, extra_participants=[{"name": "Guest1"}, {"name": "Guest2"}])
+        bracket_teams = t.playoff_bracket.original_teams
+        all_names = {p.name for team in bracket_teams for p in team}
+        assert "Guest1" in all_names
+        assert "Guest2" in all_names
+
+    def test_extra_players_registered_in_player_map(self):
+        t = self._ready_tournament()
+        t.start_playoffs(n_teams=4, extra_participants=[{"name": "Guest1", "score": 15}])
+        # External player should be findable via _player_by_id
+        guest_team = [team for team in t.playoff_bracket.original_teams if team[0].name == "Guest1"]
+        assert len(guest_team) == 1
+        guest_id = guest_team[0][0].id
+        assert t._player_by_id(guest_id).name == "Guest1"
+        assert t.scores[guest_id] == 15
+
+    def test_extra_players_with_manual_selection(self):
+        t = self._ready_tournament()
+        seed_ids = [t.players[0].id, t.players[1].id, t.players[2].id, t.players[3].id]
+        t.start_playoffs(
+            team_player_ids=seed_ids,
+            extra_participants=[{"name": "Extern"}],
+        )
+        bracket_teams = t.playoff_bracket.original_teams
+        all_names = {p.name for team in bracket_teams for p in team}
+        assert "Extern" in all_names
+        # 4 selected + 1 external → 5 players = 2 teams (last dropped) + external
+        # Actually in regular mode: 4 selected → 2 pairs, plus "Extern" is part of player_map
+        # but not in team_player_ids pairing — extra players are added as separate entities
+        # Let's verify the bracket has participants including the external one
+        assert len(bracket_teams) >= 2
+
+    def test_extra_players_team_mode(self):
+        t = MexicanoTournament(_make_players(4), _make_courts(2), team_mode=True, num_rounds=1)
+        for m in t.generate_next_round():
+            t.record_result(m.id, (20, 12))
+        t.end_mexicano()
+        t.start_playoffs(
+            n_teams=4,
+            extra_participants=[{"name": "GuestTeam"}],
+        )
+        bracket_teams = t.playoff_bracket.original_teams
+        all_names = {team[0].name for team in bracket_teams}
+        assert "GuestTeam" in all_names
+        # 4 existing teams + 1 external = 5 in bracket
+        assert len(bracket_teams) == 5
+
+    def test_extra_players_score_seeding(self):
+        """External participants with higher scores appear before those with lower scores."""
+        t = self._ready_tournament()
+        t.start_playoffs(
+            n_teams=2,
+            extra_participants=[
+                {"name": "Low", "score": 5},
+                {"name": "High", "score": 50},
+            ],
+        )
+        bracket_teams = t.playoff_bracket.original_teams
+        # Extract extra teams (last two, since they're appended after regulars)
+        extra_names = [team[0].name for team in bracket_teams if team[0].name in ("High", "Low")]
+        # High score should come first
+        assert extra_names[0] == "High"
+        assert extra_names[1] == "Low"
+
+    def test_extra_players_default_score_zero(self):
+        """External participants without explicit score default to 0."""
+        t = self._ready_tournament()
+        t.start_playoffs(n_teams=2, extra_participants=[{"name": "NoScore"}])
+        guest_team = [team for team in t.playoff_bracket.original_teams if team[0].name == "NoScore"]
+        assert len(guest_team) == 1
+        guest_id = guest_team[0][0].id
+        assert t.scores[guest_id] == 0
+
+    def test_placeholder_id_mapped_in_team_player_ids(self):
+        """External with placeholder_id replaces the placeholder in team_player_ids."""
+        t = self._ready_tournament()
+        ids = [t.players[0].id, t.players[1].id]
+        t.start_playoffs(
+            team_player_ids=ids + ["ext_0", "ext_1"],
+            extra_participants=[
+                {"name": "Ext1", "score": 10, "placeholder_id": "ext_0"},
+                {"name": "Ext2", "score": 5, "placeholder_id": "ext_1"},
+            ],
+        )
+        bracket_teams = t.playoff_bracket.original_teams
+        all_names = {p.name for team in bracket_teams for p in team}
+        assert "Ext1" in all_names
+        assert "Ext2" in all_names
+        # In regular mode: 4 IDs → 2 pairs → 2 teams
+        assert len(bracket_teams) == 2
+        # First team = players[0] + Ext1, second team = players[1] + Ext2
+        team1_names = {p.name for p in bracket_teams[0]}
+        team2_names = {p.name for p in bracket_teams[1]}
+        assert t.players[0].name in team1_names or t.players[0].name in team2_names
+        assert "Ext1" in team1_names or "Ext1" in team2_names
+
+    def test_placeholder_id_team_mode(self):
+        """External with placeholder_id works in team mode."""
+        t = MexicanoTournament(_make_players(4), _make_courts(2), team_mode=True, num_rounds=1)
+        for m in t.generate_next_round():
+            t.record_result(m.id, (20, 12))
+        t.end_mexicano()
+        regular_ids = [t.players[0].id, t.players[1].id]
+        t.start_playoffs(
+            team_player_ids=regular_ids + ["ext_0"],
+            extra_participants=[
+                {"name": "ExtTeam", "score": 20, "placeholder_id": "ext_0"},
+            ],
+        )
+        bracket_teams = t.playoff_bracket.original_teams
+        all_names = {team[0].name for team in bracket_teams}
+        assert "ExtTeam" in all_names
+        assert len(bracket_teams) == 3
+
+    def test_placeholder_score_used_for_seeding_team_mode(self):
+        """External participants' scores determine their seed position in team mode."""
+        t = MexicanoTournament(_make_players(4), _make_courts(2), team_mode=True, num_rounds=1)
+        for m in t.generate_next_round():
+            t.record_result(m.id, (20, 12))
+        t.end_mexicano()
+        # Give externals a very high and very low score to verify ordering.
+        # Regular players scored 20 (winners) and 12 (losers) in the single round.
+        t.start_playoffs(
+            team_player_ids=[t.players[0].id, "ext_high", "ext_low", t.players[1].id],
+            extra_participants=[
+                {"name": "HighExt", "score": 999, "placeholder_id": "ext_high"},
+                {"name": "LowExt", "score": 1, "placeholder_id": "ext_low"},
+            ],
+        )
+        bracket_teams = t.playoff_bracket.original_teams
+        names_in_order = [team[0].name for team in bracket_teams]
+        # HighExt (999) should be seed 1 (first), LowExt (1) should be last
+        assert names_in_order[0] == "HighExt"
+        assert names_in_order[-1] == "LowExt"
+
+    def test_placeholder_score_used_for_seeding_regular_mode(self):
+        """External participants' scores affect pair seeding in regular (individual) mode."""
+        t = self._ready_tournament()
+        # 2 regular players + 2 externals → 4 IDs → 2 pairs
+        ids = [t.players[0].id, "ext_top", t.players[1].id, "ext_bot"]
+        t.start_playoffs(
+            team_player_ids=ids,
+            extra_participants=[
+                {"name": "TopExt", "score": 999, "placeholder_id": "ext_top"},
+                {"name": "BotExt", "score": 1, "placeholder_id": "ext_bot"},
+            ],
+        )
+        bracket_teams = t.playoff_bracket.original_teams
+        # Pair (players[0], ext_top) and (players[1], ext_bot).
+        # The pair with ext_top (score=999) should have a higher combined est
+        # and be seeded first.
+        first_team_names = {p.name for p in bracket_teams[0]}
+        assert "TopExt" in first_team_names

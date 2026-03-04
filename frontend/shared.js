@@ -54,9 +54,9 @@ const THEME_KEY = 'padel-theme';
  * @returns {'light'|'dark'}
  */
 function _applyTheme(theme) {
-  const t = theme === 'light' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', t);
-  return t;
+  const mode = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', mode);
+  return mode;
 }
 
 /**

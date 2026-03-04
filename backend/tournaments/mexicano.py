@@ -14,7 +14,6 @@ Rules:
   - Within each group the 2v2 split is chosen to minimise the score difference
     between the two teams (most competitive match), with partner/opponent repeat
     counts used as a secondary tie-breaker to encourage novelty.
-  - A small randomness factor is injected to the ranking to reduce determinism.
   - Each player accumulates the points they scored; overall ranking = total points.
   - If the player count is NOT divisible by 4, some players sit out each round.
     Sit-out selection is fair (fewest sit-outs first) and tie-broken by choosing
@@ -27,10 +26,28 @@ import itertools
 import random
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
 from ..models import Court, Match, MatchStatus, MexPhase, Player
+from . import pairing as pairing_mod
 
 if TYPE_CHECKING:
     from .playoff import DoubleEliminationBracket, SingleEliminationBracket
+
+
+class MexicanoConfig(BaseModel):
+    """Validated scalar configuration for a Mexicano tournament."""
+
+    model_config = ConfigDict(frozen=True)
+
+    total_points_per_match: int = Field(default=32, ge=1)
+    num_rounds: int = Field(default=8, ge=0)
+    skill_gap: int | None = Field(default=None, ge=0)
+    win_bonus: int = Field(default=0, ge=0)
+    strength_weight: float = Field(default=0.0, ge=0.0, le=1.0)
+    loss_discount: float = Field(default=1.0, ge=0.0, le=1.0)
+    balance_tolerance: float = Field(default=0.2, ge=0.0)
+    team_mode: bool = False
 
 
 class MexicanoTournament:
@@ -49,9 +66,6 @@ class MexicanoTournament:
     num_rounds : int
         How many rounds to play.  ``0`` means **rolling mode** — unlimited
         rounds; the tournament keeps going until you manually start play-offs.
-    randomness : float  (0.0 – 1.0)
-        Controls how much randomness is added to pairing.
-        0 = pure ranking, 1 = fully random.  Default 0.15.
     skill_gap : int | None
         Maximum allowed point difference between any two players in the same
         group of 4.  ``None`` (default) disables the cap and uses a snake-draft
@@ -94,41 +108,47 @@ class MexicanoTournament:
         courts: list[Court],
         total_points_per_match: int = 32,
         num_rounds: int = 8,
-        randomness: float = 0.15,
         skill_gap: int | None = None,
         win_bonus: int = 0,
         strength_weight: float = 0.0,
         loss_discount: float = 1.0,
         balance_tolerance: float = 0.2,
+        team_mode: bool = False,
     ):
-        if len(players) < 4:
-            raise ValueError("Need at least 4 players for Mexicano format")
-        if num_rounds < 0:
-            raise ValueError("num_rounds must be >= 0 (0 = rolling / unlimited)")
-        if skill_gap is not None and skill_gap < 0:
-            raise ValueError("skill_gap must be a non-negative integer or None")
-        if win_bonus < 0:
-            raise ValueError("win_bonus must be >= 0")
-        if not 0.0 <= strength_weight <= 1.0:
-            raise ValueError("strength_weight must be between 0.0 and 1.0")
-        if not 0.0 <= loss_discount <= 1.0:
-            raise ValueError("loss_discount must be between 0.0 and 1.0")
-        if balance_tolerance < 0.0:
-            raise ValueError("balance_tolerance must be >= 0.0")
+        min_players = 2 if team_mode else 4
+        if len(players) < min_players:
+            raise ValueError(
+                f"Need at least {min_players} {'teams' if team_mode else 'players'} for Mexicano{'team' if team_mode else ''} format"
+            )
+
+        try:
+            cfg = MexicanoConfig(
+                total_points_per_match=total_points_per_match,
+                num_rounds=num_rounds,
+                skill_gap=skill_gap,
+                win_bonus=win_bonus,
+                strength_weight=strength_weight,
+                loss_discount=loss_discount,
+                balance_tolerance=balance_tolerance,
+                team_mode=team_mode,
+            )
+        except ValidationError as exc:
+            raise ValueError(str(exc)) from exc
 
         self.players = list(players)
         self.courts = list(courts)
-        self.total_points_per_match = total_points_per_match
-        self.num_rounds = num_rounds  # 0 = rolling (unlimited)
-        self.randomness = max(0.0, min(1.0, randomness))
-        self.skill_gap: int | None = skill_gap
-        self.win_bonus: int = win_bonus
-        self.strength_weight: float = strength_weight
-        self.loss_discount: float = loss_discount
-        self.balance_tolerance: float = balance_tolerance
+        self.total_points_per_match = cfg.total_points_per_match
+        self.num_rounds = cfg.num_rounds  # 0 = rolling (unlimited)
+        self.skill_gap: int | None = cfg.skill_gap
+        self.win_bonus: int = cfg.win_bonus
+        self.strength_weight: float = cfg.strength_weight
+        self.loss_discount: float = cfg.loss_discount
+        self.balance_tolerance: float = cfg.balance_tolerance
+        self.team_mode: bool = cfg.team_mode
 
-        # How many must sit out each round
-        self._sit_out_count = len(players) % 4
+        # In team mode each participant is already a pair, so matches are 1v1 teams.
+        # A full match needs 2 participants; in regular mode it needs 4 players.
+        self._sit_out_count = len(players) % 2 if self.team_mode else len(players) % 4
 
         # Cumulative points per player
         self.scores: dict[str, int] = {p.id: 0 for p in players}
@@ -354,17 +374,9 @@ class MexicanoTournament:
             raise RuntimeError("Play-off participants must be unique")
 
     def _ranked_players(self, pool: list[Player]) -> list[Player]:
-        """Players sorted by current score (desc), with randomness jitter."""
+        """Players sorted by current score descending."""
         players = list(pool)
-        max_score = max((self.scores[p.id] for p in players), default=1)
-        normalizer = max(max_score, 1)
-
-        def sort_key(p: Player) -> float:
-            base = self.scores[p.id] / normalizer
-            jitter = random.gauss(0, self.randomness * 0.5)
-            return -(base + jitter)
-
-        players.sort(key=sort_key)
+        players.sort(key=lambda p: -self.scores[p.id])
         return players
 
     # ------------------------------------------------------------------ #
@@ -507,15 +519,8 @@ class MexicanoTournament:
             repeat_count,
         )
 
-    # All three ways to split a group of 4 into two teams of 2:
-    #   (0,3) vs (1,2)  — interleaved: positions 0+3 vs 1+2
-    #   (0,2) vs (1,3)  — interleaved: positions 0+2 vs 1+3
-    #   (0,1) vs (2,3)  — top half vs bottom half
-    _PAIRING_SCHEMES = [
-        ((0, 3), (1, 2)),
-        ((0, 2), (1, 3)),
-        ((0, 1), (2, 3)),
-    ]
+    # Shared pairing schemes — delegated to the pairing module.
+    _PAIRING_SCHEMES = pairing_mod.PAIRING_SCHEMES_4
 
     def _snake_draft_groups(self, playing: list[Player]) -> list[list[Player]]:
         """
@@ -594,13 +599,42 @@ class MexicanoTournament:
 
         return groups
 
+    def _form_team_groups(self, playing: list[Player]) -> list[list[Player]]:
+        """
+        Form groups of 2 participants for team mode.
+
+        Each "player" object represents a fixed team (pair).  A match needs
+        exactly 2 such participants, so groups have size 2.
+
+        * ``skill_gap=None`` → sequential pairing: rank 1 vs rank 2, rank 3 vs rank 4, …
+        * ``skill_gap=N``    → anchor-based pairing: each team is paired with the
+          closest-ranked team within *skill_gap* estimated points.
+        """
+        if self.skill_gap is None:
+            return [playing[i : i + 2] for i in range(0, len(playing), 2) if i + 1 < len(playing)]
+
+        est = self._estimated_scores()
+        remaining = list(playing)
+        groups: list[list[Player]] = []
+        while len(remaining) >= 2:
+            anchor_est = est[remaining[0].id]
+            within_gap = [p for p in remaining if abs(anchor_est - est[p.id]) <= self.skill_gap]
+            group = within_gap[:2] if len(within_gap) >= 2 else remaining[:2]
+            groups.append(group)
+            taken = {p.id for p in group}
+            remaining = [p for p in remaining if p.id not in taken]
+        return groups
+
     def _form_groups(self, playing: list[Player]) -> list[list[Player]]:
         """
-        Dispatch to the appropriate grouping strategy based on ``skill_gap``.
+        Dispatch to the appropriate grouping strategy.
 
-        * ``skill_gap=None``  → snake-draft (spreads top players across courts)
-        * ``skill_gap=N``     → tier grouping (keeps players within N points together)
+        * team_mode=True        → pairs of 2 participants (each is a fixed team)
+        * ``skill_gap=None``    → snake-draft (spreads top players across courts)
+        * ``skill_gap=N``       → tier grouping (keeps players within N points together)
         """
+        if self.team_mode:
+            return self._form_team_groups(playing)
         if self.skill_gap is None:
             return self._snake_draft_groups(playing)
         return self._skill_gap_groups(playing)
@@ -625,13 +659,19 @@ class MexicanoTournament:
         """
         Evaluate all 3 possible 2v2 splits for a group of 4 and return the best.
 
-        Priority:
+        In team mode, groups have exactly 2 participants (each is a full team),
+        so no split evaluation is needed — the pairing is trivially fixed.
+
+        Priority (regular mode):
           1. Minimise partner skill-gap excess (if skill_gap configured).
           2. Minimise score imbalance ``|sum(team1_scores) − sum(team2_scores)|``
              so each match is as competitive as possible.
           3. Minimise partner/opponent repeat count for novelty.
         Ties at both levels are broken randomly.
         """
+        if self.team_mode:
+            # Each participant IS a team; the match is simply p0 vs p1.
+            return [group[0]], [group[1]]
         estimated_scores = self._estimated_scores()
         candidates = []
         for (a, b), (c, d) in self._PAIRING_SCHEMES:
@@ -652,24 +692,31 @@ class MexicanoTournament:
         best = [(t1, t2) for rep, t1, t2 in filtered if rep == min_repeats]
         return random.choice(best)
 
+    def _min_group_imbalance(self, group: list[Player]) -> int:
+        """Minimum achievable score imbalance for a single group.
+
+        Handles both group sizes:
+          * 2 players (team mode) — only one possible split.
+          * 4 players            — minimum over all 3 pairing schemes.
+        """
+        if len(group) == 2:
+            return abs(self.scores[group[0].id] - self.scores[group[1].id])
+        return min(
+            abs(
+                sum(self.scores[p.id] for p in [group[a], group[b]])
+                - sum(self.scores[p.id] for p in [group[c], group[d]])
+            )
+            for (a, b), (c, d) in self._PAIRING_SCHEMES
+        )
+
     def _group_imbalance(self, playing: list[Player]) -> int:
         """
         Total score imbalance across all matches if *playing* were paired now.
 
-        Uses snake-draft grouping and measures the minimum achievable score
-        difference for each group.  Lower = more competitive matches.
+        Uses the configured grouping strategy and measures the minimum achievable
+        score difference for each group.  Lower = more competitive matches.
         """
-        total = 0
-        for group in self._form_groups(playing):
-            best = min(
-                abs(
-                    sum(self.scores[p.id] for p in [group[a], group[b]])
-                    - sum(self.scores[p.id] for p in [group[c], group[d]])
-                )
-                for (a, b), (c, d) in self._PAIRING_SCHEMES
-            )
-            total += best
-        return total
+        return sum(self._min_group_imbalance(g) for g in self._form_groups(playing))
 
     def _pairing_diversity_score(self, playing: list[Player]) -> float:
         """
@@ -677,15 +724,17 @@ class MexicanoTournament:
 
         Higher = more new match-ups.  Uses snake-draft grouping to mirror
         the actual pairing logic in generate_next_round.
+        In team mode there are no partners, only opponents.
         """
         new_interactions = 0
         for group in self._form_groups(playing):
             t1, t2 = self._best_pairing(group)
-            pairs = [(t1[0], t1[1]), (t2[0], t2[1])]
+            if not self.team_mode:
+                pairs = [(t1[0], t1[1]), (t2[0], t2[1])]
+                for a, b in pairs:
+                    if self._partner_history[a.id].get(b.id, 0) == 0:
+                        new_interactions += 1
             opponents = list(itertools.product(t1, t2))
-            for a, b in pairs:
-                if self._partner_history[a.id].get(b.id, 0) == 0:
-                    new_interactions += 1
             for a, b in opponents:
                 if self._opponent_history[a.id].get(b.id, 0) == 0:
                     new_interactions += 1
@@ -705,17 +754,7 @@ class MexicanoTournament:
 
     def _total_imbalance(self, groups: list[list[Player]]) -> int:
         """Sum of minimum achievable score imbalance across all groups."""
-        total = 0
-        for group in groups:
-            best = min(
-                abs(
-                    sum(self.scores[p.id] for p in [group[a], group[b]])
-                    - sum(self.scores[p.id] for p in [group[c], group[d]])
-                )
-                for (a, b), (c, d) in self._PAIRING_SCHEMES
-            )
-            total += best
-        return total
+        return sum(self._min_group_imbalance(g) for g in groups)
 
     def _skill_gap_violations(
         self,
@@ -792,18 +831,13 @@ class MexicanoTournament:
     # Pairing proposals
     # ------------------------------------------------------------------ #
 
-    def _plan_round(self, jitter: float = 0.0) -> dict:
+    def _plan_round(self) -> dict:
         """
         Compute a full round plan **without mutating any state**.
 
-        The jitter parameter temporarily overrides ``self.randomness`` so
-        different calls produce varied (but still skill-aware) orderings.
         Returns a dict with all data needed to commit the round later.
         """
-        old_r = self.randomness
-        self.randomness = jitter
         ranked = self._ranked_players(self.players)
-        self.randomness = old_r
 
         # Use forced sit-outs if set, otherwise auto-select
         if getattr(self, "_forced_sit_out_ids", None) is not None:
@@ -894,10 +928,7 @@ class MexicanoTournament:
         swap_variant: int = 0,
     ) -> dict:
         """Plan seeded by leaderboard positions with optional low-repeat pairing."""
-        old_r = self.randomness
-        self.randomness = 0.0
         ranked = self._ranked_players(self.players)
-        self.randomness = old_r
 
         if getattr(self, "_forced_sit_out_ids", None) is not None:
             sitting = [self._player_map[pid] for pid in self._forced_sit_out_ids]
@@ -955,6 +986,108 @@ class MexicanoTournament:
             "per_person_repeats": per_person_repeats,
             "skill_gap_violations": violating_pairs,
             "skill_gap_worst_excess": round(worst_gap_excess, 2),
+            "exact_prev_round_repeats": self._annotate_exact_previous_round_repeats(match_plans),
+            "strategy": "seeded",
+            "variant": variant_name,
+            "variant_repeats": minimize_repeats,
+        }
+
+    def _plan_round_seeded_team(
+        self,
+        *,
+        minimize_repeats: bool = False,
+        swap_variant: int = 0,
+    ) -> dict:
+        """Plan seeded proposals for team mode.
+
+        In team mode every participant is already a full team (1v1 match), so
+        there is no inner 2v2 split to optimise.  Instead, variety comes from
+        *cross-pairing* within consecutive windows of 4 ranked participants:
+
+        Window [A, B, C, D] (ranks 1-4):
+          * variant=0 (base):    A vs B,  C vs D   — sequential
+          * variant=1 (cross-a): A vs C,  B vs D   — interleaved
+          * variant=2 (cross-b): A vs D,  B vs C   — top-vs-bottom
+
+        When *minimize_repeats* is True, the best cross-pairing scheme is
+        chosen per window to minimise opponent repeat count.
+        """
+        ranked = self._ranked_players(self.players)
+
+        if getattr(self, "_forced_sit_out_ids", None) is not None:
+            sitting = [self._player_map[pid] for pid in self._forced_sit_out_ids]
+        else:
+            sitting = self._choose_sit_outs(ranked)
+        sitting_ids = {p.id for p in sitting}
+        playing = [p for p in ranked if p.id not in sitting_ids]
+
+        est = self._estimated_scores()
+        match_plans: list[dict] = []
+        per_person_repeats: dict[str, dict] = {}
+        court_idx = 0
+        i = 0
+
+        while i < len(playing):
+            window = playing[i : i + 4]
+            if len(window) < 2:
+                break
+
+            if len(window) >= 4 and not minimize_repeats:
+                # Apply the chosen swap variant to this 4-window
+                if swap_variant == 1:
+                    pairs = [(window[0], window[2]), (window[1], window[3])]
+                elif swap_variant == 2:
+                    pairs = [(window[0], window[3]), (window[1], window[2])]
+                else:
+                    pairs = [(window[0], window[1]), (window[2], window[3])]
+                i += 4
+            elif len(window) >= 4 and minimize_repeats:
+                # Pick the cross-pairing scheme per window that minimises repeats
+                schemes = [
+                    [(window[0], window[1]), (window[2], window[3])],
+                    [(window[0], window[2]), (window[1], window[3])],
+                    [(window[0], window[3]), (window[1], window[2])],
+                ]
+                best_pairs = min(
+                    schemes,
+                    key=lambda ps: sum(self._pairing_repeat_count([a], [b]) for a, b in ps),
+                )
+                pairs = best_pairs
+                i += 4
+            else:
+                # Remaining pair of 2
+                pairs = [(window[0], window[1])]
+                i += 2
+
+            for t1_p, t2_p in pairs:
+                t1, t2 = [t1_p], [t2_p]
+                court = self.courts[court_idx % len(self.courts)] if self.courts else None
+                court_idx += 1
+                imb = abs(self._team_total(est, t1) - self._team_total(est, t2))
+                rep = self._pairing_repeat_count(t1, t2)
+                self._collect_per_person_repeats(t1, t2, per_person_repeats)
+                match_plans.append(
+                    {
+                        "team1_ids": [t1_p.id],
+                        "team2_ids": [t2_p.id],
+                        "team1_names": [t1_p.name],
+                        "team2_names": [t2_p.name],
+                        "court_name": court.name if court else None,
+                        "score_imbalance": imb,
+                        "repeat_count": rep,
+                    }
+                )
+
+        variant_name = "base" if swap_variant == 0 else ("swap_a" if swap_variant == 1 else "swap_b")
+        return {
+            "sit_out_ids": [p.id for p in sitting],
+            "sit_out_names": [p.name for p in sitting],
+            "matches": match_plans,
+            "score_imbalance": sum(m["score_imbalance"] for m in match_plans),
+            "repeat_count": sum(m["repeat_count"] for m in match_plans),
+            "per_person_repeats": per_person_repeats,
+            "skill_gap_violations": 0,
+            "skill_gap_worst_excess": 0.0,
             "exact_prev_round_repeats": self._annotate_exact_previous_round_repeats(match_plans),
             "strategy": "seeded",
             "variant": variant_name,
@@ -1036,10 +1169,6 @@ class MexicanoTournament:
                 )
             self._forced_sit_out_ids = forced_sit_out_ids
 
-        # Try escalating jitter levels to surface diverse options
-        base = self.randomness if self.randomness > 0 else 0.1
-        jitter_levels = [0.0] + [base * x for x in (0.5, 1.0, 2.0, 4.0, 8.0)]
-
         balanced: list[dict] = []
         seeded: list[dict] = []
         seen: set = set()
@@ -1047,21 +1176,19 @@ class MexicanoTournament:
         target_per_strategy = max(3, (target_total + 1) // 2)
         target_balanced = max(target_per_strategy, n_options)
 
-        for jitter in jitter_levels:
+        # _best_pairing breaks ties with random.choice, producing different splits across calls
+        for _ in range(target_balanced * 4):
             if len(balanced) >= target_balanced:
                 break
-            # Run several times per jitter level because _best_pairing can
-            # break ties randomly, producing genuinely different splits
-            for _ in range(4):
-                if len(balanced) >= target_balanced:
-                    break
-                plan = self._plan_round(jitter)
-                fp = self._plan_fingerprint(plan)
-                if fp not in seen:
-                    seen.add(fp)
-                    plan["option_id"] = f"prop-{random.randbytes(8).hex()}"
-                    balanced.append(plan)
+            plan = self._plan_round()
+            fp = self._plan_fingerprint(plan)
+            if fp not in seen:
+                seen.add(fp)
+                plan["option_id"] = f"prop-{random.randbytes(8).hex()}"
+                balanced.append(plan)
 
+        # Seeded proposals: for regular mode use position-based seeding;
+        # for team mode use cross-pairing variants (analogous logic, groups of 2).
         seeded_candidates = [
             (False, 0),
             (True, 1),
@@ -1076,10 +1203,16 @@ class MexicanoTournament:
             for minimize_repeats, swap_variant in seeded_candidates:
                 if len(seeded) >= target_per_strategy:
                     break
-                plan = self._plan_round_seeded_position(
-                    minimize_repeats=minimize_repeats,
-                    swap_variant=swap_variant,
-                )
+                if self.team_mode:
+                    plan = self._plan_round_seeded_team(
+                        minimize_repeats=minimize_repeats,
+                        swap_variant=swap_variant,
+                    )
+                else:
+                    plan = self._plan_round_seeded_position(
+                        minimize_repeats=minimize_repeats,
+                        swap_variant=swap_variant,
+                    )
                 fp = self._plan_fingerprint(plan)
                 if fp in seen:
                     continue
@@ -1088,21 +1221,18 @@ class MexicanoTournament:
                 seeded.append(plan)
 
         # If any option violates skill-gap, surface more balanced alternatives.
+        # _plan_round() uses random tie-breaking so repeated calls can yield distinct plans.
         if any(p.get("skill_gap_violations", 0) > 0 for p in (balanced + seeded)):
             target_balanced = max(target_balanced, 5)
-            extra_jitter_levels = [base * x for x in (12.0, 16.0, 24.0)]
-            for jitter in extra_jitter_levels:
+            for _ in range(15):
                 if len(balanced) >= target_balanced:
                     break
-                for _ in range(5):
-                    if len(balanced) >= target_balanced:
-                        break
-                    plan = self._plan_round(jitter)
-                    fp = self._plan_fingerprint(plan)
-                    if fp not in seen:
-                        seen.add(fp)
-                        plan["option_id"] = f"prop-{random.randbytes(8).hex()}"
-                        balanced.append(plan)
+                plan = self._plan_round()
+                fp = self._plan_fingerprint(plan)
+                if fp not in seen:
+                    seen.add(fp)
+                    plan["option_id"] = f"prop-{random.randbytes(8).hex()}"
+                    balanced.append(plan)
 
         # Keep output compact by default, while allowing larger requested sets.
         self._annotate_weighted_scores(balanced, "balanced")
@@ -1176,13 +1306,21 @@ class MexicanoTournament:
         ``propose_pairings()``, that exact plan is committed.  Otherwise
         a fresh plan is computed.
 
-        Pairing logic (fresh):
+        Pairing logic (fresh) — regular mode:
           1. Choose sit-outs fairly if player count is not divisible by 4.
-          2. Rank remaining players by accumulated points (+randomness jitter).
+          2. Rank remaining players by accumulated points.
           3. Form groups of 4 via the configured grouping strategy.
           4. Optimise groups by swapping players across groups to minimise
              repeat partner/opponent pairings across the whole round.
           5. Within each group pick the 2v2 split that minimises score imbalance.
+
+        Pairing logic (fresh) — team mode:
+          1. Choose sit-outs fairly if participant count is not divisible by 2.
+          2. Rank remaining participants by accumulated points.
+          3. Form groups of 2 (each participant is already a full team).
+          4. Optimise groups by swapping participants across groups to minimise
+             repeat opponent pairings across the whole round.
+          5. Each group becomes a direct 1v1 match (no inner split needed).
         """
         if self.num_rounds > 0 and self.current_round >= self.num_rounds:
             raise RuntimeError("All rounds have been played")
@@ -1329,29 +1467,9 @@ class MexicanoTournament:
     def _pairing_repeat_count(self, team1: list[Player], team2: list[Player]) -> int:
         """Total repeat penalty for a match, with a bonus for full-match repeats.
 
-        The base score sums individual partner and opponent repeat counts.
-        On top of that, a *full-similarity bonus* is added whenever a player
-        has seen **both** the same partner AND the same set of opponents in a
-        previous match — meaning the exact 4-player configuration is repeated.
-        Each such player adds an extra penalty equal to the minimum overlap
-        count, making the optimiser strongly prefer any alternative pairing.
+        Delegates to the shared pairing module.
         """
-        return self._half_repeat_count(team1, team2) + self._half_repeat_count(team2, team1)
-
-    def _half_repeat_count(self, team: list[Player], opponents: list[Player]) -> int:
-        """Repeat penalty contribution from one side of a match."""
-        count = 0
-        for p in team:
-            partner = [x for x in team if x.id != p.id]
-            partner_count = 0
-            if partner:
-                partner_count = self._partner_history[p.id].get(partner[0].id, 0)
-                count += partner_count
-            opp_counts = [self._opponent_history[p.id].get(o.id, 0) for o in opponents]
-            count += sum(opp_counts)
-            if partner_count > 0 and opp_counts and min(opp_counts) > 0:
-                count += min(partner_count, min(opp_counts))
-        return count
+        return pairing_mod.pairing_repeat_count(team1, team2, self._partner_history, self._opponent_history)
 
     # ------------------------------------------------------------------ #
     # Record results
@@ -1467,17 +1585,8 @@ class MexicanoTournament:
         }
 
     def _update_history(self, team1: list[Player], team2: list[Player]):
-        # Partner history
-        for team in [team1, team2]:
-            for i, p1 in enumerate(team):
-                for p2 in team[i + 1 :]:
-                    self._partner_history[p1.id][p2.id] = self._partner_history[p1.id].get(p2.id, 0) + 1
-                    self._partner_history[p2.id][p1.id] = self._partner_history[p2.id].get(p1.id, 0) + 1
-        # Opponent history
-        for p1 in team1:
-            for p2 in team2:
-                self._opponent_history[p1.id][p2.id] = self._opponent_history[p1.id].get(p2.id, 0) + 1
-                self._opponent_history[p2.id][p1.id] = self._opponent_history[p2.id].get(p1.id, 0) + 1
+        """Record a played match in partner/opponent history. Delegates to shared module."""
+        pairing_mod.update_history(team1, team2, self._partner_history, self._opponent_history)
 
     # ------------------------------------------------------------------ #
     # Queries
@@ -1536,6 +1645,7 @@ class MexicanoTournament:
         team_player_ids: list[str] | None = None,
         n_teams: int = 4,
         double_elimination: bool = False,
+        extra_participants: list[dict] | None = None,
     ):
         """
         Start a play-off bracket after the Mexicano rounds are complete.
@@ -1543,14 +1653,25 @@ class MexicanoTournament:
         Parameters
         ----------
         team_player_ids : list[str] | None
-            Ordered list of individual player IDs (seed order).
-            IDs are paired as (1+2), (3+4), ... to form play-off teams.
-            If an odd number is provided, the last ID is dropped.
-            If None, uses top *n_teams* from the leaderboard before pairing.
+            Player/participant IDs to include (seed order).
+            *Regular mode*: IDs are paired as (1+2), (3+4), … to form 2-player
+            play-off teams.  An odd count drops the last ID.
+            *Team mode*: each ID is already a full team — they enter the bracket
+            as singleton teams, seeded by their estimated score.
+            If ``None``, the top *n_teams* participants from the leaderboard are
+            selected automatically.
+            May contain placeholder IDs (e.g. ``ext_0``) that map to entries in
+            *extra_participants* via ``placeholder_id``.
         n_teams : int
-            Number of teams if team_player_ids not provided.
+            Number of participants/teams when *team_player_ids* is not given.
         double_elimination : bool
             Use double-elimination bracket instead of single.
+        extra_participants : list[dict] | None
+            Dicts with ``name``, optional ``score`` (int, default 0) and
+            optional ``placeholder_id`` for external participants who did not
+            play in the Mexicano rounds.  When a ``placeholder_id`` is present
+            the external replaces that placeholder inside *team_player_ids*;
+            otherwise it is appended as a singleton team.
         """
         if self.pending_matches():
             raise RuntimeError("Complete the current round before starting play-offs")
@@ -1562,21 +1683,78 @@ class MexicanoTournament:
         # Import here to avoid circular import
         from .playoff import DoubleEliminationBracket, SingleEliminationBracket
 
+        # Create Player objects for external participants and register them.
+        # Build a map from placeholder_id → real player ID so we can swap them
+        # in team_player_ids later.
+        ext_id_map: dict[str, str] = {}
+        extra_singleton_players: list[Player] = []
+        if extra_participants:
+            for entry in extra_participants:
+                p = Player(name=entry["name"])
+                self._player_map[p.id] = p
+                # Initialise tracking so leaderboard/stats don't KeyError
+                self.scores[p.id] = entry.get("score", 0)
+                self._matches_played[p.id] = 0
+                self._wins[p.id] = 0
+                self._draws[p.id] = 0
+                self._losses[p.id] = 0
+                self._sit_out_counts[p.id] = 0
+                self._partner_history[p.id] = {}
+                self._opponent_history[p.id] = {}
+                placeholder = entry.get("placeholder_id")
+                if placeholder:
+                    ext_id_map[placeholder] = p.id
+                else:
+                    extra_singleton_players.append(p)
+
+        # Replace placeholder IDs with real player IDs
+        if team_player_ids and ext_id_map:
+            team_player_ids = [ext_id_map.get(pid, pid) for pid in team_player_ids]
+
         # Resolve participants
         if team_player_ids is None:
             lb = self.leaderboard()
             team_player_ids = [e["player_id"] for e in lb[:n_teams]]
 
         self._validate_unique_ids(team_player_ids)
-        pairs = self._pair_playoff_player_ids(team_player_ids)
-        # Seed teams by combined (estimated) score so sit-out players aren't
-        # unfairly penalised — mirrors the leaderboard ranked_by_avg logic.
         est = self._estimated_scores()
-        pairs.sort(
-            key=lambda pair: est.get(pair[0], 0.0) + est.get(pair[1], 0.0),
+
+        # Inject seed scores for ALL external participants so sorting works
+        if extra_participants:
+            for entry in extra_participants:
+                placeholder = entry.get("placeholder_id")
+                real_id = ext_id_map.get(placeholder, "") if placeholder else ""
+                if real_id:
+                    est[real_id] = float(entry.get("score", 0))
+            # Also inject scores for singletons so they can be sorted
+            for ep in extra_singleton_players:
+                est[ep.id] = float(self.scores[ep.id])
+
+        if self.team_mode:
+            # Each participant IS already a full team — wrap as singleton list,
+            # sorted by estimated score (best seed first).
+            sorted_ids = sorted(team_player_ids, key=lambda pid: est.get(pid, 0.0), reverse=True)
+            teams = [[self._player_by_id(pid)] for pid in sorted_ids]
+        else:
+            # Regular mode: pair consecutive IDs into 2-player teams.
+            pairs = self._pair_playoff_player_ids(team_player_ids)
+            # Seed teams by combined estimated score so sit-out players aren't
+            # unfairly penalised — mirrors the leaderboard ranked_by_avg logic.
+            pairs.sort(
+                key=lambda pair: est.get(pair[0], 0.0) + est.get(pair[1], 0.0),
+                reverse=True,
+            )
+            teams = [[self._player_by_id(pid1), self._player_by_id(pid2)] for pid1, pid2 in pairs]
+
+        # Append external singleton participants (no placeholder), sorted by
+        # score descending so higher-seeded externals appear first.
+        extra_singleton_players.sort(
+            key=lambda p: est.get(p.id, 0.0),
             reverse=True,
         )
-        teams = [[self._player_by_id(pid1), self._player_by_id(pid2)] for pid1, pid2 in pairs]
+        for ep in extra_singleton_players:
+            teams.append([ep])
+
         if len(teams) < 2:
             raise RuntimeError("Need at least 2 teams to start play-offs")
 
@@ -1625,7 +1803,15 @@ class MexicanoTournament:
             self._phase = MexPhase.FINISHED
 
     def champion(self) -> list[Player] | None:
-        """Return the play-off champion, or None if not yet decided."""
-        if self.playoff_bracket is None:
-            return None
-        return self.playoff_bracket.champion()
+        """Return the champion, or None if not yet decided.
+
+        When the tournament finishes without play-offs, the leaderboard
+        leader is the champion.  Otherwise the play-off bracket decides.
+        """
+        if self.playoff_bracket is not None:
+            return self.playoff_bracket.champion()
+        if self._phase == MexPhase.FINISHED:
+            lb = self.leaderboard()
+            if lb:
+                return [self._player_map[lb[0]["player_id"]]]
+        return None
