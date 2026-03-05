@@ -294,6 +294,14 @@
   .btn-danger { background: var(--red); color: #fff; }
   .btn-danger:hover { opacity: 0.9; }
   .btn-sm { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+  .btn.loading { opacity: 0.7; pointer-events: none; position: relative; }
+  .btn.loading::after {
+    content: ''; display: inline-block; width: 0.85em; height: 0.85em;
+    border: 2px solid currentColor; border-right-color: transparent;
+    border-radius: 50%; animation: btn-spin 0.6s linear infinite;
+    margin-left: 0.4em; vertical-align: middle;
+  }
+  @keyframes btn-spin { to { transform: rotate(360deg); } }
 
   .paste-list-btn.clear-btn {
     background: none;
@@ -325,6 +333,8 @@
   .match-card:last-child { border-bottom: none; }
   .match-teams { flex: 1; min-width: 200px; }
   .match-teams .vs { color: var(--text-muted); margin: 0 0.3rem; }
+  .match-teams .team-winner { font-weight: 700; color: var(--green); }
+  .match-teams .team-loser { opacity: 0.6; }
   .match-court { color: var(--text-muted); font-size: 0.8rem; min-width: 80px; }
   .match-score { font-weight: 700; color: var(--green); min-width: 60px; }
   .match-score.sets-stack {
@@ -385,6 +395,10 @@
   .alert-info { background: rgba(59,130,246,0.15); border: 1px solid var(--accent); }
   .alert-success { background: rgba(34,197,94,0.15); border: 1px solid var(--green); }
   .alert-error { background: rgba(239,68,68,0.15); border: 1px solid var(--red); }
+
+  /* Progress bar */
+  .progress-bar-wrap { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 0.35rem; }
+  .progress-bar-fill { height: 100%; background: var(--green); border-radius: 3px; transition: width 0.3s ease; }
 
   .hidden { display: none !important; }
 
@@ -684,6 +698,11 @@
   }
   details.round-group summary:hover { color: var(--accent); }
   details.round-group[open] summary { color: var(--text); }
+
+  /* TV controls panel chevron */
+  #tv-controls-panel summary::-webkit-details-marker { display: none; }
+  #tv-controls-panel summary::marker { display: none; }
+  #tv-controls-panel[open] .tv-chevron { transform: rotate(90deg); }
 
   /* ── Per-player history dropdown ── */
   .player-stats-dropdown { display: flex; gap: 0.5rem; align-items: flex-start; flex-wrap: wrap; margin-bottom: 0.5rem; }
@@ -1154,7 +1173,7 @@
       <button type="button" id="admin-refresh-btn" class="compact-icon-btn" onclick="_refreshCurrentView()" title="Refresh" style="display:none">↻</button>
     </div>
   </div>
-  <div class="active-tournament-indicator" id="active-tournament-indicator">
+  <div class="active-tournament-indicator" id="active-tournament-indicator" style="display:none">
     <span data-i18n="txt_txt_active_tournament">Active tournament:</span> <strong data-i18n="txt_txt_none_selected">None selected</strong>
   </div>
 
@@ -1227,7 +1246,7 @@
             <div class="court-names-grid" id="gp-group-names-container"></div>
           </div>
         </div>
-        <button type="button" class="btn btn-primary" onclick="createGP()" data-i18n="txt_txt_create_tournament">Create Tournament</button>
+        <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,createGP)" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
         <div id="gp-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
 
@@ -1319,7 +1338,7 @@
             </div>
           </details>
         </div>
-        <button type="button" class="btn btn-primary" onclick="createMex()" data-i18n="txt_txt_create_tournament">Create Tournament</button>
+        <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,createMex)" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
         <div id="mex-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
     </div>
@@ -1832,6 +1851,15 @@ async function api(path, opts = {}) {
   return apiAuth(API + path, opts);
 }
 
+// ─── Button loading state helper ──────────────────────────
+async function withLoading(btn, asyncFn) {
+  if (!btn || btn.classList.contains('loading')) return;
+  const origText = btn.textContent;
+  btn.classList.add('loading');
+  try { await asyncFn(); }
+  finally { btn.classList.remove('loading'); }
+}
+
 // ─── Home: list tournaments ───────────────────────────────
 async function loadTournaments() {
   try {
@@ -1893,8 +1921,10 @@ function updateActiveTournamentUI() {
   if (hasActive) {
     const shownName = currentTournamentName || `#${String(currentTid).slice(0, 8)}`;
     indicator.innerHTML = `${t('txt_txt_active_tournament')} <strong>${esc(shownName)}</strong>`;
+    indicator.style.display = '';
   } else {
     indicator.innerHTML = `${t('txt_txt_active_tournament')} <strong>${t('txt_txt_none_selected')}</strong>`;
+    indicator.style.display = 'none';
   }
   _renderTournamentChips();
 }
@@ -2335,18 +2365,22 @@ async function renderGP() {
 
     // Next round / Start playoffs controls
     if (status.phase === 'groups') {
-      const pending = Object.values(groups.matches).flat().filter(m => m.status !== 'completed');
+      const allGroupMatches = Object.values(groups.matches).flat();
+      const pending = allGroupMatches.filter(m => m.status !== 'completed');
       if (pending.length === 0) {
         html += `<div id="gp-playoffs-section">`;
-        html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">`;
+        html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;justify-content:center">`;
         if (groups.has_more_rounds) {
-          html += `<button type="button" class="btn btn-primary" onclick="nextGpGroupRound()">⚡ ${t('txt_txt_generate_next_group_round')}</button>`;
+          html += `<button type="button" class="btn btn-primary" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,nextGpGroupRound)">⚡ ${t('txt_txt_generate_next_group_round')}</button>`;
         }
-        html += `<button type="button" class="btn btn-success" onclick="proposeGpPlayoffs()">🏆 ${t('txt_txt_start_playoffs')} →</button>`;
+        html += `<button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,proposeGpPlayoffs)">🏆 ${t('txt_txt_start_playoffs')} →</button>`;
         html += `</div>`;
         html += `</div>`;
       } else {
-        html += `<div class="alert alert-info">${t('txt_txt_n_match_remaining', { n: pending.length })}</div>`;
+        const total = allGroupMatches.length;
+        const done = total - pending.length;
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        html += `<div class="alert alert-info">${t('txt_txt_n_match_remaining', { n: pending.length })} (${done}/${total})<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div></div>`;
       }
     }
 
@@ -2392,8 +2426,12 @@ function matchRow(m, ctx) {
       scoreDisplay = `${m.score[0]} – ${m.score[1]}`;
     }
 
+    const w1 = m.score[0] > m.score[1];
+    const w2 = m.score[1] > m.score[0];
+    const t1Class = w1 ? ' team-winner' : (w2 ? ' team-loser' : '');
+    const t2Class = w2 ? ' team-winner' : (w1 ? ' team-loser' : '');
     let html = `<div class="match-card" style="flex-wrap:wrap">`;
-    html += `${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
+    html += `${roundLabel} <div class="match-teams"><span class="${t1Class}">${esc(t1)}</span> <span class="vs">vs</span> <span class="${t2Class}">${esc(t2)}</span></div> ${court}`;
     html += ` <span class="${scoreClass}" id="mscore-${m.id}">${scoreDisplay}</span>`;
     html += ` <span class="badge badge-completed">✓</span>`;
     const _editSetsJson = JSON.stringify(m.sets || []);
@@ -2667,16 +2705,15 @@ function _renderGpPlayoffEditor() {
     const ep = _gpExternalParticipants[i];
     html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem">`;
     html += `<span style="min-width:140px">★ ${esc(ep.name)}</span>`;
-    html += `<label style="font-size:0.82rem;color:var(--text-muted)">${t('txt_txt_score')}:</label>`;
-    html += `<input type="number" value="${ep.score}" onchange="_mexUpdateExternalScore(${i}, this.value)">`;
-    html += `<button type="button" class="btn btn-sm" style="padding:0.15rem 0.5rem;background:var(--border);color:var(--text)" onclick="_mexRemoveExternal(${i})">✕ ${t('txt_txt_remove')}</button>`;
+    html += `<input type="number" value="${ep.score}" style="width:70px" onchange="_mexUpdateExternalScore(${i}, this.value)">`;
+    html += `<button type="button" class="btn btn-sm" style="padding:0.15rem 0.5rem;background:var(--border);color:var(--text)" onclick="_mexRemoveExternal(${i})">✕</button>`;
     html += `</div>`;
   }
   html += `</div>`;
   html += `<div style="display:flex;align-items:center;gap:0.5rem">`;
   html += `<input type="text" id="gp-external-name" placeholder="${t('txt_txt_add_external_participant')}" onkeydown="if(event.key==='Enter')_mexAddExternal()">`;
-  html += `<input type="number" id="gp-external-score" placeholder="${t('txt_txt_score')}" value="0">`;
-  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_mexAddExternal()">+ ${t('txt_txt_add_external_participant')}</button>`;
+  html += `<input type="number" id="gp-external-score" placeholder="${t('txt_txt_score')}" value="0" style="width:70px">`;
+  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_mexAddExternal()">+</button>`;
   html += `</div>`;
   html += `</div>`;
 
@@ -2687,8 +2724,8 @@ function _renderGpPlayoffEditor() {
 
   // Action buttons
   html += `<div class="proposal-actions">`;
-  html += `<button type="button" class="btn btn-success" onclick="_confirmGpPlayoffs()">✓ ${t('txt_txt_start_playoffs')}</button>`;
-  html += `<button type="button" class="btn" style="background:var(--border);color:var(--text)" onclick="renderGP()">✕ ${t('txt_txt_cancel')}</button>`;
+  html += `<button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,_confirmGpPlayoffs)">✓ ${t('txt_txt_start_playoffs')}</button>`;
+  html += `<button type="button" class="btn" style="padding:0.75rem 1.5rem;font-size:1.1rem;background:var(--border);color:var(--text)" onclick="renderGP()">✕ ${t('txt_txt_cancel')}</button>`;
   html += `</div>`;
   html += `</div>`;
   return html;
@@ -2890,13 +2927,16 @@ async function renderMex() {
         }
 
         html += `<div id="mex-next-section">`;
-        html += `<button type="button" class="btn btn-success" onclick="proposeMexPairings()">⚡ ${t('txt_txt_propose_next_round')}</button>`;
+        html += `<button type="button" class="btn btn-success" onclick="withLoading(this,proposeMexPairings)">⚡ ${t('txt_txt_propose_next_round')}</button>`;
         if (status.current_round > 0) {
           html += ` <button type="button" class="btn btn-primary" onclick="endMexicano()" style="margin-left:0.5rem">🛑 ${t('txt_txt_end_mexicano')}</button>`;
         }
         html += `</div>`;
       } else if (pending > 0) {
-        html += `<div class="alert alert-info">${t('txt_txt_n_match_remaining', { n: pending })}</div>`;
+        const totalMex = matches.current_matches.length;
+        const doneMex = totalMex - pending;
+        const pctMex = totalMex > 0 ? Math.round((doneMex / totalMex) * 100) : 0;
+        html += `<div class="alert alert-info">${t('txt_txt_n_match_remaining', { n: pending })} (${doneMex}/${totalMex})<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pctMex}%"></div></div></div>`;
       } else if (pending === 0 && !mexicanoEnded && !canGenerateRound) {
         html += `<div id="mex-next-section">`;
         html += `<button type="button" class="btn btn-primary" onclick="endMexicano()">🛑 ${t('txt_txt_end_mexicano')}</button>`;
@@ -2908,8 +2948,8 @@ async function renderMex() {
         html += `<h3>${t('txt_txt_post_mexicano_decision')}</h3>`;
         html += `<p style="color:var(--text-muted);font-size:0.85rem">${t('txt_txt_post_mexicano_instructions')}</p>`;
         html += `<div class="proposal-actions">`;
-        html += `<button type="button" class="btn btn-success" onclick="proposeMexPlayoffs()">🏆 ${t('txt_txt_start_optional_playoffs')}</button>`;
-        html += `<button type="button" class="btn" style="background:var(--border);color:var(--text)" onclick="finishMexicanoAsIs()">✓ ${t('txt_txt_finish_as_is')}</button>`;
+        html += `<button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,proposeMexPlayoffs)">🏆 ${t('txt_txt_start_optional_playoffs')}</button>`;
+        html += `<button type="button" class="btn" style="padding:0.75rem 1.5rem;font-size:1.1rem;background:var(--border);color:var(--text)" onclick="finishMexicanoAsIs()">✓ ${t('txt_txt_finish_as_is')}</button>`;
         html += `</div>`;
         html += `</div>`;
       }
@@ -3579,9 +3619,8 @@ function _renderPlayoffEditor() {
       const ep = _mexExternalParticipants[i];
       html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem">`;
       html += `<span style="min-width:140px">★ ${esc(ep.name)}</span>`;
-      html += `<label style="font-size:0.82rem;color:var(--text-muted)">${t('txt_txt_score')}:</label>`;
       html += `<input type="number" value="${ep.score}" style="width:70px" onchange="_mexUpdateExternalScore(${i}, this.value)">`;
-      html += `<button type="button" class="btn btn-sm" style="padding:0.15rem 0.5rem;background:var(--border);color:var(--text)" onclick="_mexRemoveExternal(${i})">✕ ${t('txt_txt_remove')}</button>`;
+      html += `<button type="button" class="btn btn-sm" style="padding:0.15rem 0.5rem;background:var(--border);color:var(--text)" onclick="_mexRemoveExternal(${i})">✕</button>`;
       html += `</div>`;
     }
     html += `</div>`;
@@ -3589,7 +3628,7 @@ function _renderPlayoffEditor() {
   html += `<div style="display:flex;align-items:center;gap:0.5rem">`;
   html += `<input type="text" id="mex-external-name" placeholder="${_mexTeamMode ? t('txt_txt_add_external_team') : t('txt_txt_add_external_player')}" style="min-width:200px" onkeydown="if(event.key==='Enter')_mexAddExternal()">`;
   html += `<input type="number" id="mex-external-score" placeholder="${t('txt_txt_score')}" value="0" style="width:70px">`;
-  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_mexAddExternal()">+ ${t('txt_txt_add')}</button>`;
+  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_mexAddExternal()">+</button>`;
   html += `</div>`;
   html += `</div>`;
 
@@ -3653,8 +3692,8 @@ function _renderPlayoffEditor() {
   html += `<div class="form-group"><label>${t('txt_txt_format')}</label><select id="playoff-format"><option value="single">${t('txt_txt_single_elimination')}</option><option value="double">${t('txt_txt_double_elimination')}</option></select></div>`;
   html += `</div>`;
   html += `<div class="proposal-actions">`;
-  html += `<button type="button" class="btn btn-success" onclick="_startMexPlayoffs()">✓ ${t('txt_txt_start_mexicano_playoffs')}</button>`;
-  html += `<button type="button" class="btn" style="background:var(--border);color:var(--text)" onclick="renderMex()">✕ ${t('txt_txt_cancel')}</button>`;
+  html += `<button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,_startMexPlayoffs)">✓ ${t('txt_txt_start_mexicano_playoffs')}</button>`;
+  html += `<button type="button" class="btn" style="padding:0.75rem 1.5rem;font-size:1.1rem;background:var(--border);color:var(--text)" onclick="renderMex()">✕ ${t('txt_txt_cancel')}</button>`;
   html += `</div>`;
   html += `</div>`;
   return html;
@@ -4125,9 +4164,9 @@ function _renderTvControls(tvSettings) {
   const currentAlias = _tournamentMeta[currentTid]?.alias || '';
   
   let html = `<details class="card" id="tv-controls-panel">`;
-  html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">`;
-  html += `<span style="font-size:1.1rem;font-weight:700">📺 ${t('txt_txt_tv_mode_controls')}</span>`;
-  html += `<button type="button" class="btn btn-primary btn-sm" style="margin-left:auto" onclick="event.preventDefault();window.open('/tv?tid='+currentTid,'padel_tv_'+currentTid,'noopener noreferrer')">${t('txt_txt_open_tv_display')}</button>`;
+  html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
+  html += `<span style="font-size:1.1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="display:inline-block;transition:transform 0.18s;font-size:0.7em;color:var(--text-muted)">▸</span> ${t('txt_txt_tv_mode_controls')}</span>`;
+  html += `<button type="button" class="btn btn-primary" style="margin-left:auto" onclick="event.preventDefault();window.open('/tv?tid='+currentTid,'padel_tv_'+currentTid,'noopener noreferrer')">📺 ↗</button>`;
   html += `</summary>`;
   html += `<div style="margin-top:0.65rem">`;
   

@@ -72,12 +72,14 @@ def _tennis_sets_to_scores(
     sets1_won = sum(1 for s in sets_tuples if s[0] > s[1])
     sets2_won = sum(1 for s in sets_tuples if s[1] > s[0])
     decided_by_third_set = len(sets_tuples) == 3
-    # When total games are equal, bump the set-winner by 1 to avoid a draw in standings.
-    if total1 == total2 and sets1_won != sets2_won:
-        if sets1_won > sets2_won:
-            total1 += 1
-        else:
-            total2 += 1
+    # Ensure the set-winner always has a higher game total so that
+    # Match.winner_team (which compares score[0] vs score[1]) returns
+    # the correct team.  The winner is whoever won more *sets*, not
+    # whoever accumulated more games.
+    if sets1_won > sets2_won and total1 <= total2:
+        total1 = total2 + 1
+    elif sets2_won > sets1_won and total2 <= total1:
+        total2 = total1 + 1
     return total1, total2, sets_tuples, decided_by_third_set
 
 

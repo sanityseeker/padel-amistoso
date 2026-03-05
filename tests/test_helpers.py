@@ -39,6 +39,24 @@ class TestTennisSetsToScores:
         _, _, sets, _ = _tennis_sets_to_scores([[6, 4], [2, 6], [10, 8]])
         assert sets == [(6, 4), (2, 6), (10, 8)]
 
+    def test_set_winner_with_fewer_total_games_team1(self):
+        # 1-6 7-5 7-5 → team1 wins 2 sets, but total games 15 vs 16
+        # team1 must still be the winner (total adjusted to 17 vs 16)
+        total1, total2, sets, decided = _tennis_sets_to_scores([[1, 6], [7, 5], [7, 5]])
+        assert total1 > total2, "set-winner must have higher adjusted total"
+        assert total1 == 17
+        assert total2 == 16
+        assert decided is True
+
+    def test_set_winner_with_fewer_total_games_team2(self):
+        # 6-1 5-7 5-7 → team2 wins 2 sets, but total games 16 vs 15
+        # team2 must still be the winner (total adjusted to 16 vs 17)
+        total1, total2, sets, decided = _tennis_sets_to_scores([[6, 1], [5, 7], [5, 7]])
+        assert total2 > total1, "set-winner must have higher adjusted total"
+        assert total1 == 16
+        assert total2 == 17
+        assert decided is True
+
     @pytest.mark.parametrize(
         "raw, expected_total1, expected_total2, expected_decided",
         [
@@ -46,6 +64,8 @@ class TestTennisSetsToScores:
             ([[6, 4], [4, 6], [6, 4]], 16, 14, True),  # 3-set, totals differ → decided
             ([[6, 3], [3, 6], [6, 3]], 15, 12, True),  # 3-set, totals differ → decided
             ([[6, 4], [2, 6], [7, 5]], 16, 15, True),  # 3-set equal → adjusted + decided
+            # Set-winner has fewer total games → adjusted
+            ([[0, 6], [7, 6], [7, 6]], 19, 18, True),  # team1 wins 2 sets, raw 14 vs 18 → 19 vs 18
         ],
     )
     def test_parametrized_cases(

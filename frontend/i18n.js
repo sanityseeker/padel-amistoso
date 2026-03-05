@@ -230,7 +230,7 @@ const I18N_MESSAGES = {
     "txt_txt_results": "Results",
     "txt_txt_rival_strength_help": "Boosts points earned based on how highly ranked your opponents are. Higher weight = stronger effect.",
     "txt_txt_rival_strength_label": "Rival strength weight (0 = off, 1 = full)",
-    "txt_txt_rolling": "Continuo",
+    "txt_txt_rolling": "Rolling",
     "txt_txt_rolling_mode": "Rolling mode",
     "txt_txt_round": "Round",
     "txt_txt_save": "Save",

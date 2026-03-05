@@ -384,3 +384,85 @@ class TestCourtAssignment:
 
         max_parallel = max(len(ms) for ms in by_slot.values())
         assert max_parallel == 2, f"Expected at least one slot with 2 parallel matches but max was {max_parallel}"
+
+
+# ── Sets-format standings ─────────────────────────────────
+
+
+class TestSetsFormatStandings:
+    """Winner in SETS format must be determined by sets won (2 out of 3),
+    not by total games.  ``points_for`` / ``points_against`` should still
+    track actual game counts for tiebreaking."""
+
+    def test_set_winner_with_fewer_total_games_gets_win(self):
+        """Team 1 wins 2-1 in sets but has fewer total games.
+
+        Sets: 1-6  7-5  7-5  → team1 wins 2 sets, total games 15 vs 16.
+        Team1 players should be credited a *win*, not a loss.
+        """
+        players = _make_players(4)
+        group = Group("A", players)
+        matches = group.generate_round_robin()
+        # Pick the first match and record sets where the set-winner
+        # has fewer total games.
+        m = matches[0]
+        m.sets = [(1, 6), (7, 5), (7, 5)]
+        m.score = (17, 16)  # adjusted by _tennis_sets_to_scores
+        m.third_set_loss = True
+        m.status = MatchStatus.COMPLETED
+
+        standings = group.standings()
+        t1_ids = {p.id for p in m.team1}
+        t2_ids = {p.id for p in m.team2}
+
+        for row in standings:
+            if row.player.id in t1_ids:
+                assert row.wins == 1, f"Team1 player {row.player.name} should have 1 win"
+                assert row.losses == 0
+                assert row.third_set_losses == 0
+                # Actual game total, not adjusted score
+                assert row.points_for == 15
+                assert row.points_against == 16
+            elif row.player.id in t2_ids:
+                assert row.wins == 0, f"Team2 player {row.player.name} should have 0 wins"
+                # Lost in 3rd set → third_set_losses
+                assert row.third_set_losses == 1
+                assert row.points_for == 16
+                assert row.points_against == 15
+
+    def test_set_winner_with_equal_total_games_gets_win(self):
+        """Sets: 6-4  2-6  7-5 → both teams have 15 total games, team1 wins 2-1."""
+        players = _make_players(4)
+        group = Group("A", players)
+        matches = group.generate_round_robin()
+        m = matches[0]
+        m.sets = [(6, 4), (2, 6), (7, 5)]
+        m.score = (16, 15)  # adjusted
+        m.third_set_loss = True
+        m.status = MatchStatus.COMPLETED
+
+        standings = group.standings()
+        t1_ids = {p.id for p in m.team1}
+        for row in standings:
+            if row.player.id in t1_ids:
+                assert row.wins == 1
+                # Actual games: 15 each
+                assert row.points_for == 15
+                assert row.points_against == 15
+
+    def test_simple_score_format_unaffected(self):
+        """Non-sets matches should still determine winner by scored > conceded."""
+        players = _make_players(4)
+        group = Group("A", players)
+        matches = group.generate_round_robin()
+        m = matches[0]
+        m.score = (6, 10)
+        m.status = MatchStatus.COMPLETED
+
+        standings = group.standings()
+        t1_ids = {p.id for p in m.team1}
+        for row in standings:
+            if row.player.id in t1_ids:
+                assert row.losses == 1
+                assert row.points_for == 6
+                assert row.points_against == 10
