@@ -357,6 +357,7 @@ const I18N_MESSAGES = {
     "txt_txt_abbrev_avg_pts_full": "Average Points",
     "txt_txt_abbrev_played_full": "Matches Played",
     "txt_txt_team": "Team",
+    "txt_txt_finished_tournaments": "Finished tournaments",
   },
   es: {
     "txt_tv_alias_help": "Define un alias fácil de recordar para la URL pública de este torneo (p. ej., \"summer-cup\"). Solo letras, números, guiones y guiones bajos.",
@@ -711,6 +712,7 @@ const I18N_MESSAGES = {
     "txt_txt_abbrev_avg_pts_full": "Puntos Promedio",
     "txt_txt_abbrev_played_full": "Partidos Jugados",
     "txt_txt_team": "Equipo",
+    "txt_txt_finished_tournaments": "Torneos finalizados",
   },
 };
 

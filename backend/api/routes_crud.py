@@ -18,12 +18,15 @@ router = APIRouter(prefix="/api/tournaments", tags=["tournaments"])
 async def list_tournaments() -> list[dict]:
     out = []
     for tid, data in _tournaments.items():
+        t = data.get("tournament")
         out.append(
             {
                 "id": tid,
                 "name": data["name"],
                 "type": data["type"],
                 "alias": data.get("alias"),
+                "team_mode": t.team_mode if t else False,
+                "phase": t.phase if t else "setup",
             }
         )
     return out

@@ -331,10 +331,15 @@
     padding: 0.5rem 0; border-bottom: 1px solid var(--border);
   }
   .match-card:last-child { border-bottom: none; }
-  .match-teams { flex: 1; min-width: 200px; }
+  .match-card.active-tournament {
+    border-left: 3px solid var(--accent);
+    padding-left: 0.6rem;
+  }
+  .match-teams { flex: 1; min-width: 200px; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
   .match-teams .vs { color: var(--text-muted); margin: 0 0.3rem; }
   .match-teams .team-winner { font-weight: 700; color: var(--green); }
   .match-teams .team-loser { opacity: 0.6; }
+  .tournament-actions { display: flex; gap: 0.35rem; flex-shrink: 0; }
   .match-court { color: var(--text-muted); font-size: 0.8rem; min-width: 80px; }
   .match-score { font-weight: 700; color: var(--green); min-width: 60px; }
   .match-score.sets-stack {
@@ -390,6 +395,8 @@
   .badge-scheduled { background: var(--border); color: var(--text); }
   .badge-completed { background: var(--green); color: #000; }
   .badge-phase { background: var(--yellow); color: #000; }
+  .badge-type { background: rgba(139,92,246,0.18); color: #a78bfa; border: 1px solid rgba(139,92,246,0.3); }
+  :root[data-theme="light"] .badge-type { background: rgba(139,92,246,0.12); color: #7c3aed; border: 1px solid rgba(139,92,246,0.25); }
 
   .alert { padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
   .alert-info { background: rgba(59,130,246,0.15); border: 1px solid var(--accent); }
@@ -1183,6 +1190,10 @@
       <h2 data-i18n="txt_txt_active_tournaments">Active Tournaments</h2>
       <div id="tournament-list"><em data-i18n="txt_txt_loading">Loading…</em></div>
     </div>
+    <div class="card" id="finished-tournaments-card" style="display:none">
+      <h2 data-i18n="txt_txt_finished_tournaments">Finished tournaments</h2>
+      <div id="finished-tournament-list"></div>
+    </div>
   </div>
 
   <!-- ─── CREATE ─────────────────────────────────────────── -->
@@ -1861,21 +1872,45 @@ async function withLoading(btn, asyncFn) {
 }
 
 // ─── Home: list tournaments ───────────────────────────────
+function _phaseLabel(phase) {
+  const map = {
+    setup: t('txt_txt_setup'), groups: t('txt_txt_group_stage'), playoffs: t('txt_txt_play_offs'),
+    finished: t('txt_txt_finished'), mexicano: t('txt_txt_mexicano'),
+  };
+  return map[phase] || phase;
+}
+
 async function loadTournaments() {
   try {
     const list = await api('/api/tournaments');
     _tournamentMeta = {};
     for (const tournament of list) _tournamentMeta[tournament.id] = tournament;
     const el = document.getElementById('tournament-list');
-    if (!list.length) { el.innerHTML = `<em>${t('txt_txt_no_tournaments_yet')}</em>`; return; }
-    el.innerHTML = list.map(tournament => `
-      <div class="match-card">
-        <div class="match-teams"><strong>${esc(tournament.name)}</strong>${tournament.id === currentTid ? ` <span class="badge badge-completed" title="${esc(t('txt_txt_currently_active'))}">✓ ${esc(t('txt_txt_active'))}</span>` : ''}</div>
-        <span class="badge badge-scheduled">${tournament.type === 'mexicano' ? t('txt_txt_mexicano_plus_playoffs') : tournament.type}</span>
-        <button type="button" class="btn btn-primary btn-sm" onclick="openTournament('${tournament.id}','${tournament.type}')">${t('txt_txt_open')}</button>
-        <button type="button" class="btn btn-danger btn-sm" onclick="deleteTournament('${tournament.id}')">✕</button>
+    const finEl = document.getElementById('finished-tournament-list');
+    const finCard = document.getElementById('finished-tournaments-card');
+    if (!list.length) { el.innerHTML = `<em>${t('txt_txt_no_tournaments_yet')}</em>`; finCard.style.display = 'none'; return; }
+    const active = list.filter(tr => tr.phase !== 'finished');
+    const finished = list.filter(tr => tr.phase === 'finished');
+    const renderCard = (tournament) => `
+      <div class="match-card${tournament.id === currentTid ? ' active-tournament' : ''}">
+        <div class="match-teams">
+          <strong>${esc(tournament.name)}</strong>
+          <span class="badge badge-type">${tournament.team_mode ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode')}</span>
+          <span class="badge badge-phase">${_phaseLabel(tournament.phase)}</span>
+        </div>
+        <div class="tournament-actions">
+          <button type="button" class="btn btn-primary btn-sm" onclick="openTournament('${tournament.id}','${tournament.type}')">${t('txt_txt_open')}</button>
+          <button type="button" class="btn btn-danger btn-sm" onclick="deleteTournament('${tournament.id}')">✕</button>
+        </div>
       </div>
-    `).join('');
+    `;
+    el.innerHTML = active.length ? active.map(renderCard).join('') : `<em>${t('txt_txt_no_tournaments_yet')}</em>`;
+    if (finished.length) {
+      finCard.style.display = '';
+      finEl.innerHTML = finished.map(renderCard).join('');
+    } else {
+      finCard.style.display = 'none';
+    }
   } catch (e) { console.error(e); }
 }
 
@@ -2295,7 +2330,9 @@ async function renderGP() {
 
     let html = '';
     html += _renderTvControls(tvSettings);
-    html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${status.phase}</span></div>`;
+    if (status.phase === 'playoffs') {
+      html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${t('txt_txt_play_offs')}</span></div>`;
+    }
 
     const groupPending = _sortTbdLast(Object.values(groups.matches)
       .flat()
@@ -2825,16 +2862,16 @@ async function renderMex() {
     const hasPlayoffBracket = (playoffsData.matches || []).length > 0;
 
     if (isPlayoffs) {
-      html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${t('txt_txt_mexicano_play_offs')}</span></div>`;
+      html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${t('txt_txt_play_offs')}</span></div>`;
     } else if (isFinished && hasPlayoffBracket) {
       html += `<div class="alert alert-info">${t('txt_txt_tournament_finished_after_playoffs')}</div>`;
     } else if (isFinished) {
       html += `<div class="alert alert-info">${t('txt_txt_tournament_finished_no_playoffs')}</div>`;
     } else if (mexicanoEnded) {
       html += `<div class="alert alert-info">${t('txt_txt_mexicano_phase_ended')}</div>`;
-    } else if (isRolling) {
+    } else if (!isPlayoffs && isRolling) {
       html += `<div class="alert alert-info">${t('txt_txt_mexicano_round_n', { n: status.current_round })} <span class="badge badge-phase">${t('txt_txt_rolling')}</span></div>`;
-    } else {
+    } else if (!isPlayoffs) {
       html += `<div class="alert alert-info">${t('txt_txt_mexicano')} ${t('txt_txt_round')} ${status.current_round} / ${status.num_rounds}${mexRoundsDone ? ` — <strong>${t('txt_txt_mexicano_rounds_complete_ready_for_play_offs')}</strong>` : ''}</div>`;
     }
 

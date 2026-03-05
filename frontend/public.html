@@ -426,12 +426,18 @@
     border-color: var(--accent);
     background: var(--surface2);
   }
-  .tv-picker-item .picker-type {
-    font-size: 0.78rem;
-    font-weight: 400;
-    color: var(--text-muted);
-    margin-left: 0.5rem;
+  .tv-picker-item .picker-badge {
+    display: inline-block;
+    padding: 0.1rem 0.45rem;
+    border-radius: 8px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    margin-left: 0.4rem;
+    vertical-align: middle;
   }
+  .picker-badge-type { background: rgba(139,92,246,0.18); color: #a78bfa; border: 1px solid rgba(139,92,246,0.3); }
+  .picker-badge-phase { background: var(--yellow); color: #000; }
+  html[data-theme="light"] .picker-badge-type { background: rgba(139,92,246,0.12); color: #7c3aed; border: 1px solid rgba(139,92,246,0.25); }
   .tv-picker-item .picker-alias {
     font-size: 0.78rem;
     font-weight: 400;
@@ -1278,10 +1284,11 @@ async function _showPicker() {
   if (tournaments.length > 0) {
     html += `<ul class="tv-picker-list">`;
     for (const tournament of tournaments) {
-      const typeLabel = tournament.type === 'group_playoff' ? t('txt_txt_group_playoff') : t('txt_txt_mexicano');
+      const modeLabel = tournament.team_mode ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode');
+      const phaseLabel = _phaseLabel(tournament.phase);
       const aliasTag = tournament.alias ? `<span class="picker-alias">${esc(tournament.alias)}</span>` : '';
       html += `<a class="tv-picker-item" href="/tv?tid=${encodeURIComponent(tournament.id)}">`;
-      html += `${esc(tournament.name)}<span class="picker-type">${typeLabel}</span>${aliasTag}`;
+      html += `${esc(tournament.name)}<span class="picker-badge picker-badge-type">${modeLabel}</span><span class="picker-badge picker-badge-phase">${phaseLabel}</span>${aliasTag}`;
       html += `</a>`;
     }
     html += `</ul>`;
