@@ -340,6 +340,10 @@
   .match-teams .team-winner { font-weight: 700; color: var(--green); }
   .match-teams .team-loser { opacity: 0.6; }
   .tournament-actions { display: flex; gap: 0.35rem; flex-shrink: 0; }
+  .tournament-name-link {
+    font-weight: 700; color: var(--text); text-decoration: none; cursor: pointer;
+  }
+  .tournament-name-link:hover { color: var(--accent); }
   .match-court { color: var(--text-muted); font-size: 0.8rem; min-width: 80px; }
   .match-score { font-weight: 700; color: var(--green); min-width: 60px; }
   .match-score.sets-stack {
@@ -1894,12 +1898,11 @@ async function loadTournaments() {
     const renderCard = (tournament) => `
       <div class="match-card${tournament.id === currentTid ? ' active-tournament' : ''}">
         <div class="match-teams">
-          <strong>${esc(tournament.name)}</strong>
+          <a class="tournament-name-link" href="#" onclick="openTournament('${tournament.id}','${tournament.type}');return false">${esc(tournament.name)}</a>
           <span class="badge badge-type">${tournament.team_mode ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode')}</span>
           <span class="badge badge-phase">${_phaseLabel(tournament.phase)}</span>
         </div>
         <div class="tournament-actions">
-          <button type="button" class="btn btn-primary btn-sm" onclick="openTournament('${tournament.id}','${tournament.type}')">${t('txt_txt_open')}</button>
           <button type="button" class="btn btn-danger btn-sm" onclick="deleteTournament('${tournament.id}')">✕</button>
         </div>
       </div>
