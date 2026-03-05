@@ -1,5 +1,7 @@
 """Tests for group_stage module."""
 
+from __future__ import annotations
+
 from collections import defaultdict
 
 import pytest

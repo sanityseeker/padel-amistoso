@@ -295,6 +295,18 @@
   .btn-danger:hover { opacity: 0.9; }
   .btn-sm { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
 
+  .paste-list-btn.clear-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .paste-list-btn.clear-btn:hover {
+    background: var(--surface);
+    border-color: var(--red);
+    color: var(--red);
+  }
+
   /* Tables */
   table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
   th, td { padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
@@ -402,36 +414,40 @@
   .proposal-display-controls {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 0.5rem;
-    flex-wrap: nowrap;
-    margin: 0.2rem 0 0.7rem;
+    flex-wrap: wrap;
+    margin: 0.2rem 0 0.75rem;
   }
+  /* Reuses the switch-label/switch-track pattern — no pill border */
   .proposal-display-toggle {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    padding: 0.3rem 0.55rem;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    background: var(--bg);
+    gap: 0.55rem;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.84rem;
     color: var(--text-muted);
-    font-size: 0.78rem;
     white-space: nowrap;
+    padding: 0.2rem 0;
   }
-  .proposal-display-toggle input {
-    margin: 0;
-    accent-color: var(--accent);
-  }
+  .proposal-display-toggle input[type=checkbox] { display: none; }
+  .proposal-display-toggle .switch-track { flex-shrink: 0; }
+  .proposal-display-toggle input:checked + .switch-track { background: var(--accent); }
+  .proposal-display-toggle input:checked + .switch-track::after { transform: translateX(16px); }
   .proposal-inline-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     border: 1px solid var(--border);
-    background: var(--bg);
+    background: var(--surface);
     color: var(--text-muted);
-    border-radius: 999px;
-    padding: 0.28rem 0.55rem;
-    font-size: 0.76rem;
+    border-radius: 6px;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.80rem;
+    font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
+    transition: border-color 0.15s, color 0.15s;
   }
   .proposal-inline-action:hover {
     border-color: var(--accent);
@@ -441,7 +457,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    margin-left: auto;
+    flex-wrap: wrap;
   }
   .proposal-section-row {
     display: flex;
@@ -459,29 +475,33 @@
   .proposal-display-history > summary {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    padding: 0.3rem 0.55rem;
+    gap: 0.4rem;
+    padding: 0.3rem 0.7rem;
+    background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 999px;
-    background: var(--bg);
+    border-radius: 6px;
     color: var(--text-muted);
-    font-size: 0.78rem;
+    font-size: 0.82rem;
+    font-weight: 600;
     cursor: pointer;
     user-select: none;
+    transition: border-color 0.15s, color 0.15s;
+    white-space: nowrap;
   }
   .proposal-display-history > summary::-webkit-details-marker { display: none; }
+  .proposal-display-history > summary:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
   .proposal-display-history[open] {
     flex-basis: 100%;
+    order: 99; /* drop to its own row when expanded */
   }
   .proposal-display-history[open] > summary {
+    border-color: var(--accent);
+    color: var(--accent);
     margin-bottom: 0.45rem;
   }
-  @media (max-width: 900px) {
-    .proposal-display-controls {
-      flex-wrap: wrap;
-    }
-  }
-
   /* Manual editor */
   .manual-sel { padding: 0.25rem 0.3rem; border-radius: 4px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.85rem; min-width: 100px; }
   .manual-sel option, select option { background: var(--surface); color: var(--text); }
@@ -1076,8 +1096,8 @@
     .subtab-btn { flex: 1; text-align: center; }
 
     /* Proposal controls wrap cleanly */
-    .proposal-section-row { flex-wrap: wrap; }
-    .proposal-display-controls { flex-wrap: wrap; }
+    .proposal-section-row { flex-wrap: wrap; justify-content: flex-start; }
+    .proposal-inline-actions { margin-left: 0; }
 
     /* Sitout grid: 2 columns on small screens */
     .sitout-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
@@ -1255,7 +1275,7 @@
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem 1.25rem;margin-bottom:0.85rem">
             <div style="display:flex;flex-direction:column;gap:0.3rem">
               <label style="font-size:0.8rem;color:var(--text-muted)" data-i18n="txt_txt_total_points_per_match">Total points per match</label>
-              <input id="mex-pts" type="number" value="32" min="1" style="width:80px">
+              <input id="mex-pts" type="number" value="26" min="1" style="width:80px">
             </div>
             <div style="display:flex;flex-direction:column;gap:0.3rem">
               <label style="font-size:0.8rem;color:var(--text-muted)" data-i18n="txt_txt_number_of_rounds">Number of rounds</label>
@@ -1368,7 +1388,7 @@
       <div class="inline-group">
         <div class="form-group">
           <label data-i18n="txt_txt_elimination">Elimination</label>
-          <select id="schema-elim">
+          <select id="schema-elim" data-persist-id="schema-elim">
             <option value="single" selected data-i18n="txt_txt_single_elimination">Single Elimination</option>
             <option value="double" data-i18n="txt_txt_double_elimination">Double Elimination</option>
           </select>
@@ -1381,7 +1401,7 @@
       <div class="inline-group">
         <div class="form-group">
           <label data-i18n="txt_txt_format">Format</label>
-          <select id="schema-fmt">
+          <select id="schema-fmt" data-persist-id="schema-fmt">
             <option value="png" selected>PNG</option>
             <option value="svg">SVG</option>
             <option value="pdf">PDF (download)</option>
@@ -1478,7 +1498,6 @@
     <div id="auth-error" style="color:var(--red);font-size:0.8rem;margin-bottom:0.8rem;min-height:1.2rem;text-align:center"></div>
     <button type="submit" id="auth-login-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_login">Login</button>
   </form>
-  <p style="color:var(--text-muted);font-size:0.75rem;margin-top:1rem;text-align:center" data-i18n="txt_txt_default_admin_admin">Default: admin / admin</p>
   <p style="margin-top:0.75rem;text-align:center;font-size:0.85rem">
     <a href="/tv" class="btn-tv-live" title="TV view"><span class="tv-live-dot"></span>📺 <span data-i18n="txt_txt_tv_view">TV view</span></a>
   </p>
@@ -1572,10 +1591,12 @@ function _buildAbbrevLegend(type) {
     [t('txt_txt_diff_abbrev'), t('txt_txt_abbrev_diff_full')],
     [t('txt_txt_pts_abbrev'),  t('txt_txt_abbrev_pts_full')],
   ] : [
-    [t('txt_txt_w_abbrev'),  t('txt_txt_abbrev_w_full')],
-    [t('txt_txt_d_abbrev'),  t('txt_txt_abbrev_d_full')],
-    [t('txt_txt_l_abbrev'),  t('txt_txt_abbrev_l_full')],
-    [t('txt_txt_avg_pts'),   t('txt_txt_abbrev_avg_pts_full')],
+    [t('txt_txt_total_pts_abbrev'), t('txt_txt_abbrev_total_pts_full')],
+    [t('txt_txt_played_abbrev'),    t('txt_txt_abbrev_played_full')],
+    [t('txt_txt_w_abbrev'),         t('txt_txt_abbrev_w_full')],
+    [t('txt_txt_d_abbrev'),         t('txt_txt_abbrev_d_full')],
+    [t('txt_txt_l_abbrev'),         t('txt_txt_abbrev_l_full')],
+    [t('txt_txt_avg_pts_abbrev'),   t('txt_txt_abbrev_avg_pts_full')],
   ];
   return `<table>${rows.map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table>`;
 }
@@ -2644,18 +2665,18 @@ function _renderGpPlayoffEditor() {
   html += `<div id="gp-external-list">`;
   for (let i = 0; i < _gpExternalParticipants.length; i++) {
     const ep = _gpExternalParticipants[i];
-    html += `<div class="gp-external-row">`;
-    html += `<span class="gp-player-name">${esc(ep.name)}</span>`;
-    html += `<label>${t('txt_txt_score')}:</label>`;
-    html += `<input type="number" value="${ep.score}" onchange="_gpUpdateExternalScore(${i}, this.value)">`;
-    html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_gpRemoveExternal(${i})">✕ ${t('txt_txt_remove')}</button>`;
+    html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem">`;
+    html += `<span style="min-width:140px">★ ${esc(ep.name)}</span>`;
+    html += `<label style="font-size:0.82rem;color:var(--text-muted)">${t('txt_txt_score')}:</label>`;
+    html += `<input type="number" value="${ep.score}" onchange="_mexUpdateExternalScore(${i}, this.value)">`;
+    html += `<button type="button" class="btn btn-sm" style="padding:0.15rem 0.5rem;background:var(--border);color:var(--text)" onclick="_mexRemoveExternal(${i})">✕ ${t('txt_txt_remove')}</button>`;
     html += `</div>`;
   }
   html += `</div>`;
-  html += `<div class="gp-add-row">`;
-  html += `<input type="text" id="gp-external-name" placeholder="${t('txt_txt_add_external_participant')}" onkeydown="if(event.key==='Enter')_gpAddExternal()">`;
+  html += `<div style="display:flex;align-items:center;gap:0.5rem">`;
+  html += `<input type="text" id="gp-external-name" placeholder="${t('txt_txt_add_external_participant')}" onkeydown="if(event.key==='Enter')_mexAddExternal()">`;
   html += `<input type="number" id="gp-external-score" placeholder="${t('txt_txt_score')}" value="0">`;
-  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_gpAddExternal()">+ ${t('txt_txt_add_external_participant')}</button>`;
+  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_mexAddExternal()">+ ${t('txt_txt_add_external_participant')}</button>`;
   html += `</div>`;
   html += `</div>`;
 
@@ -2819,9 +2840,9 @@ async function renderMex() {
     // Leaderboard
     html += `<div class="card"><h2 class="card-heading-row">${t('txt_txt_leaderboard')} <button class="format-info-btn" onclick="showAbbrevPopup(event,'leaderboard')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h2>`;
     const byAvg = status.leaderboard.length > 0 && status.leaderboard[0].ranked_by_avg;
-    const hTotal = byAvg ? t('txt_txt_total_pts') : `<strong>${t('txt_txt_total_pts')} ↓</strong>`;
-    const hAvg   = byAvg ? `<strong>${t('txt_txt_avg_pts')} ↓</strong>` : t('txt_txt_avg_pts');
-    html += `<table><thead><tr><th>${t('txt_txt_rank')}</th><th>${_mexTeamMode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${hTotal}</th><th>${t('txt_txt_played')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${hAvg}</th></tr></thead><tbody>`;
+    const hTotal = byAvg ? t('txt_txt_total_pts_abbrev') : `<strong>${t('txt_txt_total_pts_abbrev')} ↓</strong>`;
+    const hAvg   = byAvg ? `<strong>${t('txt_txt_avg_pts_abbrev')} ↓</strong>` : t('txt_txt_avg_pts_abbrev');
+    html += `<table><thead><tr><th>${t('txt_txt_rank')}</th><th>${_mexTeamMode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${hTotal}</th><th>${t('txt_txt_played_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${hAvg}</th></tr></thead><tbody>`;
     for (const r of status.leaderboard) {
       const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
       const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
@@ -3121,7 +3142,7 @@ function _renderProposalPicker(proposals) {
     html += `</details>`;
   }
 
-  html += `<label class="proposal-display-toggle"><input type="checkbox" ${_showRepeatDetails ? 'checked' : ''} onchange="_toggleRepeatDetails(this.checked)"> ${t('txt_txt_show_repeat_details')}</label>`;
+  html += `<label class="proposal-display-toggle"><input type="checkbox" ${_showRepeatDetails ? 'checked' : ''} onchange="_toggleRepeatDetails(this.checked)"><span class="switch-track"></span>${t('txt_txt_show_repeat_details')}</label>`;
   html += `</div>`;
 
   const bestOption = proposals.find(p => p.recommended) || proposals[0] || null;
@@ -4249,13 +4270,16 @@ async function _deleteTournamentAlias() {
   }
 }
 
-// Init\ninitTheme();
-initLanguageSelector();
-initAuth();
-updateActiveTournamentUI();
-_initParticipantFields();
-setCreateMode('gp');
-loadTournaments();
+// ─── Initialisation ───────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  initTheme();
+  initLanguageSelector();
+  _initParticipantFields();
+  initAuth();
+  initPersistedForms();
+  loadTournaments();
+});
+
 </script>
 </body>
 </html>

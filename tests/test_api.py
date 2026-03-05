@@ -5,6 +5,8 @@ Uses httpx + FastAPI TestClient to exercise the full request/response cycle.
 Fixtures (client, auth_headers, _clean_state) are provided by conftest.py.
 """
 
+from __future__ import annotations
+
 
 # ── General ────────────────────────────────────────────────
 

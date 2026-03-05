@@ -1,5 +1,7 @@
 """Tests for playoff module — single and double elimination."""
 
+from __future__ import annotations
+
 import pytest
 
 from backend.models import MatchStatus, Player

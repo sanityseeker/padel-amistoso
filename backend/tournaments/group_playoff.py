@@ -54,7 +54,7 @@ class GroupPlayoffTournament:
     def phase(self) -> GPPhase:
         return self._phase
 
-    def generate(self):
+    def generate(self) -> None:
         """Create groups and generate matches.
 
         * **team_mode** — generates all round-robin matches at once.
@@ -166,7 +166,7 @@ class GroupPlayoffTournament:
         score: tuple[int, int],
         sets: list[tuple[int, int]] | None = None,
         third_set_loss: bool = False,
-    ):
+    ) -> None:
         for g in self.groups:
             for m in g.matches:
                 if m.id == match_id:
@@ -219,7 +219,7 @@ class GroupPlayoffTournament:
         advancing_player_ids: list[str] | None = None,
         extra_players: list[tuple[str, float]] | None = None,
         double_elimination: bool | None = None,
-    ):
+    ) -> None:
         """Seed the play‑off bracket from group results.
 
         In **individual mode** (``team_mode=False``), advancing players
@@ -359,7 +359,7 @@ class GroupPlayoffTournament:
         match_id: str,
         score: tuple[int, int],
         sets: list[tuple[int, int]] | None = None,
-    ):
+    ) -> None:
         if self.playoff_bracket is None:
             raise RuntimeError("Play‑offs have not started")
         self.playoff_bracket.record_result(match_id, score, sets=sets)

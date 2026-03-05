@@ -481,6 +481,7 @@
   }
   summary.tv-collapsible-header::-webkit-details-marker { display: none; }
   summary.tv-collapsible-header h2 { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
+  summary.tv-collapsible-header .format-info-btn { margin-left: auto; }
   summary.tv-collapsible-header .chevron { color: var(--text-muted); font-size: 0.9rem; transition: transform 0.2s; }
   details.tv-collapsible[open] summary.tv-collapsible-header .chevron { transform: rotate(90deg); }
 
@@ -547,20 +548,32 @@
     .court-board { grid-template-columns: 1fr; gap: 0.75rem; }
     .court-match-teams { font-size: 1rem; }
 
-    /* Standings: hide D, PF, PA — keep #, Name, W, L, Pts */
-    .standings-table { font-size: 0.78rem; }
+    /* Allow standing sections to scroll horizontally if needed */
+    .tv-section { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    /* Standings: natural column widths, no overflow */
+    .standings-table { font-size: 0.78rem; table-layout: auto; width: 100%; }
     .standings-table th,
-    .standings-table td { padding: 0.25rem 0.3rem; }
-    .standings-table th:nth-child(1),
-    .standings-table td:nth-child(1) { width: 1.8rem; }
-    .standings-table th:nth-child(3), .standings-table th:nth-child(5),
-    .standings-table th:nth-child(8),
-    .standings-table td:nth-child(3), .standings-table td:nth-child(5),
-    .standings-table td:nth-child(8) { width: 2.6rem; }
-    /* Hide D (4), PF (6), PA (7) */
-    .standings-table th:nth-child(4), .standings-table td:nth-child(4),
-    .standings-table th:nth-child(6), .standings-table td:nth-child(6),
-    .standings-table th:nth-child(7), .standings-table td:nth-child(7) { display: none; }
+    .standings-table td { padding: 0.25rem 0.3rem; white-space: nowrap; }
+    /* Name column can shrink/wrap */
+    .standings-table th:nth-child(2),
+    .standings-table td:nth-child(2) { white-space: normal; min-width: 5rem; }
+
+    /* GP table (# | Player | W | D | L | PF | PA | Pts): hide D, PF, PA */
+    .standings-table[data-type="gp"] th:nth-child(4),
+    .standings-table[data-type="gp"] td:nth-child(4),
+    .standings-table[data-type="gp"] th:nth-child(6),
+    .standings-table[data-type="gp"] td:nth-child(6),
+    .standings-table[data-type="gp"] th:nth-child(7),
+    .standings-table[data-type="gp"] td:nth-child(7) { display: none; }
+
+    /* Mex table (# | Player | Total Pts | Played | W | D | L | Avg Pts): hide Played, D, L */
+    .standings-table[data-type="mex"] th:nth-child(4),
+    .standings-table[data-type="mex"] td:nth-child(4),
+    .standings-table[data-type="mex"] th:nth-child(6),
+    .standings-table[data-type="mex"] td:nth-child(6),
+    .standings-table[data-type="mex"] th:nth-child(7),
+    .standings-table[data-type="mex"] td:nth-child(7) { display: none; }
 
     /* Picker: less wasted vertical space */
     .tv-picker { margin: 2rem auto; padding: 0 0.5rem; }
@@ -571,12 +584,60 @@
     .tv-picker-form input,
     .tv-picker-form button { min-height: 44px; font-size: 1rem; }
   }
+
+  /* ── Abbreviation info button ── */
+  .format-info-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    font-style: italic;
+    border: 1.5px solid var(--text-muted);
+    border-radius: 50%;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    line-height: 1;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .format-info-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* ── Abbreviation legend popup ── */
+  #abbrev-popup {
+    display: none;
+    position: fixed;
+    z-index: 9995;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.65rem 0.9rem;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+    font-size: 0.82rem;
+    pointer-events: none;
+  }
+  #abbrev-popup table { border-collapse: collapse; }
+  #abbrev-popup td {
+    padding: 0.12rem 0.5rem 0.12rem 0;
+    color: var(--text-muted);
+    vertical-align: top;
+  }
+  #abbrev-popup td:first-child {
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+  }
 </style>
 </head>
 <body>
 <div id="tv-root">
   <div class="tv-loading" data-i18n="txt_txt_loading_tournament_display">Loading tournament display…</div>
 </div>
+<div id="abbrev-popup" role="tooltip"></div>
 
 <script src="/i18n.js"></script>
 <script src="/shared.js"></script>
@@ -844,11 +905,11 @@ function _renderGP(tvSettings, status, groups, playoffs) {
     // Group phase: standings → group past matches
     if (tvSettings.show_standings) {
       html += `<details class="tv-collapsible" data-tv-key="standings" open>`;
-      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_group_standings')}</h2></summary>`;
+      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_group_standings')}</h2> <button class="format-info-btn" onclick="showAbbrevPopup(event,'standings')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></summary>`;
       html += `<div class="tv-section">`;
       for (const [gName, rows] of Object.entries(groups.standings || {})) {
         html += `<div class="group-block"><h3>${t('txt_txt_group_name_value', { value: esc(gName) })}</h3>`;
-        html += `<table class="standings-table"><thead><tr>`;
+        html += `<table class="standings-table" data-type="gp"><thead><tr>`;
         html += `<th>#</th><th>${status.team_mode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_pts_abbrev')}</th>`;
         html += `</tr></thead><tbody>`;
         rows.forEach((r, i) => {
@@ -940,14 +1001,69 @@ function _renderMex(tvSettings, status, matches, playoffs) {
 
 // ── Shared builders ───────────────────────────────────────
 
+// ── Abbreviation legend popup ──────────────────────────────
+let _abbrevPopupBtn = null;
+
+function _buildAbbrevLegend(type) {
+  const rows = type === 'standings' ? [
+    [t('txt_txt_p_abbrev'),    t('txt_txt_abbrev_mp_full')],
+    [t('txt_txt_w_abbrev'),    t('txt_txt_abbrev_w_full')],
+    [t('txt_txt_d_abbrev'),    t('txt_txt_abbrev_d_full')],
+    [t('txt_txt_l_abbrev'),    t('txt_txt_abbrev_l_full')],
+    [t('txt_txt_pf_abbrev'),   t('txt_txt_abbrev_pf_full')],
+    [t('txt_txt_pa_abbrev'),   t('txt_txt_abbrev_pa_full')],
+    [t('txt_txt_diff_abbrev'), t('txt_txt_abbrev_diff_full')],
+    [t('txt_txt_pts_abbrev'),  t('txt_txt_abbrev_pts_full')],
+  ] : [
+    [t('txt_txt_total_pts_abbrev'), t('txt_txt_abbrev_total_pts_full')],
+    [t('txt_txt_played_abbrev'),    t('txt_txt_abbrev_played_full')],
+    [t('txt_txt_w_abbrev'),         t('txt_txt_abbrev_w_full')],
+    [t('txt_txt_d_abbrev'),         t('txt_txt_abbrev_d_full')],
+    [t('txt_txt_l_abbrev'),         t('txt_txt_abbrev_l_full')],
+    [t('txt_txt_avg_pts_abbrev'),   t('txt_txt_abbrev_avg_pts_full')],
+  ];
+  return `<table>${rows.map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table>`;
+}
+
+function showAbbrevPopup(event, type) {
+  event.stopPropagation();
+  const popup = document.getElementById('abbrev-popup');
+  const btn = event.currentTarget;
+  if (popup.style.display === 'block' && _abbrevPopupBtn === btn) {
+    popup.style.display = 'none';
+    _abbrevPopupBtn = null;
+    return;
+  }
+  _abbrevPopupBtn = btn;
+  popup.innerHTML = _buildAbbrevLegend(type);
+  popup.style.display = 'block';
+  const rect = btn.getBoundingClientRect();
+  const pw = popup.offsetWidth || 210;
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - pw - 8));
+  popup.style.left = left + 'px';
+  popup.style.top = (rect.bottom + 6) + 'px';
+}
+
+document.addEventListener('click', () => {
+  const p = document.getElementById('abbrev-popup');
+  if (p) { p.style.display = 'none'; _abbrevPopupBtn = null; }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const p = document.getElementById('abbrev-popup');
+    if (p) { p.style.display = 'none'; _abbrevPopupBtn = null; }
+  }
+});
+
 function _buildMexLeaderboard(status) {
   const lb = status.leaderboard || [];
   const byAvg = lb.length > 0 && lb[0].ranked_by_avg;
   let html = `<details class="tv-collapsible" data-tv-key="standings" open>`;
-  html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_leaderboard')}</h2></summary>`;
+  html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_leaderboard')}</h2> <button class="format-info-btn" onclick="showAbbrevPopup(event,'leaderboard')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></summary>`;
   html += `<div class="tv-section">`;
-  html += `<table class="standings-table"><thead><tr>`;
-  html += `<th>#</th><th>${status.team_mode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${t('txt_txt_total_pts')}</th><th>${t('txt_txt_played')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_avg_pts')}</th>`;
+  html += `<table class="standings-table" data-type="mex"><thead><tr>`;
+  html += `<th>#</th><th>${status.team_mode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${t('txt_txt_total_pts_abbrev')}</th><th>${t('txt_txt_played_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_avg_pts_abbrev')}</th>`;
   html += `</tr></thead><tbody>`;
   for (const r of lb) {
     html += `<tr><td class="rank-cell">${r.rank}</td><td class="player-cell">${esc(r.player)}</td>`;

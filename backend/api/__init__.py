@@ -106,7 +106,7 @@ async def serve_frontend() -> str:
 
 @app.get("/tv", response_class=HTMLResponse)
 async def serve_tv() -> str:
-    page = FRONTEND_DIR / "tv.html"
+    page = FRONTEND_DIR / "public.html"
     if page.exists():
         return page.read_text()
     return "<h1>TV page not found</h1>"

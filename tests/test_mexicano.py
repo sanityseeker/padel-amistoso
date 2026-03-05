@@ -1,5 +1,7 @@
 """Tests for the Mexicano tournament module."""
 
+from __future__ import annotations
+
 import pytest
 
 from backend.models import Court, MatchStatus, MexPhase, Player

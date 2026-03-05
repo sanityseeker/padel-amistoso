@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 
 from ..viz import render_schema
 from .helpers import _schema_image_response
@@ -30,7 +31,7 @@ async def schema_preview(
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(1.0, ge=0.5, le=3.0),
-):
+) -> Response:
     """
     Generate a tournament block-scheme preview image.
 
@@ -61,7 +62,7 @@ async def schema_preview(
 
 
 @router.post("/preview")
-async def schema_preview_post(req: SchemaPreviewRequest):
+async def schema_preview_post(req: SchemaPreviewRequest) -> Response:
     """POST variant — accepts a JSON body instead of query params."""
     img = render_schema(
         group_sizes=req.group_sizes,

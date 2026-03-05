@@ -1,5 +1,7 @@
 """Tests for the GroupPlayoffTournament orchestrator."""
 
+from __future__ import annotations
+
 import pytest
 
 from backend.models import Court, GPPhase, MatchStatus, Player

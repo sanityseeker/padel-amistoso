@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 
 from ..auth.deps import get_current_user
 from ..models import Court, Player, TournamentType
@@ -179,7 +180,7 @@ async def gp_playoffs_schema(
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(1.0, ge=0.5, le=3.0),
-):
+) -> Response:
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     if t.playoff_bracket is None:
         raise HTTPException(400, "Play-offs have not started")

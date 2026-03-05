@@ -1,7 +1,8 @@
 /**
- * shared.js — utilities used by both index.html (admin) and tv.html.
+ * shared.js — utilities used by both index.html (admin) and public.html.
  *
- * Loaded as <script src="/shared.js"> in both pages.
+ * This file is loaded as a module, so it has its own scope. Functions and
+ * variables defined here are not available to the global scope.
  */
 
 // ── HTML escaping ─────────────────────────────────────────
@@ -160,4 +161,137 @@ function applyI18n(root = document) {
 function initLanguage() {
   _currentLang = _loadSavedLanguage();
   applyI18n(document);
+}
+
+// ── Form state persistence ────────────────────────────────
+
+/**
+ * @param {string} key
+ * @param {string} value
+ */
+function _saveFormValue(key, value) {
+  if (!key) return;
+  try {
+    localStorage.setItem(`form-val-${key}`, value);
+  } catch (_) {}
+}
+
+/**
+ * @param {string} key
+ * @returns {string | null}
+ */
+function _loadFormValue(key) {
+  if (!key) return null;
+  try {
+    return localStorage.getItem(`form-val-${key}`);
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * @param {ParentNode} [root]
+ */
+function initPersistedForms(root = document) {
+  root.querySelectorAll('[data-persist-id]').forEach((el) => {
+    const id = el.getAttribute('data-persist-id');
+    if (!id) return;
+
+    const savedValue = _loadFormValue(id);
+    if (savedValue !== null) {
+      if (el instanceof HTMLInputElement && (el.type === 'checkbox' || el.type === 'radio')) {
+        el.checked = savedValue === 'true';
+      } else if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) {
+        el.value = savedValue;
+      }
+    }
+
+    el.addEventListener('change', (e) => {
+      const target = /** @type {HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement} */ (e.target);
+      let valueToSave;
+      if (target instanceof HTMLInputElement && (target.type === 'checkbox' || target.type === 'radio')) {
+        valueToSave = String(target.checked);
+      } else {
+        valueToSave = target.value;
+      }
+      _saveFormValue(id, valueToSave);
+    });
+  });
+}
+
+/**
+ * Returns the tournament ID from the URL.
+ * @param {string} url
+ * @returns {Object} { id: string, alias: string }
+ */
+function getTournamentIdFromUrl(url) {
+  const urlParams = new URL(url || window.location.href);
+  const tournamentId = urlParams.get('id');
+  if (!tournamentId) {
+    const alias = window.location.pathname.split('/').pop();
+    if (alias && alias !== 'tv') {
+      return { id: null, alias };
+    }
+  }
+  return { id: tournamentId, alias };
+}
+
+/**
+ * Refreshes the status of the tournament.
+ * @param {Object} { id: string, alias: string }
+ */
+async function refreshStatus() {
+  const { id: tournamentId, alias } = getTournamentIdFromUrl();
+  if (!tournamentId && !alias) {
+    return;
+  }
+  const response = await fetch(`/api/tournaments/${tournamentId}`);
+  if (!response.ok) {
+    console.error(`Failed to refresh status for tournament ${tournamentId}`);
+    return;
+  }
+  const data = await response.json();
+  console.log(`Status refreshed for tournament ${tournamentId}`, data);
+}
+
+/**
+ * Sets the tournament link.
+ * @param {Object} { id: string, alias: string }
+ */
+function setTournamentLink({ id, alias }) {
+  const tournamentLink = document.getElementById('tournament-link');
+  if (tournamentLink) {
+    const link = alias ? `/${alias}` : `/tv?id=${id}`;
+    tournamentLink.setAttribute('href', link);
+  }
+}
+
+/**
+ * Copies the tournament URL to the clipboard.
+ */
+function copyTournamentUrl() {
+  const { id: tournamentId, alias } = getTournamentIdFromUrl();
+  const link = alias ? `/${alias}` : `/tv?id=${tournamentId}`;
+  const fullUrl = window.location.origin + link;
+  navigator.clipboard.writeText(fullUrl).then(() => {
+    const copyButton = document.getElementById('copy-tv-url-button');
+    if (copyButton) {
+      const originalText = copyButton.innerText;
+      copyButton.innerText = i18n('txt_tv_url_copied');
+      setTimeout(() => {
+        copyButton.innerText = originalText;
+      }, 2000);
+    }
+  });
+}
+
+/**
+ * Sets the language.
+ * @param {string} lang
+ */
+function setLanguage(lang) {
+  _currentLang = lang === 'en' ? 'en' : 'es';
+  _saveLanguage(_currentLang);
+  applyI18n(document);
+  document.dispatchEvent(new CustomEvent('app-language-changed', { detail: { lang: _currentLang } }));
 }
