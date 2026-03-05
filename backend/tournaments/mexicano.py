@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import itertools
 import random
+from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -167,8 +168,8 @@ class MexicanoTournament:
         self._sit_out_counts: dict[str, int] = {p.id: 0 for p in players}
 
         # Track who has played with/against whom to reduce repeats
-        self._partner_history: dict[str, dict[str, int]] = {p.id: {} for p in players}
-        self._opponent_history: dict[str, dict[str, int]] = {p.id: {} for p in players}
+        self._partner_history: dict[str, dict[str, int]] = {p.id: defaultdict(int) for p in players}
+        self._opponent_history: dict[str, dict[str, int]] = {p.id: defaultdict(int) for p in players}
 
         # Cache for pending pairing proposals (cleared after each round is committed)
         self._pending_proposals: dict[str, dict] = {}
@@ -181,6 +182,9 @@ class MexicanoTournament:
         self.playoff_bracket: SingleEliminationBracket | DoubleEliminationBracket | None = None
         self._phase: MexPhase = MexPhase.MEXICANO
         self._mexicano_ended: bool = False
+
+        # Forced sit-outs for the next round (set by propose_pairings, cleared after commit)
+        self._forced_sit_out_ids: list[str] | None = None
 
         # Cached lookup — players never change after init
         self._player_map: dict[str, Player] = {p.id: p for p in players}
@@ -840,7 +844,7 @@ class MexicanoTournament:
         ranked = self._ranked_players(self.players)
 
         # Use forced sit-outs if set, otherwise auto-select
-        if getattr(self, "_forced_sit_out_ids", None) is not None:
+        if self._forced_sit_out_ids is not None:
             sitting = [self._player_map[pid] for pid in self._forced_sit_out_ids]
         else:
             sitting = self._choose_sit_outs(ranked)  # read-only — does not mutate counters
@@ -930,7 +934,7 @@ class MexicanoTournament:
         """Plan seeded by leaderboard positions with optional low-repeat pairing."""
         ranked = self._ranked_players(self.players)
 
-        if getattr(self, "_forced_sit_out_ids", None) is not None:
+        if self._forced_sit_out_ids is not None:
             sitting = [self._player_map[pid] for pid in self._forced_sit_out_ids]
         else:
             sitting = self._choose_sit_outs(ranked)
@@ -1014,7 +1018,7 @@ class MexicanoTournament:
         """
         ranked = self._ranked_players(self.players)
 
-        if getattr(self, "_forced_sit_out_ids", None) is not None:
+        if self._forced_sit_out_ids is not None:
             sitting = [self._player_map[pid] for pid in self._forced_sit_out_ids]
         else:
             sitting = self._choose_sit_outs(ranked)
@@ -1699,8 +1703,8 @@ class MexicanoTournament:
                 self._draws[p.id] = 0
                 self._losses[p.id] = 0
                 self._sit_out_counts[p.id] = 0
-                self._partner_history[p.id] = {}
-                self._opponent_history[p.id] = {}
+                self._partner_history[p.id] = defaultdict(int)
+                self._opponent_history[p.id] = defaultdict(int)
                 placeholder = entry.get("placeholder_id")
                 if placeholder:
                     ext_id_map[placeholder] = p.id

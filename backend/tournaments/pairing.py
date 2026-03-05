@@ -8,6 +8,7 @@ Used by both group-stage and Mexicano tournaments.
 from __future__ import annotations
 
 import random
+from collections import defaultdict
 
 from ..models import Player
 
@@ -20,8 +21,8 @@ PAIRING_SCHEMES_4: list[tuple[tuple[int, int], tuple[int, int]]] = [
 
 
 def make_history(players: list[Player]) -> dict[str, dict[str, int]]:
-    """Create an empty history dict for a list of players."""
-    return {p.id: {} for p in players}
+    """Create an empty defaultdict-of-int history dict for a list of players."""
+    return {p.id: defaultdict(int) for p in players}
 
 
 def update_history(
@@ -41,12 +42,12 @@ def update_history(
     for team in [team1, team2]:
         for i, p1 in enumerate(team):
             for p2 in team[i + 1 :]:
-                partner_history[p1.id][p2.id] = partner_history[p1.id].get(p2.id, 0) + 1
-                partner_history[p2.id][p1.id] = partner_history[p2.id].get(p1.id, 0) + 1
+                partner_history[p1.id][p2.id] += 1
+                partner_history[p2.id][p1.id] += 1
     for p1 in team1:
         for p2 in team2:
-            opponent_history[p1.id][p2.id] = opponent_history[p1.id].get(p2.id, 0) + 1
-            opponent_history[p2.id][p1.id] = opponent_history[p2.id].get(p1.id, 0) + 1
+            opponent_history[p1.id][p2.id] += 1
+            opponent_history[p2.id][p1.id] += 1
 
 
 def _half_repeat_count(

@@ -43,7 +43,7 @@ def _serialize_match(m: Match) -> dict:
     }
 
 
-def _get_tournament(tid: str, expected_type: str):
+def _get_tournament(tid: str, expected_type: str) -> dict:
     """Look up a tournament by ID and verify its type, or raise 404."""
     data = _tournaments.get(tid)
     if not data or data["type"] != expected_type:
@@ -113,12 +113,21 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
         for round_num, rmatches in sorted(by_round.items()):
             r = round_num - 1
             for p_idx, m in enumerate(rmatches):
-                labels[f"{prefix}_r{r}_p{p_idx}"] = {
+                # Use the stored bracket pair_index when available so the key
+                # matches the viz node ID (which uses the actual slot position
+                # including bye slots, not a sequential non-bye count).
+                key_p = m.pair_index if m.pair_index >= 0 else p_idx
+                entry: dict = {
                     "team1": _fmt_team(m.team1),
                     "team2": _fmt_team(m.team2),
                     "score": _fmt_score(m),
                     "round": m.round_label,
                 }
+                # Include loser info so the viz can draw data-driven loss edges.
+                loser = m.loser_team
+                if loser:
+                    entry["loser"] = _fmt_team(loser)
+                labels[f"{prefix}_r{r}_p{key_p}"] = entry
 
     labels: dict[str, dict] = {}
 

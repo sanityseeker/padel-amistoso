@@ -15,6 +15,7 @@ class CreateGroupPlayoffRequest(BaseModel):
     team_mode: bool = False
     court_names: list[str] = ["Court 1"]
     num_groups: int = Field(default=2, ge=1)
+    group_names: list[str] = []
     top_per_group: int = Field(default=2, ge=1)
     double_elimination: bool = False
 
@@ -54,7 +55,7 @@ class CreateMexicanoRequest(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_player_count_for_mode(self) -> "CreateMexicanoRequest":
+    def validate_player_count_for_mode(self) -> CreateMexicanoRequest:
         if not self.team_mode and len(self.player_names) < 4:
             raise ValueError("Need at least 4 players for Mexicano format (or enable team mode)")
         return self
@@ -81,6 +82,22 @@ class TvSettingsRequest(BaseModel):
     schema_arrow_scale: float | None = Field(default=None, ge=0.3, le=5.0)
     schema_title_font_scale: float | None = Field(default=None, ge=0.3, le=5.0)
     schema_output_scale: float | None = Field(default=None, ge=0.5, le=3.0)
+
+
+class TvSettings(BaseModel):
+    """Full TV display settings with defaults."""
+
+    show_courts: bool = True
+    show_past_matches: bool = True
+    show_score_breakdown: bool = False
+    show_standings: bool = True
+    show_bracket: bool = True
+    refresh_interval: int = -1
+    schema_box_scale: float = 1.0
+    schema_line_width: float = 1.0
+    schema_arrow_scale: float = 1.0
+    schema_title_font_scale: float = 1.0
+    schema_output_scale: float = 1.0
 
 
 class SetAliasRequest(BaseModel):

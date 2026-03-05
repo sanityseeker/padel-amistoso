@@ -33,7 +33,7 @@ _GP = TournamentType.GROUP_PLAYOFF.value
 
 
 @router.post("/group-playoff")
-async def create_group_playoff(req: CreateGroupPlayoffRequest, _user=Depends(get_current_user)):
+async def create_group_playoff(req: CreateGroupPlayoffRequest, _user=Depends(get_current_user)) -> dict:
     players = [Player(name=n) for n in req.player_names]
     courts = [Court(name=n) for n in req.court_names]
 
@@ -44,6 +44,7 @@ async def create_group_playoff(req: CreateGroupPlayoffRequest, _user=Depends(get
         top_per_group=req.top_per_group,
         double_elimination=req.double_elimination,
         team_mode=req.team_mode,
+        group_names=req.group_names,
     )
     t.generate()
 
@@ -58,17 +59,18 @@ async def create_group_playoff(req: CreateGroupPlayoffRequest, _user=Depends(get
 
 
 @router.get("/{tid}/gp/status")
-async def gp_status(tid: str):
+async def gp_status(tid: str) -> dict:
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     return {
         "phase": t.phase,
         "num_groups": len(t.groups),
+        "team_mode": t.team_mode,
         "champion": [p.name for p in t.champion()] if t.champion() else None,
     }
 
 
 @router.get("/{tid}/gp/groups")
-async def gp_groups(tid: str):
+async def gp_groups(tid: str) -> dict:
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     return {
         "standings": t.group_standings(),
@@ -78,7 +80,7 @@ async def gp_groups(tid: str):
 
 
 @router.post("/{tid}/gp/record-group")
-async def gp_record_group(tid: str, req: RecordScoreRequest, _user=Depends(get_current_user)):
+async def gp_record_group(tid: str, req: RecordScoreRequest, _user=Depends(get_current_user)) -> dict:
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     try:
         t.record_group_result(req.match_id, (req.score1, req.score2))
@@ -89,7 +91,7 @@ async def gp_record_group(tid: str, req: RecordScoreRequest, _user=Depends(get_c
 
 
 @router.post("/{tid}/gp/record-group-tennis")
-async def gp_record_group_tennis(tid: str, req: RecordTennisScoreRequest, _user=Depends(get_current_user)):
+async def gp_record_group_tennis(tid: str, req: RecordTennisScoreRequest, _user=Depends(get_current_user)) -> dict:
     """Record a group match using tennis-style set scores.
     Score = sum of game differences across all sets."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
@@ -113,7 +115,7 @@ async def gp_record_group_tennis(tid: str, req: RecordTennisScoreRequest, _user=
 
 
 @router.post("/{tid}/gp/next-group-round")
-async def gp_next_group_round(tid: str, _user=Depends(get_current_user)):
+async def gp_next_group_round(tid: str, _user=Depends(get_current_user)) -> dict:
     """Generate the next round of group-stage matches (individual mode only).
 
     Requires all current-round matches to be completed so cumulative scores
@@ -132,7 +134,7 @@ async def gp_next_group_round(tid: str, _user=Depends(get_current_user)):
 
 
 @router.get("/{tid}/gp/recommend-playoffs")
-async def gp_recommend_playoffs(tid: str):
+async def gp_recommend_playoffs(tid: str) -> dict:
     """Get all group-stage participants ranked for playoff selection."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     return {"recommended_participants": t.recommend_playoff_participants()}
@@ -143,7 +145,7 @@ async def gp_start_playoffs(
     tid: str,
     req: StartGroupPlayoffsRequest = StartGroupPlayoffsRequest(),
     _user=Depends(get_current_user),
-):
+) -> dict:
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     try:
         t.start_playoffs(
@@ -158,7 +160,7 @@ async def gp_start_playoffs(
 
 
 @router.get("/{tid}/gp/playoffs")
-async def gp_playoffs(tid: str):
+async def gp_playoffs(tid: str) -> dict:
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     return {
         "matches": [_serialize_match(m) for m in t.playoff_matches()],
@@ -202,7 +204,7 @@ async def gp_playoffs_schema(
 
 
 @router.post("/{tid}/gp/record-playoff")
-async def gp_record_playoff(tid: str, req: RecordScoreRequest, _user=Depends(get_current_user)):
+async def gp_record_playoff(tid: str, req: RecordScoreRequest, _user=Depends(get_current_user)) -> dict:
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     try:
         t.record_playoff_result(req.match_id, (req.score1, req.score2))
@@ -213,7 +215,7 @@ async def gp_record_playoff(tid: str, req: RecordScoreRequest, _user=Depends(get
 
 
 @router.post("/{tid}/gp/record-playoff-tennis")
-async def gp_record_playoff_tennis(tid: str, req: RecordTennisScoreRequest, _user=Depends(get_current_user)):
+async def gp_record_playoff_tennis(tid: str, req: RecordTennisScoreRequest, _user=Depends(get_current_user)) -> dict:
     """Record a playoff match using tennis-style set scores."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)

@@ -155,6 +155,117 @@
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
 
+  /* ── Format info button ── */
+  .format-info-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    font-style: italic;
+    border: 1.5px solid var(--text-muted);
+    border-radius: 50%;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    line-height: 1;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .format-info-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* ── Format info modal ── */
+  #format-info-overlay {
+    display: none;
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6);
+    z-index: 9990;
+  }
+  #format-info-dialog {
+    display: none;
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    width: min(580px, calc(100vw - 2rem));
+    max-height: calc(100vh - 3rem);
+    overflow-y: auto;
+    z-index: 9991;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  }
+  #format-info-dialog h3 { color: var(--accent); font-size: 1rem; margin: 0.9rem 0 0.4rem; }
+  #format-info-dialog h3:first-child { margin-top: 0; }
+  #format-info-dialog h4 { font-size: 0.87rem; color: var(--text); margin: 0.6rem 0 0.2rem; }
+  #format-info-dialog p { font-size: 0.86rem; color: var(--text-muted); line-height: 1.55; margin-bottom: 0.5rem; }
+  #format-info-dialog p:last-child { margin-bottom: 0; }
+  .format-info-close-btn {
+    float: right;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.3rem;
+    cursor: pointer;
+    line-height: 1;
+    margin: -0.2rem -0.2rem 0 0;
+    padding: 0;
+  }
+  .format-info-close-btn:hover { color: var(--text); }
+
+  /* ── Abbreviation legend popup ── */
+  #abbrev-popup {
+    display: none;
+    position: fixed;
+    z-index: 9995;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.65rem 0.9rem;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+    font-size: 0.82rem;
+    pointer-events: none;
+  }
+  #abbrev-popup table { border-collapse: collapse; }
+  #abbrev-popup td {
+    padding: 0.12rem 0.5rem 0.12rem 0;
+    color: var(--text-muted);
+    vertical-align: top;
+  }
+  #abbrev-popup td:first-child {
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    min-width: 2.2rem;
+  }
+  .abbrev-info-th {
+    width: 0;
+    padding: 0 0.35rem !important;
+    text-align: right;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .card-heading-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  /* ── Shared info block (used in modal and Info tab) ── */
+  .info-block {
+    padding: 0.6rem 0.85rem;
+    background: var(--bg);
+    border-radius: 8px;
+    border-left: 3px solid var(--accent);
+    margin: 0.4rem 0 0.6rem;
+  }
+  .info-block strong { display: block; font-size: 0.86rem; color: var(--text); margin-bottom: 0.2rem; }
+  .info-block p { font-size: 0.84rem; color: var(--text-muted); margin-bottom: 0; line-height: 1.5; }
+  .info-divider { border: none; border-top: 1px solid var(--border); margin: 0.9rem 0; }
+
   /* Forms */
   .form-group { margin-bottom: 0.75rem; }
   label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.25rem; }
@@ -166,6 +277,10 @@
   textarea { resize: vertical; min-height: 80px; }
   .inline-group { display: flex; gap: 0.5rem; }
   .inline-group > * { flex: 1; }
+  /* Compact horizontal label+spinner, doesn't stretch */
+  .num-field { display: flex; align-items: center; gap: 0.45rem; flex: 0 0 auto; }
+  .num-field label { margin: 0; white-space: nowrap; font-size: 0.88rem; color: var(--text-muted); }
+  .num-field input[type=number] { width: 64px; min-width: 0; text-align: center; padding: 0.3rem 0.4rem; }
 
   /* Buttons */
   .btn {
@@ -489,15 +604,50 @@
   .switch-label input:checked + .switch-track::after { transform: translateX(16px); }
 
   /* ── Collapsible advanced section ── */
-  details.advanced-section { margin-bottom: 0.75rem; }
-  details.advanced-section summary {
-    cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--text-muted);
-    padding: 0.5rem 0; user-select: none; list-style: none;
+  details.advanced-section {
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface2);
+    overflow: hidden;
   }
-  details.advanced-section summary::before { content: '⚙️ '; }
+  details.advanced-section summary {
+    cursor: pointer; user-select: none; list-style: none;
+    display: flex; align-items: center; gap: 0.45rem;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.83rem; font-weight: 600; color: var(--text-muted);
+  }
+  details.advanced-section summary::before { content: '⚙\FE0F\200D'; }
+  details.advanced-section summary::after { content: '▸'; margin-left: auto; transition: transform 0.18s; }
+  details.advanced-section[open] summary::after { transform: rotate(90deg); }
   details.advanced-section summary::marker { display: none; }
   details.advanced-section summary::-webkit-details-marker { display: none; }
-  details.advanced-section[open] summary { color: var(--accent); }
+  details.advanced-section[open] summary { color: var(--accent); border-bottom: 1px solid var(--border); }
+  .advanced-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.75rem 1.1rem;
+    padding: 0.9rem;
+  }
+  .adv-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.18rem;
+  }
+  .adv-field > label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .adv-field > input {
+    width: 80px;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.88rem;
+  }
+  .adv-field small {
+    display: block; margin-top: 0.2rem;
+    font-size: 0.72rem; line-height: 1.35; color: var(--text-muted);
+  }
 
   /* ── Score breakdown as <details> ── */
   details.breakdown-details { width: 100%; margin-top: 0.3rem; }
@@ -712,6 +862,156 @@
     margin-bottom: 0;
   }
 
+  /* ── Participant manager (individual fields) ── */
+  .participants-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+  }
+  .participants-header label, .participants-header .field-section-title { margin-bottom: 0; }
+  .paste-list-btn {
+    background: none;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    color: var(--accent);
+    font-size: 0.78rem;
+    cursor: pointer;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    text-decoration: none;
+    transition: background 0.15s, border-color 0.15s;
+    flex-shrink: 0;
+  }
+  .paste-list-btn:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .clear-btn {
+    background: none;
+    border: 1px solid color-mix(in srgb, var(--danger, #e05252) 40%, transparent);
+    color: var(--danger, #e05252);
+    text-decoration: none;
+    padding: 0.15rem 0.5rem;
+  }
+  .clear-btn:hover { color: var(--danger, #e05252); border-color: var(--danger, #e05252); background: color-mix(in srgb, var(--danger, #e05252) 8%, transparent); }
+  .participant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 0.4rem;
+    margin-bottom: 0.45rem;
+  }
+  .court-names-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-top: 0.25rem;
+  }
+  .court-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .court-row-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    min-width: 22px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .field-section {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem 0.85rem 0.75rem;
+    background: var(--surface2);
+  }
+  .field-section-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 0.55rem;
+  }
+  .tournament-name-input {
+    font-size: 1.1rem;
+    font-weight: 700;
+    background: none;
+    border: none;
+    border-bottom: 1.5px solid var(--border);
+    border-radius: 0;
+    padding: 0.2rem 0;
+    color: var(--text);
+    outline: none;
+  }
+  .tournament-name-input:focus {
+    border-bottom-color: var(--accent);
+  }
+  .court-row input {
+    flex: 1;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.88rem;
+  }
+  .participant-entry {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .participant-entry input {
+    flex: 1;
+    min-height: 0 !important;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.9rem;
+  }
+  .participant-remove-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 4px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: border-color 0.15s, color 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .participant-remove-btn:hover { border-color: var(--red); color: var(--red); }
+  .add-participant-btn {
+    background: none;
+    border: 1px dashed var(--border);
+    color: var(--text-muted);
+    border-radius: 6px;
+    padding: 0.35rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.82rem;
+    transition: border-color 0.15s, color 0.15s;
+    width: 100%;
+    text-align: center;
+    margin-top: 0.1rem;
+  }
+  .add-participant-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .paste-panel { margin-top: 0.4rem; }
+  .paste-panel textarea { min-height: 90px; }
+  .participant-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+  .entry-mode-row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+  }
+  .entry-mode-toggle button {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+
   /* ── Mobile: touch targets, layout & responsive ── */
   @media (max-width: 600px) {
     body { padding: 0.5rem; }
@@ -794,6 +1094,12 @@
     .gp-add-row input[type="text"] { min-width: 100%; }
     .gp-add-row input[type="number"] { width: 100%; }
     .gp-format-row .form-group { max-width: 100%; }
+
+    /* Participant manager on mobile: 1 column */
+    .participant-grid { grid-template-columns: 1fr; }
+    .participant-entry input { font-size: 1rem; min-height: 44px !important; }
+    .participant-remove-btn { width: 36px; height: 44px; font-size: 1.1rem; }
+    .add-participant-btn { min-height: 44px; font-size: 0.9rem; }
   }
 </style>
 </head>
@@ -822,7 +1128,7 @@
   <div class="tabs">
     <button type="button" class="tab-btn active" data-tab="home" data-i18n="txt_txt_tournaments">Tournaments</button>
     <button type="button" class="tab-btn" data-tab="create" data-i18n="txt_txt_create">Create</button>
-    <button type="button" class="tab-btn" data-tab="tools" data-i18n="txt_txt_tools">Tools</button>
+    <button type="button" class="tab-btn" data-tab="info" data-i18n="txt_txt_info">Info</button>
     <div id="tournament-chips" class="tournament-chips"></div>
     <div class="compact-controls">
       <button type="button" id="admin-refresh-btn" class="compact-icon-btn" onclick="_refreshCurrentView()" title="Refresh" style="display:none">↻</button>
@@ -844,34 +1150,61 @@
   <div class="tab-panel" id="panel-create">
     <div class="card">
       <h2 data-i18n="txt_txt_create_tournament">Create Tournament</h2>
-      <div class="subtabs" role="tablist" aria-label="Create tournament type" data-i18n-aria-label="txt_txt_create_tournament_type">
-        <button type="button" class="subtab-btn active" id="create-tab-gp" onclick="setCreateMode('gp')" data-i18n="txt_txt_group_play_off">Group + Play‑off</button>
-        <button type="button" class="subtab-btn" id="create-tab-mex" onclick="setCreateMode('mex')" data-i18n="txt_txt_mexicano_play_offs">Mexicano + Play‑offs</button>
+      <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.85rem;flex-wrap:wrap">
+        <div class="subtabs" role="tablist" aria-label="Create tournament type" data-i18n-aria-label="txt_txt_create_tournament_type" style="margin-bottom:0">
+          <button type="button" class="subtab-btn active" id="create-tab-gp" onclick="setCreateMode('gp')" data-i18n="txt_txt_group_play_off">Group + Play‑off</button>
+          <button type="button" class="subtab-btn" id="create-tab-mex" onclick="setCreateMode('mex')" data-i18n="txt_txt_mexicano_play_offs">Mexicano + Play‑offs</button>
+        </div>
+        <button type="button" class="format-info-btn" id="create-format-info-btn" onclick="openFormatInfo()" aria-label="About this format" data-i18n-title="txt_txt_about_this_format" title="About this format">i</button>
       </div>
 
       <div class="subtab-panel active" id="create-panel-gp">
-        <div class="form-group">
-          <label data-i18n="txt_txt_tournament_name">Tournament Name</label>
-          <input id="gp-name" value="Padel Cup 2026">
-        </div>
-        <div class="form-group">
-          <label class="switch-label"><input type="checkbox" id="gp-team-mode" checked onchange="toggleGpTeamMode()"><span class="switch-track"></span><span><strong data-i18n="txt_txt_team_mode">Team Mode</strong> — <span data-i18n="txt_txt_team_mode_description">each entry is a fixed pair (e.g. "Alice & Bob")</span></span></label>
-        </div>
-        <div class="form-group">
-          <label id="gp-players-label" data-i18n="txt_txt_team_names_one_per_line_e_g_alice_bob">Team Names (one per line, e.g. "Alice & Bob")</label>
-          <textarea id="gp-players">Alice & Bob
-Charlie & Diana
-Eve & Frank
-Grace & Hank</textarea>
-        </div>
-        <div class="inline-group">
-          <div class="form-group">
-            <label data-i18n="txt_txt_courts_comma_separated">Courts (comma-separated)</label>
-            <input id="gp-courts" value="Court 1, Court 2">
+        <div class="field-section" style="margin-bottom:0.75rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+            <input id="gp-name" value="Padel Cup 2026" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.3rem;flex-shrink:0">
+              <div class="score-mode-toggle entry-mode-toggle" id="gp-entry-mode-toggle">
+                <button type="button" data-mode="individual" onclick="setEntryMode('gp','individual')" data-i18n="txt_txt_individual_mode">Individual</button>
+                <button type="button" data-mode="team" class="active" onclick="setEntryMode('gp','team')" data-i18n="txt_txt_team_mode_short">Team</button>
+              </div>
+            </div>
           </div>
-          <div class="form-group">
-            <label data-i18n="txt_txt_number_of_groups">Number of Groups</label>
-            <input id="gp-num-groups" type="number" value="2" min="1">
+        </div>
+        <div class="field-section">
+          <div class="participants-header">
+            <div style="display:flex;align-items:center;gap:0.5rem">
+              <span class="field-section-title" style="margin-bottom:0" id="gp-players-label" data-i18n="txt_txt_participants">Participants</span>
+              <span class="participant-count" id="gp-participant-count"></span>
+            </div>
+            <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+              <button type="button" class="paste-list-btn clear-btn" onclick="clearParticipants('gp')" data-i18n="txt_txt_clear_all">Clear all</button>
+              <button type="button" class="paste-list-btn" id="gp-paste-toggle" onclick="togglePasteMode('gp')">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
+            </div>
+          </div>
+          <div id="gp-participant-fields">
+            <div class="participant-grid" id="gp-participant-grid"></div>
+            <button type="button" class="add-participant-btn" id="gp-add-btn" onclick="addParticipantField('gp')">+ Add team</button>
+          </div>
+          <div class="paste-panel hidden" id="gp-paste-panel">
+            <textarea id="gp-players" placeholder="One per line, e.g. Alice &amp; Bob"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start;margin-top:0.5rem">
+          <div class="field-section" style="flex:1;min-width:220px">
+            <div class="field-section-title" data-i18n="txt_txt_courts">Courts</div>
+            <div class="num-field" style="margin-bottom:0.55rem">
+              <label data-i18n="txt_txt_number_of_courts">Number of courts</label>
+              <input id="gp-court-count" type="number" value="2" min="1" max="20" oninput="renderCourtInputs('gp')">
+            </div>
+            <div class="court-names-grid" id="gp-court-names-container"></div>
+          </div>
+          <div class="field-section" style="flex:1;min-width:180px">
+            <div class="field-section-title" data-i18n="txt_txt_groups">Groups</div>
+            <div class="num-field" style="margin-bottom:0.55rem">
+              <label data-i18n="txt_txt_number_of_groups">Number of groups</label>
+              <input id="gp-num-groups" type="number" value="2" min="1" oninput="renderGroupInputs()">
+            </div>
+            <div class="court-names-grid" id="gp-group-names-container"></div>
           </div>
         </div>
         <button type="button" class="btn btn-primary" onclick="createGP()" data-i18n="txt_txt_create_tournament">Create Tournament</button>
@@ -879,74 +1212,93 @@ Grace & Hank</textarea>
       </div>
 
       <div class="subtab-panel" id="create-panel-mex">
-        <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_txt_play_mexicano_rounds_first_then_optionally_start_seeded_play_offs">Play Mexicano rounds first, then optionally start seeded play-offs.</p>
-        <div class="form-group">
-          <label data-i18n="txt_txt_tournament_name">Tournament Name</label>
-          <input id="mex-name" value="Mexicano Night">
-        </div>
-        <div class="form-group">
-          <label class="switch-label"><input type="checkbox" id="mex-team-mode" onchange="toggleMexTeamMode()"><span class="switch-track"></span><span><strong data-i18n="txt_txt_team_mode">Team Mode</strong> — <span data-i18n="txt_txt_team_mode_description">each entry is a fixed pair (e.g. "Alice & Bob")</span></span></label>
-        </div>
-        <div class="form-group">
-          <label id="mex-players-label" data-i18n="txt_txt_player_names_one_per_line">Player Names (one per line)</label>
-          <textarea id="mex-players">Alice
-Bob
-Charlie
-Diana
-Eve
-Frank
-Grace
-Hank</textarea>
-        </div>
-        <div class="inline-group">
-          <div class="form-group">
-            <label data-i18n="txt_txt_courts_comma_separated">Courts (comma-separated)</label>
-            <input id="mex-courts" value="Court 1, Court 2">
-          </div>
-          <div class="form-group">
-            <label data-i18n="txt_txt_total_points_per_match">Total points per match</label>
-            <input id="mex-pts" type="number" value="32" min="1">
-          </div>
-        </div>
-        <div class="form-group">
-          <label data-i18n="txt_txt_number_of_rounds">Number of rounds</label>
-          <div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.25rem;flex-wrap:wrap">
-            <div class="score-mode-toggle" id="mex-rounds-toggle" style="flex-shrink:0">
-              <button type="button" class="active" onclick="_setMexRoundsMode('unlimited')" data-i18n="txt_txt_unlimited">∞ Unlimited</button>
-              <button type="button" onclick="_setMexRoundsMode('fixed')" data-i18n="txt_txt_fixed">Fixed</button>
-            </div>
-            <input id="mex-rounds" type="number" value="8" min="1" style="width:80px;display:none" aria-label="Number of rounds">
-          </div>
-        </div>
-        <details class="advanced-section">
-          <summary data-i18n="txt_txt_advanced_settings">Advanced Settings</summary>
-          <div class="form-group">
-            <label data-i18n="txt_txt_skill_gap_label">Skill Gap — max point diff to be in same group (leave blank = snake-draft)</label>
-            <input id="mex-skill-gap" type="number" data-i18n-placeholder="txt_txt_skill_gap_placeholder" placeholder="e.g. 50  (blank = disabled)" min="0">
-          </div>
-          <div class="inline-group">
-            <div class="form-group">
-              <label data-i18n="txt_txt_win_bonus_label">Win bonus pts <small style="color:var(--text-muted)">(0 = off)</small></label>
-              <input id="mex-win-bonus" type="number" value="0" min="0">
-              <small style="color:var(--text-muted)" data-i18n="txt_txt_win_bonus_help">Flat extra points added to the winner's leaderboard score each match, on top of what they played. Draws get nothing. E.g. <em>5</em> means winning 20–12 credits 25 pts instead of 20.</small>
-            </div>
-            <div class="form-group">
-              <label data-i18n="txt_txt_rival_strength_label">Rival strength weight <small style="color:var(--text-muted)">(0 = off, 1 = full)</small></label>
-              <input id="mex-strength-weight" type="number" value="0" min="0" max="1" step="0.05">
-              <small style="color:var(--text-muted)" data-i18n="txt_txt_rival_strength_help">Boosts points earned based on how highly ranked your opponents are right now. At <em>1.0</em>: beating the top team doubles your points; beating last place gives raw score. At <em>0.5</em>: top opponent gives ×1.5, bottom gives ×1.0.</small>
+        <div class="field-section" style="margin-bottom:0.75rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+            <input id="mex-name" value="Mexicano Night" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.3rem;flex-shrink:0">
+              <div class="score-mode-toggle entry-mode-toggle" id="mex-entry-mode-toggle">
+                <button type="button" data-mode="individual" class="active" onclick="setEntryMode('mex','individual')" data-i18n="txt_txt_individual_mode">Individual</button>
+                <button type="button" data-mode="team" onclick="setEntryMode('mex','team')" data-i18n="txt_txt_team_mode_short">Team</button>
+              </div>
             </div>
           </div>
-          <div class="form-group">
-            <label data-i18n="txt_txt_loss_discount_label">Loss discount <small style="color:var(--text-muted)">(1 = no penalty)</small></label>
-            <input id="mex-loss-discount" type="number" value="1" min="0" max="1" step="0.05">
-            <small style="color:var(--text-muted)" data-i18n="txt_txt_loss_discount_help">Multiplier applied to the losing team's scored points before crediting their leaderboard total. Draws are not affected. E.g. <em>0.75</em> — losing 12–20 credits only 9 pts instead of 12. <em>0</em> = losers earn nothing.</small>
+        </div>
+        <div class="field-section">
+          <div class="participants-header">
+            <div style="display:flex;align-items:center;gap:0.5rem">
+              <span class="field-section-title" style="margin-bottom:0" id="mex-players-label" data-i18n="txt_txt_participants">Participants</span>
+              <span class="participant-count" id="mex-participant-count"></span>
+            </div>
+            <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+              <button type="button" class="paste-list-btn clear-btn" onclick="clearParticipants('mex')" data-i18n="txt_txt_clear_all">Clear all</button>
+              <button type="button" class="paste-list-btn" id="mex-paste-toggle" onclick="togglePasteMode('mex')">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
+            </div>
           </div>
-          <div class="form-group">
-            <label data-i18n="txt_txt_balance_tolerance_label">Balance tolerance <small style="color:var(--text-muted)">(0 = strict, higher = more variety)</small></label>
-            <input id="mex-balance-tol" type="number" value="0.2" min="0" max="2" step="0.1">
-            <small style="color:var(--text-muted)" data-i18n="txt_txt_balance_tolerance_help">How much extra score imbalance the optimiser may accept to avoid repeat matchups. 0 = never sacrifice competitiveness; 0.2 (default) = allow up to 20% looser balance; 1.0 = strongly prefer new opponents even if matches are less even.</small>
+          <div id="mex-participant-fields">
+            <div class="participant-grid" id="mex-participant-grid"></div>
+            <button type="button" class="add-participant-btn" id="mex-add-btn" onclick="addParticipantField('mex')">+ Add player</button>
           </div>
-        </details>
+          <div class="paste-panel hidden" id="mex-paste-panel">
+            <textarea id="mex-players" placeholder="One per line"></textarea>
+          </div>
+        </div>
+        <div class="field-section" style="margin-top:0.5rem">
+          <div class="field-section-title" data-i18n="txt_txt_courts">Courts</div>
+          <div class="num-field" style="margin-bottom:0.55rem">
+            <label data-i18n="txt_txt_number_of_courts">Number of courts</label>
+            <input id="mex-court-count" type="number" value="2" min="1" max="20" oninput="renderCourtInputs('mex')">
+          </div>
+          <div class="court-names-grid" id="mex-court-names-container"></div>
+        </div>
+        <div class="field-section" style="margin-top:0.5rem">
+          <div class="field-section-title" data-i18n="txt_txt_parameters">Parameters</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem 1.25rem;margin-bottom:0.85rem">
+            <div style="display:flex;flex-direction:column;gap:0.3rem">
+              <label style="font-size:0.8rem;color:var(--text-muted)" data-i18n="txt_txt_total_points_per_match">Total points per match</label>
+              <input id="mex-pts" type="number" value="32" min="1" style="width:80px">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.3rem">
+              <label style="font-size:0.8rem;color:var(--text-muted)" data-i18n="txt_txt_number_of_rounds">Number of rounds</label>
+              <div style="display:flex;align-items:center;gap:0.6rem">
+                <div class="score-mode-toggle" id="mex-rounds-toggle" style="flex-shrink:0">
+                  <button type="button" class="active" onclick="_setMexRoundsMode('unlimited')" data-i18n="txt_txt_unlimited">∞ Unlimited</button>
+                  <button type="button" onclick="_setMexRoundsMode('fixed')" data-i18n="txt_txt_fixed">Fixed</button>
+                </div>
+                <input id="mex-rounds" type="number" value="8" min="1" style="width:64px;display:none" aria-label="Number of rounds">
+              </div>
+            </div>
+          </div>
+          <details class="advanced-section" id="mex-advanced" style="margin-bottom:0;border-radius:6px">
+            <summary data-i18n="txt_txt_advanced_settings">Advanced Settings</summary>
+            <div class="advanced-grid">
+              <div class="adv-field">
+                <label data-i18n="txt_txt_skill_gap_label">Skill gap</label>
+                <input id="mex-skill-gap" type="number" data-i18n-placeholder="txt_txt_skill_gap_placeholder" placeholder="e.g. 50" min="0">
+                <small>Max rating diff to share a group. Blank = snake-draft.</small>
+              </div>
+              <div class="adv-field">
+                <label data-i18n="txt_txt_win_bonus_label">Win bonus <small style="font-weight:400">(0 = off)</small></label>
+                <input id="mex-win-bonus" type="number" value="0" min="0">
+                <small data-i18n="txt_txt_win_bonus_help">Extra pts added to winner’s leaderboard score. E.g. <em>5</em>: winning 20–12 credits 25 pts.</small>
+              </div>
+              <div class="adv-field">
+                <label data-i18n="txt_txt_rival_strength_label">Rival strength <small style="font-weight:400">(0–1)</small></label>
+                <input id="mex-strength-weight" type="number" value="0" min="0" max="1" step="0.05">
+                <small data-i18n="txt_txt_rival_strength_help">Scales pts by opponent rank. At <em>1.0</em> beating top team doubles score; <em>0</em> = off.</small>
+              </div>
+              <div class="adv-field">
+                <label data-i18n="txt_txt_loss_discount_label">Loss discount <small style="font-weight:400">(1 = none)</small></label>
+                <input id="mex-loss-discount" type="number" value="1" min="0" max="1" step="0.05">
+                <small data-i18n="txt_txt_loss_discount_help">Multiplier on loser’s scored pts. E.g. <em>0.75</em>: losing 12–20 credits 9 pts.</small>
+              </div>
+              <div class="adv-field">
+                <label data-i18n="txt_txt_balance_tolerance_label">Balance tolerance <small style="font-weight:400">(0 = strict)</small></label>
+                <input id="mex-balance-tol" type="number" value="0.2" min="0" max="2" step="0.1">
+                <small data-i18n="txt_txt_balance_tolerance_help">Imbalance the optimiser may accept to avoid repeat matchups. <em>0.2</em> = 20% looser.</small>
+              </div>
+            </div>
+          </details>
+        </div>
         <button type="button" class="btn btn-primary" onclick="createMex()" data-i18n="txt_txt_create_tournament">Create Tournament</button>
         <div id="mex-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
@@ -958,14 +1310,48 @@ Hank</textarea>
     <div id="view-content"></div>
   </div>
 
-  <!-- ─── TOOLS ─────────────────────────────────────────── -->
-  <div class="tab-panel" id="panel-tools">
+  <!-- ─── INFO ──────────────────────────────────────────── -->
+  <div class="tab-panel" id="panel-info">
     <div class="card">
-      <h2 data-i18n="txt_txt_tools">Tools</h2>
-      <p style="color:var(--text-muted);font-size:0.85rem" data-i18n="txt_txt_planning_and_preview_utilities_that_are_independent_from_an_active_tournament">Planning and preview utilities that are independent from an active tournament.</p>
+      <h2 data-i18n="txt_txt_info">Info</h2>
+      <p style="color:var(--text-muted);font-size:0.85rem" data-i18n="txt_txt_info_tab_desc">Overview of the available tournament formats and how play‑offs work.</p>
     </div>
+
+    <!-- Group + Play-off -->
     <div class="card">
-      <h2 data-i18n="txt_txt_tournament_bracket_schema">Tournament Bracket Schema</h2>
+      <h2 data-i18n="txt_txt_fmt_gp_title">Group + Play‑off</h2>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_gp_intro">Players or teams are divided into groups and play a round‑robin stage before the top finishers advance to play‑offs.</p>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_fmt_gp_team_mode_title">Team Mode</strong>
+        <p data-i18n="txt_txt_fmt_gp_team_mode_desc">Each fixed pair plays against every other pair in their group — a complete round‑robin. Final standings decide who advances to play‑offs.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_fmt_gp_player_mode_title">Player Mode (Americano‑style)</strong>
+        <p data-i18n="txt_txt_fmt_gp_player_mode_desc">Partners rotate each round so that every player partners with all others at least once. Matchups are formed dynamically, slightly optimising against current group standings to keep each round competitive.</p>
+      </div>
+    </div>
+
+    <!-- Mexicano -->
+    <div class="card">
+      <h2 data-i18n="txt_txt_fmt_mex_title">Mexicano + Play‑offs</h2>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_mex_intro">Pairings change every round based on current standings (leaders vs leaders) or by ratings to optimise cumulative team strength.</p>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_mex_rounds_desc">Multiple valid pairing combinations usually exist for each round. The admin can browse several proposals and pick the one that best balances team strength and minimises repeated matchups. Scoring weights and pairing parameters are fully configurable in the advanced settings.</p>
+    </div>
+
+    <!-- Play-offs -->
+    <div class="card">
+      <h2 data-i18n="txt_txt_fmt_playoffs_title">Play‑offs</h2>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_playoffs_intro">After any group stage or Mexicano rounds, the admin selects which players or teams advance to the play‑off bracket. It is also possible to add new (external) players directly into play‑offs after the group stage — useful for seeded entries or late registrations.</p>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_fmt_playoffs_single_title">Single Elimination</strong>
+        <p data-i18n="txt_txt_fmt_playoffs_single_desc">Classic knock‑out bracket — lose once and you're out. Straightforward and fast to complete.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_fmt_playoffs_double_title">Double Elimination (Espejo)</strong>
+        <p data-i18n="txt_txt_fmt_playoffs_double_desc">Each player or team gets a second chance through a losers' bracket before being eliminated. The finalist must be beaten twice to be knocked out — rewarding consistency over the whole bracket.</p>
+      </div>
+      <hr class="info-divider">
+      <h3 style="font-size:0.95rem;margin-bottom:0.6rem" data-i18n="txt_txt_tournament_bracket_schema">Tournament Bracket Schema</h3>
       <p style="color:var(--text-muted);font-size:0.85rem" data-i18n="txt_txt_generate_a_visual_diagram_of_the_tournament_structure_before_creating_it">Generate a visual diagram of the tournament structure before creating it.</p>
       <div class="inline-group">
         <div class="form-group">
@@ -973,8 +1359,10 @@ Hank</textarea>
           <input id="schema-groups" type="text" value="4,4" placeholder="e.g. 4,4,4">
         </div>
         <div class="form-group">
-          <label data-i18n="txt_txt_advance_per_group">Advance per group</label>
-          <input id="schema-advance" type="number" value="2" min="1" max="8">
+          <div class="num-field">
+            <label data-i18n="txt_txt_advance_per_group">Advance per group</label>
+            <input id="schema-advance" type="number" value="2" min="1" max="8">
+          </div>
         </div>
       </div>
       <div class="inline-group">
@@ -1038,8 +1426,40 @@ Hank</textarea>
       <div id="schema-msg" class="alert alert-error hidden" style="margin-top:0.75rem"></div>
       <div id="schema-result" style="margin-top:1rem; text-align:center"></div>
     </div>
+
+    <!-- TV Display -->
+    <div class="card">
+      <h2 data-i18n="txt_txt_fmt_tv_title">TV Display</h2>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_tv_intro">A read-only live view for a big screen or projector. Auto-refreshes in real time — no login required.</p>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_fmt_tv_sections_title">Visible sections</strong>
+        <p data-i18n="txt_txt_fmt_tv_sections_desc">Choose which blocks appear: past matches, standings / leaderboard, score breakdowns, and the play&#8209;off bracket.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_fmt_tv_refresh_title">Auto-refresh</strong>
+        <p data-i18n="txt_txt_fmt_tv_refresh_desc">Set the refresh interval (5 s – 5 min), trigger on every score update, or disable entirely.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_fmt_tv_alias_title">Custom URL alias</strong>
+        <p data-i18n="txt_txt_fmt_tv_alias_desc">Assign a memorable slug (e.g. "summer-cup") so the TV URL is easy to share and type on any device.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_fmt_tv_rendering_title">Bracket rendering</strong>
+        <p data-i18n="txt_txt_fmt_tv_rendering_desc">Fine-tune box size, line width, arrow size, and header size for the play&#8209;off bracket diagram.</p>
+      </div>
+    </div>
   </div>
 </div>
+
+<!-- Format Info Modal -->
+<div id="format-info-overlay" onclick="closeFormatInfo()"></div>
+<div id="format-info-dialog" role="dialog" aria-modal="true" aria-labelledby="format-info-heading">
+  <button type="button" class="format-info-close-btn" onclick="closeFormatInfo()" aria-label="Close">✕</button>
+  <div id="format-info-content"></div>
+</div>
+
+<!-- Abbreviation legend popup -->
+<div id="abbrev-popup" role="tooltip"></div>
 
 <!-- Authentication Dialog -->
 <div id="auth-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9998"></div>
@@ -1113,12 +1533,121 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
+let _currentCreateMode = 'gp';
+
 function setCreateMode(mode) {
+  _currentCreateMode = mode;
   const isGp = mode === 'gp';
   document.getElementById('create-tab-gp')?.classList.toggle('active', isGp);
   document.getElementById('create-tab-mex')?.classList.toggle('active', !isGp);
   document.getElementById('create-panel-gp')?.classList.toggle('active', isGp);
   document.getElementById('create-panel-mex')?.classList.toggle('active', !isGp);
+}
+
+// ─── Format info modal ─────────────────────────────────────
+function openFormatInfo(format) {
+  const mode = format || _currentCreateMode;
+  const htmlFn = mode === 'mex' ? _mexFormatInfoHtml : _gpFormatInfoHtml;
+  document.getElementById('format-info-content').innerHTML = htmlFn();
+  document.getElementById('format-info-overlay').style.display = 'block';
+  document.getElementById('format-info-dialog').style.display = 'block';
+}
+
+function closeFormatInfo() {
+  document.getElementById('format-info-overlay').style.display = 'none';
+  document.getElementById('format-info-dialog').style.display = 'none';
+}
+
+// ─── Abbreviation legend popup ────────────────────────────────────────────────
+let _abbrevPopupBtn = null;
+
+function _buildAbbrevLegend(type) {
+  const rows = type === 'standings' ? [
+    [t('txt_txt_p_abbrev'),    t('txt_txt_abbrev_mp_full')],
+    [t('txt_txt_w_abbrev'),    t('txt_txt_abbrev_w_full')],
+    [t('txt_txt_d_abbrev'),    t('txt_txt_abbrev_d_full')],
+    [t('txt_txt_l_abbrev'),    t('txt_txt_abbrev_l_full')],
+    [t('txt_txt_pf_abbrev'),   t('txt_txt_abbrev_pf_full')],
+    [t('txt_txt_pa_abbrev'),   t('txt_txt_abbrev_pa_full')],
+    [t('txt_txt_diff_abbrev'), t('txt_txt_abbrev_diff_full')],
+    [t('txt_txt_pts_abbrev'),  t('txt_txt_abbrev_pts_full')],
+  ] : [
+    [t('txt_txt_w_abbrev'),  t('txt_txt_abbrev_w_full')],
+    [t('txt_txt_d_abbrev'),  t('txt_txt_abbrev_d_full')],
+    [t('txt_txt_l_abbrev'),  t('txt_txt_abbrev_l_full')],
+    [t('txt_txt_avg_pts'),   t('txt_txt_abbrev_avg_pts_full')],
+  ];
+  return `<table>${rows.map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table>`;
+}
+
+function showAbbrevPopup(event, type) {
+  event.stopPropagation();
+  const popup = document.getElementById('abbrev-popup');
+  const btn = event.currentTarget;
+  if (popup.style.display === 'block' && _abbrevPopupBtn === btn) {
+    popup.style.display = 'none';
+    _abbrevPopupBtn = null;
+    return;
+  }
+  _abbrevPopupBtn = btn;
+  popup.innerHTML = _buildAbbrevLegend(type);
+  popup.style.display = 'block';
+  const rect = btn.getBoundingClientRect();
+  const pw = popup.offsetWidth || 210;
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - pw - 8));
+  popup.style.left = left + 'px';
+  popup.style.top = (rect.bottom + 6) + 'px';
+}
+
+document.addEventListener('click', () => {
+  const p = document.getElementById('abbrev-popup');
+  if (p) { p.style.display = 'none'; _abbrevPopupBtn = null; }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeFormatInfo();
+    const p = document.getElementById('abbrev-popup');
+    if (p) { p.style.display = 'none'; _abbrevPopupBtn = null; }
+  }
+});
+
+function _gpFormatInfoHtml() {
+  return `
+    <h3 id="format-info-heading">${t('txt_txt_fmt_gp_title')}</h3>
+    <p>${t('txt_txt_fmt_gp_intro')}</p>
+    <div class="info-block">
+      <strong>${t('txt_txt_fmt_gp_team_mode_title')}</strong>
+      <p>${t('txt_txt_fmt_gp_team_mode_desc')}</p>
+    </div>
+    <div class="info-block">
+      <strong>${t('txt_txt_fmt_gp_player_mode_title')}</strong>
+      <p>${t('txt_txt_fmt_gp_player_mode_desc')}</p>
+    </div>
+    ${_playoffsInfoHtml()}`;
+}
+
+function _mexFormatInfoHtml() {
+  return `
+    <h3 id="format-info-heading">${t('txt_txt_fmt_mex_title')}</h3>
+    <p>${t('txt_txt_fmt_mex_intro')}</p>
+    <p>${t('txt_txt_fmt_mex_rounds_desc')}</p>
+    ${_playoffsInfoHtml()}`;
+}
+
+function _playoffsInfoHtml() {
+  return `
+    <hr class="info-divider">
+    <h3>${t('txt_txt_fmt_playoffs_title')}</h3>
+    <p>${t('txt_txt_fmt_playoffs_intro')}</p>
+    <div class="info-block">
+      <strong>${t('txt_txt_fmt_playoffs_single_title')}</strong>
+      <p>${t('txt_txt_fmt_playoffs_single_desc')}</p>
+    </div>
+    <div class="info-block">
+      <strong>${t('txt_txt_fmt_playoffs_double_title')}</strong>
+      <p>${t('txt_txt_fmt_playoffs_double_desc')}</p>
+    </div>`;
 }
 
 function setTheme(theme) {
@@ -1145,6 +1674,10 @@ function setLanguage(lang) {
   _refreshLanguageToggleButton();
   updateActiveTournamentUI();
   updateAuthUI();
+  renderParticipantFields('gp');
+  renderParticipantFields('mex');
+  refreshCourtDefaults('gp');
+  refreshCourtDefaults('mex');
   if (currentTid) {
     if (currentType === 'group_playoff') renderGP();
     else if (currentType === 'mexicano') renderMex();
@@ -1410,35 +1943,268 @@ function openTournament(id, type, name = null) {
   else renderMex();
 }
 
+// ─── Participant Manager ──────────────────────────────────
+const _DEFAULTS = {
+  team:       ['Alice & Bob', 'Charlie & Diana', 'Eve & Frank', 'Grace & Hank'],
+  individual: ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace', 'Hank'],
+};
+// gp defaults to team mode; mex defaults to individual mode
+const _entryMode = { gp: 'team', mex: 'individual' };
+const _participantEntries = {
+  gp:  [..._DEFAULTS.team],
+  mex: [..._DEFAULTS.individual],
+};
+const _participantPasteMode = { gp: false, mex: false };
+
+function _entryModeIsTeam(mode) { return _entryMode[mode] === 'team'; }
+
+function renderParticipantFields(mode) {
+  const grid = document.getElementById(`${mode}-participant-grid`);
+  const addBtn = document.getElementById(`${mode}-add-btn`);
+  const countEl = document.getElementById(`${mode}-participant-count`);
+  if (!grid) return;
+  const entries = _participantEntries[mode];
+  const isTeam = _entryModeIsTeam(mode);
+  grid.innerHTML = '';
+  entries.forEach((val, i) => {
+    const row = document.createElement('div');
+    row.className = 'participant-entry';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = val;
+    inp.placeholder = isTeam ? 'e.g. Alice & Bob' : `e.g. Player ${i + 1}`;
+    inp.addEventListener('input', e => {
+      _participantEntries[mode][i] = e.target.value;
+      _updateParticipantCount(mode);
+    });
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'participant-remove-btn';
+    rm.textContent = '×';
+    rm.title = t('txt_txt_remove');
+    rm.addEventListener('click', () => removeParticipantField(mode, i));
+    row.appendChild(inp);
+    row.appendChild(rm);
+    grid.appendChild(row);
+  });
+  const addLabel = isTeam ? t('txt_txt_add_team') : t('txt_txt_add_player');
+  if (addBtn) addBtn.textContent = `+ ${addLabel}`;
+  _updateParticipantCount(mode);
+}
+
+function _updateParticipantCount(mode) {
+  const el = document.getElementById(`${mode}-participant-count`);
+  if (!el) return;
+  const n = _participantPasteMode[mode]
+    ? (document.getElementById(`${mode}-players`)?.value || '').split('\n').map(s => s.trim()).filter(Boolean).length
+    : _participantEntries[mode].filter(Boolean).length;
+  el.textContent = `(${n})`;
+}
+
+function addParticipantField(mode) {
+  _participantEntries[mode].push('');
+  renderParticipantFields(mode);
+  const grid = document.getElementById(`${mode}-participant-grid`);
+  if (grid) {
+    const inputs = grid.querySelectorAll('input');
+    if (inputs.length) inputs[inputs.length - 1].focus();
+  }
+}
+
+function removeParticipantField(mode, index) {
+  if (_participantEntries[mode].length <= 1) return;
+  _participantEntries[mode].splice(index, 1);
+  renderParticipantFields(mode);
+}
+
+function togglePasteMode(mode) {
+  const panel  = document.getElementById(`${mode}-paste-panel`);
+  const fields = document.getElementById(`${mode}-participant-fields`);
+  const btn    = document.getElementById(`${mode}-paste-toggle`);
+  const isPaste = _participantPasteMode[mode];
+  if (!isPaste) {
+    // Switch to paste mode — pre-fill textarea from individual fields
+    const ta = document.getElementById(`${mode}-players`);
+    if (ta) {
+      ta.value = _participantEntries[mode].filter(Boolean).join('\n');
+      ta.oninput = () => _updateParticipantCount(mode);
+    }
+    panel?.classList.remove('hidden');
+    fields?.classList.add('hidden');
+    _participantPasteMode[mode] = true;
+    if (btn) btn.innerHTML = `↩ <span data-i18n="txt_txt_use_individual_fields">${t('txt_txt_use_individual_fields')}</span>`;
+  } else {
+    // Switch back to fields — sync entries from textarea
+    const ta = document.getElementById(`${mode}-players`);
+    if (ta) {
+      const names = ta.value.split('\n').map(s => s.trim()).filter(Boolean);
+      _participantEntries[mode] = names.length ? names : [''];
+    }
+    panel?.classList.add('hidden');
+    fields?.classList.remove('hidden');
+    _participantPasteMode[mode] = false;
+    renderParticipantFields(mode);
+    if (btn) btn.innerHTML = `📋 <span data-i18n="txt_txt_paste_a_list">${t('txt_txt_paste_a_list')}</span>`;
+  }
+  _updateParticipantCount(mode);
+}
+
+function getParticipantNames(mode) {
+  if (_participantPasteMode[mode]) {
+    const ta = document.getElementById(`${mode}-players`);
+    return ta ? ta.value.split('\n').map(s => s.trim()).filter(Boolean) : [];
+  }
+  return _participantEntries[mode].map(s => s.trim()).filter(Boolean);
+}
+
+function setEntryMode(mode, entryMode) {
+  const prev = _entryMode[mode];
+  _entryMode[mode] = entryMode;
+  const toggle = document.getElementById(`${mode}-entry-mode-toggle`);
+  if (toggle) {
+    toggle.querySelectorAll('button').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === entryMode);
+    });
+  }
+  // Reset to defaults when mode changes so team/individual entries don't bleed across
+  if (prev !== entryMode) {
+    _participantEntries[mode] = [..._DEFAULTS[entryMode === 'team' ? 'team' : 'individual']];
+    if (_participantPasteMode[mode]) {
+      const ta = document.getElementById(`${mode}-players`);
+      if (ta) ta.value = _participantEntries[mode].join('\n');
+    }
+  }
+  renderParticipantFields(mode);
+}
+
+function clearParticipants(mode) {
+  _participantEntries[mode] = [];
+  if (_participantPasteMode[mode]) {
+    const ta = document.getElementById(`${mode}-players`);
+    if (ta) ta.value = _participantEntries[mode].join('\n');
+    _updateParticipantCount(mode);
+  } else {
+    renderParticipantFields(mode);
+  }
+}
+
+// ─── Court name helpers ───────────────────────────────────
+function _defaultCourtName(n) {
+  return `${t('txt_txt_court')} ${n}`;
+}
+
+function renderCourtInputs(prefix) {
+  const countEl = document.getElementById(`${prefix}-court-count`);
+  const container = document.getElementById(`${prefix}-court-names-container`);
+  if (!countEl || !container) return;
+  const count = Math.max(1, Math.min(20, parseInt(countEl.value, 10) || 1));
+  const existing = Array.from(container.querySelectorAll('input'));
+  container.innerHTML = '';
+  for (let i = 1; i <= count; i++) {
+    const newDefault = _defaultCourtName(i);
+    const oldInput = existing[i - 1];
+    const value = oldInput
+      ? (oldInput.value === oldInput.dataset.default ? newDefault : oldInput.value)
+      : newDefault;
+    const row = document.createElement('div');
+    row.className = 'court-row';
+    const lbl = document.createElement('span');
+    lbl.className = 'court-row-label';
+    lbl.textContent = `${i}.`;
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = value;
+    inp.placeholder = newDefault;
+    inp.setAttribute('aria-label', newDefault);
+    inp.dataset.default = newDefault;
+    row.appendChild(lbl);
+    row.appendChild(inp);
+    container.appendChild(row);
+  }
+}
+
+function getCourtNames(prefix) {
+  const container = document.getElementById(`${prefix}-court-names-container`);
+  if (!container) return [];
+  return Array.from(container.querySelectorAll('input')).map(el => el.value.trim()).filter(Boolean);
+}
+
+function refreshCourtDefaults(prefix) {
+  const container = document.getElementById(`${prefix}-court-names-container`);
+  if (!container) return;
+  container.querySelectorAll('input').forEach((inp, i) => {
+    const newDefault = _defaultCourtName(i + 1);
+    if (inp.value === inp.dataset.default) inp.value = newDefault;
+    inp.placeholder = newDefault;
+    inp.setAttribute('aria-label', newDefault);
+    inp.dataset.default = newDefault;
+  });
+}
+
+function _defaultGroupName(n) {
+  return String.fromCharCode(64 + n); // A, B, C…
+}
+
+function renderGroupInputs() {
+  const countEl = document.getElementById('gp-num-groups');
+  const container = document.getElementById('gp-group-names-container');
+  if (!countEl || !container) return;
+  const count = Math.max(1, parseInt(countEl.value, 10) || 1);
+  const existing = Array.from(container.querySelectorAll('input'));
+  container.innerHTML = '';
+  for (let i = 1; i <= count; i++) {
+    const newDefault = _defaultGroupName(i);
+    const oldInput = existing[i - 1];
+    const value = oldInput
+      ? (oldInput.value === oldInput.dataset.default ? newDefault : oldInput.value)
+      : newDefault;
+    const row = document.createElement('div');
+    row.className = 'court-row';
+    const lbl = document.createElement('span');
+    lbl.className = 'court-row-label';
+    lbl.textContent = `${i}.`;
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = value;
+    inp.placeholder = newDefault;
+    inp.setAttribute('aria-label', newDefault);
+    inp.dataset.default = newDefault;
+    row.appendChild(lbl);
+    row.appendChild(inp);
+    container.appendChild(row);
+  }
+}
+
+function getGroupNames() {
+  const container = document.getElementById('gp-group-names-container');
+  if (!container) return [];
+  return Array.from(container.querySelectorAll('input')).map(el => el.value.trim());
+}
+
+function _initParticipantFields() {
+  renderParticipantFields('gp');
+  renderParticipantFields('mex');
+  renderCourtInputs('gp');
+  renderCourtInputs('mex');
+  renderGroupInputs();
+}
+
 // ─── Create Group+Playoff ─────────────────────────────────
 async function createGP() {
   const msg = document.getElementById('gp-msg');
   try {
     const body = {
       name: document.getElementById('gp-name').value,
-      player_names: document.getElementById('gp-players').value.split('\n').map(s=>s.trim()).filter(Boolean),
-      team_mode: document.getElementById('gp-team-mode').checked,
-      court_names: document.getElementById('gp-courts').value.split(',').map(s=>s.trim()).filter(Boolean),
+      player_names: getParticipantNames('gp'),
+      team_mode: _entryModeIsTeam('gp'),
+      court_names: getCourtNames('gp'),
       num_groups: +document.getElementById('gp-num-groups').value,
+      group_names: getGroupNames(),
     };
     const res = await api('/api/tournaments/group-playoff', { method: 'POST', body: JSON.stringify(body) });
-    msg.className = 'alert alert-success'; msg.textContent = t('txt_txt_created_id_id', { id: res.id });
-    msg.classList.remove('hidden');
     openTournament(res.id, 'group_playoff', body.name || t('txt_txt_group_playoff_tournament'));
   } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
 }
-
-// ─── GP Team Mode toggle ────────────────────────────────
-function toggleTeamMode(checkboxId, labelId) {
-  const chk = document.getElementById(checkboxId);
-  const label = document.getElementById(labelId);
-  if (chk.checked) {
-    label.textContent = t('txt_txt_team_names_one_per_line_e_g_alice_bob');
-  } else {
-    label.textContent = t('txt_txt_player_names_one_per_line');
-  }
-}
-function toggleGpTeamMode() { toggleTeamMode('gp-team-mode', 'gp-players-label'); }
 
 // ─── Create Mexicano ──────────────────────────────────────
 async function createMex() {
@@ -1448,11 +2214,11 @@ async function createMex() {
     const rolling = document.getElementById('mex-rounds-toggle').querySelectorAll('button')[0].classList.contains('active');
     const body = {
       name: document.getElementById('mex-name').value,
-      player_names: document.getElementById('mex-players').value.split('\n').map(s=>s.trim()).filter(Boolean),
-      court_names: document.getElementById('mex-courts').value.split(',').map(s=>s.trim()).filter(Boolean),
+      player_names: getParticipantNames('mex'),
+      court_names: getCourtNames('mex'),
       total_points_per_match: +document.getElementById('mex-pts').value,
       num_rounds: rolling ? 0 : +document.getElementById('mex-rounds').value,
-      team_mode: document.getElementById('mex-team-mode').checked,
+      team_mode: _entryModeIsTeam('mex'),
       skill_gap: skillGapRaw === '' ? null : +skillGapRaw,
       win_bonus: +document.getElementById('mex-win-bonus').value,
       strength_weight: +document.getElementById('mex-strength-weight').value,
@@ -1460,8 +2226,6 @@ async function createMex() {
       balance_tolerance: +document.getElementById('mex-balance-tol').value,
     };
     const res = await api('/api/tournaments/mexicano', { method: 'POST', body: JSON.stringify(body) });
-    msg.className = 'alert alert-success'; msg.textContent = t('txt_txt_created_id_id', { id: res.id });
-    msg.classList.remove('hidden');
     openTournament(res.id, 'mexicano', body.name || t('txt_txt_mexicano_tournament'));
   } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
 }
@@ -1525,8 +2289,9 @@ async function renderGP() {
 
     // Group standings
     for (const [gName, rows] of Object.entries(groups.standings)) {
-      html += `<div class="card"><h3>${t('txt_txt_group_name_value', { value: esc(gName) })}</h3>`;
-      html += `<table><thead><tr><th>${t('txt_txt_player')}</th><th>${t('txt_txt_p_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_diff_abbrev')}</th><th>${t('txt_txt_pts_abbrev')}</th></tr></thead><tbody>`;
+      html += `<div class="card"><h3 class="card-heading-row">${t('txt_txt_group_name_value', { value: esc(gName) })} <button class="format-info-btn" onclick="showAbbrevPopup(event,'standings')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h3>`;
+      const hParticipant = status.team_mode ? t('txt_txt_team') : t('txt_txt_player');
+      html += `<table><thead><tr><th>${hParticipant}</th><th>${t('txt_txt_p_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_diff_abbrev')}</th><th>${t('txt_txt_pts_abbrev')}</th></tr></thead><tbody>`;
       for (const r of rows) {
         html += `<tr><td>${esc(r.player)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td><td>${r.points_for}</td><td>${r.points_against}</td><td>${r.point_diff}</td><td><strong>${r.match_points}</strong></td></tr>`;
       }
@@ -1534,6 +2299,9 @@ async function renderGP() {
 
       // Group matches
       const gMatches = _sortTbdLast(groups.matches[gName] || []);
+      if (gMatches.length > 0) {
+        html += `<h4 style="margin:1rem 0 0.4rem;color:var(--text-muted);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.05em">${t('txt_txt_matches')}</h4>`;
+      }
       for (const m of gMatches) {
         html += matchRow(m, 'gp-group');
       }
@@ -1607,16 +2375,34 @@ function matchRow(m, ctx) {
     html += `${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
     html += ` <span class="${scoreClass}" id="mscore-${m.id}">${scoreDisplay}</span>`;
     html += ` <span class="badge badge-completed">✓</span>`;
-    html += `<button type="button" class="match-edit-btn" id="medit-btn-${m.id}" onclick="_toggleEditMatch('${m.id}','${ctx}',${m.score[0]},${m.score[1]})">${t('txt_txt_edit')}</button>`;
+    const _editSetsJson = JSON.stringify(m.sets || []);
+    html += `<button type="button" class="match-edit-btn" id="medit-btn-${m.id}" data-sets='${_editSetsJson}' onclick="_toggleEditMatch('${m.id}','${ctx}',${m.score[0]},${m.score[1]})">${t('txt_txt_edit')}</button>`;
 
     // Inline edit form (hidden)
+    const isSetScoringCtxEdit = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff';
     const autoCalc = _totalPts > 0 && (ctx === 'mex' || ctx === 'mex-playoff');
     const onInput = autoCalc ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"` : '';
     html += `<div class="match-actions hidden" id="medit-${m.id}">`;
-    html += `<input type="number" id="s1-${m.id}" min="0" value="${m.score[0]}" style="width:50px" ${onInput}>`;
-    html += `<span>–</span>`;
-    html += `<input type="number" id="s2-${m.id}" min="0" value="${m.score[1]}" style="width:50px" ${onInput}>`;
-    html += `<button type="button" class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
+    if (isSetScoringCtxEdit) {
+      const stageMode = _gpScoreMode[ctx] || 'points';
+      html += `<div id="score-normal-${m.id}" class="${stageMode === 'sets' ? 'hidden' : ''}">`;
+      html += `<input type="number" id="s1-${m.id}" min="0" value="${m.score[0]}" style="width:50px" ${onInput}>`;
+      html += `<span>–</span>`;
+      html += `<input type="number" id="s2-${m.id}" min="0" value="${m.score[1]}" style="width:50px" ${onInput}>`;
+      html += `<button type="button" class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
+      html += `</div>`;
+      html += `<div id="score-tennis-${m.id}" class="${stageMode === 'sets' ? '' : 'hidden'}">`;
+      html += `<div class="tennis-sets" id="tennis-sets-${m.id}">`;
+      html += _renderTennisSetInputs(m.id, 3);
+      html += `</div>`;
+      html += `<button type="button" class="btn btn-success btn-sm" onclick="submitTennisScore('${m.id}','${ctx}')">${t('txt_txt_save_sets')}</button>`;
+      html += `</div>`;
+    } else {
+      html += `<input type="number" id="s1-${m.id}" min="0" value="${m.score[0]}" style="width:50px" ${onInput}>`;
+      html += `<span>–</span>`;
+      html += `<input type="number" id="s2-${m.id}" min="0" value="${m.score[1]}" style="width:50px" ${onInput}>`;
+      html += `<button type="button" class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
+    }
     html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_cancelEditMatch('${m.id}')">✕</button>`;
     html += `</div>`;
 
@@ -2031,11 +2817,11 @@ async function renderMex() {
     }
 
     // Leaderboard
-    html += `<div class="card"><h2>${t('txt_txt_leaderboard')}</h2>`;
+    html += `<div class="card"><h2 class="card-heading-row">${t('txt_txt_leaderboard')} <button class="format-info-btn" onclick="showAbbrevPopup(event,'leaderboard')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h2>`;
     const byAvg = status.leaderboard.length > 0 && status.leaderboard[0].ranked_by_avg;
     const hTotal = byAvg ? t('txt_txt_total_pts') : `<strong>${t('txt_txt_total_pts')} ↓</strong>`;
     const hAvg   = byAvg ? `<strong>${t('txt_txt_avg_pts')} ↓</strong>` : t('txt_txt_avg_pts');
-    html += `<table><thead><tr><th>${t('txt_txt_rank')}</th><th>${t('txt_txt_player')}</th><th>${hTotal}</th><th>${t('txt_txt_played')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${hAvg}</th></tr></thead><tbody>`;
+    html += `<table><thead><tr><th>${t('txt_txt_rank')}</th><th>${_mexTeamMode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${hTotal}</th><th>${t('txt_txt_played')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${hAvg}</th></tr></thead><tbody>`;
     for (const r of status.leaderboard) {
       const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
       const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
@@ -2145,54 +2931,32 @@ function _renderCourtAssignmentsCard(matches, title) {
     return `<div class="card"><h3>${esc(title)}</h3><em>${t('txt_txt_no_pending_assignments')}</em></div>`;
   }
 
-  // Group real matches by court name.
-  const byCourt = {};
-  for (const m of matches) {
-    if (!m.court) continue;
-    if (!byCourt[m.court]) byCourt[m.court] = [];
-    byCourt[m.court].push(m);
-  }
-
-  const courtNames = Object.keys(byCourt).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-
-  // Build slot → {courtName: match} index so we can detect empty slots.
-  // A slot_number is set by the backend for matches assigned by assign_courts.
-  const slotMap = {};  // slot_number → {courtName: match}
+  // For each court, find the match with the lowest slot_number (the current one).
+  const currentByCourt = {};
   for (const m of matches) {
     if (!m.court) continue;
     const s = m.slot_number ?? 0;
-    if (!slotMap[s]) slotMap[s] = {};
-    slotMap[s][m.court] = m;
+    if (!(m.court in currentByCourt) || s < currentByCourt[m.court].slot_number) {
+      currentByCourt[m.court] = m;
+    }
   }
-  const presentSlots = Object.keys(slotMap).map(Number).sort((a, b) => a - b);
-  // Only use the slot-grid layout when there is more than one court
-  // (empty slots only make sense when multiple courts run in parallel).
-  const useSlotGrid = courtNames.length > 1 && presentSlots.length > 0;
+
+  const courtNames = Object.keys(currentByCourt).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  if (courtNames.length === 0) {
+    return `<div class="card"><h3>${esc(title)}</h3><em>${t('txt_txt_no_pending_assignments')}</em></div>`;
+  }
+
+  const _teamLabel = (team) => (team && team.length > 0) ? team.join(' & ') : 'TBD';
 
   let html = `<div class="card"><h3>${esc(title)}</h3><div class="court-board">`;
   for (const courtName of courtNames) {
+    const m = currentByCourt[courtName];
+    const t1 = _teamLabel(m.team1);
+    const t2 = _teamLabel(m.team2);
+    const r = m.round_label ? `<span class="court-round">${esc(m.round_label)}</span>` : '';
     html += `<div class="court-column">`;
     html += `<div class="court-title">${esc(courtName)}</div>`;
-    if (useSlotGrid) {
-      presentSlots.forEach((slot, idx) => {
-        const m = slotMap[slot]?.[courtName];
-        if (m) {
-          const t1 = (m.team1 || []).join(' & ') || 'TBD';
-          const t2 = (m.team2 || []).join(' & ') || 'TBD';
-          const r = m.round_label ? `<span class="court-round">${esc(m.round_label)}</span>` : '';
-          html += `<div class="court-match-item"><span class="court-slot">#${idx + 1}</span>${esc(t1)} <span style="color:var(--text-muted)">vs</span> ${esc(t2)}${r}</div>`;
-        } else {
-          html += `<div class="court-match-item court-empty-slot"><span class="court-slot">#${idx + 1}</span><em>${t('txt_txt_empty')}</em></div>`;
-        }
-      });
-    } else {
-      byCourt[courtName].forEach((m, idx) => {
-        const t1 = (m.team1 || []).join(' & ') || 'TBD';
-        const t2 = (m.team2 || []).join(' & ') || 'TBD';
-        const r = m.round_label ? `<span class="court-round">${esc(m.round_label)}</span>` : '';
-        html += `<div class="court-match-item"><span class="court-slot">#${idx + 1}</span>${esc(t1)} <span style="color:var(--text-muted)">vs</span> ${esc(t2)}${r}</div>`;
-      });
-    }
+    html += `<div class="court-match-item">${esc(t1)} <span style="color:var(--text-muted)">vs</span> ${esc(t2)}${r}</div>`;
     html += `</div>`;
   }
   html += `</div></div>`;
@@ -2266,11 +3030,30 @@ function _toggleEditMatch(matchId, ctx, s1, s2) {
   const editDiv = document.getElementById('medit-' + matchId);
   const scoreSpan = document.getElementById('mscore-' + matchId);
   const editBtn = document.getElementById('medit-btn-' + matchId);
-  if (editDiv) {
-    editDiv.classList.remove('hidden');
-    document.getElementById('s1-' + matchId).value = s1;
-    document.getElementById('s2-' + matchId).value = s2;
+  if (!editDiv) return;
+
+  editDiv.classList.remove('hidden');
+
+  // Populate plain-score inputs
+  const s1El = document.getElementById('s1-' + matchId);
+  const s2El = document.getElementById('s2-' + matchId);
+  if (s1El) s1El.value = s1;
+  if (s2El) s2El.value = s2;
+
+  // Pre-populate tennis set inputs with existing set data (stored on the button)
+  const setsRaw = editBtn ? editBtn.dataset.sets : null;
+  if (setsRaw) {
+    try {
+      const sets = JSON.parse(setsRaw);
+      for (let i = 0; i < 3; i++) {
+        const e1 = document.getElementById('ts1-' + matchId + '-' + i);
+        const e2 = document.getElementById('ts2-' + matchId + '-' + i);
+        if (e1) e1.value = (sets[i] !== undefined) ? sets[i][0] : '';
+        if (e2) e2.value = (sets[i] !== undefined) ? sets[i][1] : '';
+      }
+    } catch (_) {}
   }
+
   if (scoreSpan) scoreSpan.classList.add('hidden');
   if (editBtn) editBtn.classList.add('hidden');
 }
@@ -3071,9 +3854,6 @@ function _refreshPlayoffOptions() {
   }
 }
 
-// ─── Team Mode toggle ────────────────────────────────
-function toggleMexTeamMode() { toggleTeamMode('mex-team-mode', 'mex-players-label'); }
-
 // ─── Rolling Mode toggle ────────────────────────────────
 function _setMexRoundsMode(mode) {
   const toggle = document.getElementById('mex-rounds-toggle');
@@ -3473,6 +4253,7 @@ async function _deleteTournamentAlias() {
 initLanguageSelector();
 initAuth();
 updateActiveTournamentUI();
+_initParticipantFields();
 setCreateMode('gp');
 loadTournaments();
 </script>

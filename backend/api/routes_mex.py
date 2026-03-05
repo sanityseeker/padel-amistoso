@@ -35,7 +35,7 @@ _MEX = TournamentType.MEXICANO.value
 
 
 @router.post("/mexicano")
-async def create_mexicano(req: CreateMexicanoRequest, _user=Depends(get_current_user)):
+async def create_mexicano(req: CreateMexicanoRequest, _user=Depends(get_current_user)) -> dict:
     players = [Player(name=n) for n in req.player_names]
     courts = [Court(name=n) for n in req.court_names]
 
@@ -68,7 +68,7 @@ async def create_mexicano(req: CreateMexicanoRequest, _user=Depends(get_current_
 
 
 @router.get("/{tid}/mex/status")
-async def mex_status(tid: str):
+async def mex_status(tid: str) -> dict:
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     return {
         "current_round": t.current_round,
@@ -96,7 +96,7 @@ async def mex_status(tid: str):
 
 
 @router.get("/{tid}/mex/matches")
-async def mex_matches(tid: str):
+async def mex_matches(tid: str) -> dict:
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     return {
         "current_round": t.current_round,
@@ -108,7 +108,7 @@ async def mex_matches(tid: str):
 
 
 @router.post("/{tid}/mex/record")
-async def mex_record(tid: str, req: RecordScoreRequest, _user=Depends(get_current_user)):
+async def mex_record(tid: str, req: RecordScoreRequest, _user=Depends(get_current_user)) -> dict:
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     try:
         t.record_result(req.match_id, (req.score1, req.score2))
@@ -120,7 +120,7 @@ async def mex_record(tid: str, req: RecordScoreRequest, _user=Depends(get_curren
 
 
 @router.get("/{tid}/mex/propose-pairings")
-async def mex_propose_pairings(tid: str, n: int = 3, sit_out_ids: str | None = None):
+async def mex_propose_pairings(tid: str, n: int = 3, sit_out_ids: str | None = None) -> dict:
     """
     Generate up to *n* distinct pairing proposals for the next round.
     The first entry is marked ``recommended=True``.
@@ -148,7 +148,7 @@ async def mex_propose_pairings(tid: str, n: int = 3, sit_out_ids: str | None = N
 
 
 @router.post("/{tid}/mex/next-round")
-async def mex_next_round(tid: str, req: NextRoundRequest = NextRoundRequest(), _user=Depends(get_current_user)):
+async def mex_next_round(tid: str, req: NextRoundRequest = NextRoundRequest(), _user=Depends(get_current_user)) -> dict:
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     if t.pending_matches():
         raise HTTPException(400, "Current round has unfinished matches")
@@ -161,7 +161,7 @@ async def mex_next_round(tid: str, req: NextRoundRequest = NextRoundRequest(), _
 
 
 @router.post("/{tid}/mex/custom-round")
-async def mex_custom_round(tid: str, req: CustomRoundRequest, _user=Depends(get_current_user)):
+async def mex_custom_round(tid: str, req: CustomRoundRequest, _user=Depends(get_current_user)) -> dict:
     """Commit a manually-specified round with user-defined pairings."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     if t.pending_matches():
@@ -178,14 +178,14 @@ async def mex_custom_round(tid: str, req: CustomRoundRequest, _user=Depends(get_
 
 
 @router.get("/{tid}/mex/recommend-playoffs")
-async def mex_recommend_playoffs(tid: str, n_teams: int = 4):
+async def mex_recommend_playoffs(tid: str, n_teams: int = 4) -> dict:
     """Get recommended teams for Mexicano play-offs."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     return {"recommended_teams": t.recommend_playoff_teams(n_teams)}
 
 
 @router.post("/{tid}/mex/start-playoffs")
-async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, _user=Depends(get_current_user)):
+async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, _user=Depends(get_current_user)) -> dict:
     """Start play-offs after Mexicano rounds are complete."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     try:
@@ -202,7 +202,7 @@ async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, _user=
 
 
 @router.post("/{tid}/mex/end")
-async def mex_end(tid: str, _user=Depends(get_current_user)):
+async def mex_end(tid: str, _user=Depends(get_current_user)) -> dict:
     """End Mexicano rounds and open optional play-off decision step."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     try:
@@ -214,7 +214,7 @@ async def mex_end(tid: str, _user=Depends(get_current_user)):
 
 
 @router.post("/{tid}/mex/finish")
-async def mex_finish(tid: str, _user=Depends(get_current_user)):
+async def mex_finish(tid: str, _user=Depends(get_current_user)) -> dict:
     """Finish tournament as-is without play-offs."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     try:
@@ -226,7 +226,7 @@ async def mex_finish(tid: str, _user=Depends(get_current_user)):
 
 
 @router.get("/{tid}/mex/playoffs")
-async def mex_playoffs(tid: str):
+async def mex_playoffs(tid: str) -> dict:
     """Get play-off bracket status and matches."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     return {
@@ -273,7 +273,7 @@ async def mex_playoffs_schema(
 
 
 @router.post("/{tid}/mex/record-playoff")
-async def mex_record_playoff(tid: str, req: RecordScoreRequest, _user=Depends(get_current_user)):
+async def mex_record_playoff(tid: str, req: RecordScoreRequest, _user=Depends(get_current_user)) -> dict:
     """Record a play-off match result."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     try:
@@ -285,7 +285,7 @@ async def mex_record_playoff(tid: str, req: RecordScoreRequest, _user=Depends(ge
 
 
 @router.post("/{tid}/mex/record-playoff-tennis")
-async def mex_record_playoff_tennis(tid: str, req: RecordTennisScoreRequest, _user=Depends(get_current_user)):
+async def mex_record_playoff_tennis(tid: str, req: RecordTennisScoreRequest, _user=Depends(get_current_user)) -> dict:
     """Record a Mexicano play-off match using tennis-style set scores."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)

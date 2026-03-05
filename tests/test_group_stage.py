@@ -1,5 +1,7 @@
 """Tests for group_stage module."""
 
+from collections import defaultdict
+
 import pytest
 
 from backend.models import Court, MatchStatus, Player
@@ -297,9 +299,7 @@ class TestCourtAssignment:
         courts = [Court(name="C1"), Court(name="C2"), Court(name="C3")]
         assign_courts(matches, courts)
 
-        from collections import defaultdict
-
-        by_slot: dict[int, list] = defaultdict(list)
+        by_slot: defaultdict[int, list] = defaultdict(list)
         for m in matches:
             assert m.court is not None
             by_slot[m.slot_number].append(m)
@@ -323,9 +323,7 @@ class TestCourtAssignment:
         courts = [Court(name="C1"), Court(name="C2")]
         assign_courts(all_matches, courts)
 
-        from collections import defaultdict
-
-        by_slot: dict[int, list] = defaultdict(list)
+        by_slot: defaultdict[int, list] = defaultdict(list)
         for m in all_matches:
             assert m.court is not None
             by_slot[m.slot_number].append(m)
@@ -338,3 +336,49 @@ class TestCourtAssignment:
                         f"Player {p.name} plays two matches simultaneously in slot {slot_idx + 1}"
                     )
                     slot_participants.add(p.id)
+
+    def test_slots_sorted_by_court_count_descending(self):
+        """Slots with more courts come before slots with fewer courts."""
+        # 7 players → 15 matches; 2 courts means some slots will have 1 match
+        # and others 2, so the ordering is non-trivial.
+        players = _make_players(7)
+        group = Group("A", players)
+        matches = group.generate_round_robin()
+        courts = [Court(name="C1"), Court(name="C2")]
+        assign_courts(matches, courts)
+
+        by_slot: defaultdict[int, list] = defaultdict(list)
+        for m in matches:
+            by_slot[m.slot_number].append(m)
+
+        counts_by_slot = [len(by_slot[s]) for s in sorted(by_slot)]
+        # Counts must be non-increasing (denser slots first).
+        assert counts_by_slot == sorted(counts_by_slot, reverse=True)
+
+    def test_single_court_all_matches_on_court_1(self):
+        """With exactly one court every match lands on it, one match per slot."""
+        group = Group("A", _make_players(4))
+        matches = group.generate_round_robin()
+        court = Court(name="Court 1")
+        assign_courts(matches, [court])
+
+        assert all(m.court is not None for m in matches)
+        assert all(m.court.name == "Court 1" for m in matches)
+        # One match per slot — no two matches share the same slot.
+        slots = [m.slot_number for m in matches]
+        assert len(slots) == len(set(slots)), "Multiple matches share a slot with only 1 court"
+
+    def test_two_courts_parallel_matches_in_same_slot(self):
+        """With 2 courts and enough players, at least one slot has 2 parallel matches."""
+        # 8 players, team round-robin in one group → many non-conflicting pairs available.
+        group = Group("A", _make_players(8))
+        matches = group.generate_round_robin()
+        courts = [Court(name="Court 1"), Court(name="Court 2")]
+        assign_courts(matches, courts)
+
+        by_slot: defaultdict[int, list] = defaultdict(list)
+        for m in matches:
+            by_slot[m.slot_number].append(m)
+
+        max_parallel = max(len(ms) for ms in by_slot.values())
+        assert max_parallel == 2, f"Expected at least one slot with 2 parallel matches but max was {max_parallel}"

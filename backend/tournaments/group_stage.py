@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import itertools
 import random
+import string
+from collections import defaultdict
 
 from ..models import Court, GroupStanding, Match, MatchStatus, Player
 from . import pairing as pairing_mod
@@ -216,9 +218,15 @@ def distribute_players_to_groups(
     num_groups: int,
     shuffle: bool = True,
     team_mode: bool = False,
+    group_names: list[str] | None = None,
 ) -> list[Group]:
     """
     Distribute *players* as evenly as possible across *num_groups* groups.
+
+    Args:
+        group_names: Optional custom names for each group.  Falls back to
+            ``A``, ``B``, ``C`` … when not provided or when shorter than
+            *num_groups*.
     """
     if shuffle:
         players = list(players)
@@ -231,7 +239,8 @@ def distribute_players_to_groups(
     idx = 0
     for g in range(num_groups):
         size = base_size + (1 if g < remainder else 0)
-        group_name = chr(ord("A") + g)
+        default_name = string.ascii_uppercase[g]
+        group_name = group_names[g] if group_names and g < len(group_names) and group_names[g].strip() else default_name
         groups.append(Group(name=group_name, players=players[idx : idx + size], team_mode=team_mode))
         idx += size
 
@@ -282,6 +291,9 @@ def assign_courts(
     if not pool:
         return matches
 
+    # Remember which matches we're about to assign so we can re-sort their slots later.
+    pool_ids: set[int] = {id(m) for m in pool}
+
     n_courts = len(courts)
     previous_slot_players: set[str] = set()
     current_slot = 0
@@ -318,5 +330,15 @@ def assign_courts(
 
         previous_slot_players = slot_busy
         current_slot += 1
+
+    # Re-number slots so that fuller slots (more courts) come first.
+    newly_assigned = [m for m in matches if id(m) in pool_ids and m.slot_number is not None]
+    slot_buckets: defaultdict[int, list[Match]] = defaultdict(list)
+    for m in newly_assigned:
+        slot_buckets[m.slot_number].append(m)
+
+    for new_slot, old_slot in enumerate(sorted(slot_buckets, key=lambda s: len(slot_buckets[s]), reverse=True)):
+        for m in slot_buckets[old_slot]:
+            m.slot_number = new_slot
 
     return matches

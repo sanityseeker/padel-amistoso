@@ -230,7 +230,21 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 1rem;
+    table-layout: fixed;
   }
+  /* # | Team/Player | W | D | L | PF | PA | Pts */
+  .standings-table th:nth-child(1),
+  .standings-table td:nth-child(1) { width: 3rem; }
+  .standings-table th:nth-child(2),
+  .standings-table td:nth-child(2) { width: auto; }
+  .standings-table th:nth-child(3),  .standings-table th:nth-child(4),
+  .standings-table th:nth-child(5),  .standings-table th:nth-child(6),
+  .standings-table th:nth-child(7),
+  .standings-table td:nth-child(3),  .standings-table td:nth-child(4),
+  .standings-table td:nth-child(5),  .standings-table td:nth-child(6),
+  .standings-table td:nth-child(7)  { width: 4.5rem; text-align: center; }
+  .standings-table th:nth-child(8),
+  .standings-table td:nth-child(8)  { width: 4.5rem; text-align: center; }
   .standings-table th {
     font-size: 0.82rem;
     font-weight: 700;
@@ -506,6 +520,20 @@
   .theme-btn:hover { border-color: var(--accent); color: var(--text); }
 
   /* ── Responsive ── */
+
+  /* Tablet (≤900px): scale stat columns down */
+  @media (max-width: 900px) {
+    .standings-table { font-size: 0.88rem; }
+    .standings-table th:nth-child(1),
+    .standings-table td:nth-child(1) { width: 2.2rem; }
+    .standings-table th:nth-child(3), .standings-table th:nth-child(4),
+    .standings-table th:nth-child(5), .standings-table th:nth-child(6),
+    .standings-table th:nth-child(7), .standings-table th:nth-child(8),
+    .standings-table td:nth-child(3), .standings-table td:nth-child(4),
+    .standings-table td:nth-child(5), .standings-table td:nth-child(6),
+    .standings-table td:nth-child(7), .standings-table td:nth-child(8) { width: 3.2rem; }
+  }
+
   @media (max-width: 600px) {
     body { padding: 0.7rem 0.75rem 1.5rem; }
 
@@ -519,11 +547,20 @@
     .court-board { grid-template-columns: 1fr; gap: 0.75rem; }
     .court-match-teams { font-size: 1rem; }
 
-    /* Standings table: scrollable, smaller text */
-    .tv-section { overflow-x: auto; }
-    .standings-table { font-size: 0.8rem; }
+    /* Standings: hide D, PF, PA — keep #, Name, W, L, Pts */
+    .standings-table { font-size: 0.78rem; }
     .standings-table th,
-    .standings-table td { padding: 0.3rem 0.4rem; }
+    .standings-table td { padding: 0.25rem 0.3rem; }
+    .standings-table th:nth-child(1),
+    .standings-table td:nth-child(1) { width: 1.8rem; }
+    .standings-table th:nth-child(3), .standings-table th:nth-child(5),
+    .standings-table th:nth-child(8),
+    .standings-table td:nth-child(3), .standings-table td:nth-child(5),
+    .standings-table td:nth-child(8) { width: 2.6rem; }
+    /* Hide D (4), PF (6), PA (7) */
+    .standings-table th:nth-child(4), .standings-table td:nth-child(4),
+    .standings-table th:nth-child(6), .standings-table td:nth-child(6),
+    .standings-table th:nth-child(7), .standings-table td:nth-child(7) { display: none; }
 
     /* Picker: less wasted vertical space */
     .tv-picker { margin: 2rem auto; padding: 0 0.5rem; }
@@ -810,9 +847,9 @@ function _renderGP(tvSettings, status, groups, playoffs) {
       html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_group_standings')}</h2></summary>`;
       html += `<div class="tv-section">`;
       for (const [gName, rows] of Object.entries(groups.standings || {})) {
-        html += `<div class="group-block"><h3>${t('txt_txt_group_stage')} ${esc(gName)}</h3>`;
+        html += `<div class="group-block"><h3>${t('txt_txt_group_name_value', { value: esc(gName) })}</h3>`;
         html += `<table class="standings-table"><thead><tr>`;
-        html += `<th>#</th><th>${t('txt_txt_player')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_pts_abbrev')}</th>`;
+        html += `<th>#</th><th>${status.team_mode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_pts_abbrev')}</th>`;
         html += `</tr></thead><tbody>`;
         rows.forEach((r, i) => {
           html += `<tr><td class="rank-cell">${i + 1}</td><td class="player-cell">${esc(r.player)}</td>`;
@@ -844,7 +881,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
   const pendingCurrent = _sortTbdLast((matches.current_matches || []).filter(m => m.status !== 'completed'));
   const pendingPlayoff = _sortTbdLast((playoffs?.pending || []).filter(m => m.status !== 'completed'));
   const assignmentMatches = isPlayoffs ? pendingPlayoff : pendingCurrent;
-  const courtTitle = isPlayoffs ? t('txt_txt_court_assignments_mexicano_play_offs') : `${t('txt_txt_court_assignments_group_stage')} ${status.current_round}`;
+  const courtTitle = isPlayoffs ? t('txt_txt_court_assignments_mexicano_play_offs') : t('txt_txt_court_assignments_current_round');
 
   let html = _buildHeader(_tournamentName, phase, champion);
 
@@ -910,7 +947,7 @@ function _buildMexLeaderboard(status) {
   html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_leaderboard')}</h2></summary>`;
   html += `<div class="tv-section">`;
   html += `<table class="standings-table"><thead><tr>`;
-  html += `<th>#</th><th>${t('txt_txt_player')}</th><th>${t('txt_txt_total_pts')}</th><th>${t('txt_txt_played')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_avg_pts')}</th>`;
+  html += `<th>#</th><th>${status.team_mode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${t('txt_txt_total_pts')}</th><th>${t('txt_txt_played')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_avg_pts')}</th>`;
   html += `</tr></thead><tbody>`;
   for (const r of lb) {
     html += `<tr><td class="rank-cell">${r.rank}</td><td class="player-cell">${esc(r.player)}</td>`;
@@ -964,53 +1001,36 @@ function _buildCourts(matches, title) {
     return html;
   }
 
-  const byCourt = {};
-  for (const m of matches) {
-    const c = m.court || t('txt_txt_unassigned');
-    if (!byCourt[c]) byCourt[c] = [];
-    byCourt[c].push(m);
-  }
-
-  // Build slot grid (same logic as index.html)
-  const slotMap = {};
+  // For each court show only the current (lowest slot_number) pending match.
+  const currentByCourt = {};
   for (const m of matches) {
     if (!m.court) continue;
     const s = m.slot_number ?? 0;
-    if (!slotMap[s]) slotMap[s] = {};
-    slotMap[s][m.court] = m;
+    if (!(m.court in currentByCourt) || s < currentByCourt[m.court].slot_number) {
+      currentByCourt[m.court] = m;
+    }
   }
-  const courtNames = Object.keys(byCourt).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  const presentSlots = Object.keys(slotMap).map(Number).sort((a, b) => a - b);
-  const useSlotGrid = courtNames.length > 1 && presentSlots.length > 0;
+
+  const courtNames = Object.keys(currentByCourt).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  if (courtNames.length === 0) {
+    html += `<p class="tv-empty">${t('txt_txt_no_pending_court_assignments')}</p>`;
+    html += `</div>`;
+    return html;
+  }
+
+  const _teamLabel = (team) => (team && team.length > 0) ? team.join(' & ') : 'TBD';
 
   html += `<div class="court-board">`;
-  for (const courtName of courtNames.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))) {
+  for (const courtName of courtNames) {
+    const m = currentByCourt[courtName];
+    const t1 = _teamLabel(m.team1);
+    const t2 = _teamLabel(m.team2);
     html += `<div class="court-card">`;
     html += `<div class="court-name">${esc(courtName)}</div>`;
-    if (useSlotGrid) {
-      for (const slot of presentSlots) {
-        const m = slotMap[slot]?.[courtName];
-        if (m) {
-          const t1 = (m.team1 || []).join(' & ') || 'TBD';
-          const t2 = (m.team2 || []).join(' & ') || 'TBD';
-          html += `<div class="court-match">`;
-          html += `<div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(t2)}</div>`;
-          if (m.round_label) html += `<div class="court-match-meta">${esc(m.round_label)}</div>`;
-          html += `</div>`;
-        } else {
-          html += `<div class="court-match-empty">${t('txt_txt_empty')}</div>`;
-        }
-      }
-    } else {
-      for (const m of byCourt[courtName]) {
-        const t1 = (m.team1 || []).join(' & ') || 'TBD';
-        const t2 = (m.team2 || []).join(' & ') || 'TBD';
-        html += `<div class="court-match">`;
-        html += `<div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(t2)}</div>`;
-        if (m.round_label) html += `<div class="court-match-meta">${esc(m.round_label)}</div>`;
-        html += `</div>`;
-      }
-    }
+    html += `<div class="court-match">`;
+    html += `<div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(t2)}</div>`;
+    if (m.round_label) html += `<div class="court-match-meta">${esc(m.round_label)}</div>`;
+    html += `</div>`;
     html += `</div>`;
   }
   html += `</div></div>`;

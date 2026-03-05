@@ -202,6 +202,79 @@ class TestPlayoffPhase:
         with pytest.raises(RuntimeError):
             t.start_playoffs()
 
+    def test_single_court_all_playoff_matches_on_court_1(self):
+        """With 1 court, every playoff match is assigned to it, one per slot."""
+        t = GroupPlayoffTournament(_make_players(8), num_groups=2, courts=[Court(name="Court 1")], top_per_group=2)
+        t.generate()
+        TestGroupPhase._complete_all_group_rounds(t)
+        t.start_playoffs()
+
+        # Drain all pending playoff matches.
+        while True:
+            pending = t.pending_playoff_matches()
+            if not pending:
+                break
+            for m in pending:
+                t.record_playoff_result(m.id, (6, 2))
+
+        all_playoff = t.playoff_matches()
+        assert all(m.court is not None for m in all_playoff)
+        assert all(m.court.name == "Court 1" for m in all_playoff)
+
+        # No two matches share the same slot (sequential scheduling).
+        slots = [m.slot_number for m in all_playoff if m.slot_number is not None]
+        assert len(slots) == len(set(slots)), "Multiple playoff matches share a slot with only 1 court"
+
+    def test_two_courts_parallel_playoff_matches(self):
+        """With 2 courts and a double-elimination bracket of 4+ teams, at least one round runs in parallel."""
+        from collections import defaultdict
+
+        # team_mode=True with 8 entries (2 groups of 4), top 2 per group
+        # → 4 teams reach the playoffs, enabling parallel W-semis on both courts.
+        teams = [Player(name=f"T{i + 1}") for i in range(8)]
+        t = GroupPlayoffTournament(
+            teams,
+            num_groups=2,
+            courts=_make_courts(2),
+            top_per_group=2,
+            double_elimination=True,
+            team_mode=True,
+        )
+        t.generate()
+        TestGroupPhase._complete_all_group_rounds(t)
+        t.start_playoffs()
+
+        # Drain all pending playoff matches, collecting every assigned match.
+        while True:
+            pending = t.pending_playoff_matches()
+            if not pending:
+                break
+            for m in pending:
+                t.record_playoff_result(m.id, (6, 2))
+
+        all_playoff = t.playoff_matches()
+        assert all(m.court is not None for m in all_playoff)
+
+        by_slot: dict[int, list] = defaultdict(list)
+        for m in all_playoff:
+            if m.slot_number is not None:
+                by_slot[m.slot_number].append(m)
+
+        # With 4 teams in double-elimination, the two W-semifinal matches are
+        # ready at the same time and must be scheduled on the 2 courts in parallel.
+        max_parallel = max(len(ms) for ms in by_slot.values())
+        assert max_parallel == 2, (
+            f"Expected at least one slot with 2 parallel playoff matches but max was {max_parallel}"
+        )
+
+        # No player appears twice in the same slot.
+        for slot_idx, slot_matches in by_slot.items():
+            seen: set[str] = set()
+            for m in slot_matches:
+                for p in m.team1 + m.team2:
+                    assert p.id not in seen, f"Player {p.name} plays two playoff matches in slot {slot_idx}"
+                    seen.add(p.id)
+
 
 class TestTennisThirdSetConsolation:
     """Group stage standings give the 3rd-set loser 1 consolation match point."""

@@ -21,7 +21,8 @@ from __future__ import annotations
 import fcntl
 import os
 import pickle
-from pathlib import Path
+
+from ..config import DATA_DIR
 
 # ────────────────────────────────────────────────────────────────────────────
 # Store
@@ -31,8 +32,6 @@ _tournaments: dict[str, dict] = {}
 _counter: int = 0
 _state_version: int = 0  # bumped on every _save_state() call; used by TV "on-update" mode
 
-_default_data_dir = Path(__file__).resolve().parent.parent.parent / "data"
-DATA_DIR = Path(os.environ.get("PADEL_DATA_DIR", _default_data_dir))
 STATE_FILE = DATA_DIR / "tournaments.pkl"
 _LOCK_FILE = DATA_DIR / "padel.lock"
 _lock_fd = None  # held for the lifetime of the process

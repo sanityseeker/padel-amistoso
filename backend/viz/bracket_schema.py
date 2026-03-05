@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import io
 import math
-from typing import Literal, Optional
+from typing import Literal
 
 import matplotlib
 
@@ -34,6 +34,32 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import networkx as nx
 from matplotlib.patches import FancyBboxPatch
+
+# ────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _fig_to_bytes(
+    fig: plt.Figure,
+    *,
+    fmt: Literal["png", "svg", "pdf"] = "png",
+    dpi: int = 150,
+) -> bytes:
+    """Render a matplotlib Figure to bytes and close it."""
+    buf = io.BytesIO()
+    fig.savefig(
+        buf,
+        format=fmt,
+        dpi=dpi,
+        bbox_inches="tight",
+        facecolor=fig.get_facecolor(),
+        edgecolor="none",
+    )
+    plt.close(fig)
+    buf.seek(0)
+    return buf.read()
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Public API
@@ -45,10 +71,10 @@ def render_schema(
     advance_per_group: int = 2,
     elimination: Literal["single", "double"] = "single",
     *,
-    title: Optional[str] = None,
+    title: str | None = None,
     fmt: Literal["png", "svg", "pdf"] = "png",
     dpi: int = 150,
-    figsize: Optional[tuple[float, float]] = None,
+    figsize: tuple[float, float] | None = None,
     box_scale: float = 1.0,
     line_width: float = 1.0,
     arrow_scale: float = 1.0,
@@ -101,18 +127,7 @@ def render_schema(
         title_font_scale=title_font_scale,
         output_scale=output_scale,
     )
-    buf = io.BytesIO()
-    fig.savefig(
-        buf,
-        format=fmt,
-        dpi=dpi,
-        bbox_inches="tight",
-        facecolor=fig.get_facecolor(),
-        edgecolor="none",
-    )
-    plt.close(fig)
-    buf.seek(0)
-    return buf.read()
+    return _fig_to_bytes(fig, fmt=fmt, dpi=dpi)
 
 
 def render_playoff_schema(
@@ -120,10 +135,10 @@ def render_playoff_schema(
     elimination: Literal["single", "double"] = "single",
     *,
     match_labels: dict[str, dict] | None = None,
-    title: Optional[str] = None,
+    title: str | None = None,
     fmt: Literal["png", "svg", "pdf"] = "png",
     dpi: int = 150,
-    figsize: Optional[tuple[float, float]] = None,
+    figsize: tuple[float, float] | None = None,
     box_scale: float = 1.0,
     line_width: float = 1.0,
     arrow_scale: float = 1.0,
@@ -146,18 +161,7 @@ def render_playoff_schema(
         title_font_scale=title_font_scale,
         output_scale=output_scale,
     )
-    buf = io.BytesIO()
-    fig.savefig(
-        buf,
-        format=fmt,
-        dpi=dpi,
-        bbox_inches="tight",
-        facecolor=fig.get_facecolor(),
-        edgecolor="none",
-    )
-    plt.close(fig)
-    buf.seek(0)
-    return buf.read()
+    return _fig_to_bytes(fig, fmt=fmt, dpi=dpi)
 
 
 def build_graph(
@@ -434,7 +438,7 @@ def _build_single_elim_bracket(
     # Apply standard tournament seeding (1-vs-N, 2-vs-N-1, …) so that
     # same-group players land on opposite sides of the bracket.
     seed_order = _make_seed_order(bracket_size)
-    prev_round_nodes: list[Optional[str]] = [
+    prev_round_nodes: list[str | None] = [
         advance_nodes[seed_idx] if seed_idx < n_teams else None for seed_idx in seed_order
     ]
 
@@ -452,7 +456,7 @@ def _build_single_elim_bracket(
 
     for r in range(num_rounds):
         round_label = _round_label(num_rounds, r)
-        round_nodes: list[Optional[str]] = []
+        round_nodes: list[str | None] = []
         x_round = x_start + r * 3.0
         num_pairs = len(prev_round_nodes) // 2
 
@@ -585,7 +589,7 @@ def _build_double_elim_bracket(
 
     # Apply standard tournament seeding.
     seed_order = _make_seed_order(bracket_size)
-    w_prev: list[Optional[str]] = [advance_nodes[seed_idx] if seed_idx < n_teams else None for seed_idx in seed_order]
+    w_prev: list[str | None] = [advance_nodes[seed_idx] if seed_idx < n_teams else None for seed_idx in seed_order]
 
     # ── Reorder advance-node y-positions to match bracket slot order ─────
     y_pool = sorted((positions[n][1] for n in advance_nodes), reverse=True)
@@ -604,7 +608,7 @@ def _build_double_elim_bracket(
     for r in range(num_rounds_w):
         x_round = x_start + r * 3.0
         num_pairs = len(w_prev) // 2
-        w_curr: list[Optional[str]] = []
+        w_curr: list[str | None] = []
         round_match_nodes: list[str] = []
 
         for p_idx in range(num_pairs):
@@ -698,6 +702,7 @@ def _build_double_elim_bracket(
 
     lr_idx = 0  # running losers-round counter (for node IDs & x-slots)
     _losers_match_global_idx = 0  # sequential index matching bracket.losers_matches order
+    losers_idx_to_node: dict[int, str] = {}  # global_idx → node ID (for loss-edge rewiring)
 
     # Running vertical cursor: each "dropper" match (both feeders from
     # the winners bracket) gets the next slot so that independent losers
@@ -785,6 +790,7 @@ def _build_double_elim_bracket(
             if md:
                 node_meta[mid]["label"] = _label_from_match_data(md)
                 node_meta[mid]["has_teams"] = True
+            losers_idx_to_node[_losers_match_global_idx] = mid
             _losers_match_global_idx += 1
             positions[mid] = (x_lr, y_mid)
 
@@ -802,7 +808,7 @@ def _build_double_elim_bracket(
         _enforce_min_spacing(positions, curr)
         if match_nodes:
             stages.append({"name": round_name, "x": x_lr, "nodes": match_nodes})
-        lr_idx += 1
+            lr_idx += 1
         return curr
 
     def _interleave_pools(
@@ -817,33 +823,25 @@ def _build_double_elim_bracket(
             merged.append(b[i] if i < len(b) else None)
         return merged
 
-    # LR-0: initial reduction (W-R1 losers play each other) ─────────
-    l_prev = _do_losers_round(l_prev)
+    # Initial reduction: W-R1 losers play each other (if enough to pair).
+    if sum(1 for x in l_prev if x is not None) >= 2:
+        l_prev = _do_losers_round(l_prev)
 
-    # Subsequent rounds: driven by drops from each winners round ────
+    # Subsequent rounds: merge droppers from each winners round, then
+    # reduce.  This mirrors the game engine's FIFO queue: losers from
+    # earlier rounds pair with the next available opponent.
     for wr in range(1, num_rounds_w):
         if wr >= len(w_match_nodes_per_round):
             break
         droppers: list[str | None] = list(w_match_nodes_per_round[wr])
 
-        ns = sum(1 for x in l_prev if x is not None)
-        nd = sum(1 for x in droppers if x is not None)
+        # Merge current losers survivors with new droppers.
+        merged = _interleave_pools(l_prev, droppers)
+        l_prev = _do_losers_round(merged)
 
-        if nd > ns:
-            # More droppers than survivors — droppers play each other
-            # first (reduction), then merge with existing survivors.
-            dropper_survivors = _do_losers_round(droppers)
-            merged = _interleave_pools(l_prev, dropper_survivors)
-            l_prev = _do_losers_round(merged)
-        elif nd < ns:
-            # Fewer droppers — reduce survivors first, then merge.
+        # Reduction round: if pool still has ≥ 2 real entries, pair again.
+        if sum(1 for x in l_prev if x is not None) >= 2:
             l_prev = _do_losers_round(l_prev)
-            merged = _interleave_pools(l_prev, droppers)
-            l_prev = _do_losers_round(merged)
-        else:
-            # Counts match — direct merge.
-            merged = _interleave_pools(l_prev, droppers)
-            l_prev = _do_losers_round(merged)
 
     losers_final_node = l_prev[0] if l_prev else None
 
@@ -857,6 +855,45 @@ def _build_double_elim_bracket(
                 succ_kind = node_meta.get(succ, {}).get("kind", "")
                 if succ_kind == "losers_match":
                     G.edges[wn, succ]["relation"] = "loss"
+
+    # ── Data-driven loss-edge rewiring ──────────────────────────────────
+    # The structural loss edges above are determined by bracket position,
+    # but the game engine uses a FIFO queue so the actual losers-bracket
+    # match-ups depend on match completion order.  When match_labels
+    # carry ``loser`` info we can trace each winners-match loser to the
+    # specific losers-bracket match where they actually appear and
+    # redraw the loss edge accordingly.
+    if match_labels and losers_idx_to_node:
+        # Map team name → first losers-bracket node they appear in.
+        team_first_losers: dict[str, str] = {}
+        for idx in sorted(losers_idx_to_node):
+            nid = losers_idx_to_node[idx]
+            md = match_labels.get(f"l_{idx}")
+            if md:
+                for tk in ("team1", "team2"):
+                    tn = md.get(tk)
+                    if tn and tn != "TBD" and tn not in team_first_losers:
+                        team_first_losers[tn] = nid
+
+        if team_first_losers:
+            for r_nodes in w_match_nodes_per_round:
+                for wn in r_nodes:
+                    wn_md = match_labels.get(wn)
+                    if not wn_md or not wn_md.get("loser"):
+                        continue
+                    loser_name = wn_md["loser"]
+                    target = team_first_losers.get(loser_name)
+                    if target is None:
+                        continue
+                    # Remove structural loss edge(s) from this winners match.
+                    for succ in list(G.successors(wn)):
+                        if G.edges[wn, succ].get("relation") == "loss":
+                            G.remove_edge(wn, succ)
+                    # Add correct loss edge.
+                    if G.has_edge(wn, target):
+                        G.edges[wn, target]["relation"] = "loss"
+                    else:
+                        G.add_edge(wn, target, relation="loss")
 
     # ── Grand Final ─────────────────────────────────────────────────────
     x_gf = max(positions[n][0] for n in G.nodes() if n in positions) + 3.0
@@ -946,8 +983,8 @@ def _advance_style(group_index: int) -> dict[str, str]:
 def _draw(
     layout: dict,
     *,
-    title: Optional[str],
-    figsize: Optional[tuple[float, float]],
+    title: str | None,
+    figsize: tuple[float, float] | None,
     dpi: int,
     box_scale: float = 1.0,
     line_width: float = 1.0,

@@ -31,6 +31,7 @@ class GroupPlayoffTournament:
         top_per_group: int = 2,
         double_elimination: bool = False,
         team_mode: bool = False,
+        group_names: list[str] | None = None,
     ):
         self.players = list(players)
         self.num_groups = num_groups
@@ -38,6 +39,7 @@ class GroupPlayoffTournament:
         self.top_per_group = top_per_group
         self.double_elimination = double_elimination
         self.team_mode = team_mode
+        self.group_names = group_names or []
 
         self.groups: list[Group] = []
         self.playoff_bracket: SingleEliminationBracket | DoubleEliminationBracket | None = None
@@ -64,6 +66,7 @@ class GroupPlayoffTournament:
             self.players,
             self.num_groups,
             team_mode=self.team_mode,
+            group_names=self.group_names,
         )
         if self.team_mode:
             for g in self.groups:
@@ -337,11 +340,18 @@ class GroupPlayoffTournament:
         if self.playoff_bracket is None:
             return []
         pending = self.playoff_bracket.pending_matches()
-        # Lazy court assignment for matches that just became ready
+        # Lazy court assignment for matches that just became ready.
+        # Offset slot numbers so newly assigned playoff slots come after
+        # any already-completed or already-scheduled playoff slots.
         if self.courts:
             needs_court = [m for m in pending if m.court is None]
             if needs_court:
-                assign_courts(needs_court, self.courts)
+                existing_slots = [m.slot_number for m in self.playoff_matches() if m.slot_number is not None]
+                start_slot = (max(existing_slots) + 1) if existing_slots else 0
+                assign_courts(needs_court, self.courts, court_offset=start_slot)
+                for m in needs_court:
+                    if m.slot_number is not None:
+                        m.slot_number += start_slot
         return pending
 
     def record_playoff_result(

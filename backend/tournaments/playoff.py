@@ -23,13 +23,20 @@ def _next_power_of_two(n: int) -> int:
 
 def _make_seed_order(n: int) -> list[int]:
     """
-    Classic bracket seeding for *n* slots (power of 2).
-    Returns list of 0‑based indices in match‑up order.
+    Standard interleaved bracket seeding for *n* slots (power of 2).
+
+    Returns a list of length *n* where result[i] is the **input-rank index**
+    placed at bracket position *i*.  This produces the classic ATP draw:
+    for 8 slots → R1 match-ups are seed1v8, seed4v5, seed2v7, seed3v6.
     """
     if n == 1:
         return [0]
-    half = _make_seed_order(n // 2)
-    return [x * 2 for x in half] + [n - 1 - x * 2 for x in half]
+    prev = _make_seed_order(n // 2)
+    result: list[int] = []
+    for s in prev:
+        result.append(s)
+        result.append(n - 1 - s)
+    return result
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -80,12 +87,12 @@ class SingleEliminationBracket:
         n = len(teams)
         bracket_size = _next_power_of_two(n)
 
-        # Seed into bracket positions
+        # Seed into bracket positions — seed_order[i] gives the input rank
+        # placed at bracket position i (same semantics as bracket_schema.py).
         seed_order = _make_seed_order(bracket_size)
-        seeded: list[list[Player] | None] = [None] * bracket_size
-        for i, idx in enumerate(seed_order):
-            if i < n:
-                seeded[idx] = teams[i]
+        seeded: list[list[Player] | None] = [
+            teams[seed_order[i]] if seed_order[i] < n else None for i in range(bracket_size)
+        ]
 
         num_rounds = int(math.log2(bracket_size))
         round_labels = self._round_labels(num_rounds)
@@ -126,6 +133,7 @@ class SingleEliminationBracket:
                     team2=t2 or [],
                     round_number=r + 1,
                     round_label=round_labels[r],
+                    pair_index=p_idx,
                 )
                 round_matches[p_idx] = match
                 self._match_map[match.id] = match
@@ -253,10 +261,9 @@ class DoubleEliminationBracket:
 
         # --- Winners bracket (position‑based, same as SingleElim) ---
         seed_order = _make_seed_order(bracket_size)
-        seeded: list[list[Player] | None] = [None] * bracket_size
-        for i, idx in enumerate(seed_order):
-            if i < n:
-                seeded[idx] = teams[i]
+        seeded: list[list[Player] | None] = [
+            teams[seed_order[i]] if seed_order[i] < n else None for i in range(bracket_size)
+        ]
 
         w_match_at: list[dict[int, Match]] = []
         positions: list[list[list[Player] | None]] = [list(seeded)]
@@ -287,6 +294,7 @@ class DoubleEliminationBracket:
                     court=self._next_court() if both_known else None,
                     round_number=r + 1,
                     round_label=f"Winners R{r + 1}",
+                    pair_index=p_idx,
                 )
                 round_matches[p_idx] = m
                 self._match_map[m.id] = m
@@ -379,11 +387,12 @@ class DoubleEliminationBracket:
         if m.round_label.startswith("Losers"):
             self._losers_queue.append(winner)
             self._try_create_losers_match()
-            # If all winners matches are done and no new losers match could be
-            # paired, the sole queue occupant is the losers bracket champion.
-            all_w_done = all(wm.status == MatchStatus.COMPLETED for wm in self.winners_matches)
-            if all_w_done and len(self._losers_queue) == 1:
-                self.grand_final.team2 = self._losers_queue.pop(0)
+
+        # Promote the sole losers-bracket survivor to the Grand Final only once
+        # ALL winners matches AND ALL losers matches are done.  Checking both
+        # prevents premature promotion when the last winners-bracket loser still
+        # needs to play the current losers-bracket survivor.
+        self._try_advance_to_grand_final()
 
         # Populate winners-bracket side of grand final
         self._try_populate_grand_final()
@@ -401,6 +410,13 @@ class DoubleEliminationBracket:
                     round_number=m.round_number + 1,
                 )
                 self._match_map[self.grand_final_reset.id] = self.grand_final_reset
+
+    def _try_advance_to_grand_final(self) -> None:
+        """Promote the sole losers-bracket survivor to Grand Final when all matches are done."""
+        all_w_done = all(wm.status == MatchStatus.COMPLETED for wm in self.winners_matches)
+        all_l_done = all(lm.status == MatchStatus.COMPLETED for lm in self.losers_matches)
+        if all_w_done and all_l_done and len(self._losers_queue) == 1:
+            self.grand_final.team2 = self._losers_queue.pop(0)
 
     def _try_create_losers_match(self):
         while len(self._losers_queue) >= 2:

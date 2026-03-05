@@ -12,10 +12,11 @@ from __future__ import annotations
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import bcrypt
 import jwt
+
+from ..config import DATA_DIR
 
 # ────────────────────────────────────────────────────────────────────────────
 # JWT configuration
@@ -24,9 +25,7 @@ import jwt
 _ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
-_default_data_dir = Path(__file__).resolve().parent.parent.parent / "data"
-_DATA_DIR = Path(os.environ.get("PADEL_DATA_DIR", _default_data_dir))
-_SECRET_FILE = _DATA_DIR / ".jwt_secret"
+_SECRET_FILE = DATA_DIR / ".jwt_secret"
 
 
 def _get_jwt_secret() -> str:
@@ -35,7 +34,7 @@ def _get_jwt_secret() -> str:
     if env:
         return env
 
-    _DATA_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     if _SECRET_FILE.exists():
         return _SECRET_FILE.read_text().strip()
 

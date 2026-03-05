@@ -126,3 +126,101 @@ class TestDoubleElimination:
             assert m.team1  # has players
             assert m.team2
             assert m.status != MatchStatus.COMPLETED
+
+    def test_5_teams_losers_bracket_not_skipped(self):
+        """Regression: with 5 teams the last winners-bracket loser must play the
+        losers-bracket survivor in an extra losers round before the Grand Final.
+        Previously, the loser was prematurely placed directly in the Grand Final
+        when the last winners match completed and the queue had only 1 entry."""
+        bracket = DoubleEliminationBracket(_teams(5))
+
+        def _play_next(bracket: DoubleEliminationBracket) -> None:
+            """Play the first available pending match; team1 always wins."""
+            m = bracket.pending_matches()[0]
+            bracket.record_result(m.id, (10, 0))
+
+        # Drain all matches until the Grand Final is pending and/or champion known.
+        max_rounds = 30
+        for _ in range(max_rounds):
+            pending = bracket.pending_matches()
+            if not pending:
+                break
+            _play_next(bracket)
+
+        champ = bracket.champion()
+        assert champ is not None, "Tournament should have a champion after all matches"
+
+        # Verify no team reached the Grand Final without going through the
+        # full losers bracket (i.e. the Grand Final actually had both teams set).
+        gf = bracket.grand_final
+        assert gf.team1, "Grand Final team1 was never assigned"
+        assert gf.team2, "Grand Final team2 was never assigned — losers bracket was skipped"
+
+    def test_full_double_elim_2_teams(self):
+        """2-team double elimination: W Final → loser plays Grand Final → possible reset."""
+        bracket = DoubleEliminationBracket(_teams(2))
+        # Winners final
+        wf = bracket.pending_matches()[0]
+        bracket.record_result(wf.id, (10, 0))  # T1 wins
+        # Grand Final should now be pending: T1 vs T2
+        gf = bracket.grand_final
+        assert gf.team1 and gf.team2, "Grand Final must have both teams after Winners Final"
+        bracket.record_result(gf.id, (10, 0))  # T1 wins again → no reset needed
+        assert bracket.champion() == gf.team1
+
+    def test_full_double_elim_4_teams_champion_found(self):
+        """Full 4-team double elimination always produces a champion."""
+        bracket = DoubleEliminationBracket(_teams(4))
+        for _ in range(20):
+            pending = bracket.pending_matches()
+            if not pending:
+                break
+            bracket.record_result(pending[0].id, (10, 0))
+        assert bracket.champion() is not None
+
+
+class TestSchemaLossEdgeRewiring:
+    """Verify that loss edges in the bracket diagram point to the correct losers match."""
+
+    def test_loss_edges_match_actual_game_data_5_teams(self):
+        """With 5 teams, loss edges should point to wherever the loser actually appears."""
+        from backend.api.helpers import _build_match_labels
+        from backend.viz.bracket_schema import _compute_playoff_layout
+
+        teams = [_team(n) for n in ["Alice", "Bob", "Carol", "Dave", "Eve"]]
+        bracket = DoubleEliminationBracket(teams)
+
+        # Play all winners matches so losers accumulate.
+        for _ in range(20):
+            pending = bracket.pending_matches()
+            if not pending:
+                break
+            bracket.record_result(pending[0].id, (10, 0))
+
+        match_labels = _build_match_labels(bracket)
+        participant_names = [p.name for t in teams for p in t]
+        layout = _compute_playoff_layout(participant_names, "double", match_labels=match_labels)
+        G = layout["graph"]
+        meta = layout["node_meta"]
+
+        # Every loss edge (winners_match → losers_match) must be backed by
+        # real data: the loser of the winners match must appear as a
+        # participant in the target losers match.
+        for u, v, data in G.edges(data=True):
+            if data.get("relation") != "loss":
+                continue
+            u_kind = meta.get(u, {}).get("kind", "")
+            v_kind = meta.get(v, {}).get("kind", "")
+            if u_kind != "winners_match" or v_kind != "losers_match":
+                continue
+
+            u_md = match_labels.get(u)
+            if not u_md or not u_md.get("loser"):
+                continue  # no data yet, structural edge is fine
+
+            loser_name = u_md["loser"]
+            # Find the label for the target losers node.
+            v_label = meta.get(v, {}).get("label", "")
+            assert loser_name in v_label, (
+                f"Loss edge {u} → {v}: loser '{loser_name}' not found in target label '{v_label}'"
+            )

@@ -7,10 +7,9 @@ separate file to keep auth data isolated.
 
 from __future__ import annotations
 
-import os
 import pickle
-from pathlib import Path
 
+from ..config import DATA_DIR
 from .models import User
 from .security import hash_password, verify_password
 
@@ -18,9 +17,7 @@ from .security import hash_password, verify_password
 # Storage
 # ────────────────────────────────────────────────────────────────────────────
 
-_default_data_dir = Path(__file__).resolve().parent.parent.parent / "data"
-_DATA_DIR = Path(os.environ.get("PADEL_DATA_DIR", _default_data_dir))
-_USERS_FILE = _DATA_DIR / "users.pkl"
+_USERS_FILE = DATA_DIR / "users.pkl"
 
 
 class UserStore:
@@ -46,7 +43,7 @@ class UserStore:
     def _save(self) -> None:
         """Persist users to disk (atomic write)."""
         try:
-            _DATA_DIR.mkdir(parents=True, exist_ok=True)
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
             tmp = _USERS_FILE.with_suffix(".tmp")
             with tmp.open("wb") as f:
                 pickle.dump({"users": self._users}, f, protocol=pickle.HIGHEST_PROTOCOL)

@@ -8,20 +8,20 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum, StrEnum
+from enum import StrEnum
 
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
 
 
-class MatchStatus(str, Enum):
+class MatchStatus(StrEnum):
     SCHEDULED = "scheduled"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
 
 
-class TournamentType(str, Enum):
+class TournamentType(StrEnum):
     GROUP_PLAYOFF = "group_playoff"
     MEXICANO = "mexicano"
 
@@ -92,6 +92,9 @@ class Match:
     slot_number: int = 0
     round_number: int = 0
     round_label: str = ""
+    # Pair position within the round (0-based bracket index, including bye slots).
+    # Set by playoff bracket generators; -1 means "not a bracket match".
+    pair_index: int = -1
 
     @property
     def winner_team(self) -> list[Player] | None:
