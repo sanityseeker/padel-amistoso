@@ -1103,11 +1103,15 @@
     /* Match card: ensure team name gets full row before score */
     .match-teams { min-width: 100%; }
     .match-card { padding: 0.6rem 0; }
+    /* Tournament list cards: keep delete button inline with the name */
+    .tournament-list-card { flex-wrap: nowrap; }
+    .tournament-list-card .match-teams { min-width: 0; flex: 1; }
 
     /* Touch targets */
     .match-actions input { width: 56px !important; height: 44px; font-size: 1rem; }
     .btn { min-height: 44px; }
     .btn-sm { min-height: 44px; padding: 0.5rem 0.8rem; font-size: 0.85rem; }
+    .tournament-actions .btn-sm { min-height: unset; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
     .match-edit-btn { min-height: 40px; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
     .score-mode-toggle button { min-height: 40px; padding: 0.4rem 0.75rem; font-size: 0.85rem; }
     .sitout-item { padding: 0.5rem 0.6rem; font-size: 0.9rem; min-height: 44px; }
@@ -1896,7 +1900,7 @@ async function loadTournaments() {
     const active = list.filter(tr => tr.phase !== 'finished');
     const finished = list.filter(tr => tr.phase === 'finished');
     const renderCard = (tournament) => `
-      <div class="match-card${tournament.id === currentTid ? ' active-tournament' : ''}">
+      <div class="match-card tournament-list-card${tournament.id === currentTid ? ' active-tournament' : ''}">
         <div class="match-teams">
           <a class="tournament-name-link" href="#" onclick="openTournament('${tournament.id}','${tournament.type}');return false">${esc(tournament.name)}</a>
           <span class="badge badge-type">${tournament.team_mode ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode')}</span>

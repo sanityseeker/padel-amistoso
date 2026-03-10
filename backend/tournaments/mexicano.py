@@ -62,7 +62,7 @@ class MexicanoTournament:
     courts : list[Court]
         Available courts.
     total_points_per_match : int
-        Fixed total of points in every match (e.g. 32).
+        Fixed total of points in every match (e.g. 25).
         Both teams' scores must sum to this value.
     num_rounds : int
         How many rounds to play.  ``0`` means **rolling mode** — unlimited
@@ -387,60 +387,76 @@ class MexicanoTournament:
     # Sit-out selection
     # ------------------------------------------------------------------ #
 
-    def _choose_sit_outs(self, ranked: list[Player]) -> list[Player]:
+    def _rank_sit_out_combos(self, ranked: list[Player], max_combos: int = 1) -> list[list[Player]]:
         """
-        Pick players to sit out this round.
+        Return up to *max_combos* sit-out combinations ranked best-first.
 
-                Strategy:
-                    1. Primary criterion  — fewest previous sit-outs (fairness).
-                    2. Tie-breaker        — choose the combination whose projected
-                         next-round quality is best according to the same objective
-                         used for proposal ranking.
+        Fairness (fewest prior sit-outs) is the primary gate — only players
+        tied at the minimum sit-out count are eligible.  Within that pool the
+        combinations are scored by the full weighted objective (skill-gap
+        violations, exact-round repeats, score imbalance, repeat count) so the
+        returned list is ordered from most to least desirable.
+
+        When the eligible pool yields more combinations than the evaluation
+        budget, a cheap estimated-score imbalance heuristic pre-sorts them so
+        the budget is spent on the most promising candidates first.
         """
         n = self._sit_out_count
         if n == 0:
-            return []
+            return [[]]
 
-        # Sort candidates by sit-out count ascending
         min_sit = min(self._sit_out_counts[p.id] for p in ranked)
-        # Eligible = players with the fewest sit-outs
         eligible = [p for p in ranked if self._sit_out_counts[p.id] <= min_sit]
 
         if len(eligible) <= n:
-            # Exactly enough or fewer — they all sit out
             chosen = eligible[:n]
-            # If still short (unlikely), add from next tier
             if len(chosen) < n:
                 remaining = [p for p in ranked if p not in chosen]
                 remaining.sort(key=lambda p: self._sit_out_counts[p.id])
                 chosen.extend(remaining[: n - len(chosen)])
-            return chosen
+            return [chosen]
 
-        # Multiple candidates — evaluate with proposal-aligned objective.
-        best_combo: list[Player] = list(eligible[:n])
-        best_score: tuple = (
-            float("inf"),
-            float("inf"),
-            float("inf"),
-            float("inf"),
-            float("inf"),
-        )
+        COMBO_BUDGET = 1000
+        all_combos = list(itertools.combinations(eligible, n))
 
-        combos = list(itertools.combinations(eligible, n))
-        # Cap to prevent combinatorial explosion with many tied players
-        if len(combos) > 200:
-            random.shuffle(combos)
-            combos = combos[:200]
+        if len(all_combos) > COMBO_BUDGET:
+            est = self._estimated_scores()
+            group_size = 2 if self.team_mode else 4
 
-        for combo in combos:
+            def _sit_out_heuristic(combo: tuple[Player, ...]) -> float:
+                """Fast proxy: min achievable score imbalance for the playing set."""
+                sitting_ids = {p.id for p in combo}
+                playing_scores = sorted(
+                    (est[p.id] for p in ranked if p.id not in sitting_ids),
+                    reverse=True,
+                )
+                total_imbalance = 0.0
+                for i in range(0, len(playing_scores) - group_size + 1, group_size):
+                    group_scores = playing_scores[i : i + group_size]
+                    total_imbalance += group_scores[0] - group_scores[-1]
+                return total_imbalance
+
+            all_combos.sort(key=_sit_out_heuristic)
+            all_combos = all_combos[:COMBO_BUDGET]
+
+        # Score every remaining candidate with the full objective
+        scored: list[tuple[tuple, list[Player]]] = []
+        for combo in all_combos:
             sitting_ids = {p.id for p in combo}
             playing = [p for p in ranked if p.id not in sitting_ids]
-            score = self._projected_round_objective(playing, strategy="balanced")
-            if score < best_score:
-                best_score = score
-                best_combo = list(combo)
+            obj = self._projected_round_objective(playing, strategy="balanced")
+            scored.append((obj, list(combo)))
 
-        return best_combo
+        scored.sort(key=lambda x: x[0])
+        return [combo for _, combo in scored[:max_combos]]
+
+    def _choose_sit_outs(self, ranked: list[Player]) -> list[Player]:
+        """Pick the single best sit-out combination for this round.
+
+        Delegates to :meth:`_rank_sit_out_combos` and returns the top-ranked
+        combination.
+        """
+        return self._rank_sit_out_combos(ranked, max_combos=1)[0]
 
     def _weighted_metrics_score(
         self,
@@ -1180,10 +1196,25 @@ class MexicanoTournament:
         target_per_strategy = max(3, (target_total + 1) // 2)
         target_balanced = max(target_per_strategy, n_options)
 
-        # _best_pairing breaks ties with random.choice, producing different splits across calls
-        for _ in range(target_balanced * 4):
+        # Compute sit-out variants to cycle through so proposals differ not only in
+        # pairings but also in *who sits out*, giving the operator a real choice.
+        # When the caller already forced specific sit-outs, respect that as-is.
+        if self._forced_sit_out_ids is None and self._sit_out_count > 0:
+            _ranked_all = self._ranked_players(self.players)
+            n_sit_variants = min(max(2, n_options), 4)
+            _sit_variants: list[list[str] | None] = [
+                [p.id for p in combo] for combo in self._rank_sit_out_combos(_ranked_all, max_combos=n_sit_variants)
+            ]
+        else:
+            # No sit-outs (divisible by 4/2) or already user-controlled
+            _sit_variants = [self._forced_sit_out_ids]
+
+        # _best_pairing breaks ties with random.choice, producing different splits across calls.
+        # Cycling through sit-out variants ensures each variant appears in at least one proposal.
+        for attempt in range(target_balanced * 4):
             if len(balanced) >= target_balanced:
                 break
+            self._forced_sit_out_ids = _sit_variants[attempt % len(_sit_variants)]
             plan = self._plan_round()
             fp = self._plan_fingerprint(plan)
             if fp not in seen:
@@ -1204,9 +1235,12 @@ class MexicanoTournament:
         seeded_attempts = 0
         while len(seeded) < target_per_strategy and seeded_attempts < 24:
             seeded_attempts += 1
-            for minimize_repeats, swap_variant in seeded_candidates:
+            for sit_variant_idx, (minimize_repeats, swap_variant) in enumerate(
+                seeded_candidates * 2  # allow a second pass over variants
+            ):
                 if len(seeded) >= target_per_strategy:
                     break
+                self._forced_sit_out_ids = _sit_variants[sit_variant_idx % len(_sit_variants)]
                 if self.team_mode:
                     plan = self._plan_round_seeded_team(
                         minimize_repeats=minimize_repeats,
@@ -1225,12 +1259,13 @@ class MexicanoTournament:
                 seeded.append(plan)
 
         # If any option violates skill-gap, surface more balanced alternatives.
-        # _plan_round() uses random tie-breaking so repeated calls can yield distinct plans.
+        # Cycle through sit-out variants here too for diversity.
         if any(p.get("skill_gap_violations", 0) > 0 for p in (balanced + seeded)):
             target_balanced = max(target_balanced, 5)
-            for _ in range(15):
+            for attempt in range(15):
                 if len(balanced) >= target_balanced:
                     break
+                self._forced_sit_out_ids = _sit_variants[attempt % len(_sit_variants)]
                 plan = self._plan_round()
                 fp = self._plan_fingerprint(plan)
                 if fp not in seen:
