@@ -268,8 +268,9 @@ function updateAuthUI() {
       const adminBtn = isAdmin()
         ? `<button class="btn btn-sm" onclick="showUserMgmt()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="User management">👥</button>`
         : '';
+      const changePwdBtn = `<button class="btn btn-sm" onclick="showChangePasswordDialog()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_change_password')}">🔑</button>`;
       authStatus.innerHTML = `
-        ${adminBtn}<strong style="margin-right:0.5rem">${esc(username)}</strong>
+        ${adminBtn}${changePwdBtn}<strong style="margin-right:0.5rem">${esc(username)}</strong>
         <button class="btn btn-sm" onclick="logout()" style="padding:0.3rem 0.6rem">${t('txt_txt_logout')}</button>
       `;
     } else {
@@ -376,6 +377,80 @@ async function deleteUserWithConfirm(username) {
     await loadUserMgmtList();
   } catch (e) {
     if (errDiv) errDiv.textContent = e.message;
+  }
+}
+
+// ── Change Password ──────────────────────────────────────
+
+/**
+ * Show the change-password dialog.
+ */
+function showChangePasswordDialog() {
+  const overlay = document.getElementById('change-pwd-overlay');
+  if (overlay) {
+    overlay.style.display = 'flex';
+    document.getElementById('change-pwd-new')?.focus();
+  }
+}
+
+/**
+ * Hide the change-password dialog and reset its fields.
+ */
+function hideChangePasswordDialog() {
+  const overlay = document.getElementById('change-pwd-overlay');
+  if (overlay) overlay.style.display = 'none';
+  const newPwd = document.getElementById('change-pwd-new');
+  const confirmPwd = document.getElementById('change-pwd-confirm');
+  const errDiv = document.getElementById('change-pwd-error');
+  const successDiv = document.getElementById('change-pwd-success');
+  if (newPwd) newPwd.value = '';
+  if (confirmPwd) confirmPwd.value = '';
+  if (errDiv) errDiv.textContent = '';
+  if (successDiv) successDiv.textContent = '';
+}
+
+/**
+ * Handle the change-password form submission.
+ * @param {Event} event
+ */
+async function handleChangePassword(event) {
+  event.preventDefault();
+  const newPwd = document.getElementById('change-pwd-new')?.value;
+  const confirmPwd = document.getElementById('change-pwd-confirm')?.value;
+  const errDiv = document.getElementById('change-pwd-error');
+  const successDiv = document.getElementById('change-pwd-success');
+  const btn = document.getElementById('change-pwd-btn');
+
+  if (errDiv) errDiv.textContent = '';
+  if (successDiv) successDiv.textContent = '';
+
+  if (!newPwd || !confirmPwd) {
+    if (errDiv) errDiv.textContent = t('txt_txt_please_enter_username_and_password');
+    return;
+  }
+
+  if (newPwd !== confirmPwd) {
+    if (errDiv) errDiv.textContent = t('txt_txt_passwords_do_not_match');
+    return;
+  }
+
+  const username = getAuthUsername();
+  if (!username) return;
+
+  if (btn) btn.disabled = true;
+  try {
+    await apiAuth(`/api/auth/users/${encodeURIComponent(username)}/password`, {
+      method: 'PATCH',
+      body: JSON.stringify({ new_password: newPwd }),
+    });
+    if (successDiv) successDiv.textContent = t('txt_txt_password_changed_successfully');
+    document.getElementById('change-pwd-new').value = '';
+    document.getElementById('change-pwd-confirm').value = '';
+    setTimeout(() => hideChangePasswordDialog(), 2000);
+  } catch (e) {
+    if (errDiv) errDiv.textContent = e.message;
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

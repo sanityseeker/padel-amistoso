@@ -1585,6 +1585,29 @@
   </div>
 </div>
 
+<!-- Change Password Modal (all authenticated users) -->
+<div id="change-pwd-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9998;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border:2px solid var(--border);border-radius:12px;padding:2rem;width:min(400px,calc(100vw - 2rem));z-index:9999;box-shadow:0 10px 40px rgba(0,0,0,0.5)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem">
+      <h2 style="margin:0;color:var(--accent)">🔑 <span data-i18n="txt_txt_change_password">Change Password</span></h2>
+      <button type="button" onclick="hideChangePasswordDialog()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-muted)">✕</button>
+    </div>
+    <form onsubmit="handleChangePassword(event)">
+      <div style="margin-bottom:0.8rem">
+        <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600" data-i18n="txt_txt_new_password">New Password</label>
+        <input type="password" id="change-pwd-new" placeholder="••••••••" autocomplete="new-password" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
+      </div>
+      <div style="margin-bottom:1rem">
+        <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600" data-i18n="txt_txt_confirm_new_password">Confirm New Password</label>
+        <input type="password" id="change-pwd-confirm" placeholder="••••••••" autocomplete="new-password" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
+      </div>
+      <div id="change-pwd-success" style="color:var(--green);font-size:0.8rem;min-height:1.2rem;margin-bottom:0.25rem"></div>
+      <div id="change-pwd-error" style="color:var(--red);font-size:0.8rem;min-height:1.2rem;margin-bottom:0.5rem"></div>
+      <button type="submit" id="change-pwd-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_change_password">Change Password</button>
+    </form>
+  </div>
+</div>
+
 <script src="/i18n.js"></script>
 <script src="/shared.js"></script>
 <script src="/auth.js"></script>
