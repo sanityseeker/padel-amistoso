@@ -21,6 +21,7 @@ from .db import init_db
 from .routes_crud import router as crud_router
 from .routes_gp import router as gp_router
 from .routes_mex import router as mex_router
+from .routes_playoff import router as playoff_router
 from .routes_schema import router as schema_router
 from .state import (  # noqa: F401  — re-exported for tests
     _counter,
@@ -70,6 +71,7 @@ app.include_router(auth_router)
 app.include_router(crud_router)
 app.include_router(gp_router)
 app.include_router(mex_router)
+app.include_router(playoff_router)
 app.include_router(schema_router)
 
 # ────────────────────────────────────────────────────────────────────────────

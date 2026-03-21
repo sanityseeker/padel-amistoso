@@ -24,6 +24,7 @@ class MatchStatus(StrEnum):
 class TournamentType(StrEnum):
     GROUP_PLAYOFF = "group_playoff"
     MEXICANO = "mexicano"
+    PLAYOFF = "playoff"
 
 
 class GPPhase(StrEnum):
@@ -39,6 +40,13 @@ class MexPhase(StrEnum):
     """Phases of a Mexicano tournament."""
 
     MEXICANO = "mexicano"
+    PLAYOFFS = "playoffs"
+    FINISHED = "finished"
+
+
+class POPhase(StrEnum):
+    """Phases of a standalone Play-off tournament."""
+
     PLAYOFFS = "playoffs"
     FINISHED = "finished"
 

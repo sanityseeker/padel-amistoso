@@ -332,3 +332,97 @@ class TestMexicanoAPI:
     def test_nonexistent_tournament(self, client):
         r = client.get("/api/tournaments/fake/mex/status")
         assert r.status_code == 404
+
+
+# ── Standalone Play-off API ───────────────────────────────
+
+
+class TestPlayoffAPI:
+    PO_BODY = {
+        "name": "Quick Play-off",
+        "participant_names": ["Alice", "Bob", "Carol", "Dave"],
+        "court_names": ["Court 1"],
+        "double_elimination": False,
+    }
+
+    def _create(self, client, auth_headers):
+        r = client.post("/api/tournaments/playoff", json=self.PO_BODY, headers=auth_headers)
+        assert r.status_code == 200
+        return r.json()["id"]
+
+    def test_create(self, client, auth_headers):
+        r = client.post("/api/tournaments/playoff", json=self.PO_BODY, headers=auth_headers)
+        assert r.status_code == 200
+        data = r.json()
+        assert "id" in data
+        assert data["phase"] == "playoffs"
+
+    def test_appears_in_list(self, client, auth_headers):
+        self._create(client, auth_headers)
+        r = client.get("/api/tournaments")
+        assert r.status_code == 200
+        items = r.json()
+        assert len(items) == 1
+        assert items[0]["type"] == "playoff"
+
+    def test_status(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        r = client.get(f"/api/tournaments/{tid}/po/status")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["phase"] == "playoffs"
+        assert data["champion"] is None
+
+    def test_playoffs_endpoint(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        r = client.get(f"/api/tournaments/{tid}/po/playoffs")
+        assert r.status_code == 200
+        data = r.json()
+        assert "matches" in data
+        assert "pending" in data
+        assert len(data["matches"]) > 0
+
+    def test_record_score(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        playoffs = client.get(f"/api/tournaments/{tid}/po/playoffs").json()
+        m = playoffs["pending"][0]
+        r = client.post(
+            f"/api/tournaments/{tid}/po/record",
+            json={"match_id": m["id"], "score1": 6, "score2": 3},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+
+    def test_full_flow_finds_champion(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        # Keep recording until a champion is found
+        for _ in range(20):
+            playoffs = client.get(f"/api/tournaments/{tid}/po/playoffs").json()
+            pending = [m for m in playoffs.get("pending", []) if m["status"] != "completed"]
+            if not pending:
+                break
+            for m in pending:
+                client.post(
+                    f"/api/tournaments/{tid}/po/record",
+                    json={"match_id": m["id"], "score1": 6, "score2": 3},
+                    headers=auth_headers,
+                )
+        status = client.get(f"/api/tournaments/{tid}/po/status").json()
+        assert status["phase"] == "finished"
+        assert status["champion"] is not None
+
+    def test_schema_endpoint_returns_image(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        r = client.get(f"/api/tournaments/{tid}/po/playoffs-schema?fmt=png")
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("image/png")
+        assert len(r.content) > 0
+
+    def test_too_few_participants_rejected(self, client, auth_headers):
+        body = {**self.PO_BODY, "participant_names": ["Solo"]}
+        r = client.post("/api/tournaments/playoff", json=body, headers=auth_headers)
+        assert r.status_code == 422
+
+    def test_nonexistent_tournament(self, client):
+        r = client.get("/api/tournaments/fake/po/status")
+        assert r.status_code == 404

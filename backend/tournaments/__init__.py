@@ -11,6 +11,7 @@ from .group_playoff import GroupPlayoffTournament
 from .group_stage import Group, assign_courts, distribute_players_to_groups
 from .mexicano import MexicanoTournament
 from .playoff import DoubleEliminationBracket, SingleEliminationBracket
+from .playoff_tournament import PlayoffTournament
 
 __all__ = [
     "Group",
@@ -18,6 +19,7 @@ __all__ = [
     "distribute_players_to_groups",
     "GroupPlayoffTournament",
     "MexicanoTournament",
+    "PlayoffTournament",
     "SingleEliminationBracket",
     "DoubleEliminationBracket",
 ]

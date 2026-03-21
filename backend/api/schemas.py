@@ -70,6 +70,29 @@ class CreateMexicanoRequest(BaseModel):
         return v
 
 
+class CreatePlayoffRequest(BaseModel):
+    name: str = "My Play-off"
+    participant_names: list[str]
+    court_names: list[str] = ["Court 1"]
+    team_mode: bool = True
+    double_elimination: bool = False
+    public: bool = True
+
+    @field_validator("participant_names")
+    @classmethod
+    def at_least_two_participants(cls, v: list[str]) -> list[str]:
+        if len(v) < 2:
+            raise ValueError("Need at least 2 participants")
+        return v
+
+    @field_validator("court_names")
+    @classmethod
+    def at_least_one_court(cls, v: list[str]) -> list[str]:
+        if len(v) < 1:
+            raise ValueError("Need at least 1 court")
+        return v
+
+
 class TvSettingsRequest(BaseModel):
     """Partial update for TV display settings."""
 

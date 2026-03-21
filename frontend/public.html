@@ -821,6 +821,11 @@ async function loadTV() {
               api(`/api/tournaments/${TID}/gp/groups`),
               api(`/api/tournaments/${TID}/gp/playoffs`).catch(() => ({ matches: [], pending: [] })),
             ]
+          : _tournamentType === 'playoff'
+          ? [
+              api(`/api/tournaments/${TID}/po/status`),
+              api(`/api/tournaments/${TID}/po/playoffs`).catch(() => ({ matches: [], pending: [] })),
+            ]
           : [
               api(`/api/tournaments/${TID}/mex/status`),
               api(`/api/tournaments/${TID}/mex/matches`),
@@ -841,6 +846,11 @@ async function loadTV() {
       const [status, groups, playoffs] = dataResults;
       _captureOpenState();
       _renderGP(tvSettings, status, groups, playoffs);
+      _applyOpenState();
+    } else if (_tournamentType === 'playoff') {
+      const [status, playoffs] = dataResults;
+      _captureOpenState();
+      _renderPO(tvSettings, status, playoffs);
       _applyOpenState();
     } else {
       const [status, matches, playoffs] = dataResults;
@@ -940,6 +950,43 @@ function _renderGP(tvSettings, status, groups, playoffs) {
       if (groupPast.length > 0)
         html += _buildPastMatches(groupPast, tvSettings, false, t('txt_txt_group_stage_matches'), 'past-groups');
     }
+  }
+
+  document.getElementById('tv-root').innerHTML = html;
+}
+
+// ── Standalone Playoff renderer ──────────────────────────
+function _renderPO(tvSettings, status, playoffs) {
+  const phase = status.phase || '';
+  const champion = status.champion;
+
+  const pending = _sortTbdLast((playoffs?.pending || []).filter(m => m.status !== 'completed'));
+
+  let html = _buildHeader(_tournamentName, phase, champion);
+
+  if (champion) {
+    html += `<div class="champion-banner">🏆 ${t('txt_txt_champion')}: ${esc(champion.join(' & '))}</div>`;
+  }
+
+  html += _buildCourts(pending, t('txt_txt_court_assignments_play_offs'));
+
+  if (tvSettings.show_bracket) {
+    const bs  = tvSettings.schema_box_scale        || 1.0;
+    const lw  = tvSettings.schema_line_width       || 1.0;
+    const as_ = tvSettings.schema_arrow_scale      || 1.0;
+    const tfs = tvSettings.schema_title_font_scale || 1.0;
+    const imgUrl = `/api/tournaments/${TID}/po/playoffs-schema?fmt=png&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
+    html += `<details class="tv-collapsible" data-tv-key="bracket" open>`;
+    html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2></summary>`;
+    html += `<div class="tv-section">`;
+    html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onerror="this.style.display='none'">`;
+    html += `</div></details>`;
+  }
+
+  if (tvSettings.show_past_matches) {
+    const past = (playoffs?.matches || []).filter(m => m.status === 'completed');
+    if (past.length > 0)
+      html += _buildPastMatches(past, tvSettings, false, t('txt_txt_play_off_matches'), 'past-playoffs');
   }
 
   document.getElementById('tv-root').innerHTML = html;

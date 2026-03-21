@@ -331,6 +331,13 @@
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
     padding: 1rem; margin-bottom: 1rem;
   }
+  .bracket-img {
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: block;
+    margin: 0.75rem auto 0;
+  }
   .match-card {
     display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
     padding: 0.5rem 0; border-bottom: 1px solid var(--border);
@@ -719,6 +726,8 @@
   #tv-controls-panel summary::-webkit-details-marker { display: none; }
   #tv-controls-panel summary::marker { display: none; }
   #tv-controls-panel[open] .tv-chevron { transform: rotate(90deg); }
+  /* Bracket collapse chevron */
+  details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
 
   /* ── Per-player history dropdown ── */
   .player-stats-dropdown { display: flex; gap: 0.5rem; align-items: flex-start; flex-wrap: wrap; margin-bottom: 0.5rem; }
@@ -1217,6 +1226,7 @@
         <div class="subtabs" role="tablist" aria-label="Create tournament type" data-i18n-aria-label="txt_txt_create_tournament_type" style="margin-bottom:0">
           <button type="button" class="subtab-btn active" id="create-tab-gp" onclick="setCreateMode('gp')" data-i18n="txt_txt_group_play_off">Group + Play‑off</button>
           <button type="button" class="subtab-btn" id="create-tab-mex" onclick="setCreateMode('mex')" data-i18n="txt_txt_mexicano_play_offs">Mexicano + Play‑offs</button>
+          <button type="button" class="subtab-btn" id="create-tab-po" onclick="setCreateMode('po')" data-i18n="txt_txt_play_offs_only">Play-offs</button>
         </div>
         <button type="button" class="format-info-btn" id="create-format-info-btn" onclick="openFormatInfo()" aria-label="About this format" data-i18n-title="txt_txt_about_this_format" title="About this format">i</button>
       </div>
@@ -1373,6 +1383,61 @@
         <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,createMex)" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
         <div id="mex-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
+
+      <!-- ─── CREATE PLAY-OFFS ONLY ──────────────────────── -->
+      <div class="subtab-panel" id="create-panel-po">
+        <div class="field-section" style="margin-bottom:0.75rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+            <input id="po-name" value="Padel Play-offs 2026" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
+
+          </div>
+        </div>
+        <div class="field-section">
+          <div class="participants-header">
+            <div style="display:flex;align-items:center;gap:0.5rem">
+              <span class="field-section-title" style="margin-bottom:0" id="po-players-label" data-i18n="txt_txt_participants">Participants</span>
+              <span class="participant-count" id="po-participant-count"></span>
+            </div>
+            <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+              <button type="button" class="paste-list-btn clear-btn" onclick="clearParticipants('po')" data-i18n="txt_txt_clear_all">Clear all</button>
+              <button type="button" class="paste-list-btn" id="po-paste-toggle" onclick="togglePasteMode('po')">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
+            </div>
+          </div>
+          <div id="po-participant-fields">
+            <div class="participant-grid" id="po-participant-grid"></div>
+            <button type="button" class="add-participant-btn" id="po-add-btn" onclick="addParticipantField('po')">+ Add participant</button>
+          </div>
+          <div class="paste-panel hidden" id="po-paste-panel">
+            <textarea id="po-players" placeholder="One per line"></textarea>
+          </div>
+        </div>
+        <div class="field-section" style="margin-top:0.5rem">
+          <div class="field-section-title" data-i18n="txt_txt_courts">Courts</div>
+          <div class="num-field" style="margin-bottom:0.55rem">
+            <label data-i18n="txt_txt_number_of_courts">Number of courts</label>
+            <input id="po-court-count" type="number" value="2" min="1" max="20" oninput="renderCourtInputs('po')">
+          </div>
+          <div class="court-names-grid" id="po-court-names-container"></div>
+        </div>
+        <div class="field-section" style="margin-top:0.5rem">
+          <div class="field-section-title" data-i18n="txt_txt_play_off_format">Play-off format</div>
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.2rem">
+            <input type="checkbox" id="po-double-elim" style="width:1rem;height:1rem;cursor:pointer">
+            <label for="po-double-elim" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_double_elimination">Double elimination</label>
+          </div>
+        </div>
+        <div class="field-section" style="margin-top:0.5rem">
+          <button type="button" class="btn" onclick="generatePoPreviewSchema()" data-i18n="txt_txt_preview_bracket">Preview bracket</button>
+          <div id="po-preview-msg" class="alert alert-error hidden" style="margin-top:0.5rem"></div>
+          <div id="po-preview-result" style="margin-top:0.75rem;text-align:center"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.25rem">
+          <input type="checkbox" id="po-public" checked style="width:1rem;height:1rem;cursor:pointer">
+          <label for="po-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
+        </div>
+        <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,createPO)" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
+        <div id="po-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
+      </div>
     </div>
   </div>
 
@@ -1407,6 +1472,20 @@
       <h2 data-i18n="txt_txt_fmt_mex_title">Mexicano + Play‑offs</h2>
       <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_mex_intro">Pairings change every round based on current standings (leaders vs leaders) or by ratings to optimise cumulative team strength.</p>
       <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_mex_rounds_desc">Multiple valid pairing combinations usually exist for each round. The admin can browse several proposals and pick the one that best balances team strength and minimises repeated matchups. Scoring weights and pairing parameters are fully configurable in the advanced settings.</p>
+    </div>
+
+    <!-- Direct Play-offs -->
+    <div class="card">
+      <h2 data-i18n="txt_txt_fmt_po_title">Direct Play&#8209;offs</h2>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_po_intro">Skip the group stage and go straight to the bracket. Seed your participants in order and the bracket is generated immediately.</p>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_fmt_playoffs_single_title">Single Elimination</strong>
+        <p data-i18n="txt_txt_fmt_playoffs_single_desc">Classic knock‑out bracket — lose once and you're out. Straightforward and fast to complete.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_fmt_playoffs_double_title">Double Elimination (Espejo)</strong>
+        <p data-i18n="txt_txt_fmt_playoffs_double_desc">Each player or team gets a second chance through a losers' bracket before being eliminated. The finalist must be beaten twice to be knocked out — rewarding consistency over the whole bracket.</p>
+      </div>
     </div>
 
     <!-- Play-offs -->
@@ -1670,16 +1749,23 @@ let _currentCreateMode = 'gp';
 function setCreateMode(mode) {
   _currentCreateMode = mode;
   const isGp = mode === 'gp';
+  const isMex = mode === 'mex';
+  const isPo = mode === 'po';
   document.getElementById('create-tab-gp')?.classList.toggle('active', isGp);
-  document.getElementById('create-tab-mex')?.classList.toggle('active', !isGp);
+  document.getElementById('create-tab-mex')?.classList.toggle('active', isMex);
+  document.getElementById('create-tab-po')?.classList.toggle('active', isPo);
   document.getElementById('create-panel-gp')?.classList.toggle('active', isGp);
-  document.getElementById('create-panel-mex')?.classList.toggle('active', !isGp);
+  document.getElementById('create-panel-mex')?.classList.toggle('active', isMex);
+  document.getElementById('create-panel-po')?.classList.toggle('active', isPo);
 }
 
 // ─── Format info modal ─────────────────────────────────────
 function openFormatInfo(format) {
   const mode = format || _currentCreateMode;
-  const htmlFn = mode === 'mex' ? _mexFormatInfoHtml : _gpFormatInfoHtml;
+  let htmlFn;
+  if (mode === 'mex') htmlFn = _mexFormatInfoHtml;
+  else if (mode === 'po') htmlFn = _poFormatInfoHtml;
+  else htmlFn = _gpFormatInfoHtml;
   document.getElementById('format-info-content').innerHTML = htmlFn();
   document.getElementById('format-info-overlay').style.display = 'block';
   document.getElementById('format-info-dialog').style.display = 'block';
@@ -1769,6 +1855,20 @@ function _mexFormatInfoHtml() {
     ${_playoffsInfoHtml()}`;
 }
 
+function _poFormatInfoHtml() {
+  return `
+    <h3 id="format-info-heading">${t('txt_txt_fmt_po_title')}</h3>
+    <p>${t('txt_txt_fmt_po_intro')}</p>
+    <div class="info-block">
+      <strong>${t('txt_txt_fmt_playoffs_single_title')}</strong>
+      <p>${t('txt_txt_fmt_playoffs_single_desc')}</p>
+    </div>
+    <div class="info-block">
+      <strong>${t('txt_txt_fmt_playoffs_double_title')}</strong>
+      <p>${t('txt_txt_fmt_playoffs_double_desc')}</p>
+    </div>`;
+}
+
 function _playoffsInfoHtml() {
   return `
     <hr class="info-divider">
@@ -1810,10 +1910,13 @@ function setLanguage(lang) {
   updateAuthUI();
   renderParticipantFields('gp');
   renderParticipantFields('mex');
+  renderParticipantFields('po');
   refreshCourtDefaults('gp');
   refreshCourtDefaults('mex');
+  refreshCourtDefaults('po');
   if (currentTid) {
     if (currentType === 'group_playoff') renderGP();
+    else if (currentType === 'playoff') renderPO();
     else if (currentType === 'mexicano') renderMex();
   } else {
     loadTournaments();
@@ -1905,6 +2008,37 @@ function generateGpPlayoffSchema() {
 function generateMexPlayoffSchema() {
   if (!currentTid) return;
   _fetchSchema('mex-playoff-schema', `/api/tournaments/${currentTid}/mex/playoffs-schema`, 'mex-playoffs');
+}
+
+function generatePoPlayoffSchema() {
+  if (!currentTid) return;
+  _fetchSchema('po-playoff-schema', `/api/tournaments/${currentTid}/po/playoffs-schema`, 'po-playoffs');
+}
+
+async function generatePoPreviewSchema() {
+  const names = getParticipantNames('po');
+  const resultEl = document.getElementById('po-preview-result');
+  const msgEl = document.getElementById('po-preview-msg');
+  msgEl.classList.add('hidden');
+  if (names.length < 2) {
+    resultEl.innerHTML = '';
+    return;
+  }
+  resultEl.innerHTML = `<em>${t('txt_txt_generating')}</em>`;
+  try {
+    const elim = document.getElementById('po-double-elim').checked ? 'double' : 'single';
+    const params = new URLSearchParams({ participants: names.length, elimination: elim, fmt: 'png' });
+    for (const n of names) params.append('names', n);
+    const url = `/api/schema/playoff-preview?${params}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Error');
+    const blob = await res.blob();
+    resultEl.innerHTML = `<details class="bracket-collapse" open style="text-align:left"><summary style="cursor:pointer;user-select:none;font-size:0.82rem;color:var(--text-muted);padding:0.2rem 0;list-style:none;display:flex;align-items:center;gap:0.35rem"><span class="bracket-chevron" style="display:inline-block;transition:transform 0.15s">&#9654;</span>${t('txt_txt_play_off_bracket')}</summary><img class="bracket-img" src="${URL.createObjectURL(blob)}" alt="${t('txt_txt_play_off_bracket')}"></details>`;
+  } catch (e) {
+    resultEl.innerHTML = '';
+    msgEl.textContent = e.message;
+    msgEl.classList.remove('hidden');
+  }
 }
 
 /** Build the collapsible Play-offs Schema card HTML. */
@@ -2041,7 +2175,7 @@ let currentTournamentName = null;
 let _tournamentMeta = {};
 let _openTournaments = [];  // [{id, type, name}] for quick-switch chips
 let _totalPts = 0;  // set per Mexicano tournament for auto-fill
-let _gpScoreMode = { 'gp-group': 'points', 'gp-playoff': 'points', 'mex-playoff': 'points' };
+let _gpScoreMode = { 'gp-group': 'points', 'gp-playoff': 'points', 'mex-playoff': 'points', 'po-playoff': 'points' };
 let _mexPlayers = [];  // [{id, name}] for manual editor
 let _mexBreakdowns = {};  // {match_id: {player_id: {raw, strength_mult, loss_disc, win_bonus, final}}}
 let _mexPlayerMap = {};  // {player_id: player_name}
@@ -2050,6 +2184,7 @@ let _mexTeamMode = false;  // true when each participant is a pre-formed pair
 function _refreshCurrentView() {
   if (!currentTid) return;
   if (currentType === 'group_playoff') renderGP();
+  else if (currentType === 'playoff') renderPO();
   else renderMex();
 }
 
@@ -2131,6 +2266,7 @@ function openTournament(id, type, name = null) {
   updateActiveTournamentUI();
   setActiveTab('view');
   if (type === 'group_playoff') renderGP();
+  else if (type === 'playoff') renderPO();
   else renderMex();
 }
 
@@ -2139,13 +2275,14 @@ const _DEFAULTS = {
   team:       ['Alice & Bob', 'Charlie & Diana', 'Eve & Frank', 'Grace & Hank'],
   individual: ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace', 'Hank'],
 };
-// gp defaults to team mode; mex defaults to individual mode
-const _entryMode = { gp: 'team', mex: 'individual' };
+// gp defaults to team mode; mex defaults to individual mode; po always team
+const _entryMode = { gp: 'team', mex: 'individual', po: 'team' };
 const _participantEntries = {
   gp:  [..._DEFAULTS.team],
   mex: [..._DEFAULTS.individual],
+  po:  [..._DEFAULTS.team],
 };
-const _participantPasteMode = { gp: false, mex: false };
+const _participantPasteMode = { gp: false, mex: false, po: false };
 
 function _entryModeIsTeam(mode) { return _entryMode[mode] === 'team'; }
 
@@ -2375,8 +2512,10 @@ function getGroupNames() {
 function _initParticipantFields() {
   renderParticipantFields('gp');
   renderParticipantFields('mex');
+  renderParticipantFields('po');
   renderCourtInputs('gp');
   renderCourtInputs('mex');
+  renderCourtInputs('po');
   renderGroupInputs();
 }
 
@@ -2420,6 +2559,23 @@ async function createMex() {
     };
     const res = await api('/api/tournaments/mexicano', { method: 'POST', body: JSON.stringify(body) });
     openTournament(res.id, 'mexicano', body.name || t('txt_txt_mexicano_tournament'));
+  } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
+}
+
+// ─── Create Playoff-only ──────────────────────────────────
+async function createPO() {
+  const msg = document.getElementById('po-msg');
+  try {
+    const body = {
+      name: document.getElementById('po-name').value,
+      participant_names: getParticipantNames('po'),
+      court_names: getCourtNames('po'),
+      team_mode: true,
+      double_elimination: document.getElementById('po-double-elim').checked,
+      public: document.getElementById('po-public').checked,
+    };
+    const res = await api('/api/tournaments/playoff', { method: 'POST', body: JSON.stringify(body) });
+    openTournament(res.id, 'playoff', body.name || t('txt_txt_play_off_only_tournament'));
   } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
 }
 
@@ -2546,6 +2702,61 @@ async function renderGP() {
       }
       html += `</div>`;
     }
+
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+}
+
+// ─── Render Standalone Playoff ────────────────────────────
+async function renderPO() {
+  _totalPts = 0;
+  const el = document.getElementById('view-content');
+  try {
+    const [status, playoffs, tvSettings] = await Promise.all([
+      api(`/api/tournaments/${currentTid}/po/status`),
+      api(`/api/tournaments/${currentTid}/po/playoffs`),
+      api(`/api/tournaments/${currentTid}/tv-settings`).catch(() => ({})),
+    ]);
+
+    let html = '';
+    html += _renderTvControls(tvSettings);
+
+    if (status.champion) {
+      html += `<div class="alert alert-success">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
+    }
+
+    if (status.phase === 'finished') {
+      html += `<div class="card">`;
+      html += `<h3>${t('txt_txt_export_outcome')}</h3>`;
+      html += `<label class="switch-label"><input type="checkbox" id="export-include-history" checked><span class="switch-track"></span>${t('txt_txt_include_match_history')}</label>`;
+      html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem">`;
+      html += `<button type="button" class="btn btn-primary" onclick="exportTournamentOutcome('html')">${t('txt_txt_export_html')}</button>`;
+      html += `<button type="button" class="btn" style="background:var(--border);color:var(--text)" onclick="exportTournamentOutcome('pdf')">${t('txt_txt_export_pdf')}</button>`;
+      html += `</div>`;
+      html += `</div>`;
+    }
+
+    const pending = _sortTbdLast((playoffs.pending || []).filter(m => m.status !== 'completed'));
+    html += _renderCourtAssignmentsCard(pending, t('txt_txt_court_assignments_play_offs'));
+
+    html += _schemaCardHtml('po-playoff-schema', t('txt_txt_play_off_bracket'), 'generatePoPlayoffSchema');
+
+    html += `<div class="card"><h2>${t('txt_txt_play_offs')}</h2>`;
+    html += `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem">`;
+    html += `<span style="font-size:0.82rem;color:var(--text-muted)">${t('txt_txt_score_format')}:</span>`;
+    html += `<div class="score-mode-toggle">`;
+    html += `<button type="button" class="${_gpScoreMode['po-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('po-playoff','points')">${t('txt_txt_points_label')}</button>`;
+    html += `<button type="button" class="${_gpScoreMode['po-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('po-playoff','sets')">🎾 ${t('txt_txt_sets')}</button>`;
+    html += `</div></div>`;
+    html += `<details class="bracket-collapse" open style="margin:0.5rem 0"><summary style="cursor:pointer;user-select:none;font-size:0.82rem;color:var(--text-muted);padding:0.2rem 0;list-style:none;display:flex;align-items:center;gap:0.35rem"><span class="bracket-chevron" style="display:inline-block;transition:transform 0.15s">▶</span>${t('txt_txt_play_off_bracket')}</summary>`;
+    html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/po/playoffs-schema?fmt=png&_t=${Date.now()}" alt="${t('txt_txt_play_off_bracket')}" onerror="this.style.display='none'">`;
+    html += `</details>`;
+    if (playoffs.matches) {
+      for (const m of _sortTbdLast(playoffs.matches)) {
+        html += matchRow(m, 'po-playoff');
+      }
+    }
+    html += `</div>`;
 
     el.innerHTML = html;
   } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
@@ -2763,7 +2974,7 @@ function _renderTennisSetInputs(matchId, numSets) {
 async function _setStageScoreMode(ctx, mode) {
   if (!(ctx in _gpScoreMode)) return;
   _gpScoreMode[ctx] = mode;
-  if (currentType === 'group_playoff' || currentType === 'mexicano') {
+  if (currentType === 'group_playoff' || currentType === 'mexicano' || currentType === 'playoff') {
     await _rerenderCurrentViewPreserveDrafts();
   }
 }
