@@ -44,6 +44,7 @@
   h3 { font-size: 1rem; margin: 0.75rem 0 0.5rem; }
 
   .container { max-width: 900px; margin: 0 auto; }
+  body.login-dialog-open .container { filter: blur(3px); pointer-events: none; transition: filter 0.15s; }
 
   /* Tabs */
   .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
@@ -1532,9 +1533,12 @@
 <div id="abbrev-popup" role="tooltip"></div>
 
 <!-- Authentication Dialog -->
-<div id="auth-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9998"></div>
+<div id="auth-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9998" onclick="hideLoginDialog()"></div>
 <div id="auth-dialog" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:2px solid var(--border);border-radius:12px;padding:2rem;width:min(400px, calc(100vw - 2rem));z-index:9999;box-shadow:0 10px 40px rgba(0,0,0,0.5)">
-  <h2 style="margin-bottom:1rem;text-align:center;color:var(--accent)">🔐 <span data-i18n="txt_txt_login_required">Login Required</span></h2>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+    <h2 style="margin:0;color:var(--accent)">🔐 <span data-i18n="txt_txt_login_required">Login Required</span></h2>
+    <button type="button" onclick="hideLoginDialog()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-muted);line-height:1">✕</button>
+  </div>
   <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1.2rem;text-align:center" data-i18n="txt_txt_please_log_in_to_create_or_modify_tournaments">Please log in to create or modify tournaments</p>
   <form onsubmit="handleLogin(event)">
     <div style="margin-bottom:0.8rem">
@@ -1646,14 +1650,18 @@ function setActiveTab(tabName) {
     document.querySelectorAll('.tournament-chip').forEach(b => b.classList.remove('active'));
     const btn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
     if (btn) btn.classList.add('active');
-    if (tabName === 'home') loadTournaments();
+    if (tabName === 'home' && isAuthenticated()) loadTournaments();
   }
 }
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     if (btn.disabled) return;
-    setActiveTab(btn.dataset.tab);
+    const tab = btn.dataset.tab;
+    setActiveTab(tab);
+    if (!isAuthenticated() && (tab === 'home' || tab === 'create')) {
+      showLoginDialog();
+    }
   });
 });
 
@@ -4452,7 +4460,11 @@ document.addEventListener('DOMContentLoaded', () => {
   _initParticipantFields();
   initAuth();
   initPersistedForms();
-  loadTournaments();
+  if (!isAuthenticated()) {
+    setActiveTab('info');
+  } else {
+    loadTournaments();
+  }
 });
 
 </script>

@@ -191,6 +191,7 @@ function showLoginDialog() {
     if (dialog && overlay) {
       overlay.style.display = 'block';
       dialog.style.display = 'block';
+      document.body.classList.add('login-dialog-open');
       // Focus username input
       const usernameInput = document.getElementById('auth-username');
       if (usernameInput) usernameInput.focus();
@@ -207,6 +208,7 @@ function hideLoginDialog() {
   if (dialog && overlay) {
     overlay.style.display = 'none';
     dialog.style.display = 'none';
+    document.body.classList.remove('login-dialog-open');
   }
   // Clear inputs
   const usernameInput = document.getElementById('auth-username');
@@ -215,6 +217,10 @@ function hideLoginDialog() {
   if (usernameInput) usernameInput.value = '';
   if (passwordInput) passwordInput.value = '';
   if (errorDiv) errorDiv.textContent = '';
+  // If the user dismissed without logging in, redirect to the info tab
+  if (!isAuthenticated() && typeof setActiveTab === 'function') {
+    setActiveTab('info');
+  }
 }
 
 /**
