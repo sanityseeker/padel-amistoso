@@ -18,6 +18,7 @@ class CreateGroupPlayoffRequest(BaseModel):
     group_names: list[str] = []
     top_per_group: int = Field(default=2, ge=1)
     double_elimination: bool = False
+    public: bool = True
 
     @field_validator("player_names")
     @classmethod
@@ -46,6 +47,7 @@ class CreateMexicanoRequest(BaseModel):
     strength_weight: float = Field(default=0.0, ge=0.0, le=1.0)
     loss_discount: float = Field(default=1.0, ge=0.0, le=1.0)
     balance_tolerance: float = Field(default=0.2, ge=0.0)
+    public: bool = True
 
     @field_validator("player_names")
     @classmethod
@@ -104,6 +106,12 @@ class SetAliasRequest(BaseModel):
     """Set a human-friendly alias for a tournament (used in TV URLs)."""
 
     alias: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
+
+
+class SetPublicRequest(BaseModel):
+    """Toggle whether a tournament is publicly listed for guests."""
+
+    public: bool
 
 
 class RecordScoreRequest(BaseModel):

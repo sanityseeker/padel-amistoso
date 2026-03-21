@@ -19,6 +19,7 @@ from .helpers import (
     _tennis_sets_to_scores,
     _build_match_labels,
     _schema_image_response,
+    _require_owner_or_admin,
 )
 from .schemas import (
     CreateGroupPlayoffRequest,
@@ -26,7 +27,7 @@ from .schemas import (
     RecordTennisScoreRequest,
     StartGroupPlayoffsRequest,
 )
-from .state import _next_id, _save_state, _tournaments
+from .state import _next_id, _save_tournament, _tournaments
 
 router = APIRouter(prefix="/api/tournaments", tags=["group-playoff"])
 
@@ -34,7 +35,8 @@ _GP = TournamentType.GROUP_PLAYOFF.value
 
 
 @router.post("/group-playoff")
-async def create_group_playoff(req: CreateGroupPlayoffRequest, _user=Depends(get_current_user)) -> dict:
+async def create_group_playoff(req: CreateGroupPlayoffRequest, user=Depends(get_current_user)) -> dict:
+    """Create a new Group+Playoff tournament and generate the first group-stage matches."""
     players = [Player(name=n) for n in req.player_names]
     courts = [Court(name=n) for n in req.court_names]
 
@@ -54,13 +56,16 @@ async def create_group_playoff(req: CreateGroupPlayoffRequest, _user=Depends(get
         "name": req.name,
         "type": TournamentType.GROUP_PLAYOFF.value,
         "tournament": t,
+        "owner": user.username,
+        "public": req.public,
     }
-    _save_state()
+    _save_tournament(tid)
     return {"id": tid, "phase": t.phase}
 
 
 @router.get("/{tid}/gp/status")
 async def gp_status(tid: str) -> dict:
+    """Return high-level status (phase, number of groups, team mode, champion) for a GP tournament."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     return {
         "phase": t.phase,
@@ -72,6 +77,7 @@ async def gp_status(tid: str) -> dict:
 
 @router.get("/{tid}/gp/groups")
 async def gp_groups(tid: str) -> dict:
+    """Return standings, all matches for each group, and whether more rounds can be generated."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     return {
         "standings": t.group_standings(),
@@ -81,20 +87,23 @@ async def gp_groups(tid: str) -> dict:
 
 
 @router.post("/{tid}/gp/record-group")
-async def gp_record_group(tid: str, req: RecordScoreRequest, _user=Depends(get_current_user)) -> dict:
+async def gp_record_group(tid: str, req: RecordScoreRequest, user=Depends(get_current_user)) -> dict:
+    """Record a raw-score result for a group-stage match."""
+    _require_owner_or_admin(tid, user)
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     try:
         t.record_group_result(req.match_id, (req.score1, req.score2))
     except (KeyError, RuntimeError) as e:
         raise HTTPException(400, str(e))
-    _save_state()
+    _save_tournament(tid)
     return {"ok": True}
 
 
 @router.post("/{tid}/gp/record-group-tennis")
-async def gp_record_group_tennis(tid: str, req: RecordTennisScoreRequest, _user=Depends(get_current_user)) -> dict:
+async def gp_record_group_tennis(tid: str, req: RecordTennisScoreRequest, user=Depends(get_current_user)) -> dict:
     """Record a group match using tennis-style set scores.
     Score = sum of game differences across all sets."""
+    _require_owner_or_admin(tid, user)
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     total1, total2, sets_tuples, third_set_decided = _tennis_sets_to_scores(req.sets)
     try:
@@ -106,7 +115,7 @@ async def gp_record_group_tennis(tid: str, req: RecordTennisScoreRequest, _user=
         )
     except (KeyError, RuntimeError) as e:
         raise HTTPException(400, str(e))
-    _save_state()
+    _save_tournament(tid)
     return {
         "ok": True,
         "score": [total1, total2],
@@ -116,18 +125,19 @@ async def gp_record_group_tennis(tid: str, req: RecordTennisScoreRequest, _user=
 
 
 @router.post("/{tid}/gp/next-group-round")
-async def gp_next_group_round(tid: str, _user=Depends(get_current_user)) -> dict:
+async def gp_next_group_round(tid: str, user=Depends(get_current_user)) -> dict:
     """Generate the next round of group-stage matches (individual mode only).
 
     Requires all current-round matches to be completed so cumulative scores
     can be used for opponent selection.
     """
+    _require_owner_or_admin(tid, user)
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     try:
         new_matches = t.generate_next_group_round()
     except RuntimeError as e:
         raise HTTPException(400, str(e))
-    _save_state()
+    _save_tournament(tid)
     return {
         "matches": [_serialize_match(m) for m in new_matches],
         "has_more_rounds": t.has_more_group_rounds,
@@ -145,8 +155,10 @@ async def gp_recommend_playoffs(tid: str) -> dict:
 async def gp_start_playoffs(
     tid: str,
     req: StartGroupPlayoffsRequest = StartGroupPlayoffsRequest(),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ) -> dict:
+    """Seed the play-off bracket from group standings and transition to the playoffs phase."""
+    _require_owner_or_admin(tid, user)
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     try:
         t.start_playoffs(
@@ -156,12 +168,13 @@ async def gp_start_playoffs(
         )
     except (RuntimeError, KeyError, ValueError) as e:
         raise HTTPException(400, str(e))
-    _save_state()
+    _save_tournament(tid)
     return {"phase": t.phase}
 
 
 @router.get("/{tid}/gp/playoffs")
 async def gp_playoffs(tid: str) -> dict:
+    """Return all play-off matches, pending matches, and the champion (if decided)."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     return {
         "matches": [_serialize_match(m) for m in t.playoff_matches()],
@@ -181,6 +194,7 @@ async def gp_playoffs_schema(
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(1.0, ge=0.5, le=3.0),
 ) -> Response:
+    """Generate a schema image/document for the active Group+Playoff bracket."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     if t.playoff_bracket is None:
         raise HTTPException(400, "Play-offs have not started")
@@ -205,26 +219,29 @@ async def gp_playoffs_schema(
 
 
 @router.post("/{tid}/gp/record-playoff")
-async def gp_record_playoff(tid: str, req: RecordScoreRequest, _user=Depends(get_current_user)) -> dict:
+async def gp_record_playoff(tid: str, req: RecordScoreRequest, user=Depends(get_current_user)) -> dict:
+    """Record a raw-score result for a play-off match."""
+    _require_owner_or_admin(tid, user)
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     try:
         t.record_playoff_result(req.match_id, (req.score1, req.score2))
     except (KeyError, RuntimeError, ValueError) as e:
         raise HTTPException(400, str(e))
-    _save_state()
+    _save_tournament(tid)
     return {"ok": True, "phase": t.phase}
 
 
 @router.post("/{tid}/gp/record-playoff-tennis")
-async def gp_record_playoff_tennis(tid: str, req: RecordTennisScoreRequest, _user=Depends(get_current_user)) -> dict:
+async def gp_record_playoff_tennis(tid: str, req: RecordTennisScoreRequest, user=Depends(get_current_user)) -> dict:
     """Record a playoff match using tennis-style set scores."""
+    _require_owner_or_admin(tid, user)
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
     try:
         t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)
     except (KeyError, RuntimeError, ValueError) as e:
         raise HTTPException(400, str(e))
-    _save_state()
+    _save_tournament(tid)
     return {
         "ok": True,
         "phase": t.phase,

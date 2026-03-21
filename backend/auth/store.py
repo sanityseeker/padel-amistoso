@@ -1,27 +1,20 @@
 """
-Persistent user store.
+Persistent user store backed by SQLite.
 
-Uses the same pickle-based approach as the tournament store, but in a
-separate file to keep auth data isolated.
+Users are stored in the ``users`` table of the shared ``padel.db`` database.
+The in-memory dict (``self._users``) is the hot-path read cache; every write
+goes to both the cache and the database immediately.
 """
 
 from __future__ import annotations
 
-import pickle
-
-from ..config import DATA_DIR
-from .models import User
+from ..api.db import get_db
+from .models import User, UserRole
 from .security import hash_password, verify_password
-
-# ────────────────────────────────────────────────────────────────────────────
-# Storage
-# ────────────────────────────────────────────────────────────────────────────
-
-_USERS_FILE = DATA_DIR / "users.pkl"
 
 
 class UserStore:
-    """In-memory user store with pickle persistence."""
+    """In-memory user store with SQLite persistence."""
 
     def __init__(self) -> None:
         self._users: dict[str, User] = {}
@@ -29,27 +22,40 @@ class UserStore:
     # ── Persistence ────────────────────────────────────────
 
     def load(self) -> None:
-        """Load users from disk. Silently skips if file is missing."""
-        if not _USERS_FILE.exists():
-            return
+        """Load all users from the SQLite ``users`` table into memory."""
         try:
-            with _USERS_FILE.open("rb") as f:
-                data = pickle.load(f)  # noqa: S301
-            self._users = data.get("users", {})
-            print(f"[auth] Loaded {len(self._users)} user(s) from {_USERS_FILE}")
+            with get_db() as conn:
+                rows = conn.execute("SELECT username, password_hash, role, disabled FROM users").fetchall()
+            for row in rows:
+                user = User(
+                    username=row["username"],
+                    password_hash=row["password_hash"],
+                    role=UserRole(row["role"]),
+                    disabled=bool(row["disabled"]),
+                )
+                self._users[user.username] = user
+            print(f"[auth] Loaded {len(self._users)} user(s) from SQLite")
         except Exception as exc:  # noqa: BLE001
             print(f"[auth] Could not load users (starting fresh): {exc}")
 
-    def _save(self) -> None:
-        """Persist users to disk (atomic write)."""
+    def _save_user(self, user: User) -> None:
+        """Upsert a single user row in SQLite."""
         try:
-            DATA_DIR.mkdir(parents=True, exist_ok=True)
-            tmp = _USERS_FILE.with_suffix(".tmp")
-            with tmp.open("wb") as f:
-                pickle.dump({"users": self._users}, f, protocol=pickle.HIGHEST_PROTOCOL)
-            tmp.replace(_USERS_FILE)
+            with get_db() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO users (username, password_hash, role, disabled) VALUES (?, ?, ?, ?)",
+                    (user.username, user.password_hash, user.role.value, int(user.disabled)),
+                )
         except Exception as exc:  # noqa: BLE001
-            print(f"[auth] Could not save users: {exc}")
+            print(f"[auth] Could not save user {user.username}: {exc}")
+
+    def _remove_user(self, username: str) -> None:
+        """Delete a user row from SQLite."""
+        try:
+            with get_db() as conn:
+                conn.execute("DELETE FROM users WHERE username = ?", (username,))
+        except Exception as exc:  # noqa: BLE001
+            print(f"[auth] Could not delete user {username}: {exc}")
 
     # ── Bootstrap ──────────────────────────────────────────
 
@@ -60,7 +66,7 @@ class UserStore:
         """
         if self._users:
             return False
-        self.create_user("admin", "admin")
+        self.create_user("admin", "admin", role=UserRole.ADMIN)
         print("[auth] Created default admin user (username=admin, password=admin) — change it!")
         return True
 
@@ -74,13 +80,13 @@ class UserStore:
         """Return all users (sorted by username)."""
         return sorted(self._users.values(), key=lambda u: u.username)
 
-    def create_user(self, username: str, password: str) -> User:
-        """Create a new user. Raises ``ValueError`` if username is taken."""
+    def create_user(self, username: str, password: str, role: UserRole = UserRole.USER) -> User:
+        """Create a new user with the given role. Raises ``ValueError`` if username is taken."""
         if username in self._users:
             raise ValueError(f"User '{username}' already exists")
-        user = User(username=username, password_hash=hash_password(password))
+        user = User(username=username, password_hash=hash_password(password), role=role)
         self._users[username] = user
-        self._save()
+        self._save_user(user)
         return user
 
     def delete_user(self, username: str) -> None:
@@ -88,7 +94,7 @@ class UserStore:
         if username not in self._users:
             raise KeyError(f"User '{username}' not found")
         del self._users[username]
-        self._save()
+        self._remove_user(username)
 
     def change_password(self, username: str, new_password: str) -> None:
         """Update a user's password. Raises ``KeyError`` if not found."""
@@ -96,7 +102,7 @@ class UserStore:
         if user is None:
             raise KeyError(f"User '{username}' not found")
         user.password_hash = hash_password(new_password)
-        self._save()
+        self._save_user(user)
 
     def authenticate(self, username: str, password: str) -> User | None:
         """Return the user if credentials are valid, else None."""

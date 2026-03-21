@@ -1,28 +1,32 @@
 """
-In-memory tournament store and pickle-based persistence.
+In-memory tournament store with SQLite persistence.
 
 Every route module imports from here to access the shared state.
 
-The data directory can be overridden with the ``PADEL_DATA_DIR`` environment
-variable, which lets you run multiple independent instances on different ports
-without them sharing or overwriting each other's state:
+The database path is controlled by the ``PADEL_DATA_DIR`` environment variable
+(see ``backend.config``).  Run two independent instances like this:
 
     PADEL_DATA_DIR=data/instance_a uv run uvicorn backend.api:app --port 8000
     PADEL_DATA_DIR=data/instance_b uv run uvicorn backend.api:app --port 8001
 
-Safety guarantees:
-  - Writes use atomic tmp → rename so a crash mid-save never corrupts the file.
-  - A file lock (``padel.lock``) prevents two processes from using the same
-    data directory simultaneously.
+Safety guarantees
+-----------------
+- Each tournament is an independent SQLite row; saving one never rewrites any
+  other tournament's data.
+- SQLite WAL mode allows concurrent reads while a write is in progress.
+- An ``asyncio.Lock`` serialises concurrent write requests within the same
+  process so no two coroutines can interleave a read-modify-save sequence.
+- SQLite's own file locking prevents data corruption if two processes
+  somehow target the same database (second writer will block, not corrupt).
 """
 
 from __future__ import annotations
 
-import fcntl
-import os
+import asyncio
+import json
 import pickle
 
-from ..config import DATA_DIR
+from .db import get_db
 
 # ────────────────────────────────────────────────────────────────────────────
 # Store
@@ -30,102 +34,132 @@ from ..config import DATA_DIR
 
 _tournaments: dict[str, dict] = {}
 _counter: int = 0
-_state_version: int = 0  # bumped on every _save_state() call; used by TV "on-update" mode
 
-STATE_FILE = DATA_DIR / "tournaments.pkl"
-_LOCK_FILE = DATA_DIR / "padel.lock"
-_lock_fd = None  # held for the lifetime of the process
+# Per-tournament version counters — bumped on every _save_tournament() call.
+# The TV display polls /{tid}/version cheaply and reloads only on change.
+_tournament_versions: dict[str, int] = {}
+
+# Global version — incremented by any mutation.  Used by /api/version so the
+# TV tournament picker can detect new/deleted tournaments without fetching the
+# full list every tick.
+_state_version: int = 0
+
+# Single asyncio lock that serialises all state mutations in this process.
+state_lock: asyncio.Lock = asyncio.Lock()
 
 
 def _next_id() -> str:
+    """Return the next sequential tournament ID (e.g. ``t3``)."""
     global _counter
     _counter += 1
     return f"t{_counter}"
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Directory lock
+# Persistence — per-tournament granularity
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def _acquire_lock() -> None:
-    """Acquire an exclusive file lock on the data directory.
+def _save_tournament(tid: str) -> None:
+    """Persist a single tournament row to SQLite (upsert).
 
-    Prevents two server processes from accidentally using the same
-    ``PADEL_DATA_DIR``, which would cause them to silently overwrite
-    each other's state.
-
-    The lock is held until the process exits (or ``_release_lock`` is
-    called explicitly).
+    Only the named tournament is written; all other rows are untouched.
+    Errors are logged but never raised — a failed save should not abort the
+    HTTP response that triggered it.
     """
-    global _lock_fd
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    _lock_fd = _LOCK_FILE.open("w")
-    try:
-        fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        _lock_fd.write(f"pid={os.getpid()}\n")
-        _lock_fd.flush()
-    except OSError:
-        _lock_fd.close()
-        _lock_fd = None
-        raise RuntimeError(
-            f"Another process is already using data directory: {DATA_DIR}\n"
-            f"Set PADEL_DATA_DIR to a different path for each instance."
-        )
-
-
-def _release_lock() -> None:
-    """Release the directory lock (called on shutdown)."""
-    global _lock_fd
-    if _lock_fd is not None:
-        try:
-            fcntl.flock(_lock_fd, fcntl.LOCK_UN)
-            _lock_fd.close()
-        except OSError:
-            pass
-        _lock_fd = None
-
-
-# ────────────────────────────────────────────────────────────────────────────
-# Persistence
-# ────────────────────────────────────────────────────────────────────────────
-
-
-def _save_state() -> None:
-    """Persist the full tournament store to disk (best-effort, atomic write)."""
     global _state_version
     _state_version += 1
+
+    version = _tournament_versions.get(tid, 0) + 1
+    _tournament_versions[tid] = version
+
+    data = _tournaments[tid]
     try:
-        DATA_DIR.mkdir(exist_ok=True)
-        tmp = STATE_FILE.with_suffix(".tmp")
-        with tmp.open("wb") as f:
-            pickle.dump(
-                {"tournaments": _tournaments, "counter": _counter},
-                f,
-                protocol=pickle.HIGHEST_PROTOCOL,
+        blob = pickle.dumps(data["tournament"], protocol=pickle.HIGHEST_PROTOCOL)
+        tv_raw = json.dumps(data["tv_settings"]) if data.get("tv_settings") else None
+        with get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO tournaments
+                    (id, name, type, owner, public, alias, tv_settings, tournament_blob, version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name            = excluded.name,
+                    public          = excluded.public,
+                    alias           = excluded.alias,
+                    tv_settings     = excluded.tv_settings,
+                    tournament_blob = excluded.tournament_blob,
+                    version         = excluded.version
+                """,
+                (
+                    tid,
+                    data["name"],
+                    data["type"],
+                    data.get("owner", ""),
+                    int(data.get("public", True)),
+                    data.get("alias"),
+                    tv_raw,
+                    blob,
+                    version,
+                ),
             )
-        tmp.replace(STATE_FILE)  # atomic on POSIX
     except Exception as exc:  # noqa: BLE001
-        print(f"[warn] Could not save state: {exc}")
+        print(f"[warn] Could not save tournament {tid}: {exc}")
+
+
+def _delete_tournament(tid: str) -> None:
+    """Remove a tournament row from SQLite.
+
+    Errors are logged but never raised.
+    """
+    global _state_version
+    _state_version += 1
+    _tournament_versions.pop(tid, None)
+    try:
+        with get_db() as conn:
+            conn.execute("DELETE FROM tournaments WHERE id = ?", (tid,))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[warn] Could not delete tournament {tid}: {exc}")
 
 
 def _load_state() -> None:
-    """Restore tournament store from disk on startup, silently skip if missing.
+    """Restore all tournaments from SQLite on startup.
 
-    Also acquires the directory lock — will raise ``RuntimeError`` if another
-    process already owns the same data directory.
+    Rows whose BLOB cannot be deserialised (e.g. after a schema-breaking code
+    change) are skipped with a warning rather than crashing the server.
     """
-    global _tournaments, _counter
+    global _counter
 
-    _acquire_lock()
-
-    if not STATE_FILE.exists():
-        return
     try:
-        with STATE_FILE.open("rb") as f:
-            saved = pickle.load(f)  # noqa: S301
-        _tournaments.update(saved["tournaments"])
-        _counter = saved["counter"]
-        print(f"[info] Loaded {len(_tournaments)} tournament(s) from {STATE_FILE}")
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT id, name, type, owner, public, alias, tv_settings, tournament_blob, version FROM tournaments"
+            ).fetchall()
     except Exception as exc:  # noqa: BLE001
-        print(f"[warn] Could not load saved state (starting fresh): {exc}")
+        print(f"[warn] Could not load state (starting fresh): {exc}")
+        return
+
+    for row in rows:
+        tid = row["id"]
+        try:
+            tournament = pickle.loads(row["tournament_blob"])  # noqa: S301
+        except Exception as exc:  # noqa: BLE001
+            print(f"[warn] Could not deserialise tournament {tid}, skipping: {exc}")
+            continue
+
+        _tournaments[tid] = {
+            "name": row["name"],
+            "type": row["type"],
+            "owner": row["owner"],
+            "public": bool(row["public"]),
+            "alias": row["alias"],
+            "tv_settings": json.loads(row["tv_settings"]) if row["tv_settings"] else None,
+            "tournament": tournament,
+        }
+        _tournament_versions[tid] = row["version"]
+
+        # Keep the in-memory counter ahead of the highest persisted ID.
+        if tid.startswith("t") and tid[1:].isdigit():
+            _counter = max(_counter, int(tid[1:]))
+
+    print(f"[info] Loaded {len(_tournaments)} tournament(s) from SQLite")

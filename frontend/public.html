@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title data-i18n="txt_txt_padel_tv">Padel TV</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#3b82f6">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');</script>
 <style>
   :root {
     --bg: #0b1220;
@@ -704,6 +708,7 @@ let _tvPlayerMap = {}; // {player_id: player_name}
 let _sectionOpenState = {}; // {data-tv-key: boolean} — persisted across refreshes
 let _lastKnownVersion = null; // for on-update mode
 let _versionPollTimer = null; // setInterval handle for version polling
+let _pickerPollTimer = null;  // setInterval handle for picker auto-refresh
 
 // ── API ───────────────────────────────────────────────────
 async function api(path) {
@@ -735,6 +740,7 @@ function _applyOpenState() {
 function _stopAllSchedules() {
   if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null; }
   if (_versionPollTimer) { clearInterval(_versionPollTimer); _versionPollTimer = null; }
+  if (_pickerPollTimer) { clearInterval(_pickerPollTimer); _pickerPollTimer = null; }
 }
 
 function _updateCountdownEl(text) {
@@ -793,9 +799,9 @@ async function loadTV() {
       return;
     }
 
-    // Resolve tournament type from list
-    const list = await api('/api/tournaments');
-    const meta = list.find(entry => entry.id === TID);
+    // Resolve tournament metadata — use /meta endpoint so private tournaments
+    // are still accessible when reached by alias or direct ID.
+    const meta = await api(`/api/tournaments/${TID}/meta`);
     if (!meta) {
       document.getElementById('tv-root').innerHTML =
         `<div class="tv-error">${t('txt_txt_tournament_not_found_value', { value: esc(TID) })}</div>`;
@@ -1268,10 +1274,7 @@ async function _resolveAlias() {
   return true;
 }
 
-async function _showPicker() {
-  let tournaments = [];
-  try { tournaments = await api('/api/tournaments'); } catch (_) {}
-
+function _renderPickerHtml(tournaments) {
   const langToggle = _languageToggleMeta();
   let html = `<div class="tv-picker">`;
   html += `<div style="display:flex;justify-content:flex-end;gap:0.45rem;margin-bottom:0.75rem">`;
@@ -1304,6 +1307,33 @@ async function _showPicker() {
   html += `</div>`;
 
   document.getElementById('tv-root').innerHTML = html;
+}
+
+async function _showPicker() {
+  let tournaments = [];
+  try { tournaments = await api('/api/tournaments'); } catch (_) {}
+  _renderPickerHtml(tournaments);
+
+  // Poll /api/version every 2 s (lightweight). Re-fetch + re-render only when
+  // the version changes, so visibility/creation changes appear within ~2 s.
+  if (_pickerPollTimer) return; // already running — don't stack timers
+  let _pickerVersion = null;
+  try {
+    const vd = await fetch('/api/version').then(r => r.json());
+    _pickerVersion = vd.version;
+  } catch (_) {}
+
+  _pickerPollTimer = setInterval(async () => {
+    try {
+      const vd = await fetch('/api/version').then(r => r.json());
+      if (_pickerVersion !== null && vd.version !== _pickerVersion) {
+        let list = [];
+        try { list = await api('/api/tournaments'); } catch (_) {}
+        _renderPickerHtml(list);
+      }
+      _pickerVersion = vd.version;
+    } catch (_) { /* network blip — ignore */ }
+  }, 2000);
 }
 
 function _backToTournaments() {

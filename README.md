@@ -80,7 +80,7 @@ configured in the **Admin → TV Settings** panel:
   interval (1 s – 10 min)
 - Adjust schema rendering: box scale, line width, arrow scale, title font scale
 
-The TV view is served from `frontend/tv.html` and uses the same REST API as
+The TV view is served from `frontend/public.html` and uses the same REST API as
 the main UI.
 
 ### UI preferences persistence
@@ -276,7 +276,7 @@ All user management endpoints require authentication and are admin-only.
 - JWT tokens are signed with **HS256**
 - The JWT secret is read from `PADEL_JWT_SECRET` environment variable, or
   auto-generated and persisted to `data/.jwt_secret` on first run
-- User data is stored in `data/users.pkl` (separate from tournament data)
+- User data is stored in `data/padel.db` (same SQLite database as tournaments)
 - For production use:
   - Set a strong `PADEL_JWT_SECRET` via environment variable
   - Change the default admin password immediately
@@ -318,7 +318,7 @@ server automatically whenever you edit Python files.
 ### Stopping and restarting
 
 Press **Ctrl+C** to stop the server. All tournament data is persisted to
-`data/tournaments.pkl` automatically after every score entry, round advance,
+`data/padel.db` (SQLite) automatically after every score entry, round advance,
 or play-off action. When you restart, all tournaments resume exactly where
 they left off — just open the app and click the tournament you were working on.
 
@@ -330,13 +330,13 @@ PADEL_DATA_DIR=/path/to/my/data uv run uvicorn backend.api:app --reload --port 8
 
 If not set, it defaults to `data/` inside the project root.
 
-To **reset all data** (start completely fresh), delete the state file inside
+To **reset all data** (start completely fresh), delete the database file inside
 your data directory:
 
 ```bash
-rm data/tournaments.pkl          # default location
+rm data/padel.db          # default location
 # or
-rm /path/to/my/data/tournaments.pkl
+rm /path/to/my/data/padel.db
 ```
 
 ### Running in a detached screen session
@@ -361,7 +361,7 @@ Useful screen commands:
 ### Running multiple independent instances in parallel
 
 Each server process has its own in-memory state, but by default they all share
-`data/tournaments.pkl`.  To run two (or more) truly isolated instances, point
+`data/padel.db`.  To run two (or more) truly isolated instances, point
 each one at a separate data directory with the `PADEL_DATA_DIR` environment
 variable:
 
@@ -397,7 +397,7 @@ backend/
     routes.py              – Auth endpoints (login, user CRUD)
     schemas.py             – Auth request/response schemas
     security.py            – JWT helpers and password hashing
-    store.py               – User persistence (users.pkl)
+    store.py               – User persistence (SQLite)
   tournaments/             – Tournament logic
     group_stage.py         – Group-stage round-robin logic
     pairing.py             – Shared 2v2 pairing and history utilities
@@ -405,7 +405,7 @@ backend/
     group_playoff.py       – Orchestrator: groups → play-offs
     mexicano.py            – Mexicano tournament engine (+ play-off support)
   api/                     – FastAPI REST API
-    state.py               – In-memory state & pickle persistence
+    state.py               – In-memory state & SQLite persistence
     schemas.py             – Pydantic request/response models
     helpers.py             – Shared serialisation utilities
     routes_crud.py         – List, delete, TV settings, and alias endpoints
@@ -415,11 +415,10 @@ backend/
   viz/                     – Visualisation utilities
     bracket_schema.py      – networkx/matplotlib bracket diagram renderer
 data/
-  tournaments.pkl          – Auto-generated; persists all tournament state
-  users.pkl                – Auto-generated; persists user accounts
+  padel.db                 – Auto-generated; SQLite database (tournaments + users)
 frontend/
   index.html               – Single-page admin UI (vanilla HTML/CSS/JS)
-  tv.html                  – Read-only TV display view
+  public.html              – Read-only TV display view
   auth.js                  – Auth module (login, token storage, API helpers)
   shared.js                – Shared utilities (theme, i18n, HTML escaping)
   i18n.js                  – Internationalisation engine (en/es translations)
@@ -529,7 +528,6 @@ All endpoints requiring authentication accept a JWT token via the `Authorization
 
 ## What's next (iteration ideas)
 
-- Replace pickle with SQLite for proper concurrent-safe persistence
 - Add player-registration / check-in flow
 - WebSocket push for automatic live-table refresh
 - Print-friendly draw sheets

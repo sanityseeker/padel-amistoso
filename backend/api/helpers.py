@@ -10,6 +10,7 @@ from typing import Literal
 from fastapi import HTTPException
 from fastapi.responses import Response
 
+from ..auth.models import User, UserRole
 from ..models import Match
 from .state import _tournaments
 
@@ -49,6 +50,36 @@ def _get_tournament(tid: str, expected_type: str) -> dict:
     if not data or data["type"] != expected_type:
         raise HTTPException(404, "Not found")
     return data
+
+
+def _require_owner_or_admin(tid: str, user: User) -> None:
+    """Raise 403 if *user* neither owns the tournament nor is an admin.
+
+    Call this on any mutating endpoint before performing the action.
+    """
+    data = _tournaments.get(tid)
+    if data is None:
+        raise HTTPException(404, "Tournament not found")
+    if user.role == UserRole.ADMIN:
+        return
+    if data.get("owner") != user.username:
+        raise HTTPException(403, "You do not have permission to modify this tournament")
+
+
+def _check_read_access(tid: str, user: User | None) -> None:
+    """Raise 403 if a guest or regular user should not read this tournament.
+
+    - Admins always have access.
+    - Authenticated owners always have access.
+    - Everyone else (guests or non-owners) can only access public tournaments.
+      Non-public tournaments are still accessible by direct link (ID), so no
+      restriction is applied here for read endpoints — private means only
+      hidden from the listing, not fully locked behind auth.
+    """
+    # This helper intentionally does nothing: private tournaments are
+    # accessible by direct link to anyone (requirement: "access should only
+    # be provided with a link"). Filtering only happens in the list endpoint.
+    return
 
 
 def _tennis_sets_to_scores(

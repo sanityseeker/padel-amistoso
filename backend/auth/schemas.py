@@ -19,6 +19,7 @@ class CreateUserRequest(BaseModel):
 
     username: str = Field(min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
     password: str = Field(min_length=4, max_length=128)
+    role: str | None = Field(default=None, description="'admin' or 'user' (default: 'user')")
 
 
 class ChangePasswordRequest(BaseModel):
@@ -33,6 +34,7 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     username: str
+    role: str
 
 
 class UserResponse(BaseModel):

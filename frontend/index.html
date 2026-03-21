@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title data-i18n="txt_txt_padel_tournament_manager">Padel Tournament Manager</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#3b82f6">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');</script>
 <style>
   :root {
     --bg: #0f172a;
@@ -85,7 +89,7 @@
   .tv-live-dot {
     width: 7px;
     height: 7px;
-    background: var(--red);
+    background: var(--green);
     border-radius: 50%;
     flex-shrink: 0;
     animation: tv-pulse 1.6s ease-in-out infinite;
@@ -1265,6 +1269,10 @@
             <div class="court-names-grid" id="gp-group-names-container"></div>
           </div>
         </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.25rem">
+          <input type="checkbox" id="gp-public" checked style="width:1rem;height:1rem;cursor:pointer">
+          <label for="gp-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
+        </div>
         <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,createGP)" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
         <div id="gp-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
@@ -1356,6 +1364,10 @@
               </div>
             </div>
           </details>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.25rem">
+          <input type="checkbox" id="mex-public" checked style="width:1rem;height:1rem;cursor:pointer">
+          <label for="mex-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
         <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,createMex)" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
         <div id="mex-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
@@ -1539,6 +1551,38 @@
   <p style="margin-top:0.75rem;text-align:center;font-size:0.85rem">
     <a href="/tv" class="btn-tv-live" title="TV view"><span class="tv-live-dot"></span>📺 <span data-i18n="txt_txt_tv_view">TV view</span></a>
   </p>
+</div>
+
+<!-- User Management Modal (admin only) -->
+<div id="user-mgmt-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9998;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border:2px solid var(--border);border-radius:12px;padding:2rem;width:min(480px,calc(100vw - 2rem));max-height:90vh;overflow-y:auto;z-index:9999;box-shadow:0 10px 40px rgba(0,0,0,0.5)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem">
+      <h2 style="margin:0;color:var(--accent)">👥 <span data-i18n="txt_txt_user_management">User Management</span></h2>
+      <button type="button" onclick="hideUserMgmt()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-muted)">✕</button>
+    </div>
+    <ul id="user-mgmt-list" style="list-style:none;margin:0 0 1.25rem;padding:0;border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.75rem;min-height:3rem;max-height:260px;overflow-y:auto"></ul>
+    <form onsubmit="handleCreateUser(event)" style="border-top:1px solid var(--border);padding-top:1rem">
+      <div style="font-weight:600;margin-bottom:0.75rem" data-i18n="txt_txt_create_user">Create User</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:0.6rem">
+        <input id="new-user-username" type="text" placeholder="Username" autocomplete="off" style="padding:0.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
+        <input id="new-user-password" type="password" placeholder="Password" autocomplete="new-password" style="padding:0.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
+      </div>
+      <div style="margin-bottom:0.75rem">
+        <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem" data-i18n="txt_txt_role">Role</div>
+        <div style="display:flex;gap:1.5rem">
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.9rem">
+            <input type="radio" name="new-user-role" value="user" checked style="cursor:pointer"> <span data-i18n="txt_txt_user_role">User</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.9rem">
+            <input type="radio" name="new-user-role" value="admin" style="cursor:pointer"> <span data-i18n="txt_txt_admin_role">Admin</span>
+          </label>
+        </div>
+      </div>
+      <div id="user-mgmt-success" style="color:var(--green);font-size:0.8rem;min-height:1.2rem;margin-bottom:0.25rem"></div>
+      <div id="user-mgmt-error" style="color:var(--red);font-size:0.8rem;min-height:1.2rem;margin-bottom:0.5rem"></div>
+      <button type="submit" id="create-user-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_create_user">Create User</button>
+    </form>
+  </div>
 </div>
 
 <script src="/i18n.js"></script>
@@ -1896,21 +1940,34 @@ async function loadTournaments() {
     const el = document.getElementById('tournament-list');
     const finEl = document.getElementById('finished-tournament-list');
     const finCard = document.getElementById('finished-tournaments-card');
-    if (!list.length) { el.innerHTML = `<em>${t('txt_txt_no_tournaments_yet')}</em>`; finCard.style.display = 'none'; return; }
+    if (!list.length) {
+      el.innerHTML = `<div style="text-align:center;padding:2rem 1rem;color:var(--text-muted)"><div style="font-size:2.2rem;margin-bottom:0.5rem">🏆</div><div style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:0.35rem">${t('txt_txt_no_tournaments_yet')}</div><div style="font-size:0.85rem;margin-bottom:1rem">${t('txt_txt_no_tournaments_hint')}</div><button type="button" class="btn btn-primary btn-sm" onclick="setActiveTab('create')">${t('txt_txt_create_first')}</button></div>`;
+      finCard.style.display = 'none';
+      return;
+    }
     const active = list.filter(tr => tr.phase !== 'finished');
     const finished = list.filter(tr => tr.phase === 'finished');
-    const renderCard = (tournament) => `
+    const renderCard = (tournament) => {
+      const canEdit = isAdmin() || getAuthUsername() === tournament.owner;
+      const visLabel = tournament.public === false
+        ? `<span class="badge" style="background:var(--text-muted);color:#fff">🔒 ${t('txt_txt_private')}</span>`
+        : `<span class="badge" style="background:var(--green);color:#fff">🌍 ${t('txt_txt_public')}</span>`;
+      const actionBtns = canEdit ? `
+        <button type="button" class="btn btn-sm" title="${t('txt_txt_visibility')}" onclick="togglePublic('${tournament.id}',${tournament.public !== false})" style="padding:0.25rem 0.5rem">${tournament.public === false ? '🌍' : '🔒'}</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="deleteTournament('${tournament.id}')">✕</button>
+      ` : '';
+      return `
       <div class="match-card tournament-list-card${tournament.id === currentTid ? ' active-tournament' : ''}">
         <div class="match-teams">
           <a class="tournament-name-link" href="#" onclick="openTournament('${tournament.id}','${tournament.type}');return false">${esc(tournament.name)}</a>
           <span class="badge badge-type">${tournament.team_mode ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode')}</span>
           <span class="badge badge-phase">${_phaseLabel(tournament.phase)}</span>
+          ${visLabel}
         </div>
-        <div class="tournament-actions">
-          <button type="button" class="btn btn-danger btn-sm" onclick="deleteTournament('${tournament.id}')">✕</button>
-        </div>
+        <div class="tournament-actions">${actionBtns}</div>
       </div>
     `;
+    };
     el.innerHTML = active.length ? active.map(renderCard).join('') : `<em>${t('txt_txt_no_tournaments_yet')}</em>`;
     if (finished.length) {
       finCard.style.display = '';
@@ -1935,6 +1992,16 @@ async function deleteTournament(id) {
     updateActiveTournamentUI();
   }
   loadTournaments();
+}
+
+async function togglePublic(id, currentlyPublic) {
+  try {
+    await api(`/api/tournaments/${id}/public`, {
+      method: 'PATCH',
+      body: JSON.stringify({ public: !currentlyPublic }),
+    });
+    loadTournaments();
+  } catch (e) { console.error('togglePublic failed:', e); }
 }
 
 // ─── Open a tournament ────────────────────────────────────
@@ -2293,6 +2360,7 @@ async function createGP() {
       court_names: getCourtNames('gp'),
       num_groups: +document.getElementById('gp-num-groups').value,
       group_names: getGroupNames(),
+      public: document.getElementById('gp-public').checked,
     };
     const res = await api('/api/tournaments/group-playoff', { method: 'POST', body: JSON.stringify(body) });
     openTournament(res.id, 'group_playoff', body.name || t('txt_txt_group_playoff_tournament'));
@@ -2317,6 +2385,7 @@ async function createMex() {
       strength_weight: +document.getElementById('mex-strength-weight').value,
       loss_discount: +document.getElementById('mex-loss-discount').value,
       balance_tolerance: +document.getElementById('mex-balance-tol').value,
+      public: document.getElementById('mex-public').checked,
     };
     const res = await api('/api/tournaments/mexicano', { method: 'POST', body: JSON.stringify(body) });
     openTournament(res.id, 'mexicano', body.name || t('txt_txt_mexicano_tournament'));

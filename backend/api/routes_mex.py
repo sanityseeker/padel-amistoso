@@ -19,6 +19,7 @@ from .helpers import (
     _build_match_labels,
     _tennis_sets_to_scores,
     _schema_image_response,
+    _require_owner_or_admin,
 )
 from .schemas import (
     CreateMexicanoRequest,
@@ -28,7 +29,7 @@ from .schemas import (
     RecordTennisScoreRequest,
     StartMexicanoPlayoffsRequest,
 )
-from .state import _next_id, _save_state, _tournaments
+from .state import _next_id, _save_tournament, _tournaments
 
 router = APIRouter(prefix="/api/tournaments", tags=["mexicano"])
 
@@ -36,7 +37,8 @@ _MEX = TournamentType.MEXICANO.value
 
 
 @router.post("/mexicano")
-async def create_mexicano(req: CreateMexicanoRequest, _user=Depends(get_current_user)) -> dict:
+async def create_mexicano(req: CreateMexicanoRequest, user=Depends(get_current_user)) -> dict:
+    """Create a new Mexicano tournament and generate the first round of matches."""
     players = [Player(name=n) for n in req.player_names]
     courts = [Court(name=n) for n in req.court_names]
 
@@ -63,13 +65,16 @@ async def create_mexicano(req: CreateMexicanoRequest, _user=Depends(get_current_
         "name": req.name,
         "type": TournamentType.MEXICANO.value,
         "tournament": t,
+        "owner": user.username,
+        "public": req.public,
     }
-    _save_state()
+    _save_tournament(tid)
     return {"id": tid, "current_round": t.current_round}
 
 
 @router.get("/{tid}/mex/status")
 async def mex_status(tid: str) -> dict:
+    """Return comprehensive Mexicano tournament status including leaderboard, rounds, and sit-out info."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     return {
         "current_round": t.current_round,
@@ -98,6 +103,7 @@ async def mex_status(tid: str) -> dict:
 
 @router.get("/{tid}/mex/matches")
 async def mex_matches(tid: str) -> dict:
+    """Return current-round matches, all pending matches, and historical match list with breakdowns."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     return {
         "current_round": t.current_round,
@@ -109,13 +115,15 @@ async def mex_matches(tid: str) -> dict:
 
 
 @router.post("/{tid}/mex/record")
-async def mex_record(tid: str, req: RecordScoreRequest, _user=Depends(get_current_user)) -> dict:
+async def mex_record(tid: str, req: RecordScoreRequest, user=Depends(get_current_user)) -> dict:
+    """Record a raw-score result for the current Mexicano match."""
+    _require_owner_or_admin(tid, user)
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     try:
         t.record_result(req.match_id, (req.score1, req.score2))
     except (KeyError, ValueError) as e:
         raise HTTPException(400, str(e))
-    _save_state()
+    _save_tournament(tid)
     breakdown = t.get_match_breakdown(req.match_id)
     return {"ok": True, "breakdown": breakdown}
 
@@ -149,7 +157,9 @@ async def mex_propose_pairings(tid: str, n: int = 3, sit_out_ids: str | None = N
 
 
 @router.post("/{tid}/mex/next-round")
-async def mex_next_round(tid: str, req: NextRoundRequest = NextRoundRequest(), _user=Depends(get_current_user)) -> dict:
+async def mex_next_round(tid: str, req: NextRoundRequest = NextRoundRequest(), user=Depends(get_current_user)) -> dict:
+    """Commit the chosen pairing proposal and generate the next Mexicano round."""
+    _require_owner_or_admin(tid, user)
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     if t.pending_matches():
         raise HTTPException(400, "Current round has unfinished matches")
@@ -157,13 +167,14 @@ async def mex_next_round(tid: str, req: NextRoundRequest = NextRoundRequest(), _
         t.generate_next_round(option_id=req.option_id)
     except (RuntimeError, KeyError) as e:
         raise HTTPException(400, str(e))
-    _save_state()
+    _save_tournament(tid)
     return {"current_round": t.current_round}
 
 
 @router.post("/{tid}/mex/custom-round")
-async def mex_custom_round(tid: str, req: CustomRoundRequest, _user=Depends(get_current_user)) -> dict:
+async def mex_custom_round(tid: str, req: CustomRoundRequest, user=Depends(get_current_user)) -> dict:
     """Commit a manually-specified round with user-defined pairings."""
+    _require_owner_or_admin(tid, user)
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     if t.pending_matches():
         raise HTTPException(400, "Current round has unfinished matches")
@@ -174,7 +185,7 @@ async def mex_custom_round(tid: str, req: CustomRoundRequest, _user=Depends(get_
         )
     except (RuntimeError, ValueError) as e:
         raise HTTPException(400, str(e))
-    _save_state()
+    _save_tournament(tid)
     return {"current_round": t.current_round}
 
 
@@ -186,8 +197,9 @@ async def mex_recommend_playoffs(tid: str, n_teams: int = 4) -> dict:
 
 
 @router.post("/{tid}/mex/start-playoffs")
-async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, _user=Depends(get_current_user)) -> dict:
+async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, user=Depends(get_current_user)) -> dict:
     """Start play-offs after Mexicano rounds are complete."""
+    _require_owner_or_admin(tid, user)
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     try:
         t.start_playoffs(
@@ -198,31 +210,33 @@ async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, _user=
         )
     except (RuntimeError, ValueError, KeyError) as e:
         raise HTTPException(400, str(e))
-    _save_state()
+    _save_tournament(tid)
     return {"phase": t.phase}
 
 
 @router.post("/{tid}/mex/end")
-async def mex_end(tid: str, _user=Depends(get_current_user)) -> dict:
+async def mex_end(tid: str, user=Depends(get_current_user)) -> dict:
     """End Mexicano rounds and open optional play-off decision step."""
+    _require_owner_or_admin(tid, user)
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     try:
         t.end_mexicano()
     except RuntimeError as e:
         raise HTTPException(400, str(e))
-    _save_state()
+    _save_tournament(tid)
     return {"phase": t.phase, "mexicano_ended": t.mexicano_ended}
 
 
 @router.post("/{tid}/mex/finish")
-async def mex_finish(tid: str, _user=Depends(get_current_user)) -> dict:
+async def mex_finish(tid: str, user=Depends(get_current_user)) -> dict:
     """Finish tournament as-is without play-offs."""
+    _require_owner_or_admin(tid, user)
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     try:
         t.finish_without_playoffs()
     except RuntimeError as e:
         raise HTTPException(400, str(e))
-    _save_state()
+    _save_tournament(tid)
     return {"phase": t.phase, "is_finished": t.is_finished}
 
 
@@ -274,27 +288,29 @@ async def mex_playoffs_schema(
 
 
 @router.post("/{tid}/mex/record-playoff")
-async def mex_record_playoff(tid: str, req: RecordScoreRequest, _user=Depends(get_current_user)) -> dict:
+async def mex_record_playoff(tid: str, req: RecordScoreRequest, user=Depends(get_current_user)) -> dict:
     """Record a play-off match result."""
+    _require_owner_or_admin(tid, user)
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     try:
         t.record_playoff_result(req.match_id, (req.score1, req.score2))
     except (KeyError, RuntimeError, ValueError) as e:
         raise HTTPException(400, str(e))
-    _save_state()
+    _save_tournament(tid)
     return {"ok": True, "phase": t.phase}
 
 
 @router.post("/{tid}/mex/record-playoff-tennis")
-async def mex_record_playoff_tennis(tid: str, req: RecordTennisScoreRequest, _user=Depends(get_current_user)) -> dict:
+async def mex_record_playoff_tennis(tid: str, req: RecordTennisScoreRequest, user=Depends(get_current_user)) -> dict:
     """Record a Mexicano play-off match using tennis-style set scores."""
+    _require_owner_or_admin(tid, user)
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
     try:
         t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)
     except (KeyError, RuntimeError, ValueError) as e:
         raise HTTPException(400, str(e))
-    _save_state()
+    _save_tournament(tid)
     return {
         "ok": True,
         "phase": t.phase,
