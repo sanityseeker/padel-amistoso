@@ -27,3 +27,5 @@ data/
 notebooks
 
 docker-compose.nas.yml
+
+assets/

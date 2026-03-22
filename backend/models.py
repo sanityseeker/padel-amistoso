@@ -1,5 +1,5 @@
 """
-Core data models for the padel tournament system.
+Core data models for the tournament system.
 
 All tournament types share these building blocks.
 """
@@ -19,6 +19,11 @@ class MatchStatus(StrEnum):
     SCHEDULED = "scheduled"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
+
+
+class Sport(StrEnum):
+    PADEL = "padel"
+    TENNIS = "tennis"
 
 
 class TournamentType(StrEnum):

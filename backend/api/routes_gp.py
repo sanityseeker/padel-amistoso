@@ -15,6 +15,7 @@ from ..tournaments import GroupPlayoffTournament
 from ..viz import render_playoff_schema
 from .helpers import (
     _get_tournament,
+    _is_bye_match,
     _serialize_match,
     _tennis_sets_to_scores,
     _build_match_labels,
@@ -58,6 +59,7 @@ async def create_group_playoff(req: CreateGroupPlayoffRequest, user=Depends(get_
         "tournament": t,
         "owner": user.username,
         "public": req.public,
+        "sport": req.sport.value,
     }
     _save_tournament(tid)
     return {"id": tid, "phase": t.phase}
@@ -177,7 +179,7 @@ async def gp_playoffs(tid: str) -> dict:
     """Return all play-off matches, pending matches, and the champion (if decided)."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     return {
-        "matches": [_serialize_match(m) for m in t.playoff_matches()],
+        "matches": [_serialize_match(m) for m in t.playoff_matches() if not _is_bye_match(m)],
         "pending": [_serialize_match(m) for m in t.pending_playoff_matches()],
         "champion": [p.name for p in t.champion()] if t.champion() else None,
     }

@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from fastapi.responses import Response
 
 from ..auth.models import User, UserRole
-from ..models import Match
+from ..models import Match, MatchStatus
 from .state import _tournaments
 
 # MIME types for the three supported image/document formats.
@@ -25,6 +25,11 @@ _SCHEMA_MEDIA_TYPES: dict[str, str] = {
 def _schema_image_response(img: bytes, fmt: Literal["png", "svg", "pdf"]) -> Response:
     """Wrap rendered image bytes in the correct FastAPI Response."""
     return Response(content=img, media_type=_SCHEMA_MEDIA_TYPES[fmt])
+
+
+def _is_bye_match(m: Match) -> bool:
+    """Return True if *m* is a bye (auto-resolved without play)."""
+    return m.status == MatchStatus.COMPLETED and m.score is None
 
 
 def _serialize_match(m: Match) -> dict:
@@ -166,13 +171,24 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
 
     if hasattr(bracket, "winners_matches"):
         _label_round_matches(bracket.winners_matches, "w")
-        for i, m in enumerate(bracket.losers_matches):
-            labels[f"l_{i}"] = {
+        idx = 0
+        for m in bracket.losers_matches:
+            # Skip bye matches (auto-completed without both teams) so the
+            # sequential index stays aligned with the viz graph nodes which
+            # also skip byes.
+            if not m.team1 or not m.team2:
+                continue
+            entry: dict = {
                 "team1": _fmt_team(m.team1),
                 "team2": _fmt_team(m.team2),
                 "score": _fmt_score(m),
                 "round": m.round_label,
             }
+            loser = m.loser_team
+            if loser:
+                entry["loser"] = _fmt_team(loser)
+            labels[f"l_{idx}"] = entry
+            idx += 1
         if bracket.grand_final:
             gf = bracket.grand_final
             labels["grand_final"] = {

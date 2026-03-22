@@ -317,7 +317,7 @@ const I18N_MESSAGES = {
     "txt_txt_add_team": "Add team",
     "txt_txt_participants": "Participants",
     "txt_txt_info": "Info",
-    "txt_txt_info_tab_desc": "Overview of the available tournament formats and how play\u2011offs work.",
+    "txt_txt_info_tab_desc": "Torneos Amistosos supports both Padel and Tennis. Choose your sport when creating a tournament \u2014 the engine is the same, only labels change.",
     "txt_txt_about_this_format": "About this format",
     "txt_txt_fmt_gp_title": "Group + Play\u2011off",
     "txt_txt_fmt_gp_intro": "Players or teams are divided into groups and play a round\u2011robin stage before the top finishers advance to play\u2011offs.",
@@ -386,6 +386,30 @@ const I18N_MESSAGES = {
     "txt_txt_fmt_po_title": "Direct Play\u2011offs",
     "txt_txt_fmt_po_intro": "Skip the group stage and go straight to the bracket. Seed your participants in order and the bracket is generated immediately.",
     "txt_txt_preview_bracket": "Preview bracket",
+
+    // ── Rebrand & multi-sport ────────────────────────────
+    "txt_txt_app_title": "Torneos Amistosos",
+    "txt_txt_padel_tv": "Padel TV",
+    "txt_txt_tennis_tv": "Tennis TV",
+    "txt_txt_sport_padel": "Padel",
+    "txt_txt_sport_tennis": "Tennis",
+
+    // Tennis format descriptions
+    "txt_txt_fmt_gp_intro_tennis": "Players or pairs are divided into groups and play a round\u2011robin stage before the top finishers advance to play\u2011offs.",
+    "txt_txt_fmt_gp_team_mode_title_tennis": "Team Mode",
+    "txt_txt_fmt_gp_team_mode_desc_tennis": "Each fixed pair plays against every other pair in their group \u2014 a complete round\u2011robin. Final standings decide who advances to play\u2011offs.",
+    "txt_txt_fmt_gp_player_mode_title_tennis": "Player Mode (Round\u2011robin)",
+    "txt_txt_fmt_gp_player_mode_desc_tennis": "Each player plays against every other player in their group \u2014 a complete round\u2011robin. Final standings decide who advances to play\u2011offs.",
+    "txt_txt_fmt_mex_intro_tennis": "Opponents change every round based on current standings (leaders vs leaders). Scoring weights and pairing parameters are fully configurable.",
+    "txt_txt_fmt_mex_rounds_desc_tennis": "Multiple valid opponent combinations usually exist for each round. The admin can browse several proposals and pick the one that best balances competition and minimises repeated matchups.",
+    "txt_txt_fmt_po_intro_tennis": "Skip the group stage and go straight to the bracket. Seed your players or pairs in order and the bracket is generated immediately.",
+
+    // Tennis playoff editor labels ("player" instead of "team")
+    "txt_txt_team_n_tennis": "Player {n}",
+    "txt_txt_teams_participating_tennis": "Players participating",
+    "txt_txt_n_teams_tennis": "{n} players",
+    "txt_txt_team_row_instructions_tennis": "Each player is one row. Pick both participants from the list below (defaults are preselected by seed order).",
+    "txt_txt_participant_row_instructions_tennis": "Each row is one participant. Pick a player from the list below (defaults are preselected by seed order).",
   },
   es: {
     "txt_tv_alias_help": "Define un alias fácil de recordar para la URL pública de este torneo (p. ej., \"summer-cup\"). Solo letras, números, guiones y guiones bajos.",
@@ -700,7 +724,7 @@ const I18N_MESSAGES = {
     "txt_txt_add_team": "Añadir equipo",
     "txt_txt_participants": "Participantes",
     "txt_txt_info": "Info",
-    "txt_txt_info_tab_desc": "Descripci\u00f3n general de los formatos de torneo disponibles y c\u00f3mo funcionan los play\u2011offs.",
+    "txt_txt_info_tab_desc": "Torneos Amistosos soporta tanto P\u00e1del como Tenis. Elige tu deporte al crear un torneo \u2014 el motor es el mismo, solo cambian las etiquetas.",
     "txt_txt_about_this_format": "Sobre este formato",
     "txt_txt_fmt_gp_title": "Grupo + Play\u2011off",
     "txt_txt_fmt_gp_intro": "Los jugadores o equipos se dividen en grupos y juegan una fase de liguilla antes de que los mejores clasif\u00edcados avancen a los play\u2011offs.",
@@ -769,6 +793,30 @@ const I18N_MESSAGES = {
     "txt_txt_fmt_po_title": "Play\u2011offs directos",
     "txt_txt_fmt_po_intro": "Omite la fase de grupos y pasa directamente al cuadro. Siembra a tus participantes en orden y el cuadro se genera de inmediato.",
     "txt_txt_preview_bracket": "Vista previa del cuadro",
+
+    // ── Rebrand & multi-sport ────────────────────────────
+    "txt_txt_app_title": "Torneos Amistosos",
+    "txt_txt_padel_tv": "Padel TV",
+    "txt_txt_tennis_tv": "Tennis TV",
+    "txt_txt_sport_padel": "Pádel",
+    "txt_txt_sport_tennis": "Tenis",
+
+    // Tennis format descriptions
+    "txt_txt_fmt_gp_intro_tennis": "Los jugadores o parejas se dividen en grupos y juegan una fase de liguilla antes de que los mejores clasificados avancen a los play\u2011offs.",
+    "txt_txt_fmt_gp_team_mode_title_tennis": "Modo Equipos",
+    "txt_txt_fmt_gp_team_mode_desc_tennis": "Cada pareja fija juega contra todas las dem\u00e1s de su grupo \u2014 round\u2011robin completo. La clasificaci\u00f3n final decide qui\u00e9n avanza a los play\u2011offs.",
+    "txt_txt_fmt_gp_player_mode_title_tennis": "Modo Jugadores (Round\u2011robin)",
+    "txt_txt_fmt_gp_player_mode_desc_tennis": "Cada jugador juega contra todos los dem\u00e1s de su grupo \u2014 round\u2011robin completo. La clasificaci\u00f3n final decide qui\u00e9n avanza a los play\u2011offs.",
+    "txt_txt_fmt_mex_intro_tennis": "Los rivales cambian cada ronda seg\u00fan la clasificaci\u00f3n actual (l\u00edderes contra l\u00edderes). Los pesos de puntuaci\u00f3n y los par\u00e1metros de emparejamiento son totalmente configurables.",
+    "txt_txt_fmt_mex_rounds_desc_tennis": "Normalmente existen m\u00faltiples combinaciones v\u00e1lidas de rivales para cada ronda. El administrador puede revisar varias propuestas y elegir la que mejor equilibre la competici\u00f3n y minimice los emparejamientos repetidos.",
+    "txt_txt_fmt_po_intro_tennis": "Omite la fase de grupos y pasa directamente al cuadro. Siembra a tus jugadores o parejas en orden y el cuadro se genera de inmediato.",
+
+    // Tennis playoff editor labels ("jugador" instead of "equipo")
+    "txt_txt_team_n_tennis": "Jugador {n}",
+    "txt_txt_teams_participating_tennis": "Jugadores participantes",
+    "txt_txt_n_teams_tennis": "{n} jugadores",
+    "txt_txt_team_row_instructions_tennis": "Cada jugador es una fila. Elige ambos participantes de la lista de abajo (los predeterminados se seleccionan por ranking).",
+    "txt_txt_participant_row_instructions_tennis": "Cada fila es un participante. Elige un jugador de la lista (los predeterminados se seleccionan por ranking).",
   },
 };
 
@@ -778,6 +826,25 @@ function i18n_translate(key, lang, params = {}) {
   return template.replace(/\{(\w+)\}/g, (_, k) => String(params[k] ?? `{${k}}`));
 }
 
+/**
+ * Sport-aware translation: tries key + '_' + sport first, then falls back.
+ * @param {string} key
+ * @param {string} lang
+ * @param {string} sport - 'padel' or 'tennis'
+ * @param {Object} [params]
+ * @returns {string}
+ */
+function i18n_translate_sport(key, lang, sport, params = {}) {
+  if (sport && sport !== 'padel') {
+    const sportKey = key + '_' + sport;
+    const langCatalog = I18N_MESSAGES[lang] || I18N_MESSAGES.en;
+    if (langCatalog[sportKey] || I18N_MESSAGES.en[sportKey]) {
+      return i18n_translate(sportKey, lang, params);
+    }
+  }
+  return i18n_translate(key, lang, params);
+}
+
 function i18n_has_es(key) {
   return Object.prototype.hasOwnProperty.call(I18N_MESSAGES.es, key);
 }
@@ -785,5 +852,6 @@ function i18n_has_es(key) {
 window.__i18n = {
   messages: I18N_MESSAGES,
   translate: i18n_translate,
+  translateSport: i18n_translate_sport,
   hasEs: i18n_has_es,
 };

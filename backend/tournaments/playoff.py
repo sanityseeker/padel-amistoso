@@ -220,6 +220,18 @@ class DoubleEliminationBracket:
     Internally this manages a *winners bracket* and a *losers bracket*,
     with a grand final (and potential reset if the losers-bracket winner
     beats the winners-bracket winner).
+
+    The losers bracket is **pre-generated** at construction time with
+    properly wired advancement edges.  Losers rounds alternate between:
+
+    * *minor* (odd rounds — LR1, LR3, …): pair teams from the same source
+      (WR1 losers for LR1; LR survivors for LR3+).
+    * *major* (even rounds — LR2, LR4, …): cross-bracket, pairing an LR
+      survivor with a WR dropout from the corresponding winners round.
+
+    Byes in the losers bracket (empty slots due to WR byes) are detected
+    after wiring and auto-resolved: the present team advances without
+    playing.
     """
 
     def __init__(self, teams: list[list[Player]], courts: list[Court] | None = None):
@@ -236,6 +248,9 @@ class DoubleEliminationBracket:
         self._all_matches: list[Match] = []
         # Advancement bookkeeping
         self._advancement: defaultdict[str, list[tuple[str, int, bool]]] = defaultdict(list)
+        # Bye tracking: match_id → set of slots (0 and/or 1) that will
+        # never receive a team — used by _try_resolve_bye().
+        self._bye_slots: dict[str, set[int]] = {}
         self._generate()
 
     def _next_court(self) -> Court | None:
@@ -312,20 +327,84 @@ class DoubleEliminationBracket:
                     next_match = w_match_at[r + 1][next_pair]
                     self._add_advancement(match.id, next_match.id, slot, is_loser=False)
 
-        # --- Losers bracket ---
-        # Simplified: we create placeholder losers-round matches.
-        # Losers from winners R1 feed into losers R1, etc.
-        # Full double-elim bracket wiring is complex; we use a
-        # simplified sequential approach here.
-        l_rounds: list[list[Match]] = []
+        # --- Pre-generated losers bracket ---
+        #
+        # Structure for bracket_size = 2^k  (k = num_rounds_w):
+        #   num_losers_rounds = 2 * (k - 1)
+        #   Matches per round (full bracket, before byes):
+        #     LR1 = LR2 = bracket_size / 4
+        #     LR3 = LR4 = bracket_size / 8
+        #     LR5 = LR6 = bracket_size / 16  …
+        #
+        # Pair-index mapping from WR to LR:
+        #   WR1  pair p  loser  →  LR1    pair p//2   slot p%2
+        #   WR(w+1) pair p loser →  LR(2w) pair p      slot 1
+        #
+        # Internal LR advancement:
+        #   LR_odd  pair p  winner →  LR(odd+1) pair p      slot 0
+        #   LR_even pair p  winner →  LR(even+1) pair p//2  slot p%2
 
-        # We'll pre-create losers matches and wire them as results come in
-        # For now, store losers bracket state dynamically
-        self._w_match_at = w_match_at
-        self._l_rounds = l_rounds
-        self._losers_queue: list[list[Player]] = []
+        num_lr = 2 * (num_rounds_w - 1) if num_rounds_w > 1 else 0
+        l_match_at: list[dict[int, Match]] = [{}]  # 1-indexed; index 0 unused
 
-        # Grand final placeholder — court assigned lazily when teams are known
+        if num_lr > 0:
+            count = bracket_size // 4
+            for lr_idx in range(num_lr):
+                lr = lr_idx + 1  # 1-indexed round number
+                round_matches: dict[int, Match] = {}
+                for p in range(count):
+                    m = Match(
+                        team1=[],
+                        team2=[],
+                        court=None,
+                        round_number=lr,
+                        round_label=f"Losers R{lr}",
+                        pair_index=p,
+                    )
+                    round_matches[p] = m
+                    self._match_map[m.id] = m
+                    self.losers_matches.append(m)
+                l_match_at.append(round_matches)
+                # After a major round (even index, 1-based), halve for next minor
+                if lr % 2 == 0:
+                    count = max(count // 2, 1)
+
+        # Wire WR losers → LR
+        if num_lr > 0 and w_match_at:
+            # WR1 losers → LR1
+            for p, wm in w_match_at[0].items():
+                lr_pair = p // 2
+                lr_slot = p % 2
+                if lr_pair in l_match_at[1]:
+                    self._add_advancement(wm.id, l_match_at[1][lr_pair].id, lr_slot, is_loser=True)
+
+            # WR(w+1) losers → LR(2*w)  for w >= 1
+            for w in range(1, num_rounds_w):
+                lr_round = 2 * w
+                if lr_round > num_lr:
+                    break
+                for p, wm in w_match_at[w].items():
+                    if p in l_match_at[lr_round]:
+                        self._add_advancement(wm.id, l_match_at[lr_round][p].id, 1, is_loser=True)
+
+        # Wire LR internal advancement
+        if num_lr > 0:
+            for lr in range(1, num_lr):
+                next_lr = lr + 1
+                if lr % 2 == 1:
+                    # minor → major: same pair index, winner goes to slot 0
+                    for p, lm in l_match_at[lr].items():
+                        if p in l_match_at[next_lr]:
+                            self._add_advancement(lm.id, l_match_at[next_lr][p].id, 0, is_loser=False)
+                else:
+                    # major → minor: combine pairs (halve), winner goes to slot p%2
+                    for p, lm in l_match_at[lr].items():
+                        next_pair = p // 2
+                        next_slot = p % 2
+                        if next_pair in l_match_at[next_lr]:
+                            self._add_advancement(lm.id, l_match_at[next_lr][next_pair].id, next_slot, is_loser=False)
+
+        # Grand final placeholder
         self.grand_final = Match(
             team1=[],
             team2=[],
@@ -335,19 +414,143 @@ class DoubleEliminationBracket:
         )
         self._match_map[self.grand_final.id] = self.grand_final
 
+        # Wire last WR winner → GF team1
+        if w_match_at:
+            last_w_round = w_match_at[-1]
+            if last_w_round:
+                last_wm = list(last_w_round.values())[-1]
+                self._add_advancement(last_wm.id, self.grand_final.id, 0, is_loser=False)
+
+        # Wire last LR winner → GF team2  (or WR1 loser → GF team2 for 2 teams)
+        if num_lr > 0 and l_match_at[num_lr]:
+            last_lm = list(l_match_at[num_lr].values())[0]
+            self._add_advancement(last_lm.id, self.grand_final.id, 1, is_loser=False)
+        elif num_rounds_w == 1 and w_match_at and 0 in w_match_at[0]:
+            # Special case: 2 teams, no losers bracket — WR1 loser → GF team2
+            self._add_advancement(w_match_at[0][0].id, self.grand_final.id, 1, is_loser=True)
+
+        # Detect bye slots and resolve immediate byes
+        self._detect_and_resolve_byes()
+
         self._all_matches = list(self.winners_matches) + list(self.losers_matches) + [self.grand_final]
 
     def _add_advancement(self, from_id: str, to_id: str, slot: int, is_loser: bool):
         self._advancement[from_id].append((to_id, slot, is_loser))
 
+    def _detect_and_resolve_byes(self):
+        """Find losers bracket slots that can never be filled and auto-advance."""
+        # Build reverse map: (match_id, slot) → has at least one incoming edge
+        has_source: set[tuple[str, int]] = set()
+        for edges in self._advancement.values():
+            for next_id, slot, _is_loser in edges:
+                has_source.add((next_id, slot))
+
+        # Detect bye slots: losers match slots with no team AND no incoming edge
+        for lm in self.losers_matches:
+            empty_slots: set[int] = set()
+            for slot in (0, 1):
+                team = lm.team1 if slot == 0 else lm.team2
+                if not team and (lm.id, slot) not in has_source:
+                    empty_slots.add(slot)
+            if empty_slots:
+                self._bye_slots[lm.id] = empty_slots
+
+        # Resolve byes: iterate until no more can be resolved
+        changed = True
+        while changed:
+            changed = False
+            for lm in self.losers_matches:
+                if lm.status == MatchStatus.COMPLETED:
+                    continue
+                if lm.id not in self._bye_slots:
+                    continue
+                bye_slots = self._bye_slots[lm.id]
+                if 0 in bye_slots and 1 in bye_slots:
+                    # Both slots are byes — mark completed, no one advances
+                    lm.status = MatchStatus.COMPLETED
+                    changed = True
+                    # Propagate: any match expecting a winner from here is also a bye
+                    if lm.id in self._advancement:
+                        for next_id, slot, is_loser in self._advancement[lm.id]:
+                            if not is_loser:  # winner slot
+                                self._bye_slots.setdefault(next_id, set()).add(slot)
+                    continue
+
+                # One bye slot — check if the other team is present
+                active_slot = 0 if 1 in bye_slots else 1
+                active_team = lm.team1 if active_slot == 0 else lm.team2
+                if active_team:
+                    # Team auto-advances through the bye
+                    lm.status = MatchStatus.COMPLETED
+                    changed = True
+                    if lm.id in self._advancement:
+                        for next_id, slot, is_loser in self._advancement[lm.id]:
+                            if not is_loser:
+                                nm = self._match_map[next_id]
+                                if slot == 0:
+                                    nm.team1 = active_team
+                                else:
+                                    nm.team2 = active_team
+
+    def _try_resolve_bye(self, match_id: str):
+        """After placing a team via advancement, check if this is a bye match."""
+        if match_id not in self._bye_slots:
+            return
+        m = self._match_map[match_id]
+        if m.status == MatchStatus.COMPLETED:
+            return
+        bye_slots = self._bye_slots[match_id]
+        if 0 in bye_slots and 1 in bye_slots:
+            m.status = MatchStatus.COMPLETED
+            return
+        active_slot = 0 if 1 in bye_slots else 1
+        active_team = m.team1 if active_slot == 0 else m.team2
+        if not active_team:
+            return
+        # Auto-advance the present team
+        m.status = MatchStatus.COMPLETED
+        if match_id in self._advancement:
+            for next_id, slot, is_loser in self._advancement[match_id]:
+                if not is_loser:
+                    nm = self._match_map[next_id]
+                    if slot == 0:
+                        nm.team1 = active_team
+                    else:
+                        nm.team2 = active_team
+                    self._try_resolve_bye(next_id)
+
+    @staticmethod
+    def _interleave_key(m: Match) -> tuple[float, int]:
+        """Sort key that interleaves losers rounds near the corresponding winners round.
+
+        Losers R*N* is scheduled alongside Winners R*(N+1)*, so:
+        - Winners R1 → (1, 0)
+        - Losers  R1 → (1.5, 1)   (between Winners R1 and R2)
+        - Winners R2 → (2, 0)
+        - Losers  R2 → (2.5, 1)
+        - Grand Final / Reset → very high
+        """
+        label = m.round_label or ""
+        if label.startswith("Winners"):
+            return (float(m.round_number), 0)
+        if label.startswith("Losers"):
+            return (m.round_number + 0.5, 1)
+        if label == "Grand Final":
+            return (9998.0, 0)
+        if label == "Grand Final Reset":
+            return (9999.0, 0)
+        return (float(m.round_number), 0)
+
     @property
     def all_matches(self) -> list[Match]:
-        return (
+        matches = (
             list(self.winners_matches)
             + list(self.losers_matches)
             + ([self.grand_final] if self.grand_final else [])
             + ([self.grand_final_reset] if self.grand_final_reset else [])
         )
+        matches.sort(key=self._interleave_key)
+        return matches
 
     def record_result(
         self,
@@ -368,7 +571,7 @@ class DoubleEliminationBracket:
         loser_key = self._team_key(loser)
         self._losses[loser_key] = self._losses.get(loser_key, 0) + 1
 
-        # Advance winner in winners/losers bracket
+        # Advance winner/loser via pre-wired edges
         if match_id in self._advancement:
             for next_id, slot, is_loser_path in self._advancement[match_id]:
                 nm = self._match_map[next_id]
@@ -377,25 +580,8 @@ class DoubleEliminationBracket:
                     nm.team1 = team_to_place
                 else:
                     nm.team2 = team_to_place
-
-        # If loser has < 2 losses, send to losers bracket queue
-        if self._losses[loser_key] < 2 and m.round_label.startswith("Winners"):
-            self._losers_queue.append(loser)
-            self._try_create_losers_match()
-
-        # If this was a losers match, winner stays in losers bracket queue
-        if m.round_label.startswith("Losers"):
-            self._losers_queue.append(winner)
-            self._try_create_losers_match()
-
-        # Promote the sole losers-bracket survivor to the Grand Final only once
-        # ALL winners matches AND ALL losers matches are done.  Checking both
-        # prevents premature promotion when the last winners-bracket loser still
-        # needs to play the current losers-bracket survivor.
-        self._try_advance_to_grand_final()
-
-        # Populate winners-bracket side of grand final
-        self._try_populate_grand_final()
+                # Check if the target match is a bye and can be auto-resolved
+                self._try_resolve_bye(next_id)
 
         # Grand final logic
         if match_id == self.grand_final.id:
@@ -410,42 +596,6 @@ class DoubleEliminationBracket:
                     round_number=m.round_number + 1,
                 )
                 self._match_map[self.grand_final_reset.id] = self.grand_final_reset
-
-    def _try_advance_to_grand_final(self) -> None:
-        """Promote the sole losers-bracket survivor to Grand Final when all matches are done."""
-        all_w_done = all(wm.status == MatchStatus.COMPLETED for wm in self.winners_matches)
-        all_l_done = all(lm.status == MatchStatus.COMPLETED for lm in self.losers_matches)
-        if all_w_done and all_l_done and len(self._losers_queue) == 1:
-            self.grand_final.team2 = self._losers_queue.pop(0)
-
-    def _try_create_losers_match(self):
-        while len(self._losers_queue) >= 2:
-            t1 = self._losers_queue.pop(0)
-            t2 = self._losers_queue.pop(0)
-            r = len(self.losers_matches) + 1
-            m = Match(
-                team1=t1,
-                team2=t2,
-                court=None,
-                round_number=r,
-                round_label=f"Losers R{r}",
-            )
-            self.losers_matches.append(m)
-            self._match_map[m.id] = m
-
-    def _try_populate_grand_final(self):
-        if self.grand_final is None:
-            return
-        # Winners bracket champion = winner of the final winners match
-        # (the only match in the last round of w_match_at)
-        if self._w_match_at:
-            last_round = self._w_match_at[-1]
-            if last_round:
-                last_w = list(last_round.values())[-1]
-                if last_w.status == MatchStatus.COMPLETED and last_w.winner_team:
-                    self.grand_final.team1 = last_w.winner_team
-        # grand_final.team2 is set in record_result once the losers bracket is
-        # fully resolved — see the losers-match winner handling above.
 
     def pending_matches(self) -> list[Match]:
         return [m for m in self.all_matches if m.status != MatchStatus.COMPLETED and m.team1 and m.team2]

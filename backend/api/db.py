@@ -1,5 +1,5 @@
 """
-SQLite database bootstrap for the padel backend.
+SQLite database bootstrap for the backend.
 
 All tables live in a single ``padel.db`` file under the configured DATA_DIR.
 WAL mode is enabled for better concurrent-read performance — multiple readers
@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS tournaments (
     alias            TEXT,
     tv_settings      TEXT,
     tournament_blob  BLOB    NOT NULL,
-    version          INTEGER NOT NULL DEFAULT 0
+    version          INTEGER NOT NULL DEFAULT 0,
+    sport            TEXT    NOT NULL DEFAULT 'padel'
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tournaments_alias
@@ -74,6 +75,10 @@ def init_db() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_PATH) as conn:
         conn.executescript(_DDL)
+        # Migrate: add sport column if missing (existing DBs before multi-sport)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(tournaments)").fetchall()}
+        if "sport" not in cols:
+            conn.execute("ALTER TABLE tournaments ADD COLUMN sport TEXT NOT NULL DEFAULT 'padel'")
 
 
 @contextmanager

@@ -45,6 +45,7 @@ async def list_tournaments(current_user: User | None = Depends(get_current_user_
                 "phase": t.phase if t else "setup",
                 "owner": data.get("owner"),
                 "public": data.get("public", True),
+                "sport": data.get("sport", "padel"),
             }
         )
     return out
@@ -139,7 +140,7 @@ async def resolve_alias(alias: str) -> dict:
     """Resolve a tournament alias to its ID. Public (used by TV page)."""
     for tid, data in _tournaments.items():
         if data.get("alias") == alias:
-            return {"id": tid, "name": data["name"], "type": data["type"]}
+            return {"id": tid, "name": data["name"], "type": data["type"], "sport": data.get("sport", "padel")}
     raise HTTPException(404, f"No tournament with alias '{alias}'")
 
 
@@ -161,4 +162,5 @@ async def get_tournament_meta(tid: str) -> dict:
         "alias": data.get("alias"),
         "team_mode": t.team_mode if t else False,
         "phase": t.phase if t else "setup",
+        "sport": data.get("sport", "padel"),
     }

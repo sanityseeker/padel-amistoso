@@ -385,6 +385,42 @@ class TestCourtAssignment:
         max_parallel = max(len(ms) for ms in by_slot.values())
         assert max_parallel == 2, f"Expected at least one slot with 2 parallel matches but max was {max_parallel}"
 
+    def test_maximises_court_utilisation_across_groups(self):
+        """With 2 groups on 2 courts, both courts should be used whenever possible.
+
+        Regression: the old greedy algorithm could produce 3:6 court splits
+        by consuming complementary pairs across groups, leaving orphaned
+        matches that each occupied a slot alone.
+        """
+        courts = [Court(name="C1"), Court(name="C2")]
+        # Run many trials to catch randomness-dependent failures.
+        for _ in range(50):
+            ga = Group("A", _make_players(3), team_mode=True)
+            gb = Group("B", _make_players(4), team_mode=True)
+            ga.generate_round_robin()
+            gb.generate_round_robin()
+            all_matches = ga.matches + gb.matches
+            assert len(all_matches) == 9  # C(3,2) + C(4,2)
+            assign_courts(all_matches, courts)
+
+            counts = {c.name: 0 for c in courts}
+            for m in all_matches:
+                counts[m.court.name] += 1
+
+            diff = abs(counts["C1"] - counts["C2"])
+            assert diff <= 1, (
+                f"Court imbalance too high: {counts} (diff={diff})"
+            )
+
+            # At least 4 of 5 slots should use both courts.
+            by_slot: defaultdict[int, list] = defaultdict(list)
+            for m in all_matches:
+                by_slot[m.slot_number].append(m)
+            full_slots = sum(1 for ms in by_slot.values() if len(ms) == 2)
+            assert full_slots >= 4, (
+                f"Expected ≥4 full slots from 9 matches on 2 courts, got {full_slots}"
+            )
+
 
 # ── Sets-format standings ─────────────────────────────────
 

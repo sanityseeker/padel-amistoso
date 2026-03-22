@@ -1,12 +1,18 @@
-# Padel Tournament Manager
+# Torneos Amistosos
 
-A lightweight Python app for organising padel tournaments.
-Two tournament formats are supported:
+A lightweight Python app for organising **padel** and **tennis** tournaments.
+Three tournament formats are supported, each available for both sports:
 
 | Format | Description |
 | --- | --- |
 | **Group + Play-off** | Round-robin group stage → single or double-elimination bracket |
 | **Mexicano + Play-offs** | Rating-based pairing each round, fixed total points per match, with optional seeded play-offs |
+| **Direct Play-offs** | Skip the group stage — seed participants and play a bracket immediately |
+
+When creating a tournament you choose the **sport** (Padel or Tennis).
+The engine is the same for both; the UI adapts labels and entry modes
+accordingly (e.g. "Team Mode" becomes "Doubles" for tennis, and
+"Player Mode" becomes "Singles").
 
 **Live demo:** [padel-amistoso.onrender.com](https://padel-amistoso.onrender.com) — login with `admin` / `admin`
 > Free tier -- app may take ~30 seconds to wake up after inactivity. Data resets on restart. **DO NOT use for actual tournaments!**
@@ -28,8 +34,10 @@ is refined.
 
 ### Frontend capabilities
 
+- Choose sport: **Padel** or **Tennis** (per tournament)
 - Create and manage **Group + Play-off** tournaments
 - Create and manage **Mexicano** tournaments (with optional play-offs)
+- Create and manage **Direct Play-off** tournaments (single or double elimination)
 - Record scores as either:
   - raw points, or
   - tennis-style sets (for group/play-off flows where enabled)
@@ -67,6 +75,22 @@ is refined.
 4. After configured rounds (or rolling mode), tournament can move to play-offs.
 5. In **individual mode**, selected players are paired into teams
    (`#1+#2`, `#3+#4`, …) before entering play-offs.
+
+### Sport selection
+
+Each tournament is created for a specific sport — **Padel** or **Tennis**.
+The choice is made once on the creation screen and stored with the
+tournament.  The tournament engine is identical for both sports; differences
+are purely cosmetic:
+
+| Aspect | Padel | Tennis |
+| --- | --- | --- |
+| Entry modes | Team Mode / Player Mode | Doubles / Singles |
+| TV title | Padel TV | Tennis TV |
+| Tournament badge | Padel | Tennis |
+
+Padel is the default when no sport is specified (backward-compatible with
+existing tournaments).
 
 ### TV display mode
 

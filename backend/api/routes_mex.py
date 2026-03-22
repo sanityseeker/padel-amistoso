@@ -67,6 +67,7 @@ async def create_mexicano(req: CreateMexicanoRequest, user=Depends(get_current_u
         "tournament": t,
         "owner": user.username,
         "public": req.public,
+        "sport": req.sport.value,
     }
     _save_tournament(tid)
     return {"id": tid, "current_round": t.current_round}

@@ -16,6 +16,7 @@ from ..viz import render_playoff_schema
 from .helpers import (
     _build_match_labels,
     _get_tournament,
+    _is_bye_match,
     _require_owner_or_admin,
     _schema_image_response,
     _serialize_match,
@@ -50,6 +51,7 @@ async def create_playoff(req: CreatePlayoffRequest, user=Depends(get_current_use
         "tournament": t,
         "owner": user.username,
         "public": req.public,
+        "sport": req.sport.value,
     }
     _save_tournament(tid)
     return {"id": tid, "phase": t.phase}
@@ -72,7 +74,7 @@ async def po_playoffs(tid: str) -> dict:
     """Return all play-off matches, pending matches, and the champion (if decided)."""
     t: PlayoffTournament = _get_tournament(tid, _PO)["tournament"]
     return {
-        "matches": [_serialize_match(m) for m in t.all_matches()],
+        "matches": [_serialize_match(m) for m in t.all_matches() if not _is_bye_match(m)],
         "pending": [_serialize_match(m) for m in t.pending_matches()],
         "champion": [p.name for p in t.champion()] if t.champion() else None,
     }

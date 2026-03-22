@@ -140,6 +140,7 @@ function logout() {
  * @returns {Promise<any>}
  */
 async function apiAuth(path, opts = {}) {
+  const retries = opts._retries || 0;
   const token = getAuthToken();
   const headers = {
     'Content-Type': 'application/json',
@@ -156,12 +157,15 @@ async function apiAuth(path, opts = {}) {
     headers,
   });
 
-  // Handle 401 - show login dialog
+  // Handle 401 - show login dialog (max 2 retries to prevent infinite loop)
   if (res.status === 401) {
     clearAuth();
+    if (retries >= 2) {
+      throw new Error('Authentication failed after multiple attempts');
+    }
     await showLoginDialog();
     // Retry the request after login
-    return apiAuth(path, opts);
+    return apiAuth(path, { ...opts, _retries: retries + 1 });
   }
 
   if (!res.ok) {

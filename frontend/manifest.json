@@ -1,7 +1,7 @@
 {
-  "name": "Padel Tournament Manager",
-  "short_name": "Padel",
-  "description": "Organize and manage padel tournaments",
+  "name": "Torneos Amistosos",
+  "short_name": "Amistoso",
+  "description": "Organize and manage padel & tennis tournaments",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait-primary",

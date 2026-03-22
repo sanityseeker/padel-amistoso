@@ -3,11 +3,11 @@ In-memory tournament store with SQLite persistence.
 
 Every route module imports from here to access the shared state.
 
-The database path is controlled by the ``PADEL_DATA_DIR`` environment variable
-(see ``backend.config``).  Run two independent instances like this:
+The database path is controlled by the ``AMISTOSO_DATA_DIR`` (or legacy
+``PADEL_DATA_DIR``) environment variable (see ``backend.config``).
 
-    PADEL_DATA_DIR=data/instance_a uv run uvicorn backend.api:app --port 8000
-    PADEL_DATA_DIR=data/instance_b uv run uvicorn backend.api:app --port 8001
+    AMISTOSO_DATA_DIR=data/instance_a uv run uvicorn backend.api:app --port 8000
+    AMISTOSO_DATA_DIR=data/instance_b uv run uvicorn backend.api:app --port 8001
 
 Safety guarantees
 -----------------
@@ -24,9 +24,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import pickle
 
 from .db import get_db
+
+logger = logging.getLogger(__name__)
 
 # ────────────────────────────────────────────────────────────────────────────
 # Store
@@ -81,15 +84,16 @@ def _save_tournament(tid: str) -> None:
             conn.execute(
                 """
                 INSERT INTO tournaments
-                    (id, name, type, owner, public, alias, tv_settings, tournament_blob, version)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name            = excluded.name,
                     public          = excluded.public,
                     alias           = excluded.alias,
                     tv_settings     = excluded.tv_settings,
                     tournament_blob = excluded.tournament_blob,
-                    version         = excluded.version
+                    version         = excluded.version,
+                    sport           = excluded.sport
                 """,
                 (
                     tid,
@@ -101,10 +105,11 @@ def _save_tournament(tid: str) -> None:
                     tv_raw,
                     blob,
                     version,
+                    data.get("sport", "padel"),
                 ),
             )
     except Exception as exc:  # noqa: BLE001
-        print(f"[warn] Could not save tournament {tid}: {exc}")
+        logger.warning("Could not save tournament %s: %s", tid, exc)
 
 
 def _delete_tournament(tid: str) -> None:
@@ -119,7 +124,7 @@ def _delete_tournament(tid: str) -> None:
         with get_db() as conn:
             conn.execute("DELETE FROM tournaments WHERE id = ?", (tid,))
     except Exception as exc:  # noqa: BLE001
-        print(f"[warn] Could not delete tournament {tid}: {exc}")
+        logger.warning("Could not delete tournament %s: %s", tid, exc)
 
 
 def _load_state() -> None:
@@ -133,10 +138,10 @@ def _load_state() -> None:
     try:
         with get_db() as conn:
             rows = conn.execute(
-                "SELECT id, name, type, owner, public, alias, tv_settings, tournament_blob, version FROM tournaments"
+                "SELECT id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport FROM tournaments"
             ).fetchall()
     except Exception as exc:  # noqa: BLE001
-        print(f"[warn] Could not load state (starting fresh): {exc}")
+        logger.warning("Could not load state (starting fresh): %s", exc)
         return
 
     for row in rows:
@@ -144,7 +149,7 @@ def _load_state() -> None:
         try:
             tournament = pickle.loads(row["tournament_blob"])  # noqa: S301
         except Exception as exc:  # noqa: BLE001
-            print(f"[warn] Could not deserialise tournament {tid}, skipping: {exc}")
+            logger.warning("Could not deserialise tournament %s, skipping: %s", tid, exc)
             continue
 
         _tournaments[tid] = {
@@ -155,6 +160,7 @@ def _load_state() -> None:
             "alias": row["alias"],
             "tv_settings": json.loads(row["tv_settings"]) if row["tv_settings"] else None,
             "tournament": tournament,
+            "sport": row["sport"] if "sport" in row.keys() else "padel",
         }
         _tournament_versions[tid] = row["version"]
 
@@ -162,4 +168,4 @@ def _load_state() -> None:
         if tid.startswith("t") and tid[1:].isdigit():
             _counter = max(_counter, int(tid[1:]))
 
-    print(f"[info] Loaded {len(_tournaments)} tournament(s) from SQLite")
+    logger.info("Loaded %d tournament(s) from SQLite", len(_tournaments))

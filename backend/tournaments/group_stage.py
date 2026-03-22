@@ -314,17 +314,15 @@ def assign_courts(
 
     Algorithm
     ---------
-    Build a pool of unassigned matches.  For each slot, cycle through courts
-    (rotated by *slot index* so the starting court advances each slot) and
-    for each court:
-
-    1. Collect candidate matches whose players are all free this slot.
-    2. Prefer matches whose players were NOT in the previous slot (rest).
-    3. Pick a random candidate and assign it.
-
-    If no candidate fits any court in a slot, the court stays empty.
-    If an entire slot produces zero assignments but the pool is non-empty,
-    remaining matches are force-assigned one per slot to guarantee termination.
+    1. Build a compatibility graph (edges between matches that share no
+       players and can therefore run simultaneously).
+    2. For 2 courts, compute a **maximum matching** (augmenting-path) so
+       that as many time slots as possible use both courts.  For ≥ 3 courts
+       a greedy independent-set heuristic is used.
+    3. Order the resulting slots: fuller slots first, tie-broken by a
+       rest heuristic (minimise player overlap between consecutive slots).
+    4. Assign physical courts round-robin within each slot, rotated by
+       *court_offset*.
 
     Each assigned match gets ``slot_number`` set to its 0-based slot index.
     Matches that already have a court are left untouched.
@@ -342,54 +340,147 @@ def assign_courts(
     if not pool:
         return matches
 
-    # Remember which matches we're about to assign so we can re-sort their slots later.
-    pool_ids: set[int] = {id(m) for m in pool}
-
     n_courts = len(courts)
-    previous_slot_players: set[str] = set()
-    current_slot = 0
 
-    while pool:
-        slot_busy: set[str] = set()
-        assigned_any = False
+    # Phase 1 — partition pool into time-slots.
+    slots = _partition_into_slots(pool, n_courts)
 
-        for i in range(n_courts):
-            court = courts[(current_slot + i + court_offset) % n_courts]
+    # Phase 2 — order: fuller slots first, rest-aware within same-size tiers.
+    slots = _order_slots(slots)
 
-            candidates = [m for m in pool if not (_match_player_ids(m) & slot_busy)]
-            if not candidates:
-                continue
-
-            preferred = [m for m in candidates if not (_match_player_ids(m) & previous_slot_players)]
-            chosen = random.choice(preferred if preferred else candidates)
-
-            chosen.court = court
-            chosen.slot_number = current_slot
-            slot_busy |= _match_player_ids(chosen)
-            pool.remove(chosen)
-            assigned_any = True
-
-        if not assigned_any:
-            # Safety: every remaining match conflicts — force-assign one per slot.
-            court_cycle = itertools.cycle(courts)
-            for m in pool:
-                m.court = next(court_cycle)
-                m.slot_number = current_slot
-                current_slot += 1
-            pool.clear()
-            break
-
-        previous_slot_players = slot_busy
-        current_slot += 1
-
-    # Re-number slots so that fuller slots (more courts) come first.
-    newly_assigned = [m for m in matches if id(m) in pool_ids and m.slot_number is not None]
-    slot_buckets: defaultdict[int, list[Match]] = defaultdict(list)
-    for m in newly_assigned:
-        slot_buckets[m.slot_number].append(m)
-
-    for new_slot, old_slot in enumerate(sorted(slot_buckets, key=lambda s: len(slot_buckets[s]), reverse=True)):
-        for m in slot_buckets[old_slot]:
-            m.slot_number = new_slot
+    # Phase 3 — assign courts and slot numbers.
+    for slot_idx, group in enumerate(slots):
+        for i, m in enumerate(group):
+            m.court = courts[(slot_idx + i + court_offset) % n_courts]
+            m.slot_number = slot_idx
 
     return matches
+
+
+# ── Slot partitioning helpers ─────────────────────────────
+
+
+def _partition_into_slots(pool: list[Match], n_courts: int) -> list[list[Match]]:
+    """Split *pool* into groups of up to *n_courts* compatible matches.
+
+    For ≤ 2 courts the result is optimal (maximum-matching).
+    For more courts a greedy heuristic is used.
+    """
+    if n_courts <= 1 or not pool:
+        return [[m] for m in pool]
+
+    ps: dict[int, set[str]] = {id(m): _match_player_ids(m) for m in pool}
+
+    # Build compatibility adjacency.
+    compat: dict[int, set[int]] = {id(m): set() for m in pool}
+    for i, m1 in enumerate(pool):
+        for m2 in pool[i + 1 :]:
+            if not (ps[id(m1)] & ps[id(m2)]):
+                compat[id(m1)].add(id(m2))
+                compat[id(m2)].add(id(m1))
+
+    if n_courts == 2:
+        return _matching_slots(pool, compat)
+
+    # Greedy for n_courts ≥ 3.
+    remaining = list(pool)
+    random.shuffle(remaining)
+    slots: list[list[Match]] = []
+    used: set[int] = set()
+    while len(used) < len(pool):
+        group: list[Match] = []
+        gp: set[str] = set()
+        for m in remaining:
+            if id(m) in used:
+                continue
+            if not (ps[id(m)] & gp):
+                group.append(m)
+                gp |= ps[id(m)]
+                used.add(id(m))
+                if len(group) >= n_courts:
+                    break
+        if not group:
+            break
+        slots.append(group)
+    return slots
+
+
+def _matching_slots(pool: list[Match], compat: dict[int, set[int]]) -> list[list[Match]]:
+    """Maximum-matching on the compatibility graph → paired + singleton slots.
+
+    Enumerates all compatible pairs and uses randomised greedy selection
+    with restarts to find the largest set of non-overlapping pairs.
+    Reliable for the small graph sizes typical of tournament scheduling.
+    """
+    by_id: dict[int, Match] = {id(m): m for m in pool}
+
+    # Collect every compatible pair.
+    all_pairs: list[tuple[int, int]] = []
+    for i, m1 in enumerate(pool):
+        mid1 = id(m1)
+        for m2 in pool[i + 1 :]:
+            mid2 = id(m2)
+            if mid2 in compat.get(mid1, ()):
+                all_pairs.append((mid1, mid2))
+
+    best_matching: list[tuple[int, int]] = []
+    max_possible = len(pool) // 2
+
+    for _attempt in range(50):
+        random.shuffle(all_pairs)
+        used: set[int] = set()
+        matching: list[tuple[int, int]] = []
+        for a, b in all_pairs:
+            if a not in used and b not in used:
+                matching.append((a, b))
+                used.add(a)
+                used.add(b)
+        if len(matching) > len(best_matching):
+            best_matching = matching
+        if len(best_matching) >= max_possible:
+            break
+
+    paired_ids: set[int] = set()
+    slots: list[list[Match]] = []
+    for a, b in best_matching:
+        slots.append([by_id[a], by_id[b]])
+        paired_ids.add(a)
+        paired_ids.add(b)
+    for m in pool:
+        if id(m) not in paired_ids:
+            slots.append([m])
+    return slots
+
+
+def _order_slots(slots: list[list[Match]]) -> list[list[Match]]:
+    """Order slots: fuller first; within same-size tiers, minimise overlap."""
+    if len(slots) <= 1:
+        return slots
+
+    tiers: defaultdict[int, list[list[Match]]] = defaultdict(list)
+    for s in slots:
+        tiers[len(s)].append(s)
+
+    result: list[list[Match]] = []
+    prev_players: set[str] = set()
+
+    for size in sorted(tiers, reverse=True):
+        remaining = list(tiers[size])
+        while remaining:
+            best_idx = 0
+            best_overlap = float("inf")
+            for i, slot in enumerate(remaining):
+                overlap = sum(
+                    1 for m in slot for p in m.team1 + m.team2
+                    if p.id in prev_players
+                )
+                if overlap < best_overlap:
+                    best_overlap = overlap
+                    best_idx = i
+            chosen = remaining.pop(best_idx)
+            result.append(chosen)
+            prev_players = set()
+            for m in chosen:
+                prev_players |= _match_player_ids(m)
+
+    return result

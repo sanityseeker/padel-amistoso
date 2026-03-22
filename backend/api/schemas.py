@@ -8,13 +8,16 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from ..models import Sport
+
 
 class CreateGroupPlayoffRequest(BaseModel):
-    name: str = "My Tournament"
+    name: str = Field(default="My Tournament", max_length=255)
     player_names: list[str]
     team_mode: bool = False
+    sport: Sport = Sport.PADEL
     court_names: list[str] = ["Court 1"]
-    num_groups: int = Field(default=2, ge=1)
+    num_groups: int = Field(default=2, ge=1, le=32)
     group_names: list[str] = []
     top_per_group: int = Field(default=2, ge=1)
     double_elimination: bool = False
@@ -36,10 +39,11 @@ class CreateGroupPlayoffRequest(BaseModel):
 
 
 class CreateMexicanoRequest(BaseModel):
-    name: str = "My Mexicano"
+    name: str = Field(default="My Mexicano", max_length=255)
     player_names: list[str]
     court_names: list[str] = ["Court 1"]
     team_mode: bool = False
+    sport: Sport = Sport.PADEL
     total_points_per_match: int = Field(default=32, ge=1)
     num_rounds: int = Field(default=8, ge=0)
     skill_gap: int | None = Field(default=None, ge=0)
@@ -71,10 +75,11 @@ class CreateMexicanoRequest(BaseModel):
 
 
 class CreatePlayoffRequest(BaseModel):
-    name: str = "My Play-off"
+    name: str = Field(default="My Play-off", max_length=255)
     participant_names: list[str]
     court_names: list[str] = ["Court 1"]
     team_mode: bool = True
+    sport: Sport = Sport.PADEL
     double_elimination: bool = False
     public: bool = True
 
@@ -179,8 +184,8 @@ class CustomRoundRequest(BaseModel):
 class ExternalParticipant(BaseModel):
     """An external participant added to play-offs with an optional seed score."""
 
-    name: str
-    score: int = 0
+    name: str = Field(min_length=1, max_length=255)
+    score: int = Field(default=0, ge=0)
     placeholder_id: str | None = None
 
 

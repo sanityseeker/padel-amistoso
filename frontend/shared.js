@@ -46,7 +46,7 @@ function _sortTbdLast(matches) {
 // ── Theme persistence ─────────────────────────────────────
 
 /** Single storage key shared by all pages. */
-const THEME_KEY = 'padel-theme';
+const THEME_KEY = 'amistoso-theme';
 
 /**
  * Apply a theme to the document root and return the normalised value.
@@ -62,10 +62,18 @@ function _applyTheme(theme) {
 
 /**
  * Read the last saved theme from localStorage (defaults to 'dark').
+ * Migrates the legacy key if present.
  * @returns {'light'|'dark'}
  */
 function _loadSavedTheme() {
-  try { return /** @type {'light'|'dark'} */ (localStorage.getItem(THEME_KEY) || 'dark'); } catch (_) { return 'dark'; }
+  try {
+    const legacy = localStorage.getItem('padel-theme');
+    if (legacy && !localStorage.getItem(THEME_KEY)) {
+      localStorage.setItem(THEME_KEY, legacy);
+      localStorage.removeItem('padel-theme');
+    }
+    return /** @type {'light'|'dark'} */ (localStorage.getItem(THEME_KEY) || 'dark');
+  } catch (_) { return 'dark'; }
 }
 
 /**
@@ -79,14 +87,23 @@ function _saveTheme(theme) {
 // ── Language persistence + i18n ───────────────────────────
 
 /** Single storage key shared by all pages. */
-const LANG_KEY = 'padel-lang';
+const LANG_KEY = 'amistoso-lang';
 
 /** @type {'en'|'es'} */
 let _currentLang = 'en';
 
-/** @returns {'en'|'es'} */
+/**
+ * Read the last saved language from localStorage (defaults to 'en').
+ * Migrates the legacy key if present.
+ * @returns {'en'|'es'}
+ */
 function _loadSavedLanguage() {
   try {
+    const legacy = localStorage.getItem('padel-lang');
+    if (legacy && !localStorage.getItem(LANG_KEY)) {
+      localStorage.setItem(LANG_KEY, legacy);
+      localStorage.removeItem('padel-lang');
+    }
     const value = localStorage.getItem(LANG_KEY);
     return value === 'es' ? 'es' : 'en';
   } catch (_) {
@@ -112,6 +129,21 @@ function t(text, params = {}) {
     return translator(text, _currentLang, params);
   }
   return text.replace(/\{(\w+)\}/g, (_, key) => String(params[key] ?? `{${key}}`));
+}
+
+/**
+ * Sport-aware translation: tries key + '_' + sport first, then falls back.
+ * @param {string} text
+ * @param {string} sport - 'padel' or 'tennis'
+ * @param {Record<string, string | number>} [params]
+ * @returns {string}
+ */
+function ts(text, sport, params = {}) {
+  const translator = window.__i18n?.translateSport;
+  if (typeof translator === 'function') {
+    return translator(text, _currentLang, sport, params);
+  }
+  return t(text, params);
 }
 
 /** @returns {'en'|'es'} */
@@ -277,7 +309,7 @@ function copyTournamentUrl() {
     const copyButton = document.getElementById('copy-tv-url-button');
     if (copyButton) {
       const originalText = copyButton.innerText;
-      copyButton.innerText = i18n('txt_tv_url_copied');
+      copyButton.innerText = t('txt_tv_url_copied');
       setTimeout(() => {
         copyButton.innerText = originalText;
       }, 2000);
@@ -290,8 +322,5 @@ function copyTournamentUrl() {
  * @param {string} lang
  */
 function setLanguage(lang) {
-  _currentLang = lang === 'en' ? 'en' : 'es';
-  _saveLanguage(_currentLang);
-  applyI18n(document);
-  document.dispatchEvent(new CustomEvent('app-language-changed', { detail: { lang: _currentLang } }));
+  setAppLanguage(lang);
 }

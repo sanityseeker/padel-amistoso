@@ -8,9 +8,13 @@ goes to both the cache and the database immediately.
 
 from __future__ import annotations
 
+import logging
+
 from ..api.db import get_db
 from .models import User, UserRole
 from .security import hash_password, verify_password
+
+logger = logging.getLogger(__name__)
 
 
 class UserStore:
@@ -34,9 +38,9 @@ class UserStore:
                     disabled=bool(row["disabled"]),
                 )
                 self._users[user.username] = user
-            print(f"[auth] Loaded {len(self._users)} user(s) from SQLite")
+            logger.info("Loaded %d user(s) from SQLite", len(self._users))
         except Exception as exc:  # noqa: BLE001
-            print(f"[auth] Could not load users (starting fresh): {exc}")
+            logger.warning("Could not load users (starting fresh): %s", exc)
 
     def _save_user(self, user: User) -> None:
         """Upsert a single user row in SQLite."""
@@ -47,7 +51,7 @@ class UserStore:
                     (user.username, user.password_hash, user.role.value, int(user.disabled)),
                 )
         except Exception as exc:  # noqa: BLE001
-            print(f"[auth] Could not save user {user.username}: {exc}")
+            logger.warning("Could not save user %s: %s", user.username, exc)
 
     def _remove_user(self, username: str) -> None:
         """Delete a user row from SQLite."""
@@ -55,7 +59,7 @@ class UserStore:
             with get_db() as conn:
                 conn.execute("DELETE FROM users WHERE username = ?", (username,))
         except Exception as exc:  # noqa: BLE001
-            print(f"[auth] Could not delete user {username}: {exc}")
+            logger.warning("Could not delete user %s: %s", username, exc)
 
     # ── Bootstrap ──────────────────────────────────────────
 
@@ -67,7 +71,7 @@ class UserStore:
         if self._users:
             return False
         self.create_user("admin", "admin", role=UserRole.ADMIN)
-        print("[auth] Created default admin user (username=admin, password=admin) — change it!")
+        logger.info("Created default admin user (username=admin, password=admin) — change it!")
         return True
 
     # ── CRUD ───────────────────────────────────────────────

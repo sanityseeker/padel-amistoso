@@ -61,7 +61,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=os.environ.get("ALLOWED_ORIGINS", "*").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -106,30 +106,28 @@ def _serve_js_file(filename: str) -> Response:
     """Serve a JS file from the frontend directory with the correct MIME type."""
     path = FRONTEND_DIR / filename
     content = path.read_text() if path.exists() else ""
-    return Response(content=content, media_type="application/javascript")
+    return Response(content=content, media_type="application/javascript", headers={"Cache-Control": "public, max-age=300"})
 
 
 def _serve_png_file(filename: str) -> Response:
     """Serve a PNG file from the frontend directory."""
     path = FRONTEND_DIR / filename
     content = path.read_bytes() if path.exists() else b""
-    return Response(content=content, media_type="image/png")
+    return Response(content=content, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
 
-@app.get("/", response_class=HTMLResponse)
-async def serve_frontend() -> str:
+@app.get("/")
+async def serve_frontend() -> Response:
     index = FRONTEND_DIR / "index.html"
-    if index.exists():
-        return index.read_text()
-    return "<h1>Frontend not found</h1>"
+    content = index.read_text() if index.exists() else "<h1>Frontend not found</h1>"
+    return Response(content=content, media_type="text/html", headers={"Cache-Control": "no-cache"})
 
 
-@app.get("/tv", response_class=HTMLResponse)
-async def serve_tv() -> str:
+@app.get("/tv")
+async def serve_tv() -> Response:
     page = FRONTEND_DIR / "public.html"
-    if page.exists():
-        return page.read_text()
-    return "<h1>TV page not found</h1>"
+    content = page.read_text() if page.exists() else "<h1>TV page not found</h1>"
+    return Response(content=content, media_type="text/html", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/shared.js")
@@ -161,7 +159,9 @@ async def serve_manifest() -> Response:
 @app.get("/service-worker.js")
 async def serve_service_worker() -> Response:
     """Serve the PWA service worker."""
-    return _serve_js_file("service-worker.js")
+    path = FRONTEND_DIR / "service-worker.js"
+    content = path.read_text() if path.exists() else ""
+    return Response(content=content, media_type="application/javascript", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/icon-192.png")
