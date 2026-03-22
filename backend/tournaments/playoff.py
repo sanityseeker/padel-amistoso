@@ -405,7 +405,7 @@ class DoubleEliminationBracket:
                 self.grand_final_reset = Match(
                     team1=winner,
                     team2=loser,
-                    court=self._next_court(),
+                    court=None,
                     round_label="Grand Final Reset",
                     round_number=m.round_number + 1,
                 )
@@ -426,7 +426,7 @@ class DoubleEliminationBracket:
             m = Match(
                 team1=t1,
                 team2=t2,
-                court=None,  # assigned lazily by _assign_courts_to_pending_playoff_matches
+                court=None,
                 round_number=r,
                 round_label=f"Losers R{r}",
             )

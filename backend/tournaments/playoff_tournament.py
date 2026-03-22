@@ -77,6 +77,10 @@ class PlayoffTournament:
     ) -> None:
         """Record the result of a bracket match."""
         self.bracket.record_result(match_id, score, sets=sets)
+        # Lazily assign courts to any match that just became playable
+        if self.courts:
+            all_matches = self.bracket.all_matches if self.double_elimination else list(self.bracket.matches)
+            assign_courts(all_matches, self.courts)
 
     def champion(self) -> list[Player] | None:
         """Return the winning team once the bracket is complete, else ``None``."""

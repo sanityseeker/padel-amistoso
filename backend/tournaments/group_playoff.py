@@ -65,6 +65,7 @@ class GroupPlayoffTournament:
         self.groups = distribute_players_to_groups(
             self.players,
             self.num_groups,
+            shuffle=False,
             team_mode=self.team_mode,
             group_names=self.group_names,
         )

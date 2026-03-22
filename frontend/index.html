@@ -1020,6 +1020,19 @@
     align-items: center;
     gap: 0.3rem;
   }
+  .participant-group-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.45em;
+    height: 1.45em;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    line-height: 1;
+  }
   .participant-entry input {
     flex: 1;
     min-height: 0 !important;
@@ -2286,6 +2299,18 @@ const _participantPasteMode = { gp: false, mex: false, po: false };
 
 function _entryModeIsTeam(mode) { return _entryMode[mode] === 'team'; }
 
+const _gpGroupColors = ['#3b82f6','#22c55e','#f59e0b','#ef4444','#a855f7','#06b6d4','#ec4899','#84cc16'];
+function _gpGroupIndexForSlot(slotIndex, total, numGroups) {
+  const base = Math.floor(total / numGroups);
+  const rem = total % numGroups;
+  let cum = 0;
+  for (let g = 0; g < numGroups; g++) {
+    cum += base + (g < rem ? 1 : 0);
+    if (slotIndex < cum) return g;
+  }
+  return numGroups - 1;
+}
+
 function renderParticipantFields(mode) {
   const grid = document.getElementById(`${mode}-participant-grid`);
   const addBtn = document.getElementById(`${mode}-add-btn`);
@@ -2293,10 +2318,20 @@ function renderParticipantFields(mode) {
   if (!grid) return;
   const entries = _participantEntries[mode];
   const isTeam = _entryModeIsTeam(mode);
+  const numGroups = mode === 'gp' ? Math.max(1, parseInt(document.getElementById('gp-num-groups')?.value || '1', 10)) : 0;
   grid.innerHTML = '';
   entries.forEach((val, i) => {
     const row = document.createElement('div');
     row.className = 'participant-entry';
+    if (mode === 'gp' && numGroups > 1) {
+      const gIdx = _gpGroupIndexForSlot(i, entries.length, numGroups);
+      const dot = document.createElement('span');
+      dot.className = 'participant-group-dot';
+      dot.style.background = _gpGroupColors[gIdx % _gpGroupColors.length];
+      dot.title = `Group ${gIdx + 1}`;
+      dot.textContent = gIdx + 1;
+      row.appendChild(dot);
+    }
     const inp = document.createElement('input');
     inp.type = 'text';
     inp.value = val;
@@ -2477,6 +2512,8 @@ function renderGroupInputs() {
   const countEl = document.getElementById('gp-num-groups');
   const container = document.getElementById('gp-group-names-container');
   if (!countEl || !container) return;
+  // Re-render participants so group slot badges update
+  renderParticipantFields('gp');
   const count = Math.max(1, parseInt(countEl.value, 10) || 1);
   const existing = Array.from(container.querySelectorAll('input'));
   container.innerHTML = '';
@@ -2793,7 +2830,7 @@ function matchRow(m, ctx) {
     html += `<button type="button" class="match-edit-btn" id="medit-btn-${m.id}" data-sets='${_editSetsJson}' onclick="_toggleEditMatch('${m.id}','${ctx}',${m.score[0]},${m.score[1]})">${t('txt_txt_edit')}</button>`;
 
     // Inline edit form (hidden)
-    const isSetScoringCtxEdit = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff';
+    const isSetScoringCtxEdit = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff';
     const autoCalc = _totalPts > 0 && (ctx === 'mex' || ctx === 'mex-playoff');
     const onInput = autoCalc ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"` : '';
     html += `<div class="match-actions hidden" id="medit-${m.id}">`;
@@ -2842,7 +2879,7 @@ function matchRow(m, ctx) {
 
   // Not yet completed — show input form
   const isMex = ctx === 'mex' || ctx === 'mex-playoff';
-  const isSetScoringCtx = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff';
+  const isSetScoringCtx = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff';
   const autoCalc = _totalPts > 0 && isMex;
   const onInput = autoCalc
     ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"`
@@ -2928,6 +2965,8 @@ async function _rerenderCurrentViewPreserveDrafts() {
   const drafts = _captureViewDrafts();
   if (currentType === 'group_playoff') {
     await renderGP();
+  } else if (currentType === 'playoff') {
+    await renderPO();
   } else {
     await renderMex();
   }
@@ -2940,6 +2979,7 @@ const _SCORE_ENDPOINTS = {
   'gp-playoff': { points: 'gp/record-playoff',         tennis: 'gp/record-playoff-tennis' },
   'mex-playoff':{ points: 'mex/record-playoff',        tennis: 'mex/record-playoff-tennis' },
   'mex':        { points: 'mex/record',                 tennis: null },
+  'po-playoff': { points: 'po/record',                  tennis: 'po/record-tennis' },
 };
 
 function _scoreApiPath(ctx, isTennis) {
@@ -4426,6 +4466,37 @@ async function exportTournamentOutcome(format) {
           body += _report_table(
             [t('txt_txt_round'), t('txt_txt_team_1'), t('txt_txt_team_2'), t('txt_txt_score'), t('txt_txt_court')],
             gMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.court || '']),
+          );
+        }
+      }
+    } else if (currentType === 'playoff') {
+      const schemaUrl = `/api/tournaments/${currentTid}/po/playoffs-schema?fmt=png`
+        + `&box_scale=${(document.getElementById('tv-schema-box')?.value || 1.0)}`
+        + `&line_width=${(document.getElementById('tv-schema-lw')?.value || 1.0)}`
+        + `&arrow_scale=${(document.getElementById('tv-schema-arrow')?.value || 1.0)}`
+        + `&title_font_scale=${(document.getElementById('tv-schema-title-scale')?.value || 1.0)}`;
+      const [status, playoffs, schemaSrc] = await Promise.all([
+        api(`/api/tournaments/${currentTid}/po/status`),
+        api(`/api/tournaments/${currentTid}/po/playoffs`),
+        _fetch_image_as_base64(schemaUrl),
+      ]);
+
+      if (status.champion) {
+        body += `<div class="champ">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
+      }
+
+      if (schemaSrc) {
+        body += `<h2>${t('txt_txt_play_off_bracket')}</h2>`;
+        body += `<img src="${schemaSrc}" alt="${t('txt_txt_play_off_bracket')}" style="max-width:100%;height:auto;margin:8px 0 18px">`;
+      }
+
+      if (includeHistory) {
+        const pMatches = (playoffs?.matches || []).filter(m => m.status === 'completed');
+        if (pMatches.length > 0) {
+          body += `<h2>${t('txt_txt_play_off_match_history')}</h2>`;
+          body += _report_table(
+            [t('txt_txt_round'), t('txt_txt_team_1'), t('txt_txt_team_2'), t('txt_txt_score'), t('txt_txt_court')],
+            pMatches.map(m => [m.round_label || '', (m.team1 || []).join(' & ') || 'TBD', (m.team2 || []).join(' & ') || 'TBD', _format_match_score(m), m.court || '']),
           );
         }
       }
