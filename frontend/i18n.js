@@ -389,7 +389,6 @@ const I18N_MESSAGES = {
 
     // ── Rebrand & multi-sport ────────────────────────────
     "txt_txt_app_title": "Torneos Amistosos",
-    "txt_txt_padel_tv": "Padel TV",
     "txt_txt_tennis_tv": "Tennis TV",
     "txt_txt_sport_padel": "Padel",
     "txt_txt_sport_tennis": "Tennis",
@@ -796,7 +795,6 @@ const I18N_MESSAGES = {
 
     // ── Rebrand & multi-sport ────────────────────────────
     "txt_txt_app_title": "Torneos Amistosos",
-    "txt_txt_padel_tv": "Padel TV",
     "txt_txt_tennis_tv": "Tennis TV",
     "txt_txt_sport_padel": "Pádel",
     "txt_txt_sport_tennis": "Tenis",
