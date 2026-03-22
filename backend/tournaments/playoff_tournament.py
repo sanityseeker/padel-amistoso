@@ -43,8 +43,8 @@ class PlayoffTournament:
         self.team_mode = team_mode
 
         if double_elimination:
-            self.bracket: SingleEliminationBracket | DoubleEliminationBracket = (
-                DoubleEliminationBracket(teams, courts=self.courts)
+            self.bracket: SingleEliminationBracket | DoubleEliminationBracket = DoubleEliminationBracket(
+                teams, courts=self.courts
             )
         else:
             self.bracket = SingleEliminationBracket(teams)

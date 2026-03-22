@@ -15,6 +15,4 @@ from pathlib import Path
 
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
-DATA_DIR: Path = Path(
-    os.environ.get("AMISTOSO_DATA_DIR", os.environ.get("PADEL_DATA_DIR", _DEFAULT_DATA_DIR))
-)
+DATA_DIR: Path = Path(os.environ.get("AMISTOSO_DATA_DIR", os.environ.get("PADEL_DATA_DIR", _DEFAULT_DATA_DIR)))

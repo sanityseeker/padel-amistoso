@@ -470,10 +470,7 @@ def _order_slots(slots: list[list[Match]]) -> list[list[Match]]:
             best_idx = 0
             best_overlap = float("inf")
             for i, slot in enumerate(remaining):
-                overlap = sum(
-                    1 for m in slot for p in m.team1 + m.team2
-                    if p.id in prev_players
-                )
+                overlap = sum(1 for m in slot for p in m.team1 + m.team2 if p.id in prev_players)
                 if overlap < best_overlap:
                     best_overlap = overlap
                     best_idx = i

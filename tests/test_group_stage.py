@@ -408,18 +408,14 @@ class TestCourtAssignment:
                 counts[m.court.name] += 1
 
             diff = abs(counts["C1"] - counts["C2"])
-            assert diff <= 1, (
-                f"Court imbalance too high: {counts} (diff={diff})"
-            )
+            assert diff <= 1, f"Court imbalance too high: {counts} (diff={diff})"
 
             # At least 4 of 5 slots should use both courts.
             by_slot: defaultdict[int, list] = defaultdict(list)
             for m in all_matches:
                 by_slot[m.slot_number].append(m)
             full_slots = sum(1 for ms in by_slot.values() if len(ms) == 2)
-            assert full_slots >= 4, (
-                f"Expected ≥4 full slots from 9 matches on 2 courts, got {full_slots}"
-            )
+            assert full_slots >= 4, f"Expected ≥4 full slots from 9 matches on 2 courts, got {full_slots}"
 
 
 # ── Sets-format standings ─────────────────────────────────

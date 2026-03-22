@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import Response
 
 from ..auth import auth_router
 from ..auth.store import user_store
@@ -106,7 +106,9 @@ def _serve_js_file(filename: str) -> Response:
     """Serve a JS file from the frontend directory with the correct MIME type."""
     path = FRONTEND_DIR / filename
     content = path.read_text() if path.exists() else ""
-    return Response(content=content, media_type="application/javascript", headers={"Cache-Control": "public, max-age=300"})
+    return Response(
+        content=content, media_type="application/javascript", headers={"Cache-Control": "public, max-age=300"}
+    )
 
 
 def _serve_png_file(filename: str) -> Response:
