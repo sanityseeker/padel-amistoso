@@ -39,7 +39,7 @@ _GP = TournamentType.GROUP_PLAYOFF.value
 async def create_group_playoff(req: CreateGroupPlayoffRequest, user=Depends(get_current_user)) -> dict:
     """Create a new Group+Playoff tournament and generate the first group-stage matches."""
     players = [Player(name=n) for n in req.player_names]
-    courts = [Court(name=n) for n in req.court_names]
+    courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 
     t = GroupPlayoffTournament(
         players=players,
@@ -60,6 +60,7 @@ async def create_group_playoff(req: CreateGroupPlayoffRequest, user=Depends(get_
         "owner": user.username,
         "public": req.public,
         "sport": req.sport.value,
+        "assign_courts": req.assign_courts,
     }
     _save_tournament(tid)
     return {"id": tid, "phase": t.phase}
@@ -68,11 +69,13 @@ async def create_group_playoff(req: CreateGroupPlayoffRequest, user=Depends(get_
 @router.get("/{tid}/gp/status")
 async def gp_status(tid: str) -> dict:
     """Return high-level status (phase, number of groups, team mode, champion) for a GP tournament."""
-    t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+    data = _get_tournament(tid, _GP)
+    t: GroupPlayoffTournament = data["tournament"]
     return {
         "phase": t.phase,
         "num_groups": len(t.groups),
         "team_mode": t.team_mode,
+        "assign_courts": data.get("assign_courts", True),
         "champion": [p.name for p in t.champion()] if t.champion() else None,
     }
 

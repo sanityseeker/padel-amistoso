@@ -84,8 +84,8 @@ def _save_tournament(tid: str) -> None:
             conn.execute(
                 """
                 INSERT INTO tournaments
-                    (id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport, assign_courts)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name            = excluded.name,
                     public          = excluded.public,
@@ -93,7 +93,8 @@ def _save_tournament(tid: str) -> None:
                     tv_settings     = excluded.tv_settings,
                     tournament_blob = excluded.tournament_blob,
                     version         = excluded.version,
-                    sport           = excluded.sport
+                    sport           = excluded.sport,
+                    assign_courts   = excluded.assign_courts
                 """,
                 (
                     tid,
@@ -106,6 +107,7 @@ def _save_tournament(tid: str) -> None:
                     blob,
                     version,
                     data.get("sport", "padel"),
+                    int(data.get("assign_courts", True)),
                 ),
             )
     except Exception as exc:  # noqa: BLE001
@@ -161,6 +163,7 @@ def _load_state() -> None:
             "tv_settings": json.loads(row["tv_settings"]) if row["tv_settings"] else None,
             "tournament": tournament,
             "sport": row["sport"] if "sport" in row.keys() else "padel",
+            "assign_courts": bool(row["assign_courts"]) if "assign_courts" in row.keys() else True,
         }
         _tournament_versions[tid] = row["version"]
 

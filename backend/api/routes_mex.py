@@ -40,7 +40,7 @@ _MEX = TournamentType.MEXICANO.value
 async def create_mexicano(req: CreateMexicanoRequest, user=Depends(get_current_user)) -> dict:
     """Create a new Mexicano tournament and generate the first round of matches."""
     players = [Player(name=n) for n in req.player_names]
-    courts = [Court(name=n) for n in req.court_names]
+    courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 
     try:
         t = MexicanoTournament(
@@ -68,6 +68,7 @@ async def create_mexicano(req: CreateMexicanoRequest, user=Depends(get_current_u
         "owner": user.username,
         "public": req.public,
         "sport": req.sport.value,
+        "assign_courts": req.assign_courts,
     }
     _save_tournament(tid)
     return {"id": tid, "current_round": t.current_round}
@@ -76,7 +77,8 @@ async def create_mexicano(req: CreateMexicanoRequest, user=Depends(get_current_u
 @router.get("/{tid}/mex/status")
 async def mex_status(tid: str) -> dict:
     """Return comprehensive Mexicano tournament status including leaderboard, rounds, and sit-out info."""
-    t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+    data = _get_tournament(tid, _MEX)
+    t: MexicanoTournament = data["tournament"]
     return {
         "current_round": t.current_round,
         "num_rounds": t.num_rounds,
@@ -86,6 +88,7 @@ async def mex_status(tid: str) -> dict:
         "team_mode": t.team_mode,
         "phase": t.phase,
         "is_finished": t.is_finished,
+        "assign_courts": data.get("assign_courts", True),
         "leaderboard": t.leaderboard(),
         "players": [{"id": p.id, "name": p.name} for p in t.players],
         "sit_out_count": t._sit_out_count,

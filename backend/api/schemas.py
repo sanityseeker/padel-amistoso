@@ -22,6 +22,7 @@ class CreateGroupPlayoffRequest(BaseModel):
     top_per_group: int = Field(default=2, ge=1)
     double_elimination: bool = False
     public: bool = True
+    assign_courts: bool = True
 
     @field_validator("player_names")
     @classmethod
@@ -30,12 +31,11 @@ class CreateGroupPlayoffRequest(BaseModel):
             raise ValueError("Need at least 2 players")
         return v
 
-    @field_validator("court_names")
-    @classmethod
-    def at_least_one_court(cls, v: list[str]) -> list[str]:
-        if len(v) < 1:
-            raise ValueError("Need at least 1 court")
-        return v
+    @model_validator(mode="after")
+    def validate_courts(self) -> "CreateGroupPlayoffRequest":
+        if self.assign_courts and len(self.court_names) < 1:
+            raise ValueError("Need at least 1 court when assign_courts is True")
+        return self
 
 
 class CreateMexicanoRequest(BaseModel):
@@ -52,6 +52,7 @@ class CreateMexicanoRequest(BaseModel):
     loss_discount: float = Field(default=1.0, ge=0.0, le=1.0)
     balance_tolerance: float = Field(default=0.2, ge=0.0)
     public: bool = True
+    assign_courts: bool = True
 
     @field_validator("player_names")
     @classmethod
@@ -61,17 +62,12 @@ class CreateMexicanoRequest(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_player_count_for_mode(self) -> CreateMexicanoRequest:
+    def validate_player_count_for_mode(self) -> "CreateMexicanoRequest":
         if not self.team_mode and len(self.player_names) < 4:
             raise ValueError("Need at least 4 players for Mexicano format (or enable team mode)")
+        if self.assign_courts and len(self.court_names) < 1:
+            raise ValueError("Need at least 1 court when assign_courts is True")
         return self
-
-    @field_validator("court_names")
-    @classmethod
-    def at_least_one_court(cls, v: list[str]) -> list[str]:
-        if len(v) < 1:
-            raise ValueError("Need at least 1 court")
-        return v
 
 
 class CreatePlayoffRequest(BaseModel):
@@ -82,6 +78,7 @@ class CreatePlayoffRequest(BaseModel):
     sport: Sport = Sport.PADEL
     double_elimination: bool = False
     public: bool = True
+    assign_courts: bool = True
 
     @field_validator("participant_names")
     @classmethod
@@ -90,12 +87,11 @@ class CreatePlayoffRequest(BaseModel):
             raise ValueError("Need at least 2 participants")
         return v
 
-    @field_validator("court_names")
-    @classmethod
-    def at_least_one_court(cls, v: list[str]) -> list[str]:
-        if len(v) < 1:
-            raise ValueError("Need at least 1 court")
-        return v
+    @model_validator(mode="after")
+    def validate_courts(self) -> "CreatePlayoffRequest":
+        if self.assign_courts and len(self.court_names) < 1:
+            raise ValueError("Need at least 1 court when assign_courts is True")
+        return self
 
 
 class TvSettingsRequest(BaseModel):
@@ -106,6 +102,7 @@ class TvSettingsRequest(BaseModel):
     show_score_breakdown: bool | None = None
     show_standings: bool | None = None
     show_bracket: bool | None = None
+    show_pending_matches: bool | None = None
     refresh_interval: int | None = Field(default=None, ge=-1, le=300)
     schema_box_scale: float | None = Field(default=None, ge=0.3, le=3.0)
     schema_line_width: float | None = Field(default=None, ge=0.3, le=5.0)
@@ -122,6 +119,7 @@ class TvSettings(BaseModel):
     show_score_breakdown: bool = False
     show_standings: bool = True
     show_bracket: bool = True
+    show_pending_matches: bool = False
     refresh_interval: int = -1
     schema_box_scale: float = 1.0
     schema_line_width: float = 1.0

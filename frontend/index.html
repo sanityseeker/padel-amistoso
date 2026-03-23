@@ -1341,12 +1341,21 @@
         </div>
         <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start;margin-top:0.5rem">
           <div class="field-section" style="flex:1;min-width:220px">
-            <div class="field-section-title" data-i18n="txt_txt_courts">Courts</div>
-            <div class="num-field" style="margin-bottom:0.55rem">
-              <label data-i18n="txt_txt_number_of_courts">Number of courts</label>
-              <input id="gp-court-count" type="number" value="2" min="1" max="20" oninput="renderCourtInputs('gp')">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.55rem">
+              <div class="field-section-title" style="margin-bottom:0" data-i18n="txt_txt_courts">Courts</div>
+              <label class="switch-label">
+                <input type="checkbox" id="gp-assign-courts" checked onchange="toggleCourtSection('gp')">
+                <span class="switch-track"></span>
+                <span data-i18n="txt_txt_assign_courts">Assign courts</span>
+              </label>
             </div>
-            <div class="court-names-grid" id="gp-court-names-container"></div>
+            <div id="gp-courts-detail">
+              <div class="num-field" style="margin-bottom:0.55rem">
+                <label data-i18n="txt_txt_number_of_courts">Number of courts</label>
+                <input id="gp-court-count" type="number" value="2" min="1" max="20" oninput="renderCourtInputs('gp')">
+              </div>
+              <div class="court-names-grid" id="gp-court-names-container"></div>
+            </div>
           </div>
           <div class="field-section" style="flex:1;min-width:180px">
             <div class="field-section-title" data-i18n="txt_txt_groups">Groups</div>
@@ -1397,12 +1406,21 @@
           </div>
         </div>
         <div class="field-section" style="margin-top:0.5rem">
-          <div class="field-section-title" data-i18n="txt_txt_courts">Courts</div>
-          <div class="num-field" style="margin-bottom:0.55rem">
-            <label data-i18n="txt_txt_number_of_courts">Number of courts</label>
-            <input id="mex-court-count" type="number" value="2" min="1" max="20" oninput="renderCourtInputs('mex')">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.55rem">
+            <div class="field-section-title" style="margin-bottom:0" data-i18n="txt_txt_courts">Courts</div>
+            <label class="switch-label">
+              <input type="checkbox" id="mex-assign-courts" checked onchange="toggleCourtSection('mex')">
+              <span class="switch-track"></span>
+              <span data-i18n="txt_txt_assign_courts">Assign courts</span>
+            </label>
           </div>
-          <div class="court-names-grid" id="mex-court-names-container"></div>
+          <div id="mex-courts-detail">
+            <div class="num-field" style="margin-bottom:0.55rem">
+              <label data-i18n="txt_txt_number_of_courts">Number of courts</label>
+              <input id="mex-court-count" type="number" value="2" min="1" max="20" oninput="renderCourtInputs('mex')">
+            </div>
+            <div class="court-names-grid" id="mex-court-names-container"></div>
+          </div>
         </div>
         <div class="field-section" style="margin-top:0.5rem">
           <div class="field-section-title" data-i18n="txt_txt_parameters">Parameters</div>
@@ -1489,12 +1507,21 @@
           </div>
         </div>
         <div class="field-section" style="margin-top:0.5rem">
-          <div class="field-section-title" data-i18n="txt_txt_courts">Courts</div>
-          <div class="num-field" style="margin-bottom:0.55rem">
-            <label data-i18n="txt_txt_number_of_courts">Number of courts</label>
-            <input id="po-court-count" type="number" value="2" min="1" max="20" oninput="renderCourtInputs('po')">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.55rem">
+            <div class="field-section-title" style="margin-bottom:0" data-i18n="txt_txt_courts">Courts</div>
+            <label class="switch-label">
+              <input type="checkbox" id="po-assign-courts" checked onchange="toggleCourtSection('po')">
+              <span class="switch-track"></span>
+              <span data-i18n="txt_txt_assign_courts">Assign courts</span>
+            </label>
           </div>
-          <div class="court-names-grid" id="po-court-names-container"></div>
+          <div id="po-courts-detail">
+            <div class="num-field" style="margin-bottom:0.55rem">
+              <label data-i18n="txt_txt_number_of_courts">Number of courts</label>
+              <input id="po-court-count" type="number" value="2" min="1" max="20" oninput="renderCourtInputs('po')">
+            </div>
+            <div class="court-names-grid" id="po-court-names-container"></div>
+          </div>
         </div>
         <div class="field-section" style="margin-top:0.5rem">
           <div class="field-section-title" data-i18n="txt_txt_play_off_format">Play-off format</div>
@@ -2133,7 +2160,7 @@ async function generatePoPreviewSchema() {
 
 /** Build the collapsible Play-offs Schema card HTML. */
 function _schemaCardHtml(prefix, placeholder, generateFn) {
-  let h = `<details class="card">`;
+  let h = `<details id="${prefix}-card" class="card">`;
   h += `<summary>${t('txt_txt_play_offs_schema')}</summary>`;
   h += `<div style="margin-top:0.6rem">`;
   h += `<div class="form-grid">`;
@@ -2606,6 +2633,8 @@ function renderCourtInputs(prefix) {
 }
 
 function getCourtNames(prefix) {
+  const cb = document.getElementById(`${prefix}-assign-courts`);
+  if (cb && !cb.checked) return [];
   const container = document.getElementById(`${prefix}-court-names-container`);
   if (!container) return [];
   return Array.from(container.querySelectorAll('input')).map(el => el.value.trim()).filter(Boolean);
@@ -2621,6 +2650,12 @@ function refreshCourtDefaults(prefix) {
     inp.setAttribute('aria-label', newDefault);
     inp.dataset.default = newDefault;
   });
+}
+
+function toggleCourtSection(prefix) {
+  const cb = document.getElementById(`${prefix}-assign-courts`);
+  const detail = document.getElementById(`${prefix}-courts-detail`);
+  if (detail) detail.style.display = (cb && !cb.checked) ? 'none' : '';
 }
 
 function _defaultGroupName(n) {
@@ -2683,6 +2718,7 @@ async function createGP() {
       name: document.getElementById('gp-name').value,
       player_names: getParticipantNames('gp'),
       team_mode: _currentSport === 'tennis' ? true : _entryModeIsTeam('gp'),
+      assign_courts: document.getElementById('gp-assign-courts')?.checked !== false,
       court_names: getCourtNames('gp'),
       num_groups: +document.getElementById('gp-num-groups').value,
       group_names: getGroupNames(),
@@ -2703,6 +2739,7 @@ async function createMex() {
     const body = {
       name: document.getElementById('mex-name').value,
       player_names: getParticipantNames('mex'),
+      assign_courts: document.getElementById('mex-assign-courts')?.checked !== false,
       court_names: getCourtNames('mex'),
       total_points_per_match: +document.getElementById('mex-pts').value,
       num_rounds: rolling ? 0 : +document.getElementById('mex-rounds').value,
@@ -2727,6 +2764,7 @@ async function createPO() {
     const body = {
       name: document.getElementById('po-name').value,
       participant_names: getParticipantNames('po'),
+      assign_courts: document.getElementById('po-assign-courts')?.checked !== false,
       court_names: getCourtNames('po'),
       team_mode: true,
       double_elimination: document.getElementById('po-double-elim').checked,
@@ -2764,6 +2802,7 @@ async function renderGP() {
     html += _renderCourtAssignmentsCard(
       assignmentMatches,
       status.phase === 'groups' ? t('txt_txt_court_assignments_group_stage') : t('txt_txt_court_assignments_play_offs'),
+      status.assign_courts !== false,
     );
 
     const groupFormatLabel = _gpScoreMode['gp-group'] === 'sets' ? `🎾 ${t('txt_txt_sets')}` : t('txt_txt_points_label');
@@ -2896,7 +2935,7 @@ async function renderPO() {
     }
 
     const pending = _sortTbdLast((playoffs.pending || []).filter(m => m.status !== 'completed'));
-    html += _renderCourtAssignmentsCard(pending, t('txt_txt_court_assignments_play_offs'));
+    html += _renderCourtAssignmentsCard(pending, t('txt_txt_court_assignments_play_offs'), status.assign_courts !== false);
 
     html += _schemaCardHtml('po-playoff-schema', t('txt_txt_play_off_bracket'), 'generatePoPlayoffSchema');
 
@@ -2907,7 +2946,7 @@ async function renderPO() {
     html += `<button type="button" class="${_gpScoreMode['po-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('po-playoff','points')">${t('txt_txt_points_label')}</button>`;
     html += `<button type="button" class="${_gpScoreMode['po-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('po-playoff','sets')">🎾 ${t('txt_txt_sets')}</button>`;
     html += `</div></div>`;
-    html += `<details class="bracket-collapse" open style="margin:0.5rem 0"><summary style="cursor:pointer;user-select:none;font-size:0.82rem;color:var(--text-muted);padding:0.2rem 0;list-style:none;display:flex;align-items:center;gap:0.35rem"><span class="bracket-chevron" style="display:inline-block;transition:transform 0.15s">▶</span>${t('txt_txt_play_off_bracket')}</summary>`;
+    html += `<details id="po-inline-bracket" class="bracket-collapse" open style="margin:0.5rem 0"><summary style="cursor:pointer;user-select:none;font-size:0.82rem;color:var(--text-muted);padding:0.2rem 0;list-style:none;display:flex;align-items:center;gap:0.35rem"><span class="bracket-chevron" style="display:inline-block;transition:transform 0.15s">▶</span>${t('txt_txt_play_off_bracket')}</summary>`;
     html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/po/playoffs-schema?fmt=png&_t=${Date.now()}" alt="${t('txt_txt_play_off_bracket')}" onerror="this.style.display='none'">`;
     html += `</details>`;
     if (playoffs.matches) {
@@ -3007,6 +3046,9 @@ function matchRow(m, ctx) {
   const onInput = autoCalc
     ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"`
     : '';
+  const hasTbd = !m.team1?.join('').trim() || !m.team2?.join('').trim();
+  const tbdAttr = hasTbd ? ' disabled title="Players not yet determined"' : '';
+  const tbdStyle = hasTbd ? ' style="opacity:0.45;cursor:not-allowed"' : '';
 
   let html = `<div class="match-card" style="flex-wrap:wrap">${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
 
@@ -3018,13 +3060,13 @@ function matchRow(m, ctx) {
     html += `<input type="number" id="s1-${m.id}" min="0" value="0" style="width:50px">`;
     html += `<span>–</span>`;
     html += `<input type="number" id="s2-${m.id}" min="0" value="0" style="width:50px">`;
-    html += `<button type="button" class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
+    html += `<button type="button" class="btn btn-success btn-sm"${tbdAttr}${tbdStyle} onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
     html += `</div>`;
     html += `<div id="score-tennis-${m.id}" class="${stageMode === 'sets' ? '' : 'hidden'}">`;
     html += `<div class="tennis-sets" id="tennis-sets-${m.id}">`;
     html += _renderTennisSetInputs(m.id, 3);
     html += `</div>`;
-    html += `<button type="button" class="btn btn-success btn-sm" onclick="submitTennisScore('${m.id}','${ctx}')">${t('txt_txt_save_sets')}</button>`;
+    html += `<button type="button" class="btn btn-success btn-sm"${tbdAttr}${tbdStyle} onclick="submitTennisScore('${m.id}','${ctx}')">${t('txt_txt_save_sets')}</button>`;
     html += `</div>`;
     html += `</div>`;
   } else {
@@ -3032,7 +3074,7 @@ function matchRow(m, ctx) {
     html += `<input type="number" id="s1-${m.id}" min="0" value="0" style="width:50px" ${onInput}>`;
     html += `<span>–</span>`;
     html += `<input type="number" id="s2-${m.id}" min="0" value="${autoCalc ? _totalPts : 0}" style="width:50px" ${onInput}>`;
-    html += `<button type="button" class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
+    html += `<button type="button" class="btn btn-success btn-sm"${tbdAttr}${tbdStyle} onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
     html += `</div>`;
   }
 
@@ -3059,6 +3101,12 @@ function _captureViewDrafts() {
 
     drafts[key] = (el.type === 'checkbox' || el.type === 'radio') ? el.checked : el.value;
   });
+
+  // Preserve open/closed state of identified <details> elements
+  root.querySelectorAll('details[id]').forEach(el => {
+    drafts[`details:${el.id}`] = el.open;
+  });
+
   return drafts;
 }
 
@@ -3067,6 +3115,13 @@ function _restoreViewDrafts(drafts) {
   if (!root || !drafts) return;
 
   for (const [key, value] of Object.entries(drafts)) {
+    if (key.startsWith('details:')) {
+      const el = document.getElementById(key.slice(8));
+      if (el && el.tagName === 'DETAILS') {
+        if (value) el.setAttribute('open', ''); else el.removeAttribute('open');
+      }
+      continue;
+    }
     let el = null;
     if (key.startsWith('id:')) {
       el = document.getElementById(key.slice(3));
@@ -3373,7 +3428,7 @@ async function renderMex() {
 
     if (isPlayoffs || hasPlayoffBracket) {
       const pendingPo = (playoffsData.pending || []).filter(m => m.status !== 'completed');
-      html += _renderCourtAssignmentsCard(pendingPo, t('txt_txt_court_assignments_mexicano_play_offs'));
+      html += _renderCourtAssignmentsCard(pendingPo, t('txt_txt_court_assignments_mexicano_play_offs'), status.assign_courts !== false);
 
       html += _schemaCardHtml('mex-playoff-schema', t('txt_txt_mexicano_play_offs_bracket'), 'generateMexPlayoffSchema');
 
@@ -3389,7 +3444,7 @@ async function renderMex() {
       }
       html += `</div>`;
     } else {
-      html += _renderCourtAssignmentsCard(matches.current_matches, t('txt_txt_court_assignments_current_round'));
+      html += _renderCourtAssignmentsCard(matches.current_matches, t('txt_txt_court_assignments_current_round'), status.assign_courts !== false);
     }
 
     // Leaderboard
@@ -3465,9 +3520,9 @@ async function renderMex() {
         html += `<div id="mex-playoffs-section" class="card">`;
         html += `<h3>${t('txt_txt_post_mexicano_decision')}</h3>`;
         html += `<p style="color:var(--text-muted);font-size:0.85rem">${t('txt_txt_post_mexicano_instructions')}</p>`;
-        html += `<div class="proposal-actions">`;
-        html += `<button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,proposeMexPlayoffs)">🏆 ${t('txt_txt_start_optional_playoffs')}</button>`;
-        html += `<button type="button" class="btn" style="padding:0.75rem 1.5rem;font-size:1.1rem;background:var(--border);color:var(--text)" onclick="finishMexicanoAsIs()">✓ ${t('txt_txt_finish_as_is')}</button>`;
+        html += `<div class="proposal-actions" style="gap:1rem;margin-top:0.5rem">`;
+        html += `<button type="button" class="btn btn-success" style="padding:0.85rem 2rem;font-size:1.1rem" onclick="withLoading(this,proposeMexPlayoffs)">🏆 ${t('txt_txt_start_optional_playoffs')}</button>`;
+        html += `<button type="button" class="btn" style="padding:0.85rem 2rem;font-size:1.1rem;background:var(--border);color:var(--text)" onclick="finishMexicanoAsIs()">✓ ${t('txt_txt_finish_as_is')}</button>`;
         html += `</div>`;
         html += `</div>`;
       }
@@ -3505,7 +3560,41 @@ async function renderMex() {
   } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
 }
 
-function _renderCourtAssignmentsCard(matches, title) {
+function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
+  if (!assignCourts) {
+    // Courts disabled — group by round, defined players first, multi-column grid
+    if (!matches || matches.length === 0) {
+      return `<div class="card"><h3>${t('txt_txt_pending_matches')}</h3><em>${t('txt_txt_no_pending_assignments')}</em></div>`;
+    }
+    const _tl = (team) => (team && team.length > 0) ? team.join(' & ') : 'TBD';
+    const _hasTbd = (m) => !m.team1?.join('').trim() || !m.team2?.join('').trim();
+    // Group by round_label, preserving first-seen order
+    const _byRound = {};
+    const _roundOrder = [];
+    for (const m of matches) {
+      const key = m.round_label || '';
+      if (!_byRound[key]) { _byRound[key] = []; _roundOrder.push(key); }
+      _byRound[key].push(m);
+    }
+    // Within each round: defined-player matches first, TBD last
+    for (const key of _roundOrder) {
+      _byRound[key].sort((a, b) => _hasTbd(a) - _hasTbd(b));
+    }
+    let html = `<div class="card"><h3>${t('txt_txt_pending_matches')}</h3>`;
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0.5rem 1.25rem">`;
+    for (const key of _roundOrder) {
+      html += `<div>`;
+      if (key) html += `<div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:0.35rem">${esc(key)}</div>`;
+      for (const m of _byRound[key]) {
+        const tbd = _hasTbd(m);
+        html += `<div class="match-card" style="margin-bottom:0.25rem${tbd ? ';opacity:0.5' : ''}"><div class="match-teams">${esc(_tl(m.team1))} <span class="vs">vs</span> ${esc(_tl(m.team2))}</div></div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
   if (!matches || matches.length === 0) {
     return `<div class="card"><h3>${esc(title)}</h3><em>${t('txt_txt_no_pending_assignments')}</em></div>`;
   }
@@ -3592,6 +3681,14 @@ async function _toggleForcedSitOut(playerId, maxSitOuts) {
   }
 
   const nextSection = document.getElementById('mex-next-section');
+  const remaining = maxSitOuts - _forcedSitOuts.size;
+  if (_forcedSitOuts.size > 0 && remaining > 0) {
+    // Partial selection — wait for all required sit-outs before calling the API
+    if (nextSection) {
+      nextSection.innerHTML = `<em style="color:var(--text-muted)">${t('txt_txt_select_more_sitouts', {n: remaining})}</em>`;
+    }
+    return;
+  }
   if (nextSection) {
     nextSection.innerHTML = `<em style="color:var(--text-muted)">${t('txt_txt_updating_proposals')}</em>`;
   }
@@ -4747,6 +4844,8 @@ function _renderTvControls(tvSettings) {
   html += chkRow('show_score_breakdown',t('txt_tv_score_breakdowns'),         false);
   html += chkRow('show_standings',      t('txt_tv_standings_leaderboard'),    true);
   html += chkRow('show_bracket',        t('txt_txt_play_off_bracket'),        true);
+  html += chkRow('show_courts',         t('txt_tv_court_assignments_view'),   true);
+  html += chkRow('show_pending_matches', t('txt_tv_pending_matches_view'),     false);
   html += `</div>`;
   const currentInterval = def('refresh_interval', 15);
   html += `<div style="margin-top:0.65rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">`;

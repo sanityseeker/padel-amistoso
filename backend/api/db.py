@@ -79,6 +79,8 @@ def init_db() -> None:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(tournaments)").fetchall()}
         if "sport" not in cols:
             conn.execute("ALTER TABLE tournaments ADD COLUMN sport TEXT NOT NULL DEFAULT 'padel'")
+        if "assign_courts" not in cols:
+            conn.execute("ALTER TABLE tournaments ADD COLUMN assign_courts INTEGER NOT NULL DEFAULT 1")
 
 
 @contextmanager

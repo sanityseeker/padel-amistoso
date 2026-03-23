@@ -35,7 +35,7 @@ async def create_playoff(req: CreatePlayoffRequest, user=Depends(get_current_use
     """Create a new standalone Play-off tournament and seed the bracket immediately."""
     # Each participant name becomes a single-entry team in the bracket.
     teams: list[list[Player]] = [[Player(name=n)] for n in req.participant_names]
-    courts = [Court(name=n) for n in req.court_names]
+    courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 
     t = PlayoffTournament(
         teams=teams,
@@ -52,6 +52,7 @@ async def create_playoff(req: CreatePlayoffRequest, user=Depends(get_current_use
         "owner": user.username,
         "public": req.public,
         "sport": req.sport.value,
+        "assign_courts": req.assign_courts,
     }
     _save_tournament(tid)
     return {"id": tid, "phase": t.phase}
@@ -60,11 +61,13 @@ async def create_playoff(req: CreatePlayoffRequest, user=Depends(get_current_use
 @router.get("/{tid}/po/status")
 async def po_status(tid: str) -> dict:
     """Return high-level status (phase, champion, bracket type) for a standalone Play-off tournament."""
-    t: PlayoffTournament = _get_tournament(tid, _PO)["tournament"]
+    data = _get_tournament(tid, _PO)
+    t: PlayoffTournament = data["tournament"]
     return {
         "phase": t.phase,
         "team_mode": t.team_mode,
         "double_elimination": t.double_elimination,
+        "assign_courts": data.get("assign_courts", True),
         "champion": [p.name for p in t.champion()] if t.champion() else None,
     }
 
