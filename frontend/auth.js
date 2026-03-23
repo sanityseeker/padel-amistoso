@@ -334,7 +334,7 @@ async function loadUserMgmtList() {
         <span style="flex:1"><strong>${esc(u.username)}</strong>
           <span style="font-size:0.8em;opacity:.7;margin-left:0.4rem">${esc(u.role)}</span>
         </span>
-        ${u.username !== getAuthUsername() ? `<button class="btn btn-sm btn-danger" onclick="deleteUserWithConfirm('${esc(u.username)}')" style="padding:0.2rem 0.55rem">🗑</button>` : `<span style="font-size:0.7rem;color:var(--text-muted);padding:0.15rem 0.45rem;border:1px solid var(--border);border-radius:4px;white-space:nowrap" title="${t('txt_txt_protected')}">🔒</span>`}
+        ${u.username !== getAuthUsername() ? `<button class="btn btn-sm" onclick="showChangePasswordDialog('${esc(u.username)}')" style="padding:0.2rem 0.55rem" title="${t('txt_txt_change_password')}">🔑</button><button class="btn btn-sm btn-danger" onclick="deleteUserWithConfirm('${esc(u.username)}')" style="padding:0.2rem 0.55rem">🗑</button>` : `<span style="font-size:0.7rem;color:var(--text-muted);padding:0.15rem 0.45rem;border:1px solid var(--border);border-radius:4px;white-space:nowrap" title="${t('txt_txt_protected')}">🔒</span>`}
       </li>`).join('');
   } catch (e) {
     list.innerHTML = `<li style="color:var(--red)">${e.message}</li>`;
@@ -392,21 +392,33 @@ async function deleteUserWithConfirm(username) {
 
 // ── Change Password ──────────────────────────────────────
 
+/** Username whose password is being changed. Defaults to the current user. */
+let _changePwdTarget = null;
+
 /**
  * Show the change-password dialog.
+ * @param {string} [targetUsername] - The user whose password will be changed.
+ *   Defaults to the currently logged-in user.
  */
-function showChangePasswordDialog() {
+function showChangePasswordDialog(targetUsername) {
+  _changePwdTarget = targetUsername || getAuthUsername();
   const overlay = document.getElementById('change-pwd-overlay');
-  if (overlay) {
-    overlay.style.display = 'flex';
-    document.getElementById('change-pwd-new')?.focus();
+  if (!overlay) return;
+  const label = document.getElementById('change-pwd-for');
+  if (label) {
+    label.textContent = _changePwdTarget !== getAuthUsername()
+      ? `${t('txt_txt_username')}: ${_changePwdTarget}`
+      : '';
   }
+  overlay.style.display = 'flex';
+  document.getElementById('change-pwd-new')?.focus();
 }
 
 /**
  * Hide the change-password dialog and reset its fields.
  */
 function hideChangePasswordDialog() {
+  _changePwdTarget = null;
   const overlay = document.getElementById('change-pwd-overlay');
   if (overlay) overlay.style.display = 'none';
   const newPwd = document.getElementById('change-pwd-new');
@@ -417,6 +429,8 @@ function hideChangePasswordDialog() {
   if (confirmPwd) confirmPwd.value = '';
   if (errDiv) errDiv.textContent = '';
   if (successDiv) successDiv.textContent = '';
+  const label = document.getElementById('change-pwd-for');
+  if (label) label.textContent = '';
 }
 
 /**
@@ -444,7 +458,7 @@ async function handleChangePassword(event) {
     return;
   }
 
-  const username = getAuthUsername();
+  const username = _changePwdTarget || getAuthUsername();
   if (!username) return;
 
   if (btn) btn.disabled = true;

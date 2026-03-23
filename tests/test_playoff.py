@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from backend.models import MatchStatus, Player
+from backend.models import Court, MatchStatus, Player
 from backend.tournaments import DoubleEliminationBracket, SingleEliminationBracket
+from backend.tournaments.playoff_tournament import PlayoffTournament
 
 
 def _team(name: str) -> list[Player]:
@@ -226,3 +227,91 @@ class TestSchemaLossEdgeRewiring:
             assert loser_name in v_label, (
                 f"Loss edge {u} → {v}: loser '{loser_name}' not found in target label '{v_label}'"
             )
+
+
+# ── PlayoffTournament court assignment ─────────────────────
+
+
+class TestPlayoffTournamentCourtAssignment:
+    """Verify the greedy court assignment: every free court is filled immediately,
+    and no two active (not-yet-completed) matches ever share a court."""
+
+    def _courts(self, n: int) -> list[Court]:
+        return [Court(name=f"Court {i + 1}") for i in range(n)]
+
+    def _active_court_names(self, t: PlayoffTournament) -> list[str]:
+        return [m.court.name for m in t.all_matches() if m.court is not None and m.status != MatchStatus.COMPLETED]
+
+    def test_init_fills_all_available_courts(self):
+        """On construction with 4 ready R1 matches and 3 courts, all 3 courts are used."""
+        teams = [[Player(name=f"P{i}")] for i in range(8)]
+        t = PlayoffTournament(teams=teams, courts=self._courts(3))
+        active_courts = self._active_court_names(t)
+        assert set(active_courts) == {"Court 1", "Court 2", "Court 3"}
+
+    def test_no_two_active_matches_share_a_court(self):
+        """At every point in a single-elim tournament, active matches have unique courts."""
+        teams = [[Player(name=f"P{i}")] for i in range(8)]
+        t = PlayoffTournament(teams=teams, courts=self._courts(3))
+
+        while True:
+            pending = t.pending_matches()
+            if not pending:
+                break
+            active_courts = self._active_court_names(t)
+            assert len(active_courts) == len(set(active_courts)), (
+                f"Duplicate courts among active matches: {active_courts}"
+            )
+            t.record_result(pending[0].id, (10, 0))
+
+    def test_freed_court_is_reused_immediately(self):
+        """After completing a match, the freed court is assigned to the next waiting match."""
+        teams = [[Player(name=f"P{i}")] for i in range(8)]
+        courts = self._courts(3)
+        t = PlayoffTournament(teams=teams, courts=courts)
+
+        # 3 courts occupied, 1 R1 match waiting.
+        waiting = [m for m in t.all_matches() if m.court is None and m.team1 and m.team2]
+        assert len(waiting) == 1
+
+        # Complete one pending match; its court must go to the waiting match.
+        first = t.pending_matches()[0]
+        freed_court_name = first.court.name
+        t.record_result(first.id, (10, 0))
+
+        # The previously waiting match must now have the freed court.
+        previously_waiting = next(m for m in t.all_matches() if m.id == waiting[0].id)
+        assert previously_waiting.court is not None
+        assert previously_waiting.court.name == freed_court_name
+
+    def test_double_elim_no_two_active_matches_share_a_court(self):
+        """Same invariant for double-elimination: no active matches share a court."""
+        teams = [[Player(name=f"P{i}")] for i in range(8)]
+        t = PlayoffTournament(teams=teams, courts=self._courts(3), double_elimination=True)
+
+        for _ in range(40):  # safety limit
+            pending = t.pending_matches()
+            if not pending:
+                break
+            active_courts = self._active_court_names(t)
+            assert len(active_courts) == len(set(active_courts)), (
+                f"Duplicate courts among active matches: {active_courts}"
+            )
+            t.record_result(pending[0].id, (10, 0))
+
+    def test_double_elim_wr2_not_all_on_court1(self):
+        """W-R2 matches in double-elim must not all be assigned Court 1."""
+        teams = [[Player(name=f"P{i}")] for i in range(8)]
+        courts = self._courts(3)
+        t = PlayoffTournament(teams=teams, courts=courts, double_elimination=True)
+
+        # Complete all W-R1 matches.
+        for m in [m for m in t.all_matches() if m.round_label == "Winners R1"]:
+            if m.court is not None:
+                t.record_result(m.id, (10, 0))
+
+        wr2_courts = [m.court.name for m in t.all_matches() if m.round_label == "Winners R2" and m.court is not None]
+        assert len(wr2_courts) > 0, "No W-R2 matches have a court after W-R1 completion"
+        # Stricter: if more than 1 W-R2 match has a court, they must differ.
+        if len(wr2_courts) > 1:
+            assert len(set(wr2_courts)) > 1, f"Multiple W-R2 matches all on same court: {wr2_courts}"
