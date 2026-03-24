@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import io
+
 import pytest
+from PIL import Image
+from pyzbar.pyzbar import decode as decode_qr
 
 from backend.tournaments.player_secrets import (
     PlayerSecret,
@@ -332,6 +336,29 @@ class TestPlayerSecretsEndpoints:
         assert r.headers["content-type"] == "image/png"
         # PNG signature: first 8 bytes
         assert r.content[:4] == b"\x89PNG"
+
+    def test_qr_code_encodes_tv_url(self, client, auth_headers):
+        """QR must encode /tv path, not /public.html."""
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid = next(iter(secrets.keys()))
+        token = secrets[pid]["token"]
+
+        origin = "https://example.com"
+        r = client.get(
+            f"/api/tournaments/{tid}/player-secrets/qr/{pid}?origin={origin}",
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+
+        # Decode the QR to verify the encoded URL
+        img = Image.open(io.BytesIO(r.content))
+        decoded = decode_qr(img)
+        assert len(decoded) == 1
+        qr_url = decoded[0].data.decode()
+        assert "/tv?" in qr_url, f"QR should use /tv path, got: {qr_url}"
+        assert "public.html" not in qr_url, f"QR should not use public.html, got: {qr_url}"
+        assert f"player_token={token}" in qr_url
 
     def test_qr_code_nonexistent_player_returns_404(self, client, auth_headers):
         tid = _create_gp(client, auth_headers)
