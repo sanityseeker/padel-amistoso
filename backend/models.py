@@ -108,6 +108,8 @@ class Match:
     # Pair position within the round (0-based bracket index, including bye slots).
     # Set by playoff bracket generators; -1 means "not a bracket match".
     pair_index: int = -1
+    # Optional admin comment shown to players alongside the match.
+    comment: str = ""
 
     @property
     def winner_team(self) -> list[Player] | None:

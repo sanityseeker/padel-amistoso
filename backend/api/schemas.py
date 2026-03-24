@@ -103,12 +103,15 @@ class TvSettingsRequest(BaseModel):
     show_standings: bool | None = None
     show_bracket: bool | None = None
     show_pending_matches: bool | None = None
+    allow_player_scoring: bool | None = None
     refresh_interval: int | None = Field(default=None, ge=-1, le=300)
     schema_box_scale: float | None = Field(default=None, ge=0.3, le=3.0)
     schema_line_width: float | None = Field(default=None, ge=0.3, le=5.0)
     schema_arrow_scale: float | None = Field(default=None, ge=0.3, le=5.0)
     schema_title_font_scale: float | None = Field(default=None, ge=0.3, le=5.0)
     schema_output_scale: float | None = Field(default=None, ge=0.5, le=3.0)
+    score_mode: dict[str, str] | None = None
+    banner_text: str | None = None
 
 
 class TvSettings(BaseModel):
@@ -120,12 +123,22 @@ class TvSettings(BaseModel):
     show_standings: bool = True
     show_bracket: bool = True
     show_pending_matches: bool = False
+    allow_player_scoring: bool = True
     refresh_interval: int = -1
     schema_box_scale: float = 1.0
     schema_line_width: float = 1.0
     schema_arrow_scale: float = 1.0
     schema_title_font_scale: float = 1.0
     schema_output_scale: float = 1.0
+    score_mode: dict[str, str] = Field(default_factory=dict)
+    banner_text: str = ""
+
+
+class SetMatchCommentRequest(BaseModel):
+    """Set or clear an optional admin comment on a pending match."""
+
+    match_id: str
+    comment: str = Field(default="", max_length=500)
 
 
 class SetAliasRequest(BaseModel):

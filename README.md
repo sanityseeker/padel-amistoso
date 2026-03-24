@@ -50,6 +50,9 @@ is refined.
   - Default language is **English**
   - Language preference is persisted per browser session/profile (localStorage)
 - Display a read-only **TV view** optimised for a guest view of a tournament (`/tv?tid=<id>`)
+- **Match comments**: admin can annotate any match with a short comment visible on the public view
+- **Player self-scoring**: players log in via passphrase or QR code to submit their own scores
+- **Announcement banner**: broadcast a message at the top of the public view for all participants
 
 ### Group + Play-off flow
 
@@ -188,6 +191,86 @@ download a self-contained summary document:
 - **Format**: HTML (single file) or PDF (via browser print)
 - **Embedded bracket diagram** — PNG preview of the play-off schema
 - **Match history toggle** — optionally include all recorded match results
+
+### Match management
+
+#### Match comments
+
+Admins can attach a short text comment to any match — both pending and
+completed.  Comments appear on the public TV view alongside the match,
+making them useful for noting court changes, delays, or special instructions.
+
+- Click the **💬** icon on any match row to add or edit a comment
+- Comments are limited to 500 characters
+- Visible to all viewers on the public screen
+
+**Via the API:**
+
+```bash
+curl -X POST http://localhost:8000/api/tournaments/t123/match-comment \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"match_id": "m5", "comment": "Moved to Court 2"}'
+```
+
+To clear a comment, send an empty string.
+
+#### Player self-scoring (passphrase & QR login)
+
+When a tournament is created, every player automatically receives a unique
+**passphrase** (docker-style word combo, e.g. `brave-little-tiger`) and a
+**QR code token**.  Players can authenticate on the public TV view to submit
+scores for their own matches — no admin account required.
+
+**How it works:**
+
+1. The admin opens the **🔑 Player Codes** panel inside the tournament view.
+2. Each player's passphrase is shown in a copyable table. A **📱 QR** button
+   generates a scannable QR code containing an auto-login URL.
+3. The player scans the QR (or types the passphrase on the public view) to
+   log in.  A short-lived JWT is issued scoped to that player and tournament.
+4. Once logged in, the player can submit scores for matches they are
+   participating in — the "Record Score" form appears automatically.
+
+**Admin controls:**
+
+- **Regenerate** a player's credentials from the Player Codes panel if
+  compromised.
+- **Print all codes** or **Copy all codes** for easy distribution.
+- **Disable self-scoring** entirely via the TV Setting
+  *"Allow player scoring"* toggle — when off, the login button is hidden
+  on the public view.
+
+**Via the API:**
+
+```bash
+# Authenticate as a player
+curl -X POST http://localhost:8000/api/tournaments/t123/player-auth \
+  -H "Content-Type: application/json" \
+  -d '{"passphrase": "brave-little-tiger"}'
+
+# List all player secrets (admin only)
+GET /api/tournaments/t123/player-secrets
+
+# Regenerate a player's secret (admin only)
+POST /api/tournaments/t123/player-secrets/regenerate/{player_id}
+
+# Get QR code PNG (admin only)
+GET /api/tournaments/t123/player-secrets/qr/{player_id}?origin=https://example.com
+```
+
+Player auth is rate-limited (10 failed attempts per minute per IP) to prevent
+brute-force attacks.
+
+#### Announcement banner
+
+Admins can set a banner message that appears at the top of the public TV
+view for all participants.  Useful for schedule updates, break
+announcements, or any broadcast message.
+
+- Configured in the **📺 TV Mode Controls** card under "Announcement Banner"
+- Leave empty to hide the banner
+- Updated in real time on the next auto-refresh cycle
 
 ---
 
@@ -428,6 +511,7 @@ backend/
     playoff.py             – Single & double elimination brackets
     group_playoff.py       – Orchestrator: groups → play-offs
     mexicano.py            – Mexicano tournament engine (+ play-off support)
+    player_secrets.py      – Passphrase & token generation for player auth
   api/                     – FastAPI REST API
     state.py               – In-memory state & SQLite persistence
     schemas.py             – Pydantic request/response models
@@ -435,7 +519,9 @@ backend/
     routes_crud.py         – List, delete, TV settings, and alias endpoints
     routes_gp.py           – Group+play-off endpoints
     routes_mex.py          – Mexicano endpoints
+    routes_player_auth.py  – Player self-scoring auth (passphrase, QR, secrets)
     routes_schema.py       – Bracket diagram preview endpoint
+    player_secret_store.py – CRUD for player passphrase/token secrets (SQLite)
   viz/                     – Visualisation utilities
     bracket_schema.py      – networkx/matplotlib bracket diagram renderer
 data/
@@ -453,6 +539,7 @@ tests/
   test_group_stage.py      – Group stage round-robin logic
   test_helpers.py          – Shared helper utilities
   test_mexicano.py         – Mexicano scoring and pairing logic
+  test_player_auth.py      – Player self-scoring authentication
   test_playoff.py          – Single/double elimination bracket logic
 ```
 
@@ -523,6 +610,7 @@ uv run pytest tests/ -x
 | `tests/test_group_stage.py` | Group stage round-robin logic |
 | `tests/test_group_playoff.py` | Group + playoff flow, bracket seeding |
 | `tests/test_mexicano.py` | Mexicano scoring and pairing logic |
+| `tests/test_player_auth.py` | Player self-scoring authentication |
 | `tests/test_playoff.py` | Single/double elimination bracket logic |
 | `tests/test_helpers.py` | Shared helper utilities |
 
@@ -546,6 +634,7 @@ Both interfaces are automatically generated from route definitions and stay in s
 - **Tournaments**: CRUD operations for Group+Playoff and Mexicano formats (`/api/tournaments/*`)
 - **Group+Playoff**: Group stage matches, standings, and playoff brackets (`/api/tournaments/{id}/gp/*`)
 - **Mexicano**: Round-based scoring, pairing proposals, and optional playoffs (`/api/tournaments/{id}/mex/*`)
+- **Player Auth**: Passphrase/QR login for player self-scoring (`/api/tournaments/{id}/player-auth`, `/api/tournaments/{id}/player-secrets/*`)
 - **Visualization**: SVG bracket rendering with customizable styling (`/api/schema/*`)
 
 All endpoints requiring authentication accept a JWT token via the `Authorization: Bearer <token>` header.

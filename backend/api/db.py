@@ -63,6 +63,21 @@ CREATE TABLE IF NOT EXISTS users (
     role          TEXT    NOT NULL DEFAULT 'user',
     disabled      INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS player_secrets (
+    tournament_id TEXT    NOT NULL,
+    player_id     TEXT    NOT NULL,
+    player_name   TEXT    NOT NULL DEFAULT '',
+    passphrase    TEXT    NOT NULL,
+    token         TEXT    NOT NULL,
+    PRIMARY KEY (tournament_id, player_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ps_tournament
+    ON player_secrets (tournament_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ps_token
+    ON player_secrets (token);
 """
 
 

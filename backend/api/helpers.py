@@ -10,6 +10,7 @@ from typing import Literal
 from fastapi import HTTPException
 from fastapi.responses import Response
 
+from ..auth.deps import PlayerIdentity
 from ..auth.models import User, UserRole
 from ..models import Match, MatchStatus
 from .state import _tournaments
@@ -38,6 +39,8 @@ def _serialize_match(m: Match) -> dict:
         "id": m.id,
         "team1": [p.name for p in m.team1],
         "team2": [p.name for p in m.team2],
+        "team1_ids": [p.id for p in m.team1],
+        "team2_ids": [p.id for p in m.team2],
         "court": m.court.name if m.court else None,
         "status": m.status.value,
         "score": list(m.score) if m.score else None,
@@ -46,6 +49,7 @@ def _serialize_match(m: Match) -> dict:
         "slot_number": m.slot_number,
         "round_number": m.round_number,
         "round_label": m.round_label,
+        "comment": m.comment or "",
     }
 
 
@@ -69,6 +73,72 @@ def _require_owner_or_admin(tid: str, user: User) -> None:
         return
     if data.get("owner") != user.username:
         raise HTTPException(403, "You do not have permission to modify this tournament")
+
+
+def _require_score_permission(
+    tid: str,
+    match: Match,
+    user: User | None,
+    player: PlayerIdentity | None,
+) -> None:
+    """Raise 403 unless the caller may record a score for *match*.
+
+    Allowed callers:
+    - Admin users
+    - The tournament owner
+    - An authenticated player who is a participant in the match
+      (only when ``allow_player_scoring`` is enabled in TV settings)
+    """
+    # Admin or owner
+    if user is not None:
+        data = _tournaments.get(tid)
+        if data is None:
+            raise HTTPException(404, "Tournament not found")
+        if user.role == UserRole.ADMIN:
+            return
+        if data.get("owner") == user.username:
+            return
+
+    # Player in the match — only allowed when player scoring is enabled
+    if player is not None and player.tournament_id == tid:
+        tv_settings = _tournaments.get(tid, {}).get("tv_settings") or {}
+        if not tv_settings.get("allow_player_scoring", True):
+            raise HTTPException(403, "Player score submission is disabled for this tournament")
+        match_player_ids = {p.id for p in match.team1} | {p.id for p in match.team2}
+        if player.player_id in match_player_ids:
+            return
+
+    raise HTTPException(403, "You do not have permission to record this score")
+
+
+def _find_match(tournament: object, match_id: str) -> Match | None:
+    """Look up a ``Match`` by ID across all match sources in a tournament.
+
+    Works for Mexicano, Group+Playoff, and standalone Playoff tournaments
+    by inspecting whichever accessors exist on *tournament*.
+    """
+    for accessor in ("all_matches", "current_round_matches", "playoff_matches"):
+        fn = getattr(tournament, accessor, None)
+        if fn is None:
+            continue
+        for m in fn():
+            if m.id == match_id:
+                return m
+    # Group+Playoff: iterate group matches directly.
+    for group in getattr(tournament, "groups", []):
+        for m in getattr(group, "matches", []):
+            if m.id == match_id:
+                return m
+    # Playoff bracket matches.
+    bracket = getattr(tournament, "bracket", None) or getattr(tournament, "playoff_bracket", None)
+    if bracket is not None:
+        for accessor in ("pending_matches",):
+            fn = getattr(bracket, accessor, None)
+            if fn:
+                for m in fn():
+                    if m.id == match_id:
+                        return m
+    return None
 
 
 def _check_read_access(tid: str, user: User | None) -> None:

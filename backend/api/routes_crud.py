@@ -8,8 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth.deps import get_current_user, get_current_user_optional
 from ..auth.models import User, UserRole
-from .helpers import _require_owner_or_admin
-from .schemas import SetAliasRequest, SetPublicRequest, TvSettings, TvSettingsRequest
+from .helpers import _find_match, _require_owner_or_admin
+from .player_secret_store import delete_secrets_for_tournament
+from .schemas import SetAliasRequest, SetMatchCommentRequest, SetPublicRequest, TvSettings, TvSettingsRequest
 from . import state
 from .state import _delete_tournament, _save_tournament, _tournaments
 
@@ -58,6 +59,7 @@ async def delete_tournament(tournament_id: str, user: User = Depends(get_current
     _require_owner_or_admin(tournament_id, user)
     del _tournaments[tournament_id]
     _delete_tournament(tournament_id)
+    delete_secrets_for_tournament(tournament_id)
     return {"ok": True}
 
 
@@ -92,6 +94,11 @@ async def update_tv_settings(tid: str, req: TvSettingsRequest, user: User = Depe
     stored = _tournaments[tid].get("tv_settings")
     current = TvSettings(**stored) if stored else TvSettings()
     patch = req.model_dump(exclude_none=True)
+    # Merge score_mode dict instead of replacing it entirely, so the admin
+    # can update a single context at a time.
+    if "score_mode" in patch:
+        merged = {**current.score_mode, **patch.pop("score_mode")}
+        patch["score_mode"] = merged
     updated = current.model_copy(update=patch)
     _tournaments[tid]["tv_settings"] = updated.model_dump()
     _save_tournament(tid)
@@ -164,3 +171,18 @@ async def get_tournament_meta(tid: str) -> dict:
         "phase": t.phase if t else "setup",
         "sport": data.get("sport", "padel"),
     }
+
+
+@router.patch("/{tid}/match-comment")
+async def set_match_comment(tid: str, req: SetMatchCommentRequest, user: User = Depends(get_current_user)) -> dict:
+    """Set or clear an optional admin comment on a match."""
+    if tid not in _tournaments:
+        raise HTTPException(404, "Tournament not found")
+    _require_owner_or_admin(tid, user)
+    tournament = _tournaments[tid]["tournament"]
+    match = _find_match(tournament, req.match_id)
+    if match is None:
+        raise HTTPException(404, "Match not found")
+    match.comment = req.comment.strip()
+    _save_tournament(tid)
+    return {"ok": True, "match_id": req.match_id, "comment": match.comment}

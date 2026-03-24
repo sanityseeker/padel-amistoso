@@ -9,7 +9,8 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
-from ..auth.deps import get_current_user
+from ..auth.deps import get_current_user, get_current_user_optional, get_current_player, PlayerIdentity
+from ..auth.models import User
 from ..models import Court, Player, TournamentType
 from ..tournaments import GroupPlayoffTournament
 from ..viz import render_playoff_schema
@@ -21,6 +22,8 @@ from .helpers import (
     _build_match_labels,
     _schema_image_response,
     _require_owner_or_admin,
+    _require_score_permission,
+    _find_match,
 )
 from .schemas import (
     CreateGroupPlayoffRequest,
@@ -29,6 +32,7 @@ from .schemas import (
     StartGroupPlayoffsRequest,
 )
 from .state import _next_id, _save_tournament, _tournaments
+from .player_secret_store import create_secrets_for_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["group-playoff"])
 
@@ -63,6 +67,7 @@ async def create_group_playoff(req: CreateGroupPlayoffRequest, user=Depends(get_
         "assign_courts": req.assign_courts,
     }
     _save_tournament(tid)
+    create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in players])
     return {"id": tid, "phase": t.phase}
 
 
@@ -92,10 +97,18 @@ async def gp_groups(tid: str) -> dict:
 
 
 @router.post("/{tid}/gp/record-group")
-async def gp_record_group(tid: str, req: RecordScoreRequest, user=Depends(get_current_user)) -> dict:
+async def gp_record_group(
+    tid: str,
+    req: RecordScoreRequest,
+    user: User | None = Depends(get_current_user_optional),
+    player: PlayerIdentity | None = Depends(get_current_player),
+) -> dict:
     """Record a raw-score result for a group-stage match."""
-    _require_owner_or_admin(tid, user)
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+    match = _find_match(t, req.match_id)
+    if match is None:
+        raise HTTPException(404, "Match not found")
+    _require_score_permission(tid, match, user, player)
     try:
         t.record_group_result(req.match_id, (req.score1, req.score2))
     except (KeyError, RuntimeError) as e:
@@ -105,11 +118,19 @@ async def gp_record_group(tid: str, req: RecordScoreRequest, user=Depends(get_cu
 
 
 @router.post("/{tid}/gp/record-group-tennis")
-async def gp_record_group_tennis(tid: str, req: RecordTennisScoreRequest, user=Depends(get_current_user)) -> dict:
+async def gp_record_group_tennis(
+    tid: str,
+    req: RecordTennisScoreRequest,
+    user: User | None = Depends(get_current_user_optional),
+    player: PlayerIdentity | None = Depends(get_current_player),
+) -> dict:
     """Record a group match using tennis-style set scores.
     Score = sum of game differences across all sets."""
-    _require_owner_or_admin(tid, user)
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+    match = _find_match(t, req.match_id)
+    if match is None:
+        raise HTTPException(404, "Match not found")
+    _require_score_permission(tid, match, user, player)
     total1, total2, sets_tuples, third_set_decided = _tennis_sets_to_scores(req.sets)
     try:
         t.record_group_result(
@@ -224,10 +245,18 @@ async def gp_playoffs_schema(
 
 
 @router.post("/{tid}/gp/record-playoff")
-async def gp_record_playoff(tid: str, req: RecordScoreRequest, user=Depends(get_current_user)) -> dict:
+async def gp_record_playoff(
+    tid: str,
+    req: RecordScoreRequest,
+    user: User | None = Depends(get_current_user_optional),
+    player: PlayerIdentity | None = Depends(get_current_player),
+) -> dict:
     """Record a raw-score result for a play-off match."""
-    _require_owner_or_admin(tid, user)
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+    match = _find_match(t, req.match_id)
+    if match is None:
+        raise HTTPException(404, "Match not found")
+    _require_score_permission(tid, match, user, player)
     try:
         t.record_playoff_result(req.match_id, (req.score1, req.score2))
     except (KeyError, RuntimeError, ValueError) as e:
@@ -237,10 +266,18 @@ async def gp_record_playoff(tid: str, req: RecordScoreRequest, user=Depends(get_
 
 
 @router.post("/{tid}/gp/record-playoff-tennis")
-async def gp_record_playoff_tennis(tid: str, req: RecordTennisScoreRequest, user=Depends(get_current_user)) -> dict:
+async def gp_record_playoff_tennis(
+    tid: str,
+    req: RecordTennisScoreRequest,
+    user: User | None = Depends(get_current_user_optional),
+    player: PlayerIdentity | None = Depends(get_current_player),
+) -> dict:
     """Record a playoff match using tennis-style set scores."""
-    _require_owner_or_admin(tid, user)
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+    match = _find_match(t, req.match_id)
+    if match is None:
+        raise HTTPException(404, "Match not found")
+    _require_score_permission(tid, match, user, player)
     total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
     try:
         t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)

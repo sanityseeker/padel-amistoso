@@ -21,6 +21,7 @@ from .db import init_db
 from .routes_crud import router as crud_router
 from .routes_gp import router as gp_router
 from .routes_mex import router as mex_router
+from .routes_player_auth import router as player_auth_router
 from .routes_playoff import router as playoff_router
 from .routes_schema import router as schema_router
 from .state import (  # noqa: F401  — re-exported for tests
@@ -71,6 +72,7 @@ app.include_router(auth_router)
 app.include_router(crud_router)
 app.include_router(gp_router)
 app.include_router(mex_router)
+app.include_router(player_auth_router)
 app.include_router(playoff_router)
 app.include_router(schema_router)
 
@@ -111,6 +113,13 @@ def _serve_js_file(filename: str) -> Response:
     )
 
 
+def _serve_css_file(filename: str) -> Response:
+    """Serve a CSS file from the frontend directory with the correct MIME type."""
+    path = FRONTEND_DIR / filename
+    content = path.read_text() if path.exists() else ""
+    return Response(content=content, media_type="text/css", headers={"Cache-Control": "public, max-age=300"})
+
+
 def _serve_png_file(filename: str) -> Response:
     """Serve a PNG file from the frontend directory."""
     path = FRONTEND_DIR / filename
@@ -142,6 +151,30 @@ async def serve_shared_js() -> Response:
 async def serve_auth_js() -> Response:
     """Serve the authentication module used by index.html."""
     return _serve_js_file("auth.js")
+
+
+@app.get("/admin.js")
+async def serve_admin_js() -> Response:
+    """Serve the admin panel JavaScript for index.html."""
+    return _serve_js_file("admin.js")
+
+
+@app.get("/tv.js")
+async def serve_tv_js() -> Response:
+    """Serve the TV view JavaScript for public.html."""
+    return _serve_js_file("tv.js")
+
+
+@app.get("/admin.css")
+async def serve_admin_css() -> Response:
+    """Serve the admin panel stylesheet for index.html."""
+    return _serve_css_file("admin.css")
+
+
+@app.get("/tv.css")
+async def serve_tv_css() -> Response:
+    """Serve the TV view stylesheet for public.html."""
+    return _serve_css_file("tv.css")
 
 
 @app.get("/i18n.js")

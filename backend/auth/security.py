@@ -80,3 +80,48 @@ def decode_access_token(token: str) -> str | None:
         return payload.get("sub")
     except jwt.PyJWTError:
         return None
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Player tokens (tournament-scoped, lightweight)
+# ────────────────────────────────────────────────────────────────────────────
+
+PLAYER_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
+
+
+def create_player_token(
+    tournament_id: str,
+    player_id: str,
+    *,
+    expires_delta: timedelta | None = None,
+) -> str:
+    """Create a signed JWT for a tournament player.
+
+    The ``sub`` claim uses the format ``player:<tid>:<pid>`` to distinguish
+    player tokens from admin tokens at decode time.
+    """
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=PLAYER_TOKEN_EXPIRE_MINUTES))
+    payload = {
+        "sub": f"player:{tournament_id}:{player_id}",
+        "exp": expire,
+        "type": "player",
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=_ALGORITHM)
+
+
+def decode_player_token(token: str) -> tuple[str, str] | None:
+    """Decode a player JWT and return ``(tournament_id, player_id)``.
+
+    Returns ``None`` if the token is invalid, expired, or not a player token.
+    """
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[_ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("type") != "player":
+        return None
+    sub: str = payload.get("sub", "")
+    parts = sub.split(":", 2)
+    if len(parts) != 3 or parts[0] != "player":
+        return None
+    return parts[1], parts[2]

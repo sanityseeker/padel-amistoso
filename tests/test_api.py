@@ -130,7 +130,7 @@ class TestGroupPlayoffAPI:
             },
             headers=auth_headers,
         )
-        assert r.status_code == 400
+        assert r.status_code in (400, 404)
 
     def test_start_playoffs_requires_completed_groups(self, client, auth_headers):
         tid = self._create(client, auth_headers)

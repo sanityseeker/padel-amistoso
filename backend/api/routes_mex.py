@@ -9,7 +9,8 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
-from ..auth.deps import get_current_user
+from ..auth.deps import get_current_user, get_current_user_optional, get_current_player, PlayerIdentity
+from ..auth.models import User
 from ..models import Court, Player, TournamentType
 from ..tournaments import MexicanoTournament
 from ..viz import render_playoff_schema
@@ -20,6 +21,8 @@ from .helpers import (
     _tennis_sets_to_scores,
     _schema_image_response,
     _require_owner_or_admin,
+    _require_score_permission,
+    _find_match,
 )
 from .schemas import (
     CreateMexicanoRequest,
@@ -30,6 +33,7 @@ from .schemas import (
     StartMexicanoPlayoffsRequest,
 )
 from .state import _next_id, _save_tournament, _tournaments
+from .player_secret_store import create_secrets_for_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["mexicano"])
 
@@ -71,6 +75,7 @@ async def create_mexicano(req: CreateMexicanoRequest, user=Depends(get_current_u
         "assign_courts": req.assign_courts,
     }
     _save_tournament(tid)
+    create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in players])
     return {"id": tid, "current_round": t.current_round}
 
 
@@ -119,10 +124,18 @@ async def mex_matches(tid: str) -> dict:
 
 
 @router.post("/{tid}/mex/record")
-async def mex_record(tid: str, req: RecordScoreRequest, user=Depends(get_current_user)) -> dict:
+async def mex_record(
+    tid: str,
+    req: RecordScoreRequest,
+    user: User | None = Depends(get_current_user_optional),
+    player: PlayerIdentity | None = Depends(get_current_player),
+) -> dict:
     """Record a raw-score result for the current Mexicano match."""
-    _require_owner_or_admin(tid, user)
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+    match = _find_match(t, req.match_id)
+    if match is None:
+        raise HTTPException(404, "Match not found")
+    _require_score_permission(tid, match, user, player)
     try:
         t.record_result(req.match_id, (req.score1, req.score2))
     except (KeyError, ValueError) as e:
@@ -292,10 +305,18 @@ async def mex_playoffs_schema(
 
 
 @router.post("/{tid}/mex/record-playoff")
-async def mex_record_playoff(tid: str, req: RecordScoreRequest, user=Depends(get_current_user)) -> dict:
+async def mex_record_playoff(
+    tid: str,
+    req: RecordScoreRequest,
+    user: User | None = Depends(get_current_user_optional),
+    player: PlayerIdentity | None = Depends(get_current_player),
+) -> dict:
     """Record a play-off match result."""
-    _require_owner_or_admin(tid, user)
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+    match = _find_match(t, req.match_id)
+    if match is None:
+        raise HTTPException(404, "Match not found")
+    _require_score_permission(tid, match, user, player)
     try:
         t.record_playoff_result(req.match_id, (req.score1, req.score2))
     except (KeyError, RuntimeError, ValueError) as e:
@@ -305,10 +326,18 @@ async def mex_record_playoff(tid: str, req: RecordScoreRequest, user=Depends(get
 
 
 @router.post("/{tid}/mex/record-playoff-tennis")
-async def mex_record_playoff_tennis(tid: str, req: RecordTennisScoreRequest, user=Depends(get_current_user)) -> dict:
+async def mex_record_playoff_tennis(
+    tid: str,
+    req: RecordTennisScoreRequest,
+    user: User | None = Depends(get_current_user_optional),
+    player: PlayerIdentity | None = Depends(get_current_player),
+) -> dict:
     """Record a Mexicano play-off match using tennis-style set scores."""
-    _require_owner_or_admin(tid, user)
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+    match = _find_match(t, req.match_id)
+    if match is None:
+        raise HTTPException(404, "Match not found")
+    _require_score_permission(tid, match, user, player)
     total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
     try:
         t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)

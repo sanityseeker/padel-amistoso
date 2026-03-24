@@ -13,10 +13,25 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .models import User, UserRole
-from .security import decode_access_token
+from .security import decode_access_token, decode_player_token
 from .store import user_store
 
 _bearer_scheme = HTTPBearer(auto_error=False)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Player identity (tournament-scoped, no platform account)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class PlayerIdentity:
+    """Lightweight identity for a tournament player (not a registered user)."""
+
+    __slots__ = ("tournament_id", "player_id")
+
+    def __init__(self, tournament_id: str, player_id: str) -> None:
+        self.tournament_id = tournament_id
+        self.player_id = player_id
 
 
 async def get_current_user(
@@ -86,3 +101,27 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
             detail="Admin privileges required",
         )
     return current_user
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Player authentication
+# ────────────────────────────────────────────────────────────────────────────
+
+_player_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def get_current_player(
+    creds: HTTPAuthorizationCredentials | None = Depends(_player_bearer_scheme),
+) -> PlayerIdentity | None:
+    """Extract player identity from the ``Authorization`` header.
+
+    Returns ``None`` when no valid player token is present (never raises).
+    The player JWT is distinguished from admin JWTs by its ``type=player``
+    claim, so both can share the same ``Authorization`` header.
+    """
+    if creds is None:
+        return None
+    result = decode_player_token(creds.credentials)
+    if result is None:
+        return None
+    return PlayerIdentity(tournament_id=result[0], player_id=result[1])
