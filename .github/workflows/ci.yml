@@ -102,3 +102,23 @@ jobs:
             ghcr.io/sanityseeker/padel-amistoso:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ── Gate job — mark as required in branch-protection rules ──
+  ci-passed:
+    name: CI Passed
+    if: always()
+    needs: [lint, test, docker-build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            echo "❌ Lint failed"; exit 1
+          fi
+          if [[ "${{ needs.test.result }}" != "success" ]]; then
+            echo "❌ Tests failed"; exit 1
+          fi
+          if [[ "${{ needs.docker-build.result }}" != "success" ]]; then
+            echo "❌ Docker build failed"; exit 1
+          fi
+          echo "✅ All checks passed"

@@ -5,8 +5,8 @@ from __future__ import annotations
 import io
 
 import pytest
+import zxingcpp
 from PIL import Image
-from pyzbar.pyzbar import decode as decode_qr
 
 from backend.tournaments.player_secrets import (
     PlayerSecret,
@@ -353,10 +353,10 @@ class TestPlayerSecretsEndpoints:
 
         # Decode the QR to verify the encoded URL
         img = Image.open(io.BytesIO(r.content))
-        decoded = decode_qr(img)
+        decoded = zxingcpp.read_barcodes(img)
         assert len(decoded) == 1
-        qr_url = decoded[0].data.decode()
-        assert "/tv?" in qr_url, f"QR should use /tv path, got: {qr_url}"
+        qr_url = decoded[0].text
+        assert qr_url.startswith(f"{origin}/tv/{tid}"), f"QR should use /tv/{{tid}} path, got: {qr_url}"
         assert "public.html" not in qr_url, f"QR should not use public.html, got: {qr_url}"
         assert f"player_token={token}" in qr_url
 
