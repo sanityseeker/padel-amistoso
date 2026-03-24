@@ -49,7 +49,7 @@ is refined.
 - Switch UI language (English/Spanish) from the admin and TV views
   - Default language is **English**
   - Language preference is persisted per browser session/profile (localStorage)
-- Display a read-only **TV view** optimised for a guest view of a tournament (`/tv?tid=<id>`)
+- Display a read-only **TV view** optimised for a guest view of a tournament (`/tv/<id-or-alias>`)
 - **Match comments**: admin can annotate any match with a short comment visible on the public view
 - **Player self-scoring**: players log in via passphrase or QR code to submit their own scores
 - **Announcement banner**: broadcast a message at the top of the public view for all participants
@@ -98,7 +98,7 @@ existing tournaments).
 ### TV display mode
 
 Each tournament can be displayed on a secondary screen via the TV view at
-`/tv?tid=<tournament-id>`.  Content, layout, and refresh behaviour are
+`/tv/<tournament-id>`.  Content, layout, and refresh behaviour are
 configured in the **Admin → TV Settings** panel:
 
 - Toggle which sections appear: standings/groups, bracket, match list, round history
@@ -141,8 +141,8 @@ curl -X PUT http://localhost:8000/api/tournaments/t123/alias \
 
 **Using the alias:**
 
-Instead of `/tv?tid=t123`, you can now use:
-- `/tv?t=summer-cup`
+Instead of `/tv/t123`, you can now use:
+- `/tv/summer-cup`
 
 Aliases work in the TV picker as well — you can type an alias directly into
 the input field.

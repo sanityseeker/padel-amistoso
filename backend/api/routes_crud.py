@@ -118,7 +118,7 @@ async def set_public(tid: str, req: SetPublicRequest, user: User = Depends(get_c
 
 @router.put("/{tid}/alias")
 async def set_alias(tid: str, req: SetAliasRequest, user: User = Depends(get_current_user)) -> dict:
-    """Set a human-friendly alias for a tournament (used in TV URLs like /tv?t=my-tourney)."""
+    """Set a human-friendly alias for a tournament (used in TV URLs like /tv/my-tourney)."""
     if tid not in _tournaments:
         raise HTTPException(404, "Tournament not found")
     _require_owner_or_admin(tid, user)

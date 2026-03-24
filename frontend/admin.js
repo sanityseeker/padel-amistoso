@@ -3325,7 +3325,7 @@ function _renderTvControls(tvSettings, hasCourts) {
   let html = `<details class="card" id="tv-controls-panel">`;
   html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
   html += `<span style="font-size:1.1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="display:inline-block;transition:transform 0.18s;font-size:0.7em;color:var(--text-muted)">▸</span> ${t('txt_txt_tv_mode_controls')}</span>`;
-  html += `<button type="button" class="btn btn-primary" style="margin-left:auto" onclick="event.preventDefault();window.open('/tv?tid='+currentTid,'padel_tv_'+currentTid,'noopener noreferrer')">📺 ↗</button>`;
+  html += `<button type="button" class="btn btn-primary" style="margin-left:auto" onclick="event.preventDefault();window.open('/tv/'+((_tournamentMeta[currentTid]&&_tournamentMeta[currentTid].alias)||currentTid),'padel_tv_'+currentTid,'noopener noreferrer')">📺 ↗</button>`;
   html += `</summary>`;
   html += `<div style="margin-top:0.65rem">`;
   
@@ -3344,8 +3344,8 @@ function _renderTvControls(tvSettings, hasCourts) {
   html += `</div>`;
   if (currentAlias) {
     html += `<div style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:0.78rem">`;
-    html += `<span style="color:var(--text-muted)">${t('txt_txt_tv_url')}</span> <code style="color:var(--accent);font-size:0.85rem">/tv?t=${esc(currentAlias)}</code>`;
-    html += ` <button type="button" onclick="navigator.clipboard.writeText(window.location.origin+'/tv?t=${esc(currentAlias)}');alert('${t('txt_txt_url_copied')}')"
+    html += `<span style="color:var(--text-muted)">${t('txt_txt_tv_url')}</span> <code style="color:var(--accent);font-size:0.85rem">/tv/${esc(currentAlias)}</code>`;
+    html += ` <button type="button" onclick="navigator.clipboard.writeText(window.location.origin+'/tv/${esc(currentAlias)}');alert('${t('txt_txt_url_copied')}')"
       style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:3px;padding:0.1rem 0.4rem;cursor:pointer;font-size:0.75rem;margin-left:0.3rem">📋 ${t('txt_txt_copy')}</button>`;
     html += `</div>`;
   }

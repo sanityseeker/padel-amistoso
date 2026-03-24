@@ -135,7 +135,8 @@ async def serve_frontend() -> Response:
 
 
 @app.get("/tv")
-async def serve_tv() -> Response:
+@app.get("/tv/{slug}")
+async def serve_tv(slug: str | None = None) -> Response:
     page = FRONTEND_DIR / "public.html"
     content = page.read_text() if page.exists() else "<h1>TV page not found</h1>"
     return Response(content=content, media_type="text/html", headers={"Cache-Control": "no-cache"})

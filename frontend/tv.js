@@ -38,8 +38,14 @@ function _languageToggleMeta() {
 
 // ── URL params ────────────────────────────────────────────
 const _params = new URLSearchParams(location.search);
-let TID = _params.get('tid');
-const _aliasParam = _params.get('t');  // human-friendly alias
+// Extract slug from path: /tv/<slug>
+const _pathSlug = (() => {
+  const m = location.pathname.match(/^\/tv\/(.+)$/);
+  return m ? decodeURIComponent(m[1]) : null;
+})();
+// Legacy query-param support (?tid= / ?t=) kept for backwards compat
+let TID = _params.get('tid') || (/^t\d+$/.test(_pathSlug) ? _pathSlug : null);
+const _aliasParam = _params.get('t') || (!TID ? _pathSlug : null);
 
 // ── State ─────────────────────────────────────────────────
 let _tournamentType = null;
@@ -1086,7 +1092,8 @@ function _renderPickerHtml(tournaments) {
       const aliasTag = tournament.alias ? `<span class="picker-alias">${esc(tournament.alias)}</span>` : '';
       const isTennis = tournament.sport === 'tennis';
       const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
-      html += `<a class="tv-picker-item" href="/tv?tid=${encodeURIComponent(tournament.id)}">`;
+      const pickerSlug = tournament.alias || tournament.id;
+      html += `<a class="tv-picker-item" href="/tv/${encodeURIComponent(pickerSlug)}">`;
       html += `${esc(tournament.name)}<span class="picker-badge picker-badge-sport">${esc(sportLabel)}</span>${!isTennis ? `<span class="picker-badge picker-badge-type">${modeLabel}</span>` : ''}<span class="picker-badge picker-badge-phase">${phaseLabel}</span>${aliasTag}`;
       html += `</a>`;
     }
@@ -1143,9 +1150,7 @@ function _goToTournament(e) {
   e.preventDefault();
   const val = document.getElementById('picker-input').value.trim();
   if (!val) return false;
-  // If it looks like a tournament ID (e.g. t1, t2) use tid=, otherwise use t= (alias)
-  const param = /^t\d+$/.test(val) ? 'tid' : 't';
-  location.href = `/tv?${param}=${encodeURIComponent(val)}`;
+  location.href = `/tv/${encodeURIComponent(val)}`;
   return false;
 }
 
