@@ -161,7 +161,7 @@ async def player_qr_code(
 ) -> StreamingResponse:
     """Generate a QR code PNG containing the player's auto-login URL.
 
-    The QR encodes: ``{origin}/public.html?tid={tid}&player_token={token}``
+    The QR encodes: ``{origin}/tv?tid={tid}&player_token={token}``
     The frontend passes its ``window.location.origin`` via the ``origin``
     query parameter so the QR contains a full absolute URL that works
     when scanned by a phone camera.
@@ -175,7 +175,7 @@ async def player_qr_code(
     # Build auto-login URL with the caller-supplied origin so the QR
     # contains a fully-qualified URL scannable by any device.
     token = player["token"]
-    url = f"{origin}/public.html?tid={tid}&player_token={token}"
+    url = f"{origin}/tv?tid={tid}&player_token={token}"
 
     qr = segno.make(url)
     buf = io.BytesIO()
