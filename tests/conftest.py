@@ -20,8 +20,9 @@ _BOB_HASH = hash_password("bob")
 
 
 @pytest.fixture(autouse=True)
-def _clean_state():
-    """Reset in-memory state between tests (tournaments + users); disable all DB writes."""
+def _clean_state(tmp_path):
+    """Reset in-memory state between tests (tournaments + users); use an isolated DB per test."""
+    import backend.api.db as db_mod
     import backend.api.state as state_mod
     import backend.api.player_secret_store as ps_mod
     import backend.api.routes_player_auth as rpa_mod
@@ -29,7 +30,12 @@ def _clean_state():
     import backend.api.routes_mex as mex_mod
     import backend.api.routes_playoff as po_mod
     import backend.api.routes_crud as crud_mod
-    from backend.api.db import get_db
+
+    # Redirect the database to an isolated temp file so tests don't depend on
+    # an already-existing padel.db file (e.g. in CI with a fresh checkout).
+    orig_db_path = db_mod.DB_PATH
+    db_mod.DB_PATH = tmp_path / "test.db"
+    db_mod.init_db()
 
     state_mod._tournaments.clear()
     state_mod._counter = 0
@@ -141,14 +147,8 @@ def _clean_state():
     state_mod._save_tournament = orig_save_tournament
     state_mod._delete_tournament = orig_delete_tournament
 
-    # Clean up registration tables between tests
-    try:
-        with get_db() as conn:
-            conn.execute("DELETE FROM registrants")
-            conn.execute("DELETE FROM registrations")
-            conn.execute("DELETE FROM meta WHERE key = 'reg_counter'")
-    except Exception:
-        pass
+    # Restore the real DB path (temp file is discarded automatically by pytest).
+    db_mod.DB_PATH = orig_db_path
 
     ps_mod.create_secrets_for_tournament = orig_create_secrets
     ps_mod.delete_secrets_for_tournament = orig_delete_secrets
