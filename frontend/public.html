@@ -14,18 +14,24 @@
 <div id="tv-root">
   <div class="tv-loading" data-i18n="txt_txt_loading_tournament_display">Loading tournament display…</div>
 </div>
+<div style="text-align:center;padding:3rem 0 2.5rem;">
+  <a href="https://ko-fi.com/torneosamistosos" target="_blank" rel="noopener">
+    <img height="36" style="border:0;height:36px;" src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Buy Me a Coffee at ko-fi.com">
+  </a>
+</div>
 <div id="abbrev-popup" role="tooltip"></div>
+
+<div id="bracket-lightbox" role="dialog" aria-modal="true" aria-label="Bracket" onclick="_closeBracketLightbox(event)">
+  <button class="bracket-lightbox-close" onclick="_closeBracketLightbox()" aria-label="Close">✕</button>
+  <div class="bracket-lightbox-scroll">
+    <img id="bracket-lightbox-img" src="" alt="Bracket">
+  </div>
+</div>
 
 
 <script src="/i18n.js"></script>
 <script src="/shared.js"></script>
 <script src="/tv.js"></script>
 
-<div class="kofi-footer">
-  <a class="kofi-btn" href="https://ko-fi.com/torneosamistosos" target="_blank" rel="noopener" aria-label="Support on Ko-fi">
-    <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M2 19h18v2H2zm2-4h14c0 2.2-1.8 4-4 4H8c-2.2 0-4-1.8-4-4zm14.5-2H18V7H4v6h.5c.8 0 1.5.7 1.5 1.5S5.3 16 4.5 16H4v-1h14v1h-.5c-.8 0-1.5-.7-1.5-1.5s.7-1.5 1.5-1.5zM18 5H4V4c0-.6.4-1 1-1h12c.6 0 1 .4 1 1v1zm2 1h1c1.1 0 2 .9 2 2v2c0 1.1-.9 2-2 2h-1V6z"/></svg>
-    <span data-i18n="txt_kofi_support">Support</span>
-  </a>
-</div>
 </body>
 </html>

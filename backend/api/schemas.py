@@ -232,3 +232,159 @@ class SchemaPreviewRequest(BaseModel):
         if any(s < 2 for s in v):
             raise ValueError("Each group must have at least 2 players")
         return v
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Registration lobby schemas
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class QuestionDef(BaseModel):
+    """A single question definition for a registration lobby."""
+
+    key: str = Field(min_length=1, max_length=64)
+    label: str = Field(min_length=1, max_length=128)
+    type: Literal["text", "choice"] = "text"
+    required: bool = False
+    choices: list[str] = Field(default_factory=list)
+
+
+class RegistrationCreate(BaseModel):
+    """Create a new registration lobby."""
+
+    name: str = Field(default="My Tournament", min_length=1, max_length=255)
+    join_code: str | None = Field(default=None, max_length=64)
+    questions: list[QuestionDef] = Field(default_factory=list)
+    description: str | None = Field(default=None, max_length=5000)
+    message: str | None = Field(default=None, max_length=5000)
+    listed: bool = False
+    sport: Sport = Sport.PADEL
+
+
+class RegistrationUpdate(BaseModel):
+    """Partial update for a registration lobby."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    open: bool | None = None
+    join_code: str | None = Field(default=None, max_length=64)
+    questions: list[QuestionDef] | None = None
+    description: str | None = Field(default=None, max_length=5000)
+    message: str | None = Field(default=None, max_length=5000)
+    listed: bool | None = None
+    sport: Sport | None = None
+    clear_join_code: bool = False
+    clear_description: bool = False
+    clear_message: bool = False
+
+
+class RegistrantIn(BaseModel):
+    """Player self-registration request."""
+
+    player_name: str = Field(min_length=1, max_length=128)
+    join_code: str | None = None
+    answers: dict[str, str] = Field(default_factory=dict)
+
+
+class RegistrantOut(BaseModel):
+    """Public view of a registrant (no secrets)."""
+
+    player_id: str
+    player_name: str
+    answers: dict[str, str] = Field(default_factory=dict)
+    registered_at: str
+
+
+class RegistrantAdminOut(BaseModel):
+    """Admin view of a registrant (includes secrets)."""
+
+    player_id: str
+    player_name: str
+    passphrase: str
+    token: str
+    answers: dict[str, str] = Field(default_factory=dict)
+    registered_at: str
+
+
+class RegistrantLoginIn(BaseModel):
+    """Request body for returning-player login on a registration lobby."""
+
+    passphrase: str = Field(min_length=1, max_length=128)
+
+
+class RegistrantLoginOut(BaseModel):
+    """Response for a successful returning-player login."""
+
+    player_id: str
+    player_name: str
+    passphrase: str
+    answers: dict[str, str] = Field(default_factory=dict)
+    registered_at: str
+
+
+class RegistrationPublicOut(BaseModel):
+    """Public information about a registration (no secrets, no join_code value)."""
+
+    id: str
+    name: str
+    open: bool
+    questions: list[QuestionDef] = Field(default_factory=list)
+    join_code_required: bool = False
+    description: str | None = None
+    message: str | None = None
+    converted: bool = False
+    converted_to_tid: str | None = None
+    listed: bool = False
+    sport: str = "padel"
+    registrant_count: int = 0
+    registrants: list[RegistrantOut] = []
+
+
+class RegistrationAdminOut(BaseModel):
+    """Full admin view of a registration."""
+
+    id: str
+    name: str
+    open: bool
+    join_code: str | None = None
+    questions: list[QuestionDef] = Field(default_factory=list)
+    listed: bool = False
+    sport: str = "padel"
+    description: str | None = None
+    message: str | None = None
+    alias: str | None = None
+    converted_to_tid: str | None = None
+    created_at: str
+    registrants: list[RegistrantAdminOut] = []
+
+
+class RegistrantPatch(BaseModel):
+    """Admin override of a registrant's name or answers."""
+
+    player_name: str | None = Field(default=None, min_length=1, max_length=128)
+    answers: dict[str, str] | None = None
+
+
+class ConvertRegistrationRequest(BaseModel):
+    """Convert a registration lobby into a tournament."""
+
+    tournament_type: Literal["group_playoff", "mexicano", "playoff"]
+    name: str | None = Field(default=None, max_length=255)
+    player_names: list[str] = Field(default_factory=list)
+    # Group+Playoff specific
+    team_mode: bool = False
+    sport: Sport = Sport.PADEL
+    court_names: list[str] = Field(default_factory=lambda: ["Court 1"])
+    num_groups: int = Field(default=2, ge=1, le=32)
+    group_names: list[str] = []
+    top_per_group: int = Field(default=2, ge=1)
+    double_elimination: bool = False
+    public: bool = True
+    assign_courts: bool = True
+    # Mexicano specific
+    total_points_per_match: int = Field(default=32, ge=1)
+    num_rounds: int = Field(default=8, ge=0)
+    skill_gap: int | None = Field(default=None, ge=0)
+    win_bonus: int = Field(default=0, ge=0)
+    strength_weight: float = Field(default=0.0, ge=0.0, le=1.0)
+    loss_discount: float = Field(default=1.0, ge=0.0, le=1.0)
+    balance_tolerance: float = Field(default=0.2, ge=0.0)

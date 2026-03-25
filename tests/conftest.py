@@ -29,6 +29,7 @@ def _clean_state():
     import backend.api.routes_mex as mex_mod
     import backend.api.routes_playoff as po_mod
     import backend.api.routes_crud as crud_mod
+    from backend.api.db import get_db
 
     state_mod._tournaments.clear()
     state_mod._counter = 0
@@ -139,6 +140,15 @@ def _clean_state():
     state_mod._state_version = 0
     state_mod._save_tournament = orig_save_tournament
     state_mod._delete_tournament = orig_delete_tournament
+
+    # Clean up registration tables between tests
+    try:
+        with get_db() as conn:
+            conn.execute("DELETE FROM registrants")
+            conn.execute("DELETE FROM registrations")
+            conn.execute("DELETE FROM meta WHERE key = 'reg_counter'")
+    except Exception:
+        pass
 
     ps_mod.create_secrets_for_tournament = orig_create_secrets
     ps_mod.delete_secrets_for_tournament = orig_delete_secrets

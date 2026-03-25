@@ -9,20 +9,41 @@
 <link rel="apple-touch-icon" href="/icon-192.png">
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');</script>
 <link rel="stylesheet" href="/admin.css">
+<script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.3.3/dist/purify.min.js" integrity="sha384-pcBjnGbkyKeOXaoFkmJiuR9E08/6gkmus6/Strimnxtl3uk0Hx23v345pWyC/MMr" crossorigin="anonymous"></script>
 </head>
 <body>
 <div class="container">
   <div class="page-header">
     <div class="page-header-title-bar">
-      <button type="button" id="lang-toggle-btn" class="compact-icon-btn" onclick="toggleLanguage()" title="Language">🇬🇧</button>
-      <span class="page-title-text">Torneos Amistosos</span>
-      <button type="button" id="theme-toggle-btn" class="compact-icon-btn" onclick="toggleTheme()" title="Toggle light / dark mode">☀️</button>
+      <div class="page-selector" id="page-selector">
+        <button type="button" class="page-selector-btn" id="page-selector-btn" onclick="togglePageSelector()">
+          <span class="page-selector-icon">🛠️</span>
+          <span class="page-selector-label" data-i18n="txt_nav_admin">Admin</span>
+          <span class="page-selector-arrow">▾</span>
+        </button>
+        <div class="page-selector-menu" id="page-selector-menu">
+          <a href="/" class="page-selector-item active" data-page="admin">
+            <span class="page-selector-item-icon">🛠️</span>
+            <span data-i18n="txt_nav_admin">Admin</span>
+          </a>
+          <a href="/tv" class="page-selector-item" data-page="tv">
+            <span class="page-selector-item-icon">📺</span>
+            <span data-i18n="txt_nav_tv_view">TV View</span>
+          </a>
+          <a href="/register" class="page-selector-item" data-page="register">
+            <span class="page-selector-item-icon">📋</span>
+            <span data-i18n="txt_nav_registrations">Registrations</span>
+          </a>
+        </div>
+      </div>
+      <div class="header-toggle-btns">
+        <button type="button" id="lang-toggle-btn" class="compact-icon-btn" onclick="toggleLanguage()" title="Language" aria-label="Switch language">🇬🇧</button>
+        <button type="button" id="theme-toggle-btn" class="compact-icon-btn" onclick="toggleTheme()" title="Toggle light / dark mode" aria-label="Toggle light or dark mode">☀️</button>
+      </div>
     </div>
     <div class="page-header-row">
-      <div class="page-header-left">
-        <a href="/tv" class="btn-tv-live" title="TV view"><span class="tv-live-dot"></span>📺 <span data-i18n="txt_txt_tv_view">TV view</span></a>
-      </div>
-      <div id="auth-status" class="page-header-right"></div>
+      <div id="auth-status" class="page-header-right" style="margin-left:auto"></div>
     </div>
   </div>
 
@@ -48,8 +69,10 @@
   <!-- ─── HOME ──────────────────────────────────────────── -->
   <div class="tab-panel active" id="panel-home" role="tabpanel">
     <div class="card">
-      <h2 data-i18n="txt_txt_active_tournaments">Active Tournaments</h2>
-      <div id="tournament-list"><em data-i18n="txt_txt_loading">Loading…</em></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+        <h2 style="margin:0" data-i18n="txt_txt_active_tournaments">Active Tournaments</h2>
+      </div>
+      <div id="tournament-list"><div class="skeleton-loader"><div class="skeleton-line skeleton-line-lg"></div><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
     </div>
     <div class="card" id="finished-tournaments-card" style="display:none">
       <h2 data-i18n="txt_txt_finished_tournaments">Finished tournaments</h2>
@@ -60,7 +83,10 @@
   <!-- ─── CREATE ─────────────────────────────────────────── -->
   <div class="tab-panel" id="panel-create" role="tabpanel">
     <div class="card">
-      <h2 data-i18n="txt_txt_create_tournament">Create Tournament</h2>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
+        <h2 style="margin:0" data-i18n="txt_txt_create_tournament">Create Tournament</h2>
+        <button type="button" class="format-info-btn" id="create-format-info-btn" onclick="openFormatInfo()" aria-label="About this format" data-i18n-title="txt_txt_about_this_format" title="About this format">i</button>
+      </div>
       <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem;flex-wrap:wrap">
         <div class="score-mode-toggle" id="sport-toggle" style="margin-bottom:0">
           <button type="button" data-sport="padel" class="active" onclick="setSport('padel')"><span data-i18n="txt_txt_sport_padel">Padel</span></button>
@@ -73,7 +99,10 @@
           <button type="button" class="subtab-btn" id="create-tab-mex" onclick="setCreateMode('mex')" data-i18n="txt_txt_mexicano_play_offs">Mexicano + Play‑offs</button>
           <button type="button" class="subtab-btn" id="create-tab-po" onclick="setCreateMode('po')" data-i18n="txt_txt_play_offs_only">Play-offs</button>
         </div>
-        <button type="button" class="format-info-btn" id="create-format-info-btn" onclick="openFormatInfo()" aria-label="About this format" data-i18n-title="txt_txt_about_this_format" title="About this format">i</button>
+        <div style="flex:1"></div>
+        <div class="subtabs" style="margin-bottom:0">
+          <button type="button" class="subtab-btn" id="create-tab-lobby" onclick="setCreateMode('lobby')" data-i18n="txt_reg_lobby">Lobby</button>
+        </div>
       </div>
 
       <div class="subtab-panel active" id="create-panel-gp">
@@ -247,6 +276,11 @@
         <div id="mex-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
 
+      <!-- ─── CREATE LOBBY ────────────────────────────────── -->
+      <div class="subtab-panel" id="create-panel-lobby">
+        <div id="reg-create-form"></div>
+      </div>
+
       <!-- ─── CREATE PLAY-OFFS ONLY ──────────────────────── -->
       <div class="subtab-panel" id="create-panel-po">
         <div class="field-section" style="margin-bottom:0.75rem">
@@ -351,7 +385,7 @@
       <h2 data-i18n="txt_txt_fmt_po_title">Direct Play&#8209;offs</h2>
       <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_po_intro">Skip the group stage and go straight to the bracket. Seed your participants in order and the bracket is generated immediately.</p>
       <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_playoffs_single_title">Single Elimination</strong>
+        <strong data-i18n="txt_txt_fmt_playoffs_single_title">Knockout</strong>
         <p data-i18n="txt_txt_fmt_playoffs_single_desc">Classic knock‑out bracket — lose once and you're out. Straightforward and fast to complete.</p>
       </div>
       <div class="info-block">
@@ -363,9 +397,9 @@
     <!-- Play-offs -->
     <div class="card">
       <h2 data-i18n="txt_txt_fmt_playoffs_title">Play‑offs</h2>
-      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_playoffs_intro">After any group stage or Mexicano rounds, the admin selects which players or teams advance to the play‑off bracket. It is also possible to add new (external) players directly into play‑offs after the group stage — useful for seeded entries or late registrations.</p>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_playoffs_intro">After any group stage or Mexicano rounds, the admin selects which players or teams advance to the play&#8209;off bracket. New (external) players can also be added directly into play&#8209;offs after the group stage — useful for seeded entries or late registrations.</p>
       <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_playoffs_single_title">Single Elimination</strong>
+        <strong data-i18n="txt_txt_fmt_playoffs_single_title">Knockout</strong>
         <p data-i18n="txt_txt_fmt_playoffs_single_desc">Classic knock‑out bracket — lose once and you're out. Straightforward and fast to complete.</p>
       </div>
       <div class="info-block">
@@ -453,15 +487,15 @@
 
     <!-- TV Display -->
     <div class="card">
-      <h2 data-i18n="txt_txt_fmt_tv_title">TV Display</h2>
-      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_tv_intro">A read-only live view for a big screen or projector. Auto-refreshes in real time — no login required.</p>
+      <h2 data-i18n="txt_txt_fmt_tv_title">Public Display</h2>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_tv_intro">A read-only live view for guests and participants, available on all devices. Auto-refreshes in real time — no login required.</p>
       <div class="info-block">
         <strong data-i18n="txt_txt_fmt_tv_sections_title">Visible sections</strong>
         <p data-i18n="txt_txt_fmt_tv_sections_desc">Choose which blocks appear: past matches, standings / leaderboard, score breakdowns, and the play&#8209;off bracket.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_fmt_tv_refresh_title">Auto-refresh</strong>
-        <p data-i18n="txt_txt_fmt_tv_refresh_desc">Set the refresh interval (5 s – 5 min), trigger on every score update, or disable entirely.</p>
+        <p data-i18n="txt_txt_fmt_tv_refresh_desc">Set the refresh interval (5s – 5min), trigger on every score update, or disable entirely.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_fmt_tv_alias_title">Custom URL alias</strong>
@@ -492,6 +526,11 @@
     </div>
   </div>
 </div>
+<div style="text-align:center;padding:3rem 0 2.5rem;">
+  <a href="https://ko-fi.com/torneosamistosos" target="_blank" rel="noopener">
+    <img height="36" style="border:0;height:36px;" src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Buy Me a Coffee at ko-fi.com">
+  </a>
+</div>
 
 <!-- Format Info Modal -->
 <div id="format-info-overlay" onclick="closeFormatInfo()"></div>
@@ -500,85 +539,97 @@
   <div id="format-info-content"></div>
 </div>
 
+<!-- Bracket image lightbox -->
+<div id="bracket-lightbox" role="dialog" aria-modal="true" aria-label="Bracket" onclick="_closeBracketLightbox(event)">
+  <button class="bracket-lightbox-close" onclick="_closeBracketLightbox()" aria-label="Close">✕</button>
+  <div class="bracket-lightbox-scroll">
+    <img id="bracket-lightbox-img" src="" alt="Bracket">
+  </div>
+</div>
+
 <!-- Abbreviation legend popup -->
 <div id="abbrev-popup" role="tooltip"></div>
 
 <!-- Authentication Dialog -->
-<div id="auth-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9998" onclick="hideLoginDialog()"></div>
-<div id="auth-dialog" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:2px solid var(--border);border-radius:12px;padding:2rem;width:min(400px, calc(100vw - 2rem));z-index:9999;box-shadow:0 10px 40px rgba(0,0,0,0.5)">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
-    <h2 style="margin:0;color:var(--accent)">🔐 <span data-i18n="txt_txt_login_required">Login Required</span></h2>
-    <button type="button" onclick="hideLoginDialog()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-muted);line-height:1">✕</button>
+<div id="auth-overlay" class="modal-overlay" onclick="hideLoginDialog()"></div>
+<div id="auth-dialog" class="modal-dialog modal-sm">
+  <div class="modal-header">
+    <h2 class="modal-title">🔐 <span data-i18n="txt_txt_login_required">Login Required</span></h2>
+    <button type="button" class="modal-close-btn" onclick="hideLoginDialog()" aria-label="Close">✕</button>
   </div>
-  <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1.2rem;text-align:center" data-i18n="txt_txt_please_log_in_to_create_or_modify_tournaments">Please log in to create or modify tournaments</p>
+  <p class="modal-subtitle" data-i18n="txt_txt_please_log_in_to_create_or_modify_tournaments">Please log in to create or modify tournaments</p>
   <form onsubmit="handleLogin(event)">
-    <div style="margin-bottom:0.8rem">
-      <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600" data-i18n="txt_txt_username">Username</label>
-      <input type="text" id="auth-username" placeholder="admin" autocomplete="username" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
+    <div class="modal-field">
+      <label class="modal-label" data-i18n="txt_txt_username">Username</label>
+      <input type="text" id="auth-username" class="modal-input" placeholder="admin" autocomplete="username">
     </div>
-    <div style="margin-bottom:1rem">
-      <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600" data-i18n="txt_txt_password">Password</label>
-      <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
+    <div class="modal-field" style="margin-bottom:1rem">
+      <label class="modal-label" data-i18n="txt_txt_password">Password</label>
+      <input type="password" id="auth-password" class="modal-input" placeholder="••••••••" autocomplete="current-password">
     </div>
-    <div id="auth-error" style="color:var(--red);font-size:0.8rem;margin-bottom:0.8rem;min-height:1.2rem;text-align:center"></div>
+    <div class="modal-error" id="auth-error"></div>
     <button type="submit" id="auth-login-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_login">Login</button>
   </form>
-  <p style="margin-top:0.75rem;text-align:center;font-size:0.85rem">
-    <a href="/tv" class="btn-tv-live" title="TV view"><span class="tv-live-dot"></span>📺 <span data-i18n="txt_txt_tv_view">TV view</span></a>
+  <p class="modal-footer-links">
+    <a href="/tv" class="modal-link">📺 <span data-i18n="txt_nav_tv_view">TV View</span></a>
+    <a href="/register" class="modal-link">📋 <span data-i18n="txt_nav_registrations">Registrations</span></a>
   </p>
 </div>
 
 <!-- User Management Modal (admin only) -->
-<div id="user-mgmt-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9998;align-items:center;justify-content:center">
-  <div style="background:var(--surface);border:2px solid var(--border);border-radius:12px;padding:2rem;width:min(480px,calc(100vw - 2rem));max-height:90vh;overflow-y:auto;z-index:9999;box-shadow:0 10px 40px rgba(0,0,0,0.5)">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem">
-      <h2 style="margin:0;color:var(--accent)">👥 <span data-i18n="txt_txt_user_management">User Management</span></h2>
-      <button type="button" onclick="hideUserMgmt()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-muted)">✕</button>
+<div id="user-mgmt-overlay" class="modal-overlay">
+  <div class="modal-dialog modal-md">
+    <div class="modal-header">
+      <h2 class="modal-title">👥 <span data-i18n="txt_txt_user_management">User Management</span></h2>
+      <button type="button" class="modal-close-btn" onclick="hideUserMgmt()" aria-label="Close">✕</button>
     </div>
-    <ul id="user-mgmt-list" style="list-style:none;margin:0 0 1.25rem;padding:0;border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.75rem;min-height:3rem;max-height:260px;overflow-y:auto"></ul>
-    <form onsubmit="handleCreateUser(event)" style="border-top:1px solid var(--border);padding-top:1rem">
-      <div style="font-weight:600;margin-bottom:0.75rem" data-i18n="txt_txt_create_user">Create User</div>
+    <div style="padding:0.5rem 0 0.25rem">
+      <input id="user-mgmt-search" type="search" class="modal-input" placeholder="Search users…" autocomplete="off" oninput="filterUserMgmtList(this.value)" style="width:100%">
+    </div>
+    <ul id="user-mgmt-list" class="user-mgmt-list"></ul>
+    <form onsubmit="handleCreateUser(event)" class="modal-form-section">
+      <div class="modal-label" style="font-weight:600;margin-bottom:0.75rem" data-i18n="txt_txt_create_user">Create User</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:0.6rem">
-        <input id="new-user-username" type="text" placeholder="Username" autocomplete="off" style="padding:0.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
-        <input id="new-user-password" type="password" placeholder="Password" autocomplete="new-password" style="padding:0.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
+        <input id="new-user-username" type="text" class="modal-input" placeholder="Username" autocomplete="off">
+        <input id="new-user-password" type="password" class="modal-input" placeholder="Password" autocomplete="new-password">
       </div>
       <div style="margin-bottom:0.75rem">
-        <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem" data-i18n="txt_txt_role">Role</div>
-        <div style="display:flex;gap:1.5rem">
-          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.9rem">
-            <input type="radio" name="new-user-role" value="user" checked style="cursor:pointer"> <span data-i18n="txt_txt_user_role">User</span>
+        <div class="modal-label" data-i18n="txt_txt_role">Role</div>
+        <div class="modal-radio-group">
+          <label class="modal-radio-label">
+            <input type="radio" name="new-user-role" value="user" checked> <span data-i18n="txt_txt_user_role">User</span>
           </label>
-          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.9rem">
-            <input type="radio" name="new-user-role" value="admin" style="cursor:pointer"> <span data-i18n="txt_txt_admin_role">Admin</span>
+          <label class="modal-radio-label">
+            <input type="radio" name="new-user-role" value="admin"> <span data-i18n="txt_txt_admin_role">Admin</span>
           </label>
         </div>
       </div>
-      <div id="user-mgmt-success" style="color:var(--green);font-size:0.8rem;min-height:1.2rem;margin-bottom:0.25rem"></div>
-      <div id="user-mgmt-error" style="color:var(--red);font-size:0.8rem;min-height:1.2rem;margin-bottom:0.5rem"></div>
+      <div class="modal-success" id="user-mgmt-success"></div>
+      <div class="modal-error" id="user-mgmt-error"></div>
       <button type="submit" id="create-user-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_create_user">Create User</button>
     </form>
   </div>
 </div>
 
 <!-- Change Password Modal (all authenticated users) -->
-<div id="change-pwd-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9998;align-items:center;justify-content:center">
-  <div style="background:var(--surface);border:2px solid var(--border);border-radius:12px;padding:2rem;width:min(400px,calc(100vw - 2rem));z-index:9999;box-shadow:0 10px 40px rgba(0,0,0,0.5)">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
-      <h2 style="margin:0;color:var(--accent)">🔑 <span data-i18n="txt_txt_change_password">Change Password</span></h2>
-      <button type="button" onclick="hideChangePasswordDialog()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-muted)">✕</button>
+<div id="change-pwd-overlay" class="modal-overlay">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-header" style="margin-bottom:0.5rem">
+      <h2 class="modal-title">🔑 <span data-i18n="txt_txt_change_password">Change Password</span></h2>
+      <button type="button" class="modal-close-btn" onclick="hideChangePasswordDialog()" aria-label="Close">✕</button>
     </div>
-    <p id="change-pwd-for" style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem"></p>
+    <p id="change-pwd-for" class="modal-subtitle" style="margin-bottom:1rem"></p>
     <form onsubmit="handleChangePassword(event)">
-      <div style="margin-bottom:0.8rem">
-        <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600" data-i18n="txt_txt_new_password">New Password</label>
-        <input type="password" id="change-pwd-new" placeholder="••••••••" autocomplete="new-password" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
+      <div class="modal-field">
+        <label class="modal-label" data-i18n="txt_txt_new_password">New Password</label>
+        <input type="password" id="change-pwd-new" class="modal-input" placeholder="••••••••" autocomplete="new-password">
       </div>
-      <div style="margin-bottom:1rem">
-        <label style="display:block;margin-bottom:0.3rem;font-size:0.85rem;font-weight:600" data-i18n="txt_txt_confirm_new_password">Confirm New Password</label>
-        <input type="password" id="change-pwd-confirm" placeholder="••••••••" autocomplete="new-password" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.9rem">
+      <div class="modal-field" style="margin-bottom:1rem">
+        <label class="modal-label" data-i18n="txt_txt_confirm_new_password">Confirm New Password</label>
+        <input type="password" id="change-pwd-confirm" class="modal-input" placeholder="••••••••" autocomplete="new-password">
       </div>
-      <div id="change-pwd-success" style="color:var(--green);font-size:0.8rem;min-height:1.2rem;margin-bottom:0.25rem"></div>
-      <div id="change-pwd-error" style="color:var(--red);font-size:0.8rem;min-height:1.2rem;margin-bottom:0.5rem"></div>
+      <div class="modal-success" id="change-pwd-success"></div>
+      <div class="modal-error" id="change-pwd-error"></div>
       <button type="submit" id="change-pwd-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_change_password">Change Password</button>
     </form>
   </div>
@@ -590,11 +641,5 @@
 <script src="/auth.js"></script>
 <script src="/admin.js"></script>
 
-<div class="kofi-footer">
-  <a class="kofi-btn" href="https://ko-fi.com/torneosamistosos" target="_blank" rel="noopener" aria-label="Support on Ko-fi">
-    <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M2 19h18v2H2zm2-4h14c0 2.2-1.8 4-4 4H8c-2.2 0-4-1.8-4-4zm14.5-2H18V7H4v6h.5c.8 0 1.5.7 1.5 1.5S5.3 16 4.5 16H4v-1h14v1h-.5c-.8 0-1.5-.7-1.5-1.5s.7-1.5 1.5-1.5zM18 5H4V4c0-.6.4-1 1-1h12c.6 0 1 .4 1 1v1zm2 1h1c1.1 0 2 .9 2 2v2c0 1.1-.9 2-2 2h-1V6z"/></svg>
-    <span data-i18n="txt_kofi_support">Support</span>
-  </a>
-</div>
 </body>
 </html>

@@ -426,3 +426,161 @@ class TestPlayoffAPI:
     def test_nonexistent_tournament(self, client):
         r = client.get("/api/tournaments/fake/po/status")
         assert r.status_code == 404
+
+
+# ── Registration Lobby API ────────────────────────────────
+
+
+class TestRegistrationAPI:
+    """Tests for registration lobby CRUD and public listing."""
+
+    def _create_registration(self, client, auth_headers, **overrides):
+        body = {"name": "Test Reg", **overrides}
+        r = client.post("/api/registrations", json=body, headers=auth_headers)
+        assert r.status_code == 200
+        return r.json()["id"]
+
+    def test_create_and_list(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers)
+        r = client.get("/api/registrations", headers=auth_headers)
+        assert r.status_code == 200
+        assert any(reg["id"] == rid for reg in r.json())
+
+    def test_create_with_listed(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers, listed=True)
+        r = client.get(f"/api/registrations/{rid}", headers=auth_headers)
+        assert r.status_code == 200
+        assert r.json()["listed"] is True
+
+    def test_create_defaults_listed_false(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers)
+        r = client.get(f"/api/registrations/{rid}", headers=auth_headers)
+        assert r.status_code == 200
+        assert r.json()["listed"] is False
+
+    def test_patch_listed(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers)
+        r = client.patch(f"/api/registrations/{rid}", json={"listed": True}, headers=auth_headers)
+        assert r.status_code == 200
+        r = client.get(f"/api/registrations/{rid}", headers=auth_headers)
+        assert r.json()["listed"] is True
+
+    def test_public_listing_returns_only_open_listed(self, client, auth_headers):
+        # Create 3 registrations: listed+open, unlisted+open, listed+closed
+        rid1 = self._create_registration(client, auth_headers, name="Listed Open", listed=True)
+        self._create_registration(client, auth_headers, name="Unlisted Open", listed=False)
+        rid3 = self._create_registration(client, auth_headers, name="Listed Closed", listed=True)
+        client.patch(f"/api/registrations/{rid3}", json={"open": False}, headers=auth_headers)
+
+        r = client.get("/api/registrations/public")
+        assert r.status_code == 200
+        lobbies = r.json()
+        assert len(lobbies) == 1
+        assert lobbies[0]["id"] == rid1
+        assert lobbies[0]["name"] == "Listed Open"
+
+    def test_public_listing_excludes_converted(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers, name="Will Convert", listed=True)
+        # Register 2 players so we can convert
+        client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+        client.post(f"/api/registrations/{rid}/register", json={"player_name": "Bob"})
+        # Convert
+        client.post(
+            f"/api/registrations/{rid}/convert",
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            headers=auth_headers,
+        )
+        r = client.get("/api/registrations/public")
+        assert r.status_code == 200
+        assert len(r.json()) == 0
+
+    def test_public_listing_empty(self, client):
+        r = client.get("/api/registrations/public")
+        assert r.status_code == 200
+        assert r.json() == []
+
+    def test_public_endpoint_returns_converted_to_tid(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers, name="Convertible")
+        client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+        client.post(f"/api/registrations/{rid}/register", json={"player_name": "Bob"})
+        conv = client.post(
+            f"/api/registrations/{rid}/convert",
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            headers=auth_headers,
+        )
+        tid = conv.json()["tournament_id"]
+
+        r = client.get(f"/api/registrations/{rid}/public")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["converted"] is True
+        assert data["converted_to_tid"] == tid
+
+    def test_public_endpoint_listed_field(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers, listed=True)
+        r = client.get(f"/api/registrations/{rid}/public")
+        assert r.status_code == 200
+        assert r.json()["listed"] is True
+
+    def test_register_player_and_list(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers)
+        r = client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+        assert r.status_code == 200
+        assert r.json()["passphrase"]
+        assert r.json()["token"]
+
+        pub = client.get(f"/api/registrations/{rid}/public")
+        assert pub.json()["registrant_count"] == 1
+        assert pub.json()["registrants"][0]["player_name"] == "Alice"
+
+    def test_register_duplicate_name_rejected(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers)
+        client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+        r = client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+        assert r.status_code == 409
+
+    def test_player_login_returns_registration(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers)
+        reg = client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+        passphrase = reg.json()["passphrase"]
+
+        r = client.post(f"/api/registrations/{rid}/player-login", json={"passphrase": passphrase})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["player_name"] == "Alice"
+        assert data["passphrase"] == passphrase
+        assert "player_id" in data
+        assert "registered_at" in data
+
+    def test_player_login_wrong_passphrase_returns_401(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers)
+        client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+        r = client.post(f"/api/registrations/{rid}/player-login", json={"passphrase": "wrong-pass-word"})
+        assert r.status_code == 401
+
+    def test_player_login_passphrase_scoped_to_lobby(self, client, auth_headers):
+        """Passphrase from lobby A must not work in lobby B."""
+        rid_a = self._create_registration(client, auth_headers, name="Lobby A")
+        rid_b = self._create_registration(client, auth_headers, name="Lobby B")
+        reg = client.post(f"/api/registrations/{rid_a}/register", json={"player_name": "Alice"})
+        passphrase = reg.json()["passphrase"]
+
+        r = client.post(f"/api/registrations/{rid_b}/player-login", json={"passphrase": passphrase})
+        assert r.status_code == 401
+
+    def test_player_login_returns_answers(self, client, auth_headers):
+        rid = self._create_registration(
+            client, auth_headers, questions=[{"key": "q0", "label": "Level", "type": "text", "required": False}]
+        )
+        reg = client.post(
+            f"/api/registrations/{rid}/register", json={"player_name": "Bob", "answers": {"q0": "intermediate"}}
+        )
+        passphrase = reg.json()["passphrase"]
+
+        r = client.post(f"/api/registrations/{rid}/player-login", json={"passphrase": passphrase})
+        assert r.status_code == 200
+        assert r.json()["answers"] == {"q0": "intermediate"}
+
+    def test_player_login_nonexistent_lobby_returns_404(self, client):
+        r = client.post("/api/registrations/r999/player-login", json={"passphrase": "some-pass-word"})
+        assert r.status_code == 404

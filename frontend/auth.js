@@ -300,6 +300,8 @@ function showUserMgmt() {
   const overlay = document.getElementById('user-mgmt-overlay');
   if (overlay) {
     overlay.style.display = 'flex';
+    const search = document.getElementById('user-mgmt-search');
+    if (search) search.value = '';
     loadUserMgmtList();
   }
 }
@@ -316,6 +318,9 @@ function hideUserMgmt() {
   if (success) success.textContent = '';
 }
 
+/** Full user list, kept in memory so filtering is instant. */
+let _allUsers = [];
+
 /**
  * Fetch and render the user list in the management modal.
  */
@@ -324,21 +329,34 @@ async function loadUserMgmtList() {
   if (!list) return;
   list.innerHTML = '<li style="opacity:.5">Loading…</li>';
   try {
-    const users = await apiAuth('/api/auth/users');
-    if (!users.length) {
-      list.innerHTML = '<li style="opacity:.5">No users found.</li>';
-      return;
-    }
-    list.innerHTML = users.map(u => `
-      <li style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0">
-        <span style="flex:1"><strong>${esc(u.username)}</strong>
-          <span style="font-size:0.8em;opacity:.7;margin-left:0.4rem">${esc(u.role)}</span>
-        </span>
-        ${u.username !== getAuthUsername() ? `<button class="btn btn-sm" onclick="showChangePasswordDialog('${esc(u.username)}')" style="padding:0.2rem 0.55rem" title="${t('txt_txt_change_password')}">🔑</button><button class="btn btn-sm btn-danger" onclick="deleteUserWithConfirm('${esc(u.username)}')" style="padding:0.2rem 0.55rem">🗑</button>` : `<span style="font-size:0.7rem;color:var(--text-muted);padding:0.15rem 0.45rem;border:1px solid var(--border);border-radius:4px;white-space:nowrap" title="${t('txt_txt_protected')}">🔒</span>`}
-      </li>`).join('');
+    _allUsers = await apiAuth('/api/auth/users');
+    const search = document.getElementById('user-mgmt-search');
+    filterUserMgmtList(search ? search.value : '');
   } catch (e) {
     list.innerHTML = `<li style="color:var(--red)">${e.message}</li>`;
   }
+}
+
+/**
+ * Re-render the user list filtered by the given query.
+ * @param {string} query
+ */
+function filterUserMgmtList(query) {
+  const list = document.getElementById('user-mgmt-list');
+  if (!list) return;
+  const q = query.trim().toLowerCase();
+  const users = q ? _allUsers.filter(u => u.username.toLowerCase().includes(q) || u.role.toLowerCase().includes(q)) : _allUsers;
+  if (!users.length) {
+    list.innerHTML = '<li style="opacity:.5">No users found.</li>';
+    return;
+  }
+  list.innerHTML = users.map(u => `
+    <li style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0">
+      <span style="flex:1"><strong>${esc(u.username)}</strong>
+        <span style="font-size:0.8em;opacity:.7;margin-left:0.4rem">${esc(u.role)}</span>
+      </span>
+      ${u.username !== getAuthUsername() ? `<button class="btn btn-sm" onclick="showChangePasswordDialog('${esc(u.username)}')" style="padding:0.2rem 0.55rem" title="${t('txt_txt_change_password')}">🔑</button><button class="btn btn-sm btn-danger" onclick="deleteUserWithConfirm('${esc(u.username)}')" style="padding:0.2rem 0.55rem">🗑</button>` : `<span style="font-size:0.7rem;color:var(--text-muted);padding:0.15rem 0.45rem;border:1px solid var(--border);border-radius:4px;white-space:nowrap" title="${t('txt_txt_protected')}">🔒</span>`}
+    </li>`).join('');
 }
 
 /**

@@ -30,6 +30,8 @@ from contextlib import contextmanager
 
 from ..config import DATA_DIR
 
+import json
+
 DB_PATH = DATA_DIR / "padel.db"
 
 _DDL = """
@@ -78,6 +80,39 @@ CREATE INDEX IF NOT EXISTS idx_ps_tournament
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ps_token
     ON player_secrets (token);
+
+CREATE TABLE IF NOT EXISTS registrations (
+    id              TEXT    PRIMARY KEY,
+    name            TEXT    NOT NULL,
+    owner           TEXT    NOT NULL,
+    open            INTEGER NOT NULL DEFAULT 1,
+    join_code       TEXT,
+    questions       TEXT,
+    description     TEXT,
+    message         TEXT,
+    alias           TEXT    UNIQUE,
+    converted_to_tid TEXT,
+    listed          INTEGER NOT NULL DEFAULT 0,
+    sport           TEXT    NOT NULL DEFAULT 'padel',
+    created_at      TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS registrants (
+    registration_id TEXT    NOT NULL,
+    player_id       TEXT    NOT NULL,
+    player_name     TEXT    NOT NULL,
+    passphrase      TEXT    NOT NULL,
+    token           TEXT    NOT NULL,
+    answers         TEXT,
+    registered_at   TEXT    NOT NULL,
+    PRIMARY KEY (registration_id, player_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reg_registrants
+    ON registrants (registration_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reg_token
+    ON registrants (token);
 """
 
 
@@ -96,6 +131,51 @@ def init_db() -> None:
             conn.execute("ALTER TABLE tournaments ADD COLUMN sport TEXT NOT NULL DEFAULT 'padel'")
         if "assign_courts" not in cols:
             conn.execute("ALTER TABLE tournaments ADD COLUMN assign_courts INTEGER NOT NULL DEFAULT 1")
+        # Migrate: add registration columns if missing (existing DBs before lobby features)
+        reg_cols = {r[1] for r in conn.execute("PRAGMA table_info(registrations)").fetchall()}
+        if reg_cols:  # table exists
+            for col in ("description", "message", "converted_to_tid", "alias"):
+                if col not in reg_cols:
+                    conn.execute(f"ALTER TABLE registrations ADD COLUMN {col} TEXT")
+            if "listed" not in reg_cols:
+                conn.execute("ALTER TABLE registrations ADD COLUMN listed INTEGER NOT NULL DEFAULT 0")
+            if "sport" not in reg_cols:
+                conn.execute("ALTER TABLE registrations ADD COLUMN sport TEXT NOT NULL DEFAULT 'padel'")
+            # Migrate level_type/level_label/level_required → questions JSON
+            if "questions" not in reg_cols and "level_type" in reg_cols:
+                conn.execute("ALTER TABLE registrations ADD COLUMN questions TEXT")
+                rows = conn.execute("SELECT id, level_type, level_label, level_required FROM registrations").fetchall()
+                for row in rows:
+                    rid, ltype, llabel, lreq = row
+                    if ltype:
+                        q = {
+                            "key": "level",
+                            "label": llabel or "Level",
+                            "type": "choice" if ltype == "category" else "text",
+                            "required": bool(lreq),
+                            "choices": [],
+                        }
+                        conn.execute(
+                            "UPDATE registrations SET questions = ? WHERE id = ?",
+                            (json.dumps([q]), rid),
+                        )
+            elif "questions" not in reg_cols:
+                conn.execute("ALTER TABLE registrations ADD COLUMN questions TEXT")
+        # Migrate registrants: level → answers JSON
+        rnt_cols = {r[1] for r in conn.execute("PRAGMA table_info(registrants)").fetchall()}
+        if rnt_cols:
+            if "answers" not in rnt_cols and "level" in rnt_cols:
+                conn.execute("ALTER TABLE registrants ADD COLUMN answers TEXT")
+                rows = conn.execute("SELECT registration_id, player_id, level FROM registrants").fetchall()
+                for row in rows:
+                    reg_id, pid, level = row
+                    if level:
+                        conn.execute(
+                            "UPDATE registrants SET answers = ? WHERE registration_id = ? AND player_id = ?",
+                            (json.dumps({"level": level}), reg_id, pid),
+                        )
+            elif "answers" not in rnt_cols:
+                conn.execute("ALTER TABLE registrants ADD COLUMN answers TEXT")
 
 
 @contextmanager

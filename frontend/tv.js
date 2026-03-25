@@ -1,5 +1,8 @@
 const API = '';
 
+// ── Remember this page for the page selector ──────────────
+try { localStorage.setItem('amistoso-last-page', 'tv'); } catch (_) {}
+
 // ── Theme ─────────────────────────────────────────────────
 let _theme = _loadSavedTheme();
 _applyTheme(_theme);
@@ -35,6 +38,43 @@ function _languageToggleMeta() {
     label: `${t('txt_txt_language')}: ${currentLabel}`,
   };
 }
+
+// ── Page selector (shared across TV pages) ────────────────
+function _buildPageSelectorHtml(currentPage) {
+  const pages = [
+    { key: 'admin', href: '/', icon: '🛠️', label: t('txt_nav_admin') },
+    { key: 'tv', href: '/tv', icon: '📺', label: t('txt_nav_tv_view') },
+    { key: 'register', href: '/register', icon: '📋', label: t('txt_nav_registrations') },
+  ];
+  const current = pages.find(p => p.key === currentPage) || pages[0];
+  let html = `<div class="tv-page-selector" id="page-selector">`;
+  html += `<button type="button" class="tv-page-selector-btn" onclick="_tvTogglePageSelector()">`;
+  html += `<span>${current.icon}</span> <span>${esc(current.label)}</span> <span style="font-size:0.7rem;color:var(--text-muted)">▾</span>`;
+  html += `</button>`;
+  html += `<div class="tv-page-selector-menu" id="page-selector-menu">`;
+  for (const p of pages) {
+    const active = p.key === currentPage ? ' active' : '';
+    html += `<a href="${p.href}" class="tv-page-selector-item${active}" onclick="_tvSavePageChoice('${p.key}')">`;
+    html += `<span>${p.icon}</span> <span>${esc(p.label)}</span></a>`;
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+function _tvTogglePageSelector() {
+  const el = document.getElementById('page-selector');
+  if (el) el.classList.toggle('open');
+}
+
+function _tvSavePageChoice(page) {
+  try { localStorage.setItem('amistoso-last-page', page); } catch (_) {}
+}
+
+// Close page selector when clicking outside
+document.addEventListener('click', (e) => {
+  const sel = document.getElementById('page-selector');
+  if (sel && !sel.contains(e.target)) sel.classList.remove('open');
+});
 
 // ── URL params ────────────────────────────────────────────
 const _params = new URLSearchParams(location.search);
@@ -178,6 +218,7 @@ function _showPlayerLoginModal() {
       <h3>🔑 ${t('txt_txt_player_login')}</h3>
       <div class="login-error" id="player-login-error"></div>
       <input type="text" id="player-passphrase-input" placeholder="${t('txt_txt_enter_passphrase')}" autocomplete="off" spellcheck="false">
+      <p class="login-passphrase-hint">${t('txt_txt_passphrase_hint')}</p>
       <div style="display:flex;gap:0.5rem;justify-content:center">
         <button class="btn btn-primary" onclick="_doPlayerLogin()">${t('txt_txt_login')}</button>
         <button class="btn btn-cancel" onclick="document.getElementById('player-login-overlay').remove()">✕</button>
@@ -260,8 +301,12 @@ const _PLAYER_SCORE_ENDPOINTS = {
 
 /** Submit a score from the public player view */
 async function _playerSubmitScore(matchId, scoreCtx) {
+  const saveBtn = document.getElementById('ps-save-' + matchId);
+  const errDiv = document.getElementById('ps-err-' + matchId);
+  const _showErr = (msg) => { if (errDiv) errDiv.textContent = msg; };
+
   const entry = _PLAYER_SCORE_ENDPOINTS[scoreCtx];
-  if (!entry) { alert('Unknown score context'); return; }
+  if (!entry) { _showErr('Unknown score context'); return; }
 
   // Detect whether the player has the sets view active
   const setsDiv = document.getElementById('ps-sets-' + matchId);
@@ -280,20 +325,31 @@ async function _playerSubmitScore(matchId, scoreCtx) {
       if (v1 === 0 && v2 === 0) continue;
       sets.push([v1, v2]);
     }
-    if (sets.length === 0) { alert(t('txt_txt_enter_at_least_one_set_score')); return; }
+    if (sets.length === 0) { _showErr(t('txt_txt_enter_at_least_one_set_score')); return; }
     body = JSON.stringify({ match_id: matchId, sets });
   } else {
-    const s1 = +document.getElementById('ps1-' + matchId).value;
-    const s2 = +document.getElementById('ps2-' + matchId).value;
+    const s1 = +(document.getElementById('ps1-' + matchId)?.value) || 0;
+    const s2 = +(document.getElementById('ps2-' + matchId)?.value) || 0;
+    // 0–0 guard: require a second tap to confirm
+    if (s1 === 0 && s2 === 0 && !saveBtn?.dataset.zeroWarned) {
+      _showErr(t('txt_txt_zero_zero_confirm'));
+      if (saveBtn) saveBtn.dataset.zeroWarned = '1';
+      return;
+    }
     body = JSON.stringify({ match_id: matchId, score1: s1, score2: s2 });
   }
 
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '…'; }
+  if (errDiv) errDiv.textContent = '';
   const path = (isTennis && entry.tennis) ? entry.tennis : entry.points;
   try {
     await _playerApi(`/api/tournaments/${TID}/${path}`, { method: 'POST', body });
-    loadTV();
+    if (saveBtn) saveBtn.textContent = t('txt_txt_score_saved');
+    setTimeout(() => loadTV(), 800);
   } catch (e) {
-    alert(e.message);
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = t('txt_txt_save'); }
+    _showErr(e.message);
+    if (!_isPlayerLoggedIn()) setTimeout(() => loadTV(), 1500);
   }
 }
 
@@ -308,7 +364,7 @@ function _buildPlayerScoreForm(m, scoreCtx) {
   const hasTennis = !!(entry && entry.tennis);
   const defaultMode = (_tvScoreMode[scoreCtx] === 'sets' && hasTennis) ? 'sets' : 'points';
 
-  let html = '<div class="player-score-form" style="flex-direction:column;align-items:center">';
+  let html = '<div class="player-score-form">';
 
   // Points / Sets toggle (only when tennis scoring is available for this context)
   if (hasTennis) {
@@ -318,11 +374,12 @@ function _buildPlayerScoreForm(m, scoreCtx) {
     html += `</div>`;
   }
 
-  // Points inputs
-  html += `<div id="ps-points-${m.id}"${defaultMode === 'sets' ? ' class="hidden"' : ''} style="display:flex;align-items:center;gap:0.35rem">`;
-  html += `<input type="number" id="ps1-${m.id}" min="0" value="0" placeholder="0">`;
-  html += `<span style="color:var(--text-muted)">–</span>`;
-  html += `<input type="number" id="ps2-${m.id}" min="0" value="0" placeholder="0">`;
+  // Points inputs — compact single row: Alice [0] – [0] Bob [Save]
+  html += `<div class="score-inline-row">`;
+  html += `<div id="ps-points-${m.id}" class="score-teams-row${defaultMode === 'sets' ? ' hidden' : ''}">`;
+  html += `<input type="number" id="ps1-${m.id}" min="0" value="" placeholder="0">`;
+  html += `<span class="score-dash">–</span>`;
+  html += `<input type="number" id="ps2-${m.id}" min="0" value="" placeholder="0">`;
   html += `</div>`;
 
   // Sets inputs (hidden by default unless admin chose sets)
@@ -339,7 +396,9 @@ function _buildPlayerScoreForm(m, scoreCtx) {
     html += `</div></div>`;
   }
 
-  html += `<button class="score-submit-btn" onclick="_playerSubmitScore('${m.id}','${scoreCtx}')">${t('txt_txt_save')}</button>`;
+  html += `<button id="ps-save-${m.id}" class="score-submit-btn" onclick="_playerSubmitScore('${m.id}','${scoreCtx}')">${t('txt_txt_save')}</button>`;
+  html += `</div>`;
+  html += `<div id="ps-err-${m.id}" class="score-error-msg"></div>`;
   html += `</div>`;
   return html;
 }
@@ -575,7 +634,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
       html += `<details class="tv-collapsible" data-tv-key="bracket" open>`;
       html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2></summary>`;
       html += `<div class="tv-section">`;
-      html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onerror="this.style.display='none'">`;
+      html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand" onerror="this.style.display='none'">`;
       html += `</div></details>`;
     }
 
@@ -642,7 +701,7 @@ function _renderPO(tvSettings, status, playoffs) {
     html += `<details class="tv-collapsible" data-tv-key="bracket" open>`;
     html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2></summary>`;
     html += `<div class="tv-section">`;
-    html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onerror="this.style.display='none'">`;
+    html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand" onerror="this.style.display='none'">`;
     html += `</div></details>`;
   }
 
@@ -694,7 +753,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
       html += `<details class="tv-collapsible" data-tv-key="bracket" open>`;
       html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2></summary>`;
       html += `<div class="tv-section">`;
-      html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onerror="this.style.display='none'">`;
+      html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand" onerror="this.style.display='none'">`;
       html += `</div></details>`;
     }
 
@@ -808,12 +867,14 @@ function _buildHeader(name, phase, champion) {
   return `
     <div class="tv-header">
       <div class="tv-header-title-row">
-        <button type="button" id="lang-toggle-btn" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button>
-        <div class="tv-title-center">
-          <span class="tv-app-label">${_tvLabel()} —</span>
-          <h1 class="tv-tournament-name">${esc(name)}</h1>
+        ${_buildPageSelectorHtml('tv')}
+        <div class="tv-toggle-btns">
+          <button type="button" id="lang-toggle-btn" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button>
+          <button type="button" id="theme-toggle-btn" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>
         </div>
-        <button type="button" id="theme-toggle-btn" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>
+      </div>
+      <div class="tv-title-center">
+        <h1 class="tv-tournament-name">${esc(name)}</h1>
       </div>
       <div style="display:flex;justify-content:center;gap:0.5rem;flex-wrap:wrap;margin-top:0.15rem">
         ${phaseLabel && phase !== 'finished' ? `<span class="tv-badge tv-badge-phase">${esc(phaseLabel)}</span>` : ''}
@@ -1077,14 +1138,15 @@ async function _resolveAlias() {
 function _renderPickerHtml(tournaments) {
   const langToggle = _languageToggleMeta();
   let html = `<div class="tv-picker">`;
-  html += `<div style="display:flex;justify-content:flex-end;gap:0.45rem;margin-bottom:0.75rem">`;
+  html += `<div class="tv-header-title-row" style="margin-bottom:1rem">`;
+  html += _buildPageSelectorHtml('tv');
+  html += `<div class="tv-toggle-btns">`;
   html += `<button type="button" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button>`;
   html += `<button type="button" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>`;
   html += `</div>`;
-  html += `<h1>${t('txt_txt_app_title')}</h1>`;
-  html += `<div class="subtitle">${t('txt_txt_select_a_tournament_to_display')}</div>`;
-
+  html += `</div>`;
   if (tournaments.length > 0) {
+    html += `<div class="subtitle">${t('txt_txt_select_a_tournament_to_display')}</div>`;
     html += `<ul class="tv-picker-list">`;
     for (const tournament of tournaments) {
       const modeLabel = tournament.team_mode ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode');
@@ -1098,11 +1160,8 @@ function _renderPickerHtml(tournaments) {
       html += `</a>`;
     }
     html += `</ul>`;
-  } else {
-    html += `<p style="color:var(--text-muted);margin-bottom:1.5rem">${t('txt_txt_no_tournaments_available')}</p>`;
+    html += `<div style="color:var(--text-muted);font-size:0.85rem;margin-top:1.5rem;margin-bottom:0.5rem">${t('txt_txt_or_enter_a_tournament_id_alias_directly')}</div>`;
   }
-
-  html += `<div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.5rem">${t('txt_txt_or_enter_a_tournament_id_alias_directly')}</div>`;
   html += `<form class="tv-picker-form" onsubmit="return _goToTournament(event)">`;
   html += `<input type="text" id="picker-input" placeholder="${t('txt_txt_tournament_id_or_alias')}">`;
   html += `<button type="submit">${t('txt_txt_go')}</button>`;

@@ -29,6 +29,7 @@ function setActiveTab(tabName) {
   const refreshBtn = document.getElementById('admin-refresh-btn');
   if (refreshBtn) refreshBtn.style.display = (tabName === 'view' && currentTid) ? '' : 'none';
   if (tabName === 'view') {
+    _stopRegPoll();
     // Highlight the chip for the currently active tournament
     document.querySelectorAll('.tournament-chip').forEach(b => b.classList.toggle('active', b.dataset.tid === currentTid));
   } else {
@@ -38,7 +39,7 @@ function setActiveTab(tabName) {
       btn.classList.add('active');
       btn.setAttribute('aria-selected', 'true');
     }
-    if (tabName === 'home' && isAuthenticated()) loadTournaments();
+    if (tabName === 'home' && isAuthenticated()) { loadTournaments(); _startRegPoll(); } else { _stopRegPoll(); }
   }
 }
 
@@ -60,19 +61,24 @@ function setCreateMode(mode) {
   const isGp = mode === 'gp';
   const isMex = mode === 'mex';
   const isPo = mode === 'po';
+  const isLobby = mode === 'lobby';
   document.getElementById('create-tab-gp')?.classList.toggle('active', isGp);
   document.getElementById('create-tab-mex')?.classList.toggle('active', isMex);
   document.getElementById('create-tab-po')?.classList.toggle('active', isPo);
+  document.getElementById('create-tab-lobby')?.classList.toggle('active', isLobby);
   document.getElementById('create-panel-gp')?.classList.toggle('active', isGp);
   document.getElementById('create-panel-mex')?.classList.toggle('active', isMex);
   document.getElementById('create-panel-po')?.classList.toggle('active', isPo);
+  document.getElementById('create-panel-lobby')?.classList.toggle('active', isLobby);
+  if (isLobby) showCreateRegistration();
 }
 
 // ─── Format info modal ─────────────────────────────────────
 function openFormatInfo(format) {
   const mode = format || _currentCreateMode;
   let htmlFn;
-  if (mode === 'mex') htmlFn = _mexFormatInfoHtml;
+  if (mode === 'lobby') htmlFn = _lobbyFormatInfoHtml;
+  else if (mode === 'mex') htmlFn = _mexFormatInfoHtml;
   else if (mode === 'po') htmlFn = _poFormatInfoHtml;
   else htmlFn = _gpFormatInfoHtml;
   document.getElementById('format-info-content').innerHTML = htmlFn();
@@ -182,6 +188,28 @@ function _poFormatInfoHtml() {
     ${_adminFeaturesInfoHtml()}`;
 }
 
+function _lobbyFormatInfoHtml() {
+  return `
+    <h3 id="format-info-heading">${t('txt_txt_fmt_lobby_title')}</h3>
+    <p>${t('txt_txt_fmt_lobby_intro')}</p>
+    <div class="info-block">
+      <strong>${t('txt_txt_fmt_lobby_share_title')}</strong>
+      <p>${t('txt_txt_fmt_lobby_share_desc')}</p>
+    </div>
+    <div class="info-block">
+      <strong>${t('txt_txt_fmt_lobby_join_code_title')}</strong>
+      <p>${t('txt_txt_fmt_lobby_join_code_desc')}</p>
+    </div>
+    <div class="info-block">
+      <strong>${t('txt_txt_fmt_lobby_levels_title')}</strong>
+      <p>${t('txt_txt_fmt_lobby_levels_desc')}</p>
+    </div>
+    <div class="info-block">
+      <strong>${t('txt_txt_fmt_lobby_convert_title')}</strong>
+      <p>${t('txt_txt_fmt_lobby_convert_desc')}</p>
+    </div>`;
+}
+
 function _playoffsInfoHtml() {
   return `
     <hr class="info-divider">
@@ -224,6 +252,8 @@ function setTheme(theme) {
   if (btn) {
     btn.textContent = themeValue === 'dark' ? '🌙' : '☀️';
     btn.title = t('txt_txt_toggle_light_dark_mode');
+    btn.setAttribute('aria-label', themeValue === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+    btn.setAttribute('data-active-theme', themeValue);
   }
 }
 
@@ -276,6 +306,38 @@ function initLanguageSelector() {
   _refreshLanguageToggleButton();
 }
 
+// ─── Page selector (Admin / TV / Registrations) ───────────
+const PAGE_SELECTOR_KEY = 'amistoso-last-page';
+
+function togglePageSelector() {
+  const el = document.getElementById('page-selector');
+  if (el) el.classList.toggle('open');
+}
+
+function _closePageSelector() {
+  const el = document.getElementById('page-selector');
+  if (el) el.classList.remove('open');
+}
+
+function _initPageSelector() {
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    const sel = document.getElementById('page-selector');
+    if (sel && !sel.contains(e.target)) sel.classList.remove('open');
+  });
+  // Save current page as last visited
+  try { localStorage.setItem(PAGE_SELECTOR_KEY, 'admin'); } catch (_) {}
+  // Intercept clicks to save target page
+  document.querySelectorAll('.page-selector-item').forEach(a => {
+    a.addEventListener('click', () => {
+      const page = a.getAttribute('data-page');
+      if (page) {
+        try { localStorage.setItem(PAGE_SELECTOR_KEY, page); } catch (_) {}
+      }
+    });
+  });
+}
+
 // ─── Schema preview ────────────────────────────────────────
 
 /** Shared helper that powers all three schema download flows. */
@@ -317,7 +379,8 @@ async function _fetchSchema(prefix, apiUrl, defaultFilename) {
       result.innerHTML = await res.text();
     } else {
       const blob = await res.blob();
-      result.innerHTML = `<img src="${URL.createObjectURL(blob)}" alt="Schema" style="max-width:100%; border:1px solid var(--border); border-radius:6px;">`;
+      const blobUrl = URL.createObjectURL(blob);
+      result.innerHTML = `<img src="${blobUrl}" class="bracket-img" alt="Schema" onclick="_openBracketLightbox('${blobUrl}')" title="Click to expand">`;
     }
   } catch (e) {
     result.innerHTML = '';
@@ -367,7 +430,7 @@ async function generatePoPreviewSchema() {
     const res = await fetch(url);
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Error');
     const blob = await res.blob();
-    resultEl.innerHTML = `<details class="bracket-collapse" open style="text-align:left"><summary style="cursor:pointer;user-select:none;font-size:0.82rem;color:var(--text-muted);padding:0.2rem 0;list-style:none;display:flex;align-items:center;gap:0.35rem"><span class="bracket-chevron" style="display:inline-block;transition:transform 0.15s">&#9654;</span>${t('txt_txt_play_off_bracket')}</summary><img class="bracket-img" src="${URL.createObjectURL(blob)}" alt="${t('txt_txt_play_off_bracket')}"></details>`;
+    resultEl.innerHTML = `<details class="bracket-collapse" open style="text-align:left"><summary style="cursor:pointer;user-select:none;font-size:0.82rem;color:var(--text-muted);padding:0.2rem 0;list-style:none;display:flex;align-items:center;gap:0.35rem"><span class="bracket-chevron" style="display:inline-block;transition:transform 0.15s">&#9654;</span>${t('txt_txt_play_off_bracket')}</summary><img class="bracket-img" src="${URL.createObjectURL(blob)}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand"></details>`;
   } catch (e) {
     resultEl.innerHTML = '';
     msgEl.textContent = e.message;
@@ -433,20 +496,26 @@ function _phaseLabel(phase) {
 
 async function loadTournaments() {
   try {
-    const list = await api('/api/tournaments');
+    const [list, regList] = await Promise.all([
+      api('/api/tournaments'),
+      isAuthenticated() ? api('/api/registrations').catch(() => []) : Promise.resolve([]),
+    ]);
     _tournamentMeta = {};
     for (const tournament of list) _tournamentMeta[tournament.id] = tournament;
+    _registrations = regList;
     const el = document.getElementById('tournament-list');
     const finEl = document.getElementById('finished-tournament-list');
     const finCard = document.getElementById('finished-tournaments-card');
-    if (!list.length) {
+    const active = list.filter(tr => tr.phase !== 'finished');
+    const finished = list.filter(tr => tr.phase === 'finished');
+    // Filter out converted lobbies (tournament already shown)
+    const lobbies = regList.filter(r => !r.converted_to_tid);
+    if (!active.length && !lobbies.length) {
       el.innerHTML = `<div style="text-align:center;padding:2rem 1rem;color:var(--text-muted)"><div style="font-size:2.2rem;margin-bottom:0.5rem">🏆</div><div style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:0.35rem">${t('txt_txt_no_tournaments_yet')}</div><div style="font-size:0.85rem;margin-bottom:1rem">${t('txt_txt_no_tournaments_hint')}</div><button type="button" class="btn btn-primary btn-sm" onclick="setActiveTab('create')">${t('txt_txt_create_first')}</button></div>`;
       finCard.style.display = 'none';
       return;
     }
-    const active = list.filter(tr => tr.phase !== 'finished');
-    const finished = list.filter(tr => tr.phase === 'finished');
-    const renderCard = (tournament) => {
+    const renderTournamentCard = (tournament) => {
       const canEdit = isAdmin() || getAuthUsername() === tournament.owner;
       const isPublic = tournament.public !== false;
       const visBtn = canEdit
@@ -470,10 +539,43 @@ async function loadTournaments() {
       </div>
     `;
     };
-    el.innerHTML = active.length ? active.map(renderCard).join('') : `<em>${t('txt_txt_no_tournaments_yet')}</em>`;
+    // Render lobby cards in the same list style
+    const _renderLobbyCard = (r) => {
+      const rid = r.id;
+      const isOpen = r.open;
+      const count = r.registrant_count || 0;
+      const isTennis = (r.sport || 'padel') === 'tennis';
+      const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
+      const phaseBadge = isOpen
+        ? `<span class="badge badge-lobby-open">${t('txt_reg_registration_open')}</span>`
+        : `<span class="badge badge-lobby-closed">${t('txt_reg_registration_closed')}</span>`;
+      const countLabel = `<span style="font-size:0.8rem;color:var(--text-muted)">(${count})</span>`;
+      const isListed = r.listed !== false && r.listed !== 0;
+      const visBtn = `<button type="button" class="btn btn-sm" title="${t('txt_txt_visibility')}" onclick="_toggleRegListed('${esc(rid)}',${isListed})" style="padding:0.25rem 0.5rem;font-size:0.75rem">${isListed ? '🌍 ' + t('txt_txt_public') : '🔒 ' + t('txt_txt_private')}</button>`;
+      const actionBtns = `
+        ${visBtn}
+        <button type="button" class="btn btn-danger btn-sm" onclick="_deleteRegistration('${esc(rid)}')" title="${t('txt_reg_delete')}">✕</button>
+      `;
+      return `
+      <div class="match-card tournament-list-card reg-lobby-card">
+        <div class="match-teams">
+          <a class="tournament-name-link" href="#" onclick="openRegistration('${esc(rid)}','${esc(r.name)}');return false">${esc(r.name)}</a>
+          <span class="badge badge-sport">${esc(sportLabel)}</span>
+          ${phaseBadge} ${countLabel}
+        </div>
+        <div class="tournament-actions">
+          ${actionBtns}
+        </div>
+      </div>
+    `;
+    };
+    // Lobbies first, then active tournaments
+    let html = lobbies.map(_renderLobbyCard).join('');
+    html += active.map(renderTournamentCard).join('');
+    el.innerHTML = html || `<em>${t('txt_txt_no_tournaments_yet')}</em>`;
     if (finished.length) {
       finCard.style.display = '';
-      finEl.innerHTML = finished.map(renderCard).join('');
+      finEl.innerHTML = finished.map(renderTournamentCard).join('');
     } else {
       finCard.style.display = 'none';
     }
@@ -553,7 +655,8 @@ function _stopAdminVersionPoll() {
 
 function _refreshCurrentView() {
   if (!currentTid) return;
-  if (currentType === 'group_playoff') renderGP();
+  if (currentType === 'registration') renderRegistration();
+  else if (currentType === 'group_playoff') renderGP();
   else if (currentType === 'playoff') renderPO();
   else renderMex();
 }
@@ -624,6 +727,14 @@ function _autoFillScore(matchId, total) {
 }
 
 function openTournament(id, type, name = null) {
+  if (id !== currentTid) {
+    _playoffTeams = [];
+    _mexPlayoffTeamCount = 4;
+    _savedPlayoffTeams = {};
+    _mexExternalParticipants = [];
+    _mexExtCounter = 0;
+    _playoffScoreMap = {};
+  }
   currentTid = id;
   currentType = type;
   currentTournamentName = name || _tournamentMeta[id]?.name || null;
@@ -640,6 +751,35 @@ function openTournament(id, type, name = null) {
   else if (type === 'playoff') renderPO();
   else renderMex();
   _startAdminVersionPoll();
+}
+
+function openRegistration(rid, name) {
+  currentTid = rid;
+  currentType = 'registration';
+  currentTournamentName = name || rid;
+  const existing = _openTournaments.find(t => t.id === rid);
+  if (existing) {
+    existing.name = name || existing.name;
+  } else {
+    _openTournaments.push({ id: rid, type: 'registration', name: name || rid });
+  }
+  updateActiveTournamentUI();
+  setActiveTab('view');
+  renderRegistration();
+}
+
+async function renderRegistration() {
+  const el = document.getElementById('view-content');
+  if (!el || !currentTid) return;
+  el.innerHTML = `<div class="card"><em>${t('txt_txt_loading')}</em></div>`;
+  try {
+    const data = await api(`/api/registrations/${currentTid}`);
+    _regDetails[currentTid] = data;
+    _currentRegDetail = data;
+    _renderRegDetailInline(currentTid);
+  } catch (e) {
+    el.innerHTML = `<div class="card"><div class="alert alert-error">${esc(e.message)}</div></div>`;
+  }
 }
 
 // ─── Sport selector ──────────────────────────────────────
@@ -977,8 +1117,16 @@ async function createGP() {
       public: document.getElementById('gp-public').checked,
       sport: _currentSport,
     };
-    const res = await api('/api/tournaments/group-playoff', { method: 'POST', body: JSON.stringify(body) });
-    openTournament(res.id, 'group_playoff', body.name || t('txt_txt_group_playoff_tournament'));
+    if (_convertFromRegistration) {
+      body.tournament_type = 'group_playoff';
+      const res = await api(`/api/registrations/${_convertFromRegistration.rid}/convert`, { method: 'POST', body: JSON.stringify(body) });
+      _cancelConvertMode();
+      await loadRegistrations();
+      openTournament(res.tournament_id, 'group_playoff', body.name || t('txt_txt_group_playoff_tournament'));
+    } else {
+      const res = await api('/api/tournaments/group-playoff', { method: 'POST', body: JSON.stringify(body) });
+      openTournament(res.id, 'group_playoff', body.name || t('txt_txt_group_playoff_tournament'));
+    }
   } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
 }
 
@@ -1004,8 +1152,16 @@ async function createMex() {
       public: document.getElementById('mex-public').checked,
       sport: _currentSport,
     };
-    const res = await api('/api/tournaments/mexicano', { method: 'POST', body: JSON.stringify(body) });
-    openTournament(res.id, 'mexicano', body.name || t('txt_txt_mexicano_tournament'));
+    if (_convertFromRegistration) {
+      body.tournament_type = 'mexicano';
+      const res = await api(`/api/registrations/${_convertFromRegistration.rid}/convert`, { method: 'POST', body: JSON.stringify(body) });
+      _cancelConvertMode();
+      await loadRegistrations();
+      openTournament(res.tournament_id, 'mexicano', body.name || t('txt_txt_mexicano_tournament'));
+    } else {
+      const res = await api('/api/tournaments/mexicano', { method: 'POST', body: JSON.stringify(body) });
+      openTournament(res.id, 'mexicano', body.name || t('txt_txt_mexicano_tournament'));
+    }
   } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
 }
 
@@ -1023,8 +1179,18 @@ async function createPO() {
       public: document.getElementById('po-public').checked,
       sport: _currentSport,
     };
-    const res = await api('/api/tournaments/playoff', { method: 'POST', body: JSON.stringify(body) });
-    openTournament(res.id, 'playoff', body.name || t('txt_txt_play_off_only_tournament'));
+    if (_convertFromRegistration) {
+      body.tournament_type = 'playoff';
+      body.player_names = body.participant_names;
+      delete body.participant_names;
+      const res = await api(`/api/registrations/${_convertFromRegistration.rid}/convert`, { method: 'POST', body: JSON.stringify(body) });
+      _cancelConvertMode();
+      await loadRegistrations();
+      openTournament(res.tournament_id, 'playoff', body.name || t('txt_txt_play_off_only_tournament'));
+    } else {
+      const res = await api('/api/tournaments/playoff', { method: 'POST', body: JSON.stringify(body) });
+      openTournament(res.id, 'playoff', body.name || t('txt_txt_play_off_only_tournament'));
+    }
   } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
 }
 
@@ -1213,7 +1379,7 @@ async function renderPO() {
     html += `<button type="button" class="${_gpScoreMode['po-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('po-playoff','sets')">🎾 ${t('txt_txt_sets')}</button>`;
     html += `</div></div>`;
     html += `<details id="po-inline-bracket" class="bracket-collapse" open style="margin:0.5rem 0"><summary style="cursor:pointer;user-select:none;font-size:0.82rem;color:var(--text-muted);padding:0.2rem 0;list-style:none;display:flex;align-items:center;gap:0.35rem"><span class="bracket-chevron" style="display:inline-block;transition:transform 0.15s">▶</span>${t('txt_txt_play_off_bracket')}</summary>`;
-    html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/po/playoffs-schema?fmt=png&_t=${Date.now()}" alt="${t('txt_txt_play_off_bracket')}" onerror="this.style.display='none'">`;
+    html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/po/playoffs-schema?fmt=png&_t=${Date.now()}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand" onerror="this.style.display='none'">`;
     html += `</details>`;
     if (playoffs.matches) {
       for (const m of _sortTbdLast(playoffs.matches)) {
@@ -1309,10 +1475,10 @@ function matchRow(m, ctx) {
       html += `<span class="match-comment-add" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_comment_placeholder')}">💬 ${t('txt_match_add_comment')}</span>`;
     }
     html += `<div class="match-comment-edit hidden" id="mc-row-${m.id}">`;
-    html += `<input type="text" id="mc-${m.id}" value="${m.comment ? esc(m.comment) : ''}" placeholder="${t('txt_match_comment_placeholder')}" maxlength="500">`;
-    html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setMatchComment('${m.id}')">${t('txt_txt_save')}</button>`;
+    html += `<input type="text" id="mc-${m.id}" value="${m.comment ? esc(m.comment) : ''}" placeholder="${t('txt_match_comment_placeholder')}" maxlength="500" onkeydown="if(event.key==='Enter')_setMatchComment('${m.id}')">` ;
+    html += `<button type="button" class="btn-comment-save" onclick="_setMatchComment('${m.id}')">${t('txt_txt_save')}</button>`;
     if (m.comment) html += `<button type="button" class="btn btn-danger btn-sm" onclick="_clearMatchComment('${m.id}')">✕</button>`;
-    html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_closeCommentEdit('${m.id}')">↩</button>`;
+    html += `<button type="button" class="btn-comment-cancel" aria-label="${t('txt_txt_cancel')}" onclick="_closeCommentEdit('${m.id}')">✕</button>`;
     html += `</div></div>`;
 
     html += `</div>`;
@@ -1327,7 +1493,7 @@ function matchRow(m, ctx) {
     ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"`
     : '';
   const hasTbd = !m.team1?.join('').trim() || !m.team2?.join('').trim();
-  const tbdAttr = hasTbd ? ' disabled title="Players not yet determined"' : '';
+  const tbdAttr = hasTbd ? ` disabled title="${t('txt_txt_players_not_yet_determined')}"` : '';
   const tbdStyle = hasTbd ? ' style="opacity:0.45;cursor:not-allowed"' : '';
 
   let html = `<div class="match-card" style="flex-wrap:wrap">${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
@@ -1366,10 +1532,10 @@ function matchRow(m, ctx) {
     html += `<span class="match-comment-add" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_comment_placeholder')}">💬 ${t('txt_match_add_comment')}</span>`;
   }
   html += `<div class="match-comment-edit hidden" id="mc-row-${m.id}">`;
-  html += `<input type="text" id="mc-${m.id}" value="${m.comment ? esc(m.comment) : ''}" placeholder="${t('txt_match_comment_placeholder')}" maxlength="500">`;
-  html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setMatchComment('${m.id}')">${t('txt_txt_save')}</button>`;
+  html += `<input type="text" id="mc-${m.id}" value="${m.comment ? esc(m.comment) : ''}" placeholder="${t('txt_match_comment_placeholder')}" maxlength="500" onkeydown="if(event.key==='Enter')_setMatchComment('${m.id}')">`;
+  html += `<button type="button" class="btn-comment-save" onclick="_setMatchComment('${m.id}')">${t('txt_txt_save')}</button>`;
   if (m.comment) html += `<button type="button" class="btn btn-danger btn-sm" onclick="_clearMatchComment('${m.id}')">✕</button>`;
-  html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_closeCommentEdit('${m.id}')">↩</button>`;
+  html += `<button type="button" class="btn-comment-cancel" aria-label="${t('txt_txt_cancel')}" onclick="_closeCommentEdit('${m.id}')">✕</button>`;
   html += `</div></div>`;
 
   html += `</div>`;
@@ -1435,7 +1601,9 @@ function _restoreViewDrafts(drafts) {
 
 async function _rerenderCurrentViewPreserveDrafts() {
   const drafts = _captureViewDrafts();
-  if (currentType === 'group_playoff') {
+  if (currentType === 'registration') {
+    await renderRegistration();
+  } else if (currentType === 'group_playoff') {
     await renderGP();
   } else if (currentType === 'playoff') {
     await renderPO();
@@ -1673,11 +1841,12 @@ async function startPlayoffs() {
 async function renderMex() {
   const el = document.getElementById('view-content');
   try {
-    const [status, matches, tvSettings, playerSecrets] = await Promise.all([
+    const [status, matches, tvSettings, playerSecrets, playoffsData] = await Promise.all([
       api(`/api/tournaments/${currentTid}/mex/status`),
       api(`/api/tournaments/${currentTid}/mex/matches`),
       api(`/api/tournaments/${currentTid}/tv-settings`).catch(() => ({})),
       _loadPlayerSecrets(),
+      api(`/api/tournaments/${currentTid}/mex/playoffs`).catch(() => ({ matches: [], pending: [] })),
     ]);
 
     _totalPts = status.total_points_per_match || 0;
@@ -1702,9 +1871,6 @@ async function renderMex() {
     const isRolling = status.rolling;
     const mexicanoEnded = Boolean(status.mexicano_ended);
     const mexRoundsDone = !isRolling && status.current_round >= status.num_rounds && matches.pending.length === 0;
-    const playoffsData = (isPlayoffs || isFinished)
-      ? await api(`/api/tournaments/${currentTid}/mex/playoffs`).catch(() => ({ matches: [], pending: [] }))
-      : { matches: [], pending: [] };
     const hasPlayoffBracket = (playoffsData.matches || []).length > 0;
 
     if (isPlayoffs) {
@@ -1718,7 +1884,7 @@ async function renderMex() {
     } else if (!isPlayoffs && isRolling) {
       html += `<div class="alert alert-info">${t('txt_txt_mexicano_round_n', { n: status.current_round })} <span class="badge badge-phase">${t('txt_txt_rolling')}</span></div>`;
     } else if (!isPlayoffs) {
-      html += `<div class="alert alert-info">${t('txt_txt_mexicano')} ${t('txt_txt_round')} ${status.current_round} / ${status.num_rounds}${mexRoundsDone ? ` — <strong>${t('txt_txt_mexicano_rounds_complete_ready_for_play_offs')}</strong>` : ''}</div>`;
+      html += `<div class="alert alert-info">${t('txt_txt_mexicano_round_n_of_m', { n: status.current_round, m: status.num_rounds })}${mexRoundsDone ? ` — <strong>${t('txt_txt_mexicano_rounds_complete_ready_for_play_offs')}</strong>` : ''}</div>`;
     }
 
     if (status.champion) {
@@ -1749,7 +1915,10 @@ async function renderMex() {
       html += `<button type="button" class="${_gpScoreMode['mex-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','points')">${t('txt_txt_points_label')}</button>`;
       html += `<button type="button" class="${_gpScoreMode['mex-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','sets')">🎾 ${t('txt_txt_sets')}</button>`;
       html += `</div></div>`;
-      for (const m of playoffsData.matches) {
+      html += `<details id="mex-inline-bracket" class="bracket-collapse" open style="margin:0.5rem 0"><summary style="cursor:pointer;user-select:none;font-size:0.82rem;color:var(--text-muted);padding:0.2rem 0;list-style:none;display:flex;align-items:center;gap:0.35rem"><span class="bracket-chevron" style="display:inline-block;transition:transform 0.15s">▶</span>${t('txt_txt_mexicano_play_offs_bracket')}</summary>`;
+      html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/mex/playoffs-schema?fmt=png&_t=${Date.now()}" alt="${t('txt_txt_mexicano_play_offs_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand" onerror="this.style.display='none'">`;
+      html += `</details>`;
+      for (const m of _sortTbdLast(playoffsData.matches)) {
         html += matchRow(m, 'mex-playoff');
       }
       html += `</div>`;
@@ -1812,7 +1981,7 @@ async function renderMex() {
         html += `<div id="mex-next-section">`;
         html += `<button type="button" class="btn btn-success" onclick="withLoading(this,proposeMexPairings)">⚡ ${t('txt_txt_propose_next_round')}</button>`;
         if (status.current_round > 0) {
-          html += ` <button type="button" class="btn btn-primary" onclick="endMexicano()" style="margin-left:0.5rem">🛑 ${t('txt_txt_end_mexicano')}</button>`;
+          html += ` <button type="button" class="btn btn-primary" onclick="withLoading(this,endMexicano)" style="margin-left:0.5rem">🛑 ${t('txt_txt_end_mexicano')}</button>`;
         }
         html += `</div>`;
       } else if (pending > 0) {
@@ -1822,7 +1991,7 @@ async function renderMex() {
         html += `<div class="alert alert-info">${t('txt_txt_n_match_remaining', { n: pending })} (${doneMex}/${totalMex})<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pctMex}%"></div></div></div>`;
       } else if (pending === 0 && !mexicanoEnded && !canGenerateRound) {
         html += `<div id="mex-next-section">`;
-        html += `<button type="button" class="btn btn-primary" onclick="endMexicano()">🛑 ${t('txt_txt_end_mexicano')}</button>`;
+        html += `<button type="button" class="btn btn-primary" onclick="withLoading(this,endMexicano)">🛑 ${t('txt_txt_end_mexicano')}</button>`;
         html += `</div>`;
       }
 
@@ -1832,7 +2001,7 @@ async function renderMex() {
         html += `<p style="color:var(--text-muted);font-size:0.85rem">${t('txt_txt_post_mexicano_instructions')}</p>`;
         html += `<div class="proposal-actions" style="gap:1rem;margin-top:0.5rem">`;
         html += `<button type="button" class="btn btn-success" style="padding:0.85rem 2rem;font-size:1.1rem" onclick="withLoading(this,proposeMexPlayoffs)">🏆 ${t('txt_txt_start_optional_playoffs')}</button>`;
-        html += `<button type="button" class="btn" style="padding:0.85rem 2rem;font-size:1.1rem;background:var(--border);color:var(--text)" onclick="finishMexicanoAsIs()">✓ ${t('txt_txt_finish_as_is')}</button>`;
+        html += `<button type="button" class="btn" style="padding:0.85rem 2rem;font-size:1.1rem;background:var(--border);color:var(--text)" onclick="withLoading(this,finishMexicanoAsIs)">✓ ${t('txt_txt_finish_as_is')}</button>`;
         html += `</div>`;
         html += `</div>`;
       }
@@ -2455,6 +2624,7 @@ let _playoffScoreMap = {};  // player_id → total_points
 let _savedPlayoffTeams = {};  // teamIndex → { a: playerId, b: playerId }
 let _mexExternalParticipants = [];  // {name, score, id}[] external participants for mex playoffs
 let _mexExtCounter = 0;  // counter for generating unique temp IDs
+let _teamCountDebounceTimer = null;
 
 async function proposeMexPlayoffs(teamCount = null) {
   try {
@@ -2498,10 +2668,12 @@ function _syncExternalsToPlayoffTeams() {
 }
 
 async function _changeMexPlayoffTeamCount(value) {
-  await proposeMexPlayoffs(Number(value));
+  clearTimeout(_teamCountDebounceTimer);
+  _teamCountDebounceTimer = setTimeout(() => proposeMexPlayoffs(Number(value)), 300);
 }
 
 async function endMexicano() {
+  if (!confirm(t('txt_txt_confirm_end_mexicano'))) return;
   try {
     await api(`/api/tournaments/${currentTid}/mex/end`, { method: 'POST' });
     renderMex();
@@ -2509,6 +2681,7 @@ async function endMexicano() {
 }
 
 async function finishMexicanoAsIs() {
+  if (!confirm(t('txt_txt_confirm_finish_as_is'))) return;
   try {
     await api(`/api/tournaments/${currentTid}/mex/finish`, { method: 'POST' });
     renderMex();
@@ -3440,7 +3613,7 @@ function _openCommentEdit(matchId) {
   if (!row) return;
   row.classList.remove('hidden');
   const input = document.getElementById(`mc-${matchId}`);
-  if (input) input.focus();
+  if (input) { input.focus(); input.select(); }
 }
 
 /** Hide the inline comment editor without saving. */
@@ -3567,10 +3740,599 @@ async function _deleteTournamentAlias() {
   }
 }
 
+// ─── Registration Lobbies ─────────────────────────────────
+
+let _registrations = [];
+let _regDetails = {};  // rid → full registration detail data
+let _currentRegDetail = null;  // last-opened registration (for convert flow)
+let _regPollTimer = null;
+const _REG_POLL_INTERVAL_MS = 10000;
+
+function _startRegPoll() {
+  _stopRegPoll();
+  _regPollTimer = setInterval(_pollRegistrations, _REG_POLL_INTERVAL_MS);
+}
+
+function _stopRegPoll() {
+  if (_regPollTimer) { clearInterval(_regPollTimer); _regPollTimer = null; }
+}
+
+async function _pollRegistrations() {
+  try {
+    await loadTournaments();
+  } catch (_) { /* network blip — ignore */ }
+}
+
+async function loadRegistrations() {
+  await loadTournaments();
+}
+
+async function _loadRegDetail(rid) {
+  const data = await api(`/api/registrations/${rid}`);
+  _regDetails[rid] = data;
+  _currentRegDetail = data;
+  _renderRegDetailInline(rid);
+}
+
+function _renderRegDetailInline(rid) {
+  const el = document.getElementById('view-content');
+  const r = _regDetails[rid];
+  if (!el || !r) return;
+
+  let html = `<div class="card"><h2 style="margin-top:0">${esc(r.name)}</h2>`;
+  const regAlias = r.alias || '';
+  const regUrl = regAlias
+    ? `${window.location.origin}/register/${regAlias}`
+    : `${window.location.origin}/register?id=${esc(r.id)}`;
+
+  // Registration link + alias section
+  html += `<div style="margin-bottom:1rem;padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px">`;
+  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">🔗 ${t('txt_reg_registration_alias')}</label>`;
+  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_reg_alias_help')}</p>`;
+  html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
+  html += `<input type="text" id="reg-alias-input-${esc(rid)}" placeholder="my-tournament" value="${esc(regAlias)}" pattern="[a-zA-Z0-9_-]+" maxlength="64" style="flex:1;min-width:180px;font-family:monospace;font-size:0.85rem">`;
+  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_setRegAlias('${esc(rid)}'))" style="white-space:nowrap">${t('txt_txt_set_alias')}</button>`;
+  if (regAlias) {
+    html += `<button type="button" class="btn btn-danger btn-sm" onclick="withLoading(this,()=>_deleteRegAlias('${esc(rid)}'))" style="white-space:nowrap">✕ ${t('txt_txt_remove')}</button>`;
+  }
+  html += `</div>`;
+  html += `<div style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:0.78rem;word-break:break-all">`;
+  html += `<span style="color:var(--text-muted)">${t('txt_reg_public_url')}</span> <a href="${regUrl}" target="_blank" style="color:var(--accent);font-size:0.85rem">${regUrl}</a>`;
+  html += ` <button type="button" class="btn btn-sm" style="font-size:0.7rem;margin-left:0.3rem" onclick="_copyRegLink('${esc(rid)}')">📋 ${t('txt_reg_copy_link')}</button>`;
+  html += `</div></div>`;
+
+  // Settings section
+  html += `<details class="reg-section" style="margin-bottom:1rem">`;
+  html += `<summary style="cursor:pointer;font-weight:700">⚙\uFE0F ${t('txt_reg_settings')}</summary>`;
+  html += `<div style="padding:0.75rem 0">`;
+  html += `<div class="form-group"><label>${t('txt_reg_tournament_name')}</label>`;
+  html += `<input type="text" id="reg-edit-name-${esc(rid)}" value="${esc(r.name)}"></div>`;
+  html += `<div class="form-group"><label>${t('txt_reg_description')}</label>`;
+  html += `<textarea id="reg-edit-desc-${esc(rid)}" rows="3">${esc(r.description || '')}</textarea>`;
+  html += `<div id="reg-desc-preview-${esc(rid)}" style="display:none;margin-top:0.5rem;padding:0.5rem;border:1px solid var(--border);border-radius:6px;font-size:0.9rem"></div>`;
+  html += `<button type="button" class="btn btn-sm" style="margin-top:0.3rem;font-size:0.75rem" onclick="_toggleRegDescPreview('${esc(rid)}')">${t('txt_reg_preview')}</button></div>`;
+  html += `<div class="form-group"><label>${t('txt_reg_join_code')}</label>`;
+  html += `<input type="text" id="reg-edit-joincode-${esc(rid)}" value="${esc(r.join_code || '')}" placeholder="${t('txt_reg_join_code_placeholder')}"></div>`;
+  html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.5rem">`;
+  html += `<input type="checkbox" id="reg-edit-listed-${esc(rid)}" ${r.listed ? 'checked' : ''} style="width:1rem;height:1rem;cursor:pointer">`;
+  html += `<label for="reg-edit-listed-${esc(rid)}" style="font-size:0.85rem;cursor:pointer">${t('txt_reg_listed')}</label></div>`;
+  html += `<div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.5rem">`;
+  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegSettings('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
+  html += `</div></div></details>`;
+
+  // Admin message section
+  html += `<details class="reg-section" style="margin-bottom:1rem">`;
+  html += `<summary style="cursor:pointer;font-weight:700">📢 ${t('txt_reg_admin_message')}</summary>`;
+  html += `<div style="padding:0.75rem 0">`;
+  html += `<div class="form-group" style="margin-bottom:0.4rem">`;
+  html += `<textarea id="reg-edit-message-${esc(rid)}" rows="3" placeholder="${t('txt_reg_message_placeholder')}">${esc(r.message || '')}</textarea>`;
+  html += `</div>`;
+  html += `<div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.5rem">`;
+  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegMessage('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
+  html += `</div></div></details>`;
+
+  // Registrants table (collapsible) — names, passphrases, actions only
+  html += `<details class="reg-section" style="margin-bottom:0.75rem" open>`;
+  html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
+  html += `<span style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">▸</span> ${t('txt_reg_registrants')} (${r.registrants.length})</span>`;
+  if (r.registrants.length > 0) {
+    html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_copyAllRegCodes('${esc(rid)}')">📋 ${t('txt_txt_copy_all_codes')}</button>`;
+  }
+  html += `</summary>`;
+  if (r.registrants.length === 0) {
+    html += `<p style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem 0">${t('txt_reg_no_registrants')}</p>`;
+  } else {
+    html += `<div style="overflow-x:auto;margin-top:0.5rem"><table style="width:100%;border-collapse:collapse;font-size:0.84rem">`;
+    html += `<thead><tr style="border-bottom:2px solid var(--border)">`;
+    html += `<th style="text-align:left;padding:0.4rem 0.5rem">${t('txt_reg_name')}</th>`;
+    html += `<th style="text-align:left;padding:0.4rem 0.5rem">${t('txt_txt_passphrase')}</th>`;
+    html += `<th style="text-align:center;padding:0.4rem 0.5rem"></th>`;
+    html += `</tr></thead><tbody>`;
+    for (const reg of r.registrants) {
+      html += `<tr style="border-bottom:1px solid var(--border)">`;
+      html += `<td style="padding:0.4rem 0.5rem;font-weight:600">${esc(reg.player_name)}</td>`;
+      html += `<td style="padding:0.4rem 0.5rem"><code style="font-size:0.9em;color:var(--accent);user-select:all;cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(reg.passphrase)}</code></td>`;
+      html += `<td style="padding:0.4rem 0.5rem;text-align:center">`;
+      html += `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem" onclick="_removeRegistrant('${esc(r.id)}','${esc(reg.player_id)}')" title="${t('txt_reg_confirm_remove')}">✕</button>`;
+      html += `</td></tr>`;
+    }
+    html += `</tbody></table></div>`;
+  }
+  html += `</details>`;
+
+  // Question Answers panel (separate, only shown when questions exist)
+  const questions = r.questions || [];
+  if (questions.length > 0 && r.registrants.length > 0) {
+    html += _renderAnswersPanel(rid, r, questions);
+  }
+
+  // Convert button (if not already converted)
+  if (!r.converted_to_tid) {
+    html += `<div style="text-align:center;margin-top:1.25rem">`;
+    html += `<button type="button" class="btn btn-success" style="padding:0.7rem 1.5rem;font-size:1rem" onclick="_startConvertFromReg('${esc(rid)}')" ${r.registrants.length < 2 ? 'disabled title="Need at least 2 registrants"' : ''}>🏆 ${t('txt_reg_convert_to_tournament')}</button>`;
+    html += `</div>`;
+  }
+
+  html += `</div>`; // close .card
+  el.innerHTML = html;
+}
+
+function _copyRegLink(rid) {
+  const alias = _regDetails[rid]?.alias;
+  const url = alias
+    ? `${window.location.origin}/register/${alias}`
+    : `${window.location.origin}/register?id=${rid}`;
+  navigator.clipboard.writeText(url).then(() => {
+    const origText = event?.target?.textContent;
+    if (event?.target) { event.target.textContent = '✓'; setTimeout(() => { event.target.textContent = origText || '📋'; }, 1200); }
+  });
+}
+
+async function _setRegAlias(rid) {
+  const input = document.getElementById(`reg-alias-input-${rid}`);
+  const alias = input?.value.trim();
+  if (!alias) { alert(t('txt_txt_please_enter_an_alias')); return; }
+  if (!/^[a-zA-Z0-9_-]+$/.test(alias)) { alert(t('txt_txt_alias_can_only_contain_letters_numbers_hyphens_and_underscores')); return; }
+  try {
+    await api(`/api/registrations/${rid}/alias`, { method: 'PUT', body: JSON.stringify({ alias }) });
+    if (_regDetails[rid]) _regDetails[rid].alias = alias;
+    _renderRegDetailInline(rid);
+    alert(t('txt_txt_alias_value_set_successfully', { value: alias }));
+  } catch (e) { alert(t('txt_txt_failed_to_set_alias_value', { value: e.message })); }
+}
+
+async function _deleteRegAlias(rid) {
+  if (!confirm(t('txt_txt_remove_the_alias_from_this_tournament'))) return;
+  try {
+    await api(`/api/registrations/${rid}/alias`, { method: 'DELETE' });
+    if (_regDetails[rid]) delete _regDetails[rid].alias;
+    _renderRegDetailInline(rid);
+    alert(t('txt_txt_alias_removed_successfully'));
+  } catch (e) { alert(t('txt_txt_failed_to_remove_alias_value', { value: e.message })); }
+}
+
+async function _toggleRegOpen(rid, currentlyOpen) {
+  try {
+    await api(`/api/registrations/${rid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ open: !currentlyOpen }),
+    });
+    if (_regDetails[rid]) _regDetails[rid].open = !currentlyOpen;
+    await loadRegistrations();
+  } catch (e) { console.error('_toggleRegOpen failed:', e); }
+}
+
+async function _toggleRegListed(rid, currentlyListed) {
+  try {
+    await api(`/api/registrations/${rid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listed: !currentlyListed }),
+    });
+    if (_regDetails[rid]) _regDetails[rid].listed = !currentlyListed;
+    await loadRegistrations();
+  } catch (e) { console.error('_toggleRegListed failed:', e); }
+}
+
+function _openTournamentFromReg(tid) {
+  const meta = _tournamentMeta[tid];
+  if (meta) {
+    openTournament(tid, meta.type, meta.name);
+  } else {
+    // Tournament not in cache — fetch list first, then open
+    loadTournaments().then(() => {
+      const m = _tournamentMeta[tid];
+      if (m) openTournament(tid, m.type, m.name);
+      else alert('Tournament not found');
+    });
+  }
+}
+
+async function _deleteRegistration(rid) {
+  if (!confirm(t('txt_reg_confirm_delete'))) return;
+  try {
+    await api(`/api/registrations/${rid}`, { method: 'DELETE' });
+    delete _regDetails[rid];
+    if (_currentRegDetail && _currentRegDetail.id === rid) _currentRegDetail = null;
+    // Unpin the tab if it was open
+    if (_openTournaments.some(t => t.id === rid)) _unpinTournament(rid);
+    await loadRegistrations();
+  } catch (e) { alert(t('txt_reg_error')); }
+}
+
+// ─── Create registration form ─────────────────────────────
+
+function showCreateRegistration() {
+  const el = document.getElementById('reg-create-form');
+  if (!el) return;
+  _regQuestionCounter = 0;
+
+  el.innerHTML = `
+      <div class="field-section" style="margin-bottom:0.75rem">
+        <input id="reg-new-name" value="My Tournament" class="tournament-name-input" placeholder="${t('txt_reg_tournament_name')}" style="width:100%;min-width:160px">
+      </div>
+      <div class="field-section" style="margin-bottom:0.75rem">
+        <div class="field-section-title">${t('txt_reg_description')}</div>
+        <textarea id="reg-new-desc" rows="3"></textarea>
+        <small style="color:var(--text-muted);font-size:0.75rem">${t('txt_reg_description_hint')}</small>
+      </div>
+      <div class="field-section" style="margin-bottom:0.75rem">
+        <label class="switch-label" style="cursor:pointer">
+          <input type="checkbox" id="reg-new-joincode-toggle" onchange="document.getElementById('reg-new-joincode').style.display=this.checked?'':'none'">
+          <span class="switch-track"></span>
+          <span>${t('txt_reg_join_code_toggle')}</span>
+        </label>
+        <input type="text" id="reg-new-joincode" placeholder="${t('txt_reg_join_code_placeholder')}" maxlength="64" style="display:none;margin-top:0.4rem">
+      </div>
+      <div class="field-section" style="margin-bottom:0.75rem">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.55rem">
+          <span class="field-section-title" style="margin-bottom:0">${t('txt_reg_questions')}</span>
+          <span class="participant-count" id="reg-q-count">(0)</span>
+        </div>
+        <div id="reg-new-questions">
+          <div class="reg-q-empty" id="reg-q-empty">${t('txt_reg_q_no_questions')}</div>
+        </div>
+        <button type="button" class="add-participant-btn" style="margin-top:0.4rem" onclick="_addRegQuestion()">＋ ${t('txt_reg_add_question')}</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
+        <input type="checkbox" id="reg-new-listed" style="width:1rem;height:1rem;cursor:pointer">
+        <label for="reg-new-listed" style="font-size:0.85rem;cursor:pointer">${t('txt_reg_listed')}</label>
+      </div>
+      <div style="text-align:center">
+        <button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,_submitCreateRegistration)">${t('txt_reg_create')}</button>
+      </div>`;
+}
+
+async function _submitCreateRegistration() {
+  const name = document.getElementById('reg-new-name')?.value?.trim();
+  if (!name) return;
+  const body = { name };
+
+  const desc = document.getElementById('reg-new-desc')?.value?.trim();
+  if (desc) body.description = desc;
+
+  if (document.getElementById('reg-new-joincode-toggle')?.checked) {
+    const code = document.getElementById('reg-new-joincode')?.value?.trim();
+    if (code) body.join_code = code;
+  }
+
+  const questions = _collectRegQuestions();
+  if (questions.length) body.questions = questions;
+
+  body.listed = !!document.getElementById('reg-new-listed')?.checked;
+
+  body.sport = _currentSport || 'padel';
+
+  await api('/api/registrations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  await loadRegistrations();
+  setActiveTab('home');
+}
+
+let _regQuestionCounter = 0;
+
+function _updateRegQNumbers() {
+  const container = document.getElementById('reg-new-questions');
+  if (!container) return;
+  const cards = container.querySelectorAll('.reg-q-card');
+  const count = cards.length;
+  cards.forEach((card, i) => {
+    const num = card.querySelector('.reg-q-number');
+    if (num) num.textContent = `Q${i + 1}`;
+  });
+  const countEl = document.getElementById('reg-q-count');
+  if (countEl) countEl.textContent = `(${count})`;
+  const empty = document.getElementById('reg-q-empty');
+  if (empty) empty.style.display = count ? 'none' : '';
+}
+
+function _addRegQuestion() {
+  const container = document.getElementById('reg-new-questions');
+  if (!container) return;
+  const idx = _regQuestionCounter++;
+  const div = document.createElement('div');
+  div.className = 'reg-q-card reg-q-item';
+  div.dataset.qidx = idx;
+  div.innerHTML = `
+    <div class="reg-q-card-header">
+      <span class="reg-q-number">Q1</span>
+      <label class="switch-label" style="cursor:pointer;font-size:0.78rem">
+        <input type="checkbox" class="reg-q-required">
+        <span class="switch-track"></span>
+        <span>${t('txt_reg_q_required')}</span>
+      </label>
+      <button type="button" class="reg-q-remove" onclick="_removeRegQuestion(this)" title="Remove">✕</button>
+    </div>
+    <div class="reg-q-card-body">
+      <input type="text" class="reg-q-label" placeholder="${t('txt_reg_question_label')}" maxlength="128">
+      <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+        <div class="reg-q-type-toggle" data-current="text">
+          <button type="button" class="active" onclick="_setRegQType(this,'text')">${t('txt_reg_q_type_text')}</button>
+          <button type="button" onclick="_setRegQType(this,'choice')">${t('txt_reg_q_type_choice')}</button>
+        </div>
+      </div>
+      <div class="reg-q-choices-area">
+        <div class="reg-q-choices-list"></div>
+        <button type="button" class="reg-q-add-choice-btn" onclick="_addRegChoice(this)">${t('txt_reg_q_add_choice')}</button>
+      </div>
+    </div>`;
+  container.appendChild(div);
+  _updateRegQNumbers();
+  div.querySelector('.reg-q-label')?.focus();
+}
+
+function _removeRegQuestion(btn) {
+  const card = btn.closest('.reg-q-card');
+  if (card) card.remove();
+  _updateRegQNumbers();
+}
+
+function _setRegQType(btn, type) {
+  const toggle = btn.closest('.reg-q-type-toggle');
+  if (!toggle) return;
+  toggle.dataset.current = type;
+  toggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const area = btn.closest('.reg-q-card-body')?.querySelector('.reg-q-choices-area');
+  if (!area) return;
+  if (type === 'choice') {
+    area.classList.add('open');
+    if (!area.querySelector('.reg-q-choice-row')) _addRegChoice(area.querySelector('.reg-q-add-choice-btn'));
+  } else {
+    area.classList.remove('open');
+  }
+}
+
+function _addRegChoice(btn) {
+  const area = btn.closest('.reg-q-choices-area');
+  const list = area?.querySelector('.reg-q-choices-list');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'reg-q-choice-row';
+  row.innerHTML = `<input type="text" class="reg-q-choice-val" placeholder="${t('txt_reg_q_choices_placeholder')}" maxlength="128"><button type="button" class="reg-q-choice-remove" onclick="this.parentElement.remove()" title="Remove">✕</button>`;
+  list.appendChild(row);
+  row.querySelector('input')?.focus();
+}
+
+function _collectRegQuestions() {
+  const items = document.querySelectorAll('#reg-new-questions .reg-q-item');
+  const questions = [];
+  let idx = 0;
+  for (const item of items) {
+    const label = item.querySelector('.reg-q-label')?.value?.trim();
+    if (!label) continue;
+    const toggle = item.querySelector('.reg-q-type-toggle');
+    const type = toggle?.dataset.current || 'text';
+    const required = !!item.querySelector('.reg-q-required')?.checked;
+    const key = `q${idx++}`;
+    const q = { key, label, type, required };
+    if (type === 'choice') {
+      const inputs = item.querySelectorAll('.reg-q-choice-val');
+      q.choices = Array.from(inputs).map(i => i.value.trim()).filter(Boolean);
+    }
+    questions.push(q);
+  }
+  return questions;
+}
+
+// ─── Registration detail helpers ──────────────────────────
+
+function _copyAllRegCodes(rid) {
+  const r = _regDetails[rid];
+  if (!r?.registrants) return;
+  const lines = r.registrants.map(reg => `${reg.player_name}: ${reg.passphrase}`).join('\n');
+  navigator.clipboard.writeText(lines);
+}
+
+function _renderAnswersPanel(rid, r, questions) {
+  let h = `<details class="reg-section" style="margin-bottom:0.75rem">`;
+  h += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
+  h += `<span style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">▸</span> ${t('txt_reg_answers_title')} (${questions.length})</span>`;
+  h += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_copyAnswersCSV('${esc(rid)}')">📋 ${t('txt_reg_copy_answers')}</button>`;
+  h += `</summary>`;
+
+  // Per-question summary cards
+  h += `<div class="reg-answers-grid">`;
+  for (const q of questions) {
+    h += `<div class="reg-answer-card">`;
+    h += `<div class="reg-answer-card-header">`;
+    h += `<span class="reg-answer-card-label">${esc(q.label)}</span>`;
+    h += `<span class="badge ${q.required ? 'badge-phase' : ''}" style="font-size:0.68rem">${q.type === 'choice' ? t('txt_reg_q_type_choice') : t('txt_reg_q_type_text')}${q.required ? ' · ' + t('txt_reg_q_required') : ''}</span>`;
+    h += `</div>`;
+
+    if (q.type === 'choice' && q.choices?.length) {
+      // Show distribution bars for choice questions
+      const counts = {};
+      for (const c of q.choices) counts[c] = 0;
+      let answered = 0;
+      for (const reg of r.registrants) {
+        const a = reg.answers?.[q.key];
+        if (a) { counts[a] = (counts[a] || 0) + 1; answered++; }
+      }
+      h += `<div class="reg-answer-bars">`;
+      for (const c of q.choices) {
+        const pct = answered > 0 ? Math.round((counts[c] / r.registrants.length) * 100) : 0;
+        h += `<div class="reg-answer-bar-row">`;
+        h += `<span class="reg-answer-bar-label">${esc(c)}</span>`;
+        h += `<div class="reg-answer-bar-track"><div class="reg-answer-bar-fill" style="width:${pct}%"></div></div>`;
+        h += `<span class="reg-answer-bar-count">${counts[c]}</span>`;
+        h += `</div>`;
+      }
+      h += `</div>`;
+    }
+
+    // Individual answers list
+    h += `<div class="reg-answer-list">`;
+    for (const reg of r.registrants) {
+      const a = reg.answers?.[q.key] || '—';
+      h += `<div class="reg-answer-row">`;
+      h += `<span class="reg-answer-name">${esc(reg.player_name)}</span>`;
+      h += `<span class="reg-answer-value">${esc(a)}</span>`;
+      h += `</div>`;
+    }
+    h += `</div>`;
+    h += `</div>`;
+  }
+  h += `</div>`;
+  h += `</details>`;
+  return h;
+}
+
+function _copyAnswersCSV(rid) {
+  const r = _regDetails[rid];
+  if (!r?.registrants) return;
+  const questions = r.questions || [];
+  if (!questions.length) return;
+  const header = [t('txt_reg_name'), ...questions.map(q => q.label)].join('\t');
+  const rows = r.registrants.map(reg => {
+    const cells = [reg.player_name, ...questions.map(q => reg.answers?.[q.key] || '')];
+    return cells.join('\t');
+  });
+  navigator.clipboard.writeText([header, ...rows].join('\n'));
+}
+
+async function _saveRegSettings(rid) {
+  const r = _regDetails[rid];
+  if (!r) return;
+  const body = {};
+  const name = document.getElementById(`reg-edit-name-${rid}`)?.value?.trim();
+  if (name) body.name = name;
+  const desc = document.getElementById(`reg-edit-desc-${rid}`)?.value;
+  if (desc !== undefined) {
+    if (desc.trim()) body.description = desc; else body.clear_description = true;
+  }
+  const joinCode = document.getElementById(`reg-edit-joincode-${rid}`)?.value?.trim();
+  if (joinCode) body.join_code = joinCode; else body.clear_join_code = true;
+
+  body.listed = !!document.getElementById(`reg-edit-listed-${rid}`)?.checked;
+
+  await api(`/api/registrations/${rid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  await _loadRegDetail(rid);
+  await loadRegistrations();
+}
+
+async function _removeRegistrant(rid, pid) {
+  if (!confirm(t('txt_reg_confirm_remove'))) return;
+  try {
+    await api(`/api/registrations/${rid}/registrant/${pid}`, { method: 'DELETE' });
+    await _loadRegDetail(rid);
+    await loadRegistrations();
+  } catch (e) { alert(t('txt_reg_error')); }
+}
+
+async function _saveRegMessage(rid) {
+  const r = _regDetails[rid];
+  if (!r) return;
+  const msg = document.getElementById(`reg-edit-message-${rid}`)?.value?.trim();
+  const body = msg ? { message: msg } : { clear_message: true };
+  await api(`/api/registrations/${rid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  await _loadRegDetail(rid);
+}
+
+async function _clearRegMessage(rid) {
+  await api(`/api/registrations/${rid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clear_message: true }) });
+  await _loadRegDetail(rid);
+}
+
+function _toggleRegDescPreview(rid) {
+  const preview = document.getElementById(`reg-desc-preview-${rid}`);
+  const textarea = document.getElementById(`reg-edit-desc-${rid}`);
+  if (!preview || !textarea) return;
+  if (preview.style.display === 'none') {
+    const md = textarea.value || '';
+    try {
+      const rawHtml = typeof marked !== 'undefined' && marked.parse ? marked.parse(md) : md.replace(/</g, '&lt;');
+      preview.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(rawHtml, { ADD_ATTR: ['target'] }) : esc(md);
+    } catch (_) { preview.textContent = md; }
+    preview.style.display = '';
+  } else {
+    preview.style.display = 'none';
+  }
+}
+
+function _startConvertFromReg(rid) {
+  const r = _regDetails[rid];
+  if (!r) return;
+  _currentRegDetail = r;
+  _startConvertFromRegistration();
+}
+
+// ─── Convert registration to tournament (reuses main Create form) ─────
+
+let _convertFromRegistration = null;  // { rid, name } when in convert mode
+
+function _startConvertFromRegistration() {
+  if (!_currentRegDetail) return;
+  const r = _currentRegDetail;
+
+  // Store convert context
+  _convertFromRegistration = { rid: r.id, name: r.name };
+
+  // Pre-fill the currently active create mode's participant list
+  const names = r.registrants.map(reg => reg.player_name);
+  for (const mode of ['gp', 'mex', 'po']) {
+    _participantEntries[mode] = names.length ? [...names] : [''];
+  }
+
+  // Pre-fill tournament name in all modes
+  document.getElementById('gp-name').value = r.name;
+  document.getElementById('mex-name').value = r.name;
+  document.getElementById('po-name').value = r.name;
+
+  // Switch to Create tab and re-render participant fields
+  setActiveTab('create');
+  renderParticipantFields('gp');
+  renderParticipantFields('mex');
+  renderParticipantFields('po');
+
+  // Show a banner indicating convert mode
+  _showConvertBanner();
+}
+
+function _showConvertBanner() {
+  for (const mode of ['gp', 'mex', 'po']) {
+    const msg = document.getElementById(`${mode}-msg`);
+    if (msg) {
+      msg.className = 'alert alert-info';
+      msg.innerHTML = `📋 ${t('txt_reg_convert_banner')} <button type="button" class="btn btn-sm" style="margin-left:0.5rem;font-size:0.75rem;background:var(--border);color:var(--text)" onclick="_cancelConvertMode()">✕ ${t('txt_txt_cancel')}</button>`; // eslint-disable-line
+      msg.classList.remove('hidden');
+    }
+  }
+}
+
+function _cancelConvertMode() {
+  _convertFromRegistration = null;
+  for (const mode of ['gp', 'mex', 'po']) {
+    const msg = document.getElementById(`${mode}-msg`);
+    if (msg) { msg.classList.add('hidden'); msg.textContent = ''; }
+  }
+}
+
 // ─── Initialisation ───────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   initLanguageSelector();
+  _initPageSelector();
   // Restore sport selector from localStorage
   setSport(_currentSport);
   _initParticipantFields();

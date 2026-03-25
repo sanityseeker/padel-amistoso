@@ -23,6 +23,7 @@ from .routes_gp import router as gp_router
 from .routes_mex import router as mex_router
 from .routes_player_auth import router as player_auth_router
 from .routes_playoff import router as playoff_router
+from .routes_registration import router as registration_router
 from .routes_schema import router as schema_router
 from .state import (  # noqa: F401  — re-exported for tests
     _counter,
@@ -74,6 +75,7 @@ app.include_router(gp_router)
 app.include_router(mex_router)
 app.include_router(player_auth_router)
 app.include_router(playoff_router)
+app.include_router(registration_router)
 app.include_router(schema_router)
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -142,6 +144,20 @@ async def serve_tv(slug: str | None = None) -> Response:
     return Response(content=content, media_type="text/html", headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/register")
+async def serve_register() -> Response:
+    page = FRONTEND_DIR / "register.html"
+    content = page.read_text() if page.exists() else "<h1>Registration page not found</h1>"
+    return Response(content=content, media_type="text/html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/register/{alias}")
+async def serve_register_alias(alias: str) -> Response:
+    page = FRONTEND_DIR / "register.html"
+    content = page.read_text() if page.exists() else "<h1>Registration page not found</h1>"
+    return Response(content=content, media_type="text/html", headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/shared.js")
 async def serve_shared_js() -> Response:
     """Serve the shared JS utilities used by index.html and public.html (TV view)."""
@@ -176,6 +192,18 @@ async def serve_admin_css() -> Response:
 async def serve_tv_css() -> Response:
     """Serve the TV view stylesheet for public.html."""
     return _serve_css_file("tv.css")
+
+
+@app.get("/register.js")
+async def serve_register_js() -> Response:
+    """Serve the registration page JavaScript."""
+    return _serve_js_file("register.js")
+
+
+@app.get("/register.css")
+async def serve_register_css() -> Response:
+    """Serve the registration page stylesheet."""
+    return _serve_css_file("register.css")
 
 
 @app.get("/i18n.js")

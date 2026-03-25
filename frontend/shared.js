@@ -324,3 +324,27 @@ function copyTournamentUrl() {
 function setLanguage(lang) {
   setAppLanguage(lang);
 }
+
+// ── Bracket image lightbox ─────────────────────────────────────────────────────
+
+function _openBracketLightbox(src) {
+  const lb = document.getElementById('bracket-lightbox');
+  const img = document.getElementById('bracket-lightbox-img');
+  if (!lb || !img) return;
+  img.src = src;
+  lb.classList.add('open');
+  document.addEventListener('keydown', _bracketLightboxKeyHandler);
+}
+
+function _closeBracketLightbox(e) {
+  // If click event, only close when clicking the backdrop (not the image)
+  if (e && e.target && e.target.tagName === 'IMG') return;
+  const lb = document.getElementById('bracket-lightbox');
+  if (!lb) return;
+  lb.classList.remove('open');
+  document.removeEventListener('keydown', _bracketLightboxKeyHandler);
+}
+
+function _bracketLightboxKeyHandler(e) {
+  if (e.key === 'Escape') _closeBracketLightbox();
+}

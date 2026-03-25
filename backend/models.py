@@ -64,7 +64,11 @@ class POPhase(StrEnum):
 @dataclass
 class Player:
     name: str
-    id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
+    id: str = field(default="")
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = uuid.uuid4().hex[:8]
 
     def __hash__(self) -> int:
         return hash(self.id)

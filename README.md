@@ -53,6 +53,7 @@ is refined.
 - **Match comments**: admin can annotate any match with a short comment visible on the public view
 - **Player self-scoring**: players log in via passphrase or QR code to submit their own scores
 - **Announcement banner**: broadcast a message at the top of the public view for all participants
+- **Registration lobbies**: create a shareable sign-up link so players self-register before the tournament is created; convert the lobby into a real tournament when ready
 
 ### Group + Play-off flow
 
@@ -104,7 +105,7 @@ configured in the **Admin → TV Settings** panel:
 - Toggle which sections appear: standings/groups, bracket, match list, round history
 - Set the **refresh mode**: *On-update* (polls the version counter and reloads
   only when the tournament changes), *Never* (static snapshot), or a fixed
-  interval (1 s – 10 min)
+  interval (5 s – 5 min)
 - Adjust schema rendering: box scale, line width, arrow scale, title font scale
 
 The TV view is served from `frontend/public.html` and uses the same REST API as
@@ -271,6 +272,22 @@ announcements, or any broadcast message.
 - Configured in the **📺 TV Mode Controls** card under "Announcement Banner"
 - Leave empty to hide the banner
 - Updated in real time on the next auto-refresh cycle
+
+#### Registration lobbies
+
+Admins can create a **registration lobby** — a shareable sign-up page that lets
+players self-register before the tournament is set up.
+
+1. Create a lobby from the **Registrations** tab (or via `POST /api/registrations`).
+2. Share the link (`/register?id=<lobby-id>`) with participants.
+3. Players fill in their name (and any custom questions you define) and submit.
+4. Once the sign-up period closes, open the lobby in the admin UI and click
+   **Convert to Tournament** — the engine creates a real tournament with all
+   registered players.  Player passphrases and QR tokens carry over automatically.
+
+Optional lobby settings: alias URLs, open/closed state, capacity limits, sport
+selection, custom registration questions, and a welcome message shown to
+registrants.
 
 ---
 
@@ -635,13 +652,13 @@ Both interfaces are automatically generated from route definitions and stay in s
 - **Group+Playoff**: Group stage matches, standings, and playoff brackets (`/api/tournaments/{id}/gp/*`)
 - **Mexicano**: Round-based scoring, pairing proposals, and optional playoffs (`/api/tournaments/{id}/mex/*`)
 - **Player Auth**: Passphrase/QR login for player self-scoring (`/api/tournaments/{id}/player-auth`, `/api/tournaments/{id}/player-secrets/*`)
+- **Registrations**: Player sign-up lobbies with conversion to tournaments (`/api/registrations/*`)
 - **Visualization**: SVG bracket rendering with customizable styling (`/api/schema/*`)
 
 All endpoints requiring authentication accept a JWT token via the `Authorization: Bearer <token>` header.
 
 ## What's next (iteration ideas)
 
-- Add player-registration / check-in flow
 - WebSocket push for automatic live-table refresh
 - Print-friendly draw sheets
 - Role-based access control (viewer vs. admin roles)
