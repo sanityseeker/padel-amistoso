@@ -13,7 +13,7 @@ from fastapi.responses import Response
 from ..auth.deps import PlayerIdentity
 from ..auth.models import User, UserRole
 from ..models import Match, MatchStatus
-from .state import _tournaments
+from .state import _tournaments, _save_tournament
 
 # MIME types for the three supported image/document formats.
 _SCHEMA_MEDIA_TYPES: dict[str, str] = {
@@ -26,6 +26,21 @@ _SCHEMA_MEDIA_TYPES: dict[str, str] = {
 def _schema_image_response(img: bytes, fmt: Literal["png", "svg", "pdf"]) -> Response:
     """Wrap rendered image bytes in the correct FastAPI Response."""
     return Response(content=img, media_type=_SCHEMA_MEDIA_TYPES[fmt])
+
+
+def _store_tournament(tid: str, *, name: str, tournament_type: str, tournament: object,
+                      owner: str, public: bool, sport: str, assign_courts: bool) -> None:
+    """Insert a tournament into the in-memory store and persist to DB."""
+    _tournaments[tid] = {
+        "name": name,
+        "type": tournament_type,
+        "tournament": tournament,
+        "owner": owner,
+        "public": public,
+        "sport": sport,
+        "assign_courts": assign_courts,
+    }
+    _save_tournament(tid)
 
 
 def _is_bye_match(m: Match) -> bool:

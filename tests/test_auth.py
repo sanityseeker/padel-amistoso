@@ -145,7 +145,7 @@ class TestAuthAPI:
     def test_change_password(self, client, auth_headers):
         r = client.patch(
             "/api/auth/users/admin/password",
-            json={"new_password": "newpass"},
+            json={"new_password": "newpass12"},
             headers=auth_headers,
         )
         assert r.status_code == 204

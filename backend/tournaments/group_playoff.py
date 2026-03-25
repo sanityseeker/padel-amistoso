@@ -260,7 +260,8 @@ class GroupPlayoffTournament:
         # Build player lookup from group-stage participants
         player_map: dict[str, Player] = {p.id: p for p in self.players}
 
-        # Resolve advancing participants
+        # For automatic selection, track which group each player came from.
+        player_group_index: dict[str, int] = {}
         if advancing_player_ids is not None:
             if len(set(advancing_player_ids)) != len(advancing_player_ids):
                 raise RuntimeError("Advancing player IDs must be unique")
@@ -269,10 +270,17 @@ class GroupPlayoffTournament:
                 if pid not in player_map:
                     raise KeyError(f"Player {pid} not found in tournament")
                 advancing.append(player_map[pid])
+            # Best-effort group lookup for manually supplied IDs.
+            for g_idx, g in enumerate(self.groups):
+                for p in g.players:
+                    if p.id in {pid for pid in advancing_player_ids}:
+                        player_group_index[p.id] = g_idx
         else:
             advancing = []
-            for g in self.groups:
-                advancing.extend(g.top_players(self.top_per_group))
+            for g_idx, g in enumerate(self.groups):
+                for p in g.top_players(self.top_per_group):
+                    advancing.append(p)
+                    player_group_index[p.id] = g_idx
 
         # Aggregate scores for seeding (match_points, point_diff, points_for)
         scores = self._player_scores()
@@ -298,13 +306,23 @@ class GroupPlayoffTournament:
                 sum(c[2] for c in combined),
             )
 
+        def _team_group(team: list[Player]) -> int:
+            """Return the group index of the first player in the team, or -1."""
+            for p in team:
+                if p.id in player_group_index:
+                    return player_group_index[p.id]
+            return -1
+
         if self.team_mode:
             # In team mode each advancing entry IS a team already.
-            # Sort by standings criteria descending for proper seeding.
-            teams = sorted(
-                [[p] for p in advancing],
-                key=lambda t: tuple(-x for x in _seed_key(t)),
-            )
+            # Build teams, then apply group-diversity seeding when multiple
+            # groups exist so first-round opponents come from different groups.
+            raw_teams = [[p] for p in advancing]
+            if self.num_groups > 2:
+                group_ids = [_team_group(t) for t in raw_teams]
+                teams = pairing_mod.seed_with_group_diversity(raw_teams, group_ids, _seed_key)
+            else:
+                teams = sorted(raw_teams, key=lambda t: tuple(-x for x in _seed_key(t)))
         else:
             # Individual mode: form balanced teams of 2 using group-stage scores.
             if len(advancing) % 2 != 0:
@@ -312,8 +330,13 @@ class GroupPlayoffTournament:
             # form_playoff_teams uses a flat score for fold-pairing
             flat_scores = {pid: s[0] for pid, s in scores.items()}
             teams = pairing_mod.form_playoff_teams(advancing, flat_scores)
-            # Sort formed teams by combined standings for proper bracket seeding.
-            teams.sort(key=lambda t: tuple(-x for x in _seed_key(t)))
+            # Apply group-diversity seeding when multiple groups exist.
+            if self.num_groups > 2:
+                group_ids = [_team_group(t) for t in teams]
+                teams = pairing_mod.seed_with_group_diversity(teams, group_ids, _seed_key)
+            else:
+                # Sort formed teams by combined standings for proper bracket seeding.
+                teams.sort(key=lambda t: tuple(-x for x in _seed_key(t)))
 
         if self.double_elimination:
             self.playoff_bracket = DoubleEliminationBracket(teams, courts=self.courts)

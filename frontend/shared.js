@@ -18,6 +18,16 @@ function esc(s) {
   return d.innerHTML;
 }
 
+/**
+ * Escape a value for safe insertion into an HTML attribute.
+ * Extends esc() by also escaping single and double quotes.
+ * @param {*} s
+ * @returns {string}
+ */
+function escAttr(s) {
+  return esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // ── TBD helpers ───────────────────────────────────────────
 
 /**
@@ -326,25 +336,120 @@ function setLanguage(lang) {
 }
 
 // ── Bracket image lightbox ─────────────────────────────────────────────────────
+let _lbZoom = 1.0;
+let _lbSrc  = '';
 
 function _openBracketLightbox(src) {
-  const lb = document.getElementById('bracket-lightbox');
+  const lb  = document.getElementById('bracket-lightbox');
   const img = document.getElementById('bracket-lightbox-img');
   if (!lb || !img) return;
+  _lbZoom = 1.0;
+  _lbSrc  = src;
+  img.style.width    = '';
+  img.style.maxWidth = '';
   img.src = src;
   lb.classList.add('open');
+  _bracketLightboxUpdateZoom();
   document.addEventListener('keydown', _bracketLightboxKeyHandler);
 }
 
 function _closeBracketLightbox(e) {
   // If click event, only close when clicking the backdrop (not the image)
-  if (e && e.target && e.target.tagName === 'IMG') return;
+  if (e && e.target && (e.target.tagName === 'IMG' || e.target.closest('.bracket-lb-toolbar'))) return;
   const lb = document.getElementById('bracket-lightbox');
   if (!lb) return;
   lb.classList.remove('open');
   document.removeEventListener('keydown', _bracketLightboxKeyHandler);
 }
 
-function _bracketLightboxKeyHandler(e) {
-  if (e.key === 'Escape') _closeBracketLightbox();
+function _bracketLightboxUpdateZoom() {
+  const label = document.getElementById('bracket-lb-zoom-level');
+  if (label) label.textContent = Math.round(_lbZoom * 100) + '%';
+  const img = document.getElementById('bracket-lightbox-img');
+  if (!img) return;
+  if (_lbZoom === 1.0) {
+    img.style.width    = '';
+    img.style.maxWidth = '';
+    img.style.cursor   = 'zoom-in';
+  } else {
+    const w = img.naturalWidth || 800;
+    img.style.maxWidth = 'none';
+    img.style.width    = Math.round(w * _lbZoom) + 'px';
+    img.style.cursor   = _lbZoom > 1 ? 'zoom-out' : 'zoom-in';
+  }
 }
+
+function _bracketLightboxZoomIn() {
+  _lbZoom = Math.min(4.0, +(_lbZoom * 1.25).toFixed(3));
+  _bracketLightboxUpdateZoom();
+}
+
+function _bracketLightboxZoomOut() {
+  _lbZoom = Math.max(0.25, +(_lbZoom / 1.25).toFixed(3));
+  _bracketLightboxUpdateZoom();
+}
+
+function _bracketLightboxZoomReset() {
+  _lbZoom = 1.0;
+  _bracketLightboxUpdateZoom();
+}
+
+function _bracketLightboxOpenFull() {
+  if (_lbSrc) window.open(_lbSrc, '_blank', 'noopener');
+}
+
+function _bracketLightboxDownload() {
+  if (!_lbSrc) return;
+  const a    = document.createElement('a');
+  a.href     = _lbSrc;
+  a.download = 'bracket.png';
+  a.rel      = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function _bracketLightboxKeyHandler(e) {
+  if      (e.key === 'Escape')            _closeBracketLightbox();
+  else if (e.key === '+' || e.key === '=') _bracketLightboxZoomIn();
+  else if (e.key === '-')                  _bracketLightboxZoomOut();
+  else if (e.key === '0')                  _bracketLightboxZoomReset();
+}
+
+// ── Page selector (shared across all pages) ───────────────
+
+function buildPageSelectorHtml(currentPage) {
+  const pages = [
+    { key: 'admin', href: '/', icon: '🛠️', label: t('txt_nav_admin') },
+    { key: 'tv', href: '/tv', icon: '📺', label: t('txt_nav_tv_view') },
+    { key: 'register', href: '/register', icon: '📋', label: t('txt_nav_registrations') },
+  ];
+  const current = pages.find(p => p.key === currentPage) || pages[0];
+  let html = `<div class="tv-page-selector" id="page-selector">`;
+  html += `<button type="button" class="tv-page-selector-btn" onclick="togglePageSelectorDropdown()">`;
+  html += `<span>${current.icon}</span> <span>${esc(current.label)}</span> <span style="font-size:0.7rem;color:var(--text-muted)">▾</span>`;
+  html += `</button>`;
+  html += `<div class="tv-page-selector-menu" id="page-selector-menu">`;
+  for (const p of pages) {
+    const active = p.key === currentPage ? ' active' : '';
+    html += `<a href="${p.href}" class="tv-page-selector-item${active}" onclick="savePageChoice('${p.key}')">`;
+    html += `<span>${p.icon}</span> <span>${esc(p.label)}</span></a>`;
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+function togglePageSelectorDropdown() {
+  const el = document.getElementById('page-selector');
+  if (el) el.classList.toggle('open');
+}
+
+function savePageChoice(page) {
+  try { localStorage.setItem('amistoso-last-page', page); } catch (_) {}
+}
+
+// Close page selector when clicking outside
+document.addEventListener('click', (e) => {
+  const sel = document.getElementById('page-selector');
+  if (sel && !sel.contains(e.target)) sel.classList.remove('open');
+});

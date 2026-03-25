@@ -18,14 +18,14 @@ class CreateUserRequest(BaseModel):
     """Payload for creating a new user."""
 
     username: str = Field(min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
-    password: str = Field(min_length=4, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
     role: str | None = Field(default=None, description="'admin' or 'user' (default: 'user')")
 
 
 class ChangePasswordRequest(BaseModel):
     """Payload for changing a user's password."""
 
-    new_password: str = Field(min_length=4, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class TokenResponse(BaseModel):

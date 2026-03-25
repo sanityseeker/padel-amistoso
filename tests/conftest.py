@@ -26,10 +26,12 @@ def _clean_state(tmp_path):
     import backend.api.state as state_mod
     import backend.api.player_secret_store as ps_mod
     import backend.api.routes_player_auth as rpa_mod
+    import backend.api.routes_registration as reg_mod
     import backend.api.routes_gp as gp_mod
     import backend.api.routes_mex as mex_mod
     import backend.api.routes_playoff as po_mod
     import backend.api.routes_crud as crud_mod
+    import backend.auth.routes as auth_routes_mod
 
     # Redirect the database to an isolated temp file so tests don't depend on
     # an already-existing padel.db file (e.g. in CI with a fresh checkout).
@@ -40,7 +42,16 @@ def _clean_state(tmp_path):
     state_mod._tournaments.clear()
     state_mod._counter = 0
     state_mod._tournament_versions.clear()
+    state_mod._tournament_locks.clear()
     state_mod._state_version = 0
+
+    # Reset rate-limiters so test order does not affect results.
+    rpa_mod._rate_limiter._log.clear()
+    gp_mod._create_rate_limiter.clear()
+    mex_mod._create_rate_limiter.clear()
+    po_mod._create_rate_limiter.clear()
+    reg_mod._create_rate_limiter.clear()
+    auth_routes_mod._login_rate_limiter.clear()
 
     # Disable persistence for the duration of the test.
     orig_save_tournament = state_mod._save_tournament
@@ -143,7 +154,14 @@ def _clean_state(tmp_path):
     state_mod._tournaments.clear()
     state_mod._counter = 0
     state_mod._tournament_versions.clear()
+    state_mod._tournament_locks.clear()
     state_mod._state_version = 0
+    rpa_mod._rate_limiter._log.clear()
+    gp_mod._create_rate_limiter.clear()
+    mex_mod._create_rate_limiter.clear()
+    po_mod._create_rate_limiter.clear()
+    reg_mod._create_rate_limiter.clear()
+    auth_routes_mod._login_rate_limiter.clear()
     state_mod._save_tournament = orig_save_tournament
     state_mod._delete_tournament = orig_delete_tournament
 

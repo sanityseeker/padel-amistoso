@@ -10,9 +10,11 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.responses import Response
 
 from ..auth import auth_router
@@ -63,10 +65,39 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("ALLOWED_ORIGINS", "*").split(","),
+    allow_origins=os.environ.get("ALLOWED_ORIGINS", "http://localhost:8000").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:8000").split(",") if o.strip()]
+_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _origin_from_header(value: str | None) -> str | None:
+    if not value:
+        return None
+    parsed = urlparse(value)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return None
+
+
+@app.middleware("http")
+async def csrf_origin_protection(request: Request, call_next):
+    """Block cross-site browser writes by validating Origin/Referer.
+
+    - Only applies to unsafe API methods.
+    - Requests without Origin/Referer are allowed (CLI clients, tests).
+    - Browser requests with mismatched origin are rejected.
+    """
+    if request.method in _UNSAFE_METHODS and request.url.path.startswith("/api/"):
+        origin = _origin_from_header(request.headers.get("origin"))
+        referer_origin = _origin_from_header(request.headers.get("referer"))
+        source_origin = origin or referer_origin
+        if source_origin is not None and source_origin not in _ALLOWED_ORIGINS:
+            return JSONResponse(status_code=403, content={"detail": "CSRF validation failed"})
+    return await call_next(request)
 
 # Register routers
 app.include_router(auth_router)

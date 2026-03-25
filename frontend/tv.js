@@ -39,43 +39,6 @@ function _languageToggleMeta() {
   };
 }
 
-// ── Page selector (shared across TV pages) ────────────────
-function _buildPageSelectorHtml(currentPage) {
-  const pages = [
-    { key: 'admin', href: '/', icon: '🛠️', label: t('txt_nav_admin') },
-    { key: 'tv', href: '/tv', icon: '📺', label: t('txt_nav_tv_view') },
-    { key: 'register', href: '/register', icon: '📋', label: t('txt_nav_registrations') },
-  ];
-  const current = pages.find(p => p.key === currentPage) || pages[0];
-  let html = `<div class="tv-page-selector" id="page-selector">`;
-  html += `<button type="button" class="tv-page-selector-btn" onclick="_tvTogglePageSelector()">`;
-  html += `<span>${current.icon}</span> <span>${esc(current.label)}</span> <span style="font-size:0.7rem;color:var(--text-muted)">▾</span>`;
-  html += `</button>`;
-  html += `<div class="tv-page-selector-menu" id="page-selector-menu">`;
-  for (const p of pages) {
-    const active = p.key === currentPage ? ' active' : '';
-    html += `<a href="${p.href}" class="tv-page-selector-item${active}" onclick="_tvSavePageChoice('${p.key}')">`;
-    html += `<span>${p.icon}</span> <span>${esc(p.label)}</span></a>`;
-  }
-  html += `</div></div>`;
-  return html;
-}
-
-function _tvTogglePageSelector() {
-  const el = document.getElementById('page-selector');
-  if (el) el.classList.toggle('open');
-}
-
-function _tvSavePageChoice(page) {
-  try { localStorage.setItem('amistoso-last-page', page); } catch (_) {}
-}
-
-// Close page selector when clicking outside
-document.addEventListener('click', (e) => {
-  const sel = document.getElementById('page-selector');
-  if (sel && !sel.contains(e.target)) sel.classList.remove('open');
-});
-
 // ── URL params ────────────────────────────────────────────
 const _params = new URLSearchParams(location.search);
 // Extract slug from path: /tv/<slug>
@@ -88,64 +51,101 @@ let TID = _params.get('tid') || (/^t\d+$/.test(_pathSlug) ? _pathSlug : null);
 const _aliasParam = _params.get('t') || (!TID ? _pathSlug : null);
 
 // ── State ─────────────────────────────────────────────────
-let _tournamentType = null;
-let _tournamentName = '';
-let _tournamentSport = 'padel';
+const tvState = {
+  tournamentType: null,
+  tournamentName: '',
+  tournamentSport: 'padel',
+  refreshIntervalSecs: 15,
+  countdown: 15,
+  countdownInterval: null,
+  isRefreshing: false,
+  breakdowns: {},           // {match_id: {...}} for Mex breakdowns
+  playerMap: {},            // {player_id: player_name}
+  sectionOpenState: {},     // {data-tv-key: boolean} — persisted across refreshes
+  lastKnownVersion: null,   // for on-update mode
+  scoreMode: {},            // {ctx: 'points'|'sets'} from admin TV settings
+  versionPollTimer: null,   // setInterval handle for version polling
+  pickerPollTimer: null,    // setInterval handle for picker auto-refresh
+  // Player auth state
+  playerJwt: null,          // JWT string
+  playerId: null,           // player ID from auth response
+  playerName: null,         // player name from auth response
+  allowPlayerScoring: true, // controlled by admin TV setting
+  abbrevPopupBtn: null,     // currently active abbreviation popup button
+};
 
 function _tvLabel() {
-  return _tournamentSport === 'tennis' ? t('txt_txt_tennis_tv') : t('txt_txt_padel_tv');
+  return tvState.tournamentSport === 'tennis' ? t('txt_txt_tennis_tv') : t('txt_txt_padel_tv');
 }
-let _refreshIntervalSecs = 15;
-let _countdown = 15;
-let _refreshInterval = null;
-let _countdownInterval = null;
-let _isRefreshing = false;
-let _breakdowns = {}; // {match_id: {...}} for Mex breakdowns
-let _tvPlayerMap = {}; // {player_id: player_name}
-let _sectionOpenState = {}; // {data-tv-key: boolean} — persisted across refreshes
-let _lastKnownVersion = null; // for on-update mode
-let _tvScoreMode = {}; // {ctx: 'points'|'sets'} from admin TV settings
-let _versionPollTimer = null; // setInterval handle for version polling
-let _pickerPollTimer = null;  // setInterval handle for picker auto-refresh
-
-// ── Player auth state ─────────────────────────────────────
-let _playerJwt = null;     // JWT string
-let _playerId = null;      // player ID from auth response
-let _playerName = null;    // player name from auth response
-let _allowPlayerScoring = true; // controlled by admin TV setting
 
 function _playerStorageKey() { return `padel-player-${TID}`; }
+
+function _readPlayerSessionRaw() {
+  const key = _playerStorageKey();
+  if (!key) return null;
+  try {
+    const localValue = localStorage.getItem(key);
+    if (localValue) return localValue;
+  } catch (_) {}
+  try {
+    const sessionValue = sessionStorage.getItem(key);
+    if (sessionValue) {
+      try { localStorage.setItem(key, sessionValue); } catch (_) {}
+      return sessionValue;
+    }
+  } catch (_) {}
+  return null;
+}
+
+function _writePlayerSessionRaw(value) {
+  const key = _playerStorageKey();
+  if (!key) return;
+  try {
+    localStorage.setItem(key, value);
+  } catch (_) {
+    try { sessionStorage.setItem(key, value); } catch (_) {}
+  }
+}
+
+function _removePlayerSessionRaw() {
+  const key = _playerStorageKey();
+  if (!key) return;
+  try { localStorage.removeItem(key); } catch (_) {}
+  try { sessionStorage.removeItem(key); } catch (_) {}
+}
 
 function _loadPlayerSession() {
   if (!TID) return;
   try {
-    const raw = localStorage.getItem(_playerStorageKey());
+    const raw = _readPlayerSessionRaw();
     if (!raw) return;
     const data = JSON.parse(raw);
-    _playerJwt = data.jwt || null;
-    _playerId = data.playerId || null;
-    _playerName = data.playerName || null;
+    tvState.playerJwt = data.jwt || null;
+    tvState.playerId = data.playerId || null;
+    tvState.playerName = data.playerName || null;
   } catch { _clearPlayerSession(); }
 }
 
 function _savePlayerSession() {
-  if (!TID || !_playerJwt) return;
-  localStorage.setItem(_playerStorageKey(), JSON.stringify({
-    jwt: _playerJwt, playerId: _playerId, playerName: _playerName,
+  if (!TID || !tvState.playerJwt) return;
+  _writePlayerSessionRaw(JSON.stringify({
+    jwt: tvState.playerJwt,
+    playerId: tvState.playerId,
+    playerName: tvState.playerName,
   }));
 }
 
 function _clearPlayerSession() {
-  _playerJwt = null; _playerId = null; _playerName = null;
-  if (TID) localStorage.removeItem(_playerStorageKey());
+  tvState.playerJwt = null; tvState.playerId = null; tvState.playerName = null;
+  _removePlayerSessionRaw();
 }
 
-function _isPlayerLoggedIn() { return !!_playerJwt; }
+function _isPlayerLoggedIn() { return !!tvState.playerJwt; }
 
 /** Check whether a match involves the authenticated player */
 function _playerIsInMatch(m) {
-  if (!_playerId) return false;
-  return (m.team1_ids || []).includes(_playerId) || (m.team2_ids || []).includes(_playerId);
+  if (!tvState.playerId) return false;
+  return (m.team1_ids || []).includes(tvState.playerId) || (m.team2_ids || []).includes(tvState.playerId);
 }
 
 /** Authenticate using passphrase or token */
@@ -163,18 +163,18 @@ async function _playerAuth(passphrase, token) {
     throw new Error(err.detail || 'Authentication failed');
   }
   const data = await res.json();
-  _playerJwt = data.access_token;
-  _playerId = data.player_id;
-  _playerName = data.player_name;
+  tvState.playerJwt = data.access_token;
+  tvState.playerId = data.player_id;
+  tvState.playerName = data.player_name;
   _savePlayerSession();
   return data;
 }
 
 /** Authenticated fetch for player score submission */
 async function _playerApi(path, opts = {}) {
-  if (!_playerJwt) throw new Error('Not authenticated');
+  if (!tvState.playerJwt) throw new Error('Not authenticated');
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
-  headers['Authorization'] = `Bearer ${_playerJwt}`;
+  headers['Authorization'] = `Bearer ${tvState.playerJwt}`;
   const res = await fetch(API + path, { ...opts, headers });
   if (res.status === 401) {
     _clearPlayerSession();
@@ -261,7 +261,7 @@ function _renderPlayerBar() {
   if (!TID) return;
 
   // When player scoring is disabled by the admin, hide everything and clear any session
-  if (!_allowPlayerScoring) {
+  if (!tvState.allowPlayerScoring) {
     if (_isPlayerLoggedIn()) _clearPlayerSession();
     return;
   }
@@ -270,7 +270,7 @@ function _renderPlayerBar() {
     const bar = document.createElement('div');
     bar.id = 'player-bar';
     bar.className = 'player-bar';
-    bar.innerHTML = `<span>🟢 ${t('txt_txt_logged_in_as')} <span class="player-name">${esc(_playerName || _playerId)}</span></span>
+    bar.innerHTML = `<span>🟢 ${t('txt_txt_logged_in_as')} <span class="player-name">${esc(tvState.playerName || tvState.playerId)}</span></span>
       <button onclick="_playerLogout()">${t('txt_txt_logout')}</button>`;
     document.body.prepend(bar);
   } else {
@@ -355,14 +355,14 @@ async function _playerSubmitScore(matchId, scoreCtx) {
 
 /** Build inline score form HTML for a match the player can score */
 function _buildPlayerScoreForm(m, scoreCtx) {
-  if (!_allowPlayerScoring) return '';
+  if (!tvState.allowPlayerScoring) return '';
   if (!_isPlayerLoggedIn() || !_playerIsInMatch(m)) return '';
   const hasTbd = !m.team1?.join('').trim() || !m.team2?.join('').trim();
   if (hasTbd) return '';
 
   const entry = _PLAYER_SCORE_ENDPOINTS[scoreCtx];
   const hasTennis = !!(entry && entry.tennis);
-  const defaultMode = (_tvScoreMode[scoreCtx] === 'sets' && hasTennis) ? 'sets' : 'points';
+  const defaultMode = (tvState.scoreMode[scoreCtx] === 'sets' && hasTennis) ? 'sets' : 'points';
 
   let html = '<div class="player-score-form">';
 
@@ -438,23 +438,23 @@ async function api(path) {
 // ── Open-state persistence ───────────────────────────────
 function _captureOpenState() {
   document.querySelectorAll('details[data-tv-key]').forEach(el => {
-    _sectionOpenState[el.dataset.tvKey] = el.open;
+    tvState.sectionOpenState[el.dataset.tvKey] = el.open;
   });
 }
 
 function _applyOpenState() {
   document.querySelectorAll('details[data-tv-key]').forEach(el => {
     const key = el.dataset.tvKey;
-    if (key in _sectionOpenState) el.open = _sectionOpenState[key];
+    if (key in tvState.sectionOpenState) el.open = tvState.sectionOpenState[key];
   });
 }
 
 // ── Refresh scheduling ────────────────────────────────────────────
 
 function _stopAllSchedules() {
-  if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null; }
-  if (_versionPollTimer) { clearInterval(_versionPollTimer); _versionPollTimer = null; }
-  if (_pickerPollTimer) { clearInterval(_pickerPollTimer); _pickerPollTimer = null; }
+  if (tvState.countdownInterval) { clearInterval(tvState.countdownInterval); tvState.countdownInterval = null; }
+  if (tvState.versionPollTimer) { clearInterval(tvState.versionPollTimer); tvState.versionPollTimer = null; }
+  if (tvState.pickerPollTimer) { clearInterval(tvState.pickerPollTimer); tvState.pickerPollTimer = null; }
 }
 
 function _updateCountdownEl(text) {
@@ -464,35 +464,35 @@ function _updateCountdownEl(text) {
 
 function _startCountdown() {
   _stopAllSchedules();
-  if (_refreshIntervalSecs === 0) {
+  if (tvState.refreshIntervalSecs === 0) {
     // “Never” — no auto-refresh
     _updateCountdownEl(t('txt_txt_manual_only'));
     return;
   }
-  if (_refreshIntervalSecs === -1) {
+  if (tvState.refreshIntervalSecs === -1) {
     // “On update” — poll version endpoint every 2 s
     _updateCountdownEl('');
-    _versionPollTimer = setInterval(async () => {
-      if (_isRefreshing || !TID) return;
+    tvState.versionPollTimer = setInterval(async () => {
+      if (tvState.isRefreshing || !TID) return;
       try {
         const data = await fetch(`/api/tournaments/${TID}/version`).then(r => r.json());
-        if (_lastKnownVersion !== null && data.version !== _lastKnownVersion) {
+        if (tvState.lastKnownVersion !== null && data.version !== tvState.lastKnownVersion) {
           loadTV();
         }
-        _lastKnownVersion = data.version;
+        tvState.lastKnownVersion = data.version;
       } catch (_) { /* network blip — ignore */ }
     }, 2000);
     return;
   }
   // Timer mode
-  _countdown = _refreshIntervalSecs;
-  _updateCountdownEl(`↻ ${_countdown}s`);
-  _countdownInterval = setInterval(() => {
-    _countdown--;
-    _updateCountdownEl(`↻ ${_countdown}s`);
-    if (_countdown <= 0) {
-      clearInterval(_countdownInterval);
-      _countdownInterval = null;
+  tvState.countdown = tvState.refreshIntervalSecs;
+  _updateCountdownEl(`↻ ${tvState.countdown}s`);
+  tvState.countdownInterval = setInterval(() => {
+    tvState.countdown--;
+    _updateCountdownEl(`↻ ${tvState.countdown}s`);
+    if (tvState.countdown <= 0) {
+      clearInterval(tvState.countdownInterval);
+      tvState.countdownInterval = null;
       loadTV();
     }
   }, 1000);
@@ -500,9 +500,9 @@ function _startCountdown() {
 
 // ── Load & render ─────────────────────────────────────────
 async function loadTV() {
-  if (_isRefreshing) return;
-  _isRefreshing = true;
-  if (_countdownInterval) clearInterval(_countdownInterval);
+  if (tvState.isRefreshing) return;
+  tvState.isRefreshing = true;
+  if (tvState.countdownInterval) clearInterval(tvState.countdownInterval);
 
   const dot = document.getElementById('refresh-dot');
   if (dot) dot.classList.add('refreshing');
@@ -521,22 +521,22 @@ async function loadTV() {
         `<div class="tv-error">${t('txt_txt_tournament_not_found_value', { value: esc(TID) })}</div>`;
       return;
     }
-    _tournamentType = meta.type;
-    _tournamentName = meta.name;
-    _tournamentSport = meta.sport || 'padel';
+    tvState.tournamentType = meta.type;
+    tvState.tournamentName = meta.name;
+    tvState.tournamentSport = meta.sport || 'padel';
     document.title = `${_tvLabel()} | ${meta.name}`;
 
     // Load TV settings and tournament data in parallel
     const [tvSettings, ...dataResults] = await Promise.all([
       api(`/api/tournaments/${TID}/tv-settings`),
       ...(
-        _tournamentType === 'group_playoff'
+        tvState.tournamentType === 'group_playoff'
           ? [
               api(`/api/tournaments/${TID}/gp/status`),
               api(`/api/tournaments/${TID}/gp/groups`),
               api(`/api/tournaments/${TID}/gp/playoffs`).catch(() => ({ matches: [], pending: [] })),
             ]
-          : _tournamentType === 'playoff'
+          : tvState.tournamentType === 'playoff'
           ? [
               api(`/api/tournaments/${TID}/po/status`),
               api(`/api/tournaments/${TID}/po/playoffs`).catch(() => ({ matches: [], pending: [] })),
@@ -549,31 +549,31 @@ async function loadTV() {
       ),
     ]);
 
-    _refreshIntervalSecs = tvSettings.refresh_interval ?? 15;
-    _tvScoreMode = tvSettings.score_mode || {};
-    _allowPlayerScoring = tvSettings.allow_player_scoring !== false;
-    // Seed _lastKnownVersion so first poll doesn’t trigger an immediate reload
-    if (_refreshIntervalSecs === -1 && _lastKnownVersion === null) {
+    tvState.refreshIntervalSecs = tvSettings.refresh_interval ?? 15;
+    tvState.scoreMode = tvSettings.score_mode || {};
+    tvState.allowPlayerScoring = tvSettings.allow_player_scoring !== false;
+    // Seed tvState.lastKnownVersion so first poll doesn’t trigger an immediate reload
+    if (tvState.refreshIntervalSecs === -1 && tvState.lastKnownVersion === null) {
       try {
         const vd = await fetch(`/api/tournaments/${TID}/version`).then(r => r.json());
-        _lastKnownVersion = vd.version;
+        tvState.lastKnownVersion = vd.version;
       } catch (_) {}
     }
-    if (_tournamentType === 'group_playoff') {
+    if (tvState.tournamentType === 'group_playoff') {
       const [status, groups, playoffs] = dataResults;
       _captureOpenState();
       _renderGP(tvSettings, status, groups, playoffs);
       _applyOpenState();
-    } else if (_tournamentType === 'playoff') {
+    } else if (tvState.tournamentType === 'playoff') {
       const [status, playoffs] = dataResults;
       _captureOpenState();
       _renderPO(tvSettings, status, playoffs);
       _applyOpenState();
     } else {
       const [status, matches, playoffs] = dataResults;
-      _breakdowns = matches.breakdowns || {};
-      _tvPlayerMap = {};
-      for (const p of (status.players || [])) _tvPlayerMap[p.id] = p.name;
+      tvState.breakdowns = matches.breakdowns || {};
+      tvState.playerMap = {};
+      for (const p of (status.players || [])) tvState.playerMap[p.id] = p.name;
       _captureOpenState();
       _renderMex(tvSettings, status, matches, playoffs);
       _applyOpenState();
@@ -582,7 +582,7 @@ async function loadTV() {
     const root = document.getElementById('tv-root');
     if (root) root.innerHTML = `<div class="tv-error">${t('txt_txt_error_loading_data_value', { value: esc(e.message) })}</div>`;
   } finally {
-    _isRefreshing = false;
+    tvState.isRefreshing = false;
     const dot = document.getElementById('refresh-dot');
     if (dot) dot.classList.remove('refreshing');
     _renderPlayerBar();
@@ -606,7 +606,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
   const assignmentMatches = isPlayoffs ? pendingPlayoff : pendingGroup;
   const courtTitle = isPlayoffs ? t('txt_txt_court_assignments_play_offs') : t('txt_txt_court_assignments_group_stage');
 
-  let html = _buildHeader(_tournamentName, phase, champion);
+  let html = _buildHeader(tvState.tournamentName, phase, champion);
   html += _buildBanner(tvSettings);
 
   if (champion) {
@@ -682,7 +682,7 @@ function _renderPO(tvSettings, status, playoffs) {
 
   const pending = _sortTbdLast((playoffs?.pending || []).filter(m => m.status !== 'completed'));
 
-  let html = _buildHeader(_tournamentName, phase, champion);
+  let html = _buildHeader(tvState.tournamentName, phase, champion);
   html += _buildBanner(tvSettings);
 
   if (champion) {
@@ -725,7 +725,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
   const assignmentMatches = isPlayoffs ? pendingPlayoff : pendingCurrent;
   const courtTitle = isPlayoffs ? t('txt_txt_court_assignments_mexicano_play_offs') : t('txt_txt_court_assignments_current_round');
 
-  let html = _buildHeader(_tournamentName, phase, champion);
+  let html = _buildHeader(tvState.tournamentName, phase, champion);
   html += _buildBanner(tvSettings);
 
   if (champion) {
@@ -785,7 +785,6 @@ function _renderMex(tvSettings, status, matches, playoffs) {
 // ── Shared builders ───────────────────────────────────────
 
 // ── Abbreviation legend popup ──────────────────────────────
-let _abbrevPopupBtn = null;
 
 function _buildAbbrevLegend(type) {
   const rows = type === 'standings' ? [
@@ -812,12 +811,12 @@ function showAbbrevPopup(event, type) {
   event.stopPropagation();
   const popup = document.getElementById('abbrev-popup');
   const btn = event.currentTarget;
-  if (popup.style.display === 'block' && _abbrevPopupBtn === btn) {
+  if (popup.style.display === 'block' && tvState.abbrevPopupBtn === btn) {
     popup.style.display = 'none';
-    _abbrevPopupBtn = null;
+    tvState.abbrevPopupBtn = null;
     return;
   }
-  _abbrevPopupBtn = btn;
+  tvState.abbrevPopupBtn = btn;
   popup.innerHTML = _buildAbbrevLegend(type);
   popup.style.display = 'block';
   const rect = btn.getBoundingClientRect();
@@ -829,13 +828,13 @@ function showAbbrevPopup(event, type) {
 
 document.addEventListener('click', () => {
   const p = document.getElementById('abbrev-popup');
-  if (p) { p.style.display = 'none'; _abbrevPopupBtn = null; }
+  if (p) { p.style.display = 'none'; tvState.abbrevPopupBtn = null; }
 });
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     const p = document.getElementById('abbrev-popup');
-    if (p) { p.style.display = 'none'; _abbrevPopupBtn = null; }
+    if (p) { p.style.display = 'none'; tvState.abbrevPopupBtn = null; }
   }
 });
 
@@ -867,9 +866,9 @@ function _buildHeader(name, phase, champion) {
   return `
     <div class="tv-header">
       <div class="tv-header-title-row">
-        ${_buildPageSelectorHtml('tv')}
+        <div class="tv-lang-cell"><button type="button" id="lang-toggle-btn" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button></div>
+        ${buildPageSelectorHtml('tv')}
         <div class="tv-toggle-btns">
-          <button type="button" id="lang-toggle-btn" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button>
           <button type="button" id="theme-toggle-btn" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>
         </div>
       </div>
@@ -889,7 +888,7 @@ function _buildHeader(name, phase, champion) {
           <div id="player-login-slot"></div>
           <div class="refresh-indicator">
             <div class="refresh-dot" id="refresh-dot"></div>
-            <span id="tv-countdown">↻ ${_refreshIntervalSecs}s</span>
+            <span id="tv-countdown">↻ ${tvState.refreshIntervalSecs}s</span>
             <button type="button" onclick="loadTV()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;font-size:0.8rem;line-height:1" title="${t('txt_txt_refresh_now')}">↻</button>
           </div>
         </div>
@@ -936,8 +935,9 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
       for (const m of _byRound[key]) {
         const tbd = _hasTbd(m);
         html += `<div class="court-match"${tbd ? ' style="opacity:0.5"' : ''}>`;
-        html += `<div class="court-match-teams">${esc(_tl(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl(m.team2))}</div>`;
+        html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl(m.team2))}</div>`;
         html += _commentHtml(m);
+        html += `</div>`;
         if (scoreCtx) html += _buildPlayerScoreForm(m, scoreCtx);
         html += `</div>`;
       }
@@ -982,9 +982,10 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
     html += `<div class="court-card">`;
     html += `<div class="court-name">${esc(courtName)}</div>`;
     html += `<div class="court-match">`;
-    html += `<div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(t2)}</div>`;
+    html += `<div class="court-match-info"><div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(t2)}</div>`;
     if (m.round_label) html += `<div class="court-match-meta">${esc(m.round_label)}</div>`;
     html += _commentHtml(m);
+    html += `</div>`;
     if (scoreCtx) html += _buildPlayerScoreForm(m, scoreCtx);
     html += `</div>`;
     html += `</div>`;
@@ -1015,8 +1016,9 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
     for (const m of byRound2[key]) {
       const tbd = _hasTbd2(m);
       html += `<div class="court-match"${tbd ? ' style="opacity:0.5"' : ''}>`;
-      html += `<div class="court-match-teams">${esc(_tl2(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl2(m.team2))}</div>`;
+      html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl2(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl2(m.team2))}</div>`;
       html += _commentHtml(m);
+      html += `</div>`;
       if (scoreCtx) html += _buildPlayerScoreForm(m, scoreCtx);
       html += `</div>`;
     }
@@ -1088,7 +1090,7 @@ function _buildHistoryMatch(m, tvSettings, isMex) {
 
   // Score breakdown for Mexicano matches
   if (isMex && tvSettings.show_score_breakdown) {
-    const bd = _breakdowns[m.id];
+    const bd = tvState.breakdowns[m.id];
     if (bd && Object.keys(bd).length > 0) {
       html += `<details style="margin-top:-0.3rem;margin-bottom:0.4rem">`;
       html += `<summary class="breakdown-toggle">📊 ${t('txt_txt_score_breakdown')}</summary>`;
@@ -1097,7 +1099,7 @@ function _buildHistoryMatch(m, tvSettings, isMex) {
       html += `<th>${t('txt_txt_player')}</th><th>${t('txt_txt_raw')}</th><th>${t('txt_txt_strength_multiplier')}</th><th>${t('txt_txt_loss_disc_multiplier')}</th><th>${t('txt_txt_win_bonus_header')}</th><th>${t('txt_txt_final')}</th>`;
       html += `</tr></thead><tbody>`;
       for (const [pid, d] of Object.entries(bd)) {
-        html += `<tr><td>${esc(_tvPlayerMap[pid] || pid)}</td><td>${d.raw}</td>`;
+        html += `<tr><td>${esc(tvState.playerMap[pid] || pid)}</td><td>${d.raw}</td>`;
         html += `<td>${d.strength_mult !== 1 ? '×' + d.strength_mult.toFixed(2) : '—'}</td>`;
         html += `<td>${d.loss_disc !== 1 ? '×' + d.loss_disc.toFixed(2) : '—'}</td>`;
         html += `<td>${d.win_bonus > 0 ? '+' + d.win_bonus : '—'}</td>`;
@@ -1139,9 +1141,9 @@ function _renderPickerHtml(tournaments) {
   const langToggle = _languageToggleMeta();
   let html = `<div class="tv-picker">`;
   html += `<div class="tv-header-title-row" style="margin-bottom:1rem">`;
-  html += _buildPageSelectorHtml('tv');
+  html += `<div class="tv-lang-cell"><button type="button" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button></div>`;
+  html += buildPageSelectorHtml('tv');
   html += `<div class="tv-toggle-btns">`;
-  html += `<button type="button" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button>`;
   html += `<button type="button" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>`;
   html += `</div>`;
   html += `</div>`;
@@ -1156,7 +1158,7 @@ function _renderPickerHtml(tournaments) {
       const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
       const pickerSlug = tournament.alias || tournament.id;
       html += `<a class="tv-picker-item" href="/tv/${encodeURIComponent(pickerSlug)}">`;
-      html += `${esc(tournament.name)}<span class="picker-badge picker-badge-sport">${esc(sportLabel)}</span>${!isTennis ? `<span class="picker-badge picker-badge-type">${modeLabel}</span>` : ''}<span class="picker-badge picker-badge-phase">${phaseLabel}</span>${aliasTag}`;
+      html += `${esc(tournament.name)}<span class="picker-badge picker-badge-sport">${esc(sportLabel)}</span>${!isTennis ? `<span class="picker-badge picker-badge-type">${esc(modeLabel)}</span>` : ''}<span class="picker-badge picker-badge-phase">${esc(phaseLabel)}</span>${aliasTag}`;
       html += `</a>`;
     }
     html += `</ul>`;
@@ -1178,14 +1180,14 @@ async function _showPicker() {
 
   // Poll /api/version every 2 s (lightweight). Re-fetch + re-render only when
   // the version changes, so visibility/creation changes appear within ~2 s.
-  if (_pickerPollTimer) return; // already running — don't stack timers
+  if (tvState.pickerPollTimer) return; // already running — don't stack timers
   let _pickerVersion = null;
   try {
     const vd = await fetch('/api/version').then(r => r.json());
     _pickerVersion = vd.version;
   } catch (_) {}
 
-  _pickerPollTimer = setInterval(async () => {
+  tvState.pickerPollTimer = setInterval(async () => {
     try {
       const vd = await fetch('/api/version').then(r => r.json());
       if (_pickerVersion !== null && vd.version !== _pickerVersion) {

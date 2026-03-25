@@ -6,9 +6,10 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 
+from .rate_limit import BoundedRateLimiter
 from ..auth.deps import get_current_user, get_current_user_optional, get_current_player, PlayerIdentity
 from ..auth.models import User
 from ..models import Court, Player, TournamentType
@@ -23,19 +24,37 @@ from .helpers import (
     _schema_image_response,
     _serialize_match,
     _tennis_sets_to_scores,
+    _store_tournament,
 )
 from .schemas import CreatePlayoffRequest, RecordScoreRequest, RecordTennisScoreRequest
-from .state import _next_id, _save_tournament, _tournaments
+from .state import _global_lock, _next_id, _save_tournament, _tournaments, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["playoff"])
 
 _PO = TournamentType.PLAYOFF.value
 
+_CREATE_MAX_ATTEMPTS = 20
+_CREATE_WINDOW_SECONDS = 60
+_CREATE_MAX_TRACKED_IPS = 4096
+
+_create_rate_limiter = BoundedRateLimiter(
+    max_attempts=_CREATE_MAX_ATTEMPTS,
+    window_seconds=_CREATE_WINDOW_SECONDS,
+    max_tracked_ips=_CREATE_MAX_TRACKED_IPS,
+)
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
 
 @router.post("/playoff")
-async def create_playoff(req: CreatePlayoffRequest, user=Depends(get_current_user)) -> dict:
+async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depends(get_current_user)) -> dict:
     """Create a new standalone Play-off tournament and seed the bracket immediately."""
+    client_ip = _client_ip(request)
+    _create_rate_limiter.check(client_ip, "Too many tournament creation attempts — try again later")
+    _create_rate_limiter.record(client_ip)
     # Each participant name becomes a single-entry team in the bracket.
     teams: list[list[Player]] = [[Player(name=n)] for n in req.participant_names]
     courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
@@ -47,20 +66,14 @@ async def create_playoff(req: CreatePlayoffRequest, user=Depends(get_current_use
         team_mode=req.team_mode,
     )
 
-    tid = _next_id()
-    _tournaments[tid] = {
-        "name": req.name,
-        "type": TournamentType.PLAYOFF.value,
-        "tournament": t,
-        "owner": user.username,
-        "public": req.public,
-        "sport": req.sport.value,
-        "assign_courts": req.assign_courts,
-    }
-    _save_tournament(tid)
-    # Flatten all teams into individual players for secret generation.
     all_players = [p for team in teams for p in team]
-    create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in all_players])
+    async with _global_lock:
+        tid = _next_id()
+        _store_tournament(tid, name=req.name, tournament_type=TournamentType.PLAYOFF.value,
+                          tournament=t, owner=user.username, public=req.public,
+                          sport=req.sport.value, assign_courts=req.assign_courts)
+        # Flatten all teams into individual players for secret generation.
+        create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in all_players])
     return {"id": tid, "phase": t.phase}
 
 
@@ -129,16 +142,17 @@ async def po_record(
     player: PlayerIdentity | None = Depends(get_current_player),
 ) -> dict:
     """Record a raw-score result for a play-off match."""
-    t: PlayoffTournament = _get_tournament(tid, _PO)["tournament"]
-    match = _find_match(t, req.match_id)
-    if match is None:
-        raise HTTPException(404, "Match not found")
-    _require_score_permission(tid, match, user, player)
-    try:
-        t.record_result(req.match_id, (req.score1, req.score2))
-    except (KeyError, RuntimeError, ValueError) as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: PlayoffTournament = _get_tournament(tid, _PO)["tournament"]
+        match = _find_match(t, req.match_id)
+        if match is None:
+            raise HTTPException(404, "Match not found")
+        _require_score_permission(tid, match, user, player)
+        try:
+            t.record_result(req.match_id, (req.score1, req.score2))
+        except (KeyError, RuntimeError, ValueError) as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {"ok": True, "phase": t.phase}
 
 
@@ -150,17 +164,18 @@ async def po_record_tennis(
     player: PlayerIdentity | None = Depends(get_current_player),
 ) -> dict:
     """Record a play-off match using tennis-style set scores."""
-    t: PlayoffTournament = _get_tournament(tid, _PO)["tournament"]
-    match = _find_match(t, req.match_id)
-    if match is None:
-        raise HTTPException(404, "Match not found")
-    _require_score_permission(tid, match, user, player)
     total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
-    try:
-        t.record_result(req.match_id, (total1, total2), sets=sets_tuples)
-    except (KeyError, RuntimeError, ValueError) as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: PlayoffTournament = _get_tournament(tid, _PO)["tournament"]
+        match = _find_match(t, req.match_id)
+        if match is None:
+            raise HTTPException(404, "Match not found")
+        _require_score_permission(tid, match, user, player)
+        try:
+            t.record_result(req.match_id, (total1, total2), sets=sets_tuples)
+        except (KeyError, RuntimeError, ValueError) as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {
         "ok": True,
         "phase": t.phase,

@@ -584,3 +584,146 @@ class TestRegistrationAPI:
     def test_player_login_nonexistent_lobby_returns_404(self, client):
         r = client.post("/api/registrations/r999/player-login", json={"passphrase": "some-pass-word"})
         assert r.status_code == 404
+
+    def test_player_update_answers_with_passphrase(self, client, auth_headers):
+        rid = self._create_registration(
+            client,
+            auth_headers,
+            questions=[
+                {"key": "q0", "label": "Level", "type": "text", "required": True},
+                {"key": "q1", "label": "Side", "type": "text", "required": False},
+            ],
+        )
+        reg = client.post(
+            f"/api/registrations/{rid}/register",
+            json={"player_name": "Alice", "answers": {"q0": "intermediate"}},
+        )
+        passphrase = reg.json()["passphrase"]
+
+        upd = client.patch(
+            f"/api/registrations/{rid}/player-answers",
+            json={"passphrase": passphrase, "answers": {"q0": "advanced", "q1": "right"}},
+        )
+        assert upd.status_code == 200
+        assert upd.json()["answers"] == {"q0": "advanced", "q1": "right"}
+
+        pub = client.get(f"/api/registrations/{rid}/public")
+        assert pub.status_code == 200
+        assert pub.json()["registrants"][0]["answers"] == {"q0": "advanced", "q1": "right"}
+
+    def test_player_update_answers_requires_required_questions(self, client, auth_headers):
+        rid = self._create_registration(
+            client,
+            auth_headers,
+            questions=[{"key": "q0", "label": "Level", "type": "text", "required": True}],
+        )
+        reg = client.post(
+            f"/api/registrations/{rid}/register",
+            json={"player_name": "Alice", "answers": {"q0": "beginner"}},
+        )
+        passphrase = reg.json()["passphrase"]
+
+        upd = client.patch(
+            f"/api/registrations/{rid}/player-answers",
+            json={"passphrase": passphrase, "answers": {}},
+        )
+        assert upd.status_code == 400
+
+    def test_player_cancel_registration_with_passphrase(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers)
+        reg = client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+        passphrase = reg.json()["passphrase"]
+
+        cancel = client.post(f"/api/registrations/{rid}/player-cancel", json={"passphrase": passphrase})
+        assert cancel.status_code == 200
+        assert cancel.json() == {"ok": True}
+
+        pub = client.get(f"/api/registrations/{rid}/public")
+        assert pub.status_code == 200
+        assert pub.json()["registrant_count"] == 0
+
+    def test_player_self_service_works_via_alias(self, client, auth_headers):
+        rid = self._create_registration(
+            client,
+            auth_headers,
+            questions=[{"key": "q0", "label": "Level", "type": "text", "required": False}],
+        )
+        alias = "self-service-alias"
+        set_alias = client.put(
+            f"/api/registrations/{rid}/alias",
+            json={"alias": alias},
+            headers=auth_headers,
+        )
+        assert set_alias.status_code == 200
+
+        reg = client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+        passphrase = reg.json()["passphrase"]
+
+        upd = client.patch(
+            f"/api/registrations/{alias}/player-answers",
+            json={"passphrase": passphrase, "answers": {"q0": "advanced"}},
+        )
+        assert upd.status_code == 200
+        assert upd.json()["answers"] == {"q0": "advanced"}
+
+        cancel = client.post(f"/api/registrations/{alias}/player-cancel", json={"passphrase": passphrase})
+        assert cancel.status_code == 200
+
+        pub = client.get(f"/api/registrations/{rid}/public")
+        assert pub.status_code == 200
+        assert pub.json()["registrant_count"] == 0
+
+    def test_registration_alias_allows_access_to_existing_registrants(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers, name="Alias Lobby")
+        created = client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+        assert created.status_code == 200
+        passphrase = created.json()["passphrase"]
+
+        alias = "alias-lobby"
+        set_alias = client.put(
+            f"/api/registrations/{rid}/alias",
+            json={"alias": alias},
+            headers=auth_headers,
+        )
+        assert set_alias.status_code == 200
+
+        public_alias = client.get(f"/api/registrations/{alias}/public")
+        assert public_alias.status_code == 200
+        assert public_alias.json()["id"] == rid
+        assert public_alias.json()["registrant_count"] == 1
+
+        login_alias = client.post(
+            f"/api/registrations/{alias}/player-login",
+            json={"passphrase": passphrase},
+        )
+        assert login_alias.status_code == 200
+        assert login_alias.json()["player_name"] == "Alice"
+
+    def test_registration_alias_supports_admin_and_public_mutations(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers, name="Alias Mutations")
+        alias = "alias-mutations"
+        set_alias = client.put(
+            f"/api/registrations/{rid}/alias",
+            json={"alias": alias},
+            headers=auth_headers,
+        )
+        assert set_alias.status_code == 200
+
+        reg_via_alias = client.post(f"/api/registrations/{alias}/register", json={"player_name": "Bob"})
+        assert reg_via_alias.status_code == 200
+
+        admin_update_alias = client.patch(
+            f"/api/registrations/{alias}",
+            json={"open": False},
+            headers=auth_headers,
+        )
+        assert admin_update_alias.status_code == 200
+
+        admin_get_id = client.get(f"/api/registrations/{rid}", headers=auth_headers)
+        assert admin_get_id.status_code == 200
+        assert admin_get_id.json()["open"] is False
+        assert len(admin_get_id.json()["registrants"]) == 1
+
+        public_get_alias = client.get(f"/api/registrations/{alias}/public")
+        assert public_get_alias.status_code == 200
+        assert public_get_alias.json()["registrant_count"] == 1

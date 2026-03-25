@@ -219,7 +219,7 @@ class TestPlayerAuthEndpoint:
         """After 10 failures the endpoint returns 429."""
         import backend.api.routes_player_auth as rpa
 
-        rpa._fail_log.clear()
+        rpa._rate_limiter._log.clear()
 
         tid = _create_gp(client, auth_headers)
         for _ in range(10):
@@ -230,7 +230,7 @@ class TestPlayerAuthEndpoint:
         assert r.status_code == 429
 
         # Clean up so other tests aren't affected
-        rpa._fail_log.clear()
+        rpa._rate_limiter._log.clear()
 
 
 # ────────────────────────────────────────────────────────────────────────────

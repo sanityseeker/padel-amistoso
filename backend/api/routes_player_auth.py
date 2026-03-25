@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import io
 import time
-from collections import defaultdict
+from collections import OrderedDict
 
 import segno
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -32,26 +32,56 @@ router = APIRouter(prefix="/api/tournaments", tags=["player-auth"])
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Rate limiting (simple in-memory, per-IP)
+# Rate limiting (bounded in-memory, per-IP)
 # ────────────────────────────────────────────────────────────────────────────
 
 _MAX_ATTEMPTS = 10
 _WINDOW_SECONDS = 60
-_fail_log: dict[str, list[float]] = defaultdict(list)
+_MAX_TRACKED_IPS = 4096
+
+
+class _BoundedRateLimiter:
+    """Per-IP rate limiter with an upper bound on tracked IPs.
+
+    Uses an OrderedDict as an LRU cache — when the IP limit is exceeded the
+    oldest entry is evicted so memory usage stays bounded even under a
+    distributed brute-force attack.
+    """
+
+    def __init__(self, max_attempts: int, window: float, cap: int) -> None:
+        self._max_attempts = max_attempts
+        self._window = window
+        self._cap = cap
+        self._log: OrderedDict[str, list[float]] = OrderedDict()
+
+    def check(self, ip: str) -> None:
+        now = time.monotonic()
+        attempts = self._log.get(ip, [])
+        attempts = [t for t in attempts if now - t < self._window]
+        self._log[ip] = attempts
+        self._log.move_to_end(ip)
+        if len(attempts) >= self._max_attempts:
+            raise HTTPException(429, "Too many failed attempts — try again later")
+
+    def record(self, ip: str) -> None:
+        attempts = self._log.get(ip, [])
+        attempts.append(time.monotonic())
+        self._log[ip] = attempts
+        self._log.move_to_end(ip)
+        while len(self._log) > self._cap:
+            self._log.popitem(last=False)
+
+
+_rate_limiter = _BoundedRateLimiter(_MAX_ATTEMPTS, _WINDOW_SECONDS, _MAX_TRACKED_IPS)
 
 
 def _check_rate_limit(client_ip: str) -> None:
     """Raise 429 if *client_ip* exceeded the failure threshold."""
-    now = time.monotonic()
-    attempts = _fail_log[client_ip]
-    # Prune old entries
-    _fail_log[client_ip] = [t for t in attempts if now - t < _WINDOW_SECONDS]
-    if len(_fail_log[client_ip]) >= _MAX_ATTEMPTS:
-        raise HTTPException(429, "Too many failed attempts — try again later")
+    _rate_limiter.check(client_ip)
 
 
 def _record_failure(client_ip: str) -> None:
-    _fail_log[client_ip].append(time.monotonic())
+    _rate_limiter.record(client_ip)
 
 
 # ────────────────────────────────────────────────────────────────────────────

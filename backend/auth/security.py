@@ -40,6 +40,7 @@ def _get_jwt_secret() -> str:
 
     secret = secrets.token_urlsafe(64)
     _SECRET_FILE.write_text(secret)
+    _SECRET_FILE.chmod(0o600)
     return secret
 
 

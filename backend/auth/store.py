@@ -66,12 +66,26 @@ class UserStore:
     def bootstrap_default_admin(self) -> bool:
         """Create a default ``admin`` user if the store is empty.
 
+        If ``PADEL_ADMIN_PASSWORD`` is set, that value is used as the
+        initial password.  Otherwise a random password is generated and
+        printed to the console so the operator can log in.
+
         Returns True if a user was created.
         """
+        import os
+        import secrets as _secrets
+
         if self._users:
             return False
-        self.create_user("admin", "admin", role=UserRole.ADMIN)
-        logger.info("Created default admin user (username=admin, password=admin) — change it!")
+        password = os.environ.get("PADEL_ADMIN_PASSWORD", "")
+        if not password:
+            password = _secrets.token_urlsafe(16)
+            logger.warning(
+                "No PADEL_ADMIN_PASSWORD set — generated initial admin password: %s",
+                password,
+            )
+        self.create_user("admin", password, role=UserRole.ADMIN)
+        logger.info("Created default admin user (username=admin)")
         return True
 
     # ── CRUD ───────────────────────────────────────────────

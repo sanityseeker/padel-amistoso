@@ -23,11 +23,53 @@ Safety guarantees
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
 import pickle
 
 from .db import get_db
+
+# ---------------------------------------------------------------------------
+# Restricted unpickler — only allow known tournament-related classes
+# ---------------------------------------------------------------------------
+
+_ALLOWED_PICKLE_CLASSES: dict[str, set[str]] = {
+    "backend.models": {
+        "MatchStatus", "Sport", "TournamentType", "GPPhase", "MexPhase",
+        "POPhase", "Player", "Court", "Match", "GroupStanding",
+    },
+    "backend.tournaments.group_playoff": {"GroupPlayoffTournament"},
+    "backend.tournaments.mexicano": {"MexicanoTournament", "MexicanoConfig"},
+    "backend.tournaments.playoff_tournament": {"PlayoffTournament"},
+    "backend.tournaments.group_stage": {"Group"},
+    "backend.tournaments.playoff": {
+        "BracketSlot", "SingleEliminationBracket", "DoubleEliminationBracket",
+    },
+    "backend.tournaments.player_secrets": {"PlayerSecret"},
+    # Standard-library types that pickle's REDUCE opcode may reference
+    "collections": {"defaultdict", "OrderedDict"},
+    "builtins": {"set", "frozenset"},
+    "datetime": {"datetime", "date", "timedelta"},
+    "pydantic.main": {"BaseModel"},
+}
+
+
+class _RestrictedUnpickler(pickle.Unpickler):
+    """Unpickler that refuses to instantiate classes outside the allow-list."""
+
+    def find_class(self, module: str, name: str) -> type:
+        allowed = _ALLOWED_PICKLE_CLASSES.get(module)
+        if allowed is not None and name in allowed:
+            return super().find_class(module, name)
+        raise pickle.UnpicklingError(
+            f"Blocked attempt to unpickle {module}.{name}"
+        )
+
+
+def _safe_loads(data: bytes) -> object:
+    """Deserialise a pickle blob using the restricted unpickler."""
+    return _RestrictedUnpickler(io.BytesIO(data)).load()
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +89,23 @@ _tournament_versions: dict[str, int] = {}
 # full list every tick.
 _state_version: int = 0
 
-# Single asyncio lock that serialises all state mutations in this process.
-state_lock: asyncio.Lock = asyncio.Lock()
+# Per-tournament asyncio locks so concurrent writes to different tournaments
+# don't block each other.  A lightweight global lock protects _next_id() and
+# creation-time operations that don't yet have a TID.
+_tournament_locks: dict[str, asyncio.Lock] = {}
+_global_lock: asyncio.Lock = asyncio.Lock()
+
+# Backwards-compatible alias kept for any remaining import sites.
+state_lock = _global_lock
+
+
+def get_tournament_lock(tid: str) -> asyncio.Lock:
+    """Return the per-tournament lock, creating it lazily if needed."""
+    lock = _tournament_locks.get(tid)
+    if lock is None:
+        lock = asyncio.Lock()
+        _tournament_locks[tid] = lock
+    return lock
 
 
 def _next_id() -> str:
@@ -122,6 +179,7 @@ def _delete_tournament(tid: str) -> None:
     global _state_version
     _state_version += 1
     _tournament_versions.pop(tid, None)
+    _tournament_locks.pop(tid, None)
     try:
         with get_db() as conn:
             conn.execute("DELETE FROM tournaments WHERE id = ?", (tid,))
@@ -149,7 +207,7 @@ def _load_state() -> None:
     for row in rows:
         tid = row["id"]
         try:
-            tournament = pickle.loads(row["tournament_blob"])  # noqa: S301
+            tournament = _safe_loads(row["tournament_blob"])
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not deserialise tournament %s, skipping: %s", tid, exc)
             continue

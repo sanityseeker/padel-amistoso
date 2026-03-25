@@ -35,6 +35,8 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from matplotlib.patches import FancyBboxPatch
 
+from ..tournaments.pairing import seed_with_group_diversity
+
 # ────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ────────────────────────────────────────────────────────────────────────────
@@ -265,11 +267,22 @@ def _compute_layout(
     slot_spacing = max(0.7, total_group_height / max(total_slots, 1))
     y_adv_start = (total_slots - 1) * slot_spacing / 2
 
-    # Build the seeded order: list of (group_index, rank_within_group)
+    # Build the seeded order: list of (group_index, rank_within_group).
+    # Rank-interleaved: A1,B1,C1,A2,B2,C2,… so same-rank teams are adjacent.
     seeded_order: list[tuple[int, int]] = []
     for ai in range(advance_per_group):
         for gi in range(num_groups):
             seeded_order.append((gi, ai))
+
+    # For >2 groups, permute within slots to avoid same-group R1/effective-R1
+    # matchups in the bracket preview.
+    if num_groups > 2:
+        group_ids = [gi for gi, _ai in seeded_order]
+        seeded_order = seed_with_group_diversity(
+            seeded_order,
+            group_ids,
+            score_key=lambda t: -t[1],
+        )
 
     advance_nodes: list[str] = []
     for slot_idx, (gi, ai) in enumerate(seeded_order):

@@ -54,12 +54,13 @@ async def list_tournaments(current_user: User | None = Depends(get_current_user_
 
 @router.delete("/{tournament_id}")
 async def delete_tournament(tournament_id: str, user: User = Depends(get_current_user)) -> dict:
-    if tournament_id not in _tournaments:
-        raise HTTPException(404, "Tournament not found")
     _require_owner_or_admin(tournament_id, user)
-    del _tournaments[tournament_id]
-    _delete_tournament(tournament_id)
-    delete_secrets_for_tournament(tournament_id)
+    async with state.get_tournament_lock(tournament_id):
+        if tournament_id not in _tournaments:
+            raise HTTPException(404, "Tournament not found")
+        del _tournaments[tournament_id]
+        _delete_tournament(tournament_id)
+        delete_secrets_for_tournament(tournament_id)
     return {"ok": True}
 
 
@@ -88,57 +89,61 @@ async def get_tv_settings(tid: str) -> dict:
 @router.patch("/{tid}/tv-settings")
 async def update_tv_settings(tid: str, req: TvSettingsRequest, user: User = Depends(get_current_user)) -> dict:
     """Partially update TV display settings (only supplied fields are changed)."""
-    if tid not in _tournaments:
-        raise HTTPException(404, "Tournament not found")
     _require_owner_or_admin(tid, user)
-    stored = _tournaments[tid].get("tv_settings")
-    current = TvSettings(**stored) if stored else TvSettings()
-    patch = req.model_dump(exclude_none=True)
-    # Merge score_mode dict instead of replacing it entirely, so the admin
-    # can update a single context at a time.
-    if "score_mode" in patch:
-        merged = {**current.score_mode, **patch.pop("score_mode")}
-        patch["score_mode"] = merged
-    updated = current.model_copy(update=patch)
-    _tournaments[tid]["tv_settings"] = updated.model_dump()
-    _save_tournament(tid)
+    async with state.get_tournament_lock(tid):
+        if tid not in _tournaments:
+            raise HTTPException(404, "Tournament not found")
+        stored = _tournaments[tid].get("tv_settings")
+        current = TvSettings(**stored) if stored else TvSettings()
+        patch = req.model_dump(exclude_none=True)
+        # Merge score_mode dict instead of replacing it entirely, so the admin
+        # can update a single context at a time.
+        if "score_mode" in patch:
+            merged = {**current.score_mode, **patch.pop("score_mode")}
+            patch["score_mode"] = merged
+        updated = current.model_copy(update=patch)
+        _tournaments[tid]["tv_settings"] = updated.model_dump()
+        _save_tournament(tid)
     return updated.model_dump()
 
 
 @router.patch("/{tid}/public")
 async def set_public(tid: str, req: SetPublicRequest, user: User = Depends(get_current_user)) -> dict:
     """Set whether the tournament is publicly listed for guests."""
-    if tid not in _tournaments:
-        raise HTTPException(404, "Tournament not found")
     _require_owner_or_admin(tid, user)
-    _tournaments[tid]["public"] = req.public
-    _save_tournament(tid)
+    async with state.get_tournament_lock(tid):
+        if tid not in _tournaments:
+            raise HTTPException(404, "Tournament not found")
+        _tournaments[tid]["public"] = req.public
+        _save_tournament(tid)
     return {"ok": True, "public": req.public}
 
 
 @router.put("/{tid}/alias")
 async def set_alias(tid: str, req: SetAliasRequest, user: User = Depends(get_current_user)) -> dict:
     """Set a human-friendly alias for a tournament (used in TV URLs like /tv/my-tourney)."""
-    if tid not in _tournaments:
-        raise HTTPException(404, "Tournament not found")
     _require_owner_or_admin(tid, user)
-    # Check uniqueness: no other tournament should have this alias.
-    for other_tid, data in _tournaments.items():
-        if other_tid != tid and data.get("alias") == req.alias:
-            raise HTTPException(409, f"Alias '{req.alias}' is already used by tournament {other_tid}")
-    _tournaments[tid]["alias"] = req.alias
-    _save_tournament(tid)
+    async with state.get_tournament_lock(tid):
+        if tid not in _tournaments:
+            raise HTTPException(404, "Tournament not found")
+        # Check uniqueness: no other tournament should have this alias.
+        for other_tid, data in _tournaments.items():
+            if other_tid != tid and data.get("alias") == req.alias:
+                raise HTTPException(409, f"Alias '{req.alias}' is already used by tournament {other_tid}")
+        _tournaments[tid]["alias"] = req.alias
+        _save_tournament(tid)
     return {"ok": True, "alias": req.alias}
 
 
 @router.delete("/{tid}/alias")
 async def delete_alias(tid: str, user: User = Depends(get_current_user)) -> dict:
     """Remove the alias from a tournament."""
-    if tid not in _tournaments:
-        raise HTTPException(404, "Tournament not found")
     _require_owner_or_admin(tid, user)
-    _tournaments[tid].pop("alias", None)
-    _save_tournament(tid)
+    async with state.get_tournament_lock(tid):
+        if tid not in _tournaments:
+            raise HTTPException(404, "Tournament not found")
+        _tournaments[tid].pop("alias", None)
+        _save_tournament(tid)
     return {"ok": True}
 
 
@@ -176,13 +181,14 @@ async def get_tournament_meta(tid: str) -> dict:
 @router.patch("/{tid}/match-comment")
 async def set_match_comment(tid: str, req: SetMatchCommentRequest, user: User = Depends(get_current_user)) -> dict:
     """Set or clear an optional admin comment on a match."""
-    if tid not in _tournaments:
-        raise HTTPException(404, "Tournament not found")
     _require_owner_or_admin(tid, user)
-    tournament = _tournaments[tid]["tournament"]
-    match = _find_match(tournament, req.match_id)
-    if match is None:
-        raise HTTPException(404, "Match not found")
-    match.comment = req.comment.strip()
-    _save_tournament(tid)
+    async with state.get_tournament_lock(tid):
+        if tid not in _tournaments:
+            raise HTTPException(404, "Tournament not found")
+        tournament = _tournaments[tid]["tournament"]
+        match = _find_match(tournament, req.match_id)
+        if match is None:
+            raise HTTPException(404, "Match not found")
+        match.comment = req.comment.strip()
+        _save_tournament(tid)
     return {"ok": True, "match_id": req.match_id, "comment": match.comment}

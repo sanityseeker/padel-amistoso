@@ -6,9 +6,10 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 
+from .rate_limit import BoundedRateLimiter
 from ..auth.deps import get_current_user, get_current_user_optional, get_current_player, PlayerIdentity
 from ..auth.models import User
 from ..models import Court, Player, TournamentType
@@ -23,6 +24,7 @@ from .helpers import (
     _require_owner_or_admin,
     _require_score_permission,
     _find_match,
+    _store_tournament,
 )
 from .schemas import (
     CreateMexicanoRequest,
@@ -32,17 +34,34 @@ from .schemas import (
     RecordTennisScoreRequest,
     StartMexicanoPlayoffsRequest,
 )
-from .state import _next_id, _save_tournament, _tournaments
+from .state import _global_lock, _next_id, _save_tournament, _tournaments, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["mexicano"])
 
 _MEX = TournamentType.MEXICANO.value
 
+_CREATE_MAX_ATTEMPTS = 20
+_CREATE_WINDOW_SECONDS = 60
+_CREATE_MAX_TRACKED_IPS = 4096
+
+_create_rate_limiter = BoundedRateLimiter(
+    max_attempts=_CREATE_MAX_ATTEMPTS,
+    window_seconds=_CREATE_WINDOW_SECONDS,
+    max_tracked_ips=_CREATE_MAX_TRACKED_IPS,
+)
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
 
 @router.post("/mexicano")
-async def create_mexicano(req: CreateMexicanoRequest, user=Depends(get_current_user)) -> dict:
+async def create_mexicano(req: CreateMexicanoRequest, request: Request, user=Depends(get_current_user)) -> dict:
     """Create a new Mexicano tournament and generate the first round of matches."""
+    client_ip = _client_ip(request)
+    _create_rate_limiter.check(client_ip, "Too many tournament creation attempts — try again later")
+    _create_rate_limiter.record(client_ip)
     players = [Player(name=n) for n in req.player_names]
     courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 
@@ -64,18 +83,12 @@ async def create_mexicano(req: CreateMexicanoRequest, user=Depends(get_current_u
 
     t.generate_next_round()
 
-    tid = _next_id()
-    _tournaments[tid] = {
-        "name": req.name,
-        "type": TournamentType.MEXICANO.value,
-        "tournament": t,
-        "owner": user.username,
-        "public": req.public,
-        "sport": req.sport.value,
-        "assign_courts": req.assign_courts,
-    }
-    _save_tournament(tid)
-    create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in players])
+    async with _global_lock:
+        tid = _next_id()
+        _store_tournament(tid, name=req.name, tournament_type=TournamentType.MEXICANO.value,
+                          tournament=t, owner=user.username, public=req.public,
+                          sport=req.sport.value, assign_courts=req.assign_courts)
+        create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in players])
     return {"id": tid, "current_round": t.current_round}
 
 
@@ -131,17 +144,18 @@ async def mex_record(
     player: PlayerIdentity | None = Depends(get_current_player),
 ) -> dict:
     """Record a raw-score result for the current Mexicano match."""
-    t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
-    match = _find_match(t, req.match_id)
-    if match is None:
-        raise HTTPException(404, "Match not found")
-    _require_score_permission(tid, match, user, player)
-    try:
-        t.record_result(req.match_id, (req.score1, req.score2))
-    except (KeyError, ValueError) as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
-    breakdown = t.get_match_breakdown(req.match_id)
+    async with get_tournament_lock(tid):
+        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        match = _find_match(t, req.match_id)
+        if match is None:
+            raise HTTPException(404, "Match not found")
+        _require_score_permission(tid, match, user, player)
+        try:
+            t.record_result(req.match_id, (req.score1, req.score2))
+        except (KeyError, ValueError) as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
+        breakdown = t.get_match_breakdown(req.match_id)
     return {"ok": True, "breakdown": breakdown}
 
 
@@ -177,14 +191,15 @@ async def mex_propose_pairings(tid: str, n: int = 3, sit_out_ids: str | None = N
 async def mex_next_round(tid: str, req: NextRoundRequest = NextRoundRequest(), user=Depends(get_current_user)) -> dict:
     """Commit the chosen pairing proposal and generate the next Mexicano round."""
     _require_owner_or_admin(tid, user)
-    t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
-    if t.pending_matches():
-        raise HTTPException(400, "Current round has unfinished matches")
-    try:
-        t.generate_next_round(option_id=req.option_id)
-    except (RuntimeError, KeyError) as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        if t.pending_matches():
+            raise HTTPException(400, "Current round has unfinished matches")
+        try:
+            t.generate_next_round(option_id=req.option_id)
+        except (RuntimeError, KeyError) as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {"current_round": t.current_round}
 
 
@@ -192,17 +207,18 @@ async def mex_next_round(tid: str, req: NextRoundRequest = NextRoundRequest(), u
 async def mex_custom_round(tid: str, req: CustomRoundRequest, user=Depends(get_current_user)) -> dict:
     """Commit a manually-specified round with user-defined pairings."""
     _require_owner_or_admin(tid, user)
-    t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
-    if t.pending_matches():
-        raise HTTPException(400, "Current round has unfinished matches")
-    try:
-        t.generate_custom_round(
-            match_specs=[m.model_dump() for m in req.matches],
-            sit_out_ids=req.sit_out_ids,
-        )
-    except (RuntimeError, ValueError) as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        if t.pending_matches():
+            raise HTTPException(400, "Current round has unfinished matches")
+        try:
+            t.generate_custom_round(
+                match_specs=[m.model_dump() for m in req.matches],
+                sit_out_ids=req.sit_out_ids,
+            )
+        except (RuntimeError, ValueError) as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {"current_round": t.current_round}
 
 
@@ -217,17 +233,18 @@ async def mex_recommend_playoffs(tid: str, n_teams: int = 4) -> dict:
 async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, user=Depends(get_current_user)) -> dict:
     """Start play-offs after Mexicano rounds are complete."""
     _require_owner_or_admin(tid, user)
-    t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
-    try:
-        t.start_playoffs(
-            team_player_ids=req.team_player_ids,
-            n_teams=req.n_teams,
-            double_elimination=req.double_elimination,
-            extra_participants=[ep.model_dump() for ep in req.extra_participants] if req.extra_participants else None,
-        )
-    except (RuntimeError, ValueError, KeyError) as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        try:
+            t.start_playoffs(
+                team_player_ids=req.team_player_ids,
+                n_teams=req.n_teams,
+                double_elimination=req.double_elimination,
+                extra_participants=[ep.model_dump() for ep in req.extra_participants] if req.extra_participants else None,
+            )
+        except (RuntimeError, ValueError, KeyError) as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {"phase": t.phase}
 
 
@@ -235,12 +252,13 @@ async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, user=D
 async def mex_end(tid: str, user=Depends(get_current_user)) -> dict:
     """End Mexicano rounds and open optional play-off decision step."""
     _require_owner_or_admin(tid, user)
-    t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
-    try:
-        t.end_mexicano()
-    except RuntimeError as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        try:
+            t.end_mexicano()
+        except RuntimeError as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {"phase": t.phase, "mexicano_ended": t.mexicano_ended}
 
 
@@ -248,12 +266,13 @@ async def mex_end(tid: str, user=Depends(get_current_user)) -> dict:
 async def mex_finish(tid: str, user=Depends(get_current_user)) -> dict:
     """Finish tournament as-is without play-offs."""
     _require_owner_or_admin(tid, user)
-    t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
-    try:
-        t.finish_without_playoffs()
-    except RuntimeError as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        try:
+            t.finish_without_playoffs()
+        except RuntimeError as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {"phase": t.phase, "is_finished": t.is_finished}
 
 
@@ -312,16 +331,17 @@ async def mex_record_playoff(
     player: PlayerIdentity | None = Depends(get_current_player),
 ) -> dict:
     """Record a play-off match result."""
-    t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
-    match = _find_match(t, req.match_id)
-    if match is None:
-        raise HTTPException(404, "Match not found")
-    _require_score_permission(tid, match, user, player)
-    try:
-        t.record_playoff_result(req.match_id, (req.score1, req.score2))
-    except (KeyError, RuntimeError, ValueError) as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        match = _find_match(t, req.match_id)
+        if match is None:
+            raise HTTPException(404, "Match not found")
+        _require_score_permission(tid, match, user, player)
+        try:
+            t.record_playoff_result(req.match_id, (req.score1, req.score2))
+        except (KeyError, RuntimeError, ValueError) as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {"ok": True, "phase": t.phase}
 
 
@@ -333,17 +353,18 @@ async def mex_record_playoff_tennis(
     player: PlayerIdentity | None = Depends(get_current_player),
 ) -> dict:
     """Record a Mexicano play-off match using tennis-style set scores."""
-    t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
-    match = _find_match(t, req.match_id)
-    if match is None:
-        raise HTTPException(404, "Match not found")
-    _require_score_permission(tid, match, user, player)
     total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
-    try:
-        t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)
-    except (KeyError, RuntimeError, ValueError) as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        match = _find_match(t, req.match_id)
+        if match is None:
+            raise HTTPException(404, "Match not found")
+        _require_score_permission(tid, match, user, player)
+        try:
+            t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)
+        except (KeyError, RuntimeError, ValueError) as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {
         "ok": True,
         "phase": t.phase,

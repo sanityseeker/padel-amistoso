@@ -14,19 +14,22 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
+from .rate_limit import BoundedRateLimiter
 from ..auth.deps import get_current_user
 from ..auth.models import User, UserRole
 from ..models import Court, Player, TournamentType
 from ..tournaments import GroupPlayoffTournament, MexicanoTournament, PlayoffTournament
 from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .db import get_db
+from .helpers import _store_tournament
 from .player_secret_store import lookup_registrant_by_passphrase
 from .schemas import (
     ConvertRegistrationRequest,
     QuestionDef,
     RegistrantAdminOut,
+    RegistrantAnswersUpdateIn,
     RegistrantIn,
     RegistrantLoginIn,
     RegistrantLoginOut,
@@ -38,9 +41,23 @@ from .schemas import (
     RegistrationUpdate,
     SetAliasRequest,
 )
-from .state import _next_id, _save_tournament, _tournaments, state_lock
+from .state import _next_id, _tournaments, _global_lock
 
 router = APIRouter(prefix="/api/registrations", tags=["registrations"])
+
+_CREATE_MAX_ATTEMPTS = 20
+_CREATE_WINDOW_SECONDS = 60
+_CREATE_MAX_TRACKED_IPS = 4096
+
+_create_rate_limiter = BoundedRateLimiter(
+    max_attempts=_CREATE_MAX_ATTEMPTS,
+    window_seconds=_CREATE_WINDOW_SECONDS,
+    max_tracked_ips=_CREATE_MAX_TRACKED_IPS,
+)
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -109,8 +126,11 @@ def _parse_answers(raw: str | None) -> dict[str, str]:
 
 
 @router.post("")
-async def create_registration(req: RegistrationCreate, user: User = Depends(get_current_user)) -> dict:
+async def create_registration(req: RegistrationCreate, request: Request, user: User = Depends(get_current_user)) -> dict:
     """Create a new registration lobby."""
+    client_ip = _client_ip(request)
+    _create_rate_limiter.check(client_ip, "Too many registration creation attempts — try again later")
+    _create_rate_limiter.record(client_ip)
     rid = _next_registration_id()
     now = datetime.now(timezone.utc).isoformat()
     questions_json = json.dumps([q.model_dump() for q in req.questions]) if req.questions else None
@@ -204,7 +224,8 @@ async def get_registration(rid: str, user: User = Depends(get_current_user)) -> 
     """Get full details of a registration including all registrants."""
     reg = _get_registration(rid)
     _require_registration_owner(reg, user)
-    registrants = _get_registrants(rid)
+    reg_id = reg["id"]
+    registrants = _get_registrants(reg_id)
     return RegistrationAdminOut(
         id=reg["id"],
         name=reg["name"],
@@ -237,6 +258,7 @@ async def update_registration(rid: str, req: RegistrationUpdate, user: User = De
     """Update registration settings (partial)."""
     reg = _get_registration(rid)
     _require_registration_owner(reg, user)
+    reg_id = reg["id"]
 
     updates: list[str] = []
     params: list = []
@@ -272,7 +294,7 @@ async def update_registration(rid: str, req: RegistrationUpdate, user: User = De
         params.append(req.sport.value)
 
     if updates:
-        params.append(rid)
+        params.append(reg_id)
         with get_db() as conn:
             conn.execute(f"UPDATE registrations SET {', '.join(updates)} WHERE id = ?", params)
 
@@ -284,9 +306,10 @@ async def delete_registration(rid: str, user: User = Depends(get_current_user)) 
     """Delete a registration and all its registrants."""
     reg = _get_registration(rid)
     _require_registration_owner(reg, user)
+    reg_id = reg["id"]
     with get_db() as conn:
-        conn.execute("DELETE FROM registrants WHERE registration_id = ?", (rid,))
-        conn.execute("DELETE FROM registrations WHERE id = ?", (rid,))
+        conn.execute("DELETE FROM registrants WHERE registration_id = ?", (reg_id,))
+        conn.execute("DELETE FROM registrations WHERE id = ?", (reg_id,))
     return {"ok": True}
 
 
@@ -297,6 +320,7 @@ async def patch_registrant(
     """Override a registrant's name or level (admin)."""
     reg = _get_registration(rid)
     _require_registration_owner(reg, user)
+    reg_id = reg["id"]
 
     updates: list[str] = []
     params: list = []
@@ -308,7 +332,7 @@ async def patch_registrant(
         params.append(json.dumps(req.answers))
 
     if updates:
-        params.extend([rid, player_id])
+        params.extend([reg_id, player_id])
         with get_db() as conn:
             cur = conn.execute(
                 f"UPDATE registrants SET {', '.join(updates)} WHERE registration_id = ? AND player_id = ?",
@@ -325,10 +349,11 @@ async def delete_registrant(rid: str, player_id: str, user: User = Depends(get_c
     """Remove a registrant from a registration."""
     reg = _get_registration(rid)
     _require_registration_owner(reg, user)
+    reg_id = reg["id"]
     with get_db() as conn:
         cur = conn.execute(
             "DELETE FROM registrants WHERE registration_id = ? AND player_id = ?",
-            (rid, player_id),
+            (reg_id, player_id),
         )
         if cur.rowcount == 0:
             raise HTTPException(404, "Registrant not found")
@@ -340,7 +365,8 @@ async def get_registration_secrets(rid: str, user: User = Depends(get_current_us
     """Return all passphrase/token pairs for printing."""
     reg = _get_registration(rid)
     _require_registration_owner(reg, user)
-    registrants = _get_registrants(rid)
+    reg_id = reg["id"]
+    registrants = _get_registrants(reg_id)
     return [
         {
             "player_id": r["player_id"],
@@ -361,7 +387,8 @@ async def get_registration_secrets(rid: str, user: User = Depends(get_current_us
 async def get_registration_public(rid: str) -> RegistrationPublicOut:
     """Return public information about a registration (no secrets)."""
     reg = _get_registration(rid)
-    registrants = _get_registrants(rid)
+    reg_id = reg["id"]
+    registrants = _get_registrants(reg_id)
     return RegistrationPublicOut(
         id=reg["id"],
         name=reg["name"],
@@ -395,6 +422,7 @@ async def register_player(rid: str, req: RegistrantIn) -> dict:
     see them immediately (and scan the QR code).
     """
     reg = _get_registration(rid)
+    reg_id = reg["id"]
 
     if not reg["open"]:
         raise HTTPException(400, "Registration is closed")
@@ -421,7 +449,7 @@ async def register_player(rid: str, req: RegistrantIn) -> dict:
     with get_db() as conn:
         rows = conn.execute(
             "SELECT player_name, passphrase FROM registrants WHERE registration_id = ?",
-            (rid,),
+            (reg_id,),
         ).fetchall()
         for r in rows:
             existing_passphrases.add(r["passphrase"])
@@ -442,7 +470,7 @@ async def register_player(rid: str, req: RegistrantIn) -> dict:
             """INSERT INTO registrants
                (registration_id, player_id, player_name, passphrase, token, answers, registered_at)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (rid, player_id, req.player_name, passphrase, token, answers_json, now),
+            (reg_id, player_id, req.player_name, passphrase, token, answers_json, now),
         )
 
     return {
@@ -469,11 +497,12 @@ async def convert_registration(
     """
     registration = _get_registration(rid)
     _require_registration_owner(registration, user)
+    reg_id = registration["id"]
 
     if registration.get("converted_to_tid"):
         raise HTTPException(400, "Registration has already been converted")
 
-    registrants = _get_registrants(rid)
+    registrants = _get_registrants(reg_id)
 
     # Build the final player list from req.player_names if provided,
     # otherwise use all registrants.  Names matching existing registrants
@@ -508,7 +537,7 @@ async def convert_registration(
 
     tournament_name = req.name or registration["name"]
 
-    async with state_lock:
+    async with _global_lock:
         tid = _next_id()
 
         if req.tournament_type == "group_playoff":
@@ -524,15 +553,9 @@ async def convert_registration(
                 group_names=req.group_names,
             )
             t.generate()
-            _tournaments[tid] = {
-                "name": tournament_name,
-                "type": TournamentType.GROUP_PLAYOFF.value,
-                "tournament": t,
-                "owner": user.username,
-                "public": req.public,
-                "sport": req.sport.value,
-                "assign_courts": req.assign_courts,
-            }
+            _store_tournament(tid, name=tournament_name, tournament_type=TournamentType.GROUP_PLAYOFF.value,
+                              tournament=t, owner=user.username, public=req.public,
+                              sport=req.sport.value, assign_courts=req.assign_courts)
 
         elif req.tournament_type == "mexicano":
             players = [Player(name=name, id=pid) for name, pid in player_entries]
@@ -553,15 +576,9 @@ async def convert_registration(
             except ValueError as e:
                 raise HTTPException(400, str(e))
             t.generate_next_round()
-            _tournaments[tid] = {
-                "name": tournament_name,
-                "type": TournamentType.MEXICANO.value,
-                "tournament": t,
-                "owner": user.username,
-                "public": req.public,
-                "sport": req.sport.value,
-                "assign_courts": req.assign_courts,
-            }
+            _store_tournament(tid, name=tournament_name, tournament_type=TournamentType.MEXICANO.value,
+                              tournament=t, owner=user.username, public=req.public,
+                              sport=req.sport.value, assign_courts=req.assign_courts)
 
         elif req.tournament_type == "playoff":
             teams = [[Player(name=name, id=pid)] for name, pid in player_entries]
@@ -572,20 +589,12 @@ async def convert_registration(
                 double_elimination=req.double_elimination,
                 team_mode=req.team_mode,
             )
-            _tournaments[tid] = {
-                "name": tournament_name,
-                "type": TournamentType.PLAYOFF.value,
-                "tournament": t,
-                "owner": user.username,
-                "public": req.public,
-                "sport": req.sport.value,
-                "assign_courts": req.assign_courts,
-            }
+            _store_tournament(tid, name=tournament_name, tournament_type=TournamentType.PLAYOFF.value,
+                              tournament=t, owner=user.username, public=req.public,
+                              sport=req.sport.value, assign_courts=req.assign_courts)
 
         else:
             raise HTTPException(400, f"Unknown tournament type: {req.tournament_type}")
-
-        _save_tournament(tid)
 
     # Populate player_secrets (reuse registrant passphrases/tokens where available)
     with get_db() as conn:
@@ -603,7 +612,7 @@ async def convert_registration(
     with get_db() as conn:
         conn.execute(
             "UPDATE registrations SET converted_to_tid = ?, open = 0 WHERE id = ?",
-            (tid, rid),
+            (tid, reg_id),
         )
 
     return {"tournament_id": tid, "tournament_name": tournament_name}
@@ -639,11 +648,63 @@ async def player_login(rid: str, req: RegistrantLoginIn) -> RegistrantLoginOut:
     No admin auth required — the passphrase proves identity.
     Returns 401 if the passphrase is not found in this lobby.
     """
-    _get_registration(rid)  # 404 if lobby doesn't exist
-    result = lookup_registrant_by_passphrase(rid, req.passphrase)
+    reg = _get_registration(rid)  # 404 if lobby doesn't exist
+    result = lookup_registrant_by_passphrase(reg["id"], req.passphrase)
     if result is None:
         raise HTTPException(401, "Passphrase not found")
     return RegistrantLoginOut(**result)
+
+
+@router.patch("/{rid}/player-answers", response_model=RegistrantLoginOut)
+async def player_update_answers(rid: str, req: RegistrantAnswersUpdateIn) -> RegistrantLoginOut:
+    """Allow a returning player to update their own answers by passphrase."""
+    reg = _get_registration(rid)
+    reg_id = reg["id"]
+
+    if not reg["open"]:
+        raise HTTPException(400, "Registration is closed")
+    if reg.get("converted_to_tid"):
+        raise HTTPException(400, "Registration has already been converted to a tournament")
+
+    questions = _parse_questions(reg.get("questions"))
+    for q in questions:
+        if q.required and not req.answers.get(q.key):
+            raise HTTPException(400, f"Answer required for: {q.label}")
+
+    answers_json = json.dumps(req.answers) if req.answers else None
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE registrants SET answers = ? WHERE registration_id = ? AND passphrase = ?",
+            (answers_json, reg_id, req.passphrase),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(401, "Passphrase not found")
+
+    result = lookup_registrant_by_passphrase(reg_id, req.passphrase)
+    if result is None:
+        raise HTTPException(401, "Passphrase not found")
+    return RegistrantLoginOut(**result)
+
+
+@router.post("/{rid}/player-cancel")
+async def player_cancel_registration(rid: str, req: RegistrantLoginIn) -> dict:
+    """Allow a returning player to cancel their own registration by passphrase."""
+    reg = _get_registration(rid)
+    reg_id = reg["id"]
+
+    if not reg["open"]:
+        raise HTTPException(400, "Registration is closed")
+    if reg.get("converted_to_tid"):
+        raise HTTPException(400, "Registration has already been converted to a tournament")
+
+    with get_db() as conn:
+        cur = conn.execute(
+            "DELETE FROM registrants WHERE registration_id = ? AND passphrase = ?",
+            (reg_id, req.passphrase),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(401, "Passphrase not found")
+    return {"ok": True}
 
 
 @router.delete("/{rid}/alias")

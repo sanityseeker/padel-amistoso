@@ -69,6 +69,23 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .returning-player-details summary::-webkit-details-marker { display: none; }
 .returning-player-details[open] summary span:first-child { transform: rotate(90deg); display: inline-block; }
 
+/* Manage registration panel (returning player self-service) */
+.manage-reg { margin-top: 1.25rem; border: 1px solid var(--border); border-radius: 10px; text-align: left; }
+.manage-reg summary { cursor: pointer; padding: 0.75rem 1rem; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); list-style: none; display: flex; align-items: center; gap: 0.4rem; user-select: none; }
+.manage-reg summary::-webkit-details-marker { display: none; }
+.manage-reg[open] summary .manage-reg-arrow { transform: rotate(90deg); }
+.manage-reg-arrow { display: inline-block; font-size: 0.7em; transition: transform 0.15s; }
+.manage-reg-body { padding: 0 1rem 1rem; }
+.manage-reg-actions { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.25rem; }
+.manage-reg-actions-left { display: flex; align-items: center; gap: 0.5rem; }
+.manage-reg-success { color: var(--green); font-size: 0.82rem; }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); border-radius: 8px; cursor: pointer; font-size: 0.82rem; padding: 0.45rem 0.9rem; font-weight: 600; transition: background 0.15s, border-color 0.15s; }
+.btn-outline:hover { background: var(--bg); border-color: var(--text-muted); }
+.btn-outline:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-outline-danger { background: transparent; border: 1px solid var(--red); color: var(--red); border-radius: 8px; cursor: pointer; font-size: 0.82rem; padding: 0.45rem 0.9rem; font-weight: 600; transition: background 0.15s, color 0.15s; }
+.btn-outline-danger:hover { background: var(--red); color: #fff; }
+.btn-outline-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* Waiting animation */
 @keyframes waitPulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
 .waiting-indicator { display: flex; align-items: center; gap: 0.5rem; justify-content: center; color: var(--text-muted); font-size: 0.85rem; margin: 1rem 0 0.5rem; }

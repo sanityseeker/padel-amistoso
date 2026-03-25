@@ -6,9 +6,10 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 
+from .rate_limit import BoundedRateLimiter
 from ..auth.deps import get_current_user, get_current_user_optional, get_current_player, PlayerIdentity
 from ..auth.models import User
 from ..models import Court, Player, TournamentType
@@ -24,6 +25,7 @@ from .helpers import (
     _require_owner_or_admin,
     _require_score_permission,
     _find_match,
+    _store_tournament,
 )
 from .schemas import (
     CreateGroupPlayoffRequest,
@@ -31,17 +33,34 @@ from .schemas import (
     RecordTennisScoreRequest,
     StartGroupPlayoffsRequest,
 )
-from .state import _next_id, _save_tournament, _tournaments
+from .state import _global_lock, _next_id, _save_tournament, _tournaments, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["group-playoff"])
 
 _GP = TournamentType.GROUP_PLAYOFF.value
 
+_CREATE_MAX_ATTEMPTS = 20
+_CREATE_WINDOW_SECONDS = 60
+_CREATE_MAX_TRACKED_IPS = 4096
+
+_create_rate_limiter = BoundedRateLimiter(
+    max_attempts=_CREATE_MAX_ATTEMPTS,
+    window_seconds=_CREATE_WINDOW_SECONDS,
+    max_tracked_ips=_CREATE_MAX_TRACKED_IPS,
+)
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
 
 @router.post("/group-playoff")
-async def create_group_playoff(req: CreateGroupPlayoffRequest, user=Depends(get_current_user)) -> dict:
+async def create_group_playoff(req: CreateGroupPlayoffRequest, request: Request, user=Depends(get_current_user)) -> dict:
     """Create a new Group+Playoff tournament and generate the first group-stage matches."""
+    client_ip = _client_ip(request)
+    _create_rate_limiter.check(client_ip, "Too many tournament creation attempts — try again later")
+    _create_rate_limiter.record(client_ip)
     players = [Player(name=n) for n in req.player_names]
     courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 
@@ -56,18 +75,12 @@ async def create_group_playoff(req: CreateGroupPlayoffRequest, user=Depends(get_
     )
     t.generate()
 
-    tid = _next_id()
-    _tournaments[tid] = {
-        "name": req.name,
-        "type": TournamentType.GROUP_PLAYOFF.value,
-        "tournament": t,
-        "owner": user.username,
-        "public": req.public,
-        "sport": req.sport.value,
-        "assign_courts": req.assign_courts,
-    }
-    _save_tournament(tid)
-    create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in players])
+    async with _global_lock:
+        tid = _next_id()
+        _store_tournament(tid, name=req.name, tournament_type=TournamentType.GROUP_PLAYOFF.value,
+                          tournament=t, owner=user.username, public=req.public,
+                          sport=req.sport.value, assign_courts=req.assign_courts)
+        create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in players])
     return {"id": tid, "phase": t.phase}
 
 
@@ -104,16 +117,17 @@ async def gp_record_group(
     player: PlayerIdentity | None = Depends(get_current_player),
 ) -> dict:
     """Record a raw-score result for a group-stage match."""
-    t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
-    match = _find_match(t, req.match_id)
-    if match is None:
-        raise HTTPException(404, "Match not found")
-    _require_score_permission(tid, match, user, player)
-    try:
-        t.record_group_result(req.match_id, (req.score1, req.score2))
-    except (KeyError, RuntimeError) as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+        match = _find_match(t, req.match_id)
+        if match is None:
+            raise HTTPException(404, "Match not found")
+        _require_score_permission(tid, match, user, player)
+        try:
+            t.record_group_result(req.match_id, (req.score1, req.score2))
+        except (KeyError, RuntimeError) as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {"ok": True}
 
 
@@ -126,22 +140,23 @@ async def gp_record_group_tennis(
 ) -> dict:
     """Record a group match using tennis-style set scores.
     Score = sum of game differences across all sets."""
-    t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
-    match = _find_match(t, req.match_id)
-    if match is None:
-        raise HTTPException(404, "Match not found")
-    _require_score_permission(tid, match, user, player)
     total1, total2, sets_tuples, third_set_decided = _tennis_sets_to_scores(req.sets)
-    try:
-        t.record_group_result(
-            req.match_id,
-            (total1, total2),
-            sets=sets_tuples,
-            third_set_loss=third_set_decided,
-        )
-    except (KeyError, RuntimeError) as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+        match = _find_match(t, req.match_id)
+        if match is None:
+            raise HTTPException(404, "Match not found")
+        _require_score_permission(tid, match, user, player)
+        try:
+            t.record_group_result(
+                req.match_id,
+                (total1, total2),
+                sets=sets_tuples,
+                third_set_loss=third_set_decided,
+            )
+        except (KeyError, RuntimeError) as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {
         "ok": True,
         "score": [total1, total2],
@@ -158,12 +173,13 @@ async def gp_next_group_round(tid: str, user=Depends(get_current_user)) -> dict:
     can be used for opponent selection.
     """
     _require_owner_or_admin(tid, user)
-    t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
-    try:
-        new_matches = t.generate_next_group_round()
-    except RuntimeError as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+        try:
+            new_matches = t.generate_next_group_round()
+        except RuntimeError as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {
         "matches": [_serialize_match(m) for m in new_matches],
         "has_more_rounds": t.has_more_group_rounds,
@@ -185,16 +201,17 @@ async def gp_start_playoffs(
 ) -> dict:
     """Seed the play-off bracket from group standings and transition to the playoffs phase."""
     _require_owner_or_admin(tid, user)
-    t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
-    try:
-        t.start_playoffs(
-            advancing_player_ids=req.advancing_player_ids,
-            extra_players=[(ep.name, ep.score) for ep in req.extra_participants] if req.extra_participants else None,
-            double_elimination=req.double_elimination,
-        )
-    except (RuntimeError, KeyError, ValueError) as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+        try:
+            t.start_playoffs(
+                advancing_player_ids=req.advancing_player_ids,
+                extra_players=[(ep.name, ep.score) for ep in req.extra_participants] if req.extra_participants else None,
+                double_elimination=req.double_elimination,
+            )
+        except (RuntimeError, KeyError, ValueError) as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {"phase": t.phase}
 
 
@@ -252,16 +269,17 @@ async def gp_record_playoff(
     player: PlayerIdentity | None = Depends(get_current_player),
 ) -> dict:
     """Record a raw-score result for a play-off match."""
-    t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
-    match = _find_match(t, req.match_id)
-    if match is None:
-        raise HTTPException(404, "Match not found")
-    _require_score_permission(tid, match, user, player)
-    try:
-        t.record_playoff_result(req.match_id, (req.score1, req.score2))
-    except (KeyError, RuntimeError, ValueError) as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+        match = _find_match(t, req.match_id)
+        if match is None:
+            raise HTTPException(404, "Match not found")
+        _require_score_permission(tid, match, user, player)
+        try:
+            t.record_playoff_result(req.match_id, (req.score1, req.score2))
+        except (KeyError, RuntimeError, ValueError) as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {"ok": True, "phase": t.phase}
 
 
@@ -273,17 +291,18 @@ async def gp_record_playoff_tennis(
     player: PlayerIdentity | None = Depends(get_current_player),
 ) -> dict:
     """Record a playoff match using tennis-style set scores."""
-    t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
-    match = _find_match(t, req.match_id)
-    if match is None:
-        raise HTTPException(404, "Match not found")
-    _require_score_permission(tid, match, user, player)
     total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
-    try:
-        t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)
-    except (KeyError, RuntimeError, ValueError) as e:
-        raise HTTPException(400, str(e))
-    _save_tournament(tid)
+    async with get_tournament_lock(tid):
+        t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+        match = _find_match(t, req.match_id)
+        if match is None:
+            raise HTTPException(404, "Match not found")
+        _require_score_permission(tid, match, user, player)
+        try:
+            t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)
+        except (KeyError, RuntimeError, ValueError) as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
     return {
         "ok": True,
         "phase": t.phase,

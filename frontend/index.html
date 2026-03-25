@@ -16,8 +16,9 @@
 <div class="container">
   <div class="page-header">
     <div class="page-header-title-bar">
+      <button type="button" id="lang-toggle-btn" class="compact-icon-btn" data-action="toggleLanguage" title="Language" aria-label="Switch language">🇬🇧</button>
       <div class="page-selector" id="page-selector">
-        <button type="button" class="page-selector-btn" id="page-selector-btn" onclick="togglePageSelector()">
+        <button type="button" class="page-selector-btn" id="page-selector-btn" data-action="togglePageSelector">
           <span class="page-selector-icon">🛠️</span>
           <span class="page-selector-label" data-i18n="txt_nav_admin">Admin</span>
           <span class="page-selector-arrow">▾</span>
@@ -38,8 +39,7 @@
         </div>
       </div>
       <div class="header-toggle-btns">
-        <button type="button" id="lang-toggle-btn" class="compact-icon-btn" onclick="toggleLanguage()" title="Language" aria-label="Switch language">🇬🇧</button>
-        <button type="button" id="theme-toggle-btn" class="compact-icon-btn" onclick="toggleTheme()" title="Toggle light / dark mode" aria-label="Toggle light or dark mode">☀️</button>
+        <button type="button" id="theme-toggle-btn" class="compact-icon-btn" data-action="toggleTheme" title="Toggle light / dark mode" aria-label="Toggle light or dark mode">☀️</button>
       </div>
     </div>
     <div class="page-header-row">
@@ -59,7 +59,7 @@
     <button type="button" class="tab-btn" data-tab="info" data-i18n="txt_txt_info" role="tab" aria-selected="false">Info</button>
     <div id="tournament-chips" class="tournament-chips"></div>
     <div class="compact-controls">
-      <button type="button" id="admin-refresh-btn" class="compact-icon-btn" onclick="_refreshCurrentView()" title="Refresh" style="display:none">↻</button>
+      <button type="button" id="admin-refresh-btn" class="compact-icon-btn" data-action="refreshCurrentView" title="Refresh" style="display:none">↻</button>
     </div>
   </div>
   <div class="active-tournament-indicator" id="active-tournament-indicator" style="display:none">
@@ -85,23 +85,23 @@
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
         <h2 style="margin:0" data-i18n="txt_txt_create_tournament">Create Tournament</h2>
-        <button type="button" class="format-info-btn" id="create-format-info-btn" onclick="openFormatInfo()" aria-label="About this format" data-i18n-title="txt_txt_about_this_format" title="About this format">i</button>
+        <button type="button" class="format-info-btn" id="create-format-info-btn" data-action="openFormatInfo" aria-label="About this format" data-i18n-title="txt_txt_about_this_format" title="About this format">i</button>
       </div>
       <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem;flex-wrap:wrap">
         <div class="score-mode-toggle" id="sport-toggle" style="margin-bottom:0">
-          <button type="button" data-sport="padel" class="active" onclick="setSport('padel')"><span data-i18n="txt_txt_sport_padel">Padel</span></button>
-          <button type="button" data-sport="tennis" onclick="setSport('tennis')"><span data-i18n="txt_txt_sport_tennis">Tennis</span></button>
+          <button type="button" data-sport="padel" class="active" data-action="setSport"><span data-i18n="txt_txt_sport_padel">Padel</span></button>
+          <button type="button" data-sport="tennis" data-action="setSport"><span data-i18n="txt_txt_sport_tennis">Tennis</span></button>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.85rem;flex-wrap:wrap">
         <div class="subtabs" role="tablist" aria-label="Create tournament type" data-i18n-aria-label="txt_txt_create_tournament_type" style="margin-bottom:0">
-          <button type="button" class="subtab-btn active" id="create-tab-gp" onclick="setCreateMode('gp')" data-i18n="txt_txt_group_play_off">Group + Play‑off</button>
-          <button type="button" class="subtab-btn" id="create-tab-mex" onclick="setCreateMode('mex')" data-i18n="txt_txt_mexicano_play_offs">Mexicano + Play‑offs</button>
-          <button type="button" class="subtab-btn" id="create-tab-po" onclick="setCreateMode('po')" data-i18n="txt_txt_play_offs_only">Play-offs</button>
+          <button type="button" class="subtab-btn active" id="create-tab-gp" data-action="setCreateMode" data-tab="gp" data-i18n="txt_txt_group_play_off">Group + Play‑off</button>
+          <button type="button" class="subtab-btn" id="create-tab-mex" data-action="setCreateMode" data-tab="mex" data-i18n="txt_txt_mexicano_play_offs">Mexicano + Play‑offs</button>
+          <button type="button" class="subtab-btn" id="create-tab-po" data-action="setCreateMode" data-tab="po" data-i18n="txt_txt_play_offs_only">Play-offs</button>
         </div>
         <div style="flex:1"></div>
         <div class="subtabs" style="margin-bottom:0">
-          <button type="button" class="subtab-btn" id="create-tab-lobby" onclick="setCreateMode('lobby')" data-i18n="txt_reg_lobby">Lobby</button>
+          <button type="button" class="subtab-btn" id="create-tab-lobby" data-action="setCreateMode" data-tab="lobby" data-i18n="txt_reg_lobby">Lobby</button>
         </div>
       </div>
 
@@ -111,8 +111,8 @@
             <input id="gp-name" value="Tournament Cup 2026" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.3rem;flex-shrink:0">
               <div class="score-mode-toggle entry-mode-toggle" id="gp-entry-mode-toggle">
-                <button type="button" data-mode="individual" onclick="setEntryMode('gp','individual')" data-i18n="txt_txt_individual_mode">Individual</button>
-                <button type="button" data-mode="team" class="active" onclick="setEntryMode('gp','team')" data-i18n="txt_txt_team_mode_short">Team</button>
+                <button type="button" data-mode="individual" data-action="setEntryMode" data-entry-ctx="gp" data-entry-mode="individual" data-i18n="txt_txt_individual_mode">Individual</button>
+                <button type="button" data-mode="team" class="active" data-action="setEntryMode" data-entry-ctx="gp" data-entry-mode="team" data-i18n="txt_txt_team_mode_short">Team</button>
               </div>
             </div>
           </div>
@@ -124,13 +124,13 @@
               <span class="participant-count" id="gp-participant-count"></span>
             </div>
             <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
-              <button type="button" class="paste-list-btn clear-btn" onclick="clearParticipants('gp')" data-i18n="txt_txt_clear_all">Clear all</button>
-              <button type="button" class="paste-list-btn" id="gp-paste-toggle" onclick="togglePasteMode('gp')">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
+              <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="gp" data-i18n="txt_txt_clear_all">Clear all</button>
+              <button type="button" class="paste-list-btn" id="gp-paste-toggle" data-action="togglePasteMode" data-ctx="gp">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
           <div id="gp-participant-fields">
             <div class="participant-grid" id="gp-participant-grid"></div>
-            <button type="button" class="add-participant-btn" id="gp-add-btn" onclick="addParticipantField('gp')">+ Add team</button>
+            <button type="button" class="add-participant-btn" id="gp-add-btn" data-action="addParticipantField" data-ctx="gp">+ Add team</button>
           </div>
           <div class="paste-panel hidden" id="gp-paste-panel">
             <textarea id="gp-players" placeholder="One per line, e.g. Alice &amp; Bob"></textarea>
@@ -167,7 +167,7 @@
           <input type="checkbox" id="gp-public" checked style="width:1rem;height:1rem;cursor:pointer">
           <label for="gp-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
-        <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,createGP)" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
+        <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" data-action="withLoading" data-handler="createGP" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
         <div id="gp-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
 
@@ -177,8 +177,8 @@
             <input id="mex-name" value="Mexicano Night" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.3rem;flex-shrink:0">
               <div class="score-mode-toggle entry-mode-toggle" id="mex-entry-mode-toggle">
-                <button type="button" data-mode="individual" class="active" onclick="setEntryMode('mex','individual')" data-i18n="txt_txt_individual_mode">Individual</button>
-                <button type="button" data-mode="team" onclick="setEntryMode('mex','team')" data-i18n="txt_txt_team_mode_short">Team</button>
+                <button type="button" data-mode="individual" class="active" data-action="setEntryMode" data-entry-ctx="mex" data-entry-mode="individual" data-i18n="txt_txt_individual_mode">Individual</button>
+                <button type="button" data-mode="team" data-action="setEntryMode" data-entry-ctx="mex" data-entry-mode="team" data-i18n="txt_txt_team_mode_short">Team</button>
               </div>
             </div>
           </div>
@@ -190,13 +190,13 @@
               <span class="participant-count" id="mex-participant-count"></span>
             </div>
             <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
-              <button type="button" class="paste-list-btn clear-btn" onclick="clearParticipants('mex')" data-i18n="txt_txt_clear_all">Clear all</button>
-              <button type="button" class="paste-list-btn" id="mex-paste-toggle" onclick="togglePasteMode('mex')">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
+              <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="mex" data-i18n="txt_txt_clear_all">Clear all</button>
+              <button type="button" class="paste-list-btn" id="mex-paste-toggle" data-action="togglePasteMode" data-ctx="mex">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
           <div id="mex-participant-fields">
             <div class="participant-grid" id="mex-participant-grid"></div>
-            <button type="button" class="add-participant-btn" id="mex-add-btn" onclick="addParticipantField('mex')">+ Add player</button>
+            <button type="button" class="add-participant-btn" id="mex-add-btn" data-action="addParticipantField" data-ctx="mex">+ Add player</button>
           </div>
           <div class="paste-panel hidden" id="mex-paste-panel">
             <textarea id="mex-players" placeholder="One per line"></textarea>
@@ -230,8 +230,8 @@
               <label style="font-size:0.8rem;color:var(--text-muted)" data-i18n="txt_txt_number_of_rounds">Number of rounds</label>
               <div style="display:flex;align-items:center;gap:0.6rem">
                 <div class="score-mode-toggle" id="mex-rounds-toggle" style="flex-shrink:0">
-                  <button type="button" class="active" onclick="_setMexRoundsMode('unlimited')" data-i18n="txt_txt_unlimited">∞ Unlimited</button>
-                  <button type="button" onclick="_setMexRoundsMode('fixed')" data-i18n="txt_txt_fixed">Fixed</button>
+                  <button type="button" class="active" data-action="setMexRoundsMode" data-rounds-mode="unlimited" data-i18n="txt_txt_unlimited">∞ Unlimited</button>
+                  <button type="button" data-action="setMexRoundsMode" data-rounds-mode="fixed" data-i18n="txt_txt_fixed">Fixed</button>
                 </div>
                 <input id="mex-rounds" type="number" value="8" min="1" style="width:64px;display:none" aria-label="Number of rounds">
               </div>
@@ -272,7 +272,7 @@
           <input type="checkbox" id="mex-public" checked style="width:1rem;height:1rem;cursor:pointer">
           <label for="mex-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
-        <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,createMex)" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
+        <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" data-action="withLoading" data-handler="createMex" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
         <div id="mex-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
 
@@ -296,13 +296,13 @@
               <span class="participant-count" id="po-participant-count"></span>
             </div>
             <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
-              <button type="button" class="paste-list-btn clear-btn" onclick="clearParticipants('po')" data-i18n="txt_txt_clear_all">Clear all</button>
-              <button type="button" class="paste-list-btn" id="po-paste-toggle" onclick="togglePasteMode('po')">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
+              <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="po" data-i18n="txt_txt_clear_all">Clear all</button>
+              <button type="button" class="paste-list-btn" id="po-paste-toggle" data-action="togglePasteMode" data-ctx="po">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
           <div id="po-participant-fields">
             <div class="participant-grid" id="po-participant-grid"></div>
-            <button type="button" class="add-participant-btn" id="po-add-btn" onclick="addParticipantField('po')">+ Add participant</button>
+            <button type="button" class="add-participant-btn" id="po-add-btn" data-action="addParticipantField" data-ctx="po">+ Add participant</button>
           </div>
           <div class="paste-panel hidden" id="po-paste-panel">
             <textarea id="po-players" placeholder="One per line"></textarea>
@@ -333,7 +333,7 @@
           </div>
         </div>
         <div class="field-section" style="margin-top:0.5rem">
-          <button type="button" class="btn" onclick="generatePoPreviewSchema()" data-i18n="txt_txt_preview_bracket">Preview bracket</button>
+          <button type="button" class="btn" data-action="generatePoPreviewSchema" data-i18n="txt_txt_preview_bracket">Preview bracket</button>
           <div id="po-preview-msg" class="alert alert-error hidden" style="margin-top:0.5rem"></div>
           <div id="po-preview-result" style="margin-top:0.75rem;text-align:center"></div>
         </div>
@@ -341,7 +341,7 @@
           <input type="checkbox" id="po-public" checked style="width:1rem;height:1rem;cursor:pointer">
           <label for="po-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
-        <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,createPO)" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
+        <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" data-action="withLoading" data-handler="createPO" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
         <div id="po-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
     </div>
@@ -412,21 +412,31 @@
           <h3 data-i18n="txt_txt_tournament_bracket_schema">Tournament Bracket Schema</h3>
           <p style="color:var(--text-muted);font-size:0.84rem;margin:0" data-i18n="txt_txt_generate_a_visual_diagram_of_the_tournament_structure_before_creating_it">Generate a visual diagram of the tournament structure before creating it.</p>
         </div>
+        <div class="schema-presets">
+          <button type="button" class="schema-preset-btn" data-preset="2×4" data-action="applySchemaPreset">2×4</button>
+          <button type="button" class="schema-preset-btn" data-preset="3×4" data-action="applySchemaPreset">3×4</button>
+          <button type="button" class="schema-preset-btn" data-preset="4×4" data-action="applySchemaPreset">4×4</button>
+          <button type="button" class="schema-preset-btn" data-preset="2×6" data-action="applySchemaPreset">2×6</button>
+          <button type="button" class="schema-preset-btn" data-preset="3×6" data-action="applySchemaPreset">3×6</button>
+          <button type="button" class="schema-preset-btn" data-preset="4×6" data-action="applySchemaPreset">4×6</button>
+        </div>
         <div class="schema-builder-fields">
           <div class="schema-row" style="align-items:flex-end">
             <div class="form-group" style="flex:1;min-width:160px">
               <label for="schema-groups"><span data-i18n="txt_txt_group_sizes">Group sizes</span> <small style="color:var(--text-muted)" data-i18n="txt_txt_comma_separated">(comma-separated)</small></label>
-              <input id="schema-groups" type="text" value="4,4" placeholder="e.g. 4,4,4">
+              <input id="schema-groups" type="text" value="4,4" placeholder="e.g. 4,4,4"
+                     oninput="_updateSchemaSummary()"
+                     onkeydown="if(event.key==='Enter'){generateSchema()}">
             </div>
             <div class="num-field" style="margin-bottom:0.75rem">
               <label for="schema-advance" data-i18n="txt_txt_advance_per_group">Advance per group</label>
-              <input id="schema-advance" type="number" value="2" min="1" max="8">
+              <input id="schema-advance" type="number" value="2" min="1" max="8" oninput="_updateSchemaSummary()">
             </div>
           </div>
           <div class="schema-row">
             <div class="form-group" style="flex:1;min-width:140px">
               <label for="schema-elim" data-i18n="txt_txt_elimination">Elimination</label>
-              <select id="schema-elim" data-persist-id="schema-elim">
+              <select id="schema-elim" data-persist-id="schema-elim" onchange="_updateSchemaSummary()">
                 <option value="single" selected data-i18n="txt_txt_single_elimination">Single Elimination</option>
                 <option value="double" data-i18n="txt_txt_double_elimination">Double Elimination</option>
               </select>
@@ -445,6 +455,7 @@
             </div>
           </div>
         </div>
+        <div id="schema-summary" class="schema-summary"></div>
         <details class="schema-rendering-details">
           <summary>
             <span data-i18n="txt_txt_rendering_options">⚙ Rendering options</span>
@@ -478,7 +489,7 @@
           </div>
         </details>
         <div class="schema-actions">
-          <button type="button" class="btn btn-primary" onclick="generateSchema()" data-i18n="txt_txt_generate_schema">Generate Schema</button>
+          <button type="button" class="btn btn-primary" data-action="generateSchema" data-i18n="txt_txt_generate_schema">Generate Schema</button>
         </div>
         <div id="schema-msg" class="alert alert-error hidden" style="margin-top:0.75rem"></div>
         <div id="schema-result" style="margin-top:1rem;text-align:center"></div>
@@ -526,22 +537,34 @@
     </div>
   </div>
 </div>
-<div style="text-align:center;padding:3rem 0 2.5rem;">
-  <a href="https://ko-fi.com/torneosamistosos" target="_blank" rel="noopener">
-    <img height="36" style="border:0;height:36px;" src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Buy Me a Coffee at ko-fi.com">
+<div style="padding:3rem 0 2.5rem;display:flex;align-items:center;justify-content:center;gap:1rem;flex-wrap:wrap">
+  <a href="https://ko-fi.com/torneosamistosos" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:0.4rem;background:#FFDD00;color:#1a1a1a;padding:0 0.8rem;border-radius:20px;font-size:0.78rem;text-decoration:none;font-weight:700;height:28px;box-sizing:border-box">
+    <svg width="16" height="16" viewBox="0 0 24 24" style="fill:#ff5e5b;flex-shrink:0" aria-hidden="true"><path d="M23.881 8.948c-.773-4.085-4.859-4.593-4.859-4.593H.723c-.604 0-.679.798-.679.798s-.082 7.324-.022 11.822c.164 2.424 2.586 2.672 2.586 2.672s8.267-.023 11.966-.049c2.438-.426 2.683-2.566 2.658-3.734 4.352.24 7.422-2.831 6.649-6.916zm-11.062 3.511c-1.246 1.453-4.011 3.976-4.011 3.976s-.121.119-.31.023c-.076-.057-.108-.09-.108-.09-.443-.441-3.368-3.049-4.034-3.954-.709-.965-1.041-2.7-.091-3.71.951-1.01 3.005-1.086 4.038.963.0.0-.292-.808-.292-.808-.292-.808z"/></svg>
+    Buy me a coffee
+  </a>
+  <a href="https://github.com/sanityseeker/padel-amistoso" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:0.4rem;background:#24292f;color:#fff;padding:0 0.8rem;border-radius:20px;font-size:0.78rem;text-decoration:none;font-weight:700;height:28px;box-sizing:border-box">
+    <svg width="16" height="16" viewBox="0 0 16 16" style="fill:currentColor;flex-shrink:0" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.67 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
+    Contribute on GitHub
   </a>
 </div>
 
 <!-- Format Info Modal -->
-<div id="format-info-overlay" onclick="closeFormatInfo()"></div>
+<div id="format-info-overlay" data-action="closeFormatInfo"></div>
 <div id="format-info-dialog" role="dialog" aria-modal="true" aria-labelledby="format-info-heading">
-  <button type="button" class="format-info-close-btn" onclick="closeFormatInfo()" aria-label="Close">✕</button>
+  <button type="button" class="format-info-close-btn" data-action="closeFormatInfo" aria-label="Close">✕</button>
   <div id="format-info-content"></div>
 </div>
 
 <!-- Bracket image lightbox -->
-<div id="bracket-lightbox" role="dialog" aria-modal="true" aria-label="Bracket" onclick="_closeBracketLightbox(event)">
-  <button class="bracket-lightbox-close" onclick="_closeBracketLightbox()" aria-label="Close">✕</button>
+<div id="bracket-lightbox" role="dialog" aria-modal="true" aria-label="Bracket" data-action="closeBracketLightbox">
+  <div class="bracket-lb-toolbar" data-action="stopPropagation">
+    <button class="bracket-lb-btn" data-action="bracketLightboxZoomOut" aria-label="Zoom out" title="Zoom out (−)">−</button>
+    <button class="bracket-lb-btn bracket-lb-zoom-lbl" id="bracket-lb-zoom-level" data-action="bracketLightboxZoomReset" aria-label="Reset zoom" title="Reset zoom">100%</button>
+    <button class="bracket-lb-btn" data-action="bracketLightboxZoomIn" aria-label="Zoom in" title="Zoom in (+)">+</button>
+    <button class="bracket-lb-btn" data-action="bracketLightboxOpenFull" aria-label="Open original image" title="Open original image">↗</button>
+    <button class="bracket-lb-btn" data-action="bracketLightboxDownload" aria-label="Download image" title="Download image">⬇</button>
+    <button class="bracket-lb-btn bracket-lb-close-btn" data-action="closeBracketLightbox" aria-label="Close" title="Close (Esc)">✕</button>
+  </div>
   <div class="bracket-lightbox-scroll">
     <img id="bracket-lightbox-img" src="" alt="Bracket">
   </div>
@@ -551,11 +574,11 @@
 <div id="abbrev-popup" role="tooltip"></div>
 
 <!-- Authentication Dialog -->
-<div id="auth-overlay" class="modal-overlay" onclick="hideLoginDialog()"></div>
+<div id="auth-overlay" class="modal-overlay" data-action="hideLoginDialog"></div>
 <div id="auth-dialog" class="modal-dialog modal-sm">
   <div class="modal-header">
     <h2 class="modal-title">🔐 <span data-i18n="txt_txt_login_required">Login Required</span></h2>
-    <button type="button" class="modal-close-btn" onclick="hideLoginDialog()" aria-label="Close">✕</button>
+    <button type="button" class="modal-close-btn" data-action="hideLoginDialog" aria-label="Close">✕</button>
   </div>
   <p class="modal-subtitle" data-i18n="txt_txt_please_log_in_to_create_or_modify_tournaments">Please log in to create or modify tournaments</p>
   <form onsubmit="handleLogin(event)">
@@ -581,7 +604,7 @@
   <div class="modal-dialog modal-md">
     <div class="modal-header">
       <h2 class="modal-title">👥 <span data-i18n="txt_txt_user_management">User Management</span></h2>
-      <button type="button" class="modal-close-btn" onclick="hideUserMgmt()" aria-label="Close">✕</button>
+      <button type="button" class="modal-close-btn" data-action="hideUserMgmt" aria-label="Close">✕</button>
     </div>
     <div style="padding:0.5rem 0 0.25rem">
       <input id="user-mgmt-search" type="search" class="modal-input" placeholder="Search users…" autocomplete="off" oninput="filterUserMgmtList(this.value)" style="width:100%">
@@ -616,7 +639,7 @@
   <div class="modal-dialog modal-sm">
     <div class="modal-header" style="margin-bottom:0.5rem">
       <h2 class="modal-title">🔑 <span data-i18n="txt_txt_change_password">Change Password</span></h2>
-      <button type="button" class="modal-close-btn" onclick="hideChangePasswordDialog()" aria-label="Close">✕</button>
+      <button type="button" class="modal-close-btn" data-action="hideChangePasswordDialog" aria-label="Close">✕</button>
     </div>
     <p id="change-pwd-for" class="modal-subtitle" style="margin-bottom:1rem"></p>
     <form onsubmit="handleChangePassword(event)">

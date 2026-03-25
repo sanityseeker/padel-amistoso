@@ -1,312 +1,88 @@
 # Torneos Amistosos
 
-A lightweight Python app for organising **padel** and **tennis** tournaments.
-Three tournament formats are supported, each available for both sports:
+A lightweight Python app for organising **padel** and **tennis** tournaments. Three formats are supported:
 
 | Format | Description |
 | --- | --- |
-| **Group + Play-off** | Round-robin group stage → single or double-elimination bracket |
-| **Mexicano + Play-offs** | Rating-based pairing each round, fixed total points per match, with optional seeded play-offs |
+| **Group + Play-off** | Round-robin groups → single or double-elimination bracket |
+| **Mexicano** | Rating-based pairing each round, fixed total points per match, with optional seeded play-offs |
 | **Direct Play-offs** | Skip the group stage — seed participants and play a bracket immediately |
 
-When creating a tournament you choose the **sport** (Padel or Tennis).
-The engine is the same for both; the UI adapts labels and entry modes
-accordingly (e.g. "Team Mode" becomes "Doubles" for tennis, and
-"Player Mode" becomes "Singles").
-
 **Live demo:** [padel-amistoso.onrender.com](https://padel-amistoso.onrender.com) — login with `admin` / `admin`
-> Free tier -- app may take ~30 seconds to wake up after inactivity. Data resets on restart. **DO NOT use for actual tournaments!**
+> Free tier — app may take ~30 s to wake up after inactivity. Data resets on restart. **Don't use for real tournaments!**
 
 ---
 
-## Project status & preamble
+## Project status
 
-This project is currently a **draft/prototype** and is still evolving.
-
-It was built over several hours with **heavy AI assistance** (architecture,
-feature iteration, and refactors), then manually reviewed and adjusted.
-Expect ongoing changes in behavior, naming, and API details while the design
-is refined.
+Prototype, still evolving. Built with heavy AI assistance by one DS person with very basic knowledge of frontend. Expect bugs and API changes.
 
 ---
 
-## Functional overview
-
-### Frontend capabilities
+## For organizers
 
-- Choose sport: **Padel** or **Tennis** (per tournament)
-- Create and manage **Group + Play-off** tournaments
-- Create and manage **Mexicano** tournaments (with optional play-offs)
-- Create and manage **Direct Play-off** tournaments (single or double elimination)
-- Record scores as either:
-  - raw points, or
-  - tennis-style sets (for group/play-off flows where enabled)
-- View standings, pending matches, round history, and champion state
-- Generate tournament schema diagrams (Tools tab)
-- Generate play-off schema directly from the GP play-offs page
-- Export tournament outcome as an HTML or PDF document (with embedded bracket)
-- Choose UI theme (Dark/Light), persisted in browser storage
-- Switch UI language (English/Spanish) from the admin and TV views
-  - Default language is **English**
-  - Language preference is persisted per browser session/profile (localStorage)
-- Display a read-only **TV view** optimised for a guest view of a tournament (`/tv/<id-or-alias>`)
-- **Match comments**: admin can annotate any match with a short comment visible on the public view
-- **Player self-scoring**: players log in via passphrase or QR code to submit their own scores
-- **Announcement banner**: broadcast a message at the top of the public view for all participants
-- **Registration lobbies**: create a shareable sign-up link so players self-register before the tournament is created; convert the lobby into a real tournament when ready
+### Creating a tournament
 
-### Group + Play-off flow
+Pick a **format** and **sport** (Padel or Tennis) at creation time. The engine is identical for both — labels adapt accordingly (Team/Player mode → Doubles/Singles).
 
-1. Players/teams are distributed into groups.
-2. Each group plays round-robin.
-3. Top `N` from each group advance.
-4. A play-off bracket is seeded and played to champion.
+**Group + Play-off:**
+1. Players/teams are split into groups for round-robin play.
+2. Top N from each group advance to a bracket (single or double elimination).
+3. In double elimination, a team needs two losses to be knocked out — the winners- and losers-bracket champions meet in a Grand Final.
 
-### Double-elimination logic (brief)
+**Mexicano:**
+1. Each round pairs players dynamically based on current rankings.
+2. Scores update a cumulative leaderboard after each round.
+3. Pairings for the next round are proposed automatically (or can be overridden).
+4. After a set number of rounds (or in rolling mode, whenever you decide), the tournament moves to a seeded play-off.
+5. In individual mode, top players are paired into teams (#1+#2, #3+#4, …) before entering the bracket.
 
-- Bracket has a **Winners path** and a **Losers path**.
-- A team is eliminated only after **two losses**.
-- Teams dropping from winners feed into losers rounds.
-- Winners-bracket champion meets losers-bracket champion in Grand Final.
-- If needed by format state, a reset/follow-up final may be used to resolve
-  the second-loss condition.
+The engine has several tuning knobs (skill-gap grouping, win bonus, strength weighting, etc.) — see the API docs for details.
 
-### Mexicano flow
+**Direct Play-offs:** skip the group stage and go straight to a bracket.
 
-1. Each round forms competitive 2v2 matches from ranking state.
-2. Scores update cumulative leaderboard.
-3. Next-round pairings are proposed/selected (or manually overridden).
-4. After configured rounds (or rolling mode), tournament can move to play-offs.
-5. In **individual mode**, selected players are paired into teams
-   (`#1+#2`, `#3+#4`, …) before entering play-offs.
-
-### Sport selection
+### Registration lobbies
 
-Each tournament is created for a specific sport — **Padel** or **Tennis**.
-The choice is made once on the creation screen and stored with the
-tournament.  The tournament engine is identical for both sports; differences
-are purely cosmetic:
+Create a sign-up lobby and share the link with participants. Players self-register with their name (and any custom questions you configure). Once sign-ups close, convert the lobby to a real tournament with one click — player credentials carry over automatically.
 
-| Aspect | Padel | Tennis |
-| --- | --- | --- |
-| Entry modes | Team Mode / Player Mode | Doubles / Singles |
-| TV title | Padel TV | Tennis TV |
-| Tournament badge | Padel | Tennis |
+### Player codes
 
-Padel is the default when no sport is specified (backward-compatible with
-existing tournaments).
+Every player automatically gets a unique **passphrase** (e.g. `brave-little-tiger`) and a **QR code**. Open the 🔑 Player Codes panel to view, copy, print, or regenerate credentials for individual players.
 
-### TV display mode
+### During the tournament
 
-Each tournament can be displayed on a secondary screen via the TV view at
-`/tv/<tournament-id>`.  Content, layout, and refresh behaviour are
-configured in the **Admin → TV Settings** panel:
+- **Record scores** as points or best-of-3 sets (where the format supports it).
+- **Match comments**: add a short note to any match (e.g. "Moved to Court 2") — visible on the public screen.
+- **Announcement banner**: broadcast a message to all participants on the public screen.
 
-- Toggle which sections appear: standings/groups, bracket, match list, round history
-- Set the **refresh mode**: *On-update* (polls the version counter and reloads
-  only when the tournament changes), *Never* (static snapshot), or a fixed
-  interval (5 s – 5 min)
-- Adjust schema rendering: box scale, line width, arrow scale, title font scale
+### TV display
 
-The TV view is served from `frontend/public.html` and uses the same REST API as
-the main UI.
+Each tournament has a public TV view at `/tv/<id>`, or a custom alias like `/tv/summer-cup`. Configure which sections appear (standings, bracket, match list), the refresh mode, and bracket rendering from the Admin → TV Settings panel.
 
-### UI preferences persistence
+### Exporting results
 
-The frontend persists user-level display preferences in browser localStorage:
-
-- `padel-theme` → selected theme (`dark` / `light`)
-- `padel-lang` → selected language (`en` / `es`)
-
-If no language is stored yet, the app defaults to English.
-
-### Tournament aliases
-
-Each tournament can optionally have a **human-friendly alias** that provides
-a short, memorable URL for the TV display mode (or API access).
-
-**Setting an alias:**
-
-*Via the web UI:* Open any tournament and expand the **📺 TV Mode Controls**
-card. Enter your desired alias in the input field and click "Set Alias".
-The alias is displayed alongside the full URL you can copy.
-
-*Via the API:*
-
-```bash
-curl -X PUT http://localhost:8000/api/tournaments/t123/alias \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"alias": "summer-cup"}'
-```
-
-**Using the alias:**
-
-Instead of `/tv/t123`, you can now use:
-- `/tv/summer-cup`
-
-Aliases work in the TV picker as well — you can type an alias directly into
-the input field.
-
-**Alias rules:**
-- Must be 1-64 characters
-- Only alphanumeric characters, hyphens, and underscores: `[a-zA-Z0-9_-]`
-- Must be unique across all tournaments
-- Can be changed or removed at any time
-
-**Deleting an alias:**
-
-*Via the web UI:* Click the "✕ Remove" button next to the alias input field.
-
-*Via the API:*
-
-```bash
-curl -X DELETE http://localhost:8000/api/tournaments/t123/alias \
-  -H "Authorization: Bearer <token>"
-```
-
-**Resolving an alias** (public endpoint):
-
-```bash
-curl http://localhost:8000/api/tournaments/resolve-alias/summer-cup
-```
-
-Returns:
-```json
-{
-  "id": "t123",
-  "name": "Summer Championship 2026",
-  "type": "group_playoff"
-}
-```
-
-Aliases are particularly useful for TV displays where you want a stable,
-memorable URL that won't change even if you need to recreate tournaments
-or manage multiple events throughout a season.
-
-### Export outcome
-
-The **Export** card (visible once the tournament has a champion) lets you
-download a self-contained summary document:
-
-- **Format**: HTML (single file) or PDF (via browser print)
-- **Embedded bracket diagram** — PNG preview of the play-off schema
-- **Match history toggle** — optionally include all recorded match results
-
-### Match management
-
-#### Match comments
-
-Admins can attach a short text comment to any match — both pending and
-completed.  Comments appear on the public TV view alongside the match,
-making them useful for noting court changes, delays, or special instructions.
-
-- Click the **💬** icon on any match row to add or edit a comment
-- Comments are limited to 500 characters
-- Visible to all viewers on the public screen
-
-**Via the API:**
-
-```bash
-curl -X POST http://localhost:8000/api/tournaments/t123/match-comment \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"match_id": "m5", "comment": "Moved to Court 2"}'
-```
-
-To clear a comment, send an empty string.
-
-#### Player self-scoring (passphrase & QR login)
-
-When a tournament is created, every player automatically receives a unique
-**passphrase** (docker-style word combo, e.g. `brave-little-tiger`) and a
-**QR code token**.  Players can authenticate on the public TV view to submit
-scores for their own matches — no admin account required.
-
-**How it works:**
-
-1. The admin opens the **🔑 Player Codes** panel inside the tournament view.
-2. Each player's passphrase is shown in a copyable table. A **📱 QR** button
-   generates a scannable QR code containing an auto-login URL.
-3. The player scans the QR (or types the passphrase on the public view) to
-   log in.  A short-lived JWT is issued scoped to that player and tournament.
-4. Once logged in, the player can submit scores for matches they are
-   participating in — the "Record Score" form appears automatically.
-
-**Admin controls:**
-
-- **Regenerate** a player's credentials from the Player Codes panel if
-  compromised.
-- **Print all codes** or **Copy all codes** for easy distribution.
-- **Disable self-scoring** entirely via the TV Setting
-  *"Allow player scoring"* toggle — when off, the login button is hidden
-  on the public view.
-
-**Via the API:**
-
-```bash
-# Authenticate as a player
-curl -X POST http://localhost:8000/api/tournaments/t123/player-auth \
-  -H "Content-Type: application/json" \
-  -d '{"passphrase": "brave-little-tiger"}'
-
-# List all player secrets (admin only)
-GET /api/tournaments/t123/player-secrets
-
-# Regenerate a player's secret (admin only)
-POST /api/tournaments/t123/player-secrets/regenerate/{player_id}
-
-# Get QR code PNG (admin only)
-GET /api/tournaments/t123/player-secrets/qr/{player_id}?origin=https://example.com
-```
-
-Player auth is rate-limited (10 failed attempts per minute per IP) to prevent
-brute-force attacks.
-
-#### Announcement banner
-
-Admins can set a banner message that appears at the top of the public TV
-view for all participants.  Useful for schedule updates, break
-announcements, or any broadcast message.
-
-- Configured in the **📺 TV Mode Controls** card under "Announcement Banner"
-- Leave empty to hide the banner
-- Updated in real time on the next auto-refresh cycle
-
-#### Registration lobbies
-
-Admins can create a **registration lobby** — a shareable sign-up page that lets
-players self-register before the tournament is set up.
-
-1. Create a lobby from the **Registrations** tab (or via `POST /api/registrations`).
-2. Share the link (`/register?id=<lobby-id>`) with participants.
-3. Players fill in their name (and any custom questions you define) and submit.
-4. Once the sign-up period closes, open the lobby in the admin UI and click
-   **Convert to Tournament** — the engine creates a real tournament with all
-   registered players.  Player passphrases and QR tokens carry over automatically.
-
-Optional lobby settings: alias URLs, open/closed state, capacity limits, sport
-selection, custom registration questions, and a welcome message shown to
-registrants.
+Once a champion is determined, export a self-contained HTML or PDF summary with an embedded bracket diagram and optional full match history.
 
 ---
 
-### Mexicano tuning variants (brief)
+## For players
 
-The engine can be tuned with these parameters:
+### Self-registration
 
-- `skill_gap`:
-  - `None` → snake-draft distribution across courts/groups,
-  - integer → groups constrained by absolute estimated-score gap.
-- `win_bonus`: flat leaderboard bonus for winners.
-- `strength_weight`: scales points by opponent estimated strength.
-- `loss_discount`: multiplies losing-team credited points.
-- `balance_tolerance`: allows optimizer to trade score-balance strictness for
-  matchup novelty.
-- `num_rounds = 0` (rolling mode): unlimited rounds until manually advancing.
+If the organizer opened a registration lobby, visit the shared link and fill in your name to sign up.
 
-When players have unequal games played (sit-outs), estimated-score logic is used
-to keep grouping/strength effects fair.
+### Public TV view
+
+The read-only TV view (`/tv/<tournament-id-or-alias>`) shows live standings, the bracket, and match results — no login needed. Works well on a big screen.
+
+### Self-scoring
+
+Players can submit scores for their own matches without an admin account:
+
+1. On the public view, click **Login** and enter your passphrase (or scan the QR code the organizer shared with you).
+2. Once logged in, a "Record Score" form appears on your pending matches.
+
+The organizer can disable self-scoring at any time from the TV Settings panel.
 
 ---
 
@@ -436,7 +212,7 @@ uv sync
 uv run uvicorn backend.api:app --reload --port 8000
 ```
 
-Open <http://localhost:8000> in your browser. The `--reload` flag restarts the
+Open <http://localhost:8000> in your browser. Interactive API docs are at `/docs` (Swagger) and `/redoc`. The `--reload` flag restarts the
 server automatically whenever you edit Python files.
 
 ### Stopping and restarting
@@ -633,32 +409,8 @@ uv run pytest tests/ -x
 
 ---
 
-## API Documentation
+## License
 
-This project uses FastAPI's built-in automatic API documentation. Once the server is running, you can explore and test all endpoints interactively:
+This project is licensed under the **GNU General Public License v3.0**.
 
-- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)  
-  Interactive API explorer with request/response schemas and "Try it out" functionality
-  
-- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)  
-  Clean, three-panel documentation with search and deep linking
-
-Both interfaces are automatically generated from route definitions and stay in sync with the code.
-
-### Quick Reference
-
-- **Authentication**: JWT-based auth with user management (`/api/auth/*`)
-- **Tournaments**: CRUD operations for Group+Playoff and Mexicano formats (`/api/tournaments/*`)
-- **Group+Playoff**: Group stage matches, standings, and playoff brackets (`/api/tournaments/{id}/gp/*`)
-- **Mexicano**: Round-based scoring, pairing proposals, and optional playoffs (`/api/tournaments/{id}/mex/*`)
-- **Player Auth**: Passphrase/QR login for player self-scoring (`/api/tournaments/{id}/player-auth`, `/api/tournaments/{id}/player-secrets/*`)
-- **Registrations**: Player sign-up lobbies with conversion to tournaments (`/api/registrations/*`)
-- **Visualization**: SVG bracket rendering with customizable styling (`/api/schema/*`)
-
-All endpoints requiring authentication accept a JWT token via the `Authorization: Bearer <token>` header.
-
-## What's next (iteration ideas)
-
-- WebSocket push for automatic live-table refresh
-- Print-friendly draw sheets
-- Role-based access control (viewer vs. admin roles)
+See the [LICENSE](LICENSE) file for full terms.

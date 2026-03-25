@@ -537,3 +537,146 @@ class TestManualPlayoffParticipants:
         assert len(bracket_teams) == 2
         for team in bracket_teams:
             assert len(team) == 2
+
+
+class TestGroupDiversitySeeding:
+    """Playoff bracket first-round matchups must cross group boundaries.
+
+    With byes present, two seeds that both receive round-1 byes will
+    deterministically meet in round 2 (their *effective* first match).
+    The diversity guarantee applies to all such predetermined matchups,
+    not just literal round-1 matches.
+    """
+
+    @staticmethod
+    def _complete_group_rounds(t: GroupPlayoffTournament) -> None:
+        while True:
+            for m in t.pending_group_matches():
+                t.record_group_result(m.id, (6, 3))
+            if not t.has_more_group_rounds:
+                break
+            t.generate_next_group_round()
+
+    @staticmethod
+    def _player_group_map(t: GroupPlayoffTournament) -> dict[str, str]:
+        player_group: dict[str, str] = {}
+        for g in t.groups:
+            for p in g.players:
+                player_group[p.id] = g.name
+        return player_group
+
+    @staticmethod
+    def _predetermined_group_pairs(t: GroupPlayoffTournament) -> list[tuple[str, str]]:
+        """Return (group_A, group_B) for every match whose both participants are
+        fully determined by the initial seeding (no TBD slots involved)."""
+        from backend.tournaments.pairing import _effective_first_round_pairs
+
+        player_group = TestGroupDiversitySeeding._player_group_map(t)
+
+        # bracket original_teams gives the seeded order (index 0 = seed 0)
+        bracket = t.playoff_bracket
+        orig = bracket.original_teams if hasattr(bracket, "original_teams") else []
+        n = len(orig)
+        pairs = _effective_first_round_pairs(n)
+
+        def team_group(team):
+            return player_group.get(team[0].id, "?")
+
+        return [(team_group(orig[a]), team_group(orig[b])) for a, b in pairs]
+
+    def test_3_groups_2_advancing_team_mode_no_same_group_r1(self):
+        """3 groups × 2 teams: no predetermined matchup should be same-group."""
+        players = [Player(name=f"T{i + 1}") for i in range(6)]
+        t = GroupPlayoffTournament(
+            players,
+            num_groups=3,
+            top_per_group=2,
+            team_mode=True,
+        )
+        t.generate()
+        self._complete_group_rounds(t)
+        t.start_playoffs()
+
+        pairs = self._predetermined_group_pairs(t)
+        for g1, g2 in pairs:
+            assert g1 != g2, f"Predetermined matchup pairs two teams from the same group '{g1}'"
+
+    def test_3_groups_3_advancing_team_mode_no_same_group(self):
+        """3 groups × 3 teams (9 advancing, bracket of 16): all predetermined
+        matchups must cross group boundaries, including bye-round pairs."""
+        players = [Player(name=f"T{i + 1}") for i in range(9)]
+        t = GroupPlayoffTournament(
+            players,
+            num_groups=3,
+            top_per_group=3,
+            team_mode=True,
+        )
+        t.generate()
+        self._complete_group_rounds(t)
+        t.start_playoffs()
+
+        pairs = self._predetermined_group_pairs(t)
+        for g1, g2 in pairs:
+            assert g1 != g2, f"Predetermined matchup pairs two teams from the same group '{g1}'"
+
+    def test_4_groups_2_advancing_team_mode_no_same_group_r1(self):
+        """4 groups × 2 teams: no predetermined matchup should be same-group."""
+        players = [Player(name=f"T{i + 1}") for i in range(8)]
+        t = GroupPlayoffTournament(
+            players,
+            num_groups=4,
+            top_per_group=2,
+            team_mode=True,
+        )
+        t.generate()
+        self._complete_group_rounds(t)
+        t.start_playoffs()
+
+        pairs = self._predetermined_group_pairs(t)
+        for g1, g2 in pairs:
+            assert g1 != g2, f"Predetermined matchup pairs two teams from the same group '{g1}'"
+
+    def test_3_groups_2_advancing_individual_no_same_group_r1(self):
+        """3 groups × top-2 players (individual mode): no R1 pair from same group."""
+        players = _make_players(12)
+        t = GroupPlayoffTournament(
+            players,
+            num_groups=3,
+            top_per_group=2,
+            team_mode=False,
+        )
+        t.generate()
+        self._complete_group_rounds(t)
+        t.start_playoffs()
+
+        # For individual mode the teams are formed across groups, so check at
+        # player level: no R1 match should have both players from the same group.
+        player_group: dict[str, str] = {}
+        for g in t.groups:
+            for p in g.players:
+                player_group[p.id] = g.name
+
+        r1_matches = [m for m in t.playoff_matches() if m.round_number == 1 and m.team1 and m.team2]
+        for m in r1_matches:
+            groups_in_match = {player_group.get(p.id) for p in m.team1 + m.team2}
+            assert len(groups_in_match) >= 2, (
+                f"R1 match has all players from the same group: {groups_in_match}"
+            )
+
+    def test_3_groups_odd_advancing_best_effort_diversity(self):
+        """With 3 groups × 1 advancing = 3 teams and bracket size 4, the single
+        R1 match (seed2 vs seed3) must be cross-group."""
+        players = [Player(name=f"T{i + 1}") for i in range(6)]
+        t = GroupPlayoffTournament(
+            players,
+            num_groups=3,
+            top_per_group=1,
+            team_mode=True,
+        )
+        t.generate()
+        self._complete_group_rounds(t)
+        t.start_playoffs()
+
+        pairs = self._predetermined_group_pairs(t)
+        for g1, g2 in pairs:
+            assert g1 != g2, f"Predetermined matchup pairs two teams from the same group '{g1}'"

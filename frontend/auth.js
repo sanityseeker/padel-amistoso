@@ -8,6 +8,45 @@ const AUTH_TOKEN_KEY = 'padel-auth-token';
 const AUTH_USERNAME_KEY = 'padel-auth-username';
 const AUTH_ROLE_KEY = 'padel-auth-role';
 
+function _persistAuthValue(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (_) {
+    try {
+      sessionStorage.setItem(key, value);
+    } catch (e) {
+      console.error('Failed to save auth value:', e);
+    }
+  }
+}
+
+function _readAuthValue(key) {
+  try {
+    const localValue = localStorage.getItem(key);
+    if (localValue) return localValue;
+  } catch (_) {}
+
+  try {
+    const sessionValue = sessionStorage.getItem(key);
+    if (sessionValue) {
+      _persistAuthValue(key, sessionValue);
+      return sessionValue;
+    }
+  } catch (_) {}
+
+  return null;
+}
+
+function _removeAuthValue(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch (_) {}
+
+  try {
+    sessionStorage.removeItem(key);
+  } catch (_) {}
+}
+
 // ── Token Management ──────────────────────────────────────
 
 /**
@@ -16,49 +55,33 @@ const AUTH_ROLE_KEY = 'padel-auth-role';
  * @param {string} username - Username
  */
 function _saveAuthToken(token, username, role) {
-  try {
-    localStorage.setItem(AUTH_TOKEN_KEY, token);
-    localStorage.setItem(AUTH_USERNAME_KEY, username);
-    localStorage.setItem(AUTH_ROLE_KEY, role || 'user');
-  } catch (e) {
-    console.error('Failed to save auth token:', e);
-  }
+  _persistAuthValue(AUTH_TOKEN_KEY, token);
+  _persistAuthValue(AUTH_USERNAME_KEY, username);
+  _persistAuthValue(AUTH_ROLE_KEY, role || 'user');
 }
 
 /**
- * Get the current auth token from localStorage.
+ * Get the current auth token.
  * @returns {string|null}
  */
 function getAuthToken() {
-  try {
-    return localStorage.getItem(AUTH_TOKEN_KEY);
-  } catch (e) {
-    return null;
-  }
+  return _readAuthValue(AUTH_TOKEN_KEY);
 }
 
 /**
- * Get the current username from localStorage.
+ * Get the current username.
  * @returns {string|null}
  */
 function getAuthUsername() {
-  try {
-    return localStorage.getItem(AUTH_USERNAME_KEY);
-  } catch (e) {
-    return null;
-  }
+  return _readAuthValue(AUTH_USERNAME_KEY);
 }
 
 /**
- * Get the current user role from localStorage.
+ * Get the current user role.
  * @returns {'admin'|'user'|null}
  */
 function getAuthRole() {
-  try {
-    return localStorage.getItem(AUTH_ROLE_KEY);
-  } catch (e) {
-    return null;
-  }
+  return _readAuthValue(AUTH_ROLE_KEY);
 }
 
 /**
@@ -81,13 +104,9 @@ function isAuthenticated() {
  * Clear authentication data.
  */
 function clearAuth() {
-  try {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-    localStorage.removeItem(AUTH_USERNAME_KEY);
-    localStorage.removeItem(AUTH_ROLE_KEY);
-  } catch (e) {
-    console.error('Failed to clear auth:', e);
-  }
+  _removeAuthValue(AUTH_TOKEN_KEY);
+  _removeAuthValue(AUTH_USERNAME_KEY);
+  _removeAuthValue(AUTH_ROLE_KEY);
 }
 
 // ── Login / Logout ────────────────────────────────────────

@@ -30,6 +30,8 @@ function setActiveTab(tabName) {
   if (refreshBtn) refreshBtn.style.display = (tabName === 'view' && currentTid) ? '' : 'none';
   if (tabName === 'view') {
     _stopRegPoll();
+    // Restart registration detail poll if currently viewing a registration
+    if (currentType === 'registration') _startRegDetailPoll();
     // Highlight the chip for the currently active tournament
     document.querySelectorAll('.tournament-chip').forEach(b => b.classList.toggle('active', b.dataset.tid === currentTid));
   } else {
@@ -40,6 +42,7 @@ function setActiveTab(tabName) {
       btn.setAttribute('aria-selected', 'true');
     }
     if (tabName === 'home' && isAuthenticated()) { loadTournaments(); _startRegPoll(); } else { _stopRegPoll(); }
+    _stopRegDetailPoll();
   }
 }
 
@@ -310,8 +313,7 @@ function initLanguageSelector() {
 const PAGE_SELECTOR_KEY = 'amistoso-last-page';
 
 function togglePageSelector() {
-  const el = document.getElementById('page-selector');
-  if (el) el.classList.toggle('open');
+  togglePageSelectorDropdown();
 }
 
 function _closePageSelector() {
@@ -395,6 +397,60 @@ function generateSchema() {
   const elim = document.getElementById('schema-elim').value;
   const url = `/api/schema/preview?group_sizes=${encodeURIComponent(groups)}&advance_per_group=${advance}&elimination=${elim}`;
   _fetchSchema('schema', url, 'bracket');
+}
+
+const _SCHEMA_PRESETS = [
+  { label: '2×4', groups: '4,4',     advance: 2, players: 8  },
+  { label: '3×4', groups: '4,4,4',   advance: 2, players: 12 },
+  { label: '4×4', groups: '4,4,4,4', advance: 2, players: 16 },
+  { label: '2×6', groups: '6,6',     advance: 3, players: 12 },
+  { label: '3×6', groups: '6,6,6',   advance: 2, players: 18 },
+  { label: '4×6', groups: '6,6,6,6', advance: 2, players: 24 },
+];
+
+function _applySchemaPreset(label) {
+  const preset = _SCHEMA_PRESETS.find(p => p.label === label);
+  if (!preset) return;
+  document.getElementById('schema-groups').value = preset.groups;
+  document.getElementById('schema-advance').value = preset.advance;
+  // Update active state on preset buttons
+  document.querySelectorAll('.schema-preset-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.preset === label);
+  });
+  _updateSchemaSummary();
+}
+
+function _updateSchemaSummary() {
+  const raw = document.getElementById('schema-groups').value.trim();
+  const advance = parseInt(document.getElementById('schema-advance').value, 10);
+  const elim = document.getElementById('schema-elim').value;
+  const summaryEl = document.getElementById('schema-summary');
+  if (!summaryEl) return;
+
+  const groups = raw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+  if (!groups.length || isNaN(advance) || advance < 1) {
+    summaryEl.textContent = '';
+    // Deselect presets if user edited manually to non-matching value
+    document.querySelectorAll('.schema-preset-btn').forEach(btn => btn.classList.remove('active'));
+    return;
+  }
+
+  const totalPlayers = groups.reduce((a, b) => a + b, 0);
+  const totalQualified = groups.length * advance;
+  const elimLabel = elim === 'double' ? t('txt_txt_double_elimination') : t('txt_txt_single_elimination');
+
+  // Group description: e.g. "3 × 4" if all same size, else "4+4+5"
+  const allSame = groups.every(g => g === groups[0]);
+  const groupDesc = allSame ? `${groups.length} × ${groups[0]}` : groups.join('+');
+
+  summaryEl.textContent = `${groupDesc} = ${totalPlayers} ${t('txt_txt_players_lc')} · ${totalQualified} ${t('txt_txt_qualify')} → ${elimLabel}`;
+
+  // Highlight matching preset if any
+  const groupsStr = groups.join(',');
+  const match = _SCHEMA_PRESETS.find(p => p.groups === groupsStr && p.advance === advance);
+  document.querySelectorAll('.schema-preset-btn').forEach(btn => {
+    btn.classList.toggle('active', !!match && btn.dataset.preset === match.label);
+  });
 }
 
 function generateGpPlayoffSchema() {
@@ -559,7 +615,7 @@ async function loadTournaments() {
       return `
       <div class="match-card tournament-list-card reg-lobby-card">
         <div class="match-teams">
-          <a class="tournament-name-link" href="#" onclick="openRegistration('${esc(rid)}','${esc(r.name)}');return false">${esc(r.name)}</a>
+          <a class="tournament-name-link" href="#" onclick="openRegistration('${escAttr(rid)}','${escAttr(r.name)}');return false">${esc(r.name)}</a>
           <span class="badge badge-sport">${esc(sportLabel)}</span>
           ${phaseBadge} ${countLabel}
         </div>
@@ -691,7 +747,9 @@ function _renderTournamentChips() {
       const closeTid = e.target.closest('[data-close-tid]')?.dataset.closeTid;
       if (closeTid) { _unpinTournament(closeTid); return; }
       const tournament = _openTournaments.find(entry => entry.id === btn.dataset.tid);
-      if (tournament) openTournament(tournament.id, tournament.type, tournament.name);
+      if (!tournament) return;
+      if (tournament.type === 'registration') openRegistration(tournament.id, tournament.name);
+      else openTournament(tournament.id, tournament.type, tournament.name);
     });
   });
 }
@@ -750,6 +808,7 @@ function openTournament(id, type, name = null) {
   if (type === 'group_playoff') renderGP();
   else if (type === 'playoff') renderPO();
   else renderMex();
+  _stopRegDetailPoll();
   _startAdminVersionPoll();
 }
 
@@ -766,6 +825,8 @@ function openRegistration(rid, name) {
   updateActiveTournamentUI();
   setActiveTab('view');
   renderRegistration();
+  _stopAdminVersionPoll();
+  _startRegDetailPoll();
 }
 
 async function renderRegistration() {
@@ -822,16 +883,13 @@ function _applySportToCreatePanel() {
 }
 
 // ─── Participant Manager ──────────────────────────────────
-const _DEFAULTS = {
-  team:       ['Alice & Bob', 'Charlie & Diana', 'Eve & Frank', 'Grace & Hank'],
-  individual: ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace', 'Hank'],
-};
+const _EMPTY_ENTRIES = { team: ['', '', '', ''], individual: ['', '', '', '', '', '', '', ''] };
 // gp defaults to team mode; mex defaults to individual mode; po always team
 const _entryMode = { gp: 'team', mex: 'individual', po: 'team' };
 const _participantEntries = {
-  gp:  [..._DEFAULTS.team],
-  mex: [..._DEFAULTS.individual],
-  po:  [..._DEFAULTS.team],
+  gp:  [..._EMPTY_ENTRIES.team],
+  mex: [..._EMPTY_ENTRIES.individual],
+  po:  [..._EMPTY_ENTRIES.team],
 };
 const _participantPasteMode = { gp: false, mex: false, po: false };
 
@@ -967,9 +1025,9 @@ function setEntryMode(mode, entryMode) {
       btn.classList.toggle('active', btn.dataset.mode === entryMode);
     });
   }
-  // Reset to defaults when mode changes so team/individual entries don't bleed across
-  if (prev !== entryMode) {
-    _participantEntries[mode] = [..._DEFAULTS[entryMode === 'team' ? 'team' : 'individual']];
+  // Reset to empty entries when mode changes — but keep entries during convert mode
+  if (prev !== entryMode && !_convertFromRegistration) {
+    _participantEntries[mode] = [..._EMPTY_ENTRIES[entryMode === 'team' ? 'team' : 'individual']];
     if (_participantPasteMode[mode]) {
       const ta = document.getElementById(`${mode}-players`);
       if (ta) ta.value = _participantEntries[mode].join('\n');
@@ -1119,8 +1177,10 @@ async function createGP() {
     };
     if (_convertFromRegistration) {
       body.tournament_type = 'group_playoff';
-      const res = await api(`/api/registrations/${_convertFromRegistration.rid}/convert`, { method: 'POST', body: JSON.stringify(body) });
+      const rid = _convertFromRegistration.rid;
+      const res = await api(`/api/registrations/${rid}/convert`, { method: 'POST', body: JSON.stringify(body) });
       _cancelConvertMode();
+      _openTournaments = _openTournaments.filter(t => t.id !== rid);
       await loadRegistrations();
       openTournament(res.tournament_id, 'group_playoff', body.name || t('txt_txt_group_playoff_tournament'));
     } else {
@@ -1154,8 +1214,10 @@ async function createMex() {
     };
     if (_convertFromRegistration) {
       body.tournament_type = 'mexicano';
-      const res = await api(`/api/registrations/${_convertFromRegistration.rid}/convert`, { method: 'POST', body: JSON.stringify(body) });
+      const rid = _convertFromRegistration.rid;
+      const res = await api(`/api/registrations/${rid}/convert`, { method: 'POST', body: JSON.stringify(body) });
       _cancelConvertMode();
+      _openTournaments = _openTournaments.filter(t => t.id !== rid);
       await loadRegistrations();
       openTournament(res.tournament_id, 'mexicano', body.name || t('txt_txt_mexicano_tournament'));
     } else {
@@ -1183,8 +1245,10 @@ async function createPO() {
       body.tournament_type = 'playoff';
       body.player_names = body.participant_names;
       delete body.participant_names;
-      const res = await api(`/api/registrations/${_convertFromRegistration.rid}/convert`, { method: 'POST', body: JSON.stringify(body) });
+      const rid = _convertFromRegistration.rid;
+      const res = await api(`/api/registrations/${rid}/convert`, { method: 'POST', body: JSON.stringify(body) });
       _cancelConvertMode();
+      _openTournaments = _openTournaments.filter(t => t.id !== rid);
       await loadRegistrations();
       openTournament(res.tournament_id, 'playoff', body.name || t('txt_txt_play_off_only_tournament'));
     } else {
@@ -1749,15 +1813,15 @@ function _renderGpPlayoffEditor() {
     const ep = _gpExternalParticipants[i];
     html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem">`;
     html += `<span style="min-width:140px">★ ${esc(ep.name)}</span>`;
-    html += `<input type="number" value="${ep.score}" style="width:70px" onchange="_mexUpdateExternalScore(${i}, this.value)">`;
-    html += `<button type="button" class="btn btn-sm" style="padding:0.15rem 0.5rem;background:var(--border);color:var(--text)" onclick="_mexRemoveExternal(${i})">✕</button>`;
+    html += `<input type="number" value="${ep.score}" style="width:70px" onchange="_gpUpdateExternalScore(${i}, this.value)">`;
+    html += `<button type="button" class="btn btn-sm" style="padding:0.15rem 0.5rem;background:var(--border);color:var(--text)" onclick="_gpRemoveExternal(${i})">✕</button>`;
     html += `</div>`;
   }
   html += `</div>`;
   html += `<div style="display:flex;align-items:center;gap:0.5rem">`;
-  html += `<input type="text" id="gp-external-name" placeholder="${t('txt_txt_add_external_participant')}" onkeydown="if(event.key==='Enter')_mexAddExternal()">`;
+  html += `<input type="text" id="gp-external-name" placeholder="${t('txt_txt_add_external_participant')}" onkeydown="if(event.key==='Enter')_gpAddExternal()">`;
   html += `<input type="number" id="gp-external-score" placeholder="${t('txt_txt_score')}" value="0" style="width:70px">`;
-  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_mexAddExternal()">+</button>`;
+  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_gpAddExternal()">+</button>`;
   html += `</div>`;
   html += `</div>`;
 
@@ -2357,10 +2421,10 @@ function _renderProposalPicker(proposals) {
       for (const [name, detail] of Object.entries(p.per_person_repeats)) {
         const parts = [];
         for (const pr of (detail.partner_repeats || [])) {
-          parts.push(t('txt_txt_partner_n_times', { player: pr.player, count: pr.count }));
+          parts.push(esc(t('txt_txt_partner_n_times', { player: pr.player, count: pr.count })));
         }
         for (const or_ of (detail.opponent_repeats || [])) {
-          parts.push(t('txt_txt_vs_n_times', { player: or_.player, count: or_.count }));
+          parts.push(esc(t('txt_txt_vs_n_times', { player: or_.player, count: or_.count })));
         }
         if (parts.length > 0) {
           card += `<span class="rp-name">${esc(name)}</span>: ${parts.join(', ')}<br>`;
@@ -3322,7 +3386,7 @@ function _renderPlayerCodes(secrets) {
       html += `<tr style="border-bottom:1px solid var(--border)" id="pc-row-${pid}">`;
       html += `<td style="padding:0.4rem 0.6rem;font-weight:600">${esc(info.name)}</td>`;
       html += `<td style="padding:0.4rem 0.6rem"><code id="pc-pass-${pid}" style="font-size:0.9em;color:var(--accent);user-select:all;cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(info.passphrase)}</code></td>`;
-      html += `<td style="padding:0.4rem 0.6rem;text-align:center"><button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem" onclick="_showPlayerQr('${pid}','${esc(info.name)}')">📱 ${t('txt_txt_qr_code')}</button></td>`;
+      html += `<td style="padding:0.4rem 0.6rem;text-align:center"><button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem" onclick="_showPlayerQr('${escAttr(pid)}','${escAttr(info.name)}')">📱 ${t('txt_txt_qr_code')}</button></td>`;
       html += `<td style="padding:0.4rem 0.6rem;text-align:center"><button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem;background:var(--border);color:var(--text)" onclick="_regeneratePlayerCode('${pid}')">🔄 ${t('txt_txt_regenerate')}</button></td>`;
       html += `</tr>`;
     }
@@ -3507,7 +3571,7 @@ function _renderTvControls(tvSettings, hasCourts) {
   html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">🔗 ${t('txt_txt_tournament_alias')}</label>`;
   html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_tv_alias_help')}</p>`;
   html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
-  html += `<input type="text" id="tournament-alias-input" placeholder="my-tournament" value="${esc(currentAlias)}" 
+  html += `<input type="text" id="tournament-alias-input" placeholder="my-tournament" value="${escAttr(currentAlias)}" 
     pattern="[a-zA-Z0-9_-]+" maxlength="64" 
     style="flex:1;min-width:200px;font-family:monospace;font-size:0.85rem">`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setTournamentAlias()" style="white-space:nowrap">${t('txt_txt_set_alias')}</button>`;
@@ -3518,7 +3582,7 @@ function _renderTvControls(tvSettings, hasCourts) {
   if (currentAlias) {
     html += `<div style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:0.78rem">`;
     html += `<span style="color:var(--text-muted)">${t('txt_txt_tv_url')}</span> <code style="color:var(--accent);font-size:0.85rem">/tv/${esc(currentAlias)}</code>`;
-    html += ` <button type="button" onclick="navigator.clipboard.writeText(window.location.origin+'/tv/${esc(currentAlias)}');alert('${t('txt_txt_url_copied')}')"
+    html += ` <button type="button" onclick="navigator.clipboard.writeText(window.location.origin+'/tv/${escAttr(currentAlias)}');alert('${escAttr(t('txt_txt_url_copied'))}')"
       style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:3px;padding:0.1rem 0.4rem;cursor:pointer;font-size:0.75rem;margin-left:0.3rem">📋 ${t('txt_txt_copy')}</button>`;
     html += `</div>`;
   }
@@ -3530,7 +3594,7 @@ function _renderTvControls(tvSettings, hasCourts) {
   html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">📢 ${t('txt_banner_label')}</label>`;
   html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_banner_help')}</p>`;
   html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
-  html += `<input type="text" id="tournament-banner-input" placeholder="${t('txt_banner_placeholder')}" value="${esc(currentBanner)}" 
+  html += `<input type="text" id="tournament-banner-input" placeholder="${t('txt_banner_placeholder')}" value="${escAttr(currentBanner)}" 
     maxlength="500" 
     style="flex:1;min-width:200px;font-size:0.85rem">`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setTournamentBanner()" style="white-space:nowrap">${t('txt_txt_set')}</button>`;
@@ -3747,6 +3811,35 @@ let _regDetails = {};  // rid → full registration detail data
 let _currentRegDetail = null;  // last-opened registration (for convert flow)
 let _regPollTimer = null;
 const _REG_POLL_INTERVAL_MS = 10000;
+
+// Registration detail auto-refresh
+let _regDetailPollTimer = null;
+let _regDetailLastCount = null;
+const _REG_DETAIL_POLL_INTERVAL_MS = 6000;
+
+function _startRegDetailPoll() {
+  _stopRegDetailPoll();
+  if (!currentTid || currentType !== 'registration') return;
+  _regDetailLastCount = _currentRegDetail?.registrants?.length ?? null;
+  _regDetailPollTimer = setInterval(async () => {
+    if (!currentTid || currentType !== 'registration') return;
+    try {
+      const d = await fetch(`/api/registrations/${currentTid}/public`).then(r => r.ok ? r.json() : null);
+      if (!d) return;
+      if (_regDetailLastCount !== null && d.registrant_count !== _regDetailLastCount) {
+        _regDetailLastCount = d.registrant_count;
+        renderRegistration();
+      } else {
+        _regDetailLastCount = d.registrant_count;
+      }
+    } catch (_) { /* network blip */ }
+  }, _REG_DETAIL_POLL_INTERVAL_MS);
+}
+
+function _stopRegDetailPoll() {
+  if (_regDetailPollTimer) { clearInterval(_regDetailPollTimer); _regDetailPollTimer = null; }
+  _regDetailLastCount = null;
+}
 
 function _startRegPoll() {
   _stopRegPoll();
@@ -4338,9 +4431,45 @@ document.addEventListener('DOMContentLoaded', () => {
   _initParticipantFields();
   initAuth();
   initPersistedForms();
+  _updateSchemaSummary();
   if (!isAuthenticated()) {
     setActiveTab('info');
   } else {
     loadTournaments();
+  }
+});
+
+// ── Event delegation for static HTML actions ────────────────
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  switch (el.dataset.action) {
+    case 'toggleLanguage': toggleLanguage(); break;
+    case 'togglePageSelector': togglePageSelector(); break;
+    case 'toggleTheme': toggleTheme(); break;
+    case 'refreshCurrentView': _refreshCurrentView(); break;
+    case 'openFormatInfo': openFormatInfo(); break;
+    case 'setSport': setSport(el.dataset.sport); break;
+    case 'setCreateMode': setCreateMode(el.dataset.tab); break;
+    case 'setEntryMode': setEntryMode(el.dataset.entryCtx, el.dataset.entryMode); break;
+    case 'clearParticipants': clearParticipants(el.dataset.ctx); break;
+    case 'togglePasteMode': togglePasteMode(el.dataset.ctx); break;
+    case 'addParticipantField': addParticipantField(el.dataset.ctx); break;
+    case 'withLoading': withLoading(el, window[el.dataset.handler]); break;
+    case 'setMexRoundsMode': _setMexRoundsMode(el.dataset.roundsMode); break;
+    case 'applySchemaPreset': _applySchemaPreset(el.dataset.preset); break;
+    case 'generatePoPreviewSchema': generatePoPreviewSchema(); break;
+    case 'generateSchema': generateSchema(); break;
+    case 'closeFormatInfo': closeFormatInfo(); break;
+    case 'closeBracketLightbox': _closeBracketLightbox(e); break;
+    case 'stopPropagation': e.stopPropagation(); break;
+    case 'bracketLightboxZoomOut': _bracketLightboxZoomOut(); break;
+    case 'bracketLightboxZoomReset': _bracketLightboxZoomReset(); break;
+    case 'bracketLightboxZoomIn': _bracketLightboxZoomIn(); break;
+    case 'bracketLightboxOpenFull': _bracketLightboxOpenFull(); break;
+    case 'bracketLightboxDownload': _bracketLightboxDownload(); break;
+    case 'hideLoginDialog': hideLoginDialog(); break;
+    case 'hideUserMgmt': hideUserMgmt(); break;
+    case 'hideChangePasswordDialog': hideChangePasswordDialog(); break;
   }
 });

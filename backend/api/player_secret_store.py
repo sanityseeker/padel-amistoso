@@ -38,24 +38,21 @@ def create_secrets_for_tournament(
     secrets = generate_secrets_for_players(player_ids)
     name_map = {p["id"]: p["name"] for p in players}
 
-    try:
-        with get_db() as conn:
-            conn.executemany(
-                """
-                INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(tournament_id, player_id) DO UPDATE SET
-                    passphrase  = excluded.passphrase,
-                    token       = excluded.token,
-                    player_name = excluded.player_name
-                """,
-                [
-                    (tournament_id, pid, name_map.get(pid, ""), sec.passphrase, sec.token)
-                    for pid, sec in secrets.items()
-                ],
-            )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not persist player secrets for %s: %s", tournament_id, exc)
+    with get_db() as conn:
+        conn.executemany(
+            """
+            INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(tournament_id, player_id) DO UPDATE SET
+                passphrase  = excluded.passphrase,
+                token       = excluded.token,
+                player_name = excluded.player_name
+            """,
+            [
+                (tournament_id, pid, name_map.get(pid, ""), sec.passphrase, sec.token)
+                for pid, sec in secrets.items()
+            ],
+        )
 
     return secrets
 
@@ -77,20 +74,16 @@ def regenerate_secret(tournament_id: str, player_id: str) -> PlayerSecret | None
     from ..tournaments.player_secrets import generate_passphrase, generate_token
 
     new = PlayerSecret(passphrase=generate_passphrase(), token=generate_token())
-    try:
-        with get_db() as conn:
-            cur = conn.execute(
-                """
-                UPDATE player_secrets SET passphrase = ?, token = ?
-                WHERE tournament_id = ? AND player_id = ?
-                """,
-                (new.passphrase, new.token, tournament_id, player_id),
-            )
-            if cur.rowcount == 0:
-                return None
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not regenerate secret for %s/%s: %s", tournament_id, player_id, exc)
-        return None
+    with get_db() as conn:
+        cur = conn.execute(
+            """
+            UPDATE player_secrets SET passphrase = ?, token = ?
+            WHERE tournament_id = ? AND player_id = ?
+            """,
+            (new.passphrase, new.token, tournament_id, player_id),
+        )
+        if cur.rowcount == 0:
+            return None
     return new
 
 

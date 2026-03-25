@@ -10,52 +10,15 @@ _applyTheme(_theme);
 let _lang = _loadSavedLanguage();
 setAppLanguage(_lang);
 
-// ── Page selector (same pattern as tv.js) ─────────────────
-function _buildPageSelectorHtml(currentPage) {
-  const pages = [
-    { key: 'admin', href: '/', icon: '🛠️', label: t('txt_nav_admin') },
-    { key: 'tv', href: '/tv', icon: '📺', label: t('txt_nav_tv_view') },
-    { key: 'register', href: '/register', icon: '📋', label: t('txt_nav_registrations') },
-  ];
-  const current = pages.find(p => p.key === currentPage) || pages[0];
-  let html = `<div class="tv-page-selector" id="page-selector">`;
-  html += `<button type="button" class="tv-page-selector-btn" onclick="_regTogglePageSelector()">`;
-  html += `<span>${current.icon}</span> <span>${esc(current.label)}</span> <span style="font-size:0.7rem;color:var(--text-muted)">▾</span>`;
-  html += `</button>`;
-  html += `<div class="tv-page-selector-menu" id="page-selector-menu">`;
-  for (const p of pages) {
-    const active = p.key === currentPage ? ' active' : '';
-    html += `<a href="${p.href}" class="tv-page-selector-item${active}" onclick="_regSavePageChoice('${p.key}')">`;
-    html += `<span>${p.icon}</span> <span>${esc(p.label)}</span></a>`;
-  }
-  html += `</div></div>`;
-  return html;
-}
-
-function _regTogglePageSelector() {
-  const el = document.getElementById('page-selector');
-  if (el) el.classList.toggle('open');
-}
-
-function _regSavePageChoice(page) {
-  try { localStorage.setItem('amistoso-last-page', page); } catch (_) {}
-}
-
-// Close selector on outside click
-document.addEventListener('click', function (e) {
-  const sel = document.getElementById('page-selector');
-  if (sel && !sel.contains(e.target)) sel.classList.remove('open');
-});
-
 // ── Build header into #reg-root ───────────────────────────
 function _buildHeader() {
   const langMeta = _languageToggleMeta();
   const themeIcon = _theme === 'dark' ? '🌙' : '☀️';
 
   let html = `<div class="tv-header"><div class="tv-header-title-row">`;
-  html += _buildPageSelectorHtml('register');
+  html += `<div class="tv-lang-cell"><button type="button" class="theme-btn" onclick="_regToggleLanguage()" title="${esc(langMeta.label)}" aria-label="${esc(langMeta.label)}">${langMeta.icon}</button></div>`;
+  html += buildPageSelectorHtml('register');
   html += `<div class="tv-toggle-btns">`;
-  html += `<button type="button" class="theme-btn" onclick="_regToggleLanguage()" title="${esc(langMeta.label)}" aria-label="${esc(langMeta.label)}">${langMeta.icon}</button>`;
   html += `<button type="button" class="theme-btn" onclick="_regToggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}" data-theme-toggle-icon>${themeIcon}</button>`;
   html += `</div></div>`;
   html += `</div>`;
@@ -90,6 +53,74 @@ let _regData = null;
 let _lastResult = null;
 let _pollTimer = null;
 let _rid = null;
+
+function _regTokenKeyCandidates() {
+  const ids = [];
+  if (_regData?.id) ids.push(_regData.id);
+  if (_rid && !ids.includes(_rid)) ids.push(_rid);
+  return ids.map((id) => `reg_token_${id}`);
+}
+
+function _regTokenPrimaryKey() {
+  const keys = _regTokenKeyCandidates();
+  return keys.length ? keys[0] : null;
+}
+
+function _getRegToken() {
+  const keys = _regTokenKeyCandidates();
+  if (!keys.length) return null;
+  const primaryKey = _regTokenPrimaryKey();
+
+  const parseToken = (value) => {
+    if (!value) return null;
+    try {
+      const parsed = JSON.parse(value);
+      if (!parsed || typeof parsed !== 'object') return null;
+      const token = typeof parsed.token === 'string' ? parsed.token : null;
+      return token;
+    } catch (_) {
+      _setRegToken(value);
+      return value;
+    }
+  };
+
+  for (const key of keys) {
+    try {
+      const token = parseToken(localStorage.getItem(key));
+      if (token) {
+        if (primaryKey && key !== primaryKey) _setRegToken(token);
+        return token;
+      }
+    } catch (_) {}
+  }
+
+  for (const key of keys) {
+    try {
+      const sessionValue = sessionStorage.getItem(key);
+      if (sessionValue) {
+        try { localStorage.setItem(key, sessionValue); } catch (_) {}
+        const token = parseToken(sessionValue);
+        if (token) {
+          if (primaryKey && key !== primaryKey) _setRegToken(token);
+          return token;
+        }
+      }
+    } catch (_) {}
+  }
+
+  return null;
+}
+
+function _setRegToken(token) {
+  const key = _regTokenPrimaryKey();
+  if (!key) return;
+  const payload = JSON.stringify({ token });
+  try {
+    localStorage.setItem(key, payload);
+  } catch (_) {
+    try { sessionStorage.setItem(key, payload); } catch (_) {}
+  }
+}
 
 function _fullRender() {
   const root = document.getElementById('reg-root');
@@ -161,9 +192,9 @@ function _renderDirectory(lobbies) {
 
   let html = `<div class="tv-picker">`;
   html += `<div class="tv-header-title-row" style="margin-bottom:1rem">`;
-  html += _buildPageSelectorHtml('register');
+  html += `<div class="tv-lang-cell"><button type="button" class="theme-btn" onclick="_regToggleLanguage()" title="${esc(langMeta.label)}" aria-label="${esc(langMeta.label)}">${langMeta.icon}</button></div>`;
+  html += buildPageSelectorHtml('register');
   html += `<div class="tv-toggle-btns">`;
-  html += `<button type="button" class="theme-btn" onclick="_regToggleLanguage()" title="${esc(langMeta.label)}" aria-label="${esc(langMeta.label)}">${langMeta.icon}</button>`;
   html += `<button type="button" data-theme-toggle-icon="1" class="theme-btn" onclick="_regToggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${themeIcon}</button>`;
   html += `</div>`;
   html += `</div>`;
@@ -250,7 +281,7 @@ function _showClosed(converted) {
       const tid = _regData.converted_to_tid;
       let tvUrl = `/public.html?id=${encodeURIComponent(tid)}`;
       try {
-        const token = sessionStorage.getItem(`reg_token_${_rid}`);
+        const token = _getRegToken();
         if (token) tvUrl = `/tv/${encodeURIComponent(tid)}?player_token=${encodeURIComponent(token)}`;
       } catch (_) {}
       html += `<div style="text-align:center;margin-top:1rem"><a href="${tvUrl}" class="btn btn-primary" style="display:inline-block;text-decoration:none;max-width:300px">🏆 ${t('txt_reg_view_tournament_btn')}</a></div>`;
@@ -350,12 +381,145 @@ async function _lookupPlayer() {
       return;
     }
     const data = await res.json();
-    // Reuse success screen — passphrase is echoed back from server
-    _lastResult = { player_name: data.player_name, passphrase: data.passphrase, token: null };
+    _lastResult = {
+      player_id: data.player_id,
+      player_name: data.player_name,
+      passphrase: data.passphrase,
+      answers: data.answers || {},
+      token: null,
+      from_login: true,
+    };
     _showSuccess();
   } catch (_) {
     errorEl.textContent = t('txt_reg_error');
     btn.disabled = false;
+  }
+}
+
+function _renderReturningPlayerEditor() {
+  if (!_lastResult?.from_login || !_regData?.open || _regData?.converted) return '';
+
+  const hasQuestions = _regData.questions && _regData.questions.length > 0;
+
+  let html = `<details class="manage-reg">`;
+  html += `<summary><span class="manage-reg-arrow">▸</span> Manage registration</summary>`;
+  html += `<div class="manage-reg-body">`;
+
+  if (hasQuestions) {
+    for (const q of _regData.questions) {
+      const reqAttr = q.required ? 'required' : '';
+      const existingValue = _lastResult.answers?.[q.key] || '';
+      const optHint = q.required ? '' : ` <small style="font-weight:400;color:var(--text-muted)">(${t('txt_txt_optional')})</small>`;
+      html += `<div class="form-group"><label>${esc(q.label)}${optHint}</label>`;
+      if (q.type === 'choice' && q.choices && q.choices.length) {
+        html += `<select class="returning-answer" data-key="${esc(q.key)}" ${reqAttr}>`;
+        html += `<option value="">${t('txt_reg_select_option')}</option>`;
+        for (const c of q.choices) {
+          const selected = c === existingValue ? 'selected' : '';
+          html += `<option value="${esc(c)}" ${selected}>${esc(c)}</option>`;
+        }
+        html += `</select>`;
+      } else {
+        html += `<input type="text" class="returning-answer" data-key="${esc(q.key)}" maxlength="256" value="${esc(existingValue)}" ${reqAttr}>`;
+      }
+      html += `</div>`;
+    }
+  }
+
+  html += `<div class="error-msg" id="reg-returning-action-error"></div>`;
+  html += `<div class="manage-reg-actions">`;
+  html += `<div class="manage-reg-actions-left">`;
+  if (hasQuestions) {
+    html += `<button type="button" class="btn-outline" id="reg-returning-save-btn" onclick="_saveReturningAnswers()">Update answers</button>`;
+    html += `<span class="manage-reg-success" id="reg-returning-save-ok"></span>`;
+  }
+  html += `</div>`;
+  html += `<button type="button" class="btn-outline-danger" id="reg-returning-cancel-btn" onclick="_cancelReturningRegistration()">Cancel registration</button>`;
+  html += `</div></div></details>`;
+  return html;
+}
+
+async function _saveReturningAnswers() {
+  if (!_lastResult?.from_login || !_rid) return;
+  const errorEl = document.getElementById('reg-returning-action-error');
+  const saveBtn = document.getElementById('reg-returning-save-btn');
+  if (errorEl) errorEl.textContent = '';
+
+  const answers = {};
+  const answerEls = document.querySelectorAll('.returning-answer');
+  for (const el of answerEls) {
+    const key = el.getAttribute('data-key');
+    const val = el.value?.trim();
+    if (el.hasAttribute('required') && !val) {
+      if (errorEl) errorEl.textContent = t('txt_reg_answer_required');
+      return;
+    }
+    if (val) answers[key] = val;
+  }
+
+  if (saveBtn) saveBtn.disabled = true;
+  try {
+    const res = await fetch(`${API}/${encodeURIComponent(_rid)}/player-answers`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passphrase: _lastResult.passphrase, answers }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (errorEl) errorEl.textContent = data.detail || t('txt_reg_error');
+      return;
+    }
+
+    const updated = await res.json();
+    _lastResult.answers = updated.answers || {};
+    if (_regData?.registrants) {
+      const idx = _regData.registrants.findIndex((p) => p.player_id === updated.player_id);
+      if (idx >= 0) _regData.registrants[idx].answers = updated.answers || {};
+    }
+    const okEl = document.getElementById('reg-returning-save-ok');
+    if (okEl) {
+      okEl.textContent = '✓ Saved';
+      setTimeout(() => { okEl.textContent = ''; }, 3000);
+    }
+  } catch (_) {
+    if (errorEl) errorEl.textContent = t('txt_reg_error');
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+async function _cancelReturningRegistration() {
+  if (!_lastResult?.from_login || !_rid) return;
+  const errorEl = document.getElementById('reg-returning-action-error');
+  const cancelBtn = document.getElementById('reg-returning-cancel-btn');
+  if (errorEl) errorEl.textContent = '';
+  if (!confirm('Cancel your registration?')) return;
+
+  if (cancelBtn) cancelBtn.disabled = true;
+  try {
+    const res = await fetch(`${API}/${encodeURIComponent(_rid)}/player-cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passphrase: _lastResult.passphrase }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (errorEl) errorEl.textContent = data.detail || t('txt_reg_error');
+      return;
+    }
+
+    if (_regData?.registrants) {
+      _regData.registrants = _regData.registrants.filter((p) => p.player_id !== _lastResult.player_id);
+      _regData.registrant_count = _regData.registrants.length;
+    }
+    _lastResult = null;
+    _render();
+  } catch (_) {
+    if (errorEl) errorEl.textContent = t('txt_reg_error');
+  } finally {
+    if (cancelBtn) cancelBtn.disabled = false;
   }
 }
 
@@ -371,13 +535,15 @@ function _showSuccess() {
 
   html += _renderPlayerList();
 
+  html += _renderReturningPlayerEditor();
+
   html += `<button type="button" class="btn-secondary" onclick="_registerAnother()" style="margin-top:0.5rem">${t('txt_reg_register_another')}</button>`;
 
   el.innerHTML = html;
   el.style.display = '';
 
   if (_rid && r.token) {
-    try { sessionStorage.setItem(`reg_token_${_rid}`, r.token); } catch (_) {}
+    _setRegToken(r.token);
   }
 
   _startPolling();
@@ -502,7 +668,7 @@ function _showRedirectToast(tid) {
 
   let url = `/public.html?id=${encodeURIComponent(tid)}`;
   try {
-    const token = sessionStorage.getItem(`reg_token_${_rid}`);
+    const token = _getRegToken();
     if (token) url = `/tv/${encodeURIComponent(tid)}?player_token=${encodeURIComponent(token)}`;
   } catch (_) {}
 

@@ -9,8 +9,9 @@ Auth API routes — login, user management.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from ..api.rate_limit import BoundedRateLimiter
 from .deps import get_current_user, require_admin
 from .models import User, UserRole
 from .schemas import (
@@ -25,12 +26,29 @@ from .store import user_store
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+_LOGIN_MAX_ATTEMPTS = 10
+_LOGIN_WINDOW_SECONDS = 60
+_LOGIN_MAX_TRACKED_IPS = 4096
+
+_login_rate_limiter = BoundedRateLimiter(
+    max_attempts=_LOGIN_MAX_ATTEMPTS,
+    window_seconds=_LOGIN_WINDOW_SECONDS,
+    max_tracked_ips=_LOGIN_MAX_TRACKED_IPS,
+)
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
 
 @router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, request: Request):
     """Authenticate with username + password, receive a JWT."""
+    client_ip = _client_ip(request)
+    _login_rate_limiter.check(client_ip, "Too many failed login attempts — try again later")
     user = user_store.authenticate(req.username, req.password)
     if user is None:
+        _login_rate_limiter.record(client_ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",

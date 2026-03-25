@@ -13,12 +13,12 @@ from ..models import Sport
 
 class CreateGroupPlayoffRequest(BaseModel):
     name: str = Field(default="My Tournament", max_length=255)
-    player_names: list[str]
+    player_names: list[str] = Field(min_length=2, max_length=256)
     team_mode: bool = False
     sport: Sport = Sport.PADEL
-    court_names: list[str] = ["Court 1"]
+    court_names: list[str] = Field(default=["Court 1"], max_length=64)
     num_groups: int = Field(default=2, ge=1, le=32)
-    group_names: list[str] = []
+    group_names: list[str] = Field(default=[], max_length=32)
     top_per_group: int = Field(default=2, ge=1)
     double_elimination: bool = False
     public: bool = True
@@ -29,6 +29,8 @@ class CreateGroupPlayoffRequest(BaseModel):
     def at_least_two_players(cls, v: list[str]) -> list[str]:
         if len(v) < 2:
             raise ValueError("Need at least 2 players")
+        if any(len(n.strip()) == 0 for n in v):
+            raise ValueError("Player names must not be empty")
         return v
 
     @model_validator(mode="after")
@@ -40,8 +42,8 @@ class CreateGroupPlayoffRequest(BaseModel):
 
 class CreateMexicanoRequest(BaseModel):
     name: str = Field(default="My Mexicano", max_length=255)
-    player_names: list[str]
-    court_names: list[str] = ["Court 1"]
+    player_names: list[str] = Field(min_length=2, max_length=256)
+    court_names: list[str] = Field(default=["Court 1"], max_length=64)
     team_mode: bool = False
     sport: Sport = Sport.PADEL
     total_points_per_match: int = Field(default=32, ge=1)
@@ -59,6 +61,8 @@ class CreateMexicanoRequest(BaseModel):
     def at_least_two_players(cls, v: list[str]) -> list[str]:
         if len(v) < 2:
             raise ValueError("Need at least 2 entries for Mexicano format")
+        if any(len(n.strip()) == 0 for n in v):
+            raise ValueError("Player names must not be empty")
         return v
 
     @model_validator(mode="after")
@@ -72,8 +76,8 @@ class CreateMexicanoRequest(BaseModel):
 
 class CreatePlayoffRequest(BaseModel):
     name: str = Field(default="My Play-off", max_length=255)
-    participant_names: list[str]
-    court_names: list[str] = ["Court 1"]
+    participant_names: list[str] = Field(min_length=2, max_length=256)
+    court_names: list[str] = Field(default=["Court 1"], max_length=64)
     team_mode: bool = True
     sport: Sport = Sport.PADEL
     double_elimination: bool = False
@@ -85,6 +89,8 @@ class CreatePlayoffRequest(BaseModel):
     def at_least_two_participants(cls, v: list[str]) -> list[str]:
         if len(v) < 2:
             raise ValueError("Need at least 2 participants")
+        if any(len(n.strip()) == 0 for n in v):
+            raise ValueError("Participant names must not be empty")
         return v
 
     @model_validator(mode="after")
@@ -170,11 +176,19 @@ class RecordTennisScoreRequest(BaseModel):
     def validate_sets(cls, v: list[list[int]]) -> list[list[int]]:
         if len(v) == 0:
             raise ValueError("Must provide at least one set")
+        if len(v) > 5:
+            raise ValueError("Cannot have more than 5 sets")
         for i, s in enumerate(v):
             if len(s) != 2:
                 raise ValueError(f"Set {i + 1} must have exactly 2 scores")
             if s[0] < 0 or s[1] < 0:
                 raise ValueError(f"Set {i + 1} scores must be non-negative")
+            if s[0] == s[1]:
+                raise ValueError(f"Set {i + 1} cannot be a tie ({s[0]}-{s[1]})")
+        sets1 = sum(1 for s in v if s[0] > s[1])
+        sets2 = sum(1 for s in v if s[1] > s[0])
+        if sets1 == sets2:
+            raise ValueError("Match must have a winner (equal sets won)")
         return v
 
 
@@ -188,8 +202,8 @@ class CustomMatchSpec(BaseModel):
 
 
 class CustomRoundRequest(BaseModel):
-    matches: list[CustomMatchSpec]
-    sit_out_ids: list[str] | None = None
+    matches: list[CustomMatchSpec] = Field(min_length=1, max_length=512)
+    sit_out_ids: list[str] | None = Field(default=None, max_length=512)
 
 
 class ExternalParticipant(BaseModel):
@@ -319,6 +333,13 @@ class RegistrantLoginOut(BaseModel):
     passphrase: str
     answers: dict[str, str] = Field(default_factory=dict)
     registered_at: str
+
+
+class RegistrantAnswersUpdateIn(BaseModel):
+    """Request body for returning-player answer edits on a registration lobby."""
+
+    passphrase: str = Field(min_length=1, max_length=128)
+    answers: dict[str, str] = Field(default_factory=dict)
 
 
 class RegistrationPublicOut(BaseModel):
