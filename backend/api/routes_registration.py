@@ -41,7 +41,7 @@ from .schemas import (
     RegistrationUpdate,
     SetAliasRequest,
 )
-from .state import _next_id, _tournaments, _global_lock
+from .state import _next_id, _global_lock
 
 router = APIRouter(prefix="/api/registrations", tags=["registrations"])
 
@@ -126,7 +126,9 @@ def _parse_answers(raw: str | None) -> dict[str, str]:
 
 
 @router.post("")
-async def create_registration(req: RegistrationCreate, request: Request, user: User = Depends(get_current_user)) -> dict:
+async def create_registration(
+    req: RegistrationCreate, request: Request, user: User = Depends(get_current_user)
+) -> dict:
     """Create a new registration lobby."""
     client_ip = _client_ip(request)
     _create_rate_limiter.check(client_ip, "Too many registration creation attempts — try again later")
@@ -553,9 +555,16 @@ async def convert_registration(
                 group_names=req.group_names,
             )
             t.generate()
-            _store_tournament(tid, name=tournament_name, tournament_type=TournamentType.GROUP_PLAYOFF.value,
-                              tournament=t, owner=user.username, public=req.public,
-                              sport=req.sport.value, assign_courts=req.assign_courts)
+            _store_tournament(
+                tid,
+                name=tournament_name,
+                tournament_type=TournamentType.GROUP_PLAYOFF.value,
+                tournament=t,
+                owner=user.username,
+                public=req.public,
+                sport=req.sport.value,
+                assign_courts=req.assign_courts,
+            )
 
         elif req.tournament_type == "mexicano":
             players = [Player(name=name, id=pid) for name, pid in player_entries]
@@ -576,9 +585,16 @@ async def convert_registration(
             except ValueError as e:
                 raise HTTPException(400, str(e))
             t.generate_next_round()
-            _store_tournament(tid, name=tournament_name, tournament_type=TournamentType.MEXICANO.value,
-                              tournament=t, owner=user.username, public=req.public,
-                              sport=req.sport.value, assign_courts=req.assign_courts)
+            _store_tournament(
+                tid,
+                name=tournament_name,
+                tournament_type=TournamentType.MEXICANO.value,
+                tournament=t,
+                owner=user.username,
+                public=req.public,
+                sport=req.sport.value,
+                assign_courts=req.assign_courts,
+            )
 
         elif req.tournament_type == "playoff":
             teams = [[Player(name=name, id=pid)] for name, pid in player_entries]
@@ -589,9 +605,16 @@ async def convert_registration(
                 double_elimination=req.double_elimination,
                 team_mode=req.team_mode,
             )
-            _store_tournament(tid, name=tournament_name, tournament_type=TournamentType.PLAYOFF.value,
-                              tournament=t, owner=user.username, public=req.public,
-                              sport=req.sport.value, assign_courts=req.assign_courts)
+            _store_tournament(
+                tid,
+                name=tournament_name,
+                tournament_type=TournamentType.PLAYOFF.value,
+                tournament=t,
+                owner=user.username,
+                public=req.public,
+                sport=req.sport.value,
+                assign_courts=req.assign_courts,
+            )
 
         else:
             raise HTTPException(400, f"Unknown tournament type: {req.tournament_type}")

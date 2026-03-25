@@ -70,7 +70,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:8000").split(",") if o.strip()]
+_ALLOWED_ORIGINS = [
+    o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:8000").split(",") if o.strip()
+]
 _UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
@@ -98,6 +100,7 @@ async def csrf_origin_protection(request: Request, call_next):
         if source_origin is not None and source_origin not in _ALLOWED_ORIGINS:
             return JSONResponse(status_code=403, content={"detail": "CSRF validation failed"})
     return await call_next(request)
+
 
 # Register routers
 app.include_router(auth_router)

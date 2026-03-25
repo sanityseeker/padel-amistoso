@@ -33,7 +33,7 @@ from .schemas import (
     RecordTennisScoreRequest,
     StartGroupPlayoffsRequest,
 )
-from .state import _global_lock, _next_id, _save_tournament, _tournaments, get_tournament_lock
+from .state import _global_lock, _next_id, _save_tournament, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["group-playoff"])
@@ -56,7 +56,9 @@ def _client_ip(request: Request) -> str:
 
 
 @router.post("/group-playoff")
-async def create_group_playoff(req: CreateGroupPlayoffRequest, request: Request, user=Depends(get_current_user)) -> dict:
+async def create_group_playoff(
+    req: CreateGroupPlayoffRequest, request: Request, user=Depends(get_current_user)
+) -> dict:
     """Create a new Group+Playoff tournament and generate the first group-stage matches."""
     client_ip = _client_ip(request)
     _create_rate_limiter.check(client_ip, "Too many tournament creation attempts — try again later")
@@ -77,9 +79,16 @@ async def create_group_playoff(req: CreateGroupPlayoffRequest, request: Request,
 
     async with _global_lock:
         tid = _next_id()
-        _store_tournament(tid, name=req.name, tournament_type=TournamentType.GROUP_PLAYOFF.value,
-                          tournament=t, owner=user.username, public=req.public,
-                          sport=req.sport.value, assign_courts=req.assign_courts)
+        _store_tournament(
+            tid,
+            name=req.name,
+            tournament_type=TournamentType.GROUP_PLAYOFF.value,
+            tournament=t,
+            owner=user.username,
+            public=req.public,
+            sport=req.sport.value,
+            assign_courts=req.assign_courts,
+        )
         create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in players])
     return {"id": tid, "phase": t.phase}
 
@@ -206,7 +215,9 @@ async def gp_start_playoffs(
         try:
             t.start_playoffs(
                 advancing_player_ids=req.advancing_player_ids,
-                extra_players=[(ep.name, ep.score) for ep in req.extra_participants] if req.extra_participants else None,
+                extra_players=[(ep.name, ep.score) for ep in req.extra_participants]
+                if req.extra_participants
+                else None,
                 double_elimination=req.double_elimination,
             )
         except (RuntimeError, KeyError, ValueError) as e:

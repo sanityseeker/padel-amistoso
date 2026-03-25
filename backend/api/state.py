@@ -36,15 +36,25 @@ from .db import get_db
 
 _ALLOWED_PICKLE_CLASSES: dict[str, set[str]] = {
     "backend.models": {
-        "MatchStatus", "Sport", "TournamentType", "GPPhase", "MexPhase",
-        "POPhase", "Player", "Court", "Match", "GroupStanding",
+        "MatchStatus",
+        "Sport",
+        "TournamentType",
+        "GPPhase",
+        "MexPhase",
+        "POPhase",
+        "Player",
+        "Court",
+        "Match",
+        "GroupStanding",
     },
     "backend.tournaments.group_playoff": {"GroupPlayoffTournament"},
     "backend.tournaments.mexicano": {"MexicanoTournament", "MexicanoConfig"},
     "backend.tournaments.playoff_tournament": {"PlayoffTournament"},
     "backend.tournaments.group_stage": {"Group"},
     "backend.tournaments.playoff": {
-        "BracketSlot", "SingleEliminationBracket", "DoubleEliminationBracket",
+        "BracketSlot",
+        "SingleEliminationBracket",
+        "DoubleEliminationBracket",
     },
     "backend.tournaments.player_secrets": {"PlayerSecret"},
     # Standard-library types that pickle's REDUCE opcode may reference
@@ -62,14 +72,13 @@ class _RestrictedUnpickler(pickle.Unpickler):
         allowed = _ALLOWED_PICKLE_CLASSES.get(module)
         if allowed is not None and name in allowed:
             return super().find_class(module, name)
-        raise pickle.UnpicklingError(
-            f"Blocked attempt to unpickle {module}.{name}"
-        )
+        raise pickle.UnpicklingError(f"Blocked attempt to unpickle {module}.{name}")
 
 
 def _safe_loads(data: bytes) -> object:
     """Deserialise a pickle blob using the restricted unpickler."""
     return _RestrictedUnpickler(io.BytesIO(data)).load()
+
 
 logger = logging.getLogger(__name__)
 

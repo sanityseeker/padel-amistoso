@@ -48,10 +48,7 @@ def create_secrets_for_tournament(
                 token       = excluded.token,
                 player_name = excluded.player_name
             """,
-            [
-                (tournament_id, pid, name_map.get(pid, ""), sec.passphrase, sec.token)
-                for pid, sec in secrets.items()
-            ],
+            [(tournament_id, pid, name_map.get(pid, ""), sec.passphrase, sec.token) for pid, sec in secrets.items()],
         )
 
     return secrets

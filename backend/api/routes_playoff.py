@@ -27,7 +27,7 @@ from .helpers import (
     _store_tournament,
 )
 from .schemas import CreatePlayoffRequest, RecordScoreRequest, RecordTennisScoreRequest
-from .state import _global_lock, _next_id, _save_tournament, _tournaments, get_tournament_lock
+from .state import _global_lock, _next_id, _save_tournament, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["playoff"])
@@ -69,9 +69,16 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
     all_players = [p for team in teams for p in team]
     async with _global_lock:
         tid = _next_id()
-        _store_tournament(tid, name=req.name, tournament_type=TournamentType.PLAYOFF.value,
-                          tournament=t, owner=user.username, public=req.public,
-                          sport=req.sport.value, assign_courts=req.assign_courts)
+        _store_tournament(
+            tid,
+            name=req.name,
+            tournament_type=TournamentType.PLAYOFF.value,
+            tournament=t,
+            owner=user.username,
+            public=req.public,
+            sport=req.sport.value,
+            assign_courts=req.assign_courts,
+        )
         # Flatten all teams into individual players for secret generation.
         create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in all_players])
     return {"id": tid, "phase": t.phase}

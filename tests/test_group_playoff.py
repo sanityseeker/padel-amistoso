@@ -659,9 +659,7 @@ class TestGroupDiversitySeeding:
         r1_matches = [m for m in t.playoff_matches() if m.round_number == 1 and m.team1 and m.team2]
         for m in r1_matches:
             groups_in_match = {player_group.get(p.id) for p in m.team1 + m.team2}
-            assert len(groups_in_match) >= 2, (
-                f"R1 match has all players from the same group: {groups_in_match}"
-            )
+            assert len(groups_in_match) >= 2, f"R1 match has all players from the same group: {groups_in_match}"
 
     def test_3_groups_odd_advancing_best_effort_diversity(self):
         """With 3 groups × 1 advancing = 3 teams and bracket size 4, the single

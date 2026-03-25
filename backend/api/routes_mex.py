@@ -34,7 +34,7 @@ from .schemas import (
     RecordTennisScoreRequest,
     StartMexicanoPlayoffsRequest,
 )
-from .state import _global_lock, _next_id, _save_tournament, _tournaments, get_tournament_lock
+from .state import _global_lock, _next_id, _save_tournament, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["mexicano"])
@@ -85,9 +85,16 @@ async def create_mexicano(req: CreateMexicanoRequest, request: Request, user=Dep
 
     async with _global_lock:
         tid = _next_id()
-        _store_tournament(tid, name=req.name, tournament_type=TournamentType.MEXICANO.value,
-                          tournament=t, owner=user.username, public=req.public,
-                          sport=req.sport.value, assign_courts=req.assign_courts)
+        _store_tournament(
+            tid,
+            name=req.name,
+            tournament_type=TournamentType.MEXICANO.value,
+            tournament=t,
+            owner=user.username,
+            public=req.public,
+            sport=req.sport.value,
+            assign_courts=req.assign_courts,
+        )
         create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in players])
     return {"id": tid, "current_round": t.current_round}
 
@@ -240,7 +247,9 @@ async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, user=D
                 team_player_ids=req.team_player_ids,
                 n_teams=req.n_teams,
                 double_elimination=req.double_elimination,
-                extra_participants=[ep.model_dump() for ep in req.extra_participants] if req.extra_participants else None,
+                extra_participants=[ep.model_dump() for ep in req.extra_participants]
+                if req.extra_participants
+                else None,
             )
         except (RuntimeError, ValueError, KeyError) as e:
             raise HTTPException(400, str(e))

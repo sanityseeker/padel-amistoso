@@ -338,7 +338,6 @@ def seed_with_group_diversity(
         for c in candidates:
             # Check: after swap, does c's R1 partner get a same-group match?
             c_pair_partner = next((x for (x, y) in r1 if y == c), next((y for (x, y) in r1 if x == c), None))
-            new_group_at_b = seeded_groups[c]
             new_group_at_c = seeded_groups[b]
             # b takes c's seat → check c's partner won't conflict
             if c_pair_partner is not None and new_group_at_c == seeded_groups[c_pair_partner]:

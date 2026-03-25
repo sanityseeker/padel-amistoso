@@ -28,8 +28,17 @@ def _schema_image_response(img: bytes, fmt: Literal["png", "svg", "pdf"]) -> Res
     return Response(content=img, media_type=_SCHEMA_MEDIA_TYPES[fmt])
 
 
-def _store_tournament(tid: str, *, name: str, tournament_type: str, tournament: object,
-                      owner: str, public: bool, sport: str, assign_courts: bool) -> None:
+def _store_tournament(
+    tid: str,
+    *,
+    name: str,
+    tournament_type: str,
+    tournament: object,
+    owner: str,
+    public: bool,
+    sport: str,
+    assign_courts: bool,
+) -> None:
     """Insert a tournament into the in-memory store and persist to DB."""
     _tournaments[tid] = {
         "name": name,

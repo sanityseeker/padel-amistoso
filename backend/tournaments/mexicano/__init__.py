@@ -466,9 +466,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         seeded_attempts = 0
         while len(seeded) < target_per_strategy and seeded_attempts < 24:
             seeded_attempts += 1
-            for sit_variant_idx, (minimize_repeats, swap_variant) in enumerate(
-                seeded_candidates * 2
-            ):
+            for sit_variant_idx, (minimize_repeats, swap_variant) in enumerate(seeded_candidates * 2):
                 if len(seeded) >= target_per_strategy:
                     break
                 self._forced_sit_out_ids = _sit_variants[sit_variant_idx % len(_sit_variants)]
