@@ -122,6 +122,19 @@ body.login-dialog-open .container { filter: blur(3px); pointer-events: none; tra
 }
 .tab-btn:hover { border-color: var(--accent); }
 .tab-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tab-btn--info {
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+}
+.tab-btn--info:hover { border-color: var(--accent); color: var(--text); }
+.tab-btn--info.active {
+  background: none;
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .tab-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -736,6 +749,118 @@ tr:hover { background: rgba(59,130,246,0.05); }
 }
 .proposal-match .court-tag { color: var(--text-muted); font-size: 0.72rem; }
 .proposal-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+/* ── Proposal card header row (title + manual override) */
+.proposal-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.proposal-header-row h2 { margin: 0; }
+
+/* ── Outline-muted and ghost button variants */
+.btn-outline-muted {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.65rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.btn-outline-muted:hover { border-color: var(--text-muted); color: var(--text); }
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.6rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  line-height: 1.4;
+}
+.btn-ghost:hover { border-color: var(--accent); color: var(--text); }
+.btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Courts section (collapsed summary shown before editing) */
+.courts-section {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.4rem 0.65rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+.courts-summary-names { color: var(--text-muted); flex: 1; min-width: 0; }
+
+/* ── Courts editor: horizontal chip inputs (like tournament-setup rows) */
+.courts-editor-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  margin-top: 0.2rem;
+}
+.court-editor-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  transition: border-color 0.15s;
+}
+.court-editor-chip:focus-within { border-color: var(--accent); }
+.courts-editor-input {
+  width: 80px;
+  min-width: 60px;
+  padding: 0.15rem 0.2rem;
+  font-size: 0.85rem;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+}
+.court-chip-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.court-chip-delete:hover { color: var(--danger, #e05252); background: color-mix(in srgb, var(--danger, #e05252) 10%, transparent); }
+.courts-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
 .proposal-display-controls {
   display: flex;
   align-items: center;

@@ -76,14 +76,15 @@ function _applyTheme(theme) {
  * @returns {'light'|'dark'}
  */
 function _loadSavedTheme() {
+  const osDefault = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   try {
     const legacy = localStorage.getItem('padel-theme');
     if (legacy && !localStorage.getItem(THEME_KEY)) {
       localStorage.setItem(THEME_KEY, legacy);
       localStorage.removeItem('padel-theme');
     }
-    return /** @type {'light'|'dark'} */ (localStorage.getItem(THEME_KEY) || 'dark');
-  } catch (_) { return 'dark'; }
+    return /** @type {'light'|'dark'} */ (localStorage.getItem(THEME_KEY) || osDefault);
+  } catch (_) { return osDefault; }
 }
 
 /**

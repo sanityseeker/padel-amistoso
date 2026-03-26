@@ -120,8 +120,6 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         self.balance_tolerance: float = cfg.balance_tolerance
         self.team_mode: bool = cfg.team_mode
 
-        self._sit_out_count = len(players) % 2 if self.team_mode else len(players) % 4
-
         self.scores: dict[str, int] = {p.id: 0 for p in players}
         self._matches_played: dict[str, int] = {p.id: 0 for p in players}
         self._wins: dict[str, int] = {p.id: 0 for p in players}
@@ -138,6 +136,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
 
         self._pending_proposals: dict[str, dict] = {}
         self._match_credits: dict[str, dict[str, dict]] = {}
+        self._est_cache: dict[str, float] | None = None
 
         self.playoff_bracket: SingleEliminationBracket | DoubleEliminationBracket | None = None
         self._phase: MexPhase = MexPhase.MEXICANO
@@ -145,8 +144,38 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         self._forced_sit_out_ids: list[str] | None = None
         self._player_map: dict[str, Player] = {p.id: p for p in players}
 
+    def __getattr__(self, name: str) -> object:
+        """Provide defaults for attributes missing from older pickled instances."""
+        defaults: dict[str, object] = {
+            "_est_cache": None,
+            "_match_credits": {},
+            "_forced_sit_out_ids": None,
+        }
+        if name in defaults:
+            value = defaults[name]
+            object.__setattr__(self, name, value)
+            return value
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
     # ------------------------------------------------------------------ #
     # Round planning
+    # Sit-out count
+    # ------------------------------------------------------------------ #
+
+    @property
+    def _sit_out_count(self) -> int:
+        """Number of players who must sit out each round.
+
+        Determined by whichever constraint is tighter: the player count not
+        being divisible by the group size, or the number of available courts
+        being fewer than the maximum possible simultaneous matches.
+        """
+        unit = 2 if self.team_mode else 4
+        max_by_players = len(self.players) // unit
+        n_matches = min(len(self.courts), max_by_players) if self.courts else max_by_players
+        return len(self.players) - n_matches * unit
+
+    # ------------------------------------------------------------------ #
     # ------------------------------------------------------------------ #
 
     def _plan_round(self) -> dict:
@@ -738,6 +767,10 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         """Finish tournament directly without creating a play-off phase."""
         self.end_mexicano()
         self._phase = MexPhase.FINISHED
+
+    def update_courts(self, courts: list[Court]) -> None:
+        """Replace the court list used for future round generation."""
+        self.courts = list(courts)
 
     # ------------------------------------------------------------------ #
     # Play-off support

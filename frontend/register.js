@@ -157,7 +157,19 @@ async function _fetchRegistration(rid) {
   try {
     const res = await fetch(`${API}/${encodeURIComponent(rid)}/public`);
     if (!res.ok) {
-      _showError(res.status === 404 ? t('txt_reg_not_found') : t('txt_reg_error'));
+      if (res.status === 404) {
+        await _showDirectory();
+        const form = document.querySelector('.tv-picker-form');
+        if (form) {
+          const errDiv = document.createElement('div');
+          errDiv.className = 'tv-error picker-inline-error';
+          errDiv.style.marginTop = '0.75rem';
+          errDiv.textContent = t('txt_reg_not_found');
+          form.after(errDiv);
+        }
+      } else {
+        _showError(t('txt_reg_error'));
+      }
       return;
     }
     _regData = await res.json();
@@ -231,11 +243,27 @@ function _renderDirectory(lobbies) {
   el.innerHTML = html;
 }
 
-function _goToLobby(e) {
+async function _goToLobby(e) {
   e.preventDefault();
   const val = document.getElementById('reg-picker-input').value.trim();
   if (!val) return false;
-  location.href = `/register/${encodeURIComponent(val)}`;
+
+  document.querySelector('.picker-inline-error')?.remove();
+
+  try {
+    const res = await fetch(`${API}/${encodeURIComponent(val)}/public`);
+    if (!res.ok) throw new Error(res.status === 404 ? 'not_found' : 'error');
+    location.href = `/register/${encodeURIComponent(val)}`;
+  } catch (err) {
+    const form = document.querySelector('.tv-picker-form');
+    if (form) {
+      const errDiv = document.createElement('div');
+      errDiv.className = 'tv-error picker-inline-error';
+      errDiv.style.marginTop = '0.75rem';
+      errDiv.textContent = err.message === 'not_found' ? t('txt_reg_not_found') : t('txt_reg_error');
+      form.after(errDiv);
+    }
+  }
   return false;
 }
 
@@ -402,7 +430,7 @@ function _renderReturningPlayerEditor() {
   const hasQuestions = _regData.questions && _regData.questions.length > 0;
 
   let html = `<details class="manage-reg">`;
-  html += `<summary><span class="manage-reg-arrow">▸</span> Manage registration</summary>`;
+  html += `<summary><span class="manage-reg-arrow">▸</span> ${t('txt_reg_manage_registration')}</summary>`;
   html += `<div class="manage-reg-body">`;
 
   if (hasQuestions) {
@@ -430,11 +458,11 @@ function _renderReturningPlayerEditor() {
   html += `<div class="manage-reg-actions">`;
   html += `<div class="manage-reg-actions-left">`;
   if (hasQuestions) {
-    html += `<button type="button" class="btn-outline" id="reg-returning-save-btn" onclick="_saveReturningAnswers()">Update answers</button>`;
+    html += `<button type="button" class="btn-outline" id="reg-returning-save-btn" onclick="_saveReturningAnswers()">${t('txt_reg_update_answers')}</button>`;
     html += `<span class="manage-reg-success" id="reg-returning-save-ok"></span>`;
   }
   html += `</div>`;
-  html += `<button type="button" class="btn-outline-danger" id="reg-returning-cancel-btn" onclick="_cancelReturningRegistration()">Cancel registration</button>`;
+  html += `<button type="button" class="btn-outline-danger" id="reg-returning-cancel-btn" onclick="_cancelReturningRegistration()">${t('txt_reg_cancel_registration')}</button>`;
   html += `</div></div></details>`;
   return html;
 }
@@ -479,7 +507,7 @@ async function _saveReturningAnswers() {
     }
     const okEl = document.getElementById('reg-returning-save-ok');
     if (okEl) {
-      okEl.textContent = '✓ Saved';
+      okEl.textContent = t('txt_reg_saved');
       setTimeout(() => { okEl.textContent = ''; }, 3000);
     }
   } catch (_) {
@@ -494,7 +522,7 @@ async function _cancelReturningRegistration() {
   const errorEl = document.getElementById('reg-returning-action-error');
   const cancelBtn = document.getElementById('reg-returning-cancel-btn');
   if (errorEl) errorEl.textContent = '';
-  if (!confirm('Cancel your registration?')) return;
+  if (!confirm(t('txt_reg_confirm_cancel_registration'))) return;
 
   if (cancelBtn) cancelBtn.disabled = true;
   try {

@@ -186,9 +186,10 @@ class ScoringMixin:
             raise RuntimeError("Play-off participants must be unique")
 
     def _ranked_players(self, pool: list[Player]) -> list[Player]:
-        """Players sorted by current score descending."""
+        """Players sorted by projected score descending, accounting for sit-outs."""
+        est = self._estimated_scores()
         players = list(pool)
-        players.sort(key=lambda p: -self.scores[p.id])
+        players.sort(key=lambda p: -est[p.id])
         return players
 
     def _estimated_scores(self) -> dict[str, float]:
@@ -198,7 +199,13 @@ class ScoringMixin:
         ``skill_gap`` comparison fair we extrapolate their score as if
         they had played as many matches as the most-active player, using
         their per-match average.
+
+        The result is cached and invalidated by ``record_result`` since scores
+        never change during proposal generation — avoiding hundreds of thousands
+        of redundant recomputations in ``propose_pairings``.
         """
+        if self._est_cache is not None:
+            return self._est_cache
         max_played = max(self._matches_played.values()) if self._matches_played else 0
         estimated: dict[str, float] = {}
         for pid, raw_score in self.scores.items():
@@ -208,6 +215,7 @@ class ScoringMixin:
                 estimated[pid] = raw_score + mean_per_match * (max_played - played)
             else:
                 estimated[pid] = float(raw_score)
+        self._est_cache = estimated
         return estimated
 
     # ------------------------------------------------------------------ #
@@ -221,6 +229,7 @@ class ScoringMixin:
         was already completed, the previous credits are reversed first
         so that re-recording is safe.
         """
+        self._est_cache = None  # scores are about to change
         m = self._find_match_by_id(match_id)
         s1, s2 = score
         if s1 + s2 != self.total_points_per_match:

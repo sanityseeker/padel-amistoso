@@ -14,8 +14,7 @@ from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from ..auth import auth_router
 from ..auth.store import user_store
@@ -278,3 +277,30 @@ async def serve_icon_512() -> Response:
 async def serve_icon_512_maskable() -> Response:
     """Serve the 512×512 maskable PWA icon."""
     return _serve_png_file("icon-512-maskable.png")
+
+
+@app.get("/404.png")
+async def serve_404_image() -> Response:
+    """Serve the 404 error illustration."""
+    return _serve_png_file("404.png")
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Catch-all — any unmatched non-API path gets the custom 404 page
+# Must be registered last so it never shadows real routes.
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _serve_404_page() -> HTMLResponse:
+    """Return the 404 HTML page with HTTP 404 status."""
+    path = FRONTEND_DIR / "404.html"
+    content = path.read_text() if path.exists() else "<h1>404 Not Found</h1>"
+    return HTMLResponse(content=content, status_code=404)
+
+
+@app.get("/{path:path}")
+async def catch_all(path: str, request: Request) -> Response:
+    """Serve the custom 404 page for every unmatched frontend path."""
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+    return _serve_404_page()

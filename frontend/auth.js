@@ -189,7 +189,11 @@ async function apiAuth(path, opts = {}) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || res.statusText);
+    const detail = err.detail;
+    const msg = Array.isArray(detail)
+      ? detail.map(d => d.msg || JSON.stringify(d)).join('; ')
+      : (typeof detail === 'string' ? detail : null);
+    throw new Error(msg || res.statusText);
   }
 
   // 204 No Content — return null instead of trying to parse an empty body

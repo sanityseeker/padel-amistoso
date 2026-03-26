@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import itertools
+import math
+import random
 
 from ...models import Player
 
@@ -32,10 +34,25 @@ class SitOutMixin:
                 chosen.extend(remaining[: n - len(chosen)])
             return [chosen]
 
-        COMBO_BUDGET = 1000
+        # Cap 1 – eligible pool size.
+        # C(eligible, n) can explode for large n (e.g. 30 players, 10 sit-outs
+        # → C(30,10) = 30 M).  Find the largest pool size where the number of
+        # combinations stays within HEURISTIC_BUDGET, then randomly sample that
+        # many players from the eligible pool so no ranking bias is introduced
+        # between players who are all equally fair to sit out.
+        HEURISTIC_BUDGET = 2000
+        FULL_EVAL_BUDGET = 30
+
+        if math.comb(len(eligible), n) > HEURISTIC_BUDGET:
+            cap = n
+            while math.comb(cap + 1, n) <= HEURISTIC_BUDGET:
+                cap += 1
+            eligible = sorted(random.sample(eligible, cap), key=lambda p: -self.scores[p.id])
+
         all_combos = list(itertools.combinations(eligible, n))
 
-        if len(all_combos) > COMBO_BUDGET:
+        # Cap 2 – heuristic pre-sort when combos still exceed FULL_EVAL_BUDGET.
+        if len(all_combos) > FULL_EVAL_BUDGET:
             est = self._estimated_scores()
             group_size = 2 if self.team_mode else 4
 
@@ -52,13 +69,14 @@ class SitOutMixin:
                 return total_imbalance
 
             all_combos.sort(key=_sit_out_heuristic)
-            all_combos = all_combos[:COMBO_BUDGET]
+            all_combos = all_combos[:FULL_EVAL_BUDGET]
 
         scored: list[tuple[tuple, list[Player]]] = []
         for combo in all_combos:
             sitting_ids = {p.id for p in combo}
             playing = [p for p in ranked if p.id not in sitting_ids]
-            obj = self._projected_round_objective(playing, strategy="balanced")
+            # quick=True uses 1 optimization pass — sufficient for ranking
+            obj = self._projected_round_objective(playing, strategy="balanced", quick=True)
             scored.append((obj, list(combo)))
 
         scored.sort(key=lambda x: x[0])
@@ -109,13 +127,26 @@ class SitOutMixin:
                 4,
             )
 
-    def _projected_round_objective(self, playing: list[Player], *, strategy: str) -> tuple[float, int, int, float, int]:
+    def _projected_round_objective(
+        self,
+        playing: list[Player],
+        *,
+        strategy: str,
+        quick: bool = False,
+    ) -> tuple[float, int, int, float, int]:
         """Compute proposal-style objective tuple for a candidate playing set.
 
         Returns (weighted_score, skill_gap_violations,
                  exact_prev_round_repeats, score_imbalance, repeat_count).
+
+        Args:
+            playing: Players not sitting out this round.
+            strategy: Weighting profile for the objective (``"balanced"`` or ``"seeded"``).
+            quick: When ``True``, use only 1 optimization pass instead of 3.
+                   Sufficient for ranking purposes; avoids full hill-climb cost.
         """
-        groups = self._optimize_groups(self._form_groups(playing))
+        max_passes = 1 if quick else 3
+        groups = self._optimize_groups(self._form_groups(playing), max_passes=max_passes)
         est = self._estimated_scores()
         skill_gap_violations, _ = self._skill_gap_violations(groups, est)
 

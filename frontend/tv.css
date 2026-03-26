@@ -269,6 +269,8 @@ body {
   white-space: nowrap;
 }
 .standings-table tr:hover td { background: rgba(59, 130, 246, 0.06); }
+.standings-table tr.my-row td { background: rgba(99, 102, 241, 0.18); }
+.standings-table tr.my-row .player-cell { color: var(--accent); }
 .group-block { margin-bottom: 1.4rem; }
 .group-block h3 {
   font-size: 1rem;

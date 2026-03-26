@@ -87,11 +87,31 @@ class GroupingMixin:
         """Sum score map values for a team."""
         return sum(scores[p.id] for p in team)
 
+    @staticmethod
+    def _normalized_imbalance(t1: list[Player], t2: list[Player], scores: dict[str, int]) -> float:
+        """Score imbalance between two teams, normalised by the group total.
+
+        Returns a value in [0, 1] so the criterion is round-invariant regardless
+        of how many points have been accumulated so far.  Falls back to the raw
+        absolute difference when the group total is zero (round 1).
+        """
+        s1 = sum(scores[p.id] for p in t1)
+        s2 = sum(scores[p.id] for p in t2)
+        total = s1 + s2
+        raw = abs(s1 - s2)
+        return raw / total if total > 0 else float(raw)
+
     def _best_pairing(self, group: list[Player]) -> tuple[list[Player], list[Player]]:
         """Evaluate all 3 possible 2v2 splits for a group of 4 and return the best.
 
         In team mode, groups have exactly 2 participants (each is a full team),
         so no split evaluation is needed.
+
+        Priority order (lexicographic):
+          1. Skill-gap excess — hard constraint, never violated if avoidable.
+          2. Normalised score imbalance — round-invariant fraction of group total.
+          3. Repeat count — freshness of partner/opponent pairings.
+        Ties broken randomly.
         """
         if self.team_mode:
             return [group[0]], [group[1]]
@@ -103,7 +123,7 @@ class GroupingMixin:
             gap_excess = self._team_pair_gap_excess(t1, estimated_scores) + self._team_pair_gap_excess(
                 t2, estimated_scores
             )
-            imbalance = abs(sum(self.scores[p.id] for p in t1) - sum(self.scores[p.id] for p in t2))
+            imbalance = self._normalized_imbalance(t1, t2, self.scores)
             repeats = self._pairing_repeat_count(t1, t2)
             candidates.append((gap_excess, imbalance, repeats, t1, t2))
 
@@ -184,19 +204,66 @@ class GroupingMixin:
                 worst_excess = max(worst_excess, spread - self.skill_gap)
         return violating, worst_excess
 
+    def _total_gap_violations(self, groups: list[list[Player]]) -> int:
+        """Count groups that contain a skill-gap violation in their best pairing."""
+        if self.skill_gap is None:
+            return 0
+        estimated_scores = self._estimated_scores()
+        count = 0
+        for group in groups:
+            t1, t2 = self._best_pairing(group)
+            excess = self._team_pair_gap_excess(t1, estimated_scores) + self._team_pair_gap_excess(t2, estimated_scores)
+            if excess > 0:
+                count += 1
+        return count
+
     def _optimize_groups(self, groups: list[list[Player]], max_passes: int = 3) -> list[list[Player]]:
         """Hill-climb over the initial grouping by swapping players between
-        groups to reduce the total repeat count across the whole round."""
+        groups to reduce the total repeat count across the whole round.
+
+        Improvement criteria (lexicographic):
+          1. Fewer skill-gap violations in best pairings — primary hard constraint.
+          2. Fewer total partner/opponent repeats — subject to the imbalance cap.
+        The imbalance cap prevents the optimizer from trading competitive balance
+        for novelty beyond ``balance_tolerance``.
+
+        Per-group metrics are cached and updated incrementally: only the two
+        groups involved in each swap are re-evaluated, keeping each iteration
+        O(1) with respect to the total group count.
+        """
         if len(groups) < 2:
             return groups
 
         groups = [list(g) for g in groups]
-        base_imbalance = self._total_imbalance(groups)
+
+        # ---- local helpers ------------------------------------------------
+        def _grp_repeats(g: list[Player]) -> int:
+            t1, t2 = self._best_pairing(g)
+            return self._pairing_repeat_count(t1, t2)
+
+        def _grp_violations(g: list[Player]) -> int:
+            if self.skill_gap is None:
+                return 0
+            est = self._estimated_scores()
+            t1, t2 = self._best_pairing(g)
+            excess = self._team_pair_gap_excess(t1, est) + self._team_pair_gap_excess(t2, est)
+            return 1 if excess > 0 else 0
+
+        # ---- initialise per-group caches ----------------------------------
+        g_repeats = [_grp_repeats(g) for g in groups]
+        g_violations = [_grp_violations(g) for g in groups]
+        g_imbalance = [self._min_group_imbalance(g) for g in groups]
+
+        base_imbalance = sum(g_imbalance)
         imbalance_cap = base_imbalance * (1.0 + self.balance_tolerance) + 2
 
+        cur_violations = sum(g_violations)
+        cur_repeats = sum(g_repeats)
+        total_imbalance = base_imbalance
+
+        # ---- hill-climb ---------------------------------------------------
         for _ in range(max_passes):
             improved = False
-            cur_repeats = self._total_repeat_count(groups)
             for gi in range(len(groups)):
                 for gj in range(gi + 1, len(groups)):
                     for pi in range(len(groups[gi])):
@@ -205,10 +272,33 @@ class GroupingMixin:
                                 groups[gj][pj],
                                 groups[gi][pi],
                             )
-                            new_repeats = self._total_repeat_count(groups)
-                            new_imbalance = self._total_imbalance(groups)
-                            if new_repeats < cur_repeats and new_imbalance <= imbalance_cap:
+                            # Only recompute the two affected groups.
+                            new_ri = _grp_repeats(groups[gi])
+                            new_rj = _grp_repeats(groups[gj])
+                            new_vi = _grp_violations(groups[gi])
+                            new_vj = _grp_violations(groups[gj])
+                            new_ii = self._min_group_imbalance(groups[gi])
+                            new_ij = self._min_group_imbalance(groups[gj])
+
+                            new_violations = cur_violations - g_violations[gi] - g_violations[gj] + new_vi + new_vj
+                            new_repeats = cur_repeats - g_repeats[gi] - g_repeats[gj] + new_ri + new_rj
+                            new_imbalance = total_imbalance - g_imbalance[gi] - g_imbalance[gj] + new_ii + new_ij
+
+                            # Accept if: fewer violations, OR same violations with fewer repeats
+                            # (both subject to the imbalance cap).
+                            is_better = new_violations < cur_violations or (
+                                new_violations == cur_violations and new_repeats < cur_repeats
+                            )
+                            if is_better and new_imbalance <= imbalance_cap:
+                                cur_violations = new_violations
                                 cur_repeats = new_repeats
+                                total_imbalance = new_imbalance
+                                g_violations[gi] = new_vi
+                                g_violations[gj] = new_vj
+                                g_repeats[gi] = new_ri
+                                g_repeats[gj] = new_rj
+                                g_imbalance[gi] = new_ii
+                                g_imbalance[gj] = new_ij
                                 improved = True
                             else:
                                 groups[gi][pi], groups[gj][pj] = (

@@ -192,6 +192,10 @@ class RecordTennisScoreRequest(BaseModel):
         return v
 
 
+class UpdateCourtsRequest(BaseModel):
+    court_names: list[str] = Field(default_factory=list, max_length=64)
+
+
 class NextRoundRequest(BaseModel):
     option_id: str | None = None
 

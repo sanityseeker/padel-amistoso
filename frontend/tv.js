@@ -64,6 +64,7 @@ const tvState = {
   sectionOpenState: {},     // {data-tv-key: boolean} — persisted across refreshes
   lastKnownVersion: null,   // for on-update mode
   scoreMode: {},            // {ctx: 'points'|'sets'} from admin TV settings
+  totalPts: 0,              // total_points_per_match for Mexicano auto-fill
   versionPollTimer: null,   // setInterval handle for version polling
   pickerPollTimer: null,    // setInterval handle for picker auto-refresh
   // Player auth state
@@ -363,6 +364,9 @@ function _buildPlayerScoreForm(m, scoreCtx) {
   const entry = _PLAYER_SCORE_ENDPOINTS[scoreCtx];
   const hasTennis = !!(entry && entry.tennis);
   const defaultMode = (tvState.scoreMode[scoreCtx] === 'sets' && hasTennis) ? 'sets' : 'points';
+  const isMex = scoreCtx === 'mex' || scoreCtx === 'mex-playoff';
+  const autoCalc = tvState.totalPts > 0 && scoreCtx === 'mex';
+  const onInput = autoCalc ? `oninput="_playerAutoFillScore('${m.id}', ${tvState.totalPts})"` : '';
 
   let html = '<div class="player-score-form">';
 
@@ -377,9 +381,9 @@ function _buildPlayerScoreForm(m, scoreCtx) {
   // Points inputs — compact single row: Alice [0] – [0] Bob [Save]
   html += `<div class="score-inline-row">`;
   html += `<div id="ps-points-${m.id}" class="score-teams-row${defaultMode === 'sets' ? ' hidden' : ''}">`;
-  html += `<input type="number" id="ps1-${m.id}" min="0" value="" placeholder="0">`;
+  html += `<input type="number" id="ps1-${m.id}" min="0" value="" placeholder="0" ${onInput}>`;
   html += `<span class="score-dash">–</span>`;
-  html += `<input type="number" id="ps2-${m.id}" min="0" value="" placeholder="0">`;
+  html += `<input type="number" id="ps2-${m.id}" min="0" value="" placeholder="${autoCalc ? tvState.totalPts : 0}" ${onInput}>`;
   html += `</div>`;
 
   // Sets inputs (hidden by default unless admin chose sets)
@@ -401,6 +405,20 @@ function _buildPlayerScoreForm(m, scoreCtx) {
   html += `<div id="ps-err-${m.id}" class="score-error-msg"></div>`;
   html += `</div>`;
   return html;
+}
+
+/** Auto-fill the complementary score field for Mexicano matches in the player panel. */
+function _playerAutoFillScore(matchId, total) {
+  const s1El = document.getElementById('ps1-' + matchId);
+  const s2El = document.getElementById('ps2-' + matchId);
+  const changed = document.activeElement === s1El ? 's1' : 's2';
+  if (changed === 's1') {
+    const v = Math.max(0, Math.min(total, +s1El.value || 0));
+    s2El.value = total - v;
+  } else {
+    const v = Math.max(0, Math.min(total, +s2El.value || 0));
+    s1El.value = total - v;
+  }
 }
 
 /** Toggle between points and sets input for a specific match */
@@ -572,6 +590,7 @@ async function loadTV() {
     } else {
       const [status, matches, playoffs] = dataResults;
       tvState.breakdowns = matches.breakdowns || {};
+      tvState.totalPts = status.total_points_per_match || 0;
       tvState.playerMap = {};
       for (const p of (status.players || [])) tvState.playerMap[p.id] = p.name;
       _captureOpenState();
@@ -655,7 +674,8 @@ function _renderGP(tvSettings, status, groups, playoffs) {
         html += `<th>#</th><th>${status.team_mode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_pts_abbrev')}</th>`;
         html += `</tr></thead><tbody>`;
         rows.forEach((r, i) => {
-          html += `<tr><td class="rank-cell">${i + 1}</td><td class="player-cell">${esc(r.player)}</td>`;
+          const isMe = tvState.playerId && r.player_id === tvState.playerId;
+          html += `<tr${isMe ? ' class="my-row"' : ''}><td class="rank-cell">${i + 1}</td><td class="player-cell">${esc(r.player)}</td>`;
           html += `<td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td>`;
           html += `<td>${r.points_for}</td><td>${r.points_against}</td>`;
           html += `<td class="pts-cell">${r.match_points}</td></tr>`;
@@ -848,7 +868,8 @@ function _buildMexLeaderboard(status) {
   html += `<th>#</th><th>${status.team_mode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${t('txt_txt_total_pts_abbrev')}</th><th>${t('txt_txt_played_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_avg_pts_abbrev')}</th>`;
   html += `</tr></thead><tbody>`;
   for (const r of lb) {
-    html += `<tr><td class="rank-cell">${r.rank}</td><td class="player-cell">${esc(r.player)}</td>`;
+    const isMe = tvState.playerId && r.player_id === tvState.playerId;
+    html += `<tr${isMe ? ' class="my-row"' : ''}><td class="rank-cell">${r.rank}</td><td class="player-cell">${esc(r.player)}</td>`;
     const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
     const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
     html += `<td class="${byAvg ? '' : 'pts-cell'}">${totalCell}</td>`;
@@ -1129,8 +1150,15 @@ async function _resolveAlias() {
       const data = await api(`/api/tournaments/resolve-alias/${encodeURIComponent(_aliasParam)}`);
       TID = data.id;
     } catch (_) {
-      document.getElementById('tv-root').innerHTML =
-        `<div class="tv-error">${t('txt_txt_no_tournament_found_with_alias')} <strong>${esc(_aliasParam)}</strong></div>`;
+      await _showPicker();
+      const form = document.querySelector('.tv-picker-form');
+      if (form) {
+        const errDiv = document.createElement('div');
+        errDiv.className = 'tv-error picker-inline-error';
+        errDiv.style.marginTop = '0.75rem';
+        errDiv.innerHTML = `${t('txt_txt_no_tournament_found_with_alias')} <strong>${esc(_aliasParam)}</strong>`;
+        form.after(errDiv);
+      }
       return false;
     }
   }
@@ -1207,11 +1235,30 @@ function _backToTournaments() {
   _showPicker();
 }
 
-function _goToTournament(e) {
+async function _goToTournament(e) {
   e.preventDefault();
   const val = document.getElementById('picker-input').value.trim();
   if (!val) return false;
-  location.href = `/tv/${encodeURIComponent(val)}`;
+
+  document.querySelector('.picker-inline-error')?.remove();
+
+  try {
+    if (/^t\d+$/.test(val)) {
+      await api(`/api/tournaments/${encodeURIComponent(val)}/meta`);
+    } else {
+      await api(`/api/tournaments/resolve-alias/${encodeURIComponent(val)}`);
+    }
+    location.href = `/tv/${encodeURIComponent(val)}`;
+  } catch (_) {
+    const form = document.querySelector('.tv-picker-form');
+    if (form) {
+      const errDiv = document.createElement('div');
+      errDiv.className = 'tv-error picker-inline-error';
+      errDiv.style.marginTop = '0.75rem';
+      errDiv.innerHTML = `${t('txt_txt_no_tournament_found_with_alias')} <strong>${esc(val)}</strong>`;
+      form.after(errDiv);
+    }
+  }
   return false;
 }
 

@@ -29,48 +29,35 @@ import logging
 import pickle
 
 from .db import get_db
+from .player_secret_store import delete_secrets_for_tournament
 
 # ---------------------------------------------------------------------------
-# Restricted unpickler — only allow known tournament-related classes
+# Restricted unpickler — stdlib and all project (backend.*) modules are allowed;
+# everything else is blocked.
 # ---------------------------------------------------------------------------
 
-_ALLOWED_PICKLE_CLASSES: dict[str, set[str]] = {
-    "backend.models": {
-        "MatchStatus",
-        "Sport",
-        "TournamentType",
-        "GPPhase",
-        "MexPhase",
-        "POPhase",
-        "Player",
-        "Court",
-        "Match",
-        "GroupStanding",
-    },
-    "backend.tournaments.group_playoff": {"GroupPlayoffTournament"},
-    "backend.tournaments.mexicano": {"MexicanoTournament", "MexicanoConfig"},
-    "backend.tournaments.playoff_tournament": {"PlayoffTournament"},
-    "backend.tournaments.group_stage": {"Group"},
-    "backend.tournaments.playoff": {
-        "BracketSlot",
-        "SingleEliminationBracket",
-        "DoubleEliminationBracket",
-    },
-    "backend.tournaments.player_secrets": {"PlayerSecret"},
-    # Standard-library types that pickle's REDUCE opcode may reference
-    "collections": {"defaultdict", "OrderedDict"},
-    "builtins": {"set", "frozenset"},
-    "datetime": {"datetime", "date", "timedelta"},
-    "pydantic.main": {"BaseModel"},
+# Modules whose every name is allowed (standard-library and trusted third-party).
+_ALLOWED_PICKLE_MODULES: set[str] = {
+    "builtins",
+    "collections",
+    "datetime",
+    "enum",
+    "uuid",
+    "decimal",
+    "fractions",
+    "pathlib",
+    "re",
+    "copy_reg",
+    "_collections",  # CPython internal alias used by pickle for defaultdict
+    "pydantic.main",  # BaseModel base class used by project models
 }
 
 
 class _RestrictedUnpickler(pickle.Unpickler):
-    """Unpickler that refuses to instantiate classes outside the allow-list."""
+    """Unpickler that allows stdlib, pydantic.main, and all project (backend.*) modules."""
 
     def find_class(self, module: str, name: str) -> type:
-        allowed = _ALLOWED_PICKLE_CLASSES.get(module)
-        if allowed is not None and name in allowed:
+        if module in _ALLOWED_PICKLE_MODULES or module == "backend" or module.startswith("backend."):
             return super().find_class(module, name)
         raise pickle.UnpicklingError(f"Blocked attempt to unpickle {module}.{name}")
 
@@ -178,6 +165,12 @@ def _save_tournament(tid: str) -> None:
             )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not save tournament %s: %s", tid, exc)
+
+    # Purge player secrets once the tournament enters the finished phase so
+    # that old passphrases / QR tokens cannot be confused with new ones.
+    tournament = data.get("tournament")
+    if tournament is not None and str(getattr(tournament, "phase", "")) == "finished":
+        delete_secrets_for_tournament(tid)
 
 
 def _delete_tournament(tid: str) -> None:

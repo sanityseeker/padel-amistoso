@@ -43,6 +43,7 @@
       </div>
     </div>
     <div class="page-header-row">
+      <button type="button" class="tab-btn tab-btn--info" data-tab="info" role="tab" aria-selected="false">ℹ <span data-i18n="txt_txt_info">Info</span></button>
       <div id="auth-status" class="page-header-right" style="margin-left:auto"></div>
     </div>
   </div>
@@ -56,7 +57,6 @@
   <div class="tabs" role="tablist">
     <button type="button" class="tab-btn active" data-tab="home" data-i18n="txt_txt_tournaments" role="tab" aria-selected="true">Tournaments</button>
     <button type="button" class="tab-btn" data-tab="create" data-i18n="txt_txt_create" role="tab" aria-selected="false">Create</button>
-    <button type="button" class="tab-btn" data-tab="info" data-i18n="txt_txt_info" role="tab" aria-selected="false">Info</button>
     <div id="tournament-chips" class="tournament-chips"></div>
     <div class="compact-controls">
       <button type="button" id="admin-refresh-btn" class="compact-icon-btn" data-action="refreshCurrentView" title="Refresh" style="display:none">↻</button>
@@ -356,7 +356,26 @@
   <div class="tab-panel" id="panel-info" role="tabpanel">
     <div class="card">
       <h2 data-i18n="txt_txt_info">Info</h2>
-      <p style="color:var(--text-muted);font-size:0.85rem" data-i18n="txt_txt_info_tab_desc">Torneos Amistosos supports both Padel and Tennis. Choose your sport when creating a tournament — the engine is the same, only labels change.</p>
+      <p style="color:var(--text-muted);font-size:0.85rem" data-i18n="txt_txt_info_tab_desc">This app supports both Padel and Tennis. Choose your sport when creating a tournament — the engine is the same, only labels change.</p>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_reg_lobbies_title">Registration Lobbies</strong>
+        <p data-i18n="txt_txt_info_reg_lobbies_desc">Share a sign-up link — players self-register, then convert the lobby to a live tournament with one click.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_player_codes_title">Player Codes</strong>
+        <p data-i18n="txt_txt_info_player_codes_desc">Every player gets a unique passphrase and QR code. Use the Player Codes panel to view, copy, print, or regenerate credentials.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_tv_view_title">TV View</strong>
+        <p data-i18n="txt_txt_info_tv_view_desc">A public read-only screen at <code>/tv/&lt;id&gt;</code> shows live standings, the bracket, and match results — no login needed.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_export_title">Export</strong>
+        <p data-i18n="txt_txt_info_export_desc">Download a self-contained HTML or PDF summary with bracket diagram and full match history once a champion is determined.</p>
+      </div>
+      <p style="margin-top:1rem;font-size:0.85rem">
+        <a href="https://github.com/sanityseeker/padel-amistoso" target="_blank" rel="noopener" data-i18n="txt_txt_info_github_link">Full documentation on GitHub →</a>
+      </p>
     </div>
 
     <!-- Group + Play-off -->

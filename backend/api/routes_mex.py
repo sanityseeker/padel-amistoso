@@ -33,6 +33,7 @@ from .schemas import (
     RecordScoreRequest,
     RecordTennisScoreRequest,
     StartMexicanoPlayoffsRequest,
+    UpdateCourtsRequest,
 )
 from .state import _global_lock, _next_id, _save_tournament, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
@@ -114,6 +115,7 @@ async def mex_status(tid: str) -> dict:
         "phase": t.phase,
         "is_finished": t.is_finished,
         "assign_courts": data.get("assign_courts", True),
+        "courts": [{"id": c.id, "name": c.name} for c in t.courts],
         "leaderboard": t.leaderboard(),
         "players": [{"id": p.id, "name": p.name} for p in t.players],
         "sit_out_count": t._sit_out_count,
@@ -164,6 +166,20 @@ async def mex_record(
         _save_tournament(tid)
         breakdown = t.get_match_breakdown(req.match_id)
     return {"ok": True, "breakdown": breakdown}
+
+
+@router.patch("/{tid}/mex/courts")
+async def mex_update_courts(tid: str, req: UpdateCourtsRequest, user=Depends(get_current_user)) -> dict:
+    """Replace the court list for future rounds and play-off bracket generation."""
+    _require_owner_or_admin(tid, user)
+    async with get_tournament_lock(tid):
+        data = _get_tournament(tid, _MEX)
+        t: MexicanoTournament = data["tournament"]
+        courts = [Court(name=n) for n in req.court_names]
+        t.update_courts(courts)
+        data["assign_courts"] = len(courts) > 0
+        _save_tournament(tid)
+    return {"courts": [{"id": c.id, "name": c.name} for c in t.courts]}
 
 
 @router.get("/{tid}/mex/propose-pairings")

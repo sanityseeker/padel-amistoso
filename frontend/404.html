@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>404 – Page Not Found</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#3b82f6" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#3b82f6" media="(prefers-color-scheme: light)">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<!-- Apply saved theme before first paint to avoid flash -->
+<script>
+  (function () {
+    var osDefault = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    var t = 'dark';
+    try { t = localStorage.getItem('amistoso-theme') || osDefault; } catch (_) { t = osDefault; }
+    document.documentElement.setAttribute('data-theme', t);
+  }());
+</script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { color-scheme: dark; }
+  :root[data-theme="light"] { color-scheme: light; }
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: system-ui, -apple-system, sans-serif;
+    text-align: center;
+    padding: 2rem;
+    gap: 1.5rem;
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+  [data-theme="light"] body {
+    background: #f1f5f9;
+    color: #1e293b;
+  }
+  [data-theme="light"] .countdown { color: #64748b; }
+  img#error-img {
+    max-width: min(320px, 80vw);
+    height: auto;
+    border-radius: 1rem;
+  }
+  .countdown {
+    font-size: 1rem;
+    color: #94a3b8;
+  }
+  .countdown span {
+    font-weight: 700;
+    color: #3b82f6;
+  }
+  a.home-link {
+    display: inline-block;
+    background: #3b82f6;
+    color: #fff;
+    text-decoration: none;
+    padding: 0.6rem 1.6rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: background 0.2s;
+  }
+  a.home-link:hover { background: #2563eb; }
+</style>
+</head>
+<body>
+  <img id="error-img" src="/404.png" alt="404 – Page not found">
+  <p class="countdown">Redirecting to home in <span id="counter">5</span> seconds…</p>
+  <a class="home-link" href="/">Go home now</a>
+
+<script>
+  let seconds = 5;
+  const el = document.getElementById('counter');
+  const timer = setInterval(() => {
+    seconds -= 1;
+    el.textContent = seconds;
+    if (seconds <= 0) {
+      clearInterval(timer);
+      window.location.replace('/');
+    }
+  }, 1000);
+</script>
+</body>
+</html>
