@@ -20,8 +20,8 @@ load_dotenv()
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
-import state as _state_module
 
+from . import state as _state_module
 from ..auth import auth_router
 from ..auth.store import user_store
 from .db import init_db
