@@ -8,10 +8,12 @@ services:
     envVars:
       - key: PADEL_JWT_SECRET
         generateValue: true
-      - key: PYTHON_VERSION
-        value: "3.12"
-      - key: DEMO_MODE
+      - key: PADEL_ADMIN_PASSWORD
+        value: "admin"
+      - key: PE
         value: "true"
+      - key: ALLOWED_ORIGINS
+        value: "https://padel-amistoso.onrender.com"
     healthCheckPath: /api/tournaments
     autoDeploy: true
 
