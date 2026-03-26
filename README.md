@@ -1,6 +1,10 @@
 # Torneos Amistosos
 
-A lightweight Python app for organising **padel** and **tennis** tournaments. Three formats are supported:
+A convenient platform for organising **padel** and **tennis** events. Run structured tournaments in multiple formats, open registration lobbies with custom questionnaires, and share a live public view with all participants — all from a single lightweight app.
+
+Found a bug, unexpected behaviour, or have a suggestion? [Open an issue on GitHub](https://github.com/sanityseeker/padel-amistoso/issues/new).
+
+Three tournament formats are supported:
 
 | Format | Description |
 | --- | --- |
@@ -406,6 +410,40 @@ uv run pytest tests/ -x
 | `tests/test_player_auth.py` | Player self-scoring authentication |
 | `tests/test_playoff.py` | Single/double elimination bracket logic |
 | `tests/test_helpers.py` | Shared helper utilities |
+
+---
+
+## Releasing a new version
+
+This project uses [`commitizen`](https://commitizen-tools.github.io/commitizen/) to automate version bumping, changelog generation, and git tagging.
+
+Write commits using [Conventional Commits](https://www.conventionalcommits.org/) format:
+
+```bash
+# Interactive commit prompt (guides you through the format)
+uv run cz commit
+
+# Or write manually: feat:, fix:, chore:, docs:, refactor:, etc.
+git commit -m "feat: add round-robin scheduling"
+```
+
+When ready to cut a release:
+
+```bash
+# Preview what version and tag would be created
+uv run cz bump --dry-run
+
+# Bump version in pyproject.toml, update CHANGELOG.md, and create a git tag
+uv run cz bump
+
+# Push the commit and the tag — this triggers the CI release pipeline
+git push && git push --tags
+```
+
+Version increments follow semver based on commit history:
+- `fix:` → patch (`0.3.0` → `0.3.1`)
+- `feat:` → minor (`0.3.0` → `0.4.0`)
+- `feat!:` or `BREAKING CHANGE:` footer → major (`0.3.0` → `1.0.0`)
 
 ---
 

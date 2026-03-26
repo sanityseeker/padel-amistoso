@@ -80,6 +80,13 @@ class UserStore:
         password = os.environ.get("PADEL_ADMIN_PASSWORD", "")
         if not password:
             password = _secrets.token_urlsafe(16)
+            import sys
+
+            print(
+                f"\n⚠️  No PADEL_ADMIN_PASSWORD set — generated initial admin password: {password}\n",
+                file=sys.stderr,
+                flush=True,
+            )
             logger.warning(
                 "No PADEL_ADMIN_PASSWORD set — generated initial admin password: %s",
                 password,

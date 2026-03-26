@@ -361,7 +361,7 @@ function _showForm() {
         }
         html += `</select>`;
       } else {
-        html += `<input type="text" class="reg-answer" data-key="${esc(q.key)}" maxlength="256" ${reqAttr}>`;
+        html += `<textarea class="reg-answer reg-text-expand" data-key="${esc(q.key)}" maxlength="512" rows="1" ${reqAttr} oninput="_regAutoResize(this)"></textarea>`;
       }
       html += `</div>`;
     }
@@ -388,6 +388,7 @@ function _showForm() {
   el.style.display = '';
 
   document.getElementById('reg-form').addEventListener('submit', _handleSubmit);
+  el.querySelectorAll('textarea.reg-text-expand').forEach(_regAutoResize);
 }
 
 async function _lookupPlayer() {
@@ -448,7 +449,7 @@ function _renderReturningPlayerEditor() {
         }
         html += `</select>`;
       } else {
-        html += `<input type="text" class="returning-answer" data-key="${esc(q.key)}" maxlength="256" value="${esc(existingValue)}" ${reqAttr}>`;
+        html += `<textarea class="returning-answer reg-text-expand" data-key="${esc(q.key)}" maxlength="512" rows="1" ${reqAttr} oninput="_regAutoResize(this)">${esc(existingValue)}</textarea>`;
       }
       html += `</div>`;
     }
@@ -565,10 +566,11 @@ function _showSuccess() {
 
   html += _renderReturningPlayerEditor();
 
-  html += `<button type="button" class="btn-secondary" onclick="_registerAnother()" style="margin-top:0.5rem">${t('txt_reg_register_another')}</button>`;
+  html += `<div class="success-actions"><a href="/register" class="btn btn-primary success-back-btn">${t('txt_reg_back_home')}</a><button type="button" class="success-register-another" onclick="_registerAnother()">${t('txt_reg_register_another')}</button></div>`;
 
   el.innerHTML = html;
   el.style.display = '';
+  el.querySelectorAll('textarea.reg-text-expand').forEach(_regAutoResize);
 
   if (_rid && r.token) {
     _setRegToken(r.token);
@@ -681,7 +683,8 @@ async function _pollLobby() {
       return;
     }
 
-    if (data.registrant_count !== _regData.registrant_count || data.registrants.length !== _regData.registrants.length) {
+    const questionsChanged = JSON.stringify(data.questions ?? []) !== JSON.stringify(_regData.questions ?? []);
+    if (questionsChanged || data.registrant_count !== _regData.registrant_count || data.registrants.length !== _regData.registrants.length) {
       _regData = data;
       if (_lastResult) _showSuccess();
     }
@@ -738,6 +741,12 @@ function _renderMarkdown(md) {
   } catch (_) {
     return esc(md);
   }
+}
+
+function _regAutoResize(el) {
+  el.style.overflow = 'hidden';
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
 }
 
 // ── Public API (for onclick handlers) ────────────────────

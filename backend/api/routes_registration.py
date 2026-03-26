@@ -300,6 +300,25 @@ async def update_registration(rid: str, req: RegistrationUpdate, user: User = De
         with get_db() as conn:
             conn.execute(f"UPDATE registrations SET {', '.join(updates)} WHERE id = ?", params)
 
+    if req.clear_answers_for_keys:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT player_id, answers FROM registrants WHERE registration_id = ?",
+                [reg_id],
+            ).fetchall()
+            for row in rows:
+                answers = _parse_answers(row["answers"])
+                changed = False
+                for key in req.clear_answers_for_keys:
+                    if key in answers:
+                        del answers[key]
+                        changed = True
+                if changed:
+                    conn.execute(
+                        "UPDATE registrants SET answers = ? WHERE registration_id = ? AND player_id = ?",
+                        [json.dumps(answers), reg_id, row["player_id"]],
+                    )
+
     return {"ok": True}
 
 

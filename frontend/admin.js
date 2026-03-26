@@ -3912,22 +3912,32 @@ const _REG_POLL_INTERVAL_MS = 10000;
 // Registration detail auto-refresh
 let _regDetailPollTimer = null;
 let _regDetailLastCount = null;
+let _regDetailLastAnswerSig = null;
 const _REG_DETAIL_POLL_INTERVAL_MS = 6000;
+
+function _regAnswerSig(registrants) {
+  return (registrants || []).map(r => `${r.player_id}:${JSON.stringify(r.answers ?? {})}`).join('|');
+}
 
 function _startRegDetailPoll() {
   _stopRegDetailPoll();
   if (!currentTid || currentType !== 'registration') return;
   _regDetailLastCount = _currentRegDetail?.registrants?.length ?? null;
+  _regDetailLastAnswerSig = _regAnswerSig(_currentRegDetail?.registrants);
   _regDetailPollTimer = setInterval(async () => {
     if (!currentTid || currentType !== 'registration') return;
     try {
-      const d = await fetch(`/api/registrations/${currentTid}/public`).then(r => r.ok ? r.json() : null);
+      const d = await api(`/api/registrations/${currentTid}`).catch(() => null);
       if (!d) return;
-      if (_regDetailLastCount !== null && d.registrant_count !== _regDetailLastCount) {
-        _regDetailLastCount = d.registrant_count;
-        renderRegistration();
-      } else {
-        _regDetailLastCount = d.registrant_count;
+      const sig = _regAnswerSig(d.registrants);
+      const countChanged = _regDetailLastCount !== null && d.registrant_count !== _regDetailLastCount;
+      const answersChanged = sig !== _regDetailLastAnswerSig;
+      _regDetailLastCount = d.registrant_count;
+      _regDetailLastAnswerSig = sig;
+      if (countChanged || answersChanged) {
+        _regDetails[currentTid] = d;
+        _currentRegDetail = d;
+        _renderRegDetailInline(currentTid);
       }
     } catch (_) { /* network blip */ }
   }, _REG_DETAIL_POLL_INTERVAL_MS);
@@ -3936,6 +3946,7 @@ function _startRegDetailPoll() {
 function _stopRegDetailPoll() {
   if (_regDetailPollTimer) { clearInterval(_regDetailPollTimer); _regDetailPollTimer = null; }
   _regDetailLastCount = null;
+  _regDetailLastAnswerSig = null;
 }
 
 function _startRegPoll() {
@@ -3998,7 +4009,7 @@ function _renderRegDetailInline(rid) {
   html += `<div class="form-group"><label>${t('txt_reg_tournament_name')}</label>`;
   html += `<input type="text" id="reg-edit-name-${esc(rid)}" value="${esc(r.name)}"></div>`;
   html += `<div class="form-group"><label>${t('txt_reg_description')}</label>`;
-  html += `<textarea id="reg-edit-desc-${esc(rid)}" rows="3">${esc(r.description || '')}</textarea>`;
+  html += `<textarea id="reg-edit-desc-${esc(rid)}" class="reg-desc-textarea" rows="3" oninput="_autoResizeTextarea(this)">${esc(r.description || '')}</textarea>`;
   html += `<div id="reg-desc-preview-${esc(rid)}" style="display:none;margin-top:0.5rem;padding:0.5rem;border:1px solid var(--border);border-radius:6px;font-size:0.9rem"></div>`;
   html += `<button type="button" class="btn btn-sm" style="margin-top:0.3rem;font-size:0.75rem" onclick="_toggleRegDescPreview('${esc(rid)}')">${t('txt_reg_preview')}</button></div>`;
   html += `<div class="form-group"><label>${t('txt_reg_join_code')}</label>`;
@@ -4019,6 +4030,20 @@ function _renderRegDetailInline(rid) {
   html += `</div>`;
   html += `<div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.5rem">`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegMessage('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
+  html += `</div></div></details>`;
+
+  // Questions edit section
+  const editQContainer = `reg-edit-questions-${rid}`;
+  html += `<details class="reg-section" style="margin-bottom:1rem">`;
+  html += `<summary style="cursor:pointer;user-select:none;font-weight:700;display:flex;align-items:center;gap:0.5rem;list-style:none">`;
+  html += `<span style="display:flex;align-items:center;gap:0.4rem;flex:1"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span> &#10067; ${t('txt_reg_questions')}</span>`;
+  html += `<span class="participant-count" id="${editQContainer}-count">(0)</span>`;
+  html += `</summary>`;
+  html += `<div style="padding:0.6rem 0">`;
+  html += `<div id="${editQContainer}"><div class="reg-q-empty" id="${editQContainer}-empty">${t('txt_reg_q_no_questions')}</div></div>`;
+  html += `<div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap;align-items:center">`;
+  html += `<button type="button" class="add-participant-btn" onclick="_addRegQuestion('${editQContainer}')" style="flex:1">＋ ${t('txt_reg_add_question')}</button>`;
+  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegQuestions('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
   html += `</div></div></details>`;
 
   // Registrants table (collapsible) — names, passphrases, actions only
@@ -4065,6 +4090,9 @@ function _renderRegDetailInline(rid) {
 
   html += `</div>`; // close .card
   el.innerHTML = html;
+  const descEl = document.getElementById(`reg-edit-desc-${rid}`);
+  if (descEl) _autoResizeTextarea(descEl);
+  _populateRegQuestions(`reg-edit-questions-${rid}`, questions);
 }
 
 function _copyRegLink(rid) {
@@ -4164,7 +4192,7 @@ function showCreateRegistration() {
       </div>
       <div class="field-section" style="margin-bottom:0.75rem">
         <div class="field-section-title">${t('txt_reg_description')}</div>
-        <textarea id="reg-new-desc" rows="3"></textarea>
+        <textarea id="reg-new-desc" class="reg-desc-textarea" rows="3" oninput="_autoResizeTextarea(this)"></textarea>
         <small style="color:var(--text-muted);font-size:0.75rem">${t('txt_reg_description_hint')}</small>
       </div>
       <div class="field-section" style="margin-bottom:0.75rem">
@@ -4178,12 +4206,12 @@ function showCreateRegistration() {
       <div class="field-section" style="margin-bottom:0.75rem">
         <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.55rem">
           <span class="field-section-title" style="margin-bottom:0">${t('txt_reg_questions')}</span>
-          <span class="participant-count" id="reg-q-count">(0)</span>
+          <span class="participant-count" id="reg-new-questions-count">(0)</span>
         </div>
         <div id="reg-new-questions">
-          <div class="reg-q-empty" id="reg-q-empty">${t('txt_reg_q_no_questions')}</div>
+          <div class="reg-q-empty" id="reg-new-questions-empty">${t('txt_reg_q_no_questions')}</div>
         </div>
-        <button type="button" class="add-participant-btn" style="margin-top:0.4rem" onclick="_addRegQuestion()">＋ ${t('txt_reg_add_question')}</button>
+        <button type="button" class="add-participant-btn" style="margin-top:0.4rem" onclick="_addRegQuestion('reg-new-questions')">＋ ${t('txt_reg_add_question')}</button>
       </div>
       <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
         <input type="checkbox" id="reg-new-listed" style="width:1rem;height:1rem;cursor:pointer">
@@ -4221,8 +4249,8 @@ async function _submitCreateRegistration() {
 
 let _regQuestionCounter = 0;
 
-function _updateRegQNumbers() {
-  const container = document.getElementById('reg-new-questions');
+function _updateRegQNumbers(containerId) {
+  const container = document.getElementById(containerId);
   if (!container) return;
   const cards = container.querySelectorAll('.reg-q-card');
   const count = cards.length;
@@ -4230,19 +4258,20 @@ function _updateRegQNumbers() {
     const num = card.querySelector('.reg-q-number');
     if (num) num.textContent = `Q${i + 1}`;
   });
-  const countEl = document.getElementById('reg-q-count');
+  const countEl = document.getElementById(`${containerId}-count`);
   if (countEl) countEl.textContent = `(${count})`;
-  const empty = document.getElementById('reg-q-empty');
+  const empty = document.getElementById(`${containerId}-empty`);
   if (empty) empty.style.display = count ? 'none' : '';
 }
 
-function _addRegQuestion() {
-  const container = document.getElementById('reg-new-questions');
+function _addRegQuestion(containerId, noFocus = false) {
+  const container = document.getElementById(containerId);
   if (!container) return;
   const idx = _regQuestionCounter++;
   const div = document.createElement('div');
   div.className = 'reg-q-card reg-q-item';
   div.dataset.qidx = idx;
+  div.dataset.qContainer = containerId;
   div.innerHTML = `
     <div class="reg-q-card-header">
       <span class="reg-q-number">Q1</span>
@@ -4267,14 +4296,15 @@ function _addRegQuestion() {
       </div>
     </div>`;
   container.appendChild(div);
-  _updateRegQNumbers();
-  div.querySelector('.reg-q-label')?.focus();
+  _updateRegQNumbers(containerId);
+  if (!noFocus) div.querySelector('.reg-q-label')?.focus();
 }
 
 function _removeRegQuestion(btn) {
   const card = btn.closest('.reg-q-card');
+  const containerId = card?.dataset.qContainer || 'reg-new-questions';
   if (card) card.remove();
-  _updateRegQNumbers();
+  _updateRegQNumbers(containerId);
 }
 
 function _setRegQType(btn, type) {
@@ -4304,21 +4334,32 @@ function _addRegChoice(btn) {
   row.querySelector('input')?.focus();
 }
 
-function _collectRegQuestions() {
-  const items = document.querySelectorAll('#reg-new-questions .reg-q-item');
-  const questions = [];
+function _collectRegQuestions(containerId = 'reg-new-questions') {
+  const container = document.getElementById(containerId);
+  const items = container ? container.querySelectorAll('.reg-q-item') : [];
+  // Start fallback index past all existing q<n> keys to avoid collisions on new questions
   let idx = 0;
+  for (const item of items) {
+    const origKey = item.dataset.originalKey;
+    if (origKey) {
+      const m = origKey.match(/^q(\d+)$/);
+      if (m) idx = Math.max(idx, parseInt(m[1], 10) + 1);
+    }
+  }
+  const questions = [];
   for (const item of items) {
     const label = item.querySelector('.reg-q-label')?.value?.trim();
     if (!label) continue;
     const toggle = item.querySelector('.reg-q-type-toggle');
     const type = toggle?.dataset.current || 'text';
     const required = !!item.querySelector('.reg-q-required')?.checked;
-    const key = `q${idx++}`;
+    const key = item.dataset.originalKey || `q${idx++}`;
     const q = { key, label, type, required };
     if (type === 'choice') {
       const inputs = item.querySelectorAll('.reg-q-choice-val');
       q.choices = Array.from(inputs).map(i => i.value.trim()).filter(Boolean);
+    } else {
+      q.choices = [];
     }
     questions.push(q);
   }
@@ -4338,32 +4379,56 @@ function _renderAnswersPanel(rid, r, questions) {
   let h = `<details class="reg-section" style="margin-bottom:0.75rem">`;
   h += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
   h += `<span style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">▸</span> ${t('txt_reg_answers_title')} (${questions.length})</span>`;
-  h += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_copyAnswersCSV('${esc(rid)}')">📋 ${t('txt_reg_copy_answers')}</button>`;
+  h += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_downloadAnswersCSV('${esc(rid)}')">↓ ${t('txt_reg_download_answers_csv')}</button>`;
   h += `</summary>`;
 
-  // Per-question summary cards
+  const DICT_THRESHOLD = 25;
   h += `<div class="reg-answers-grid">`;
   for (const q of questions) {
-    h += `<div class="reg-answer-card">`;
-    h += `<div class="reg-answer-card-header">`;
-    h += `<span class="reg-answer-card-label">${esc(q.label)}</span>`;
-    h += `<span class="badge ${q.required ? 'badge-phase' : ''}" style="font-size:0.68rem">${q.type === 'choice' ? t('txt_reg_q_type_choice') : t('txt_reg_q_type_text')}${q.required ? ' · ' + t('txt_reg_q_required') : ''}</span>`;
-    h += `</div>`;
-
+    let counts = {}, useDictionary = false, choiceToLetter = {};
     if (q.type === 'choice' && q.choices?.length) {
-      // Show distribution bars for choice questions
-      const counts = {};
       for (const c of q.choices) counts[c] = 0;
-      let answered = 0;
       for (const reg of r.registrants) {
         const a = reg.answers?.[q.key];
-        if (a) { counts[a] = (counts[a] || 0) + 1; answered++; }
+        if (a) counts[a] = (counts[a] || 0) + 1;
       }
+      useDictionary = q.choices.some(c => c.length > DICT_THRESHOLD);
+      if (useDictionary) {
+        const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        q.choices.forEach((c, i) => { choiceToLetter[c] = letters[i] ?? `#${i + 1}`; });
+      }
+    }
+
+    h += `<div class="reg-answer-card">`;
+
+    // Card header
+    h += `<div class="reg-answer-card-header">`;
+    h += `<span class="reg-answer-card-label">${esc(q.label)}</span>`;
+    if (q.type === 'choice') {
+      h += `<span class="badge ${q.required ? 'badge-phase' : ''}" style="font-size:0.68rem">${t('txt_reg_q_type_choice')}${q.required ? ' · ' + t('txt_reg_q_required') : ''}</span>`;
+    } else {
+      const ansCount = r.registrants.filter(reg => reg.answers?.[q.key]).length;
+      h += `<span class="reg-answer-count-badge">${ansCount} / ${r.registrants.length}</span>`;
+    }
+    h += `</div>`;
+
+    // Dictionary legend (choice questions with long options)
+    if (useDictionary) {
+      h += `<div class="reg-answer-legend">`;
+      for (const c of q.choices) {
+        h += `<span class="reg-answer-legend-item"><b>${choiceToLetter[c]}</b><span class="reg-answer-legend-text">${esc(c)}</span></span>`;
+      }
+      h += `</div>`;
+    }
+
+    // Distribution bars (choice questions)
+    if (q.type === 'choice' && q.choices?.length) {
       h += `<div class="reg-answer-bars">`;
       for (const c of q.choices) {
-        const pct = answered > 0 ? Math.round((counts[c] / r.registrants.length) * 100) : 0;
+        const pct = r.registrants.length > 0 ? Math.round((counts[c] / r.registrants.length) * 100) : 0;
+        const label = useDictionary ? choiceToLetter[c] : esc(c);
         h += `<div class="reg-answer-bar-row">`;
-        h += `<span class="reg-answer-bar-label">${esc(c)}</span>`;
+        h += `<span class="reg-answer-bar-label">${label}</span>`;
         h += `<div class="reg-answer-bar-track"><div class="reg-answer-bar-fill" style="width:${pct}%"></div></div>`;
         h += `<span class="reg-answer-bar-count">${counts[c]}</span>`;
         h += `</div>`;
@@ -4371,34 +4436,167 @@ function _renderAnswersPanel(rid, r, questions) {
       h += `</div>`;
     }
 
-    // Individual answers list
-    h += `<div class="reg-answer-list">`;
-    for (const reg of r.registrants) {
-      const a = reg.answers?.[q.key] || '—';
-      h += `<div class="reg-answer-row">`;
-      h += `<span class="reg-answer-name">${esc(reg.player_name)}</span>`;
-      h += `<span class="reg-answer-value">${esc(a)}</span>`;
-      h += `</div>`;
+    // Inline individual answers list (text questions) or spoiler (choice questions)
+    if (q.type !== 'choice') {
+      const TRUNCATE = 100;
+      h += `<div class="reg-answer-text-section">`;
+      if (r.registrants.length > 4) {
+        h += `<input type="text" class="reg-answer-text-search" placeholder="${t('txt_reg_search_by_name')}" oninput="_regFilterAnswers(this)">`;
+      }
+      h += `<div class="reg-answer-text-list">`;
+      for (const reg of r.registrants) {
+        const answer = reg.answers?.[q.key] || '';
+        const isLong = answer.length > TRUNCATE;
+        const snippet = isLong ? esc(answer.slice(0, TRUNCATE)) + '\u2026' : (answer ? esc(answer) : '&mdash;');
+        const clickAttr = isLong ? `onclick="_regToggleAnswerExpand(this)" title="${t('txt_reg_click_to_expand')}"` : '';
+        h += `<div class="reg-answer-text-row${isLong ? ' long' : ''}" data-name="${esc(reg.player_name)}">`;
+        h += `<span class="reg-answer-name">${esc(reg.player_name)}</span>`;
+        h += `<span class="reg-answer-text-val" ${clickAttr} data-full="${esc(answer)}">${snippet}</span>`;
+        h += `</div>`;
+      }
+      h += `</div></div>`;
+    } else {
+      // Individual answers under spoiler
+      h += `<details class="reg-answer-spoiler">`;
+      h += `<summary class="reg-answer-spoiler-summary">${t('txt_reg_show_individual_answers')} (${r.registrants.length})</summary>`;
+      h += `<div class="reg-answer-list">`;
+      for (const reg of r.registrants) {
+        const raw = reg.answers?.[q.key];
+        const display = raw ? (useDictionary ? (choiceToLetter[raw] ?? esc(raw)) : esc(raw)) : '—';
+        h += `<div class="reg-answer-row">`;
+        h += `<span class="reg-answer-name">${esc(reg.player_name)}</span>`;
+        h += `<span class="reg-answer-value">${display}</span>`;
+        h += `</div>`;
+      }
+      h += `</div></details>`;
     }
-    h += `</div>`;
-    h += `</div>`;
+
+    h += `</div>`; // close card
   }
   h += `</div>`;
   h += `</details>`;
   return h;
 }
 
-function _copyAnswersCSV(rid) {
+function _regToggleAnswerExpand(el) {
+  const row = el.closest('.reg-answer-text-row');
+  if (!row) return;
+  const isExpanded = row.classList.toggle('expanded');
+  const full = el.dataset.full || '';
+  el.textContent = isExpanded ? full : full.slice(0, 100) + '\u2026';
+}
+
+function _regFilterAnswers(input) {
+  const q = input.value.toLowerCase();
+  const list = input.parentElement?.querySelector('.reg-answer-text-list');
+  if (!list) return;
+  for (const row of list.querySelectorAll('.reg-answer-text-row')) {
+    const name = (row.dataset.name || '').toLowerCase();
+    row.style.display = q && !name.includes(q) ? 'none' : '';
+  }
+}
+
+function _csvCell(v) {
+  const s = String(v ?? '');
+  return /[,"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function _downloadAnswersCSV(rid) {
   const r = _regDetails[rid];
   if (!r?.registrants) return;
   const questions = r.questions || [];
   if (!questions.length) return;
-  const header = [t('txt_reg_name'), ...questions.map(q => q.label)].join('\t');
+  const header = [t('txt_reg_name'), ...questions.map(q => q.label)].map(_csvCell).join(',');
   const rows = r.registrants.map(reg => {
     const cells = [reg.player_name, ...questions.map(q => reg.answers?.[q.key] || '')];
-    return cells.join('\t');
+    return cells.map(_csvCell).join(',');
   });
-  navigator.clipboard.writeText([header, ...rows].join('\n'));
+  const csv = [header, ...rows].join('\r\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(r.name || rid).replace(/[^\w\-. ]/g, '_')}_answers.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function _autoResizeTextarea(el) {
+  el.style.overflow = 'hidden';
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+
+function _populateRegQuestions(containerId, questions) {
+  for (const q of questions) {
+    _addRegQuestion(containerId, true);
+    const container = document.getElementById(containerId);
+    if (!container) break;
+    const cards = container.querySelectorAll('.reg-q-card');
+    const card = cards[cards.length - 1];
+    if (!card) continue;
+    card.dataset.originalKey = q.key;
+    const labelInput = card.querySelector('.reg-q-label');
+    if (labelInput) labelInput.value = q.label;
+    if (q.required) {
+      const reqCb = card.querySelector('.reg-q-required');
+      if (reqCb) reqCb.checked = true;
+    }
+    if (q.type === 'choice') {
+      const typeBtn = card.querySelector('.reg-q-type-toggle button:last-child');
+      if (typeBtn) _setRegQType(typeBtn, 'choice');
+      const area = card.querySelector('.reg-q-choices-area');
+      const list = area?.querySelector('.reg-q-choices-list');
+      if (list && q.choices?.length) {
+        list.innerHTML = '';
+        for (const choice of q.choices) {
+          const row = document.createElement('div');
+          row.className = 'reg-q-choice-row';
+          row.innerHTML = `<input type="text" class="reg-q-choice-val" placeholder="${t('txt_reg_q_choices_placeholder')}" maxlength="128"><button type="button" class="reg-q-choice-remove" onclick="this.parentElement.remove()" title="Remove">✕</button>`;
+          row.querySelector('input').value = choice;
+          list.appendChild(row);
+        }
+      }
+    }
+  }
+}
+
+async function _saveRegQuestions(rid) {
+  const r = _regDetails[rid];
+  if (!r) return;
+  const containerId = `reg-edit-questions-${rid}`;
+  const newQuestions = _collectRegQuestions(containerId);
+  const origQuestions = r.questions || [];
+
+  const newKeyMap = new Map(newQuestions.map(q => [q.key, q]));
+  const keysToDiscard = [];
+  for (const orig of origQuestions) {
+    if (!newKeyMap.has(orig.key)) {
+      keysToDiscard.push(orig.key);
+      continue;
+    }
+    const updated = newKeyMap.get(orig.key);
+    if (orig.type !== updated.type) {
+      keysToDiscard.push(orig.key);
+      continue;
+    }
+    if (orig.type === 'choice') {
+      const origSet = new Set(orig.choices || []);
+      const newArr = updated.choices || [];
+      const changed = newArr.length !== origSet.size || newArr.some(c => !origSet.has(c));
+      if (changed) keysToDiscard.push(orig.key);
+    }
+  }
+
+  const body = { questions: newQuestions };
+  const hasAffectedAnswers = keysToDiscard.length > 0 &&
+    r.registrants?.some(reg => keysToDiscard.some(k => reg.answers?.[k]));
+  if (hasAffectedAnswers && confirm(t('txt_reg_q_discard_prompt'))) {
+    body.clear_answers_for_keys = keysToDiscard;
+  }
+
+  await api(`/api/registrations/${rid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  await _loadRegDetail(rid);
 }
 
 async function _saveRegSettings(rid) {

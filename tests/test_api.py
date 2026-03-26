@@ -727,3 +727,53 @@ class TestRegistrationAPI:
         public_get_alias = client.get(f"/api/registrations/{alias}/public")
         assert public_get_alias.status_code == 200
         assert public_get_alias.json()["registrant_count"] == 1
+
+    def test_clear_answers_for_keys_removes_targeted_answers(self, client, auth_headers):
+        """PATCH with clear_answers_for_keys should wipe only the specified answer keys."""
+        rid = self._create_registration(
+            client,
+            auth_headers,
+            questions=[
+                {"key": "q0", "label": "Level", "type": "text", "required": False},
+                {"key": "q1", "label": "Side", "type": "text", "required": False},
+            ],
+        )
+        client.post(
+            f"/api/registrations/{rid}/register",
+            json={"player_name": "Alice", "answers": {"q0": "advanced", "q1": "right"}},
+        )
+        client.post(
+            f"/api/registrations/{rid}/register",
+            json={"player_name": "Bob", "answers": {"q0": "beginner", "q1": "left"}},
+        )
+
+        r = client.patch(
+            f"/api/registrations/{rid}",
+            json={"clear_answers_for_keys": ["q0"]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+
+        detail = client.get(f"/api/registrations/{rid}", headers=auth_headers)
+        assert detail.status_code == 200
+        registrants = {reg["player_name"]: reg["answers"] for reg in detail.json()["registrants"]}
+        assert "q0" not in registrants["Alice"]
+        assert "q0" not in registrants["Bob"]
+        assert registrants["Alice"].get("q1") == "right"
+        assert registrants["Bob"].get("q1") == "left"
+
+    def test_clear_answers_for_keys_ignores_absent_keys(self, client, auth_headers):
+        """Clearing a key that was never answered must not raise an error."""
+        rid = self._create_registration(
+            client,
+            auth_headers,
+            questions=[{"key": "q0", "label": "Level", "type": "text", "required": False}],
+        )
+        client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+
+        r = client.patch(
+            f"/api/registrations/{rid}",
+            json={"clear_answers_for_keys": ["q0", "q99"]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200

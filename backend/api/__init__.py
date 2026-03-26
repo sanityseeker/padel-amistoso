@@ -5,6 +5,7 @@ Run with:
     uvicorn backend.api:app --reload --port 8000
 """
 
+# ruff: noqa: E402  -- load_dotenv() must run before local imports that read env vars at module level
 from __future__ import annotations
 
 import os
@@ -12,9 +13,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
+import state as _state_module
 
 from ..auth import auth_router
 from ..auth.store import user_store
@@ -31,7 +37,6 @@ from .state import (  # noqa: F401  — re-exported for tests
     _load_state,
     _tournaments,
 )
-from . import state as _state_module
 
 # ────────────────────────────────────────────────────────────────────────────
 # Lifespan — load persisted state on startup, release lock on shutdown

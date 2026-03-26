@@ -293,6 +293,7 @@ class RegistrationUpdate(BaseModel):
     clear_join_code: bool = False
     clear_description: bool = False
     clear_message: bool = False
+    clear_answers_for_keys: list[str] = []
 
 
 class RegistrantIn(BaseModel):
