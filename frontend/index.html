@@ -74,6 +74,7 @@
       </div>
       <div id="tournament-list"><div class="skeleton-loader"><div class="skeleton-line skeleton-line-lg"></div><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
     </div>
+    <div id="archived-lobbies-toggle"></div>
     <div class="card" id="finished-tournaments-card" style="display:none">
       <h2 data-i18n="txt_txt_finished_tournaments">Finished tournaments</h2>
       <div id="finished-tournament-list"></div>
@@ -167,7 +168,13 @@
           <input type="checkbox" id="gp-public" checked style="width:1rem;height:1rem;cursor:pointer">
           <label for="gp-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
-        <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" data-action="withLoading" data-handler="createGP" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
+        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="gp-strength-section">
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
+          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Assign a strength score to each player/team. Used for initial seeding only — real scores take over after round 1.</p>
+          <div id="gp-strength-container"></div>
+        </details>
+        <div id="gp-group-preview" class="field-section" style="display:none;margin-top:0.75rem"></div>
+        <div id="gp-create-buttons" style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" data-action="withLoading" data-handler="previewGPGroups" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
         <div id="gp-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
 
@@ -272,6 +279,11 @@
           <input type="checkbox" id="mex-public" checked style="width:1rem;height:1rem;cursor:pointer">
           <label for="mex-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
+        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="mex-strength-section">
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
+          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Assign a strength score to each player/team. Used for initial seeding only — real scores take over after round 1.</p>
+          <div id="mex-strength-container"></div>
+        </details>
         <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" data-action="withLoading" data-handler="createMex" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
         <div id="mex-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
@@ -341,6 +353,11 @@
           <input type="checkbox" id="po-public" checked style="width:1rem;height:1rem;cursor:pointer">
           <label for="po-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
+        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="po-strength-section">
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
+          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Assign a strength score to each player/team. Used for initial seeding only — real scores take over after round 1.</p>
+          <div id="po-strength-container"></div>
+        </details>
         <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" data-action="withLoading" data-handler="createPO" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
         <div id="po-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>

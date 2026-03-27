@@ -24,6 +24,7 @@ users
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -33,11 +34,13 @@ from ..config import DATA_DIR
 import json
 
 DB_PATH = DATA_DIR / "padel.db"
+SQLITE_TIMEOUT_SECS = float(os.environ.get("PADEL_SQLITE_TIMEOUT_SECS", "15"))
+SQLITE_BUSY_TIMEOUT_MS = int(os.environ.get("PADEL_SQLITE_BUSY_TIMEOUT_MS", "15000"))
+SQLITE_SYNCHRONOUS = os.environ.get("PADEL_SQLITE_SYNCHRONOUS", "NORMAL").upper()
+
+_VALID_SYNCHRONOUS_LEVELS = {"OFF", "NORMAL", "FULL", "EXTRA"}
 
 _DDL = """
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
-
 CREATE TABLE IF NOT EXISTS tournaments (
     id               TEXT    PRIMARY KEY,
     name             TEXT    NOT NULL,
@@ -72,6 +75,7 @@ CREATE TABLE IF NOT EXISTS player_secrets (
     player_name   TEXT    NOT NULL DEFAULT '',
     passphrase    TEXT    NOT NULL,
     token         TEXT    NOT NULL,
+    contact       TEXT    NOT NULL DEFAULT '',
     PRIMARY KEY (tournament_id, player_id)
 );
 
@@ -82,19 +86,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_ps_token
     ON player_secrets (token);
 
 CREATE TABLE IF NOT EXISTS registrations (
-    id              TEXT    PRIMARY KEY,
-    name            TEXT    NOT NULL,
-    owner           TEXT    NOT NULL,
-    open            INTEGER NOT NULL DEFAULT 1,
-    join_code       TEXT,
-    questions       TEXT,
-    description     TEXT,
-    message         TEXT,
-    alias           TEXT    UNIQUE,
-    converted_to_tid TEXT,
-    listed          INTEGER NOT NULL DEFAULT 0,
-    sport           TEXT    NOT NULL DEFAULT 'padel',
-    created_at      TEXT    NOT NULL
+    id                TEXT    PRIMARY KEY,
+    name              TEXT    NOT NULL,
+    owner             TEXT    NOT NULL,
+    open              INTEGER NOT NULL DEFAULT 1,
+    join_code         TEXT,
+    questions         TEXT,
+    description       TEXT,
+    message           TEXT,
+    alias             TEXT    UNIQUE,
+    converted_to_tid  TEXT,
+    converted_to_tids TEXT    NOT NULL DEFAULT '[]',
+    listed            INTEGER NOT NULL DEFAULT 0,
+    archived          INTEGER NOT NULL DEFAULT 0,
+    sport             TEXT    NOT NULL DEFAULT 'padel',
+    created_at        TEXT    NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS registrants (
@@ -116,6 +122,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_reg_token
 """
 
 
+def _normalized_synchronous_level(level: str) -> str:
+    if level in _VALID_SYNCHRONOUS_LEVELS:
+        return level
+    return "NORMAL"
+
+
+def _configure_connection(conn: sqlite3.Connection) -> None:
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+    conn.execute(f"PRAGMA synchronous = {_normalized_synchronous_level(SQLITE_SYNCHRONOUS)}")
+
+
 def init_db() -> None:
     """Create tables and enable WAL mode.
 
@@ -123,7 +142,8 @@ def init_db() -> None:
     it does not exist yet.
     """
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=SQLITE_TIMEOUT_SECS) as conn:
+        _configure_connection(conn)
         conn.executescript(_DDL)
         # Migrate: add sport column if missing (existing DBs before multi-sport)
         cols = {r[1] for r in conn.execute("PRAGMA table_info(tournaments)").fetchall()}
@@ -131,6 +151,10 @@ def init_db() -> None:
             conn.execute("ALTER TABLE tournaments ADD COLUMN sport TEXT NOT NULL DEFAULT 'padel'")
         if "assign_courts" not in cols:
             conn.execute("ALTER TABLE tournaments ADD COLUMN assign_courts INTEGER NOT NULL DEFAULT 1")
+        # Migrate: add contact column to player_secrets if missing
+        ps_cols = {r[1] for r in conn.execute("PRAGMA table_info(player_secrets)").fetchall()}
+        if ps_cols and "contact" not in ps_cols:
+            conn.execute("ALTER TABLE player_secrets ADD COLUMN contact TEXT NOT NULL DEFAULT ''")
         # Migrate: add registration columns if missing (existing DBs before lobby features)
         reg_cols = {r[1] for r in conn.execute("PRAGMA table_info(registrations)").fetchall()}
         if reg_cols:  # table exists
@@ -139,8 +163,21 @@ def init_db() -> None:
                     conn.execute(f"ALTER TABLE registrations ADD COLUMN {col} TEXT")
             if "listed" not in reg_cols:
                 conn.execute("ALTER TABLE registrations ADD COLUMN listed INTEGER NOT NULL DEFAULT 0")
+            if "archived" not in reg_cols:
+                conn.execute("ALTER TABLE registrations ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
             if "sport" not in reg_cols:
                 conn.execute("ALTER TABLE registrations ADD COLUMN sport TEXT NOT NULL DEFAULT 'padel'")
+            if "converted_to_tids" not in reg_cols:
+                conn.execute("ALTER TABLE registrations ADD COLUMN converted_to_tids TEXT NOT NULL DEFAULT '[]'")
+                # Back-fill from the legacy single converted_to_tid column
+                rows = conn.execute(
+                    "SELECT id, converted_to_tid FROM registrations WHERE converted_to_tid IS NOT NULL"
+                ).fetchall()
+                for row in rows:
+                    conn.execute(
+                        "UPDATE registrations SET converted_to_tids = ? WHERE id = ?",
+                        (json.dumps([row[1]]), row[0]),
+                    )
             # Migrate level_type/level_label/level_required → questions JSON
             if "questions" not in reg_cols and "level_type" in reg_cols:
                 conn.execute("ALTER TABLE registrations ADD COLUMN questions TEXT")
@@ -190,9 +227,9 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
         with get_db() as conn:
             conn.execute("INSERT INTO …", (…,))
     """
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=SQLITE_TIMEOUT_SECS)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode = WAL")
+    _configure_connection(conn)
     try:
         yield conn
         conn.commit()

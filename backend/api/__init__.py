@@ -8,8 +8,10 @@ Run with:
 # ruff: noqa: E402  -- load_dotenv() must run before local imports that read env vars at module level
 from __future__ import annotations
 
+import json
 import os
 from contextlib import asynccontextmanager
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -122,19 +124,29 @@ app.include_router(schema_router)
 
 
 @app.get("/api/config")
-async def get_config() -> dict:
+async def get_config(response: Response) -> dict:
     """Return application configuration for frontend."""
+    response.headers["Cache-Control"] = "public, max-age=60"
     return {"demo_mode": os.environ.get("DEMO_MODE", "").lower() in ("true", "1", "yes")}
 
 
 @app.get("/api/version")
-async def get_global_version() -> dict:
+async def get_global_version(request: Request) -> Response:
     """Return the global state version counter.
 
     Incremented on every mutation (tournament created, visibility changed,
     score recorded, etc.). Used by the TV picker to detect when to re-render.
+    Supports conditional GET via ETag / If-None-Match.
     """
-    return {"version": _state_module._state_version}
+    v = _state_module._state_version
+    etag = f'"v{v}"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304)
+    return Response(
+        content=json.dumps({"version": v}),
+        media_type="application/json",
+        headers={"ETag": etag, "Cache-Control": "private, no-cache, max-age=0, must-revalidate"},
+    )
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -144,56 +156,82 @@ async def get_global_version() -> dict:
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
 
 
+@lru_cache(maxsize=32)
+def _read_frontend_text(filename: str) -> str:
+    """Read a frontend text file, caching the result for the process lifetime."""
+    path = FRONTEND_DIR / filename
+    return path.read_text() if path.exists() else ""
+
+
+@lru_cache(maxsize=16)
+def _read_frontend_bytes(filename: str) -> bytes:
+    """Read a frontend binary file, caching the result for the process lifetime."""
+    path = FRONTEND_DIR / filename
+    return path.read_bytes() if path.exists() else b""
+
+
 def _serve_js_file(filename: str) -> Response:
     """Serve a JS file from the frontend directory with the correct MIME type."""
-    path = FRONTEND_DIR / filename
-    content = path.read_text() if path.exists() else ""
     return Response(
-        content=content, media_type="application/javascript", headers={"Cache-Control": "public, max-age=300"}
+        content=_read_frontend_text(filename),
+        media_type="application/javascript",
+        headers={"Cache-Control": "public, max-age=300"},
     )
 
 
 def _serve_css_file(filename: str) -> Response:
     """Serve a CSS file from the frontend directory with the correct MIME type."""
-    path = FRONTEND_DIR / filename
-    content = path.read_text() if path.exists() else ""
-    return Response(content=content, media_type="text/css", headers={"Cache-Control": "public, max-age=300"})
+    return Response(
+        content=_read_frontend_text(filename),
+        media_type="text/css",
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 def _serve_png_file(filename: str) -> Response:
     """Serve a PNG file from the frontend directory."""
-    path = FRONTEND_DIR / filename
-    content = path.read_bytes() if path.exists() else b""
-    return Response(content=content, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+    return Response(
+        content=_read_frontend_bytes(filename),
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @app.get("/")
 async def serve_frontend() -> Response:
-    index = FRONTEND_DIR / "index.html"
-    content = index.read_text() if index.exists() else "<h1>Frontend not found</h1>"
-    return Response(content=content, media_type="text/html", headers={"Cache-Control": "no-cache"})
+    return Response(
+        content=_read_frontend_text("index.html") or "<h1>Frontend not found</h1>",
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/tv")
 @app.get("/tv/{slug}")
 async def serve_tv(slug: str | None = None) -> Response:
-    page = FRONTEND_DIR / "public.html"
-    content = page.read_text() if page.exists() else "<h1>TV page not found</h1>"
-    return Response(content=content, media_type="text/html", headers={"Cache-Control": "no-cache"})
+    return Response(
+        content=_read_frontend_text("public.html") or "<h1>TV page not found</h1>",
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/register")
 async def serve_register() -> Response:
-    page = FRONTEND_DIR / "register.html"
-    content = page.read_text() if page.exists() else "<h1>Registration page not found</h1>"
-    return Response(content=content, media_type="text/html", headers={"Cache-Control": "no-cache"})
+    return Response(
+        content=_read_frontend_text("register.html") or "<h1>Registration page not found</h1>",
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/register/{alias}")
 async def serve_register_alias(alias: str) -> Response:
-    page = FRONTEND_DIR / "register.html"
-    content = page.read_text() if page.exists() else "<h1>Registration page not found</h1>"
-    return Response(content=content, media_type="text/html", headers={"Cache-Control": "no-cache"})
+    return Response(
+        content=_read_frontend_text("register.html") or "<h1>Registration page not found</h1>",
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/shared.js")
@@ -253,17 +291,21 @@ async def serve_i18n_js() -> Response:
 @app.get("/manifest.json")
 async def serve_manifest() -> Response:
     """Serve the PWA web app manifest."""
-    path = FRONTEND_DIR / "manifest.json"
-    content = path.read_text() if path.exists() else "{}"
-    return Response(content=content, media_type="application/manifest+json")
+    return Response(
+        content=_read_frontend_text("manifest.json") or "{}",
+        media_type="application/manifest+json",
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 @app.get("/service-worker.js")
 async def serve_service_worker() -> Response:
     """Serve the PWA service worker."""
-    path = FRONTEND_DIR / "service-worker.js"
-    content = path.read_text() if path.exists() else ""
-    return Response(content=content, media_type="application/javascript", headers={"Cache-Control": "no-cache"})
+    return Response(
+        content=_read_frontend_text("service-worker.js"),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/icon-192.png")
@@ -298,9 +340,10 @@ async def serve_404_image() -> Response:
 
 def _serve_404_page() -> HTMLResponse:
     """Return the 404 HTML page with HTTP 404 status."""
-    path = FRONTEND_DIR / "404.html"
-    content = path.read_text() if path.exists() else "<h1>404 Not Found</h1>"
-    return HTMLResponse(content=content, status_code=404)
+    return HTMLResponse(
+        content=_read_frontend_text("404.html") or "<h1>404 Not Found</h1>",
+        status_code=404,
+    )
 
 
 @app.get("/{path:path}")

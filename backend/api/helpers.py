@@ -131,6 +131,14 @@ def _require_score_permission(
         match_player_ids = {p.id for p in match.team1} | {p.id for p in match.team2}
         if player.player_id in match_player_ids:
             return
+        # Check composite team roster — the player may be a member of a
+        # synthetic team entry that appears in the match.
+        tournament = _tournaments.get(tid, {}).get("tournament")
+        team_roster: dict[str, list[str]] = getattr(tournament, "team_roster", None) or {}
+        if team_roster:
+            for team_pid in match_player_ids:
+                if player.player_id in team_roster.get(team_pid, []):
+                    return
 
     raise HTTPException(403, "You do not have permission to record this score")
 

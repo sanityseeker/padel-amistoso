@@ -38,7 +38,9 @@ function _regToggleTheme() {
   _theme = _theme === 'dark' ? 'light' : 'dark';
   _applyTheme(_theme);
   _saveTheme(_theme);
-  _fullRender();
+  // Patch only the theme icon buttons — CSS handles the rest via data-theme
+  const themeIcon = _theme === 'dark' ? '🌙' : '☀️';
+  document.querySelectorAll('[data-theme-toggle-icon]').forEach(btn => { btn.textContent = themeIcon; });
 }
 
 function _regToggleLanguage() {
@@ -52,6 +54,7 @@ const API = '/api/registrations';
 let _regData = null;
 let _lastResult = null;
 let _pollTimer = null;
+let _lobbyFetching = false;
 let _rid = null;
 
 function _regTokenKeyCandidates() {
@@ -158,15 +161,23 @@ async function _fetchRegistration(rid) {
     const res = await fetch(`${API}/${encodeURIComponent(rid)}/public`);
     if (!res.ok) {
       if (res.status === 404) {
-        await _showDirectory();
-        const form = document.querySelector('.tv-picker-form');
-        if (form) {
-          const errDiv = document.createElement('div');
-          errDiv.className = 'tv-error picker-inline-error';
-          errDiv.style.marginTop = '0.75rem';
-          errDiv.textContent = t('txt_reg_not_found');
-          form.after(errDiv);
-        }
+        _hideAll();
+        const el = document.getElementById('state-error');
+        let _regNotFoundCountdown = 5;
+        const _regNotFoundMsg = () =>
+          `<h2>⚠️</h2><p>${esc(t('txt_reg_not_found'))}</p>` +
+          `<p>${esc(t('txt_reg_redirecting_in_n', { n: _regNotFoundCountdown }))}</p>`;
+        el.innerHTML = _regNotFoundMsg();
+        el.style.display = '';
+        const _regNotFoundTimer = setInterval(() => {
+          _regNotFoundCountdown--;
+          if (_regNotFoundCountdown <= 0) {
+            clearInterval(_regNotFoundTimer);
+            location.href = '/register';
+          } else {
+            el.innerHTML = _regNotFoundMsg();
+          }
+        }, 1000);
       } else {
         _showError(t('txt_reg_error'));
       }
@@ -207,6 +218,7 @@ function _renderDirectory(lobbies) {
   html += `<div class="tv-lang-cell"><button type="button" class="theme-btn" onclick="_regToggleLanguage()" title="${esc(langMeta.label)}" aria-label="${esc(langMeta.label)}">${langMeta.icon}</button></div>`;
   html += buildPageSelectorHtml('register');
   html += `<div class="tv-toggle-btns">`;
+  html += buildCompactRefreshButtonHtml('_showDirectory()', t('txt_txt_refresh_now'));
   html += `<button type="button" data-theme-toggle-icon="1" class="theme-btn" onclick="_regToggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${themeIcon}</button>`;
   html += `</div>`;
   html += `</div>`;
@@ -273,10 +285,13 @@ function _render() {
   _hideAll();
   _stopPolling();
   if (!_regData) return;
-
-  if (_regData.converted) { _showClosed(true); return; }
-  if (!_regData.open) { _showClosed(false); return; }
-  _showForm();
+  try {
+    if (_regData.converted) { _showClosed(true); return; }
+    if (!_regData.open) { _showClosed(false); return; }
+    _showForm();
+  } catch (_) {
+    _showError(t('txt_reg_error'));
+  }
 }
 
 function _hideAll() {
@@ -305,21 +320,70 @@ function _showClosed(converted) {
   if (converted) {
     html += `<p><span class="badge badge-converted">${t('txt_reg_converted')}</span></p>`;
     html += `<p>${t('txt_reg_converted_msg')}</p>`;
-    if (_regData.converted_to_tid) {
-      const tid = _regData.converted_to_tid;
-      let tvUrl = `/public.html?id=${encodeURIComponent(tid)}`;
-      try {
-        const token = _getRegToken();
-        if (token) tvUrl = `/tv/${encodeURIComponent(tid)}?player_token=${encodeURIComponent(token)}`;
-      } catch (_) {}
-      html += `<div style="text-align:center;margin-top:1rem"><a href="${tvUrl}" class="btn btn-primary" style="display:inline-block;text-decoration:none;max-width:300px">🏆 ${t('txt_reg_view_tournament_btn')}</a></div>`;
-    }
+    html += _renderLinkedTournaments();
   } else {
     html += `<p><span class="badge badge-closed">${t('txt_reg_closed')}</span></p>`;
     html += `<p>${t('txt_reg_closed_msg')}</p>`;
   }
   el.innerHTML = html;
   el.style.display = '';
+}
+
+function _getLinkedTournamentIds() {
+  const tids = Array.isArray(_regData?.converted_to_tids)
+    ? _regData.converted_to_tids.filter(Boolean)
+    : [];
+  if (tids.length > 0) return tids;
+  if (_regData?.converted_to_tid) return [_regData.converted_to_tid];
+  return [];
+}
+
+function _buildTournamentUrl(tid) {
+  let tvUrl = `/public.html?id=${encodeURIComponent(tid)}`;
+  try {
+    const token = _getRegToken();
+    if (token) tvUrl = `/tv/${encodeURIComponent(tid)}?player_token=${encodeURIComponent(token)}`;
+  } catch (_) {}
+  return tvUrl;
+}
+
+function _renderLinkedTournaments() {
+  const tids = _getLinkedTournamentIds();
+  if (tids.length === 0) return '';
+
+  const linkedById = new Map(
+    ((_regData?.linked_tournaments || []).filter((item) => item?.id))
+      .map((item) => [item.id, item]),
+  );
+  const activeLinks = [];
+  const finishedLinks = [];
+
+  tids.forEach(function(tid) {
+    const linked = linkedById.get(tid);
+    const shortId = tid.length > 10 ? `${tid.slice(0, 10)}…` : tid;
+    const name = linked?.name || shortId;
+    const label = `${t('txt_reg_view_tournament_btn')} · ${name}`;
+    const linkHtml = `<a href="${_buildTournamentUrl(tid)}" class="linked-tournament-link" title="${esc(tid)}">🏆 ${esc(label)}</a>`;
+    if (linked?.finished) {
+      finishedLinks.push(linkHtml);
+    } else {
+      activeLinks.push(linkHtml);
+    }
+  });
+
+  let html = `<div class="linked-tournaments">`;
+  html += `<div class="linked-tournaments-title">🏆 ${t('txt_reg_linked_tournaments')}</div>`;
+  if (activeLinks.length > 0) {
+    html += `<div class="linked-tournaments-section-title">${t('txt_txt_active_tournaments')}</div>`;
+    html += `<div class="linked-tournaments-list">${activeLinks.join('')}</div>`;
+  }
+  if (finishedLinks.length > 0) {
+    html += `<div class="linked-tournaments-section-title">${t('txt_txt_finished_tournaments')}</div>`;
+    html += `<div class="linked-tournaments-list">${finishedLinks.join('')}</div>`;
+  }
+  html += `</div>`;
+
+  return html;
 }
 
 function _showForm() {
@@ -344,7 +408,7 @@ function _showForm() {
   if (_regData.join_code_required) {
     html += `<div class="form-group">
       <label>${t('txt_reg_join_code')}</label>
-      <input type="password" id="reg-join-code" maxlength="64" required placeholder="${esc(t('txt_reg_join_code_placeholder'))}">
+      <input type="text" id="reg-join-code" maxlength="64" required placeholder="${esc(t('txt_reg_join_code_placeholder'))}">
     </div>`;
   }
 
@@ -539,9 +603,8 @@ async function _cancelReturningRegistration() {
       return;
     }
 
-    if (_regData?.registrants) {
-      _regData.registrants = _regData.registrants.filter((p) => p.player_id !== _lastResult.player_id);
-      _regData.registrant_count = _regData.registrants.length;
+    if (_regData) {
+      _regData.registrant_count = Math.max(0, (_regData.registrant_count || 1) - 1);
     }
     _lastResult = null;
     _render();
@@ -627,9 +690,6 @@ async function _handleSubmit(e) {
     }
     _lastResult = await res.json();
     _regData.registrant_count++;
-    if (_regData.registrants) {
-      _regData.registrants.push({ player_id: _lastResult.player_id, player_name: _lastResult.player_name, answers: body.answers || {}, registered_at: new Date().toISOString() });
-    }
     _showSuccess();
   } catch (err) {
     errorEl.textContent = t('txt_reg_error');
@@ -642,7 +702,7 @@ async function _handleSubmit(e) {
 function _startPolling() {
   _stopPolling();
   _pollLobby();
-  _pollTimer = setInterval(_pollLobby, 6000);
+  _pollTimer = setInterval(_pollLobby, 8000);
   document.addEventListener('visibilitychange', _onVisibilityChange);
 }
 
@@ -657,22 +717,27 @@ function _onVisibilityChange() {
   } else {
     if (!_pollTimer && _rid && _lastResult) {
       _pollLobby();
-      _pollTimer = setInterval(_pollLobby, 6000);
+      _pollTimer = setInterval(_pollLobby, 8000);
     }
   }
 }
 
 async function _pollLobby() {
-  if (!_rid) return;
+  if (!_rid || _lobbyFetching) return;
+  _lobbyFetching = true;
   try {
     const res = await fetch(`${API}/${encodeURIComponent(_rid)}/public`);
     if (!res.ok) return;
     const data = await res.json();
 
-    if (data.converted_to_tid) {
+    const linkedTids = Array.isArray(data.converted_to_tids)
+      ? data.converted_to_tids.filter(Boolean)
+      : (data.converted_to_tid ? [data.converted_to_tid] : []);
+
+    if (linkedTids.length > 0) {
       _stopPolling();
       _regData = data;
-      _showRedirectToast(data.converted_to_tid);
+      _showRedirectToast(linkedTids[linkedTids.length - 1]);
       return;
     }
 
@@ -684,11 +749,12 @@ async function _pollLobby() {
     }
 
     const questionsChanged = JSON.stringify(data.questions ?? []) !== JSON.stringify(_regData.questions ?? []);
-    if (questionsChanged || data.registrant_count !== _regData.registrant_count || data.registrants.length !== _regData.registrants.length) {
+    if (questionsChanged || data.registrant_count !== _regData.registrant_count) {
       _regData = data;
       if (_lastResult) _showSuccess();
     }
   } catch (_) { /* network blip */ }
+  finally { _lobbyFetching = false; }
 }
 
 function _showRedirectToast(tid) {

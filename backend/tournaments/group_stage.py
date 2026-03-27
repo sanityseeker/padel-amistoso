@@ -270,6 +270,7 @@ def distribute_players_to_groups(
     shuffle: bool = True,
     team_mode: bool = False,
     group_names: list[str] | None = None,
+    snake_draft: bool = False,
 ) -> list[Group]:
     """
     Distribute *players* as evenly as possible across *num_groups* groups.
@@ -278,12 +279,37 @@ def distribute_players_to_groups(
         group_names: Optional custom names for each group.  Falls back to
             ``A``, ``B``, ``C`` … when not provided or when shorter than
             *num_groups*.
+        snake_draft: When True, uses snake-draft ordering (1→A, 2→B, 3→B, 4→A, …)
+            to produce balanced groups.  Only meaningful when shuffle is False
+            and players are pre-sorted (e.g. by strength).
     """
     if shuffle:
         players = list(players)
         random.shuffle(players)
 
-    groups: list[Group] = []
+    if snake_draft and not shuffle:
+        # Snake-draft: distribute in zigzag order for balanced groups
+        buckets: list[list[Player]] = [[] for _ in range(num_groups)]
+        direction = 1
+        g_idx = 0
+        for p in players:
+            buckets[g_idx].append(p)
+            next_g = g_idx + direction
+            if next_g >= num_groups or next_g < 0:
+                direction *= -1
+            else:
+                g_idx = next_g
+
+        groups: list[Group] = []
+        for g in range(num_groups):
+            default_name = string.ascii_uppercase[g]
+            group_name = (
+                group_names[g] if group_names and g < len(group_names) and group_names[g].strip() else default_name
+            )
+            groups.append(Group(name=group_name, players=buckets[g], team_mode=team_mode))
+        return groups
+
+    groups = []
     base_size = len(players) // num_groups
     remainder = len(players) % num_groups
 

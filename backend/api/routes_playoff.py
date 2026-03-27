@@ -27,7 +27,7 @@ from .helpers import (
     _store_tournament,
 )
 from .schemas import CreatePlayoffRequest, RecordScoreRequest, RecordTennisScoreRequest
-from .state import _global_lock, _next_id, _save_tournament, get_tournament_lock
+from .state import allocate_tournament_id, _save_tournament, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["playoff"])
@@ -59,28 +59,36 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
     teams: list[list[Player]] = [[Player(name=n)] for n in req.participant_names]
     courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 
+    # Build initial_strength mapping keyed by player id
+    initial_strength: dict[str, float] | None = None
+    if req.player_strengths:
+        name_to_id = {team[0].name: team[0].id for team in teams}
+        initial_strength = {
+            name_to_id[name]: score for name, score in req.player_strengths.items() if name in name_to_id
+        } or None
+
     t = PlayoffTournament(
         teams=teams,
         courts=courts,
         double_elimination=req.double_elimination,
         team_mode=req.team_mode,
+        initial_strength=initial_strength,
     )
 
     all_players = [p for team in teams for p in team]
-    async with _global_lock:
-        tid = _next_id()
-        _store_tournament(
-            tid,
-            name=req.name,
-            tournament_type=TournamentType.PLAYOFF.value,
-            tournament=t,
-            owner=user.username,
-            public=req.public,
-            sport=req.sport.value,
-            assign_courts=req.assign_courts,
-        )
-        # Flatten all teams into individual players for secret generation.
-        create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in all_players])
+    tid = await allocate_tournament_id()
+    _store_tournament(
+        tid,
+        name=req.name,
+        tournament_type=TournamentType.PLAYOFF.value,
+        tournament=t,
+        owner=user.username,
+        public=req.public,
+        sport=req.sport.value,
+        assign_courts=req.assign_courts,
+    )
+    # Flatten all teams into individual players for secret generation.
+    create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in all_players])
     return {"id": tid, "phase": t.phase}
 
 

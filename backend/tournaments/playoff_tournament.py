@@ -35,11 +35,22 @@ class PlayoffTournament:
         courts: list[Court] | None = None,
         double_elimination: bool = False,
         team_mode: bool = True,
+        initial_strength: dict[str, float] | None = None,
     ):
         self.original_teams = list(teams)
         self.courts = courts or []
         self.double_elimination = double_elimination
         self.team_mode = team_mode
+        self.initial_strength = initial_strength
+
+        # Sort teams by combined initial strength for proper seeding.
+        if initial_strength:
+            teams = sorted(
+                teams,
+                key=lambda t: sum(initial_strength.get(p.id, 0.0) for p in t),
+                reverse=True,
+            )
+            self.original_teams = list(teams)
 
         # Never pass courts to the bracket — PlayoffTournament owns all
         # court assignment so the bracket never internally pre-assigns anything.

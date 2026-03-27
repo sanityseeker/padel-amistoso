@@ -4,7 +4,10 @@ Tournament CRUD routes — list, delete, and TV settings for tournaments.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 
 from ..auth.deps import get_current_user, get_current_user_optional
 from ..auth.models import User, UserRole
@@ -65,15 +68,24 @@ async def delete_tournament(tournament_id: str, user: User = Depends(get_current
 
 
 @router.get("/{tid}/version")
-async def get_tournament_version(tid: str) -> dict:
+async def get_tournament_version(tid: str, request: Request) -> Response:
     """Return a counter bumped on every mutation (score recorded, round advanced, etc.).
 
     The TV display polls this cheaply (~every 2 s) and triggers a full reload
     only when the value changes, enabling \"on-update\" refresh mode.
+    Supports conditional GET via ETag / If-None-Match.
     """
     if tid not in _tournaments:
         raise HTTPException(404, "Tournament not found")
-    return {"version": state._tournament_versions.get(tid, 0)}
+    v = state._tournament_versions.get(tid, 0)
+    etag = f'"v{v}"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304)
+    return Response(
+        content=json.dumps({"version": v}),
+        media_type="application/json",
+        headers={"ETag": etag, "Cache-Control": "private, no-cache, max-age=0, must-revalidate"},
+    )
 
 
 @router.get("/{tid}/tv-settings")

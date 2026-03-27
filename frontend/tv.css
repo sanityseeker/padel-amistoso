@@ -448,8 +448,10 @@ details[open] > .breakdown-toggle { color: var(--accent); }
   height: auto;
   display: block;
   border-radius: 6px;
-  cursor: zoom-in;
+  cursor: inherit;
   touch-action: pan-x pan-y pinch-zoom;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 /* ── Error / empty states ── */
@@ -825,6 +827,41 @@ html[data-theme="light"] .standings-table tr:hover td {
 }
 .player-bar button:hover { border-color: var(--accent); color: var(--accent); }
 
+/* Opponents section within the player bar */
+.player-opponents-details {
+  width: 100%; border: 1px solid var(--border); border-radius: 6px;
+  margin-top: 0.3rem; background: var(--surface2, var(--surface));
+  font-size: 0.82rem;
+}
+.player-opponents-summary {
+  cursor: pointer; padding: 0.3rem 0.6rem; font-weight: 600;
+  user-select: none; list-style: none;
+}
+.player-opponents-summary::-webkit-details-marker { display: none; }
+.player-opponents-body { padding: 0.25rem 0.6rem 0.4rem; }
+.player-opponents-round {
+  font-size: 0.72rem; color: var(--text-muted); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em; margin: 0.3rem 0 0.15rem;
+}
+.player-opponents-row {
+  display: flex; gap: 0.5rem; align-items: baseline;
+  padding: 0.15rem 0; border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.player-opponents-row:last-child { border-bottom: none; }
+.player-opponents-name { font-weight: 600; min-width: 7rem; }
+.player-opponents-contact {
+  color: var(--accent); word-break: break-all;
+  cursor: pointer; border-radius: 3px;
+  transition: opacity 0.15s;
+}
+.player-opponents-contact:hover { opacity: 0.75; }
+.player-opponents-contact--copied {
+  color: var(--text-muted); font-style: italic; cursor: default;
+}
+.player-opponents-no-contact { color: var(--text-muted); font-style: italic; }
+.player-opponents-empty { color: var(--text-muted); font-size: 0.8rem; padding: 0.3rem 0; }
+
 .player-login-btn {
   background: var(--accent); color: #fff; border: none;
   border-radius: 999px; padding: 0.3rem 0.9rem;
@@ -834,6 +871,74 @@ html[data-theme="light"] .standings-table tr:hover td {
 }
 .player-login-btn:hover { opacity: 0.85; }
 
+/* ─── Logged-in player session widget ────────── */
+#player-login-slot { position: relative; }
+
+.player-session-widget { display: inline-flex; align-items: center; }
+
+/* Pill trigger */
+.player-session-trigger {
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 999px; padding: 0.3rem 0.9rem;
+  font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  transition: opacity 0.15s; white-space: nowrap;
+}
+.player-session-trigger:hover,
+.player-session-trigger--open { opacity: 0.85; }
+.player-session-trigger .player-name { font-weight: 700; }
+.player-session-chevron { font-size: 0.6rem; opacity: 0.75; }
+
+/* Inline expand panel — new row inside .tv-header */
+.player-expand-panel {
+  display: flex; flex-direction: column; gap: 0;
+  position: relative;
+  padding: 0.6rem 0.75rem; margin-top: -0.2rem;
+  background: var(--surface2, var(--surface));
+  border: 1px solid var(--border); border-radius: 8px;
+  font-size: 0.82rem; animation: expandFadeIn 0.12s ease;
+}
+@keyframes expandFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.player-expand-inner {
+  padding-right: 1.5rem;
+}
+.player-expand-title {
+  display: block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 0.3rem;
+}
+.player-expand-footer {
+  display: flex; justify-content: flex-end;
+  padding-top: 0.45rem; margin-top: 0.45rem;
+  border-top: 1px solid var(--border);
+}
+.player-expand-close {
+  position: absolute; top: 0.4rem; right: 0.5rem;
+  background: none; border: none; color: var(--text-muted);
+  font-size: 0.9rem; cursor: pointer; padding: 0.1rem 0.25rem;
+  border-radius: 4px; line-height: 1; transition: color 0.15s;
+}
+.player-expand-close:hover { color: var(--text); }
+
+/* Opponents content inside expand panel */
+.player-expand-panel .player-opponents-body { padding: 0; }
+.player-expand-panel .player-opponents-empty { color: var(--text-muted); font-size: 0.8rem; padding: 0.2rem 0; }
+
+/* Shared logout button */
+.player-dropdown-footer {
+  padding: 0.45rem 0.75rem;
+  border-top: 1px solid var(--border);
+  display: flex; justify-content: flex-end;
+}
+.player-dropdown-logout-btn {
+  background: none; border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 4px; padding: 0.2rem 0.7rem; cursor: pointer; font-size: 0.78rem;
+  transition: border-color 0.15s, color 0.15s;
+}
+.player-dropdown-logout-btn:hover { border-color: var(--red, #ef4444); color: var(--red, #ef4444); }
+
 /* ─── Player login modal ───────────────────── */
 .player-login-overlay {
   position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.65);
@@ -842,7 +947,15 @@ html[data-theme="light"] .standings-table tr:hover td {
 .player-login-modal {
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
   padding: 1.5rem; max-width: 360px; width: 100%; text-align: center;
+  position: relative;
 }
+.player-login-modal-close {
+  position: absolute; top: 0.6rem; right: 0.7rem;
+  background: none; border: none; color: var(--text-muted);
+  font-size: 1rem; cursor: pointer; line-height: 1; padding: 0.1rem 0.3rem;
+  border-radius: 4px; transition: color 0.15s;
+}
+.player-login-modal-close:hover { color: var(--text); }
 .player-login-modal h3 { margin: 0 0 0.8rem; font-size: 1.1rem; }
 .player-login-modal input {
   width: 100%; padding: 0.55rem 0.7rem; border: 1px solid var(--border);
@@ -850,11 +963,10 @@ html[data-theme="light"] .standings-table tr:hover td {
   margin-bottom: 0.6rem; text-align: center; font-family: monospace;
 }
 .player-login-modal .btn {
-  display: inline-block; padding: 0.5rem 1.5rem; border-radius: 6px;
+  display: inline-block; padding: 0.5rem 2rem; border-radius: 6px;
   border: none; cursor: pointer; font-size: 0.88rem; font-weight: 600;
 }
 .player-login-modal .btn-primary { background: var(--accent); color: #fff; }
-.player-login-modal .btn-cancel { background: var(--border); color: var(--text); margin-left: 0.5rem; }
 .player-login-modal .login-error { color: var(--red); font-size: 0.8rem; min-height: 1.2rem; margin-bottom: 0.3rem; }
 .login-passphrase-hint { font-size: 0.75rem; color: var(--text-muted); margin: 0.1rem 0 0.6rem; }
 

@@ -200,13 +200,26 @@ class ScoringMixin:
         they had played as many matches as the most-active player, using
         their per-match average.
 
+        When no matches have been played yet (round 0) and
+        ``initial_strength`` is set, strength values are returned instead
+        so that round-1 grouping and pairing respects pre-assigned
+        rankings.
+
         The result is cached and invalidated by ``record_result`` since scores
         never change during proposal generation — avoiding hundreds of thousands
         of redundant recomputations in ``propose_pairings``.
         """
         if self._est_cache is not None:
             return self._est_cache
+
+        # Use initial strength as proxy when no matches played yet.
+        initial = getattr(self, "initial_strength", None)
         max_played = max(self._matches_played.values()) if self._matches_played else 0
+        if max_played == 0 and initial:
+            estimated = {pid: initial.get(pid, 0.0) for pid in self.scores}
+            self._est_cache = estimated
+            return estimated
+
         estimated: dict[str, float] = {}
         for pid, raw_score in self.scores.items():
             played = self._matches_played[pid]

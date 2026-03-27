@@ -186,6 +186,11 @@ All user management endpoints require authentication and are admin-only.
   - Change the default admin password immediately
   - Consider setting up HTTPS with a reverse proxy (e.g., nginx, Caddy)
   - Review `ACCESS_TOKEN_EXPIRE_MINUTES` in `backend/auth/security.py`
+  - Keep a **single app worker/process** per instance (state is process-local)
+  - Tune SQLite contention handling via:
+    - `PADEL_SQLITE_TIMEOUT_SECS` (default: `15`)
+    - `PADEL_SQLITE_BUSY_TIMEOUT_MS` (default: `15000`)
+    - `PADEL_SQLITE_SYNCHRONOUS` (`NORMAL` by default)
 
 ---
 
@@ -260,6 +265,13 @@ Useful screen commands:
 | Detach (keep running) | **Ctrl+A** then **D** |
 | Stop the server | `screen -XS padel quit` |
 | List sessions | `screen -ls` |
+
+### Production run notes (concurrency)
+
+- Run one server process per instance (do **not** use multiple uvicorn workers for one data directory).
+- This app keeps active tournament state in process memory and persists to SQLite.
+- For ~50 concurrent users, this is typically sufficient when polling intervals remain moderate.
+- If traffic grows, scale by running multiple isolated instances (different `PADEL_DATA_DIR`), not by adding workers to the same process.
 
 
 ### Running multiple independent instances in parallel

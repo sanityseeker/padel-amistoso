@@ -24,12 +24,15 @@ logger = logging.getLogger(__name__)
 def create_secrets_for_tournament(
     tournament_id: str,
     players: list[dict[str, str]],
+    contacts: dict[str, str] | None = None,
 ) -> dict[str, PlayerSecret]:
     """Generate and persist secrets for every player in a tournament.
 
     Args:
         tournament_id: The tournament ID (e.g. ``"t5"``).
         players: List of dicts with ``"id"`` and ``"name"`` keys.
+        contacts: Optional mapping of player_id → contact string. Missing
+            entries default to an empty string.
 
     Returns:
         Mapping of player_id → ``PlayerSecret``.
@@ -37,18 +40,23 @@ def create_secrets_for_tournament(
     player_ids = [p["id"] for p in players]
     secrets = generate_secrets_for_players(player_ids)
     name_map = {p["id"]: p["name"] for p in players}
+    contact_map = contacts or {}
 
     with get_db() as conn:
         conn.executemany(
             """
-            INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, contact)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(tournament_id, player_id) DO UPDATE SET
                 passphrase  = excluded.passphrase,
                 token       = excluded.token,
-                player_name = excluded.player_name
+                player_name = excluded.player_name,
+                contact     = excluded.contact
             """,
-            [(tournament_id, pid, name_map.get(pid, ""), sec.passphrase, sec.token) for pid, sec in secrets.items()],
+            [
+                (tournament_id, pid, name_map.get(pid, ""), sec.passphrase, sec.token, contact_map.get(pid, ""))
+                for pid, sec in secrets.items()
+            ],
         )
 
     return secrets
@@ -90,11 +98,11 @@ def regenerate_secret(tournament_id: str, player_id: str) -> PlayerSecret | None
 
 
 def get_secrets_for_tournament(tournament_id: str) -> dict[str, dict]:
-    """Return all secrets for a tournament as ``{player_id: {name, passphrase, token}}``."""
+    """Return all secrets for a tournament as ``{player_id: {name, passphrase, token, contact}}``."""
     try:
         with get_db() as conn:
             rows = conn.execute(
-                "SELECT player_id, player_name, passphrase, token FROM player_secrets WHERE tournament_id = ?",
+                "SELECT player_id, player_name, passphrase, token, contact FROM player_secrets WHERE tournament_id = ?",
                 (tournament_id,),
             ).fetchall()
     except Exception as exc:  # noqa: BLE001
@@ -105,9 +113,47 @@ def get_secrets_for_tournament(tournament_id: str) -> dict[str, dict]:
             "name": row["player_name"],
             "passphrase": row["passphrase"],
             "token": row["token"],
+            "contact": row["contact"] or "",
         }
         for row in rows
     }
+
+
+def update_contact(tournament_id: str, player_id: str, contact: str) -> bool:
+    """Update the contact string for a single player.
+
+    Args:
+        tournament_id: The tournament ID.
+        player_id: The player ID.
+        contact: New contact value (may be empty).
+
+    Returns:
+        ``True`` if the row was found and updated, ``False`` otherwise.
+    """
+    try:
+        with get_db() as conn:
+            cur = conn.execute(
+                "UPDATE player_secrets SET contact = ? WHERE tournament_id = ? AND player_id = ?",
+                (contact, tournament_id, player_id),
+            )
+            return cur.rowcount > 0
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not update contact for %s/%s: %s", tournament_id, player_id, exc)
+        return False
+
+
+def get_contacts_for_tournament(tournament_id: str) -> dict[str, str]:
+    """Return a ``{player_id: contact}`` mapping for all players in a tournament."""
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT player_id, contact FROM player_secrets WHERE tournament_id = ?",
+                (tournament_id,),
+            ).fetchall()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not load contacts for %s: %s", tournament_id, exc)
+        return {}
+    return {row["player_id"]: row["contact"] or "" for row in rows}
 
 
 def lookup_by_passphrase(tournament_id: str, passphrase: str) -> dict | None:

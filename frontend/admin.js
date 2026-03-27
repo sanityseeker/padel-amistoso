@@ -561,23 +561,39 @@ function _phaseLabel(phase) {
 
 async function loadTournaments() {
   try {
+    const registrationsPath = '/api/registrations?include_archived=1';
     const [list, regList] = await Promise.all([
       api('/api/tournaments'),
-      isAuthenticated() ? api('/api/registrations').catch(() => []) : Promise.resolve([]),
+      isAuthenticated() ? api(registrationsPath).catch(() => []) : Promise.resolve([]),
     ]);
+    const visibleRegList = _showArchivedRegistrations
+      ? regList
+      : regList.filter(r => !r.archived);
     _tournamentMeta = {};
     for (const tournament of list) _tournamentMeta[tournament.id] = tournament;
-    _registrations = regList;
+    _registrations = visibleRegList;
     const el = document.getElementById('tournament-list');
+    const archivedToggleEl = document.getElementById('archived-lobbies-toggle');
     const finEl = document.getElementById('finished-tournament-list');
     const finCard = document.getElementById('finished-tournaments-card');
     const active = list.filter(tr => tr.phase !== 'finished');
     const finished = list.filter(tr => tr.phase === 'finished');
-    // Filter out converted lobbies (tournament already shown)
-    const lobbies = regList.filter(r => !r.converted_to_tid);
+    // Active section: open lobbies and (when archive toggle is off) closed, never-converted lobbies.
+    // Finished section: all closed lobbies when archive toggle is on.
+    const lobbies = visibleRegList.filter(r => r.open || (!r.open && !(r.converted_to_tids?.length) && !_showArchivedRegistrations));
+    const finishedLobbies = _showArchivedRegistrations
+      ? visibleRegList.filter(r => !r.open)
+      : [];
+    const closedLobbiesCount = regList.filter(r => !r.open).length;
     if (!active.length && !lobbies.length) {
       el.innerHTML = `<div style="text-align:center;padding:2rem 1rem;color:var(--text-muted)"><div style="font-size:2.2rem;margin-bottom:0.5rem">🏆</div><div style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:0.35rem">${t('txt_txt_no_tournaments_yet')}</div><div style="font-size:0.85rem;margin-bottom:1rem">${t('txt_txt_no_tournaments_hint')}</div><button type="button" class="btn btn-primary btn-sm" onclick="setActiveTab('create')">${t('txt_txt_create_first')}</button></div>`;
-      finCard.style.display = 'none';
+      const finishedHtml = finished.map(renderTournamentCard).join('') + finishedLobbies.map(_renderLobbyCard).join('');
+      if (finishedHtml) {
+        finCard.style.display = '';
+        finEl.innerHTML = finishedHtml;
+      } else {
+        finCard.style.display = 'none';
+      }
       return;
     }
     const renderTournamentCard = (tournament) => {
@@ -613,7 +629,7 @@ async function loadTournaments() {
       const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
       const phaseBadge = isOpen
         ? `<span class="badge badge-lobby-open">${t('txt_reg_registration_open')}</span>`
-        : `<span class="badge badge-lobby-closed">${t('txt_reg_registration_closed')}</span>`;
+        : `<span class="badge badge-lobby-closed">${r.archived ? t('txt_reg_registration_archived') : t('txt_reg_registration_closed')}</span>`;
       const countLabel = `<span style="font-size:0.8rem;color:var(--text-muted)">(${count})</span>`;
       const isListed = r.listed !== false && r.listed !== 0;
       const visBtn = `<button type="button" class="btn btn-sm" title="${t('txt_txt_visibility')}" onclick="_toggleRegListed('${esc(rid)}',${isListed})" style="padding:0.25rem 0.5rem;font-size:0.75rem">${isListed ? '🌍 ' + t('txt_txt_public') : '🔒 ' + t('txt_txt_private')}</button>`;
@@ -634,13 +650,28 @@ async function loadTournaments() {
       </div>
     `;
     };
+    const archivedToggle = isAuthenticated() && closedLobbiesCount > 0 ? `
+      <div class="archived-lobbies-toggle-wrap">
+        <button
+          type="button"
+          class="archived-lobbies-toggle${_showArchivedRegistrations ? ' active' : ''}"
+          onclick="_setShowArchivedRegistrations(${_showArchivedRegistrations ? 'false' : 'true'})"
+          aria-pressed="${_showArchivedRegistrations ? 'true' : 'false'}"
+        >
+          <span>${t('txt_reg_show_archived')}</span>
+          <span class="archived-lobbies-count">${closedLobbiesCount}</span>
+        </button>
+      </div>
+    ` : '';
     // Lobbies first, then active tournaments
     let html = lobbies.map(_renderLobbyCard).join('');
     html += active.map(renderTournamentCard).join('');
     el.innerHTML = html || `<em>${t('txt_txt_no_tournaments_yet')}</em>`;
-    if (finished.length) {
+    if (archivedToggleEl) archivedToggleEl.innerHTML = archivedToggle;
+    const finishedHtml = finished.map(renderTournamentCard).join('') + finishedLobbies.map(_renderLobbyCard).join('');
+    if (finishedHtml) {
       finCard.style.display = '';
-      finEl.innerHTML = finished.map(renderTournamentCard).join('');
+      finEl.innerHTML = finishedHtml;
     } else {
       finCard.style.display = 'none';
     }
@@ -689,20 +720,41 @@ let _mexTeamMode = false;  // true when each participant is a pre-formed pair
 // ─── Admin live-refresh (version polling) ─────────────────
 let _adminVersionPollTimer = null;
 let _adminLastKnownVersion = null;
+let _adminVersionEtag = null;
+let _adminVersionFetching = false;
 const _ADMIN_POLL_INTERVAL_MS = 15000;
 
 function _startAdminVersionPoll() {
   _stopAdminVersionPoll();
   if (!currentTid) return;
   // Seed the version so the first poll doesn't trigger a spurious reload
-  fetch(`/api/tournaments/${currentTid}/version`)
-    .then(r => r.json())
-    .then(d => { _adminLastKnownVersion = d.version; })
+  fetch(`/api/tournaments/${currentTid}/version`, {
+    headers: _adminVersionEtag ? { 'If-None-Match': _adminVersionEtag } : undefined,
+  })
+    .then((r) => {
+      if (r.status === 304) return null;
+      const etag = r.headers.get('etag');
+      if (etag) _adminVersionEtag = etag;
+      return r.json();
+    })
+    .then((d) => {
+      if (!d) return;
+      _adminLastKnownVersion = d.version;
+    })
     .catch(() => {});
   _adminVersionPollTimer = setInterval(async () => {
-    if (!currentTid) return;
+    if (!currentTid || _adminVersionFetching || document.hidden) return;
+    _adminVersionFetching = true;
     try {
-      const d = await fetch(`/api/tournaments/${currentTid}/version`).then(r => r.json());
+      const d = await fetch(`/api/tournaments/${currentTid}/version`, {
+        headers: _adminVersionEtag ? { 'If-None-Match': _adminVersionEtag } : undefined,
+      }).then((r) => {
+        if (r.status === 304) return null;
+        const etag = r.headers.get('etag');
+        if (etag) _adminVersionEtag = etag;
+        return r.json();
+      });
+      if (!d) return; // 304 — version unchanged
       if (_adminLastKnownVersion !== null && d.version !== _adminLastKnownVersion) {
         _adminLastKnownVersion = d.version;
         await _rerenderCurrentViewPreserveDrafts();
@@ -710,12 +762,15 @@ function _startAdminVersionPoll() {
         _adminLastKnownVersion = d.version;
       }
     } catch (_) { /* network blip — ignore */ }
+    finally { _adminVersionFetching = false; }
   }, _ADMIN_POLL_INTERVAL_MS);
 }
 
 function _stopAdminVersionPoll() {
   if (_adminVersionPollTimer) { clearInterval(_adminVersionPollTimer); _adminVersionPollTimer = null; }
   _adminLastKnownVersion = null;
+  _adminVersionEtag = null;
+  _adminVersionFetching = false;
 }
 
 function _refreshCurrentView() {
@@ -967,6 +1022,8 @@ function _updateParticipantCount(mode) {
     ? (document.getElementById(`${mode}-players`)?.value || '').split('\n').map(s => s.trim()).filter(Boolean).length
     : _participantEntries[mode].filter(Boolean).length;
   el.textContent = `(${n})`;
+  // Refresh strength bubbles when the section is open
+  if (document.getElementById(`${mode}-strength-section`)?.open) renderStrengthBubbles(mode);
 }
 
 function addParticipantField(mode) {
@@ -1054,6 +1111,38 @@ function clearParticipants(mode) {
   } else {
     renderParticipantFields(mode);
   }
+}
+
+// ─── Initial strength (create panels) ─────────────────────
+const _createStrengths = { gp: {}, mex: {}, po: {} };
+
+function renderStrengthBubbles(mode) {
+  const container = document.getElementById(`${mode}-strength-container`);
+  if (!container) return;
+  const names = getParticipantNames(mode);
+  // Prune stale keys
+  for (const k of Object.keys(_createStrengths[mode])) {
+    if (!names.includes(k)) delete _createStrengths[mode][k];
+  }
+  if (!names.length) { container.innerHTML = ''; return; }
+  let html = '<div class="conv-strength-grid">';
+  names.forEach(name => {
+    const val = _createStrengths[mode][name] ?? '';
+    html += `<div class="conv-strength-entry">`;
+    html += `<label>${esc(name)}</label>`;
+    html += `<input type="number" class="create-strength-input" data-mode="${mode}" data-key="${esc(name)}" value="${val}" placeholder="0" min="0" step="1" oninput="_createStrengths['${mode}'][this.dataset.key]=this.value?+this.value:undefined">`;
+    html += `</div>`;
+  });
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function _getCreateStrengths(mode) {
+  const result = {};
+  document.querySelectorAll(`.create-strength-input[data-mode="${mode}"]`).forEach(inp => {
+    if (inp.value !== '') result[inp.dataset.key] = +inp.value;
+  });
+  return Object.keys(result).length ? result : null;
 }
 
 // ─── Court name helpers ───────────────────────────────────
@@ -1167,6 +1256,148 @@ function _initParticipantFields() {
   renderCourtInputs('mex');
   renderCourtInputs('po');
   renderGroupInputs();
+  // Render strength bubbles when their section is toggled open
+  for (const mode of ['gp', 'mex', 'po']) {
+    const section = document.getElementById(`${mode}-strength-section`);
+    if (section) section.addEventListener('toggle', () => { if (section.open) renderStrengthBubbles(mode); });
+  }
+}
+
+// ─── Group Preview & Assignment ─────────────────────────────
+let _gpGroupPreview = null; // { groups: { name: string, players: string[] }[] } | null
+
+function _distributePlayersToGroups(names, numGroups, groupNames, strengths) {
+  /**
+   * Client-side distribution matching backend logic.
+   * If strengths provided → sort by strength desc then snake-draft.
+   * Otherwise → shuffle then deal.
+   */
+  let ordered = [...names];
+  const hasStrengths = strengths && Object.keys(strengths).length > 0;
+  if (hasStrengths) {
+    ordered.sort((a, b) => (strengths[b] || 0) - (strengths[a] || 0));
+  } else {
+    // Fisher-Yates shuffle
+    for (let i = ordered.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [ordered[i], ordered[j]] = [ordered[j], ordered[i]];
+    }
+  }
+  const buckets = Array.from({ length: numGroups }, () => []);
+  if (hasStrengths) {
+    // Snake draft
+    let idx = 0, dir = 1;
+    for (const p of ordered) {
+      buckets[idx].push(p);
+      const next = idx + dir;
+      if (next >= numGroups || next < 0) dir *= -1;
+      else idx = next;
+    }
+  } else {
+    ordered.forEach((p, i) => buckets[i % numGroups].push(p));
+  }
+  return buckets.map((players, i) => ({
+    name: (groupNames && groupNames[i]?.trim()) || String.fromCharCode(65 + i),
+    players,
+  }));
+}
+
+function previewGPGroups() {
+  const msg = document.getElementById('gp-msg');
+  try {
+    const names = getParticipantNames('gp');
+    if (names.length < 2) throw new Error(t('txt_txt_need_at_least_2_players') || 'Need at least 2 players');
+    const numGroups = Math.max(1, +document.getElementById('gp-num-groups').value || 2);
+    if (numGroups <= 1) {
+      _gpGroupPreview = null;
+      msg.classList.add('hidden');
+      return createGP();
+    }
+    const groupNames = getGroupNames();
+    const strengths = _getCreateStrengths('gp');
+    _gpGroupPreview = {
+      groups: _distributePlayersToGroups(names, numGroups, groupNames, strengths),
+      strengths,
+    };
+    _renderGPGroupPreview();
+    msg.classList.add('hidden');
+  } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
+}
+
+function _renderGPGroupPreview() {
+  const container = document.getElementById('gp-group-preview');
+  const buttonsEl = document.getElementById('gp-create-buttons');
+  if (!container || !_gpGroupPreview) return;
+
+  const groups = _gpGroupPreview.groups;
+  const canAdjustGroups = groups.length > 1;
+  const str = _gpGroupPreview.strengths;
+  let html = `<div class="gp-group-preview-title-row">`;
+  html += `<div class="field-section-title" style="margin:0">📋 ${t('txt_gp_group_assignments')}</div>`;
+  html += `<button type="button" class="gp-preview-close" onclick="_cancelGPPreview()" title="${t('txt_txt_back')}">&times;</button>`;
+  html += `</div>`;
+  html += `<div class="gp-group-preview-grid">`;
+  groups.forEach((g, gi) => {
+    html += `<div class="gp-group-preview-col">`;
+    html += `<div class="gp-group-preview-header">${esc(g.name)} <span class="gp-group-preview-count">(${g.players.length})</span></div>`;
+    g.players.forEach((p, pi) => {
+      html += `<div class="gp-group-preview-player">`;
+      html += `<span class="gp-group-preview-name">${esc(p)}`;
+      if (str && str[p] != null) html += `<span class="gp-group-preview-strength">${str[p]}</span>`;
+      html += `</span>`;
+      if (canAdjustGroups) {
+        html += `<select class="gp-group-preview-move" data-from="${gi}" data-pidx="${pi}" onchange="_moveGPPlayer(this)">`;
+        html += `<option value="" selected></option>`;
+        groups.forEach((og, ogi) => {
+          if (ogi !== gi) html += `<option value="${ogi}">→ ${esc(og.name)}</option>`;
+        });
+        html += `</select>`;
+      }
+      html += `</div>`;
+    });
+    html += `</div>`;
+  });
+  html += `</div>`;
+  if (canAdjustGroups) {
+    html += `<div class="gp-preview-shuffle-row"><button type="button" class="btn-outline-muted" onclick="_shuffleGPGroups()">🔀 ${t('txt_gp_shuffle')}</button></div>`;
+  }
+
+  container.innerHTML = html;
+  container.style.display = '';
+
+  // Centered confirm button
+  buttonsEl.innerHTML = `<div class="gp-preview-actions">`
+    + `<button type="button" class="btn btn-success" style="padding:0.65rem 1.4rem;font-size:1.05rem" data-action="withLoading" data-handler="createGP">🏆 ${t('txt_gp_confirm_create')}</button>`
+    + `</div>`;
+}
+
+function _moveGPPlayer(selectEl) {
+  const fromGroup = +selectEl.dataset.from;
+  const playerIdx = +selectEl.dataset.pidx;
+  const toGroup = +selectEl.value;
+  if (isNaN(toGroup)) return;
+  const groups = _gpGroupPreview.groups;
+  const player = groups[fromGroup].players.splice(playerIdx, 1)[0];
+  groups[toGroup].players.push(player);
+  _renderGPGroupPreview();
+}
+
+function _shuffleGPGroups() {
+  const names = _gpGroupPreview.groups.flatMap(g => g.players);
+  const numGroups = _gpGroupPreview.groups.length;
+  const groupNames = _gpGroupPreview.groups.map(g => g.name);
+  _gpGroupPreview.groups = _distributePlayersToGroups(names, numGroups, groupNames, null);
+  _renderGPGroupPreview();
+}
+
+function _cancelGPPreview() {
+  _gpGroupPreview = null;
+  const container = document.getElementById('gp-group-preview');
+  const buttonsEl = document.getElementById('gp-create-buttons');
+  if (container) { container.innerHTML = ''; container.style.display = 'none'; }
+  if (buttonsEl) {
+    buttonsEl.innerHTML = `<button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" data-action="withLoading" data-handler="previewGPGroups" data-i18n="txt_txt_create_tournament">${t('txt_txt_create_tournament')}</button>`;
+  }
 }
 
 // ─── Create Group+Playoff ─────────────────────────────────
@@ -1186,6 +1417,26 @@ async function createGP() {
       public: document.getElementById('gp-public').checked,
       sport: _currentSport,
     };
+    const gpStr = _getCreateStrengths('gp');
+    if (gpStr) body.player_strengths = gpStr;
+    // Validate group sizes in individual mode
+    if (!body.team_mode) {
+      const previewGroups = _gpGroupPreview?.groups;
+      if (previewGroups) {
+        const tooSmall = previewGroups.find(g => g.players.length < 4);
+        if (tooSmall) throw new Error(`Group '${tooSmall.name}' has only ${tooSmall.players.length} player(s) — individual mode requires at least 4 per group.`);
+      } else if (names.length < 4 * body.num_groups) {
+        throw new Error(t('txt_err_group_too_small', { n: names.length, g: body.num_groups, min: 4 * body.num_groups }));
+      }
+    }
+    // Attach custom group assignments if the preview was used
+    if (_gpGroupPreview) {
+      body.group_assignments = {};
+      for (const g of _gpGroupPreview.groups) {
+        body.group_assignments[g.name] = g.players;
+      }
+      _gpGroupPreview = null;
+    }
     if (_convertFromRegistration) {
       body.tournament_type = 'group_playoff';
       const rid = _convertFromRegistration.rid;
@@ -1227,6 +1478,8 @@ async function createMex() {
       public: document.getElementById('mex-public').checked,
       sport: _currentSport,
     };
+    const mexStr = _getCreateStrengths('mex');
+    if (mexStr) body.player_strengths = mexStr;
     if (_convertFromRegistration) {
       body.tournament_type = 'mexicano';
       const rid = _convertFromRegistration.rid;
@@ -1258,6 +1511,8 @@ async function createPO() {
       public: document.getElementById('po-public').checked,
       sport: _currentSport,
     };
+    const poStr = _getCreateStrengths('po');
+    if (poStr) body.player_strengths = poStr;
     if (_convertFromRegistration) {
       body.tournament_type = 'playoff';
       body.player_names = body.participant_names;
@@ -3476,6 +3731,7 @@ function _renderPlayerCodes(secrets) {
     html += `<thead><tr style="border-bottom:2px solid var(--border)">`;
     html += `<th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_player')}</th>`;
     html += `<th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_passphrase')}</th>`;
+    html += `<th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_contact')}</th>`;
     html += `<th style="text-align:center;padding:0.4rem 0.6rem">${t('txt_txt_qr_code')}</th>`;
     html += `<th style="text-align:center;padding:0.4rem 0.6rem"></th>`;
     html += `</tr></thead><tbody>`;
@@ -3483,6 +3739,7 @@ function _renderPlayerCodes(secrets) {
       html += `<tr style="border-bottom:1px solid var(--border)" id="pc-row-${pid}">`;
       html += `<td style="padding:0.4rem 0.6rem;font-weight:600">${esc(info.name)}</td>`;
       html += `<td style="padding:0.4rem 0.6rem"><code id="pc-pass-${pid}" style="font-size:0.9em;color:var(--accent);user-select:all;cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(info.passphrase)}</code></td>`;
+      html += `<td style="padding:0.4rem 0.6rem"><span style="display:flex;gap:0.3rem;align-items:center"><input type="text" id="pc-contact-${pid}" value="${escAttr(info.contact || '')}" placeholder="${t('txt_reg_contact_placeholder')}" style="flex:1;min-width:120px;font-size:0.82rem;padding:0.2rem 0.4rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem;white-space:nowrap" onclick="_savePlayerContact('${pid}')" id="pc-contact-save-${pid}">${t('txt_txt_save_contact')}</button></span></td>`;
       html += `<td style="padding:0.4rem 0.6rem;text-align:center"><button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem" onclick="_showPlayerQr('${escAttr(pid)}','${escAttr(info.name)}')">📱 ${t('txt_txt_qr_code')}</button></td>`;
       html += `<td style="padding:0.4rem 0.6rem;text-align:center"><button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem;background:var(--border);color:var(--text)" onclick="_regeneratePlayerCode('${pid}')">🔄 ${t('txt_txt_regenerate')}</button></td>`;
       html += `</tr>`;
@@ -3548,6 +3805,79 @@ async function _copyAllPlayerCodes() {
     await navigator.clipboard.writeText(lines);
     alert(t('txt_txt_codes_copied'));
   } catch { /* ignore */ }
+}
+
+/** Save the contact string for a single player */
+async function _savePlayerContact(playerId) {
+  const input = document.getElementById(`pc-contact-${playerId}`);
+  const saveBtn = document.getElementById(`pc-contact-save-${playerId}`);
+  if (!input) return;
+  try {
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '…'; }
+    await api(`/api/tournaments/${currentTid}/player-secrets/${playerId}/contact`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contact: input.value }),
+    });
+    if (_playerSecrets[playerId]) _playerSecrets[playerId].contact = input.value;
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = t('txt_txt_contact_saved'); }
+    setTimeout(() => { if (saveBtn) saveBtn.textContent = t('txt_txt_save_contact'); }, 1500);
+  } catch (e) {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = t('txt_txt_save_contact'); }
+    alert(e.message);
+  }
+}
+
+/** Toggle the contact question in the new-registration form */
+function _toggleNewRegContact(checked) {
+  const containerId = 'reg-new-questions';
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (checked) {
+    const existing = container.querySelector('[data-original-key="contact"]');
+    if (!existing) {
+      _addRegQuestion(containerId, true);
+      const cards = container.querySelectorAll('.reg-q-card');
+      const card = cards[cards.length - 1];
+      if (card) {
+        card.dataset.originalKey = 'contact';
+        const labelInput = card.querySelector('.reg-q-label');
+        if (labelInput) labelInput.value = t('txt_reg_contact');
+        // Move to top so it appears first
+        container.prepend(card);
+        _updateRegQNumbers(containerId);
+      }
+    }
+  } else {
+    const existing = container.querySelector('[data-original-key="contact"]');
+    if (existing) existing.remove();
+    _updateRegQNumbers(containerId);
+  }
+}
+
+/** Toggle the contact question in an existing registration's questions editor */
+async function _toggleRegContactQuestion(rid, checked, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (checked) {
+    const existing = container.querySelector('[data-original-key="contact"]');
+    if (!existing) {
+      _addRegQuestion(containerId, true);
+      const cards = container.querySelectorAll('.reg-q-card');
+      const card = cards[cards.length - 1];
+      if (card) {
+        card.dataset.originalKey = 'contact';
+        const labelInput = card.querySelector('.reg-q-label');
+        if (labelInput) labelInput.value = t('txt_reg_contact');
+        container.prepend(card);
+        _updateRegQNumbers(containerId);
+      }
+    }
+  } else {
+    const existing = container.querySelector('[data-original-key="contact"]');
+    if (existing) existing.remove();
+    _updateRegQNumbers(containerId);
+  }
 }
 
 /** Fetch a QR code PNG as a base64 data URL (with auth) */
@@ -3904,6 +4234,7 @@ async function _deleteTournamentAlias() {
 // ─── Registration Lobbies ─────────────────────────────────
 
 let _registrations = [];
+let _showArchivedRegistrations = false;
 let _regDetails = {};  // rid → full registration detail data
 let _currentRegDetail = null;  // last-opened registration (for convert flow)
 let _regPollTimer = null;
@@ -3911,42 +4242,56 @@ const _REG_POLL_INTERVAL_MS = 10000;
 
 // Registration detail auto-refresh
 let _regDetailPollTimer = null;
+let _regDetailFetching = false;
 let _regDetailLastCount = null;
 let _regDetailLastAnswerSig = null;
+let _regDetailLastAssignedSig = null;
 const _REG_DETAIL_POLL_INTERVAL_MS = 6000;
 
 function _regAnswerSig(registrants) {
   return (registrants || []).map(r => `${r.player_id}:${JSON.stringify(r.answers ?? {})}`).join('|');
 }
 
+function _regAssignedSig(assignedPlayerIds) {
+  return [...(assignedPlayerIds || [])].sort().join('|');
+}
+
 function _startRegDetailPoll() {
   _stopRegDetailPoll();
   if (!currentTid || currentType !== 'registration') return;
-  _regDetailLastCount = _currentRegDetail?.registrants?.length ?? null;
+  _regDetailLastCount = _currentRegDetail?.registrant_count ?? null;
   _regDetailLastAnswerSig = _regAnswerSig(_currentRegDetail?.registrants);
+  _regDetailLastAssignedSig = _regAssignedSig(_currentRegDetail?.assigned_player_ids);
   _regDetailPollTimer = setInterval(async () => {
-    if (!currentTid || currentType !== 'registration') return;
+    if (!currentTid || currentType !== 'registration' || _regDetailFetching) return;
+    _regDetailFetching = true;
     try {
       const d = await api(`/api/registrations/${currentTid}`).catch(() => null);
       if (!d) return;
       const sig = _regAnswerSig(d.registrants);
+      const assignedSig = _regAssignedSig(d.assigned_player_ids);
       const countChanged = _regDetailLastCount !== null && d.registrant_count !== _regDetailLastCount;
       const answersChanged = sig !== _regDetailLastAnswerSig;
+      const assignedChanged = assignedSig !== _regDetailLastAssignedSig;
       _regDetailLastCount = d.registrant_count;
       _regDetailLastAnswerSig = sig;
-      if (countChanged || answersChanged) {
+      _regDetailLastAssignedSig = assignedSig;
+      if (countChanged || answersChanged || assignedChanged) {
         _regDetails[currentTid] = d;
         _currentRegDetail = d;
         _renderRegDetailInline(currentTid);
       }
     } catch (_) { /* network blip */ }
+    finally { _regDetailFetching = false; }
   }, _REG_DETAIL_POLL_INTERVAL_MS);
 }
 
 function _stopRegDetailPoll() {
   if (_regDetailPollTimer) { clearInterval(_regDetailPollTimer); _regDetailPollTimer = null; }
+  _regDetailFetching = false;
   _regDetailLastCount = null;
   _regDetailLastAnswerSig = null;
+  _regDetailLastAssignedSig = null;
 }
 
 function _startRegPoll() {
@@ -3966,6 +4311,11 @@ async function _pollRegistrations() {
 
 async function loadRegistrations() {
   await loadTournaments();
+}
+
+function _setShowArchivedRegistrations(enabled) {
+  _showArchivedRegistrations = !!enabled;
+  loadTournaments();
 }
 
 async function _loadRegDetail(rid) {
@@ -3997,9 +4347,11 @@ function _renderRegDetailInline(rid) {
     html += `<button type="button" class="btn btn-danger btn-sm" onclick="withLoading(this,()=>_deleteRegAlias('${esc(rid)}'))" style="white-space:nowrap">✕ ${t('txt_txt_remove')}</button>`;
   }
   html += `</div>`;
-  html += `<div style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:0.78rem;word-break:break-all">`;
+  html += `<div style="margin-top:0.5rem;display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">`;
+  html += `<div style="flex:1;min-width:220px;padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:0.78rem;word-break:break-all">`;
   html += `<span style="color:var(--text-muted)">${t('txt_reg_public_url')}</span> <a href="${regUrl}" target="_blank" style="color:var(--accent);font-size:0.85rem">${regUrl}</a>`;
-  html += ` <button type="button" class="btn btn-sm" style="font-size:0.7rem;margin-left:0.3rem" onclick="_copyRegLink('${esc(rid)}')">📋 ${t('txt_reg_copy_link')}</button>`;
+  html += `</div>`;
+  html += `<button type="button" class="btn btn-sm" style="font-size:0.7rem;white-space:nowrap" onclick="_copyRegLink('${esc(rid)}')">📋 ${t('txt_reg_copy_link')}</button>`;
   html += `</div></div>`;
 
   // Settings section
@@ -4040,6 +4392,11 @@ function _renderRegDetailInline(rid) {
   html += `<span class="participant-count" id="${editQContainer}-count">(0)</span>`;
   html += `</summary>`;
   html += `<div style="padding:0.6rem 0">`;
+  const hasContactQ = (r.questions || []).some(q => q.key === 'contact');
+  html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.55rem">`;
+  html += `<input type="checkbox" id="reg-contact-toggle-${esc(rid)}" style="width:1rem;height:1rem;cursor:pointer" ${hasContactQ ? 'checked' : ''} onchange="_toggleRegContactQuestion('${esc(rid)}', this.checked, '${editQContainer}')">`;
+  html += `<label for="reg-contact-toggle-${esc(rid)}" style="font-size:0.85rem;cursor:pointer">${t('txt_reg_request_contact')}</label>`;
+  html += `</div>`;
   html += `<div id="${editQContainer}"><div class="reg-q-empty" id="${editQContainer}-empty">${t('txt_reg_q_no_questions')}</div></div>`;
   html += `<div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap;align-items:center">`;
   html += `<button type="button" class="add-participant-btn" onclick="_addRegQuestion('${editQContainer}')" style="flex:1">＋ ${t('txt_reg_add_question')}</button>`;
@@ -4047,7 +4404,7 @@ function _renderRegDetailInline(rid) {
   html += `</div></div></details>`;
 
   // Registrants table (collapsible) — names, passphrases, actions only
-  html += `<details class="reg-section" style="margin-bottom:0.75rem" open>`;
+  html += `<details class="reg-section" style="margin-bottom:0.75rem">`;
   html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
   html += `<span style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">▸</span> ${t('txt_reg_registrants')} (${r.registrants.length})</span>`;
   if (r.registrants.length > 0) {
@@ -4081,15 +4438,65 @@ function _renderRegDetailInline(rid) {
     html += _renderAnswersPanel(rid, r, questions);
   }
 
-  // Convert button (if not already converted)
-  if (!r.converted_to_tid) {
+  // Linked tournaments section (shown after first or more conversions)
+  if (r.converted_to_tids?.length > 0) {
+    const linkedById = new Map((r.linked_tournaments || []).map((item) => [item.id, item]));
+    html += `<div class="linked-tournaments">`;
+    html += `<div class="linked-tournaments-title">🏆 ${t('txt_reg_linked_tournaments')}</div>`;
+    html += `<div class="linked-tournaments-list">`;
+    r.converted_to_tids.forEach(function(ltid) {
+      const linked = linkedById.get(ltid);
+      const fromMeta = _tournamentMeta?.[ltid] || (_openTournaments || []).find(function(tr) { return tr.id === ltid; });
+      const tname = linked?.name || fromMeta?.name || ltid;
+      const ttype = linked?.type || fromMeta?.type;
+      if (ttype) {
+        html += `<a href="#" class="linked-tournament-link" onclick="openTournament('${esc(ltid)}','${esc(ttype)}','${esc(tname)}');return false" title="${esc(ltid)}">🏆 ${esc(tname)}</a>`;
+      } else {
+        html += `<a href="/public.html?id=${encodeURIComponent(ltid)}" class="linked-tournament-link" target="_blank" rel="noopener" title="${esc(ltid)}">🏆 ${esc(tname)}</a>`;
+      }
+    });
+    html += `</div>`;
+    html += `</div>`;
+  }
+
+  // Convert button — always shown; disabled when appropriate
+  const regAssignedCount = r.assigned_player_ids ? r.assigned_player_ids.length : 0;
+  const regUnassignedCount = r.registrants.length - regAssignedCount;
+  const regAllAssigned = r.registrants.length > 0 && regAssignedCount >= r.registrants.length;
+  const regBtnLabel = (r.converted_to_tids?.length > 0) ? t('txt_reg_create_another') : t('txt_reg_convert_to_tournament');
+  let regConvDisabled = '';
+  if (regAllAssigned) regConvDisabled = `disabled title="${t('txt_reg_all_assigned')}"`;
+  else if (regUnassignedCount < 2) regConvDisabled = `disabled title="${t('txt_reg_min_registrants_needed')}"`;
+  if (r.open && !r.archived) {
     html += `<div style="text-align:center;margin-top:1.25rem">`;
-    html += `<button type="button" class="btn btn-success" style="padding:0.7rem 1.5rem;font-size:1rem" onclick="_startConvertFromReg('${esc(rid)}')" ${r.registrants.length < 2 ? `disabled title="${t('txt_reg_min_registrants_needed')}"` : ''}>🏆 ${t('txt_reg_convert_to_tournament')}</button>`;
+    html += `<button type="button" class="btn btn-success" style="padding:0.7rem 1.5rem;font-size:1rem" onclick="_startConvertFromReg('${esc(rid)}')" ${regConvDisabled}>🏆 ${regBtnLabel}</button>`;
     html += `</div>`;
   }
 
   html += `</div>`; // close .card
+
+  // ── Save UI state before replacing DOM ────────────────────────────
+  const openDetails = new Set();
+  el.querySelectorAll('details.reg-section').forEach((d, i) => { if (d.open) openDetails.add(i); });
+  const savedInputs = {};
+  el.querySelectorAll('input[id], textarea[id]').forEach(inp => {
+    if (inp.type === 'checkbox') savedInputs[inp.id] = { checked: inp.checked };
+    else savedInputs[inp.id] = { value: inp.value };
+  });
+  const scrollY = window.scrollY;
+
   el.innerHTML = html;
+
+  // ── Restore UI state after replacing DOM ──────────────────────────
+  el.querySelectorAll('details.reg-section').forEach((d, i) => { if (openDetails.has(i)) d.open = true; });
+  for (const [id, state] of Object.entries(savedInputs)) {
+    const inp = document.getElementById(id);
+    if (!inp) continue;
+    if ('checked' in state) inp.checked = state.checked;
+    else inp.value = state.value;
+  }
+  window.scrollTo({ top: scrollY });
+
   const descEl = document.getElementById(`reg-edit-desc-${rid}`);
   if (descEl) _autoResizeTextarea(descEl);
   _populateRegQuestions(`reg-edit-questions-${rid}`, questions);
@@ -4204,9 +4611,15 @@ function showCreateRegistration() {
         <input type="text" id="reg-new-joincode" placeholder="${t('txt_reg_join_code_placeholder')}" maxlength="64" style="display:none;margin-top:0.4rem">
       </div>
       <div class="field-section" style="margin-bottom:0.75rem">
-        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.55rem">
-          <span class="field-section-title" style="margin-bottom:0">${t('txt_reg_questions')}</span>
-          <span class="participant-count" id="reg-new-questions-count">(0)</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.55rem">
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <span class="field-section-title" style="margin-bottom:0">${t('txt_reg_questions')}</span>
+            <span class="participant-count" id="reg-new-questions-count">(0)</span>
+          </div>
+          <label for="reg-new-contact" style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;cursor:pointer">
+            <input type="checkbox" id="reg-new-contact" style="width:1rem;height:1rem;cursor:pointer" onchange="_toggleNewRegContact(this.checked)">
+            <span>${t('txt_reg_request_contact')}</span>
+          </label>
         </div>
         <div id="reg-new-questions">
           <div class="reg-q-empty" id="reg-new-questions-empty">${t('txt_reg_q_no_questions')}</div>
@@ -4236,6 +4649,11 @@ async function _submitCreateRegistration() {
   }
 
   const questions = _collectRegQuestions();
+  if (document.getElementById('reg-new-contact')?.checked) {
+    if (!questions.some(q => q.key === 'contact')) {
+      questions.unshift({ key: 'contact', label: t('txt_reg_contact'), type: 'text', required: false, choices: [] });
+    }
+  }
   if (questions.length) body.questions = questions;
 
   body.listed = !!document.getElementById('reg-new-listed')?.checked;
@@ -4658,66 +5076,842 @@ function _toggleRegDescPreview(rid) {
   }
 }
 
-function _startConvertFromReg(rid) {
+async function _startConvertFromReg(rid) {
+  try {
+    const fresh = await api(`/api/registrations/${rid}`);
+    _regDetails[rid] = fresh;
+    _currentRegDetail = fresh;
+    if (!fresh.open || fresh.archived) {
+      _renderRegDetailInline(rid);
+      return;
+    }
+  } catch (_) {
+    const cached = _regDetails[rid];
+    if (!cached) return;
+    if (!cached.open || cached.archived) {
+      _renderRegDetailInline(rid);
+      return;
+    }
+    _currentRegDetail = cached;
+  }
+  _stopRegDetailPoll();   // stop polling so it doesn't overwrite the conversion panel
+  _renderConvertPanel(rid);
+}
+
+// ─── Convert registration → tournament (dedicated panel) ──────────────
+
+let _convertFromRegistration = null;  // kept for backwards compat with createGP/createMex/createPO checks
+
+// Internal state for the conversion panel
+let _convRid = null;       // registration id being converted
+let _convType = 'group_playoff';
+let _convTeamMode = false;
+let _convTeams = [];       // [[name1, name2], ...]
+let _convTeamNames = [];   // [label1, label2, ...]
+let _convStrengths = {};   // {playerName: score}
+let _convExtraPlayers = []; // extra player names added during conversion
+let _convSelectedPlayers = new Set(); // set of player_ids selected for conversion
+
+function _getRegistrationSport(rid = _convRid) {
+  return _regDetails[rid]?.sport || _currentRegDetail?.sport || _currentSport || 'padel';
+}
+
+function _isTennisRegistration(rid = _convRid) {
+  return _getRegistrationSport(rid) === 'tennis';
+}
+
+function _usesConvTeamBuilder(rid = _convRid) {
+  return !_isTennisRegistration(rid) && _convTeamMode;
+}
+
+function _getConvEffectiveTeamMode(rid = _convRid) {
+  return _isTennisRegistration(rid) ? true : _convTeamMode;
+}
+
+function _renderConvertPanel(rid) {
   const r = _regDetails[rid];
   if (!r) return;
-  _currentRegDetail = r;
-  _startConvertFromRegistration();
-}
+  const el = document.getElementById('view-content');
+  const isTennis = _isTennisRegistration(rid);
 
-// ─── Convert registration to tournament (reuses main Create form) ─────
+  // Reset state
+  _convRid = rid;
+  _convType = 'group_playoff';
+  _convTeamMode = false;
+  _convTeams = [];
+  _convTeamNames = [];
+  _convStrengths = {};
+  _convExtraPlayers = [];
+  _convGroupPreview = null;
 
-let _convertFromRegistration = null;  // { rid, name } when in convert mode
-
-function _startConvertFromRegistration() {
-  if (!_currentRegDetail) return;
-  const r = _currentRegDetail;
-
-  // Store convert context
-  _convertFromRegistration = { rid: r.id, name: r.name };
-
-  // Pre-fill the currently active create mode's participant list
-  const names = r.registrants.map(reg => reg.player_name);
-  for (const mode of ['gp', 'mex', 'po']) {
-    _participantEntries[mode] = names.length ? [...names] : [''];
+  // Initialize selection: all unassigned players selected by default
+  const convAssignedSet = new Set(r.assigned_player_ids || []);
+  _convSelectedPlayers = new Set();
+  for (const reg of r.registrants) {
+    if (!convAssignedSet.has(reg.player_id)) _convSelectedPlayers.add(reg.player_id);
   }
 
-  // Pre-fill tournament name in all modes
-  document.getElementById('gp-name').value = r.name;
-  document.getElementById('mex-name').value = r.name;
-  document.getElementById('po-name').value = r.name;
+  let html = `<div class="card">`;
+  // Header
+  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">`;
+  html += `<h2 style="margin:0">🏆 ${t('txt_reg_convert_title')}</h2>`;
+  html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_cancelConvert('${esc(rid)}')">✕ ${t('txt_txt_cancel')}</button>`;
+  html += `</div>`;
 
-  // Switch to Create tab and re-render participant fields
-  setActiveTab('create');
-  renderParticipantFields('gp');
-  renderParticipantFields('mex');
-  renderParticipantFields('po');
+  // Player selection section
+  html += `<div class="field-section" style="margin-bottom:0.75rem">`;
+  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;flex-wrap:wrap;gap:0.3rem">`;
+  html += `<div class="field-section-title" style="margin-bottom:0">👥 ${t('txt_conv_select_players')}</div>`;
+  html += `<div style="display:flex;gap:0.4rem;align-items:center">`;
+  html += `<span class="participant-count" id="conv-selected-count">(${_convSelectedPlayers.size}/${r.registrants.length - convAssignedSet.size})</span>`;
+  html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.15rem 0.4rem" onclick="_convSelectAll()">${t('txt_conv_select_all')}</button>`;
+  html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.15rem 0.4rem;background:var(--border);color:var(--text)" onclick="_convDeselectAll()">${t('txt_conv_deselect_all')}</button>`;
+  html += `</div></div>`;
+  html += `<div id="conv-player-list" class="conv-player-list"></div>`;
+  html += `</div>`;
 
-  // Show a banner indicating convert mode and lock out the lobby tab
-  _showConvertBanner();
-  const lobbyTab = document.getElementById('create-tab-lobby');
-  if (lobbyTab) { lobbyTab.disabled = true; lobbyTab.style.opacity = '0.4'; lobbyTab.style.pointerEvents = 'none'; }
+  // Tournament name
+  html += `<div class="field-section" style="margin-bottom:0.75rem">`;
+  html += `<input id="conv-name" value="${esc(r.name)}" class="tournament-name-input" placeholder="${t('txt_txt_my_tournament_placeholder')}" style="width:100%">`;
+  html += `</div>`;
+
+  // Tournament type + team mode
+  html += `<div class="field-section" style="margin-bottom:0.75rem">`;
+  html += `<div class="field-section-title">${t('txt_txt_format')}</div>`;
+  html += `<div class="score-mode-toggle" id="conv-type-toggle" style="margin-bottom:0.5rem">`;
+  html += `<button type="button" class="active" onclick="_setConvType('group_playoff')">${t('txt_txt_group_play_off')}</button>`;
+  html += `<button type="button" onclick="_setConvType('mexicano')">${t('txt_txt_mexicano_play_offs')}</button>`;
+  html += `<button type="button" onclick="_setConvType('playoff')">${t('txt_txt_play_offs_only')}</button>`;
+  html += `</div>`;
+  if (!isTennis) {
+    html += `<div style="margin-top:0.5rem">`;
+    html += `<div class="score-mode-toggle" id="conv-team-toggle">`;
+    html += `<button type="button" class="active" onclick="_setConvTeamMode(false)">${t('txt_txt_individual_mode')}</button>`;
+    html += `<button type="button" onclick="_setConvTeamMode(true)">${t('txt_txt_team_mode_short')}</button>`;
+    html += `</div>`;
+    html += `</div>`;
+  }
+  html += `</div>`;
+
+  // Extra players (individual mode only)
+  html += `<div id="conv-extra-players-section" class="field-section" style="margin-bottom:0.75rem">`;
+  html += `<div class="field-section-title">➕ ${t('txt_conv_extra_players')}</div>`;
+  html += `<div id="conv-extra-players-container"></div>`;
+  html += `<button type="button" class="add-participant-btn" style="width:100%;margin-top:0.4rem" onclick="_addConvExtraPlayer()">+ ${t('txt_txt_add_player')}</button>`;
+  html += `</div>`;
+
+  // Team formation (hidden unless team mode)
+  html += `<div id="conv-teams-section" class="field-section" style="margin-bottom:0.75rem;display:none">`;
+  html += `<div class="field-section-title">${t('txt_conv_team_formation')}</div>`;
+  html += `<div id="conv-teams-container"></div>`;
+  html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem">`;
+  html += `<button type="button" class="add-participant-btn" style="flex:1" onclick="_addConvTeam()">+ ${t('txt_txt_add_team')}</button>`;
+  html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_autoConvTeams()">🔀 ${t('txt_conv_auto_pair')}</button>`;
+  html += `</div>`;
+  html += `</div>`;
+
+  // Strength (collapsible)
+  html += `<details class="field-section" style="margin-bottom:0.75rem" id="conv-strength-section">`;
+  html += `<summary style="cursor:pointer;font-weight:700;font-size:0.85rem">💪 ${t('txt_conv_initial_strength')}</summary>`;
+  html += `<p style="font-size:0.78rem;color:var(--text-muted);margin:0.3rem 0 0.5rem">${t('txt_conv_strength_help')}</p>`;
+  html += `<div id="conv-strength-container"></div>`;
+  html += `</details>`;
+
+  // Settings area (dynamic per type)
+  html += `<div id="conv-settings"></div>`;
+
+  // Group preview (GP only, hidden initially)
+  html += `<div id="conv-group-preview" class="field-section" style="display:none;margin-top:0.75rem"></div>`;
+
+  // Message area + submit
+  html += `<div id="conv-msg" class="alert alert-error hidden" style="margin-top:0.75rem"></div>`;
+  html += `<div id="conv-create-buttons" style="text-align:center;margin-top:1rem">`;
+  html += `<button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,()=>_previewOrSubmitConvert('${esc(rid)}'))">🏆 ${t('txt_reg_convert_to_tournament')}</button>`;
+  html += `</div>`;
+
+  html += `</div>`;
+  el.innerHTML = html;
+
+  _renderConvSettings(rid);
+  _renderConvStrength(rid);
+  _renderConvPlayerList(rid);
+
+  // Re-render strength bubbles when the details section is opened
+  document.getElementById('conv-strength-section')?.addEventListener('toggle', e => {
+    if (e.target.open) _renderConvStrength(_convRid);
+  });
 }
 
-function _showConvertBanner() {
-  for (const mode of ['gp', 'mex', 'po']) {
-    const msg = document.getElementById(`${mode}-msg`);
-    if (msg) {
-      msg.className = 'alert alert-info';
-      msg.innerHTML = `📋 ${t('txt_reg_convert_banner')} <button type="button" class="btn btn-sm" style="margin-left:0.5rem;font-size:0.75rem;background:var(--border);color:var(--text)" onclick="_cancelConvertMode()">✕ ${t('txt_txt_cancel')}</button>`; // eslint-disable-line
-      msg.classList.remove('hidden');
+function _cancelConvert(rid) {
+  _renderRegDetailInline(rid);
+  _startRegDetailPoll();  // resume polling after leaving the conversion panel
+}
+
+function _renderConvPlayerList(rid) {
+  const container = document.getElementById('conv-player-list');
+  if (!container) return;
+  const r = _regDetails[rid];
+  if (!r) return;
+  const assignedSet = new Set(r.assigned_player_ids || []);
+  const questions = r.questions || [];
+  const hasQuestions = questions.length > 0;
+
+  // Remember which answer panels are open so we can restore after re-render
+  const openAnswers = new Set();
+  container.querySelectorAll('.conv-answers-detail').forEach(el => {
+    if (el.style.display !== 'none') openAnswers.add(el.id);
+  });
+
+  let h = '';
+  // Unassigned players first (selectable)
+  for (const reg of r.registrants) {
+    if (assignedSet.has(reg.player_id)) continue;
+    const checked = _convSelectedPlayers.has(reg.player_id);
+    const pid = esc(reg.player_id);
+    const answersId = 'conv-answers-' + pid;
+    const wasOpen = openAnswers.has(answersId);
+    h += `<div class="conv-player-item">`;
+    h += `<div class="conv-player-row${checked ? ' selected' : ''}" onclick="_toggleConvPlayer('${pid}')">`;
+    h += `<label class="conv-player-check" onclick="event.stopPropagation()">`;
+    h += `<input type="checkbox" ${checked ? 'checked' : ''} onchange="_toggleConvPlayer('${pid}')">`;
+    h += `</label>`;
+    h += `<span class="conv-player-name">${esc(reg.player_name)}</span>`;
+    if (hasQuestions) {
+      h += `<button type="button" class="conv-answers-btn${wasOpen ? ' active' : ''}" onclick="event.stopPropagation();_toggleConvAnswers('${pid}')" title="${t('txt_conv_show_answers')}">\ud83d\udccb</button>`;
+    }
+    h += `</div>`;
+    if (hasQuestions) {
+      h += `<div class="conv-answers-detail" id="${answersId}" style="display:${wasOpen ? '' : 'none'}">`;
+      for (const q of questions) {
+        const a = reg.answers?.[q.key];
+        h += `<div class="conv-answers-detail-row">`;
+        h += `<span class="conv-answers-detail-label">${esc(q.label)}</span>`;
+        if (a) {
+          if (q.type === 'choice') {
+            h += `<span class="conv-answer-badge">${esc(a)}</span>`;
+          } else {
+            h += `<span class="conv-answers-detail-value">${esc(a)}</span>`;
+          }
+        } else {
+          h += `<span class="conv-answers-detail-value empty">${t('txt_conv_no_answer')}</span>`;
+        }
+        h += `</div>`;
+      }
+      h += `</div>`;
+    }
+    h += `</div>`;
+  }
+  // Assigned players (greyed out, not selectable)
+  for (const reg of r.registrants) {
+    if (!assignedSet.has(reg.player_id)) continue;
+    h += `<div class="conv-player-item"><div class="conv-player-row assigned">`;
+    h += `<label class="conv-player-check"><input type="checkbox" disabled></label>`;
+    h += `<span class="conv-player-name"><s>${esc(reg.player_name)}</s></span>`;
+    h += `<span class="conv-player-assigned-label">${t('txt_reg_player_already_assigned')}</span>`;
+    h += `</div></div>`;
+  }
+  container.innerHTML = h;
+  _updateConvSelectedCount();
+}
+
+function _toggleConvAnswers(pid) {
+  const el = document.getElementById('conv-answers-' + pid);
+  if (!el) return;
+  const btn = el.previousElementSibling?.querySelector('.conv-answers-btn');
+  if (el.style.display === 'none') {
+    el.style.display = '';
+    if (btn) btn.classList.add('active');
+  } else {
+    el.style.display = 'none';
+    if (btn) btn.classList.remove('active');
+  }
+}
+
+function _toggleConvPlayer(pid) {
+  if (_convSelectedPlayers.has(pid)) _convSelectedPlayers.delete(pid);
+  else _convSelectedPlayers.add(pid);
+  _renderConvPlayerList(_convRid);
+  _renderConvStrength(_convRid);
+  if (_usesConvTeamBuilder()) _renderConvTeams(_convRid);
+}
+
+function _convSelectAll() {
+  const r = _regDetails[_convRid];
+  if (!r) return;
+  const assignedSet = new Set(r.assigned_player_ids || []);
+  for (const reg of r.registrants) {
+    if (!assignedSet.has(reg.player_id)) _convSelectedPlayers.add(reg.player_id);
+  }
+  _renderConvPlayerList(_convRid);
+  _renderConvStrength(_convRid);
+  if (_usesConvTeamBuilder()) _renderConvTeams(_convRid);
+}
+
+function _convDeselectAll() {
+  _convSelectedPlayers.clear();
+  _renderConvPlayerList(_convRid);
+  _renderConvStrength(_convRid);
+  if (_usesConvTeamBuilder()) _renderConvTeams(_convRid);
+}
+
+function _updateConvSelectedCount() {
+  const el = document.getElementById('conv-selected-count');
+  if (!el) return;
+  const r = _regDetails[_convRid];
+  const assignedSet = new Set(r ? (r.assigned_player_ids || []) : []);
+  const total = r ? r.registrants.filter(reg => !assignedSet.has(reg.player_id)).length : 0;
+  el.textContent = `(${_convSelectedPlayers.size}/${total})`;
+}
+
+function _setConvType(type) {
+  _convType = type;
+  const toggle = document.getElementById('conv-type-toggle');
+  if (toggle) toggle.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.textContent.trim() === {
+    group_playoff: t('txt_txt_group_play_off'),
+    mexicano: t('txt_txt_mexicano_play_offs'),
+    playoff: t('txt_txt_play_offs_only'),
+  }[type]));
+  // Find the rid from the submit button onclick
+  const submitBtn = document.querySelector('#conv-msg')?.parentElement?.querySelector('.btn-success');
+  const rid = submitBtn ? submitBtn.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] : null;
+  _renderConvSettings(rid);
+  _renderConvStrength(rid);
+}
+
+function _setConvTeamMode(isTeam) {
+  if (_isTennisRegistration()) isTeam = false;
+  _convTeamMode = isTeam;
+  const toggle = document.getElementById('conv-team-toggle');
+  if (toggle) {
+    const btns = toggle.querySelectorAll('button');
+    btns[0].classList.toggle('active', !isTeam);
+    btns[1].classList.toggle('active', isTeam);
+  }
+  const section = document.getElementById('conv-teams-section');
+  if (section) section.style.display = _usesConvTeamBuilder() ? '' : 'none';
+  const extraSection = document.getElementById('conv-extra-players-section');
+  if (extraSection) extraSection.style.display = _usesConvTeamBuilder() ? 'none' : '';
+  if (_usesConvTeamBuilder() && _convTeams.length === 0) {
+    // Auto-form teams from first available players
+    _autoConvTeams();
+  }
+  _renderConvStrength(_convRid);
+}
+
+function _addConvExtraPlayer() {
+  _convExtraPlayers.push('');
+  _renderConvExtraPlayers();
+  // Focus the new input
+  setTimeout(() => {
+    const inputs = document.querySelectorAll('.conv-extra-player-input');
+    if (inputs.length) inputs[inputs.length - 1].focus();
+  }, 0);
+}
+
+function _removeConvExtraPlayer(idx) {
+  // Sync current values from DOM first
+  document.querySelectorAll('.conv-extra-player-input').forEach(inp => {
+    _convExtraPlayers[+inp.dataset.idx] = inp.value;
+  });
+  _convExtraPlayers.splice(idx, 1);
+  _renderConvExtraPlayers();
+  _renderConvStrength(_convRid);
+}
+
+function _renderConvExtraPlayers() {
+  const container = document.getElementById('conv-extra-players-container');
+  if (!container) return;
+  // Sync current values from DOM before re-building
+  container.querySelectorAll('.conv-extra-player-input').forEach(inp => {
+    _convExtraPlayers[+inp.dataset.idx] = inp.value;
+  });
+  let html = '';
+  _convExtraPlayers.forEach((name, i) => {
+    html += `<div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.35rem">`;
+    html += `<input type="text" class="conv-extra-player-input" data-idx="${i}" value="${esc(name)}" placeholder="${t('txt_reg_name_placeholder')}" style="flex:1" oninput="_convExtraPlayers[${i}]=this.value;_debouncedConvStrength()">`;
+    html += `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem" onclick="_removeConvExtraPlayer(${i})">✕</button>`;
+    html += `</div>`;
+  });
+  container.innerHTML = html;
+}
+
+function _getConvPlayerNames(rid) {
+  const r = _regDetails[rid];
+  // Only include registrants that are selected AND not already assigned
+  const assignedSet = new Set(r ? (r.assigned_player_ids || []) : []);
+  const registered = r
+    ? r.registrants.filter(function(reg) { return !assignedSet.has(reg.player_id) && _convSelectedPlayers.has(reg.player_id); }).map(function(reg) { return reg.player_name; })
+    : [];
+  // Include extra players (non-empty, non-duplicate)
+  const nameSet = new Set(registered);
+  for (const ep of _convExtraPlayers) {
+    const trimmed = ep?.trim();
+    if (trimmed && !nameSet.has(trimmed)) { registered.push(trimmed); nameSet.add(trimmed); }
+  }
+  return registered;
+}
+
+let _convStrengthTimer = null;
+function _debouncedConvStrength() {
+  clearTimeout(_convStrengthTimer);
+  _convStrengthTimer = setTimeout(() => _renderConvStrength(_convRid), 400);
+}
+
+function _renderConvTeams(rid) {
+  const container = document.getElementById('conv-teams-container');
+  if (!container) return;
+  // Preserve any team names typed into the DOM before re-rendering
+  container.querySelectorAll('.conv-team-name-input').forEach(inp => {
+    const idx = +inp.dataset.idx;
+    _convTeamNames[idx] = inp.value;
+  });
+  const allNames = _getConvPlayerNames(rid);
+  const assignedNames = new Set(_convTeams.flat());
+
+  let html = '';
+  _convTeams.forEach((team, idx) => {
+    html += `<div class="conv-team-row" style="margin-bottom:0.5rem;padding:0.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg)">`;
+    html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem">`;
+    html += `<span style="font-size:0.78rem;font-weight:700;color:var(--text-muted)">${t('txt_conv_team')} ${idx + 1}</span>`;
+    html += `<input type="text" class="conv-team-name-input" data-idx="${idx}" value="${esc(_convTeamNames[idx] || '')}" placeholder="${team.join(' & ')}" style="flex:1;font-size:0.85rem;padding:0.25rem 0.4rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">`;
+    html += `<button type="button" class="participant-remove-btn" onclick="_removeConvTeam(${idx})" title="${t('txt_txt_remove')}">×</button>`;
+    html += `</div>`;
+    html += `<div style="display:flex;gap:0.4rem;flex-wrap:wrap">`;
+    team.forEach((member, mi) => {
+      html += `<select class="conv-team-select" data-team="${idx}" data-slot="${mi}" onchange="_onConvTeamSelect(${idx},${mi},this.value)" style="flex:1;min-width:120px;font-size:0.85rem;padding:0.3rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">`;
+      html += `<option value="">—</option>`;
+      for (const name of allNames) {
+        const taken = assignedNames.has(name) && name !== member;
+        html += `<option value="${esc(name)}" ${name === member ? 'selected' : ''} ${taken ? 'disabled style="color:var(--text-muted)"' : ''}>${esc(name)}</option>`;
+      }
+      html += `</select>`;
+    });
+    html += `</div>`;
+    html += `</div>`;
+  });
+
+  // Show unassigned players
+  const unassigned = allNames.filter(n => !assignedNames.has(n));
+  if (unassigned.length > 0) {
+    html += `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.3rem">${t('txt_conv_unassigned')}: ${unassigned.map(n => `<span style="font-weight:600">${esc(n)}</span>`).join(', ')}</div>`;
+  }
+  container.innerHTML = html;
+}
+
+function _addConvTeam() {
+  const submitBtn = document.querySelector('#conv-msg')?.parentElement?.querySelector('.btn-success');
+  const rid = submitBtn?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1];
+  const allNames = rid ? _getConvPlayerNames(rid) : [];
+  const assigned = new Set(_convTeams.flat());
+  const available = allNames.filter(n => !assigned.has(n));
+  const t1 = available[0] || '';
+  const t2 = available[1] || '';
+  _convTeams.push([t1, t2].filter(Boolean));
+  _convTeamNames.push('');
+  _renderConvTeams(rid);
+  _renderConvStrength(rid);
+}
+
+function _removeConvTeam(idx) {
+  _convTeams.splice(idx, 1);
+  _convTeamNames.splice(idx, 1);
+  const submitBtn = document.querySelector('#conv-msg')?.parentElement?.querySelector('.btn-success');
+  const rid = submitBtn?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1];
+  _renderConvTeams(rid);
+  _renderConvStrength(rid);
+}
+
+
+function _onConvTeamSelect(teamIdx, slotIdx, value) {
+  const submitBtn = document.querySelector('#conv-msg')?.parentElement?.querySelector('.btn-success');
+  const rid = submitBtn?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1];
+  // Check for duplicate within the SAME team (if someone picks a player already in another slot)
+  const old = _convTeams[teamIdx][slotIdx];
+  _convTeams[teamIdx][slotIdx] = value;
+  _renderConvTeams(rid);
+  _renderConvStrength(rid);
+}
+
+function _autoConvTeams() {
+  const submitBtn = document.querySelector('#conv-msg')?.parentElement?.querySelector('.btn-success');
+  const rid = submitBtn?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1];
+  // Sync current team name inputs before modifying
+  document.querySelectorAll('.conv-team-name-input').forEach(inp => {
+    _convTeamNames[+inp.dataset.idx] = inp.value;
+  });
+  const allNames = new Set(rid ? _getConvPlayerNames(rid) : []);
+  // Separate extra teams (contain members not in the registered player list)
+  const extraTeams = [];
+  const extraNames = [];
+  for (let i = 0; i < _convTeams.length; i++) {
+    const hasNonRegistered = _convTeams[i].some(m => m && !allNames.has(m));
+    if (hasNonRegistered) {
+      extraTeams.push(_convTeams[i]);
+      extraNames.push(_convTeamNames[i] || '');
     }
   }
+  // Auto-pair only the registered players
+  const registeredNames = rid ? _getConvPlayerNames(rid) : [];
+  _convTeams = [];
+  _convTeamNames = [];
+  for (let i = 0; i + 1 < registeredNames.length; i += 2) {
+    _convTeams.push([registeredNames[i], registeredNames[i + 1]]);
+    _convTeamNames.push('');
+  }
+  // Re-append the extra teams
+  _convTeams.push(...extraTeams);
+  _convTeamNames.push(...extraNames);
+  _renderConvTeams(rid);
+  _renderConvStrength(rid);
 }
 
+function _renderConvStrength(rid) {
+  const container = document.getElementById('conv-strength-container');
+  if (!container) return;
+  // Sync team names from DOM inputs before building entries
+  document.querySelectorAll('.conv-team-name-input').forEach(inp => {
+    const idx = +inp.dataset.idx;
+    _convTeamNames[idx] = inp.value;
+  });
+  let entries = [];
+  if (_usesConvTeamBuilder(rid) && _convTeams.length) {
+    entries = _convTeams.map((team, i) => {
+      const memberLabel = team.filter(Boolean).join(' & ');
+      const label = _convTeamNames[i]?.trim() || memberLabel;
+      return { key: label, label: label || `${t('txt_conv_team')} ${i + 1}`, isTeam: true, teamIdx: i };
+    });
+  } else {
+    const names = rid ? _getConvPlayerNames(rid) : [];
+    entries = names.map(n => ({ key: n, label: n, isTeam: false }));
+  }
+
+  let html = `<div class="conv-strength-grid">`;
+  entries.forEach(({ key, label }) => {
+    const val = _convStrengths[key] ?? '';
+    html += `<div class="conv-strength-entry">`;
+    html += `<label>${esc(label)}</label>`;
+    html += `<input type="number" class="conv-strength-input" data-key="${esc(key)}" value="${val}" placeholder="0" min="0" step="1" oninput="_convStrengths[this.dataset.key]=this.value?+this.value:undefined">`;
+    html += `</div>`;
+  });
+  html += `</div>`;
+  container.innerHTML = html;
+}
+
+function _renderConvSettings(rid) {
+  const el = document.getElementById('conv-settings');
+  if (!el) return;
+  let html = '';
+
+  // Courts (common to all types)
+  html += `<div class="field-section" style="margin-bottom:0.75rem">`;
+  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.55rem">`;
+  html += `<div class="field-section-title" style="margin-bottom:0">${t('txt_txt_courts')}</div>`;
+  html += `<label class="switch-label"><input type="checkbox" id="conv-assign-courts" checked onchange="_toggleConvCourts()"><span class="switch-track"></span><span>${t('txt_txt_assign_courts')}</span></label>`;
+  html += `</div>`;
+  html += `<div id="conv-courts-detail">`;
+  html += `<div class="num-field" style="margin-bottom:0.55rem"><label>${t('txt_txt_number_of_courts')}</label><input id="conv-court-count" type="number" value="2" min="1" max="20" oninput="_renderConvCourtNames()"></div>`;
+  html += `<div class="court-names-grid" id="conv-court-names"></div>`;
+  html += `</div>`;
+  html += `</div>`;
+
+  // Type-specific settings
+  if (_convType === 'group_playoff') {
+    html += `<div class="field-section" style="margin-bottom:0.75rem">`;
+    html += `<div class="field-section-title">${t('txt_txt_groups')}</div>`;
+    html += `<div class="num-field" style="margin-bottom:0.55rem"><label>${t('txt_txt_number_of_groups')}</label><input id="conv-num-groups" type="number" value="2" min="1"></div>`;
+    html += `</div>`;
+  } else if (_convType === 'mexicano') {
+    html += `<div class="field-section" style="margin-bottom:0.75rem">`;
+    html += `<div class="field-section-title">${t('txt_txt_parameters')}</div>`;
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem 1.25rem">`;
+    html += `<div style="display:flex;flex-direction:column;gap:0.3rem"><label style="font-size:0.8rem;color:var(--text-muted)">${t('txt_txt_total_points_per_match')}</label><input id="conv-mex-pts" type="number" value="26" min="1" style="width:80px"></div>`;
+    html += `<div style="display:flex;flex-direction:column;gap:0.3rem"><label style="font-size:0.8rem;color:var(--text-muted)">${t('txt_txt_number_of_rounds')}</label>`;
+    html += `<div style="display:flex;align-items:center;gap:0.6rem">`;
+    html += `<div class="score-mode-toggle" id="conv-mex-rounds-toggle" style="flex-shrink:0">`;
+    html += `<button type="button" class="active" onclick="_setConvMexRounds('unlimited')">∞</button>`;
+    html += `<button type="button" onclick="_setConvMexRounds('fixed')">${t('txt_txt_fixed')}</button>`;
+    html += `</div>`;
+    html += `<input id="conv-mex-rounds" type="number" value="8" min="1" style="width:64px;display:none">`;
+    html += `</div></div>`;
+    html += `</div>`;
+    html += `<details class="advanced-section" style="margin-top:0.5rem;margin-bottom:0;border-radius:6px">`;
+    html += `<summary>${t('txt_txt_advanced_settings')}</summary>`;
+    html += `<div class="advanced-grid">`;
+    html += `<div class="adv-field"><label>${t('txt_txt_skill_gap_label')}</label><input id="conv-mex-skill-gap" type="number" placeholder="e.g. 50" min="0"></div>`;
+    html += `<div class="adv-field"><label>${t('txt_txt_win_bonus_label')}</label><input id="conv-mex-win-bonus" type="number" value="0" min="0"></div>`;
+    html += `<div class="adv-field"><label>${t('txt_txt_rival_strength_label')}</label><input id="conv-mex-strength-weight" type="number" value="0" min="0" max="1" step="0.05"></div>`;
+    html += `<div class="adv-field"><label>${t('txt_txt_loss_discount_label')}</label><input id="conv-mex-loss-discount" type="number" value="1" min="0" max="1" step="0.05"></div>`;
+    html += `<div class="adv-field"><label>${t('txt_txt_balance_tolerance_label')}</label><input id="conv-mex-balance-tol" type="number" value="0.2" min="0" max="2" step="0.1"></div>`;
+    html += `</div></details>`;
+    html += `</div>`;
+  } else if (_convType === 'playoff') {
+    html += `<div class="field-section" style="margin-bottom:0.75rem">`;
+    html += `<div class="field-section-title">${t('txt_txt_play_off_format')}</div>`;
+    html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.2rem">`;
+    html += `<input type="checkbox" id="conv-double-elim" style="width:1rem;height:1rem;cursor:pointer">`;
+    html += `<label for="conv-double-elim" style="font-size:0.85rem;cursor:pointer">${t('txt_txt_double_elimination')}</label>`;
+    html += `</div></div>`;
+  }
+
+  // Public checkbox
+  html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.25rem">`;
+  html += `<input type="checkbox" id="conv-public" checked style="width:1rem;height:1rem;cursor:pointer">`;
+  html += `<label for="conv-public" style="font-size:0.85rem;cursor:pointer">${t('txt_txt_public_tournament')}</label>`;
+  html += `</div>`;
+
+  el.innerHTML = html;
+  _renderConvCourtNames();
+}
+
+function _toggleConvCourts() {
+  const checked = document.getElementById('conv-assign-courts')?.checked;
+  const detail = document.getElementById('conv-courts-detail');
+  if (detail) detail.style.display = checked ? '' : 'none';
+}
+
+function _renderConvCourtNames() {
+  const count = Math.max(1, +(document.getElementById('conv-court-count')?.value || 2));
+  const container = document.getElementById('conv-court-names');
+  if (!container) return;
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    html += `<div class="court-row">`;
+    html += `<span class="court-row-label">${i + 1}</span>`;
+    html += `<input type="text" class="conv-court-input" value="Court ${i + 1}" placeholder="Court ${i + 1}">`;
+    html += `</div>`;
+  }
+  container.innerHTML = html;
+}
+
+function _setConvMexRounds(mode) {
+  const toggle = document.getElementById('conv-mex-rounds-toggle');
+  if (toggle) toggle.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', (mode === 'unlimited') === (i === 0)));
+  const inp = document.getElementById('conv-mex-rounds');
+  if (inp) inp.style.display = mode === 'fixed' ? '' : 'none';
+}
+
+let _convGroupPreview = null;  // { groups: { name, players }[] } | null
+
+function _previewOrSubmitConvert(rid) {
+  if (_convType === 'group_playoff' && !_convGroupPreview) {
+    // Show group preview first
+    const names = _usesConvTeamBuilder(rid)
+      ? _convTeams.filter(t => t.some(Boolean)).map((team, i) => {
+          const label = _convTeamNames[i]?.trim() || team.filter(Boolean).join(' & ');
+          return label || `${t('txt_conv_team')} ${i + 1}`;
+        })
+      : _getConvPlayerNames(rid);
+    const numGroups = Math.max(1, +(document.getElementById('conv-num-groups')?.value || 2));
+    if (numGroups <= 1) {
+      _convGroupPreview = null;
+      return _submitConvert(rid);
+    }
+    // Collect strengths for seeding
+    const strengths = {};
+    document.querySelectorAll('.conv-strength-input').forEach(inp => {
+      if (inp.value !== '') strengths[inp.dataset.key] = +inp.value;
+    });
+    const groupNames = [];
+    for (let i = 0; i < numGroups; i++) groupNames.push(String.fromCharCode(65 + i));
+    const strMap = Object.keys(strengths).length ? strengths : null;
+    _convGroupPreview = {
+      groups: _distributePlayersToGroups(names, numGroups, groupNames, strMap),
+      strengths: strMap,
+    };
+    _renderConvGroupPreview(rid);
+    return;
+  }
+  return _submitConvert(rid);
+}
+
+function _renderConvGroupPreview(rid) {
+  const container = document.getElementById('conv-group-preview');
+  const buttonsEl = document.getElementById('conv-create-buttons');
+  if (!container || !_convGroupPreview) return;
+
+  const groups = _convGroupPreview.groups;
+  const canAdjustGroups = groups.length > 1;
+  const str = _convGroupPreview.strengths;
+  let html = `<div class="gp-group-preview-title-row">`;
+  html += `<div class="field-section-title" style="margin:0">📋 ${t('txt_gp_group_assignments')}</div>`;
+  html += `<button type="button" class="gp-preview-close" onclick="_cancelConvGroupPreview('${esc(rid)}')" title="${t('txt_txt_back')}">&times;</button>`;
+  html += `</div>`;
+  html += `<div class="gp-group-preview-grid">`;
+  groups.forEach((g, gi) => {
+    html += `<div class="gp-group-preview-col">`;
+    html += `<div class="gp-group-preview-header">${esc(g.name)} <span class="gp-group-preview-count">(${g.players.length})</span></div>`;
+    g.players.forEach((p, pi) => {
+      html += `<div class="gp-group-preview-player">`;
+      html += `<span class="gp-group-preview-name">${esc(p)}`;
+      if (str && str[p] != null) html += `<span class="gp-group-preview-strength">${str[p]}</span>`;
+      html += `</span>`;
+      if (canAdjustGroups) {
+        html += `<select class="gp-group-preview-move" data-from="${gi}" data-pidx="${pi}" onchange="_moveConvGroupPlayer(this,'${esc(rid)}')">`;
+        html += `<option value="" selected></option>`;
+        groups.forEach((og, ogi) => {
+          if (ogi !== gi) html += `<option value="${ogi}">→ ${esc(og.name)}</option>`;
+        });
+        html += `</select>`;
+      }
+      html += `</div>`;
+    });
+    html += `</div>`;
+  });
+  html += `</div>`;
+  if (canAdjustGroups) {
+    html += `<div class="gp-preview-shuffle-row"><button type="button" class="btn-outline-muted" onclick="_shuffleConvGroups('${esc(rid)}')">🔀 ${t('txt_gp_shuffle')}</button></div>`;
+  }
+  container.innerHTML = html;
+  container.style.display = '';
+
+  if (buttonsEl) {
+    buttonsEl.innerHTML = `<div class="gp-preview-actions">`
+      + `<button type="button" class="btn btn-success" style="padding:0.65rem 1.4rem;font-size:1.05rem" onclick="withLoading(this,()=>_submitConvert('${esc(rid)}'))">🏆 ${t('txt_gp_confirm_create')}</button>`
+      + `</div>`;
+  }
+}
+
+function _moveConvGroupPlayer(selectEl, rid) {
+  const fromGroup = +selectEl.dataset.from;
+  const playerIdx = +selectEl.dataset.pidx;
+  const toGroup = +selectEl.value;
+  if (isNaN(toGroup)) return;
+  const groups = _convGroupPreview.groups;
+  const player = groups[fromGroup].players.splice(playerIdx, 1)[0];
+  groups[toGroup].players.push(player);
+  _renderConvGroupPreview(rid);
+}
+
+function _shuffleConvGroups(rid) {
+  const names = _convGroupPreview.groups.flatMap(g => g.players);
+  const numGroups = _convGroupPreview.groups.length;
+  const groupNames = _convGroupPreview.groups.map(g => g.name);
+  _convGroupPreview.groups = _distributePlayersToGroups(names, numGroups, groupNames, null);
+  _renderConvGroupPreview(rid);
+}
+
+function _cancelConvGroupPreview(rid) {
+  _convGroupPreview = null;
+  const container = document.getElementById('conv-group-preview');
+  const buttonsEl = document.getElementById('conv-create-buttons');
+  if (container) { container.innerHTML = ''; container.style.display = 'none'; }
+  if (buttonsEl) {
+    buttonsEl.innerHTML = `<button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,()=>_previewOrSubmitConvert('${esc(rid)}'))">🏆 ${t('txt_reg_convert_to_tournament')}</button>`;
+  }
+}
+
+async function _submitConvert(rid) {
+  const msg = document.getElementById('conv-msg');
+  try {
+    const r = _regDetails[rid];
+    if (!r) throw new Error('Registration not found');
+    const names = _getConvPlayerNames(rid);
+
+    const body = {
+      tournament_type: _convType,
+      name: document.getElementById('conv-name')?.value || r.name,
+      player_names: names,
+      team_mode: _getConvEffectiveTeamMode(rid),
+      sport: _getRegistrationSport(rid),
+      assign_courts: document.getElementById('conv-assign-courts')?.checked !== false,
+      court_names: [...document.querySelectorAll('.conv-court-input')].map(el => el.value || el.placeholder),
+      public: document.getElementById('conv-public')?.checked !== false,
+    };
+
+    // Team formation
+    if (_usesConvTeamBuilder(rid) && _convTeams.length) {
+      // Read latest team names from inputs
+      document.querySelectorAll('.conv-team-name-input').forEach(inp => {
+        const idx = +inp.dataset.idx;
+        _convTeamNames[idx] = inp.value;
+      });
+      body.teams = _convTeams.filter(t => t.some(Boolean));
+      body.team_names = _convTeamNames;
+      // Include extra team members (not in registrants) in player_names
+      const nameSet = new Set(names);
+      for (const team of body.teams) {
+        for (const m of team) {
+          if (m && !nameSet.has(m)) { names.push(m); nameSet.add(m); }
+        }
+      }
+    }
+
+    // Player strengths
+    const strengths = {};
+    document.querySelectorAll('.conv-strength-input').forEach(inp => {
+      if (inp.value !== '') strengths[inp.dataset.key] = +inp.value;
+    });
+    if (Object.keys(strengths).length) {
+      // For team mode, we need to map team labels back to individual member names
+      if (_usesConvTeamBuilder(rid) && _convTeams.length) {
+        for (let i = 0; i < _convTeams.length; i++) {
+          const teamKey = _convTeamNames[i]?.trim() || _convTeams[i].join(' & ');
+          if (teamKey in strengths) {
+            // Spread team strength equally across members
+            const perMember = strengths[teamKey] / _convTeams[i].length;
+            for (const member of _convTeams[i]) {
+              if (member) body.player_strengths = body.player_strengths || {};
+              body.player_strengths[member] = perMember;
+            }
+          }
+        }
+      } else {
+        body.player_strengths = strengths;
+      }
+    }
+
+    // Type-specific settings
+    if (_convType === 'group_playoff') {
+      body.num_groups = +(document.getElementById('conv-num-groups')?.value || 2);
+      if (!body.team_mode) {
+        const previewGroups = _convGroupPreview?.groups;
+        if (previewGroups) {
+          const tooSmall = previewGroups.find(g => g.players.length < 4);
+          if (tooSmall) throw new Error(`Group '${tooSmall.name}' has only ${tooSmall.players.length} player(s) — individual mode requires at least 4 per group.`);
+        } else if (names.length < 4 * body.num_groups) {
+          throw new Error(t('txt_err_group_too_small', { n: names.length, g: body.num_groups, min: 4 * body.num_groups }));
+        }
+      }
+      // Attach custom group assignments if previewed
+      if (_convGroupPreview) {
+        body.group_assignments = {};
+        for (const g of _convGroupPreview.groups) {
+          body.group_assignments[g.name] = g.players;
+        }
+        _convGroupPreview = null;
+      }
+    } else if (_convType === 'mexicano') {
+      body.total_points_per_match = +(document.getElementById('conv-mex-pts')?.value || 26);
+      const unlimitedBtn = document.getElementById('conv-mex-rounds-toggle')?.querySelector('button');
+      const isUnlimited = unlimitedBtn?.classList.contains('active');
+      body.num_rounds = isUnlimited ? 0 : +(document.getElementById('conv-mex-rounds')?.value || 8);
+      const sg = document.getElementById('conv-mex-skill-gap')?.value?.trim();
+      body.skill_gap = sg === '' || sg == null ? null : +sg;
+      body.win_bonus = +(document.getElementById('conv-mex-win-bonus')?.value || 0);
+      body.strength_weight = +(document.getElementById('conv-mex-strength-weight')?.value || 0);
+      body.loss_discount = +(document.getElementById('conv-mex-loss-discount')?.value || 1);
+      body.balance_tolerance = +(document.getElementById('conv-mex-balance-tol')?.value || 0.2);
+    } else if (_convType === 'playoff') {
+      body.double_elimination = document.getElementById('conv-double-elim')?.checked || false;
+    }
+
+    const res = await api(`/api/registrations/${rid}/convert`, { method: 'POST', body: JSON.stringify(body) });
+    await loadRegistrations();
+    // Refresh the cached registration detail so the user can return to it
+    try {
+      const updated = await api(`/api/registrations/${rid}`);
+      _regDetails[rid] = updated;
+    } catch (_) { /* registration may have auto-closed; not critical */ }
+    openTournament(res.tournament_id, _convType, body.name || r.name);
+  } catch (e) {
+    if (msg) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
+  }
+}
+
+// Legacy stubs — kept so createGP/createMex/createPO don't break if _convertFromRegistration was somehow set
+function _showConvertBanner() {}
 function _cancelConvertMode() {
   _convertFromRegistration = null;
-  for (const mode of ['gp', 'mex', 'po']) {
-    const msg = document.getElementById(`${mode}-msg`);
-    if (msg) { msg.classList.add('hidden'); msg.textContent = ''; }
-  }
-  const lobbyTab = document.getElementById('create-tab-lobby');
-  if (lobbyTab) { lobbyTab.disabled = false; lobbyTab.style.opacity = ''; lobbyTab.style.pointerEvents = ''; }
 }
 
 // ─── Initialisation ───────────────────────────────────────

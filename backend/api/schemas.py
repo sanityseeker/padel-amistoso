@@ -11,6 +11,19 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from ..models import Sport
 
 
+def _normalized_unique_names(values: list[str], field_name: str) -> list[str]:
+    cleaned = [name.strip() for name in values]
+    if any(len(name) == 0 for name in cleaned):
+        raise ValueError(f"{field_name} must not contain empty names")
+    seen: set[str] = set()
+    for name in cleaned:
+        key = name.casefold()
+        if key in seen:
+            raise ValueError(f"{field_name} must not contain duplicates")
+        seen.add(key)
+    return cleaned
+
+
 class CreateGroupPlayoffRequest(BaseModel):
     name: str = Field(default="My Tournament", max_length=255)
     player_names: list[str] = Field(min_length=2, max_length=256)
@@ -19,19 +32,19 @@ class CreateGroupPlayoffRequest(BaseModel):
     court_names: list[str] = Field(default=["Court 1"], max_length=64)
     num_groups: int = Field(default=2, ge=1, le=32)
     group_names: list[str] = Field(default=[], max_length=32)
+    group_assignments: dict[str, list[str]] = Field(default_factory=dict)
     top_per_group: int = Field(default=2, ge=1)
     double_elimination: bool = False
     public: bool = True
     assign_courts: bool = True
+    player_strengths: dict[str, float] = Field(default_factory=dict)
 
     @field_validator("player_names")
     @classmethod
     def at_least_two_players(cls, v: list[str]) -> list[str]:
         if len(v) < 2:
             raise ValueError("Need at least 2 players")
-        if any(len(n.strip()) == 0 for n in v):
-            raise ValueError("Player names must not be empty")
-        return v
+        return _normalized_unique_names(v, "player_names")
 
     @model_validator(mode="after")
     def validate_courts(self) -> "CreateGroupPlayoffRequest":
@@ -55,15 +68,14 @@ class CreateMexicanoRequest(BaseModel):
     balance_tolerance: float = Field(default=0.2, ge=0.0)
     public: bool = True
     assign_courts: bool = True
+    player_strengths: dict[str, float] = Field(default_factory=dict)
 
     @field_validator("player_names")
     @classmethod
     def at_least_two_players(cls, v: list[str]) -> list[str]:
         if len(v) < 2:
             raise ValueError("Need at least 2 entries for Mexicano format")
-        if any(len(n.strip()) == 0 for n in v):
-            raise ValueError("Player names must not be empty")
-        return v
+        return _normalized_unique_names(v, "player_names")
 
     @model_validator(mode="after")
     def validate_player_count_for_mode(self) -> "CreateMexicanoRequest":
@@ -83,15 +95,14 @@ class CreatePlayoffRequest(BaseModel):
     double_elimination: bool = False
     public: bool = True
     assign_courts: bool = True
+    player_strengths: dict[str, float] = Field(default_factory=dict)
 
     @field_validator("participant_names")
     @classmethod
     def at_least_two_participants(cls, v: list[str]) -> list[str]:
         if len(v) < 2:
             raise ValueError("Need at least 2 participants")
-        if any(len(n.strip()) == 0 for n in v):
-            raise ValueError("Participant names must not be empty")
-        return v
+        return _normalized_unique_names(v, "participant_names")
 
     @model_validator(mode="after")
     def validate_courts(self) -> "CreatePlayoffRequest":
@@ -347,6 +358,15 @@ class RegistrantAnswersUpdateIn(BaseModel):
     answers: dict[str, str] = Field(default_factory=dict)
 
 
+class LinkedTournamentOut(BaseModel):
+    """Linked tournament metadata exposed to registration viewers."""
+
+    id: str
+    name: str
+    type: str | None = None
+    finished: bool = False
+
+
 class RegistrationPublicOut(BaseModel):
     """Public information about a registration (no secrets, no join_code value)."""
 
@@ -359,7 +379,10 @@ class RegistrationPublicOut(BaseModel):
     message: str | None = None
     converted: bool = False
     converted_to_tid: str | None = None
+    converted_to_tids: list[str] = Field(default_factory=list)
+    linked_tournaments: list[LinkedTournamentOut] = Field(default_factory=list)
     listed: bool = False
+    archived: bool = False
     sport: str = "padel"
     registrant_count: int = 0
     registrants: list[RegistrantOut] = []
@@ -374,11 +397,15 @@ class RegistrationAdminOut(BaseModel):
     join_code: str | None = None
     questions: list[QuestionDef] = Field(default_factory=list)
     listed: bool = False
+    archived: bool = False
     sport: str = "padel"
     description: str | None = None
     message: str | None = None
     alias: str | None = None
     converted_to_tid: str | None = None
+    converted_to_tids: list[str] = Field(default_factory=list)
+    linked_tournaments: list[LinkedTournamentOut] = Field(default_factory=list)
+    assigned_player_ids: list[str] = Field(default_factory=list)
     created_at: str
     registrants: list[RegistrantAdminOut] = []
 
@@ -402,6 +429,7 @@ class ConvertRegistrationRequest(BaseModel):
     court_names: list[str] = Field(default_factory=lambda: ["Court 1"])
     num_groups: int = Field(default=2, ge=1, le=32)
     group_names: list[str] = []
+    group_assignments: dict[str, list[str]] = Field(default_factory=dict)
     top_per_group: int = Field(default=2, ge=1)
     double_elimination: bool = False
     public: bool = True
@@ -414,3 +442,31 @@ class ConvertRegistrationRequest(BaseModel):
     strength_weight: float = Field(default=0.0, ge=0.0, le=1.0)
     loss_discount: float = Field(default=1.0, ge=0.0, le=1.0)
     balance_tolerance: float = Field(default=0.2, ge=0.0)
+    # Team formation (admin-composed teams from individual registrants)
+    teams: list[list[str]] = Field(default_factory=list)
+    team_names: list[str] = Field(default_factory=list)
+    # Per-player initial strength for seeding
+    player_strengths: dict[str, float] = Field(default_factory=dict)
+
+    @field_validator("player_names")
+    @classmethod
+    def validate_player_names(cls, v: list[str]) -> list[str]:
+        if not v:
+            return v
+        return _normalized_unique_names(v, "player_names")
+
+    @model_validator(mode="after")
+    def validate_teams(self) -> "ConvertRegistrationRequest":
+        if self.teams:
+            if not self.team_mode:
+                raise ValueError("teams requires team_mode=True")
+            # Check no player appears in multiple teams
+            seen: set[str] = set()
+            for team in self.teams:
+                if len(team) < 1:
+                    raise ValueError("Each team must have at least 1 player")
+                for name in team:
+                    if name in seen:
+                        raise ValueError(f"Player '{name}' appears in multiple teams")
+                    seen.add(name)
+        return self

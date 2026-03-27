@@ -35,7 +35,7 @@ from .schemas import (
     StartMexicanoPlayoffsRequest,
     UpdateCourtsRequest,
 )
-from .state import _global_lock, _next_id, _save_tournament, get_tournament_lock
+from .state import allocate_tournament_id, _save_tournament, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["mexicano"])
@@ -66,6 +66,14 @@ async def create_mexicano(req: CreateMexicanoRequest, request: Request, user=Dep
     players = [Player(name=n) for n in req.player_names]
     courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 
+    # Build initial_strength mapping keyed by player id
+    initial_strength: dict[str, float] | None = None
+    if req.player_strengths:
+        name_to_id = {p.name: p.id for p in players}
+        initial_strength = {
+            name_to_id[name]: score for name, score in req.player_strengths.items() if name in name_to_id
+        } or None
+
     try:
         t = MexicanoTournament(
             players=players,
@@ -78,25 +86,25 @@ async def create_mexicano(req: CreateMexicanoRequest, request: Request, user=Dep
             loss_discount=req.loss_discount,
             balance_tolerance=req.balance_tolerance,
             team_mode=req.team_mode,
+            initial_strength=initial_strength,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
 
     t.generate_next_round()
 
-    async with _global_lock:
-        tid = _next_id()
-        _store_tournament(
-            tid,
-            name=req.name,
-            tournament_type=TournamentType.MEXICANO.value,
-            tournament=t,
-            owner=user.username,
-            public=req.public,
-            sport=req.sport.value,
-            assign_courts=req.assign_courts,
-        )
-        create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in players])
+    tid = await allocate_tournament_id()
+    _store_tournament(
+        tid,
+        name=req.name,
+        tournament_type=TournamentType.MEXICANO.value,
+        tournament=t,
+        owner=user.username,
+        public=req.public,
+        sport=req.sport.value,
+        assign_courts=req.assign_courts,
+    )
+    create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in players])
     return {"id": tid, "current_round": t.current_round}
 
 

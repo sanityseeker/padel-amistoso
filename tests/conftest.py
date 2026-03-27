@@ -51,6 +51,8 @@ def _clean_state(tmp_path):
     mex_mod._create_rate_limiter.clear()
     po_mod._create_rate_limiter.clear()
     reg_mod._create_rate_limiter.clear()
+    reg_mod._public_register_rate_limiter.clear()
+    reg_mod._public_passphrase_rate_limiter.clear()
     auth_routes_mod._login_rate_limiter.clear()
 
     # Disable persistence for the duration of the test.
@@ -67,15 +69,23 @@ def _clean_state(tmp_path):
     orig_lookup_passphrase = ps_mod.lookup_by_passphrase
     orig_lookup_token = ps_mod.lookup_by_token
     orig_regenerate = ps_mod.regenerate_secret
+    orig_update_contact = ps_mod.update_contact
+    orig_get_contacts = ps_mod.get_contacts_for_tournament
 
-    def _mock_create(tournament_id, players):
+    def _mock_create(tournament_id, players, contacts=None):
         from backend.tournaments.player_secrets import generate_secrets_for_players
 
         player_ids = [p["id"] for p in players]
         secrets = generate_secrets_for_players(player_ids)
         name_map = {p["id"]: p["name"] for p in players}
+        contact_map = contacts or {}
         _test_secrets[tournament_id] = {
-            pid: {"name": name_map.get(pid, ""), "passphrase": sec.passphrase, "token": sec.token}
+            pid: {
+                "name": name_map.get(pid, ""),
+                "passphrase": sec.passphrase,
+                "token": sec.token,
+                "contact": contact_map.get(pid, ""),
+            }
             for pid, sec in secrets.items()
         }
         return secrets
@@ -84,12 +94,37 @@ def _clean_state(tmp_path):
         _test_secrets.pop(tournament_id, None)
 
     def _mock_get(tournament_id):
-        return _test_secrets.get(tournament_id, {})
+        raw = _test_secrets.get(tournament_id, {})
+        # Ensure all entries have a contact field (backward compat with any
+        # secrets created before the contact field was introduced).
+        return {pid: {**sec, "contact": sec.get("contact", "")} for pid, sec in raw.items()}
+
+    def _mock_update_contact(tournament_id, player_id, contact):
+        if tournament_id not in _test_secrets or player_id not in _test_secrets[tournament_id]:
+            return False
+        _test_secrets[tournament_id][player_id]["contact"] = contact
+        return True
+
+    def _mock_get_contacts(tournament_id):
+        return {pid: sec.get("contact", "") for pid, sec in _test_secrets.get(tournament_id, {}).items()}
 
     def _mock_lookup_passphrase(tournament_id, passphrase):
         for pid, sec in _test_secrets.get(tournament_id, {}).items():
             if sec["passphrase"] == passphrase:
                 return {"player_id": pid, "player_name": sec["name"]}
+        # Also check the test DB for secrets written directly (e.g. conversion
+        # endpoint writes via conn.executemany).  DB_PATH is already redirected
+        # to the temp test DB so this never touches the prod database.
+        try:
+            with db_mod.get_db() as conn:
+                row = conn.execute(
+                    "SELECT player_id, player_name FROM player_secrets WHERE tournament_id = ? AND passphrase = ?",
+                    (tournament_id, passphrase),
+                ).fetchone()
+                if row:
+                    return {"player_id": row["player_id"], "player_name": row["player_name"]}
+        except Exception:
+            pass
         return None
 
     def _mock_lookup_token(token):
@@ -97,6 +132,21 @@ def _clean_state(tmp_path):
             for pid, sec in players.items():
                 if sec["token"] == token:
                     return {"tournament_id": tid, "player_id": pid, "player_name": sec["name"]}
+        # Also check the test DB (DB_PATH is the temp test DB, never prod).
+        try:
+            with db_mod.get_db() as conn:
+                row = conn.execute(
+                    "SELECT tournament_id, player_id, player_name FROM player_secrets WHERE token = ?",
+                    (token,),
+                ).fetchone()
+                if row:
+                    return {
+                        "tournament_id": row["tournament_id"],
+                        "player_id": row["player_id"],
+                        "player_name": row["player_name"],
+                    }
+        except Exception:
+            pass
         return None
 
     def _mock_regenerate(tournament_id, player_id):
@@ -115,6 +165,8 @@ def _clean_state(tmp_path):
     ps_mod.lookup_by_passphrase = _mock_lookup_passphrase
     ps_mod.lookup_by_token = _mock_lookup_token
     ps_mod.regenerate_secret = _mock_regenerate
+    ps_mod.update_contact = _mock_update_contact
+    ps_mod.get_contacts_for_tournament = _mock_get_contacts
 
     # Also patch the local references in route modules (created by
     # ``from .player_secret_store import func``).
@@ -127,6 +179,8 @@ def _clean_state(tmp_path):
         "rpa_lookup_pp": rpa_mod.lookup_by_passphrase,
         "rpa_lookup_tok": rpa_mod.lookup_by_token,
         "rpa_regenerate": rpa_mod.regenerate_secret,
+        "rpa_update_contact": rpa_mod.update_contact,
+        "rpa_get_contacts": rpa_mod.get_contacts_for_tournament,
     }
     gp_mod.create_secrets_for_tournament = _mock_create
     mex_mod.create_secrets_for_tournament = _mock_create
@@ -136,6 +190,8 @@ def _clean_state(tmp_path):
     rpa_mod.lookup_by_passphrase = _mock_lookup_passphrase
     rpa_mod.lookup_by_token = _mock_lookup_token
     rpa_mod.regenerate_secret = _mock_regenerate
+    rpa_mod.update_contact = _mock_update_contact
+    rpa_mod.get_contacts_for_tournament = _mock_get_contacts
 
     # Reset users and seed test accounts (use pre-computed hashes to avoid
     # re-running bcrypt for every single test).
@@ -161,6 +217,8 @@ def _clean_state(tmp_path):
     mex_mod._create_rate_limiter.clear()
     po_mod._create_rate_limiter.clear()
     reg_mod._create_rate_limiter.clear()
+    reg_mod._public_register_rate_limiter.clear()
+    reg_mod._public_passphrase_rate_limiter.clear()
     auth_routes_mod._login_rate_limiter.clear()
     state_mod._save_tournament = orig_save_tournament
     state_mod._delete_tournament = orig_delete_tournament
@@ -174,6 +232,8 @@ def _clean_state(tmp_path):
     ps_mod.lookup_by_passphrase = orig_lookup_passphrase
     ps_mod.lookup_by_token = orig_lookup_token
     ps_mod.regenerate_secret = orig_regenerate
+    ps_mod.update_contact = orig_update_contact
+    ps_mod.get_contacts_for_tournament = orig_get_contacts
 
     gp_mod.create_secrets_for_tournament = _orig_route_refs["gp_create"]
     mex_mod.create_secrets_for_tournament = _orig_route_refs["mex_create"]
@@ -183,6 +243,8 @@ def _clean_state(tmp_path):
     rpa_mod.lookup_by_passphrase = _orig_route_refs["rpa_lookup_pp"]
     rpa_mod.lookup_by_token = _orig_route_refs["rpa_lookup_tok"]
     rpa_mod.regenerate_secret = _orig_route_refs["rpa_regenerate"]
+    rpa_mod.update_contact = _orig_route_refs["rpa_update_contact"]
+    rpa_mod.get_contacts_for_tournament = _orig_route_refs["rpa_get_contacts"]
 
     user_store._users.clear()
     user_store._save_user = orig_save_user

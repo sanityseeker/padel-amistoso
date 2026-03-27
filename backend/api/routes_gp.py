@@ -32,8 +32,9 @@ from .schemas import (
     RecordScoreRequest,
     RecordTennisScoreRequest,
     StartGroupPlayoffsRequest,
+    UpdateCourtsRequest,
 )
-from .state import _global_lock, _next_id, _save_tournament, get_tournament_lock
+from .state import allocate_tournament_id, _save_tournament, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["group-playoff"])
@@ -66,6 +67,14 @@ async def create_group_playoff(
     players = [Player(name=n) for n in req.player_names]
     courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 
+    # Build initial_strength mapping keyed by player id
+    initial_strength: dict[str, float] | None = None
+    if req.player_strengths:
+        name_to_id = {p.name: p.id for p in players}
+        initial_strength = {
+            name_to_id[name]: score for name, score in req.player_strengths.items() if name in name_to_id
+        } or None
+
     t = GroupPlayoffTournament(
         players=players,
         num_groups=req.num_groups,
@@ -74,22 +83,26 @@ async def create_group_playoff(
         double_elimination=req.double_elimination,
         team_mode=req.team_mode,
         group_names=req.group_names,
+        initial_strength=initial_strength,
+        group_assignments=req.group_assignments,
     )
-    t.generate()
+    try:
+        t.generate()
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
-    async with _global_lock:
-        tid = _next_id()
-        _store_tournament(
-            tid,
-            name=req.name,
-            tournament_type=TournamentType.GROUP_PLAYOFF.value,
-            tournament=t,
-            owner=user.username,
-            public=req.public,
-            sport=req.sport.value,
-            assign_courts=req.assign_courts,
-        )
-        create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in players])
+    tid = await allocate_tournament_id()
+    _store_tournament(
+        tid,
+        name=req.name,
+        tournament_type=TournamentType.GROUP_PLAYOFF.value,
+        tournament=t,
+        owner=user.username,
+        public=req.public,
+        sport=req.sport.value,
+        assign_courts=req.assign_courts,
+    )
+    create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in players])
     return {"id": tid, "phase": t.phase}
 
 
@@ -103,7 +116,9 @@ async def gp_status(tid: str) -> dict:
         "num_groups": len(t.groups),
         "team_mode": t.team_mode,
         "assign_courts": data.get("assign_courts", True),
+        "courts": [{"id": c.id, "name": c.name} for c in t.courts],
         "champion": [p.name for p in t.champion()] if t.champion() else None,
+        "team_roster": getattr(t, "team_roster", None) or {},
     }
 
 
@@ -172,6 +187,20 @@ async def gp_record_group_tennis(
         "sets": [list(s) for s in sets_tuples],
         "third_set_decided": third_set_decided,
     }
+
+
+@router.patch("/{tid}/gp/courts")
+async def gp_update_courts(tid: str, req: UpdateCourtsRequest, user=Depends(get_current_user)) -> dict:
+    """Replace the court list for the group-playoff tournament."""
+    _require_owner_or_admin(tid, user)
+    async with get_tournament_lock(tid):
+        data = _get_tournament(tid, _GP)
+        t: GroupPlayoffTournament = data["tournament"]
+        courts = [Court(name=n) for n in req.court_names]
+        t.update_courts(courts)
+        data["assign_courts"] = len(courts) > 0
+        _save_tournament(tid)
+    return {"courts": [{"id": c.id, "name": c.name} for c in t.courts]}
 
 
 @router.post("/{tid}/gp/next-group-round")

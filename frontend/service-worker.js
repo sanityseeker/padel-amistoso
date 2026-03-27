@@ -1,6 +1,10 @@
 // Service worker — optimal caching for performance + freshness.
-const CACHE_NAME = 'amistoso-v6';
-const STATIC_ASSETS = ['/shared.js', '/auth.js', '/i18n.js', '/manifest.json'];
+const CACHE_NAME = 'amistoso-v18';
+const STATIC_ASSETS = [
+  '/shared.js', '/auth.js', '/i18n.js', '/manifest.json',
+  '/admin.js', '/tv.js', '/register.js',
+  '/admin.css', '/tv.css', '/register.css',
+];
 const SHELL = ['/'];
 
 self.addEventListener('install', (event) => {

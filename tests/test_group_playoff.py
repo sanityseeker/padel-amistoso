@@ -678,3 +678,42 @@ class TestGroupDiversitySeeding:
         pairs = self._predetermined_group_pairs(t)
         for g1, g2 in pairs:
             assert g1 != g2, f"Predetermined matchup pairs two teams from the same group '{g1}'"
+
+
+class TestUpdateCourts:
+    """Tests for GroupPlayoffTournament.update_courts."""
+
+    def test_update_courts_replaces_court_list(self):
+        """Updating courts replaces the internal court list."""
+        players = _make_players(6)
+        courts = _make_courts(2)
+        t = GroupPlayoffTournament(players, num_groups=2, courts=courts, team_mode=True)
+        t.generate()
+
+        new_courts = [Court(name="X1"), Court(name="X2"), Court(name="X3")]
+        t.update_courts(new_courts)
+        assert len(t.courts) == 3
+        assert [c.name for c in t.courts] == ["X1", "X2", "X3"]
+
+    def test_update_courts_reassigns_group_matches(self):
+        """After updating courts, existing group matches get reassigned."""
+        players = _make_players(6)
+        courts = _make_courts(1)
+        t = GroupPlayoffTournament(players, num_groups=2, courts=courts, team_mode=True)
+        t.generate()
+
+        new_courts = [Court(name="NewCourt")]
+        t.update_courts(new_courts)
+        for m in t.all_group_matches():
+            if m.court is not None:
+                assert m.court.name == "NewCourt"
+
+    def test_update_courts_empty_clears_assignments(self):
+        """Passing an empty court list clears all court assignments."""
+        players = _make_players(6)
+        courts = _make_courts(2)
+        t = GroupPlayoffTournament(players, num_groups=2, courts=courts, team_mode=True)
+        t.generate()
+
+        t.update_courts([])
+        assert t.courts == []

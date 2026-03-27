@@ -693,3 +693,180 @@ class TestSecretsLifecycle:
         secrets = _get_secrets(client, tid, auth_headers)
         passphrases = [s["passphrase"] for s in secrets.values()]
         assert len(set(passphrases)) == len(passphrases)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Contact field: admin update endpoint
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestUpdatePlayerContact:
+    """PUT /{tid}/player-secrets/{pid}/contact"""
+
+    def test_owner_can_set_contact(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid = next(iter(secrets.keys()))
+
+        r = client.put(
+            f"/api/tournaments/{tid}/player-secrets/{pid}/contact",
+            json={"contact": "+34 600 123 456"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        assert r.json()["contact"] == "+34 600 123 456"
+        assert r.json()["player_id"] == pid
+
+    def test_contact_is_returned_in_secrets_list(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid = next(iter(secrets.keys()))
+
+        client.put(
+            f"/api/tournaments/{tid}/player-secrets/{pid}/contact",
+            json={"contact": "test@example.com"},
+            headers=auth_headers,
+        )
+
+        updated = _get_secrets(client, tid, auth_headers)
+        assert updated[pid]["contact"] == "test@example.com"
+
+    def test_contact_defaults_to_empty(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        for sec in secrets.values():
+            assert sec.get("contact", "") == ""
+
+    def test_non_owner_returns_403(self, client, auth_headers, bob_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid = next(iter(secrets.keys()))
+
+        r = client.put(
+            f"/api/tournaments/{tid}/player-secrets/{pid}/contact",
+            json={"contact": "hacker"},
+            headers=bob_headers,
+        )
+        assert r.status_code == 403
+
+    def test_unauthenticated_returns_401(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid = next(iter(secrets.keys()))
+
+        r = client.put(
+            f"/api/tournaments/{tid}/player-secrets/{pid}/contact",
+            json={"contact": "test"},
+        )
+        assert r.status_code == 401
+
+    def test_nonexistent_player_returns_404(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        r = client.put(
+            f"/api/tournaments/{tid}/player-secrets/no-such-id/contact",
+            json={"contact": "test"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 404
+
+    def test_can_clear_contact(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid = next(iter(secrets.keys()))
+
+        client.put(
+            f"/api/tournaments/{tid}/player-secrets/{pid}/contact",
+            json={"contact": "to-be-cleared"},
+            headers=auth_headers,
+        )
+        r = client.put(
+            f"/api/tournaments/{tid}/player-secrets/{pid}/contact",
+            json={"contact": ""},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        updated = _get_secrets(client, tid, auth_headers)
+        assert updated[pid]["contact"] == ""
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Opponents endpoint
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestPlayerOpponentsEndpoint:
+    """GET /{tid}/player/opponents — player-JWT protected."""
+
+    def _setup_and_get_first_player(self, client, auth_headers, create_fn) -> tuple[str, str, str, dict]:
+        """Create a tournament, set contacts, log in as first player.
+
+        Returns (tid, pid, player_jwt_headers, secrets).
+        """
+        tid = create_fn(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid, sec = next(iter(secrets.items()))
+        # Give all players a contact so we can verify it's returned
+        for p_id in secrets:
+            client.put(
+                f"/api/tournaments/{tid}/player-secrets/{p_id}/contact",
+                json={"contact": f"contact-of-{p_id}"},
+                headers=auth_headers,
+            )
+        phdr = _player_headers(client, tid, sec["passphrase"])
+        return tid, pid, phdr, secrets
+
+    @pytest.mark.parametrize("create_fn", [_create_gp, _create_mex])
+    def test_opponents_returns_200_for_logged_in_player(self, client, auth_headers, create_fn):
+        tid, pid, phdr, _ = self._setup_and_get_first_player(client, auth_headers, create_fn)
+        r = client.get(f"/api/tournaments/{tid}/player/opponents", headers=phdr)
+        assert r.status_code == 200
+        assert "opponents" in r.json()
+
+    @pytest.mark.parametrize("create_fn", [_create_gp, _create_mex])
+    def test_opponents_does_not_include_self(self, client, auth_headers, create_fn):
+        tid, pid, phdr, _ = self._setup_and_get_first_player(client, auth_headers, create_fn)
+        r = client.get(f"/api/tournaments/{tid}/player/opponents", headers=phdr)
+        assert r.status_code == 200
+        for opp in r.json()["opponents"]:
+            assert opp["player_id"] != pid, "Player should not appear as own opponent"
+
+    @pytest.mark.parametrize("create_fn", [_create_gp, _create_mex])
+    def test_opponents_have_contact_field(self, client, auth_headers, create_fn):
+        tid, pid, phdr, _ = self._setup_and_get_first_player(client, auth_headers, create_fn)
+        r = client.get(f"/api/tournaments/{tid}/player/opponents", headers=phdr)
+        assert r.status_code == 200
+        for opp in r.json()["opponents"]:
+            assert "contact" in opp
+            assert opp["contact"] == f"contact-of-{opp['player_id']}"
+
+    @pytest.mark.parametrize("create_fn", [_create_gp, _create_mex])
+    def test_opponents_have_required_fields(self, client, auth_headers, create_fn):
+        tid, pid, phdr, _ = self._setup_and_get_first_player(client, auth_headers, create_fn)
+        r = client.get(f"/api/tournaments/{tid}/player/opponents", headers=phdr)
+        for opp in r.json()["opponents"]:
+            assert "player_id" in opp
+            assert "name" in opp
+            assert "contact" in opp
+            assert "match_id" in opp
+            assert "round_number" in opp
+
+    def test_unauthenticated_returns_401(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        r = client.get(f"/api/tournaments/{tid}/player/opponents")
+        assert r.status_code == 401
+
+    def test_admin_jwt_returns_401(self, client, auth_headers):
+        """Admin tokens are not player tokens."""
+        tid = _create_gp(client, auth_headers)
+        r = client.get(f"/api/tournaments/{tid}/player/opponents", headers=auth_headers)
+        assert r.status_code == 401
+
+    def test_wrong_tournament_jwt_returns_403(self, client, auth_headers):
+        tid_a = _create_gp(client, auth_headers)
+        tid_b = _create_gp(client, auth_headers)
+        secrets_a = _get_secrets(client, tid_a, auth_headers)
+        sec_a = next(iter(secrets_a.values()))
+        phdr = _player_headers(client, tid_a, sec_a["passphrase"])
+        # Use token from tid_a to query tid_b
+        r = client.get(f"/api/tournaments/{tid_b}/player/opponents", headers=phdr)
+        assert r.status_code == 403

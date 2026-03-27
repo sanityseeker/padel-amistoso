@@ -16,15 +16,17 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from ..auth.deps import get_current_user
+from ..auth.deps import PlayerIdentity, get_current_player, get_current_user
 from ..auth.models import User
 from ..auth.security import create_player_token
 from .helpers import _require_owner_or_admin
 from .player_secret_store import (
+    get_contacts_for_tournament,
     get_secrets_for_tournament,
     lookup_by_passphrase,
     lookup_by_token,
     regenerate_secret,
+    update_contact,
 )
 from .state import _tournaments
 
@@ -101,6 +103,12 @@ class PlayerAuthResponse(BaseModel):
     player_id: str
     player_name: str
     tournament_id: str
+
+
+class PlayerContactRequest(BaseModel):
+    """Payload for updating a player's contact string."""
+
+    contact: str = Field(default="", max_length=256)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -212,3 +220,96 @@ async def player_qr_code(
     qr.save(buf, kind="png", scale=6, border=2)
     buf.seek(0)
     return StreamingResponse(buf, media_type="image/png")
+
+
+@router.put("/{tid}/player-secrets/{player_id}/contact")
+async def update_player_contact(
+    tid: str,
+    player_id: str,
+    req: PlayerContactRequest,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Set the contact string for a player (organizer/admin only)."""
+    _require_owner_or_admin(tid, user)
+    updated = update_contact(tid, player_id, req.contact)
+    if not updated:
+        raise HTTPException(404, "Player not found in this tournament")
+    return {"player_id": player_id, "contact": req.contact}
+
+
+@router.get("/{tid}/player/opponents")
+async def get_player_opponents(
+    tid: str,
+    player: PlayerIdentity | None = Depends(get_current_player),
+) -> dict:
+    """Return upcoming matches and co-players' contact info for the logged-in player.
+
+    Requires a valid player JWT.  Returns all future (non-completed) matches
+    that involve the authenticated player along with the name and contact of
+    every other player in those matches.
+    """
+    if not isinstance(player, PlayerIdentity):
+        raise HTTPException(401, "Player authentication required")
+    if player.tournament_id != tid:
+        raise HTTPException(403, "Token is for a different tournament")
+    if tid not in _tournaments:
+        raise HTTPException(404, "Tournament not found")
+
+    tournament_data = _tournaments[tid]
+    t = tournament_data["tournament"]
+    t_type = tournament_data["type"]
+    player_id = player.player_id
+
+    # Build set of composite team PIDs that this player belongs to (GP team mode).
+    team_roster: dict[str, list[str]] = getattr(t, "team_roster", {}) or {}
+    player_teams: set[str] = {team_pid for team_pid, members in team_roster.items() if player_id in members}
+
+    def _player_in_side(side: list) -> bool:
+        for p in side:
+            if p.id == player_id or p.id in player_teams:
+                return True
+        return False
+
+    # Collect all future non-completed matches with full teams.
+    pending_matches: list = []
+    if t_type == "mexicano":
+        pending_matches = [m for m in t.pending_matches() if m.team1 and m.team2]
+        pending_matches += [m for m in t.pending_playoff_matches() if m.team1 and m.team2]
+    elif t_type == "group_playoff":
+        pending_matches = [m for m in t.pending_group_matches() if m.team1 and m.team2]
+        pending_matches += [m for m in t.pending_playoff_matches() if m.team1 and m.team2]
+    elif t_type == "playoff":
+        pending_matches = [m for m in t.pending_matches() if m.team1 and m.team2]
+
+    my_matches = [m for m in pending_matches if _player_in_side(m.team1) or _player_in_side(m.team2)]
+
+    contacts = get_contacts_for_tournament(tid)
+    secrets = get_secrets_for_tournament(tid)
+
+    result: list[dict] = []
+    seen: set[tuple[str, str]] = set()  # (player_id, match_id) dedup
+
+    for m in my_matches:
+        for p in m.team1 + m.team2:
+            if p.id == player_id or p.id in player_teams:
+                continue
+            # Expand composite team to its individual member IDs.
+            members = team_roster.get(p.id)
+            ids_to_add = members if members else [p.id]
+            for pid in ids_to_add:
+                key = (pid, m.id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                sec = secrets.get(pid, {})
+                result.append(
+                    {
+                        "player_id": pid,
+                        "name": sec.get("name") or p.name,
+                        "contact": contacts.get(pid, ""),
+                        "match_id": m.id,
+                        "round_number": getattr(m, "round_number", 0),
+                    }
+                )
+
+    return {"opponents": result}

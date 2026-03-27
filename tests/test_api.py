@@ -76,6 +76,14 @@ class TestGroupPlayoffAPI:
         r = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers)
         assert r.status_code == 200
 
+    def test_create_rejects_duplicate_player_names(self, client, auth_headers):
+        body = {
+            **self.GP_BODY,
+            "player_names": ["A", "A", "B", "C"],
+        }
+        r = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers)
+        assert r.status_code == 422
+
     def test_appears_in_list(self, client, auth_headers):
         self._create(client, auth_headers)
         r = client.get("/api/tournaments")
@@ -88,6 +96,30 @@ class TestGroupPlayoffAPI:
         assert r.status_code == 200
         assert r.json()["phase"] == "groups"
         assert r.json()["num_groups"] == 2
+
+    def test_status_includes_courts(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        r = client.get(f"/api/tournaments/{tid}/gp/status")
+        assert r.status_code == 200
+        courts = r.json()["courts"]
+        assert isinstance(courts, list)
+        assert len(courts) == 2
+        assert courts[0]["name"] == "Court 1"
+        assert courts[1]["name"] == "Court 2"
+
+    def test_update_courts(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        r = client.patch(
+            f"/api/tournaments/{tid}/gp/courts",
+            json={"court_names": ["Alpha", "Beta", "Gamma"]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert [c["name"] for c in data["courts"]] == ["Alpha", "Beta", "Gamma"]
+        # Confirm status reflects the new courts
+        status = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert [c["name"] for c in status["courts"]] == ["Alpha", "Beta", "Gamma"]
 
     def test_groups_endpoint(self, client, auth_headers):
         tid = self._create(client, auth_headers)
@@ -206,6 +238,11 @@ class TestMexicanoAPI:
         body = {**self.MEX_BODY, "player_names": ["A", "B", "C", "D", "E"]}
         r = client.post("/api/tournaments/mexicano", json=body, headers=auth_headers)
         assert r.status_code == 200
+
+    def test_create_rejects_duplicate_player_names(self, client, auth_headers):
+        body = {**self.MEX_BODY, "player_names": ["A", "A", "B", "C"]}
+        r = client.post("/api/tournaments/mexicano", json=body, headers=auth_headers)
+        assert r.status_code == 422
 
     def test_status_shows_leaderboard(self, client, auth_headers):
         tid = self._create(client, auth_headers)
@@ -423,6 +460,11 @@ class TestPlayoffAPI:
         r = client.post("/api/tournaments/playoff", json=body, headers=auth_headers)
         assert r.status_code == 422
 
+    def test_create_rejects_duplicate_participant_names(self, client, auth_headers):
+        body = {**self.PO_BODY, "participant_names": ["Alice", "Alice", "Bob", "Carol"]}
+        r = client.post("/api/tournaments/playoff", json=body, headers=auth_headers)
+        assert r.status_code == 422
+
     def test_nonexistent_tournament(self, client):
         r = client.get("/api/tournaments/fake/po/status")
         assert r.status_code == 404
@@ -494,6 +536,27 @@ class TestRegistrationAPI:
         assert r.status_code == 200
         assert len(r.json()) == 0
 
+    def test_list_excludes_archived_by_default_and_can_include(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers, name="Archive Me", listed=True)
+        client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+        client.post(f"/api/registrations/{rid}/register", json={"player_name": "Bob"})
+        conv = client.post(
+            f"/api/registrations/{rid}/convert",
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            headers=auth_headers,
+        )
+        assert conv.status_code == 200
+        assert conv.json()["all_assigned"] is True
+
+        listed_default = client.get("/api/registrations", headers=auth_headers)
+        assert listed_default.status_code == 200
+        assert all(reg["id"] != rid for reg in listed_default.json())
+
+        listed_all = client.get("/api/registrations?include_archived=1", headers=auth_headers)
+        assert listed_all.status_code == 200
+        archived_reg = next(reg for reg in listed_all.json() if reg["id"] == rid)
+        assert archived_reg["archived"] is True
+
     def test_public_listing_empty(self, client):
         r = client.get("/api/registrations/public")
         assert r.status_code == 200
@@ -515,6 +578,9 @@ class TestRegistrationAPI:
         data = r.json()
         assert data["converted"] is True
         assert data["converted_to_tid"] == tid
+        assert data["linked_tournaments"][0]["id"] == tid
+        assert data["linked_tournaments"][0]["name"]
+        assert data["linked_tournaments"][0]["finished"] is False
 
     def test_public_endpoint_listed_field(self, client, auth_headers):
         rid = self._create_registration(client, auth_headers, listed=True)
@@ -531,7 +597,11 @@ class TestRegistrationAPI:
 
         pub = client.get(f"/api/registrations/{rid}/public")
         assert pub.json()["registrant_count"] == 1
-        assert pub.json()["registrants"][0]["player_name"] == "Alice"
+        assert pub.json()["registrants"] == []  # player list not exposed publicly
+
+        # admin endpoint still returns full registrant data
+        admin = client.get(f"/api/registrations/{rid}", headers=auth_headers)
+        assert admin.json()["registrants"][0]["player_name"] == "Alice"
 
     def test_register_duplicate_name_rejected(self, client, auth_headers):
         rid = self._create_registration(client, auth_headers)
@@ -607,9 +677,14 @@ class TestRegistrationAPI:
         assert upd.status_code == 200
         assert upd.json()["answers"] == {"q0": "advanced", "q1": "right"}
 
+        # public endpoint no longer exposes answers or registrant list
         pub = client.get(f"/api/registrations/{rid}/public")
         assert pub.status_code == 200
-        assert pub.json()["registrants"][0]["answers"] == {"q0": "advanced", "q1": "right"}
+        assert pub.json()["registrants"] == []
+
+        # admin endpoint still returns full answers
+        admin = client.get(f"/api/registrations/{rid}", headers=auth_headers)
+        assert admin.json()["registrants"][0]["answers"] == {"q0": "advanced", "q1": "right"}
 
     def test_player_update_answers_requires_required_questions(self, client, auth_headers):
         rid = self._create_registration(
@@ -777,3 +852,140 @@ class TestRegistrationAPI:
             headers=auth_headers,
         )
         assert r.status_code == 200
+
+
+# ── Initial Strength in Create Endpoints ──────────────────
+
+
+class TestCreateWithStrength:
+    """Verify the create endpoints accept player_strengths and apply initial seeding."""
+
+    def test_gp_create_with_strengths(self, client, auth_headers):
+        body = {
+            "name": "Strength GP",
+            "player_names": ["A", "B", "C", "D", "E", "F", "G", "H"],
+            "court_names": ["Court 1"],
+            "num_groups": 2,
+            "player_strengths": {"A": 100, "C": 80},
+        }
+        r = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers)
+        assert r.status_code == 200
+        tid = r.json()["id"]
+        standings = client.get(f"/api/tournaments/{tid}/gp/groups").json()["standings"]
+        # Strength-based snake draft: A (100) and C (80) should land in different groups
+        group_names = list(standings.keys())
+        g1_names = {p["player"] for p in standings[group_names[0]]}
+        g2_names = {p["player"] for p in standings[group_names[1]]}
+        assert ("A" in g1_names and "C" in g2_names) or ("C" in g1_names and "A" in g2_names)
+
+    def test_mex_create_with_strengths(self, client, auth_headers):
+        body = {
+            "name": "Strength Mex",
+            "player_names": ["A", "B", "C", "D"],
+            "court_names": ["Court 1"],
+            "player_strengths": {"A": 50, "B": 40, "C": 30, "D": 20},
+        }
+        r = client.post("/api/tournaments/mexicano", json=body, headers=auth_headers)
+        assert r.status_code == 200
+        tid = r.json()["id"]
+        status = client.get(f"/api/tournaments/{tid}/mex/status").json()
+        # Leaderboard should reflect initial strengths (estimated_points) before any matches
+        board = status["leaderboard"]
+        assert board[0]["player"] == "A"
+        assert board[-1]["player"] == "D"
+
+    def test_po_create_with_strengths(self, client, auth_headers):
+        body = {
+            "name": "Strength PO",
+            "participant_names": ["Weak", "Mid", "Strong", "Top"],
+            "court_names": ["Court 1"],
+            "player_strengths": {"Top": 100, "Strong": 75, "Mid": 50, "Weak": 25},
+        }
+        r = client.post("/api/tournaments/playoff", json=body, headers=auth_headers)
+        assert r.status_code == 200
+        tid = r.json()["id"]
+        matches = client.get(f"/api/tournaments/{tid}/po/playoffs").json()["matches"]
+        # Top-seeded (Top) should face lowest-seeded (Weak) in the semi-final
+        semis = [m for m in matches if m["round_number"] == 1]
+        top_match = [m for m in semis if "Top" in m["team1"] or "Top" in m["team2"]][0]
+        opponents = top_match["team1"] + top_match["team2"]
+        assert "Weak" in opponents
+
+    def test_create_without_strengths_still_works(self, client, auth_headers):
+        body = {
+            "name": "No Strength GP",
+            "player_names": ["A", "B", "C", "D", "E", "F", "G", "H"],
+            "court_names": ["Court 1"],
+            "num_groups": 2,
+        }
+        r = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers)
+        assert r.status_code == 200
+
+
+class TestGroupAssignments:
+    """Verify custom group_assignments override auto-distribution."""
+
+    def test_gp_custom_group_assignments(self, client, auth_headers):
+        body = {
+            "name": "Custom Groups",
+            "player_names": ["A", "B", "C", "D", "E", "F", "G", "H"],
+            "court_names": ["Court 1"],
+            "num_groups": 2,
+            "group_assignments": {
+                "X": ["A", "B", "C", "D"],
+                "Y": ["E", "F", "G", "H"],
+            },
+        }
+        r = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers)
+        assert r.status_code == 200
+        tid = r.json()["id"]
+        standings = client.get(f"/api/tournaments/{tid}/gp/groups").json()["standings"]
+        assert "X" in standings and "Y" in standings
+        x_names = {p["player"] for p in standings["X"]}
+        y_names = {p["player"] for p in standings["Y"]}
+        assert x_names == {"A", "B", "C", "D"}
+        assert y_names == {"E", "F", "G", "H"}
+
+    def test_gp_custom_groups_with_strengths(self, client, auth_headers):
+        """Custom groups should take precedence over strength-based snake draft."""
+        body = {
+            "name": "Custom Over Strength",
+            "player_names": ["A", "B", "C", "D", "E", "F", "G", "H"],
+            "court_names": ["Court 1"],
+            "num_groups": 2,
+            "player_strengths": {
+                "A": 100,
+                "B": 95,
+                "C": 90,
+                "D": 85,
+                "E": 80,
+                "F": 75,
+                "G": 70,
+                "H": 65,
+            },
+            "group_assignments": {
+                "G1": ["A", "B", "C", "D"],
+                "G2": ["E", "F", "G", "H"],
+            },
+        }
+        r = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers)
+        assert r.status_code == 200
+        tid = r.json()["id"]
+        standings = client.get(f"/api/tournaments/{tid}/gp/groups").json()["standings"]
+        g1_names = {p["player"] for p in standings["G1"]}
+        g2_names = {p["player"] for p in standings["G2"]}
+        assert g1_names == {"A", "B", "C", "D"}
+        assert g2_names == {"E", "F", "G", "H"}
+
+    def test_gp_without_group_assignments_still_works(self, client, auth_headers):
+        body = {
+            "name": "Auto Groups",
+            "player_names": ["A", "B", "C", "D", "E", "F", "G", "H"],
+            "court_names": ["Court 1"],
+            "num_groups": 2,
+        }
+        r = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers)
+        assert r.status_code == 200
+        tid = r.json()["id"]
+        standings = client.get(f"/api/tournaments/{tid}/gp/groups").json()["standings"]
+        assert len(standings) == 2

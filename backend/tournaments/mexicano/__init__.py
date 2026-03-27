@@ -88,6 +88,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         loss_discount: float = 1.0,
         balance_tolerance: float = 0.2,
         team_mode: bool = False,
+        initial_strength: dict[str, float] | None = None,
     ):
         min_players = 2 if team_mode else 4
         if len(players) < min_players:
@@ -143,6 +144,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         self._mexicano_ended: bool = False
         self._forced_sit_out_ids: list[str] | None = None
         self._player_map: dict[str, Player] = {p.id: p for p in players}
+        self.initial_strength: dict[str, float] | None = initial_strength
 
     def __getattr__(self, name: str) -> object:
         """Provide defaults for attributes missing from older pickled instances."""
@@ -150,6 +152,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
             "_est_cache": None,
             "_match_credits": {},
             "_forced_sit_out_ids": None,
+            "initial_strength": None,
         }
         if name in defaults:
             value = defaults[name]

@@ -32,6 +32,10 @@ class GroupPlayoffTournament:
         double_elimination: bool = False,
         team_mode: bool = False,
         group_names: list[str] | None = None,
+        initial_strength: dict[str, float] | None = None,
+        team_roster: dict[str, list[str]] | None = None,
+        team_member_names: dict[str, list[str]] | None = None,
+        group_assignments: dict[str, list[str]] | None = None,
     ):
         self.players = list(players)
         self.num_groups = num_groups
@@ -40,6 +44,10 @@ class GroupPlayoffTournament:
         self.double_elimination = double_elimination
         self.team_mode = team_mode
         self.group_names = group_names or []
+        self.initial_strength = initial_strength
+        self.team_roster = team_roster or {}
+        self.team_member_names = team_member_names or {}
+        self.group_assignments = group_assignments or {}
 
         self.groups: list[Group] = []
         self.playoff_bracket: SingleEliminationBracket | DoubleEliminationBracket | None = None
@@ -61,14 +69,40 @@ class GroupPlayoffTournament:
         * **individual mode** — generates only the first round of matches.
           Call ``generate_next_group_round()`` after recording scores to
           produce subsequent rounds with score-based opponent matching.
+
+        When ``group_assignments`` is provided, players are placed into
+        groups according to the explicit mapping (group name → player names).
+        Otherwise, when ``initial_strength`` is provided, players are sorted
+        by strength descending before distribution so that snake-draft
+        group assignment produces balanced groups.
         """
-        self.groups = distribute_players_to_groups(
-            self.players,
-            self.num_groups,
-            shuffle=False,
-            team_mode=self.team_mode,
-            group_names=self.group_names,
-        )
+        if self.group_assignments:
+            # Explicit group assignments provided by the admin
+            name_to_player = {p.name: p for p in self.players}
+            self.groups = []
+            for g_name, member_names in self.group_assignments.items():
+                group_players = [name_to_player[n] for n in member_names if n in name_to_player]
+                self.groups.append(Group(name=g_name, players=group_players, team_mode=self.team_mode))
+        else:
+            players = list(self.players)
+            if self.initial_strength:
+                players.sort(key=lambda p: -self.initial_strength.get(p.id, 0.0))
+            self.groups = distribute_players_to_groups(
+                players,
+                self.num_groups,
+                shuffle=not bool(self.initial_strength),
+                team_mode=self.team_mode,
+                group_names=self.group_names,
+                snake_draft=bool(self.initial_strength),
+            )
+        if not self.team_mode:
+            for g in self.groups:
+                if len(g.players) < 4:
+                    raise ValueError(
+                        f"Group '{g.name}' has only {len(g.players)} player(s). "
+                        "Individual mode requires at least 4 players per group."
+                    )
+
         if self.team_mode:
             for g in self.groups:
                 g.generate_round_robin()
@@ -117,6 +151,22 @@ class GroupPlayoffTournament:
         if self.team_mode:
             return False
         return any(g.has_more_rounds for g in self.groups)
+
+    def update_courts(self, courts: list[Court]) -> None:
+        """Replace the court list and reassign courts across all existing matches."""
+        self.courts = list(courts)
+        # Clear existing court assignments so assign_courts can reassign them.
+        for m in self.all_group_matches():
+            m.court = None
+            m.slot_number = None
+        self._assign_group_courts()
+        if self.playoff_bracket is not None:
+            all_po = self.playoff_bracket.all_matches()
+            for m in all_po:
+                m.court = None
+                m.slot_number = None
+            if all_po:
+                assign_courts(all_po, self.courts)
 
     def _assign_group_courts(self) -> None:
         """Assign courts across all group matches using the global greedy algorithm.

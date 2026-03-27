@@ -86,9 +86,10 @@ _tournament_versions: dict[str, int] = {}
 _state_version: int = 0
 
 # Per-tournament asyncio locks so concurrent writes to different tournaments
-# don't block each other.  A lightweight global lock protects _next_id() and
-# creation-time operations that don't yet have a TID.
+# don't block each other.  ID allocation uses a dedicated lightweight lock.
+# The legacy global lock is kept as a backward-compatible alias.
 _tournament_locks: dict[str, asyncio.Lock] = {}
+_id_allocation_lock: asyncio.Lock = asyncio.Lock()
 _global_lock: asyncio.Lock = asyncio.Lock()
 
 # Backwards-compatible alias kept for any remaining import sites.
@@ -109,6 +110,12 @@ def _next_id() -> str:
     global _counter
     _counter += 1
     return f"t{_counter}"
+
+
+async def allocate_tournament_id() -> str:
+    """Allocate and return the next tournament ID with minimal lock scope."""
+    async with _id_allocation_lock:
+        return _next_id()
 
 
 # ────────────────────────────────────────────────────────────────────────────

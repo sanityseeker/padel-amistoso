@@ -10,11 +10,13 @@ scoring.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from .rate_limit import BoundedRateLimiter
 from ..auth.deps import get_current_user
@@ -27,13 +29,13 @@ from .helpers import _store_tournament
 from .player_secret_store import lookup_registrant_by_passphrase
 from .schemas import (
     ConvertRegistrationRequest,
+    LinkedTournamentOut,
     QuestionDef,
     RegistrantAdminOut,
     RegistrantAnswersUpdateIn,
     RegistrantIn,
     RegistrantLoginIn,
     RegistrantLoginOut,
-    RegistrantOut,
     RegistrantPatch,
     RegistrationAdminOut,
     RegistrationCreate,
@@ -41,7 +43,7 @@ from .schemas import (
     RegistrationUpdate,
     SetAliasRequest,
 )
-from .state import _next_id, _global_lock
+from .state import allocate_tournament_id, _tournaments
 
 router = APIRouter(prefix="/api/registrations", tags=["registrations"])
 
@@ -49,15 +51,38 @@ _CREATE_MAX_ATTEMPTS = 20
 _CREATE_WINDOW_SECONDS = 60
 _CREATE_MAX_TRACKED_IPS = 4096
 
+_PUBLIC_REGISTER_MAX_ATTEMPTS = 60
+_PUBLIC_PASSCODE_MAX_ATTEMPTS = 90
+_PUBLIC_WINDOW_SECONDS = 60
+_PUBLIC_MAX_TRACKED_IPS = 4096
+
 _create_rate_limiter = BoundedRateLimiter(
     max_attempts=_CREATE_MAX_ATTEMPTS,
     window_seconds=_CREATE_WINDOW_SECONDS,
     max_tracked_ips=_CREATE_MAX_TRACKED_IPS,
 )
 
+_public_register_rate_limiter = BoundedRateLimiter(
+    max_attempts=_PUBLIC_REGISTER_MAX_ATTEMPTS,
+    window_seconds=_PUBLIC_WINDOW_SECONDS,
+    max_tracked_ips=_PUBLIC_MAX_TRACKED_IPS,
+)
+
+_public_passphrase_rate_limiter = BoundedRateLimiter(
+    max_attempts=_PUBLIC_PASSCODE_MAX_ATTEMPTS,
+    window_seconds=_PUBLIC_WINDOW_SECONDS,
+    max_tracked_ips=_PUBLIC_MAX_TRACKED_IPS,
+)
+
+_registration_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+
 
 def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
+
+
+def _get_registration_lock(registration_id: str) -> asyncio.Lock:
+    return _registration_locks[registration_id]
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -120,6 +145,149 @@ def _parse_answers(raw: str | None) -> dict[str, str]:
     return json.loads(raw)
 
 
+def _parse_tids(raw: str | None) -> list[str]:
+    """Deserialise the JSON *converted_to_tids* column into a list of tournament IDs."""
+    if not raw:
+        return []
+    try:
+        result = json.loads(raw)
+        return result if isinstance(result, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+def _get_assigned_player_ids(tids: list[str]) -> list[str]:
+    """Return distinct player IDs already assigned to any of the given tournaments."""
+    if not tids:
+        return []
+    placeholders = ",".join("?" * len(tids))
+    with get_db() as conn:
+        rows = conn.execute(
+            f"SELECT DISTINCT player_id FROM player_secrets WHERE tournament_id IN ({placeholders})",
+            tids,
+        ).fetchall()
+    return [r["player_id"] for r in rows]
+
+
+def _get_registrant_counts(registration_ids: list[str]) -> dict[str, int]:
+    """Return registrant counts keyed by registration ID."""
+    if not registration_ids:
+        return {}
+    placeholders = ",".join("?" for _ in registration_ids)
+    with get_db() as conn:
+        rows = conn.execute(
+            f"""SELECT registration_id, COUNT(*) AS c
+                FROM registrants
+                WHERE registration_id IN ({placeholders})
+                GROUP BY registration_id""",
+            registration_ids,
+        ).fetchall()
+    return {row["registration_id"]: row["c"] for row in rows}
+
+
+def _get_registrants_by_registration_id(registration_ids: list[str]) -> dict[str, list[dict]]:
+    """Return registrants grouped by registration ID."""
+    if not registration_ids:
+        return {}
+    placeholders = ",".join("?" for _ in registration_ids)
+    with get_db() as conn:
+        rows = conn.execute(
+            f"""SELECT registration_id, player_id, player_name, answers, registered_at
+                FROM registrants
+                WHERE registration_id IN ({placeholders})
+                ORDER BY registration_id, registered_at""",
+            registration_ids,
+        ).fetchall()
+    grouped: dict[str, list[dict]] = {rid: [] for rid in registration_ids}
+    for row in rows:
+        grouped[row["registration_id"]].append(dict(row))
+    return grouped
+
+
+def _get_linked_tournaments_by_registration(
+    tids_by_registration: dict[str, list[str]],
+) -> dict[str, list[LinkedTournamentOut]]:
+    """Return linked tournament metadata grouped by registration ID."""
+    all_tids = []
+    for tids in tids_by_registration.values():
+        all_tids.extend(tids)
+    unique_tids = list(dict.fromkeys(all_tids))
+
+    rows_by_id: dict[str, dict[str, str | None]] = {}
+    if unique_tids:
+        placeholders = ",".join("?" for _ in unique_tids)
+        with get_db() as conn:
+            rows = conn.execute(
+                f"SELECT id, name, type FROM tournaments WHERE id IN ({placeholders})",
+                unique_tids,
+            ).fetchall()
+        rows_by_id = {
+            row["id"]: {
+                "name": row["name"],
+                "type": row["type"],
+            }
+            for row in rows
+        }
+
+    def _is_finished(tid: str) -> bool:
+        tournament_data = _tournaments.get(tid)
+        if tournament_data is None:
+            return True
+        tournament = tournament_data.get("tournament")
+        return str(getattr(tournament, "phase", "")) == "finished"
+
+    return {
+        rid: [
+            LinkedTournamentOut(
+                id=tid,
+                name=rows_by_id.get(tid, {}).get("name", tid),
+                type=rows_by_id.get(tid, {}).get("type"),
+                finished=_is_finished(tid),
+            )
+            for tid in tids
+        ]
+        for rid, tids in tids_by_registration.items()
+    }
+
+
+def _get_linked_tournaments(tids: list[str]) -> list[LinkedTournamentOut]:
+    """Return linked tournament metadata preserving the order of ``tids``."""
+    if not tids:
+        return []
+
+    placeholders = ",".join("?" for _ in tids)
+    with get_db() as conn:
+        rows = conn.execute(
+            f"SELECT id, name, type FROM tournaments WHERE id IN ({placeholders})",
+            tids,
+        ).fetchall()
+
+    rows_by_id = {
+        row["id"]: {
+            "name": row["name"],
+            "type": row["type"],
+        }
+        for row in rows
+    }
+
+    def _is_finished(tid: str) -> bool:
+        tournament_data = _tournaments.get(tid)
+        if tournament_data is None:
+            return True
+        tournament = tournament_data.get("tournament")
+        return str(getattr(tournament, "phase", "")) == "finished"
+
+    return [
+        LinkedTournamentOut(
+            id=tid,
+            name=rows_by_id.get(tid, {}).get("name", tid),
+            type=rows_by_id.get(tid, {}).get("type"),
+            finished=_is_finished(tid),
+        )
+        for tid in tids
+    ]
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # Admin endpoints (authenticated)
 # ────────────────────────────────────────────────────────────────────────────
@@ -158,41 +326,65 @@ async def create_registration(
 
 
 @router.get("")
-async def list_registrations(user: User = Depends(get_current_user)) -> list[dict]:
+async def list_registrations(
+    include_archived: bool = Query(default=False),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
     """List registrations owned by the current user (admins see all)."""
     with get_db() as conn:
         if user.role == UserRole.ADMIN:
-            rows = conn.execute("SELECT * FROM registrations ORDER BY created_at DESC").fetchall()
+            if include_archived:
+                rows = conn.execute("SELECT * FROM registrations ORDER BY created_at DESC").fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM registrations WHERE archived = 0 ORDER BY created_at DESC"
+                ).fetchall()
         else:
-            rows = conn.execute(
-                "SELECT * FROM registrations WHERE owner = ? ORDER BY created_at DESC",
-                (user.username,),
-            ).fetchall()
+            if include_archived:
+                rows = conn.execute(
+                    "SELECT * FROM registrations WHERE owner = ? ORDER BY created_at DESC",
+                    (user.username,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM registrations WHERE owner = ? AND archived = 0 ORDER BY created_at DESC",
+                    (user.username,),
+                ).fetchall()
+    reg_ids = [row["id"] for row in rows]
+    registrant_counts = _get_registrant_counts(reg_ids)
+
     result = []
     for row in rows:
         r = dict(row)
-        with get_db() as conn:
-            cnt = conn.execute("SELECT COUNT(*) AS c FROM registrants WHERE registration_id = ?", (r["id"],)).fetchone()
-        r["registrant_count"] = cnt["c"] if cnt else 0
+        r["registrant_count"] = registrant_counts.get(r["id"], 0)
+        r["open"] = bool(r.get("open", 0))
+        r["listed"] = bool(r.get("listed", 0))
+        r["archived"] = bool(r.get("archived", 0))
+        r["converted_to_tids"] = _parse_tids(r.get("converted_to_tids"))
         result.append(r)
     return result
 
 
 @router.get("/public", response_model=list[RegistrationPublicOut])
 async def list_public_registrations() -> list[RegistrationPublicOut]:
-    """Return all open, publicly listed registrations that have not been converted."""
+    """Return all open, publicly listed registrations."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM registrations WHERE open = 1 AND listed = 1 AND converted_to_tid IS NULL ORDER BY created_at DESC",
+            "SELECT * FROM registrations WHERE open = 1 AND listed = 1 AND archived = 0 ORDER BY created_at DESC",
         ).fetchall()
+    registrations = [dict(row) for row in rows]
+    reg_ids = [registration["id"] for registration in registrations]
+    registrants_by_registration = _get_registrants_by_registration_id(reg_ids)
+    tids_by_registration = {
+        registration["id"]: _parse_tids(registration.get("converted_to_tids")) for registration in registrations
+    }
+    linked_by_registration = _get_linked_tournaments_by_registration(tids_by_registration)
+
     result: list[RegistrationPublicOut] = []
-    for row in rows:
-        r = dict(row)
-        with get_db() as conn:
-            registrants = conn.execute(
-                "SELECT player_id, player_name, answers, registered_at FROM registrants WHERE registration_id = ? ORDER BY registered_at",
-                (r["id"],),
-            ).fetchall()
+    for r in registrations:
+        tids = tids_by_registration[r["id"]]
+        linked_tournaments = linked_by_registration[r["id"]]
+        registrants = registrants_by_registration.get(r["id"], [])
         result.append(
             RegistrationPublicOut(
                 id=r["id"],
@@ -202,20 +394,15 @@ async def list_public_registrations() -> list[RegistrationPublicOut]:
                 join_code_required=r.get("join_code") is not None,
                 description=r.get("description"),
                 message=r.get("message"),
-                converted=False,
-                converted_to_tid=None,
+                converted=len(tids) > 0,
+                converted_to_tid=tids[0] if tids else None,
+                converted_to_tids=tids,
+                linked_tournaments=linked_tournaments,
                 listed=True,
+                archived=bool(r.get("archived", 0)),
                 sport=r.get("sport", "padel"),
                 registrant_count=len(registrants),
-                registrants=[
-                    RegistrantOut(
-                        player_id=reg["player_id"],
-                        player_name=reg["player_name"],
-                        answers=_parse_answers(reg["answers"]),
-                        registered_at=reg["registered_at"],
-                    )
-                    for reg in registrants
-                ],
+                registrants=[],
             )
         )
     return result
@@ -228,6 +415,9 @@ async def get_registration(rid: str, user: User = Depends(get_current_user)) -> 
     _require_registration_owner(reg, user)
     reg_id = reg["id"]
     registrants = _get_registrants(reg_id)
+    tids = _parse_tids(reg.get("converted_to_tids"))
+    linked_tournaments = _get_linked_tournaments(tids)
+    assigned_ids = _get_assigned_player_ids(tids)
     return RegistrationAdminOut(
         id=reg["id"],
         name=reg["name"],
@@ -235,11 +425,15 @@ async def get_registration(rid: str, user: User = Depends(get_current_user)) -> 
         join_code=reg.get("join_code"),
         questions=_parse_questions(reg.get("questions")),
         listed=bool(reg.get("listed", 0)),
+        archived=bool(reg.get("archived", 0)),
         sport=reg.get("sport", "padel"),
         description=reg.get("description"),
         message=reg.get("message"),
         alias=reg.get("alias"),
-        converted_to_tid=reg.get("converted_to_tid"),
+        converted_to_tid=tids[0] if tids else None,
+        converted_to_tids=tids,
+        linked_tournaments=linked_tournaments,
+        assigned_player_ids=assigned_ids,
         created_at=reg["created_at"],
         registrants=[
             RegistrantAdminOut(
@@ -410,6 +604,8 @@ async def get_registration_public(rid: str) -> RegistrationPublicOut:
     reg = _get_registration(rid)
     reg_id = reg["id"]
     registrants = _get_registrants(reg_id)
+    tids = _parse_tids(reg.get("converted_to_tids"))
+    linked_tournaments = _get_linked_tournaments(tids)
     return RegistrationPublicOut(
         id=reg["id"],
         name=reg["name"],
@@ -418,37 +614,34 @@ async def get_registration_public(rid: str) -> RegistrationPublicOut:
         join_code_required=reg.get("join_code") is not None,
         description=reg.get("description"),
         message=reg.get("message"),
-        converted=reg.get("converted_to_tid") is not None,
-        converted_to_tid=reg.get("converted_to_tid"),
+        converted=len(tids) > 0,
+        converted_to_tid=tids[0] if tids else None,
+        converted_to_tids=tids,
+        linked_tournaments=linked_tournaments,
         listed=bool(reg.get("listed", 0)),
+        archived=bool(reg.get("archived", 0)),
         sport=reg.get("sport", "padel"),
         registrant_count=len(registrants),
-        registrants=[
-            RegistrantOut(
-                player_id=r["player_id"],
-                player_name=r["player_name"],
-                answers=_parse_answers(r.get("answers")),
-                registered_at=r["registered_at"],
-            )
-            for r in registrants
-        ],
+        registrants=[],
     )
 
 
 @router.post("/{rid}/register")
-async def register_player(rid: str, req: RegistrantIn) -> dict:
+async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict:
     """Self-register a player in an open registration lobby.
 
     Returns the newly created passphrase and token so the player can
     see them immediately (and scan the QR code).
     """
+    client_ip = _client_ip(request)
+    _public_register_rate_limiter.check(client_ip, "Too many registration attempts — try again later")
+    _public_register_rate_limiter.record(client_ip)
+
     reg = _get_registration(rid)
     reg_id = reg["id"]
 
     if not reg["open"]:
         raise HTTPException(400, "Registration is closed")
-    if reg.get("converted_to_tid"):
-        raise HTTPException(400, "Registration has already been converted to a tournament")
 
     # Check join code if required
     if reg.get("join_code"):
@@ -511,59 +704,137 @@ async def register_player(rid: str, req: RegistrantIn) -> dict:
 async def convert_registration(
     rid: str, req: ConvertRegistrationRequest, user: User = Depends(get_current_user)
 ) -> dict:
-    """Convert a registration lobby into a real tournament.
+    """Convert a registration lobby into a tournament (may be called multiple times).
 
-    Player IDs, passphrases, and tokens are preserved so the same QR
-    codes and passphrases work for scoring after conversion.
+    Each call creates one tournament from a subset of registrants.  The same
+    registrant cannot be assigned to more than one tournament from the same lobby.
+    Player IDs, passphrases, and tokens are preserved so the same QR codes and
+    passphrases continue to work after conversion.
+
+    The registration is automatically closed once every registrant has been
+    assigned to at least one tournament.
     """
     registration = _get_registration(rid)
     _require_registration_owner(registration, user)
     reg_id = registration["id"]
 
-    if registration.get("converted_to_tid"):
-        raise HTTPException(400, "Registration has already been converted")
+    async with _get_registration_lock(reg_id):
+        registration = _get_registration(reg_id)
+        registrants = _get_registrants(reg_id)
 
-    registrants = _get_registrants(reg_id)
+        # Determine the existing set of already-assigned player IDs across all
+        # tournaments previously created from this lobby.
+        existing_tids = _parse_tids(registration.get("converted_to_tids"))
+        already_assigned: set[str] = set(_get_assigned_player_ids(existing_tids))
 
-    # Build the final player list from req.player_names if provided,
-    # otherwise use all registrants.  Names matching existing registrants
-    # reuse their IDs / passphrases / tokens; new names get fresh ones.
-    registrant_by_name: dict[str, dict] = {r["player_name"]: dict(r) for r in registrants}
-    names = [n.strip() for n in req.player_names if n.strip()] if req.player_names else list(registrant_by_name.keys())
+        # Build the final player list from req.player_names if provided,
+        # otherwise use all registrants.  Names matching existing registrants
+        # reuse their IDs / passphrases / tokens; new names get fresh ones.
+        registrant_by_name: dict[str, dict] = {r["player_name"]: dict(r) for r in registrants}
+        names = (
+            [n.strip() for n in req.player_names if n.strip()] if req.player_names else list(registrant_by_name.keys())
+        )
 
-    if len(names) < 2:
-        raise HTTPException(400, "Need at least 2 players to create a tournament")
+        if len(names) < 2:
+            raise HTTPException(400, "Need at least 2 players to create a tournament")
 
-    # Collect existing passphrases so we don't collide when generating new ones
-    existing_passphrases: set[str] = {r["passphrase"] for r in registrants}
+        selected_names = set(names)
+        if req.team_mode and req.teams:
+            team_members = [member for team in req.teams for member in team]
+            unknown_members = sorted({member for member in team_members if member not in selected_names})
+            if unknown_members:
+                raise HTTPException(
+                    400,
+                    f"These team members are not in player_names: {', '.join(unknown_members)}",
+                )
+            assigned_names = set(team_members)
+            missing_names = sorted(selected_names - assigned_names)
+            if missing_names:
+                raise HTTPException(
+                    400,
+                    f"These selected players are missing from teams: {', '.join(missing_names)}",
+                )
 
-    player_entries: list[tuple[str, str]] = []  # (name, player_id)
-    secret_rows: list[tuple] = []  # rows for player_secrets INSERT
+        # Reject players that are already assigned to a previous tournament from this lobby
+        overlap_names = [
+            name
+            for name in names
+            if name in registrant_by_name and registrant_by_name[name]["player_id"] in already_assigned
+        ]
+        if overlap_names:
+            raise HTTPException(
+                400,
+                f"These players are already assigned to a tournament from this lobby: {', '.join(overlap_names)}",
+            )
 
-    for name in names:
-        reg = registrant_by_name.get(name)
-        if reg:
-            player_entries.append((name, reg["player_id"]))
-            secret_rows.append((None, reg["player_id"], name, reg["passphrase"], reg["token"]))
-        else:
-            # New player added during conversion
-            pid = uuid.uuid4().hex[:8]
-            passphrase = generate_passphrase()
-            while passphrase in existing_passphrases:
+        # Collect existing passphrases so we don't collide when generating new ones
+        existing_passphrases: set[str] = {r["passphrase"] for r in registrants}
+
+        player_entries: list[tuple[str, str]] = []  # (name, player_id)
+        secret_rows: list[tuple] = []  # rows for player_secrets INSERT
+        contact_map: dict[str, str] = {}  # player_id → contact string
+
+        for name in names:
+            reg = registrant_by_name.get(name)
+            if reg:
+                pid = reg["player_id"]
+                player_entries.append((name, pid))
+                secret_rows.append((None, pid, name, reg["passphrase"], reg["token"]))
+                answers = _parse_answers(reg.get("answers"))
+                if answers.get("contact"):
+                    contact_map[pid] = answers["contact"]
+            else:
+                # New player added during conversion
+                pid = uuid.uuid4().hex[:8]
                 passphrase = generate_passphrase()
-            existing_passphrases.add(passphrase)
-            token = generate_token()
-            player_entries.append((name, pid))
-            secret_rows.append((None, pid, name, passphrase, token))
+                while passphrase in existing_passphrases:
+                    passphrase = generate_passphrase()
+                existing_passphrases.add(passphrase)
+                token = generate_token()
+                player_entries.append((name, pid))
+                secret_rows.append((None, pid, name, passphrase, token))
 
-    tournament_name = req.name or registration["name"]
+        tournament_name = req.name or registration["name"]
 
-    async with _global_lock:
-        tid = _next_id()
+        # Build initial_strength mapping (player name → score → player_id → score)
+        initial_strength: dict[str, float] | None = None
+        if req.player_strengths:
+            initial_strength = {}
+            for name, pid in player_entries:
+                if name in req.player_strengths:
+                    initial_strength[pid] = req.player_strengths[name]
+
+        tid = await allocate_tournament_id()
 
         if req.tournament_type == "group_playoff":
-            players = [Player(name=name, id=pid) for name, pid in player_entries]
             courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
+            team_roster: dict[str, list[str]] = {}
+            team_member_names: dict[str, list[str]] = {}
+
+            if req.teams and req.team_mode:
+                # Composite teams: create synthetic team Player for each group
+                entry_map = {name: pid for name, pid in player_entries}
+                team_players: list[Player] = []
+                for idx, member_names in enumerate(req.teams):
+                    team_label = (
+                        req.team_names[idx]
+                        if idx < len(req.team_names) and req.team_names[idx].strip()
+                        else " & ".join(member_names)
+                    )
+                    team_pid = uuid.uuid4().hex[:8]
+                    team_player = Player(name=team_label, id=team_pid)
+                    team_players.append(team_player)
+                    member_ids = [entry_map[n] for n in member_names if n in entry_map]
+                    team_roster[team_pid] = member_ids
+                    team_member_names[team_pid] = list(member_names)
+                    # Aggregate strength for the synthetic team
+                    if initial_strength:
+                        team_str = sum(initial_strength.get(mid, 0.0) for mid in member_ids)
+                        initial_strength[team_pid] = team_str
+                players = team_players
+            else:
+                players = [Player(name=name, id=pid) for name, pid in player_entries]
+
             t = GroupPlayoffTournament(
                 players=players,
                 num_groups=req.num_groups,
@@ -572,8 +843,15 @@ async def convert_registration(
                 double_elimination=req.double_elimination,
                 team_mode=req.team_mode,
                 group_names=req.group_names,
+                initial_strength=initial_strength,
+                team_roster=team_roster,
+                team_member_names=team_member_names,
+                group_assignments=req.group_assignments,
             )
-            t.generate()
+            try:
+                t.generate()
+            except ValueError as e:
+                raise HTTPException(400, str(e))
             _store_tournament(
                 tid,
                 name=tournament_name,
@@ -586,8 +864,45 @@ async def convert_registration(
             )
 
         elif req.tournament_type == "mexicano":
-            players = [Player(name=name, id=pid) for name, pid in player_entries]
             courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
+
+            if req.teams and req.team_mode:
+                # Form fixed composite team Players — each team is one Player entity
+                # (Mexicano team mode: pre-formed pairs who always play together)
+                entry_map = {name: pid for name, pid in player_entries}
+                sec_by_pid = {r[1]: r for r in secret_rows}
+                team_players: list[Player] = []
+                team_secret_rows: list[tuple] = []
+                for idx, member_names in enumerate(req.teams):
+                    team_label = (
+                        req.team_names[idx]
+                        if idx < len(req.team_names) and req.team_names[idx].strip()
+                        else " & ".join(m for m in member_names if m)
+                    )
+                    team_pid = uuid.uuid4().hex[:8]
+                    team_players.append(Player(name=team_label, id=team_pid))
+                    # Aggregate individual strengths into team-level strength
+                    if initial_strength:
+                        member_ids = [entry_map[n] for n in member_names if n in entry_map]
+                        initial_strength[team_pid] = sum(initial_strength.get(mid, 0.0) for mid in member_ids)
+                    # Reuse first known member's passphrase/token for the team secret
+                    first_sec = next(
+                        (
+                            sec_by_pid[entry_map[m]]
+                            for m in member_names
+                            if m in entry_map and entry_map[m] in sec_by_pid
+                        ),
+                        None,
+                    )
+                    if first_sec:
+                        team_secret_rows.append((None, team_pid, team_label, first_sec[3], first_sec[4]))
+                    else:
+                        team_secret_rows.append((None, team_pid, team_label, generate_passphrase(), generate_token()))
+                players = team_players
+                secret_rows = team_secret_rows
+            else:
+                players = [Player(name=name, id=pid) for name, pid in player_entries]
+
             try:
                 t = MexicanoTournament(
                     players=players,
@@ -600,6 +915,7 @@ async def convert_registration(
                     loss_discount=req.loss_discount,
                     balance_tolerance=req.balance_tolerance,
                     team_mode=req.team_mode,
+                    initial_strength=initial_strength,
                 )
             except ValueError as e:
                 raise HTTPException(400, str(e))
@@ -616,13 +932,24 @@ async def convert_registration(
             )
 
         elif req.tournament_type == "playoff":
-            teams = [[Player(name=name, id=pid)] for name, pid in player_entries]
             courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
+
+            if req.teams and req.team_mode:
+                # Composite teams for playoff
+                entry_map = {name: pid for name, pid in player_entries}
+                teams: list[list[Player]] = []
+                for idx, member_names in enumerate(req.teams):
+                    team_members = [Player(name=n, id=entry_map[n]) for n in member_names if n in entry_map]
+                    teams.append(team_members)
+            else:
+                teams = [[Player(name=name, id=pid)] for name, pid in player_entries]
+
             t = PlayoffTournament(
                 teams=teams,
                 courts=courts,
                 double_elimination=req.double_elimination,
                 team_mode=req.team_mode,
+                initial_strength=initial_strength,
             )
             _store_tournament(
                 tid,
@@ -638,26 +965,48 @@ async def convert_registration(
         else:
             raise HTTPException(400, f"Unknown tournament type: {req.tournament_type}")
 
-    # Populate player_secrets (reuse registrant passphrases/tokens where available)
-    with get_db() as conn:
-        conn.executemany(
-            """INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token)
-               VALUES (?, ?, ?, ?, ?)
-               ON CONFLICT(tournament_id, player_id) DO UPDATE SET
-                   passphrase  = excluded.passphrase,
-                   token       = excluded.token,
-                   player_name = excluded.player_name""",
-            [(tid, pid, name, pp, tok) for (_, pid, name, pp, tok) in secret_rows],
-        )
+        # Populate player_secrets (reuse registrant passphrases/tokens where available)
+        with get_db() as conn:
+            conn.executemany(
+                """INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, contact)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(tournament_id, player_id) DO UPDATE SET
+                       passphrase  = excluded.passphrase,
+                       token       = excluded.token,
+                       player_name = excluded.player_name,
+                       contact     = excluded.contact""",
+                [(tid, pid, name, pp, tok, contact_map.get(pid, "")) for (_, pid, name, pp, tok) in secret_rows],
+            )
 
-    # Mark registration as converted
-    with get_db() as conn:
-        conn.execute(
-            "UPDATE registrations SET converted_to_tid = ?, open = 0 WHERE id = ?",
-            (tid, reg_id),
-        )
+        # Append the new tid to converted_to_tids and keep the legacy single-tid column
+        # for backward compatibility.  Auto-close the registration once every registrant
+        # has been assigned to at least one tournament.
+        with get_db() as conn:
+            new_tids = existing_tids + [tid]
+            new_tids_json = json.dumps(new_tids)
+            first_tid = new_tids[0]
 
-    return {"tournament_id": tid, "tournament_name": tournament_name}
+            all_registrant_ids = {r["player_id"] for r in registrants}
+            # Use original registrant IDs (from player_entries) not team synthetic IDs,
+            # so the check works correctly in both individual and team mode conversions.
+            newly_assigned_registrant_ids = {pid for name, pid in player_entries if name in registrant_by_name}
+            all_now_assigned = all_registrant_ids.issubset(already_assigned | newly_assigned_registrant_ids)
+
+            if all_now_assigned:
+                conn.execute(
+                    "UPDATE registrations SET converted_to_tids = ?, converted_to_tid = ?, open = 0, archived = 1 WHERE id = ?",
+                    (new_tids_json, first_tid, reg_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE registrations SET converted_to_tids = ?, converted_to_tid = ?, archived = 0 WHERE id = ?",
+                    (new_tids_json, first_tid, reg_id),
+                )
+
+    if all_now_assigned:
+        return {"tournament_id": tid, "tournament_name": tournament_name, "all_assigned": True}
+
+    return {"tournament_id": tid, "tournament_name": tournament_name, "all_assigned": False}
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -684,12 +1033,16 @@ async def set_registration_alias(rid: str, req: SetAliasRequest, user: User = De
 
 
 @router.post("/{rid}/player-login", response_model=RegistrantLoginOut)
-async def player_login(rid: str, req: RegistrantLoginIn) -> RegistrantLoginOut:
+async def player_login(rid: str, req: RegistrantLoginIn, request: Request) -> RegistrantLoginOut:
     """Allow a returning player to retrieve their registration data by passphrase.
 
     No admin auth required — the passphrase proves identity.
     Returns 401 if the passphrase is not found in this lobby.
     """
+    client_ip = _client_ip(request)
+    _public_passphrase_rate_limiter.check(client_ip, "Too many login attempts — try again later")
+    _public_passphrase_rate_limiter.record(client_ip)
+
     reg = _get_registration(rid)  # 404 if lobby doesn't exist
     result = lookup_registrant_by_passphrase(reg["id"], req.passphrase)
     if result is None:
@@ -698,15 +1051,29 @@ async def player_login(rid: str, req: RegistrantLoginIn) -> RegistrantLoginOut:
 
 
 @router.patch("/{rid}/player-answers", response_model=RegistrantLoginOut)
-async def player_update_answers(rid: str, req: RegistrantAnswersUpdateIn) -> RegistrantLoginOut:
+async def player_update_answers(rid: str, req: RegistrantAnswersUpdateIn, request: Request) -> RegistrantLoginOut:
     """Allow a returning player to update their own answers by passphrase."""
+    client_ip = _client_ip(request)
+    _public_passphrase_rate_limiter.check(client_ip, "Too many update attempts — try again later")
+    _public_passphrase_rate_limiter.record(client_ip)
+
     reg = _get_registration(rid)
     reg_id = reg["id"]
 
     if not reg["open"]:
         raise HTTPException(400, "Registration is closed")
-    if reg.get("converted_to_tid"):
-        raise HTTPException(400, "Registration has already been converted to a tournament")
+
+    # Block updates for players already assigned to a tournament
+    tids = _parse_tids(reg.get("converted_to_tids"))
+    if tids:
+        assigned_ids = _get_assigned_player_ids(tids)
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT player_id FROM registrants WHERE registration_id = ? AND passphrase = ?",
+                (reg_id, req.passphrase),
+            ).fetchone()
+        if row and row["player_id"] in assigned_ids:
+            raise HTTPException(400, "You have already been assigned to a tournament")
 
     questions = _parse_questions(reg.get("questions"))
     for q in questions:
@@ -729,15 +1096,29 @@ async def player_update_answers(rid: str, req: RegistrantAnswersUpdateIn) -> Reg
 
 
 @router.post("/{rid}/player-cancel")
-async def player_cancel_registration(rid: str, req: RegistrantLoginIn) -> dict:
+async def player_cancel_registration(rid: str, req: RegistrantLoginIn, request: Request) -> dict:
     """Allow a returning player to cancel their own registration by passphrase."""
+    client_ip = _client_ip(request)
+    _public_passphrase_rate_limiter.check(client_ip, "Too many cancellation attempts — try again later")
+    _public_passphrase_rate_limiter.record(client_ip)
+
     reg = _get_registration(rid)
     reg_id = reg["id"]
 
     if not reg["open"]:
         raise HTTPException(400, "Registration is closed")
-    if reg.get("converted_to_tid"):
-        raise HTTPException(400, "Registration has already been converted to a tournament")
+
+    # Block cancellation for players already assigned to a tournament
+    tids = _parse_tids(reg.get("converted_to_tids"))
+    if tids:
+        assigned_ids = _get_assigned_player_ids(tids)
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT player_id FROM registrants WHERE registration_id = ? AND passphrase = ?",
+                (reg_id, req.passphrase),
+            ).fetchone()
+        if row and row["player_id"] in assigned_ids:
+            raise HTTPException(400, "You have already been assigned to a tournament and cannot cancel")
 
     with get_db() as conn:
         cur = conn.execute(
