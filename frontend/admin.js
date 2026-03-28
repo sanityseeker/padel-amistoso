@@ -2275,7 +2275,10 @@ async function renderMex() {
     for (const r of status.leaderboard) {
       const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
       const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
-      html += `<tr><td>${r.rank}</td><td>${esc(r.player)}</td><td>${totalCell}</td><td>${r.matches_played}</td><td>${r.wins || 0}</td><td>${r.draws || 0}</td><td>${r.losses || 0}</td><td>${avgCell}</td></tr>`;
+      const removedStyle = r.removed ? ' style="opacity:0.45"' : '';
+      const rankCell = r.removed ? `<span style="color:var(--text-muted)">—</span>` : r.rank;
+      const nameCell = r.removed ? `${esc(r.player)} <span class="badge badge-closed" style="font-size:0.7em;vertical-align:middle">${t('txt_txt_removed')}</span>` : esc(r.player);
+      html += `<tr${removedStyle}><td>${rankCell}</td><td>${nameCell}</td><td>${totalCell}</td><td>${r.matches_played}</td><td>${r.wins || 0}</td><td>${r.draws || 0}</td><td>${r.losses || 0}</td><td>${avgCell}</td></tr>`;
     }
     html += `</tbody></table></div>`;
 
@@ -3713,6 +3716,7 @@ function _renderPlayerCodes(secrets) {
   let html = `<details class="card" id="player-codes-panel">`;
   html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
   html += `<span style="font-size:1.1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="display:inline-block;transition:transform 0.18s;font-size:0.7em;color:var(--text-muted)">▸</span> 🔑 ${t('txt_txt_player_codes')}</span>`;
+  const _isMex = currentType === 'mexicano';
   if (entries.length > 0) {
     html += `<span style="display:flex;gap:0.4rem;margin-left:auto">`;
     html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_copyAllPlayerCodes()">📋 ${t('txt_txt_copy_all_codes')}</button>`;
@@ -3734,6 +3738,7 @@ function _renderPlayerCodes(secrets) {
     html += `<th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_contact')}</th>`;
     html += `<th style="text-align:center;padding:0.4rem 0.6rem">${t('txt_txt_qr_code')}</th>`;
     html += `<th style="text-align:center;padding:0.4rem 0.6rem"></th>`;
+    html += `<th style="text-align:center;padding:0.4rem 0.6rem"></th>`;
     html += `</tr></thead><tbody>`;
     for (const [pid, info] of entries) {
       html += `<tr style="border-bottom:1px solid var(--border)" id="pc-row-${pid}">`;
@@ -3742,11 +3747,14 @@ function _renderPlayerCodes(secrets) {
       html += `<td style="padding:0.4rem 0.6rem"><span style="display:flex;gap:0.3rem;align-items:center"><input type="text" id="pc-contact-${pid}" value="${escAttr(info.contact || '')}" placeholder="${t('txt_reg_contact_placeholder')}" style="flex:1;min-width:120px;font-size:0.82rem;padding:0.2rem 0.4rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem;white-space:nowrap" onclick="_savePlayerContact('${pid}')" id="pc-contact-save-${pid}">${t('txt_txt_save_contact')}</button></span></td>`;
       html += `<td style="padding:0.4rem 0.6rem;text-align:center"><button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem" onclick="_showPlayerQr('${escAttr(pid)}','${escAttr(info.name)}')">📱 ${t('txt_txt_qr_code')}</button></td>`;
       html += `<td style="padding:0.4rem 0.6rem;text-align:center"><button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem;background:var(--border);color:var(--text)" onclick="_regeneratePlayerCode('${pid}')">🔄 ${t('txt_txt_regenerate')}</button></td>`;
+      html += `<td style="padding:0.4rem 0.6rem;text-align:center">${_isMex ? `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem" onclick="_removeTournamentPlayer('${pid}','${escAttr(info.name)}')" title="${t('txt_txt_remove_player')}">🗑</button>` : ''}</td>`;
       html += `</tr>`;
     }
     html += `</tbody></table>`;
     html += `</div>`;
   }
+
+  if (_isMex) html += `<div style="margin-top:0.5rem"><button type="button" class="add-participant-btn" onclick="_addTournamentPlayer()">＋ ${t('txt_txt_add_player')}</button></div>`;
 
   html += `</div></details>`;
   return html;
@@ -3778,6 +3786,38 @@ async function _showPlayerQr(playerId, playerName) {
   } catch (e) {
     alert(e.message);
   }
+}
+
+/** Refresh the current tournament view after player roster changes */
+function _refreshCurrentView() {
+  if (currentType === 'group_playoff') renderGP();
+  else if (currentType === 'playoff') renderPO();
+  else if (currentType === 'mexicano') renderMex();
+}
+
+/** Add a new player to the running tournament */
+async function _addTournamentPlayer() {
+  const name = prompt(t('txt_txt_add_player_prompt'));
+  if (!name || !name.trim()) return;
+  try {
+    const data = await api(`/api/tournaments/${currentTid}/players`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    // Show the new player's passphrase before refreshing
+    alert(`${esc(data.player_name)}\n${t('txt_txt_passphrase')}: ${data.passphrase}`);
+    _refreshCurrentView();
+  } catch (e) { alert(e.message || t('txt_reg_error')); }
+}
+
+/** Remove a player from the running tournament */
+async function _removeTournamentPlayer(playerId, playerName) {
+  if (!confirm(t('txt_txt_remove_player_confirm', { name: playerName }))) return;
+  try {
+    await api(`/api/tournaments/${currentTid}/players/${playerId}`, { method: 'DELETE' });
+    _refreshCurrentView();
+  } catch (e) { alert(e.message || t('txt_reg_error')); }
 }
 
 /** Regenerate a single player's passphrase & token */
@@ -4424,12 +4464,14 @@ function _renderRegDetailInline(rid) {
       html += `<tr style="border-bottom:1px solid var(--border)">`;
       html += `<td style="padding:0.4rem 0.5rem;font-weight:600">${esc(reg.player_name)}</td>`;
       html += `<td style="padding:0.4rem 0.5rem"><code style="font-size:0.9em;color:var(--accent);user-select:all;cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(reg.passphrase)}</code></td>`;
-      html += `<td style="padding:0.4rem 0.5rem;text-align:center">`;
+      html += `<td style="padding:0.4rem 0.5rem;text-align:center;white-space:nowrap">`;
+      html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem;margin-right:0.25rem" onclick="_editRegistrantName('${esc(r.id)}','${esc(reg.player_id)}','${esc(reg.player_name)}')" title="${t('txt_reg_edit_name')}">✏️</button>`;
       html += `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem" onclick="_removeRegistrant('${esc(r.id)}','${esc(reg.player_id)}')" title="${t('txt_reg_confirm_remove')}">✕</button>`;
       html += `</td></tr>`;
     }
     html += `</tbody></table></div>`;
   }
+  html += `<div style="margin-top:0.5rem"><button type="button" class="add-participant-btn" onclick="_adminAddRegistrant('${esc(rid)}')">&#xFF0B; ${t('txt_reg_add_player')}</button></div>`;
   html += `</details>`;
 
   // Question Answers panel (separate, only shown when questions exist)
@@ -5037,10 +5079,40 @@ async function _saveRegSettings(rid) {
   await loadRegistrations();
 }
 
+async function _editRegistrantName(rid, pid, currentName) {
+  const newName = prompt(t('txt_reg_edit_name_prompt'), currentName);
+  if (!newName || newName.trim() === currentName) return;
+  const trimmed = newName.trim();
+  if (!trimmed) return;
+  try {
+    await api(`/api/registrations/${rid}/registrant/${pid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player_name: trimmed }),
+    });
+    await _loadRegDetail(rid);
+    await loadRegistrations();
+  } catch (e) { alert(t('txt_reg_error')); }
+}
+
 async function _removeRegistrant(rid, pid) {
   if (!confirm(t('txt_reg_confirm_remove'))) return;
   try {
     await api(`/api/registrations/${rid}/registrant/${pid}`, { method: 'DELETE' });
+    await _loadRegDetail(rid);
+    await loadRegistrations();
+  } catch (e) { alert(t('txt_reg_error')); }
+}
+
+async function _adminAddRegistrant(rid) {
+  const name = prompt(t('txt_reg_add_player_prompt'));
+  if (!name || !name.trim()) return;
+  try {
+    await api(`/api/registrations/${rid}/registrant`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player_name: name.trim() }),
+    });
     await _loadRegDetail(rid);
     await loadRegistrations();
   } catch (e) { alert(t('txt_reg_error')); }

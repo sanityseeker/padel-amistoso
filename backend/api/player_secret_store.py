@@ -97,6 +97,50 @@ def regenerate_secret(tournament_id: str, player_id: str) -> PlayerSecret | None
 # ────────────────────────────────────────────────────────────────────────────
 
 
+def add_player_secret(
+    tournament_id: str,
+    player_id: str,
+    player_name: str,
+    passphrase: str,
+    token: str,
+) -> None:
+    """Insert a single player's secret into the player_secrets table.
+
+    Args:
+        tournament_id: The tournament the player belongs to.
+        player_id: Unique player hex ID.
+        player_name: Display name.
+        passphrase: Human-readable passphrase.
+        token: URL token for QR-code login.
+    """
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, contact)
+            VALUES (?, ?, ?, ?, ?, '')
+            ON CONFLICT(tournament_id, player_id) DO UPDATE SET
+                passphrase  = excluded.passphrase,
+                token       = excluded.token,
+                player_name = excluded.player_name
+            """,
+            (tournament_id, player_id, player_name, passphrase, token),
+        )
+
+
+def remove_player_secret(tournament_id: str, player_id: str) -> bool:
+    """Delete a single player's secret row.
+
+    Returns:
+        True if a row was deleted, False if it did not exist.
+    """
+    with get_db() as conn:
+        cur = conn.execute(
+            "DELETE FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
+            (tournament_id, player_id),
+        )
+    return cur.rowcount > 0
+
+
 def get_secrets_for_tournament(tournament_id: str) -> dict[str, dict]:
     """Return all secrets for a tournament as ``{player_id: {name, passphrase, token, contact}}``."""
     try:

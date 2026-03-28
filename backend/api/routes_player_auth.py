@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import io
 import time
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 import segno
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -19,16 +19,20 @@ from pydantic import BaseModel, Field
 from ..auth.deps import PlayerIdentity, get_current_player, get_current_user
 from ..auth.models import User
 from ..auth.security import create_player_token
+from ..models import Player
+from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .helpers import _require_owner_or_admin
 from .player_secret_store import (
+    add_player_secret,
     get_contacts_for_tournament,
     get_secrets_for_tournament,
     lookup_by_passphrase,
     lookup_by_token,
     regenerate_secret,
+    remove_player_secret,
     update_contact,
 )
-from .state import _tournaments
+from .state import _save_tournament, _tournaments, get_tournament_lock
 
 router = APIRouter(prefix="/api/tournaments", tags=["player-auth"])
 
@@ -111,6 +115,12 @@ class PlayerContactRequest(BaseModel):
     contact: str = Field(default="", max_length=256)
 
 
+class AddPlayerRequest(BaseModel):
+    """Payload for adding a new player to a running tournament."""
+
+    name: str = Field(min_length=1, max_length=128)
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # Public endpoints
 # ────────────────────────────────────────────────────────────────────────────
@@ -159,6 +169,118 @@ async def player_auth(tid: str, req: PlayerAuthRequest, request: Request) -> Pla
 # ────────────────────────────────────────────────────────────────────────────
 # Organizer-only endpoints
 # ────────────────────────────────────────────────────────────────────────────
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Player roster management
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@router.post("/{tid}/players")
+async def add_player_to_tournament(
+    tid: str,
+    req: AddPlayerRequest,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Add a new player to a running tournament (organizer/admin only).
+
+    Generates fresh passphrase and token for the new player.  Returns the
+    player ID and credentials so the admin can share them immediately.
+    """
+    _require_owner_or_admin(tid, user)
+    async with get_tournament_lock(tid):
+        data = _tournaments.get(tid)
+        if data is None:
+            raise HTTPException(404, "Tournament not found")
+        if data["type"] != "mexicano":
+            raise HTTPException(409, "Adding players mid-tournament is only supported for Mexicano format")
+        t = data["tournament"]
+        if str(getattr(t, "phase", "")) == "finished":
+            raise HTTPException(409, "Cannot add players to a finished tournament")
+
+        name = req.name.strip()
+        if any(p.name == name for p in t.players):
+            raise HTTPException(409, f"A player named '{name}' already exists in this tournament")
+
+        player = Player(name=name)
+        pid = player.id
+        t.players.append(player)
+
+        t_type = data["type"]
+        if t_type == "mexicano":
+            t.scores[pid] = 0
+            t._matches_played[pid] = 0
+            t._wins[pid] = 0
+            t._draws[pid] = 0
+            t._losses[pid] = 0
+            t._sit_out_counts[pid] = 0
+            t._partner_history[pid] = defaultdict(int)
+            t._opponent_history[pid] = defaultdict(int)
+            t._player_map[pid] = player
+            t._est_cache = None
+
+        passphrase = generate_passphrase()
+        token = generate_token()
+        add_player_secret(tid, pid, name, passphrase, token)
+        _save_tournament(tid)
+
+    return {"player_id": pid, "player_name": name, "passphrase": passphrase, "token": token}
+
+
+@router.delete("/{tid}/players/{player_id}")
+async def remove_player_from_tournament(
+    tid: str,
+    player_id: str,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Remove a player from a running Mexicano tournament (organizer/admin only).
+
+    The player is removed from the active roster so they are excluded from
+    future round pairings.  All completed-match records and accumulated stats
+    (scores, wins, losses, partner/opponent history) are intentionally
+    preserved — past rounds already happened and removing those results would
+    distort the leaderboard for everyone else.
+
+    Raises 409 if the player is currently assigned to a pending or
+    in-progress match, so upcoming pairings are never left incomplete.
+    """
+    _require_owner_or_admin(tid, user)
+    async with get_tournament_lock(tid):
+        data = _tournaments.get(tid)
+        if data is None:
+            raise HTTPException(404, "Tournament not found")
+        if data["type"] != "mexicano":
+            raise HTTPException(409, "Removing players mid-tournament is only supported for Mexicano format")
+        t = data["tournament"]
+        if str(getattr(t, "phase", "")) == "finished":
+            raise HTTPException(409, "Cannot remove players from a finished tournament")
+
+        player = next((p for p in t.players if p.id == player_id), None)
+        if player is None:
+            raise HTTPException(404, "Player not found in this tournament")
+
+        # Guard: reject removal if the player is in any pending match.
+        pending = list(t.pending_matches()) + list(t.pending_playoff_matches())
+        for m in pending:
+            if any(p.id == player_id for p in m.team1 + m.team2):
+                raise HTTPException(
+                    409,
+                    "Cannot remove a player who is assigned to a pending match — complete or cancel that match first",
+                )
+
+        # Remove from active roster only — stats and match history are kept so
+        # the leaderboard remains accurate for completed rounds.  Save the player
+        # object in _removed_players so leaderboard() can still display their row.
+        if not hasattr(t, "_removed_players"):
+            t._removed_players = []
+        t._removed_players.append(player)
+        t.players = [p for p in t.players if p.id != player_id]
+        t._est_cache = None
+
+        remove_player_secret(tid, player_id)
+        _save_tournament(tid)
+
+    return {"ok": True, "player_id": player_id}
 
 
 @router.get("/{tid}/player-secrets")

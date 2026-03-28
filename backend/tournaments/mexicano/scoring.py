@@ -125,6 +125,31 @@ class ScoringMixin:
         for i, entry in enumerate(board):
             entry["rank"] = i + 1
             entry["ranked_by_avg"] = ranked_by_avg
+            entry["removed"] = False
+
+        # Append removed players after the ranked section — their past stats are
+        # preserved for transparency but they are no longer competing.
+        for p in getattr(self, "_removed_players", []):
+            played = self._matches_played.get(p.id, 0)
+            total = self.scores.get(p.id, 0)
+            board.append(
+                {
+                    "player": p.name,
+                    "player_id": p.id,
+                    "total_points": total,
+                    "estimated_points": round(est.get(p.id, 0.0), 2),
+                    "matches_played": played,
+                    "avg_points": round(total / played, 2) if played > 0 else 0.0,
+                    "sat_out": self._sit_out_counts.get(p.id, 0),
+                    "wins": self._wins.get(p.id, 0),
+                    "draws": self._draws.get(p.id, 0),
+                    "losses": self._losses.get(p.id, 0),
+                    "rank": None,
+                    "ranked_by_avg": ranked_by_avg,
+                    "removed": True,
+                }
+            )
+
         return board
 
     def player_stats(self) -> dict:

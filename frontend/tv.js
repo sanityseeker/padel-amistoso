@@ -1076,7 +1076,12 @@ function _buildMexLeaderboard(status) {
   html += `</tr></thead><tbody>`;
   for (const r of lb) {
     const isMe = tvState.playerId && r.player_id === tvState.playerId;
-    html += `<tr${isMe ? ' class="my-row"' : ''}><td class="rank-cell">${r.rank}</td><td class="player-cell">${esc(r.player)}</td>`;
+    const removedStyle = r.removed ? 'opacity:0.45' : '';
+    const rankCell = r.removed ? `<span style="color:var(--text-muted)">—</span>` : r.rank;
+    const nameCell = r.removed
+      ? `${esc(r.player)} <span style="font-size:0.7em;opacity:0.7">(${t('txt_txt_removed')})</span>`
+      : esc(r.player);
+    html += `<tr${isMe ? ' class="my-row"' : ''}${removedStyle ? ` style="${removedStyle}"` : ''}><td class="rank-cell">${rankCell}</td><td class="player-cell">${nameCell}</td>`;
     const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
     const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
     html += `<td class="${byAvg ? '' : 'pts-cell'}">${totalCell}</td>`;

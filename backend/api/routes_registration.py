@@ -528,6 +528,58 @@ async def delete_registration(rid: str, user: User = Depends(get_current_user)) 
     return {"ok": True}
 
 
+@router.post("/{rid}/registrant")
+async def admin_add_registrant(rid: str, req: RegistrantIn, user: User = Depends(get_current_user)) -> dict:
+    """Admin: add a player directly to a registration lobby.
+
+    Bypasses the open-lobby, join-code and rate-limit checks that apply to
+    the public self-registration endpoint.  Useful for manually enrolling
+    late entries or players who cannot use the public form.
+    """
+    reg = _get_registration(rid)
+    _require_registration_owner(reg, user)
+    reg_id = reg["id"]
+
+    player_id = uuid.uuid4().hex[:8]
+    now = datetime.now(timezone.utc).isoformat()
+
+    existing_passphrases: set[str] = set()
+    existing_names: set[str] = set()
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT player_name, passphrase FROM registrants WHERE registration_id = ?",
+            (reg_id,),
+        ).fetchall()
+        for r in rows:
+            existing_passphrases.add(r["passphrase"])
+            existing_names.add(r["player_name"].strip().lower())
+
+    if req.player_name.strip().lower() in existing_names:
+        raise HTTPException(409, "A player with this name is already registered")
+
+    passphrase = generate_passphrase()
+    while passphrase in existing_passphrases:
+        passphrase = generate_passphrase()
+
+    token = generate_token()
+
+    answers_json = json.dumps(req.answers) if req.answers else None
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO registrants
+               (registration_id, player_id, player_name, passphrase, token, answers, registered_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (reg_id, player_id, req.player_name, passphrase, token, answers_json, now),
+        )
+
+    return {
+        "player_id": player_id,
+        "player_name": req.player_name,
+        "passphrase": passphrase,
+        "token": token,
+    }
+
+
 @router.patch("/{rid}/registrant/{player_id}")
 async def patch_registrant(
     rid: str, player_id: str, req: RegistrantPatch, user: User = Depends(get_current_user)
