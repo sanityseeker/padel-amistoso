@@ -1,3 +1,9 @@
+## v0.4.1 (2026-03-28)
+
+### Fix
+
+- **players-registration**: remove and edit players from admin interface
+
 ## v0.4.0 (2026-03-27)
 
 ### Feat
