@@ -1,3 +1,9 @@
+## v0.5.1 (2026-03-29)
+
+### Feat
+
+- **registration form**: improve interface
+
 ## v0.5.0 (2026-03-29)
 
 ### Feat
