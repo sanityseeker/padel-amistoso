@@ -1,3 +1,9 @@
+## v0.5.0 (2026-03-29)
+
+### Feat
+
+- **registration**: add multiple choice to forms; add email support
+
 ## v0.4.1 (2026-03-28)
 
 ### Fix
