@@ -56,6 +56,7 @@ let _lastResult = null;
 let _pollTimer = null;
 let _lobbyFetching = false;
 let _rid = null;
+let _urlToken = null; // token passed via email link for auto-login
 
 function _isValidEmail(value) {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test((value || '').trim());
@@ -157,6 +158,13 @@ function _init() {
     if (pathMatch) rid = decodeURIComponent(pathMatch[1]);
   }
   _rid = rid || null;
+  _urlToken = params.get('token') || null;
+  // Strip the token from the URL bar so it isn't leaked in browser history
+  if (_urlToken && window.history?.replaceState) {
+    const clean = new URL(window.location.href);
+    clean.searchParams.delete('token');
+    window.history.replaceState(null, '', clean.toString());
+  }
   _fullRender();
 }
 
@@ -188,7 +196,11 @@ async function _fetchRegistration(rid) {
       return;
     }
     _regData = await res.json();
-    _render();
+    if (_urlToken) {
+      await _autoLoginWithToken(_urlToken);
+    } else {
+      _render();
+    }
   } catch (e) {
     _showError(t('txt_reg_error'));
   }
@@ -489,6 +501,34 @@ function _toggleReturningPanel() {
   if (!isOpen) document.getElementById('reg-returning-passphrase')?.focus();
 }
 
+async function _autoLoginWithToken(token) {
+  _urlToken = null; // consume once
+  try {
+    const res = await fetch(`${API}/${encodeURIComponent(_rid)}/player-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      _lastResult = {
+        player_id: data.player_id,
+        player_name: data.player_name,
+        passphrase: data.passphrase,
+        answers: data.answers || {},
+        token: data.token || null,
+        from_login: true,
+      };
+      // Persist the token so refreshing the page keeps the session
+      if (data.token) _setRegToken(data.token);
+      _showSuccess();
+      return;
+    }
+  } catch (_) {}
+  // Token invalid or expired — fall through to the normal registration view
+  _render();
+}
+
 async function _lookupPlayer() {
   const passphrase = document.getElementById('reg-returning-passphrase')?.value?.trim();
   const errorEl = document.getElementById('reg-returning-error');
@@ -513,9 +553,10 @@ async function _lookupPlayer() {
       player_name: data.player_name,
       passphrase: data.passphrase,
       answers: data.answers || {},
-      token: null,
+      token: data.token || null,
       from_login: true,
     };
+    if (data.token) _setRegToken(data.token);
     _showSuccess();
   } catch (_) {
     errorEl.textContent = t('txt_reg_error');

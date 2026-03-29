@@ -35,7 +35,7 @@ from ..tournaments import GroupPlayoffTournament, MexicanoTournament, PlayoffTou
 from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .db import get_db
 from .helpers import _store_tournament
-from .player_secret_store import lookup_registrant_by_passphrase
+from .player_secret_store import lookup_registrant_by_passphrase, lookup_registrant_by_token
 from .schemas import (
     ConvertRegistrationRequest,
     LinkedTournamentOut,
@@ -1227,19 +1227,28 @@ async def set_registration_alias(rid: str, req: SetAliasRequest, user: User = De
 
 @router.post("/{rid}/player-login", response_model=RegistrantLoginOut)
 async def player_login(rid: str, req: RegistrantLoginIn, request: Request) -> RegistrantLoginOut:
-    """Allow a returning player to retrieve their registration data by passphrase.
+    """Allow a returning player to retrieve their registration data by passphrase or token.
 
-    No admin auth required — the passphrase proves identity.
-    Returns 401 if the passphrase is not found in this lobby.
+    No admin auth required — the passphrase/token proves identity.
+    Returns 401 if neither is found in this lobby.
     """
+    if req.passphrase and req.token:
+        raise HTTPException(400, "Provide either passphrase or token, not both")
+    if not req.passphrase and not req.token:
+        raise HTTPException(400, "Provide passphrase or token")
+
     client_ip = _client_ip(request)
     _public_passphrase_rate_limiter.check(client_ip, "Too many login attempts — try again later")
     _public_passphrase_rate_limiter.record(client_ip)
 
     reg = _get_registration(rid)  # 404 if lobby doesn't exist
-    result = lookup_registrant_by_passphrase(reg["id"], req.passphrase)
+    result: dict | None = None
+    if req.passphrase:
+        result = lookup_registrant_by_passphrase(reg["id"], req.passphrase)
+    else:
+        result = lookup_registrant_by_token(reg["id"], req.token)  # type: ignore[arg-type]
     if result is None:
-        raise HTTPException(401, "Passphrase not found")
+        raise HTTPException(401, "Passphrase or token not found")
     return RegistrantLoginOut(**result)
 
 

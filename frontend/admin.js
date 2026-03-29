@@ -4491,11 +4491,11 @@ function _renderRegDetailInline(rid) {
   html += `<div class="form-group" style="margin-bottom:0.4rem">`;
   html += `<textarea id="reg-edit-message-${esc(rid)}" rows="3" placeholder="${t('txt_reg_message_placeholder')}">${esc(r.message || '')}</textarea>`;
   html += `</div>`;
-  html += `<div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.5rem">`;
+  html += `<div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem">`;
   if (window._emailConfigured) {
-    html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendRegMessageEmails('${esc(rid)}'))">${t('txt_email_send_message_all')}</button>`;
+    html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendRegMessageEmails('${esc(rid)}'))" title="${t('txt_email_confirm_send_message_all')}">📧 ${t('txt_email_send_message_all')}</button>`;
   }
-  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegMessage('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
+  html += `<button type="button" class="btn btn-primary btn-sm" style="margin-left:auto" onclick="withLoading(this,()=>_saveRegMessage('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
   html += `</div></div></details>`;
 
   // Questions edit section
@@ -4525,13 +4525,15 @@ function _renderRegDetailInline(rid) {
   html += `<details class="reg-section" style="margin-bottom:0.75rem">`;
   html += `<summary class="reg-section-summary" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
   html += `<span style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_reg_registrants')} (${r.registrants.length})</span>`;
-  if (r.registrants.length > 0) {
-    html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_copyAllRegCodes('${esc(rid)}')">${t('txt_txt_copy_all_codes')}</button>`;
-    if (window._emailConfigured) {
-      html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem;margin-left:0.25rem" onclick="event.preventDefault();_sendAllRegEmails('${esc(rid)}')">${t('txt_email_send_all')}</button>`;
-    }
-  }
   html += `</summary>`;
+  if (r.registrants.length > 0) {
+    html += `<div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.65rem;margin-bottom:0.25rem">`;
+    html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="_copyAllRegCodes('${esc(rid)}')">${t('txt_txt_copy_all_codes')}</button>`;
+    if (window._emailConfigured) {
+      html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="_sendAllRegEmails('${esc(rid)}')">${t('txt_email_send_all')}</button>`;
+    }
+    html += `</div>`;
+  }
   if (r.registrants.length === 0) {
     html += `<p style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem 0">${t('txt_reg_no_registrants')}</p>`;
   } else {
@@ -4566,7 +4568,7 @@ function _renderRegDetailInline(rid) {
       html += `<td style="padding:0.4rem 0.5rem;font-size:0.82em;color:var(--text-muted)">${reg.email ? esc(reg.email) : '—'}</td>`;
       html += `<td style="padding:0.4rem 0.5rem"><code style="font-size:0.9em;color:var(--accent);user-select:all;cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(reg.passphrase)}</code></td>`;
       html += `<td style="padding:0.4rem 0.5rem;text-align:center;white-space:nowrap">`;
-      html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem;margin-right:0.25rem" onclick="_editRegistrantName('${esc(r.id)}','${esc(reg.player_id)}','${esc(reg.player_name)}')" title="${t('txt_reg_edit_name')}">✏️</button>`;
+      html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem;margin-right:0.25rem" onclick="_editRegistrant('${esc(r.id)}','${esc(reg.player_id)}','${esc(reg.player_name)}','${esc(reg.email||'')}')" title="${t('txt_reg_edit_player')}">✏️</button>`;
       if (window._emailConfigured && reg.email) {
         html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem;margin-right:0.25rem" onclick="_sendRegEmail('${esc(r.id)}','${esc(reg.player_id)}')" title="${t('txt_email_send')}">✉️</button>`;
       }
@@ -4771,7 +4773,11 @@ function showCreateRegistration() {
       <div class="field-section" style="margin-bottom:0.75rem">
         <div class="field-section-title">${t('txt_reg_description')}</div>
         <textarea id="reg-new-desc" class="reg-desc-textarea" rows="3" oninput="_autoResizeTextarea(this)"></textarea>
-        <small style="color:var(--text-muted);font-size:0.75rem">${t('txt_reg_description_hint')}</small>
+        <div id="reg-new-desc-preview" style="display:none;margin-top:0.5rem;padding:0.5rem;border:1px solid var(--border);border-radius:6px;font-size:0.9rem"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:0.3rem">
+          <button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="_toggleNewRegDescPreview()">${t('txt_reg_preview')}</button>
+          <small style="color:var(--text-muted);font-size:0.75rem">${t('txt_reg_description_hint')}</small>
+        </div>
       </div>
       <div class="field-section" style="margin-bottom:0.75rem">
         <label class="switch-label" style="cursor:pointer">
@@ -4968,11 +4974,14 @@ function _collectRegQuestions(containerId = 'reg-new-questions') {
 
 // ─── Registration detail helpers ──────────────────────────
 
-function _copyAllRegCodes(rid) {
+async function _copyAllRegCodes(rid) {
   const r = _regDetails[rid];
   if (!r?.registrants) return;
   const lines = r.registrants.map(reg => `${reg.player_name}: ${reg.passphrase}`).join('\n');
-  navigator.clipboard.writeText(lines);
+  try {
+    await navigator.clipboard.writeText(lines);
+    _showToast(t('txt_txt_codes_copied'));
+  } catch { /* clipboard access denied */ }
 }
 
 function _renderAnswersPanel(rid, r, questions) {
@@ -5341,20 +5350,50 @@ async function _saveRegSettings(rid) {
   await loadRegistrations();
 }
 
-async function _editRegistrantName(rid, pid, currentName) {
-  const newName = prompt(t('txt_reg_edit_name_prompt'), currentName);
-  if (!newName || newName.trim() === currentName) return;
-  const trimmed = newName.trim();
-  if (!trimmed) return;
-  try {
-    await api(`/api/registrations/${rid}/registrant/${pid}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ player_name: trimmed }),
-    });
-    await _loadRegDetail(rid);
-    await loadRegistrations();
-  } catch (e) { alert(t('txt_reg_error')); }
+function _editRegistrant(rid, pid, currentName, currentEmail) {
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.5rem;max-width:380px;width:100%">
+    <h3 style="margin:0 0 1rem;font-size:1rem">${t('txt_reg_edit_player')}</h3>
+    <div style="margin-bottom:0.75rem">
+      <label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:0.3rem">${t('txt_reg_name')}</label>
+      <input id="_er-name" type="text" value="${escAttr(currentName)}" maxlength="128" style="width:100%;box-sizing:border-box;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:0.88rem">
+    </div>
+    <div style="margin-bottom:1.1rem">
+      <label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:0.3rem">${t('txt_reg_email_label')} <span style="color:var(--text-muted);font-weight:400">(${t('txt_txt_optional')})</span></label>
+      <input id="_er-email" type="email" value="${escAttr(currentEmail)}" maxlength="320" placeholder="${t('txt_reg_email_placeholder')}" style="width:100%;box-sizing:border-box;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:0.88rem">
+    </div>
+    <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+      <button type="button" class="btn btn-sm" id="_er-cancel">${t('txt_txt_cancel')}</button>
+      <button type="button" class="btn btn-primary btn-sm" id="_er-save">${t('txt_reg_save')}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('#_er-cancel').onclick = () => modal.remove();
+  modal.querySelector('#_er-save').onclick = async () => {
+    const nameEl = modal.querySelector('#_er-name');
+    const emailEl = modal.querySelector('#_er-email');
+    const newName = nameEl.value.trim();
+    const newEmail = emailEl.value.trim();
+    if (!newName) { nameEl.focus(); return; }
+    const patch = {};
+    if (newName !== currentName) patch.player_name = newName;
+    if (newEmail !== currentEmail) patch.email = newEmail || null;
+    if (!Object.keys(patch).length) { modal.remove(); return; }
+    try {
+      await api(`/api/registrations/${rid}/registrant/${pid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      modal.remove();
+      _showToast(t('txt_reg_saved'));
+      await _loadRegDetail(rid);
+      await loadRegistrations();
+    } catch (e) { alert(e.message || t('txt_reg_error')); }
+  };
+  modal.querySelector('#_er-name').focus();
 }
 
 async function _removeRegistrant(rid, pid) {
@@ -5363,24 +5402,51 @@ async function _removeRegistrant(rid, pid) {
     await api(`/api/registrations/${rid}/registrant/${pid}`, { method: 'DELETE' });
     await _loadRegDetail(rid);
     await loadRegistrations();
-  } catch (e) { alert(t('txt_reg_error')); }
+  } catch (e) { alert(e.message || t('txt_reg_error')); }
 }
 
-async function _adminAddRegistrant(rid) {
-  const name = prompt(t('txt_reg_add_player_prompt'));
-  if (!name || !name.trim()) return;
-  const email = prompt(t('txt_email_optional'), '');
-  try {
-    const body = { player_name: name.trim() };
-    if (email && email.trim()) body.email = email.trim();
-    await api(`/api/registrations/${rid}/registrant`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    await _loadRegDetail(rid);
-    await loadRegistrations();
-  } catch (e) { alert(t('txt_reg_error')); }
+function _adminAddRegistrant(rid) {
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.5rem;max-width:380px;width:100%">
+    <h3 style="margin:0 0 1rem;font-size:1rem">${t('txt_reg_add_player')}</h3>
+    <div style="margin-bottom:0.75rem">
+      <label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:0.3rem">${t('txt_reg_name')}</label>
+      <input id="_ar-name" type="text" maxlength="128" placeholder="${t('txt_reg_add_player_prompt')}" style="width:100%;box-sizing:border-box;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:0.88rem">
+    </div>
+    <div style="margin-bottom:1.1rem">
+      <label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:0.3rem">${t('txt_reg_email_label')} <span style="color:var(--text-muted);font-weight:400">(${t('txt_txt_optional')})</span></label>
+      <input id="_ar-email" type="email" maxlength="320" placeholder="${t('txt_reg_email_placeholder')}" style="width:100%;box-sizing:border-box;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:0.88rem">
+    </div>
+    <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+      <button type="button" class="btn btn-sm" id="_ar-cancel">${t('txt_txt_cancel')}</button>
+      <button type="button" class="btn btn-primary btn-sm" id="_ar-save">${t('txt_reg_add_player')}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('#_ar-cancel').onclick = () => modal.remove();
+  modal.querySelector('#_ar-save').onclick = async () => {
+    const nameEl = modal.querySelector('#_ar-name');
+    const emailEl = modal.querySelector('#_ar-email');
+    const name = nameEl.value.trim();
+    const email = emailEl.value.trim();
+    if (!name) { nameEl.focus(); return; }
+    const body = { player_name: name };
+    if (email) body.email = email;
+    try {
+      await api(`/api/registrations/${rid}/registrant`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      modal.remove();
+      _showToast(t('txt_reg_saved'));
+      await _loadRegDetail(rid);
+      await loadRegistrations();
+    } catch (e) { alert(e.message || t('txt_reg_error')); }
+  };
+  modal.querySelector('#_ar-name').focus();
 }
 
 async function _saveRegMessage(rid) {
@@ -5406,8 +5472,7 @@ async function _sendAllRegEmails(rid) {
   if (!confirm(t('txt_email_confirm_send_all'))) return;
   try {
     const res = await api(`/api/registrations/${rid}/send-all-emails`, { method: 'POST' });
-    const data = typeof res === 'object' ? res : await res;
-    _showToast(t('txt_email_sent_count', { sent: data.sent || 0, skipped: data.skipped || 0 }));
+    _showToast(t('txt_email_sent_count', { sent: res.sent || 0, skipped: res.skipped || 0 }));
   } catch (e) {
     alert(e.message || t('txt_email_failed'));
   }
@@ -5443,6 +5508,22 @@ async function _clearRegMessage(rid) {
 function _toggleRegDescPreview(rid) {
   const preview = document.getElementById(`reg-desc-preview-${rid}`);
   const textarea = document.getElementById(`reg-edit-desc-${rid}`);
+  if (!preview || !textarea) return;
+  if (preview.style.display === 'none') {
+    const md = textarea.value || '';
+    try {
+      const rawHtml = typeof marked !== 'undefined' && marked.parse ? marked.parse(md) : md.replace(/</g, '&lt;');
+      preview.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(rawHtml, { ADD_ATTR: ['target'] }) : esc(md);
+    } catch (_) { preview.textContent = md; }
+    preview.style.display = '';
+  } else {
+    preview.style.display = 'none';
+  }
+}
+
+function _toggleNewRegDescPreview() {
+  const preview = document.getElementById('reg-new-desc-preview');
+  const textarea = document.getElementById('reg-new-desc');
   if (!preview || !textarea) return;
   if (preview.style.display === 'none') {
     const md = textarea.value || '';

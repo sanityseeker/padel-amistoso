@@ -669,6 +669,61 @@ class TestRegistrationAPI:
         r = client.post("/api/registrations/r999/player-login", json={"passphrase": "some-pass-word"})
         assert r.status_code == 404
 
+    def test_player_login_returns_token_field(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers)
+        reg = client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+        passphrase = reg.json()["passphrase"]
+
+        r = client.post(f"/api/registrations/{rid}/player-login", json={"passphrase": passphrase})
+        assert r.status_code == 200
+        data = r.json()
+        assert "token" in data
+        assert data["token"]  # non-empty
+
+    def test_player_login_with_token_returns_registration(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers)
+        reg = client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+        reg_data = reg.json()
+        token = reg_data["token"]
+
+        r = client.post(f"/api/registrations/{rid}/player-login", json={"token": token})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["player_name"] == "Alice"
+        assert data["token"] == token
+        assert "passphrase" in data
+        assert "player_id" in data
+
+    def test_player_login_with_token_wrong_token_returns_401(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers)
+        client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+
+        r = client.post(f"/api/registrations/{rid}/player-login", json={"token": "not-a-real-token"})
+        assert r.status_code == 401
+
+    def test_player_login_with_token_scoped_to_lobby(self, client, auth_headers):
+        rid_a = self._create_registration(client, auth_headers, name="Lobby A")
+        rid_b = self._create_registration(client, auth_headers, name="Lobby B")
+        reg = client.post(f"/api/registrations/{rid_a}/register", json={"player_name": "Alice"})
+        token = reg.json()["token"]
+
+        r = client.post(f"/api/registrations/{rid_b}/player-login", json={"token": token})
+        assert r.status_code == 401
+
+    def test_player_login_both_passphrase_and_token_rejected(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers)
+        reg = client.post(f"/api/registrations/{rid}/register", json={"player_name": "Alice"})
+        passphrase = reg.json()["passphrase"]
+        token = reg.json()["token"]
+
+        r = client.post(f"/api/registrations/{rid}/player-login", json={"passphrase": passphrase, "token": token})
+        assert r.status_code == 400
+
+    def test_player_login_neither_passphrase_nor_token_rejected(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers)
+        r = client.post(f"/api/registrations/{rid}/player-login", json={})
+        assert r.status_code == 400
+
     def test_player_update_answers_with_passphrase(self, client, auth_headers):
         rid = self._create_registration(
             client,

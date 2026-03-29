@@ -223,13 +223,13 @@ def lookup_by_passphrase(tournament_id: str, passphrase: str) -> dict | None:
 def lookup_registrant_by_passphrase(registration_id: str, passphrase: str) -> dict | None:
     """Find a registrant in a lobby by passphrase.
 
-    Returns ``{"player_id", "player_name", "passphrase", "answers", "registered_at"}``
+    Returns ``{"player_id", "player_name", "passphrase", "token", "answers", "registered_at"}``
     or ``None`` if not found.
     """
     try:
         with get_db() as conn:
             row = conn.execute(
-                "SELECT player_id, player_name, passphrase, answers, registered_at"
+                "SELECT player_id, player_name, passphrase, token, answers, registered_at"
                 " FROM registrants WHERE registration_id = ? AND passphrase = ?",
                 (registration_id, passphrase),
             ).fetchone()
@@ -250,6 +250,43 @@ def lookup_registrant_by_passphrase(registration_id: str, passphrase: str) -> di
         "player_id": row["player_id"],
         "player_name": row["player_name"],
         "passphrase": row["passphrase"],
+        "token": row["token"],
+        "answers": answers,
+        "registered_at": row["registered_at"],
+    }
+
+
+def lookup_registrant_by_token(registration_id: str, token: str) -> dict | None:
+    """Find a registrant in a lobby by their unique token.
+
+    Returns ``{"player_id", "player_name", "passphrase", "token", "answers", "registered_at"}``
+    or ``None`` if not found.
+    """
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT player_id, player_name, passphrase, token, answers, registered_at"
+                " FROM registrants WHERE registration_id = ? AND token = ?",
+                (registration_id, token),
+            ).fetchone()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Registrant token lookup failed for %s: %s", registration_id, exc)
+        return None
+    if row is None:
+        return None
+    import json as _json
+
+    answers: dict = {}
+    if row["answers"]:
+        try:
+            answers = _json.loads(row["answers"])
+        except Exception:  # noqa: BLE001
+            pass
+    return {
+        "player_id": row["player_id"],
+        "player_name": row["player_name"],
+        "passphrase": row["passphrase"],
+        "token": row["token"],
         "answers": answers,
         "registered_at": row["registered_at"],
     }

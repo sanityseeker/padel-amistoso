@@ -346,9 +346,13 @@ class RegistrantAdminOut(BaseModel):
 
 
 class RegistrantLoginIn(BaseModel):
-    """Request body for returning-player login on a registration lobby."""
+    """Request body for returning-player login on a registration lobby.
 
-    passphrase: str = Field(min_length=1, max_length=128)
+    Exactly one of ``passphrase`` or ``token`` must be provided.
+    """
+
+    passphrase: str | None = Field(default=None, min_length=1, max_length=128)
+    token: str | None = Field(default=None, min_length=1, max_length=256)
 
 
 class RegistrantLoginOut(BaseModel):
@@ -357,6 +361,7 @@ class RegistrantLoginOut(BaseModel):
     player_id: str
     player_name: str
     passphrase: str
+    token: str
     answers: dict[str, str] = Field(default_factory=dict)
     registered_at: str
 
