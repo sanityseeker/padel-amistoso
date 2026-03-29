@@ -239,6 +239,31 @@ PADEL_DATA_DIR=/path/to/my/data uv run uvicorn backend.api:app --reload --port 8
 
 If not set, it defaults to `data/` inside the project root.
 
+### SMTP email notifications (disabled by default)
+
+Email notifications are **off by default** unless SMTP is configured.
+
+- In `.env.example` and both Docker Compose files, SMTP values are set to `None` placeholders.
+- In `backend/config.py`, `None` / `null` / empty values are treated as unset, so email stays disabled.
+
+To enable SMTP, set these environment variables:
+
+```bash
+AMISTOSO_SMTP_HOST=smtp.gmail.com
+AMISTOSO_SMTP_PORT=587
+AMISTOSO_SMTP_USE_TLS=true
+AMISTOSO_SMTP_USER=your_gmail_address@gmail.com
+AMISTOSO_SMTP_PASS=your_google_app_password
+AMISTOSO_FROM_EMAIL=your_gmail_address@gmail.com
+AMISTOSO_SITE_URL=https://your-domain.com
+```
+
+For Gmail, use a **Google App Password** (not your normal account password), which requires 2-step verification.
+
+Docker Compose note:
+- `docker-compose.yml` uses `${VAR:-None}` defaults, so SMTP remains disabled unless you set real values in your shell or `.env` file.
+- `docker-compose.nas.yml` also ships with `"None"` placeholders for the same reason.
+
 To **reset all data** (start completely fresh), delete the database file inside
 your data directory:
 

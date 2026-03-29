@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..models import Sport
 
+EmailRequirement = Literal["required", "optional", "disabled"]
+
 
 def _normalized_unique_names(values: list[str], field_name: str) -> list[str]:
     cleaned = [name.strip() for name in values]
@@ -273,7 +275,7 @@ class QuestionDef(BaseModel):
 
     key: str = Field(min_length=1, max_length=64)
     label: str = Field(min_length=1, max_length=128)
-    type: Literal["text", "choice"] = "text"
+    type: Literal["text", "choice", "multichoice", "number"] = "text"
     required: bool = False
     choices: list[str] = Field(default_factory=list)
 
@@ -288,6 +290,8 @@ class RegistrationCreate(BaseModel):
     message: str | None = Field(default=None, max_length=5000)
     listed: bool = False
     sport: Sport = Sport.PADEL
+    auto_send_email: bool = False
+    email_requirement: EmailRequirement = "optional"
 
 
 class RegistrationUpdate(BaseModel):
@@ -300,7 +304,10 @@ class RegistrationUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=5000)
     message: str | None = Field(default=None, max_length=5000)
     listed: bool | None = None
+    archived: bool | None = None
     sport: Sport | None = None
+    auto_send_email: bool | None = None
+    email_requirement: EmailRequirement | None = None
     clear_join_code: bool = False
     clear_description: bool = False
     clear_message: bool = False
@@ -313,6 +320,7 @@ class RegistrantIn(BaseModel):
     player_name: str = Field(min_length=1, max_length=128)
     join_code: str | None = None
     answers: dict[str, str] = Field(default_factory=dict)
+    email: str = Field(default="", max_length=320)
 
 
 class RegistrantOut(BaseModel):
@@ -321,6 +329,7 @@ class RegistrantOut(BaseModel):
     player_id: str
     player_name: str
     answers: dict[str, str] = Field(default_factory=dict)
+    email: str = ""
     registered_at: str
 
 
@@ -332,6 +341,7 @@ class RegistrantAdminOut(BaseModel):
     passphrase: str
     token: str
     answers: dict[str, str] = Field(default_factory=dict)
+    email: str = ""
     registered_at: str
 
 
@@ -384,6 +394,8 @@ class RegistrationPublicOut(BaseModel):
     listed: bool = False
     archived: bool = False
     sport: str = "padel"
+    auto_send_email: bool = False
+    email_requirement: EmailRequirement = "optional"
     registrant_count: int = 0
     registrants: list[RegistrantOut] = []
 
@@ -402,19 +414,23 @@ class RegistrationAdminOut(BaseModel):
     description: str | None = None
     message: str | None = None
     alias: str | None = None
+    auto_send_email: bool = False
+    email_requirement: EmailRequirement = "optional"
     converted_to_tid: str | None = None
     converted_to_tids: list[str] = Field(default_factory=list)
     linked_tournaments: list[LinkedTournamentOut] = Field(default_factory=list)
     assigned_player_ids: list[str] = Field(default_factory=list)
+    player_tournament_map: dict[str, list[str]] = Field(default_factory=dict)
     created_at: str
     registrants: list[RegistrantAdminOut] = []
 
 
 class RegistrantPatch(BaseModel):
-    """Admin override of a registrant's name or answers."""
+    """Admin override of a registrant's name, answers, or email."""
 
     player_name: str | None = Field(default=None, min_length=1, max_length=128)
     answers: dict[str, str] | None = None
+    email: str | None = Field(default=None, max_length=320)
 
 
 class ConvertRegistrationRequest(BaseModel):

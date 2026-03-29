@@ -94,6 +94,35 @@ function closeFormatInfo() {
   document.getElementById('format-info-dialog').style.display = 'none';
 }
 
+function _showToast(message) {
+  if (!message) return;
+  const toast = document.createElement('div');
+  toast.textContent = message;
+  toast.style.position = 'fixed';
+  toast.style.top = '1rem';
+  toast.style.left = '50%';
+  toast.style.transform = 'translateX(-50%)';
+  toast.style.background = 'var(--green)';
+  toast.style.color = '#fff';
+  toast.style.padding = '0.7rem 1.2rem';
+  toast.style.borderRadius = '8px';
+  toast.style.fontWeight = '600';
+  toast.style.fontSize = '0.9rem';
+  toast.style.zIndex = '9999';
+  toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.transition = 'opacity 0.2s ease';
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 220);
+  }, 1800);
+}
+
+// Backward-compatible alias for any accidental lowercase call sites.
+function _showtoast(message) {
+  _showToast(message);
+}
+
 // ─── Abbreviation legend popup ────────────────────────────────────────────────
 let _abbrevPopupBtn = null;
 
@@ -943,6 +972,14 @@ function _applySportToCreatePanel() {
     setEntryMode('po', 'individual');
   } else {
     setEntryMode('po', 'team');
+  }
+  // Update lobby name if it still has a default value
+  const regNameEl = document.getElementById('reg-new-name');
+  if (regNameEl) {
+    const defaults = ['My Padel Tournament', 'My Tennis Tournament', 'My Tournament'];
+    if (defaults.includes(regNameEl.value.trim())) {
+      regNameEl.value = _defaultLobbyName();
+    }
   }
 }
 
@@ -2517,7 +2554,7 @@ async function _toggleForcedSitOut(playerId, maxSitOuts) {
     return;
   }
   if (nextSection) {
-    nextSection.innerHTML = `<em style="color:var(--text-muted)">${t('txt_txt_updating_proposals')}</em>`;
+    nextSection.innerHTML = _renderProposalProgressBar();
   }
   try {
     await proposeMexPairings(_mexProposalRequestedCount);
@@ -2592,15 +2629,25 @@ async function proposeMexPairings(requestedCount = 3) {
 }
 
 async function _loadMoreMexPairings() {
+  const section = document.getElementById('mex-next-section');
+  if (section) {
+    section.innerHTML = _renderProposalProgressBar();
+  }
   const previousSelected = _selectedOptionId;
   await proposeMexPairings(10);
   if (previousSelected && _currentPairingProposals.some(p => p.option_id === previousSelected)) {
     _selectedOptionId = previousSelected;
   }
-  const section = document.getElementById('mex-next-section');
   if (section && _currentPairingProposals.length > 0) {
     section.innerHTML = _renderProposalPicker(_currentPairingProposals);
   }
+}
+
+function _renderProposalProgressBar() {
+  return `<div class="proposal-progress-bar-container">
+    <div class="proposal-progress-bar"></div>
+  </div>
+  <p style="text-align:center;color:var(--text-muted);font-size:0.85rem;margin-top:0.5rem">${t('txt_txt_generating_proposals')}</p>`;
 }
 
 function _renderProposalPicker(proposals) {
@@ -4370,7 +4417,18 @@ function _renderRegDetailInline(rid) {
   const r = _regDetails[rid];
   if (!el || !r) return;
 
-  let html = `<div class="card"><h2 style="margin-top:0">${esc(r.name)}</h2>`;
+  let closeOpenBtn = '';
+  if (r.archived) {
+    closeOpenBtn = `<button type="button" class="btn btn-secondary" style="padding:0.35rem 0.8rem;font-size:0.78rem;white-space:nowrap" onclick="withLoading(this,()=>_archiveRegistration('${esc(rid)}',false))">${t('txt_reg_unarchive')}</button>`;
+  } else if (r.open) {
+    closeOpenBtn = `<button type="button" class="btn" style="padding:0.35rem 0.8rem;font-size:0.78rem;background:var(--red);color:#fff;white-space:nowrap" onclick="withLoading(this,()=>_toggleRegOpen('${esc(rid)}',true))">${t('txt_reg_close_registration')}</button>`;
+  } else {
+    closeOpenBtn = `<div style="display:flex;gap:0.4rem;flex-shrink:0">`
+      + `<button type="button" class="btn btn-primary" style="padding:0.35rem 0.8rem;font-size:0.78rem;white-space:nowrap" onclick="withLoading(this,()=>_toggleRegOpen('${esc(rid)}',false))">${t('txt_reg_open_registration')}</button>`
+      + `<button type="button" class="btn btn-secondary" style="padding:0.35rem 0.8rem;font-size:0.78rem;white-space:nowrap" onclick="withLoading(this,()=>_archiveRegistration('${esc(rid)}',true))">${t('txt_reg_archive')}</button>`
+      + `</div>`;
+  }
+  let html = `<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;margin-bottom:0.5rem"><h2 style="margin:0">${esc(r.name)}</h2>${closeOpenBtn}</div>`;
   const regAlias = r.alias || '';
   const regUrl = regAlias
     ? `${window.location.origin}/register/${regAlias}`
@@ -4378,25 +4436,27 @@ function _renderRegDetailInline(rid) {
 
   // Registration link + alias section
   html += `<div style="margin-bottom:1rem;padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px">`;
-  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">🔗 ${t('txt_reg_registration_alias')}</label>`;
+  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">${t('txt_reg_registration_alias')}</label>`;
   html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_reg_alias_help')}</p>`;
   html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
   html += `<input type="text" id="reg-alias-input-${esc(rid)}" placeholder="my-tournament" value="${esc(regAlias)}" pattern="[a-zA-Z0-9_-]+" maxlength="64" style="flex:1;min-width:180px;font-family:monospace;font-size:0.85rem">`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_setRegAlias('${esc(rid)}'))" style="white-space:nowrap">${t('txt_txt_set_alias')}</button>`;
   if (regAlias) {
-    html += `<button type="button" class="btn btn-danger btn-sm" onclick="withLoading(this,()=>_deleteRegAlias('${esc(rid)}'))" style="white-space:nowrap">✕ ${t('txt_txt_remove')}</button>`;
+    html += `<button type="button" class="btn btn-danger btn-sm" onclick="withLoading(this,()=>_deleteRegAlias('${esc(rid)}'))" style="white-space:nowrap">${t('txt_txt_remove')}</button>`;
   }
   html += `</div>`;
   html += `<div style="margin-top:0.5rem;display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">`;
   html += `<div style="flex:1;min-width:220px;padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:0.78rem;word-break:break-all">`;
   html += `<span style="color:var(--text-muted)">${t('txt_reg_public_url')}</span> <a href="${regUrl}" target="_blank" style="color:var(--accent);font-size:0.85rem">${regUrl}</a>`;
   html += `</div>`;
-  html += `<button type="button" class="btn btn-sm" style="font-size:0.7rem;white-space:nowrap" onclick="_copyRegLink('${esc(rid)}')">📋 ${t('txt_reg_copy_link')}</button>`;
+  html += `<button type="button" class="btn btn-sm" style="font-size:0.7rem;white-space:nowrap" onclick="_copyRegLink('${esc(rid)}')">${t('txt_reg_copy_link')}</button>`;
   html += `</div></div>`;
+
+  html += `<div class="reg-sections-group reg-sections-group-admin">`;
 
   // Settings section
   html += `<details class="reg-section" style="margin-bottom:1rem">`;
-  html += `<summary style="cursor:pointer;font-weight:700">⚙\uFE0F ${t('txt_reg_settings')}</summary>`;
+  html += `<summary class="reg-section-summary" style="cursor:pointer;font-weight:700;display:flex;align-items:center;gap:0.45rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_reg_settings')}</summary>`;
   html += `<div style="padding:0.75rem 0">`;
   html += `<div class="form-group"><label>${t('txt_reg_tournament_name')}</label>`;
   html += `<input type="text" id="reg-edit-name-${esc(rid)}" value="${esc(r.name)}"></div>`;
@@ -4404,31 +4464,45 @@ function _renderRegDetailInline(rid) {
   html += `<textarea id="reg-edit-desc-${esc(rid)}" class="reg-desc-textarea" rows="3" oninput="_autoResizeTextarea(this)">${esc(r.description || '')}</textarea>`;
   html += `<div id="reg-desc-preview-${esc(rid)}" style="display:none;margin-top:0.5rem;padding:0.5rem;border:1px solid var(--border);border-radius:6px;font-size:0.9rem"></div>`;
   html += `<button type="button" class="btn btn-sm" style="margin-top:0.3rem;font-size:0.75rem" onclick="_toggleRegDescPreview('${esc(rid)}')">${t('txt_reg_preview')}</button></div>`;
+  html += `<div class="form-group"><label>${t('txt_email_requirement')}</label>`;
+  html += `<select id="reg-edit-emailreq-${esc(rid)}">`;
+  html += `<option value="required" ${(r.email_requirement || 'optional') === 'required' ? 'selected' : ''}>${t('txt_email_mode_required')}</option>`;
+  html += `<option value="optional" ${(r.email_requirement || 'optional') === 'optional' ? 'selected' : ''}>${t('txt_email_mode_optional')}</option>`;
+  html += `<option value="disabled" ${(r.email_requirement || 'optional') === 'disabled' ? 'selected' : ''}>${t('txt_email_mode_disabled')}</option>`;
+  html += `</select></div>`;
   html += `<div class="form-group"><label>${t('txt_reg_join_code')}</label>`;
   html += `<input type="text" id="reg-edit-joincode-${esc(rid)}" value="${esc(r.join_code || '')}" placeholder="${t('txt_reg_join_code_placeholder')}"></div>`;
   html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.5rem">`;
   html += `<input type="checkbox" id="reg-edit-listed-${esc(rid)}" ${r.listed ? 'checked' : ''} style="width:1rem;height:1rem;cursor:pointer">`;
   html += `<label for="reg-edit-listed-${esc(rid)}" style="font-size:0.85rem;cursor:pointer">${t('txt_reg_listed')}</label></div>`;
+  if (window._emailConfigured) {
+    html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.5rem">`;
+    html += `<input type="checkbox" id="reg-edit-autoemail-${esc(rid)}" ${r.auto_send_email ? 'checked' : ''} style="width:1rem;height:1rem;cursor:pointer">`;
+    html += `<label for="reg-edit-autoemail-${esc(rid)}" style="font-size:0.85rem;cursor:pointer">${t('txt_email_auto_send')}</label></div>`;
+  }
   html += `<div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.5rem">`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegSettings('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
   html += `</div></div></details>`;
 
   // Admin message section
   html += `<details class="reg-section" style="margin-bottom:1rem">`;
-  html += `<summary style="cursor:pointer;font-weight:700">📢 ${t('txt_reg_admin_message')}</summary>`;
+  html += `<summary class="reg-section-summary" style="cursor:pointer;font-weight:700;display:flex;align-items:center;gap:0.45rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_reg_admin_message')}</summary>`;
   html += `<div style="padding:0.75rem 0">`;
   html += `<div class="form-group" style="margin-bottom:0.4rem">`;
   html += `<textarea id="reg-edit-message-${esc(rid)}" rows="3" placeholder="${t('txt_reg_message_placeholder')}">${esc(r.message || '')}</textarea>`;
   html += `</div>`;
   html += `<div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.5rem">`;
+  if (window._emailConfigured) {
+    html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendRegMessageEmails('${esc(rid)}'))">${t('txt_email_send_message_all')}</button>`;
+  }
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegMessage('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
   html += `</div></div></details>`;
 
   // Questions edit section
   const editQContainer = `reg-edit-questions-${rid}`;
   html += `<details class="reg-section" style="margin-bottom:1rem">`;
-  html += `<summary style="cursor:pointer;user-select:none;font-weight:700;display:flex;align-items:center;gap:0.5rem;list-style:none">`;
-  html += `<span style="display:flex;align-items:center;gap:0.4rem;flex:1"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span> &#10067; ${t('txt_reg_questions')}</span>`;
+  html += `<summary class="reg-section-summary" style="cursor:pointer;user-select:none;font-weight:700;display:flex;align-items:center;gap:0.5rem;list-style:none">`;
+  html += `<span style="display:flex;align-items:center;gap:0.4rem;flex:1"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_reg_questions')}</span>`;
   html += `<span class="participant-count" id="${editQContainer}-count">(0)</span>`;
   html += `</summary>`;
   html += `<div style="padding:0.6rem 0">`;
@@ -4439,39 +4513,69 @@ function _renderRegDetailInline(rid) {
   html += `</div>`;
   html += `<div id="${editQContainer}"><div class="reg-q-empty" id="${editQContainer}-empty">${t('txt_reg_q_no_questions')}</div></div>`;
   html += `<div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap;align-items:center">`;
-  html += `<button type="button" class="add-participant-btn" onclick="_addRegQuestion('${editQContainer}')" style="flex:1">＋ ${t('txt_reg_add_question')}</button>`;
+  html += `<button type="button" class="add-participant-btn" onclick="_addRegQuestion('${editQContainer}')" style="flex:1">${t('txt_reg_add_question')}</button>`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegQuestions('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
   html += `</div></div></details>`;
 
+  html += `</div>`;
+
+  html += `<div class="reg-sections-group reg-sections-group-players">`;
+
   // Registrants table (collapsible) — names, passphrases, actions only
   html += `<details class="reg-section" style="margin-bottom:0.75rem">`;
-  html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
-  html += `<span style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">▸</span> ${t('txt_reg_registrants')} (${r.registrants.length})</span>`;
+  html += `<summary class="reg-section-summary" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
+  html += `<span style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_reg_registrants')} (${r.registrants.length})</span>`;
   if (r.registrants.length > 0) {
-    html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_copyAllRegCodes('${esc(rid)}')">📋 ${t('txt_txt_copy_all_codes')}</button>`;
+    html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_copyAllRegCodes('${esc(rid)}')">${t('txt_txt_copy_all_codes')}</button>`;
+    if (window._emailConfigured) {
+      html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem;margin-left:0.25rem" onclick="event.preventDefault();_sendAllRegEmails('${esc(rid)}')">${t('txt_email_send_all')}</button>`;
+    }
   }
   html += `</summary>`;
   if (r.registrants.length === 0) {
     html += `<p style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem 0">${t('txt_reg_no_registrants')}</p>`;
   } else {
+    // Duplicate name detection
+    const _nameCounts = new Map();
+    for (const reg of r.registrants) {
+      const norm = reg.player_name.trim().toLowerCase();
+      _nameCounts.set(norm, (_nameCounts.get(norm) || 0) + 1);
+    }
+    const _dupNames = new Set([..._nameCounts.entries()].filter(([, c]) => c > 1).map(([n]) => n));
+    if (_dupNames.size > 0) {
+      const dupList = r.registrants
+        .filter(reg => _dupNames.has(reg.player_name.trim().toLowerCase()))
+        .map(reg => esc(reg.player_name));
+      const unique = [...new Set(dupList)].join(', ');
+      html += `<div style="margin-top:0.5rem;padding:0.45rem 0.7rem;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.5);border-radius:6px;font-size:0.8rem;color:#f59e0b">${t('txt_reg_duplicate_names', { names: unique })}</div>`;
+    }
     html += `<div style="overflow-x:auto;margin-top:0.5rem"><table style="width:100%;border-collapse:collapse;font-size:0.84rem">`;
     html += `<thead><tr style="border-bottom:2px solid var(--border)">`;
     html += `<th style="text-align:left;padding:0.4rem 0.5rem">${t('txt_reg_name')}</th>`;
+    html += `<th style="text-align:left;padding:0.4rem 0.5rem">${t('txt_email')}</th>`;
     html += `<th style="text-align:left;padding:0.4rem 0.5rem">${t('txt_txt_passphrase')}</th>`;
     html += `<th style="text-align:center;padding:0.4rem 0.5rem"></th>`;
     html += `</tr></thead><tbody>`;
     for (const reg of r.registrants) {
-      html += `<tr style="border-bottom:1px solid var(--border)">`;
-      html += `<td style="padding:0.4rem 0.5rem;font-weight:600">${esc(reg.player_name)}</td>`;
+      const isDup = _dupNames.has(reg.player_name.trim().toLowerCase());
+      const rowStyle = isDup
+        ? 'border-bottom:1px solid var(--border);background:rgba(251,191,36,0.08)'
+        : 'border-bottom:1px solid var(--border)';
+      html += `<tr style="${rowStyle}">`;
+      html += `<td style="padding:0.4rem 0.5rem;font-weight:600">${isDup ? '⚠ ' : ''}${esc(reg.player_name)}</td>`;
+      html += `<td style="padding:0.4rem 0.5rem;font-size:0.82em;color:var(--text-muted)">${reg.email ? esc(reg.email) : '—'}</td>`;
       html += `<td style="padding:0.4rem 0.5rem"><code style="font-size:0.9em;color:var(--accent);user-select:all;cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(reg.passphrase)}</code></td>`;
       html += `<td style="padding:0.4rem 0.5rem;text-align:center;white-space:nowrap">`;
       html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem;margin-right:0.25rem" onclick="_editRegistrantName('${esc(r.id)}','${esc(reg.player_id)}','${esc(reg.player_name)}')" title="${t('txt_reg_edit_name')}">✏️</button>`;
+      if (window._emailConfigured && reg.email) {
+        html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem;margin-right:0.25rem" onclick="_sendRegEmail('${esc(r.id)}','${esc(reg.player_id)}')" title="${t('txt_email_send')}">✉️</button>`;
+      }
       html += `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem" onclick="_removeRegistrant('${esc(r.id)}','${esc(reg.player_id)}')" title="${t('txt_reg_confirm_remove')}">✕</button>`;
       html += `</td></tr>`;
     }
     html += `</tbody></table></div>`;
   }
-  html += `<div style="margin-top:0.5rem"><button type="button" class="add-participant-btn" onclick="_adminAddRegistrant('${esc(rid)}')">&#xFF0B; ${t('txt_reg_add_player')}</button></div>`;
+  html += `<div style="margin-top:0.5rem"><button type="button" class="add-participant-btn" onclick="_adminAddRegistrant('${esc(rid)}')">${t('txt_reg_add_player')}</button></div>`;
   html += `</details>`;
 
   // Question Answers panel (separate, only shown when questions exist)
@@ -4480,11 +4584,13 @@ function _renderRegDetailInline(rid) {
     html += _renderAnswersPanel(rid, r, questions);
   }
 
+  html += `</div>`;
+
   // Linked tournaments section (shown after first or more conversions)
   if (r.converted_to_tids?.length > 0) {
     const linkedById = new Map((r.linked_tournaments || []).map((item) => [item.id, item]));
     html += `<div class="linked-tournaments">`;
-    html += `<div class="linked-tournaments-title">🏆 ${t('txt_reg_linked_tournaments')}</div>`;
+    html += `<div class="linked-tournaments-title">${t('txt_reg_linked_tournaments')}</div>`;
     html += `<div class="linked-tournaments-list">`;
     r.converted_to_tids.forEach(function(ltid) {
       const linked = linkedById.get(ltid);
@@ -4492,28 +4598,25 @@ function _renderRegDetailInline(rid) {
       const tname = linked?.name || fromMeta?.name || ltid;
       const ttype = linked?.type || fromMeta?.type;
       if (ttype) {
-        html += `<a href="#" class="linked-tournament-link" onclick="openTournament('${esc(ltid)}','${esc(ttype)}','${esc(tname)}');return false" title="${esc(ltid)}">🏆 ${esc(tname)}</a>`;
+        html += `<a href="#" class="linked-tournament-link" onclick="openTournament('${esc(ltid)}','${esc(ttype)}','${esc(tname)}');return false" title="${esc(ltid)}">${esc(tname)}</a>`;
       } else {
-        html += `<a href="/public.html?id=${encodeURIComponent(ltid)}" class="linked-tournament-link" target="_blank" rel="noopener" title="${esc(ltid)}">🏆 ${esc(tname)}</a>`;
+        html += `<a href="/public.html?id=${encodeURIComponent(ltid)}" class="linked-tournament-link" target="_blank" rel="noopener" title="${esc(ltid)}">${esc(tname)}</a>`;
       }
     });
     html += `</div>`;
     html += `</div>`;
   }
 
-  // Convert button — always shown; disabled when appropriate
-  const regAssignedCount = r.assigned_player_ids ? r.assigned_player_ids.length : 0;
-  const regUnassignedCount = r.registrants.length - regAssignedCount;
-  const regAllAssigned = r.registrants.length > 0 && regAssignedCount >= r.registrants.length;
+  // Convert button + close/open registration toggle
   const regBtnLabel = (r.converted_to_tids?.length > 0) ? t('txt_reg_create_another') : t('txt_reg_convert_to_tournament');
   let regConvDisabled = '';
-  if (regAllAssigned) regConvDisabled = `disabled title="${t('txt_reg_all_assigned')}"`;
-  else if (regUnassignedCount < 2) regConvDisabled = `disabled title="${t('txt_reg_min_registrants_needed')}"`;
-  if (r.open && !r.archived) {
-    html += `<div style="text-align:center;margin-top:1.25rem">`;
-    html += `<button type="button" class="btn btn-success" style="padding:0.7rem 1.5rem;font-size:1rem" onclick="_startConvertFromReg('${esc(rid)}')" ${regConvDisabled}>🏆 ${regBtnLabel}</button>`;
-    html += `</div>`;
+  if (!r.open) regConvDisabled = `disabled title="${t('txt_reg_closed_cannot_convert')}"`;
+  else if (r.registrants.length < 2) regConvDisabled = `disabled title="${t('txt_reg_min_registrants_needed')}"`;
+  html += `<div style="display:flex;gap:0.75rem;justify-content:center;align-items:center;flex-wrap:wrap;margin-top:1.25rem">`;
+  if (!r.archived && r.open) {
+    html += `<button type="button" class="btn btn-success" style="padding:0.7rem 1.5rem;font-size:1rem" onclick="_startConvertFromReg('${esc(rid)}')" ${regConvDisabled}>${regBtnLabel}</button>`;
   }
+  html += `</div>`;
 
   html += `</div>`; // close .card
 
@@ -4539,6 +4642,8 @@ function _renderRegDetailInline(rid) {
   }
   window.scrollTo({ top: scrollY });
 
+  el.querySelectorAll('.reg-answer-card.hide-empty').forEach(card => _regApplyRowFilters(card));
+
   const descEl = document.getElementById(`reg-edit-desc-${rid}`);
   if (descEl) _autoResizeTextarea(descEl);
   _populateRegQuestions(`reg-edit-questions-${rid}`, questions);
@@ -4551,7 +4656,7 @@ function _copyRegLink(rid) {
     : `${window.location.origin}/register?id=${rid}`;
   navigator.clipboard.writeText(url).then(() => {
     const origText = event?.target?.textContent;
-    if (event?.target) { event.target.textContent = '✓'; setTimeout(() => { event.target.textContent = origText || '📋'; }, 1200); }
+    if (event?.target) { event.target.textContent = '✓'; setTimeout(() => { event.target.textContent = origText || t('txt_reg_copy_link'); }, 1200); }
   });
 }
 
@@ -4578,6 +4683,22 @@ async function _deleteRegAlias(rid) {
   } catch (e) { alert(t('txt_txt_failed_to_remove_alias_value', { value: e.message })); }
 }
 
+async function _archiveRegistration(rid, archive) {
+  try {
+    await api(`/api/registrations/${rid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archived: archive }),
+    });
+    if (_regDetails[rid]) _regDetails[rid].archived = archive;
+    _currentRegDetail = _regDetails[rid] || _currentRegDetail;
+    if (currentTid === rid && currentType === 'registration') {
+      _renderRegDetailInline(rid);
+    }
+    await loadRegistrations();
+  } catch (e) { console.error('_archiveRegistration failed:', e); }
+}
+
 async function _toggleRegOpen(rid, currentlyOpen) {
   try {
     await api(`/api/registrations/${rid}`, {
@@ -4586,6 +4707,10 @@ async function _toggleRegOpen(rid, currentlyOpen) {
       body: JSON.stringify({ open: !currentlyOpen }),
     });
     if (_regDetails[rid]) _regDetails[rid].open = !currentlyOpen;
+    _currentRegDetail = _regDetails[rid] || _currentRegDetail;
+    if (currentTid === rid && currentType === 'registration') {
+      _renderRegDetailInline(rid);
+    }
     await loadRegistrations();
   } catch (e) { console.error('_toggleRegOpen failed:', e); }
 }
@@ -4630,6 +4755,10 @@ async function _deleteRegistration(rid) {
 
 // ─── Create registration form ─────────────────────────────
 
+function _defaultLobbyName() {
+  return _currentSport === 'tennis' ? 'My Tennis Tournament' : 'My Padel Tournament';
+}
+
 function showCreateRegistration() {
   const el = document.getElementById('reg-create-form');
   if (!el) return;
@@ -4637,7 +4766,7 @@ function showCreateRegistration() {
 
   el.innerHTML = `
       <div class="field-section" style="margin-bottom:0.75rem">
-        <input id="reg-new-name" value="My Tournament" class="tournament-name-input" placeholder="${t('txt_reg_tournament_name')}" style="width:100%;min-width:160px">
+        <input id="reg-new-name" value="${_defaultLobbyName()}" class="tournament-name-input" placeholder="${t('txt_reg_tournament_name')}" style="width:100%;min-width:160px">
       </div>
       <div class="field-section" style="margin-bottom:0.75rem">
         <div class="field-section-title">${t('txt_reg_description')}</div>
@@ -4653,6 +4782,14 @@ function showCreateRegistration() {
         <input type="text" id="reg-new-joincode" placeholder="${t('txt_reg_join_code_placeholder')}" maxlength="64" style="display:none;margin-top:0.4rem">
       </div>
       <div class="field-section" style="margin-bottom:0.75rem">
+        <div class="field-section-title">${t('txt_email_requirement')}</div>
+        <select id="reg-new-emailreq" style="width:100%">
+          <option value="required">${t('txt_email_mode_required')}</option>
+          <option value="optional" selected>${t('txt_email_mode_optional')}</option>
+          <option value="disabled">${t('txt_email_mode_disabled')}</option>
+        </select>
+      </div>
+      <div class="field-section" style="margin-bottom:0.75rem">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.55rem">
           <div style="display:flex;align-items:center;gap:0.5rem">
             <span class="field-section-title" style="margin-bottom:0">${t('txt_reg_questions')}</span>
@@ -4666,7 +4803,7 @@ function showCreateRegistration() {
         <div id="reg-new-questions">
           <div class="reg-q-empty" id="reg-new-questions-empty">${t('txt_reg_q_no_questions')}</div>
         </div>
-        <button type="button" class="add-participant-btn" style="margin-top:0.4rem" onclick="_addRegQuestion('reg-new-questions')">＋ ${t('txt_reg_add_question')}</button>
+        <button type="button" class="add-participant-btn" style="margin-top:0.4rem" onclick="_addRegQuestion('reg-new-questions')">${t('txt_reg_add_question')}</button>
       </div>
       <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem">
         <input type="checkbox" id="reg-new-listed" style="width:1rem;height:1rem;cursor:pointer">
@@ -4699,6 +4836,7 @@ async function _submitCreateRegistration() {
   if (questions.length) body.questions = questions;
 
   body.listed = !!document.getElementById('reg-new-listed')?.checked;
+  body.email_requirement = document.getElementById('reg-new-emailreq')?.value || 'optional';
 
   body.sport = _currentSport || 'padel';
 
@@ -4746,8 +4884,10 @@ function _addRegQuestion(containerId, noFocus = false) {
       <input type="text" class="reg-q-label" placeholder="${t('txt_reg_question_label')}" maxlength="128">
       <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
         <div class="reg-q-type-toggle" data-current="text">
-          <button type="button" class="active" onclick="_setRegQType(this,'text')">${t('txt_reg_q_type_text')}</button>
-          <button type="button" onclick="_setRegQType(this,'choice')">${t('txt_reg_q_type_choice')}</button>
+          <button type="button" class="active" data-type="text" onclick="_setRegQType(this,'text')">${t('txt_reg_q_type_text')}</button>
+          <button type="button" data-type="number" onclick="_setRegQType(this,'number')">${t('txt_reg_q_type_number')}</button>
+          <button type="button" data-type="choice" onclick="_setRegQType(this,'choice')">${t('txt_reg_q_type_choice')}</button>
+          <button type="button" data-type="multichoice" onclick="_setRegQType(this,'multichoice')">${t('txt_reg_q_type_multichoice')}</button>
         </div>
       </div>
       <div class="reg-q-choices-area">
@@ -4775,7 +4915,7 @@ function _setRegQType(btn, type) {
   btn.classList.add('active');
   const area = btn.closest('.reg-q-card-body')?.querySelector('.reg-q-choices-area');
   if (!area) return;
-  if (type === 'choice') {
+  if (type === 'choice' || type === 'multichoice') {
     area.classList.add('open');
     if (!area.querySelector('.reg-q-choice-row')) _addRegChoice(area.querySelector('.reg-q-add-choice-btn'));
   } else {
@@ -4815,7 +4955,7 @@ function _collectRegQuestions(containerId = 'reg-new-questions') {
     const required = !!item.querySelector('.reg-q-required')?.checked;
     const key = item.dataset.originalKey || `q${idx++}`;
     const q = { key, label, type, required };
-    if (type === 'choice') {
+    if (type === 'choice' || type === 'multichoice') {
       const inputs = item.querySelectorAll('.reg-q-choice-val');
       q.choices = Array.from(inputs).map(i => i.value.trim()).filter(Boolean);
     } else {
@@ -4837,20 +4977,29 @@ function _copyAllRegCodes(rid) {
 
 function _renderAnswersPanel(rid, r, questions) {
   let h = `<details class="reg-section" style="margin-bottom:0.75rem">`;
-  h += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
-  h += `<span style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">▸</span> ${t('txt_reg_answers_title')} (${questions.length})</span>`;
-  h += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_downloadAnswersCSV('${esc(rid)}')">↓ ${t('txt_reg_download_answers_csv')}</button>`;
+  h += `<summary class="reg-section-summary" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
+  h += `<span style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_reg_answers_title')} (${questions.length})</span>`;
+  h += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_downloadAnswersCSV('${esc(rid)}')">${t('txt_reg_download_answers_csv')}</button>`;
   h += `</summary>`;
 
   const DICT_THRESHOLD = 25;
   h += `<div class="reg-answers-grid">`;
   for (const q of questions) {
     let counts = {}, useDictionary = false, choiceToLetter = {};
-    if (q.type === 'choice' && q.choices?.length) {
+    const isChoiceType = (q.type === 'choice' || q.type === 'multichoice') && q.choices?.length;
+    if (isChoiceType) {
       for (const c of q.choices) counts[c] = 0;
       for (const reg of r.registrants) {
         const a = reg.answers?.[q.key];
-        if (a) counts[a] = (counts[a] || 0) + 1;
+        if (a) {
+          if (q.type === 'multichoice') {
+            let selected = [];
+            try { selected = JSON.parse(a) || []; } catch (_) {}
+            for (const s of selected) counts[s] = (counts[s] || 0) + 1;
+          } else {
+            counts[a] = (counts[a] || 0) + 1;
+          }
+        }
       }
       useDictionary = q.choices.some(c => c.length > DICT_THRESHOLD);
       if (useDictionary) {
@@ -4859,16 +5008,24 @@ function _renderAnswersPanel(rid, r, questions) {
       }
     }
 
-    h += `<div class="reg-answer-card">`;
-
     // Card header
+    const unansweredCount = r.registrants.filter(reg => !reg.answers?.[q.key]).length;
+    h += `<div class="reg-answer-card${unansweredCount > 0 ? ' hide-empty' : ''}">`;
+
     h += `<div class="reg-answer-card-header">`;
     h += `<span class="reg-answer-card-label">${esc(q.label)}</span>`;
-    if (q.type === 'choice') {
-      h += `<span class="badge ${q.required ? 'badge-phase' : ''}" style="font-size:0.68rem">${t('txt_reg_q_type_choice')}${q.required ? ' · ' + t('txt_reg_q_required') : ''}</span>`;
+    if (q.type === 'choice' || q.type === 'multichoice') {
+      const typeLabel = q.type === 'multichoice' ? t('txt_reg_q_type_multichoice') : t('txt_reg_q_type_choice');
+      h += `<span class="badge ${q.required ? 'badge-phase' : ''}" style="font-size:0.68rem">${typeLabel}${q.required ? ' · ' + t('txt_reg_q_required') : ''}</span>`;
     } else {
-      const ansCount = r.registrants.filter(reg => reg.answers?.[q.key]).length;
+      const ansCount = r.registrants.length - unansweredCount;
+      if (q.type === 'number') {
+        h += `<span class="badge" style="font-size:0.68rem">${t('txt_reg_q_type_number')}</span>`;
+      }
       h += `<span class="reg-answer-count-badge">${ansCount} / ${r.registrants.length}</span>`;
+    }
+    if (unansweredCount > 0) {
+      h += `<button type="button" class="reg-answer-hide-empty-btn active" onclick="event.stopPropagation();_regToggleHideEmpty(this)" title="${t('txt_reg_hide_unanswered')}">⊘ ${unansweredCount}</button>`;
     }
     h += `</div>`;
 
@@ -4881,13 +5038,13 @@ function _renderAnswersPanel(rid, r, questions) {
       h += `</div>`;
     }
 
-    // Distribution bars (choice questions)
-    if (q.type === 'choice' && q.choices?.length) {
+    // Distribution bars (choice/multichoice questions)
+    if (isChoiceType) {
       h += `<div class="reg-answer-bars">`;
       for (const c of q.choices) {
         const pct = r.registrants.length > 0 ? Math.round((counts[c] / r.registrants.length) * 100) : 0;
         const label = useDictionary ? choiceToLetter[c] : esc(c);
-        h += `<div class="reg-answer-bar-row">`;
+        h += `<div class="reg-answer-bar-row" data-choice="${esc(c)}" title="${t('txt_reg_filter_by_choice')}" onclick="_regFilterByChoice(this)">`;
         h += `<span class="reg-answer-bar-label">${label}</span>`;
         h += `<div class="reg-answer-bar-track"><div class="reg-answer-bar-fill" style="width:${pct}%"></div></div>`;
         h += `<span class="reg-answer-bar-count">${counts[c]}</span>`;
@@ -4896,10 +5053,20 @@ function _renderAnswersPanel(rid, r, questions) {
       h += `</div>`;
     }
 
-    // Inline individual answers list (text questions) or spoiler (choice questions)
-    if (q.type !== 'choice') {
+    // Inline individual answers list (text/number questions) or spoiler (choice/multichoice questions)
+    if (q.type !== 'choice' && q.type !== 'multichoice') {
       const TRUNCATE = 100;
       h += `<div class="reg-answer-text-section">`;
+      // Number stats: average
+      if (q.type === 'number') {
+        const numVals = r.registrants
+          .map(reg => parseFloat(reg.answers?.[q.key]))
+          .filter(n => !isNaN(n));
+        if (numVals.length > 0) {
+          const avg = (numVals.reduce((a, b) => a + b, 0) / numVals.length).toFixed(2).replace(/\.?0+$/, '');
+          h += `<div class="reg-answer-num-stats">${t('txt_reg_answers_avg')}: <b>${avg}</b></div>`;
+        }
+      }
       if (r.registrants.length > 4) {
         h += `<input type="text" class="reg-answer-text-search" placeholder="${t('txt_reg_search_by_name')}" oninput="_regFilterAnswers(this)">`;
       }
@@ -4909,21 +5076,34 @@ function _renderAnswersPanel(rid, r, questions) {
         const isLong = answer.length > TRUNCATE;
         const snippet = isLong ? esc(answer.slice(0, TRUNCATE)) + '\u2026' : (answer ? esc(answer) : '&mdash;');
         const clickAttr = isLong ? `onclick="_regToggleAnswerExpand(this)" title="${t('txt_reg_click_to_expand')}"` : '';
-        h += `<div class="reg-answer-text-row${isLong ? ' long' : ''}" data-name="${esc(reg.player_name)}">`;
+        h += `<div class="reg-answer-text-row${isLong ? ' long' : ''}" data-name="${esc(reg.player_name)}" data-answered="${answer ? 'true' : 'false'}">`;
         h += `<span class="reg-answer-name">${esc(reg.player_name)}</span>`;
         h += `<span class="reg-answer-text-val" ${clickAttr} data-full="${esc(answer)}">${snippet}</span>`;
         h += `</div>`;
       }
       h += `</div></div>`;
     } else {
-      // Individual answers under spoiler
+      // Individual answers under spoiler with sort toggle
       h += `<details class="reg-answer-spoiler">`;
-      h += `<summary class="reg-answer-spoiler-summary">${t('txt_reg_show_individual_answers')} (${r.registrants.length})</summary>`;
+      h += `<summary class="reg-answer-spoiler-summary">`;
+      h += `<span class="reg-answer-spoiler-title">${t('txt_reg_show_individual_answers')} (${r.registrants.length})</span>`;
+      h += `<button type="button" class="reg-answer-sort-btn" data-sorted="false" onclick="event.stopPropagation();event.preventDefault();_regSortChoiceAnswers(this)">${t('txt_reg_sort_by_answer')}</button>`;
+      h += `</summary>`;
       h += `<div class="reg-answer-list">`;
-      for (const reg of r.registrants) {
+      for (let i = 0; i < r.registrants.length; i++) {
+        const reg = r.registrants[i];
         const raw = reg.answers?.[q.key];
-        const display = raw ? (useDictionary ? (choiceToLetter[raw] ?? esc(raw)) : esc(raw)) : '—';
-        h += `<div class="reg-answer-row">`;
+        let display = '—', sortKey = '';
+        if (raw && q.type === 'multichoice') {
+          let selected = [];
+          try { selected = JSON.parse(raw) || []; } catch (_) {}
+          display = selected.map(s => useDictionary ? (choiceToLetter[s] ?? esc(s)) : esc(s)).join(', ') || '—';
+          sortKey = selected.join(',');
+        } else if (raw) {
+          display = useDictionary ? (choiceToLetter[raw] ?? esc(raw)) : esc(raw);
+          sortKey = raw;
+        }
+        h += `<div class="reg-answer-row" data-choice="${esc(sortKey)}" data-answered="${raw ? 'true' : 'false'}" data-idx="${i}">`;
         h += `<span class="reg-answer-name">${esc(reg.player_name)}</span>`;
         h += `<span class="reg-answer-value">${display}</span>`;
         h += `</div>`;
@@ -4950,10 +5130,80 @@ function _regFilterAnswers(input) {
   const q = input.value.toLowerCase();
   const list = input.parentElement?.querySelector('.reg-answer-text-list');
   if (!list) return;
+  const card = input.closest('.reg-answer-card');
+  const hideEmpty = card?.classList.contains('hide-empty') ?? false;
   for (const row of list.querySelectorAll('.reg-answer-text-row')) {
     const name = (row.dataset.name || '').toLowerCase();
-    row.style.display = q && !name.includes(q) ? 'none' : '';
+    const answered = row.dataset.answered === 'true';
+    const nameMatch = !q || name.includes(q);
+    row.style.display = (!nameMatch || (hideEmpty && !answered)) ? 'none' : '';
   }
+}
+
+function _regApplyRowFilters(card) {
+  const hideEmpty = card.classList.contains('hide-empty');
+  const activeChoice = card.querySelector('.reg-answer-bar-row.active')?.dataset.choice ?? null;
+  const searchInput = card.querySelector('.reg-answer-text-search');
+  const nameQuery = searchInput ? searchInput.value.toLowerCase() : '';
+
+  // Text question rows
+  card.querySelectorAll('.reg-answer-text-row').forEach(row => {
+    const answered = row.dataset.answered === 'true';
+    const name = (row.dataset.name || '').toLowerCase();
+    const nameMatch = !nameQuery || name.includes(nameQuery);
+    row.style.display = (!nameMatch || (hideEmpty && !answered)) ? 'none' : '';
+  });
+
+  // Choice individual answer rows
+  card.querySelectorAll('.reg-answer-row').forEach(row => {
+    const answered = row.dataset.answered === 'true';
+    const choiceMatch = activeChoice === null || row.dataset.choice === activeChoice;
+    row.style.display = (hideEmpty && !answered) || !choiceMatch ? 'none' : '';
+  });
+}
+
+function _regToggleHideEmpty(btn) {
+  const card = btn.closest('.reg-answer-card');
+  if (!card) return;
+  const active = card.classList.toggle('hide-empty');
+  btn.classList.toggle('active', active);
+  _regApplyRowFilters(card);
+}
+
+function _regFilterByChoice(barRow) {
+  const card = barRow.closest('.reg-answer-card');
+  if (!card) return;
+  const spoiler = card.querySelector('.reg-answer-spoiler');
+  if (!spoiler) return;
+
+  const wasActive = barRow.classList.contains('active');
+  card.querySelectorAll('.reg-answer-bar-row').forEach(r => r.classList.remove('active'));
+
+  if (!wasActive) {
+    barRow.classList.add('active');
+    spoiler.open = true;
+  }
+
+  _regApplyRowFilters(card);
+}
+
+function _regSortChoiceAnswers(btn) {
+  const list = btn.closest('.reg-answer-spoiler')?.querySelector('.reg-answer-list');
+  if (!list) return;
+  const sorted = btn.dataset.sorted === 'true';
+  const rows = Array.from(list.querySelectorAll('.reg-answer-row'));
+  if (!sorted) {
+    rows.sort((a, b) => (a.dataset.choice || '').localeCompare(b.dataset.choice || ''));
+    btn.dataset.sorted = 'true';
+    btn.textContent = t('txt_reg_sort_by_registration');
+    btn.classList.add('active');
+  } else {
+    rows.sort((a, b) => parseInt(a.dataset.idx || 0) - parseInt(b.dataset.idx || 0));
+    btn.dataset.sorted = 'false';
+    btn.textContent = t('txt_reg_sort_by_answer');
+    btn.classList.remove('active');
+  }
+  rows.forEach(row => list.appendChild(row));
 }
 
 function _csvCell(v) {
@@ -4968,7 +5218,13 @@ function _downloadAnswersCSV(rid) {
   if (!questions.length) return;
   const header = [t('txt_reg_name'), ...questions.map(q => q.label)].map(_csvCell).join(',');
   const rows = r.registrants.map(reg => {
-    const cells = [reg.player_name, ...questions.map(q => reg.answers?.[q.key] || '')];
+    const cells = [reg.player_name, ...questions.map(q => {
+      const raw = reg.answers?.[q.key] || '';
+      if (q.type === 'multichoice' && raw) {
+        try { return (JSON.parse(raw) || []).join(', '); } catch (_) {}
+      }
+      return raw;
+    })];
     return cells.map(_csvCell).join(',');
   });
   const csv = [header, ...rows].join('\r\n');
@@ -4976,7 +5232,7 @@ function _downloadAnswersCSV(rid) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${(r.name || rid).replace(/[^\w\-. ]/g, '_')}_answers.csv`;
+  a.download = `answers_${(r.name || rid).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -5002,9 +5258,11 @@ function _populateRegQuestions(containerId, questions) {
       const reqCb = card.querySelector('.reg-q-required');
       if (reqCb) reqCb.checked = true;
     }
-    if (q.type === 'choice') {
-      const typeBtn = card.querySelector('.reg-q-type-toggle button:last-child');
-      if (typeBtn) _setRegQType(typeBtn, 'choice');
+    if (q.type !== 'text') {
+      const typeBtn = card.querySelector(`.reg-q-type-toggle button[data-type="${q.type}"]`);
+      if (typeBtn) _setRegQType(typeBtn, q.type);
+    }
+    if (q.type === 'choice' || q.type === 'multichoice') {
       const area = card.querySelector('.reg-q-choices-area');
       const list = area?.querySelector('.reg-q-choices-list');
       if (list && q.choices?.length) {
@@ -5073,6 +5331,10 @@ async function _saveRegSettings(rid) {
   if (joinCode) body.join_code = joinCode; else body.clear_join_code = true;
 
   body.listed = !!document.getElementById(`reg-edit-listed-${rid}`)?.checked;
+  body.email_requirement = document.getElementById(`reg-edit-emailreq-${rid}`)?.value || 'optional';
+
+  const autoEmailCb = document.getElementById(`reg-edit-autoemail-${rid}`);
+  if (autoEmailCb) body.auto_send_email = autoEmailCb.checked;
 
   await api(`/api/registrations/${rid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   await _loadRegDetail(rid);
@@ -5107,11 +5369,14 @@ async function _removeRegistrant(rid, pid) {
 async function _adminAddRegistrant(rid) {
   const name = prompt(t('txt_reg_add_player_prompt'));
   if (!name || !name.trim()) return;
+  const email = prompt(t('txt_email_optional'), '');
   try {
+    const body = { player_name: name.trim() };
+    if (email && email.trim()) body.email = email.trim();
     await api(`/api/registrations/${rid}/registrant`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ player_name: name.trim() }),
+      body: JSON.stringify(body),
     });
     await _loadRegDetail(rid);
     await loadRegistrations();
@@ -5125,6 +5390,49 @@ async function _saveRegMessage(rid) {
   const body = msg ? { message: msg } : { clear_message: true };
   await api(`/api/registrations/${rid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   await _loadRegDetail(rid);
+  _showToast(t('txt_reg_saved'));
+}
+
+async function _sendRegEmail(rid, pid) {
+  try {
+    await api(`/api/registrations/${rid}/send-email/${pid}`, { method: 'POST' });
+    _showToast(t('txt_email_sent'));
+  } catch (e) {
+    alert(e.message || t('txt_email_failed'));
+  }
+}
+
+async function _sendAllRegEmails(rid) {
+  if (!confirm(t('txt_email_confirm_send_all'))) return;
+  try {
+    const res = await api(`/api/registrations/${rid}/send-all-emails`, { method: 'POST' });
+    const data = typeof res === 'object' ? res : await res;
+    _showToast(t('txt_email_sent_count', { sent: data.sent || 0, skipped: data.skipped || 0 }));
+  } catch (e) {
+    alert(e.message || t('txt_email_failed'));
+  }
+}
+
+async function _notifyTournamentPlayers(tid) {
+  if (!confirm(t('txt_email_confirm_notify'))) return;
+  try {
+    const res = await api(`/api/tournaments/${tid}/notify-players`, { method: 'POST' });
+    const data = typeof res === 'object' ? res : await res;
+    _showToast(t('txt_email_notify_sent', { sent: data.sent || 0, skipped: data.skipped || 0 }));
+  } catch (e) {
+    alert(e.message || t('txt_email_failed'));
+  }
+}
+
+async function _sendRegMessageEmails(rid) {
+  if (!confirm(t('txt_email_confirm_send_message_all'))) return;
+  try {
+    const res = await api(`/api/registrations/${rid}/send-message-emails`, { method: 'POST' });
+    const data = typeof res === 'object' ? res : await res;
+    _showToast(t('txt_email_message_sent_count', { sent: data.sent || 0, skipped: data.skipped || 0 }));
+  } catch (e) {
+    alert(e.message || t('txt_email_failed'));
+  }
 }
 
 async function _clearRegMessage(rid) {
@@ -5173,6 +5481,7 @@ async function _startConvertFromReg(rid) {
 // ─── Convert registration → tournament (dedicated panel) ──────────────
 
 let _convertFromRegistration = null;  // kept for backwards compat with createGP/createMex/createPO checks
+window._emailConfigured = false;  // set on startup via /api/tournaments/email-status
 
 // Internal state for the conversion panel
 let _convRid = null;       // registration id being converted
@@ -5216,26 +5525,25 @@ function _renderConvertPanel(rid) {
   _convExtraPlayers = [];
   _convGroupPreview = null;
 
-  // Initialize selection: all unassigned players selected by default
-  const convAssignedSet = new Set(r.assigned_player_ids || []);
+  // Initialize selection: all players selected by default (including previously-assigned).
   _convSelectedPlayers = new Set();
   for (const reg of r.registrants) {
-    if (!convAssignedSet.has(reg.player_id)) _convSelectedPlayers.add(reg.player_id);
+    _convSelectedPlayers.add(reg.player_id);
   }
 
   let html = `<div class="card">`;
   // Header
   html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">`;
-  html += `<h2 style="margin:0">🏆 ${t('txt_reg_convert_title')}</h2>`;
-  html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_cancelConvert('${esc(rid)}')">✕ ${t('txt_txt_cancel')}</button>`;
+  html += `<h2 style="margin:0">${t('txt_reg_convert_title')}</h2>`;
+  html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_cancelConvert('${esc(rid)}')">${t('txt_txt_cancel')}</button>`;
   html += `</div>`;
 
   // Player selection section
   html += `<div class="field-section" style="margin-bottom:0.75rem">`;
   html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;flex-wrap:wrap;gap:0.3rem">`;
-  html += `<div class="field-section-title" style="margin-bottom:0">👥 ${t('txt_conv_select_players')}</div>`;
+  html += `<div class="field-section-title" style="margin-bottom:0">${t('txt_conv_select_players')}</div>`;
   html += `<div style="display:flex;gap:0.4rem;align-items:center">`;
-  html += `<span class="participant-count" id="conv-selected-count">(${_convSelectedPlayers.size}/${r.registrants.length - convAssignedSet.size})</span>`;
+  html += `<span class="participant-count" id="conv-selected-count">(${_convSelectedPlayers.size}/${r.registrants.length})</span>`;
   html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.15rem 0.4rem" onclick="_convSelectAll()">${t('txt_conv_select_all')}</button>`;
   html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.15rem 0.4rem;background:var(--border);color:var(--text)" onclick="_convDeselectAll()">${t('txt_conv_deselect_all')}</button>`;
   html += `</div></div>`;
@@ -5267,9 +5575,9 @@ function _renderConvertPanel(rid) {
 
   // Extra players (individual mode only)
   html += `<div id="conv-extra-players-section" class="field-section" style="margin-bottom:0.75rem">`;
-  html += `<div class="field-section-title">➕ ${t('txt_conv_extra_players')}</div>`;
+  html += `<div class="field-section-title">${t('txt_conv_extra_players')}</div>`;
   html += `<div id="conv-extra-players-container"></div>`;
-  html += `<button type="button" class="add-participant-btn" style="width:100%;margin-top:0.4rem" onclick="_addConvExtraPlayer()">+ ${t('txt_txt_add_player')}</button>`;
+  html += `<button type="button" class="add-participant-btn" style="width:100%;margin-top:0.4rem" onclick="_addConvExtraPlayer()">${t('txt_txt_add_player')}</button>`;
   html += `</div>`;
 
   // Team formation (hidden unless team mode)
@@ -5277,14 +5585,14 @@ function _renderConvertPanel(rid) {
   html += `<div class="field-section-title">${t('txt_conv_team_formation')}</div>`;
   html += `<div id="conv-teams-container"></div>`;
   html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem">`;
-  html += `<button type="button" class="add-participant-btn" style="flex:1" onclick="_addConvTeam()">+ ${t('txt_txt_add_team')}</button>`;
-  html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_autoConvTeams()">🔀 ${t('txt_conv_auto_pair')}</button>`;
+  html += `<button type="button" class="add-participant-btn" style="flex:1" onclick="_addConvTeam()">${t('txt_txt_add_team')}</button>`;
+  html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_autoConvTeams()">${t('txt_conv_auto_pair')}</button>`;
   html += `</div>`;
   html += `</div>`;
 
   // Strength (collapsible)
   html += `<details class="field-section" style="margin-bottom:0.75rem" id="conv-strength-section">`;
-  html += `<summary style="cursor:pointer;font-weight:700;font-size:0.85rem">💪 ${t('txt_conv_initial_strength')}</summary>`;
+  html += `<summary style="cursor:pointer;font-weight:700;font-size:0.85rem">${t('txt_conv_initial_strength')}</summary>`;
   html += `<p style="font-size:0.78rem;color:var(--text-muted);margin:0.3rem 0 0.5rem">${t('txt_conv_strength_help')}</p>`;
   html += `<div id="conv-strength-container"></div>`;
   html += `</details>`;
@@ -5298,7 +5606,7 @@ function _renderConvertPanel(rid) {
   // Message area + submit
   html += `<div id="conv-msg" class="alert alert-error hidden" style="margin-top:0.75rem"></div>`;
   html += `<div id="conv-create-buttons" style="text-align:center;margin-top:1rem">`;
-  html += `<button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,()=>_previewOrSubmitConvert('${esc(rid)}'))">🏆 ${t('txt_reg_convert_to_tournament')}</button>`;
+  html += `<button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,()=>_previewOrSubmitConvert('${esc(rid)}'))">${t('txt_reg_convert_to_tournament')}</button>`;
   html += `</div>`;
 
   html += `</div>`;
@@ -5325,6 +5633,8 @@ function _renderConvPlayerList(rid) {
   const r = _regDetails[rid];
   if (!r) return;
   const assignedSet = new Set(r.assigned_player_ids || []);
+  const playerTournamentMap = r.player_tournament_map || {};
+  const linkedById = new Map((r.linked_tournaments || []).map(lt => [lt.id, lt]));
   const questions = r.questions || [];
   const hasQuestions = questions.length > 0;
 
@@ -5335,23 +5645,41 @@ function _renderConvPlayerList(rid) {
   });
 
   let h = '';
-  // Unassigned players first (selectable)
+  // All registrants — previously-assigned are now selectable too (with a warning dot)
   for (const reg of r.registrants) {
-    if (assignedSet.has(reg.player_id)) continue;
+    const isAssigned = assignedSet.has(reg.player_id);
     const checked = _convSelectedPlayers.has(reg.player_id);
     const pid = esc(reg.player_id);
     const answersId = 'conv-answers-' + pid;
     const wasOpen = openAnswers.has(answersId);
+
+    // Build the overlap warning tooltip text
+    let overlapTooltip = '';
+    if (isAssigned) {
+      const tids = playerTournamentMap[reg.player_id] || [];
+      const tnames = tids.map(tid => {
+        const lt = linkedById.get(tid);
+        return lt ? lt.name : tid;
+      });
+      overlapTooltip = t('txt_reg_player_in_tournaments', { tournaments: tnames.join(', ') });
+    }
+
     h += `<div class="conv-player-item">`;
-    h += `<div class="conv-player-row${checked ? ' selected' : ''}" onclick="_toggleConvPlayer('${pid}')">`;
+    h += `<div class="conv-player-row${checked ? ' selected' : ''}${isAssigned ? ' conv-player-overlap' : ''}" onclick="_toggleConvPlayer('${pid}')">`;
     h += `<label class="conv-player-check" onclick="event.stopPropagation()">`;
     h += `<input type="checkbox" ${checked ? 'checked' : ''} onchange="_toggleConvPlayer('${pid}')">`;
     h += `</label>`;
     h += `<span class="conv-player-name">${esc(reg.player_name)}</span>`;
+    if (isAssigned) {
+      h += `<span class="conv-player-overlap-dot" title="${esc(overlapTooltip)}">⚠</span>`;
+    }
     if (hasQuestions) {
       h += `<button type="button" class="conv-answers-btn${wasOpen ? ' active' : ''}" onclick="event.stopPropagation();_toggleConvAnswers('${pid}')" title="${t('txt_conv_show_answers')}">\ud83d\udccb</button>`;
     }
     h += `</div>`;
+    if (isAssigned && overlapTooltip) {
+      h += `<div class="conv-player-overlap-hint">${esc(overlapTooltip)}</div>`;
+    }
     if (hasQuestions) {
       h += `<div class="conv-answers-detail" id="${answersId}" style="display:${wasOpen ? '' : 'none'}">`;
       for (const q of questions) {
@@ -5372,15 +5700,6 @@ function _renderConvPlayerList(rid) {
       h += `</div>`;
     }
     h += `</div>`;
-  }
-  // Assigned players (greyed out, not selectable)
-  for (const reg of r.registrants) {
-    if (!assignedSet.has(reg.player_id)) continue;
-    h += `<div class="conv-player-item"><div class="conv-player-row assigned">`;
-    h += `<label class="conv-player-check"><input type="checkbox" disabled></label>`;
-    h += `<span class="conv-player-name"><s>${esc(reg.player_name)}</s></span>`;
-    h += `<span class="conv-player-assigned-label">${t('txt_reg_player_already_assigned')}</span>`;
-    h += `</div></div>`;
   }
   container.innerHTML = h;
   _updateConvSelectedCount();
@@ -5410,9 +5729,8 @@ function _toggleConvPlayer(pid) {
 function _convSelectAll() {
   const r = _regDetails[_convRid];
   if (!r) return;
-  const assignedSet = new Set(r.assigned_player_ids || []);
   for (const reg of r.registrants) {
-    if (!assignedSet.has(reg.player_id)) _convSelectedPlayers.add(reg.player_id);
+    _convSelectedPlayers.add(reg.player_id);
   }
   _renderConvPlayerList(_convRid);
   _renderConvStrength(_convRid);
@@ -5430,8 +5748,7 @@ function _updateConvSelectedCount() {
   const el = document.getElementById('conv-selected-count');
   if (!el) return;
   const r = _regDetails[_convRid];
-  const assignedSet = new Set(r ? (r.assigned_player_ids || []) : []);
-  const total = r ? r.registrants.filter(reg => !assignedSet.has(reg.player_id)).length : 0;
+  const total = r ? r.registrants.length : 0;
   el.textContent = `(${_convSelectedPlayers.size}/${total})`;
 }
 
@@ -5509,10 +5826,9 @@ function _renderConvExtraPlayers() {
 
 function _getConvPlayerNames(rid) {
   const r = _regDetails[rid];
-  // Only include registrants that are selected AND not already assigned
-  const assignedSet = new Set(r ? (r.assigned_player_ids || []) : []);
+  // Include any registrant that is selected (including those already in a previous tournament)
   const registered = r
-    ? r.registrants.filter(function(reg) { return !assignedSet.has(reg.player_id) && _convSelectedPlayers.has(reg.player_id); }).map(function(reg) { return reg.player_name; })
+    ? r.registrants.filter(function(reg) { return _convSelectedPlayers.has(reg.player_id); }).map(function(reg) { return reg.player_name; })
     : [];
   // Include extra players (non-empty, non-duplicate)
   const nameSet = new Set(registered);
@@ -5730,6 +6046,12 @@ function _renderConvSettings(rid) {
   html += `<input type="checkbox" id="conv-public" checked style="width:1rem;height:1rem;cursor:pointer">`;
   html += `<label for="conv-public" style="font-size:0.85rem;cursor:pointer">${t('txt_txt_public_tournament')}</label>`;
   html += `</div>`;
+  if (window._emailConfigured) {
+    html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.25rem">`;
+    html += `<input type="checkbox" id="conv-notify-players" checked style="width:1rem;height:1rem;cursor:pointer">`;
+    html += `<label for="conv-notify-players" style="font-size:0.85rem;cursor:pointer">${t('txt_email_notify_players')}</label>`;
+    html += `</div>`;
+  }
 
   el.innerHTML = html;
   _renderConvCourtNames();
@@ -5805,7 +6127,7 @@ function _renderConvGroupPreview(rid) {
   const canAdjustGroups = groups.length > 1;
   const str = _convGroupPreview.strengths;
   let html = `<div class="gp-group-preview-title-row">`;
-  html += `<div class="field-section-title" style="margin:0">📋 ${t('txt_gp_group_assignments')}</div>`;
+  html += `<div class="field-section-title" style="margin:0">${t('txt_gp_group_assignments')}</div>`;
   html += `<button type="button" class="gp-preview-close" onclick="_cancelConvGroupPreview('${esc(rid)}')" title="${t('txt_txt_back')}">&times;</button>`;
   html += `</div>`;
   html += `<div class="gp-group-preview-grid">`;
@@ -5831,14 +6153,14 @@ function _renderConvGroupPreview(rid) {
   });
   html += `</div>`;
   if (canAdjustGroups) {
-    html += `<div class="gp-preview-shuffle-row"><button type="button" class="btn-outline-muted" onclick="_shuffleConvGroups('${esc(rid)}')">🔀 ${t('txt_gp_shuffle')}</button></div>`;
+    html += `<div class="gp-preview-shuffle-row"><button type="button" class="btn-outline-muted" onclick="_shuffleConvGroups('${esc(rid)}')">${t('txt_gp_shuffle')}</button></div>`;
   }
   container.innerHTML = html;
   container.style.display = '';
 
   if (buttonsEl) {
     buttonsEl.innerHTML = `<div class="gp-preview-actions">`
-      + `<button type="button" class="btn btn-success" style="padding:0.65rem 1.4rem;font-size:1.05rem" onclick="withLoading(this,()=>_submitConvert('${esc(rid)}'))">🏆 ${t('txt_gp_confirm_create')}</button>`
+      + `<button type="button" class="btn btn-success" style="padding:0.65rem 1.4rem;font-size:1.05rem" onclick="withLoading(this,()=>_submitConvert('${esc(rid)}'))">${t('txt_gp_confirm_create')}</button>`
       + `</div>`;
   }
 }
@@ -5868,7 +6190,7 @@ function _cancelConvGroupPreview(rid) {
   const buttonsEl = document.getElementById('conv-create-buttons');
   if (container) { container.innerHTML = ''; container.style.display = 'none'; }
   if (buttonsEl) {
-    buttonsEl.innerHTML = `<button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,()=>_previewOrSubmitConvert('${esc(rid)}'))">🏆 ${t('txt_reg_convert_to_tournament')}</button>`;
+    buttonsEl.innerHTML = `<button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,()=>_previewOrSubmitConvert('${esc(rid)}'))">${t('txt_reg_convert_to_tournament')}</button>`;
   }
 }
 
@@ -5974,6 +6296,19 @@ async function _submitConvert(rid) {
       const updated = await api(`/api/registrations/${rid}`);
       _regDetails[rid] = updated;
     } catch (_) { /* registration may have auto-closed; not critical */ }
+    // Warn if any selected players were already in a previous tournament
+    if (res.overlapping_players?.length) {
+      const names = res.overlapping_players.join(', ');
+      if (msg) {
+        msg.className = 'alert alert-warning';
+        msg.textContent = t('txt_reg_overlap_notice', { names });
+        msg.classList.remove('hidden');
+      }
+    }
+    // Notify players via email if configured and the toggle is checked
+    if (window._emailConfigured && res.tournament_id && document.getElementById('conv-notify-players')?.checked) {
+      _notifyTournamentPlayers(res.tournament_id);
+    }
     openTournament(res.tournament_id, _convType, body.name || r.name);
   } catch (e) {
     if (msg) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
@@ -6000,6 +6335,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!isAuthenticated()) {
     setActiveTab('info');
   } else {
+    // Check if email sending is configured on the server
+    api('/api/tournaments/email-status').then(d => { window._emailConfigured = !!d.configured; }).catch(() => {});
     loadTournaments();
   }
 });

@@ -471,7 +471,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
 
         if self._forced_sit_out_ids is None and self._sit_out_count > 0:
             _ranked_all = self._ranked_players(self.players)
-            n_sit_variants = min(max(2, n_options), 4)
+            n_sit_variants = max(2, min(n_options, 8))
             _sit_variants: list[list[str] | None] = [
                 [p.id for p in combo] for combo in self._rank_sit_out_combos(_ranked_all, max_combos=n_sit_variants)
             ]

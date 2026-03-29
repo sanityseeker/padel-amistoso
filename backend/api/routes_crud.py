@@ -11,13 +11,22 @@ from fastapi.responses import Response
 
 from ..auth.deps import get_current_user, get_current_user_optional
 from ..auth.models import User, UserRole
+from ..email import (
+    is_configured as email_is_configured,
+    is_valid_email,
+    render_tournament_started_email,
+    send_email,
+)
 from .helpers import _find_match, _require_owner_or_admin
-from .player_secret_store import delete_secrets_for_tournament
+from .player_secret_store import delete_secrets_for_tournament, get_secrets_for_tournament
+from .rate_limit import BoundedRateLimiter
 from .schemas import SetAliasRequest, SetMatchCommentRequest, SetPublicRequest, TvSettings, TvSettingsRequest
 from . import state
 from .state import _delete_tournament, _save_tournament, _tournaments
 
 router = APIRouter(prefix="/api/tournaments", tags=["tournaments"])
+
+_notify_rate_limiter = BoundedRateLimiter(max_attempts=10, window_seconds=60, max_tracked_ips=4096)
 
 
 @router.get("")
@@ -204,3 +213,58 @@ async def set_match_comment(tid: str, req: SetMatchCommentRequest, user: User = 
         match.comment = req.comment.strip()
         _save_tournament(tid)
     return {"ok": True, "match_id": req.match_id, "comment": match.comment}
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Email status & notifications
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/email-status")
+async def email_status() -> dict:
+    """Return whether the server has email/SMTP configured."""
+    return {"configured": email_is_configured()}
+
+
+@router.post("/{tid}/notify-players")
+async def notify_tournament_players(tid: str, request: Request, user: User = Depends(get_current_user)) -> dict:
+    """Send a 'tournament started' email to all players with a valid email address."""
+    if not email_is_configured():
+        raise HTTPException(400, "Email is not configured on this server")
+
+    client_ip = request.client.host if request.client else "unknown"
+    _notify_rate_limiter.check(client_ip, "Too many notification attempts — try again later")
+    _notify_rate_limiter.record(client_ip)
+
+    _require_owner_or_admin(tid, user)
+    if tid not in _tournaments:
+        raise HTTPException(404, "Tournament not found")
+
+    data = _tournaments[tid]
+    tournament_name = data["name"]
+    alias = data.get("alias")
+
+    secrets = get_secrets_for_tournament(tid)
+    sent = 0
+    skipped = 0
+    failed = 0
+    for pid, info in secrets.items():
+        email = info.get("email", "")
+        if not email or not is_valid_email(email):
+            skipped += 1
+            continue
+        subject, body = render_tournament_started_email(
+            tournament_name=tournament_name,
+            player_name=info["name"],
+            passphrase=info["passphrase"],
+            token=info["token"],
+            tournament_id=tid,
+            tournament_alias=alias,
+        )
+        ok = await send_email(email, subject, body)
+        if ok:
+            sent += 1
+        else:
+            failed += 1
+
+    return {"sent": sent, "skipped": skipped, "failed": failed}

@@ -509,8 +509,12 @@ class TestMultiTournamentConversion:
         # Both tournament IDs should be different
         assert tid1 != tid2
 
-    def test_convert_overlap_rejected(self, client, auth_headers):
-        """Including a player already assigned to a previous tournament is rejected with 400."""
+    def test_convert_overlap_allowed_with_warning(self, client, auth_headers):
+        """Including a player already assigned to a previous tournament is allowed.
+
+        The response must include the overlapping player names so the caller can warn the user.
+        The created tournament must still exist and contain the overlapping player.
+        """
         rid, _ = self._setup_registration(client, auth_headers, ["Alice", "Bob", "Charlie", "Dave"])
 
         r1 = client.post(
@@ -520,14 +524,26 @@ class TestMultiTournamentConversion:
         )
         assert r1.status_code == 200
 
-        # Try to include Alice again
+        # Alice is already assigned — a second conversion with Alice must still succeed
         r2 = client.post(
             f"/api/registrations/{rid}/convert",
             json={"tournament_type": "playoff", "player_names": ["Alice", "Charlie"]},
             headers=auth_headers,
         )
-        assert r2.status_code == 400
-        assert "Alice" in r2.json()["detail"]
+        assert r2.status_code == 200
+        data = r2.json()
+        assert "Alice" in data["overlapping_players"]
+        assert data["tournament_id"] is not None
+        # Verify Alice actually appears in the new tournament's player secrets
+        from backend.api.db import get_db
+
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT * FROM player_secrets WHERE tournament_id = ?",
+                (data["tournament_id"],),
+            ).fetchall()
+        names_in_t = {r["player_name"] for r in row}
+        assert "Alice" in names_in_t
 
     def test_convert_partial_does_not_auto_close(self, client, auth_headers):
         """Converting a subset of players leaves the registration open."""
@@ -563,10 +579,10 @@ class TestMultiTournamentConversion:
         assert r2.status_code == 200
         assert r2.json()["all_assigned"] is True
 
-        # Registration must now be closed
+        # Registration must now be closed but not archived
         detail = client.get(f"/api/registrations/{rid}", headers=auth_headers).json()
         assert detail["open"] is False
-        assert detail["archived"] is True
+        assert detail["archived"] is False
 
     def test_registration_admin_out_has_converted_to_tids(self, client, auth_headers):
         """RegistrationAdminOut exposes converted_to_tids as a list."""

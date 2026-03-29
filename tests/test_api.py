@@ -548,9 +548,23 @@ class TestRegistrationAPI:
         assert conv.status_code == 200
         assert conv.json()["all_assigned"] is True
 
+        # After full conversion the lobby is closed but NOT auto-archived (archiving is manual).
+        detail = client.get(f"/api/registrations/{rid}", headers=auth_headers).json()
+        assert detail["open"] is False
+        assert detail["archived"] is False
+
+        # Lobby still appears in the default (non-archived) list while not archived.
         listed_default = client.get("/api/registrations", headers=auth_headers)
         assert listed_default.status_code == 200
-        assert all(reg["id"] != rid for reg in listed_default.json())
+        assert any(reg["id"] == rid for reg in listed_default.json())
+
+        # Manually archive the registration — now it should be excluded by default.
+        patch_r = client.patch(f"/api/registrations/{rid}", json={"archived": True}, headers=auth_headers)
+        assert patch_r.status_code == 200
+
+        listed_after_archive = client.get("/api/registrations", headers=auth_headers)
+        assert listed_after_archive.status_code == 200
+        assert all(reg["id"] != rid for reg in listed_after_archive.json())
 
         listed_all = client.get("/api/registrations?include_archived=1", headers=auth_headers)
         assert listed_all.status_code == 200
@@ -852,6 +866,132 @@ class TestRegistrationAPI:
             headers=auth_headers,
         )
         assert r.status_code == 200
+
+    def test_multichoice_register_and_retrieve(self, client, auth_headers):
+        """Multichoice answers are stored as JSON array strings and returned correctly."""
+        rid = self._create_registration(
+            client,
+            auth_headers,
+            questions=[
+                {
+                    "key": "q0",
+                    "label": "Availability",
+                    "type": "multichoice",
+                    "required": False,
+                    "choices": ["Mon", "Wed", "Fri"],
+                },
+            ],
+        )
+        import json
+
+        answer = json.dumps(["Mon", "Fri"])
+        reg = client.post(
+            f"/api/registrations/{rid}/register",
+            json={"player_name": "Alice", "answers": {"q0": answer}},
+        )
+        assert reg.status_code == 200
+
+        admin = client.get(f"/api/registrations/{rid}", headers=auth_headers)
+        assert admin.status_code == 200
+        alice = admin.json()["registrants"][0]
+        assert json.loads(alice["answers"]["q0"]) == ["Mon", "Fri"]
+
+    def test_multichoice_required_rejects_empty(self, client, auth_headers):
+        """A required multichoice question rejects registration without an answer."""
+        rid = self._create_registration(
+            client,
+            auth_headers,
+            questions=[
+                {
+                    "key": "q0",
+                    "label": "Availability",
+                    "type": "multichoice",
+                    "required": True,
+                    "choices": ["Mon", "Wed"],
+                },
+            ],
+        )
+        r = client.post(
+            f"/api/registrations/{rid}/register",
+            json={"player_name": "Alice", "answers": {}},
+        )
+        assert r.status_code == 400
+
+    def test_multichoice_required_rejects_empty_array(self, client, auth_headers):
+        """A required multichoice question rejects an empty JSON array."""
+        import json
+
+        rid = self._create_registration(
+            client,
+            auth_headers,
+            questions=[
+                {
+                    "key": "q0",
+                    "label": "Availability",
+                    "type": "multichoice",
+                    "required": True,
+                    "choices": ["Mon", "Wed"],
+                },
+            ],
+        )
+        r = client.post(
+            f"/api/registrations/{rid}/register",
+            json={"player_name": "Alice", "answers": {"q0": json.dumps([])}},
+        )
+        assert r.status_code == 400
+
+    def test_multichoice_rejects_invalid_choice(self, client, auth_headers):
+        """Multichoice answers with values not in the choices list are rejected."""
+        import json
+
+        rid = self._create_registration(
+            client,
+            auth_headers,
+            questions=[
+                {
+                    "key": "q0",
+                    "label": "Availability",
+                    "type": "multichoice",
+                    "required": False,
+                    "choices": ["Mon", "Wed"],
+                },
+            ],
+        )
+        r = client.post(
+            f"/api/registrations/{rid}/register",
+            json={"player_name": "Alice", "answers": {"q0": json.dumps(["Mon", "Sunday"])}},
+        )
+        assert r.status_code == 400
+
+    def test_multichoice_player_update_answers(self, client, auth_headers):
+        """Player can update multichoice answers via the player-answers endpoint."""
+        import json
+
+        rid = self._create_registration(
+            client,
+            auth_headers,
+            questions=[
+                {
+                    "key": "q0",
+                    "label": "Days",
+                    "type": "multichoice",
+                    "required": False,
+                    "choices": ["Mon", "Wed", "Fri"],
+                },
+            ],
+        )
+        reg = client.post(
+            f"/api/registrations/{rid}/register",
+            json={"player_name": "Bob", "answers": {"q0": json.dumps(["Mon"])}},
+        )
+        passphrase = reg.json()["passphrase"]
+
+        upd = client.patch(
+            f"/api/registrations/{rid}/player-answers",
+            json={"passphrase": passphrase, "answers": {"q0": json.dumps(["Wed", "Fri"])}},
+        )
+        assert upd.status_code == 200
+        assert json.loads(upd.json()["answers"]["q0"]) == ["Wed", "Fri"]
 
 
 # ── Initial Strength in Create Endpoints ──────────────────

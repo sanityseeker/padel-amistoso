@@ -23,7 +23,7 @@ h1 { font-size: 1.5rem; margin-bottom: 0.5rem; text-align: center; }
 .form-group { margin-bottom: 1rem; }
 .form-group label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem; }
 .form-group small { display: block; font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; }
-input[type="text"], input[type="number"], input[type="password"], select {
+input[type="text"], input[type="email"], input[type="number"], input[type="password"], select {
   width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: 8px;
   background: var(--bg); color: var(--text); font-size: 0.95rem;
 }
@@ -36,6 +36,31 @@ textarea.reg-text-expand {
   transition: height 0.1s ease;
 }
 textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(59,130,246,0.25); }
+
+/* Multichoice — pill chip toggles */
+.reg-multichoice, .returning-multichoice {
+  display: flex; flex-direction: row; flex-wrap: wrap; gap: 0.45rem;
+}
+.reg-multichoice-option {
+  display: inline-flex; align-items: center;
+  cursor: pointer; font-size: 0.875rem; font-weight: 500;
+  padding: 0.4rem 1rem;
+  border: 1.5px solid var(--border); border-radius: 999px;
+  background: var(--surface); color: var(--text);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  user-select: none; line-height: 1.3;
+  white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.reg-multichoice-option:hover {
+  border-color: var(--accent);
+}
+.reg-multichoice-option input[type="checkbox"] {
+  position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
+}
+.reg-multichoice-option:has(input:checked) {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+
 .btn { display: inline-block; padding: 0.7rem 1.5rem; font-size: 1rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; text-align: center; transition: background 0.15s; }
 .btn-primary { background: var(--accent); color: #fff; width: 100%; }
 .btn-primary:hover { opacity: 0.85; }
@@ -126,9 +151,40 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 /* Directory — uses tv-picker-* classes from tv.css */
 
 /* Returning player lookup */
-.returning-player-details { border-top: 1px solid var(--border); padding-top: 0.75rem; }
-.returning-player-details summary::-webkit-details-marker { display: none; }
-.returning-player-details[open] summary span:first-child { transform: rotate(90deg); display: inline-block; }
+.returning-player-section {
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.returning-player-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: none;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+.returning-player-toggle:hover { background: var(--bg); }
+.returning-player-toggle-icon {
+  font-size: 0.7em;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+  display: inline-block;
+}
+.returning-player-toggle.open .returning-player-toggle-icon { transform: rotate(90deg); }
+.returning-player-panel {
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
 
 /* Manage registration panel (returning player self-service) */
 .manage-reg { margin-top: 1.25rem; border: 1px solid var(--border); border-radius: 10px; text-align: left; }

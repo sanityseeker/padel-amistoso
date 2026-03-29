@@ -142,11 +142,11 @@ def remove_player_secret(tournament_id: str, player_id: str) -> bool:
 
 
 def get_secrets_for_tournament(tournament_id: str) -> dict[str, dict]:
-    """Return all secrets for a tournament as ``{player_id: {name, passphrase, token, contact}}``."""
+    """Return all secrets for a tournament as ``{player_id: {name, passphrase, token, contact, email}}``."""
     try:
         with get_db() as conn:
             rows = conn.execute(
-                "SELECT player_id, player_name, passphrase, token, contact FROM player_secrets WHERE tournament_id = ?",
+                "SELECT player_id, player_name, passphrase, token, contact, email FROM player_secrets WHERE tournament_id = ?",
                 (tournament_id,),
             ).fetchall()
     except Exception as exc:  # noqa: BLE001
@@ -158,6 +158,7 @@ def get_secrets_for_tournament(tournament_id: str) -> dict[str, dict]:
             "passphrase": row["passphrase"],
             "token": row["token"],
             "contact": row["contact"] or "",
+            "email": row["email"] if "email" in row.keys() else "",
         }
         for row in rows
     }

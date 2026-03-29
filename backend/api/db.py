@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS player_secrets (
     passphrase    TEXT    NOT NULL,
     token         TEXT    NOT NULL,
     contact       TEXT    NOT NULL DEFAULT '',
+    email         TEXT    NOT NULL DEFAULT '',
     PRIMARY KEY (tournament_id, player_id)
 );
 
@@ -100,6 +101,8 @@ CREATE TABLE IF NOT EXISTS registrations (
     listed            INTEGER NOT NULL DEFAULT 0,
     archived          INTEGER NOT NULL DEFAULT 0,
     sport             TEXT    NOT NULL DEFAULT 'padel',
+    auto_send_email   INTEGER NOT NULL DEFAULT 0,
+    email_requirement TEXT    NOT NULL DEFAULT 'optional',
     created_at        TEXT    NOT NULL
 );
 
@@ -110,6 +113,7 @@ CREATE TABLE IF NOT EXISTS registrants (
     passphrase      TEXT    NOT NULL,
     token           TEXT    NOT NULL,
     answers         TEXT,
+    email           TEXT    NOT NULL DEFAULT '',
     registered_at   TEXT    NOT NULL,
     PRIMARY KEY (registration_id, player_id)
 );
@@ -155,6 +159,8 @@ def init_db() -> None:
         ps_cols = {r[1] for r in conn.execute("PRAGMA table_info(player_secrets)").fetchall()}
         if ps_cols and "contact" not in ps_cols:
             conn.execute("ALTER TABLE player_secrets ADD COLUMN contact TEXT NOT NULL DEFAULT ''")
+        if ps_cols and "email" not in ps_cols:
+            conn.execute("ALTER TABLE player_secrets ADD COLUMN email TEXT NOT NULL DEFAULT ''")
         # Migrate: add registration columns if missing (existing DBs before lobby features)
         reg_cols = {r[1] for r in conn.execute("PRAGMA table_info(registrations)").fetchall()}
         if reg_cols:  # table exists
@@ -167,6 +173,10 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE registrations ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
             if "sport" not in reg_cols:
                 conn.execute("ALTER TABLE registrations ADD COLUMN sport TEXT NOT NULL DEFAULT 'padel'")
+            if "auto_send_email" not in reg_cols:
+                conn.execute("ALTER TABLE registrations ADD COLUMN auto_send_email INTEGER NOT NULL DEFAULT 0")
+            if "email_requirement" not in reg_cols:
+                conn.execute("ALTER TABLE registrations ADD COLUMN email_requirement TEXT NOT NULL DEFAULT 'optional'")
             if "converted_to_tids" not in reg_cols:
                 conn.execute("ALTER TABLE registrations ADD COLUMN converted_to_tids TEXT NOT NULL DEFAULT '[]'")
                 # Back-fill from the legacy single converted_to_tid column
@@ -213,6 +223,8 @@ def init_db() -> None:
                         )
             elif "answers" not in rnt_cols:
                 conn.execute("ALTER TABLE registrants ADD COLUMN answers TEXT")
+            if "email" not in rnt_cols:
+                conn.execute("ALTER TABLE registrants ADD COLUMN email TEXT NOT NULL DEFAULT ''")
 
 
 @contextmanager

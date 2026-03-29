@@ -40,8 +40,8 @@ class SitOutMixin:
         # combinations stays within HEURISTIC_BUDGET, then randomly sample that
         # many players from the eligible pool so no ranking bias is introduced
         # between players who are all equally fair to sit out.
-        HEURISTIC_BUDGET = 2000
-        FULL_EVAL_BUDGET = 30
+        HEURISTIC_BUDGET = 5000
+        FULL_EVAL_BUDGET = 100
 
         if math.comb(len(eligible), n) > HEURISTIC_BUDGET:
             cap = n
@@ -80,6 +80,18 @@ class SitOutMixin:
             scored.append((obj, list(combo)))
 
         scored.sort(key=lambda x: x[0])
+
+        # When generating multiple options for proposals, randomly sample from
+        # a wider pool of near-optimal combos so that repeated calls explore
+        # different sit-out combinations instead of always returning the same
+        # deterministic top-N.
+        if max_combos > 1 and len(scored) > max_combos:
+            best = scored[0]
+            pool_size = min(len(scored), max(max_combos * 3, 8))
+            rest = scored[1:pool_size]
+            random.shuffle(rest)
+            return [best[1]] + [combo for _, combo in rest[: max_combos - 1]]
+
         return [combo for _, combo in scored[:max_combos]]
 
     def _choose_sit_outs(self, ranked: list[Player]) -> list[Player]:

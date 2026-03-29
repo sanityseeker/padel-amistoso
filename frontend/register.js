@@ -57,6 +57,10 @@ let _pollTimer = null;
 let _lobbyFetching = false;
 let _rid = null;
 
+function _isValidEmail(value) {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test((value || '').trim());
+}
+
 function _regTokenKeyCandidates() {
   const ids = [];
   if (_regData?.id) ids.push(_regData.id);
@@ -286,8 +290,7 @@ function _render() {
   _stopPolling();
   if (!_regData) return;
   try {
-    if (_regData.converted) { _showClosed(true); return; }
-    if (!_regData.open) { _showClosed(false); return; }
+    if (!_regData.open) { _showClosed(_regData.converted); return; }
     _showForm();
   } catch (_) {
     _showError(t('txt_reg_error'));
@@ -322,8 +325,7 @@ function _showClosed(converted) {
     html += `<p>${t('txt_reg_converted_msg')}</p>`;
     html += _renderLinkedTournaments();
   } else {
-    html += `<p><span class="badge badge-closed">${t('txt_reg_closed')}</span></p>`;
-    html += `<p>${t('txt_reg_closed_msg')}</p>`;
+    html += `<p class="subtitle" style="font-weight:700">${t('txt_reg_closed_msg')}</p>`;
   }
   el.innerHTML = html;
   el.style.display = '';
@@ -363,7 +365,7 @@ function _renderLinkedTournaments() {
     const shortId = tid.length > 10 ? `${tid.slice(0, 10)}…` : tid;
     const name = linked?.name || shortId;
     const label = `${t('txt_reg_view_tournament_btn')} · ${name}`;
-    const linkHtml = `<a href="${_buildTournamentUrl(tid)}" class="linked-tournament-link" title="${esc(tid)}">🏆 ${esc(label)}</a>`;
+    const linkHtml = `<a href="${_buildTournamentUrl(tid)}" class="linked-tournament-link" title="${esc(tid)}">${esc(label)}</a>`;
     if (linked?.finished) {
       finishedLinks.push(linkHtml);
     } else {
@@ -372,7 +374,7 @@ function _renderLinkedTournaments() {
   });
 
   let html = `<div class="linked-tournaments">`;
-  html += `<div class="linked-tournaments-title">🏆 ${t('txt_reg_linked_tournaments')}</div>`;
+  html += `<div class="linked-tournaments-title">${t('txt_reg_linked_tournaments')}</div>`;
   if (activeLinks.length > 0) {
     html += `<div class="linked-tournaments-section-title">${t('txt_txt_active_tournaments')}</div>`;
     html += `<div class="linked-tournaments-list">${activeLinks.join('')}</div>`;
@@ -398,12 +400,38 @@ function _showForm() {
 
   html += _renderMessage();
   html += _renderPlayerList();
+  html += _renderLinkedTournaments();
+
+  html += `<div class="returning-player-section">`;
+  html += `<button type="button" class="returning-player-toggle" onclick="_toggleReturningPanel()">`;
+  html += `<span class="returning-player-toggle-icon" id="returning-toggle-icon">▸</span>`;
+  html += `${t('txt_reg_returning_player')}`;
+  html += `</button>`;
+  html += `<div class="returning-player-panel" id="returning-player-panel" style="display:none">`;
+  html += `<div class="form-group" style="margin-bottom:0.75rem">`;
+  html += `<label>${t('txt_reg_enter_passphrase')}</label>`;
+  html += `<input type="text" id="reg-returning-passphrase" maxlength="128" placeholder="word-word-word" autocomplete="off" spellcheck="false" style="font-family:monospace">`;
+  html += `</div>`;
+  html += `<div class="error-msg" id="reg-returning-error"></div>`;
+  html += `<button type="button" class="btn btn-secondary" id="reg-returning-btn" onclick="_lookupPlayer()">${t('txt_reg_lookup_btn')}</button>`;
+  html += `</div>`;
+  html += `</div>`;
 
   html += `<form id="reg-form" onsubmit="return false">`;
   html += `<div class="form-group">
     <label>${t('txt_reg_name')}</label>
     <input type="text" id="reg-player-name" maxlength="128" required placeholder="${esc(t('txt_reg_name_placeholder'))}">
   </div>`;
+
+  const emailMode = _regData?.email_requirement || 'optional';
+  if (emailMode !== 'disabled') {
+    const emailLabel = emailMode === 'required' ? t('txt_email_required') : t('txt_email_optional');
+    const emailRequiredAttr = emailMode === 'required' ? 'required' : '';
+    html += `<div class="form-group">
+      <label>${emailLabel}</label>
+      <input type="email" id="reg-player-email" maxlength="320" ${emailRequiredAttr} placeholder="${esc(t('txt_email_placeholder'))}">
+    </div>`;
+  }
 
   if (_regData.join_code_required) {
     html += `<div class="form-group">
@@ -424,6 +452,14 @@ function _showForm() {
           html += `<option value="${esc(c)}">${esc(c)}</option>`;
         }
         html += `</select>`;
+      } else if (q.type === 'multichoice' && q.choices && q.choices.length) {
+        html += `<div class="reg-multichoice" data-key="${esc(q.key)}" ${reqAttr}>`;
+        for (const c of q.choices) {
+          html += `<label class="reg-multichoice-option"><input type="checkbox" value="${esc(c)}"><span>${esc(c)}</span></label>`;
+        }
+        html += `</div>`;
+      } else if (q.type === 'number') {
+        html += `<input type="number" class="reg-answer" data-key="${esc(q.key)}" step="any" ${reqAttr}>`;
       } else {
         html += `<textarea class="reg-answer reg-text-expand" data-key="${esc(q.key)}" maxlength="512" rows="1" ${reqAttr} oninput="_regAutoResize(this)"></textarea>`;
       }
@@ -435,24 +471,22 @@ function _showForm() {
   html += `<button type="submit" class="btn btn-primary" id="reg-submit-btn">${t('txt_reg_submit')}</button>`;
   html += `</form>`;
 
-  html += `<details class="returning-player-details" style="margin-top:1.25rem">`;
-  html += `<summary style="cursor:pointer;color:var(--text-muted);font-size:0.85rem;list-style:none;display:flex;align-items:center;gap:0.4rem">`;
-  html += `<span style="font-size:0.7em">▸</span> ${t('txt_reg_returning_player')}</summary>`;
-  html += `<div style="margin-top:0.75rem">`;
-  html += `<div class="form-group">`;
-  html += `<label>${t('txt_reg_enter_passphrase')}</label>`;
-  html += `<input type="text" id="reg-returning-passphrase" maxlength="128" placeholder="word-word-word" autocomplete="off" spellcheck="false" style="font-family:monospace">`;
-  html += `</div>`;
-  html += `<div class="error-msg" id="reg-returning-error"></div>`;
-  html += `<button type="button" class="btn btn-secondary" id="reg-returning-btn" onclick="_lookupPlayer()">${t('txt_reg_lookup_btn')}</button>`;
-  html += `</div>`;
-  html += `</details>`;
-
   el.innerHTML = html;
   el.style.display = '';
 
   document.getElementById('reg-form').addEventListener('submit', _handleSubmit);
   el.querySelectorAll('textarea.reg-text-expand').forEach(_regAutoResize);
+}
+
+function _toggleReturningPanel() {
+  const panel = document.getElementById('returning-player-panel');
+  const btn = panel?.previousElementSibling;
+  const icon = document.getElementById('returning-toggle-icon');
+  if (!panel) return;
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : '';
+  if (btn) btn.classList.toggle('open', !isOpen);
+  if (!isOpen) document.getElementById('reg-returning-passphrase')?.focus();
 }
 
 async function _lookupPlayer() {
@@ -490,7 +524,7 @@ async function _lookupPlayer() {
 }
 
 function _renderReturningPlayerEditor() {
-  if (!_lastResult?.from_login || !_regData?.open || _regData?.converted) return '';
+  if (!_lastResult?.from_login || !_regData?.open) return '';
 
   const hasQuestions = _regData.questions && _regData.questions.length > 0;
 
@@ -512,6 +546,17 @@ function _renderReturningPlayerEditor() {
           html += `<option value="${esc(c)}" ${selected}>${esc(c)}</option>`;
         }
         html += `</select>`;
+      } else if (q.type === 'multichoice' && q.choices && q.choices.length) {
+        let existingSelected = [];
+        try { existingSelected = JSON.parse(existingValue) || []; } catch (_) {}
+        html += `<div class="returning-multichoice" data-key="${esc(q.key)}" ${reqAttr}>`;
+        for (const c of q.choices) {
+          const checked = existingSelected.includes(c) ? 'checked' : '';
+          html += `<label class="reg-multichoice-option"><input type="checkbox" value="${esc(c)}" ${checked}><span>${esc(c)}</span></label>`;
+        }
+        html += `</div>`;
+      } else if (q.type === 'number') {
+        html += `<input type="number" class="returning-answer" data-key="${esc(q.key)}" step="any" value="${esc(existingValue)}" ${reqAttr}>`;
       } else {
         html += `<textarea class="returning-answer reg-text-expand" data-key="${esc(q.key)}" maxlength="512" rows="1" ${reqAttr} oninput="_regAutoResize(this)">${esc(existingValue)}</textarea>`;
       }
@@ -548,6 +593,17 @@ async function _saveReturningAnswers() {
       return;
     }
     if (val) answers[key] = val;
+  }
+  // Collect multichoice answers (checkboxes)
+  const multichoiceEls = document.querySelectorAll('.returning-multichoice');
+  for (const container of multichoiceEls) {
+    const key = container.getAttribute('data-key');
+    const selected = Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+    if (container.hasAttribute('required') && selected.length === 0) {
+      if (errorEl) errorEl.textContent = t('txt_reg_answer_required');
+      return;
+    }
+    if (selected.length > 0) answers[key] = JSON.stringify(selected);
   }
 
   if (saveBtn) saveBtn.disabled = true;
@@ -625,6 +681,8 @@ function _showSuccess() {
   html += `<div class="passphrase-box">${esc(r.passphrase)}</div>`;
   html += `<p class="keep-note">${t('txt_reg_keep_code')}</p>`;
 
+  html += _renderMessage();
+
   html += _renderPlayerList();
 
   html += _renderReturningPlayerEditor();
@@ -655,6 +713,18 @@ async function _handleSubmit(e) {
 
   const body = { player_name: playerName };
 
+  const emailMode = _regData?.email_requirement || 'optional';
+  const playerEmail = document.getElementById('reg-player-email')?.value?.trim() || '';
+  if (emailMode === 'required' && !playerEmail) {
+    errorEl.textContent = t('txt_reg_email_required');
+    return;
+  }
+  if (playerEmail && !_isValidEmail(playerEmail)) {
+    errorEl.textContent = t('txt_reg_email_invalid');
+    return;
+  }
+  if (playerEmail) body.email = playerEmail;
+
   if (_regData.join_code_required) {
     const code = document.getElementById('reg-join-code')?.value?.trim();
     if (!code) { errorEl.textContent = t('txt_reg_join_code_required'); return; }
@@ -671,6 +741,17 @@ async function _handleSubmit(e) {
       return;
     }
     if (val) answers[key] = val;
+  }
+  // Collect multichoice answers (checkboxes)
+  const multichoiceEls = document.querySelectorAll('.reg-multichoice');
+  for (const container of multichoiceEls) {
+    const key = container.getAttribute('data-key');
+    const selected = Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+    if (container.hasAttribute('required') && selected.length === 0) {
+      errorEl.textContent = t('txt_reg_answer_required');
+      return;
+    }
+    if (selected.length > 0) answers[key] = JSON.stringify(selected);
   }
   if (Object.keys(answers).length) body.answers = answers;
 
@@ -734,22 +815,23 @@ async function _pollLobby() {
       ? data.converted_to_tids.filter(Boolean)
       : (data.converted_to_tid ? [data.converted_to_tid] : []);
 
-    if (linkedTids.length > 0) {
+    if (linkedTids.length > 0 && !data.open) {
       _stopPolling();
       _regData = data;
       _showRedirectToast(linkedTids[linkedTids.length - 1]);
       return;
     }
 
-    if (!data.open && !data.converted) {
+    if (!data.open) {
       _stopPolling();
       _regData = data;
-      _showClosed(false);
+      _showClosed(data.converted);
       return;
     }
 
     const questionsChanged = JSON.stringify(data.questions ?? []) !== JSON.stringify(_regData.questions ?? []);
-    if (questionsChanged || data.registrant_count !== _regData.registrant_count) {
+    const messageChanged = (data.message || '') !== (_regData.message || '');
+    if (questionsChanged || messageChanged || data.registrant_count !== _regData.registrant_count) {
       _regData = data;
       if (_lastResult) _showSuccess();
     }

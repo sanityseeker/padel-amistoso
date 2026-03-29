@@ -21,6 +21,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from .rate_limit import BoundedRateLimiter
 from ..auth.deps import get_current_user
 from ..auth.models import User, UserRole
+from ..email import (
+    is_configured as email_is_configured,
+    is_valid_email,
+    render_credentials_email,
+    render_organizer_message_email,
+    render_registration_confirmation,
+    send_email,
+    send_email_background,
+)
 from ..models import Court, Player, TournamentType
 from ..tournaments import GroupPlayoffTournament, MexicanoTournament, PlayoffTournament
 from ..tournaments.player_secrets import generate_passphrase, generate_token
@@ -62,6 +71,12 @@ _create_rate_limiter = BoundedRateLimiter(
     max_tracked_ips=_CREATE_MAX_TRACKED_IPS,
 )
 
+_email_send_rate_limiter = BoundedRateLimiter(
+    max_attempts=30,
+    window_seconds=60,
+    max_tracked_ips=4096,
+)
+
 _public_register_rate_limiter = BoundedRateLimiter(
     max_attempts=_PUBLIC_REGISTER_MAX_ATTEMPTS,
     window_seconds=_PUBLIC_WINDOW_SECONDS,
@@ -83,6 +98,13 @@ def _client_ip(request: Request) -> str:
 
 def _get_registration_lock(registration_id: str) -> asyncio.Lock:
     return _registration_locks[registration_id]
+
+
+def _email_requirement(reg: dict) -> str:
+    value = (reg.get("email_requirement") or "optional").strip().lower()
+    if value in {"required", "optional", "disabled"}:
+        return value
+    return "optional"
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -145,6 +167,31 @@ def _parse_answers(raw: str | None) -> dict[str, str]:
     return json.loads(raw)
 
 
+def _validate_answers(questions: list[QuestionDef], answers: dict[str, str]) -> None:
+    """Validate answers against question definitions.
+
+    Checks required fields and validates multichoice answers contain only
+    valid choices encoded as a JSON array string.
+    """
+    for q in questions:
+        value = answers.get(q.key)
+        if q.required and not value:
+            raise HTTPException(400, f"Answer required for: {q.label}")
+        if value and q.type == "multichoice" and q.choices:
+            try:
+                selected = json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                raise HTTPException(400, f"Invalid answer format for: {q.label}")
+            if not isinstance(selected, list):
+                raise HTTPException(400, f"Invalid answer format for: {q.label}")
+            allowed = set(q.choices)
+            for item in selected:
+                if item not in allowed:
+                    raise HTTPException(400, f"Invalid choice '{item}' for: {q.label}")
+            if q.required and len(selected) == 0:
+                raise HTTPException(400, f"Answer required for: {q.label}")
+
+
 def _parse_tids(raw: str | None) -> list[str]:
     """Deserialise the JSON *converted_to_tids* column into a list of tournament IDs."""
     if not raw:
@@ -167,6 +214,22 @@ def _get_assigned_player_ids(tids: list[str]) -> list[str]:
             tids,
         ).fetchall()
     return [r["player_id"] for r in rows]
+
+
+def _get_player_tournament_map(tids: list[str]) -> dict[str, list[str]]:
+    """Return a mapping of player_id → list of tournament IDs they appear in (from *tids*)."""
+    if not tids:
+        return {}
+    placeholders = ",".join("?" * len(tids))
+    with get_db() as conn:
+        rows = conn.execute(
+            f"SELECT player_id, tournament_id FROM player_secrets WHERE tournament_id IN ({placeholders})",
+            tids,
+        ).fetchall()
+    result: dict[str, list[str]] = {}
+    for row in rows:
+        result.setdefault(row["player_id"], []).append(row["tournament_id"])
+    return result
 
 
 def _get_registrant_counts(registration_ids: list[str]) -> dict[str, int]:
@@ -307,8 +370,8 @@ async def create_registration(
     with get_db() as conn:
         conn.execute(
             """INSERT INTO registrations
-               (id, name, owner, open, join_code, questions, description, message, listed, sport, created_at)
-               VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)""",
+               (id, name, owner, open, join_code, questions, description, message, listed, sport, auto_send_email, email_requirement, created_at)
+               VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 rid,
                 req.name,
@@ -319,6 +382,8 @@ async def create_registration(
                 req.message,
                 1 if req.listed else 0,
                 req.sport.value,
+                1 if req.auto_send_email else 0,
+                req.email_requirement,
                 now,
             ),
         )
@@ -360,6 +425,7 @@ async def list_registrations(
         r["open"] = bool(r.get("open", 0))
         r["listed"] = bool(r.get("listed", 0))
         r["archived"] = bool(r.get("archived", 0))
+        r["email_requirement"] = _email_requirement(r)
         r["converted_to_tids"] = _parse_tids(r.get("converted_to_tids"))
         result.append(r)
     return result
@@ -401,6 +467,7 @@ async def list_public_registrations() -> list[RegistrationPublicOut]:
                 listed=True,
                 archived=bool(r.get("archived", 0)),
                 sport=r.get("sport", "padel"),
+                email_requirement=_email_requirement(r),
                 registrant_count=len(registrants),
                 registrants=[],
             )
@@ -418,6 +485,7 @@ async def get_registration(rid: str, user: User = Depends(get_current_user)) -> 
     tids = _parse_tids(reg.get("converted_to_tids"))
     linked_tournaments = _get_linked_tournaments(tids)
     assigned_ids = _get_assigned_player_ids(tids)
+    player_tournament_map = _get_player_tournament_map(tids)
     return RegistrationAdminOut(
         id=reg["id"],
         name=reg["name"],
@@ -430,10 +498,13 @@ async def get_registration(rid: str, user: User = Depends(get_current_user)) -> 
         description=reg.get("description"),
         message=reg.get("message"),
         alias=reg.get("alias"),
+        auto_send_email=bool(reg.get("auto_send_email", 0)),
+        email_requirement=_email_requirement(reg),
         converted_to_tid=tids[0] if tids else None,
         converted_to_tids=tids,
         linked_tournaments=linked_tournaments,
         assigned_player_ids=assigned_ids,
+        player_tournament_map=player_tournament_map,
         created_at=reg["created_at"],
         registrants=[
             RegistrantAdminOut(
@@ -442,6 +513,7 @@ async def get_registration(rid: str, user: User = Depends(get_current_user)) -> 
                 passphrase=r["passphrase"],
                 token=r["token"],
                 answers=_parse_answers(r.get("answers")),
+                email=r.get("email", ""),
                 registered_at=r["registered_at"],
             )
             for r in registrants
@@ -485,9 +557,18 @@ async def update_registration(rid: str, req: RegistrationUpdate, user: User = De
     if req.listed is not None:
         updates.append("listed = ?")
         params.append(1 if req.listed else 0)
+    if req.archived is not None:
+        updates.append("archived = ?")
+        params.append(1 if req.archived else 0)
     if req.sport is not None:
         updates.append("sport = ?")
         params.append(req.sport.value)
+    if req.auto_send_email is not None:
+        updates.append("auto_send_email = ?")
+        params.append(1 if req.auto_send_email else 0)
+    if req.email_requirement is not None:
+        updates.append("email_requirement = ?")
+        params.append(req.email_requirement)
 
     if updates:
         params.append(reg_id)
@@ -564,13 +645,26 @@ async def admin_add_registrant(rid: str, req: RegistrantIn, user: User = Depends
     token = generate_token()
 
     answers_json = json.dumps(req.answers) if req.answers else None
+    email = req.email.strip()
     with get_db() as conn:
         conn.execute(
             """INSERT INTO registrants
-               (registration_id, player_id, player_name, passphrase, token, answers, registered_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (reg_id, player_id, req.player_name, passphrase, token, answers_json, now),
+               (registration_id, player_id, player_name, passphrase, token, answers, email, registered_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now),
         )
+
+    # Auto-send confirmation email if the lobby has auto_send_email enabled
+    if email and is_valid_email(email) and reg.get("auto_send_email"):
+        subject, body = render_registration_confirmation(
+            lobby_name=reg["name"],
+            player_name=req.player_name,
+            passphrase=passphrase,
+            token=token,
+            lobby_alias=reg.get("alias"),
+            lobby_id=reg_id,
+        )
+        send_email_background(email, subject, body)
 
     return {
         "player_id": player_id,
@@ -597,6 +691,9 @@ async def patch_registrant(
     if req.answers is not None:
         updates.append("answers = ?")
         params.append(json.dumps(req.answers))
+    if req.email is not None:
+        updates.append("email = ?")
+        params.append(req.email.strip())
 
     if updates:
         params.extend([reg_id, player_id])
@@ -673,6 +770,7 @@ async def get_registration_public(rid: str) -> RegistrationPublicOut:
         listed=bool(reg.get("listed", 0)),
         archived=bool(reg.get("archived", 0)),
         sport=reg.get("sport", "padel"),
+        email_requirement=_email_requirement(reg),
         registrant_count=len(registrants),
         registrants=[],
     )
@@ -702,9 +800,7 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
 
     # Validate required questions
     questions = _parse_questions(reg.get("questions"))
-    for q in questions:
-        if q.required and not req.answers.get(q.key):
-            raise HTTPException(400, f"Answer required for: {q.label}")
+    _validate_answers(questions, req.answers)
 
     player_id = uuid.uuid4().hex[:8]
     now = datetime.now(timezone.utc).isoformat()
@@ -731,13 +827,37 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
     token = generate_token()
 
     answers_json = json.dumps(req.answers) if req.answers else None
+    email = req.email.strip()
+    email_mode = _email_requirement(reg)
+    if email_mode == "required":
+        if not email or not is_valid_email(email):
+            raise HTTPException(400, "A valid email address is required for this registration")
+    elif email_mode == "disabled":
+        if email:
+            raise HTTPException(400, "Email is disabled for this registration")
+        email = ""
+    elif email and not is_valid_email(email):
+        raise HTTPException(400, "Invalid email address")
+
     with get_db() as conn:
         conn.execute(
             """INSERT INTO registrants
-               (registration_id, player_id, player_name, passphrase, token, answers, registered_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (reg_id, player_id, req.player_name, passphrase, token, answers_json, now),
+               (registration_id, player_id, player_name, passphrase, token, answers, email, registered_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now),
         )
+
+    # Auto-send confirmation email if the lobby has auto_send_email enabled
+    if email and is_valid_email(email) and reg.get("auto_send_email"):
+        subject, body = render_registration_confirmation(
+            lobby_name=reg["name"],
+            player_name=req.player_name,
+            passphrase=passphrase,
+            token=token,
+            lobby_alias=reg.get("alias"),
+            lobby_id=reg_id,
+        )
+        send_email_background(email, subject, body)
 
     return {
         "player_id": player_id,
@@ -807,17 +927,14 @@ async def convert_registration(
                     f"These selected players are missing from teams: {', '.join(missing_names)}",
                 )
 
-        # Reject players that are already assigned to a previous tournament from this lobby
+        # Collect names of players already assigned to a previous tournament from this lobby.
+        # We no longer block this — multi-tournament use case allows the same player in multiple
+        # tournaments.  The overlapping names are returned in the response so the caller can warn.
         overlap_names = [
             name
             for name in names
             if name in registrant_by_name and registrant_by_name[name]["player_id"] in already_assigned
         ]
-        if overlap_names:
-            raise HTTPException(
-                400,
-                f"These players are already assigned to a tournament from this lobby: {', '.join(overlap_names)}",
-            )
 
         # Collect existing passphrases so we don't collide when generating new ones
         existing_passphrases: set[str] = {r["passphrase"] for r in registrants}
@@ -825,16 +942,26 @@ async def convert_registration(
         player_entries: list[tuple[str, str]] = []  # (name, player_id)
         secret_rows: list[tuple] = []  # rows for player_secrets INSERT
         contact_map: dict[str, str] = {}  # player_id → contact string
+        email_map: dict[str, str] = {}  # player_id → email address
 
         for name in names:
             reg = registrant_by_name.get(name)
             if reg:
                 pid = reg["player_id"]
                 player_entries.append((name, pid))
-                secret_rows.append((None, pid, name, reg["passphrase"], reg["token"]))
+                # When a player is already in another tournament from this lobby their token
+                # is already taken (UNIQUE constraint on player_secrets.token).  Generate a
+                # fresh token so this tournament entry gets its own distinct QR-code link.
+                if pid in already_assigned:
+                    token = generate_token()
+                else:
+                    token = reg["token"]
+                secret_rows.append((None, pid, name, reg["passphrase"], token))
                 answers = _parse_answers(reg.get("answers"))
                 if answers.get("contact"):
                     contact_map[pid] = answers["contact"]
+                if reg.get("email"):
+                    email_map[pid] = reg["email"]
             else:
                 # New player added during conversion
                 pid = uuid.uuid4().hex[:8]
@@ -1020,14 +1147,18 @@ async def convert_registration(
         # Populate player_secrets (reuse registrant passphrases/tokens where available)
         with get_db() as conn:
             conn.executemany(
-                """INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, contact)
-                   VALUES (?, ?, ?, ?, ?, ?)
+                """INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, contact, email)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(tournament_id, player_id) DO UPDATE SET
                        passphrase  = excluded.passphrase,
                        token       = excluded.token,
                        player_name = excluded.player_name,
-                       contact     = excluded.contact""",
-                [(tid, pid, name, pp, tok, contact_map.get(pid, "")) for (_, pid, name, pp, tok) in secret_rows],
+                       contact     = excluded.contact,
+                       email       = excluded.email""",
+                [
+                    (tid, pid, name, pp, tok, contact_map.get(pid, ""), email_map.get(pid, ""))
+                    for (_, pid, name, pp, tok) in secret_rows
+                ],
             )
 
         # Append the new tid to converted_to_tids and keep the legacy single-tid column
@@ -1046,19 +1177,29 @@ async def convert_registration(
 
             if all_now_assigned:
                 conn.execute(
-                    "UPDATE registrations SET converted_to_tids = ?, converted_to_tid = ?, open = 0, archived = 1 WHERE id = ?",
+                    "UPDATE registrations SET converted_to_tids = ?, converted_to_tid = ?, open = 0 WHERE id = ?",
                     (new_tids_json, first_tid, reg_id),
                 )
             else:
                 conn.execute(
-                    "UPDATE registrations SET converted_to_tids = ?, converted_to_tid = ?, archived = 0 WHERE id = ?",
+                    "UPDATE registrations SET converted_to_tids = ?, converted_to_tid = ? WHERE id = ?",
                     (new_tids_json, first_tid, reg_id),
                 )
 
     if all_now_assigned:
-        return {"tournament_id": tid, "tournament_name": tournament_name, "all_assigned": True}
+        return {
+            "tournament_id": tid,
+            "tournament_name": tournament_name,
+            "all_assigned": True,
+            "overlapping_players": overlap_names,
+        }
 
-    return {"tournament_id": tid, "tournament_name": tournament_name, "all_assigned": False}
+    return {
+        "tournament_id": tid,
+        "tournament_name": tournament_name,
+        "all_assigned": False,
+        "overlapping_players": overlap_names,
+    }
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -1128,9 +1269,7 @@ async def player_update_answers(rid: str, req: RegistrantAnswersUpdateIn, reques
             raise HTTPException(400, "You have already been assigned to a tournament")
 
     questions = _parse_questions(reg.get("questions"))
-    for q in questions:
-        if q.required and not req.answers.get(q.key):
-            raise HTTPException(400, f"Answer required for: {q.label}")
+    _validate_answers(questions, req.answers)
 
     answers_json = json.dumps(req.answers) if req.answers else None
     with get_db() as conn:
@@ -1190,3 +1329,134 @@ async def delete_registration_alias(rid: str, user: User = Depends(get_current_u
     with get_db() as conn:
         conn.execute("UPDATE registrations SET alias = NULL WHERE id = ?", (reg["id"],))
     return {"ok": True}
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Email endpoints
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@router.post("/{rid}/send-email/{player_id}")
+async def send_registrant_email(
+    rid: str, player_id: str, request: Request, user: User = Depends(get_current_user)
+) -> dict:
+    """Send login credentials email to a single registrant."""
+    if not email_is_configured():
+        raise HTTPException(400, "Email is not configured on this server")
+
+    client_ip = _client_ip(request)
+    _email_send_rate_limiter.check(client_ip, "Too many email send attempts — try again later")
+    _email_send_rate_limiter.record(client_ip)
+
+    reg = _get_registration(rid)
+    _require_registration_owner(reg, user)
+    reg_id = reg["id"]
+
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM registrants WHERE registration_id = ? AND player_id = ?",
+            (reg_id, player_id),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(404, "Registrant not found")
+
+    email = row["email"] if row["email"] else ""
+    if not email or not is_valid_email(email):
+        raise HTTPException(422, "No valid email address on file for this player")
+
+    subject, body = render_credentials_email(
+        lobby_name=reg["name"],
+        player_name=row["player_name"],
+        passphrase=row["passphrase"],
+        token=row["token"],
+        lobby_alias=reg.get("alias"),
+        lobby_id=reg_id,
+    )
+    ok = await send_email(email, subject, body)
+    if not ok:
+        raise HTTPException(502, "Failed to send email — check server SMTP configuration")
+    return {"sent": True}
+
+
+@router.post("/{rid}/send-all-emails")
+async def send_all_registrant_emails(rid: str, request: Request, user: User = Depends(get_current_user)) -> dict:
+    """Send login credentials emails to all registrants that have a valid email address."""
+    if not email_is_configured():
+        raise HTTPException(400, "Email is not configured on this server")
+
+    client_ip = _client_ip(request)
+    _email_send_rate_limiter.check(client_ip, "Too many email send attempts — try again later")
+    _email_send_rate_limiter.record(client_ip)
+
+    reg = _get_registration(rid)
+    _require_registration_owner(reg, user)
+    reg_id = reg["id"]
+
+    registrants = _get_registrants(reg_id)
+    sent = 0
+    skipped = 0
+    failed = 0
+    for r in registrants:
+        email = r.get("email", "")
+        if not email or not is_valid_email(email):
+            skipped += 1
+            continue
+        subject, body = render_credentials_email(
+            lobby_name=reg["name"],
+            player_name=r["player_name"],
+            passphrase=r["passphrase"],
+            token=r["token"],
+            lobby_alias=reg.get("alias"),
+            lobby_id=reg_id,
+        )
+        ok = await send_email(email, subject, body)
+        if ok:
+            sent += 1
+        else:
+            failed += 1
+
+    return {"sent": sent, "skipped": skipped, "failed": failed}
+
+
+@router.post("/{rid}/send-message-emails")
+async def send_registration_message_emails(rid: str, request: Request, user: User = Depends(get_current_user)) -> dict:
+    """Send organizer message email to all registrants with a valid email address."""
+    if not email_is_configured():
+        raise HTTPException(400, "Email is not configured on this server")
+
+    client_ip = _client_ip(request)
+    _email_send_rate_limiter.check(client_ip, "Too many email send attempts — try again later")
+    _email_send_rate_limiter.record(client_ip)
+
+    reg = _get_registration(rid)
+    _require_registration_owner(reg, user)
+    reg_id = reg["id"]
+
+    message = (reg.get("message") or "").strip()
+    if not message:
+        raise HTTPException(400, "No organizer message set for this registration")
+
+    registrants = _get_registrants(reg_id)
+    sent = 0
+    skipped = 0
+    failed = 0
+    for r in registrants:
+        email = r.get("email", "")
+        if not email or not is_valid_email(email):
+            skipped += 1
+            continue
+        subject, body = render_organizer_message_email(
+            lobby_name=reg["name"],
+            player_name=r["player_name"],
+            message=message,
+            token=r["token"],
+            lobby_alias=reg.get("alias"),
+            lobby_id=reg_id,
+        )
+        ok = await send_email(email, subject, body)
+        if ok:
+            sent += 1
+        else:
+            failed += 1
+
+    return {"sent": sent, "skipped": skipped, "failed": failed}

@@ -32,6 +32,7 @@ def _clean_state(tmp_path):
     import backend.api.routes_playoff as po_mod
     import backend.api.routes_crud as crud_mod
     import backend.auth.routes as auth_routes_mod
+    import backend.email as email_mod
 
     # Redirect the database to an isolated temp file so tests don't depend on
     # an already-existing padel.db file (e.g. in CI with a fresh checkout).
@@ -53,7 +54,27 @@ def _clean_state(tmp_path):
     reg_mod._create_rate_limiter.clear()
     reg_mod._public_register_rate_limiter.clear()
     reg_mod._public_passphrase_rate_limiter.clear()
+    reg_mod._email_send_rate_limiter.clear()
     auth_routes_mod._login_rate_limiter.clear()
+    crud_mod._notify_rate_limiter.clear()
+
+    # Disable outbound email globally for tests and stub SMTP transport so
+    # test runs never depend on local SMTP env or network availability.
+    orig_smtp_host = email_mod.SMTP_HOST
+    orig_smtp_from = email_mod.SMTP_FROM
+    orig_smtp_user = email_mod.SMTP_USER
+    orig_smtp_pass = email_mod.SMTP_PASS
+    orig_aiosmtplib_send = email_mod.aiosmtplib.send
+
+    email_mod.SMTP_HOST = None
+    email_mod.SMTP_FROM = None
+    email_mod.SMTP_USER = None
+    email_mod.SMTP_PASS = None
+
+    async def _mock_aiosmtplib_send(*args, **kwargs):
+        return None
+
+    email_mod.aiosmtplib.send = _mock_aiosmtplib_send
 
     # Disable persistence for the duration of the test.
     orig_save_tournament = state_mod._save_tournament
@@ -85,6 +106,7 @@ def _clean_state(tmp_path):
                 "passphrase": sec.passphrase,
                 "token": sec.token,
                 "contact": contact_map.get(pid, ""),
+                "email": "",
             }
             for pid, sec in secrets.items()
         }
@@ -95,9 +117,10 @@ def _clean_state(tmp_path):
 
     def _mock_get(tournament_id):
         raw = _test_secrets.get(tournament_id, {})
-        # Ensure all entries have a contact field (backward compat with any
-        # secrets created before the contact field was introduced).
-        return {pid: {**sec, "contact": sec.get("contact", "")} for pid, sec in raw.items()}
+        # Ensure all entries have contact and email fields (backward compat).
+        return {
+            pid: {**sec, "contact": sec.get("contact", ""), "email": sec.get("email", "")} for pid, sec in raw.items()
+        }
 
     def _mock_update_contact(tournament_id, player_id, contact):
         if tournament_id not in _test_secrets or player_id not in _test_secrets[tournament_id]:
@@ -175,6 +198,7 @@ def _clean_state(tmp_path):
         "mex_create": mex_mod.create_secrets_for_tournament,
         "po_create": po_mod.create_secrets_for_tournament,
         "crud_delete": crud_mod.delete_secrets_for_tournament,
+        "crud_get": crud_mod.get_secrets_for_tournament,
         "rpa_get": rpa_mod.get_secrets_for_tournament,
         "rpa_lookup_pp": rpa_mod.lookup_by_passphrase,
         "rpa_lookup_tok": rpa_mod.lookup_by_token,
@@ -186,6 +210,7 @@ def _clean_state(tmp_path):
     mex_mod.create_secrets_for_tournament = _mock_create
     po_mod.create_secrets_for_tournament = _mock_create
     crud_mod.delete_secrets_for_tournament = _mock_delete
+    crud_mod.get_secrets_for_tournament = _mock_get
     rpa_mod.get_secrets_for_tournament = _mock_get
     rpa_mod.lookup_by_passphrase = _mock_lookup_passphrase
     rpa_mod.lookup_by_token = _mock_lookup_token
@@ -219,9 +244,17 @@ def _clean_state(tmp_path):
     reg_mod._create_rate_limiter.clear()
     reg_mod._public_register_rate_limiter.clear()
     reg_mod._public_passphrase_rate_limiter.clear()
+    reg_mod._email_send_rate_limiter.clear()
     auth_routes_mod._login_rate_limiter.clear()
+    crud_mod._notify_rate_limiter.clear()
     state_mod._save_tournament = orig_save_tournament
     state_mod._delete_tournament = orig_delete_tournament
+
+    email_mod.SMTP_HOST = orig_smtp_host
+    email_mod.SMTP_FROM = orig_smtp_from
+    email_mod.SMTP_USER = orig_smtp_user
+    email_mod.SMTP_PASS = orig_smtp_pass
+    email_mod.aiosmtplib.send = orig_aiosmtplib_send
 
     # Restore the real DB path (temp file is discarded automatically by pytest).
     db_mod.DB_PATH = orig_db_path
@@ -239,6 +272,7 @@ def _clean_state(tmp_path):
     mex_mod.create_secrets_for_tournament = _orig_route_refs["mex_create"]
     po_mod.create_secrets_for_tournament = _orig_route_refs["po_create"]
     crud_mod.delete_secrets_for_tournament = _orig_route_refs["crud_delete"]
+    crud_mod.get_secrets_for_tournament = _orig_route_refs["crud_get"]
     rpa_mod.get_secrets_for_tournament = _orig_route_refs["rpa_get"]
     rpa_mod.lookup_by_passphrase = _orig_route_refs["rpa_lookup_pp"]
     rpa_mod.lookup_by_token = _orig_route_refs["rpa_lookup_tok"]
