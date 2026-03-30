@@ -22,7 +22,7 @@ from .helpers import (
     _tennis_sets_to_scores,
     _build_match_labels,
     _schema_image_response,
-    _require_owner_or_admin,
+    _require_editor_access,
     _require_score_permission,
     _find_match,
     _store_tournament,
@@ -192,7 +192,7 @@ async def gp_record_group_tennis(
 @router.patch("/{tid}/gp/courts")
 async def gp_update_courts(tid: str, req: UpdateCourtsRequest, user=Depends(get_current_user)) -> dict:
     """Replace the court list for the group-playoff tournament."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
         data = _get_tournament(tid, _GP)
         t: GroupPlayoffTournament = data["tournament"]
@@ -210,7 +210,7 @@ async def gp_next_group_round(tid: str, user=Depends(get_current_user)) -> dict:
     Requires all current-round matches to be completed so cumulative scores
     can be used for opponent selection.
     """
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
         t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
         try:
@@ -238,7 +238,7 @@ async def gp_start_playoffs(
     user=Depends(get_current_user),
 ) -> dict:
     """Seed the play-off bracket from group standings and transition to the playoffs phase."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
         t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
         try:

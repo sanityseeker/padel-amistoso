@@ -25,3 +25,4 @@ class User(BaseModel):
     password_hash: str
     role: UserRole = UserRole.USER
     disabled: bool = False
+    email: str | None = None

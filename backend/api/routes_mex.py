@@ -21,7 +21,7 @@ from .helpers import (
     _build_match_labels,
     _tennis_sets_to_scores,
     _schema_image_response,
-    _require_owner_or_admin,
+    _require_editor_access,
     _require_score_permission,
     _find_match,
     _store_tournament,
@@ -179,7 +179,7 @@ async def mex_record(
 @router.patch("/{tid}/mex/courts")
 async def mex_update_courts(tid: str, req: UpdateCourtsRequest, user=Depends(get_current_user)) -> dict:
     """Replace the court list for future rounds and play-off bracket generation."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
         data = _get_tournament(tid, _MEX)
         t: MexicanoTournament = data["tournament"]
@@ -221,7 +221,7 @@ async def mex_propose_pairings(tid: str, n: int = 3, sit_out_ids: str | None = N
 @router.post("/{tid}/mex/next-round")
 async def mex_next_round(tid: str, req: NextRoundRequest = NextRoundRequest(), user=Depends(get_current_user)) -> dict:
     """Commit the chosen pairing proposal and generate the next Mexicano round."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
         t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
         if t.pending_matches():
@@ -237,7 +237,7 @@ async def mex_next_round(tid: str, req: NextRoundRequest = NextRoundRequest(), u
 @router.post("/{tid}/mex/custom-round")
 async def mex_custom_round(tid: str, req: CustomRoundRequest, user=Depends(get_current_user)) -> dict:
     """Commit a manually-specified round with user-defined pairings."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
         t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
         if t.pending_matches():
@@ -263,7 +263,7 @@ async def mex_recommend_playoffs(tid: str, n_teams: int = 4) -> dict:
 @router.post("/{tid}/mex/start-playoffs")
 async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, user=Depends(get_current_user)) -> dict:
     """Start play-offs after Mexicano rounds are complete."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
         t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
         try:
@@ -284,7 +284,7 @@ async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, user=D
 @router.post("/{tid}/mex/end")
 async def mex_end(tid: str, user=Depends(get_current_user)) -> dict:
     """End Mexicano rounds and open optional play-off decision step."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
         t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
         try:
@@ -298,7 +298,7 @@ async def mex_end(tid: str, user=Depends(get_current_user)) -> dict:
 @router.post("/{tid}/mex/finish")
 async def mex_finish(tid: str, user=Depends(get_current_user)) -> dict:
     """Finish tournament as-is without play-offs."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
         t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
         try:

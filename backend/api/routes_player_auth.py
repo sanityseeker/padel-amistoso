@@ -21,7 +21,7 @@ from ..auth.models import User
 from ..auth.security import create_player_token
 from ..models import Player
 from ..tournaments.player_secrets import generate_passphrase, generate_token
-from .helpers import _require_owner_or_admin
+from .helpers import _require_editor_access
 from .player_secret_store import (
     add_player_secret,
     get_contacts_for_tournament,
@@ -187,7 +187,7 @@ async def add_player_to_tournament(
     Generates fresh passphrase and token for the new player.  Returns the
     player ID and credentials so the admin can share them immediately.
     """
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
         data = _tournaments.get(tid)
         if data is None:
@@ -244,7 +244,7 @@ async def remove_player_from_tournament(
     Raises 409 if the player is currently assigned to a pending or
     in-progress match, so upcoming pairings are never left incomplete.
     """
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
         data = _tournaments.get(tid)
         if data is None:
@@ -289,7 +289,7 @@ async def get_player_secrets(tid: str, user: User = Depends(get_current_user)) -
 
     Includes passphrases for display and tokens for QR code generation.
     """
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     secrets = get_secrets_for_tournament(tid)
     return {"tournament_id": tid, "players": secrets}
 
@@ -301,7 +301,7 @@ async def regenerate_player_secret(
     user: User = Depends(get_current_user),
 ) -> dict:
     """Regenerate passphrase and token for a single player (organizer/admin only)."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     new_secret = regenerate_secret(tid, player_id)
     if new_secret is None:
         raise HTTPException(404, "Player not found in this tournament")
@@ -326,7 +326,7 @@ async def player_qr_code(
     query parameter so the QR contains a full absolute URL that works
     when scanned by a phone camera.
     """
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     secrets = get_secrets_for_tournament(tid)
     player = secrets.get(player_id)
     if player is None:
@@ -352,7 +352,7 @@ async def update_player_contact(
     user: User = Depends(get_current_user),
 ) -> dict:
     """Set the contact string for a player (organizer/admin only)."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     updated = update_contact(tid, player_id, req.contact)
     if not updated:
         raise HTTPException(404, "Player not found in this tournament")

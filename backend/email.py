@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from email.message import EmailMessage
 
 import aiosmtplib
+from email_validator import EmailNotValidError, validate_email as _validate_email
 
 from .config import SITE_URL, SMTP_FROM, SMTP_HOST, SMTP_PASS, SMTP_PORT, SMTP_USE_TLS, SMTP_USER
 
@@ -23,8 +23,6 @@ logger = logging.getLogger(__name__)
 # Public helpers
 # ────────────────────────────────────────────────────────────────────────────
 
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-
 
 def is_configured() -> bool:
     """Return ``True`` when all required SMTP settings are present."""
@@ -32,8 +30,14 @@ def is_configured() -> bool:
 
 
 def is_valid_email(value: str) -> bool:
-    """Minimal email-address validation (format only, no DNS check)."""
-    return bool(_EMAIL_RE.match(value.strip())) if value else False
+    """Validate an email address format using the email-validator library (no DNS check)."""
+    if not value or not value.strip():
+        return False
+    try:
+        _validate_email(value.strip(), check_deliverability=False)
+        return True
+    except EmailNotValidError:
+        return False
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -256,6 +260,51 @@ def render_organizer_message_email(
 # ────────────────────────────────────────────────────────────────────────────
 # Tiny HTML escape (avoid importing markupsafe just for emails)
 # ────────────────────────────────────────────────────────────────────────────
+
+
+def render_invite_email(*, email: str, role: str, accept_url: str) -> tuple[str, str]:
+    """Return ``(subject, html_body)`` for an admin invite email."""
+    role_label = role.capitalize()
+    subject = "You've been invited to Torneos Amistosos"
+    body = f"""\
+<div style="{_BASE_STYLE}">
+  <h2 style="margin-top:0">You've been invited! 🎾</h2>
+  <p>You've been invited to join <strong>Torneos Amistosos</strong> as a
+     <strong>{_esc(role_label)}</strong>.</p>
+  <p>Click the button below to set up your account. The link is valid for
+     <strong>48 hours</strong>.</p>
+  <p style="text-align:center">
+    <a href="{_esc(accept_url)}" style="{_BUTTON_STYLE}">Accept invitation</a>
+  </p>
+  <p style="font-size:.85em;color:#666">
+    If you weren't expecting this invitation, you can safely ignore this email.
+  </p>
+  <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
+  <p style="font-size:.8em;color:#999">This is an automated message from Torneos Amistosos.</p>
+</div>"""
+    return subject, body
+
+
+def render_password_reset_email(*, email: str, reset_url: str) -> tuple[str, str]:
+    """Return ``(subject, html_body)`` for a password-reset email."""
+    subject = "Reset your Torneos Amistosos password"
+    body = f"""\
+<div style="{_BASE_STYLE}">
+  <h2 style="margin-top:0">Password reset 🔑</h2>
+  <p>We received a request to reset the password for <strong>{_esc(email)}</strong>.</p>
+  <p>Click the button below to choose a new password. The link is valid for
+     <strong>1 hour</strong>.</p>
+  <p style="text-align:center">
+    <a href="{_esc(reset_url)}" style="{_BUTTON_STYLE}">Reset password</a>
+  </p>
+  <p style="font-size:.85em;color:#666">
+    If you didn't request a password reset, you can safely ignore this email.
+    Your password won't change until you open the link above and create a new one.
+  </p>
+  <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
+  <p style="font-size:.8em;color:#999">This is an automated message from Torneos Amistosos.</p>
+</div>"""
+    return subject, body
 
 
 def _esc(text: str) -> str:

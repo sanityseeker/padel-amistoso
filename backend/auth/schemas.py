@@ -4,7 +4,7 @@ Pydantic request / response schemas for auth routes.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class LoginRequest(BaseModel):
@@ -20,6 +20,7 @@ class CreateUserRequest(BaseModel):
     username: str = Field(min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
     password: str = Field(min_length=8, max_length=128)
     role: str | None = Field(default=None, description="'admin' or 'user' (default: 'user')")
+    email: EmailStr | None = None
 
 
 class ChangePasswordRequest(BaseModel):
@@ -43,3 +44,37 @@ class UserResponse(BaseModel):
     username: str
     role: str
     disabled: bool
+    email: str | None = None
+
+
+class InviteRequest(BaseModel):
+    """Payload for sending an admin invite."""
+
+    email: EmailStr
+    role: str = Field(default="user", description="'admin' or 'user'")
+
+
+class AcceptInviteRequest(BaseModel):
+    """Payload for accepting an invite and creating an account."""
+
+    username: str = Field(min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
+    password: str = Field(min_length=8, max_length=128)
+
+
+class InvitePreviewResponse(BaseModel):
+    """Response from GET /invite/{token} — shows what the invite is for."""
+
+    email: str
+    role: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Payload for initiating a password reset."""
+
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Payload for completing a password reset."""
+
+    new_password: str = Field(min_length=8, max_length=128)

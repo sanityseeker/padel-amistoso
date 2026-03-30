@@ -17,7 +17,8 @@ from ..email import (
     render_tournament_started_email,
     send_email,
 )
-from .helpers import _find_match, _require_owner_or_admin
+from .helpers import _find_match, _require_editor_access, _require_owner_or_admin
+from .db import get_shared_tournament_ids
 from .player_secret_store import delete_secrets_for_tournament, get_secrets_for_tournament
 from .rate_limit import BoundedRateLimiter
 from .schemas import SetAliasRequest, SetMatchCommentRequest, SetPublicRequest, TvSettings, TvSettingsRequest
@@ -38,13 +39,17 @@ async def list_tournaments(current_user: User | None = Depends(get_current_user_
     - **Guest (unauthenticated)**: only publicly listed tournaments (``public=True``).
     """
     out = []
+    shared_ids: set[str] = set()
+    if current_user is not None and current_user.role != UserRole.ADMIN:
+        shared_ids = set(get_shared_tournament_ids(current_user.username))
     for tid, data in _tournaments.items():
         # Visibility filter
         if current_user is None:
             if not data.get("public", True):
                 continue
         elif current_user.role != UserRole.ADMIN:
-            if data.get("owner") != current_user.username:
+            is_owner = data.get("owner") == current_user.username
+            if not is_owner and tid not in shared_ids:
                 continue
 
         t = data.get("tournament")
@@ -59,6 +64,7 @@ async def list_tournaments(current_user: User | None = Depends(get_current_user_
                 "owner": data.get("owner"),
                 "public": data.get("public", True),
                 "sport": data.get("sport", "padel"),
+                "shared": current_user is not None and tid in shared_ids,
             }
         )
     return out
@@ -110,7 +116,7 @@ async def get_tv_settings(tid: str) -> dict:
 @router.patch("/{tid}/tv-settings")
 async def update_tv_settings(tid: str, req: TvSettingsRequest, user: User = Depends(get_current_user)) -> dict:
     """Partially update TV display settings (only supplied fields are changed)."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with state.get_tournament_lock(tid):
         if tid not in _tournaments:
             raise HTTPException(404, "Tournament not found")
@@ -131,7 +137,7 @@ async def update_tv_settings(tid: str, req: TvSettingsRequest, user: User = Depe
 @router.patch("/{tid}/public")
 async def set_public(tid: str, req: SetPublicRequest, user: User = Depends(get_current_user)) -> dict:
     """Set whether the tournament is publicly listed for guests."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with state.get_tournament_lock(tid):
         if tid not in _tournaments:
             raise HTTPException(404, "Tournament not found")
@@ -143,7 +149,7 @@ async def set_public(tid: str, req: SetPublicRequest, user: User = Depends(get_c
 @router.put("/{tid}/alias")
 async def set_alias(tid: str, req: SetAliasRequest, user: User = Depends(get_current_user)) -> dict:
     """Set a human-friendly alias for a tournament (used in TV URLs like /tv/my-tourney)."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with state.get_tournament_lock(tid):
         if tid not in _tournaments:
             raise HTTPException(404, "Tournament not found")
@@ -159,7 +165,7 @@ async def set_alias(tid: str, req: SetAliasRequest, user: User = Depends(get_cur
 @router.delete("/{tid}/alias")
 async def delete_alias(tid: str, user: User = Depends(get_current_user)) -> dict:
     """Remove the alias from a tournament."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with state.get_tournament_lock(tid):
         if tid not in _tournaments:
             raise HTTPException(404, "Tournament not found")
@@ -202,7 +208,7 @@ async def get_tournament_meta(tid: str) -> dict:
 @router.patch("/{tid}/match-comment")
 async def set_match_comment(tid: str, req: SetMatchCommentRequest, user: User = Depends(get_current_user)) -> dict:
     """Set or clear an optional admin comment on a match."""
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     async with state.get_tournament_lock(tid):
         if tid not in _tournaments:
             raise HTTPException(404, "Tournament not found")
@@ -236,7 +242,7 @@ async def notify_tournament_players(tid: str, request: Request, user: User = Dep
     _notify_rate_limiter.check(client_ip, "Too many notification attempts — try again later")
     _notify_rate_limiter.record(client_ip)
 
-    _require_owner_or_admin(tid, user)
+    _require_editor_access(tid, user)
     if tid not in _tournaments:
         raise HTTPException(404, "Tournament not found")
 

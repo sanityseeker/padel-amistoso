@@ -4,11 +4,27 @@ Pydantic request / response schemas for the REST API.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from email_validator import EmailNotValidError, validate_email as _validate_email
+from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
 
-from ..models import Sport
+from backend.models import Sport
+
+
+def _coerce_optional_email(v: str) -> str:
+    """Accept empty string (no email) or a valid, normalised email address."""
+    stripped = v.strip()
+    if not stripped:
+        return ""
+    try:
+        return _validate_email(stripped, check_deliverability=False).normalized
+    except EmailNotValidError as exc:
+        raise ValueError(str(exc)) from exc
+
+
+# Use this for fields where an email is optional (empty string = no email provided).
+OptionalEmailStr = Annotated[str, AfterValidator(_coerce_optional_email)]
 
 EmailRequirement = Literal["required", "optional", "disabled"]
 
@@ -320,7 +336,7 @@ class RegistrantIn(BaseModel):
     player_name: str = Field(min_length=1, max_length=128)
     join_code: str | None = None
     answers: dict[str, str] = Field(default_factory=dict)
-    email: str = Field(default="", max_length=320)
+    email: OptionalEmailStr = Field(default="")
 
 
 class RegistrantOut(BaseModel):
@@ -435,7 +451,7 @@ class RegistrantPatch(BaseModel):
 
     player_name: str | None = Field(default=None, min_length=1, max_length=128)
     answers: dict[str, str] | None = None
-    email: str | None = Field(default=None, max_length=320)
+    email: OptionalEmailStr | None = None
 
 
 class ConvertRegistrationRequest(BaseModel):
@@ -491,3 +507,15 @@ class ConvertRegistrationRequest(BaseModel):
                         raise ValueError(f"Player '{name}' appears in multiple teams")
                     seen.add(name)
         return self
+
+
+class AddCollaboratorRequest(BaseModel):
+    """Request body for granting co-editor access to a user."""
+
+    username: str = Field(min_length=1, max_length=150)
+
+
+class CollaboratorListResponse(BaseModel):
+    """Response containing the list of co-editors for a tournament."""
+
+    collaborators: list[str]

@@ -521,7 +521,50 @@ MexicanoTournament
 ### Authorization Hierarchy (for score recording)
 1. Admin → always allowed
 2. Tournament owner → always allowed
-3. Authenticated player in the match (if `allow_player_scoring` is enabled in TV settings)
+3. Co-editor (see below) → always allowed for score/editing actions
+4. Authenticated player in the match (if `allow_player_scoring` is enabled in TV settings)
+
+### Co-Editor / Sharing System (added 2026-03-30)
+
+**Files**: `backend/api/routes_share.py`, `backend/api/db.py`, `backend/api/helpers.py`
+
+#### DB Table: `tournament_shares`
+```sql
+tournament_id TEXT NOT NULL,
+username      TEXT NOT NULL,
+PRIMARY KEY (tournament_id, username)
+```
+Indexed on both columns. Created in `_DDL` and also in the migration block of `init_db()` for existing DBs.
+
+#### DB Helpers (`backend/api/db.py`)
+- `get_co_editors(tid) → list[str]`
+- `get_shared_tournament_ids(username) → list[str]`
+- `add_co_editor(tid, username) → None` (idempotent `INSERT OR IGNORE`)
+- `remove_co_editor(tid, username) → None`
+
+#### Permission Helpers (two separate functions in `backend/api/helpers.py`)
+| Helper | Allowed callers | Used for |
+|---|---|---|
+| `_require_editor_access(tid, user)` | Admin, owner, co-editor | All mutating endpoints except delete |
+| `_require_owner_or_admin(tid, user)` | Admin, owner only | `DELETE /tournaments/{tid}` and share management |
+
+`_require_score_permission` was also updated to allow co-editors.
+
+#### REST Endpoints (`/api/tournaments/{tid}/collaborators`)
+| Method | Path | Auth | Action |
+|---|---|---|---|
+| `GET` | `/{tid}/collaborators` | editor or owner | List co-editors |
+| `POST` | `/{tid}/collaborators` | owner only | Add co-editor by username |
+| `DELETE` | `/{tid}/collaborators/{username}` | owner only | Remove co-editor |
+
+#### Tournament Listing
+- `GET /api/tournaments` now includes `"shared": true` for tournaments the caller has co-editor access to (but does not own).
+- Non-shared/owned tournaments return `"shared": false`.
+
+#### Frontend
+- `_renderCollaboratorsSection(collaborators)` — collapsible card shown only to the tournament owner/admin; shows current co-editors with remove buttons and an add-by-username input.
+- `_addCollaborator()` and `_removeCollaborator(username)` in `admin.js`.
+- Tournament list card shows a "shared" badge for co-edited tournaments; delete button is only shown to owner/admin.
 
 ---
 

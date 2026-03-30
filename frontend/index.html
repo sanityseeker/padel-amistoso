@@ -628,9 +628,12 @@
       <label class="modal-label" data-i18n="txt_txt_username">Username</label>
       <input type="text" id="auth-username" class="modal-input" placeholder="admin" autocomplete="username">
     </div>
-    <div class="modal-field" style="margin-bottom:1rem">
+    <div class="modal-field" style="margin-bottom:0.25rem">
       <label class="modal-label" data-i18n="txt_txt_password">Password</label>
       <input type="password" id="auth-password" class="modal-input" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div style="text-align:right;margin-bottom:1rem">
+      <a href="#" class="modal-link" style="font-size:0.85rem" onclick="showForgotPasswordDialog();return false">🔑 <span data-i18n="txt_txt_forgot_password">Forgot password?</span></a>
     </div>
     <div class="modal-error" id="auth-error"></div>
     <button type="submit" id="auth-login-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_login">Login</button>
@@ -658,6 +661,9 @@
         <input id="new-user-username" type="text" class="modal-input" placeholder="Username" autocomplete="off">
         <input id="new-user-password" type="password" class="modal-input" placeholder="Password" autocomplete="new-password">
       </div>
+      <div style="margin-bottom:0.6rem">
+        <input id="new-user-email" type="email" class="modal-input" style="width:100%" placeholder="Email (optional)" autocomplete="email">
+      </div>
       <div style="margin-bottom:0.75rem">
         <div class="modal-label" data-i18n="txt_txt_role">Role</div>
         <div class="modal-radio-group">
@@ -673,6 +679,23 @@
       <div class="modal-error" id="user-mgmt-error"></div>
       <button type="submit" id="create-user-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_create_user">Create User</button>
     </form>
+    <div class="modal-form-section" id="invite-section" style="border-top:1px solid var(--border);margin-top:0.25rem">
+      <div class="modal-label" style="font-weight:600;margin-bottom:0.75rem">✉️ Invite by Email</div>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 0.75rem">Send an invite link — the recipient sets their own password. Link expires in 48 hours.</p>
+      <form onsubmit="handleInvite(event)">
+        <input id="invite-email" type="email" class="modal-input" style="width:100%;margin-bottom:0.6rem" placeholder="Email address" autocomplete="email">
+        <div style="margin-bottom:0.75rem">
+          <div class="modal-label">Role</div>
+          <div class="modal-radio-group">
+            <label class="modal-radio-label"><input type="radio" name="invite-role" value="user" checked> User</label>
+            <label class="modal-radio-label"><input type="radio" name="invite-role" value="admin"> Admin</label>
+          </div>
+        </div>
+        <div class="modal-success" id="invite-success"></div>
+        <div class="modal-error" id="invite-error"></div>
+        <button type="submit" id="invite-btn" class="btn btn-primary" style="width:100%">Send Invite</button>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -698,6 +721,73 @@
       <button type="submit" id="change-pwd-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_change_password">Change Password</button>
     </form>
   </div>
+</div>
+
+<!-- Forgot Password Modal -->
+<div id="forgot-pwd-overlay" class="modal-overlay" data-action="hideForgotPasswordDialog"></div>
+<div id="forgot-pwd-dialog" class="modal-dialog modal-sm">
+  <div class="modal-header">
+    <h2 class="modal-title">🔑 Forgot Password</h2>
+    <button type="button" class="modal-close-btn" data-action="hideForgotPasswordDialog" aria-label="Close">✕</button>
+  </div>
+  <p class="modal-subtitle">Enter your email address and we'll send you a password reset link.</p>
+  <form onsubmit="handleForgotPassword(event)">
+    <div class="modal-field" style="margin-bottom:1rem">
+      <label class="modal-label">Email</label>
+      <input type="email" id="forgot-pwd-email" class="modal-input" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div class="modal-success" id="forgot-pwd-success"></div>
+    <div class="modal-error" id="forgot-pwd-error"></div>
+    <button type="submit" id="forgot-pwd-btn" class="btn btn-primary" style="width:100%">Send Reset Link</button>
+  </form>
+</div>
+
+<!-- Accept Invite Modal -->
+<div id="accept-invite-overlay" class="modal-overlay"></div>
+<div id="accept-invite-dialog" class="modal-dialog modal-sm">
+  <div class="modal-header">
+    <h2 class="modal-title">🎾 Accept Invitation</h2>
+  </div>
+  <p class="modal-subtitle" id="accept-invite-subtitle"></p>
+  <form onsubmit="handleAcceptInvite(event)">
+    <div class="modal-field">
+      <label class="modal-label">Username</label>
+      <input type="text" id="accept-invite-username" class="modal-input" placeholder="Choose a username" autocomplete="username">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Password</label>
+      <input type="password" id="accept-invite-password" class="modal-input" placeholder="••••••••" autocomplete="new-password">
+    </div>
+    <div class="modal-field" style="margin-bottom:1rem">
+      <label class="modal-label">Confirm Password</label>
+      <input type="password" id="accept-invite-confirm" class="modal-input" placeholder="••••••••" autocomplete="new-password">
+    </div>
+    <div class="modal-success" id="accept-invite-success"></div>
+    <div class="modal-error" id="accept-invite-error"></div>
+    <button type="submit" id="accept-invite-btn" class="btn btn-primary" style="width:100%">Create Account</button>
+  </form>
+</div>
+
+<!-- Reset Password Modal -->
+<div id="reset-pwd-overlay" class="modal-overlay"></div>
+<div id="reset-pwd-dialog" class="modal-dialog modal-sm">
+  <div class="modal-header">
+    <h2 class="modal-title">🔑 Reset Password</h2>
+  </div>
+  <p class="modal-subtitle">Choose a new password for your account.</p>
+  <form onsubmit="handleResetPassword(event)">
+    <div class="modal-field">
+      <label class="modal-label">New Password</label>
+      <input type="password" id="reset-pwd-new" class="modal-input" placeholder="••••••••" autocomplete="new-password">
+    </div>
+    <div class="modal-field" style="margin-bottom:1rem">
+      <label class="modal-label">Confirm New Password</label>
+      <input type="password" id="reset-pwd-confirm" class="modal-input" placeholder="••••••••" autocomplete="new-password">
+    </div>
+    <div class="modal-success" id="reset-pwd-success"></div>
+    <div class="modal-error" id="reset-pwd-error"></div>
+    <button type="submit" id="reset-pwd-btn" class="btn btn-primary" style="width:100%">Reset Password</button>
+  </form>
 </div>
 
 

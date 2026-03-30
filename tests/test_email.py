@@ -327,7 +327,8 @@ class TestEmailRequirementSetting:
             f"/api/registrations/{rid}/register",
             json={"player_name": "Alice", "email": "not-an-email"},
         )
-        assert reg.status_code == 400
+        # Schema validation rejects invalid email format before the route handler runs.
+        assert reg.status_code == 422
 
     def test_register_required_accepts_valid_email(self, client: TestClient, auth_headers: dict) -> None:
         r = client.post(

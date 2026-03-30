@@ -13,6 +13,7 @@ from fastapi.responses import Response
 from ..auth.deps import PlayerIdentity
 from ..auth.models import User, UserRole
 from ..models import Match, MatchStatus
+from .db import get_co_editors
 from .state import _tournaments, _save_tournament
 
 # MIME types for the three supported image/document formats.
@@ -88,7 +89,9 @@ def _get_tournament(tid: str, expected_type: str) -> dict:
 def _require_owner_or_admin(tid: str, user: User) -> None:
     """Raise 403 if *user* neither owns the tournament nor is an admin.
 
-    Call this on any mutating endpoint before performing the action.
+    Use this only for destructive or share-management operations that should
+    be restricted to the original owner.  For general editing, prefer
+    ``_require_editor_access``.
     """
     data = _tournaments.get(tid)
     if data is None:
@@ -97,6 +100,26 @@ def _require_owner_or_admin(tid: str, user: User) -> None:
         return
     if data.get("owner") != user.username:
         raise HTTPException(403, "You do not have permission to modify this tournament")
+
+
+def _require_editor_access(tid: str, user: User) -> None:
+    """Raise 403 if *user* may not edit the tournament.
+
+    Allowed callers:
+    - Admin users (bypass all ownership checks)
+    - The tournament owner
+    - Users that have been granted co-editor access via ``tournament_shares``
+    """
+    data = _tournaments.get(tid)
+    if data is None:
+        raise HTTPException(404, "Tournament not found")
+    if user.role == UserRole.ADMIN:
+        return
+    if data.get("owner") == user.username:
+        return
+    if user.username in get_co_editors(tid):
+        return
+    raise HTTPException(403, "You do not have permission to modify this tournament")
 
 
 def _require_score_permission(
@@ -113,7 +136,7 @@ def _require_score_permission(
     - An authenticated player who is a participant in the match
       (only when ``allow_player_scoring`` is enabled in TV settings)
     """
-    # Admin or owner
+    # Admin, owner, or co-editor
     if user is not None:
         data = _tournaments.get(tid)
         if data is None:
@@ -121,6 +144,8 @@ def _require_score_permission(
         if user.role == UserRole.ADMIN:
             return
         if data.get("owner") == user.username:
+            return
+        if user.username in get_co_editors(tid):
             return
 
     # Player in the match — only allowed when player scoring is enabled

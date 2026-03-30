@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import pytest
 
+import backend.email as email_mod
+from backend.auth.models import UserRole
 from backend.auth.security import create_access_token, decode_access_token, hash_password, verify_password
-from backend.auth.store import user_store
+from backend.auth.store import AuthTokenType, user_store
 
 
 # ── Unit: security helpers ─────────────────────────────────
@@ -226,3 +228,248 @@ class TestTournamentAlias:
         tid = r.json()["id"]
         r = client.put(f"/api/tournaments/{tid}/alias", json={"alias": "nope"})
         assert r.status_code == 401
+
+
+# ── Unit: email helpers on User store ─────────────────────
+
+
+class TestUserStoreEmail:
+    def test_set_and_get_email(self):
+        user_store.set_email("admin", "admin@example.com")
+        user = user_store.get("admin")
+        assert user is not None
+        assert user.email == "admin@example.com"
+
+    def test_set_email_clears_with_none(self):
+        user_store.set_email("admin", "admin@example.com")
+        user_store.set_email("admin", None)
+        user = user_store.get("admin")
+        assert user is not None
+        assert user.email is None
+
+    def test_set_email_unknown_user_raises(self):
+        with pytest.raises(KeyError):
+            user_store.set_email("ghost", "ghost@example.com")
+
+    def test_find_by_email_returns_user(self):
+        user_store.set_email("alice", "alice@example.com")
+        found = user_store.find_by_email("alice@example.com")
+        assert found is not None
+        assert found.username == "alice"
+
+    def test_find_by_email_case_insensitive(self):
+        user_store.set_email("alice", "alice@example.com")
+        found = user_store.find_by_email("ALICE@EXAMPLE.COM")
+        assert found is not None
+
+    def test_find_by_email_unknown_returns_none(self):
+        assert user_store.find_by_email("nobody@nowhere.com") is None
+
+    def test_create_user_with_email(self):
+        user = user_store.create_user("withmail", "password1", email="withmail@example.com")
+        assert user.email == "withmail@example.com"
+        assert user_store.find_by_email("withmail@example.com") is not None
+
+
+# ── Unit: auth tokens ─────────────────────────────────────
+
+
+class TestAuthTokens:
+    def test_invite_token_roundtrip(self):
+        raw = user_store.create_auth_token("invited@example.com", AuthTokenType.INVITE, role=UserRole.USER)
+        data = user_store.peek_auth_token(raw, AuthTokenType.INVITE)
+        assert data is not None
+        assert data["email"] == "invited@example.com"
+        assert data["role"] == "user"
+
+    def test_consume_token_marks_used(self):
+        raw = user_store.create_auth_token("used@example.com", AuthTokenType.INVITE, role=UserRole.USER)
+        data = user_store.consume_auth_token(raw, AuthTokenType.INVITE)
+        assert data is not None
+        # Second consume must fail
+        assert user_store.consume_auth_token(raw, AuthTokenType.INVITE) is None
+
+    def test_peek_does_not_consume(self):
+        raw = user_store.create_auth_token("peek@example.com", AuthTokenType.INVITE, role=UserRole.USER)
+        user_store.peek_auth_token(raw, AuthTokenType.INVITE)
+        assert user_store.peek_auth_token(raw, AuthTokenType.INVITE) is not None
+
+    def test_wrong_token_type_rejected(self):
+        raw = user_store.create_auth_token("typed@example.com", AuthTokenType.INVITE, role=UserRole.USER)
+        assert user_store.peek_auth_token(raw, AuthTokenType.PASSWORD_RESET) is None
+
+    def test_unknown_token_returns_none(self):
+        assert user_store.peek_auth_token("totallyfaketoken", AuthTokenType.INVITE) is None
+
+    def test_password_reset_token_no_role(self):
+        raw = user_store.create_auth_token("reset@example.com", AuthTokenType.PASSWORD_RESET)
+        data = user_store.peek_auth_token(raw, AuthTokenType.PASSWORD_RESET)
+        assert data is not None
+        assert data["email"] == "reset@example.com"
+        assert data["role"] is None
+
+    def test_purge_removes_used_tokens(self):
+        raw = user_store.create_auth_token("purge@example.com", AuthTokenType.INVITE, role=UserRole.USER)
+        user_store.consume_auth_token(raw, AuthTokenType.INVITE)
+        removed = user_store.purge_expired_tokens()
+        assert removed >= 1
+
+
+# ── Fixtures ──────────────────────────────────────────────
+
+
+@pytest.fixture
+def email_enabled():
+    """Temporarily enable email so invite/reset endpoints are exercisable."""
+    email_mod.SMTP_HOST = "localhost"
+    email_mod.SMTP_FROM = "test@padel.local"
+    yield
+    email_mod.SMTP_HOST = None
+    email_mod.SMTP_FROM = None
+
+
+# ── Integration: invite flow ───────────────────────────────
+
+
+class TestInviteFlow:
+    def test_send_invite_no_smtp_returns_503(self, client, auth_headers):
+        r = client.post("/api/auth/invite", json={"email": "new@example.com", "role": "user"}, headers=auth_headers)
+        assert r.status_code == 503
+
+    def test_send_invite_requires_admin(self, client, alice_headers):
+        r = client.post("/api/auth/invite", json={"email": "new@example.com", "role": "user"}, headers=alice_headers)
+        assert r.status_code == 403
+
+    def test_send_invite_unauthenticated(self, client):
+        r = client.post("/api/auth/invite", json={"email": "new@example.com", "role": "user"})
+        assert r.status_code == 401
+
+    def test_send_invite_success(self, client, auth_headers, email_enabled):
+        r = client.post("/api/auth/invite", json={"email": "new@example.com", "role": "admin"}, headers=auth_headers)
+        assert r.status_code == 204
+
+    def test_preview_invite_invalid_token(self, client):
+        r = client.get("/api/auth/invite/badtoken")
+        assert r.status_code == 404
+
+    def test_preview_invite_valid_token(self, client):
+        raw = user_store.create_auth_token("preview@example.com", AuthTokenType.INVITE, role=UserRole.ADMIN)
+        r = client.get(f"/api/auth/invite/{raw}")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["email"] == "preview@example.com"
+        assert data["role"] == "admin"
+
+    def test_accept_invite_creates_user(self, client):
+        raw = user_store.create_auth_token("newuser@example.com", AuthTokenType.INVITE, role=UserRole.USER)
+        r = client.post(f"/api/auth/invite/{raw}/accept", json={"username": "newuser", "password": "securepass1"})
+        assert r.status_code == 201
+        data = r.json()
+        assert data["username"] == "newuser"
+        assert data["role"] == "user"
+        assert data["email"] == "newuser@example.com"
+
+    def test_accept_invite_twice_fails(self, client):
+        raw = user_store.create_auth_token("twice@example.com", AuthTokenType.INVITE, role=UserRole.USER)
+        client.post(f"/api/auth/invite/{raw}/accept", json={"username": "twice1user", "password": "securepass1"})
+        r = client.post(f"/api/auth/invite/{raw}/accept", json={"username": "twice2user", "password": "securepass1"})
+        assert r.status_code == 404
+
+    def test_accept_invite_invalid_token_fails(self, client):
+        r = client.post("/api/auth/invite/fakebadtoken/accept", json={"username": "nobody", "password": "securepass1"})
+        assert r.status_code == 404
+
+    def test_accept_invite_duplicate_username_fails(self, client):
+        raw = user_store.create_auth_token("dup@example.com", AuthTokenType.INVITE, role=UserRole.USER)
+        r = client.post(f"/api/auth/invite/{raw}/accept", json={"username": "admin", "password": "securepass1"})
+        assert r.status_code == 409
+
+    @pytest.mark.parametrize("role", ["admin", "user"])
+    def test_accept_invite_preserves_role(self, client, role):
+        user_role = UserRole(role)
+        raw = user_store.create_auth_token(f"role_{role}@example.com", AuthTokenType.INVITE, role=user_role)
+        uname = f"role_{role}_user"
+        r = client.post(f"/api/auth/invite/{raw}/accept", json={"username": uname, "password": "securepass1"})
+        assert r.status_code == 201
+        assert r.json()["role"] == role
+
+
+# ── Integration: password-reset flow ──────────────────────
+
+
+class TestPasswordResetFlow:
+    def test_forgot_password_no_smtp_returns_503(self, client):
+        r = client.post("/api/auth/forgot-password", json={"email": "admin@example.com"})
+        assert r.status_code == 503
+
+    def test_forgot_password_unknown_email_still_204(self, client, email_enabled):
+        """Always 204 to avoid account enumeration."""
+        r = client.post("/api/auth/forgot-password", json={"email": "nobody@nowhere.com"})
+        assert r.status_code == 204
+
+    def test_forgot_password_known_email_sends_reset(self, client, email_enabled):
+        user_store.set_email("admin", "admin@example.com")
+        r = client.post("/api/auth/forgot-password", json={"email": "admin@example.com"})
+        assert r.status_code == 204
+
+    def test_reset_password_invalid_token(self, client):
+        r = client.post("/api/auth/reset-password/badtoken", json={"new_password": "newpass1234"})
+        assert r.status_code == 404
+
+    def test_reset_password_happy_path(self, client):
+        user_store.set_email("admin", "admin@example.com")
+        raw = user_store.create_auth_token("admin@example.com", AuthTokenType.PASSWORD_RESET)
+        r = client.post(f"/api/auth/reset-password/{raw}", json={"new_password": "brandnewpass"})
+        assert r.status_code == 204
+        # Verify new password works
+        login = client.post("/api/auth/login", json={"username": "admin", "password": "brandnewpass"})
+        assert login.status_code == 200
+
+    def test_reset_password_used_token_rejected(self, client):
+        user_store.set_email("admin", "admin@example.com")
+        raw = user_store.create_auth_token("admin@example.com", AuthTokenType.PASSWORD_RESET)
+        client.post(f"/api/auth/reset-password/{raw}", json={"new_password": "brandnewpass"})
+        r = client.post(f"/api/auth/reset-password/{raw}", json={"new_password": "anotherpass"})
+        assert r.status_code == 404
+
+    def test_reset_password_invite_token_rejected(self, client):
+        """Reset endpoint must not accept invite tokens."""
+        raw = user_store.create_auth_token("admin@example.com", AuthTokenType.INVITE, role=UserRole.ADMIN)
+        r = client.post(f"/api/auth/reset-password/{raw}", json={"new_password": "brandnewpass"})
+        assert r.status_code == 404
+
+
+# ── Integration: email in user management ─────────────────
+
+
+class TestUserEmailManagement:
+    def test_create_user_with_email(self, client, auth_headers):
+        r = client.post(
+            "/api/auth/users",
+            json={"username": "emailuser", "password": "pass1234", "email": "emailuser@example.com"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 201
+        assert r.json()["email"] == "emailuser@example.com"
+
+    def test_create_user_without_email(self, client, auth_headers):
+        r = client.post(
+            "/api/auth/users",
+            json={"username": "noemail", "password": "pass1234"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 201
+        assert r.json()["email"] is None
+
+    def test_list_users_includes_email(self, client, auth_headers):
+        user_store.set_email("alice", "alice@example.com")
+        r = client.get("/api/auth/users", headers=auth_headers)
+        assert r.status_code == 200
+        alice = next(u for u in r.json() if u["username"] == "alice")
+        assert alice["email"] == "alice@example.com"
+
+    def test_me_endpoint_includes_email(self, client, auth_headers):
+        user_store.set_email("admin", "admin@example.com")
+        r = client.get("/api/auth/me", headers=auth_headers)
+        assert r.status_code == 200
+        assert r.json()["email"] == "admin@example.com"

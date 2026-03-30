@@ -34,6 +34,7 @@ from .routes_player_auth import router as player_auth_router
 from .routes_playoff import router as playoff_router
 from .routes_registration import router as registration_router
 from .routes_schema import router as schema_router
+from .routes_share import router as share_router
 from .state import (  # noqa: F401  — re-exported for tests
     _counter,
     _load_state,
@@ -117,6 +118,7 @@ app.include_router(player_auth_router)
 app.include_router(playoff_router)
 app.include_router(registration_router)
 app.include_router(schema_router)
+app.include_router(share_router)
 
 # ────────────────────────────────────────────────────────────────────────────
 # Config endpoint

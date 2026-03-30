@@ -368,7 +368,7 @@ function filterUserMgmtList(query) {
   const list = document.getElementById('user-mgmt-list');
   if (!list) return;
   const q = query.trim().toLowerCase();
-  const users = q ? _allUsers.filter(u => u.username.toLowerCase().includes(q) || u.role.toLowerCase().includes(q)) : _allUsers;
+  const users = q ? _allUsers.filter(u => u.username.toLowerCase().includes(q) || u.role.toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)) : _allUsers;
   if (!users.length) {
     list.innerHTML = '<li style="opacity:.5">No users found.</li>';
     return;
@@ -377,6 +377,7 @@ function filterUserMgmtList(query) {
     <li style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0">
       <span style="flex:1"><strong>${esc(u.username)}</strong>
         <span style="font-size:0.8em;opacity:.7;margin-left:0.4rem">${esc(u.role)}</span>
+        ${u.email ? `<span style="font-size:0.78em;color:var(--text-muted);margin-left:0.4rem">${esc(u.email)}</span>` : ''}
       </span>
       ${u.username !== getAuthUsername() ? `<button class="btn btn-sm" onclick="showChangePasswordDialog('${esc(u.username)}')" style="padding:0.2rem 0.55rem" title="${t('txt_txt_change_password')}">🔑</button><button class="btn btn-sm btn-danger" onclick="deleteUserWithConfirm('${esc(u.username)}')" style="padding:0.2rem 0.55rem">🗑</button>` : `<span style="font-size:0.7rem;color:var(--text-muted);padding:0.15rem 0.45rem;border:1px solid var(--border);border-radius:4px;white-space:nowrap" title="${t('txt_txt_protected')}">🔒</span>`}
     </li>`).join('');
@@ -391,6 +392,7 @@ async function handleCreateUser(event) {
   const errDiv = document.getElementById('user-mgmt-error');
   const username = document.getElementById('new-user-username').value.trim();
   const password = document.getElementById('new-user-password').value;
+  const email = document.getElementById('new-user-email')?.value.trim() || '';
   const roleRadio = document.querySelector('input[name="new-user-role"]:checked');
   const role = roleRadio ? roleRadio.value : 'user';
   if (!username || !password) {
@@ -401,11 +403,13 @@ async function handleCreateUser(event) {
     await apiAuth('/api/auth/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, role }),
+      body: JSON.stringify({ username, password, role, email: email || null }),
     });
     if (errDiv) errDiv.textContent = '';
     document.getElementById('new-user-username').value = '';
     document.getElementById('new-user-password').value = '';
+    const emailInput = document.getElementById('new-user-email');
+    if (emailInput) emailInput.value = '';
     const userRadio = document.querySelector('input[name="new-user-role"][value="user"]');
     if (userRadio) userRadio.checked = true;
     const successDiv = document.getElementById('user-mgmt-success');
@@ -428,6 +432,284 @@ async function deleteUserWithConfirm(username) {
     await loadUserMgmtList();
   } catch (e) {
     if (errDiv) errDiv.textContent = e.message;
+  }
+}
+
+// ── Invite By Email ──────────────────────────────────────
+
+/**
+ * Handle the invite-by-email form submission.
+ * @param {Event} event
+ */
+async function handleInvite(event) {
+  event.preventDefault();
+  const errDiv = document.getElementById('invite-error');
+  const successDiv = document.getElementById('invite-success');
+  const btn = document.getElementById('invite-btn');
+  const email = document.getElementById('invite-email')?.value.trim();
+  const roleRadio = document.querySelector('input[name="invite-role"]:checked');
+  const role = roleRadio ? roleRadio.value : 'user';
+
+  if (errDiv) errDiv.textContent = '';
+  if (successDiv) successDiv.textContent = '';
+
+  if (!email) {
+    if (errDiv) errDiv.textContent = 'Email address is required.';
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  try {
+    await apiAuth('/api/auth/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, role }),
+    });
+    document.getElementById('invite-email').value = '';
+    const userInviteRadio = document.querySelector('input[name="invite-role"][value="user"]');
+    if (userInviteRadio) userInviteRadio.checked = true;
+    if (successDiv) { successDiv.textContent = `Invite sent to ${email}.`; setTimeout(() => { successDiv.textContent = ''; }, 4000); }
+  } catch (e) {
+    if (errDiv) errDiv.textContent = e.status === 503 ? 'Email is not configured on this server.' : e.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── Forgot / Reset Password ───────────────────────────────
+
+/**
+ * Show the forgot-password dialog.
+ */
+function showForgotPasswordDialog() {
+  hideLoginDialog();
+  const overlay = document.getElementById('forgot-pwd-overlay');
+  const dialog = document.getElementById('forgot-pwd-dialog');
+  if (overlay && dialog) {
+    overlay.style.display = 'block';
+    dialog.style.display = 'block';
+    document.getElementById('forgot-pwd-email')?.focus();
+  }
+}
+
+/**
+ * Hide the forgot-password dialog and reset its fields.
+ */
+function hideForgotPasswordDialog() {
+  const overlay = document.getElementById('forgot-pwd-overlay');
+  const dialog = document.getElementById('forgot-pwd-dialog');
+  if (overlay) overlay.style.display = 'none';
+  if (dialog) dialog.style.display = 'none';
+  const emailInput = document.getElementById('forgot-pwd-email');
+  if (emailInput) emailInput.value = '';
+  const errDiv = document.getElementById('forgot-pwd-error');
+  const successDiv = document.getElementById('forgot-pwd-success');
+  if (errDiv) errDiv.textContent = '';
+  if (successDiv) successDiv.textContent = '';
+}
+
+/**
+ * Handle the forgot-password form submission.
+ * @param {Event} event
+ */
+async function handleForgotPassword(event) {
+  event.preventDefault();
+  const errDiv = document.getElementById('forgot-pwd-error');
+  const successDiv = document.getElementById('forgot-pwd-success');
+  const btn = document.getElementById('forgot-pwd-btn');
+  const email = document.getElementById('forgot-pwd-email')?.value.trim();
+
+  if (errDiv) errDiv.textContent = '';
+  if (successDiv) successDiv.textContent = '';
+
+  if (!email) {
+    if (errDiv) errDiv.textContent = 'Please enter your email address.';
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (res.status === 503) {
+      if (errDiv) errDiv.textContent = 'Email is not configured on this server.';
+      return;
+    }
+    // Always show the same message regardless of whether the email exists (anti-enumeration).
+    if (successDiv) successDiv.textContent = 'If that email is registered, a reset link has been sent.';
+    if (document.getElementById('forgot-pwd-email')) document.getElementById('forgot-pwd-email').value = '';
+  } catch (e) {
+    if (errDiv) errDiv.textContent = 'An error occurred. Please try again.';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── Accept Invite ─────────────────────────────────────────
+
+/** Raw invite token from the URL (set during initAuth). */
+let _inviteToken = null;
+
+/**
+ * Show the accept-invite modal for the given token.
+ * @param {string} token
+ */
+async function showAcceptInviteDialog(token) {
+  _inviteToken = token;
+  const overlay = document.getElementById('accept-invite-overlay');
+  const dialog = document.getElementById('accept-invite-dialog');
+  const subtitle = document.getElementById('accept-invite-subtitle');
+  const errDiv = document.getElementById('accept-invite-error');
+
+  if (!overlay || !dialog) return;
+
+  if (subtitle) subtitle.textContent = 'Validating your invite link…';
+  overlay.style.display = 'block';
+  dialog.style.display = 'flex';
+
+  try {
+    const res = await fetch(`/api/auth/invite/${encodeURIComponent(token)}`);
+    if (!res.ok) {
+      if (subtitle) subtitle.textContent = '';
+      if (errDiv) errDiv.textContent = 'This invite link is invalid or has expired.';
+      document.getElementById('accept-invite-btn').disabled = true;
+      return;
+    }
+    const data = await res.json();
+    if (subtitle) subtitle.textContent = `You've been invited as ${data.role} — ${data.email}`;
+    document.getElementById('accept-invite-username')?.focus();
+  } catch (e) {
+    if (errDiv) errDiv.textContent = 'Could not validate invite link.';
+  }
+}
+
+/**
+ * Handle accept-invite form submission.
+ * @param {Event} event
+ */
+async function handleAcceptInvite(event) {
+  event.preventDefault();
+  const errDiv = document.getElementById('accept-invite-error');
+  const successDiv = document.getElementById('accept-invite-success');
+  const btn = document.getElementById('accept-invite-btn');
+  const username = document.getElementById('accept-invite-username')?.value.trim();
+  const password = document.getElementById('accept-invite-password')?.value;
+  const confirm = document.getElementById('accept-invite-confirm')?.value;
+
+  if (errDiv) errDiv.textContent = '';
+  if (successDiv) successDiv.textContent = '';
+
+  if (!username || !password) {
+    if (errDiv) errDiv.textContent = 'Username and password are required.';
+    return;
+  }
+  if (password !== confirm) {
+    if (errDiv) errDiv.textContent = 'Passwords do not match.';
+    return;
+  }
+  if (password.length < 8) {
+    if (errDiv) errDiv.textContent = 'Password must be at least 8 characters.';
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  try {
+    await fetch(`/api/auth/invite/${encodeURIComponent(_inviteToken)}/accept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    }).then(async res => {
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || 'Failed to create account.');
+      }
+      return res.json();
+    });
+    if (successDiv) successDiv.textContent = 'Account created! You can now log in.';
+    // Remove token from URL without reloading
+    const url = new URL(window.location.href);
+    url.searchParams.delete('invite_token');
+    window.history.replaceState({}, '', url);
+    setTimeout(() => showLoginDialog(), 2000);
+  } catch (e) {
+    if (errDiv) errDiv.textContent = e.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── Reset Password ────────────────────────────────────────
+
+/** Raw reset token from the URL (set during initAuth). */
+let _resetToken = null;
+
+/**
+ * Show the reset-password modal for the given token.
+ * @param {string} token
+ */
+function showResetPasswordDialog(token) {
+  _resetToken = token;
+  const overlay = document.getElementById('reset-pwd-overlay');
+  const dialog = document.getElementById('reset-pwd-dialog');
+  if (overlay && dialog) {
+    overlay.style.display = 'block';
+    dialog.style.display = 'flex';
+    document.getElementById('reset-pwd-new')?.focus();
+  }
+}
+
+/**
+ * Handle reset-password form submission.
+ * @param {Event} event
+ */
+async function handleResetPassword(event) {
+  event.preventDefault();
+  const errDiv = document.getElementById('reset-pwd-error');
+  const successDiv = document.getElementById('reset-pwd-success');
+  const btn = document.getElementById('reset-pwd-btn');
+  const newPwd = document.getElementById('reset-pwd-new')?.value;
+  const confirmPwd = document.getElementById('reset-pwd-confirm')?.value;
+
+  if (errDiv) errDiv.textContent = '';
+  if (successDiv) successDiv.textContent = '';
+
+  if (!newPwd || !confirmPwd) {
+    if (errDiv) errDiv.textContent = 'Please fill in both password fields.';
+    return;
+  }
+  if (newPwd !== confirmPwd) {
+    if (errDiv) errDiv.textContent = 'Passwords do not match.';
+    return;
+  }
+  if (newPwd.length < 8) {
+    if (errDiv) errDiv.textContent = 'Password must be at least 8 characters.';
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(`/api/auth/reset-password/${encodeURIComponent(_resetToken)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ new_password: newPwd }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || 'Reset link is invalid or has expired.');
+    }
+    if (successDiv) successDiv.textContent = 'Password reset! You can now log in.';
+    // Remove token from URL
+    const url = new URL(window.location.href);
+    url.searchParams.delete('reset_token');
+    window.history.replaceState({}, '', url);
+    setTimeout(() => showLoginDialog(), 2000);
+  } catch (e) {
+    if (errDiv) errDiv.textContent = e.message;
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -526,12 +808,22 @@ async function handleChangePassword(event) {
  */
 function initAuth() {
   updateAuthUI();
-  
+
   // Add enter key handler to login form
   const passwordInput = document.getElementById('auth-password');
   if (passwordInput) {
     passwordInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') handleLogin();
     });
+  }
+
+  // Handle invite and reset-password tokens in the URL.
+  const params = new URLSearchParams(window.location.search);
+  const inviteToken = params.get('invite_token');
+  const resetToken = params.get('reset_token');
+  if (inviteToken) {
+    showAcceptInviteDialog(inviteToken);
+  } else if (resetToken) {
+    showResetPasswordDialog(resetToken);
   }
 }

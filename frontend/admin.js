@@ -626,17 +626,19 @@ async function loadTournaments() {
       return;
     }
     const renderTournamentCard = (tournament) => {
-      const canEdit = isAdmin() || getAuthUsername() === tournament.owner;
+      const canEdit = isAdmin() || getAuthUsername() === tournament.owner || tournament.shared === true;
+      const canDelete = isAdmin() || getAuthUsername() === tournament.owner;
       const isPublic = tournament.public !== false;
       const visBtn = canEdit
         ? `<button type="button" class="btn btn-sm" title="${t('txt_txt_visibility')}" onclick="togglePublic('${tournament.id}',${isPublic})" style="padding:0.25rem 0.5rem;font-size:0.75rem">${isPublic ? '🌍 ' + t('txt_txt_public') : '🔒 ' + t('txt_txt_private')}</button>`
         : '';
-      const actionBtns = canEdit ? `
-        ${visBtn}
-        <button type="button" class="btn btn-danger btn-sm" onclick="deleteTournament('${tournament.id}')">✕</button>
-      ` : '';
+      const deleteBtn = canDelete
+        ? `<button type="button" class="btn btn-danger btn-sm" onclick="deleteTournament('${tournament.id}')">✕</button>`
+        : '';
+      const actionBtns = (canEdit || canDelete) ? `${visBtn}${deleteBtn}` : '';
       const isTennis = tournament.sport === 'tennis';
       const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
+      const sharedBadge = tournament.shared ? `<span class="badge" style="background:var(--info,#3b82f6);color:#fff;font-size:0.72rem">${t('txt_badge_shared')}</span>` : '';
       return `
       <div class="match-card tournament-list-card${tournament.id === currentTid ? ' active-tournament' : ''}">
         <div class="match-teams">
@@ -644,6 +646,7 @@ async function loadTournaments() {
           <span class="badge badge-sport">${esc(sportLabel)}</span>
           ${!isTennis ? `<span class="badge badge-type">${tournament.team_mode ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode')}</span>` : ''}
           <span class="badge badge-phase">${_phaseLabel(tournament.phase)}</span>
+          ${sharedBadge}
         </div>
         <div class="tournament-actions">${actionBtns}</div>
       </div>
@@ -1572,12 +1575,13 @@ async function renderGP() {
   _totalPts = 0;  // GP matches have no fixed total
   const el = document.getElementById('view-content');
   try {
-    const [status, groups, playoffs, tvSettings, playerSecrets] = await Promise.all([
+    const [status, groups, playoffs, tvSettings, playerSecrets, collabData] = await Promise.all([
       api(`/api/tournaments/${currentTid}/gp/status`),
       api(`/api/tournaments/${currentTid}/gp/groups`),
       api(`/api/tournaments/${currentTid}/gp/playoffs`).catch(()=>null),
       api(`/api/tournaments/${currentTid}/tv-settings`).catch(() => ({})),
       _loadPlayerSecrets(),
+      api(`/api/tournaments/${currentTid}/collaborators`).catch(() => null),
     ]);
 
     if (tvSettings.score_mode) {
@@ -1589,6 +1593,7 @@ async function renderGP() {
     let html = '';
     html += _renderTvControls(tvSettings, hasCourts);
     html += _renderPlayerCodes(playerSecrets);
+    html += _renderCollaboratorsSection(collabData?.collaborators || []);
     if (status.phase === 'playoffs') {
       html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${t('txt_txt_play_offs')}</span></div>`;
     }
@@ -1710,11 +1715,12 @@ async function renderPO() {
   _totalPts = 0;
   const el = document.getElementById('view-content');
   try {
-    const [status, playoffs, tvSettings, playerSecrets] = await Promise.all([
+    const [status, playoffs, tvSettings, playerSecrets, collabData] = await Promise.all([
       api(`/api/tournaments/${currentTid}/po/status`),
       api(`/api/tournaments/${currentTid}/po/playoffs`),
       api(`/api/tournaments/${currentTid}/tv-settings`).catch(() => ({})),
       _loadPlayerSecrets(),
+      api(`/api/tournaments/${currentTid}/collaborators`).catch(() => null),
     ]);
 
     if (tvSettings.score_mode) {
@@ -1725,6 +1731,7 @@ async function renderPO() {
     let html = '';
     html += _renderTvControls(tvSettings, hasCourts);
     html += _renderPlayerCodes(playerSecrets);
+    html += _renderCollaboratorsSection(collabData?.collaborators || []);
 
     if (status.champion) {
       html += `<div class="alert alert-success">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
@@ -2218,12 +2225,13 @@ async function startPlayoffs() {
 async function renderMex() {
   const el = document.getElementById('view-content');
   try {
-    const [status, matches, tvSettings, playerSecrets, playoffsData] = await Promise.all([
+    const [status, matches, tvSettings, playerSecrets, playoffsData, collabData] = await Promise.all([
       api(`/api/tournaments/${currentTid}/mex/status`),
       api(`/api/tournaments/${currentTid}/mex/matches`),
       api(`/api/tournaments/${currentTid}/tv-settings`).catch(() => ({})),
       _loadPlayerSecrets(),
       api(`/api/tournaments/${currentTid}/mex/playoffs`).catch(() => ({ matches: [], pending: [] })),
+      api(`/api/tournaments/${currentTid}/collaborators`).catch(() => null),
     ]);
 
     _totalPts = status.total_points_per_match || 0;
@@ -2241,6 +2249,7 @@ async function renderMex() {
     let html = '';
     html += _renderTvControls(tvSettings, hasCourts);
     html += _renderPlayerCodes(playerSecrets);
+    html += _renderCollaboratorsSection(collabData?.collaborators || []);
 
     // Phase-aware header
     const isPlayoffs = status.phase === 'playoffs';
@@ -6422,6 +6431,104 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// ─── Collaborators / Sharing ─────────────────────────────
+
+/**
+ * Render the Collaborators management card.
+ * Only visible to the tournament owner and site admins — co-editors cannot
+ * modify the share list.
+ */
+function _renderCollaboratorsSection(collaborators) {
+  if (!currentTid) return '';
+  const isOwner = _tournamentMeta[currentTid]?.owner === getAuthUsername();
+  if (!isOwner && !isAdmin()) return '';
+
+  const list = collaborators || [];
+
+  let html = `<details class="card" id="collaborators-panel">`;
+  html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
+  html += `<span style="font-size:1.1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem">`;
+  html += `<span class="tv-chevron" style="display:inline-block;transition:transform 0.18s;font-size:0.7em;color:var(--text-muted)">▸</span>`;
+  html += ` 👥 ${t('txt_txt_collaborators')}`;
+  if (list.length > 0) html += ` <span style="font-size:0.75rem;font-weight:400;color:var(--text-muted)">(${list.length})</span>`;
+  html += `</span></summary>`;
+  html += `<div style="margin-top:0.65rem">`;
+  html += `<p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:0.75rem">${t('txt_txt_collaborators_help')}</p>`;
+
+  // Add co-editor input row
+  html += `<div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap">`;
+  html += `<input type="text" id="collab-username-input" placeholder="${t('txt_txt_add_collaborator_placeholder')}"`;
+  html += ` list="collab-username-suggestions" autocomplete="off"`;
+  html += ` style="flex:1;min-width:180px;font-size:0.85rem"`;
+  html += ` oninput="_onCollabInput(this.value)" onkeydown="if(event.key==='Enter')_addCollaborator()">`;
+  html += `<datalist id="collab-username-suggestions"></datalist>`;
+  html += `<button type="button" class="btn btn-primary btn-sm" onclick="_addCollaborator()">+ ${t('txt_txt_add_collaborator_btn')}</button>`;
+  html += `</div>`;
+  html += `<div id="collab-error" style="color:var(--danger,#ef4444);font-size:0.82rem;margin-bottom:0.5rem;display:none"></div>`;
+
+  // Current co-editors list
+  html += `<div id="collaborators-list">`;
+  if (list.length === 0) {
+    html += `<p style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem 0">${t('txt_txt_no_collaborators')}</p>`;
+  } else {
+    for (const username of list) {
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--border)">`;
+      html += `<span style="font-size:0.9rem">👤 ${esc(username)}</span>`;
+      html += `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem"`;
+      html += ` onclick="_removeCollaborator('${escAttr(username)}')">✕ ${t('txt_txt_remove')}</button>`;
+      html += `</div>`;
+    }
+  }
+  html += `</div>`;
+  html += `</div></details>`;
+  return html;
+}
+
+let _collabSearchTimer = null;
+function _onCollabInput(value) {
+  clearTimeout(_collabSearchTimer);
+  const dl = document.getElementById('collab-username-suggestions');
+  if (!dl) return;
+  if (value.length < 2) { dl.innerHTML = ''; return; }
+  _collabSearchTimer = setTimeout(async () => {
+    try {
+      const results = await api(`/api/auth/users/search?q=${encodeURIComponent(value)}`);
+      dl.innerHTML = results.map(u => `<option value="${u.replace(/"/g, '&quot;')}">`).join('');
+    } catch (_) { /* silently ignore search errors */ }
+  }, 200);
+}
+
+async function _addCollaborator() {
+  const input = document.getElementById('collab-username-input');
+  const errEl = document.getElementById('collab-error');
+  if (!input || !currentTid) return;
+  const username = input.value.trim();
+  if (!username) return;
+  if (errEl) errEl.style.display = 'none';
+  try {
+    await api(`/api/tournaments/${currentTid}/collaborators`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username }),
+    });
+    input.value = '';
+    _refreshCurrentView();
+  } catch (e) {
+    if (errEl) { errEl.textContent = e.message; errEl.style.display = ''; }
+    else alert(e.message);
+  }
+}
+
+async function _removeCollaborator(username) {
+  if (!confirm(t('txt_txt_confirm_remove_collab', { username }))) return;
+  try {
+    await api(`/api/tournaments/${currentTid}/collaborators/${encodeURIComponent(username)}`, { method: 'DELETE' });
+    _refreshCurrentView();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
 // ── Event delegation for static HTML actions ────────────────
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
@@ -6454,5 +6561,6 @@ document.addEventListener('click', (e) => {
     case 'hideLoginDialog': hideLoginDialog(); break;
     case 'hideUserMgmt': hideUserMgmt(); break;
     case 'hideChangePasswordDialog': hideChangePasswordDialog(); break;
+    case 'hideForgotPasswordDialog': hideForgotPasswordDialog(); break;
   }
 });

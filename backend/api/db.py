@@ -66,8 +66,33 @@ CREATE TABLE IF NOT EXISTS users (
     username      TEXT    PRIMARY KEY,
     password_hash TEXT    NOT NULL,
     role          TEXT    NOT NULL DEFAULT 'user',
-    disabled      INTEGER NOT NULL DEFAULT 0
+    disabled      INTEGER NOT NULL DEFAULT 0,
+    email         TEXT
 );
+
+CREATE TABLE IF NOT EXISTS pending_auth_tokens (
+    token_hash   TEXT    PRIMARY KEY,
+    email        TEXT    NOT NULL,
+    token_type   TEXT    NOT NULL,
+    role         TEXT,
+    expires_at   REAL    NOT NULL,
+    used_at      REAL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pat_email
+    ON pending_auth_tokens (email);
+
+CREATE TABLE IF NOT EXISTS tournament_shares (
+    tournament_id TEXT NOT NULL,
+    username      TEXT NOT NULL,
+    PRIMARY KEY (tournament_id, username)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tournament_shares_tid
+    ON tournament_shares (tournament_id);
+
+CREATE INDEX IF NOT EXISTS idx_tournament_shares_username
+    ON tournament_shares (username);
 
 CREATE TABLE IF NOT EXISTS player_secrets (
     tournament_id TEXT    NOT NULL,
@@ -208,6 +233,20 @@ def init_db() -> None:
                         )
             elif "questions" not in reg_cols:
                 conn.execute("ALTER TABLE registrations ADD COLUMN questions TEXT")
+        # Migrate: create tournament_shares table if missing (existing DBs before sharing feature)
+        share_tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if "tournament_shares" not in share_tables:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tournament_shares (
+                    tournament_id TEXT NOT NULL,
+                    username      TEXT NOT NULL,
+                    PRIMARY KEY (tournament_id, username)
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tournament_shares_tid ON tournament_shares (tournament_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tournament_shares_username ON tournament_shares (username)")
         # Migrate registrants: level → answers JSON
         rnt_cols = {r[1] for r in conn.execute("PRAGMA table_info(registrants)").fetchall()}
         if rnt_cols:
@@ -225,6 +264,47 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE registrants ADD COLUMN answers TEXT")
             if "email" not in rnt_cols:
                 conn.execute("ALTER TABLE registrants ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+
+
+# ── Co-editor / sharing helpers ─────────────────────────────────────────────
+
+
+def get_co_editors(tournament_id: str) -> list[str]:
+    """Return a list of usernames that have co-editor access to *tournament_id*."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT username FROM tournament_shares WHERE tournament_id = ? ORDER BY username",
+            (tournament_id,),
+        ).fetchall()
+    return [row["username"] for row in rows]
+
+
+def get_shared_tournament_ids(username: str) -> list[str]:
+    """Return tournament IDs where *username* has been granted co-editor access."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT tournament_id FROM tournament_shares WHERE username = ?",
+            (username,),
+        ).fetchall()
+    return [row["tournament_id"] for row in rows]
+
+
+def add_co_editor(tournament_id: str, username: str) -> None:
+    """Grant *username* co-editor access to *tournament_id* (idempotent)."""
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO tournament_shares (tournament_id, username) VALUES (?, ?)",
+            (tournament_id, username),
+        )
+
+
+def remove_co_editor(tournament_id: str, username: str) -> None:
+    """Revoke co-editor access for *username* on *tournament_id*."""
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM tournament_shares WHERE tournament_id = ? AND username = ?",
+            (tournament_id, username),
+        )
 
 
 @contextmanager
