@@ -1,3 +1,9 @@
+## v0.6.0 (2026-03-31)
+
+### Feat
+
+- **admin-interface**: add sharing functionality; add password reset
+
 ## v0.5.1 (2026-03-29)
 
 ### Feat
