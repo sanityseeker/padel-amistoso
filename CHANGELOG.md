@@ -1,3 +1,15 @@
+## v0.7.0 (2026-03-31)
+
+### Feat
+
+- **group-stage**: add a player after the registragion phase is finished
+
+## v0.6.2 (2026-03-31)
+
+### Fix
+
+- **mexicano-manual-match**: improve override interface
+
 ## v0.6.1 (2026-03-31)
 
 ### Fix
