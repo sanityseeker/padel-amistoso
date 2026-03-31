@@ -2240,6 +2240,11 @@ async function renderMex() {
     _mexBreakdowns = matches.breakdowns || {};
     _mexPlayerMap = {};
     for (const p of _mexPlayers) _mexPlayerMap[p.id] = p.name;
+    window._mexStatusLeaderboard = status.leaderboard || [];
+
+    // Store data needed by the manual pairing editor's round stats card
+    window._mexAllMatches = matches.all_matches || [];
+    window._mexSkillGap = status.skill_gap ?? null;
 
     if (tvSettings.score_mode) {
       for (const [k, v] of Object.entries(tvSettings.score_mode)) if (k in _gpScoreMode) _gpScoreMode[k] = v;
@@ -2637,18 +2642,21 @@ async function proposeMexPairings(requestedCount = 3) {
   } catch (e) { alert(e.message); }
 }
 
-async function _loadMoreMexPairings() {
-  const section = document.getElementById('mex-next-section');
-  if (section) {
-    section.innerHTML = _renderProposalProgressBar();
-  }
-  const previousSelected = _selectedOptionId;
-  await proposeMexPairings(10);
-  if (previousSelected && _currentPairingProposals.some(p => p.option_id === previousSelected)) {
-    _selectedOptionId = previousSelected;
-  }
-  if (section && _currentPairingProposals.length > 0) {
-    section.innerHTML = _renderProposalPicker(_currentPairingProposals);
+async function _loadMoreMexPairings(btn) {
+  if (btn && btn.classList.contains('loading')) return;
+  if (btn) btn.classList.add('loading');
+  try {
+    const previousSelected = _selectedOptionId;
+    await proposeMexPairings(10);
+    if (previousSelected && _currentPairingProposals.some(p => p.option_id === previousSelected)) {
+      _selectedOptionId = previousSelected;
+    }
+    const section = document.getElementById('mex-next-section');
+    if (section && _currentPairingProposals.length > 0) {
+      section.innerHTML = _renderProposalPicker(_currentPairingProposals);
+    }
+  } finally {
+    if (btn) btn.classList.remove('loading');
   }
 }
 
@@ -2773,9 +2781,9 @@ function _renderProposalPicker(proposals) {
     html += `<h3>${t('txt_txt_alternatives')}</h3>`;
     html += `<div class="proposal-inline-actions">`;
     if (!hasLoadedMore) {
-      html += `<button class="proposal-inline-action" type="button" onclick="_loadMoreMexPairings()">⬇ ${t('txt_txt_load_more_combos')}</button>`;
+      html += `<button class="proposal-inline-action" type="button" onclick="_loadMoreMexPairings(this)">⬇ ${t('txt_txt_load_more_combos')}</button>`;
     } else {
-      html += `<button class="proposal-inline-action" type="button" onclick="_loadMoreMexPairings()">🔄 ${t('txt_txt_refresh_proposals')}</button>`;
+      html += `<button class="proposal-inline-action" type="button" onclick="_loadMoreMexPairings(this)">🔄 ${t('txt_txt_refresh_proposals')}</button>`;
     }
     html += `</div>`;
     html += `</div>`;
@@ -2933,6 +2941,8 @@ function _cancelCourtEditor() {
 
 // ─── Manual pairing editor ───────────────────────────────
 let _manualMatchCount = 0;
+let _manualLockedMatches = new Set();  // indices of locked matches
+let _manualLeaderboard = {};           // player_id → {rank, avg_points, total_points}
 
 function _showManualEditor() {
   const section = document.getElementById('mex-next-section');
@@ -2940,69 +2950,232 @@ function _showManualEditor() {
 
   const numCourts = Math.floor(_mexPlayers.length / 4);
   _manualMatchCount = numCourts;
+  _manualLockedMatches = new Set();
 
-  let html = `<div class="card">`;
+  // Build leaderboard lookup from status data stored during renderMex
+  _manualLeaderboard = {};
+  if (window._mexStatusLeaderboard) {
+    for (const r of window._mexStatusLeaderboard) {
+      _manualLeaderboard[r.player_id] = {
+        rank: r.rank,
+        avg_points: r.avg_points,
+        total_points: r.total_points,
+      };
+    }
+  }
+
+  // Check if we can pre-fill from the selected proposal
+  let prefillProposal = null;
+  if (_selectedOptionId && _currentPairingProposals.length > 0) {
+    prefillProposal = _currentPairingProposals.find(p => p.option_id === _selectedOptionId) || null;
+  }
+  if (prefillProposal) {
+    _manualMatchCount = Math.max(numCourts, prefillProposal.matches.length);
+  }
+
+  let html = `<div class="card manual-editor-card">`;
+  html += `<div class="manual-editor-header">`;
   html += `<h2>✏️ ${t('txt_txt_manual_pairing_editor')}</h2>`;
-  html += `<p style="color:var(--text-muted);font-size:0.85rem">${t('txt_txt_manual_editor_instructions')}</p>`;
+  html += `<div class="manual-editor-actions">`;
+  html += `<button type="button" class="btn btn-sm btn-outline-muted" onclick="proposeMexPairings()">← ${t('txt_txt_back_to_proposals')}</button>`;
+  html += `<button type="button" class="btn btn-sm btn-outline-muted" onclick="_manualClearAll()">✕ ${t('txt_txt_manual_clear_all')}</button>`;
+  html += `</div>`;
+  html += `</div>`;
+
+  if (prefillProposal) {
+    html += `<p class="manual-prefill-hint">${t('txt_txt_manual_editor_prefill_hint')}</p>`;
+  } else {
+    html += `<p class="manual-prefill-hint">${t('txt_txt_manual_editor_instructions')}</p>`;
+  }
 
   html += `<div id="manual-matches" class="manual-matches-grid">`;
-  for (let i = 0; i < numCourts; i++) {
+  for (let i = 0; i < _manualMatchCount; i++) {
     html += _renderManualMatch(i);
   }
   html += `</div>`;
 
-  html += `<div style="margin: 0.5rem 0; display:flex; gap:0.5rem; flex-wrap:wrap">`;
+  html += `<div style="margin: 0.5rem 0; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center">`;
   html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_addManualMatch()">+ ${t('txt_txt_add_match')}</button>`;
   html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_removeManualMatch()">− ${t('txt_txt_remove_match')}</button>`;
   html += `</div>`;
 
-  html += `<div id="manual-sitout" style="margin:0.5rem 0; font-size:0.85rem; color:var(--text-muted)"></div>`;
+  html += `<div id="manual-sitout" class="manual-sitout-bar"></div>`;
+
+  html += `<div id="manual-round-stats"></div>`;
 
   html += `<div class="proposal-action-bar">`;
   html += `<button type="button" class="btn btn-success" onclick="_commitManualRound()">✓ ${t('txt_txt_commit_manual_round')}</button>`;
-  html += `<button type="button" class="btn btn-ghost" onclick="proposeMexPairings()">← ${t('txt_txt_back_to_proposals')}</button>`;
-  html += `<button type="button" class="btn btn-ghost" style="margin-left:auto" onclick="renderMex()">✕ ${t('txt_txt_cancel')}</button>`;
+  html += `<button type="button" class="btn btn-ghost" onclick="renderMex()">✕ ${t('txt_txt_cancel')}</button>`;
   html += `</div>`;
   html += `</div>`;
 
   section.innerHTML = html;
+
+  // Pre-fill dropdowns from proposal if available
+  if (prefillProposal) {
+    for (let i = 0; i < prefillProposal.matches.length; i++) {
+      const m = prefillProposal.matches[i];
+      const setVal = (slot, val) => {
+        const sel = document.querySelector(`.manual-sel[data-match="${i}"][data-slot="${slot}"]`);
+        if (sel) sel.value = val;
+      };
+      setVal('t1a', m.team1_ids[0]);
+      setVal('t1b', m.team1_ids[1]);
+      setVal('t2a', m.team2_ids[0]);
+      setVal('t2b', m.team2_ids[1]);
+    }
+  }
+
   _updateManualSitout();
 }
 
+function _manualGetAvailablePlayers(matchIdx) {
+  // Players not locked in other matches are available for this match
+  const lockedByOthers = new Set();
+  if (_manualLockedMatches.size > 0) {
+    for (const lockedIdx of _manualLockedMatches) {
+      if (lockedIdx === matchIdx) continue;
+      document.querySelectorAll(`.manual-sel[data-match="${lockedIdx}"]`).forEach(sel => {
+        if (sel.value) lockedByOthers.add(sel.value);
+      });
+    }
+  }
+  return _mexPlayers.filter(p => !lockedByOthers.has(p.id));
+}
+
+function _manualPlayerLabel(p) {
+  const lb = _manualLeaderboard[p.id];
+  if (!lb) return esc(p.name);
+  return `${esc(p.name)} (${t('txt_txt_manual_rank', { n: lb.rank })} · ${t('txt_txt_manual_avg_pts')} ${lb.avg_points.toFixed(1)})`;
+}
+
 function _renderManualMatch(idx) {
-  const opts = _mexPlayers.map(p =>
-    `<option value="${p.id}">${esc(p.name)}</option>`
+  const available = _manualGetAvailablePlayers(idx);
+  const isLocked = _manualLockedMatches.has(idx);
+
+  const opts = available.map(p =>
+    `<option value="${p.id}">${_manualPlayerLabel(p)}</option>`
   ).join('');
   const blank = `<option value="">${t('txt_txt_pick_placeholder')}</option>`;
-  return `<div class="manual-match-card">
-    <div class="manual-match-title">${t('txt_txt_match_n', { n: idx + 1 })}</div>
-    <div class="manual-team-row">
-      <select class="manual-sel" data-match="${idx}" data-slot="t1a" onchange="_updateManualSitout()">${blank}${opts}</select>
-      <span class="manual-amp">&amp;</span>
-      <select class="manual-sel" data-match="${idx}" data-slot="t1b" onchange="_updateManualSitout()">${blank}${opts}</select>
-    </div>
-    <div class="manual-vs-divider">vs</div>
-    <div class="manual-team-row">
-      <select class="manual-sel" data-match="${idx}" data-slot="t2a" onchange="_updateManualSitout()">${blank}${opts}</select>
-      <span class="manual-amp">&amp;</span>
-      <select class="manual-sel" data-match="${idx}" data-slot="t2b" onchange="_updateManualSitout()">${blank}${opts}</select>
-    </div>
-  </div>`;
+
+  let card = `<div class="manual-match-card${isLocked ? ' locked' : ''}" id="manual-card-${idx}">`;
+  card += `<div class="manual-match-header">`;
+  card += `<div class="manual-match-title">${t('txt_txt_match_n', { n: idx + 1 })}</div>`;
+  if (isLocked) {
+    card += `<button type="button" class="btn btn-sm manual-lock-btn locked" onclick="_manualUnlockMatch(${idx})">🔒 ${t('txt_txt_manual_unlock_match')}</button>`;
+  } else {
+    card += `<button type="button" class="btn btn-sm manual-lock-btn" onclick="_manualLockMatch(${idx})">🔓 ${t('txt_txt_manual_lock_match')}</button>`;
+  }
+  card += `</div>`;
+
+  if (isLocked) {
+    card += `<div class="manual-locked-hint">${t('txt_txt_manual_match_locked')}</div>`;
+  }
+
+  const disabled = isLocked ? ' disabled' : '';
+  card += `<div class="manual-team-block">`;
+  card += `<div class="manual-team-label">${t('txt_txt_team')} 1</div>`;
+  card += `<select class="manual-sel" data-match="${idx}" data-slot="t1a" onchange="_onManualSelChange()"${disabled}>${blank}${opts}</select>`;
+  card += `<select class="manual-sel" data-match="${idx}" data-slot="t1b" onchange="_onManualSelChange()"${disabled}>${blank}${opts}</select>`;
+  card += `</div>`;
+
+  card += `<div class="manual-vs-divider">vs</div>`;
+
+  card += `<div class="manual-team-block">`;
+  card += `<div class="manual-team-label">${t('txt_txt_team')} 2</div>`;
+  card += `<select class="manual-sel" data-match="${idx}" data-slot="t2a" onchange="_onManualSelChange()"${disabled}>${blank}${opts}</select>`;
+  card += `<select class="manual-sel" data-match="${idx}" data-slot="t2b" onchange="_onManualSelChange()"${disabled}>${blank}${opts}</select>`;
+  card += `</div>`;
+
+  card += `</div>`;
+  return card;
+}
+
+function _manualLockMatch(idx) {
+  // Validate that all 4 slots are filled
+  const slots = ['t1a', 't1b', 't2a', 't2b'];
+  const ids = slots.map(slot => {
+    const sel = document.querySelector(`.manual-sel[data-match="${idx}"][data-slot="${slot}"]`);
+    return sel ? sel.value : '';
+  });
+  if (ids.some(id => !id)) {
+    alert(t('txt_txt_match_n_slots_required', { n: idx + 1 }));
+    return;
+  }
+  // Check no duplicates within this match
+  const unique = new Set(ids);
+  if (unique.size < 4) {
+    alert(t('txt_txt_a_player_is_assigned_to_multiple_teams_please_fix_duplicates'));
+    return;
+  }
+
+  _manualLockedMatches.add(idx);
+  _refreshAllManualMatches();
+}
+
+function _manualUnlockMatch(idx) {
+  _manualLockedMatches.delete(idx);
+  _refreshAllManualMatches();
+}
+
+function _refreshAllManualMatches() {
+  // Save current selections
+  const selections = {};
+  for (let i = 0; i < _manualMatchCount; i++) {
+    selections[i] = {};
+    for (const slot of ['t1a', 't1b', 't2a', 't2b']) {
+      const sel = document.querySelector(`.manual-sel[data-match="${i}"][data-slot="${slot}"]`);
+      selections[i][slot] = sel ? sel.value : '';
+    }
+  }
+
+  // Re-render all match cards
+  const container = document.getElementById('manual-matches');
+  if (!container) return;
+  let html = '';
+  for (let i = 0; i < _manualMatchCount; i++) {
+    html += _renderManualMatch(i);
+  }
+  container.innerHTML = html;
+
+  // Restore selections
+  for (let i = 0; i < _manualMatchCount; i++) {
+    for (const slot of ['t1a', 't1b', 't2a', 't2b']) {
+      const sel = document.querySelector(`.manual-sel[data-match="${i}"][data-slot="${slot}"]`);
+      if (sel && selections[i][slot]) {
+        // Only restore if the option is still available
+        const opt = sel.querySelector(`option[value="${selections[i][slot]}"]`);
+        if (opt) sel.value = selections[i][slot];
+      }
+    }
+  }
+
+  _updateManualSitout();
+  _updateManualRoundStats();
+}
+
+function _onManualSelChange() {
+  _updateManualSitout();
+  _updateManualRoundStats();
+}
+
+function _manualClearAll() {
+  _manualLockedMatches.clear();
+  document.querySelectorAll('.manual-sel').forEach(sel => { sel.value = ''; });
+  _refreshAllManualMatches();
 }
 
 function _addManualMatch() {
   _manualMatchCount++;
-  const container = document.getElementById('manual-matches');
-  container.insertAdjacentHTML('beforeend', _renderManualMatch(_manualMatchCount - 1));
-  _updateManualSitout();
+  _refreshAllManualMatches();
 }
 
 function _removeManualMatch() {
   if (_manualMatchCount <= 1) return;
+  // Unlock the last match if it was locked
+  _manualLockedMatches.delete(_manualMatchCount - 1);
   _manualMatchCount--;
-  const container = document.getElementById('manual-matches');
-  container.removeChild(container.lastElementChild);
-  _updateManualSitout();
+  _refreshAllManualMatches();
 }
 
 function _updateManualSitout() {
@@ -3014,15 +3187,210 @@ function _updateManualSitout() {
   const el = document.getElementById('manual-sitout');
   if (el) {
     if (sitting.length > 0) {
-      el.innerHTML = `🪑 ${t('txt_txt_sitting_out')}: <em>${esc(sitting.map(p => p.name).join(', '))}</em>`;
+      const names = sitting.map(p => {
+        const lb = _manualLeaderboard[p.id];
+        const stats = lb ? ` (${t('txt_txt_manual_avg_pts')} ${lb.avg_points.toFixed(1)})` : '';
+        return `${esc(p.name)}${stats}`;
+      }).join(', ');
+      el.innerHTML = `🪑 ${t('txt_txt_sitting_out')}: <em>${names}</em>`;
     } else {
       el.innerHTML = t('txt_txt_all_players_assigned');
     }
   }
 }
 
+// ─── Manual round stats card ─────────────────────────────
+function _getManualMatches() {
+  const matchSpecs = [];
+  for (let i = 0; i < _manualMatchCount; i++) {
+    const get = (slot) => {
+      const sel = document.querySelector(`.manual-sel[data-match="${i}"][data-slot="${slot}"]`);
+      return sel ? sel.value : '';
+    };
+    const t1a = get('t1a'), t1b = get('t1b'), t2a = get('t2a'), t2b = get('t2b');
+    if (t1a && t1b && t2a && t2b) {
+      matchSpecs.push({ team1_ids: [t1a, t1b], team2_ids: [t2a, t2b] });
+    }
+  }
+  return matchSpecs;
+}
+
+function _pairRepeatCount(idA, idB, counts) {
+  return (counts[idA] || {})[idB] || 0;
+}
+
+function _matchFingerprint(t1, t2) {
+  const a = [...t1].sort().join(',');
+  const b = [...t2].sort().join(',');
+  return [a, b].sort().join('|');
+}
+
+function _getPreviousRoundFingerprints() {
+  const fps = new Set();
+  const allMatches = window._mexAllMatches || [];
+  if (allMatches.length === 0) return fps;
+  let maxRound = 0;
+  for (const m of allMatches) {
+    if ((m.round_number || 0) > maxRound) maxRound = m.round_number;
+  }
+  if (maxRound === 0) return fps;
+  for (const m of allMatches) {
+    if (m.round_number === maxRound && m.team1_ids && m.team2_ids) {
+      fps.add(_matchFingerprint(m.team1_ids, m.team2_ids));
+    }
+  }
+  return fps;
+}
+
+function _computeManualRoundStats() {
+  const matches = _getManualMatches();
+  if (matches.length === 0) return null;
+
+  const stats = _currentPlayerStats || {};
+  const lb = _manualLeaderboard;
+
+  // Build partner/opponent count lookups keyed by player ID
+  const partnerCounts = {};
+  const opponentCounts = {};
+  for (const [, data] of Object.entries(stats)) {
+    const pid = data.player_id;
+    partnerCounts[pid] = {};
+    opponentCounts[pid] = {};
+    for (const pr of (data.partners || [])) {
+      const pObj = _mexPlayers.find(p => p.name === pr.player);
+      if (pObj) partnerCounts[pid][pObj.id] = pr.count;
+    }
+    for (const opp of (data.opponents || [])) {
+      const pObj = _mexPlayers.find(p => p.name === opp.player);
+      if (pObj) opponentCounts[pid][pObj.id] = opp.count;
+    }
+  }
+
+  let totalScoreImbalance = 0;
+  let totalRepeatCount = 0;
+  let exactPrevRoundRepeats = 0;
+  let skillGapViolations = 0;
+  let skillGapWorstExcess = 0;
+  const perPersonRepeats = {};
+
+  const prevRoundFps = _getPreviousRoundFingerprints();
+  const skillGap = window._mexSkillGap;
+
+  for (const m of matches) {
+    // Score imbalance
+    const t1Score = m.team1_ids.reduce((s, id) => s + (lb[id]?.avg_points || 0), 0);
+    const t2Score = m.team2_ids.reduce((s, id) => s + (lb[id]?.avg_points || 0), 0);
+    totalScoreImbalance += Math.abs(t1Score - t2Score);
+
+    const t1a = m.team1_ids[0], t1b = m.team1_ids[1];
+    const t2a = m.team2_ids[0], t2b = m.team2_ids[1];
+
+    // Partner repeats
+    totalRepeatCount += _pairRepeatCount(t1a, t1b, partnerCounts);
+    totalRepeatCount += _pairRepeatCount(t2a, t2b, partnerCounts);
+    // Opponent repeats
+    totalRepeatCount += _pairRepeatCount(t1a, t2a, opponentCounts);
+    totalRepeatCount += _pairRepeatCount(t1a, t2b, opponentCounts);
+    totalRepeatCount += _pairRepeatCount(t1b, t2a, opponentCounts);
+    totalRepeatCount += _pairRepeatCount(t1b, t2b, opponentCounts);
+
+    // Per-person repeat detail
+    const allIds = [...m.team1_ids, ...m.team2_ids];
+    for (const pid of allIds) {
+      const name = _mexPlayerMap[pid] || pid;
+      if (!perPersonRepeats[name]) perPersonRepeats[name] = { partner_repeats: [], opponent_repeats: [] };
+      const det = perPersonRepeats[name];
+      const isT1 = m.team1_ids.includes(pid);
+      const teammates = isT1 ? m.team1_ids : m.team2_ids;
+      const opponents = isT1 ? m.team2_ids : m.team1_ids;
+      for (const tid of teammates) {
+        if (tid === pid) continue;
+        const cnt = _pairRepeatCount(pid, tid, partnerCounts);
+        if (cnt > 0) det.partner_repeats.push({ player: _mexPlayerMap[tid] || tid, count: cnt });
+      }
+      for (const oid of opponents) {
+        const cnt = _pairRepeatCount(pid, oid, opponentCounts);
+        if (cnt > 0) det.opponent_repeats.push({ player: _mexPlayerMap[oid] || oid, count: cnt });
+      }
+    }
+
+    // Exact previous round rematch
+    if (prevRoundFps.has(_matchFingerprint(m.team1_ids, m.team2_ids))) {
+      exactPrevRoundRepeats++;
+    }
+
+    // Skill gap violation
+    if (skillGap != null && skillGap > 0) {
+      const t1Est = m.team1_ids.reduce((s, id) => s + (lb[id]?.total_points || 0), 0);
+      const t2Est = m.team2_ids.reduce((s, id) => s + (lb[id]?.total_points || 0), 0);
+      const gap = Math.abs(t1Est - t2Est);
+      if (gap > skillGap) {
+        skillGapViolations++;
+        skillGapWorstExcess = Math.max(skillGapWorstExcess, gap - skillGap);
+      }
+    }
+  }
+
+  return {
+    score_imbalance: totalScoreImbalance,
+    repeat_count: totalRepeatCount,
+    exact_prev_round_repeats: exactPrevRoundRepeats,
+    skill_gap_violations: skillGapViolations,
+    skill_gap_worst_excess: skillGapWorstExcess,
+    per_person_repeats: perPersonRepeats,
+    match_count: matches.length,
+  };
+}
+
+function _updateManualRoundStats() {
+  const el = document.getElementById('manual-round-stats');
+  if (!el) return;
+  const stats = _computeManualRoundStats();
+  if (!stats || stats.match_count === 0) { el.innerHTML = ''; return; }
+
+  const fmt2 = (v) => Number.isFinite(Number(v)) ? Number(v).toFixed(2) : '0.00';
+
+  let html = `<div class="manual-stats-card">`;
+  html += `<div class="manual-stats-title">${t('txt_txt_round_summary')}</div>`;
+  html += `<div class="proposal-metrics">`;
+  html += `⚖️ ${t('txt_txt_score_gap')}: <strong>${fmt2(stats.score_imbalance)} pts</strong><br>`;
+
+  if (stats.repeat_count === 0) {
+    html += `✅ ${t('txt_txt_no_repeated_matchups')}`;
+  } else {
+    html += `⚠️ ${t('txt_txt_n_repeats', { n: stats.repeat_count })}`;
+  }
+  if (stats.exact_prev_round_repeats > 0) {
+    html += `<br>🔁 ${t('txt_txt_exact_rematch_warning', { n: stats.exact_prev_round_repeats })}`;
+  }
+  if (stats.skill_gap_violations > 0) {
+    html += `<br>🚫 ${t('txt_txt_skill_gap_violation', { n: stats.skill_gap_violations, excess: fmt2(stats.skill_gap_worst_excess) })}`;
+  }
+  html += `</div>`;
+
+  // Per-person repeat details
+  if (stats.repeat_count > 0 && stats.per_person_repeats) {
+    html += `<div class="repeat-detail">`;
+    for (const [name, detail] of Object.entries(stats.per_person_repeats)) {
+      const parts = [];
+      for (const pr of (detail.partner_repeats || [])) {
+        parts.push(esc(t('txt_txt_partner_n_times', { player: pr.player, count: pr.count })));
+      }
+      for (const or_ of (detail.opponent_repeats || [])) {
+        parts.push(esc(t('txt_txt_vs_n_times', { player: or_.player, count: or_.count })));
+      }
+      if (parts.length > 0) {
+        html += `<span class="rp-name">${esc(name)}</span>: ${parts.join(', ')}<br>`;
+      }
+    }
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
 async function _commitManualRound() {
-  // Gather selections
   const matches = [];
   const allUsed = new Set();
   const errors = [];
@@ -3051,7 +3419,7 @@ async function _commitManualRound() {
   }
 
   if (errors.length > 0) {
-    alert(errors.join('\\n'));
+    alert(errors.join('\n'));
     return;
   }
 
@@ -3845,26 +4213,90 @@ async function _showPlayerQr(playerId, playerName) {
 }
 
 /** Refresh the current tournament view after player roster changes */
-function _refreshCurrentView() {
-  if (currentType === 'group_playoff') renderGP();
-  else if (currentType === 'playoff') renderPO();
-  else if (currentType === 'mexicano') renderMex();
+async function _refreshCurrentView() {
+  const drafts = _captureViewDrafts();
+  if (currentType === 'group_playoff') await renderGP();
+  else if (currentType === 'playoff') await renderPO();
+  else if (currentType === 'mexicano') await renderMex();
+  _restoreViewDrafts(drafts);
 }
 
-/** Add a new player to the running tournament */
-async function _addTournamentPlayer() {
-  const name = prompt(t('txt_txt_add_player_prompt'));
-  if (!name || !name.trim()) return;
+/** Add a new player to the running tournament — inline (no prompt) */
+function _addTournamentPlayer() {
+  const panel = document.getElementById('player-codes-panel');
+  if (panel && !panel.open) panel.open = true;
+
+  // If there's already a pending add row, just focus it
+  if (document.getElementById('pc-new-row')) {
+    document.getElementById('pc-new-name')?.focus();
+    return;
+  }
+
+  let tbody = panel?.querySelector('table tbody');
+
+  // If no table exists yet (0 players), create one
+  if (!tbody) {
+    const noMsg = panel?.querySelector('div > p');
+    if (noMsg) noMsg.remove();
+    const wrapper = document.createElement('div');
+    wrapper.style.overflowX = 'auto';
+    wrapper.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:0.84rem"><thead><tr style="border-bottom:2px solid var(--border)"><th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_player')}</th><th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_passphrase')}</th><th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_contact')}</th><th style="text-align:center;padding:0.4rem 0.6rem">${t('txt_txt_qr_code')}</th><th></th><th></th></tr></thead><tbody></tbody></table>`;
+    const addBtnDiv = panel?.querySelector('.add-participant-btn')?.parentElement;
+    if (addBtnDiv) addBtnDiv.before(wrapper);
+    else panel?.querySelector('div')?.appendChild(wrapper);
+    tbody = wrapper.querySelector('tbody');
+  }
+
+  const newRow = document.createElement('tr');
+  newRow.id = 'pc-new-row';
+  newRow.style.borderBottom = '1px solid var(--border)';
+  newRow.innerHTML = `<td style="padding:0.4rem 0.6rem" colspan="6">
+    <span style="display:flex;gap:0.4rem;align-items:center">
+      <input type="text" id="pc-new-name" placeholder="${escAttr(t('txt_txt_add_player_prompt'))}" style="flex:1;min-width:150px;font-size:0.88rem;padding:0.3rem 0.5rem;border:2px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--text)" maxlength="128">
+      <button type="button" class="btn btn-primary btn-sm" style="font-size:0.78rem;padding:0.25rem 0.6rem;white-space:nowrap" onclick="_submitNewPlayer()">✓</button>
+      <button type="button" class="btn btn-sm" style="font-size:0.78rem;padding:0.25rem 0.5rem" onclick="document.getElementById('pc-new-row')?.remove()">✕</button>
+    </span></td>`;
+  tbody.appendChild(newRow);
+
+  const input = document.getElementById('pc-new-name');
+  if (input) {
+    input.focus();
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') _submitNewPlayer();
+      else if (e.key === 'Escape') newRow.remove();
+    });
+  }
+}
+
+/** Submit the inline new-player row */
+async function _submitNewPlayer() {
+  const input = document.getElementById('pc-new-name');
+  if (!input) return;
+  const name = input.value.trim();
+  if (!name) { input.focus(); return; }
+
+  // Disable to prevent double submit
+  input.disabled = true;
+  document.querySelectorAll('#pc-new-row button').forEach(b => b.disabled = true);
+
   try {
-    const data = await api(`/api/tournaments/${currentTid}/players`, {
+    await api(`/api/tournaments/${currentTid}/players`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim() }),
+      body: JSON.stringify({ name }),
     });
-    // Show the new player's passphrase before refreshing
-    alert(`${esc(data.player_name)}\n${t('txt_txt_passphrase')}: ${data.passphrase}`);
-    _refreshCurrentView();
-  } catch (e) { alert(e.message || t('txt_reg_error')); }
+    // Refresh view, keeping the player-codes panel open
+    const drafts = _captureViewDrafts();
+    drafts['details:player-codes-panel'] = true;
+    if (currentType === 'group_playoff') await renderGP();
+    else if (currentType === 'playoff') await renderPO();
+    else if (currentType === 'mexicano') await renderMex();
+    _restoreViewDrafts(drafts);
+  } catch (e) {
+    alert(e.message || t('txt_reg_error'));
+    input.disabled = false;
+    document.querySelectorAll('#pc-new-row button').forEach(b => b.disabled = false);
+  }
 }
 
 /** Remove a player from the running tournament */

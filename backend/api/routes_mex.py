@@ -120,6 +120,7 @@ async def mex_status(tid: str) -> dict:
         "mexicano_ended": t.mexicano_ended,
         "total_points_per_match": t.total_points_per_match,
         "team_mode": t.team_mode,
+        "skill_gap": t.skill_gap,
         "phase": t.phase,
         "is_finished": t.is_finished,
         "assign_courts": data.get("assign_courts", True),

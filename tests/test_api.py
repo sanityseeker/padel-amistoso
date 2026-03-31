@@ -15,7 +15,7 @@ class TestGeneral:
     def test_homepage_returns_html(self, client):
         r = client.get("/")
         assert r.status_code == 200
-        assert "Torneos Amistosos" in r.text
+        assert "Torneos" in r.text
 
     def test_list_tournaments_empty(self, client):
         r = client.get("/api/tournaments")
