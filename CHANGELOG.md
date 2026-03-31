@@ -1,3 +1,9 @@
+## v0.7.1 (2026-04-01)
+
+### Fix
+
+- **group-stage**: fix scores computation for sets
+
 ## v0.7.0 (2026-03-31)
 
 ### Feat
