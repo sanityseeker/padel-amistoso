@@ -717,3 +717,109 @@ class TestUpdateCourts:
 
         t.update_courts([])
         assert t.courts == []
+
+
+# ── GroupPlayoffTournament.add_player_to_group ────────────────────────────────
+
+
+class TestAddPlayerToGroup:
+    def _make_running(self, n: int = 8, groups: int = 2) -> GroupPlayoffTournament:
+        t = GroupPlayoffTournament(_make_players(n), num_groups=groups)
+        t.generate()
+        return t
+
+    def test_add_player_increases_tournament_roster(self):
+        t = self._make_running()
+        group_name = t.groups[0].name
+        t.add_player_to_group(Player(name="Extra"), group_name)
+        assert len(t.players) == 9
+
+    def test_add_player_increases_group_roster(self):
+        t = self._make_running()
+        target = t.groups[0]
+        before = len(target.players)
+        t.add_player_to_group(Player(name="Extra"), target.name)
+        assert len(target.players) == before + 1
+
+    def test_add_player_to_second_group(self):
+        t = self._make_running()
+        target = t.groups[1]
+        before = len(target.players)
+        t.add_player_to_group(Player(name="Extra"), target.name)
+        assert len(target.players) == before + 1
+        # Other group unchanged.
+        assert len(t.groups[0].players) == before
+
+    def test_add_player_unknown_group_raises_key_error(self):
+        t = self._make_running()
+        with pytest.raises(KeyError, match="not found"):
+            t.add_player_to_group(Player(name="Extra"), "ZZZ")
+
+    def test_add_player_wrong_phase_raises_runtime_error(self):
+        t = GroupPlayoffTournament(_make_players(8), num_groups=2)
+        # Not yet in group phase.
+        with pytest.raises(RuntimeError, match="group stage"):
+            t.add_player_to_group(Player(name="Extra"), "A")
+
+    def test_add_duplicate_player_id_raises_value_error(self):
+        t = self._make_running()
+        with pytest.raises(ValueError):
+            t.add_player_to_group(t.players[0], t.groups[0].name)
+
+    def test_added_player_in_group_tracking(self):
+        t = self._make_running()
+        target = t.groups[0]
+        new_player = Player(name="Fresh")
+        t.add_player_to_group(new_player, target.name)
+        assert new_player.id in target._sit_out_counts
+        assert new_player.id in target._partner_history
+        assert new_player.id in target._opponent_history
+
+    def test_add_player_team_mode_creates_matches(self):
+        """Team-mode group must generate a match vs every existing member immediately."""
+        players = _make_players(4)
+        t = GroupPlayoffTournament(players, num_groups=2, team_mode=True)
+        t.generate()
+        target = t.groups[0]
+        before = len(target.matches)
+        existing_count = len(target.players)
+
+        new_player = Player(name="Extra")
+        new_matches = t.add_player_to_group(new_player, target.name)
+
+        assert len(new_matches) == existing_count
+        assert len(target.matches) == before + existing_count
+
+    def test_add_player_team_mode_returns_new_matches(self):
+        """Return value must be the newly created Match objects."""
+        t = GroupPlayoffTournament(_make_players(4), num_groups=2, team_mode=True)
+        t.generate()
+        new_player = Player(name="Extra")
+        new_matches = t.add_player_to_group(new_player, t.groups[0].name)
+        assert all(hasattr(m, "id") for m in new_matches)
+
+    def test_add_player_team_mode_with_courts_assigns_court(self):
+        """New team-mode matches must receive a court when courts are configured."""
+        players = _make_players(4)
+        courts = _make_courts(2)
+        t = GroupPlayoffTournament(players, num_groups=2, courts=courts, team_mode=True)
+        t.generate()
+
+        new_player = Player(name="Extra")
+        new_matches = t.add_player_to_group(new_player, t.groups[0].name)
+
+        assert all(m.court is not None for m in new_matches)
+
+    def test_add_player_team_mode_no_courts_no_assignment(self):
+        """Without courts, new matches must have court=None."""
+        t = GroupPlayoffTournament(_make_players(4), num_groups=2, team_mode=True)
+        t.generate()
+        new_player = Player(name="Extra")
+        new_matches = t.add_player_to_group(new_player, t.groups[0].name)
+        assert all(m.court is None for m in new_matches)
+
+    def test_add_player_individual_mode_returns_empty(self):
+        """Individual mode returns no new matches at add time."""
+        t = self._make_running()
+        new_matches = t.add_player_to_group(Player(name="Extra"), t.groups[0].name)
+        assert new_matches == []

@@ -1588,6 +1588,8 @@ async function renderGP() {
       for (const [k, v] of Object.entries(tvSettings.score_mode)) if (k in _gpScoreMode) _gpScoreMode[k] = v;
     }
     _gpCurrentCourts = status.courts || [];
+    _gpGroupNames = Object.keys(groups.standings);
+    _gpCurrentPhase = status.phase;
 
     const hasCourts = status.assign_courts !== false;
     let html = '';
@@ -1642,7 +1644,7 @@ async function renderGP() {
 
     // Group standings
     for (const [gName, rows] of Object.entries(groups.standings)) {
-      html += `<div class="card"><h3 class="card-heading-row">${t('txt_txt_group_name_value', { value: esc(gName) })} <button class="format-info-btn" onclick="showAbbrevPopup(event,'standings')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h3>`;
+      html += `<div class="card" id="gp-group-card-${escAttr(gName)}"><h3 class="card-heading-row">${t('txt_txt_group_name_value', { value: esc(gName) })} <button class="format-info-btn" onclick="showAbbrevPopup(event,'standings')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h3>`;
       const hParticipant = status.team_mode ? t('txt_txt_team') : t('txt_txt_player');
       html += `<table><thead><tr><th>${hParticipant}</th><th>${t('txt_txt_p_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_diff_abbrev')}</th><th>${t('txt_txt_pts_abbrev')}</th></tr></thead><tbody>`;
       for (const r of rows) {
@@ -1658,6 +1660,13 @@ async function renderGP() {
       for (const m of gMatches) {
         html += matchRow(m, 'gp-group');
       }
+
+      if (status.phase === 'groups' && !status.team_mode) {
+        html += `<div id="gp-add-player-area-${escAttr(gName)}" style="margin-top:0.5rem">`;
+        html += `<button type="button" class="add-participant-btn" onclick="_addPlayerToGroup(${JSON.stringify(gName)})">＋ ${t('txt_txt_add_player')}</button>`;
+        html += `</div>`;
+      }
+
       html += `</div>`;
     }
 
@@ -2077,6 +2086,8 @@ let _gpRecommended = [];
 let _gpAdvancingIds = new Set();
 let _gpExternalParticipants = [];
 let _gpCurrentCourts = [];
+let _gpGroupNames = [];
+let _gpCurrentPhase = '';
 
 async function nextGpGroupRound() {
   try {
@@ -4141,6 +4152,7 @@ function _renderPlayerCodes(secrets) {
   html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
   html += `<span style="font-size:1.1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="display:inline-block;transition:transform 0.18s;font-size:0.7em;color:var(--text-muted)">▸</span> 🔑 ${t('txt_txt_player_codes')}</span>`;
   const _isMex = currentType === 'mexicano';
+  const _isGP = currentType === 'group_playoff';
   if (entries.length > 0) {
     html += `<span style="display:flex;gap:0.4rem;margin-left:auto">`;
     html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_copyAllPlayerCodes()">📋 ${t('txt_txt_copy_all_codes')}</button>`;
@@ -4178,7 +4190,9 @@ function _renderPlayerCodes(secrets) {
     html += `</div>`;
   }
 
-  if (_isMex) html += `<div style="margin-top:0.5rem"><button type="button" class="add-participant-btn" onclick="_addTournamentPlayer()">＋ ${t('txt_txt_add_player')}</button></div>`;
+  if (_isMex || (_isGP && _gpCurrentPhase === 'groups')) {
+    html += `<div style="margin-top:0.5rem"><button type="button" class="add-participant-btn" onclick="_addTournamentPlayer()">＋ ${t('txt_txt_add_player')}</button></div>`;
+  }
 
   html += `</div></details>`;
   return html;
@@ -4221,6 +4235,80 @@ async function _refreshCurrentView() {
   _restoreViewDrafts(drafts);
 }
 
+/** Open an inline add-player form inside the specific group card. */
+function _addPlayerToGroup(groupName) {
+  const areaId = `gp-add-player-area-${groupName}`;
+  const inputId = `gp-add-name-${groupName}`;
+  const area = document.getElementById(areaId);
+  if (!area) return;
+
+  // Already open — just focus.
+  if (document.getElementById(inputId)) {
+    document.getElementById(inputId).focus();
+    return;
+  }
+
+  // Replace the button with an inline input row.
+  area.innerHTML = `
+    <span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;margin-top:0.1rem">
+      <input type="text" id="${escAttr(inputId)}"
+        placeholder="${escAttr(t('txt_txt_add_player_prompt'))}"
+        style="flex:1;min-width:150px;font-size:0.88rem;padding:0.3rem 0.5rem;border:2px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--text)"
+        maxlength="128">
+      <button type="button" class="btn btn-primary btn-sm"
+        style="font-size:0.78rem;padding:0.25rem 0.6rem;white-space:nowrap"
+        onclick="_submitPlayerToGroup(${JSON.stringify(groupName)})">✓</button>
+      <button type="button" class="btn btn-sm"
+        style="font-size:0.78rem;padding:0.25rem 0.5rem"
+        onclick="_cancelAddPlayerToGroup(${JSON.stringify(groupName)})">✕</button>
+    </span>`;
+
+  const input = document.getElementById(inputId);
+  if (input) {
+    input.focus();
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') _submitPlayerToGroup(groupName);
+      else if (e.key === 'Escape') _cancelAddPlayerToGroup(groupName);
+    });
+  }
+}
+
+/** Restore the add-player button after cancelling. */
+function _cancelAddPlayerToGroup(groupName) {
+  const area = document.getElementById(`gp-add-player-area-${groupName}`);
+  if (!area) return;
+  area.innerHTML = `<button type="button" class="add-participant-btn" onclick="_addPlayerToGroup(${JSON.stringify(groupName)})">＋ ${t('txt_txt_add_player')}</button>`;
+}
+
+/** Submit a new player directly to a specific group. */
+async function _submitPlayerToGroup(groupName) {
+  const inputId = `gp-add-name-${groupName}`;
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const name = input.value.trim();
+  if (!name) { input.focus(); return; }
+
+  input.disabled = true;
+  const area = document.getElementById(`gp-add-player-area-${groupName}`);
+  if (area) area.querySelectorAll('button').forEach(b => b.disabled = true);
+
+  try {
+    await api(`/api/tournaments/${currentTid}/players`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, group_name: groupName }),
+    });
+    const drafts = _captureViewDrafts();
+    drafts['details:player-codes-panel'] = true;
+    await renderGP();
+    _restoreViewDrafts(drafts);
+  } catch (e) {
+    alert(e.message || t('txt_reg_error'));
+    if (input) input.disabled = false;
+    if (area) area.querySelectorAll('button').forEach(b => b.disabled = false);
+  }
+}
+
 /** Add a new player to the running tournament — inline (no prompt) */
 function _addTournamentPlayer() {
   const panel = document.getElementById('player-codes-panel');
@@ -4247,12 +4335,21 @@ function _addTournamentPlayer() {
     tbody = wrapper.querySelector('tbody');
   }
 
+  const isGP = currentType === 'group_playoff';
+  const groupSelectHtml = isGP && _gpGroupNames.length
+    ? `<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.82rem;white-space:nowrap;color:var(--text-muted)">${t('txt_txt_select_group')}
+        <select id="pc-new-group" style="font-size:0.88rem;padding:0.28rem 0.4rem;border:2px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--text)">
+          ${_gpGroupNames.map(g => `<option value="${escAttr(g)}">${esc(g)}</option>`).join('')}
+        </select></label>`
+    : '';
+
   const newRow = document.createElement('tr');
   newRow.id = 'pc-new-row';
   newRow.style.borderBottom = '1px solid var(--border)';
   newRow.innerHTML = `<td style="padding:0.4rem 0.6rem" colspan="6">
-    <span style="display:flex;gap:0.4rem;align-items:center">
+    <span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">
       <input type="text" id="pc-new-name" placeholder="${escAttr(t('txt_txt_add_player_prompt'))}" style="flex:1;min-width:150px;font-size:0.88rem;padding:0.3rem 0.5rem;border:2px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--text)" maxlength="128">
+      ${groupSelectHtml}
       <button type="button" class="btn btn-primary btn-sm" style="font-size:0.78rem;padding:0.25rem 0.6rem;white-space:nowrap" onclick="_submitNewPlayer()">✓</button>
       <button type="button" class="btn btn-sm" style="font-size:0.78rem;padding:0.25rem 0.5rem" onclick="document.getElementById('pc-new-row')?.remove()">✕</button>
     </span></td>`;
@@ -4280,10 +4377,15 @@ async function _submitNewPlayer() {
   document.querySelectorAll('#pc-new-row button').forEach(b => b.disabled = true);
 
   try {
+    const body = { name };
+    if (currentType === 'group_playoff') {
+      const groupSelect = document.getElementById('pc-new-group');
+      if (groupSelect) body.group_name = groupSelect.value;
+    }
     await api(`/api/tournaments/${currentTid}/players`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(body),
     });
     // Refresh view, keeping the player-codes panel open
     const drafts = _captureViewDrafts();

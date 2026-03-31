@@ -498,3 +498,131 @@ class TestSetsFormatStandings:
                 assert row.losses == 1
                 assert row.points_for == 6
                 assert row.points_against == 10
+
+
+# ── Group.add_player ──────────────────────────────────────
+
+
+class TestGroupAddPlayer:
+    def test_add_player_increases_roster(self):
+        group = Group("A", _make_players(4))
+        new_player = Player(name="New")
+        group.add_player(new_player)
+        assert len(group.players) == 5
+        assert any(p.id == new_player.id for p in group.players)
+
+    def test_add_player_initialises_sit_out_count(self):
+        group = Group("A", _make_players(4))
+        new_player = Player(name="New")
+        group.add_player(new_player)
+        assert group._sit_out_counts[new_player.id] == 0
+
+    def test_add_player_initialises_partner_history(self):
+        group = Group("A", _make_players(4))
+        new_player = Player(name="New")
+        group.add_player(new_player)
+        # New player should have an entry for every existing player.
+        existing_ids = {p.id for p in group.players if p.id != new_player.id}
+        assert set(group._partner_history[new_player.id].keys()) == existing_ids
+        # Existing players should have the new player added to their histories.
+        for pid in existing_ids:
+            assert new_player.id in group._partner_history[pid]
+
+    def test_add_player_initialises_opponent_history(self):
+        group = Group("A", _make_players(4))
+        new_player = Player(name="New")
+        group.add_player(new_player)
+        existing_ids = {p.id for p in group.players if p.id != new_player.id}
+        assert set(group._opponent_history[new_player.id].keys()) == existing_ids
+        for pid in existing_ids:
+            assert new_player.id in group._opponent_history[pid]
+
+    def test_add_player_extends_all_partnerships(self):
+        players = _make_players(4)
+        group = Group("A", players)
+        before = len(group._all_partnerships)
+        new_player = Player(name="New")
+        group.add_player(new_player)
+        # 4 new pairs (new_player vs each of the 4 existing players).
+        assert len(group._all_partnerships) == before + 4
+
+    def test_add_player_invalidates_standings_cache(self):
+        group = Group("A", _make_players(4))
+        group.generate_round_robin()
+        _ = group.standings()  # populate cache
+        assert group._standings_cache is not None
+        group.add_player(Player(name="New"))
+        assert group._standings_cache is None
+
+    def test_add_duplicate_player_raises(self):
+        players = _make_players(4)
+        group = Group("A", players)
+        with pytest.raises(ValueError, match="already in group"):
+            group.add_player(players[0])
+
+    def test_new_player_eligible_in_next_round(self):
+        """After adding a player the group should produce rounds including them."""
+        players = _make_players(4)
+        group = Group("A", players)
+        first_round = group.generate_next_round()
+        assert len(first_round) == 1  # 4 players → 1 match
+
+        # Complete round so we can generate the next one.
+        for m in first_round:
+            m.score = (10, 8)
+            from backend.models import MatchStatus
+
+            m.status = MatchStatus.COMPLETED
+
+        new_player = Player(name="P5")
+        group.add_player(new_player)
+        # 5 players → there should be a sit-out but the new player is in the pool.
+        group.generate_next_round()
+        # New player has equal (zero) sit-out count — may or may not play, but must be tracked.
+        assert new_player.id in group._sit_out_counts
+
+    def test_add_player_individual_mode_returns_empty(self):
+        """Individual mode generates no matches at add time."""
+        group = Group("A", _make_players(4))
+        new_player = Player(name="Extra")
+        new_matches = group.add_player(new_player)
+        assert new_matches == []
+
+    def test_add_player_team_mode_generates_matches(self):
+        """Team mode must immediately create one match vs every existing member."""
+        players = _make_players(3)
+        group = Group("A", players, team_mode=True)
+        group.generate_round_robin()
+        before = len(group.matches)
+
+        new_player = Player(name="T4")
+        new_matches = group.add_player(new_player)
+
+        # Should produce one match per existing player.
+        assert len(new_matches) == 3
+        assert len(group.matches) == before + 3
+
+    def test_add_player_team_mode_match_involves_new_player(self):
+        """Every generated match must include the new player on one side."""
+        players = _make_players(4)
+        group = Group("A", players, team_mode=True)
+        group.generate_round_robin()
+
+        new_player = Player(name="T5")
+        new_matches = group.add_player(new_player)
+
+        for m in new_matches:
+            all_ids = {p.id for p in m.team1 + m.team2}
+            assert new_player.id in all_ids
+
+    def test_add_player_team_mode_no_self_match(self):
+        """No match must have the same player on both sides."""
+        players = _make_players(4)
+        group = Group("A", players, team_mode=True)
+        group.generate_round_robin()
+        group.add_player(Player(name="T5"))
+
+        for m in group.matches:
+            ids_t1 = {p.id for p in m.team1}
+            ids_t2 = {p.id for p in m.team2}
+            assert ids_t1.isdisjoint(ids_t2)

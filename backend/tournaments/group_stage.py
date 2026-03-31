@@ -170,6 +170,70 @@ class Group:
         return bool(self._all_partnerships - self._used_partnerships)
 
     # ------------------------------------------------------------------ #
+    # Player management
+    # ------------------------------------------------------------------ #
+
+    def add_player(self, player: Player) -> list[Match]:
+        """Add a new player to this group mid-tournament.
+
+        For **team mode** (round-robin), immediately generates match stubs
+        between the new player and every existing group member and appends them
+        to ``self.matches``.  Returns the list of newly created matches so the
+        caller can assign courts if needed.
+
+        For **individual mode**, only updates the internal tracking structures
+        (partner/opponent history, sit-out counts, all-partnerships set) so the
+        player is included in the next call to ``generate_next_round()``.  Returns
+        an empty list.
+
+        Args:
+            player: The new player to add.
+
+        Returns:
+            Newly created ``Match`` objects (team mode only; empty for individual mode).
+
+        Raises:
+            ValueError: If a player with the same ID already exists in this group.
+        """
+        if any(p.id == player.id for p in self.players):
+            raise ValueError(f"Player '{player.name}' is already in group '{self.name}'")
+
+        existing = list(self.players)
+        existing_ids = [p.id for p in existing]
+
+        # Extend partner / opponent history dictionaries.
+        self._partner_history[player.id] = {pid: 0 for pid in existing_ids}
+        self._opponent_history[player.id] = {pid: 0 for pid in existing_ids}
+        for pid in existing_ids:
+            self._partner_history[pid][player.id] = 0
+            self._opponent_history[pid][player.id] = 0
+
+        # Extend sit-out tracking.
+        self._sit_out_counts[player.id] = 0
+
+        # Register all new possible partnerships.
+        for pid in existing_ids:
+            self._all_partnerships.add(frozenset([player.id, pid]))
+
+        self.players.append(player)
+        self._standings_cache = None
+
+        # Team mode: generate one match vs every existing member right away.
+        new_matches: list[Match] = []
+        if self.team_mode:
+            for existing_player in existing:
+                new_matches.append(
+                    Match(
+                        team1=[player],
+                        team2=[existing_player],
+                        round_label=f"Group {self.name}",
+                    )
+                )
+            self.matches.extend(new_matches)
+
+        return new_matches
+
+    # ------------------------------------------------------------------ #
     # Standings
     # ------------------------------------------------------------------ #
 

@@ -119,6 +119,9 @@ class AddPlayerRequest(BaseModel):
     """Payload for adding a new player to a running tournament."""
 
     name: str = Field(min_length=1, max_length=128)
+    group_name: str | None = Field(
+        default=None, max_length=64, description="Target group name (required for group-playoff tournaments)"
+    )
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -192,11 +195,18 @@ async def add_player_to_tournament(
         data = _tournaments.get(tid)
         if data is None:
             raise HTTPException(404, "Tournament not found")
-        if data["type"] != "mexicano":
-            raise HTTPException(409, "Adding players mid-tournament is only supported for Mexicano format")
+        t_type = data["type"]
+        if t_type not in ("mexicano", "group_playoff"):
+            raise HTTPException(
+                409, "Adding players mid-tournament is only supported for Mexicano and Group-Playoff formats"
+            )
         t = data["tournament"]
         if str(getattr(t, "phase", "")) == "finished":
             raise HTTPException(409, "Cannot add players to a finished tournament")
+        if t_type == "group_playoff" and str(getattr(t, "phase", "")) != "groups":
+            raise HTTPException(409, "Players can only be added during the group stage")
+        if t_type == "group_playoff" and not req.group_name:
+            raise HTTPException(422, "group_name is required when adding a player to a Group-Playoff tournament")
 
         name = req.name.strip()
         if any(p.name == name for p in t.players):
@@ -204,10 +214,9 @@ async def add_player_to_tournament(
 
         player = Player(name=name)
         pid = player.id
-        t.players.append(player)
 
-        t_type = data["type"]
         if t_type == "mexicano":
+            t.players.append(player)
             t.scores[pid] = 0
             t._matches_played[pid] = 0
             t._wins[pid] = 0
@@ -218,13 +227,26 @@ async def add_player_to_tournament(
             t._opponent_history[pid] = defaultdict(int)
             t._player_map[pid] = player
             t._est_cache = None
+        elif t_type == "group_playoff":
+            try:
+                t.add_player_to_group(player, req.group_name)  # type: ignore[arg-type]
+            except KeyError as exc:
+                raise HTTPException(404, str(exc)) from exc
+            except (RuntimeError, ValueError) as exc:
+                raise HTTPException(409, str(exc)) from exc
 
         passphrase = generate_passphrase()
         token = generate_token()
         add_player_secret(tid, pid, name, passphrase, token)
         _save_tournament(tid)
 
-    return {"player_id": pid, "player_name": name, "passphrase": passphrase, "token": token}
+    return {
+        "player_id": pid,
+        "player_name": name,
+        "passphrase": passphrase,
+        "token": token,
+        "group_name": req.group_name,
+    }
 
 
 @router.delete("/{tid}/players/{player_id}")

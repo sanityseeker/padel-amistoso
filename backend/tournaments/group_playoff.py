@@ -168,6 +168,54 @@ class GroupPlayoffTournament:
             if all_po:
                 assign_courts(all_po, self.courts)
 
+    def add_player_to_group(self, player: Player, group_name: str) -> list[Match]:
+        """Add a new player to a specific group during the group stage.
+
+        The player is registered in the tournament-level roster and inserted
+        into the target group.  In **team mode**, new match stubs are generated
+        immediately (new player vs every existing group member) and returned so
+        the frontend can display them right away.  In **individual mode**, the
+        player is included in the next ``generate_next_group_round()`` call;
+        no matches are created immediately.
+
+        If courts are configured, they are assigned to the new matches using the
+        same slot-offset logic as ``generate_next_group_round()``.
+
+        Args:
+            player: The new player to add.
+            group_name: Name of the group to add the player to (e.g. ``"A"``).
+
+        Returns:
+            Newly created ``Match`` objects (team mode only; empty list otherwise).
+
+        Raises:
+            RuntimeError: If the tournament is not in the group phase.
+            KeyError: If no group with *group_name* exists.
+            ValueError: If the player already exists in the tournament.
+        """
+        if self._phase != GPPhase.GROUPS:
+            raise RuntimeError("Players can only be added during the group stage")
+        if any(p.id == player.id for p in self.players):
+            raise ValueError(f"Player '{player.name}' is already in this tournament")
+
+        group = next((g for g in self.groups if g.name == group_name), None)
+        if group is None:
+            available = ", ".join(g.name for g in self.groups)
+            raise KeyError(f"Group '{group_name}' not found. Available groups: {available}")
+
+        new_matches = group.add_player(player)
+        self.players.append(player)
+
+        if new_matches and self.courts:
+            max_slot = self._max_slot_number()
+            start_slot = max_slot + 1 if max_slot >= 0 else 0
+            assign_courts(new_matches, self.courts, court_offset=start_slot)
+            for m in new_matches:
+                if m.slot_number is not None:
+                    m.slot_number += start_slot
+
+        return new_matches
+
     def _assign_group_courts(self) -> None:
         """Assign courts across all group matches using the global greedy algorithm.
 
@@ -179,11 +227,9 @@ class GroupPlayoffTournament:
         assign_courts(self.all_group_matches(), self.courts)
 
     def _max_slot_number(self) -> int:
-        """Return the highest slot_number across all existing group matches."""
-        matches = self.all_group_matches()
-        if not matches:
-            return -1
-        return max(m.slot_number for m in matches)
+        """Return the highest slot_number across all existing group matches, or -1."""
+        slots = [m.slot_number for m in self.all_group_matches() if m.slot_number is not None]
+        return max(slots) if slots else -1
 
     def _player_scores(self) -> dict[str, tuple[float, float, float]]:
         """Aggregate standings data across all groups for seeding.
