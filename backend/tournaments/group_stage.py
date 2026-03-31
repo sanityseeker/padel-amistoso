@@ -241,11 +241,13 @@ class Group:
         """Compute current standings for this group."""
         table: dict[str, GroupStanding] = {p.id: GroupStanding(player=p) for p in self.players}
 
+        uses_sets = False
         for m in self.matches:
             if m.status != MatchStatus.COMPLETED or m.score is None:
                 continue
 
             if m.sets:
+                uses_sets = True
                 # Sets format: use actual game totals for points, but
                 # determine wins/losses by sets won (not total games).
                 games1 = sum(s[0] for s in m.sets)
@@ -263,25 +265,27 @@ class Group:
                         table[p.id],
                         scored=games1,
                         conceded=games2,
-                        third_set=m.third_set_loss,
                         won=t1_won,
+                        sets_won=sets1,
+                        sets_lost=sets2,
                     )
                 for p in m.team2:
                     _update_standing(
                         table[p.id],
                         scored=games2,
                         conceded=games1,
-                        third_set=m.third_set_loss,
                         won=None if t1_won is None else not t1_won,
+                        sets_won=sets2,
+                        sets_lost=sets1,
                     )
             else:
                 s1, s2 = m.score
                 for p in m.team1:
-                    _update_standing(table[p.id], scored=s1, conceded=s2, third_set=m.third_set_loss)
+                    _update_standing(table[p.id], scored=s1, conceded=s2)
                 for p in m.team2:
-                    _update_standing(table[p.id], scored=s2, conceded=s1, third_set=m.third_set_loss)
+                    _update_standing(table[p.id], scored=s2, conceded=s1)
 
-        standings = sorted(table.values(), key=lambda r: r.sort_key(), reverse=True)
+        standings = sorted(table.values(), key=lambda r: r.sort_key(uses_sets=uses_sets), reverse=True)
         self._standings_cache = standings
         return standings
 
@@ -295,23 +299,27 @@ def _update_standing(
     row: GroupStanding,
     scored: int,
     conceded: int,
-    third_set: bool,
     won: bool | None = None,
+    sets_won: int = 0,
+    sets_lost: int = 0,
 ) -> None:
     """Update a single GroupStanding row with one completed match's result.
 
     Args:
         scored: Points/games scored by this player's team.
         conceded: Points/games conceded.
-        third_set: Whether the match was decided in a 3rd set.
         won: Explicit win/loss flag.  When provided (sets format), this
             overrides the ``scored > conceded`` comparison so that the
             winner is always determined by sets won, not by total games.
             ``None`` falls back to the numeric comparison (simple format).
+        sets_won: Sets won in this match (sets format only).
+        sets_lost: Sets lost in this match (sets format only).
     """
     row.played += 1
     row.points_for += scored
     row.points_against += conceded
+    row.sets_won += sets_won
+    row.sets_lost += sets_lost
 
     is_win = won if won is not None else (scored > conceded)
     is_loss = (not won) if won is not None else (scored < conceded)
@@ -319,11 +327,7 @@ def _update_standing(
     if is_win:
         row.wins += 1
     elif is_loss:
-        if third_set:
-            # Consolation point: lost in the deciding 3rd set — counts as a loss but awards 1 pt.
-            row.third_set_losses += 1
-        else:
-            row.losses += 1
+        row.losses += 1
     else:
         row.draws += 1
 

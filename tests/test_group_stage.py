@@ -210,7 +210,7 @@ class TestGroupStandings:
         assert len(standings) == 4
         for s in standings:
             assert s.played == 0
-            assert s.match_points == 0
+            assert s.wins == 0
 
     def test_standings_after_one_result(self):
         players = _make_players(4)
@@ -225,7 +225,7 @@ class TestGroupStandings:
         played_counts = [s.played for s in standings]
         assert max(played_counts) == 1
 
-    def test_win_gives_three_points(self):
+    def test_win_increments_wins_counter(self):
         players = _make_players(4)
         group = Group("A", players)
         group.generate_round_robin()
@@ -236,11 +236,12 @@ class TestGroupStandings:
         standings = group.standings()
         by_id = {s.player.id: s for s in standings}
         for p in m.team1:
-            assert by_id[p.id].match_points == 3  # win
+            assert by_id[p.id].wins == 1
         for p in m.team2:
-            assert by_id[p.id].match_points == 0  # loss
+            assert by_id[p.id].wins == 0
+            assert by_id[p.id].losses == 1
 
-    def test_draw_gives_one_point(self):
+    def test_draw_gives_zero_wins(self):
         players = _make_players(4)
         group = Group("A", players)
         group.generate_round_robin()
@@ -251,7 +252,8 @@ class TestGroupStandings:
         standings = group.standings()
         by_id = {s.player.id: s for s in standings}
         for p in m.team1 + m.team2:
-            assert by_id[p.id].match_points == 1
+            assert by_id[p.id].wins == 0
+            assert by_id[p.id].draws == 1
 
     def test_top_players(self):
         players = _make_players(4)
@@ -264,6 +266,29 @@ class TestGroupStandings:
         top = group.top_players(2)
         assert len(top) == 2
         assert all(isinstance(p, Player) for p in top)
+
+    def test_points_mode_ranking_by_wins_then_diff(self):
+        """In points mode (no sets), ranking is wins → score diff → score total."""
+        players = _make_players(3)
+        group = Group("A", players, team_mode=True)
+        group.generate_round_robin()
+        # Match 0: P0 beats P1 by 6-3
+        # Match 1: P0 beats P2 by 6-5
+        # Match 2: P1 beats P2 by 6-2
+        for i, (s1, s2) in enumerate([(6, 3), (6, 5), (6, 2)]):
+            group.matches[i].score = (s1, s2)
+            group.matches[i].status = MatchStatus.COMPLETED
+
+        standings = group.standings()
+        # P0: 2 wins, PF=12, PA=8, diff=+4
+        # P1: 1 win, PF=9, PA=8, diff=+1
+        # P2: 0 wins, PF=7, PA=12, diff=-5
+        assert standings[0].player.id == players[0].id
+        assert standings[0].wins == 2
+        assert standings[1].player.id == players[1].id
+        assert standings[1].wins == 1
+        assert standings[2].player.id == players[2].id
+        assert standings[2].wins == 0
 
 
 # ── Court assignment ───────────────────────────────────────
@@ -451,16 +476,19 @@ class TestSetsFormatStandings:
             if row.player.id in t1_ids:
                 assert row.wins == 1, f"Team1 player {row.player.name} should have 1 win"
                 assert row.losses == 0
-                assert row.third_set_losses == 0
                 # Actual game total, not adjusted score
                 assert row.points_for == 15
                 assert row.points_against == 16
+                assert row.sets_won == 2
+                assert row.sets_lost == 1
             elif row.player.id in t2_ids:
                 assert row.wins == 0, f"Team2 player {row.player.name} should have 0 wins"
-                # Lost in 3rd set → third_set_losses
-                assert row.third_set_losses == 1
+                # Lost in 3rd set → plain loss (no consolation)
+                assert row.losses == 1
                 assert row.points_for == 16
                 assert row.points_against == 15
+                assert row.sets_won == 1
+                assert row.sets_lost == 2
 
     def test_set_winner_with_equal_total_games_gets_win(self):
         """Sets: 6-4  2-6  7-5 → both teams have 15 total games, team1 wins 2-1."""
@@ -481,6 +509,8 @@ class TestSetsFormatStandings:
                 # Actual games: 15 each
                 assert row.points_for == 15
                 assert row.points_against == 15
+                assert row.sets_won == 2
+                assert row.sets_lost == 1
 
     def test_simple_score_format_unaffected(self):
         """Non-sets matches should still determine winner by scored > conceded."""
@@ -498,6 +528,85 @@ class TestSetsFormatStandings:
                 assert row.losses == 1
                 assert row.points_for == 6
                 assert row.points_against == 10
+
+    def test_sets_mode_ranking_by_wins_then_sets_diff_then_games_diff(self):
+        """In sets mode, ranking is wins -> sets diff -> games diff -> games scored.
+
+        Construct three matchups where every player wins exactly once,
+        but with different sets-diff values so tiebreaking is visible.
+        """
+        players = [Player(name=n) for n in ["A", "B", "C"]]
+        group = Group("G", players, team_mode=True)
+        group.generate_round_robin()
+        assert len(group.matches) == 3
+
+        # Build a lookup from frozenset-of-names -> match for reliable assignment.
+        match_by_teams: dict[frozenset[str], object] = {}
+        for m in group.matches:
+            names = frozenset(p.name for p in m.team1 + m.team2)
+            match_by_teams[names] = m
+
+        def _record(key: frozenset[str], winner_sets: list[tuple[int, int]]) -> None:
+            """Record sets from the winner's perspective.
+
+            *winner_sets* lists (winner_games, loser_games) per set.  The
+            function figures out which side in the match is team1 and flips
+            the tuples if necessary.
+            """
+            m = match_by_teams[key]
+            winner_name = next(n for n in key if n == sorted(key)[0])
+            # Use the first element of sorted key as the "winner" perspective.
+            t1_names = {p.name for p in m.team1}
+            if winner_name in t1_names:
+                sets = winner_sets
+            else:
+                sets = [(s2, s1) for s1, s2 in winner_sets]
+            m.sets = sets
+            m.score = (sum(s[0] for s in sets), sum(s[1] for s in sets))
+            m.status = MatchStatus.COMPLETED
+
+        # A beats B in 3 sets (close): A gets SW+2, SL+1. B gets SW+1, SL+2.
+        m_ab = match_by_teams[frozenset(["A", "B"])]
+        t1_is_a = m_ab.team1[0].name == "A"
+        sets_ab = [(6, 4), (4, 6), (7, 5)] if t1_is_a else [(4, 6), (6, 4), (5, 7)]
+        m_ab.sets = sets_ab
+        m_ab.score = (sum(s[0] for s in sets_ab), sum(s[1] for s in sets_ab))
+        m_ab.status = MatchStatus.COMPLETED
+
+        # B beats C in 2 sets (big margin): B gets SW+2, SL+0. C gets SW+0, SL+2.
+        m_bc = match_by_teams[frozenset(["B", "C"])]
+        t1_is_b = m_bc.team1[0].name == "B"
+        sets_bc = [(6, 1), (6, 2)] if t1_is_b else [(1, 6), (2, 6)]
+        m_bc.sets = sets_bc
+        m_bc.score = (sum(s[0] for s in sets_bc), sum(s[1] for s in sets_bc))
+        m_bc.status = MatchStatus.COMPLETED
+
+        # C beats A in 2 sets: C gets SW+2, SL+0. A gets SW+0, SL+2.
+        m_ca = match_by_teams[frozenset(["A", "C"])]
+        t1_is_c = m_ca.team1[0].name == "C"
+        sets_ca = [(6, 3), (6, 4)] if t1_is_c else [(3, 6), (4, 6)]
+        m_ca.sets = sets_ca
+        m_ca.score = (sum(s[0] for s in sets_ca), sum(s[1] for s in sets_ca))
+        m_ca.status = MatchStatus.COMPLETED
+
+        standings = group.standings()
+        names = [s.player.name for s in standings]
+
+        # Totals:
+        #   A: W=1, SW=2(beat B), SL=3(lost 1 to B + 2 to C), SD=-1
+        #   B: W=1, SW=3(1 from A match + 2 from C match), SL=2, SD=+1
+        #   C: W=1, SW=2(beat A), SL=2(lost to B), SD=0
+        # Ranking by (wins, SD): B(+1) > C(0) > A(-1)
+        assert names == ["B", "C", "A"]
+
+        # Verify the sets tracking values
+        by_name = {s.player.name: s for s in standings}
+        assert by_name["B"].sets_won == 3
+        assert by_name["B"].sets_lost == 2
+        assert by_name["C"].sets_won == 2
+        assert by_name["C"].sets_lost == 2
+        assert by_name["A"].sets_won == 2
+        assert by_name["A"].sets_lost == 3
 
 
 # ── Group.add_player ──────────────────────────────────────

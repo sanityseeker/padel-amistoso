@@ -231,18 +231,19 @@ class GroupPlayoffTournament:
         slots = [m.slot_number for m in self.all_group_matches() if m.slot_number is not None]
         return max(slots) if slots else -1
 
-    def _player_scores(self) -> dict[str, tuple[float, float, float]]:
+    def _player_scores(self) -> dict[str, tuple[float, float, float, float]]:
         """Aggregate standings data across all groups for seeding.
 
         Returns:
-            Dict mapping player ID to ``(match_points, point_diff, points_for)``
+            Dict mapping player ID to ``(wins, sets_diff, point_diff, points_for)``
             tuple — the same ranking criteria used in standings.
         """
-        scores: dict[str, tuple[float, float, float]] = {p.id: (0.0, 0.0, 0.0) for p in self.players}
+        scores: dict[str, tuple[float, float, float, float]] = {p.id: (0.0, 0.0, 0.0, 0.0) for p in self.players}
         for g in self.groups:
             for row in g.standings():
                 scores[row.player.id] = (
-                    float(row.match_points),
+                    float(row.wins),
+                    float(row.sets_diff),
                     float(row.point_diff),
                     float(row.points_for),
                 )
@@ -287,10 +288,11 @@ class GroupPlayoffTournament:
                     "wins": s.wins,
                     "draws": s.draws,
                     "losses": s.losses,
-                    "third_set_losses": s.third_set_losses,
+                    "sets_won": s.sets_won,
+                    "sets_lost": s.sets_lost,
+                    "sets_diff": s.sets_diff,
                     "points_for": s.points_for,
                     "points_against": s.points_against,
-                    "match_points": s.match_points,
                     "point_diff": s.point_diff,
                 }
                 for s in standings
@@ -308,7 +310,7 @@ class GroupPlayoffTournament:
         for group_name, rows in all_standings.items():
             for row in rows:
                 ranked.append({**row, "group": group_name})
-        ranked.sort(key=lambda r: (-r["match_points"], -r["point_diff"], -r["points_for"]))
+        ranked.sort(key=lambda r: (-r["wins"], -r["sets_diff"], -r["point_diff"], -r["points_for"]))
         return ranked
 
     def start_playoffs(
@@ -378,7 +380,7 @@ class GroupPlayoffTournament:
                     advancing.append(p)
                     player_group_index[p.id] = g_idx
 
-        # Aggregate scores for seeding (match_points, point_diff, points_for)
+        # Aggregate scores for seeding (wins, sets_diff, point_diff, points_for)
         scores = self._player_scores()
 
         # Add external participants
@@ -387,19 +389,20 @@ class GroupPlayoffTournament:
                 p = Player(name=name)
                 advancing.append(p)
                 player_map[p.id] = p
-                # External score is treated as match_points for seeding
-                scores[p.id] = (float(ext_score), 0.0, 0.0)
+                # External score is treated as wins for seeding
+                scores[p.id] = (float(ext_score), 0.0, 0.0, 0.0)
 
         if len(advancing) < 2:
             raise RuntimeError("Need at least 2 participants to start play‑offs")
 
-        def _seed_key(team: list[Player]) -> tuple[float, float, float]:
-            """Combined (match_points, point_diff, points_for) for a team."""
-            combined = [scores.get(p.id, (0.0, 0.0, 0.0)) for p in team]
+        def _seed_key(team: list[Player]) -> tuple[float, float, float, float]:
+            """Combined (wins, sets_diff, point_diff, points_for) for a team."""
+            combined = [scores.get(p.id, (0.0, 0.0, 0.0, 0.0)) for p in team]
             return (
                 sum(c[0] for c in combined),
                 sum(c[1] for c in combined),
                 sum(c[2] for c in combined),
+                sum(c[3] for c in combined),
             )
 
         def _team_group(team: list[Player]) -> int:

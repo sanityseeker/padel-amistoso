@@ -145,19 +145,41 @@ class GroupStanding:
     wins: int = 0
     draws: int = 0
     losses: int = 0
-    third_set_losses: int = 0
+    sets_won: int = 0
+    sets_lost: int = 0
     points_for: int = 0
     points_against: int = 0
 
     @property
-    def match_points(self) -> int:
-        """3 pts for win, 1 for draw or 3rd-set loss, 0 for regular loss."""
-        return self.wins * 3 + self.draws * 1 + self.third_set_losses * 1
+    def sets_diff(self) -> int:
+        return self.sets_won - self.sets_lost
 
     @property
     def point_diff(self) -> int:
         return self.points_for - self.points_against
 
-    def sort_key(self) -> tuple[int, int, int]:
-        """Higher is better."""
-        return (self.match_points, self.point_diff, self.points_for)
+    def sort_key(self, *, uses_sets: bool = False) -> tuple[int, ...]:
+        """Higher is better.
+
+        When *uses_sets* is ``True`` (sets scoring detected), the sort order is:
+        wins → sets difference → games difference → games scored.
+
+        Otherwise (points scoring): wins → score difference → score total.
+        """
+        if uses_sets:
+            return (self.wins, self.sets_diff, self.point_diff, self.points_for)
+        return (self.wins, self.point_diff, self.points_for)
+
+    # -- Pickle compatibility for tournaments serialised before this change --
+
+    def __getstate__(self) -> dict:
+        return self.__dict__.copy()
+
+    def __setstate__(self, state: dict) -> None:
+        # Drop removed fields from old pickles.
+        state.pop("third_set_losses", None)
+        state.pop("match_points", None)
+        # Add new fields missing in old pickles.
+        state.setdefault("sets_won", 0)
+        state.setdefault("sets_lost", 0)
+        self.__dict__.update(state)

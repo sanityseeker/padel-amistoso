@@ -163,7 +163,7 @@ class TestGroupPhase:
             assert len(rows) > 0
             for row in rows:
                 assert "player" in row
-                assert "match_points" in row
+                assert "wins" in row
                 assert "point_diff" in row
 
     def test_cannot_start_playoffs_with_pending(self):
@@ -279,7 +279,7 @@ class TestPlayoffPhase:
 
 
 class TestTennisThirdSetConsolation:
-    """Group stage standings give the 3rd-set loser 1 consolation match point."""
+    """Group stage standings: 3rd-set results are plain wins/losses (no consolation)."""
 
     def _make_simple_tournament(self):
         t = GroupPlayoffTournament(_make_players(4), num_groups=1, top_per_group=2)
@@ -293,7 +293,7 @@ class TestTennisThirdSetConsolation:
         t.record_group_result(m.id, (16, 15), sets=[(6, 4), (2, 6), (7, 5)], third_set_loss=True)
         assert m.third_set_loss is True
 
-    def test_winner_gets_win_loser_gets_consolation_point(self):
+    def test_winner_gets_win_loser_gets_loss(self):
         t = self._make_simple_tournament()
         m = t.all_group_matches()[0]
         t.record_group_result(m.id, (16, 15), sets=[(6, 4), (2, 6), (7, 5)], third_set_loss=True)
@@ -304,13 +304,10 @@ class TestTennisThirdSetConsolation:
         loser_row = next(r for r in rows if r["player"] in [p.name for p in m.team2])
 
         assert winner_row["wins"] == 1
-        assert winner_row["match_points"] == 3
-        assert loser_row["third_set_losses"] == 1
+        assert loser_row["losses"] == 1
         assert loser_row["draws"] == 0
-        assert loser_row["losses"] == 0
-        assert loser_row["match_points"] == 1
 
-    def test_normal_loss_gives_zero_points(self):
+    def test_normal_loss_gives_loss(self):
         t = self._make_simple_tournament()
         m = t.all_group_matches()[0]
         # Regular 2-set match, no consolation
@@ -322,7 +319,6 @@ class TestTennisThirdSetConsolation:
 
         assert loser_row["losses"] == 1
         assert loser_row["draws"] == 0
-        assert loser_row["match_points"] == 0
 
 
 class TestDoubleElimination:
@@ -437,13 +433,13 @@ class TestManualPlayoffParticipants:
         for entry in rec:
             assert "player_id" in entry
             assert "group" in entry
-            assert "match_points" in entry
+            assert "wins" in entry
 
     def test_recommend_playoff_participants_sorted_by_standings(self):
         t = self._ready_tournament()
         rec = t.recommend_playoff_participants()
-        keys = [(r["match_points"], r["point_diff"], r["points_for"]) for r in rec]
-        sorted_keys = sorted(keys, key=lambda k: (-k[0], -k[1], -k[2]))
+        keys = [(r["wins"], r["sets_diff"], r["point_diff"], r["points_for"]) for r in rec]
+        sorted_keys = sorted(keys, key=lambda k: (-k[0], -k[1], -k[2], -k[3]))
         assert keys == sorted_keys
 
     def test_start_playoffs_with_manual_selection(self):

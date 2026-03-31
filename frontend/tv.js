@@ -876,16 +876,20 @@ function _renderGP(tvSettings, status, groups, playoffs) {
       html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_group_standings')}</h2> <button class="format-info-btn" onclick="showAbbrevPopup(event,'standings')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></summary>`;
       html += `<div class="tv-section">`;
       for (const [gName, rows] of Object.entries(groups.standings || {})) {
+        const hasSets = rows.some(r => r.sets_won > 0 || r.sets_lost > 0);
         html += `<div class="group-block"><h3>${t('txt_txt_group_name_value', { value: esc(gName) })}</h3>`;
         html += `<table class="standings-table" data-type="gp"><thead><tr>`;
-        html += `<th>#</th><th>${status.team_mode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_pts_abbrev')}</th>`;
+        html += `<th>#</th><th>${status.team_mode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${t('txt_txt_p_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th>`;
+        if (hasSets) html += `<th>${t('txt_txt_sw_abbrev')}</th><th>${t('txt_txt_sl_abbrev')}</th><th>${t('txt_txt_sd_abbrev')}</th>`;
+        html += `<th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_diff_abbrev')}</th>`;
         html += `</tr></thead><tbody>`;
         rows.forEach((r, i) => {
           const isMe = tvState.playerId && r.player_id === tvState.playerId;
           html += `<tr${isMe ? ' class="my-row"' : ''}><td class="rank-cell">${i + 1}</td><td class="player-cell">${esc(r.player)}</td>`;
-          html += `<td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td>`;
+          html += `<td>${r.played}</td><td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td>`;
+          if (hasSets) html += `<td>${r.sets_won}</td><td>${r.sets_lost}</td><td>${r.sets_diff}</td>`;
           html += `<td>${r.points_for}</td><td>${r.points_against}</td>`;
-          html += `<td class="pts-cell">${r.match_points}</td></tr>`;
+          html += `<td>${r.point_diff}</td></tr>`;
         });
         html += `</tbody></table></div>`;
       }
@@ -1019,10 +1023,12 @@ function _buildAbbrevLegend(type) {
     [t('txt_txt_w_abbrev'),    t('txt_txt_abbrev_w_full')],
     [t('txt_txt_d_abbrev'),    t('txt_txt_abbrev_d_full')],
     [t('txt_txt_l_abbrev'),    t('txt_txt_abbrev_l_full')],
+    [t('txt_txt_sw_abbrev'),   t('txt_txt_abbrev_sw_full')],
+    [t('txt_txt_sl_abbrev'),   t('txt_txt_abbrev_sl_full')],
+    [t('txt_txt_sd_abbrev'),   t('txt_txt_abbrev_sd_full')],
     [t('txt_txt_pf_abbrev'),   t('txt_txt_abbrev_pf_full')],
     [t('txt_txt_pa_abbrev'),   t('txt_txt_abbrev_pa_full')],
     [t('txt_txt_diff_abbrev'), t('txt_txt_abbrev_diff_full')],
-    [t('txt_txt_pts_abbrev'),  t('txt_txt_abbrev_pts_full')],
   ] : [
     [t('txt_txt_total_pts_abbrev'), t('txt_txt_abbrev_total_pts_full')],
     [t('txt_txt_played_abbrev'),    t('txt_txt_abbrev_played_full')],

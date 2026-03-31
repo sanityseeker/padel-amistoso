@@ -132,10 +132,12 @@ function _buildAbbrevLegend(type) {
     [t('txt_txt_w_abbrev'),    t('txt_txt_abbrev_w_full')],
     [t('txt_txt_d_abbrev'),    t('txt_txt_abbrev_d_full')],
     [t('txt_txt_l_abbrev'),    t('txt_txt_abbrev_l_full')],
+    [t('txt_txt_sw_abbrev'),   t('txt_txt_abbrev_sw_full')],
+    [t('txt_txt_sl_abbrev'),   t('txt_txt_abbrev_sl_full')],
+    [t('txt_txt_sd_abbrev'),   t('txt_txt_abbrev_sd_full')],
     [t('txt_txt_pf_abbrev'),   t('txt_txt_abbrev_pf_full')],
     [t('txt_txt_pa_abbrev'),   t('txt_txt_abbrev_pa_full')],
     [t('txt_txt_diff_abbrev'), t('txt_txt_abbrev_diff_full')],
-    [t('txt_txt_pts_abbrev'),  t('txt_txt_abbrev_pts_full')],
   ] : [
     [t('txt_txt_total_pts_abbrev'), t('txt_txt_abbrev_total_pts_full')],
     [t('txt_txt_played_abbrev'),    t('txt_txt_abbrev_played_full')],
@@ -1646,9 +1648,14 @@ async function renderGP() {
     for (const [gName, rows] of Object.entries(groups.standings)) {
       html += `<div class="card" id="gp-group-card-${escAttr(gName)}"><h3 class="card-heading-row">${t('txt_txt_group_name_value', { value: esc(gName) })} <button class="format-info-btn" onclick="showAbbrevPopup(event,'standings')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h3>`;
       const hParticipant = status.team_mode ? t('txt_txt_team') : t('txt_txt_player');
-      html += `<table><thead><tr><th>${hParticipant}</th><th>${t('txt_txt_p_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_diff_abbrev')}</th><th>${t('txt_txt_pts_abbrev')}</th></tr></thead><tbody>`;
+      const hasSets = rows.some(r => r.sets_won > 0 || r.sets_lost > 0);
+      html += `<table><thead><tr><th>${hParticipant}</th><th>${t('txt_txt_p_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th>`;
+      if (hasSets) html += `<th>${t('txt_txt_sw_abbrev')}</th><th>${t('txt_txt_sl_abbrev')}</th><th>${t('txt_txt_sd_abbrev')}</th>`;
+      html += `<th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_diff_abbrev')}</th></tr></thead><tbody>`;
       for (const r of rows) {
-        html += `<tr><td>${esc(r.player)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td><td>${r.points_for}</td><td>${r.points_against}</td><td>${r.point_diff}</td><td><strong>${r.match_points}</strong></td></tr>`;
+        html += `<tr><td>${esc(r.player)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td>`;
+        if (hasSets) html += `<td>${r.sets_won}</td><td>${r.sets_lost}</td><td>${r.sets_diff}</td>`;
+        html += `<td>${r.points_for}</td><td>${r.points_against}</td><td>${r.point_diff}</td></tr>`;
       }
       html += `</tbody></table>`;
 
@@ -2127,7 +2134,11 @@ function _renderGpPlayoffEditor() {
       html += `<label class="gp-player-row">`;
       html += `<input type="checkbox" value="${r.player_id}" class="gp-advancing-cb"${checked} onchange="_gpToggleAdvancing(this)">`;
       html += `<span class="gp-player-name">${esc(r.player)}</span>`;
-      html += `<span class="gp-player-stats">${r.match_points} ${t('txt_txt_pts_abbrev')}, diff ${r.point_diff >= 0 ? '+' : ''}${r.point_diff}</span>`;
+      const _usesSets = r.sets_won > 0 || r.sets_lost > 0;
+      const _diffPart = _usesSets
+        ? `${t('txt_txt_sd_abbrev')}: ${r.sets_diff >= 0 ? '+' : ''}${r.sets_diff}, diff ${r.point_diff >= 0 ? '+' : ''}${r.point_diff}`
+        : `diff ${r.point_diff >= 0 ? '+' : ''}${r.point_diff}`;
+      html += `<span class="gp-player-stats">${r.wins} ${t('txt_txt_w_abbrev')}, ${_diffPart}</span>`;
       html += `</label>`;
     }
     html += `</div>`;
@@ -4012,9 +4023,18 @@ async function exportTournamentOutcome(format) {
       body += `<h2>${t('txt_txt_group_standings')}</h2>`;
       for (const [gName, rows] of Object.entries(groups.standings || {})) {
         body += `<h3>${t('txt_txt_group_name_value', { value: esc(gName) })}</h3>`;
+        const hasSets = rows.some(r => r.sets_won > 0 || r.sets_lost > 0);
+        const headers = [t('txt_txt_player'), t('txt_txt_played'), t('txt_txt_w_abbrev'), t('txt_txt_d_abbrev'), t('txt_txt_l_abbrev')];
+        if (hasSets) headers.push(t('txt_txt_sw_abbrev'), t('txt_txt_sl_abbrev'), t('txt_txt_sd_abbrev'));
+        headers.push(t('txt_txt_pf_abbrev'), t('txt_txt_pa_abbrev'), t('txt_txt_diff_abbrev'));
         body += _report_table(
-          [t('txt_txt_player'), t('txt_txt_played'), t('txt_txt_w_abbrev'), t('txt_txt_d_abbrev'), t('txt_txt_l_abbrev'), t('txt_txt_pf_abbrev'), t('txt_txt_pa_abbrev'), t('txt_txt_diff_abbrev'), t('txt_txt_pts_abbrev')],
-          rows.map(r => [r.player, r.played, r.wins, r.draws, r.losses, r.points_for, r.points_against, r.point_diff, r.match_points]),
+          headers,
+          rows.map(r => {
+            const base = [r.player, r.played, r.wins, r.draws, r.losses];
+            if (hasSets) base.push(r.sets_won, r.sets_lost, r.sets_diff);
+            base.push(r.points_for, r.points_against, r.point_diff);
+            return base;
+          }),
         );
       }
 
