@@ -83,6 +83,7 @@ body {
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
+  margin-top: 0.75rem;
   margin-bottom: 0.8rem;
 }
 .tv-title {
@@ -109,11 +110,6 @@ body {
   background: rgba(234, 179, 8, 0.18);
   border: 1px solid var(--yellow);
   color: var(--yellow);
-}
-.tv-badge-live {
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid var(--red);
-  color: var(--red);
 }
 .tv-badge-champion {
   background: rgba(34, 197, 94, 0.15);
@@ -719,7 +715,7 @@ html[data-theme="light"] .standings-table tr:hover td {
 
   /* Header: tighter, title wraps */
   .tv-header { margin-bottom: 1rem; padding-bottom: 0.6rem; gap: 0.3rem; }
-  .tv-header-row { gap: 0.6rem; }
+  .tv-header-row { gap: 0.6rem; margin-top: 1rem; }
   .tv-tournament-name { font-size: 1.25rem; }
   .tv-meta { gap: 0.4rem; flex-wrap: wrap; }
 
@@ -738,13 +734,11 @@ html[data-theme="light"] .standings-table tr:hover td {
   .standings-table th:nth-child(2),
   .standings-table td:nth-child(2) { white-space: normal; min-width: 5rem; }
 
-  /* GP table (# | Player | W | D | L | PF | PA | Pts): hide D, PF, PA */
-  .standings-table[data-type="gp"] th:nth-child(4),
-  .standings-table[data-type="gp"] td:nth-child(4),
-  .standings-table[data-type="gp"] th:nth-child(6),
-  .standings-table[data-type="gp"] td:nth-child(6),
-  .standings-table[data-type="gp"] th:nth-child(7),
-  .standings-table[data-type="gp"] td:nth-child(7) { display: none; }
+  /* GP table on narrow screens: hide D, SL, PF, PA — keep #, Player, P, W, L, (SW, SD), Diff */
+  .standings-table[data-type="gp"] .col-d,
+  .standings-table[data-type="gp"] .col-sl,
+  .standings-table[data-type="gp"] .col-pf,
+  .standings-table[data-type="gp"] .col-pa { display: none; }
 
   /* Mex table (# | Player | Total Pts | Played | W | D | L | Avg Pts): hide Played, D, L */
   .standings-table[data-type="mex"] th:nth-child(4),

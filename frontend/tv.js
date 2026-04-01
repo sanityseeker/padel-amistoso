@@ -879,17 +879,17 @@ function _renderGP(tvSettings, status, groups, playoffs) {
         const hasSets = rows.some(r => r.sets_won > 0 || r.sets_lost > 0);
         html += `<div class="group-block"><h3>${t('txt_txt_group_name_value', { value: esc(gName) })}</h3>`;
         html += `<table class="standings-table" data-type="gp"><thead><tr>`;
-        html += `<th>#</th><th>${status.team_mode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${t('txt_txt_p_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th>`;
-        if (hasSets) html += `<th>${t('txt_txt_sw_abbrev')}</th><th>${t('txt_txt_sl_abbrev')}</th><th>${t('txt_txt_sd_abbrev')}</th>`;
-        html += `<th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_diff_abbrev')}</th>`;
+        html += `<th class="col-hash">#</th><th class="col-player">${status.team_mode ? t('txt_txt_team') : t('txt_txt_player')}</th><th class="col-played">${t('txt_txt_p_abbrev')}</th><th class="col-w">${t('txt_txt_w_abbrev')}</th><th class="col-d">${t('txt_txt_d_abbrev')}</th><th class="col-l">${t('txt_txt_l_abbrev')}</th>`;
+        if (hasSets) html += `<th class="col-sw">${t('txt_txt_sw_abbrev')}</th><th class="col-sl">${t('txt_txt_sl_abbrev')}</th><th class="col-sd">${t('txt_txt_sd_abbrev')}</th>`;
+        html += `<th class="col-pf">${t('txt_txt_pf_abbrev')}</th><th class="col-pa">${t('txt_txt_pa_abbrev')}</th><th class="col-diff">${t('txt_txt_diff_abbrev')}</th>`;
         html += `</tr></thead><tbody>`;
         rows.forEach((r, i) => {
           const isMe = tvState.playerId && r.player_id === tvState.playerId;
-          html += `<tr${isMe ? ' class="my-row"' : ''}><td class="rank-cell">${i + 1}</td><td class="player-cell">${esc(r.player)}</td>`;
-          html += `<td>${r.played}</td><td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td>`;
-          if (hasSets) html += `<td>${r.sets_won}</td><td>${r.sets_lost}</td><td>${r.sets_diff}</td>`;
-          html += `<td>${r.points_for}</td><td>${r.points_against}</td>`;
-          html += `<td>${r.point_diff}</td></tr>`;
+          html += `<tr${isMe ? ' class="my-row"' : ''}><td class="rank-cell col-hash">${i + 1}</td><td class="player-cell col-player">${esc(r.player)}</td>`;
+          html += `<td class="col-played">${r.played}</td><td class="col-w">${r.wins}</td><td class="col-d">${r.draws}</td><td class="col-l">${r.losses}</td>`;
+          if (hasSets) html += `<td class="col-sw">${r.sets_won}</td><td class="col-sl">${r.sets_lost}</td><td class="col-sd">${r.sets_diff}</td>`;
+          html += `<td class="col-pf">${r.points_for}</td><td class="col-pa">${r.points_against}</td>`;
+          html += `<td class="col-diff">${r.point_diff}</td></tr>`;
         });
         html += `</tbody></table></div>`;
       }
@@ -1116,7 +1116,7 @@ function _buildHeader(name, phase, champion) {
       </div>
       <div style="display:flex;justify-content:center;gap:0.5rem;flex-wrap:wrap;margin-top:0.15rem">
         ${phaseLabel && phase !== 'finished' ? `<span class="tv-badge tv-badge-phase">${esc(phaseLabel)}</span>` : ''}
-        ${champion || phase === 'finished' ? `<span class="tv-badge tv-badge-champion">🏆 ${t('txt_txt_finished')}</span>` : `<span class="tv-badge tv-badge-live"><span style="font-size:0.7em">●</span> ${t('txt_txt_live')}</span>`}
+        ${champion || phase === 'finished' ? `<span class="tv-badge tv-badge-champion">🏆 ${t('txt_txt_finished')}</span>` : ''}
       </div>
       <div class="tv-header-row">
         <div class="tv-title">
