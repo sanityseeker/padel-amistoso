@@ -1,5 +1,7 @@
 ## v0.7.2 (2026-04-01)
 
+Fix frontend on a group stage
+
 ## v0.7.1 (2026-04-01)
 
 ### Fix
