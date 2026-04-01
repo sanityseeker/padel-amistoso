@@ -21,7 +21,7 @@ load_dotenv()
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from . import state as _state_module
 from ..auth import auth_router
@@ -35,6 +35,7 @@ from .routes_playoff import router as playoff_router
 from .routes_registration import router as registration_router
 from .routes_schema import router as schema_router
 from .routes_share import router as share_router
+from .routes_share import registration_share_router
 from .state import (  # noqa: F401  — re-exported for tests
     _counter,
     _load_state,
@@ -119,6 +120,7 @@ app.include_router(playoff_router)
 app.include_router(registration_router)
 app.include_router(schema_router)
 app.include_router(share_router)
+app.include_router(registration_share_router)
 
 # ────────────────────────────────────────────────────────────────────────────
 # Config endpoint
@@ -326,6 +328,12 @@ async def serve_icon_512() -> Response:
 async def serve_icon_512_maskable() -> Response:
     """Serve the 512×512 maskable PWA icon."""
     return _serve_png_file("icon-512-maskable.png")
+
+
+@app.get("/favicon.ico")
+async def serve_favicon() -> RedirectResponse:
+    """Redirect legacy favicon requests to the 192×192 PNG icon."""
+    return RedirectResponse(url="/icon-192.png", status_code=301)
 
 
 @app.get("/404.png")

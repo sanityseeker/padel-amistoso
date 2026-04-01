@@ -148,6 +148,18 @@ CREATE INDEX IF NOT EXISTS idx_reg_registrants
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_reg_token
     ON registrants (token);
+
+CREATE TABLE IF NOT EXISTS registration_shares (
+    registration_id TEXT NOT NULL,
+    username        TEXT NOT NULL,
+    PRIMARY KEY (registration_id, username)
+);
+
+CREATE INDEX IF NOT EXISTS idx_registration_shares_rid
+    ON registration_shares (registration_id);
+
+CREATE INDEX IF NOT EXISTS idx_registration_shares_username
+    ON registration_shares (username);
 """
 
 
@@ -247,6 +259,23 @@ def init_db() -> None:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tournament_shares_tid ON tournament_shares (tournament_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tournament_shares_username ON tournament_shares (username)")
+        # Migrate: create registration_shares table if missing
+        if "registration_shares" not in share_tables:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS registration_shares (
+                    registration_id TEXT NOT NULL,
+                    username        TEXT NOT NULL,
+                    PRIMARY KEY (registration_id, username)
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_registration_shares_rid ON registration_shares (registration_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_registration_shares_username ON registration_shares (username)"
+            )
         # Migrate registrants: level → answers JSON
         rnt_cols = {r[1] for r in conn.execute("PRAGMA table_info(registrants)").fetchall()}
         if rnt_cols:
@@ -304,6 +333,47 @@ def remove_co_editor(tournament_id: str, username: str) -> None:
         conn.execute(
             "DELETE FROM tournament_shares WHERE tournament_id = ? AND username = ?",
             (tournament_id, username),
+        )
+
+
+# ── Registration co-editor / sharing helpers ─────────────────────────────────
+
+
+def get_registration_co_editors(registration_id: str) -> list[str]:
+    """Return a list of usernames that have co-editor access to *registration_id*."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT username FROM registration_shares WHERE registration_id = ? ORDER BY username",
+            (registration_id,),
+        ).fetchall()
+    return [row["username"] for row in rows]
+
+
+def get_shared_registration_ids(username: str) -> list[str]:
+    """Return registration IDs where *username* has been granted co-editor access."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT registration_id FROM registration_shares WHERE username = ?",
+            (username,),
+        ).fetchall()
+    return [row["registration_id"] for row in rows]
+
+
+def add_registration_co_editor(registration_id: str, username: str) -> None:
+    """Grant *username* co-editor access to *registration_id* (idempotent)."""
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO registration_shares (registration_id, username) VALUES (?, ?)",
+            (registration_id, username),
+        )
+
+
+def remove_registration_co_editor(registration_id: str, username: str) -> None:
+    """Revoke co-editor access for *username* on *registration_id*."""
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM registration_shares WHERE registration_id = ? AND username = ?",
+            (registration_id, username),
         )
 
 

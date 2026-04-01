@@ -182,7 +182,325 @@ class TestDoubleElimination:
         assert bracket.champion() is not None
 
 
-class TestSchemaLossEdgeRewiring:
+class TestDoubleEliminationTopology:
+    """Tests for BracketTopology export and for_preview factory."""
+
+    def test_topology_contains_all_matches(self):
+        """topology() must reference every WR and LR match in the bracket."""
+        from backend.tournaments.playoff import BracketTopology
+
+        bracket = DoubleEliminationBracket(_teams(8))
+        topo = bracket.topology()
+
+        assert isinstance(topo, BracketTopology)
+        topo_wr_ids = {mref.id for rnd in topo.winners_rounds for mref in rnd}
+        topo_lr_ids = {mref.id for rnd in topo.losers_rounds for mref in rnd}
+
+        for m in bracket.winners_matches:
+            assert m.id in topo_wr_ids, f"WR match {m.id} missing from topology"
+        for m in bracket.losers_matches:
+            assert m.id in topo_lr_ids, f"LR match {m.id} missing from topology"
+
+    def test_topology_advancement_edges_match_internal(self):
+        """topology() advancement edges must exactly mirror _advancement dict."""
+        bracket = DoubleEliminationBracket(_teams(6))
+        topo = bracket.topology()
+
+        # Build set of (from, to, slot, is_loser) from internal dict
+        internal = {(fid, tid, slot, il) for fid, targets in bracket._advancement.items() for tid, slot, il in targets}
+        # Build same set from topology
+        from_topo = {(e.from_id, e.to_id, e.to_slot, e.is_loser) for e in topo.advancement_edges}
+        assert internal == from_topo
+
+    def test_for_preview_produces_same_round_count(self):
+        """for_preview(n) must produce the same bracket shape as a real n-team bracket."""
+        for n in (2, 4, 5, 6, 7, 8):
+            real = DoubleEliminationBracket(_teams(n))
+            preview = DoubleEliminationBracket.for_preview(n)
+            real_topo = real.topology()
+            prev_topo = preview.topology()
+
+            assert len(real_topo.winners_rounds) == len(prev_topo.winners_rounds), f"n={n}: WR round count mismatch"
+            assert len(real_topo.losers_rounds) == len(prev_topo.losers_rounds), f"n={n}: LR round count mismatch"
+            assert len(real_topo.advancement_edges) == len(prev_topo.advancement_edges), (
+                f"n={n}: advancement edge count mismatch"
+            )
+
+    @pytest.mark.parametrize("n", [2, 4, 5, 6, 7, 8, 16])
+    def test_topology_grand_final_reachable(self, n):
+        """Every bracket topology must have a wired path to the Grand Final."""
+        bracket = DoubleEliminationBracket.for_preview(n)
+        topo = bracket.topology()
+        # At least one edge must point to the grand_final
+        gf_targets = [e for e in topo.advancement_edges if e.to_id == topo.grand_final.id]
+        assert len(gf_targets) >= 1, f"n={n}: no edge leads to Grand Final"
+
+
+class TestDoubleEliminationWR2PairingFix:
+    """Verify that WR2 losers face each other before meeting LR1 survivors."""
+
+    def test_6_team_wr2_losers_play_each_other(self):
+        """For a 6-team bracket (2 WR1 byes), both WR2 losers must be wired
+        to the SAME LR match so they face each other, not LR1 survivors."""
+        bracket = DoubleEliminationBracket(_teams(6))
+
+        # Collect the loser advancement edges from WR2 matches (round_number=2).
+        wr2_matches = [m for m in bracket.winners_matches if m.round_label == "Winners R2"]
+        assert len(wr2_matches) == 2, "Expected 2 WR2 matches for 6 teams"
+
+        wr2_loser_targets: set[str] = set()
+        for wm in wr2_matches:
+            for to_id, _slot, is_loser in bracket._advancement.get(wm.id, []):
+                if is_loser:
+                    wr2_loser_targets.add(to_id)
+
+        assert len(wr2_loser_targets) == 1, (
+            "Both WR2 losers must be wired to the SAME LR match (they should play each other), "
+            f"but found {len(wr2_loser_targets)} distinct target(s)"
+        )
+
+    def test_6_team_lr2_match_has_two_wr2_loser_feeders(self):
+        """The LR2 match for a 6-team bracket must receive both of its teams
+        from WR2 losers (not a mix of WR2 loser + LR1 survivor)."""
+        bracket = DoubleEliminationBracket(_teams(6))
+        topo = bracket.topology()
+
+        # Build reverse map: to_id → list of (from_id, is_loser)
+        feeders: dict[str, list[tuple[str, bool]]] = {}
+        for edge in topo.advancement_edges:
+            feeders.setdefault(edge.to_id, []).append((edge.from_id, edge.is_loser))
+
+        wr2_ids = {mref.id for rnd in topo.winners_rounds[1:2] for mref in rnd}
+
+        for lr_round in topo.losers_rounds:
+            for mref in lr_round:
+                inbound = feeders.get(mref.id, [])
+                from_wr2 = [fid for fid, il in inbound if il and fid in wr2_ids]
+                if len(from_wr2) == 2:
+                    # Found the match where both WR2 losers meet — test passes.
+                    return
+
+        pytest.fail(
+            "No LR match found where both slots are fed by WR2 losers. "
+            "WR2 losers should play each other in their own minor round."
+        )
+
+    def test_6_team_wr1_losers_play_each_other(self):
+        """WR1 losers should be paired together (not each face a bye in LR1)."""
+        bracket = DoubleEliminationBracket(_teams(6))
+
+        # LR1 must have exactly 1 real (non-bye) match wiring 2 WR1 losers.
+        lr1_matches = [m for m in bracket.losers_matches if m.round_label == "Losers R1"]
+
+        # All WR1 loser advancement edges should target LR1 matches.
+        wr1_loser_targets: list[str] = []
+        for m in bracket.winners_matches:
+            if m.round_label != "Winners R1":
+                continue
+            for to_id, _slot, is_loser in bracket._advancement.get(m.id, []):
+                if is_loser:
+                    wr1_loser_targets.append(to_id)
+
+        # Both WR1 losers go to the same LR1 match (sequential pairing).
+        assert len(set(wr1_loser_targets)) == 1, (
+            f"Both WR1 losers should target a single LR1 match, "
+            f"but found {len(set(wr1_loser_targets))} distinct target(s)"
+        )
+        # That one LR1 match must have BOTH slots wired (no byes).
+        lr1_target_id = wr1_loser_targets[0]
+        assert lr1_target_id in {m.id for m in lr1_matches}
+        inbound_slots = [
+            slot
+            for from_id, targets in bracket._advancement.items()
+            for to_id, slot, is_loser in targets
+            if to_id == lr1_target_id and is_loser
+        ]
+        assert len(inbound_slots) == 2, "LR1 match should have both slots filled by WR1 losers"
+        assert set(inbound_slots) == {0, 1}, "LR1 match slots must be 0 and 1"
+
+    @pytest.mark.parametrize("n", [4, 8])
+    def test_full_bracket_structure_unchanged(self, n):
+        """For full power-of-2 brackets (no byes), LR structure must be standard.
+        Specifically: LR1 survivors count == WR2 dropper count, so no extra
+        minor round is inserted and the match count stays the same."""
+        bracket = DoubleEliminationBracket(_teams(n))
+        import math
+
+        bracket_size = 1 << (n - 1).bit_length()
+        num_rounds_w = int(math.log2(bracket_size))
+        # Standard DE: num_lr_rounds = 2*(k-1)
+        expected_lr_rounds = 2 * (num_rounds_w - 1)
+        actual_lr_rounds = len(set(m.round_number for m in bracket.losers_matches))
+        assert actual_lr_rounds == expected_lr_rounds, (
+            f"n={n}: expected {expected_lr_rounds} LR rounds, got {actual_lr_rounds}"
+        )
+
+    def test_6_team_full_playthrough(self):
+        """A 6-team bracket must complete correctly with the new LR structure."""
+        bracket = DoubleEliminationBracket(_teams(6))
+        for _ in range(30):
+            pending = bracket.pending_matches()
+            if not pending:
+                break
+            bracket.record_result(pending[0].id, (10, 0))
+        assert bracket.champion() is not None, "6-team double-elim must produce a champion"
+        gf = bracket.grand_final
+        assert gf.team1 and gf.team2, "Grand Final must have both teams assigned"
+
+    def test_10_team_lr_has_no_bye_matches(self):
+        """For 10 teams (2 WR1 real matches → 1 LR1 survivor, 4 WR2 losers → 2
+        LR2 survivors), the WR2 preliminary winners must pair among themselves
+        (LR3) before crossing with the LR1 survivor (LR4).  No LR match should
+        have a bye (unoccupied slot)."""
+        bracket = DoubleEliminationBracket(_teams(10))
+
+        feeders: dict[str, list[tuple[str, int, bool]]] = {}
+        for from_id, edges in bracket._advancement.items():
+            for to_id, slot, is_loser in edges:
+                feeders.setdefault(to_id, []).append((from_id, slot, is_loser))
+
+        bye_matches = []
+        for m in bracket.losers_matches:
+            slots_filled = {slot for _, slot, _ in feeders.get(m.id, [])}
+            if {0, 1} != slots_filled:
+                bye_matches.append(f"{m.round_label} p{m.pair_index} (slots={slots_filled})")
+
+        assert not bye_matches, (
+            f"All LR matches for 10 teams must have both slots filled (no byes). Byes found in: {bye_matches}"
+        )
+
+    def test_10_team_full_playthrough(self):
+        """A 10-team bracket must complete correctly with the fixed LR structure."""
+        bracket = DoubleEliminationBracket(_teams(10))
+        for _ in range(50):
+            pending = bracket.pending_matches()
+            if not pending:
+                break
+            bracket.record_result(pending[0].id, (10, 0))
+        assert bracket.champion() is not None, "10-team double-elim must produce a champion"
+        gf = bracket.grand_final
+        assert gf.team1 and gf.team2, "Grand Final must have both teams assigned"
+
+    def test_12_team_wr3_losers_play_each_other(self):
+        """For a 12-team bracket, both WR3 losers must be wired to the SAME
+        LR match so they face each other before meeting LR survivors."""
+        bracket = DoubleEliminationBracket(_teams(12))
+
+        wr3_matches = [m for m in bracket.winners_matches if m.round_label == "Winners R3"]
+        assert len(wr3_matches) == 2, "Expected 2 WR3 matches for 12 teams"
+
+        wr3_loser_targets: set[str] = set()
+        for wm in wr3_matches:
+            for to_id, _slot, is_loser in bracket._advancement.get(wm.id, []):
+                if is_loser:
+                    wr3_loser_targets.add(to_id)
+
+        assert len(wr3_loser_targets) == 1, (
+            "Both WR3 losers must be wired to the SAME LR match (they should play each other), "
+            f"but found {len(wr3_loser_targets)} distinct target(s)"
+        )
+
+    def test_12_team_wr3_preliminary_match_has_two_wr3_loser_feeders(self):
+        """The preliminary LR match for WR3 in a 12-team bracket must receive
+        both of its teams from WR3 losers (not a mix of WR3 loser + LR survivor)."""
+        bracket = DoubleEliminationBracket(_teams(12))
+        topo = bracket.topology()
+
+        feeders: dict[str, list[tuple[str, bool]]] = {}
+        for edge in topo.advancement_edges:
+            feeders.setdefault(edge.to_id, []).append((edge.from_id, edge.is_loser))
+
+        wr3_ids = {mref.id for rnd in topo.winners_rounds[2:3] for mref in rnd}
+
+        for lr_round in topo.losers_rounds:
+            for mref in lr_round:
+                inbound = feeders.get(mref.id, [])
+                from_wr3 = [fid for fid, il in inbound if il and fid in wr3_ids]
+                if len(from_wr3) == 2:
+                    return  # found the WR3 preliminary match
+
+        pytest.fail(
+            "No LR match found where both slots are fed by WR3 losers. "
+            "WR3 losers should play each other in their own preliminary minor round."
+        )
+
+    def test_12_team_full_playthrough(self):
+        """A 12-team bracket must complete correctly with the fixed LR structure."""
+        bracket = DoubleEliminationBracket(_teams(12))
+        for _ in range(60):
+            pending = bracket.pending_matches()
+            if not pending:
+                break
+            bracket.record_result(pending[0].id, (10, 0))
+        assert bracket.champion() is not None, "12-team double-elim must produce a champion"
+        gf = bracket.grand_final
+        assert gf.team1 and gf.team2, "Grand Final must have both teams assigned"
+
+    def test_12_team_viz_has_wr3_loser_pairing_node(self):
+        """For 12 teams, the schema graph must contain a losers-match node
+        that has two incoming 'loss' edges, both from Winners R3 nodes."""
+        from backend.viz.bracket_schema import _compute_playoff_layout
+
+        layout = _compute_playoff_layout([f"P{i}" for i in range(12)], "double", match_labels=None)
+        G = layout["graph"]
+        meta = layout["node_meta"]
+
+        found = False
+        for node in G.nodes():
+            if meta.get(node, {}).get("kind") != "losers_match":
+                continue
+            incoming = [(u, G.edges[u, node]["relation"]) for u in G.predecessors(node)]
+            loss_from_wr3 = [
+                u
+                for u, rel in incoming
+                if rel == "loss"
+                and meta.get(u, {}).get("kind") == "winners_match"
+                and meta.get(u, {}).get("round_header") == "Winners R3"
+            ]
+            if len(loss_from_wr3) == 2:
+                found = True
+                break
+
+        assert found, (
+            "Expected a losers-match node with two 'loss' edges from Winners R3 nodes "
+            "(WR3 losers should play each other in their own preliminary minor round)"
+        )
+
+
+class TestDoubleEliminationSchemaViz:
+    """Verify the viz correctly reflects the topology-driven bracket structure."""
+
+    def test_6_team_viz_has_wr2_loser_pairing_node(self):
+        """For 6 teams, the schema graph must contain a losers-match node
+        that has two incoming 'loss' edges, both from Winners R2 nodes."""
+        from backend.viz.bracket_schema import _compute_playoff_layout
+
+        layout = _compute_playoff_layout([f"P{i}" for i in range(6)], "double", match_labels=None)
+        G = layout["graph"]
+        meta = layout["node_meta"]
+
+        # Find all losers nodes whose two incoming edges are both 'loss' from WR2 nodes.
+        found = False
+        for node in G.nodes():
+            if meta.get(node, {}).get("kind") != "losers_match":
+                continue
+            incoming = [(u, G.edges[u, node]["relation"]) for u in G.predecessors(node)]
+            loss_from_winners = [
+                u
+                for u, rel in incoming
+                if rel == "loss"
+                and meta.get(u, {}).get("kind") == "winners_match"
+                and meta.get(u, {}).get("round_header") == "Winners R2"
+            ]
+            if len(loss_from_winners) == 2:
+                found = True
+                break
+
+        assert found, (
+            "Expected a losers-match node with two 'loss' edges from Winners R2 nodes "
+            "(WR2 losers should play each other in their own minor round)"
+        )
+
     """Verify that loss edges in the bracket diagram point to the correct losers match."""
 
     def test_loss_edges_match_actual_game_data_5_teams(self):

@@ -353,7 +353,7 @@ function _getLinkedTournamentIds() {
 }
 
 function _buildTournamentUrl(tid) {
-  let tvUrl = `/public.html?id=${encodeURIComponent(tid)}`;
+  let tvUrl = `/tv/${encodeURIComponent(tid)}`;
   try {
     const token = _getRegToken();
     if (token) tvUrl = `/tv/${encodeURIComponent(tid)}?player_token=${encodeURIComponent(token)}`;
@@ -886,7 +886,7 @@ function _showRedirectToast(tid) {
   toast.textContent = `🎾 ${t('txt_reg_tournament_started')}`;
   document.body.appendChild(toast);
 
-  let url = `/public.html?id=${encodeURIComponent(tid)}`;
+  let url = `/tv/${encodeURIComponent(tid)}`;
   try {
     const token = _getRegToken();
     if (token) url = `/tv/${encodeURIComponent(tid)}?player_token=${encodeURIComponent(token)}`;

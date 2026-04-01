@@ -306,7 +306,7 @@ async function refreshStatus() {
 function setTournamentLink({ id, alias }) {
   const tournamentLink = document.getElementById('tournament-link');
   if (tournamentLink) {
-    const link = alias ? `/${alias}` : `/tv?id=${id}`;
+    const link = alias ? `/${alias}` : `/tv/${encodeURIComponent(id)}`;
     tournamentLink.setAttribute('href', link);
   }
 }
@@ -316,7 +316,7 @@ function setTournamentLink({ id, alias }) {
  */
 function copyTournamentUrl() {
   const { id: tournamentId, alias } = getTournamentIdFromUrl();
-  const link = alias ? `/${alias}` : `/tv?id=${tournamentId}`;
+  const link = alias ? `/${alias}` : `/tv/${encodeURIComponent(tournamentId)}`;
   const fullUrl = window.location.origin + link;
   navigator.clipboard.writeText(fullUrl).then(() => {
     const copyButton = document.getElementById('copy-tv-url-button');

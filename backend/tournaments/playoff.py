@@ -9,8 +9,53 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from dataclasses import dataclass, field
 
 from ..models import Court, Match, MatchStatus, Player
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Bracket topology — pure-structural description, no Player objects
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class MatchRef:
+    """Lightweight reference to a bracket match (structural info only)."""
+
+    id: str
+    round_label: str
+    round_number: int
+    pair_index: int
+
+
+@dataclass(frozen=True, slots=True)
+class AdvancementEdge:
+    """A wired advancement between two bracket matches."""
+
+    from_id: str
+    to_id: str
+    to_slot: int  # 0 = team1, 1 = team2 of the target match
+    is_loser: bool  # True → loser of from_match goes here; False → winner
+
+
+@dataclass
+class BracketTopology:
+    """
+    Pure-structural description of a double-elimination bracket.
+
+    Carries no ``Player`` objects — only match references and wiring edges.
+    The visualisation layer uses this as its single source of truth for
+    bracket shape, replacing the previously duplicated layout logic that
+    lived in ``bracket_schema.py``.
+    """
+
+    bracket_size: int
+    winners_rounds: list[list[MatchRef]]  # outer = round index; inner = matches in that round
+    losers_rounds: list[list[MatchRef]]  # same layout for the losers bracket
+    grand_final: MatchRef
+    advancement_edges: list[AdvancementEdge] = field(default_factory=list)
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -221,13 +266,21 @@ class DoubleEliminationBracket:
     with a grand final (and potential reset if the losers-bracket winner
     beats the winners-bracket winner).
 
-    The losers bracket is **pre-generated** at construction time with
-    properly wired advancement edges.  Losers rounds alternate between:
+    The losers bracket is built **dynamically** at construction time so
+    that its structure adapts to the actual number of real matches per
+    winners round (i.e. byes are handled correctly).
 
-    * *minor* (odd rounds — LR1, LR3, …): pair teams from the same source
-      (WR1 losers for LR1; LR survivors for LR3+).
-    * *major* (even rounds — LR2, LR4, …): cross-bracket, pairing an LR
-      survivor with a WR dropout from the corresponding winners round.
+    Losers rounds follow a pool-based algorithm:
+
+    * **LR1 (minor)**: WR1 losers are paired sequentially among themselves.
+    * **Subsequent rounds**: for each WR round, if the WR losers *outnumber*
+      the current LR survivor pool, the WR losers first play a preliminary
+      minor round among themselves before the cross-bracket major round.
+      Otherwise they go directly into the major round.
+
+    This guarantees that same-round losers face each other before meeting
+    already-tested LR survivors, and produces correct structure for both
+    full power-of-2 brackets and brackets with byes.
 
     Byes in the losers bracket (empty slots due to WR byes) are detected
     after wiring and auto-resolved: the present team advances without
@@ -327,82 +380,18 @@ class DoubleEliminationBracket:
                     next_match = w_match_at[r + 1][next_pair]
                     self._add_advancement(match.id, next_match.id, slot, is_loser=False)
 
-        # --- Pre-generated losers bracket ---
+        # --- Dynamic losers bracket ---
         #
-        # Structure for bracket_size = 2^k  (k = num_rounds_w):
-        #   num_losers_rounds = 2 * (k - 1)
-        #   Matches per round (full bracket, before byes):
-        #     LR1 = LR2 = bracket_size / 4
-        #     LR3 = LR4 = bracket_size / 8
-        #     LR5 = LR6 = bracket_size / 16  …
-        #
-        # Pair-index mapping from WR to LR:
-        #   WR1  pair p  loser  →  LR1    pair p//2   slot p%2
-        #   WR(w+1) pair p loser →  LR(2w) pair p      slot 1
-        #
-        # Internal LR advancement:
-        #   LR_odd  pair p  winner →  LR(odd+1) pair p      slot 0
-        #   LR_even pair p  winner →  LR(even+1) pair p//2  slot p%2
-
-        num_lr = 2 * (num_rounds_w - 1) if num_rounds_w > 1 else 0
-        l_match_at: list[dict[int, Match]] = [{}]  # 1-indexed; index 0 unused
-
-        if num_lr > 0:
-            count = bracket_size // 4
-            for lr_idx in range(num_lr):
-                lr = lr_idx + 1  # 1-indexed round number
-                round_matches: dict[int, Match] = {}
-                for p in range(count):
-                    m = Match(
-                        team1=[],
-                        team2=[],
-                        court=None,
-                        round_number=lr,
-                        round_label=f"Losers R{lr}",
-                        pair_index=p,
-                    )
-                    round_matches[p] = m
-                    self._match_map[m.id] = m
-                    self.losers_matches.append(m)
-                l_match_at.append(round_matches)
-                # After a major round (even index, 1-based), halve for next minor
-                if lr % 2 == 0:
-                    count = max(count // 2, 1)
-
-        # Wire WR losers → LR
-        if num_lr > 0 and w_match_at:
-            # WR1 losers → LR1
-            for p, wm in w_match_at[0].items():
-                lr_pair = p // 2
-                lr_slot = p % 2
-                if lr_pair in l_match_at[1]:
-                    self._add_advancement(wm.id, l_match_at[1][lr_pair].id, lr_slot, is_loser=True)
-
-            # WR(w+1) losers → LR(2*w)  for w >= 1
-            for w in range(1, num_rounds_w):
-                lr_round = 2 * w
-                if lr_round > num_lr:
-                    break
-                for p, wm in w_match_at[w].items():
-                    if p in l_match_at[lr_round]:
-                        self._add_advancement(wm.id, l_match_at[lr_round][p].id, 1, is_loser=True)
-
-        # Wire LR internal advancement
-        if num_lr > 0:
-            for lr in range(1, num_lr):
-                next_lr = lr + 1
-                if lr % 2 == 1:
-                    # minor → major: same pair index, winner goes to slot 0
-                    for p, lm in l_match_at[lr].items():
-                        if p in l_match_at[next_lr]:
-                            self._add_advancement(lm.id, l_match_at[next_lr][p].id, 0, is_loser=False)
-                else:
-                    # major → minor: combine pairs (halve), winner goes to slot p%2
-                    for p, lm in l_match_at[lr].items():
-                        next_pair = p // 2
-                        next_slot = p % 2
-                        if next_pair in l_match_at[next_lr]:
-                            self._add_advancement(lm.id, l_match_at[next_lr][next_pair].id, next_slot, is_loser=False)
+        # Rounds are built sequentially rather than pre-allocated.  WR1 losers
+        # are paired together first (minor round), then for each subsequent WR
+        # round the losers are:
+        #   a) paired among themselves (new minor round) when they outnumber
+        #      existing LR survivors — ensures same-round losers meet each other
+        #      before facing losers from earlier WR rounds.
+        #   b) sent directly to the major cross-round otherwise (standard path).
+        # This produces the correct structure for both full brackets (8, 16 teams)
+        # and brackets with byes (5, 6, 7 teams).
+        last_lr_match = self._fill_losers_bracket(w_match_at)
 
         # Grand final placeholder
         self.grand_final = Match(
@@ -421,10 +410,9 @@ class DoubleEliminationBracket:
                 last_wm = list(last_w_round.values())[-1]
                 self._add_advancement(last_wm.id, self.grand_final.id, 0, is_loser=False)
 
-        # Wire last LR winner → GF team2  (or WR1 loser → GF team2 for 2 teams)
-        if num_lr > 0 and l_match_at[num_lr]:
-            last_lm = list(l_match_at[num_lr].values())[0]
-            self._add_advancement(last_lm.id, self.grand_final.id, 1, is_loser=False)
+        # Wire LR final winner → GF team2  (or WR1 loser → GF team2 for 2 teams)
+        if last_lr_match is not None:
+            self._add_advancement(last_lr_match.id, self.grand_final.id, 1, is_loser=False)
         elif num_rounds_w == 1 and w_match_at and 0 in w_match_at[0]:
             # Special case: 2 teams, no losers bracket — WR1 loser → GF team2
             self._add_advancement(w_match_at[0][0].id, self.grand_final.id, 1, is_loser=True)
@@ -433,6 +421,192 @@ class DoubleEliminationBracket:
         self._detect_and_resolve_byes()
 
         self._all_matches = list(self.winners_matches) + list(self.losers_matches) + [self.grand_final]
+
+    def _fill_losers_bracket(self, w_match_at: list[dict[int, Match]]) -> Match | None:
+        """
+        Dynamically build all losers bracket rounds and wire their advancement edges.
+
+        Returns the last LR match (whose winner advances to the Grand Final),
+        or ``None`` for the 2-team edge case (no losers bracket).
+
+        Algorithm
+        ---------
+        Each pool entry is a ``(match_id, is_loser)`` pair:
+
+        * ``is_loser=True``  — the *loser* of that match feeds the next LR slot.
+        * ``is_loser=False`` — the *winner* of that match feeds the next LR slot.
+
+        ``_pair_pool`` consumes a pool, creates one new LR round, wires
+        advancements, and returns the survivors as a new winner pool.
+
+        The structure follows standard double-elimination alternation:
+
+        1. **LR1 minor** — WR1 losers pair among themselves.
+        2. For each subsequent WR round:
+
+           a. **Preliminary minor** (optional) — if the WR round produces more
+              losers than there are current LR survivors, the WR losers first
+              play each other.  This also fires for *equal* counts after the
+              mandatory minor below reduces the LR pool, ensuring WR losers
+              of the same round always face each other before meeting
+              established LR survivors.
+           b. **Major cross-round** — the interleaved WR-loser pool and LR
+              survivor pool produce one set of new LR matches.
+           c. **Minor round** (after cross) — the LR survivors from the major
+              cross pair among themselves, halving the pool before the next WR
+              round drops in.  This step is skipped only after the *final* WR
+              round's major cross (which feeds directly into the Grand Final).
+
+        This alternation reproduces the standard DE bracket for power-of-2
+        sizes (8, 16 teams) unchanged, and correctly handles asymmetric
+        brackets with byes (e.g. 10 or 12 teams) so that every cohort of WR
+        losers competes among themselves before facing LR survivors.
+        """
+        num_rounds_w = len(w_match_at)
+        if num_rounds_w <= 1:
+            return None  # 2-team: WR1 loser wired directly to GF by caller
+
+        lr_round_num = 0
+        Pool = list[tuple[str, bool]]
+
+        def _pair_pool(pool: Pool) -> Pool:
+            """Pair adjacent pool entries into one new LR round; return winner pool."""
+            nonlocal lr_round_num
+            if not pool:
+                return []
+            lr_round_num += 1  # all matches in this call share the same round number
+            new_pool: Pool = []
+            for i in range(0, len(pool), 2):
+                a_id, a_is_loser = pool[i]
+                lm = Match(
+                    team1=[],
+                    team2=[],
+                    court=None,
+                    round_number=lr_round_num,
+                    round_label=f"Losers R{lr_round_num}",
+                    pair_index=i // 2,
+                )
+                self._match_map[lm.id] = lm
+                self.losers_matches.append(lm)
+                self._add_advancement(a_id, lm.id, 0, is_loser=a_is_loser)
+                if i + 1 < len(pool):
+                    b_id, b_is_loser = pool[i + 1]
+                    self._add_advancement(b_id, lm.id, 1, is_loser=b_is_loser)
+                # If i+1 >= len(pool): slot 1 has no source → bye slot,
+                # detected and resolved by _detect_and_resolve_byes().
+                new_pool.append((lm.id, False))  # winner of this LR match advances
+            return new_pool
+
+        # LR1: pair WR1 losers sequentially (not by absolute pair index).
+        # Sorting by pair_index gives a stable, deterministic order.
+        wr1_losers: Pool = [(m.id, True) for _, m in sorted(w_match_at[0].items())]
+        lr_pool: Pool = _pair_pool(wr1_losers) if len(wr1_losers) >= 2 else list(wr1_losers)
+
+        for w in range(1, num_rounds_w):
+            wr_losers: Pool = [(m.id, True) for _, m in sorted(w_match_at[w].items())]
+            if not wr_losers:
+                continue
+
+            # When WR round drops more losers than LR survivors, pair the WR
+            # losers among themselves first so they face each other before
+            # meeting hardened LR survivors.
+            if len(wr_losers) > len(lr_pool) and len(wr_losers) >= 2:
+                wr_pool: Pool = _pair_pool(wr_losers)
+            else:
+                wr_pool = wr_losers
+
+            # Reduce lr_pool until it matches wr_pool count.
+            while len(lr_pool) > len(wr_pool) and len(lr_pool) >= 2:
+                lr_pool = _pair_pool(lr_pool)
+
+            # Reduce wr_pool until it matches lr_pool count.  This handles
+            # the case where the preliminary reduced WR losers to more than
+            # the current LR survivors (e.g. 10-team: LR1→1 survivor,
+            # WR2 preliminary→2 survivors).  Without this step the cross would
+            # produce a bye; pairing the wr_pool extra minor here eliminates
+            # the bye and gives every team a real opponent.
+            while len(wr_pool) > len(lr_pool) and len(wr_pool) >= 2:
+                wr_pool = _pair_pool(wr_pool)
+
+            # Major cross-round: interleave lr survivors with wr survivors.
+            interleaved: Pool = []
+            for i in range(max(len(lr_pool), len(wr_pool))):
+                if i < len(lr_pool):
+                    interleaved.append(lr_pool[i])
+                if i < len(wr_pool):
+                    interleaved.append(wr_pool[i])
+            lr_pool = _pair_pool(interleaved)
+
+            # Standard DE alternation: always add a minor round after a major
+            # cross so that LR survivors compete among themselves before the
+            # next WR round drops in.  This ensures WR losers from the same
+            # round face each other (via the preliminary path) rather than
+            # being immediately seeded against established LR survivors.
+            # Skip only on the final WR round because its loss feeds the Grand
+            # Final cross directly (no further LR minor needed there).
+            if len(lr_pool) >= 2 and w + 1 < num_rounds_w:
+                lr_pool = _pair_pool(lr_pool)
+
+        # Final reduction to a single survivor (handles any residual imbalance).
+        while len(lr_pool) > 1:
+            lr_pool = _pair_pool(lr_pool)
+
+        if lr_pool:
+            last_lr_id, _ = lr_pool[0]
+            return self._match_map[last_lr_id]
+        return None
+
+    # ------------------------------------------------------------------ #
+    # Topology export
+    # ------------------------------------------------------------------ #
+
+    def topology(self) -> BracketTopology:
+        """
+        Return a ``BracketTopology`` describing the bracket structure.
+
+        The topology contains only match references and wiring edges — no
+        ``Player`` objects.  It is the single source of truth consumed by
+        the visualisation layer (``bracket_schema.py``) so that both the
+        game engine and the diagram always agree on the bracket shape.
+        """
+        by_round: defaultdict[int, list[MatchRef]] = defaultdict(list)
+        for m in self.winners_matches:
+            by_round[m.round_number].append(MatchRef(m.id, m.round_label, m.round_number, m.pair_index))
+        winners_rounds = [sorted(by_round[r], key=lambda x: x.pair_index) for r in sorted(by_round)]
+
+        lr_by_round: defaultdict[int, list[MatchRef]] = defaultdict(list)
+        for m in self.losers_matches:
+            lr_by_round[m.round_number].append(MatchRef(m.id, m.round_label, m.round_number, m.pair_index))
+        losers_rounds = [sorted(lr_by_round[r], key=lambda x: x.pair_index) for r in sorted(lr_by_round)]
+
+        gf = self.grand_final
+        gf_ref = MatchRef(gf.id, gf.round_label, gf.round_number, 0)
+
+        edges = [
+            AdvancementEdge(from_id, to_id, slot, is_loser)
+            for from_id, targets in self._advancement.items()
+            for to_id, slot, is_loser in targets
+        ]
+
+        return BracketTopology(
+            bracket_size=_next_power_of_two(len(self.original_teams)),
+            winners_rounds=winners_rounds,
+            losers_rounds=losers_rounds,
+            grand_final=gf_ref,
+            advancement_edges=edges,
+        )
+
+    @classmethod
+    def for_preview(cls, n: int) -> DoubleEliminationBracket:
+        """
+        Create a structurally correct bracket for *n* stub teams.
+
+        No real ``Player`` data is needed — this is used by the visualisation
+        layer to obtain the bracket topology before any actual players are
+        registered.
+        """
+        stub_teams = [[Player(name=f"S{i}")] for i in range(n)]
+        return cls(stub_teams)
 
     def _add_advancement(self, from_id: str, to_id: str, slot: int, is_loser: bool):
         self._advancement[from_id].append((to_id, slot, is_loser))

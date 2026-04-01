@@ -761,18 +761,19 @@ const _ADMIN_POLL_INTERVAL_MS = 15000;
 function _startAdminVersionPoll() {
   _stopAdminVersionPoll();
   if (!currentTid) return;
-  // Seed the version so the first poll doesn't trigger a spurious reload
-  fetch(`/api/tournaments/${currentTid}/version`, {
-    headers: _adminVersionEtag ? { 'If-None-Match': _adminVersionEtag } : undefined,
-  })
+  // Seed the version so the first poll doesn't trigger a spurious reload.
+  // Capture tid locally so the async callbacks don't clobber state for a
+  // different tournament if the user switches before the fetch resolves.
+  const _seedTid = currentTid;
+  fetch(`/api/tournaments/${_seedTid}/version`)
     .then((r) => {
       if (r.status === 304) return null;
       const etag = r.headers.get('etag');
-      if (etag) _adminVersionEtag = etag;
-      return r.json();
+      return r.json().then((d) => ({ etag, version: d.version }));
     })
     .then((d) => {
-      if (!d) return;
+      if (!d || currentTid !== _seedTid) return;
+      if (d.etag) _adminVersionEtag = d.etag;
       _adminLastKnownVersion = d.version;
     })
     .catch(() => {});
@@ -857,7 +858,8 @@ function _unpinTournament(id) {
   if (id === currentTid) {
     if (_openTournaments.length > 0) {
       const next = _openTournaments[_openTournaments.length - 1];
-      openTournament(next.id, next.type, next.name);
+      if (next.type === 'registration') openRegistration(next.id, next.name);
+      else openTournament(next.id, next.type, next.name);
     } else {
       _stopAdminVersionPoll();
       currentTid = null; currentType = null; currentTournamentName = null;
@@ -867,6 +869,36 @@ function _unpinTournament(id) {
   } else {
     _renderTournamentChips();
   }
+}
+
+function _isNotFoundError(error) {
+  const msg = String(error?.message || '');
+  return /not\s*found/i.test(msg);
+}
+
+function _recoverFromMissingOpenTournament(renderTid, error) {
+  if (!_isNotFoundError(error)) return false;
+  _openTournaments = _openTournaments.filter(tournament => tournament.id !== renderTid);
+  if (currentTid !== renderTid) {
+    _renderTournamentChips();
+    return true;
+  }
+
+  _stopAdminVersionPoll();
+  _stopRegDetailPoll();
+  currentTid = null;
+  currentType = null;
+  currentTournamentName = null;
+  updateActiveTournamentUI();
+
+  if (_openTournaments.length > 0) {
+    const next = _openTournaments[_openTournaments.length - 1];
+    if (next.type === 'registration') openRegistration(next.id, next.name);
+    else openTournament(next.id, next.type, next.name);
+  } else {
+    setActiveTab('home');
+  }
+  return true;
 }
 
 function _autoFillScore(matchId, total) {
@@ -930,13 +962,23 @@ function openRegistration(rid, name) {
 async function renderRegistration() {
   const el = document.getElementById('view-content');
   if (!el || !currentTid) return;
+  const _renderTid = currentTid;
   el.innerHTML = `<div class="card"><em>${t('txt_txt_loading')}</em></div>`;
   try {
-    const data = await api(`/api/registrations/${currentTid}`);
-    _regDetails[currentTid] = data;
+    const [data, collabResult] = await Promise.all([
+      api(`/api/registrations/${_renderTid}`),
+      getAuthUsername()
+        ? api(`/api/registrations/${_renderTid}/collaborators`).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    if (currentTid !== _renderTid) return;
+    _regDetails[_renderTid] = data;
     _currentRegDetail = data;
-    _renderRegDetailInline(currentTid);
+    if (collabResult) _regCollaborators[_renderTid] = collabResult.collaborators || [];
+    _renderRegDetailInline(_renderTid);
   } catch (e) {
+    if (currentTid !== _renderTid) return;
+    if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
     el.innerHTML = `<div class="card"><div class="alert alert-error">${esc(e.message)}</div></div>`;
   }
 }
@@ -1575,6 +1617,7 @@ async function createPO() {
 // ─── Render Group+Playoff ─────────────────────────────────
 async function renderGP() {
   _totalPts = 0;  // GP matches have no fixed total
+  const _renderTid = currentTid;
   const el = document.getElementById('view-content');
   try {
     const [status, groups, playoffs, tvSettings, playerSecrets, collabData] = await Promise.all([
@@ -1722,13 +1765,19 @@ async function renderGP() {
       html += `</div>`;
     }
 
+    if (currentTid !== _renderTid) return;
     el.innerHTML = html;
-  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  } catch (e) {
+    if (currentTid !== _renderTid) return;
+    if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
+    el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+  }
 }
 
 // ─── Render Standalone Playoff ────────────────────────────
 async function renderPO() {
   _totalPts = 0;
+  const _renderTid = currentTid;
   const el = document.getElementById('view-content');
   try {
     const [status, playoffs, tvSettings, playerSecrets, collabData] = await Promise.all([
@@ -1786,8 +1835,13 @@ async function renderPO() {
     }
     html += `</div>`;
 
+    if (currentTid !== _renderTid) return;
     el.innerHTML = html;
-  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  } catch (e) {
+    if (currentTid !== _renderTid) return;
+    if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
+    el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+  }
 }
 
 function matchRow(m, ctx) {
@@ -2245,6 +2299,7 @@ async function startPlayoffs() {
 
 // ─── Render Mexicano ──────────────────────────────────────
 async function renderMex() {
+  const _renderTid = currentTid;
   const el = document.getElementById('view-content');
   try {
     const [status, matches, tvSettings, playerSecrets, playoffsData, collabData] = await Promise.all([
@@ -2455,8 +2510,13 @@ async function renderMex() {
       }
     }
 
+    if (currentTid !== _renderTid) return;
     el.innerHTML = html;
-  } catch (e) { el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`; }
+  } catch (e) {
+    if (currentTid !== _renderTid) return;
+    if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
+    el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+  }
 }
 
 function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
@@ -4886,6 +4946,7 @@ async function _deleteTournamentAlias() {
 let _registrations = [];
 let _showArchivedRegistrations = false;
 let _regDetails = {};  // rid → full registration detail data
+let _regCollaborators = {};  // rid → list of co-editor usernames
 let _currentRegDetail = null;  // last-opened registration (for convert flow)
 let _regPollTimer = null;
 const _REG_POLL_INTERVAL_MS = 10000;
@@ -5045,7 +5106,9 @@ function _renderRegDetailInline(rid) {
   }
   html += `<div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.5rem">`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegSettings('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
-  html += `</div></div></details>`;
+  html += `</div>`;
+  html += _renderRegCollaboratorsSection(rid, _regCollaborators[rid] || []);
+  html += `</div></details>`;
 
   // Admin message section
   html += `<details class="reg-section" style="margin-bottom:1rem">`;
@@ -5165,7 +5228,7 @@ function _renderRegDetailInline(rid) {
       if (ttype) {
         html += `<a href="#" class="linked-tournament-link" onclick="openTournament('${esc(ltid)}','${esc(ttype)}','${esc(tname)}');return false" title="${esc(ltid)}">${esc(tname)}</a>`;
       } else {
-        html += `<a href="/public.html?id=${encodeURIComponent(ltid)}" class="linked-tournament-link" target="_blank" rel="noopener" title="${esc(ltid)}">${esc(tname)}</a>`;
+        html += `<a href="/tv/${encodeURIComponent(ltid)}" class="linked-tournament-link" target="_blank" rel="noopener" title="${esc(ltid)}">${esc(tname)}</a>`;
       }
     });
     html += `</div>`;
@@ -6984,6 +7047,103 @@ document.addEventListener('DOMContentLoaded', () => {
     loadTournaments();
   }
 });
+
+// ─── Registration Collaborators / Sharing ────────────────
+
+/**
+ * Render the Collaborators management card for a registration.
+ * Only visible to the registration owner and site admins.
+ */
+function _renderRegCollaboratorsSection(rid, collaborators) {
+  const r = _regDetails[rid];
+  if (!r) return '';
+  const isOwner = r.owner === getAuthUsername();
+  if (!isOwner && !isAdmin()) return '';
+
+  const list = collaborators || [];
+
+  let html = `<div style="margin-top:0.9rem;padding-top:0.75rem;border-top:1px solid var(--border)">`;
+  html += `<div style="font-weight:700;display:flex;align-items:center;gap:0.45rem;margin-bottom:0.55rem">`;
+  html += `👥 ${t('txt_txt_collaborators')}`;
+  if (list.length > 0) html += ` <span style="font-size:0.75rem;font-weight:400;color:var(--text-muted)">(${list.length})</span>`;
+  html += `</div>`;
+  html += `<p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:0.75rem">${t('txt_txt_collaborators_help')}</p>`;
+
+  // Add co-editor input row
+  html += `<div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap">`;
+  html += `<input type="text" id="reg-collab-username-input-${esc(rid)}" placeholder="${t('txt_txt_add_collaborator_placeholder')}"`;
+  html += ` list="reg-collab-username-suggestions-${esc(rid)}" autocomplete="off"`;
+  html += ` style="flex:1;min-width:180px;font-size:0.85rem"`;
+  html += ` oninput="_onRegCollabInput('${esc(rid)}', this.value)" onkeydown="if(event.key==='Enter')_addRegCollaborator('${esc(rid)}')">`;
+  html += `<datalist id="reg-collab-username-suggestions-${esc(rid)}"></datalist>`;
+  html += `<button type="button" class="btn btn-primary btn-sm" onclick="_addRegCollaborator('${esc(rid)}')">+ ${t('txt_txt_add_collaborator_btn')}</button>`;
+  html += `</div>`;
+  html += `<div id="reg-collab-error-${esc(rid)}" style="color:var(--danger,#ef4444);font-size:0.82rem;margin-bottom:0.5rem;display:none"></div>`;
+
+  // Current co-editors list
+  html += `<div id="reg-collab-list-${esc(rid)}">`;
+  if (list.length === 0) {
+    html += `<p style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem 0">${t('txt_txt_no_collaborators')}</p>`;
+  } else {
+    for (const username of list) {
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--border)">`;
+      html += `<span style="font-size:0.9rem">👤 ${esc(username)}</span>`;
+      html += `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem"`;
+      html += ` onclick="_removeRegCollaborator('${esc(rid)}', '${escAttr(username)}')">✕ ${t('txt_txt_remove')}</button>`;
+      html += `</div>`;
+    }
+  }
+  html += `</div>`;
+  html += `</div>`;
+  return html;
+}
+
+const _regCollabSearchTimers = {};
+function _onRegCollabInput(rid, value) {
+  clearTimeout(_regCollabSearchTimers[rid]);
+  const dl = document.getElementById(`reg-collab-username-suggestions-${rid}`);
+  if (!dl) return;
+  if (value.length < 2) { dl.innerHTML = ''; return; }
+  _regCollabSearchTimers[rid] = setTimeout(async () => {
+    try {
+      const results = await api(`/api/auth/users/search?q=${encodeURIComponent(value)}`);
+      dl.innerHTML = results.map(u => `<option value="${u.replace(/"/g, '&quot;')}">`).join('');
+    } catch (_) { /* silently ignore search errors */ }
+  }, 200);
+}
+
+async function _addRegCollaborator(rid) {
+  const input = document.getElementById(`reg-collab-username-input-${rid}`);
+  const errEl = document.getElementById(`reg-collab-error-${rid}`);
+  if (!input) return;
+  const username = input.value.trim();
+  if (!username) return;
+  if (errEl) errEl.style.display = 'none';
+  try {
+    const result = await api(`/api/registrations/${rid}/collaborators`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username }),
+    });
+    input.value = '';
+    _regCollaborators[rid] = result.collaborators || [];
+    _renderRegDetailInline(rid);
+  } catch (e) {
+    if (errEl) { errEl.textContent = e.message; errEl.style.display = ''; }
+    else alert(e.message);
+  }
+}
+
+async function _removeRegCollaborator(rid, username) {
+  if (!confirm(t('txt_txt_confirm_remove_collab', { username }))) return;
+  try {
+    const result = await api(`/api/registrations/${rid}/collaborators/${encodeURIComponent(username)}`, { method: 'DELETE' });
+    _regCollaborators[rid] = result.collaborators || [];
+    _renderRegDetailInline(rid);
+  } catch (e) {
+    alert(e.message);
+  }
+}
 
 // ─── Collaborators / Sharing ─────────────────────────────
 

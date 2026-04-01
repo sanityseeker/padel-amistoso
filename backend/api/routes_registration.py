@@ -33,7 +33,7 @@ from ..email import (
 from ..models import Court, Player, TournamentType
 from ..tournaments import GroupPlayoffTournament, MexicanoTournament, PlayoffTournament
 from ..tournaments.player_secrets import generate_passphrase, generate_token
-from .db import get_db
+from .db import add_co_editor, get_db, get_registration_co_editors, get_shared_registration_ids
 from .helpers import _store_tournament
 from .player_secret_store import lookup_registrant_by_passphrase, lookup_registrant_by_token
 from .schemas import (
@@ -146,11 +146,32 @@ def _get_registrants(rid: str) -> list[dict]:
 
 
 def _require_registration_owner(reg: dict, user: User) -> None:
-    """Raise 403 if *user* neither owns the registration nor is an admin."""
+    """Raise 403 if *user* neither owns the registration nor is an admin.
+
+    Use this only for destructive or share-management operations that should
+    be restricted to the original owner.
+    """
     if user.role == UserRole.ADMIN:
         return
     if reg.get("owner") != user.username:
         raise HTTPException(403, "You do not have permission to modify this registration")
+
+
+def _require_registration_editor(reg: dict, user: User) -> None:
+    """Raise 403 if *user* may not edit the registration.
+
+    Allowed callers:
+    - Admin users (bypass all ownership checks)
+    - The registration owner
+    - Users that have been granted co-editor access via ``registration_shares``
+    """
+    if user.role == UserRole.ADMIN:
+        return
+    if reg.get("owner") == user.username:
+        return
+    if user.username in get_registration_co_editors(reg["id"]):
+        return
+    raise HTTPException(403, "You do not have permission to modify this registration")
 
 
 def _parse_questions(raw: str | None) -> list[QuestionDef]:
@@ -395,7 +416,8 @@ async def list_registrations(
     include_archived: bool = Query(default=False),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
-    """List registrations owned by the current user (admins see all)."""
+    """List registrations owned by or shared with the current user (admins see all)."""
+    shared_ids: set[str] = set()
     with get_db() as conn:
         if user.role == UserRole.ADMIN:
             if include_archived:
@@ -405,16 +427,30 @@ async def list_registrations(
                     "SELECT * FROM registrations WHERE archived = 0 ORDER BY created_at DESC"
                 ).fetchall()
         else:
-            if include_archived:
-                rows = conn.execute(
-                    "SELECT * FROM registrations WHERE owner = ? ORDER BY created_at DESC",
-                    (user.username,),
-                ).fetchall()
+            shared_ids = set(get_shared_registration_ids(user.username))
+            if shared_ids:
+                placeholders = ",".join("?" * len(shared_ids))
+                if include_archived:
+                    rows = conn.execute(
+                        f"SELECT * FROM registrations WHERE owner = ? OR id IN ({placeholders}) ORDER BY created_at DESC",
+                        (user.username, *shared_ids),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        f"SELECT * FROM registrations WHERE (owner = ? OR id IN ({placeholders})) AND archived = 0 ORDER BY created_at DESC",
+                        (user.username, *shared_ids),
+                    ).fetchall()
             else:
-                rows = conn.execute(
-                    "SELECT * FROM registrations WHERE owner = ? AND archived = 0 ORDER BY created_at DESC",
-                    (user.username,),
-                ).fetchall()
+                if include_archived:
+                    rows = conn.execute(
+                        "SELECT * FROM registrations WHERE owner = ? ORDER BY created_at DESC",
+                        (user.username,),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT * FROM registrations WHERE owner = ? AND archived = 0 ORDER BY created_at DESC",
+                        (user.username,),
+                    ).fetchall()
     reg_ids = [row["id"] for row in rows]
     registrant_counts = _get_registrant_counts(reg_ids)
 
@@ -427,6 +463,7 @@ async def list_registrations(
         r["archived"] = bool(r.get("archived", 0))
         r["email_requirement"] = _email_requirement(r)
         r["converted_to_tids"] = _parse_tids(r.get("converted_to_tids"))
+        r["shared"] = r["id"] in shared_ids
         result.append(r)
     return result
 
@@ -479,7 +516,7 @@ async def list_public_registrations() -> list[RegistrationPublicOut]:
 async def get_registration(rid: str, user: User = Depends(get_current_user)) -> RegistrationAdminOut:
     """Get full details of a registration including all registrants."""
     reg = _get_registration(rid)
-    _require_registration_owner(reg, user)
+    _require_registration_editor(reg, user)
     reg_id = reg["id"]
     registrants = _get_registrants(reg_id)
     tids = _parse_tids(reg.get("converted_to_tids"))
@@ -525,7 +562,7 @@ async def get_registration(rid: str, user: User = Depends(get_current_user)) -> 
 async def update_registration(rid: str, req: RegistrationUpdate, user: User = Depends(get_current_user)) -> dict:
     """Update registration settings (partial)."""
     reg = _get_registration(rid)
-    _require_registration_owner(reg, user)
+    _require_registration_editor(reg, user)
     reg_id = reg["id"]
 
     updates: list[str] = []
@@ -618,7 +655,7 @@ async def admin_add_registrant(rid: str, req: RegistrantIn, user: User = Depends
     late entries or players who cannot use the public form.
     """
     reg = _get_registration(rid)
-    _require_registration_owner(reg, user)
+    _require_registration_editor(reg, user)
     reg_id = reg["id"]
 
     player_id = uuid.uuid4().hex[:8]
@@ -680,7 +717,7 @@ async def patch_registrant(
 ) -> dict:
     """Override a registrant's name or level (admin)."""
     reg = _get_registration(rid)
-    _require_registration_owner(reg, user)
+    _require_registration_editor(reg, user)
     reg_id = reg["id"]
 
     updates: list[str] = []
@@ -712,7 +749,7 @@ async def patch_registrant(
 async def delete_registrant(rid: str, player_id: str, user: User = Depends(get_current_user)) -> dict:
     """Remove a registrant from a registration."""
     reg = _get_registration(rid)
-    _require_registration_owner(reg, user)
+    _require_registration_editor(reg, user)
     reg_id = reg["id"]
     with get_db() as conn:
         cur = conn.execute(
@@ -728,7 +765,7 @@ async def delete_registrant(rid: str, player_id: str, user: User = Depends(get_c
 async def get_registration_secrets(rid: str, user: User = Depends(get_current_user)) -> list[dict]:
     """Return all passphrase/token pairs for printing."""
     reg = _get_registration(rid)
-    _require_registration_owner(reg, user)
+    _require_registration_editor(reg, user)
     reg_id = reg["id"]
     registrants = _get_registrants(reg_id)
     return [
@@ -887,7 +924,7 @@ async def convert_registration(
     assigned to at least one tournament.
     """
     registration = _get_registration(rid)
-    _require_registration_owner(registration, user)
+    _require_registration_editor(registration, user)
     reg_id = registration["id"]
 
     async with _get_registration_lock(reg_id):
@@ -1161,6 +1198,11 @@ async def convert_registration(
                 ],
             )
 
+        # Grant all current registration co-editors access to the new tournament so
+        # they can continue managing it without the owner having to re-share manually.
+        for co_editor in get_registration_co_editors(reg_id):
+            add_co_editor(tid, co_editor)
+
         # Append the new tid to converted_to_tids and keep the legacy single-tid column
         # for backward compatibility.  Auto-close the registration once every registrant
         # has been assigned to at least one tournament.
@@ -1211,7 +1253,7 @@ async def convert_registration(
 async def set_registration_alias(rid: str, req: SetAliasRequest, user: User = Depends(get_current_user)) -> dict:
     """Set a human-friendly alias for a registration (used in registration URLs)."""
     reg = _get_registration(rid)
-    _require_registration_owner(reg, user)
+    _require_registration_editor(reg, user)
     # Check uniqueness among registrations
     with get_db() as conn:
         existing = conn.execute(
@@ -1334,7 +1376,7 @@ async def player_cancel_registration(rid: str, req: RegistrantLoginIn, request: 
 async def delete_registration_alias(rid: str, user: User = Depends(get_current_user)) -> dict:
     """Remove the alias from a registration."""
     reg = _get_registration(rid)
-    _require_registration_owner(reg, user)
+    _require_registration_editor(reg, user)
     with get_db() as conn:
         conn.execute("UPDATE registrations SET alias = NULL WHERE id = ?", (reg["id"],))
     return {"ok": True}
@@ -1358,7 +1400,7 @@ async def send_registrant_email(
     _email_send_rate_limiter.record(client_ip)
 
     reg = _get_registration(rid)
-    _require_registration_owner(reg, user)
+    _require_registration_editor(reg, user)
     reg_id = reg["id"]
 
     with get_db() as conn:
@@ -1398,7 +1440,7 @@ async def send_all_registrant_emails(rid: str, request: Request, user: User = De
     _email_send_rate_limiter.record(client_ip)
 
     reg = _get_registration(rid)
-    _require_registration_owner(reg, user)
+    _require_registration_editor(reg, user)
     reg_id = reg["id"]
 
     registrants = _get_registrants(reg_id)
@@ -1438,7 +1480,7 @@ async def send_registration_message_emails(rid: str, request: Request, user: Use
     _email_send_rate_limiter.record(client_ip)
 
     reg = _get_registration(rid)
-    _require_registration_owner(reg, user)
+    _require_registration_editor(reg, user)
     reg_id = reg["id"]
 
     message = (reg.get("message") or "").strip()

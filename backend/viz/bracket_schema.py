@@ -36,6 +36,7 @@ import networkx as nx
 from matplotlib.patches import FancyBboxPatch
 
 from ..tournaments.pairing import seed_with_group_diversity
+from ..tournaments.playoff import DoubleEliminationBracket as _DEB
 
 # ────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -678,13 +679,24 @@ def _build_double_elim_bracket(
 
     winners_final_node = w_prev[0] if w_prev else None
 
-    # ── Losers bracket ──────────────────────────────────────────────────
-    # Standard double-elimination: losers bracket has 2*(W_rounds-1)
-    # total rounds.  When byes reduce the W-R1 pool, a later drop-in
-    # round may have *more* droppers than losers-bracket survivors.  In
-    # that case the excess droppers play each other first (reduction
-    # round) before being merged with existing survivors.
-    num_losers_rounds = max(1, 2 * (num_rounds_w - 1))
+    # ── Losers bracket (topology-driven) ───────────────────────────────
+    # The bracket topology is obtained from the same engine that runs the
+    # actual tournament, so the viz is always structurally consistent with
+    # playoff.py — no duplicate pairing logic needed.
+    topo = _DEB.for_preview(n_teams).topology()
+
+    # Reverse map: topo_match_id → [(from_id, to_slot, is_loser)]
+    edges_to: dict[str, list[tuple[str, int, bool]]] = {}
+    for _edge in topo.advancement_edges:
+        edges_to.setdefault(_edge.to_id, []).append((_edge.from_id, _edge.to_slot, _edge.is_loser))
+
+    # Map topo match IDs → already-created viz node IDs for WR matches.
+    id_to_viz: dict[str, str | None] = {}
+    for _r, _wr_round in enumerate(topo.winners_rounds):
+        for _mref in _wr_round:
+            _vn = f"w_r{_r}_p{_mref.pair_index}"
+            id_to_viz[_mref.id] = _vn if _vn in positions else None
+    id_to_viz[topo.grand_final.id] = "grand_final"  # created in the next section
 
     # Place losers well below the lowest node in the winners region.
     lowest_winners_y = min(
@@ -694,180 +706,108 @@ def _build_double_elim_bracket(
     )
     losers_gap = 2.0
     y_losers_top = lowest_winners_y - losers_gap
-
-    # Seed initial losers pool from W-R1 match nodes.
-    l_prev: list[str | None] = []
-    if w_match_nodes_per_round:
-        w_r0 = w_match_nodes_per_round[0]
-        l_prev = list(w_r0) + [None] * (bracket_size // 2 - len(w_r0))
-
     losers_stage_offset = 2 + num_rounds_w
 
-    # Pre-compute losers x-positions: midpoints between winners columns.
-    w_xs = [x_start + r * 3.0 for r in range(num_rounds_w)]
-    losers_x_slots: list[float] = []
-    for i in range(len(w_xs) - 1):
-        losers_x_slots.append((w_xs[i] + w_xs[i + 1]) / 2)
+    # Pre-compute LR round x-positions: midpoints between winners columns.
+    w_xs = [x_start + _r * 3.0 for _r in range(num_rounds_w)]
     w_step = 3.0
-    while len(losers_x_slots) < num_losers_rounds:
-        last = losers_x_slots[-1] if losers_x_slots else x_start + w_step / 2
-        losers_x_slots.append(last + w_step)
+    losers_x_slots: list[float] = []
+    for _i in range(len(w_xs) - 1):
+        losers_x_slots.append((w_xs[_i] + w_xs[_i + 1]) / 2)
+    for _ in range(len(topo.losers_rounds) - len(losers_x_slots)):
+        _last_x = losers_x_slots[-1] if losers_x_slots else x_start + w_step / 2
+        losers_x_slots.append(_last_x + w_step)
 
-    lr_idx = 0  # running losers-round counter (for node IDs & x-slots)
-    _losers_match_global_idx = 0  # sequential index matching bracket.losers_matches order
-    losers_idx_to_node: dict[int, str] = {}  # global_idx → node ID (for loss-edge rewiring)
-
-    # Running vertical cursor: each "dropper" match (both feeders from
-    # the winners bracket) gets the next slot so that independent losers
-    # branches sit at distinct y-levels — prevents later skip-edges from
-    # passing through intermediate cells.
+    # Stacking cursor: when both feeders are in the winners region, assign
+    # distinct y-slots to prevent edges from passing through other cells.
     _y_losers_cursor = y_losers_top
     _LOSERS_STACK_GAP = 1.6
 
-    def _do_losers_round(pool: list[str | None]) -> list[str | None]:
-        """Pair entries in *pool* into losers-bracket matches.
+    losers_idx_to_node: dict[int, str] = {}  # global_idx → viz node ID
+    global_idx = 0  # sequential index of real (non-bye) LR matches
+    losers_final_node: str | None = None
 
-        Increments the outer ``lr_idx`` and returns a list of survivors
-        (match-node IDs or pass-through nodes for byes).
-
-        Y-positioning strategy:
-        * If both feeders are already in the losers region → centre
-          between them (natural convergence).
-        * If one feeder is in the losers region → use that feeder's y
-          (the other feeder is a winners dropper above the region).
-        * If neither feeder is in the losers region (both are winners
-          drop-downs) → use a global stacking cursor so each such match
-          gets a unique y slot, preventing edge-through-cell collisions.
-        """
-        nonlocal lr_idx, _y_losers_cursor, _losers_match_global_idx
-        round_num = lr_idx + 1
-        round_name = f"Losers R{round_num}"
-        x_lr = (
-            losers_x_slots[lr_idx]
-            if lr_idx < len(losers_x_slots)
+    for _lr_round_idx, _lr_round in enumerate(topo.losers_rounds):
+        _round_num = _lr_round_idx + 1
+        _round_name = f"Losers R{_round_num}"
+        _x_lr = (
+            losers_x_slots[_lr_round_idx]
+            if _lr_round_idx < len(losers_x_slots)
             else (losers_x_slots[-1] + w_step if losers_x_slots else x_start + w_step / 2)
         )
+        _round_nodes: list[str] = []
 
-        num_pairs = len(pool) // 2
-        if num_pairs == 0:
-            lr_idx += 1
-            return list(pool)
+        for _mref in _lr_round:
+            _feeders = edges_to.get(_mref.id, [])
 
-        curr: list[str | None] = []
-        match_nodes: list[str] = []
-
-        for p_idx in range(num_pairs):
-            n1 = pool[2 * p_idx] if 2 * p_idx < len(pool) else None
-            n2 = pool[2 * p_idx + 1] if 2 * p_idx + 1 < len(pool) else None
-            mid = f"l_r{lr_idx}_p{p_idx}"
-
-            if n1 is None and n2 is None:
-                curr.append(None)
-                continue
-            if n1 is not None and n2 is None:
-                curr.append(n1)
-                continue
-            if n1 is None and n2 is not None:
-                curr.append(n2)
+            # A LR match with fewer than 2 incoming edges is a bye slot —
+            # skip it.  Both _build_match_labels and this loop skip byes,
+            # keeping global_idx aligned with the l_{idx} keys in match_labels.
+            if len(_feeders) < 2:
+                id_to_viz[_mref.id] = None
                 continue
 
-            # Determine which feeders are already in the losers region.
-            eps = 0.01  # small tolerance for float comparison
-            n1_y = positions.get(n1, (0, 0))[1]
-            n2_y = positions.get(n2, (0, 0))[1]
-            n1_in_losers = n1_y <= y_losers_top + eps
-            n2_in_losers = n2_y <= y_losers_top + eps
+            # Resolve feeder viz nodes and their y-positions.
+            _feeder_vns = [id_to_viz.get(_fid) for _fid, _, _ in _feeders]
+            _feeder_ys = [positions[_fv][1] for _fv in _feeder_vns if _fv and _fv in positions]
+            _feeder_in_losers = [
+                positions[_fv][1] <= y_losers_top + 0.01 for _fv in _feeder_vns if _fv and _fv in positions
+            ]
 
-            if n1_in_losers and n2_in_losers:
-                # Both in losers region → centre between them.
-                y_mid = (n1_y + n2_y) / 2
-            elif n1_in_losers:
-                y_mid = n1_y
-            elif n2_in_losers:
-                y_mid = n2_y
+            if len(_feeder_ys) == 2:
+                if all(_feeder_in_losers):
+                    _y_mid = (_feeder_ys[0] + _feeder_ys[1]) / 2
+                elif any(_feeder_in_losers):
+                    _y_mid = _feeder_ys[_feeder_in_losers.index(True)]
+                else:
+                    _y_mid = _y_losers_cursor
+                    _y_losers_cursor -= _LOSERS_STACK_GAP
+            elif _feeder_ys:
+                _y_mid = _feeder_ys[0]
             else:
-                # Both from winners → assign next stacking slot.
-                y_mid = _y_losers_cursor
+                _y_mid = _y_losers_cursor
                 _y_losers_cursor -= _LOSERS_STACK_GAP
 
-            label = f"Match {p_idx + 1}" if num_pairs > 1 else ""
-            G.add_node(mid)
-            node_meta[mid] = {
-                "label": label,
+            _mid = f"l_{global_idx}"
+            _label = f"Match {_mref.pair_index + 1}" if len(_lr_round) > 1 else ""
+            G.add_node(_mid)
+            node_meta[_mid] = {
+                "label": _label,
                 "kind": "losers_match",
-                "stage": losers_stage_offset + lr_idx,
-                "round_header": round_name,
+                "stage": losers_stage_offset + _lr_round_idx,
+                "round_header": _round_name,
             }
-            # Overlay actual team names + score if available
-            md = (match_labels or {}).get(f"l_{_losers_match_global_idx}")
-            if md:
-                node_meta[mid]["label"] = _label_from_match_data(md)
-                node_meta[mid]["has_teams"] = True
-            losers_idx_to_node[_losers_match_global_idx] = mid
-            _losers_match_global_idx += 1
-            positions[mid] = (x_lr, y_mid)
+            _md = (match_labels or {}).get(f"l_{global_idx}")
+            if _md:
+                node_meta[_mid]["label"] = _label_from_match_data(_md)
+                node_meta[_mid]["has_teams"] = True
+            positions[_mid] = (_x_lr, _y_mid)
+            id_to_viz[_mref.id] = _mid
+            losers_idx_to_node[global_idx] = _mid
+            _round_nodes.append(_mid)
+            losers_final_node = _mid
+            global_idx += 1
 
-            if n1:
-                G.add_edge(n1, mid, relation="win")
-            if n2:
-                G.add_edge(n2, mid, relation="win")
-            curr.append(mid)
-            match_nodes.append(mid)
+        if _round_nodes:
+            _enforce_min_spacing(positions, _round_nodes)
+            stages.append({"name": _round_name, "x": _x_lr, "nodes": _round_nodes})
 
-        # Handle odd trailing entry
-        if len(pool) % 2 == 1:
-            curr.append(pool[-1])
-
-        _enforce_min_spacing(positions, curr)
-        if match_nodes:
-            stages.append({"name": round_name, "x": x_lr, "nodes": match_nodes})
-            lr_idx += 1
-        return curr
-
-    def _interleave_pools(
-        a: list[str | None],
-        b: list[str | None],
-    ) -> list[str | None]:
-        """Interleave two pools, padding the shorter with ``None``."""
-        max_len = max(len(a), len(b))
-        merged: list[str | None] = []
-        for i in range(max_len):
-            merged.append(a[i] if i < len(a) else None)
-            merged.append(b[i] if i < len(b) else None)
-        return merged
-
-    # Initial reduction: W-R1 losers play each other (if enough to pair).
-    if sum(1 for x in l_prev if x is not None) >= 2:
-        l_prev = _do_losers_round(l_prev)
-
-    # Subsequent rounds: merge droppers from each winners round, then
-    # reduce.  This mirrors the game engine's FIFO queue: losers from
-    # earlier rounds pair with the next available opponent.
-    for wr in range(1, num_rounds_w):
-        if wr >= len(w_match_nodes_per_round):
-            break
-        droppers: list[str | None] = list(w_match_nodes_per_round[wr])
-
-        # Merge current losers survivors with new droppers.
-        merged = _interleave_pools(l_prev, droppers)
-        l_prev = _do_losers_round(merged)
-
-        # Reduction round: if pool still has ≥ 2 real entries, pair again.
-        if sum(1 for x in l_prev if x is not None) >= 2:
-            l_prev = _do_losers_round(l_prev)
-
-    losers_final_node = l_prev[0] if l_prev else None
-
-    # ── Mark loss edges: winners matches → losers bracket ───────────────
-    # Every winners match has two outcomes: the winner advances in the
-    # winners bracket (already "win"), the loser drops to the losers
-    # bracket (mark as "loss").
-    for r_nodes in w_match_nodes_per_round:
-        for wn in r_nodes:
-            for succ in list(G.successors(wn)):
-                succ_kind = node_meta.get(succ, {}).get("kind", "")
-                if succ_kind == "losers_match":
-                    G.edges[wn, succ]["relation"] = "loss"
+    # Add topology-driven edges between bracket matches.
+    # WR→WR winner edges are already added by the winners loop above, so skip them.
+    for _edge in topo.advancement_edges:
+        _from_viz = id_to_viz.get(_edge.from_id)
+        _to_viz = id_to_viz.get(_edge.to_id)
+        if not _from_viz or not _to_viz:
+            continue
+        if _from_viz not in positions or _to_viz not in positions:
+            continue
+        if node_meta.get(_to_viz, {}).get("kind") == "winners_match":
+            continue  # WR→WR edges already created by winners loop
+        _relation = "loss" if _edge.is_loser else "win"
+        if G.has_edge(_from_viz, _to_viz):
+            G.edges[_from_viz, _to_viz]["relation"] = _relation
+        else:
+            G.add_edge(_from_viz, _to_viz, relation=_relation)
 
     # ── Data-driven loss-edge rewiring ──────────────────────────────────
     # The structural loss edges above are determined by bracket position,
