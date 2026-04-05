@@ -1,3 +1,9 @@
+## v0.8.0 (2026-04-06)
+
+### Feat
+
+- **mexicano**: improve matches balancing logic
+
 ## v0.7.3 (2026-04-01)
 
 ### Fix
