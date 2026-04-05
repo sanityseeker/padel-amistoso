@@ -246,6 +246,18 @@ body {
   border-bottom: 2px solid var(--border);
   white-space: nowrap;
 }
+/* ── Sortable leaderboard columns (Mexicano TV) ── */
+.tv-sortable-col {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.12s;
+}
+.tv-sortable-col:hover {
+  color: var(--accent);
+}
+.tv-sort-active {
+  color: var(--accent);
+}
 .standings-table td {
   padding: 0.45rem 0.75rem;
   border-bottom: 1px solid var(--border);

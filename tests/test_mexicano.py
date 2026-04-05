@@ -502,11 +502,11 @@ class TestMexicanoWinBonus:
             MexicanoTournament(_make_players(4), _make_courts(1), win_bonus=-1)
 
 
-class TestMexicanoStrengthWeight:
-    """Strength-weight coefficient boosts points when beating stronger opponents."""
+class TestMexicanoBuchholzStrength:
+    """Buchholz-based strength weighting boosts points when beating stronger opponents."""
 
-    def test_beating_top_player_gives_more(self):
-        """Points scored against top-ranked opponents should exceed the raw score."""
+    def test_beating_top_player_gives_more_to_weaker_team(self):
+        """Weaker team facing strong opponents gets a multiplier bonus."""
         players = _make_players(4)
         t = MexicanoTournament(
             players,
@@ -515,22 +515,30 @@ class TestMexicanoStrengthWeight:
             num_rounds=2,
             strength_weight=1.0,
         )
-        # Make players[0] and [1] dominant so they pair together
+        # Give all 4 players distinct raw averages so relative strength is meaningful
         t.scores[players[0].id] = 200
-        t.scores[players[1].id] = 190
+        t.scores[players[1].id] = 150
+        t.scores[players[2].id] = 50
+        t.scores[players[3].id] = 30
+        t._raw_scores[players[0].id] = 200
+        t._raw_scores[players[1].id] = 150
+        t._raw_scores[players[2].id] = 50
+        t._raw_scores[players[3].id] = 30
+        t._matches_played[players[0].id] = 10
+        t._matches_played[players[1].id] = 10
+        t._matches_played[players[2].id] = 10
+        t._matches_played[players[3].id] = 10
 
         t.generate_next_round()
         m = t.current_round_matches()[0]
 
-        before = {p.id: t.scores[p.id] for p in players}
-        t.record_result(m.id, (20, 12))
-
-        gain1 = [t.scores[p.id] - before[p.id] for p in m.team1]
-        gain2 = [t.scores[p.id] - before[p.id] for p in m.team2]
-
-        # At strength_weight=1.0 the weaker team plays against a strong opponent
-        # so at least one team must earn more than the raw score
-        assert max(max(gain1), max(gain2)) > 20
+        # Check relative_strength is asymmetric
+        rs1 = t._relative_strength(m.team1, m.team2)
+        rs2 = t._relative_strength(m.team2, m.team1)
+        # One side must be facing stronger opponents (positive relative strength)
+        assert rs1 > 0 or rs2 > 0
+        # The other side should get 0 or less relative bonus
+        assert rs1 == 0 or rs2 == 0
 
     def test_out_of_range_strength_weight_rejected(self):
         with pytest.raises(ValueError, match="strength_weight"):
@@ -547,6 +555,8 @@ class TestMexicanoStrengthWeight:
             strength_weight=0.0,
         )
         t.scores[players[0].id] = 500  # huge ranking imbalance
+        t._raw_scores[players[0].id] = 500
+        t._matches_played[players[0].id] = 10
         t.generate_next_round()
         m = t.current_round_matches()[0]
         before = {p.id: t.scores[p.id] for p in players}
@@ -577,8 +587,8 @@ class TestMexicanoStrengthWeight:
         for p in m.team2:
             assert t.scores[p.id] == 12
 
-    def test_strength_uses_estimated_scores_for_sit_out(self):
-        """Players with fewer matches get extrapolated scores for strength calc."""
+    def test_relative_strength_uses_raw_scores(self):
+        """Relative strength is based on raw per-match averages, not adjusted scores."""
         players = _make_players(4)
         t = MexicanoTournament(
             players,
@@ -587,13 +597,11 @@ class TestMexicanoStrengthWeight:
             num_rounds=3,
             strength_weight=1.0,
         )
-        # Simulate: P0 played 3 matches (score 60), P1 played 2 (score 40)
-        # P2 played 3 (score 30), P3 played 3 (score 15)
-        t.scores = {
-            players[0].id: 60,
-            players[1].id: 40,
-            players[2].id: 30,
-            players[3].id: 15,
+        t._raw_scores = {
+            players[0].id: 60,  # avg 20
+            players[1].id: 40,  # avg 20
+            players[2].id: 30,  # avg 10
+            players[3].id: 15,  # avg 5
         }
         t._matches_played = {
             players[0].id: 3,
@@ -601,10 +609,79 @@ class TestMexicanoStrengthWeight:
             players[2].id: 3,
             players[3].id: 3,
         }
-        # P1 estimated = 40 + (40/2)*1 = 60  (same as P0)
-        strength = t._opponent_strength([players[1]])
-        # max_est = 60 (P0), P1 est = 60 → strength = 60/60 = 1.0
-        assert abs(strength - 1.0) < 0.01
+        # P2 (avg=10) vs P0 (avg=20): relative = (20-10)/20 = 0.5
+        rel = t._relative_strength([players[2]], [players[0]])
+        assert abs(rel - 0.5) < 0.01
+
+        # P0 (avg=20) vs P2 (avg=10): relative = max(0, (10-20)/20) = 0.0
+        rel = t._relative_strength([players[0]], [players[2]])
+        assert rel == 0.0
+
+        # P0 (avg=20) vs P1 (avg=20): relative = (20-20)/20 = 0.0
+        rel = t._relative_strength([players[0]], [players[1]])
+        assert rel == 0.0
+
+    def test_equal_strength_no_bonus(self):
+        """When both teams have equal raw averages, neither gets a multiplier."""
+        players = _make_players(4)
+        t = MexicanoTournament(
+            players,
+            _make_courts(1),
+            total_points_per_match=32,
+            num_rounds=2,
+            strength_weight=1.0,
+        )
+        # All players same raw avg
+        for p in players:
+            t._raw_scores[p.id] = 40
+            t._matches_played[p.id] = 2
+            t.scores[p.id] = 40
+        t._est_cache = None
+        t.generate_next_round()
+        m = t.current_round_matches()[0]
+        before = {p.id: t.scores[p.id] for p in players}
+        t.record_result(m.id, (20, 12))
+        # Equal raw avgs → relative strength = 0 → mult = 1.0 → raw scores only
+        for p in m.team1:
+            assert t.scores[p.id] - before[p.id] == 20
+        for p in m.team2:
+            assert t.scores[p.id] - before[p.id] == 12
+
+    def test_buchholz_in_leaderboard(self):
+        """Leaderboard entries include a buchholz field."""
+        players = _make_players(4)
+        t = MexicanoTournament(
+            players,
+            _make_courts(1),
+            total_points_per_match=32,
+            num_rounds=2,
+        )
+        t.generate_next_round()
+        m = t.current_round_matches()[0]
+        t.record_result(m.id, (20, 12))
+        lb = t.leaderboard()
+        for entry in lb:
+            assert "buchholz" in entry
+
+    def test_buchholz_score_reflects_opponent_raw_totals(self):
+        """Buchholz score is the sum of opponents' raw totals weighted by encounters."""
+        players = _make_players(4)
+        t = MexicanoTournament(
+            players,
+            _make_courts(1),
+            total_points_per_match=32,
+            num_rounds=2,
+        )
+        t.generate_next_round()
+        m = t.current_round_matches()[0]
+        t.record_result(m.id, (20, 12))
+        # After 1 match, each player faced 2 opponents
+        # team1 players faced team2 players (each once)
+        for p in m.team1:
+            bh = t._buchholz_score(p.id)
+            # Buchholz = sum of opponents' raw totals × encounter count
+            expected = sum(t._raw_scores[opp.id] for opp in m.team2)
+            assert abs(bh - expected) < 0.01
 
 
 class TestMexicanoLossDiscount:
@@ -1420,10 +1497,11 @@ class TestPairingRepeatCount:
         t._partner_history[b.id][a.id] = 1
         # New match: [A, B] vs [E, F] — different opponents
         count = t._pairing_repeat_count([a, b], [e, f])
-        # Base: partner(A,B)=1 + partner(B,A)=1 from team1 side
-        #   + partner(E,F)=0 + partner(F,E)=0 from team2 side
-        #   + no opponent history → no full-similarity bonus
-        assert count == 2
+        # teammate_repeat_weight=2.0 by default:
+        #   team1 side: partner(A,B)=1→×2=2 + partner(B,A)=1→×2=2 = 4
+        #   team2 side: partner(E,F)=0, no opp history → 0
+        #   total = 4
+        assert count == 4.0
 
     def test_opponent_only_repeat(self):
         """Opponent repeat without partner overlap gives base count only."""
@@ -1485,16 +1563,96 @@ class TestPairingRepeatCount:
                 t._opponent_history[p2.id][p1.id] = 1
 
         count = t._pairing_repeat_count([a, b], [c, d])
-        # Base from team1: partner(A,B)=1 + partner(B,A)=1 + 4 opp counts = 6
-        # Base from team2: partner(C,D)=1 + partner(D,C)=1 + 4 opp counts = 6
-        # Bonus: 4 players × min(1, min(1,1)) = 4
-        # Total: 6 + 6 + 4 = 16
-        assert count == 16
+        # Default teammate_weight=2.0, opponent_weight=1.0.
+        # Half from team1: per player A (and B symmetrically):
+        #   partner: raw=1 → 2.0×1 = 2.0
+        #   opponents C,D: raw=1 each → 1.0×1 + 1.0×1 = 2.0
+        #   bonus: min(raw_partner=1, min(raw_opps)=1) × min(2,1) = 1×1 = 1.0
+        #   per player = 5.0 → both A+B → half from team1 = 10.0
+        # Half from team2: symmetric → 10.0
+        # Total: 20.0
+        assert count == 20.0
 
+    def test_repeat_weights_configurable(self):
+        """Custom teammate/opponent weights scale each repeat axis independently."""
+        players = _make_players(4)
+        a, b, c, d = players
+        # Equal weights (1/1) — behaves like the original formula.
+        t_equal = MexicanoTournament(players, _make_courts(1), teammate_repeat_weight=1.0, opponent_repeat_weight=1.0)
+        for p1, p2 in [(a, b), (c, d)]:
+            t_equal._partner_history[p1.id][p2.id] = 1
+            t_equal._partner_history[p2.id][p1.id] = 1
+        for p1 in [a, b]:
+            for p2 in [c, d]:
+                t_equal._opponent_history[p1.id][p2.id] = 1
+                t_equal._opponent_history[p2.id][p1.id] = 1
+        # With equal weights: partner(1)+opp(2)=3 per player × 4 players = 12,
+        # bonus: 4 × min(1,1) × min(1,1) = 4 → total = 16
+        assert t_equal._pairing_repeat_count([a, b], [c, d]) == 16.0
 
-# ────────────────────────────────────────────────────────────────────────────
-# Skill-gap grouping: estimated scores & absolute difference
-# ────────────────────────────────────────────────────────────────────────────
+        # Opponent-only weight (0 teammate, 1 opponent) — no partner penalty.
+        t_opp_only = MexicanoTournament(
+            players, _make_courts(1), teammate_repeat_weight=0.0, opponent_repeat_weight=1.0
+        )
+        for p1, p2 in [(a, b), (c, d)]:
+            t_opp_only._partner_history[p1.id][p2.id] = 1
+            t_opp_only._partner_history[p2.id][p1.id] = 1
+        for p1 in [a, b]:
+            for p2 in [c, d]:
+                t_opp_only._opponent_history[p1.id][p2.id] = 1
+                t_opp_only._opponent_history[p2.id][p1.id] = 1
+        # teammate_weight=0 → no partner contribution, no bonus (bonus scaled by min(0,1)=0)
+        # opp only: each side has 4 opponent interactions at weight 1.0 → 4 per half = 8 total
+        assert t_opp_only._pairing_repeat_count([a, b], [c, d]) == 8.0
+
+    def test_repeat_decay_reduces_old_repeats(self):
+        """With decay > 0, interactions recorded in earlier rounds weigh less."""
+        players = _make_players(4)
+        a, b, c, d = players
+        t = MexicanoTournament(
+            players, _make_courts(1), repeat_decay=1.0, teammate_repeat_weight=1.0, opponent_repeat_weight=1.0
+        )
+        # Simulate A&B having partnered in round 1 (old) and round 3 (recent).
+        t._partner_history[a.id][b.id] = 2
+        t._partner_history[b.id][a.id] = 2
+        t._partner_history_rounds[a.id][b.id] = [1, 3]
+        t._partner_history_rounds[b.id][a.id] = [1, 3]
+        # Current round = 4, decay = 1.0
+        # Round 1: weight = 1/(1+1*3) = 0.25
+        # Round 3: weight = 1/(1+1*1) = 0.5
+        # Total for A's partner contribution: 0.25 + 0.5 = 0.75
+        # Per-side total (A+B, no opps): 0.75 + 0.75 = 1.5
+        # With no decay (decay=0), raw count is 2 per player → 4.0
+        t.current_round = 4
+        decayed_count = t._pairing_repeat_count([a, b], [c, d])
+        t_no_decay = MexicanoTournament(
+            players, _make_courts(1), repeat_decay=0.0, teammate_repeat_weight=1.0, opponent_repeat_weight=1.0
+        )
+        t_no_decay._partner_history[a.id][b.id] = 2
+        t_no_decay._partner_history[b.id][a.id] = 2
+        t_no_decay.current_round = 4
+        no_decay_count = t_no_decay._pairing_repeat_count([a, b], [c, d])
+        assert decayed_count < no_decay_count, (
+            f"Decay should reduce penalty: {decayed_count} should be < {no_decay_count}"
+        )
+        # Exact decayed value from the two partner interactions:
+        # A: 0.25 + 0.5 = 0.75; B: same = 0.75; total = 1.5
+        assert abs(decayed_count - 1.5) < 1e-9
+
+    def test_repeat_decay_zero_equals_count_based(self):
+        """decay=0.0 with round data gives the same result as no round data (count-based)."""
+        players = _make_players(4)
+        a, b, c, d = players
+        t = MexicanoTournament(
+            players, _make_courts(1), repeat_decay=0.0, teammate_repeat_weight=1.0, opponent_repeat_weight=1.0
+        )
+        t._partner_history[a.id][b.id] = 2
+        t._partner_history[b.id][a.id] = 2
+        t._partner_history_rounds[a.id][b.id] = [1, 3]
+        t._partner_history_rounds[b.id][a.id] = [1, 3]
+        t.current_round = 4
+        # decay=0 → weight is always 1.0 regardless of round, same as raw count
+        assert t._pairing_repeat_count([a, b], [c, d]) == 4.0
 
 
 class TestEstimatedScores:

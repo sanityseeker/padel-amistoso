@@ -30,6 +30,7 @@ from .schemas import (
     CreateMexicanoRequest,
     CustomRoundRequest,
     NextRoundRequest,
+    PatchMexSettingsRequest,
     RecordScoreRequest,
     RecordTennisScoreRequest,
     StartMexicanoPlayoffsRequest,
@@ -87,6 +88,9 @@ async def create_mexicano(req: CreateMexicanoRequest, request: Request, user=Dep
             balance_tolerance=req.balance_tolerance,
             team_mode=req.team_mode,
             initial_strength=initial_strength,
+            teammate_repeat_weight=req.teammate_repeat_weight,
+            opponent_repeat_weight=req.opponent_repeat_weight,
+            repeat_decay=req.repeat_decay,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -120,7 +124,14 @@ async def mex_status(tid: str) -> dict:
         "mexicano_ended": t.mexicano_ended,
         "total_points_per_match": t.total_points_per_match,
         "team_mode": t.team_mode,
+        "strength_weight": t.strength_weight,
         "skill_gap": t.skill_gap,
+        "win_bonus": t.win_bonus,
+        "loss_discount": t.loss_discount,
+        "balance_tolerance": t.balance_tolerance,
+        "teammate_repeat_weight": t.teammate_repeat_weight,
+        "opponent_repeat_weight": t.opponent_repeat_weight,
+        "repeat_decay": t.repeat_decay,
         "phase": t.phase,
         "is_finished": t.is_finished,
         "assign_courts": data.get("assign_courts", True),
@@ -175,6 +186,35 @@ async def mex_record(
         _save_tournament(tid)
         breakdown = t.get_match_breakdown(req.match_id)
     return {"ok": True, "breakdown": breakdown}
+
+
+@router.patch("/{tid}/mex/settings")
+async def mex_update_settings(tid: str, req: PatchMexSettingsRequest, user=Depends(get_current_user)) -> dict:
+    """Replace all advanced Mexicano settings (pairing weights, scoring modifiers, round count)."""
+    _require_editor_access(tid, user)
+    async with get_tournament_lock(tid):
+        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        t.num_rounds = req.num_rounds
+        t.skill_gap = req.skill_gap
+        t.win_bonus = req.win_bonus
+        t.strength_weight = req.strength_weight
+        t.loss_discount = req.loss_discount
+        t.balance_tolerance = req.balance_tolerance
+        t.teammate_repeat_weight = req.teammate_repeat_weight
+        t.opponent_repeat_weight = req.opponent_repeat_weight
+        t.repeat_decay = req.repeat_decay
+        _save_tournament(tid)
+    return {
+        "num_rounds": t.num_rounds,
+        "skill_gap": t.skill_gap,
+        "win_bonus": t.win_bonus,
+        "strength_weight": t.strength_weight,
+        "loss_discount": t.loss_discount,
+        "balance_tolerance": t.balance_tolerance,
+        "teammate_repeat_weight": t.teammate_repeat_weight,
+        "opponent_repeat_weight": t.opponent_repeat_weight,
+        "repeat_decay": t.repeat_decay,
+    }
 
 
 @router.patch("/{tid}/mex/courts")

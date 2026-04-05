@@ -218,6 +218,7 @@ async def add_player_to_tournament(
         if t_type == "mexicano":
             t.players.append(player)
             t.scores[pid] = 0
+            t._raw_scores[pid] = 0
             t._matches_played[pid] = 0
             t._wins[pid] = 0
             t._draws[pid] = 0

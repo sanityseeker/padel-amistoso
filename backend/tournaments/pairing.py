@@ -53,28 +53,89 @@ def update_history(
             opponent_history[p2.id][p1.id] += 1
 
 
+def _decayed_score(
+    rounds_list: list[int] | None,
+    count: int,
+    decay: float,
+    current_round: int,
+) -> float:
+    """Compute the time-decayed interaction score for a player pair.
+
+    When ``decay`` is 0 (or no round data is available) the raw count is
+    returned unchanged.  Otherwise each historical interaction at round *r*
+    contributes ``1 / (1 + decay * (current_round - r))`` to the total —
+    inverse-linear decay so that recent repeats weigh more.
+
+    Args:
+        rounds_list: Rounds at which the interaction occurred, or ``None``
+            for legacy / no round data.
+        count: Total interaction count (used as fallback when round data is
+            absent or decay is disabled).
+        decay: Inverse-linear decay factor (>= 0; 0 = no decay).
+        current_round: The current round number of the tournament.
+
+    Returns:
+        Decayed (or raw) interaction score as a float.
+    """
+    if decay == 0.0 or not rounds_list:
+        return float(count)
+    return sum(1.0 / (1.0 + decay * (current_round - r)) for r in rounds_list)
+
+
 def _half_repeat_count(
     team: list[Player],
     opponents: list[Player],
     partner_history: dict[str, dict[str, int]],
     opponent_history: dict[str, dict[str, int]],
-) -> int:
+    *,
+    teammate_weight: float = 1.0,
+    opponent_weight: float = 1.0,
+    decay: float = 0.0,
+    current_round: int = 0,
+    partner_history_rounds: dict[str, dict[str, list[int]]] | None = None,
+    opponent_history_rounds: dict[str, dict[str, list[int]]] | None = None,
+) -> float:
     """Repeat penalty contribution from one side of a match.
 
-    Sums partner and opponent repeat counts, plus a full-match bonus
-    when a player has seen both the same partner AND same opponents.
+    Sums partner and opponent repeat scores (with configurable per-axis
+    weights and inverse-linear time-decay), plus a full-match bonus when
+    a player has seen both the same partner AND same opponents before.
+
+    Args:
+        team: The team being evaluated.
+        opponents: The opposing team.
+        partner_history: Total partner interaction counts per player pair.
+        opponent_history: Total opponent interaction counts per player pair.
+        teammate_weight: Scale factor applied to partner-repeat penalties.
+        opponent_weight: Scale factor applied to opponent-repeat penalties.
+        decay: Inverse-linear time-decay factor (0 = no decay).
+        current_round: Current round number, used for decay calculation.
+        partner_history_rounds: Per-round partner interaction lists for decay.
+        opponent_history_rounds: Per-round opponent interaction lists for decay.
+
+    Returns:
+        Weighted, decayed repeat penalty contribution for this side of the match.
     """
-    count = 0
+    count = 0.0
     for p in team:
         partner = [x for x in team if x.id != p.id]
-        partner_count = 0
+        raw_partner_score = 0.0
         if partner:
             partner_count = partner_history[p.id].get(partner[0].id, 0)
-            count += partner_count
-        opp_counts = [opponent_history[p.id].get(o.id, 0) for o in opponents]
-        count += sum(opp_counts)
-        if partner_count > 0 and opp_counts and min(opp_counts) > 0:
-            count += min(partner_count, min(opp_counts))
+            p_rounds = (partner_history_rounds or {}).get(p.id, {}).get(partner[0].id)
+            raw_partner_score = _decayed_score(p_rounds, partner_count, decay, current_round)
+            count += teammate_weight * raw_partner_score
+        raw_opp_scores: list[float] = []
+        for o in opponents:
+            opp_count = opponent_history[p.id].get(o.id, 0)
+            o_rounds = (opponent_history_rounds or {}).get(p.id, {}).get(o.id)
+            raw_opp_s = _decayed_score(o_rounds, opp_count, decay, current_round)
+            raw_opp_scores.append(raw_opp_s)
+            count += opponent_weight * raw_opp_s
+        # Full-match bonus: extra penalty when partner AND all opponents are repeats.
+        if raw_partner_score > 0 and raw_opp_scores and min(raw_opp_scores) > 0:
+            bonus = min(raw_partner_score, min(raw_opp_scores))
+            count += min(teammate_weight, opponent_weight) * bonus
     return count
 
 
@@ -83,7 +144,14 @@ def pairing_repeat_count(
     team2: list[Player],
     partner_history: dict[str, dict[str, int]],
     opponent_history: dict[str, dict[str, int]],
-) -> int:
+    *,
+    teammate_weight: float = 1.0,
+    opponent_weight: float = 1.0,
+    decay: float = 0.0,
+    current_round: int = 0,
+    partner_history_rounds: dict[str, dict[str, list[int]]] | None = None,
+    opponent_history_rounds: dict[str, dict[str, list[int]]] | None = None,
+) -> float:
     """Total repeat penalty for a match, including full-match bonus.
 
     Args:
@@ -91,12 +159,26 @@ def pairing_repeat_count(
         team2: Second team of players.
         partner_history: Dict tracking partner counts per player.
         opponent_history: Dict tracking opponent counts per player.
+        teammate_weight: Scale factor applied to partner-repeat penalties.
+        opponent_weight: Scale factor applied to opponent-repeat penalties.
+        decay: Inverse-linear time-decay factor (0 = no decay).
+        current_round: Current round number, used for decay calculation.
+        partner_history_rounds: Per-round partner interaction lists for decay.
+        opponent_history_rounds: Per-round opponent interaction lists for decay.
 
     Returns:
         Combined repeat penalty for both sides of the match.
     """
-    return _half_repeat_count(team1, team2, partner_history, opponent_history) + _half_repeat_count(
-        team2, team1, partner_history, opponent_history
+    kwargs = dict(
+        teammate_weight=teammate_weight,
+        opponent_weight=opponent_weight,
+        decay=decay,
+        current_round=current_round,
+        partner_history_rounds=partner_history_rounds,
+        opponent_history_rounds=opponent_history_rounds,
+    )
+    return _half_repeat_count(team1, team2, partner_history, opponent_history, **kwargs) + _half_repeat_count(
+        team2, team1, partner_history, opponent_history, **kwargs
     )
 
 

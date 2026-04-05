@@ -145,6 +145,7 @@ function _buildAbbrevLegend(type) {
     [t('txt_txt_d_abbrev'),         t('txt_txt_abbrev_d_full')],
     [t('txt_txt_l_abbrev'),         t('txt_txt_abbrev_l_full')],
     [t('txt_txt_avg_pts_abbrev'),   t('txt_txt_abbrev_avg_pts_full')],
+    [t('txt_txt_buchholz_abbrev'),  t('txt_txt_abbrev_buchholz_full')],
   ];
   return `<table>${rows.map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table>`;
 }
@@ -748,8 +749,11 @@ let _totalPts = 0;  // set per Mexicano tournament for auto-fill
 let _gpScoreMode = { 'gp-group': 'points', 'gp-playoff': 'points', 'mex-playoff': 'points', 'po-playoff': 'points' };
 let _mexPlayers = [];  // [{id, name}] for manual editor
 let _mexBreakdowns = {};  // {match_id: {player_id: {raw, strength_mult, loss_disc, win_bonus, final}}}
+let _mexStrengthWeight = 0;
 let _mexPlayerMap = {};  // {player_id: player_name}
 let _mexTeamMode = false;  // true when each participant is a pre-formed pair
+let _mexSortCol = null;      // null = server default order; otherwise a leaderboard field key
+let _mexSortDir = 'desc';    // 'asc' | 'desc'
 
 // ─── Admin live-refresh (version polling) ─────────────────
 let _adminVersionPollTimer = null;
@@ -1559,6 +1563,9 @@ async function createMex() {
       strength_weight: +document.getElementById('mex-strength-weight').value,
       loss_discount: +document.getElementById('mex-loss-discount').value,
       balance_tolerance: +document.getElementById('mex-balance-tol').value,
+      teammate_repeat_weight: +document.getElementById('mex-teammate-repeat-wt').value,
+      opponent_repeat_weight: +document.getElementById('mex-opponent-repeat-wt').value,
+      repeat_decay: +document.getElementById('mex-repeat-decay').value,
       public: document.getElementById('mex-public').checked,
       sport: _currentSport,
     };
@@ -1910,10 +1917,11 @@ function matchRow(m, ctx) {
       html += `<details class="breakdown-details">`;
       html += `<summary>📊 ${t('txt_txt_score_breakdown')}</summary>`;
       html += `<div class="breakdown-panel">`;
-      html += `<table class="breakdown-table"><thead><tr><th>${t('txt_txt_player')}</th><th>${t('txt_txt_raw')}</th><th>${t('txt_txt_strength_multiplier')}</th><th>${t('txt_txt_loss_disc_multiplier')}</th><th>${t('txt_txt_win_bonus_header')}</th><th>${t('txt_txt_final')}</th></tr></thead><tbody>`;
+      html += `<table class="breakdown-table"><thead><tr><th>${t('txt_txt_player')}</th><th>${t('txt_txt_raw')}</th><th>${t('txt_txt_relative_strength')}</th><th>${t('txt_txt_strength_weight')}</th><th>${t('txt_txt_strength_multiplier')}</th><th>${t('txt_txt_loss_disc_multiplier')}</th><th>${t('txt_txt_win_bonus_header')}</th><th>${t('txt_txt_final')}</th></tr></thead><tbody>`;
       for (const [pid, d] of Object.entries(bd)) {
         const pname = _mexPlayerMap[pid] || pid;
-        html += `<tr><td>${esc(pname)}</td><td>${d.raw}</td><td>${d.strength_mult !== 1 ? '×' + d.strength_mult.toFixed(2) : '—'}</td><td>${d.loss_disc !== 1 ? '×' + d.loss_disc.toFixed(2) : '—'}</td><td>${d.win_bonus > 0 ? '+' + d.win_bonus : '—'}</td><td><strong>${d.final}</strong></td></tr>`;
+        const rs = d.relative_strength || 0;
+        html += `<tr><td>${esc(pname)}</td><td>${d.raw}</td><td>${rs > 0 ? rs.toFixed(3) : '—'}</td><td>${_mexStrengthWeight > 0 ? '×' + _mexStrengthWeight : '—'}</td><td>${d.strength_mult !== 1 ? '×' + d.strength_mult.toFixed(2) : '—'}</td><td>${d.loss_disc !== 1 ? '×' + d.loss_disc.toFixed(2) : '—'}</td><td>${d.win_bonus > 0 ? '+' + d.win_bonus : '—'}</td><td><strong>${d.final}</strong></td></tr>`;
       }
       html += `</tbody></table></div>`;
       html += `</details>`;
@@ -2315,6 +2323,7 @@ async function renderMex() {
     _mexPlayers = status.players || [];
     _mexTeamMode = status.team_mode || false;
     _mexBreakdowns = matches.breakdowns || {};
+    _mexStrengthWeight = status.strength_weight || 0;
     _mexPlayerMap = {};
     for (const p of _mexPlayers) _mexPlayerMap[p.id] = p.name;
     window._mexStatusLeaderboard = status.leaderboard || [];
@@ -2322,6 +2331,20 @@ async function renderMex() {
     // Store data needed by the manual pairing editor's round stats card
     window._mexAllMatches = matches.all_matches || [];
     window._mexSkillGap = status.skill_gap ?? null;
+
+    // Snapshot all advanced settings for the in-place editor
+    _mexSettingsEditorOpen = false;
+    _mexSettingsCurrent = {
+      num_rounds: status.num_rounds,
+      skill_gap: status.skill_gap,
+      win_bonus: status.win_bonus ?? 0,
+      strength_weight: status.strength_weight ?? 0,
+      loss_discount: status.loss_discount ?? 1.0,
+      balance_tolerance: status.balance_tolerance ?? 0.2,
+      teammate_repeat_weight: status.teammate_repeat_weight ?? 2.0,
+      opponent_repeat_weight: status.opponent_repeat_weight ?? 1.0,
+      repeat_decay: status.repeat_decay ?? 0.5,
+    };
 
     if (tvSettings.score_mode) {
       for (const [k, v] of Object.entries(tvSettings.score_mode)) if (k in _gpScoreMode) _gpScoreMode[k] = v;
@@ -2394,21 +2417,8 @@ async function renderMex() {
       html += _renderCourtAssignmentsCard(matches.current_matches, t('txt_txt_court_assignments_current_round'), status.assign_courts !== false);
     }
 
-    // Leaderboard
-    html += `<div class="card"><h2 class="card-heading-row">${t('txt_txt_leaderboard')} <button class="format-info-btn" onclick="showAbbrevPopup(event,'leaderboard')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h2>`;
-    const byAvg = status.leaderboard.length > 0 && status.leaderboard[0].ranked_by_avg;
-    const hTotal = byAvg ? t('txt_txt_total_pts_abbrev') : `<strong>${t('txt_txt_total_pts_abbrev')} ↓</strong>`;
-    const hAvg   = byAvg ? `<strong>${t('txt_txt_avg_pts_abbrev')} ↓</strong>` : t('txt_txt_avg_pts_abbrev');
-    html += `<table><thead><tr><th>${t('txt_txt_rank')}</th><th>${_mexTeamMode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${hTotal}</th><th>${t('txt_txt_played_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${hAvg}</th></tr></thead><tbody>`;
-    for (const r of status.leaderboard) {
-      const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
-      const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
-      const removedStyle = r.removed ? ' style="opacity:0.45"' : '';
-      const rankCell = r.removed ? `<span style="color:var(--text-muted)">—</span>` : r.rank;
-      const nameCell = r.removed ? `${esc(r.player)} <span class="badge badge-closed" style="font-size:0.7em;vertical-align:middle">${t('txt_txt_removed')}</span>` : esc(r.player);
-      html += `<tr${removedStyle}><td>${rankCell}</td><td>${nameCell}</td><td>${totalCell}</td><td>${r.matches_played}</td><td>${r.wins || 0}</td><td>${r.draws || 0}</td><td>${r.losses || 0}</td><td>${avgCell}</td></tr>`;
-    }
-    html += `</tbody></table></div>`;
+    // Leaderboard (rendered after innerHTML is set, to allow sorting without re-fetching)
+    html += `<div class="card" id="mex-leaderboard-card"></div>`;
 
     // Phase: Mexicano rounds
     if (!(isPlayoffs || isFinished)) {
@@ -2481,6 +2491,9 @@ async function renderMex() {
         html += `</div>`;
       }
 
+      // Advanced settings panel (always visible during Mexicano phase)
+      html += _renderMexSettingsSection();
+
       // History — grouped by round as collapsible accordion
       if (matches.all_matches.length > matches.current_matches.length) {
         html += `<div class="card"><h3>${t('txt_txt_previous_rounds')}</h3>`;
@@ -2512,11 +2525,85 @@ async function renderMex() {
 
     if (currentTid !== _renderTid) return;
     el.innerHTML = html;
+    _renderMexLeaderboard();
   } catch (e) {
     if (currentTid !== _renderTid) return;
     if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
     el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
   }
+}
+
+function _mexSetSort(col) {
+  if (_mexSortCol === col) {
+    _mexSortDir = _mexSortDir === 'desc' ? 'asc' : 'desc';
+  } else {
+    _mexSortCol = col;
+    // strings & rank sort ascending by default; numeric stats sort descending
+    _mexSortDir = (col === 'player' || col === 'rank') ? 'asc' : 'desc';
+  }
+  _renderMexLeaderboard();
+}
+
+function _renderMexLeaderboard() {
+  const card = document.getElementById('mex-leaderboard-card');
+  if (!card) return;
+  const leaderboard = window._mexStatusLeaderboard || [];
+  const byAvg = leaderboard.length > 0 && leaderboard[0].ranked_by_avg;
+
+  // Sort a shallow copy so server order is preserved for next default render
+  const rows = [...leaderboard];
+  if (_mexSortCol !== null) {
+    rows.sort((a, b) => {
+      let va = a[_mexSortCol];
+      let vb = b[_mexSortCol];
+      if (typeof va === 'string' || typeof vb === 'string') {
+        const cmp = (va || '').localeCompare(vb || '');
+        return _mexSortDir === 'asc' ? cmp : -cmp;
+      }
+      if (va == null) va = -Infinity;
+      if (vb == null) vb = -Infinity;
+      return _mexSortDir === 'desc' ? vb - va : va - vb;
+    });
+  }
+
+  const indicator = (col) => {
+    if (_mexSortCol !== col) return '';
+    return _mexSortDir === 'desc' ? ' ↓' : ' ↑';
+  };
+  const thHtml = (col, label) => {
+    const isDefaultRankCol = _mexSortCol === null && ((col === 'total_points' && !byAvg) || (col === 'avg_points' && byAvg));
+    const isActive = _mexSortCol === col;
+    const inner = isDefaultRankCol
+      ? `<strong>${label} ↓</strong>`
+      : isActive
+        ? `<strong>${label}${indicator(col)}</strong>`
+        : label;
+    return `<th class="sortable-col${isActive ? ' sort-active' : ''}" onclick="_mexSetSort('${col}')">${inner}</th>`;
+  };
+
+  let html = `<h2 class="card-heading-row">${t('txt_txt_leaderboard')} <button class="format-info-btn" onclick="showAbbrevPopup(event,'leaderboard')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h2>`;
+  html += `<table><thead><tr>`;
+  html += thHtml('rank', t('txt_txt_rank'));
+  html += thHtml('player', _mexTeamMode ? t('txt_txt_team') : t('txt_txt_player'));
+  html += thHtml('total_points', t('txt_txt_total_pts_abbrev'));
+  html += thHtml('matches_played', t('txt_txt_played_abbrev'));
+  html += thHtml('wins', t('txt_txt_w_abbrev'));
+  html += thHtml('draws', t('txt_txt_d_abbrev'));
+  html += thHtml('losses', t('txt_txt_l_abbrev'));
+  html += thHtml('avg_points', t('txt_txt_avg_pts_abbrev'));
+  html += thHtml('buchholz', t('txt_txt_buchholz_abbrev'));
+  html += `</tr></thead><tbody>`;
+
+  for (const r of rows) {
+    const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
+    const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
+    const removedStyle = r.removed ? ' style="opacity:0.45"' : '';
+    const rankCell = r.removed ? `<span style="color:var(--text-muted)">—</span>` : r.rank;
+    const nameCell = r.removed ? `${esc(r.player)} <span class="badge badge-closed" style="font-size:0.7em;vertical-align:middle">${t('txt_txt_removed')}</span>` : esc(r.player);
+    html += `<tr${removedStyle}><td>${rankCell}</td><td>${nameCell}</td><td>${totalCell}</td><td>${r.matches_played}</td><td>${r.wins || 0}</td><td>${r.draws || 0}</td><td>${r.losses || 0}</td><td>${avgCell}</td><td>${r.buchholz != null ? r.buchholz : '—'}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  card.innerHTML = html;
 }
 
 function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
@@ -2807,7 +2894,7 @@ function _renderProposalPicker(proposals) {
     card += `⚖️ ${t('txt_txt_score_gap')}: <strong>${fmt2(p.score_imbalance)} pts</strong><br>`;
     const repLabel = p.repeat_count === 0
       ? `✅ ${t('txt_txt_no_repeated_matchups')}`
-      : `⚠️ ${t('txt_txt_n_repeats', { n: p.repeat_count })}`;
+      : `⚠️ ${t('txt_txt_n_repeats', { n: fmt2(p.repeat_count) })}`;  
     card += `${repLabel}`;
     if ((p.exact_prev_round_repeats || 0) > 0) {
       card += `<br>🔁 ${t('txt_txt_exact_rematch_warning', { n: p.exact_prev_round_repeats })}`;
@@ -2928,6 +3015,72 @@ async function _confirmMexRound() {
     _selectedOptionId = null;
     _currentPlayerStats = null;
     renderMex();
+  } catch (e) { alert(e.message); }
+}
+
+// ─── Mexicano settings editor ─────────────────────────────
+let _mexSettingsCurrent = null;
+
+function _renderMexSettingsSection() {
+  const s = _mexSettingsCurrent;
+  if (!s) return '';
+  const rolling = s.num_rounds === 0;
+  const roundsLabel = rolling ? '∞' : s.num_rounds;
+  const skillLabel = s.skill_gap != null ? s.skill_gap : '—';
+  const summaryText = `${t('txt_txt_advanced_settings')} — ${roundsLabel} ${t('txt_txt_number_of_rounds').toLowerCase()} · gap: ${skillLabel} · bonus: ${s.win_bonus ?? 0} · str: ${s.strength_weight ?? 0} · disc: ${s.loss_discount ?? 1}`;
+
+  let html = `<details class="advanced-section">`;
+  html += `<summary>${summaryText}</summary>`;
+  html += `<div style="padding:0.75rem 0.9rem">`;
+  html += `<div class="advanced-grid">`;
+  html += `<div class="adv-field"><label>${t('txt_txt_number_of_rounds')}</label>`;
+  html += `<div style="display:flex;align-items:center;gap:0.4rem">`;
+  html += `<div class="score-mode-toggle" id="mex-settings-rounds-toggle">`;
+  html += `<button type="button" class="${rolling ? 'active' : ''}" onclick="_setMexSettingsRoundsMode('unlimited')">∞</button>`;
+  html += `<button type="button" class="${!rolling ? 'active' : ''}" onclick="_setMexSettingsRoundsMode('fixed')">${t('txt_txt_fixed')}</button>`;
+  html += `</div>`;
+  html += `<input id="mex-settings-rounds" type="number" min="1" value="${rolling ? 8 : s.num_rounds}" style="width:56px${rolling ? ';display:none' : ''}">`;
+  html += `</div></div>`;
+  html += `<div class="adv-field"><label>${t('txt_txt_skill_gap_label')}</label><input id="mex-settings-skill-gap" type="number" min="0" placeholder="${t('txt_txt_skill_gap_placeholder')}" value="${s.skill_gap ?? ''}"></div>`;
+  html += `<div class="adv-field"><label>${t('txt_txt_win_bonus_label')}</label><input id="mex-settings-win-bonus" type="number" min="0" value="${s.win_bonus ?? 0}"></div>`;
+  html += `<div class="adv-field"><label>${t('txt_txt_rival_strength_label')}</label><input id="mex-settings-strength-weight" type="number" min="0" max="1" step="0.05" value="${s.strength_weight ?? 0}"></div>`;
+  html += `<div class="adv-field"><label>${t('txt_txt_loss_discount_label')}</label><input id="mex-settings-loss-discount" type="number" min="0" max="1" step="0.05" value="${s.loss_discount ?? 1}"></div>`;
+  html += `<div class="adv-field"><label>${t('txt_txt_balance_tolerance_label')}</label><input id="mex-settings-balance-tol" type="number" min="0" step="0.1" value="${s.balance_tolerance ?? 0.2}"></div>`;
+  html += `<div class="adv-field"><label>${t('txt_txt_teammate_repeat_weight_label')}</label><input id="mex-settings-teammate-repeat-wt" type="number" min="0" step="0.1" value="${s.teammate_repeat_weight ?? 2}"></div>`;
+  html += `<div class="adv-field"><label>${t('txt_txt_opponent_repeat_weight_label')}</label><input id="mex-settings-opponent-repeat-wt" type="number" min="0" step="0.1" value="${s.opponent_repeat_weight ?? 1}"></div>`;
+  html += `<div class="adv-field"><label>${t('txt_txt_repeat_decay_label')}</label><input id="mex-settings-repeat-decay" type="number" min="0" step="0.1" value="${s.repeat_decay ?? 0.5}"></div>`;
+  html += `</div>`;
+  html += `<div style="display:flex;justify-content:flex-end;margin-top:0.6rem">`;
+  html += `<button type="button" class="btn btn-sm btn-success" onclick="withLoading(this,_saveMexSettings)">${t('txt_txt_save')}</button>`;
+  html += `</div>`;
+  html += `</div></details>`;
+  return html;
+}
+
+function _setMexSettingsRoundsMode(mode) {
+  const toggle = document.getElementById('mex-settings-rounds-toggle');
+  if (toggle) toggle.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', (mode === 'unlimited') === (i === 0)));
+  const inp = document.getElementById('mex-settings-rounds');
+  if (inp) inp.style.display = mode === 'fixed' ? '' : 'none';
+}
+
+async function _saveMexSettings() {
+  const rolling = document.getElementById('mex-settings-rounds-toggle')?.querySelectorAll('button')[0].classList.contains('active');
+  const skillGapRaw = (document.getElementById('mex-settings-skill-gap')?.value || '').trim();
+  const body = {
+    num_rounds: rolling ? 0 : +(document.getElementById('mex-settings-rounds')?.value || 8),
+    skill_gap: skillGapRaw === '' ? null : +skillGapRaw,
+    win_bonus: +(document.getElementById('mex-settings-win-bonus')?.value || 0),
+    strength_weight: +(document.getElementById('mex-settings-strength-weight')?.value || 0),
+    loss_discount: +(document.getElementById('mex-settings-loss-discount')?.value || 1),
+    balance_tolerance: +(document.getElementById('mex-settings-balance-tol')?.value || 0.2),
+    teammate_repeat_weight: +(document.getElementById('mex-settings-teammate-repeat-wt')?.value || 2),
+    opponent_repeat_weight: +(document.getElementById('mex-settings-opponent-repeat-wt')?.value || 1),
+    repeat_decay: +(document.getElementById('mex-settings-repeat-decay')?.value || 0.5),
+  };
+  try {
+    await api(`/api/tournaments/${currentTid}/mex/settings`, { method: 'PATCH', body: JSON.stringify(body) });
+    await renderMex();
   } catch (e) { alert(e.message); }
 }
 
@@ -3440,7 +3593,7 @@ function _updateManualRoundStats() {
   if (stats.repeat_count === 0) {
     html += `✅ ${t('txt_txt_no_repeated_matchups')}`;
   } else {
-    html += `⚠️ ${t('txt_txt_n_repeats', { n: stats.repeat_count })}`;
+    html += `⚠️ ${t('txt_txt_n_repeats', { n: fmt2(stats.repeat_count) })}`;
   }
   if (stats.exact_prev_round_repeats > 0) {
     html += `<br>🔁 ${t('txt_txt_exact_rematch_warning', { n: stats.exact_prev_round_repeats })}`;
@@ -6737,6 +6890,9 @@ function _renderConvSettings(rid) {
     html += `<div class="adv-field"><label>${t('txt_txt_rival_strength_label')}</label><input id="conv-mex-strength-weight" type="number" value="0" min="0" max="1" step="0.05"></div>`;
     html += `<div class="adv-field"><label>${t('txt_txt_loss_discount_label')}</label><input id="conv-mex-loss-discount" type="number" value="1" min="0" max="1" step="0.05"></div>`;
     html += `<div class="adv-field"><label>${t('txt_txt_balance_tolerance_label')}</label><input id="conv-mex-balance-tol" type="number" value="0.2" min="0" max="2" step="0.1"></div>`;
+    html += `<div class="adv-field"><label>${t('txt_txt_teammate_repeat_weight_label')}</label><input id="conv-mex-teammate-repeat-wt" type="number" value="2" min="0" step="0.1"></div>`;
+    html += `<div class="adv-field"><label>${t('txt_txt_opponent_repeat_weight_label')}</label><input id="conv-mex-opponent-repeat-wt" type="number" value="1" min="0" step="0.1"></div>`;
+    html += `<div class="adv-field"><label>${t('txt_txt_repeat_decay_label')}</label><input id="conv-mex-repeat-decay" type="number" value="0.5" min="0" step="0.1"></div>`;
     html += `</div></details>`;
     html += `</div>`;
   } else if (_convType === 'playoff') {
@@ -6992,6 +7148,9 @@ async function _submitConvert(rid) {
       body.strength_weight = +(document.getElementById('conv-mex-strength-weight')?.value || 0);
       body.loss_discount = +(document.getElementById('conv-mex-loss-discount')?.value || 1);
       body.balance_tolerance = +(document.getElementById('conv-mex-balance-tol')?.value || 0.2);
+      body.teammate_repeat_weight = +(document.getElementById('conv-mex-teammate-repeat-wt')?.value || 2);
+      body.opponent_repeat_weight = +(document.getElementById('conv-mex-opponent-repeat-wt')?.value || 1);
+      body.repeat_decay = +(document.getElementById('conv-mex-repeat-decay')?.value || 0.5);
     } else if (_convType === 'playoff') {
       body.double_elimination = document.getElementById('conv-double-elim')?.checked || false;
     }

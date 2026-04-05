@@ -2657,3 +2657,17 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   display: inline-block;
 }
 .reg-answer-num-stats b { color: var(--accent); }
+
+/* ── Sortable leaderboard columns ── */
+.sortable-col {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: color 0.12s;
+}
+.sortable-col:hover {
+  color: var(--accent);
+}
+.sortable-col.sort-active {
+  color: var(--accent);
+}

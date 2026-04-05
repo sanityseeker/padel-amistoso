@@ -13,9 +13,11 @@ class ScoringMixin:
     def _normalize_credit(detail: dict | int) -> dict:
         """Normalize a credit entry to the full breakdown dict format."""
         if isinstance(detail, dict):
+            detail.setdefault("relative_strength", 0.0)
             return detail
         return {
             "raw": detail,
+            "relative_strength": 0.0,
             "strength_mult": 1.0,
             "loss_disc": 1.0,
             "win_bonus": 0,
@@ -110,17 +112,19 @@ class ScoringMixin:
                     "wins": self._wins.get(p.id, 0),
                     "draws": self._draws.get(p.id, 0),
                     "losses": self._losses.get(p.id, 0),
+                    "buchholz": round(self._buchholz_score(p.id), 2),
                 }
             )
 
         # Use avg as primary sort when match counts differ; otherwise total
-        # (when counts are equal avg ∝ total so the order is identical)
+        # (when counts are equal avg ∝ total so the order is identical).
+        # Buchholz acts as the final tiebreaker in both modes.
         counts = {e["matches_played"] for e in board}
         ranked_by_avg = len(counts) > 1
         if ranked_by_avg:
-            board.sort(key=lambda x: (-x["avg_points"], -x["total_points"]))
+            board.sort(key=lambda x: (-x["avg_points"], -x["total_points"], -x["buchholz"]))
         else:
-            board.sort(key=lambda x: (-x["total_points"], -x["avg_points"]))
+            board.sort(key=lambda x: (-x["total_points"], -x["avg_points"], -x["buchholz"]))
 
         for i, entry in enumerate(board):
             entry["rank"] = i + 1
@@ -144,6 +148,7 @@ class ScoringMixin:
                     "wins": self._wins.get(p.id, 0),
                     "draws": self._draws.get(p.id, 0),
                     "losses": self._losses.get(p.id, 0),
+                    "buchholz": round(self._buchholz_score(p.id), 2),
                     "rank": None,
                     "ranked_by_avg": ranked_by_avg,
                     "removed": True,
@@ -278,8 +283,9 @@ class ScoringMixin:
         if was_completed:
             prev_credits = self._match_credits.get(m.id, {})
             for pid, detail in prev_credits.items():
-                credited = self._normalize_credit(detail)["final"]
-                self.scores[pid] -= credited
+                norm = self._normalize_credit(detail)
+                self.scores[pid] -= norm["final"]
+                self._raw_scores[pid] = self._raw_scores.get(pid, 0) - norm["raw"]
             prev_s1, prev_s2 = m.score
             self._update_wdl(m.team1, prev_s1, prev_s2, delta=-1)
             self._update_wdl(m.team2, prev_s2, prev_s1, delta=-1)
@@ -289,9 +295,12 @@ class ScoringMixin:
 
         # Compute strength multipliers BEFORE updating scores
         if self.strength_weight > 0.0:
-            mult1 = 1.0 + self.strength_weight * self._opponent_strength(m.team2)
-            mult2 = 1.0 + self.strength_weight * self._opponent_strength(m.team1)
+            rs1 = self._relative_strength(m.team1, m.team2)
+            rs2 = self._relative_strength(m.team2, m.team1)
+            mult1 = 1.0 + self.strength_weight * rs1
+            mult2 = 1.0 + self.strength_weight * rs2
         else:
+            rs1 = rs2 = 0.0
             mult1 = mult2 = 1.0
 
         # Win bonus and loss discount (draws unaffected)
@@ -301,8 +310,8 @@ class ScoringMixin:
         disc2 = self.loss_discount if s2 < s1 else 1.0
 
         credits: dict[str, dict] = {}
-        self._credit_team(m.team1, s1, mult1, disc1, bonus1, was_completed, credits)
-        self._credit_team(m.team2, s2, mult2, disc2, bonus2, was_completed, credits)
+        self._credit_team(m.team1, s1, rs1, mult1, disc1, bonus1, was_completed, credits)
+        self._credit_team(m.team2, s2, rs2, mult2, disc2, bonus2, was_completed, credits)
         self._match_credits[m.id] = credits
 
         self._update_wdl(m.team1, s1, s2)
@@ -315,6 +324,7 @@ class ScoringMixin:
         self,
         team: list[Player],
         raw_score: int,
+        relative_strength: float,
         strength_mult: float,
         loss_disc: float,
         win_bonus: int,
@@ -325,8 +335,10 @@ class ScoringMixin:
         for p in team:
             c = round(raw_score * strength_mult * loss_disc) + win_bonus
             self.scores[p.id] += c
+            self._raw_scores[p.id] = self._raw_scores.get(p.id, 0) + raw_score
             credits[p.id] = {
                 "raw": raw_score,
+                "relative_strength": round(relative_strength, 4),
                 "strength_mult": round(strength_mult, 4),
                 "loss_disc": round(loss_disc, 4),
                 "win_bonus": win_bonus,
@@ -335,17 +347,40 @@ class ScoringMixin:
             if not was_completed:
                 self._matches_played[p.id] += 1
 
-    def _opponent_strength(self, opponent_team: list[Player]) -> float:
-        """Normalised strength of *opponent_team* based on absolute estimated points.
+    def _team_raw_avg(self, team: list[Player]) -> float:
+        """Average raw points per match for the players in *team*."""
+        raw = self._raw_scores
+        avgs = []
+        for p in team:
+            played = self._matches_played.get(p.id, 0)
+            avgs.append(raw.get(p.id, 0) / played if played > 0 else 0.0)
+        return sum(avgs) / len(avgs) if avgs else 0.0
 
-        Returns a value in [0.0, 1.0].
+    def _relative_strength(self, own_team: list[Player], opponent_team: list[Player]) -> float:
+        """Relative opponent strength: how much stronger opponents are vs own team.
+
+        Returns ``max(0, (opp_avg - own_avg) / max_avg)``.
+
+        - Top vs Top (similar averages): ~0 → no bonus.
+        - Weak vs Strong (opponent much higher): positive → bonus for punching up.
+        - Strong vs Weak (opponent much lower): 0 → no reward for easy match.
+
+        Uses raw (unmultiplied) per-match averages to avoid circular dependency.
+        Returns a value in ``[0.0, 1.0]``.
         """
-        est = self._estimated_scores()
-        max_est = max(est.values()) if est else 0.0
-        if max_est <= 0:
+        raw = self._raw_scores
+        max_raw_avg = 0.0
+        for pid in raw:
+            played = self._matches_played.get(pid, 0)
+            if played > 0:
+                avg = raw[pid] / played
+                if avg > max_raw_avg:
+                    max_raw_avg = avg
+        if max_raw_avg <= 0:
             return 0.0
-        avg_est = sum(est[p.id] for p in opponent_team) / len(opponent_team)
-        return avg_est / max_est
+        own_avg = self._team_raw_avg(own_team)
+        opp_avg = self._team_raw_avg(opponent_team)
+        return max(0.0, (opp_avg - own_avg) / max_raw_avg)
 
     def get_match_breakdown(self, match_id: str) -> dict | None:
         """Return detailed score breakdown for a completed match, or None."""
@@ -361,6 +396,43 @@ class ScoringMixin:
             for mid, credits in self._match_credits.items()
         }
 
-    def _update_history(self, team1: list[Player], team2: list[Player]):
+    def _buchholz_score(self, player_id: str) -> float:
+        """Buchholz score: sum of opponents' raw totals, weighted by encounters.
+
+        For each opponent the player has faced, adds that opponent's raw total
+        points once per encounter.  This rewards players who consistently
+        face strong opposition.
+        """
+        total = 0.0
+        raw = self._raw_scores
+        for opp_id, count in self._opponent_history.get(player_id, {}).items():
+            if count > 0:
+                total += raw.get(opp_id, 0) * count
+        return total
+
+    def _rebuild_raw_scores(self) -> dict[str, int]:
+        """Reconstruct ``_raw_scores`` from match credit history.
+
+        Used for backward compatibility when unpickling tournaments that
+        were created before raw-score tracking was added.
+        """
+        raw: dict[str, int] = {pid: 0 for pid in self.scores}
+        for credits in self._match_credits.values():
+            for pid, detail in credits.items():
+                norm = self._normalize_credit(detail)
+                raw[pid] = raw.get(pid, 0) + norm["raw"]
+        return raw
+
+    def _update_history(self, team1: list[Player], team2: list[Player]) -> None:
         """Record a played match in partner/opponent history."""
         pairing_mod.update_history(team1, team2, self._partner_history, self._opponent_history)
+        round_num = self.current_round
+        for team in [team1, team2]:
+            for i, p1 in enumerate(team):
+                for p2 in team[i + 1 :]:
+                    self._partner_history_rounds[p1.id][p2.id].append(round_num)
+                    self._partner_history_rounds[p2.id][p1.id].append(round_num)
+        for p1 in team1:
+            for p2 in team2:
+                self._opponent_history_rounds[p1.id][p2.id].append(round_num)
+                self._opponent_history_rounds[p2.id][p1.id].append(round_num)

@@ -1132,6 +1132,9 @@ async def convert_registration(
                     balance_tolerance=req.balance_tolerance,
                     team_mode=req.team_mode,
                     initial_strength=initial_strength,
+                    teammate_repeat_weight=req.teammate_repeat_weight,
+                    opponent_repeat_weight=req.opponent_repeat_weight,
+                    repeat_decay=req.repeat_decay,
                 )
             except ValueError as e:
                 raise HTTPException(400, str(e))

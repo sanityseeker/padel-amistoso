@@ -84,6 +84,9 @@ class CreateMexicanoRequest(BaseModel):
     strength_weight: float = Field(default=0.0, ge=0.0, le=1.0)
     loss_discount: float = Field(default=1.0, ge=0.0, le=1.0)
     balance_tolerance: float = Field(default=0.2, ge=0.0)
+    teammate_repeat_weight: float = Field(default=2.0, ge=0.0)
+    opponent_repeat_weight: float = Field(default=1.0, ge=0.0)
+    repeat_decay: float = Field(default=0.5, ge=0.0)
     public: bool = True
     assign_courts: bool = True
     player_strengths: dict[str, float] = Field(default_factory=dict)
@@ -223,6 +226,20 @@ class RecordTennisScoreRequest(BaseModel):
 
 class UpdateCourtsRequest(BaseModel):
     court_names: list[str] = Field(default_factory=list, max_length=64)
+
+
+class PatchMexSettingsRequest(BaseModel):
+    """Request body for PATCH /{tid}/mex/settings — replaces all advanced Mexicano settings."""
+
+    num_rounds: int = Field(ge=0)
+    skill_gap: int | None = Field(default=None, ge=0)
+    win_bonus: int = Field(ge=0)
+    strength_weight: float = Field(ge=0.0, le=1.0)
+    loss_discount: float = Field(ge=0.0, le=1.0)
+    balance_tolerance: float = Field(ge=0.0)
+    teammate_repeat_weight: float = Field(ge=0.0)
+    opponent_repeat_weight: float = Field(ge=0.0)
+    repeat_decay: float = Field(ge=0.0)
 
 
 class NextRoundRequest(BaseModel):
@@ -479,6 +496,9 @@ class ConvertRegistrationRequest(BaseModel):
     strength_weight: float = Field(default=0.0, ge=0.0, le=1.0)
     loss_discount: float = Field(default=1.0, ge=0.0, le=1.0)
     balance_tolerance: float = Field(default=0.2, ge=0.0)
+    teammate_repeat_weight: float = Field(default=2.0, ge=0.0)
+    opponent_repeat_weight: float = Field(default=1.0, ge=0.0)
+    repeat_decay: float = Field(default=0.5, ge=0.0)
     # Team formation (admin-composed teams from individual registrants)
     teams: list[list[str]] = Field(default_factory=list)
     team_names: list[str] = Field(default_factory=list)

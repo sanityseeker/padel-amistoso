@@ -48,6 +48,9 @@ class MexicanoConfig(BaseModel):
     loss_discount: float = Field(default=1.0, ge=0.0, le=1.0)
     balance_tolerance: float = Field(default=0.2, ge=0.0)
     team_mode: bool = False
+    teammate_repeat_weight: float = Field(default=2.0, ge=0.0)
+    opponent_repeat_weight: float = Field(default=1.0, ge=0.0)
+    repeat_decay: float = Field(default=0.5, ge=0.0)
 
 
 class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
@@ -89,6 +92,9 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         balance_tolerance: float = 0.2,
         team_mode: bool = False,
         initial_strength: dict[str, float] | None = None,
+        teammate_repeat_weight: float = 2.0,
+        opponent_repeat_weight: float = 1.0,
+        repeat_decay: float = 0.5,
     ):
         min_players = 2 if team_mode else 4
         if len(players) < min_players:
@@ -106,6 +112,9 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
                 loss_discount=loss_discount,
                 balance_tolerance=balance_tolerance,
                 team_mode=team_mode,
+                teammate_repeat_weight=teammate_repeat_weight,
+                opponent_repeat_weight=opponent_repeat_weight,
+                repeat_decay=repeat_decay,
             )
         except ValidationError as exc:
             raise ValueError(str(exc)) from exc
@@ -120,8 +129,12 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         self.loss_discount: float = cfg.loss_discount
         self.balance_tolerance: float = cfg.balance_tolerance
         self.team_mode: bool = cfg.team_mode
+        self.teammate_repeat_weight: float = cfg.teammate_repeat_weight
+        self.opponent_repeat_weight: float = cfg.opponent_repeat_weight
+        self.repeat_decay: float = cfg.repeat_decay
 
         self.scores: dict[str, int] = {p.id: 0 for p in players}
+        self._raw_scores: dict[str, int] = {p.id: 0 for p in players}
         self._matches_played: dict[str, int] = {p.id: 0 for p in players}
         self._wins: dict[str, int] = {p.id: 0 for p in players}
         self._draws: dict[str, int] = {p.id: 0 for p in players}
@@ -134,6 +147,8 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
 
         self._partner_history: dict[str, dict[str, int]] = {p.id: defaultdict(int) for p in players}
         self._opponent_history: dict[str, dict[str, int]] = {p.id: defaultdict(int) for p in players}
+        self._partner_history_rounds: dict[str, dict[str, list[int]]] = {p.id: defaultdict(list) for p in players}
+        self._opponent_history_rounds: dict[str, dict[str, list[int]]] = {p.id: defaultdict(list) for p in players}
 
         self._pending_proposals: dict[str, dict] = {}
         self._match_credits: dict[str, dict[str, dict]] = {}
@@ -155,9 +170,18 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
             "_forced_sit_out_ids": None,
             "initial_strength": None,
             "_removed_players": [],
+            "teammate_repeat_weight": 2.0,
+            "opponent_repeat_weight": 1.0,
+            "repeat_decay": 0.0,
+            "_partner_history_rounds": {},
+            "_opponent_history_rounds": {},
         }
         if name in defaults:
             value = defaults[name]
+            object.__setattr__(self, name, value)
+            return value
+        if name == "_raw_scores":
+            value = self._rebuild_raw_scores()
             object.__setattr__(self, name, value)
             return value
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
@@ -812,6 +836,8 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
                 self._sit_out_counts[p.id] = 0
                 self._partner_history[p.id] = defaultdict(int)
                 self._opponent_history[p.id] = defaultdict(int)
+                self._partner_history_rounds[p.id] = defaultdict(list)
+                self._opponent_history_rounds[p.id] = defaultdict(list)
                 placeholder = entry.get("placeholder_id")
                 if placeholder:
                     ext_id_map[placeholder] = p.id

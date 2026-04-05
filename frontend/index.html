@@ -260,7 +260,7 @@
               <div class="adv-field">
                 <label data-i18n="txt_txt_rival_strength_label">Rival strength <small style="font-weight:400">(0–1)</small></label>
                 <input id="mex-strength-weight" type="number" value="0" min="0" max="1" step="0.05">
-                <small data-i18n="txt_txt_rival_strength_help">Scales pts by opponent rank. At <em>1.0</em> beating top team doubles score; <em>0</em> = off.</small>
+                <small data-i18n="txt_txt_rival_strength_help">Buchholz-based bonus: boosts points when facing strong opponents (by their raw scoring average). Higher weight = stronger effect.</small>
               </div>
               <div class="adv-field">
                 <label data-i18n="txt_txt_loss_discount_label">Loss discount <small style="font-weight:400">(1 = none)</small></label>
@@ -271,8 +271,21 @@
                 <label data-i18n="txt_txt_balance_tolerance_label">Balance tolerance <small style="font-weight:400">(0 = strict)</small></label>
                 <input id="mex-balance-tol" type="number" value="0.2" min="0" max="2" step="0.1">
                 <small data-i18n="txt_txt_balance_tolerance_help">Imbalance the optimiser may accept to avoid repeat matchups. <em>0.2</em> = 20% looser.</small>
+              </div>              <div class="adv-field">
+                <label data-i18n="txt_txt_teammate_repeat_weight_label">Teammate repeat weight <small style="font-weight:400">(&ge; 0)</small></label>
+                <input id="mex-teammate-repeat-wt" type="number" value="2" min="0" step="0.1">
+                <small data-i18n="txt_txt_teammate_repeat_weight_help">How strongly repeated partners are penalised. Higher = more varied pairings.</small>
               </div>
-            </div>
+              <div class="adv-field">
+                <label data-i18n="txt_txt_opponent_repeat_weight_label">Opponent repeat weight <small style="font-weight:400">(&ge; 0)</small></label>
+                <input id="mex-opponent-repeat-wt" type="number" value="1" min="0" step="0.1">
+                <small data-i18n="txt_txt_opponent_repeat_weight_help">How strongly repeated opponents are penalised. Higher = more varied matchups.</small>
+              </div>
+              <div class="adv-field">
+                <label data-i18n="txt_txt_repeat_decay_label">Repeat decay <small style="font-weight:400">(0 = off)</small></label>
+                <input id="mex-repeat-decay" type="number" value="0.5" min="0" step="0.1">
+                <small data-i18n="txt_txt_repeat_decay_help">Time-decay for repeat penalties. Recent repeats hurt more. Higher = faster fade of old repeats.</small>
+              </div>            </div>
           </details>
         </div>
         <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.25rem">

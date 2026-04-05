@@ -370,6 +370,96 @@ class TestMexicanoAPI:
         r = client.get("/api/tournaments/fake/mex/status")
         assert r.status_code == 404
 
+    def test_patch_settings_updates_values(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        payload = {
+            "num_rounds": 5,
+            "skill_gap": 40,
+            "win_bonus": 3,
+            "strength_weight": 0.5,
+            "loss_discount": 0.8,
+            "balance_tolerance": 0.3,
+            "teammate_repeat_weight": 1.5,
+            "opponent_repeat_weight": 0.5,
+            "repeat_decay": 0.25,
+        }
+        r = client.patch(f"/api/tournaments/{tid}/mex/settings", json=payload, headers=auth_headers)
+        assert r.status_code == 200
+        data = r.json()
+        assert data["num_rounds"] == 5
+        assert data["skill_gap"] == 40
+        assert data["win_bonus"] == 3
+        assert data["strength_weight"] == 0.5
+        assert data["loss_discount"] == 0.8
+
+    def test_patch_settings_clears_skill_gap(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        payload = {
+            "num_rounds": 3,
+            "skill_gap": None,
+            "win_bonus": 0,
+            "strength_weight": 0.0,
+            "loss_discount": 1.0,
+            "balance_tolerance": 0.2,
+            "teammate_repeat_weight": 2.0,
+            "opponent_repeat_weight": 1.0,
+            "repeat_decay": 0.5,
+        }
+        r = client.patch(f"/api/tournaments/{tid}/mex/settings", json=payload, headers=auth_headers)
+        assert r.status_code == 200
+        assert r.json()["skill_gap"] is None
+
+    def test_patch_settings_persisted_in_status(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        payload = {
+            "num_rounds": 10,
+            "skill_gap": None,
+            "win_bonus": 5,
+            "strength_weight": 0.2,
+            "loss_discount": 0.9,
+            "balance_tolerance": 0.1,
+            "teammate_repeat_weight": 3.0,
+            "opponent_repeat_weight": 2.0,
+            "repeat_decay": 1.0,
+        }
+        client.patch(f"/api/tournaments/{tid}/mex/settings", json=payload, headers=auth_headers)
+        status = client.get(f"/api/tournaments/{tid}/mex/status").json()
+        assert status["num_rounds"] == 10
+        assert status["win_bonus"] == 5
+        assert status["loss_discount"] == 0.9
+
+    def test_patch_settings_requires_auth(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        payload = {
+            "num_rounds": 3,
+            "skill_gap": None,
+            "win_bonus": 0,
+            "strength_weight": 0.0,
+            "loss_discount": 1.0,
+            "balance_tolerance": 0.2,
+            "teammate_repeat_weight": 2.0,
+            "opponent_repeat_weight": 1.0,
+            "repeat_decay": 0.5,
+        }
+        r = client.patch(f"/api/tournaments/{tid}/mex/settings", json=payload)
+        assert r.status_code == 401
+
+    def test_patch_settings_rejects_invalid_values(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        payload = {
+            "num_rounds": 3,
+            "skill_gap": None,
+            "win_bonus": -1,
+            "strength_weight": 0.0,
+            "loss_discount": 1.0,
+            "balance_tolerance": 0.2,
+            "teammate_repeat_weight": 2.0,
+            "opponent_repeat_weight": 1.0,
+            "repeat_decay": 0.5,
+        }
+        r = client.patch(f"/api/tournaments/{tid}/mex/settings", json=payload, headers=auth_headers)
+        assert r.status_code == 422
+
 
 # ── Standalone Play-off API ───────────────────────────────
 

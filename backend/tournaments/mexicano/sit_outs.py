@@ -105,7 +105,7 @@ class SitOutMixin:
         skill_gap_violations: int,
         exact_prev_round_repeats: int,
         score_imbalance: float,
-        repeat_count: int,
+        repeat_count: float,
     ) -> float:
         """Weighted score used to optimize plans across all metrics."""
         if strategy == "seeded":

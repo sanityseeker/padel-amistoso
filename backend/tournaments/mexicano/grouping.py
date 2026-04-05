@@ -171,7 +171,7 @@ class GroupingMixin:
     # Cross-group optimisation
     # ------------------------------------------------------------------ #
 
-    def _total_repeat_count(self, groups: list[list[Player]]) -> int:
+    def _total_repeat_count(self, groups: list[list[Player]]) -> float:
         """Sum of repeat counts across all groups' best pairings."""
         total = 0
         for group in groups:
@@ -342,6 +342,17 @@ class GroupingMixin:
         best = [(t1, t2) for exc, rep, imb, sp, t1, t2 in candidates if (exc, rep, imb, sp) == best_key]
         return random.choice(best)
 
-    def _pairing_repeat_count(self, team1: list[Player], team2: list[Player]) -> int:
-        """Total repeat penalty for a match, with a bonus for full-match repeats."""
-        return pairing_mod.pairing_repeat_count(team1, team2, self._partner_history, self._opponent_history)
+    def _pairing_repeat_count(self, team1: list[Player], team2: list[Player]) -> float:
+        """Total repeat penalty for a match, with weights, decay, and full-match bonus."""
+        return pairing_mod.pairing_repeat_count(
+            team1,
+            team2,
+            self._partner_history,
+            self._opponent_history,
+            teammate_weight=self.teammate_repeat_weight,
+            opponent_weight=self.opponent_repeat_weight,
+            decay=self.repeat_decay,
+            current_round=self.current_round,
+            partner_history_rounds=self._partner_history_rounds,
+            opponent_history_rounds=self._opponent_history_rounds,
+        )

@@ -77,6 +77,11 @@ const tvState = {
   playerOpponents: [],      // [{player_id, name, contact, match_id, round_number}]
   playerOpponentsLoaded: false, // whether we have fetched at least once
   playerPanelOpen: false,   // whether the expand panel was open (survives re-renders)
+  // Mexicano leaderboard sort state
+  mexLeaderboard: [],       // cached leaderboard rows for client-side sort
+  mexTeamMode: false,       // mirrors status.team_mode
+  mexSortCol: null,         // null = server default order
+  mexSortDir: 'desc',       // 'asc' | 'desc'
 };
 
 // ── In-flight guards for version polling ──────────────────
@@ -796,8 +801,11 @@ async function loadTV() {
       const [status, matches, playoffs] = dataResults;
       tvState.breakdowns = matches.breakdowns || {};
       tvState.totalPts = status.total_points_per_match || 0;
+      tvState.strengthWeight = status.strength_weight || 0;
       tvState.playerMap = {};
       for (const p of (status.players || [])) tvState.playerMap[p.id] = p.name;
+      tvState.mexLeaderboard = status.leaderboard || [];
+      tvState.mexTeamMode = status.team_mode || false;
       _captureOpenState();
       _renderMex(tvSettings, status, matches, playoffs);
       _applyOpenState();
@@ -1011,6 +1019,82 @@ function _renderMex(tvSettings, status, matches, playoffs) {
   }
 
   document.getElementById('tv-root').innerHTML = html;
+  _tvRenderMexLeaderboard();
+}
+
+function _tvMexSetSort(col) {
+  if (tvState.mexSortCol === col) {
+    tvState.mexSortDir = tvState.mexSortDir === 'desc' ? 'asc' : 'desc';
+  } else {
+    tvState.mexSortCol = col;
+    tvState.mexSortDir = (col === 'player' || col === 'rank') ? 'asc' : 'desc';
+  }
+  _tvRenderMexLeaderboard();
+}
+
+function _tvRenderMexLeaderboard() {
+  const container = document.getElementById('tv-mex-leaderboard-inner');
+  if (!container) return;
+  const lb = tvState.mexLeaderboard;
+  const byAvg = lb.length > 0 && lb[0].ranked_by_avg;
+
+  const rows = [...lb];
+  if (tvState.mexSortCol !== null) {
+    rows.sort((a, b) => {
+      let va = a[tvState.mexSortCol];
+      let vb = b[tvState.mexSortCol];
+      if (typeof va === 'string' || typeof vb === 'string') {
+        const cmp = (va || '').localeCompare(vb || '');
+        return tvState.mexSortDir === 'asc' ? cmp : -cmp;
+      }
+      if (va == null) va = -Infinity;
+      if (vb == null) vb = -Infinity;
+      return tvState.mexSortDir === 'desc' ? vb - va : va - vb;
+    });
+  }
+
+  const indicator = (col) => {
+    if (tvState.mexSortCol !== col) return '';
+    return tvState.mexSortDir === 'desc' ? ' ↓' : ' ↑';
+  };
+  const thHtml = (col, label) => {
+    const isDefaultRankCol = tvState.mexSortCol === null && ((col === 'total_points' && !byAvg) || (col === 'avg_points' && byAvg));
+    const isActive = tvState.mexSortCol === col;
+    const inner = isDefaultRankCol
+      ? `<strong>${label} ↓</strong>`
+      : isActive
+        ? `<strong>${label}${indicator(col)}</strong>`
+        : label;
+    return `<th class="tv-sortable-col${isActive ? ' tv-sort-active' : ''}" onclick="_tvMexSetSort('${col}')">${inner}</th>`;
+  };
+
+  let html = `<table class="standings-table" data-type="mex"><thead><tr>`;
+  html += thHtml('rank', '#');
+  html += thHtml('player', tvState.mexTeamMode ? t('txt_txt_team') : t('txt_txt_player'));
+  html += thHtml('total_points', t('txt_txt_total_pts_abbrev'));
+  html += thHtml('matches_played', t('txt_txt_played_abbrev'));
+  html += thHtml('wins', t('txt_txt_w_abbrev'));
+  html += thHtml('draws', t('txt_txt_d_abbrev'));
+  html += thHtml('losses', t('txt_txt_l_abbrev'));
+  html += thHtml('avg_points', t('txt_txt_avg_pts_abbrev'));
+  html += `</tr></thead><tbody>`;
+
+  for (const r of rows) {
+    const isMe = tvState.playerId && r.player_id === tvState.playerId;
+    const removedStyle = r.removed ? 'opacity:0.45' : '';
+    const rankCell = r.removed ? `<span style="color:var(--text-muted)">—</span>` : r.rank;
+    const nameCell = r.removed
+      ? `${esc(r.player)} <span style="font-size:0.7em;opacity:0.7">(${t('txt_txt_removed')})</span>`
+      : esc(r.player);
+    html += `<tr${isMe ? ' class="my-row"' : ''}${removedStyle ? ` style="${removedStyle}"` : ''}><td class="rank-cell">${rankCell}</td><td class="player-cell">${nameCell}</td>`;
+    const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
+    const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
+    html += `<td class="${byAvg ? '' : 'pts-cell'}">${totalCell}</td>`;
+    html += `<td>${r.matches_played}</td><td>${r.wins ?? 0}</td><td>${r.draws ?? 0}</td><td>${r.losses ?? 0}</td>`;
+    html += `<td class="${byAvg ? 'pts-cell' : ''}">${avgCell}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  container.innerHTML = html;
 }
 
 // ── Shared builders ───────────────────────────────────────
@@ -1071,31 +1155,10 @@ document.addEventListener('keydown', e => {
   }
 });
 
-function _buildMexLeaderboard(status) {
-  const lb = status.leaderboard || [];
-  const byAvg = lb.length > 0 && lb[0].ranked_by_avg;
+function _buildMexLeaderboard(_status) {
   let html = `<details class="tv-collapsible" data-tv-key="standings" open>`;
   html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_leaderboard')}</h2> <button class="format-info-btn" onclick="showAbbrevPopup(event,'leaderboard')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></summary>`;
-  html += `<div class="tv-section">`;
-  html += `<table class="standings-table" data-type="mex"><thead><tr>`;
-  html += `<th>#</th><th>${status.team_mode ? t('txt_txt_team') : t('txt_txt_player')}</th><th>${t('txt_txt_total_pts_abbrev')}</th><th>${t('txt_txt_played_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th><th>${t('txt_txt_avg_pts_abbrev')}</th>`;
-  html += `</tr></thead><tbody>`;
-  for (const r of lb) {
-    const isMe = tvState.playerId && r.player_id === tvState.playerId;
-    const removedStyle = r.removed ? 'opacity:0.45' : '';
-    const rankCell = r.removed ? `<span style="color:var(--text-muted)">—</span>` : r.rank;
-    const nameCell = r.removed
-      ? `${esc(r.player)} <span style="font-size:0.7em;opacity:0.7">(${t('txt_txt_removed')})</span>`
-      : esc(r.player);
-    html += `<tr${isMe ? ' class="my-row"' : ''}${removedStyle ? ` style="${removedStyle}"` : ''}><td class="rank-cell">${rankCell}</td><td class="player-cell">${nameCell}</td>`;
-    const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
-    const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
-    html += `<td class="${byAvg ? '' : 'pts-cell'}">${totalCell}</td>`;
-    html += `<td>${r.matches_played}</td><td>${r.wins ?? 0}</td><td>${r.draws ?? 0}</td><td>${r.losses ?? 0}</td>`;
-    html += `<td class="${byAvg ? 'pts-cell' : ''}">${avgCell}</td></tr>`;
-  }
-  html += `</tbody></table>`;
-  html += `</div></details>`;
+  html += `<div class="tv-section"><div id="tv-mex-leaderboard-inner"></div></div></details>`;
   return html;
 }
 
@@ -1334,10 +1397,13 @@ function _buildHistoryMatch(m, tvSettings, isMex) {
       html += `<summary class="breakdown-toggle">📊 ${t('txt_txt_score_breakdown')}</summary>`;
       html += `<div class="breakdown-panel">`;
       html += `<table class="breakdown-table"><thead><tr>`;
-      html += `<th>${t('txt_txt_player')}</th><th>${t('txt_txt_raw')}</th><th>${t('txt_txt_strength_multiplier')}</th><th>${t('txt_txt_loss_disc_multiplier')}</th><th>${t('txt_txt_win_bonus_header')}</th><th>${t('txt_txt_final')}</th>`;
+      html += `<th>${t('txt_txt_player')}</th><th>${t('txt_txt_raw')}</th><th>${t('txt_txt_relative_strength')}</th><th>${t('txt_txt_strength_weight')}</th><th>${t('txt_txt_strength_multiplier')}</th><th>${t('txt_txt_loss_disc_multiplier')}</th><th>${t('txt_txt_win_bonus_header')}</th><th>${t('txt_txt_final')}</th>`;
       html += `</tr></thead><tbody>`;
       for (const [pid, d] of Object.entries(bd)) {
+        const rs = d.relative_strength || 0;
         html += `<tr><td>${esc(tvState.playerMap[pid] || pid)}</td><td>${d.raw}</td>`;
+        html += `<td>${rs > 0 ? rs.toFixed(3) : '—'}</td>`;
+        html += `<td>${tvState.strengthWeight > 0 ? '×' + tvState.strengthWeight : '—'}</td>`;
         html += `<td>${d.strength_mult !== 1 ? '×' + d.strength_mult.toFixed(2) : '—'}</td>`;
         html += `<td>${d.loss_disc !== 1 ? '×' + d.loss_disc.toFixed(2) : '—'}</td>`;
         html += `<td>${d.win_bonus > 0 ? '+' + d.win_bonus : '—'}</td>`;
