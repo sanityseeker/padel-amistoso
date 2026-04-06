@@ -862,6 +862,15 @@ function _renderGP(tvSettings, status, groups, playoffs) {
   const assignmentMatches = isPlayoffs ? pendingPlayoff : pendingGroup;
   const courtTitle = isPlayoffs ? t('txt_txt_court_assignments_play_offs') : t('txt_txt_court_assignments_group_stage');
 
+  // Group-keyed pending map for collapsible-by-group pending view (group stage only)
+  const pendingByGroup = {};
+  if (!isPlayoffs) {
+    for (const [gName, gMatches] of Object.entries(groups.matches || {})) {
+      const gPending = _sortTbdLast(gMatches.filter(m => m.status !== 'completed'));
+      if (gPending.length > 0) pendingByGroup[gName] = gPending;
+    }
+  }
+
   let html = _buildHeader(tvState.tournamentName, phase, champion);
   html += _buildBanner(tvSettings);
 
@@ -871,7 +880,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
 
   const hasCourts = status.assign_courts !== false;
   const _gpScoreCtx = isPlayoffs ? 'gp-playoff' : 'gp-group';
-  html += _buildCourts(assignmentMatches, courtTitle, hasCourts && tvSettings.show_courts !== false, tvSettings.show_pending_matches === true, _gpScoreCtx);
+  html += _buildCourts(assignmentMatches, courtTitle, hasCourts && tvSettings.show_courts !== false, tvSettings.show_pending_matches === true, _gpScoreCtx, Object.keys(pendingByGroup).length > 0 ? pendingByGroup : null);
 
   if (isPlayoffs) {
     // Play-offs phase: past playoff matches → bracket → group past
@@ -1225,37 +1234,28 @@ function _buildBanner(tvSettings) {
   return `<div class="admin-banner">📢 ${esc(text)}</div>`;
 }
 
-function _buildCourts(matches, title, assignCourts = true, showPending = false, scoreCtx = null) {
-  const _commentHtml = (m) => m.comment ? `<div class="match-comment">${esc(m.comment)}</div>` : '';
-  if (!assignCourts && !showPending) return '';
-  if (!assignCourts) {
-    // Courts disabled — group by round, defined players first, multi-column grid
-    let html = `<div class="tv-section">`;
-    html += `<div class="tv-section-header"><h2>${t('txt_txt_pending_matches')}</h2></div>`;
-    if (!matches || matches.length === 0) {
-      html += `<p class="tv-empty">${t('txt_txt_no_pending_court_assignments')}</p>`;
-      html += `</div>`;
-      return html;
-    }
-    const _tl = (team) => (team && team.length > 0) ? team.join(' & ') : 'TBD';
-    const _hasTbd = (m) => !m.team1?.join('').trim() || !m.team2?.join('').trim();
-    // Group by round_label, preserving first-seen order
-    const _byRound = {};
-    const _roundOrder = [];
-    for (const m of matches) {
+// Render a list of pending matches grouped by group name as collapsible <details> blocks.
+function _buildPendingGroupCollapsibles(pendingByGroup, _tl, _hasTbd, _commentHtml, scoreCtx) {
+  let html = '';
+  for (const [gName, gMatches] of Object.entries(pendingByGroup)) {
+    const tvKey = `pending-group-${gName}`;
+    // Group by round_label within this group
+    const byRound = {};
+    const roundOrder = [];
+    for (const m of gMatches) {
       const key = m.round_label || '';
-      if (!_byRound[key]) { _byRound[key] = []; _roundOrder.push(key); }
-      _byRound[key].push(m);
+      if (!byRound[key]) { byRound[key] = []; roundOrder.push(key); }
+      byRound[key].push(m);
     }
-    // Within each round: defined-player matches first, TBD last
-    for (const key of _roundOrder) {
-      _byRound[key].sort((a, b) => _hasTbd(a) - _hasTbd(b));
-    }
-    html += `<div class="court-board">`;
-    for (const key of _roundOrder) {
+    // Respect previously saved open/closed state; default open on first render
+    const isOpen = tvKey in tvState.sectionOpenState ? tvState.sectionOpenState[tvKey] : true;
+    html += `<details class="round-block" data-tv-key="${esc(tvKey)}"${isOpen ? ' open' : ''}>`;
+    html += `<summary class="round-summary"><span class="chevron">▶</span>${esc(gName)}</summary>`;
+    html += `<div class="round-body"><div class="court-board">`;
+    for (const key of roundOrder) {
       html += `<div class="court-card">`;
       if (key) html += `<div class="court-name">${esc(key)}</div>`;
-      for (const m of _byRound[key]) {
+      for (const m of byRound[key]) {
         const tbd = _hasTbd(m);
         html += `<div class="court-match"${tbd ? ' style="opacity:0.5"' : ''}>`;
         html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl(m.team2))}</div>`;
@@ -1266,7 +1266,58 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
       }
       html += `</div>`;
     }
-    html += `</div></div>`;
+    html += `</div></div></details>`;
+  }
+  return html;
+}
+
+function _buildCourts(matches, title, assignCourts = true, showPending = false, scoreCtx = null, pendingByGroup = null) {
+  const _commentHtml = (m) => m.comment ? `<div class="match-comment">${esc(m.comment)}</div>` : '';
+  if (!assignCourts && !showPending) return '';
+  if (!assignCourts) {
+    // Courts disabled — show all planned matches; grouped by group name when available
+    let html = `<div class="tv-section">`;
+    html += `<div class="tv-section-header"><h2>${t('txt_txt_pending_matches')}</h2></div>`;
+    if (!matches || matches.length === 0) {
+      html += `<p class="tv-empty">${t('txt_txt_no_pending_court_assignments')}</p>`;
+      html += `</div>`;
+      return html;
+    }
+    const _tl = (team) => (team && team.length > 0) ? team.join(' & ') : 'TBD';
+    const _hasTbd = (m) => !m.team1?.join('').trim() || !m.team2?.join('').trim();
+    if (pendingByGroup) {
+      html += _buildPendingGroupCollapsibles(pendingByGroup, _tl, _hasTbd, _commentHtml, scoreCtx);
+    } else {
+      // Group by round_label, preserving first-seen order
+      const _byRound = {};
+      const _roundOrder = [];
+      for (const m of matches) {
+        const key = m.round_label || '';
+        if (!_byRound[key]) { _byRound[key] = []; _roundOrder.push(key); }
+        _byRound[key].push(m);
+      }
+      // Within each round: defined-player matches first, TBD last
+      for (const key of _roundOrder) {
+        _byRound[key].sort((a, b) => _hasTbd(a) - _hasTbd(b));
+      }
+      html += `<div class="court-board">`;
+      for (const key of _roundOrder) {
+        html += `<div class="court-card">`;
+        if (key) html += `<div class="court-name">${esc(key)}</div>`;
+        for (const m of _byRound[key]) {
+          const tbd = _hasTbd(m);
+          html += `<div class="court-match"${tbd ? ' style="opacity:0.5"' : ''}>`;
+          html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl(m.team2))}</div>`;
+          html += _commentHtml(m);
+          html += `</div>`;
+          if (scoreCtx) html += _buildPlayerScoreForm(m, scoreCtx);
+          html += `</div>`;
+        }
+        html += `</div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
     return html;
   }
 
@@ -1320,34 +1371,39 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
   // Also show pending matches view below court board
   const _tl2 = (team) => (team && team.length > 0) ? team.join(' & ') : 'TBD';
   const _hasTbd2 = (m) => !m.team1?.join('').trim() || !m.team2?.join('').trim();
-  const byRound2 = {};
-  const roundOrder2 = [];
-  for (const m of matches) {
-    const key = m.round_label || '';
-    if (!byRound2[key]) { byRound2[key] = []; roundOrder2.push(key); }
-    byRound2[key].push(m);
-  }
-  for (const key of roundOrder2) {
-    byRound2[key].sort((a, b) => _hasTbd2(a) - _hasTbd2(b));
-  }
   html += `<div class="tv-section">`;
   html += `<div class="tv-section-header"><h2>${t('txt_txt_pending_matches')}</h2></div>`;
-  html += `<div class="court-board">`;
-  for (const key of roundOrder2) {
-    html += `<div class="court-card">`;
-    if (key) html += `<div class="court-name">${esc(key)}</div>`;
-    for (const m of byRound2[key]) {
-      const tbd = _hasTbd2(m);
-      html += `<div class="court-match"${tbd ? ' style="opacity:0.5"' : ''}>`;
-      html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl2(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl2(m.team2))}</div>`;
-      html += _commentHtml(m);
-      html += `</div>`;
-      if (scoreCtx) html += _buildPlayerScoreForm(m, scoreCtx);
+  if (pendingByGroup) {
+    html += _buildPendingGroupCollapsibles(pendingByGroup, _tl2, _hasTbd2, _commentHtml, scoreCtx);
+  } else {
+    const byRound2 = {};
+    const roundOrder2 = [];
+    for (const m of matches) {
+      const key = m.round_label || '';
+      if (!byRound2[key]) { byRound2[key] = []; roundOrder2.push(key); }
+      byRound2[key].push(m);
+    }
+    for (const key of roundOrder2) {
+      byRound2[key].sort((a, b) => _hasTbd2(a) - _hasTbd2(b));
+    }
+    html += `<div class="court-board">`;
+    for (const key of roundOrder2) {
+      html += `<div class="court-card">`;
+      if (key) html += `<div class="court-name">${esc(key)}</div>`;
+      for (const m of byRound2[key]) {
+        const tbd = _hasTbd2(m);
+        html += `<div class="court-match"${tbd ? ' style="opacity:0.5"' : ''}>`;
+        html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl2(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl2(m.team2))}</div>`;
+        html += _commentHtml(m);
+        html += `</div>`;
+        if (scoreCtx) html += _buildPlayerScoreForm(m, scoreCtx);
+        html += `</div>`;
+      }
       html += `</div>`;
     }
     html += `</div>`;
   }
-  html += `</div></div>`;
+  html += `</div>`;
   return html;
 }
 

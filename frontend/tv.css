@@ -308,6 +308,8 @@ body {
 }
 .round-summary::-webkit-details-marker { display: none; }
 details[open] > .round-summary { color: var(--text); border-bottom: 1px solid var(--border); }
+.round-summary .chevron { color: var(--text-muted); font-size: 0.9rem; transition: transform 0.2s; }
+details.round-block[open] > .round-summary .chevron { transform: rotate(90deg); }
 .round-body { padding: 0.5rem 0.75rem; }
 
 .history-match {
