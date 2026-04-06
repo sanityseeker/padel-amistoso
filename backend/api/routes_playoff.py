@@ -88,7 +88,14 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
         assign_courts=req.assign_courts,
     )
     # Flatten all teams into individual players for secret generation.
-    create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in all_players])
+    contact_map = {p.id: req.player_contacts[p.name] for p in all_players if p.name in req.player_contacts} or None
+    email_map = {p.id: req.player_emails[p.name] for p in all_players if p.name in req.player_emails} or None
+    create_secrets_for_tournament(
+        tid,
+        [{"id": p.id, "name": p.name} for p in all_players],
+        contacts=contact_map,
+        emails=email_map,
+    )
     return {"id": tid, "phase": t.phase}
 
 

@@ -8,6 +8,7 @@ import pytest
 
 from backend.models import Court, MatchStatus, Player
 from backend.tournaments import Group, assign_courts, distribute_players_to_groups
+from backend.tournaments.group_stage import _schedule_round_robin
 
 # ── Helpers ────────────────────────────────────────────────
 
@@ -88,6 +89,125 @@ class TestGroupRoundRobin:
         for m in matches:
             assert len(m.team1) == 1
             assert len(m.team2) == 1
+
+    def test_team_mode_assigns_round_numbers(self):
+        """Every match in team_mode must have a positive round_number."""
+        teams = [Player(name=n) for n in ["A & B", "C & D", "E & F", "G & H"]]
+        group = Group("A", teams, team_mode=True)
+        matches = group.generate_round_robin()
+        assert all(m.round_number > 0 for m in matches)
+
+    def test_team_mode_round_labels_include_round_index(self):
+        """round_label must contain 'R<n>' for each round."""
+        teams = [Player(name=n) for n in ["Alpha", "Beta", "Gamma", "Delta"]]
+        group = Group("B", teams, team_mode=True)
+        group.generate_round_robin()
+        for m in group.matches:
+            assert f"R{m.round_number}" in m.round_label
+
+    def test_team_mode_each_round_all_teams_play_once(self):
+        """Within each round every team appears exactly once (all teams play)."""
+        teams = [Player(name=f"T{i}") for i in range(6)]
+        group = Group("A", teams, team_mode=True)
+        group.generate_round_robin()
+        from collections import defaultdict
+
+        round_to_teams: dict[int, list[str]] = defaultdict(list)
+        for m in group.matches:
+            round_to_teams[m.round_number].extend([m.team1[0].id, m.team2[0].id])
+        for rn, team_ids in round_to_teams.items():
+            assert len(team_ids) == len(set(team_ids)), f"Round {rn} has duplicate team entries"
+            assert len(team_ids) == len(teams), f"Round {rn} does not include all teams"
+
+    def test_team_mode_odd_count_each_round_all_active_teams_play(self):
+        """With an odd number of teams one team sits out per round, but the
+        active teams each play exactly once."""
+        teams = [Player(name=f"T{i}") for i in range(5)]
+        group = Group("A", teams, team_mode=True)
+        group.generate_round_robin()
+        from collections import defaultdict
+
+        round_to_teams: dict[int, list[str]] = defaultdict(list)
+        for m in group.matches:
+            round_to_teams[m.round_number].extend([m.team1[0].id, m.team2[0].id])
+        for rn, team_ids in round_to_teams.items():
+            # No team appears twice in the same round.
+            assert len(team_ids) == len(set(team_ids)), f"Round {rn} has duplicate team entries"
+            # Exactly one team sits out (len(teams) - 1 active).
+            assert len(team_ids) == len(teams) - 1, (
+                f"Round {rn}: expected {len(teams) - 1} active teams, got {len(team_ids)}"
+            )
+
+    def test_team_mode_total_rounds_even(self):
+        """For N even teams, there are exactly N-1 rounds."""
+        teams = [Player(name=f"T{i}") for i in range(6)]
+        group = Group("A", teams, team_mode=True)
+        group.generate_round_robin()
+        num_rounds = len({m.round_number for m in group.matches})
+        assert num_rounds == len(teams) - 1
+
+    def test_team_mode_total_rounds_odd(self):
+        """For N odd teams, there are exactly N rounds (one sit-out each)."""
+        teams = [Player(name=f"T{i}") for i in range(5)]
+        group = Group("A", teams, team_mode=True)
+        group.generate_round_robin()
+        num_rounds = len({m.round_number for m in group.matches})
+        assert num_rounds == len(teams)
+
+
+# ── _schedule_round_robin helper ──────────────────────────
+
+
+class TestScheduleRoundRobin:
+    @pytest.mark.parametrize(
+        "n, expected_rounds, matches_per_round",
+        [
+            (4, 3, 2),
+            (6, 5, 3),
+            (8, 7, 4),
+        ],
+    )
+    def test_even_count_structure(self, n: int, expected_rounds: int, matches_per_round: int) -> None:
+        items = list(range(n))
+        rounds = _schedule_round_robin(items)
+        assert len(rounds) == expected_rounds
+        for r in rounds:
+            assert len(r) == matches_per_round
+
+    @pytest.mark.parametrize(
+        "n, expected_rounds, matches_per_round",
+        [
+            (3, 3, 1),  # 1 sits out each round
+            (5, 5, 2),  # 1 sits out each round
+        ],
+    )
+    def test_odd_count_structure(self, n: int, expected_rounds: int, matches_per_round: int) -> None:
+        items = list(range(n))
+        rounds = _schedule_round_robin(items)
+        assert len(rounds) == expected_rounds
+        for r in rounds:
+            assert len(r) == matches_per_round
+
+    def test_all_matchups_covered(self) -> None:
+        """Every distinct pair of entries plays exactly once."""
+        import itertools
+
+        items = list(range(6))
+        rounds = _schedule_round_robin(items)
+        all_pairs = [frozenset(pair) for r in rounds for pair in r]
+        expected = [frozenset(p) for p in itertools.combinations(items, 2)]
+        assert sorted(all_pairs, key=sorted) == sorted(expected, key=sorted)
+
+    def test_no_entry_plays_twice_per_round(self) -> None:
+        """Within each round every entry appears in exactly one match."""
+        items = list(range(8))
+        rounds = _schedule_round_robin(items)
+        for rnd in rounds:
+            seen: set[int] = set()
+            for a, b in rnd:
+                assert a not in seen and b not in seen
+                seen.add(a)
+                seen.add(b)
 
 
 # ── Round-by-round generation ─────────────────────────────

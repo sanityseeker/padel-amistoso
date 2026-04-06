@@ -41,13 +41,124 @@ Pick a **format** and **sport** (Padel or Tennis) at creation time. The engine i
 4. After a set number of rounds (or in rolling mode, whenever you decide), the tournament moves to a seeded play-off.
 5. In individual mode, top players are paired into teams (#1+#2, #3+#4, …) before entering the bracket.
 
-The engine has several tuning knobs (skill-gap grouping, win bonus, strength weighting, etc.) — see the API docs for details.
+### Mexicano advanced settings
+
+All settings below can be provided at creation time and changed later via **Admin → Settings** (or the `PATCH /{tid}/mex/settings` API). Defaults are shown in parentheses.
+
+#### Structural
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `total_points_per_match` | `32` | Fixed point pool split between the two teams each match (e.g. 21-11, 16-16). |
+| `num_rounds` | `8` | How many Mexicano rounds to play before moving to play-offs. Set to `0` for **rolling mode** — rounds continue until the organizer manually starts play-offs. |
+
+#### Grouping & court balance
+
+**`skill_gap`** (default: `null` — disabled)
+
+Controls the maximum allowed estimated-score difference between any two players on the same court.
+
+- `null` — players are grouped with a **snake draft** (rank 1 and 2 in the same group, then 3 and 4, etc.) regardless of score spread.
+- e.g. `skill_gap = 10` — the engine only puts two players on the same court if their estimated scores differ by at most 10 points. If the top player has 60 pts and another has 75 pts, they will not share a court.
+
+> When many players cluster near the top and a few are far behind, setting a `skill_gap` prevents beginners from being paired against much stronger players in later rounds.
+
+**`balance_tolerance`** (default: `0.2`)
+
+The cross-group optimizer tries to swap players between courts to reduce repeat pairings. This setting limits how much score imbalance the optimizer is allowed to introduce in exchange for pairing novelty.
+
+- `0.2` — the optimizer accepts swaps that raise total court imbalance by at most 20% above the initial proposal.
+- `0.0` — the optimizer never makes a swap that worsens imbalance at all (very conservative).
+- `1.0` — the optimizer freely sacrifices up to 100% extra imbalance to avoid repeats.
+
+#### Scoring modifiers
+
+**`win_bonus`** (default: `0`)
+
+Extra points added flat to the winning team's total, regardless of the margin.
+
+Example with `total_points_per_match = 32` and `win_bonus = 3`:
+
+| Result | Winner credited | Loser credited |
+| --- | --- | --- |
+| 20-12 | 20 + 3 = **23** | 12 |
+| 17-15 | 17 + 3 = **20** | 15 |
+
+> A win bonus rewards teams that win close matches more than just the raw point differential does, making winning (not just scoring) matter.
+
+**`strength_weight`** (default: `0.0`, range `0.0–1.0`)
+
+Scales points up for beating a stronger opponent. The multiplier is `1.0 + strength_weight × relative_strength`, where relative strength measures how much higher the opponents' per-match average is compared to your own team's (clamped to `[0, 1]`).
+
+- `0.0` — disabled; raw points are credited as-is.
+- `0.5` — if your opponents' average is ~50% above yours, your raw score is multiplied by ~1.5.
+- `1.0` — maximum amplification; points roughly double when playing against much stronger opposition.
+
+> Useful in open-level events where you want to reward upsets, not just reward players who happen to face weaker opponents.
+
+**`loss_discount`** (default: `1.0`, range `0.0–1.0`)
+
+Multiplier applied to losers' credited points (winners are never discounted).
+
+- `1.0` — no change; losers get their raw points credited normally.
+- `0.5` — losers only count 50% of their raw points toward the leaderboard.
+- `0.0` — losers score 0 points regardless of how many they won.
+
+Example with `total_points_per_match = 32`, `loss_discount = 0.5`:
+
+| Result | Winner credited | Loser credited |
+| --- | --- | --- |
+| 20-12 | 20 | round(12 × 0.5) = **6** |
+| 17-15 | 17 | round(15 × 0.5) = **8** |
+
+> Combining `win_bonus` with `loss_discount < 1.0` creates a more pronounced gap between winners and losers, making it a "win-or-go-home" style leaderboard.
+
+#### Repeat-avoidance weights
+
+The engine tracks partner and opponent history and penalizes repeat pairings when proposing the next round.
+
+**`teammate_repeat_weight`** (default: `2.0`)  
+**`opponent_repeat_weight`** (default: `1.0`)
+
+How heavily a repeated **partnership** or **opponent matchup** is penalized. Higher values → the engine works harder to avoid those repeats. The default of 2.0 / 1.0 means re-playing with the same partner is penalized twice as much as facing the same opponent again.
+
+**`repeat_decay`** (default: `0.5`)
+
+Makes distant repeats count less than recent ones. A repeat from K rounds ago carries weight `decay^K` instead of the full weight.
+
+- `0.5` — a repeat from 2 rounds ago counts as `0.25×` the weight of a repeat from last round.
+- `1.0` — all past repeats are equally penalized regardless of how long ago they occurred.
+- `0.0` — only the immediately preceding round's pairings are considered.
+
+> With many players (12+), repeat avoidance matters less, so you can lower these weights. With 8 players playing many rounds, it becomes critical to avoid people always landing on the same court.
+
+**`partner_balance_weight`** (default: `0.0`)
+
+Extra penalty for forming mismatched partner pairs within a team (e.g., pairing the tournament leader with the last-place player as partners).
+
+- `0.0` — disabled; only cross-team balance and repeat history are considered.
+- `0.5` — within-team partner balance contributes 50% as much as cross-team balance to the pairing quality score.
+- `2.0` — strong pressure to pair players of similar strength as partners.
+
+> Has no effect in team mode (partners are fixed). In individual mode it complements `skill_gap` — `skill_gap` is a hard cut-off on court assignment, while `partner_balance_weight` softly prefers equal-strength partnerships within a court.
 
 **Direct Play-offs:** skip the group stage and go straight to a bracket.
+
+### Seeding logic (play-offs)
+
+- **Group + Play-off seeding** prioritizes finishing position inside each group (1st place seeds above 2nd place), then uses performance tie-breakers.
+- When multiple groups feed a bracket, first-round pairing aims to avoid same-group collisions where possible.
+- **Mexicano seeding** uses the leaderboard at the moment play-offs start.
+  - If players have played different numbers of matches (e.g. sit-outs), ranking is driven primarily by **average points per match**, then total points and Buchholz.
+  - If all players have played the same number of matches, ranking is driven primarily by **total points**, then average points and Buchholz.
+- In Mexicano **individual mode**, selected players are converted into teams by pairing adjacent seeds (#1+#2, #3+#4, …); teams are then ordered by combined seed strength for bracket placement.
+- Organizers can override automatic selection by explicitly choosing playoff participants, and can include external participants with a seed score.
 
 ### Registration lobbies
 
 Create a sign-up lobby and share the link with participants. Players self-register with their name (and any custom questions you configure). Once sign-ups close, convert the lobby to a real tournament with one click — player credentials carry over automatically.
+
+You can also add **co-editors** (collaborators) to a registration lobby so multiple organizers can manage sign-ups together.
 
 ### Player codes
 
@@ -58,6 +169,9 @@ Every player automatically gets a unique **passphrase** (e.g. `brave-little-tige
 - **Record scores** as points or best-of-3 sets (where the format supports it).
 - **Match comments**: add a short note to any match (e.g. "Moved to Court 2") — visible on the public screen.
 - **Announcement banner**: broadcast a message to all participants on the public screen.
+- **Co-editing**: share tournaments with other registered users as co-editors. Co-editors can manage rounds and scores, but only the owner/admin can delete the tournament or manage collaborators.
+- **Roster updates**: add players mid-tournament (Mexicano and Group + Play-off during group phase), and remove players mid-tournament in Mexicano when they are not assigned to pending matches.
+- **Player contacts + email delivery**: store player contact/email info and (when SMTP is configured) send credential reminders, round schedules, organizer announcements, and final results by email.
 
 ### TV display
 
@@ -173,6 +287,26 @@ DELETE /api/auth/users/{username}
 ```
 
 All user management endpoints require authentication and are admin-only.
+
+### Password reset by email
+
+If SMTP is configured, users can reset forgotten passwords without admin intervention:
+
+```bash
+# Request reset link (always returns 204)
+POST /api/auth/forgot-password
+{
+  "email": "user@example.com"
+}
+
+# Use token from email to set a new password
+POST /api/auth/reset-password/{token}
+{
+  "new_password": "new-secure-password"
+}
+```
+
+Reset links are single-use and expire automatically.
 
 ### Security notes
 

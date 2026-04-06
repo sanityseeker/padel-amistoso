@@ -2057,3 +2057,151 @@ class TestMexicanoPlayoffExtraPlayers:
         # and be seeded first.
         first_team_names = {p.name for p in bracket_teams[0]}
         assert "TopExt" in first_team_names
+
+
+class TestPartnerBalanceWeight:
+    """Tests for the partner_balance_weight feature (within-team strength balance)."""
+
+    # ------------------------------------------------------------------
+    # _within_team_imbalance static method
+    # ------------------------------------------------------------------
+
+    def test_within_team_imbalance_equal_partners_returns_zero(self) -> None:
+        """Perfectly equal partners should produce 0 imbalance."""
+        from backend.tournaments.mexicano.grouping import GroupingMixin
+
+        players = _make_players(4)
+        p1, p2, p3, p4 = players
+        scores = {p1.id: 50.0, p2.id: 50.0, p3.id: 30.0, p4.id: 30.0}
+        result = GroupingMixin._within_team_imbalance([p1, p2], [p3, p4], scores)
+        assert result == pytest.approx(0.0)
+
+    def test_within_team_imbalance_maximally_unequal(self) -> None:
+        """One player scored 0, other scored all: imbalance should be 1.0."""
+        from backend.tournaments.mexicano.grouping import GroupingMixin
+
+        players = _make_players(4)
+        p1, p2, p3, p4 = players
+        # (100+0) for each team → normalised |100-0| / 100 = 1.0 per pair
+        scores = {p1.id: 100.0, p2.id: 0.0, p3.id: 100.0, p4.id: 0.0}
+        result = GroupingMixin._within_team_imbalance([p1, p2], [p3, p4], scores)
+        assert result == pytest.approx(1.0)
+
+    def test_within_team_imbalance_symmetric(self) -> None:
+        """Order of teams should not affect the result."""
+        from backend.tournaments.mexicano.grouping import GroupingMixin
+
+        players = _make_players(4)
+        p1, p2, p3, p4 = players
+        scores = {p1.id: 80.0, p2.id: 20.0, p3.id: 60.0, p4.id: 40.0}
+        result_ab = GroupingMixin._within_team_imbalance([p1, p2], [p3, p4], scores)
+        result_ba = GroupingMixin._within_team_imbalance([p3, p4], [p1, p2], scores)
+        assert result_ab == pytest.approx(result_ba)
+
+    def test_within_team_imbalance_zero_scores_no_crash(self) -> None:
+        """All-zero scores (round 1) should return 0, not divide-by-zero."""
+        from backend.tournaments.mexicano.grouping import GroupingMixin
+
+        players = _make_players(4)
+        scores = {p.id: 0.0 for p in players}
+        p1, p2, p3, p4 = players
+        result = GroupingMixin._within_team_imbalance([p1, p2], [p3, p4], scores)
+        assert result == pytest.approx(0.0)
+
+    # ------------------------------------------------------------------
+    # _best_pairing with partner_balance_weight=0 (backward compat)
+    # ------------------------------------------------------------------
+
+    def test_best_pairing_partner_balance_weight_zero_unchanged(self) -> None:
+        """With weight=0, _best_pairing still chooses lowest between-team imbalance.
+
+        Scores: [100, 90, 50, 40]. The between-team-balanced split is
+        (P1+P4) vs (P2+P3) = 140 vs 140, imbalance=0.  With weight=0 this
+        must still be chosen over options with non-zero imbalance.
+        """
+        players = _make_players(4)
+        p1, p2, p3, p4 = players
+        scores = {p1.id: 100, p2.id: 90, p3.id: 50, p4.id: 40}
+
+        t = MexicanoTournament(players, _make_courts(1), num_rounds=4, partner_balance_weight=0.0)
+        t.scores = dict(scores)
+        t._raw_scores = dict(scores)
+        t._matches_played = {p.id: 1 for p in players}
+
+        t1, t2 = t._best_pairing(players)
+        split = frozenset([frozenset(p.id for p in t1), frozenset(p.id for p in t2)])
+
+        # The perfectly balanced split (140 vs 140)
+        balanced_split = frozenset([frozenset([p1.id, p4.id]), frozenset([p2.id, p3.id])])
+        assert split == balanced_split
+
+    # ------------------------------------------------------------------
+    # _best_pairing with high partner_balance_weight
+    # ------------------------------------------------------------------
+
+    def test_best_pairing_high_partner_balance_weight_prefers_equal_partners(self) -> None:
+        """With high partner_balance_weight, prefer pairing similarly skilled players.
+
+        Scores: [100, 90, 50, 40].
+        - Between-balanced:  (100+40) vs (90+50)  → between=0,  within=high
+        - Partner-balanced:  (100+90) vs (50+40)  → between=high, within=0
+
+        With weight >= ~1 the combined penalty should favour the partner-balanced
+        split over the between-balanced one.
+        """
+        players = _make_players(4)
+        p1, p2, p3, p4 = players
+        scores = {p1.id: 100, p2.id: 90, p3.id: 50, p4.id: 40}
+
+        t = MexicanoTournament(players, _make_courts(1), num_rounds=4, partner_balance_weight=2.0)
+        t.scores = dict(scores)
+        t._raw_scores = dict(scores)
+        t._matches_played = {p.id: 1 for p in players}
+
+        t1, t2 = t._best_pairing(players)
+        split = frozenset([frozenset(p.id for p in t1), frozenset(p.id for p in t2)])
+
+        # At weight=2.0, partner-balanced split should be chosen.
+        partner_split = frozenset([frozenset([p1.id, p2.id]), frozenset([p3.id, p4.id])])
+        assert split == partner_split
+
+    @pytest.mark.parametrize("weight", [0.0, 0.5, 1.0, 2.0])
+    def test_best_pairing_partner_balance_weight_always_returns_valid_split(self, weight: float) -> None:
+        """_best_pairing must always return a valid 2+2 split regardless of weight."""
+        players = _make_players(4)
+        p1, p2, p3, p4 = players
+        scores = {p1.id: 100, p2.id: 90, p3.id: 50, p4.id: 40}
+
+        t = MexicanoTournament(players, _make_courts(1), num_rounds=4, partner_balance_weight=weight)
+        t.scores = dict(scores)
+        t._raw_scores = dict(scores)
+        t._matches_played = {p.id: 1 for p in players}
+
+        t1, t2 = t._best_pairing(players)
+        assert len(t1) == 2
+        assert len(t2) == 2
+        all_ids = {p.id for p in players}
+        assert {p.id for p in t1} | {p.id for p in t2} == all_ids
+        assert {p.id for p in t1} & {p.id for p in t2} == set()
+
+    # ------------------------------------------------------------------
+    # MexicanoTournament init / __getattr__ compat
+    # ------------------------------------------------------------------
+
+    def test_partner_balance_weight_default_is_zero(self) -> None:
+        """Default partner_balance_weight must be 0.0 for backward compatibility."""
+        t = MexicanoTournament(_make_players(4), _make_courts(1))
+        assert t.partner_balance_weight == pytest.approx(0.0)
+
+    def test_partner_balance_weight_stored(self) -> None:
+        """Custom partner_balance_weight is stored on the tournament object."""
+        t = MexicanoTournament(_make_players(4), _make_courts(1), partner_balance_weight=1.5)
+        assert t.partner_balance_weight == pytest.approx(1.5)
+
+    def test_partner_balance_weight_getattr_fallback(self) -> None:
+        """Older pickled instances missing partner_balance_weight get 0.0 via __getattr__."""
+        t = MexicanoTournament(_make_players(4), _make_courts(1))
+        # Simulate old pickle by deleting the attribute
+        object.__delattr__(t, "partner_balance_weight")
+        # Should not raise; must return 0.0
+        assert t.partner_balance_weight == pytest.approx(0.0)

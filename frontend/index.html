@@ -8,6 +8,18 @@
 <meta name="theme-color" content="#3b82f6">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');</script>
+<script>
+  // Restore last-visited page so PWA users land where they left off.
+  // Runs synchronously in <head> to avoid any flash of the admin page.
+  (function () {
+    try {
+      const PAGE_MAP = { tv: '/tv', register: '/register' };
+      const last = localStorage.getItem('amistoso-last-page');
+      const dest = last && PAGE_MAP[last];
+      if (dest) window.location.replace(dest);
+    } catch (_) {}
+  })();
+</script>
 <link rel="stylesheet" href="/admin.css">
 <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.3.3/dist/purify.min.js" integrity="sha384-pcBjnGbkyKeOXaoFkmJiuR9E08/6gkmus6/Strimnxtl3uk0Hx23v345pWyC/MMr" crossorigin="anonymous"></script>
@@ -168,6 +180,11 @@
           <input type="checkbox" id="gp-public" checked style="width:1rem;height:1rem;cursor:pointer">
           <label for="gp-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
+        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="gp-contact-section">
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">📇 <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Add email and/or contact info (e.g. phone, WhatsApp) for each player. Used for notifications and shared with co-players.</p>
+          <div id="gp-contact-container"></div>
+        </details>
         <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="gp-strength-section">
           <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
           <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Assign a strength score to each player/team. Used for initial seeding only — real scores take over after round 1.</p>
@@ -285,6 +302,11 @@
                 <label data-i18n="txt_txt_repeat_decay_label">Repeat decay <small style="font-weight:400">(0 = off)</small></label>
                 <input id="mex-repeat-decay" type="number" value="0.5" min="0" step="0.1">
                 <small data-i18n="txt_txt_repeat_decay_help">Time-decay for repeat penalties. Recent repeats hurt more. Higher = faster fade of old repeats.</small>
+              </div>
+              <div class="adv-field" id="mex-partner-balance-wt-field">
+                <label data-i18n="txt_txt_partner_balance_weight_label">Partner balance weight <small style="font-weight:400">(0 = off)</small></label>
+                <input id="mex-partner-balance-wt" type="number" value="0" min="0" step="0.1">
+                <small data-i18n="txt_txt_partner_balance_weight_help">Penalises pairings where partners have very different skill levels. Higher = more evenly matched partners preferred.</small>
               </div>            </div>
           </details>
         </div>
@@ -292,6 +314,11 @@
           <input type="checkbox" id="mex-public" checked style="width:1rem;height:1rem;cursor:pointer">
           <label for="mex-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
+        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="mex-contact-section">
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">📇 <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Add email and/or contact info (e.g. phone, WhatsApp) for each player. Used for notifications and shared with co-players.</p>
+          <div id="mex-contact-container"></div>
+        </details>
         <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="mex-strength-section">
           <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
           <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Assign a strength score to each player/team. Used for initial seeding only — real scores take over after round 1.</p>
@@ -366,6 +393,11 @@
           <input type="checkbox" id="po-public" checked style="width:1rem;height:1rem;cursor:pointer">
           <label for="po-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
+        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="po-contact-section">
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">📇 <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Add email and/or contact info (e.g. phone, WhatsApp) for each player. Used for notifications and shared with co-players.</p>
+          <div id="po-contact-container"></div>
+        </details>
         <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="po-strength-section">
           <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
           <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Assign a strength score to each player/team. Used for initial seeding only — real scores take over after round 1.</p>
@@ -411,6 +443,24 @@
       <div class="info-block">
         <strong data-i18n="txt_txt_info_registration_convert_title">One-click conversion</strong>
         <p data-i18n="txt_txt_info_registration_convert_desc">Once sign-ups close, convert the lobby to a live tournament with a single click — player credentials carry over automatically.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_registration_collab_title">Co-editors for lobbies</strong>
+        <p data-i18n="txt_txt_info_registration_collab_desc">Invite other registered users to help manage registrants and answers before conversion.</p>
+      </div>
+    </div>
+
+    <!-- Collaboration & Access -->
+    <div class="card">
+      <h2 data-i18n="txt_txt_info_collab_title">Collaboration & Access</h2>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_info_collab_intro">Share operational work safely across organizers while keeping ownership-sensitive actions restricted.</p>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_collab_coedit_title">Tournament co-editors</strong>
+        <p data-i18n="txt_txt_info_collab_coedit_desc">Grant co-editor access to registered users so they can run rounds and update scores. Only owner/admin can delete tournaments or manage collaborator lists.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_collab_password_title">Password reset by email</strong>
+        <p data-i18n="txt_txt_info_collab_password_desc">With SMTP enabled, users can request a secure reset link from the login screen and set a new password without manual admin assistance.</p>
       </div>
     </div>
 
@@ -588,6 +638,14 @@
       <div class="info-block">
         <strong data-i18n="txt_txt_fmt_banner_title">Announcement banner</strong>
         <p data-i18n="txt_txt_fmt_banner_desc">Set a banner message that appears at the top of the public view for all participants. Useful for schedule updates, break announcements, or any broadcast message.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_fmt_roster_title">Mid-tournament roster updates</strong>
+        <p data-i18n="txt_txt_fmt_roster_desc">Add players during active tournaments (Mexicano and Group + Play-off group stage), and remove players in Mexicano when they are not assigned to pending matches.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_fmt_email_updates_title">Email updates for participants</strong>
+        <p data-i18n="txt_txt_fmt_email_updates_desc">When SMTP is configured, organizers can deliver round updates, announcements, and final results by email to players with saved addresses.</p>
       </div>
     </div>
   </div>

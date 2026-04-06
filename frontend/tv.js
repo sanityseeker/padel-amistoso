@@ -481,21 +481,41 @@ async function _playerSubmitScore(matchId, scoreCtx) {
   let body;
   if (isTennis && entry.tennis) {
     // Gather set scores
-    const sets = [];
+    const rawSets = [];
     for (let i = 0; i < 10; i++) {
       const e1 = document.getElementById('pts1-' + matchId + '-' + i);
       const e2 = document.getElementById('pts2-' + matchId + '-' + i);
       if (!e1 || !e2) break;
-      const v1 = +e1.value || 0;
-      const v2 = +e2.value || 0;
+      rawSets.push([+e1.value || 0, +e2.value || 0]);
+    }
+
+    // Validate: collect only non-empty sets and check for ties
+    const sets = [];
+    for (let i = 0; i < rawSets.length; i++) {
+      const [v1, v2] = rawSets[i];
       if (v1 === 0 && v2 === 0) continue;
+      if (v1 === v2) { _showErr(t('txt_txt_set_equal_scores', { n: i + 1 })); return; }
       sets.push([v1, v2]);
     }
     if (sets.length === 0) { _showErr(t('txt_txt_enter_at_least_one_set_score')); return; }
+
+    // 3rd set only valid when sets 1 and 2 have split winners
+    if (sets.length === 3) {
+      const w1 = sets[0][0] > sets[0][1] ? 'a' : 'b';
+      const w2 = sets[1][0] > sets[1][1] ? 'a' : 'b';
+      if (w1 === w2) { _showErr(t('txt_txt_third_set_needs_split')); return; }
+    }
+
     body = JSON.stringify({ match_id: matchId, sets });
   } else {
     const s1 = +(document.getElementById('ps1-' + matchId)?.value) || 0;
     const s2 = +(document.getElementById('ps2-' + matchId)?.value) || 0;
+    // Mexicano sum validation
+    const autoCalc = tvState.totalPts > 0 && scoreCtx === 'mex';
+    if (autoCalc && s1 + s2 !== tvState.totalPts) {
+      _showErr(t('txt_txt_score_must_sum', { n: tvState.totalPts }));
+      return;
+    }
     // 0–0 guard: require a second tap to confirm
     if (s1 === 0 && s2 === 0 && !saveBtn?.dataset.zeroWarned) {
       _showErr(t('txt_txt_zero_zero_confirm'));
@@ -552,14 +572,16 @@ function _buildPlayerScoreForm(m, scoreCtx) {
   html += `</div>`;
 
   // Sets inputs (hidden by default unless admin chose sets)
+  // S1 and S2: standard sets capped at 7; S3: uncapped (super tie-break can go beyond 7)
   if (hasTennis) {
     html += `<div id="ps-sets-${m.id}"${defaultMode === 'sets' ? '' : ' class="hidden"'}><div class="player-sets-grid">`;
     for (let i = 0; i < 3; i++) {
+      const maxAttr = i < 2 ? 'max="7"' : '';
       html += `<div class="player-set-row">`;
       html += `<span class="player-set-label">S${i + 1}</span>`;
-      html += `<input type="number" id="pts1-${m.id}-${i}" min="0" max="13" value="" placeholder="0">`;
+      html += `<input type="number" id="pts1-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
       html += `<span style="color:var(--text-muted)">-</span>`;
-      html += `<input type="number" id="pts2-${m.id}-${i}" min="0" max="13" value="" placeholder="0">`;
+      html += `<input type="number" id="pts2-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
       html += `</div>`;
     }
     html += `</div></div>`;

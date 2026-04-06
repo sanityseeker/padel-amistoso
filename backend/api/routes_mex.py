@@ -91,6 +91,7 @@ async def create_mexicano(req: CreateMexicanoRequest, request: Request, user=Dep
             teammate_repeat_weight=req.teammate_repeat_weight,
             opponent_repeat_weight=req.opponent_repeat_weight,
             repeat_decay=req.repeat_decay,
+            partner_balance_weight=req.partner_balance_weight,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -108,7 +109,12 @@ async def create_mexicano(req: CreateMexicanoRequest, request: Request, user=Dep
         sport=req.sport.value,
         assign_courts=req.assign_courts,
     )
-    create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in players])
+    create_secrets_for_tournament(
+        tid,
+        [{"id": p.id, "name": p.name} for p in players],
+        contacts={p.id: req.player_contacts[p.name] for p in players if p.name in req.player_contacts} or None,
+        emails={p.id: req.player_emails[p.name] for p in players if p.name in req.player_emails} or None,
+    )
     return {"id": tid, "current_round": t.current_round}
 
 
@@ -132,6 +138,7 @@ async def mex_status(tid: str) -> dict:
         "teammate_repeat_weight": t.teammate_repeat_weight,
         "opponent_repeat_weight": t.opponent_repeat_weight,
         "repeat_decay": t.repeat_decay,
+        "partner_balance_weight": t.partner_balance_weight,
         "phase": t.phase,
         "is_finished": t.is_finished,
         "assign_courts": data.get("assign_courts", True),
@@ -203,6 +210,7 @@ async def mex_update_settings(tid: str, req: PatchMexSettingsRequest, user=Depen
         t.teammate_repeat_weight = req.teammate_repeat_weight
         t.opponent_repeat_weight = req.opponent_repeat_weight
         t.repeat_decay = req.repeat_decay
+        t.partner_balance_weight = req.partner_balance_weight
         _save_tournament(tid)
     return {
         "num_rounds": t.num_rounds,
@@ -214,6 +222,7 @@ async def mex_update_settings(tid: str, req: PatchMexSettingsRequest, user=Depen
         "teammate_repeat_weight": t.teammate_repeat_weight,
         "opponent_repeat_weight": t.opponent_repeat_weight,
         "repeat_decay": t.repeat_decay,
+        "partner_balance_weight": t.partner_balance_weight,
     }
 
 
@@ -232,7 +241,12 @@ async def mex_update_courts(tid: str, req: UpdateCourtsRequest, user=Depends(get
 
 
 @router.get("/{tid}/mex/propose-pairings")
-async def mex_propose_pairings(tid: str, n: int = 3, sit_out_ids: str | None = None) -> dict:
+async def mex_propose_pairings(
+    tid: str,
+    n: int = 3,
+    sit_out_ids: str | None = None,
+    partner_balance_weight: float | None = None,
+) -> dict:
     """
     Generate up to *n* distinct pairing proposals for the next round.
     The first entry is marked ``recommended=True``.
@@ -241,11 +255,16 @@ async def mex_propose_pairings(tid: str, n: int = 3, sit_out_ids: str | None = N
 
     Query params:
       sit_out_ids: comma-separated player IDs to force as sit-outs.
+      partner_balance_weight: temporary override for within-team balance weight
+        (applied only for this proposal generation, not persisted).
     """
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     forced = None
     if sit_out_ids:
         forced = [s.strip() for s in sit_out_ids.split(",") if s.strip()]
+    _prev_pbw = t.partner_balance_weight
+    if partner_balance_weight is not None:
+        t.partner_balance_weight = max(0.0, partner_balance_weight)
     try:
         proposals = t.propose_pairings(
             n_options=max(1, min(n, 10)),
@@ -253,6 +272,8 @@ async def mex_propose_pairings(tid: str, n: int = 3, sit_out_ids: str | None = N
         )
     except (RuntimeError, ValueError) as e:
         raise HTTPException(400, str(e))
+    finally:
+        t.partner_balance_weight = _prev_pbw
     return {
         "proposals": proposals,
         "player_stats": t.player_stats(),

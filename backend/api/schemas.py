@@ -42,6 +42,14 @@ def _normalized_unique_names(values: list[str], field_name: str) -> list[str]:
     return cleaned
 
 
+def _validate_player_emails(emails: dict[str, str]) -> dict[str, str]:
+    """Validate and normalise a name→email mapping."""
+    out: dict[str, str] = {}
+    for name, raw in emails.items():
+        out[name] = _coerce_optional_email(raw)
+    return out
+
+
 class CreateGroupPlayoffRequest(BaseModel):
     name: str = Field(default="My Tournament", max_length=255)
     player_names: list[str] = Field(min_length=2, max_length=256)
@@ -56,6 +64,8 @@ class CreateGroupPlayoffRequest(BaseModel):
     public: bool = True
     assign_courts: bool = True
     player_strengths: dict[str, float] = Field(default_factory=dict)
+    player_emails: dict[str, str] = Field(default_factory=dict)
+    player_contacts: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("player_names")
     @classmethod
@@ -63,6 +73,11 @@ class CreateGroupPlayoffRequest(BaseModel):
         if len(v) < 2:
             raise ValueError("Need at least 2 players")
         return _normalized_unique_names(v, "player_names")
+
+    @field_validator("player_emails")
+    @classmethod
+    def validate_emails_gp(cls, v: dict[str, str]) -> dict[str, str]:
+        return _validate_player_emails(v)
 
     @model_validator(mode="after")
     def validate_courts(self) -> "CreateGroupPlayoffRequest":
@@ -87,9 +102,12 @@ class CreateMexicanoRequest(BaseModel):
     teammate_repeat_weight: float = Field(default=2.0, ge=0.0)
     opponent_repeat_weight: float = Field(default=1.0, ge=0.0)
     repeat_decay: float = Field(default=0.5, ge=0.0)
+    partner_balance_weight: float = Field(default=0.0, ge=0.0)
     public: bool = True
     assign_courts: bool = True
     player_strengths: dict[str, float] = Field(default_factory=dict)
+    player_emails: dict[str, str] = Field(default_factory=dict)
+    player_contacts: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("player_names")
     @classmethod
@@ -97,6 +115,11 @@ class CreateMexicanoRequest(BaseModel):
         if len(v) < 2:
             raise ValueError("Need at least 2 entries for Mexicano format")
         return _normalized_unique_names(v, "player_names")
+
+    @field_validator("player_emails")
+    @classmethod
+    def validate_emails_mex(cls, v: dict[str, str]) -> dict[str, str]:
+        return _validate_player_emails(v)
 
     @model_validator(mode="after")
     def validate_player_count_for_mode(self) -> "CreateMexicanoRequest":
@@ -117,6 +140,8 @@ class CreatePlayoffRequest(BaseModel):
     public: bool = True
     assign_courts: bool = True
     player_strengths: dict[str, float] = Field(default_factory=dict)
+    player_emails: dict[str, str] = Field(default_factory=dict)
+    player_contacts: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("participant_names")
     @classmethod
@@ -124,6 +149,11 @@ class CreatePlayoffRequest(BaseModel):
         if len(v) < 2:
             raise ValueError("Need at least 2 participants")
         return _normalized_unique_names(v, "participant_names")
+
+    @field_validator("player_emails")
+    @classmethod
+    def validate_emails_po(cls, v: dict[str, str]) -> dict[str, str]:
+        return _validate_player_emails(v)
 
     @model_validator(mode="after")
     def validate_courts(self) -> "CreatePlayoffRequest":
@@ -170,6 +200,27 @@ class TvSettings(BaseModel):
     schema_output_scale: float = 1.0
     score_mode: dict[str, str] = Field(default_factory=dict)
     banner_text: str = ""
+
+
+class EmailSettingsRequest(BaseModel):
+    """Partial update for per-tournament email settings (PATCH semantics)."""
+
+    sender_name: str | None = Field(default=None, max_length=100)
+    reply_to: str | None = None
+
+    @field_validator("reply_to")
+    @classmethod
+    def validate_reply_to(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return _coerce_optional_email(v)
+
+
+class EmailSettings(BaseModel):
+    """Full per-tournament email settings with defaults."""
+
+    sender_name: str = ""
+    reply_to: str = ""
 
 
 class SetMatchCommentRequest(BaseModel):
@@ -240,6 +291,7 @@ class PatchMexSettingsRequest(BaseModel):
     teammate_repeat_weight: float = Field(ge=0.0)
     opponent_repeat_weight: float = Field(ge=0.0)
     repeat_decay: float = Field(ge=0.0)
+    partner_balance_weight: float = Field(default=0.0, ge=0.0)
 
 
 class NextRoundRequest(BaseModel):
@@ -539,3 +591,15 @@ class CollaboratorListResponse(BaseModel):
     """Response containing the list of co-editors for a tournament."""
 
     collaborators: list[str]
+
+
+class PlayerEmailRequest(BaseModel):
+    """Request body for setting a player's email address."""
+
+    email: OptionalEmailStr = Field(default="")
+
+
+class TournamentMessageRequest(BaseModel):
+    """Request body for sending an organizer message to tournament players."""
+
+    message: str = Field(min_length=1, max_length=2000)

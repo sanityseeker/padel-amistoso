@@ -192,6 +192,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE tournaments ADD COLUMN sport TEXT NOT NULL DEFAULT 'padel'")
         if "assign_courts" not in cols:
             conn.execute("ALTER TABLE tournaments ADD COLUMN assign_courts INTEGER NOT NULL DEFAULT 1")
+        if "email_settings" not in cols:
+            conn.execute("ALTER TABLE tournaments ADD COLUMN email_settings TEXT")
         # Migrate: add contact column to player_secrets if missing
         ps_cols = {r[1] for r in conn.execute("PRAGMA table_info(player_secrets)").fetchall()}
         if ps_cols and "contact" not in ps_cols:
@@ -214,6 +216,8 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE registrations ADD COLUMN auto_send_email INTEGER NOT NULL DEFAULT 0")
             if "email_requirement" not in reg_cols:
                 conn.execute("ALTER TABLE registrations ADD COLUMN email_requirement TEXT NOT NULL DEFAULT 'optional'")
+            if "email_settings" not in reg_cols:
+                conn.execute("ALTER TABLE registrations ADD COLUMN email_settings TEXT")
             if "converted_to_tids" not in reg_cols:
                 conn.execute("ALTER TABLE registrations ADD COLUMN converted_to_tids TEXT NOT NULL DEFAULT '[]'")
                 # Back-fill from the legacy single converted_to_tid column

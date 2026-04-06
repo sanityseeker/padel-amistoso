@@ -870,3 +870,109 @@ class TestPlayerOpponentsEndpoint:
         # Use token from tid_a to query tid_b
         r = client.get(f"/api/tournaments/{tid_b}/player/opponents", headers=phdr)
         assert r.status_code == 403
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Email update endpoint
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestUpdatePlayerEmail:
+    """PUT /{tid}/player-secrets/{pid}/email"""
+
+    def test_owner_can_set_email(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid = next(iter(secrets.keys()))
+
+        r = client.put(
+            f"/api/tournaments/{tid}/player-secrets/{pid}/email",
+            json={"email": "alice@example.com"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        assert r.json()["email"] == "alice@example.com"
+        assert r.json()["player_id"] == pid
+
+    def test_email_is_returned_in_secrets_list(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid = next(iter(secrets.keys()))
+
+        client.put(
+            f"/api/tournaments/{tid}/player-secrets/{pid}/email",
+            json={"email": "test@example.com"},
+            headers=auth_headers,
+        )
+
+        updated = _get_secrets(client, tid, auth_headers)
+        assert updated[pid]["email"] == "test@example.com"
+
+    def test_email_defaults_to_empty(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        for sec in secrets.values():
+            assert sec.get("email", "") == ""
+
+    def test_non_owner_returns_403(self, client, auth_headers, bob_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid = next(iter(secrets.keys()))
+
+        r = client.put(
+            f"/api/tournaments/{tid}/player-secrets/{pid}/email",
+            json={"email": "hacker@evil.com"},
+            headers=bob_headers,
+        )
+        assert r.status_code == 403
+
+    def test_unauthenticated_returns_401(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid = next(iter(secrets.keys()))
+
+        r = client.put(
+            f"/api/tournaments/{tid}/player-secrets/{pid}/email",
+            json={"email": "test@example.com"},
+        )
+        assert r.status_code == 401
+
+    def test_nonexistent_player_returns_404(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        r = client.put(
+            f"/api/tournaments/{tid}/player-secrets/no-such-id/email",
+            json={"email": "test@example.com"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 404
+
+    def test_can_clear_email(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid = next(iter(secrets.keys()))
+
+        client.put(
+            f"/api/tournaments/{tid}/player-secrets/{pid}/email",
+            json={"email": "to-clear@example.com"},
+            headers=auth_headers,
+        )
+        r = client.put(
+            f"/api/tournaments/{tid}/player-secrets/{pid}/email",
+            json={"email": ""},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        updated = _get_secrets(client, tid, auth_headers)
+        assert updated[pid]["email"] == ""
+
+    def test_invalid_email_returns_422(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid = next(iter(secrets.keys()))
+
+        r = client.put(
+            f"/api/tournaments/{tid}/player-secrets/{pid}/email",
+            json={"email": "not-an-email"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 422

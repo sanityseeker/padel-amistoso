@@ -51,6 +51,7 @@ class MexicanoConfig(BaseModel):
     teammate_repeat_weight: float = Field(default=2.0, ge=0.0)
     opponent_repeat_weight: float = Field(default=1.0, ge=0.0)
     repeat_decay: float = Field(default=0.5, ge=0.0)
+    partner_balance_weight: float = Field(default=0.0, ge=0.0)
 
 
 class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
@@ -95,6 +96,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         teammate_repeat_weight: float = 2.0,
         opponent_repeat_weight: float = 1.0,
         repeat_decay: float = 0.5,
+        partner_balance_weight: float = 0.0,
     ):
         min_players = 2 if team_mode else 4
         if len(players) < min_players:
@@ -115,6 +117,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
                 teammate_repeat_weight=teammate_repeat_weight,
                 opponent_repeat_weight=opponent_repeat_weight,
                 repeat_decay=repeat_decay,
+                partner_balance_weight=partner_balance_weight,
             )
         except ValidationError as exc:
             raise ValueError(str(exc)) from exc
@@ -132,6 +135,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         self.teammate_repeat_weight: float = cfg.teammate_repeat_weight
         self.opponent_repeat_weight: float = cfg.opponent_repeat_weight
         self.repeat_decay: float = cfg.repeat_decay
+        self.partner_balance_weight: float = cfg.partner_balance_weight
 
         self.scores: dict[str, int] = {p.id: 0 for p in players}
         self._raw_scores: dict[str, int] = {p.id: 0 for p in players}
@@ -173,6 +177,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
             "teammate_repeat_weight": 2.0,
             "opponent_repeat_weight": 1.0,
             "repeat_decay": 0.0,
+            "partner_balance_weight": 0.0,
             "_partner_history_rounds": {},
             "_opponent_history_rounds": {},
         }

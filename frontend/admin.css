@@ -575,11 +575,14 @@ tr:hover { background: rgba(59,130,246,0.05); }
   overflow: auto;
   display: flex;
   align-items: flex-start;
-  justify-content: center;
+  justify-content: flex-start;
   padding: 3.5rem 1rem 1rem;
   -webkit-overflow-scrolling: touch;
 }
 .bracket-lightbox-scroll img {
+  /* margin: auto centers when the image fits; collapses to 0 when it overflows,
+     keeping the full scroll range (including left) accessible in all browsers. */
+  margin: 0 auto;
   max-width: 100%;
   height: auto;
   display: block;
@@ -953,6 +956,26 @@ tr:hover { background: rgba(59,130,246,0.05); }
   gap: 0.5rem;
   flex-wrap: wrap;
   margin: 0.2rem 0 0.75rem;
+}
+.proposal-balance-slider {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+.proposal-balance-slider label {
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 10rem;
+}
+.proposal-balance-slider input[type=range] {
+  flex: 1;
+  min-width: 100px;
+  max-width: 220px;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 /* Reuses the switch-label/switch-track pattern — no pill border */
 .proposal-display-toggle {
@@ -1659,19 +1682,6 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   display: flex;
   align-items: center;
   gap: 0.3rem;
-}
-.participant-group-dot {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.45em;
-  height: 1.45em;
-  border-radius: 50%;
-  color: #fff;
-  font-size: 0.7rem;
-  font-weight: 700;
-  flex-shrink: 0;
-  line-height: 1;
 }
 .participant-entry input {
   flex: 1;
@@ -2500,6 +2510,37 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   background: var(--bg);
   color: var(--text);
   text-align: center;
+}
+
+/* ── Contact details (create panels) ── */
+.contact-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: nowrap;
+}
+.contact-entry label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  min-width: 60px;
+  flex-shrink: 0;
+}
+.contact-entry input {
+  flex: 1;
+  min-width: 100px;
+  font-size: 0.82rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+.contact-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
 /* ── Group Preview / Assignment Editor ── */

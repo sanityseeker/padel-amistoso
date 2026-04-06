@@ -23,6 +23,40 @@ from ..models import Court, GroupStanding, Match, MatchStatus, Player
 from . import pairing as pairing_mod
 
 
+def _schedule_round_robin(players: list) -> list[list[tuple]]:
+    """Schedule all-play-all matches using the polygon rotation method.
+
+    Assigns every entry exactly one match per round (or a sit-out when the
+    number of entries is odd).
+
+    Args:
+        players: Ordered list of participants.  May contain any hashable value;
+            ``None`` is used internally as a bye placeholder.
+
+    Returns:
+        A list of rounds.  Each round is a list of ``(a, b)`` tuples where
+        ``a`` and ``b`` are elements from *players*.  Bye matches are omitted.
+    """
+    n = len(players)
+    has_bye = n % 2 == 1
+    items: list = list(players) + ([None] if has_bye else [])
+    total = len(items)
+
+    rounds: list[list[tuple]] = []
+    for _ in range(total - 1):
+        round_pairs: list[tuple] = []
+        for i in range(total // 2):
+            a = items[i]
+            b = items[total - 1 - i]
+            if a is not None and b is not None:
+                round_pairs.append((a, b))
+        rounds.append(round_pairs)
+        # Keep items[0] fixed; rotate items[1:] by moving the last element forward.
+        items = [items[0]] + [items[-1]] + items[1:-1]
+
+    return rounds
+
+
 class Group:
     """One group of players playing a round-robin."""
 
@@ -59,15 +93,18 @@ class Group:
         matches: list[Match] = []
 
         if self.team_mode:
-            # Fixed-team mode: each entry is already a full team.
-            for t1, t2 in itertools.combinations(players, 2):
-                matches.append(
-                    Match(
-                        team1=[t1],
-                        team2=[t2],
-                        round_label=f"Group {self.name}",
+            # Fixed-team mode: use round-robin scheduling so every team plays
+            # exactly once per round.  This lets organizers run matches in order.
+            for round_idx, pairs in enumerate(_schedule_round_robin(players), start=1):
+                for t1, t2 in pairs:
+                    matches.append(
+                        Match(
+                            team1=[t1],
+                            team2=[t2],
+                            round_number=round_idx,
+                            round_label=f"Group {self.name} R{round_idx}",
+                        )
                     )
-                )
         else:
             # All 2‑player combinations (possible teams)
             teams = list(itertools.combinations(players, 2))
@@ -89,7 +126,7 @@ class Group:
                             round_label=f"Group {self.name}",
                         )
                     )
-        random.shuffle(matches)
+            random.shuffle(matches)
         self.matches = matches
         self._standings_cache = None
         return matches

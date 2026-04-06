@@ -24,9 +24,11 @@ from ..auth.models import User, UserRole
 from ..email import (
     is_configured as email_is_configured,
     is_valid_email,
+    render_cancellation_email,
     render_credentials_email,
     render_organizer_message_email,
     render_registration_confirmation,
+    render_waitlist_spot_email,
     send_email,
     send_email_background,
 )
@@ -38,6 +40,8 @@ from .helpers import _store_tournament
 from .player_secret_store import lookup_registrant_by_passphrase, lookup_registrant_by_token
 from .schemas import (
     ConvertRegistrationRequest,
+    EmailSettings,
+    EmailSettingsRequest,
     LinkedTournamentOut,
     QuestionDef,
     RegistrantAdminOut,
@@ -693,6 +697,7 @@ async def admin_add_registrant(rid: str, req: RegistrantIn, user: User = Depends
 
     # Auto-send confirmation email if the lobby has auto_send_email enabled
     if email and is_valid_email(email) and reg.get("auto_send_email"):
+        es = _get_reg_email_settings(reg)
         subject, body = render_registration_confirmation(
             lobby_name=reg["name"],
             player_name=req.player_name,
@@ -700,8 +705,9 @@ async def admin_add_registrant(rid: str, req: RegistrantIn, user: User = Depends
             token=token,
             lobby_alias=reg.get("alias"),
             lobby_id=reg_id,
+            reply_to=es.reply_to,
         )
-        send_email_background(email, subject, body)
+        send_email_background(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
 
     return {
         "player_id": player_id,
@@ -886,6 +892,7 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
 
     # Auto-send confirmation email if the lobby has auto_send_email enabled
     if email and is_valid_email(email) and reg.get("auto_send_email"):
+        es = _get_reg_email_settings(reg)
         subject, body = render_registration_confirmation(
             lobby_name=reg["name"],
             player_name=req.player_name,
@@ -893,8 +900,9 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
             token=token,
             lobby_alias=reg.get("alias"),
             lobby_id=reg_id,
+            reply_to=es.reply_to,
         )
-        send_email_background(email, subject, body)
+        send_email_background(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
 
     return {
         "player_id": player_id,
@@ -1386,6 +1394,51 @@ async def delete_registration_alias(rid: str, user: User = Depends(get_current_u
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# Per-registration email settings
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _get_reg_email_settings(reg: dict) -> EmailSettings:
+    """Return the email settings for a registration lobby, falling back to defaults."""
+    raw = reg.get("email_settings")
+    if raw:
+        try:
+            return EmailSettings(**json.loads(raw))
+        except Exception:
+            pass
+    return EmailSettings()
+
+
+@router.get("/{rid}/email-settings")
+async def get_reg_email_settings(rid: str, user: User = Depends(get_current_user)) -> dict:
+    """Return the current per-registration email customisation settings."""
+    reg = _get_registration(rid)
+    _require_registration_editor(reg, user)
+    return _get_reg_email_settings(reg).model_dump()
+
+
+@router.patch("/{rid}/email-settings")
+async def update_reg_email_settings(
+    rid: str, req: EmailSettingsRequest, user: User = Depends(get_current_user)
+) -> dict:
+    """Partially update per-registration email customisation settings.
+
+    Only supplied (non-null) fields are changed.
+    """
+    reg = _get_registration(rid)
+    _require_registration_editor(reg, user)
+    current = _get_reg_email_settings(reg)
+    patch = req.model_dump(exclude_none=True)
+    updated = current.model_copy(update=patch)
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE registrations SET email_settings = ? WHERE id = ?",
+            (json.dumps(updated.model_dump()), reg["id"]),
+        )
+    return updated.model_dump()
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # Email endpoints
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -1418,6 +1471,7 @@ async def send_registrant_email(
     if not email or not is_valid_email(email):
         raise HTTPException(422, "No valid email address on file for this player")
 
+    es = _get_reg_email_settings(reg)
     subject, body = render_credentials_email(
         lobby_name=reg["name"],
         player_name=row["player_name"],
@@ -1425,8 +1479,9 @@ async def send_registrant_email(
         token=row["token"],
         lobby_alias=reg.get("alias"),
         lobby_id=reg_id,
+        reply_to=es.reply_to,
     )
-    ok = await send_email(email, subject, body)
+    ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
     if not ok:
         raise HTTPException(502, "Failed to send email — check server SMTP configuration")
     return {"sent": True}
@@ -1447,6 +1502,7 @@ async def send_all_registrant_emails(rid: str, request: Request, user: User = De
     reg_id = reg["id"]
 
     registrants = _get_registrants(reg_id)
+    es = _get_reg_email_settings(reg)
     sent = 0
     skipped = 0
     failed = 0
@@ -1462,8 +1518,9 @@ async def send_all_registrant_emails(rid: str, request: Request, user: User = De
             token=r["token"],
             lobby_alias=reg.get("alias"),
             lobby_id=reg_id,
+            reply_to=es.reply_to,
         )
-        ok = await send_email(email, subject, body)
+        ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
         if ok:
             sent += 1
         else:
@@ -1491,6 +1548,7 @@ async def send_registration_message_emails(rid: str, request: Request, user: Use
         raise HTTPException(400, "No organizer message set for this registration")
 
     registrants = _get_registrants(reg_id)
+    es = _get_reg_email_settings(reg)
     sent = 0
     skipped = 0
     failed = 0
@@ -1506,11 +1564,97 @@ async def send_registration_message_emails(rid: str, request: Request, user: Use
             token=r["token"],
             lobby_alias=reg.get("alias"),
             lobby_id=reg_id,
+            reply_to=es.reply_to,
         )
-        ok = await send_email(email, subject, body)
+        ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
         if ok:
             sent += 1
         else:
             failed += 1
 
     return {"sent": sent, "skipped": skipped, "failed": failed}
+
+
+@router.post("/{rid}/send-cancellation-email/{player_id}")
+async def send_cancellation_email(
+    rid: str, player_id: str, request: Request, user: User = Depends(get_current_user)
+) -> dict:
+    """Send a registration cancellation confirmation email to a specific player."""
+    if not email_is_configured():
+        raise HTTPException(400, "Email is not configured on this server")
+
+    client_ip = _client_ip(request)
+    _email_send_rate_limiter.check(client_ip, "Too many email send attempts — try again later")
+    _email_send_rate_limiter.record(client_ip)
+
+    reg = _get_registration(rid)
+    _require_registration_editor(reg, user)
+    reg_id = reg["id"]
+
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM registrants WHERE registration_id = ? AND player_id = ?",
+            (reg_id, player_id),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(404, "Registrant not found")
+
+    email = row["email"] if row["email"] else ""
+    if not email or not is_valid_email(email):
+        raise HTTPException(422, "No valid email address on file for this player")
+
+    es = _get_reg_email_settings(reg)
+    subject, body = render_cancellation_email(
+        lobby_name=reg["name"],
+        player_name=row["player_name"],
+        lobby_alias=reg.get("alias"),
+        lobby_id=reg_id,
+        reply_to=es.reply_to,
+    )
+    ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
+    if not ok:
+        raise HTTPException(502, "Failed to send email — check server SMTP configuration")
+    return {"sent": True}
+
+
+@router.post("/{rid}/send-waitlist-email/{player_id}")
+async def send_waitlist_email(
+    rid: str, player_id: str, request: Request, user: User = Depends(get_current_user)
+) -> dict:
+    """Send a waitlist spot-available notification email to a specific player."""
+    if not email_is_configured():
+        raise HTTPException(400, "Email is not configured on this server")
+
+    client_ip = _client_ip(request)
+    _email_send_rate_limiter.check(client_ip, "Too many email send attempts — try again later")
+    _email_send_rate_limiter.record(client_ip)
+
+    reg = _get_registration(rid)
+    _require_registration_editor(reg, user)
+    reg_id = reg["id"]
+
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM registrants WHERE registration_id = ? AND player_id = ?",
+            (reg_id, player_id),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(404, "Registrant not found")
+
+    email = row["email"] if row["email"] else ""
+    if not email or not is_valid_email(email):
+        raise HTTPException(422, "No valid email address on file for this player")
+
+    es = _get_reg_email_settings(reg)
+    subject, body = render_waitlist_spot_email(
+        lobby_name=reg["name"],
+        player_name=row["player_name"],
+        token=row["token"],
+        lobby_alias=reg.get("alias"),
+        lobby_id=reg_id,
+        reply_to=es.reply_to,
+    )
+    ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
+    if not ok:
+        raise HTTPException(502, "Failed to send email — check server SMTP configuration")
+    return {"sent": True}

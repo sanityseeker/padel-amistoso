@@ -31,7 +31,9 @@ from .player_secret_store import (
     regenerate_secret,
     remove_player_secret,
     update_contact,
+    update_email,
 )
+from .schemas import PlayerEmailRequest
 from .state import _save_tournament, _tournaments, get_tournament_lock
 
 router = APIRouter(prefix="/api/tournaments", tags=["player-auth"])
@@ -380,6 +382,21 @@ async def update_player_contact(
     if not updated:
         raise HTTPException(404, "Player not found in this tournament")
     return {"player_id": player_id, "contact": req.contact}
+
+
+@router.put("/{tid}/player-secrets/{player_id}/email")
+async def update_player_email(
+    tid: str,
+    player_id: str,
+    req: PlayerEmailRequest,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Set the email address for a player (organizer/admin only)."""
+    _require_editor_access(tid, user)
+    updated = update_email(tid, player_id, req.email)
+    if not updated:
+        raise HTTPException(404, "Player not found in this tournament")
+    return {"player_id": player_id, "email": req.email}
 
 
 @router.get("/{tid}/player/opponents")

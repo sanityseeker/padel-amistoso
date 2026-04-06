@@ -15,9 +15,14 @@ from backend.email import (
     _esc,
     is_configured,
     is_valid_email,
+    render_cancellation_email,
     render_credentials_email,
+    render_next_round_email,
     render_registration_confirmation,
+    render_tournament_message_email,
+    render_tournament_results_email,
     render_tournament_started_email,
+    render_waitlist_spot_email,
 )
 
 
@@ -150,6 +155,270 @@ class TestRenderTournamentStartedEmail:
                 tournament_alias="grand",
             )
         assert "/tv/grand" in body
+
+
+class TestRenderTournamentMessageEmail:
+    """Tournament message email template."""
+
+    def test_contains_message_and_tournament_name(self) -> None:
+        subject, body = render_tournament_message_email(
+            tournament_name="Cup 2025",
+            player_name="Alice",
+            message="Please arrive 15 min early",
+            token="tok_abc",
+            tournament_id="t99",
+        )
+        assert "Cup 2025" in subject
+        assert "Please arrive 15 min early" in body
+        assert "Alice" in body
+
+    def test_alias_used_in_url(self) -> None:
+        with patch("backend.email.SITE_URL", "https://example.com"):
+            _, body = render_tournament_message_email(
+                tournament_name="Cup",
+                player_name="Bob",
+                message="msg",
+                token="tok1",
+                tournament_alias="cup-2025",
+            )
+        assert "/tv/cup-2025" in body
+
+
+class TestRenderNextRoundEmail:
+    """Next-round notification email template."""
+
+    def test_contains_round_number_and_match_info(self) -> None:
+        subject, body = render_next_round_email(
+            tournament_name="Weekend Cup",
+            player_name="Alice",
+            round_number=3,
+            matches_info=[
+                {"teammates": "Bob", "opponents": "Charlie, Dave", "court": "Court 1"},
+            ],
+            token="tok_abc",
+            tournament_id="t1",
+        )
+        assert "Round 3" in subject
+        assert "Weekend Cup" in subject
+        assert "Alice" in body
+        assert "Bob" in body
+        assert "Charlie, Dave" in body
+        assert "Court 1" in body
+
+    def test_sit_out_message_when_no_matches(self) -> None:
+        _, body = render_next_round_email(
+            tournament_name="Cup",
+            player_name="Eve",
+            round_number=2,
+            matches_info=[],
+            token="tok1",
+            tournament_id="t1",
+        )
+        assert "sit-out" in body.lower()
+
+    def test_alias_used_in_url(self) -> None:
+        with patch("backend.email.SITE_URL", "https://example.com"):
+            _, body = render_next_round_email(
+                tournament_name="Cup",
+                player_name="Bob",
+                round_number=1,
+                matches_info=[{"teammates": "X", "opponents": "Y"}],
+                token="tok1",
+                tournament_alias="weekend",
+            )
+        assert "/tv/weekend" in body
+
+    def test_multiple_matches_listed(self) -> None:
+        _, body = render_next_round_email(
+            tournament_name="Cup",
+            player_name="Alice",
+            round_number=1,
+            matches_info=[
+                {"teammates": "Bob", "opponents": "Charlie, Dave"},
+                {"teammates": "Eve", "opponents": "Frank, Grace", "court": "Court 2"},
+            ],
+            token="tok1",
+            tournament_id="t1",
+        )
+        assert "Bob" in body
+        assert "Eve" in body
+        assert "Court 2" in body
+
+    def test_comment_rendered_when_present(self) -> None:
+        _, body = render_next_round_email(
+            tournament_name="Cup",
+            player_name="Alice",
+            round_number=1,
+            matches_info=[
+                {"teammates": "Bob", "opponents": "Charlie, Dave", "comment": "Play on grass court"},
+            ],
+            token="tok1",
+            tournament_id="t1",
+        )
+        assert "Play on grass court" in body
+
+    def test_no_comment_when_empty(self) -> None:
+        _, body = render_next_round_email(
+            tournament_name="Cup",
+            player_name="Alice",
+            round_number=1,
+            matches_info=[
+                {"teammates": "Bob", "opponents": "Charlie", "comment": ""},
+            ],
+            token="tok1",
+            tournament_id="t1",
+        )
+        assert "📝" not in body
+
+    def test_contacts_rendered_when_present(self) -> None:
+        _, body = render_next_round_email(
+            tournament_name="Cup",
+            player_name="Alice",
+            round_number=1,
+            matches_info=[
+                {
+                    "teammates": "Bob",
+                    "opponents": "Charlie",
+                    "contacts": [
+                        {"name": "Bob", "info": "bob@test.com"},
+                        {"name": "Charlie", "info": "+34 600 123 456"},
+                    ],
+                },
+            ],
+            token="tok1",
+            tournament_id="t1",
+        )
+        assert "bob@test.com" in body
+        assert "+34 600 123 456" in body
+        assert "Bob" in body
+        assert "Charlie" in body
+
+    def test_no_contacts_section_when_empty(self) -> None:
+        _, body = render_next_round_email(
+            tournament_name="Cup",
+            player_name="Alice",
+            round_number=1,
+            matches_info=[
+                {"teammates": "Bob", "opponents": "Charlie", "contacts": []},
+            ],
+            token="tok1",
+            tournament_id="t1",
+        )
+        assert "📇" not in body
+
+
+class TestRenderTournamentResultsEmail:
+    """Final results email template."""
+
+    def test_contains_rank_and_leaderboard(self) -> None:
+        subject, body = render_tournament_results_email(
+            tournament_name="Grand Finale",
+            player_name="Alice",
+            rank=2,
+            total_players=8,
+            stats={"wins": 5, "losses": 2, "draws": 1},
+            leaderboard_top=[
+                {"rank": 1, "name": "Bob", "score": 42},
+                {"rank": 2, "name": "Alice", "score": 38},
+                {"rank": 3, "name": "Charlie", "score": 30},
+            ],
+            token="tok_xyz",
+            tournament_id="t99",
+        )
+        assert "Grand Finale" in subject
+        assert "#2" in body
+        assert "8 players" in body or "8" in body
+        assert "5W" in body
+        assert "Bob" in body
+        assert "Alice" in body
+
+    def test_draws_omitted_when_zero(self) -> None:
+        _, body = render_tournament_results_email(
+            tournament_name="Cup",
+            player_name="Alice",
+            rank=1,
+            total_players=4,
+            stats={"wins": 3, "losses": 1, "draws": 0},
+            leaderboard_top=[{"rank": 1, "name": "Alice", "score": 30}],
+            token="tok1",
+            tournament_id="t1",
+        )
+        assert "3W" in body
+        assert "1L" in body
+        assert "D" not in body.split("3W")[1].split("</p>")[0]
+
+    def test_alias_used_in_url(self) -> None:
+        with patch("backend.email.SITE_URL", "https://example.com"):
+            _, body = render_tournament_results_email(
+                tournament_name="Cup",
+                player_name="Bob",
+                rank=1,
+                total_players=4,
+                stats={"wins": 3, "losses": 0, "draws": 0},
+                leaderboard_top=[{"rank": 1, "name": "Bob", "score": 30}],
+                token="tok1",
+                tournament_alias="grand",
+            )
+        assert "/tv/grand" in body
+
+
+class TestRenderCancellationEmail:
+    """Registration cancellation confirmation email template."""
+
+    def test_contains_player_name_and_lobby(self) -> None:
+        subject, body = render_cancellation_email(
+            lobby_name="Friday League",
+            player_name="Alice",
+            lobby_id="reg1",
+        )
+        assert "Friday League" in subject
+        assert "cancelled" in subject.lower()
+        assert "Alice" in body
+
+    def test_alias_used_in_url(self) -> None:
+        with patch("backend.email.SITE_URL", "https://example.com"):
+            _, body = render_cancellation_email(
+                lobby_name="T",
+                player_name="Bob",
+                lobby_alias="friday",
+            )
+        assert "/register/friday" in body
+
+
+class TestRenderWaitlistSpotEmail:
+    """Waitlist spot-available notification email template."""
+
+    def test_contains_player_name_and_lobby(self) -> None:
+        subject, body = render_waitlist_spot_email(
+            lobby_name="Saturday Padel",
+            player_name="Charlie",
+            token="tok_wait",
+            lobby_id="reg2",
+        )
+        assert "Saturday Padel" in subject
+        assert "spot" in subject.lower()
+        assert "Charlie" in body
+        assert "waiting list" in body.lower() or "spot" in body.lower()
+
+    def test_login_url_includes_token(self) -> None:
+        with patch("backend.email.SITE_URL", "https://example.com"):
+            _, body = render_waitlist_spot_email(
+                lobby_name="T",
+                player_name="Eve",
+                token="tok_abc",
+                lobby_id="r1",
+            )
+        assert "tok_abc" in body
+
+    def test_alias_used_in_url(self) -> None:
+        with patch("backend.email.SITE_URL", "https://example.com"):
+            _, body = render_waitlist_spot_email(
+                lobby_name="T",
+                player_name="Eve",
+                token="tok_abc",
+                lobby_alias="saturday",
+            )
+        assert "/register/saturday" in body
 
 
 # ── Integration tests for email-related API endpoints ──────────────────────
@@ -606,3 +875,427 @@ class TestEmailCarriedThroughConversion:
         assert "alice@test.com" in emails.values()
         assert "bob@test.com" in emails.values()
         assert "dave@test.com" in emails.values()
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Creation with player_emails
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestCreationWithPlayerEmails:
+    """player_emails dict is accepted at creation time for all tournament types."""
+
+    def _make_gp(self, client: TestClient, headers: dict, emails: dict | None = None) -> str:
+        body: dict = {
+            "name": "Email GP",
+            "player_names": ["Alice", "Bob", "Charlie", "Dave"],
+            "num_groups": 1,
+        }
+        if emails is not None:
+            body["player_emails"] = emails
+        r = client.post("/api/tournaments/group-playoff", json=body, headers=headers)
+        assert r.status_code == 200
+        return r.json()["id"]
+
+    def _make_mex(self, client: TestClient, headers: dict, emails: dict | None = None) -> str:
+        body: dict = {
+            "name": "Email Mex",
+            "player_names": ["Alice", "Bob", "Charlie", "Dave"],
+            "num_courts": 1,
+        }
+        if emails is not None:
+            body["player_emails"] = emails
+        r = client.post("/api/tournaments/mexicano", json=body, headers=headers)
+        assert r.status_code == 200
+        return r.json()["id"]
+
+    def _make_po(self, client: TestClient, headers: dict, emails: dict | None = None) -> str:
+        body: dict = {
+            "name": "Email PO",
+            "participant_names": ["Alice", "Bob", "Charlie", "Dave"],
+        }
+        if emails is not None:
+            body["player_emails"] = emails
+        r = client.post("/api/tournaments/playoff", json=body, headers=headers)
+        assert r.status_code == 200
+        return r.json()["id"]
+
+    def _secrets(self, client: TestClient, tid: str, headers: dict) -> dict:
+        r = client.get(f"/api/tournaments/{tid}/player-secrets", headers=headers)
+        assert r.status_code == 200
+        return r.json()["players"]
+
+    @pytest.mark.parametrize("create_fn", ["_make_gp", "_make_mex", "_make_po"])
+    def test_emails_stored_at_creation(self, client: TestClient, auth_headers: dict, create_fn: str) -> None:
+        emails = {"Alice": "alice@test.com", "Bob": "bob@test.com"}
+        tid = getattr(self, create_fn)(client, auth_headers, emails)
+        secrets = self._secrets(client, tid, auth_headers)
+        email_values = {s["email"] for s in secrets.values() if s["email"]}
+        assert "alice@test.com" in email_values
+        assert "bob@test.com" in email_values
+
+    @pytest.mark.parametrize("create_fn", ["_make_gp", "_make_mex", "_make_po"])
+    def test_creation_without_emails_still_works(self, client: TestClient, auth_headers: dict, create_fn: str) -> None:
+        tid = getattr(self, create_fn)(client, auth_headers)
+        secrets = self._secrets(client, tid, auth_headers)
+        assert all(s["email"] == "" for s in secrets.values())
+
+    def test_invalid_email_in_player_emails_rejected(self, client: TestClient, auth_headers: dict) -> None:
+        r = client.post(
+            "/api/tournaments/group-playoff",
+            json={
+                "name": "Bad Email GP",
+                "player_names": ["Alice", "Bob", "Charlie", "Dave"],
+                "num_groups": 1,
+                "player_emails": {"Alice": "not-an-email"},
+            },
+            headers=auth_headers,
+        )
+        assert r.status_code == 422
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Tournament email sending endpoints
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestTournamentSendEmail:
+    """POST /api/tournaments/{tid}/send-email/{player_id}."""
+
+    def _create_gp_with_email(self, client: TestClient, headers: dict) -> tuple[str, dict]:
+        tid = client.post(
+            "/api/tournaments/group-playoff",
+            json={
+                "name": "Send Email GP",
+                "player_names": ["Alice", "Bob", "Charlie", "Dave"],
+                "num_groups": 1,
+                "player_emails": {"Alice": "alice@test.com", "Bob": "bob@test.com"},
+            },
+            headers=headers,
+        ).json()["id"]
+        r = client.get(f"/api/tournaments/{tid}/player-secrets", headers=headers)
+        return tid, r.json()["players"]
+
+    def test_send_fails_when_email_not_configured(self, client: TestClient, auth_headers: dict) -> None:
+        tid, secrets = self._create_gp_with_email(client, auth_headers)
+        pid = next(pid for pid, s in secrets.items() if s["email"] == "alice@test.com")
+        with patch("backend.api.routes_crud.email_is_configured", return_value=False):
+            r = client.post(f"/api/tournaments/{tid}/send-email/{pid}", headers=auth_headers)
+        assert r.status_code == 400
+
+    @patch("backend.api.routes_crud.send_email", new_callable=AsyncMock, return_value=True)
+    def test_send_succeeds_for_player_with_email(
+        self, mock_send: AsyncMock, client: TestClient, auth_headers: dict
+    ) -> None:
+        tid, secrets = self._create_gp_with_email(client, auth_headers)
+        pid = next(pid for pid, s in secrets.items() if s["email"] == "alice@test.com")
+        with patch("backend.api.routes_crud.email_is_configured", return_value=True):
+            r = client.post(f"/api/tournaments/{tid}/send-email/{pid}", headers=auth_headers)
+        assert r.status_code == 200
+        mock_send.assert_called_once()
+
+    def test_send_404_for_nonexistent_player(self, client: TestClient, auth_headers: dict) -> None:
+        tid, _ = self._create_gp_with_email(client, auth_headers)
+        with patch("backend.api.routes_crud.email_is_configured", return_value=True):
+            r = client.post(f"/api/tournaments/{tid}/send-email/no-such-id", headers=auth_headers)
+        assert r.status_code == 404
+
+    @patch("backend.api.routes_crud.send_email", new_callable=AsyncMock, return_value=True)
+    def test_send_400_when_player_has_no_email(
+        self, mock_send: AsyncMock, client: TestClient, auth_headers: dict
+    ) -> None:
+        tid, secrets = self._create_gp_with_email(client, auth_headers)
+        pid = next(pid for pid, s in secrets.items() if not s["email"])
+        with patch("backend.api.routes_crud.email_is_configured", return_value=True):
+            r = client.post(f"/api/tournaments/{tid}/send-email/{pid}", headers=auth_headers)
+        assert r.status_code == 422
+        mock_send.assert_not_called()
+
+
+class TestTournamentSendAllEmails:
+    """POST /api/tournaments/{tid}/send-all-emails."""
+
+    def _create_gp_with_email(self, client: TestClient, headers: dict) -> str:
+        return client.post(
+            "/api/tournaments/group-playoff",
+            json={
+                "name": "Send All GP",
+                "player_names": ["Alice", "Bob", "Charlie", "Dave"],
+                "num_groups": 1,
+                "player_emails": {"Alice": "alice@test.com", "Bob": "bob@test.com"},
+            },
+            headers=headers,
+        ).json()["id"]
+
+    @patch("backend.api.routes_crud.send_email", new_callable=AsyncMock, return_value=True)
+    def test_send_all_sends_to_players_with_email(
+        self, mock_send: AsyncMock, client: TestClient, auth_headers: dict
+    ) -> None:
+        tid = self._create_gp_with_email(client, auth_headers)
+        with patch("backend.api.routes_crud.email_is_configured", return_value=True):
+            r = client.post(f"/api/tournaments/{tid}/send-all-emails", headers=auth_headers)
+        assert r.status_code == 200
+        data = r.json()
+        assert data["sent"] == 2  # Alice + Bob
+        assert data["skipped"] == 2  # Charlie + Dave
+
+    @patch("backend.api.routes_crud.send_email", new_callable=AsyncMock, return_value=True)
+    def test_send_all_skips_when_no_emails(self, mock_send: AsyncMock, client: TestClient, auth_headers: dict) -> None:
+        tid = client.post(
+            "/api/tournaments/group-playoff",
+            json={
+                "name": "No Email GP",
+                "player_names": ["Alice", "Bob", "Charlie", "Dave"],
+                "num_groups": 1,
+            },
+            headers=auth_headers,
+        ).json()["id"]
+        with patch("backend.api.routes_crud.email_is_configured", return_value=True):
+            r = client.post(f"/api/tournaments/{tid}/send-all-emails", headers=auth_headers)
+        assert r.status_code == 200
+        data = r.json()
+        assert data["sent"] == 0
+        assert data["skipped"] == 4
+
+
+class TestTournamentSendMessageEmails:
+    """POST /api/tournaments/{tid}/send-message-emails."""
+
+    def _create_gp_with_email(self, client: TestClient, headers: dict) -> str:
+        return client.post(
+            "/api/tournaments/group-playoff",
+            json={
+                "name": "Message GP",
+                "player_names": ["Alice", "Bob", "Charlie", "Dave"],
+                "num_groups": 1,
+                "player_emails": {"Alice": "alice@test.com"},
+            },
+            headers=headers,
+        ).json()["id"]
+
+    @patch("backend.api.routes_crud.send_email", new_callable=AsyncMock, return_value=True)
+    def test_send_message_to_players_with_email(
+        self, mock_send: AsyncMock, client: TestClient, auth_headers: dict
+    ) -> None:
+        tid = self._create_gp_with_email(client, auth_headers)
+        with patch("backend.api.routes_crud.email_is_configured", return_value=True):
+            r = client.post(
+                f"/api/tournaments/{tid}/send-message-emails",
+                json={"message": "Hello players!"},
+                headers=auth_headers,
+            )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["sent"] == 1
+        assert data["skipped"] == 3
+
+    def test_send_message_requires_message(self, client: TestClient, auth_headers: dict) -> None:
+        tid = self._create_gp_with_email(client, auth_headers)
+        with patch("backend.api.routes_crud.email_is_configured", return_value=True):
+            r = client.post(
+                f"/api/tournaments/{tid}/send-message-emails",
+                json={"message": ""},
+                headers=auth_headers,
+            )
+        assert r.status_code == 422
+
+    def test_send_message_fails_when_not_configured(self, client: TestClient, auth_headers: dict) -> None:
+        tid = self._create_gp_with_email(client, auth_headers)
+        with patch("backend.api.routes_crud.email_is_configured", return_value=False):
+            r = client.post(
+                f"/api/tournaments/{tid}/send-message-emails",
+                json={"message": "hello"},
+                headers=auth_headers,
+            )
+        assert r.status_code == 400
+
+
+# ── Unit tests for send_email header behaviour ─────────────────────────────
+
+
+class TestSendEmailHeaders:
+    """send_email() correctly sets From and Reply-To headers."""
+
+    @pytest.fixture()
+    def smtp_configured(self):
+        """Patch SMTP settings to simulate a configured environment."""
+        with (
+            patch("backend.email.SMTP_HOST", "smtp.example.com"),
+            patch("backend.email.SMTP_FROM", "noreply@example.com"),
+            patch("backend.email.SMTP_PORT", 587),
+            patch("backend.email.SMTP_USER", None),
+            patch("backend.email.SMTP_PASS", None),
+            patch("backend.email.SMTP_USE_TLS", False),
+        ):
+            yield
+
+    def test_from_header_is_raw_address_when_no_sender_name(self, smtp_configured) -> None:
+        import asyncio
+        from backend.email import send_email
+
+        with patch("aiosmtplib.send", new_callable=AsyncMock) as mock_send:
+            result = asyncio.run(send_email("player@example.com", "Subject", "<p>body</p>"))
+        assert result is True
+        sent_msg = mock_send.call_args[0][0]
+        assert sent_msg["From"] == "noreply@example.com"
+        assert sent_msg["Reply-To"] is None
+
+    def test_from_header_uses_sender_name_when_provided(self, smtp_configured) -> None:
+        import asyncio
+        from backend.email import send_email
+
+        with patch("aiosmtplib.send", new_callable=AsyncMock) as mock_send:
+            result = asyncio.run(
+                send_email(
+                    "player@example.com",
+                    "Subject",
+                    "<p>body</p>",
+                    sender_name="Summer Cup",
+                )
+            )
+        assert result is True
+        sent_msg = mock_send.call_args[0][0]
+        assert "Summer Cup" in sent_msg["From"]
+        assert "noreply@example.com" in sent_msg["From"]
+
+    def test_reply_to_header_set_when_provided(self, smtp_configured) -> None:
+        import asyncio
+        from backend.email import send_email
+
+        with patch("aiosmtplib.send", new_callable=AsyncMock) as mock_send:
+            asyncio.run(
+                send_email(
+                    "player@example.com",
+                    "Subject",
+                    "<p>body</p>",
+                    reply_to="organizer@club.com",
+                )
+            )
+        sent_msg = mock_send.call_args[0][0]
+        assert sent_msg["Reply-To"] == "organizer@club.com"
+
+    def test_reply_to_header_absent_when_empty(self, smtp_configured) -> None:
+        import asyncio
+        from backend.email import send_email
+
+        with patch("aiosmtplib.send", new_callable=AsyncMock) as mock_send:
+            asyncio.run(send_email("player@example.com", "Subject", "<p>body</p>", reply_to=""))
+        sent_msg = mock_send.call_args[0][0]
+        assert sent_msg["Reply-To"] is None
+
+    def test_returns_false_when_not_configured(self) -> None:
+        import asyncio
+        from backend.email import send_email
+
+        with patch("backend.email.SMTP_HOST", ""), patch("backend.email.SMTP_FROM", ""):
+            result = asyncio.run(send_email("player@example.com", "Subject", "<p>body</p>"))
+        assert result is False
+
+
+# ── Integration tests for GET/PATCH email-settings ────────────────────────
+
+
+class TestEmailSettingsEndpoint:
+    """GET and PATCH /api/tournaments/{tid}/email-settings."""
+
+    GP_BODY = {
+        "name": "Settings Cup",
+        "player_names": ["A", "B", "C", "D"],
+        "court_names": ["Court 1"],
+        "num_groups": 1,
+        "top_per_group": 2,
+    }
+
+    def _create(self, client: TestClient, auth_headers: dict) -> str:
+        r = client.post("/api/tournaments/group-playoff", json=self.GP_BODY, headers=auth_headers)
+        assert r.status_code == 200
+        return r.json()["id"]
+
+    def test_get_returns_defaults(self, client: TestClient, auth_headers: dict) -> None:
+        tid = self._create(client, auth_headers)
+        r = client.get(f"/api/tournaments/{tid}/email-settings", headers=auth_headers)
+        assert r.status_code == 200
+        data = r.json()
+        assert data["sender_name"] == ""
+        assert data["reply_to"] == ""
+
+    def test_patch_sets_sender_name(self, client: TestClient, auth_headers: dict) -> None:
+        tid = self._create(client, auth_headers)
+        r = client.patch(
+            f"/api/tournaments/{tid}/email-settings",
+            json={"sender_name": "Summer Cup"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        assert r.json()["sender_name"] == "Summer Cup"
+
+    def test_patch_persists_and_get_reflects_changes(self, client: TestClient, auth_headers: dict) -> None:
+        tid = self._create(client, auth_headers)
+        client.patch(
+            f"/api/tournaments/{tid}/email-settings",
+            json={"sender_name": "My Club", "reply_to": "org@club.com"},
+            headers=auth_headers,
+        )
+        r = client.get(f"/api/tournaments/{tid}/email-settings", headers=auth_headers)
+        assert r.status_code == 200
+        data = r.json()
+        assert data["sender_name"] == "My Club"
+        assert data["reply_to"] == "org@club.com"
+
+    def test_patch_partial_update_preserves_other_field(self, client: TestClient, auth_headers: dict) -> None:
+        """PATCH with only sender_name does not reset reply_to."""
+        tid = self._create(client, auth_headers)
+        client.patch(
+            f"/api/tournaments/{tid}/email-settings",
+            json={"sender_name": "Club A", "reply_to": "org@club.com"},
+            headers=auth_headers,
+        )
+        client.patch(
+            f"/api/tournaments/{tid}/email-settings",
+            json={"sender_name": "Club B"},
+            headers=auth_headers,
+        )
+        r = client.get(f"/api/tournaments/{tid}/email-settings", headers=auth_headers)
+        data = r.json()
+        assert data["sender_name"] == "Club B"
+        assert data["reply_to"] == "org@club.com"
+
+    def test_patch_invalid_reply_to_returns_422(self, client: TestClient, auth_headers: dict) -> None:
+        tid = self._create(client, auth_headers)
+        r = client.patch(
+            f"/api/tournaments/{tid}/email-settings",
+            json={"reply_to": "not-an-email"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 422
+
+    def test_patch_sender_name_too_long_returns_422(self, client: TestClient, auth_headers: dict) -> None:
+        tid = self._create(client, auth_headers)
+        r = client.patch(
+            f"/api/tournaments/{tid}/email-settings",
+            json={"sender_name": "X" * 101},
+            headers=auth_headers,
+        )
+        assert r.status_code == 422
+
+    def test_patch_requires_editor_access(self, client: TestClient, auth_headers: dict) -> None:
+        tid = self._create(client, auth_headers)
+        # No auth headers — should be rejected
+        r = client.patch(
+            f"/api/tournaments/{tid}/email-settings",
+            json={"sender_name": "Attacker"},
+        )
+        assert r.status_code in (401, 403)
+
+    def test_get_requires_editor_access(self, client: TestClient, auth_headers: dict) -> None:
+        tid = self._create(client, auth_headers)
+        r = client.get(f"/api/tournaments/{tid}/email-settings")
+        assert r.status_code in (401, 403)
+
+    def test_patch_nonexistent_tournament_returns_404(self, client: TestClient, auth_headers: dict) -> None:
+        r = client.patch(
+            "/api/tournaments/nonexistent/email-settings",
+            json={"sender_name": "X"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 404

@@ -102,7 +102,12 @@ async def create_group_playoff(
         sport=req.sport.value,
         assign_courts=req.assign_courts,
     )
-    create_secrets_for_tournament(tid, [{"id": p.id, "name": p.name} for p in players])
+    create_secrets_for_tournament(
+        tid,
+        [{"id": p.id, "name": p.name} for p in players],
+        contacts={p.id: req.player_contacts[p.name] for p in players if p.name in req.player_contacts} or None,
+        emails={p.id: req.player_emails[p.name] for p in players if p.name in req.player_emails} or None,
+    )
     return {"id": tid, "phase": t.phase}
 
 

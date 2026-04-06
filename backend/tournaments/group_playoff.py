@@ -16,6 +16,8 @@ Usage:
 
 from __future__ import annotations
 
+from collections import defaultdict
+
 from ..models import Court, GPPhase, Match, MatchStatus, Player
 from .group_stage import Group, assign_courts, distribute_players_to_groups
 from . import pairing as pairing_mod
@@ -219,12 +221,35 @@ class GroupPlayoffTournament:
     def _assign_group_courts(self) -> None:
         """Assign courts across all group matches using the global greedy algorithm.
 
-        All group-stage matches are pooled together and assigned via
-        ``assign_courts``, which greedily fills every available court in each
-        time slot while ensuring no participant plays two matches
+        In **individual mode**, all group-stage matches are pooled together and
+        assigned via ``assign_courts``, which greedily fills every available court
+        in each time slot while ensuring no participant plays two matches
         simultaneously and balancing court exposure across participants.
+
+        In **team mode**, matches are processed one round at a time so that slot
+        numbers respect the pre-computed round ordering (round 1 slots come before
+        round 2 slots, etc.).  This lets organizers instruct players to play all
+        round-1 matches before starting round 2.
         """
-        assign_courts(self.all_group_matches(), self.courts)
+        if not self.team_mode:
+            assign_courts(self.all_group_matches(), self.courts)
+            return
+
+        # Team mode: partition by round_number and assign courts sequentially.
+        rounds: defaultdict[int, list[Match]] = defaultdict(list)
+        for m in self.all_group_matches():
+            rounds[m.round_number].append(m)
+
+        slot_offset = 0
+        for rn in sorted(rounds):
+            batch = rounds[rn]
+            assign_courts(batch, self.courts, court_offset=slot_offset)
+            # assign_courts numbers slots from 0; shift them up by the offset.
+            max_batch_slot = max((m.slot_number for m in batch if m.slot_number is not None), default=-1)
+            for m in batch:
+                if m.slot_number is not None:
+                    m.slot_number += slot_offset
+            slot_offset += max_batch_slot + 1
 
     def _max_slot_number(self) -> int:
         """Return the highest slot_number across all existing group matches, or -1."""
@@ -383,6 +408,13 @@ class GroupPlayoffTournament:
         # Aggregate scores for seeding (wins, sets_diff, point_diff, points_for)
         scores = self._player_scores()
 
+        # Rank of each player within their group (1 = 1st place).
+        # External participants default to 999 (placed after all group-stage players).
+        player_rank: dict[str, int] = {}
+        for g in self.groups:
+            for rank_idx, row in enumerate(g.standings(), start=1):
+                player_rank[row.player.id] = rank_idx
+
         # Add external participants
         if extra_players:
             for name, ext_score in extra_players:
@@ -395,10 +427,16 @@ class GroupPlayoffTournament:
         if len(advancing) < 2:
             raise RuntimeError("Need at least 2 participants to start play‑offs")
 
-        def _seed_key(team: list[Player]) -> tuple[float, float, float, float]:
-            """Combined (wins, sets_diff, point_diff, points_for) for a team."""
+        def _seed_key(team: list[Player]) -> tuple[float, float, float, float, float]:
+            """Sort key for bracket seeding (higher = better).
+
+            Primary criterion: best group position (1st > 2nd > …).
+            Tiebreakers: wins → sets_diff → point_diff → points_for.
+            """
             combined = [scores.get(p.id, (0.0, 0.0, 0.0, 0.0)) for p in team]
+            best_rank = min((player_rank.get(p.id, 999) for p in team), default=999)
             return (
+                -float(best_rank),
                 sum(c[0] for c in combined),
                 sum(c[1] for c in combined),
                 sum(c[2] for c in combined),
@@ -417,7 +455,7 @@ class GroupPlayoffTournament:
             # Build teams, then apply group-diversity seeding when multiple
             # groups exist so first-round opponents come from different groups.
             raw_teams = [[p] for p in advancing]
-            if self.num_groups > 2:
+            if self.num_groups > 1:
                 group_ids = [_team_group(t) for t in raw_teams]
                 teams = pairing_mod.seed_with_group_diversity(raw_teams, group_ids, _seed_key)
             else:
@@ -430,7 +468,7 @@ class GroupPlayoffTournament:
             flat_scores = {pid: s[0] for pid, s in scores.items()}
             teams = pairing_mod.form_playoff_teams(advancing, flat_scores)
             # Apply group-diversity seeding when multiple groups exist.
-            if self.num_groups > 2:
+            if self.num_groups > 1:
                 group_ids = [_team_group(t) for t in teams]
                 teams = pairing_mod.seed_with_group_diversity(teams, group_ids, _seed_key)
             else:

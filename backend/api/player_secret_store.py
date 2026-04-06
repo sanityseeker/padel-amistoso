@@ -25,6 +25,7 @@ def create_secrets_for_tournament(
     tournament_id: str,
     players: list[dict[str, str]],
     contacts: dict[str, str] | None = None,
+    emails: dict[str, str] | None = None,
 ) -> dict[str, PlayerSecret]:
     """Generate and persist secrets for every player in a tournament.
 
@@ -32,6 +33,8 @@ def create_secrets_for_tournament(
         tournament_id: The tournament ID (e.g. ``"t5"``).
         players: List of dicts with ``"id"`` and ``"name"`` keys.
         contacts: Optional mapping of player_id → contact string. Missing
+            entries default to an empty string.
+        emails: Optional mapping of player_id → email address. Missing
             entries default to an empty string.
 
     Returns:
@@ -41,20 +44,30 @@ def create_secrets_for_tournament(
     secrets = generate_secrets_for_players(player_ids)
     name_map = {p["id"]: p["name"] for p in players}
     contact_map = contacts or {}
+    email_map = emails or {}
 
     with get_db() as conn:
         conn.executemany(
             """
-            INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, contact)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, contact, email)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tournament_id, player_id) DO UPDATE SET
                 passphrase  = excluded.passphrase,
                 token       = excluded.token,
                 player_name = excluded.player_name,
-                contact     = excluded.contact
+                contact     = excluded.contact,
+                email       = excluded.email
             """,
             [
-                (tournament_id, pid, name_map.get(pid, ""), sec.passphrase, sec.token, contact_map.get(pid, ""))
+                (
+                    tournament_id,
+                    pid,
+                    name_map.get(pid, ""),
+                    sec.passphrase,
+                    sec.token,
+                    contact_map.get(pid, ""),
+                    email_map.get(pid, ""),
+                )
                 for pid, sec in secrets.items()
             ],
         )
@@ -184,6 +197,29 @@ def update_contact(tournament_id: str, player_id: str, contact: str) -> bool:
             return cur.rowcount > 0
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not update contact for %s/%s: %s", tournament_id, player_id, exc)
+        return False
+
+
+def update_email(tournament_id: str, player_id: str, email: str) -> bool:
+    """Update the email address for a single player.
+
+    Args:
+        tournament_id: The tournament ID.
+        player_id: The player ID.
+        email: New email address (may be empty to clear).
+
+    Returns:
+        ``True`` if the row was found and updated, ``False`` otherwise.
+    """
+    try:
+        with get_db() as conn:
+            cur = conn.execute(
+                "UPDATE player_secrets SET email = ? WHERE tournament_id = ? AND player_id = ?",
+                (email, tournament_id, player_id),
+            )
+            return cur.rowcount > 0
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not update email for %s/%s: %s", tournament_id, player_id, exc)
         return False
 
 

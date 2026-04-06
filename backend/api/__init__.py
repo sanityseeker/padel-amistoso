@@ -62,7 +62,7 @@ async def _lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="Padel Tournament Manager",
-    version="0.2.0",
+    version="1.0.0",
     description=(
         "REST API for organizing and managing padel tournaments. "
         "Supports Group+Playoff and Mexicano tournament formats with "

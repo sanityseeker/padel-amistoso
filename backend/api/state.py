@@ -140,12 +140,13 @@ def _save_tournament(tid: str) -> None:
     try:
         blob = pickle.dumps(data["tournament"], protocol=pickle.HIGHEST_PROTOCOL)
         tv_raw = json.dumps(data["tv_settings"]) if data.get("tv_settings") else None
+        email_raw = json.dumps(data["email_settings"]) if data.get("email_settings") else None
         with get_db() as conn:
             conn.execute(
                 """
                 INSERT INTO tournaments
-                    (id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport, assign_courts)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport, assign_courts, email_settings)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name            = excluded.name,
                     public          = excluded.public,
@@ -154,7 +155,8 @@ def _save_tournament(tid: str) -> None:
                     tournament_blob = excluded.tournament_blob,
                     version         = excluded.version,
                     sport           = excluded.sport,
-                    assign_courts   = excluded.assign_courts
+                    assign_courts   = excluded.assign_courts,
+                    email_settings  = excluded.email_settings
                 """,
                 (
                     tid,
@@ -168,6 +170,7 @@ def _save_tournament(tid: str) -> None:
                     version,
                     data.get("sport", "padel"),
                     int(data.get("assign_courts", True)),
+                    email_raw,
                 ),
             )
     except Exception as exc:  # noqa: BLE001
@@ -207,9 +210,9 @@ def _load_state() -> None:
     try:
         with get_db() as conn:
             rows = conn.execute(
-                "SELECT id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport FROM tournaments"
+                "SELECT id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport, assign_courts, email_settings FROM tournaments"
             ).fetchall()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001  # noqa: BLE001
         logger.warning("Could not load state (starting fresh): %s", exc)
         return
 
@@ -231,6 +234,9 @@ def _load_state() -> None:
             "tournament": tournament,
             "sport": row["sport"] if "sport" in row.keys() else "padel",
             "assign_courts": bool(row["assign_courts"]) if "assign_courts" in row.keys() else True,
+            "email_settings": json.loads(row["email_settings"])
+            if "email_settings" in row.keys() and row["email_settings"]
+            else None,
         }
         _tournament_versions[tid] = row["version"]
 

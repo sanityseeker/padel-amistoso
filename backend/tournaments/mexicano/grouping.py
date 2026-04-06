@@ -88,18 +88,32 @@ class GroupingMixin:
         return sum(scores[p.id] for p in team)
 
     @staticmethod
-    def _normalized_imbalance(t1: list[Player], t2: list[Player], scores: dict[str, int]) -> float:
-        """Score imbalance between two teams, normalised by the group total.
-
-        Returns a value in [0, 1] so the criterion is round-invariant regardless
-        of how many points have been accumulated so far.  Falls back to the raw
-        absolute difference when the group total is zero (round 1).
-        """
+    def _normalized_imbalance(t1: list[Player], t2: list[Player], scores: dict[str, int | float]) -> float:
+        """Score imbalance between two teams, normalised by the group total."""
         s1 = sum(scores[p.id] for p in t1)
         s2 = sum(scores[p.id] for p in t2)
         total = s1 + s2
         raw = abs(s1 - s2)
         return raw / total if total > 0 else float(raw)
+
+    @staticmethod
+    def _within_team_imbalance(t1: list[Player], t2: list[Player], scores: dict[str, float]) -> float:
+        """Average normalised within-team score difference across both teams.
+
+        Returns a value in [0, 1] measuring how dissimilar in strength the
+        partners in each team are.  0 means both pairs are equally matched;
+        1 means one player on each team scored nothing while the other scored
+        everything.  Falls back to the raw difference when team totals are 0.
+        """
+
+        def _pair_imbalance(team: list[Player]) -> float:
+            if len(team) < 2:
+                return 0.0
+            a, b = scores[team[0].id], scores[team[1].id]
+            total = a + b
+            return abs(a - b) / total if total > 0 else abs(a - b)
+
+        return (_pair_imbalance(t1) + _pair_imbalance(t2)) / 2
 
     def _best_pairing(self, group: list[Player]) -> tuple[list[Player], list[Player]]:
         """Evaluate all 3 possible 2v2 splits for a group of 4 and return the best.
@@ -123,9 +137,11 @@ class GroupingMixin:
             gap_excess = self._team_pair_gap_excess(t1, estimated_scores) + self._team_pair_gap_excess(
                 t2, estimated_scores
             )
-            imbalance = self._normalized_imbalance(t1, t2, self.scores)
+            between_imbalance = self._normalized_imbalance(t1, t2, estimated_scores)
+            within_imbalance = self._within_team_imbalance(t1, t2, estimated_scores)
+            combined_imbalance = between_imbalance + self.partner_balance_weight * within_imbalance
             repeats = self._pairing_repeat_count(t1, t2)
-            candidates.append((gap_excess, imbalance, repeats, t1, t2))
+            candidates.append((gap_excess, combined_imbalance, repeats, t1, t2))
 
         min_excess = min(c[0] for c in candidates)
         filtered = [(imb, rep, t1, t2) for exc, imb, rep, t1, t2 in candidates if exc == min_excess]
@@ -325,7 +341,13 @@ class GroupingMixin:
                 t2, estimated_scores
             )
             repeats = self._pairing_repeat_count(t1, t2)
-            imbalance = abs(self._team_total(estimated_scores, t1) - self._team_total(estimated_scores, t2))
+            between_imbalance = abs(self._team_total(estimated_scores, t1) - self._team_total(estimated_scores, t2))
+            within_imbalance = self._within_team_imbalance(t1, t2, estimated_scores)
+            # Blend within-team partner balance into the imbalance criterion;
+            # scale within by the group total so it remains in similar units to between_imbalance.
+            group_total = sum(estimated_scores[p.id] for p in group)
+            within_scaled = within_imbalance * group_total
+            imbalance = between_imbalance + self.partner_balance_weight * within_scaled
             seed_penalty = 0
             if {a, b} != {0, 1}:
                 seed_penalty += 1

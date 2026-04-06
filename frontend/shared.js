@@ -358,10 +358,30 @@ function _openBracketLightbox(src) {
   _bracketLightboxUpdateZoom();
   document.addEventListener('keydown', _bracketLightboxKeyHandler);
 
-  // Mouse drag-to-pan
+  // Mouse drag-to-pan — listeners attached to document so dragging outside the
+  // scroll container still works across the whole bracket lightbox.
   const scroll = lb.querySelector('.bracket-lightbox-scroll');
   if (scroll) {
     scroll.style.cursor = 'grab';
+
+    const onMouseMove = (e) => {
+      if (!_lbDrag.active) return;
+      const dx = e.clientX - _lbDrag.startX;
+      const dy = e.clientY - _lbDrag.startY;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) _lbDrag.moved = true;
+      scroll.scrollLeft = _lbDrag.scrollLeft - dx;
+      scroll.scrollTop  = _lbDrag.scrollTop  - dy;
+    };
+
+    const onMouseUp = () => {
+      if (!_lbDrag.active) return;
+      _lbDrag.active          = false;
+      scroll.style.cursor     = 'grab';
+      scroll.style.userSelect = '';
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup',   onMouseUp);
+    };
+
     scroll.onmousedown = (e) => {
       if (e.button !== 0) return;
       _lbDrag.active     = true;
@@ -372,43 +392,29 @@ function _openBracketLightbox(src) {
       _lbDrag.scrollTop  = scroll.scrollTop;
       scroll.style.cursor     = 'grabbing';
       scroll.style.userSelect = 'none';
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup',   onMouseUp);
     };
-    scroll.onmousemove = (e) => {
-      if (!_lbDrag.active) return;
-      const dx = e.clientX - _lbDrag.startX;
-      const dy = e.clientY - _lbDrag.startY;
-      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) _lbDrag.moved = true;
-      scroll.scrollLeft = _lbDrag.scrollLeft - dx;
-      scroll.scrollTop  = _lbDrag.scrollTop  - dy;
-    };
-    const endDrag = () => {
-      if (!_lbDrag.active) return;
-      _lbDrag.active          = false;
-      scroll.style.cursor     = 'grab';
-      scroll.style.userSelect = '';
-    };
-    scroll.onmouseup    = endDrag;
-    scroll.onmouseleave = endDrag;
   }
 }
 
 function _closeBracketLightbox(e) {
-  // If click event, only close when clicking the backdrop (not the image or toolbar)
-  if (e && e.target && (e.target.tagName === 'IMG' || e.target.closest('.bracket-lb-toolbar'))) return;
+  // Only block clicks directly on the image (e.g. drag-end or image interaction).
+  // Toolbar propagation is already stopped by stopPropagation/data-action on the toolbar element.
+  if (e && e.target && e.target.tagName === 'IMG') return;
   // Don't close if this click was the end of a drag gesture
   if (e && _lbDrag.moved) { _lbDrag.moved = false; return; }
   const lb = document.getElementById('bracket-lightbox');
   if (!lb) return;
   lb.classList.remove('open');
+  _lbDrag.active = false; // cancel any in-progress drag
   document.removeEventListener('keydown', _bracketLightboxKeyHandler);
   const scroll = lb.querySelector('.bracket-lightbox-scroll');
   if (scroll) {
     scroll.style.cursor     = '';
     scroll.style.userSelect = '';
-    scroll.onmousedown  = null;
-    scroll.onmousemove  = null;
-    scroll.onmouseup    = null;
-    scroll.onmouseleave = null;
+    scroll.onmousedown = null;
+    // document-level mousemove/mouseup listeners are self-removing (cleaned up in onMouseUp)
   }
 }
 

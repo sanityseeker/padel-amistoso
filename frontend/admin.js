@@ -760,7 +760,7 @@ let _adminVersionPollTimer = null;
 let _adminLastKnownVersion = null;
 let _adminVersionEtag = null;
 let _adminVersionFetching = false;
-const _ADMIN_POLL_INTERVAL_MS = 15000;
+const _ADMIN_POLL_INTERVAL_MS = 30000;
 
 function _startAdminVersionPoll() {
   _stopAdminVersionPoll();
@@ -969,16 +969,20 @@ async function renderRegistration() {
   const _renderTid = currentTid;
   el.innerHTML = `<div class="card"><em>${t('txt_txt_loading')}</em></div>`;
   try {
-    const [data, collabResult] = await Promise.all([
+    const [data, collabResult, emailSettingsResult] = await Promise.all([
       api(`/api/registrations/${_renderTid}`),
       getAuthUsername()
         ? api(`/api/registrations/${_renderTid}/collaborators`).catch(() => null)
+        : Promise.resolve(null),
+      window._emailConfigured && getAuthUsername()
+        ? api(`/api/registrations/${_renderTid}/email-settings`).catch(() => null)
         : Promise.resolve(null),
     ]);
     if (currentTid !== _renderTid) return;
     _regDetails[_renderTid] = data;
     _currentRegDetail = data;
     if (collabResult) _regCollaborators[_renderTid] = collabResult.collaborators || [];
+    if (emailSettingsResult) _regEmailSettings[_renderTid] = emailSettingsResult;
     _renderRegDetailInline(_renderTid);
   } catch (e) {
     if (currentTid !== _renderTid) return;
@@ -1044,20 +1048,10 @@ const _participantEntries = {
   po:  [..._EMPTY_ENTRIES.team],
 };
 const _participantPasteMode = { gp: false, mex: false, po: false };
+const _participantEmails = { gp: {}, mex: {}, po: {} };  // name → email
+const _participantContacts = { gp: {}, mex: {}, po: {} };  // name → contact info
 
 function _entryModeIsTeam(mode) { return _entryMode[mode] === 'team'; }
-
-const _gpGroupColors = ['#3b82f6','#22c55e','#f59e0b','#ef4444','#a855f7','#06b6d4','#ec4899','#84cc16'];
-function _gpGroupIndexForSlot(slotIndex, total, numGroups) {
-  const base = Math.floor(total / numGroups);
-  const rem = total % numGroups;
-  let cum = 0;
-  for (let g = 0; g < numGroups; g++) {
-    cum += base + (g < rem ? 1 : 0);
-    if (slotIndex < cum) return g;
-  }
-  return numGroups - 1;
-}
 
 function renderParticipantFields(mode) {
   const grid = document.getElementById(`${mode}-participant-grid`);
@@ -1066,20 +1060,10 @@ function renderParticipantFields(mode) {
   if (!grid) return;
   const entries = _participantEntries[mode];
   const isTeam = _entryModeIsTeam(mode);
-  const numGroups = mode === 'gp' ? Math.max(1, parseInt(document.getElementById('gp-num-groups')?.value || '1', 10)) : 0;
   grid.innerHTML = '';
   entries.forEach((val, i) => {
     const row = document.createElement('div');
     row.className = 'participant-entry';
-    if (mode === 'gp' && numGroups > 1) {
-      const gIdx = _gpGroupIndexForSlot(i, entries.length, numGroups);
-      const dot = document.createElement('span');
-      dot.className = 'participant-group-dot';
-      dot.style.background = _gpGroupColors[gIdx % _gpGroupColors.length];
-      dot.title = `Group ${gIdx + 1}`;
-      dot.textContent = gIdx + 1;
-      row.appendChild(dot);
-    }
     const inp = document.createElement('input');
     inp.type = 'text';
     inp.value = val;
@@ -1110,7 +1094,8 @@ function _updateParticipantCount(mode) {
     ? (document.getElementById(`${mode}-players`)?.value || '').split('\n').map(s => s.trim()).filter(Boolean).length
     : _participantEntries[mode].filter(Boolean).length;
   el.textContent = `(${n})`;
-  // Refresh strength bubbles when the section is open
+  // Refresh contact fields and strength bubbles when their sections are open
+  if (document.getElementById(`${mode}-contact-section`)?.open) renderContactFields(mode);
   if (document.getElementById(`${mode}-strength-section`)?.open) renderStrengthBubbles(mode);
 }
 
@@ -1165,9 +1150,28 @@ function togglePasteMode(mode) {
 function getParticipantNames(mode) {
   if (_participantPasteMode[mode]) {
     const ta = document.getElementById(`${mode}-players`);
-    return ta ? ta.value.split('\n').map(s => s.trim()).filter(Boolean) : [];
+    if (!ta) return [];
+    return ta.value.split('\n').map(s => s.trim()).filter(Boolean);
   }
   return _participantEntries[mode].map(s => s.trim()).filter(Boolean);
+}
+
+/** Collect player_emails dict from contact details section (name → email, only non-empty). */
+function getPlayerEmails(mode) {
+  const emails = {};
+  for (const [name, email] of Object.entries(_participantEmails[mode])) {
+    if (name && email) emails[name] = email;
+  }
+  return Object.keys(emails).length > 0 ? emails : null;
+}
+
+/** Collect player_contacts dict from contact details section (name → contact, only non-empty). */
+function getPlayerContacts(mode) {
+  const contacts = {};
+  for (const [name, contact] of Object.entries(_participantContacts[mode])) {
+    if (name && contact) contacts[name] = contact;
+  }
+  return Object.keys(contacts).length > 0 ? contacts : null;
 }
 
 function setEntryMode(mode, entryMode) {
@@ -1188,10 +1192,16 @@ function setEntryMode(mode, entryMode) {
     }
   }
   renderParticipantFields(mode);
+  if (mode === 'mex') {
+    const pbwField = document.getElementById('mex-partner-balance-wt-field');
+    if (pbwField) pbwField.style.display = entryMode === 'team' ? 'none' : '';
+  }
 }
 
 function clearParticipants(mode) {
   _participantEntries[mode] = [];
+  _participantEmails[mode] = {};
+  _participantContacts[mode] = {};
   if (_participantPasteMode[mode]) {
     const ta = document.getElementById(`${mode}-players`);
     if (ta) ta.value = _participantEntries[mode].join('\n');
@@ -1233,6 +1243,33 @@ function _getCreateStrengths(mode) {
   return Object.keys(result).length ? result : null;
 }
 
+// ─── Contact details (create panels) ─────────────────────
+function renderContactFields(mode) {
+  const container = document.getElementById(`${mode}-contact-container`);
+  if (!container) return;
+  const names = getParticipantNames(mode);
+  // Prune stale keys
+  for (const k of Object.keys(_participantEmails[mode])) {
+    if (!names.includes(k)) delete _participantEmails[mode][k];
+  }
+  for (const k of Object.keys(_participantContacts[mode])) {
+    if (!names.includes(k)) delete _participantContacts[mode][k];
+  }
+  if (!names.length) { container.innerHTML = ''; return; }
+  let html = '<div class="contact-grid">';
+  names.forEach(name => {
+    const emailVal = _participantEmails[mode][name] || '';
+    const contactVal = _participantContacts[mode][name] || '';
+    const escaped = esc(name);
+    html += `<div class="contact-entry">`;
+    html += `<label title="${escaped}">${escaped}</label>`;
+    html += `<input type="email" class="create-contact-email" data-mode="${mode}" data-key="${escaped}" value="${esc(emailVal)}" placeholder="${t('txt_contact_email_placeholder')}" oninput="_participantEmails['${mode}'][this.dataset.key]=this.value.trim()">`;
+    html += `<input type="text" class="create-contact-info" data-mode="${mode}" data-key="${escaped}" value="${esc(contactVal)}" placeholder="${t('txt_contact_info_placeholder')}" oninput="_participantContacts['${mode}'][this.dataset.key]=this.value.trim()">`;
+    html += `</div>`;
+  });
+  html += '</div>';
+  container.innerHTML = html;
+}
 // ─── Court name helpers ───────────────────────────────────
 function _defaultCourtName(n) {
   return `${t('txt_txt_court')} ${n}`;
@@ -1344,8 +1381,10 @@ function _initParticipantFields() {
   renderCourtInputs('mex');
   renderCourtInputs('po');
   renderGroupInputs();
-  // Render strength bubbles when their section is toggled open
+  // Render contact fields and strength bubbles when their sections are toggled open
   for (const mode of ['gp', 'mex', 'po']) {
+    const contactSection = document.getElementById(`${mode}-contact-section`);
+    if (contactSection) contactSection.addEventListener('toggle', () => { if (contactSection.open) renderContactFields(mode); });
     const section = document.getElementById(`${mode}-strength-section`);
     if (section) section.addEventListener('toggle', () => { if (section.open) renderStrengthBubbles(mode); });
   }
@@ -1507,6 +1546,10 @@ async function createGP() {
     };
     const gpStr = _getCreateStrengths('gp');
     if (gpStr) body.player_strengths = gpStr;
+    const gpEmails = getPlayerEmails('gp');
+    if (gpEmails) body.player_emails = gpEmails;
+    const gpContacts = getPlayerContacts('gp');
+    if (gpContacts) body.player_contacts = gpContacts;
     // Validate group sizes in individual mode
     if (!body.team_mode) {
       const previewGroups = _gpGroupPreview?.groups;
@@ -1566,11 +1609,16 @@ async function createMex() {
       teammate_repeat_weight: +document.getElementById('mex-teammate-repeat-wt').value,
       opponent_repeat_weight: +document.getElementById('mex-opponent-repeat-wt').value,
       repeat_decay: +document.getElementById('mex-repeat-decay').value,
+      partner_balance_weight: +document.getElementById('mex-partner-balance-wt').value,
       public: document.getElementById('mex-public').checked,
       sport: _currentSport,
     };
     const mexStr = _getCreateStrengths('mex');
     if (mexStr) body.player_strengths = mexStr;
+    const mexEmails = getPlayerEmails('mex');
+    if (mexEmails) body.player_emails = mexEmails;
+    const mexContacts = getPlayerContacts('mex');
+    if (mexContacts) body.player_contacts = mexContacts;
     if (_convertFromRegistration) {
       body.tournament_type = 'mexicano';
       const rid = _convertFromRegistration.rid;
@@ -1604,6 +1652,10 @@ async function createPO() {
     };
     const poStr = _getCreateStrengths('po');
     if (poStr) body.player_strengths = poStr;
+    const poEmails = getPlayerEmails('po');
+    if (poEmails) body.player_emails = poEmails;
+    const poContacts = getPlayerContacts('po');
+    if (poContacts) body.player_contacts = poContacts;
     if (_convertFromRegistration) {
       body.tournament_type = 'playoff';
       body.player_names = body.participant_names;
@@ -1627,13 +1679,14 @@ async function renderGP() {
   const _renderTid = currentTid;
   const el = document.getElementById('view-content');
   try {
-    const [status, groups, playoffs, tvSettings, playerSecrets, collabData] = await Promise.all([
+    const [status, groups, playoffs, tvSettings, playerSecrets, collabData, emailSettings] = await Promise.all([
       api(`/api/tournaments/${currentTid}/gp/status`),
       api(`/api/tournaments/${currentTid}/gp/groups`),
       api(`/api/tournaments/${currentTid}/gp/playoffs`).catch(()=>null),
       api(`/api/tournaments/${currentTid}/tv-settings`).catch(() => ({})),
       _loadPlayerSecrets(),
       api(`/api/tournaments/${currentTid}/collaborators`).catch(() => null),
+      api(`/api/tournaments/${currentTid}/email-settings`).catch(() => ({})),
     ]);
 
     if (tvSettings.score_mode) {
@@ -1646,6 +1699,7 @@ async function renderGP() {
     const hasCourts = status.assign_courts !== false;
     let html = '';
     html += _renderTvControls(tvSettings, hasCourts);
+    html += _renderEmailControls(emailSettings);
     html += _renderPlayerCodes(playerSecrets);
     html += _renderCollaboratorsSection(collabData?.collaborators || []);
     if (status.phase === 'playoffs') {
@@ -1691,7 +1745,7 @@ async function renderGP() {
 
     const shouldCollapseGroups = status.phase !== 'groups';
     if (shouldCollapseGroups) {
-      html += `<details class="card"><summary>${t('txt_txt_group_stage_results_format_value', { value: groupFormatLabel })}</summary>`;
+      html += `<details id="gp-group-stage-details" class="card"><summary>${t('txt_txt_group_stage_results_format_value', { value: groupFormatLabel })}</summary>`;
     }
 
     // Group standings
@@ -1716,12 +1770,6 @@ async function renderGP() {
       }
       for (const m of gMatches) {
         html += matchRow(m, 'gp-group');
-      }
-
-      if (status.phase === 'groups' && !status.team_mode) {
-        html += `<div id="gp-add-player-area-${escAttr(gName)}" style="margin-top:0.5rem">`;
-        html += `<button type="button" class="add-participant-btn" onclick="_addPlayerToGroup(${JSON.stringify(gName)})">＋ ${t('txt_txt_add_player')}</button>`;
-        html += `</div>`;
       }
 
       html += `</div>`;
@@ -1749,7 +1797,10 @@ async function renderGP() {
         const total = allGroupMatches.length;
         const done = total - pending.length;
         const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-        html += `<div class="alert alert-info">${t('txt_txt_n_match_remaining', { n: pending.length })} (${done}/${total})<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div></div>`;
+        html += `<div id="gp-group-progress-section" class="alert alert-info">${t('txt_txt_n_match_remaining', { n: pending.length })} (${done}/${total})<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div></div>`;
+        if (window._emailConfigured) {
+          html += `<div style="margin-top:0.4rem"><button type="button" class="btn btn-sm" onclick="withLoading(this,_sendNextRoundEmails)">📧 ${t('txt_email_notify_round')}</button></div>`;
+        }
       }
     }
 
@@ -1757,7 +1808,13 @@ async function renderGP() {
     if (status.phase === 'playoffs' || status.phase === 'finished') {
       html += _schemaCardHtml('gp-playoff-schema', t('txt_txt_play_off_bracket'), 'generateGpPlayoffSchema');
 
-      html += `<div class="card"><h2>${t('txt_txt_play_offs')}</h2>`;
+      html += `<div class="card">`;
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.6rem">`;
+      html += `<h2 style="margin:0">${t('txt_txt_play_offs')}</h2>`;
+      if (window._emailConfigured) {
+        html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,_sendNextRoundEmails)">📧 ${t('txt_email_notify_round')}</button>`;
+      }
+      html += `</div>`;
       html += `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem">`;
       html += `<span style="font-size:0.82rem;color:var(--text-muted)">${t('txt_txt_score_format')}:</span>`;
       html += `<div class="score-mode-toggle">`;
@@ -1787,21 +1844,24 @@ async function renderPO() {
   const _renderTid = currentTid;
   const el = document.getElementById('view-content');
   try {
-    const [status, playoffs, tvSettings, playerSecrets, collabData] = await Promise.all([
+    const [status, playoffs, tvSettings, playerSecrets, collabData, emailSettings] = await Promise.all([
       api(`/api/tournaments/${currentTid}/po/status`),
       api(`/api/tournaments/${currentTid}/po/playoffs`),
       api(`/api/tournaments/${currentTid}/tv-settings`).catch(() => ({})),
       _loadPlayerSecrets(),
       api(`/api/tournaments/${currentTid}/collaborators`).catch(() => null),
+      api(`/api/tournaments/${currentTid}/email-settings`).catch(() => ({})),
     ]);
 
     if (tvSettings.score_mode) {
       for (const [k, v] of Object.entries(tvSettings.score_mode)) if (k in _gpScoreMode) _gpScoreMode[k] = v;
     }
+    _poCurrentPhase = status.phase;
 
     const hasCourts = status.assign_courts !== false;
     let html = '';
     html += _renderTvControls(tvSettings, hasCourts);
+    html += _renderEmailControls(emailSettings);
     html += _renderPlayerCodes(playerSecrets);
     html += _renderCollaboratorsSection(collabData?.collaborators || []);
 
@@ -1825,13 +1885,20 @@ async function renderPO() {
 
     html += _schemaCardHtml('po-playoff-schema', t('txt_txt_play_off_bracket'), 'generatePoPlayoffSchema');
 
-    html += `<div class="card"><h2>${t('txt_txt_play_offs')}</h2>`;
+    html += `<div class="card">`;
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.6rem">`;
+    html += `<h2 style="margin:0">${t('txt_txt_play_offs')}</h2>`;
+    if (window._emailConfigured) {
+      html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,_sendNextRoundEmails)">📧 ${t('txt_email_notify_round')}</button>`;
+    }
+    html += `</div>`;
     html += `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem">`;
     html += `<span style="font-size:0.82rem;color:var(--text-muted)">${t('txt_txt_score_format')}:</span>`;
     html += `<div class="score-mode-toggle">`;
     html += `<button type="button" class="${_gpScoreMode['po-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('po-playoff','points')">${t('txt_txt_points_label')}</button>`;
     html += `<button type="button" class="${_gpScoreMode['po-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('po-playoff','sets')">🎾 ${t('txt_txt_sets')}</button>`;
     html += `</div></div>`;
+
     html += `<details id="po-inline-bracket" class="bracket-collapse" open style="margin:0.5rem 0"><summary style="cursor:pointer;user-select:none;font-size:0.82rem;color:var(--text-muted);padding:0.2rem 0;list-style:none;display:flex;align-items:center;gap:0.35rem"><span class="bracket-chevron" style="display:inline-block;transition:transform 0.15s">▶</span>${t('txt_txt_play_off_bracket')}</summary>`;
     html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/po/playoffs-schema?fmt=png&_t=${Date.now()}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand" onerror="this.style.display='none'">`;
     html += `</details>`;
@@ -1875,7 +1942,7 @@ function matchRow(m, ctx) {
     const w2 = sc[1] > sc[0];
     const t1Class = w1 ? ' team-winner' : (w2 ? ' team-loser' : '');
     const t2Class = w2 ? ' team-winner' : (w1 ? ' team-loser' : '');
-    let html = `<div class="match-card" style="flex-wrap:wrap">`;
+    let html = `<div id="mcard-${m.id}" class="match-card" style="flex-wrap:wrap">`;
     html += `${roundLabel} <div class="match-teams"><span class="${t1Class}">${esc(t1)}</span> <span class="vs">vs</span> <span class="${t2Class}">${esc(t2)}</span></div> ${court}`;
     html += ` <span class="${scoreClass}" id="mscore-${m.id}">${scoreDisplay}</span>`;
     html += ` <span class="badge badge-completed">✓</span>`;
@@ -1884,7 +1951,7 @@ function matchRow(m, ctx) {
 
     // Inline edit form (hidden)
     const isSetScoringCtxEdit = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff';
-    const autoCalc = _totalPts > 0 && ctx === 'mex';
+    const autoCalc = _totalPts > 0 && (ctx === 'mex' || ctx === 'mex-playoff');
     const onInput = autoCalc ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"` : '';
     html += `<div class="match-actions hidden" id="medit-${m.id}">`;
     if (isSetScoringCtxEdit) {
@@ -1914,7 +1981,7 @@ function matchRow(m, ctx) {
     const isMex = ctx === 'mex' || ctx === 'mex-playoff';
     const bd = isMex ? _mexBreakdowns[m.id] : null;
     if (bd && Object.keys(bd).length > 0) {
-      html += `<details class="breakdown-details">`;
+      html += `<details class="breakdown-details" id="breakdown-${m.id}">`;
       html += `<summary>📊 ${t('txt_txt_score_breakdown')}</summary>`;
       html += `<div class="breakdown-panel">`;
       html += `<table class="breakdown-table"><thead><tr><th>${t('txt_txt_player')}</th><th>${t('txt_txt_raw')}</th><th>${t('txt_txt_relative_strength')}</th><th>${t('txt_txt_strength_weight')}</th><th>${t('txt_txt_strength_multiplier')}</th><th>${t('txt_txt_loss_disc_multiplier')}</th><th>${t('txt_txt_win_bonus_header')}</th><th>${t('txt_txt_final')}</th></tr></thead><tbody>`;
@@ -1948,7 +2015,7 @@ function matchRow(m, ctx) {
   // Not yet completed — show input form
   const isMex = ctx === 'mex' || ctx === 'mex-playoff';
   const isSetScoringCtx = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff';
-  const autoCalc = _totalPts > 0 && ctx === 'mex';
+  const autoCalc = _totalPts > 0 && (ctx === 'mex' || ctx === 'mex-playoff');
   const onInput = autoCalc
     ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"`
     : '';
@@ -1956,7 +2023,7 @@ function matchRow(m, ctx) {
   const tbdAttr = hasTbd ? ` disabled title="${t('txt_txt_players_not_yet_determined')}"` : '';
   const tbdStyle = hasTbd ? ' style="opacity:0.45;cursor:not-allowed"' : '';
 
-  let html = `<div class="match-card" style="flex-wrap:wrap">${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
+  let html = `<div id="mcard-${m.id}" class="match-card" style="flex-wrap:wrap">${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
 
   // Points / tennis-set scoring toggle for playoff/group contexts
   if (isSetScoringCtx) {
@@ -2060,6 +2127,7 @@ function _restoreViewDrafts(drafts) {
 }
 
 async function _rerenderCurrentViewPreserveDrafts() {
+  const scrollY = window.scrollY;
   const drafts = _captureViewDrafts();
   if (currentType === 'registration') {
     await renderRegistration();
@@ -2071,6 +2139,7 @@ async function _rerenderCurrentViewPreserveDrafts() {
     await renderMex();
   }
   _restoreViewDrafts(drafts);
+  window.scrollTo({ top: scrollY, behavior: 'instant' });
   // Reseed the version so the poll doesn't trigger a redundant re-render
   // right after an admin-initiated mutation or an already-handled poll update.
   if (currentTid) {
@@ -2078,6 +2147,183 @@ async function _rerenderCurrentViewPreserveDrafts() {
       .then(r => r.json())
       .then(d => { _adminLastKnownVersion = d.version; })
       .catch(() => {});
+  }
+}
+
+/** Surgically update only the affected match card (and secondary displays like
+ *  leaderboard / progress bar) after a score submission, avoiding a full
+ *  page re-render.  Falls back to _rerenderCurrentViewPreserveDrafts when a
+ *  structural change is detected (phase transition, last match in round, etc.). */
+async function _surgicalScoreUpdate(matchId, ctx) {
+  try {
+    let updatedMatch = null;
+    let needsFullRender = false;
+
+    if (ctx === 'gp-group') {
+      const [groups, status] = await Promise.all([
+        api(`/api/tournaments/${currentTid}/gp/groups`),
+        api(`/api/tournaments/${currentTid}/gp/status`),
+      ]);
+      if (status.phase !== _gpCurrentPhase) {
+        needsFullRender = true;
+      } else {
+        const allGroupMatches = Object.values(groups.matches).flat();
+        const totalPending = allGroupMatches.filter(m => m.status !== 'completed').length;
+        if (totalPending === 0) {
+          needsFullRender = true; // reveal the "start playoffs" section
+        } else {
+          for (const gMatches of Object.values(groups.matches)) {
+            const m = gMatches.find(m => m.id === matchId);
+            if (m) { updatedMatch = m; break; }
+          }
+          if (!updatedMatch) {
+            needsFullRender = true;
+          } else {
+            const card = document.getElementById('mcard-' + matchId);
+            if (!card) {
+              needsFullRender = true;
+            } else {
+              card.outerHTML = matchRow(updatedMatch, 'gp-group');
+              const total = allGroupMatches.length;
+              const done = total - totalPending;
+              const pct = Math.round((done / total) * 100);
+              const progressEl = document.getElementById('gp-group-progress-section');
+              if (progressEl) {
+                progressEl.innerHTML = `${t('txt_txt_n_match_remaining', { n: totalPending })} (${done}/${total})<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div>`;
+              }
+            }
+          }
+        }
+      }
+    } else if (ctx === 'gp-playoff') {
+      const [playoffs, status] = await Promise.all([
+        api(`/api/tournaments/${currentTid}/gp/playoffs`),
+        api(`/api/tournaments/${currentTid}/gp/status`),
+      ]);
+      if (status.phase !== _gpCurrentPhase) {
+        needsFullRender = true;
+      } else {
+        updatedMatch = playoffs.matches?.find(m => m.id === matchId) ?? null;
+        if (!updatedMatch) {
+          needsFullRender = true;
+        } else {
+          const card = document.getElementById('mcard-' + matchId);
+          if (!card) { needsFullRender = true; }
+          else {
+            card.outerHTML = matchRow(updatedMatch, 'gp-playoff');
+            // Refresh all other visible cards so loser-bracket slots fill in immediately.
+            for (const m of (playoffs.matches || [])) {
+              if (m.id === matchId) continue;
+              const otherCard = document.getElementById('mcard-' + m.id);
+              if (otherCard) otherCard.outerHTML = matchRow(m, 'gp-playoff');
+            }
+          }
+        }
+      }
+    } else if (ctx === 'mex') {
+      const [matches, status] = await Promise.all([
+        api(`/api/tournaments/${currentTid}/mex/matches`),
+        api(`/api/tournaments/${currentTid}/mex/status`),
+      ]);
+      _mexBreakdowns = matches.breakdowns || {};
+      if (status.phase !== _mexCurrentPhase) {
+        needsFullRender = true;
+      } else {
+        const pending = matches.pending.length;
+        if (pending === 0) {
+          needsFullRender = true; // reveal next-round controls
+        } else {
+          updatedMatch = matches.all_matches?.find(m => m.id === matchId) ?? null;
+          if (!updatedMatch) {
+            needsFullRender = true;
+          } else {
+            const card = document.getElementById('mcard-' + matchId);
+            if (!card) {
+              needsFullRender = true;
+            } else {
+              card.outerHTML = matchRow(updatedMatch, 'mex');
+              window._mexStatusLeaderboard = status.leaderboard || [];
+              _renderMexLeaderboard();
+              const totalMex = matches.current_matches.length;
+              const doneMex = totalMex - pending;
+              const pctMex = totalMex > 0 ? Math.round((doneMex / totalMex) * 100) : 0;
+              const progressEl = document.getElementById('mex-round-progress');
+              if (progressEl) {
+                progressEl.innerHTML = `${t('txt_txt_n_match_remaining', { n: pending })} (${doneMex}/${totalMex})<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pctMex}%"></div></div>`;
+              }
+            }
+          }
+        }
+      }
+    } else if (ctx === 'mex-playoff') {
+      const [playoffs, status] = await Promise.all([
+        api(`/api/tournaments/${currentTid}/mex/playoffs`),
+        api(`/api/tournaments/${currentTid}/mex/status`),
+      ]);
+      if (status.phase !== _mexCurrentPhase) {
+        needsFullRender = true;
+      } else {
+        updatedMatch = playoffs.matches?.find(m => m.id === matchId) ?? null;
+        if (!updatedMatch) {
+          needsFullRender = true;
+        } else {
+          const card = document.getElementById('mcard-' + matchId);
+          if (!card) { needsFullRender = true; }
+          else {
+            card.outerHTML = matchRow(updatedMatch, 'mex-playoff');
+            // Refresh all other visible cards so loser-bracket slots fill in immediately.
+            for (const m of (playoffs.matches || [])) {
+              if (m.id === matchId) continue;
+              const otherCard = document.getElementById('mcard-' + m.id);
+              if (otherCard) otherCard.outerHTML = matchRow(m, 'mex-playoff');
+            }
+          }
+        }
+      }
+    } else if (ctx === 'po-playoff') {
+      const [playoffs, status] = await Promise.all([
+        api(`/api/tournaments/${currentTid}/po/playoffs`),
+        api(`/api/tournaments/${currentTid}/po/status`),
+      ]);
+      if (status.phase !== _poCurrentPhase) {
+        needsFullRender = true;
+      } else {
+        updatedMatch = playoffs.matches?.find(m => m.id === matchId) ?? null;
+        if (!updatedMatch) {
+          needsFullRender = true;
+        } else {
+          const card = document.getElementById('mcard-' + matchId);
+          if (!card) { needsFullRender = true; }
+          else {
+            // Update the scored match card.
+            card.outerHTML = matchRow(updatedMatch, 'po-playoff');
+            // In double-elimination, recording a result populates loser-bracket slots
+            // in other match cards. Refresh every other visible card from the fresh data
+            // so those TBD slots fill in without a full page re-render.
+            for (const m of (playoffs.matches || [])) {
+              if (m.id === matchId) continue;
+              const otherCard = document.getElementById('mcard-' + m.id);
+              if (otherCard) otherCard.outerHTML = matchRow(m, 'po-playoff');
+            }
+          }
+        }
+      }
+    } else {
+      needsFullRender = true;
+    }
+
+    if (needsFullRender) {
+      await _rerenderCurrentViewPreserveDrafts();
+      return;
+    }
+
+    // Reseed version so the poll doesn't fire a redundant re-render.
+    fetch(`/api/tournaments/${currentTid}/version`)
+      .then(r => r.json())
+      .then(d => { _adminLastKnownVersion = d.version; })
+      .catch(() => {});
+  } catch (_e) {
+    await _rerenderCurrentViewPreserveDrafts();
   }
 }
 
@@ -2102,18 +2348,20 @@ async function submitScore(matchId, ctx) {
     await api(_scoreApiPath(ctx, false), {
       method: 'POST', body: JSON.stringify({ match_id: matchId, score1: s1, score2: s2 })
     });
-    await _rerenderCurrentViewPreserveDrafts();
+    await _surgicalScoreUpdate(matchId, ctx);
   } catch (e) { alert(e.message); }
 }
 
 function _renderTennisSetInputs(matchId, numSets) {
   let html = '';
   for (let i = 0; i < numSets; i++) {
+    const isLastSet = i === numSets - 1;
+    const maxAttr = isLastSet ? '' : ' max="7"';
     html += `<div class="tennis-set-row">`;
     html += `<span class="tennis-set-label">S${i + 1}:</span>`;
-    html += `<input class="tennis-set-input" type="number" id="ts1-${matchId}-${i}" min="0" max="13" value="" placeholder="0">`;
+    html += `<input class="tennis-set-input" type="number" id="ts1-${matchId}-${i}" min="0"${maxAttr} value="" placeholder="0">`;
     html += `<span class="tennis-set-sep">-</span>`;
-    html += `<input class="tennis-set-input" type="number" id="ts2-${matchId}-${i}" min="0" max="13" value="" placeholder="0">`;
+    html += `<input class="tennis-set-input" type="number" id="ts2-${matchId}-${i}" min="0"${maxAttr} value="" placeholder="0">`;
     html += `</div>`;
   }
   return html;
@@ -2129,6 +2377,21 @@ async function _setStageScoreMode(ctx, mode) {
 }
 
 async function submitTennisScore(matchId, ctx) {
+  // Validate 3rd set: requires S1 and S2 to each have a winner and be split
+  const s3a = +(document.getElementById(`ts1-${matchId}-2`)?.value) || 0;
+  const s3b = +(document.getElementById(`ts2-${matchId}-2`)?.value) || 0;
+  if (s3a + s3b > 0) {
+    const s1a = +(document.getElementById(`ts1-${matchId}-0`)?.value) || 0;
+    const s1b = +(document.getElementById(`ts2-${matchId}-0`)?.value) || 0;
+    const s2a = +(document.getElementById(`ts1-${matchId}-1`)?.value) || 0;
+    const s2b = +(document.getElementById(`ts2-${matchId}-1`)?.value) || 0;
+    const s1Winner = s1a > s1b ? 1 : (s1b > s1a ? 2 : 0);
+    const s2Winner = s2a > s2b ? 1 : (s2b > s2a ? 2 : 0);
+    if (s1Winner === 0) { alert(t('txt_txt_set_equal_scores', { n: 1 })); return; }
+    if (s2Winner === 0) { alert(t('txt_txt_set_equal_scores', { n: 2 })); return; }
+    if (s1Winner === s2Winner) { alert(t('txt_txt_third_set_needs_split')); return; }
+  }
+
   // Gather set scores
   const sets = [];
   for (let i = 0; i < 10; i++) {
@@ -2146,7 +2409,7 @@ async function submitTennisScore(matchId, ctx) {
     await api(_scoreApiPath(ctx, true), {
       method: 'POST', body: JSON.stringify({ match_id: matchId, sets })
     });
-    await _rerenderCurrentViewPreserveDrafts();
+    await _surgicalScoreUpdate(matchId, ctx);
   } catch (e) { alert(e.message); }
 }
 
@@ -2157,6 +2420,8 @@ let _gpExternalParticipants = [];
 let _gpCurrentCourts = [];
 let _gpGroupNames = [];
 let _gpCurrentPhase = '';
+let _mexCurrentPhase = '';
+let _poCurrentPhase = '';
 
 async function nextGpGroupRound() {
   try {
@@ -2310,13 +2575,14 @@ async function renderMex() {
   const _renderTid = currentTid;
   const el = document.getElementById('view-content');
   try {
-    const [status, matches, tvSettings, playerSecrets, playoffsData, collabData] = await Promise.all([
+    const [status, matches, tvSettings, playerSecrets, playoffsData, collabData, emailSettings] = await Promise.all([
       api(`/api/tournaments/${currentTid}/mex/status`),
       api(`/api/tournaments/${currentTid}/mex/matches`),
       api(`/api/tournaments/${currentTid}/tv-settings`).catch(() => ({})),
       _loadPlayerSecrets(),
       api(`/api/tournaments/${currentTid}/mex/playoffs`).catch(() => ({ matches: [], pending: [] })),
       api(`/api/tournaments/${currentTid}/collaborators`).catch(() => null),
+      api(`/api/tournaments/${currentTid}/email-settings`).catch(() => ({})),
     ]);
 
     _totalPts = status.total_points_per_match || 0;
@@ -2344,15 +2610,18 @@ async function renderMex() {
       teammate_repeat_weight: status.teammate_repeat_weight ?? 2.0,
       opponent_repeat_weight: status.opponent_repeat_weight ?? 1.0,
       repeat_decay: status.repeat_decay ?? 0.5,
+      partner_balance_weight: status.partner_balance_weight ?? 0,
     };
 
     if (tvSettings.score_mode) {
       for (const [k, v] of Object.entries(tvSettings.score_mode)) if (k in _gpScoreMode) _gpScoreMode[k] = v;
     }
+    _mexCurrentPhase = status.phase;
 
     const hasCourts = status.assign_courts !== false;
     let html = '';
-    html += _renderTvControls(tvSettings, hasCourts);
+    html += _renderTvControls(tvSettings, hasCourts, true);
+    html += _renderEmailControls(emailSettings);
     html += _renderPlayerCodes(playerSecrets);
     html += _renderCollaboratorsSection(collabData?.collaborators || []);
 
@@ -2399,7 +2668,13 @@ async function renderMex() {
 
       html += _schemaCardHtml('mex-playoff-schema', t('txt_txt_mexicano_play_offs_bracket'), 'generateMexPlayoffSchema');
 
-      html += `<div class="card"><h2>${t('txt_txt_mexicano_play_off_bracket')}</h2>`;
+      html += `<div class="card">`;
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.6rem">`;
+      html += `<h2 style="margin:0">${t('txt_txt_mexicano_play_off_bracket')}</h2>`;
+      if (window._emailConfigured) {
+        html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,_sendNextRoundEmails)">📧 ${t('txt_email_notify_round')}</button>`;
+      }
+      html += `</div>`;
       html += `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem">`;
       html += `<span style="font-size:0.82rem;color:var(--text-muted)">${t('txt_txt_score_format')}:</span>`;
       html += `<div class="score-mode-toggle">`;
@@ -2424,7 +2699,13 @@ async function renderMex() {
     if (!(isPlayoffs || isFinished)) {
       // Phase: Mexicano rounds
       if (matches.current_matches.length > 0) {
-        html += `<div class="card"><h2>${t('txt_txt_current_round_matches')}</h2>`;
+        html += `<div class="card">`;
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem">`;
+        html += `<h2 style="margin:0">${t('txt_txt_current_round_matches')}</h2>`;
+        if (window._emailConfigured) {
+          html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,_sendNextRoundEmails)" title="${t('txt_email_notify_round')}">📧 ${t('txt_email_notify_round')}</button>`;
+        }
+        html += `</div>`;
         for (const m of matches.current_matches) {
           html += matchRow(m, 'mex');
         }
@@ -2434,6 +2715,9 @@ async function renderMex() {
       // Next round / end / playoffs controls
       const pending = matches.pending.length;
       const canGenerateRound = isRolling || status.current_round < status.num_rounds;
+
+      // Advanced settings panel (always visible during Mexicano phase)
+      html += _renderMexSettingsSection();
 
       if (pending === 0 && !mexicanoEnded && canGenerateRound) {
         // Missed games / sit-out management panel
@@ -2461,10 +2745,10 @@ async function renderMex() {
 
         html += `<div id="mex-next-section">`;
         html += _renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/mex/courts`);
-        html += `<div style="margin-top:0.5rem">`;
-        html += `<button type="button" class="btn btn-success" onclick="withLoading(this,proposeMexPairings)">⚡ ${t('txt_txt_propose_next_round')}</button>`;
+        html += `<div style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.5rem">`;
+        html += `<button type="button" class="btn btn-success" style="width:100%" onclick="withLoading(this,proposeMexPairings)">⚡ ${t('txt_txt_propose_next_round')}</button>`;
         if (status.current_round > 0) {
-          html += ` <button type="button" class="btn btn-primary" onclick="withLoading(this,endMexicano)" style="margin-left:0.5rem">🛑 ${t('txt_txt_end_mexicano')}</button>`;
+          html += `<button type="button" class="btn btn-primary" style="width:100%" onclick="withLoading(this,endMexicano)">🛑 ${t('txt_txt_end_mexicano')}</button>`;
         }
         html += `</div>`;
         html += `</div>`;
@@ -2472,7 +2756,7 @@ async function renderMex() {
         const totalMex = matches.current_matches.length;
         const doneMex = totalMex - pending;
         const pctMex = totalMex > 0 ? Math.round((doneMex / totalMex) * 100) : 0;
-        html += `<div class="alert alert-info">${t('txt_txt_n_match_remaining', { n: pending })} (${doneMex}/${totalMex})<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pctMex}%"></div></div></div>`;
+        html += `<div id="mex-round-progress" class="alert alert-info">${t('txt_txt_n_match_remaining', { n: pending })} (${doneMex}/${totalMex})<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pctMex}%"></div></div></div>`;
       } else if (pending === 0 && !mexicanoEnded && !canGenerateRound) {
         html += `<div id="mex-next-section">`;
         html += `<button type="button" class="btn btn-primary" onclick="withLoading(this,endMexicano)">🛑 ${t('txt_txt_end_mexicano')}</button>`;
@@ -2490,9 +2774,6 @@ async function renderMex() {
         html += `</div>`;
         html += `</div>`;
       }
-
-      // Advanced settings panel (always visible during Mexicano phase)
-      html += _renderMexSettingsSection();
 
       // History — grouped by round as collapsible accordion
       if (matches.all_matches.length > matches.current_matches.length) {
@@ -2512,7 +2793,7 @@ async function renderMex() {
           const rMatches = byRound[rn];
           const label = rMatches[0]?.round_label || `Round ${rn}`;
           const openAttr = ri === 0 ? ' open' : '';
-          html += `<details class="round-group"${openAttr}>`;
+          html += `<details class="round-group"${openAttr} id="mex-round-${rn}">`;
           html += `<summary>${esc(label)} — ${rMatches.length} ${rMatches.length > 1 ? t('txt_txt_matches') : t('txt_txt_match')}</summary>`;
           for (const m of rMatches) {
             html += matchRow(m, 'mex');
@@ -2693,6 +2974,8 @@ let _forcedSitOuts = new Set();
 let _currentPairingProposals = [];
 let _showRepeatDetails = false;
 let _mexProposalRequestedCount = 3;
+// null = use persistent setting, number = live slider override
+let _partnerBalanceWeightOverride = null;
 
 // ─── Sit-out override toggle ──────────────────────────────
 async function _toggleForcedSitOut(playerId, maxSitOuts) {
@@ -2797,6 +3080,9 @@ async function proposeMexPairings(requestedCount = 3) {
     if (_forcedSitOuts.size > 0) {
       url += `&sit_out_ids=${[..._forcedSitOuts].join(',')}`;
     }
+    if (typeof _partnerBalanceWeightOverride === 'number') {
+      url += `&partner_balance_weight=${_partnerBalanceWeightOverride}`;
+    }
     const data = await api(url);
     const proposals = data.proposals;
     _currentPairingProposals = proposals;
@@ -2827,6 +3113,22 @@ async function _loadMoreMexPairings(btn) {
   } finally {
     if (btn) btn.classList.remove('loading');
   }
+}
+
+function _onPartnerBalanceSliderInput(value) {
+  // Immediately update the readout without re-fetching (cheap visual feedback).
+  const lbl = document.getElementById('pbw-val');
+  if (lbl) lbl.textContent = value.toFixed(1);
+}
+
+async function _applyPartnerBalanceWeight(value) {
+  _partnerBalanceWeightOverride = value;
+  const lbl = document.getElementById('pbw-val');
+  if (lbl) lbl.textContent = value.toFixed(1);
+  // Re-fetch proposals using the temporary override — does not persist.
+  try {
+    await proposeMexPairings(_mexProposalRequestedCount);
+  } catch (e) { /* silent — network errors should not disrupt slider interaction */ }
 }
 
 function _renderProposalProgressBar() {
@@ -2937,6 +3239,16 @@ function _renderProposalPicker(proposals) {
     return card;
   };
 
+  // Partner balance quick slider (individual mode only)
+  if (!_mexTeamMode) {
+    const savedPbw = _mexSettingsCurrent?.partner_balance_weight ?? 0;
+    const sliderPbw = typeof _partnerBalanceWeightOverride === 'number' ? _partnerBalanceWeightOverride : savedPbw;
+    html += `<div class="proposal-balance-slider">`;
+    html += `<label>${t('txt_txt_partner_balance_slider_label')}: <strong id="pbw-val">${sliderPbw.toFixed(1)}</strong></label>`;
+    html += `<input type="range" id="pbw-slider" min="0" max="2" step="0.1" value="${sliderPbw}" oninput="_onPartnerBalanceSliderInput(+this.value)" onchange="_applyPartnerBalanceWeight(+this.value)">`;
+    html += `</div>`;
+  }
+
   if (bestOption) {
     html += `<h3 style="margin-top:0.2rem">${t('txt_txt_best')}</h3>`;
     html += `<p style="margin:0.1rem 0 0.5rem;color:var(--text-muted);font-size:0.82rem">${t('txt_txt_best_description')}</p>`;
@@ -3014,6 +3326,7 @@ async function _confirmMexRound() {
     });
     _selectedOptionId = null;
     _currentPlayerStats = null;
+    _partnerBalanceWeightOverride = null;
     renderMex();
   } catch (e) { alert(e.message); }
 }
@@ -3049,6 +3362,9 @@ function _renderMexSettingsSection() {
   html += `<div class="adv-field"><label>${t('txt_txt_teammate_repeat_weight_label')}</label><input id="mex-settings-teammate-repeat-wt" type="number" min="0" step="0.1" value="${s.teammate_repeat_weight ?? 2}"></div>`;
   html += `<div class="adv-field"><label>${t('txt_txt_opponent_repeat_weight_label')}</label><input id="mex-settings-opponent-repeat-wt" type="number" min="0" step="0.1" value="${s.opponent_repeat_weight ?? 1}"></div>`;
   html += `<div class="adv-field"><label>${t('txt_txt_repeat_decay_label')}</label><input id="mex-settings-repeat-decay" type="number" min="0" step="0.1" value="${s.repeat_decay ?? 0.5}"></div>`;
+  if (!s.team_mode) {
+    html += `<div class="adv-field"><label>${t('txt_txt_partner_balance_weight_label')}</label><input id="mex-settings-partner-balance-wt" type="number" min="0" step="0.1" value="${s.partner_balance_weight ?? 0}"></div>`;
+  }
   html += `</div>`;
   html += `<div style="display:flex;justify-content:flex-end;margin-top:0.6rem">`;
   html += `<button type="button" class="btn btn-sm btn-success" onclick="withLoading(this,_saveMexSettings)">${t('txt_txt_save')}</button>`;
@@ -3077,6 +3393,7 @@ async function _saveMexSettings() {
     teammate_repeat_weight: +(document.getElementById('mex-settings-teammate-repeat-wt')?.value || 2),
     opponent_repeat_weight: +(document.getElementById('mex-settings-opponent-repeat-wt')?.value || 1),
     repeat_decay: +(document.getElementById('mex-settings-repeat-decay')?.value || 0.5),
+    partner_balance_weight: +(document.getElementById('mex-settings-partner-balance-wt')?.value || 0),
   };
   try {
     await api(`/api/tournaments/${currentTid}/mex/settings`, { method: 'PATCH', body: JSON.stringify(body) });
@@ -4380,6 +4697,7 @@ async function _loadPlayerSecrets() {
 function _renderPlayerCodes(secrets) {
   if (!currentTid) return '';
   const entries = Object.entries(secrets || {});
+  const _showEmail = window._emailConfigured;
 
   let html = `<details class="card" id="player-codes-panel">`;
   html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
@@ -4387,9 +4705,12 @@ function _renderPlayerCodes(secrets) {
   const _isMex = currentType === 'mexicano';
   const _isGP = currentType === 'group_playoff';
   if (entries.length > 0) {
-    html += `<span style="display:flex;gap:0.4rem;margin-left:auto">`;
+    html += `<span style="display:flex;gap:0.4rem;margin-left:auto;flex-wrap:wrap">`;
     html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_copyAllPlayerCodes()">📋 ${t('txt_txt_copy_all_codes')}</button>`;
     html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_printPlayerCodes()">🖨 ${t('txt_txt_print_all_codes')}</button>`;
+    if (_showEmail) {
+      html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_sendAllTournamentEmails()">📧 ${t('txt_email_send_all')}</button>`;
+    }
     html += `</span>`;
   }
   html += `</summary>`;
@@ -4405,6 +4726,7 @@ function _renderPlayerCodes(secrets) {
     html += `<th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_player')}</th>`;
     html += `<th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_passphrase')}</th>`;
     html += `<th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_contact')}</th>`;
+    if (_showEmail) html += `<th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_email')}</th>`;
     html += `<th style="text-align:center;padding:0.4rem 0.6rem">${t('txt_txt_qr_code')}</th>`;
     html += `<th style="text-align:center;padding:0.4rem 0.6rem"></th>`;
     html += `<th style="text-align:center;padding:0.4rem 0.6rem"></th>`;
@@ -4414,6 +4736,11 @@ function _renderPlayerCodes(secrets) {
       html += `<td style="padding:0.4rem 0.6rem;font-weight:600">${esc(info.name)}</td>`;
       html += `<td style="padding:0.4rem 0.6rem"><code id="pc-pass-${pid}" style="font-size:0.9em;color:var(--accent);user-select:all;cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(info.passphrase)}</code></td>`;
       html += `<td style="padding:0.4rem 0.6rem"><span style="display:flex;gap:0.3rem;align-items:center"><input type="text" id="pc-contact-${pid}" value="${escAttr(info.contact || '')}" placeholder="${t('txt_reg_contact_placeholder')}" style="flex:1;min-width:120px;font-size:0.82rem;padding:0.2rem 0.4rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem;white-space:nowrap" onclick="_savePlayerContact('${pid}')" id="pc-contact-save-${pid}">${t('txt_txt_save_contact')}</button></span></td>`;
+      if (_showEmail) {
+        html += `<td style="padding:0.4rem 0.6rem"><span style="display:flex;gap:0.3rem;align-items:center"><input type="email" id="pc-email-${pid}" value="${escAttr(info.email || '')}" placeholder="${t('txt_email_placeholder')}" style="flex:1;min-width:140px;font-size:0.82rem;padding:0.2rem 0.4rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem;white-space:nowrap" onclick="_savePlayerEmail('${pid}')" id="pc-email-save-${pid}">${t('txt_email_save_email')}</button>`;
+        if (info.email) html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem" onclick="_sendPlayerEmail('${pid}')" title="${t('txt_email_send')}">✉️</button>`;
+        html += `</span></td>`;
+      }
       html += `<td style="padding:0.4rem 0.6rem;text-align:center"><button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem" onclick="_showPlayerQr('${escAttr(pid)}','${escAttr(info.name)}')">📱 ${t('txt_txt_qr_code')}</button></td>`;
       html += `<td style="padding:0.4rem 0.6rem;text-align:center"><button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem;background:var(--border);color:var(--text)" onclick="_regeneratePlayerCode('${pid}')">🔄 ${t('txt_txt_regenerate')}</button></td>`;
       html += `<td style="padding:0.4rem 0.6rem;text-align:center">${_isMex ? `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem" onclick="_removeTournamentPlayer('${pid}','${escAttr(info.name)}')" title="${t('txt_txt_remove_player')}">🗑</button>` : ''}</td>`;
@@ -4425,6 +4752,17 @@ function _renderPlayerCodes(secrets) {
 
   if (_isMex || (_isGP && _gpCurrentPhase === 'groups')) {
     html += `<div style="margin-top:0.5rem"><button type="button" class="add-participant-btn" onclick="_addTournamentPlayer()">＋ ${t('txt_txt_add_player')}</button></div>`;
+  }
+
+  // Organizer message section (email only)
+  if (_showEmail && entries.length > 0) {
+    html += `<details style="margin-top:0.75rem;border-top:1px solid var(--border);padding-top:0.6rem">`;
+    html += `<summary style="cursor:pointer;user-select:none;font-weight:700;font-size:0.9rem;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">▸</span> 📧 ${t('txt_email_organizer_message')}</summary>`;
+    html += `<div style="padding:0.6rem 0">`;
+    html += `<textarea id="pc-organizer-message" class="reg-desc-textarea" rows="3" placeholder="${t('txt_email_message_placeholder')}" style="width:100%;font-size:0.85rem;padding:0.4rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" oninput="_autoResizeTextarea(this)"></textarea>`;
+    html += `<div style="display:flex;gap:0.5rem;margin-top:0.4rem">`;
+    html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendTournamentMessageEmails())">📧 ${t('txt_email_send_message')}</button>`;
+    html += `</div></div></details>`;
   }
 
   html += `</div></details>`;
@@ -4691,6 +5029,74 @@ async function _savePlayerContact(playerId) {
   }
 }
 
+/** Save the email address for a single player */
+async function _savePlayerEmail(playerId) {
+  const input = document.getElementById(`pc-email-${playerId}`);
+  const saveBtn = document.getElementById(`pc-email-save-${playerId}`);
+  if (!input) return;
+  try {
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '…'; }
+    await api(`/api/tournaments/${currentTid}/player-secrets/${playerId}/email`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: input.value }),
+    });
+    if (_playerSecrets[playerId]) _playerSecrets[playerId].email = input.value;
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = t('txt_email_email_saved'); }
+    setTimeout(() => { if (saveBtn) saveBtn.textContent = t('txt_email_save_email'); }, 1500);
+  } catch (e) {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = t('txt_email_save_email'); }
+    alert(e.message);
+  }
+}
+
+/** Send credentials email to a single tournament player */
+async function _sendPlayerEmail(playerId) {
+  try {
+    await api(`/api/tournaments/${currentTid}/send-email/${playerId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    alert(t('txt_email_sent'));
+  } catch (e) {
+    alert(t('txt_email_failed') + ': ' + e.message);
+  }
+}
+
+/** Send credentials email to all tournament players with email addresses */
+async function _sendAllTournamentEmails() {
+  if (!confirm(t('txt_email_confirm_send_all'))) return;
+  try {
+    const data = await api(`/api/tournaments/${currentTid}/send-all-emails`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    alert(t('txt_email_sent_count', { sent: data.sent, skipped: data.skipped }));
+  } catch (e) {
+    alert(t('txt_email_failed') + ': ' + e.message);
+  }
+}
+
+/** Send an organizer message email to all tournament players */
+async function _sendTournamentMessageEmails() {
+  const textarea = document.getElementById('pc-organizer-message');
+  if (!textarea) return;
+  const message = textarea.value.trim();
+  if (!message) { textarea.focus(); return; }
+  if (!confirm(t('txt_email_confirm_send_message'))) return;
+  try {
+    const data = await api(`/api/tournaments/${currentTid}/send-message-emails`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    });
+    alert(t('txt_email_message_sent_count', { sent: data.sent, skipped: data.skipped }));
+    textarea.value = '';
+  } catch (e) {
+    alert(t('txt_email_failed') + ': ' + e.message);
+  }
+}
+
 /** Toggle the contact question in the new-registration form */
 function _toggleNewRegContact(checked) {
   const containerId = 'reg-new-questions';
@@ -4821,8 +5227,9 @@ function _escHtml(s) {
  * Render the TV Mode control card for the admin panel.
  * tvSettings is the object returned by GET /api/tournaments/{tid}/tv-settings.
  * hasCourts indicates whether the tournament uses court assignments.
+ * isMexicano indicates whether the tournament is a Mexicano-type (score breakdowns only apply there).
  */
-function _renderTvControls(tvSettings, hasCourts) {
+function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
   if (!currentTid) return '';
   const s = tvSettings || {};
   const def = (k, d) => (s[k] !== undefined ? s[k] : d);
@@ -4897,7 +5304,7 @@ function _renderTvControls(tvSettings, hasCourts) {
   html += `<p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:0.65rem">${t('txt_tv_sections_help')}</p>`;
   html += `<div class="tv-settings-grid">`;
   html += chkRow('show_past_matches',   t('txt_txt_past_matches'),            true);
-  html += chkRow('show_score_breakdown',t('txt_tv_score_breakdowns'),         false);
+  if (isMexicano) html += chkRow('show_score_breakdown',t('txt_tv_score_breakdowns'),         false);
   html += chkRow('show_standings',      t('txt_tv_standings_leaderboard'),    true);
   html += chkRow('show_bracket',        t('txt_txt_play_off_bracket'),        true);
   html += chkRow('show_courts',         t('txt_tv_court_assignments_view'),   true,  { disabled: !hasCourts, forceOff: !hasCourts });
@@ -4958,6 +5365,137 @@ async function _updateTvSetting(key, value) {
     });
   } catch (e) {
     console.error('TV setting update failed:', e.message);
+  }
+}
+
+// ─── Email Settings ────────────────────────────────────────
+
+/**
+ * Render the Email Settings control card for the admin panel.
+ * emailSettings is the object returned by GET /api/tournaments/{tid}/email-settings.
+ * Only rendered when window._emailConfigured is true.
+ */
+function _renderEmailControls(emailSettings) {
+  if (!currentTid || !window._emailConfigured) return '';
+  const s = emailSettings || {};
+  const senderName = s.sender_name || '';
+  const replyTo = s.reply_to || '';
+
+  let html = `<details class="card" id="email-controls-panel">`;
+  html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
+  html += `<span style="font-size:1.1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="display:inline-block;transition:transform 0.18s;font-size:0.7em;color:var(--text-muted)">▸</span> 📧 ${t('txt_email_settings')}</span>`;
+  html += `</summary>`;
+  html += `<div style="margin-top:0.65rem">`;
+
+  // Sender Display Name
+  html += `<div style="margin-bottom:1rem">`;
+  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;display:block">${t('txt_email_sender_name')}</label>`;
+  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_email_sender_name_help')}</p>`;
+  html += `<input type="text" id="email-settings-sender-name" value="${escAttr(senderName)}" maxlength="100"
+    placeholder="Summer Cup" style="width:100%;font-size:0.85rem">`;
+  html += `</div>`;
+
+  // Reply-To Address
+  html += `<div style="margin-bottom:1rem">`;
+  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;display:block">${t('txt_email_reply_to')}</label>`;
+  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_email_reply_to_help')}</p>`;
+  html += `<input type="email" id="email-settings-reply-to" value="${escAttr(replyTo)}"
+    placeholder="organizer@example.com" style="width:100%;font-size:0.85rem">`;
+  html += `</div>`;
+
+  html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
+  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveEmailSettings())">${t('txt_email_save_email')}</button>`;
+  html += `<span id="email-settings-saved-msg" style="color:var(--success,#22c55e);font-size:0.82rem;display:none">${t('txt_email_settings_saved')}</span>`;
+  html += `</div>`;
+
+  html += `</div></details>`;
+  return html;
+}
+
+/** Send next-round schedule notifications to all players with email addresses. */
+async function _sendNextRoundEmails() {
+  if (!currentTid) return;
+  try {
+    const data = await api(`/api/tournaments/${currentTid}/send-next-round-emails`, { method: 'POST' });
+    alert(t('txt_email_notify_round_sent', { sent: data.sent, skipped: data.skipped }));
+  } catch (e) {
+    alert(e.message || 'Failed to send round notifications');
+  }
+}
+
+/** Persist email settings (sender_name, reply_to) to the backend via PATCH. */
+async function _saveEmailSettings() {
+  if (!currentTid) return;
+  const senderName = document.getElementById('email-settings-sender-name')?.value.trim() ?? '';
+  const replyTo = document.getElementById('email-settings-reply-to')?.value.trim() ?? '';
+  try {
+    await api(`/api/tournaments/${currentTid}/email-settings`, {
+      method: 'PATCH',
+      body: JSON.stringify({ sender_name: senderName, reply_to: replyTo || null }),
+    });
+    const msg = document.getElementById('email-settings-saved-msg');
+    if (msg) {
+      msg.style.display = 'inline';
+      setTimeout(() => { msg.style.display = 'none'; }, 2500);
+    }
+  } catch (e) {
+    console.error('Email settings save failed:', e.message);
+  }
+}
+
+/** Render the per-registration email settings collapsible section. */
+function _renderRegEmailControls(rid, emailSettings) {
+  if (!window._emailConfigured) return '';
+  const s = emailSettings || {};
+  const senderName = s.sender_name || '';
+  const replyTo = s.reply_to || '';
+
+  let html = `<details class="reg-section" style="margin-bottom:1rem">`;
+  html += `<summary class="reg-section-summary" style="cursor:pointer;font-weight:700;display:flex;align-items:center;gap:0.45rem">`;
+  html += `<span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>📧 ${t('txt_email_settings')}`;
+  html += `</summary>`;
+  html += `<div style="padding:0.75rem 0">`;
+
+  // Sender Display Name
+  html += `<div class="form-group">`;
+  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;display:block">${t('txt_email_sender_name')}</label>`;
+  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_email_sender_name_help')}</p>`;
+  html += `<input type="text" id="reg-email-settings-sender-name-${esc(rid)}" value="${escAttr(senderName)}" maxlength="100" placeholder="Summer Cup" style="width:100%;font-size:0.85rem">`;
+  html += `</div>`;
+
+  // Reply-To Address
+  html += `<div class="form-group">`;
+  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;display:block">${t('txt_email_reply_to')}</label>`;
+  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_email_reply_to_help')}</p>`;
+  html += `<input type="email" id="reg-email-settings-reply-to-${esc(rid)}" value="${escAttr(replyTo)}" placeholder="organizer@example.com" style="width:100%;font-size:0.85rem">`;
+  html += `</div>`;
+
+  html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
+  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegEmailSettings('${esc(rid)}'))">${t('txt_email_save_email')}</button>`;
+  html += `<span id="reg-email-settings-saved-msg-${esc(rid)}" style="color:var(--success,#22c55e);font-size:0.82rem;display:none">${t('txt_email_settings_saved')}</span>`;
+  html += `</div>`;
+
+  html += `</div></details>`;
+  return html;
+}
+
+/** Persist per-registration email settings (sender_name, reply_to) to the backend. */
+async function _saveRegEmailSettings(rid) {
+  const senderName = document.getElementById(`reg-email-settings-sender-name-${rid}`)?.value.trim() ?? '';
+  const replyTo = document.getElementById(`reg-email-settings-reply-to-${rid}`)?.value.trim() ?? '';
+  try {
+    const result = await api(`/api/registrations/${rid}/email-settings`, {
+      method: 'PATCH',
+      body: JSON.stringify({ sender_name: senderName, reply_to: replyTo || null }),
+    });
+    _regEmailSettings[rid] = result;
+    const msg = document.getElementById(`reg-email-settings-saved-msg-${rid}`);
+    if (msg) {
+      msg.style.display = 'inline';
+      setTimeout(() => { msg.style.display = 'none'; }, 2500);
+    }
+  } catch (e) {
+    console.error('Reg email settings save failed:', e.message);
   }
 }
 
@@ -5100,9 +5638,10 @@ let _registrations = [];
 let _showArchivedRegistrations = false;
 let _regDetails = {};  // rid → full registration detail data
 let _regCollaborators = {};  // rid → list of co-editor usernames
+let _regEmailSettings = {};  // rid → email settings {sender_name, reply_to}
 let _currentRegDetail = null;  // last-opened registration (for convert flow)
 let _regPollTimer = null;
-const _REG_POLL_INTERVAL_MS = 10000;
+const _REG_POLL_INTERVAL_MS = 20000;
 
 // Registration detail auto-refresh
 let _regDetailPollTimer = null;
@@ -5110,7 +5649,7 @@ let _regDetailFetching = false;
 let _regDetailLastCount = null;
 let _regDetailLastAnswerSig = null;
 let _regDetailLastAssignedSig = null;
-const _REG_DETAIL_POLL_INTERVAL_MS = 6000;
+const _REG_DETAIL_POLL_INTERVAL_MS = 12000;
 
 function _regAnswerSig(registrants) {
   return (registrants || []).map(r => `${r.player_id}:${JSON.stringify(r.answers ?? {})}`).join('|');
@@ -5263,12 +5802,17 @@ function _renderRegDetailInline(rid) {
   html += _renderRegCollaboratorsSection(rid, _regCollaborators[rid] || []);
   html += `</div></details>`;
 
+  // Email settings section (only when email is configured)
+  if (window._emailConfigured) {
+    html += _renderRegEmailControls(rid, _regEmailSettings[rid] || {});
+  }
+
   // Admin message section
   html += `<details class="reg-section" style="margin-bottom:1rem">`;
   html += `<summary class="reg-section-summary" style="cursor:pointer;font-weight:700;display:flex;align-items:center;gap:0.45rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_reg_admin_message')}</summary>`;
   html += `<div style="padding:0.75rem 0">`;
   html += `<div class="form-group" style="margin-bottom:0.4rem">`;
-  html += `<textarea id="reg-edit-message-${esc(rid)}" rows="3" placeholder="${t('txt_reg_message_placeholder')}">${esc(r.message || '')}</textarea>`;
+  html += `<textarea id="reg-edit-message-${esc(rid)}" class="reg-desc-textarea" rows="3" placeholder="${t('txt_reg_message_placeholder')}" oninput="_autoResizeTextarea(this)">${esc(r.message || '')}</textarea>`;
   html += `</div>`;
   html += `<div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem">`;
   if (window._emailConfigured) {
@@ -5427,6 +5971,8 @@ function _renderRegDetailInline(rid) {
 
   const descEl = document.getElementById(`reg-edit-desc-${rid}`);
   if (descEl) _autoResizeTextarea(descEl);
+  const msgEl = document.getElementById(`reg-edit-message-${rid}`);
+  if (msgEl) _autoResizeTextarea(msgEl);
   _populateRegQuestions(`reg-edit-questions-${rid}`, questions);
 }
 
@@ -6893,6 +7439,9 @@ function _renderConvSettings(rid) {
     html += `<div class="adv-field"><label>${t('txt_txt_teammate_repeat_weight_label')}</label><input id="conv-mex-teammate-repeat-wt" type="number" value="2" min="0" step="0.1"></div>`;
     html += `<div class="adv-field"><label>${t('txt_txt_opponent_repeat_weight_label')}</label><input id="conv-mex-opponent-repeat-wt" type="number" value="1" min="0" step="0.1"></div>`;
     html += `<div class="adv-field"><label>${t('txt_txt_repeat_decay_label')}</label><input id="conv-mex-repeat-decay" type="number" value="0.5" min="0" step="0.1"></div>`;
+    if (!_getConvEffectiveTeamMode(rid)) {
+      html += `<div class="adv-field"><label>${t('txt_txt_partner_balance_weight_label')}</label><input id="conv-mex-partner-balance-wt" type="number" value="0" min="0" step="0.1"></div>`;
+    }
     html += `</div></details>`;
     html += `</div>`;
   } else if (_convType === 'playoff') {
@@ -7151,6 +7700,7 @@ async function _submitConvert(rid) {
       body.teammate_repeat_weight = +(document.getElementById('conv-mex-teammate-repeat-wt')?.value || 2);
       body.opponent_repeat_weight = +(document.getElementById('conv-mex-opponent-repeat-wt')?.value || 1);
       body.repeat_decay = +(document.getElementById('conv-mex-repeat-decay')?.value || 0.5);
+      body.partner_balance_weight = +(document.getElementById('conv-mex-partner-balance-wt')?.value || 0);
     } else if (_convType === 'playoff') {
       body.double_elimination = document.getElementById('conv-double-elim')?.checked || false;
     }
@@ -7202,7 +7752,9 @@ document.addEventListener('DOMContentLoaded', () => {
     setActiveTab('info');
   } else {
     // Check if email sending is configured on the server
-    api('/api/tournaments/email-status').then(d => { window._emailConfigured = !!d.configured; }).catch(() => {});
+    api('/api/tournaments/email-status').then(d => {
+      window._emailConfigured = !!d.configured;
+    }).catch(() => {});
     loadTournaments();
   }
 });

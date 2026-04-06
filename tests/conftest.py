@@ -57,6 +57,7 @@ def _clean_state(tmp_path):
     reg_mod._email_send_rate_limiter.clear()
     auth_routes_mod._login_rate_limiter.clear()
     crud_mod._notify_rate_limiter.clear()
+    crud_mod._email_send_rate_limiter.clear()
 
     # Disable outbound email globally for tests and stub SMTP transport so
     # test runs never depend on local SMTP env or network availability.
@@ -91,22 +92,24 @@ def _clean_state(tmp_path):
     orig_lookup_token = ps_mod.lookup_by_token
     orig_regenerate = ps_mod.regenerate_secret
     orig_update_contact = ps_mod.update_contact
+    orig_update_email = ps_mod.update_email
     orig_get_contacts = ps_mod.get_contacts_for_tournament
 
-    def _mock_create(tournament_id, players, contacts=None):
+    def _mock_create(tournament_id, players, contacts=None, emails=None):
         from backend.tournaments.player_secrets import generate_secrets_for_players
 
         player_ids = [p["id"] for p in players]
         secrets = generate_secrets_for_players(player_ids)
         name_map = {p["id"]: p["name"] for p in players}
         contact_map = contacts or {}
+        email_map = emails or {}
         _test_secrets[tournament_id] = {
             pid: {
                 "name": name_map.get(pid, ""),
                 "passphrase": sec.passphrase,
                 "token": sec.token,
                 "contact": contact_map.get(pid, ""),
-                "email": "",
+                "email": email_map.get(pid, ""),
             }
             for pid, sec in secrets.items()
         }
@@ -126,6 +129,12 @@ def _clean_state(tmp_path):
         if tournament_id not in _test_secrets or player_id not in _test_secrets[tournament_id]:
             return False
         _test_secrets[tournament_id][player_id]["contact"] = contact
+        return True
+
+    def _mock_update_email(tournament_id, player_id, email):
+        if tournament_id not in _test_secrets or player_id not in _test_secrets[tournament_id]:
+            return False
+        _test_secrets[tournament_id][player_id]["email"] = email
         return True
 
     def _mock_get_contacts(tournament_id):
@@ -189,6 +198,7 @@ def _clean_state(tmp_path):
     ps_mod.lookup_by_token = _mock_lookup_token
     ps_mod.regenerate_secret = _mock_regenerate
     ps_mod.update_contact = _mock_update_contact
+    ps_mod.update_email = _mock_update_email
     ps_mod.get_contacts_for_tournament = _mock_get_contacts
 
     # Also patch the local references in route modules (created by
@@ -204,6 +214,7 @@ def _clean_state(tmp_path):
         "rpa_lookup_tok": rpa_mod.lookup_by_token,
         "rpa_regenerate": rpa_mod.regenerate_secret,
         "rpa_update_contact": rpa_mod.update_contact,
+        "rpa_update_email": rpa_mod.update_email,
         "rpa_get_contacts": rpa_mod.get_contacts_for_tournament,
     }
     gp_mod.create_secrets_for_tournament = _mock_create
@@ -216,6 +227,7 @@ def _clean_state(tmp_path):
     rpa_mod.lookup_by_token = _mock_lookup_token
     rpa_mod.regenerate_secret = _mock_regenerate
     rpa_mod.update_contact = _mock_update_contact
+    rpa_mod.update_email = _mock_update_email
     rpa_mod.get_contacts_for_tournament = _mock_get_contacts
 
     # Reset users and seed test accounts (use pre-computed hashes to avoid
@@ -247,6 +259,7 @@ def _clean_state(tmp_path):
     reg_mod._email_send_rate_limiter.clear()
     auth_routes_mod._login_rate_limiter.clear()
     crud_mod._notify_rate_limiter.clear()
+    crud_mod._email_send_rate_limiter.clear()
     state_mod._save_tournament = orig_save_tournament
     state_mod._delete_tournament = orig_delete_tournament
 
@@ -266,6 +279,7 @@ def _clean_state(tmp_path):
     ps_mod.lookup_by_token = orig_lookup_token
     ps_mod.regenerate_secret = orig_regenerate
     ps_mod.update_contact = orig_update_contact
+    ps_mod.update_email = orig_update_email
     ps_mod.get_contacts_for_tournament = orig_get_contacts
 
     gp_mod.create_secrets_for_tournament = _orig_route_refs["gp_create"]
@@ -278,6 +292,7 @@ def _clean_state(tmp_path):
     rpa_mod.lookup_by_token = _orig_route_refs["rpa_lookup_tok"]
     rpa_mod.regenerate_secret = _orig_route_refs["rpa_regenerate"]
     rpa_mod.update_contact = _orig_route_refs["rpa_update_contact"]
+    rpa_mod.update_email = _orig_route_refs["rpa_update_email"]
     rpa_mod.get_contacts_for_tournament = _orig_route_refs["rpa_get_contacts"]
 
     user_store._users.clear()

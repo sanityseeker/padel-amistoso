@@ -535,6 +535,94 @@ class TestManualPlayoffParticipants:
             assert len(team) == 2
 
 
+class TestPlayoffSeedingByGroupPosition:
+    """Group placement rank must be the primary bracket-seeding criterion.
+
+    A 1st-place finisher from a weaker group must always be seeded above a
+    2nd-place finisher from a stronger group, regardless of raw win totals
+    or score differentials.
+    """
+
+    def test_rank_1st_seeds_above_rank_2nd_regardless_of_win_count(self):
+        """2nd-place (A2, 2W) must NOT outrank 1st-place (B1, 1W) in bracket seeding."""
+        # Group A – 4 teams, linear ranking (A1>A2>A3>A4 all 6-0):
+        #   A1: 3W +18 (1st), A2: 2W +6 (2nd)
+        # Group B – 2 teams, B1 beats B2 narrowly:
+        #   B1: 1W +1 (1st), B2: 0W -1 (2nd)
+        # top_per_group=2 → all 4 advance.
+        # OLD bug: A2(2W) seeded above B1(1W) — wrong.
+        # NEW fix: B1 (1st in B) must seed above A2 (2nd in A).
+        a1, a2, a3, a4 = (Player(name=n) for n in ("A1", "A2", "A3", "A4"))
+        b1, b2 = Player(name="B1"), Player(name="B2")
+
+        t = GroupPlayoffTournament(
+            [a1, a2, a3, a4, b1, b2],
+            num_groups=2,
+            top_per_group=2,
+            team_mode=True,
+            group_assignments={"A": ["A1", "A2", "A3", "A4"], "B": ["B1", "B2"]},
+        )
+        t.generate()
+
+        strength = {"A1": 4, "A2": 3, "A3": 2, "A4": 1}
+        for g in t.groups:
+            for m in g.matches:
+                n1, n2 = m.team1[0].name, m.team2[0].name
+                if g.name == "A":
+                    score = (6, 0) if strength[n1] > strength[n2] else (0, 6)
+                else:
+                    # B1 beats B2 by a single point
+                    score = (6, 5) if n1 == "B1" else (5, 6)
+                t.record_group_result(m.id, score)
+
+        t.start_playoffs()
+
+        seed_names = [team[0].name for team in t.playoff_bracket.original_teams]
+
+        assert seed_names.index("A1") < seed_names.index("A2"), "A1 (1st A) must seed above A2 (2nd A)"
+        assert seed_names.index("B1") < seed_names.index("B2"), "B1 (1st B) must seed above B2 (2nd B)"
+        # Key assertion: group position overrides raw win count
+        assert seed_names.index("B1") < seed_names.index("A2"), (
+            f"B1 (1st in B, 1W) must seed above A2 (2nd in A, 2W); got order: {seed_names}"
+        )
+
+    def test_rank_ties_broken_by_differentials(self):
+        """When two players share the same group rank, wins then diff break the tie."""
+        # Two groups of 3 (3 matches each), top_per_group=1.
+        # A1 (1st A) vs B1 (1st B), equal rank — diff decides seed order.
+        a1, a2, a3 = (Player(name=n) for n in ("A1", "A2", "A3"))
+        b1, b2, b3 = (Player(name=n) for n in ("B1", "B2", "B3"))
+
+        t = GroupPlayoffTournament(
+            [a1, a2, a3, b1, b2, b3],
+            num_groups=2,
+            top_per_group=1,
+            team_mode=True,
+            group_assignments={"A": ["A1", "A2", "A3"], "B": ["B1", "B2", "B3"]},
+        )
+        t.generate()
+
+        # A1 wins 6-0 (big margin), B1 wins 6-5 (narrow)
+        strength_a = {"A1": 3, "A2": 2, "A3": 1}
+        for g in t.groups:
+            for m in g.matches:
+                n1, n2 = m.team1[0].name, m.team2[0].name
+                if g.name == "A":
+                    score = (6, 0) if strength_a[n1] > strength_a[n2] else (0, 6)
+                else:
+                    # B1 1st (narrow wins), B2 2nd, B3 last
+                    strength_b = {"B1": 3, "B2": 2, "B3": 1}
+                    score = (6, 5) if strength_b[n1] > strength_b[n2] else (5, 6)
+                t.record_group_result(m.id, score)
+
+        t.start_playoffs()
+
+        seed_names = [team[0].name for team in t.playoff_bracket.original_teams]
+        # Both are rank 1 — A1 has better diff so must be seed 1
+        assert seed_names[0] == "A1", f"A1 (better diff among equals ranks) must be seed 1; got: {seed_names}"
+        assert seed_names[1] == "B1", f"B1 must be seed 2; got: {seed_names}"
+
+
 class TestGroupDiversitySeeding:
     """Playoff bracket first-round matchups must cross group boundaries.
 
@@ -674,6 +762,46 @@ class TestGroupDiversitySeeding:
         pairs = self._predetermined_group_pairs(t)
         for g1, g2 in pairs:
             assert g1 != g2, f"Predetermined matchup pairs two teams from the same group '{g1}'"
+
+    def test_2_groups_4_advancing_team_mode_no_same_group_r1(self):
+        """2 groups × 2 teams (4 advancing): R1 matchups must be cross-group."""
+        players = [Player(name=f"T{i + 1}") for i in range(8)]
+        t = GroupPlayoffTournament(
+            players,
+            num_groups=2,
+            top_per_group=2,
+            team_mode=True,
+        )
+        t.generate()
+        self._complete_group_rounds(t)
+        t.start_playoffs()
+
+        pairs = self._predetermined_group_pairs(t)
+        for g1, g2 in pairs:
+            assert g1 != g2, f"2-group R1 matchup pairs two teams from the same group '{g1}'"
+
+    def test_2_groups_individual_no_same_group_r1(self):
+        """2 groups, individual mode (top 2 per group = 4 players → 2 teams): no same-group R1."""
+        players = _make_players(8)
+        t = GroupPlayoffTournament(
+            players,
+            num_groups=2,
+            top_per_group=2,
+            team_mode=False,
+        )
+        t.generate()
+        self._complete_group_rounds(t)
+        t.start_playoffs()
+
+        player_group: dict[str, str] = {}
+        for g in t.groups:
+            for p in g.players:
+                player_group[p.id] = g.name
+
+        r1_matches = [m for m in t.playoff_matches() if m.round_number == 1 and m.team1 and m.team2]
+        for m in r1_matches:
+            groups_in_match = {player_group.get(p.id) for p in m.team1 + m.team2}
+            assert len(groups_in_match) >= 2, f"2-group R1 match has all players from the same group: {groups_in_match}"
 
 
 class TestUpdateCourts:
@@ -819,3 +947,78 @@ class TestAddPlayerToGroup:
         t = self._make_running()
         new_matches = t.add_player_to_group(Player(name="Extra"), t.groups[0].name)
         assert new_matches == []
+
+
+# ── Round-ordered court assignment in team_mode ───────────────────────────────
+
+
+class TestTeamModeRoundOrderedCourts:
+    """Court slot numbers must respect round ordering when team_mode=True.
+
+    Every match in round R must receive a strictly lower slot_number than
+    every match in round R+1.  This ensures the frontend (and organizers)
+    see round 1 before round 2, etc.
+    """
+
+    def _generate(self, n_players: int, n_courts: int) -> GroupPlayoffTournament:
+        t = GroupPlayoffTournament(
+            _make_players(n_players),
+            num_groups=1,
+            courts=_make_courts(n_courts),
+            team_mode=True,
+        )
+        t.generate()
+        return t
+
+    def test_round_slot_numbers_are_strictly_ordered(self):
+        """max(slot for round R) < min(slot for round R+1) for all adjacent rounds."""
+        t = self._generate(n_players=6, n_courts=1)
+        matches = t.all_group_matches()
+
+        from collections import defaultdict
+
+        round_slots: dict[int, list[int]] = defaultdict(list)
+        for m in matches:
+            round_slots[m.round_number].append(m.slot_number)
+
+        sorted_rounds = sorted(round_slots)
+        for r1, r2 in zip(sorted_rounds, sorted_rounds[1:]):
+            assert max(round_slots[r1]) < min(round_slots[r2]), (
+                f"Round {r1} slots {round_slots[r1]} overlap with round {r2} slots {round_slots[r2]}"
+            )
+
+    def test_round_slot_ordering_with_multiple_courts(self):
+        """Ordering holds regardless of how many courts are available."""
+        t = self._generate(n_players=8, n_courts=3)
+        matches = t.all_group_matches()
+
+        from collections import defaultdict
+
+        round_slots: dict[int, list[int]] = defaultdict(list)
+        for m in matches:
+            round_slots[m.round_number].append(m.slot_number)
+
+        sorted_rounds = sorted(round_slots)
+        for r1, r2 in zip(sorted_rounds, sorted_rounds[1:]):
+            assert max(round_slots[r1]) < min(round_slots[r2])
+
+    def test_update_courts_preserves_round_slot_ordering(self):
+        """Reassigning courts via update_courts must also keep round ordering."""
+        t = self._generate(n_players=6, n_courts=2)
+        t.update_courts(_make_courts(1))  # force re-assignment with fewer courts
+        matches = t.all_group_matches()
+
+        from collections import defaultdict
+
+        round_slots: dict[int, list[int]] = defaultdict(list)
+        for m in matches:
+            round_slots[m.round_number].append(m.slot_number)
+
+        sorted_rounds = sorted(round_slots)
+        for r1, r2 in zip(sorted_rounds, sorted_rounds[1:]):
+            assert max(round_slots[r1]) < min(round_slots[r2])
+
+    def test_all_matches_have_court_assigned(self):
+        """With courts available, every group match must receive a court."""
+        t = self._generate(n_players=6, n_courts=2)
+        assert all(m.court is not None for m in t.all_group_matches())

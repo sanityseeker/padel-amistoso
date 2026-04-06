@@ -1,3 +1,27 @@
+## v1.0.0 (2026-04-06)
+
+### Overview
+
+- **multi-format tournaments**: Group + Play-off, Mexicano, and Direct Play-offs with support for both Padel and Tennis scoring modes
+- **registration workflow**: public sign-up lobbies with custom questionnaires, admin review tools, and one-click conversion into live tournaments
+- **live operations**: TV/public view, configurable auto-refresh and section visibility, aliases, match comments, and broadcast banner messaging
+- **player self-service**: passphrase + QR login, self-scoring controls, player code management, and per-player contact/email data
+- **email communications**: optional SMTP-based credentials delivery, organizer announcements, round schedule notifications, and final-results emails for players with stored addresses
+- **collaboration & security**: co-editors for tournaments/registrations, role-based access controls, JWT auth, and password-reset-by-email flow
+- **in-tournament flexibility**: mid-tournament roster updates (supported formats), advanced Mexicano pairing/balancing settings, and playoff schema/export tooling
+- **seeding logic**: playoff seeding reflects competitive phase results (group placement + tie-breakers, Mexicano leaderboard), with group-diversity-aware first-round pairing where possible
+
+### Feat
+
+- **collaboration**: add co-editors for tournaments and registration lobbies, with owner/admin-only share/delete management
+- **auth**: add password reset by email flow (`/api/auth/forgot-password` + `/api/auth/reset-password/{token}`)
+- **tournaments**: support mid-tournament roster updates (add players in active Mexicano and Group+Playoff group stage; remove players in active Mexicano with pending-match safeguards)
+- **player-communications**: support player contact/email fields and organizer email notifications (round updates, announcements, final results) when SMTP is configured
+
+### Docs
+
+- **readme/admin-info**: document collaboration, password-reset, roster-update, and email communication capabilities
+
 ## v0.8.0 (2026-04-06)
 
 ### Feat
