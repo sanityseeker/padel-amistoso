@@ -1,3 +1,9 @@
+## v1.0.1 (2026-04-07)
+
+### Fix
+
+- **tv-frontend**: make pending matches collapsible by group
+
 ## v1.0.0 (2026-04-06)
 
 ### Overview
