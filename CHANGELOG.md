@@ -1,3 +1,9 @@
+## v1.1.0 (2026-04-07)
+
+### Feat
+
+- **players'-score-submission**: add score accept/reject logic handled by players
+
 ## v1.0.1 (2026-04-07)
 
 ### Fix
