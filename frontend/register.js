@@ -705,6 +705,11 @@ async function _cancelReturningRegistration() {
     }
     _lastResult = null;
     _render();
+    const toast = document.createElement('div');
+    toast.className = 'reg-toast';
+    toast.textContent = `✓ ${t('txt_reg_cancelled')}`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2500);
   } catch (_) {
     if (errorEl) errorEl.textContent = t('txt_reg_error');
   } finally {
@@ -717,14 +722,30 @@ function _showSuccess() {
   const el = document.getElementById('state-success');
   const r = _lastResult;
 
+  // Store token early so _buildTournamentUrl can embed it in linked tournament links
+  if (_rid && r.token) {
+    _setRegToken(r.token);
+  }
+
+  const hasLinkedTournament = _getLinkedTournamentIds().length > 0;
+
   let html = `<h2>✅ ${t('txt_reg_registered', { name: r.player_name })}</h2>`;
   html += `<div class="passphrase-label">${t('txt_reg_your_passphrase')}</div>`;
   html += `<div class="passphrase-box">${esc(r.passphrase)}</div>`;
   html += `<p class="keep-note">${t('txt_reg_keep_code')}</p>`;
 
+  if (!hasLinkedTournament) {
+    html += `<div class="reg-waiting-state">`;
+    html += `<p class="reg-waiting-title">⏳ ${t('txt_reg_waiting_title')}</p>`;
+    html += `<p class="reg-waiting-note">${t('txt_reg_waiting_note')}</p>`;
+    html += `</div>`;
+  }
+
   html += _renderMessage();
 
   html += _renderPlayerList();
+
+  html += _renderLinkedTournaments();
 
   html += _renderReturningPlayerEditor();
 
@@ -733,10 +754,6 @@ function _showSuccess() {
   el.innerHTML = html;
   el.style.display = '';
   el.querySelectorAll('textarea.reg-text-expand').forEach(_regAutoResize);
-
-  if (_rid && r.token) {
-    _setRegToken(r.token);
-  }
 
   _startPolling();
 }

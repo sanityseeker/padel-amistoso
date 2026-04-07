@@ -186,6 +186,12 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .court-match-info { flex: 1; min-width: 0; }
+/* Lifecycle panels (pending/submitted/dispute) always go on their own row below the teams */
+.court-match .player-score-pending,
+.court-match .player-score-submitted,
+.court-match .player-score-dispute {
+  flex-basis: 100%;
+}
 .court-match:last-child { border-bottom: none; }
 .court-match-empty {
   padding: 0.55rem 0;
@@ -678,6 +684,9 @@ details.tv-collapsible[open] summary.tv-collapsible-header .chevron { transform:
 html[data-theme="light"] .court-card {
   box-shadow: 0 1px 6px rgba(37, 99, 235, 0.10);
 }
+html[data-theme="light"] .court-card--yours {
+  box-shadow: 0 0 14px rgba(22, 163, 74, 0.22);
+}
 html[data-theme="light"] .standings-table tr:hover td {
   background: rgba(37, 99, 235, 0.05);
 }
@@ -986,6 +995,35 @@ html[data-theme="light"] .standings-table tr:hover td {
   display: flex; flex-direction: column; align-items: flex-end;
   gap: 0.25rem; margin-top: 0; flex-shrink: 0;
 }
+.score-toggle-btn {
+  background: var(--surface);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.score-toggle-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.score-toggle-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+.score-form-body {
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 0.25rem;
+  animation: scoreFormSlide 0.15s ease;
+}
+@keyframes scoreFormSlide {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 .score-inline-row {
   display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end;
 }
@@ -999,8 +1037,9 @@ html[data-theme="light"] .standings-table tr:hover td {
 .score-dash { color: var(--text-muted); }
 .score-error-msg { color: var(--red); font-size: 0.72rem; min-height: 0; text-align: right; }
 .player-score-form .score-submit-btn {
-  background: var(--green); color: #fff; border: none; border-radius: 4px;
-  padding: 0.3rem 0.75rem; cursor: pointer; font-size: 0.8rem; font-weight: 600;
+  background: var(--green); color: #fff; border: none; border-radius: 6px;
+  padding: 0.55rem 1rem; cursor: pointer; font-size: 0.88rem; font-weight: 700;
+  min-height: 1.5rem; touch-action: manipulation;
 }
 .player-score-form .score-submit-btn:disabled {
   opacity: 0.4; cursor: not-allowed;
@@ -1017,15 +1056,162 @@ html[data-theme="light"] .standings-table tr:hover td {
 .player-score-mode-toggle button.active {
   background: var(--accent, #2563eb); color: #fff;
 }
-.player-score-form .player-sets-grid {
+.player-score-form .player-sets-grid,
+.correct-score-panel .player-sets-grid {
   display: flex; flex-direction: column; gap: 0.25rem; width: 100%;
 }
-.player-score-form .player-set-row {
+.player-score-form .player-set-row,
+.correct-score-panel .player-set-row {
   display: flex; align-items: center; justify-content: flex-end; gap: 0.3rem;
 }
-.player-score-form .player-set-label {
+.player-score-form .player-set-label,
+.correct-score-panel .player-set-label {
   font-size: 0.7rem; font-weight: 600; color: var(--text-muted); width: 22px; text-align: right;
 }
 .hidden { display: none !important; }
+
+/* ── Score lifecycle UI ───────────────────────────────────────────────── */
+
+/* Pending (submitted by this player, awaiting opponent / undo window) */
+.player-score-submitted {
+  align-items: flex-end; gap: 0.3rem;
+  background: color-mix(in srgb, var(--accent, #2563eb) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #2563eb) 35%, transparent);
+  border-radius: 6px; padding: 0.45rem 0.65rem;
+}
+.submitted-score-label { font-size: 0.7rem; color: var(--text-muted); }
+.submitted-score-value { font-size: 1.1rem; font-weight: 700; }
+.submitted-waiting { font-size: 0.7rem; color: var(--text-muted); font-style: italic; }
+.correction-window-countdown { font-size: 0.68rem; color: var(--accent); font-style: italic; margin-top: 0.15rem; }
+.correction-window-expired { font-size: 0.68rem; color: var(--text-muted); font-style: italic; margin-top: 0.15rem; }
+.dispute-admin-help { font-size: 0.75rem; color: var(--text-muted); margin: 0.15rem 0 0.4rem; font-style: italic; }
+.court-card--yours { border-color: var(--green); box-shadow: 0 0 18px rgba(34, 197, 94, 0.2); }
+.court-card--yours .court-name { color: var(--green); }
+.court-yours-badge { display: inline-block; background: var(--green); color: #fff; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 0.1rem 0.45rem; border-radius: 999px; margin-bottom: 0.3rem; }
+.token-expired-notice { font-size: 0.72rem; color: var(--yellow); margin-top: 0.3rem; text-align: center; max-width: 16rem; line-height: 1.3; }
+
+/* Pending score from opponent — accept / correct */
+.player-score-pending {
+  align-items: flex-end; gap: 0.3rem;
+  background: color-mix(in srgb, var(--green, #16a34a) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--green, #16a34a) 30%, transparent);
+  border-radius: 6px; padding: 0.45rem 0.65rem;
+}
+.pending-score-label { font-size: 0.7rem; color: var(--text-muted); }
+.pending-score-value { font-size: 1.1rem; font-weight: 700; }
+.pending-score-actions { display: flex; gap: 0.4rem; margin-top: 0.2rem; }
+.score-accept-btn {
+  background: var(--green, #16a34a); color: #fff; border: none;
+  border-radius: 6px; padding: 0.55rem 1rem; cursor: pointer;
+  font-size: 0.88rem; font-weight: 700; transition: opacity 0.15s;
+  min-height: 1.5rem; touch-action: manipulation; white-space: nowrap;
+}
+.score-accept-btn:hover { opacity: 0.85; }
+.score-accept-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.score-correct-btn {
+  background: var(--amber, #d97706); color: #fff; border: none;
+  border-radius: 6px; padding: 0.55rem 1rem; cursor: pointer;
+  font-size: 0.88rem; font-weight: 700; transition: opacity 0.15s;
+  min-height: 1.5rem; touch-action: manipulation; white-space: nowrap;
+}
+.score-correct-btn:hover { opacity: 0.85; }
+.correct-score-panel {
+  margin-top: 0.4rem; padding-top: 0.4rem;
+  border-top: 1px solid var(--border); width: 100%;
+}
+.correct-score-panel .score-submit-btn {
+  background: var(--amber, #d97706); color: #fff; border: none; border-radius: 6px;
+  padding: 0.55rem 1rem; cursor: pointer; font-size: 0.88rem; font-weight: 700;
+  min-height: 1.5rem; touch-action: manipulation; width: 100%; margin-top: 0.4rem;
+}
+.correct-score-panel .score-submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.correct-score-inputs {
+  display: flex; align-items: center; gap: 0.3rem; justify-content: flex-end;
+}
+.correct-score-inputs input[type="number"],
+.correct-score-panel .player-sets-grid input[type="number"] {
+  width: 48px; padding: 0.25rem 0.2rem; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--bg); color: var(--text);
+  font-size: 0.9rem; text-align: center; -moz-appearance: textfield;
+}
+.correct-score-inputs input[type="number"]::-webkit-inner-spin-button,
+.correct-score-panel .player-sets-grid input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+.correct-score-inputs .score-submit-btn {
+  background: var(--amber, #d97706);
+}
+
+/* Disputed match */
+.player-score-dispute {
+  align-items: flex-start; gap: 0.25rem;
+  background: color-mix(in srgb, var(--red, #dc2626) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red, #dc2626) 35%, transparent);
+  border-radius: 6px; padding: 0.45rem 0.65rem; width: 100%; box-sizing: border-box;
+}
+.dispute-header { font-size: 0.75rem; font-weight: 700; color: var(--red, #dc2626); }
+.dispute-row {
+  display: flex; gap: 0.5rem; align-items: baseline;
+  font-size: 0.8rem;
+}
+.dispute-row span { color: var(--text-muted); }
+.dispute-row strong { font-size: 1rem; }
+
+/* Escalate / reject button */
+.score-escalate-btn {
+  background: var(--red, #dc2626); color: #fff; border: none;
+  border-radius: 6px; padding: 0.55rem 1rem; cursor: pointer;
+  font-size: 0.88rem; font-weight: 700; transition: opacity 0.15s;
+  min-height: 1.5rem; touch-action: manipulation; white-space: nowrap;
+}
+.score-escalate-btn:hover { opacity: 0.85; }
+.score-escalate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* History match badges for pending/disputed */
+.history-badge {
+  display: inline-flex; align-items: center; margin-left: 0.3rem;
+  font-size: 0.7rem; vertical-align: middle;
+}
+.history-badge-pending { opacity: 0.7; }
+.history-badge-dispute { color: var(--amber, #d97706); }
+
+/* Confirmation state on submit button */
+.score-submit-confirm {
+  background: var(--amber, #d97706) !important;
+  animation: pulse-confirm 0.4s ease;
+}
+@keyframes pulse-confirm {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+/* ── Score confirmation overlay (immediate mode) ─────────────────────── */
+.score-confirm-overlay {
+  display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+  padding: 0.4rem 0;
+  animation: fade-in-confirm 0.2s ease;
+}
+@keyframes fade-in-confirm {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.confirm-score-value {
+  font-size: 1.25rem; font-weight: 700; letter-spacing: 0.02em;
+}
+.confirm-score-actions {
+  display: flex; gap: 0.45rem; align-items: center;
+}
+.score-confirm-btn {
+  background: var(--green, #16a34a); color: #fff; border: none;
+  border-radius: 4px; padding: 0.32rem 0.9rem; cursor: pointer;
+  font-size: 0.82rem; font-weight: 700; transition: opacity 0.15s;
+}
+.score-confirm-btn:hover { opacity: 0.85; }
+.score-confirm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.score-cancel-btn {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: 0.3rem 0.7rem; cursor: pointer;
+  font-size: 0.78rem; font-weight: 600; transition: background 0.15s;
+}
+.score-cancel-btn:hover { background: var(--red); color: #fff; border-color: var(--red); }
 
 

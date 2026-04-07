@@ -4,8 +4,9 @@ Shared helpers for route modules.
 
 from __future__ import annotations
 
+import time
 from collections import defaultdict
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import HTTPException
 from fastapi.responses import Response
@@ -75,6 +76,16 @@ def _serialize_match(m: Match) -> dict:
         "round_number": m.round_number,
         "round_label": m.round_label,
         "comment": m.comment or "",
+        # Score lifecycle fields
+        "scored_by": getattr(m, "scored_by", None),
+        "scored_at": getattr(m, "scored_at", None),
+        "score_confirmed": getattr(m, "score_confirmed", False),
+        "disputed": getattr(m, "disputed", False),
+        "dispute_score": list(m.dispute_score) if getattr(m, "dispute_score", None) else None,
+        "dispute_sets": [list(s) for s in m.dispute_sets] if getattr(m, "dispute_sets", None) else None,
+        "dispute_by": getattr(m, "dispute_by", None),
+        "dispute_at": getattr(m, "dispute_at", None),
+        "dispute_escalated": getattr(m, "dispute_escalated", False),
     }
 
 
@@ -328,3 +339,152 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
         _label_round_matches(bracket.matches, "match")
 
     return labels
+
+
+# ---------------------------------------------------------------------------
+# Score lifecycle helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_tv_settings(tid: str) -> dict[str, Any]:
+    """Return the TV settings dict for a tournament (defaults to empty dict)."""
+    return _tournaments.get(tid, {}).get("tv_settings") or {}
+
+
+def _apply_player_score_metadata(
+    match: Match,
+    player_id: str,
+    score: list[int] | None = None,
+    sets: list[list[int]] | None = None,
+    confirmed: bool = False,
+) -> None:
+    """Stamp a player-submitted score with metadata for the lifecycle flow.
+
+    Appends a ``"submit"`` entry to the match's score_history and sets
+    ``scored_by`` / ``scored_at`` / ``score_confirmed``.
+    Pass ``confirmed=True`` when the tournament is in immediate confirmation
+    mode so the score is visible as confirmed straight away.
+    Admin-submitted scores bypass this entirely via ``_mark_admin_score``.
+    """
+    now = time.time()
+    match.scored_by = player_id
+    match.scored_at = now
+    match.score_confirmed = confirmed
+    match.score_history.append(
+        {
+            "player_id": player_id,
+            "action": "submit",
+            "score": score,
+            "sets": sets,
+            "timestamp": now,
+        }
+    )
+
+
+def _mark_admin_score(match: Match, actor_id: str | None = None) -> None:
+    """Mark a match score as immediately confirmed (admin / organiser record)."""
+    match.scored_by = None
+    match.scored_at = None
+    match.score_confirmed = True
+    # Clear any previous dispute state when an admin re-records.
+    match.disputed = False
+    match.dispute_score = None
+    match.dispute_sets = None
+    match.dispute_by = None
+    match.dispute_at = None
+    match.score_history.append(
+        {
+            "player_id": actor_id,
+            "action": "admin_record",
+            "score": list(match.score) if match.score else None,
+            "sets": [list(s) for s in match.sets] if match.sets else None,
+            "timestamp": time.time(),
+        }
+    )
+
+
+def _is_player_in_opposing_team(match: Match, player_id: str, tournament: object) -> bool:
+    """Return True if *player_id* is in the team that did NOT submit the score.
+
+    Works with direct player IDs and composite team rosters.
+    """
+    team_roster: dict[str, list[str]] = getattr(tournament, "team_roster", None) or {}
+
+    def _ids_for(players: list) -> set[str]:
+        direct = {p.id for p in players}
+        expanded: set[str] = set()
+        for pid in direct:
+            expanded.update(team_roster.get(pid, [pid]))
+        expanded.update(direct)
+        return expanded
+
+    team1_ids = _ids_for(match.team1)
+    team2_ids = _ids_for(match.team2)
+
+    if not match.scored_by:
+        return False
+
+    if match.scored_by in team1_ids:
+        return player_id in team2_ids
+    if match.scored_by in team2_ids:
+        return player_id in team1_ids
+    return False
+
+
+def _is_player_in_submitter_team(match: Match, player_id: str, tournament: object) -> bool:
+    """Return True if *player_id* is on the same team as the player who submitted the score.
+
+    Works with direct player IDs and composite team rosters.
+    """
+    team_roster: dict[str, list[str]] = getattr(tournament, "team_roster", None) or {}
+
+    def _ids_for(players: list) -> set[str]:
+        direct = {p.id for p in players}
+        expanded: set[str] = set()
+        for pid in direct:
+            expanded.update(team_roster.get(pid, [pid]))
+        expanded.update(direct)
+        return expanded
+
+    if not match.scored_by:
+        return False
+
+    team1_ids = _ids_for(match.team1)
+    team2_ids = _ids_for(match.team2)
+
+    if match.scored_by in team1_ids:
+        return player_id in team1_ids
+    if match.scored_by in team2_ids:
+        return player_id in team2_ids
+    return False
+
+
+def _is_player_in_match(match: Match, player_id: str, tournament: object) -> bool:
+    """Return True if *player_id* participates in *match* (direct or via roster)."""
+    team_roster: dict[str, list[str]] = getattr(tournament, "team_roster", None) or {}
+    all_ids: set[str] = set()
+    for player in match.team1 + match.team2:
+        all_ids.add(player.id)
+        all_ids.update(team_roster.get(player.id, []))
+    return player_id in all_ids
+
+
+def _find_match_full(tournament: object, match_id: str) -> Match | None:
+    """Extended match finder that also searches completed bracket matches."""
+    # First try the standard finder (covers Mexicano, group stage, pending bracket).
+    m = _find_match(tournament, match_id)
+    if m is not None:
+        return m
+    # Fallback: iterate all matches in the bracket including completed ones.
+    for bracket_attr in ("bracket", "playoff_bracket"):
+        bracket = getattr(tournament, bracket_attr, None)
+        if bracket is None:
+            continue
+        # Try winners/losers/all match lists on the bracket.
+        for accessor in ("winners_matches", "losers_matches", "matches"):
+            for bm in getattr(bracket, accessor, []):
+                if bm.id == match_id:
+                    return bm
+        if getattr(bracket, "grand_final", None) and bracket.grand_final.id == match_id:
+            return bracket.grand_final
+    return None

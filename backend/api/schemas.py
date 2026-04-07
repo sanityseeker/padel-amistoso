@@ -180,6 +180,10 @@ class TvSettingsRequest(BaseModel):
     schema_output_scale: float | None = Field(default=None, ge=0.5, le=3.0)
     score_mode: dict[str, str] | None = None
     banner_text: str | None = None
+    score_confirmation: str | None = None
+    # Seconds the opposing team has to submit a correction after the score is
+    # submitted.  0 means no limit (corrections are always allowed until confirmed).
+    correction_window_seconds: int | None = Field(default=None, ge=0, le=3600)
 
 
 class TvSettings(BaseModel):
@@ -200,6 +204,19 @@ class TvSettings(BaseModel):
     schema_output_scale: float = 1.0
     score_mode: dict[str, str] = Field(default_factory=dict)
     banner_text: str = ""
+    # "immediate": score counts on submit (good for fast Mexicano rounds).
+    # "required": score stays pending until accepted/auto-finalised by opposing team.
+    score_confirmation: str = "immediate"
+    # Seconds the opposing team has to submit a correction (0 = no limit).
+    correction_window_seconds: int = 0
+
+    @field_validator("score_confirmation")
+    @classmethod
+    def validate_score_confirmation(cls, v: str) -> str:
+        allowed = {"immediate", "required"}
+        if v not in allowed:
+            raise ValueError(f"score_confirmation must be one of {allowed}")
+        return v
 
 
 class EmailSettingsRequest(BaseModel):

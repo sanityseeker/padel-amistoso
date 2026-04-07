@@ -65,12 +65,11 @@ class ScoringMixin:
                         )
 
     def _find_match_by_id(self, match_id: str):
-        """Look up a match across all rounds, raising KeyError if not found."""
-        for rnd in self.rounds:
-            for m in rnd:
-                if m.id == match_id:
-                    return m
-        raise KeyError(f"Match {match_id} not found")
+        """O(1) match lookup via ``_match_index``; raises KeyError if not found."""
+        m = self._match_index.get(match_id)
+        if m is None:
+            raise KeyError(f"Match {match_id} not found")
+        return m
 
     def _update_wdl(self, team: list[Player], own_score: int, other_score: int, delta: int = 1) -> None:
         """Update win/draw/loss counters for all players in *team*."""
@@ -319,6 +318,24 @@ class ScoringMixin:
 
         if not was_completed:
             self._update_history(m.team1, m.team2)
+
+    def store_pending_score(self, match_id: str, score: tuple[int, int]) -> None:
+        """Store a score on a match without applying credits (required-confirmation mode).
+
+        The match transitions to IN_PROGRESS so standings remain unaffected.
+        Call ``record_result`` once the score is confirmed to credit points.
+        ``record_result`` treats IN_PROGRESS as "not yet completed", so no reversal
+        is needed — it simply finalises the pending result.
+        """
+        if score[0] + score[1] != self.total_points_per_match:
+            raise ValueError(
+                f"Scores must sum to {self.total_points_per_match}, got {score[0]} + {score[1]} = {score[0] + score[1]}"
+            )
+        m = self._find_match_by_id(match_id)
+        if m.status == MatchStatus.COMPLETED:
+            raise RuntimeError("Match is already completed — use record_result to re-record")
+        m.score = score
+        m.status = MatchStatus.IN_PROGRESS
 
     def _credit_team(
         self,

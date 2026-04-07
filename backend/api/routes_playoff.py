@@ -25,6 +25,8 @@ from .helpers import (
     _serialize_match,
     _tennis_sets_to_scores,
     _store_tournament,
+    _apply_player_score_metadata,
+    _mark_admin_score,
 )
 from .schemas import CreatePlayoffRequest, RecordScoreRequest, RecordTennisScoreRequest
 from .state import allocate_tournament_id, _save_tournament, get_tournament_lock
@@ -174,6 +176,10 @@ async def po_record(
             t.record_result(req.match_id, (req.score1, req.score2))
         except (KeyError, RuntimeError, ValueError) as e:
             raise HTTPException(400, str(e))
+        if player is not None and user is None:
+            _apply_player_score_metadata(match, player.player_id, score=[req.score1, req.score2], confirmed=True)
+        else:
+            _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
     return {"ok": True, "phase": t.phase}
 
@@ -197,6 +203,12 @@ async def po_record_tennis(
             t.record_result(req.match_id, (total1, total2), sets=sets_tuples)
         except (KeyError, RuntimeError, ValueError) as e:
             raise HTTPException(400, str(e))
+        if player is not None and user is None:
+            _apply_player_score_metadata(
+                match, player.player_id, score=[total1, total2], sets=[list(s) for s in sets_tuples], confirmed=True
+            )
+        else:
+            _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
     return {
         "ok": True,

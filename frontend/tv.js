@@ -77,6 +77,8 @@ const tvState = {
   playerOpponents: [],      // [{player_id, name, contact, match_id, round_number}]
   playerOpponentsLoaded: false, // whether we have fetched at least once
   playerPanelOpen: false,   // whether the expand panel was open (survives re-renders)
+  scoreConfirmationMode: 'immediate', // 'immediate' or 'required'
+  correctionWindowSecs: 0,           // correction window duration from TV settings
   // Mexicano leaderboard sort state
   mexLeaderboard: [],       // cached leaderboard rows for client-side sort
   mexTeamMode: false,       // mirrors status.team_mode
@@ -86,6 +88,7 @@ const tvState = {
 
 // ── In-flight guards for version polling ──────────────────
 let _tvVersionFetching = false;
+let _tokenLoginFailed = false;     // set when QR/email auto-login fails
 let _pickerFetching = false;
 let _tvVersionEtag = null;
 let _pickerVersionEtag = null;
@@ -94,6 +97,11 @@ const _TV_PICKER_POLL_INTERVAL_MS = 3000;
 
 function _tvLabel() {
   return tvState.tournamentSport === 'tennis' ? t('txt_txt_tennis_tv') : t('txt_txt_padel_tv');
+}
+
+/** Returns true if a player score entry form is currently open */
+function _hasOpenScoreForm() {
+  return !!document.querySelector('.score-form-body:not(.hidden)');
 }
 
 function _playerStorageKey() { return `padel-player-${TID}`; }
@@ -161,19 +169,13 @@ function _clearPlayerSession() {
 
 function _isPlayerLoggedIn() { return !!tvState.playerJwt; }
 
-/** Check whether a match involves the authenticated player (direct or via team_roster) */
+/** Check whether a match involves the authenticated player (direct or via team_roster composite expansion) */
 function _playerIsInMatch(m) {
   if (!tvState.playerId) return false;
-  const ids = [...(m.team1_ids || []), ...(m.team2_ids || [])];
-  if (ids.includes(tvState.playerId)) return true;
-  // Check team_roster: the player may be a member of a composite team
-  const roster = tvState.teamRoster;
-  if (roster) {
-    for (const tid of ids) {
-      if (roster[tid] && roster[tid].includes(tvState.playerId)) return true;
-    }
-  }
-  return false;
+  const roster = tvState.teamRoster || {};
+  const t1Ids = _expandTeamIds(m.team1_ids || [], roster);
+  const t2Ids = _expandTeamIds(m.team2_ids || [], roster);
+  return t1Ids.has(tvState.playerId) || t2Ids.has(tvState.playerId);
 }
 
 /** Authenticate using passphrase or token */
@@ -228,6 +230,7 @@ async function _handleTokenAutoLogin() {
   try {
     await _playerAuth(null, playerToken);
   } catch (e) {
+    _tokenLoginFailed = true;
     console.warn('Auto-login failed:', e.message);
   }
 }
@@ -430,6 +433,12 @@ function _renderPlayerBar() {
       btn.innerHTML = '🔑 ' + t('txt_txt_player_login');
       btn.onclick = _showPlayerLoginModal;
       slot.appendChild(btn);
+      if (_tokenLoginFailed) {
+        const notice = document.createElement('div');
+        notice.className = 'token-expired-notice';
+        notice.textContent = t('txt_tv_token_expired');
+        slot.appendChild(notice);
+      }
     }
   }
 }
@@ -465,22 +474,22 @@ const _PLAYER_SCORE_ENDPOINTS = {
   'po-playoff': { points: 'po/record',           tennis: 'po/record-tennis' },
 };
 
-/** Submit a score from the public player view */
-async function _playerSubmitScore(matchId, scoreCtx) {
-  const saveBtn = document.getElementById('ps-save-' + matchId);
+/**
+ * Validate score inputs and return { body, path, displayScore } or null on error.
+ * Purely reads from the DOM — no side effects.
+ */
+function _validatePlayerScore(matchId, scoreCtx) {
   const errDiv = document.getElementById('ps-err-' + matchId);
+  const saveBtn = document.getElementById('ps-save-' + matchId);
   const _showErr = (msg) => { if (errDiv) errDiv.textContent = msg; };
 
   const entry = _PLAYER_SCORE_ENDPOINTS[scoreCtx];
-  if (!entry) { _showErr('Unknown score context'); return; }
+  if (!entry) { _showErr('Unknown score context'); return null; }
 
-  // Detect whether the player has the sets view active
   const setsDiv = document.getElementById('ps-sets-' + matchId);
   const isTennis = setsDiv && !setsDiv.classList.contains('hidden');
 
-  let body;
   if (isTennis && entry.tennis) {
-    // Gather set scores
     const rawSets = [];
     for (let i = 0; i < 10; i++) {
       const e1 = document.getElementById('pts1-' + matchId + '-' + i);
@@ -488,53 +497,94 @@ async function _playerSubmitScore(matchId, scoreCtx) {
       if (!e1 || !e2) break;
       rawSets.push([+e1.value || 0, +e2.value || 0]);
     }
-
-    // Validate: collect only non-empty sets and check for ties
     const sets = [];
     for (let i = 0; i < rawSets.length; i++) {
       const [v1, v2] = rawSets[i];
       if (v1 === 0 && v2 === 0) continue;
-      if (v1 === v2) { _showErr(t('txt_txt_set_equal_scores', { n: i + 1 })); return; }
+      if (v1 === v2) { _showErr(t('txt_txt_set_equal_scores', { n: i + 1 })); return null; }
       sets.push([v1, v2]);
     }
-    if (sets.length === 0) { _showErr(t('txt_txt_enter_at_least_one_set_score')); return; }
-
-    // 3rd set only valid when sets 1 and 2 have split winners
+    if (sets.length === 0) { _showErr(t('txt_txt_enter_at_least_one_set_score')); return null; }
     if (sets.length === 3) {
       const w1 = sets[0][0] > sets[0][1] ? 'a' : 'b';
       const w2 = sets[1][0] > sets[1][1] ? 'a' : 'b';
-      if (w1 === w2) { _showErr(t('txt_txt_third_set_needs_split')); return; }
+      if (w1 === w2) { _showErr(t('txt_txt_third_set_needs_split')); return null; }
     }
-
-    body = JSON.stringify({ match_id: matchId, sets });
+    const display = sets.map(s => `${s[0]}-${s[1]}`).join(' / ');
+    return { body: JSON.stringify({ match_id: matchId, sets }), path: entry.tennis, displayScore: display };
   } else {
     const s1 = +(document.getElementById('ps1-' + matchId)?.value) || 0;
     const s2 = +(document.getElementById('ps2-' + matchId)?.value) || 0;
-    // Mexicano sum validation
     const autoCalc = tvState.totalPts > 0 && scoreCtx === 'mex';
     if (autoCalc && s1 + s2 !== tvState.totalPts) {
       _showErr(t('txt_txt_score_must_sum', { n: tvState.totalPts }));
-      return;
+      return null;
     }
-    // 0–0 guard: require a second tap to confirm
     if (s1 === 0 && s2 === 0 && !saveBtn?.dataset.zeroWarned) {
       _showErr(t('txt_txt_zero_zero_confirm'));
       if (saveBtn) saveBtn.dataset.zeroWarned = '1';
-      return;
+      return null;
     }
-    body = JSON.stringify({ match_id: matchId, score1: s1, score2: s2 });
+    const display = `${s1} – ${s2}`;
+    return { body: JSON.stringify({ match_id: matchId, score1: s1, score2: s2 }), path: entry.points, displayScore: display };
   }
+}
 
+/** Submit a score from the public player view.
+ *  First click shows a confirmation overlay; second click sends. */
+function _playerSubmitScore(matchId, scoreCtx) {
+  const validated = _validatePlayerScore(matchId, scoreCtx);
+  if (!validated) return;
+  const { body, path, displayScore } = validated;
+  const errDiv = document.getElementById('ps-err-' + matchId);
+  if (errDiv) errDiv.textContent = '';
+
+  // ── Show confirmation overlay before sending ──────────
+  const formBody = document.getElementById('ps-body-' + matchId);
+  if (!formBody) { _doPlayerSubmit(matchId, path, body); return; }
+
+  // Build the overlay inside the form
+  const overlay = document.createElement('div');
+  overlay.className = 'score-confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-score-value">${displayScore}</div>
+    <div class="confirm-score-actions">
+      <button type="button" class="score-confirm-btn" id="ps-confirm-${matchId}">${t('txt_txt_confirm_score')}</button>
+      <button type="button" class="score-cancel-btn" id="ps-cancel-${matchId}">${t('txt_txt_cancel')}</button>
+    </div>
+    <div id="ps-err-${matchId}" class="score-error-msg"></div>
+  `;
+
+  // Hide the original inputs & save button, show overlay
+  for (const ch of formBody.children) ch.style.display = 'none';
+  formBody.appendChild(overlay);
+
+  // Wire the confirm button
+  document.getElementById('ps-confirm-' + matchId)?.addEventListener('click', () => {
+    _doPlayerSubmit(matchId, path, body);
+  });
+
+  // Wire the cancel button — remove overlay, restore inputs
+  document.getElementById('ps-cancel-' + matchId)?.addEventListener('click', () => {
+    overlay.remove();
+    for (const ch of formBody.children) ch.style.display = '';
+  });
+}
+
+/** Actually POST the score to the backend. */
+async function _doPlayerSubmit(matchId, path, body) {
+  const saveBtn = document.getElementById('ps-save-' + matchId)
+    || document.getElementById('ps-confirm-' + matchId);
+  const errDiv = document.getElementById('ps-err-' + matchId);
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '…'; }
   if (errDiv) errDiv.textContent = '';
-  const path = (isTennis && entry.tennis) ? entry.tennis : entry.points;
   try {
     await _playerApi(`/api/tournaments/${TID}/${path}`, { method: 'POST', body });
     if (saveBtn) saveBtn.textContent = t('txt_txt_score_saved');
     setTimeout(() => loadTV(), 800);
   } catch (e) {
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = t('txt_txt_save'); }
-    _showErr(e.message);
+    if (errDiv) errDiv.textContent = e.message;
     if (!_isPlayerLoggedIn()) setTimeout(() => loadTV(), 1500);
   }
 }
@@ -546,6 +596,18 @@ function _buildPlayerScoreForm(m, scoreCtx) {
   const hasTbd = !m.team1?.join('').trim() || !m.team2?.join('').trim();
   if (hasTbd) return '';
 
+  // ── Score lifecycle overlays (post-submission) ──────────────
+  // In 'required' mode, a submitted-but-unconfirmed score shows the
+  // lifecycle UI (opponent accept/correct).  In 'immediate' mode the
+  // confirmation happens client-side *before* the score is sent, so
+  // no server-side lifecycle panel is needed.
+  if (m.scored_by && m.score && !m.score_confirmed && tvState.scoreConfirmationMode !== 'immediate') {
+    return _buildScoreLifecyclePanel(m, scoreCtx);
+  }
+
+  // Don't show the input form for completed/confirmed matches.
+  if (m.score) return '';
+
   const entry = _PLAYER_SCORE_ENDPOINTS[scoreCtx];
   const hasTennis = !!(entry && entry.tennis);
   const defaultMode = (tvState.scoreMode[scoreCtx] === 'sets' && hasTennis) ? 'sets' : 'points';
@@ -554,6 +616,8 @@ function _buildPlayerScoreForm(m, scoreCtx) {
   const onInput = autoCalc ? `oninput="_playerAutoFillScore('${m.id}', ${tvState.totalPts})"` : '';
 
   let html = '<div class="player-score-form">';
+  html += `<button type="button" class="score-toggle-btn" id="ps-toggle-${m.id}" onclick="_toggleScoreForm('${m.id}')">${t('txt_txt_submit_score')}</button>`;
+  html += `<div class="score-form-body hidden" id="ps-body-${m.id}">`;
 
   // Points / Sets toggle (only when tennis scoring is available for this context)
   if (hasTennis) {
@@ -568,7 +632,7 @@ function _buildPlayerScoreForm(m, scoreCtx) {
   html += `<div id="ps-points-${m.id}" class="score-teams-row${defaultMode === 'sets' ? ' hidden' : ''}">`;
   html += `<input type="number" id="ps1-${m.id}" min="0" value="" placeholder="0" ${onInput}>`;
   html += `<span class="score-dash">–</span>`;
-  html += `<input type="number" id="ps2-${m.id}" min="0" value="" placeholder="${autoCalc ? tvState.totalPts : 0}" ${onInput}>`;
+  html += `<input type="number" id="ps2-${m.id}" min="0" value="" placeholder="${autoCalc ? '–' : 0}" ${onInput}>`;
   html += `</div>`;
 
   // Sets inputs (hidden by default unless admin chose sets)
@@ -587,11 +651,147 @@ function _buildPlayerScoreForm(m, scoreCtx) {
     html += `</div></div>`;
   }
 
-  html += `<button id="ps-save-${m.id}" class="score-submit-btn" onclick="_playerSubmitScore('${m.id}','${scoreCtx}')">${t('txt_txt_save')}</button>`;
+  html += `<button id="ps-save-${m.id}" class="score-submit-btn" onclick="_playerSubmitScore('${m.id}','${scoreCtx}')">${t('txt_tv_submit_score_btn')}</button>`;
   html += `</div>`;
   html += `<div id="ps-err-${m.id}" class="score-error-msg"></div>`;
+  html += `</div>`; // close score-form-body
   html += `</div>`;
   return html;
+}
+
+/** Toggle visibility of the score input form for a match */
+function _toggleScoreForm(matchId) {
+  const body = document.getElementById('ps-body-' + matchId);
+  const btn = document.getElementById('ps-toggle-' + matchId);
+  if (!body || !btn) return;
+  const opening = body.classList.toggle('hidden');
+  btn.classList.toggle('active', !opening);
+}
+
+/**
+ * Build the score lifecycle panel for a match that has a pending/disputed score.
+ * Shows different UI depending on the player's role (submitter vs opponent).
+ */
+function _buildScoreLifecyclePanel(m, scoreCtx) {
+  const isSubmitter = _playerIsInSubmitterTeam(m);
+  const isOpponent = _playerIsInOpponentTeam(m);
+  const scoreDisplay = _formatMatchScore(m);
+
+  // ── Disputed state ──────────────────────────────────────
+  if (m.disputed) {
+    const corrDisplay = _formatDisputeScore(m);
+    let html = '<div class="player-score-dispute">';
+
+    if (m.dispute_escalated) {
+      // Both teams have seen it — awaiting admin
+      html += `<div class="dispute-header">⚠️ ${t('txt_txt_dispute_escalated')}</div>`;
+      html += `<p class="dispute-admin-help">${t('txt_tv_dispute_admin_help')}</p>`;
+      html += `<div class="dispute-row"><span>${t('txt_txt_submitted')}:</span> <strong>${scoreDisplay}</strong></div>`;
+      html += `<div class="dispute-row"><span>${t('txt_txt_correction')}:</span> <strong>${corrDisplay}</strong></div>`;
+    } else if (isSubmitter) {
+      // Submitter can accept correction or escalate
+      html += `<div class="dispute-header">✏️ ${t('txt_txt_opponent_proposes_correction')}</div>`;
+      html += `<div class="dispute-row"><span>${t('txt_txt_your_score')}:</span> <strong>${scoreDisplay}</strong></div>`;
+      html += `<div class="dispute-row"><span>${t('txt_txt_proposed')}:</span> <strong>${corrDisplay}</strong></div>`;
+      html += `<div class="pending-score-actions">`;
+      html += `<button class="score-accept-btn" onclick="_playerAcceptCorrection('${m.id}')">${t('txt_txt_accept_correction')}</button>`;
+      html += `<button class="score-escalate-btn" onclick="_playerEscalateDispute('${m.id}')">${t('txt_txt_escalate_to_admin')}</button>`;
+      html += `</div>`;
+      html += `<div id="ps-err-${m.id}" class="score-error-msg"></div>`;
+    } else {
+      // Opponent sees waiting for submitter response
+      html += `<div class="dispute-header">✏️ ${t('txt_txt_correction_sent')}</div>`;
+      html += `<div class="dispute-row"><span>${t('txt_txt_original')}:</span> <strong>${scoreDisplay}</strong></div>`;
+      html += `<div class="dispute-row"><span>${t('txt_txt_your_correction')}:</span> <strong>${corrDisplay}</strong></div>`;
+      html += `<div class="submitted-waiting">${t('txt_txt_waiting_for_response')}</div>`;
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // ── Pending state (not yet confirmed, not disputed) ─────
+  // In 'required' mode the submitter simply waits for the opponent.
+
+  if (isSubmitter) {
+    // Submitter sees "waiting for opponent" status
+    let html = '<div class="player-score-submitted">';
+    html += `<div class="submitted-score-label">✓ ${t('txt_txt_score_submitted')}</div>`;
+    html += `<div class="submitted-score-value">${scoreDisplay}</div>`;
+    html += `<div class="submitted-waiting">${t('txt_txt_waiting_for_opponent')}</div>`;
+    const _cw = tvState.correctionWindowSecs || 0;
+    if (_cw > 0 && m.scored_at) {
+      const _elapsed = Math.floor(Date.now() / 1000 - m.scored_at);
+      const _remaining = Math.max(0, _cw - _elapsed);
+      if (_remaining > 0) {
+        html += `<div class="correction-window-countdown">${t('txt_tv_correction_window_remaining', { n: _remaining })}</div>`;
+      } else {
+        html += `<div class="correction-window-expired">${t('txt_tv_correction_window_expired')}</div>`;
+      }
+    }
+    html += `<div id="ps-err-${m.id}" class="score-error-msg"></div>`;
+    html += '</div>';
+    return html;
+  }
+
+  if (isOpponent) {
+    // Opponent sees accept / correct buttons
+    const entry = _PLAYER_SCORE_ENDPOINTS[scoreCtx];
+    const hasTennis = !!(entry && entry.tennis);
+    const isMex = scoreCtx === 'mex' || scoreCtx === 'mex-playoff';
+    const autoCalc = tvState.totalPts > 0 && scoreCtx === 'mex';
+
+    let html = '<div class="player-score-pending">';
+    html += `<div class="pending-score-label">${t('txt_txt_pending_score')}</div>`;
+    html += `<div class="pending-score-value">${scoreDisplay}</div>`;
+    html += `<div class="pending-score-actions">`;
+    html += `<button class="score-accept-btn" id="ps-accept-${m.id}" onclick="_playerAcceptScore('${m.id}')">${t('txt_txt_accept')}</button>`;
+    html += `<button class="score-correct-btn" id="ps-correct-btn-${m.id}" onclick="_playerShowCorrectForm('${m.id}')">${t('txt_txt_correct')}</button>`;
+    html += `</div>`;
+
+    // Hidden correction form (revealed on click)
+    html += `<div class="correct-score-panel hidden" id="ps-correct-panel-${m.id}">`;
+
+    // Points / Sets toggle for correction (only when tennis scoring is available)
+    const defaultCorrMode = (tvState.scoreMode[scoreCtx] === 'sets' && hasTennis) ? 'sets' : 'points';
+    if (hasTennis) {
+      html += `<div class="player-score-mode-toggle" data-match="${m.id}-corr">`;
+      html += `<button type="button" class="${defaultCorrMode === 'points' ? 'active' : ''}" onclick="_setCorrectionScoreMode('${m.id}','points')">${t('txt_txt_points_label')}</button>`;
+      html += `<button type="button" class="${defaultCorrMode === 'sets' ? 'active' : ''}" onclick="_setCorrectionScoreMode('${m.id}','sets')">🎾 ${t('txt_txt_sets')}</button>`;
+      html += `</div>`;
+    }
+
+    // Points correction inputs
+    html += `<div class="correct-score-inputs${defaultCorrMode === 'sets' ? ' hidden' : ''}" id="pc-points-${m.id}">`;
+    const onInput = autoCalc ? `oninput="_playerAutoFillCorrection('${m.id}', ${tvState.totalPts})"` : '';
+    html += `<input type="number" id="pc1-${m.id}" min="0" value="" placeholder="0" ${onInput}>`;
+    html += `<span class="score-dash">–</span>`;
+    html += `<input type="number" id="pc2-${m.id}" min="0" value="" placeholder="${autoCalc ? tvState.totalPts : 0}" ${onInput}>`;
+    html += `</div>`;
+
+    // Sets correction inputs (hidden by default unless mode=sets)
+    if (hasTennis) {
+      html += `<div id="pc-sets-${m.id}"${defaultCorrMode === 'sets' ? '' : ' class="hidden"'}><div class="player-sets-grid">`;
+      for (let i = 0; i < 3; i++) {
+        const maxAttr = i < 2 ? 'max="7"' : '';
+        html += `<div class="player-set-row">`;
+        html += `<span class="player-set-label">S${i + 1}</span>`;
+        html += `<input type="number" id="pcs1-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
+        html += `<span style="color:var(--text-muted)">-</span>`;
+        html += `<input type="number" id="pcs2-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
+        html += `</div>`;
+      }
+      html += `</div></div>`;
+    }
+
+    html += `<button class="score-submit-btn" id="ps-correct-save-${m.id}" onclick="_playerSubmitCorrection('${m.id}','${scoreCtx}')">${t('txt_txt_send')}</button>`;
+    html += `</div>`;
+
+    html += `<div id="ps-err-${m.id}" class="score-error-msg"></div>`;
+    html += '</div>';
+    return html;
+  }
+
+  return '';
 }
 
 /** Auto-fill the complementary score field for Mexicano matches in the player panel. */
@@ -626,6 +826,208 @@ function _setPlayerScoreMode(matchId, mode) {
     toggle.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
     const idx = mode === 'sets' ? 1 : 0;
     toggle.children[idx]?.classList.add('active');
+  }
+}
+
+// ── Score lifecycle helpers ───────────────────────────────
+
+/** Check whether the logged-in player is on the same team as the score submitter */
+function _playerIsInSubmitterTeam(m) {
+  if (!tvState.playerId || !m.scored_by) return false;
+  const roster = tvState.teamRoster || {};
+  // Determine which team the submitter is on
+  const t1Ids = _expandTeamIds(m.team1_ids || [], roster);
+  const t2Ids = _expandTeamIds(m.team2_ids || [], roster);
+  const submitterInT1 = t1Ids.has(m.scored_by);
+  const submitterInT2 = t2Ids.has(m.scored_by);
+  if (submitterInT1) return t1Ids.has(tvState.playerId);
+  if (submitterInT2) return t2Ids.has(tvState.playerId);
+  return false;
+}
+
+/** Check whether the logged-in player is on the opposing team from the submitter */
+function _playerIsInOpponentTeam(m) {
+  if (!tvState.playerId || !m.scored_by) return false;
+  const roster = tvState.teamRoster || {};
+  const t1Ids = _expandTeamIds(m.team1_ids || [], roster);
+  const t2Ids = _expandTeamIds(m.team2_ids || [], roster);
+  const submitterInT1 = t1Ids.has(m.scored_by);
+  const submitterInT2 = t2Ids.has(m.scored_by);
+  if (submitterInT1) return t2Ids.has(tvState.playerId);
+  if (submitterInT2) return t1Ids.has(tvState.playerId);
+  return false;
+}
+
+/** Expand team IDs to include roster members for composite teams */
+function _expandTeamIds(ids, roster) {
+  const expanded = new Set(ids);
+  for (const pid of ids) {
+    if (roster[pid]) roster[pid].forEach(mid => expanded.add(mid));
+  }
+  return expanded;
+}
+
+/** Format the main score of a match for display */
+function _formatMatchScore(m) {
+  if (!m.score) return '—';
+  if (m.sets && m.sets.length > 0) {
+    return m.sets.map(s => `${s[0]}-${s[1]}`).join(' / ');
+  }
+  return `${m.score[0]} – ${m.score[1]}`;
+}
+
+/** Format the dispute/correction score for display */
+function _formatDisputeScore(m) {
+  if (!m.dispute_score) return '—';
+  if (m.dispute_sets && m.dispute_sets.length > 0) {
+    return m.dispute_sets.map(s => `${s[0]}-${s[1]}`).join(' / ');
+  }
+  return `${m.dispute_score[0]} – ${m.dispute_score[1]}`;
+}
+
+// ── Score lifecycle actions ───────────────────────────────
+
+/** Accept a pending score submitted by the opposing team */
+async function _playerAcceptScore(matchId) {
+  const btn = document.getElementById('ps-accept-' + matchId);
+  const errDiv = document.getElementById('ps-err-' + matchId);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  if (errDiv) errDiv.textContent = '';
+  try {
+    await _playerApi(`/api/tournaments/${TID}/matches/${matchId}/accept`, { method: 'POST' });
+    setTimeout(() => loadTV(), 600);
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = t('txt_txt_accept'); }
+    if (errDiv) errDiv.textContent = e.message;
+  }
+}
+
+/** Show the correction form when the opponent clicks "Correct" */
+function _playerShowCorrectForm(matchId) {
+  const panel = document.getElementById('ps-correct-panel-' + matchId);
+  if (panel) panel.classList.toggle('hidden');
+}
+
+/** Toggle between points and sets input for the correction form */
+function _setCorrectionScoreMode(matchId, mode) {
+  const pointsDiv = document.getElementById('pc-points-' + matchId);
+  const setsDiv = document.getElementById('pc-sets-' + matchId);
+  if (!pointsDiv || !setsDiv) return;
+  if (mode === 'sets') {
+    pointsDiv.classList.add('hidden');
+    setsDiv.classList.remove('hidden');
+  } else {
+    pointsDiv.classList.remove('hidden');
+    setsDiv.classList.add('hidden');
+  }
+  // Update toggle button states
+  const panel = pointsDiv.closest('.correct-score-panel');
+  const toggle = panel?.querySelector('.player-score-mode-toggle');
+  if (toggle) {
+    toggle.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+    const idx = mode === 'sets' ? 1 : 0;
+    toggle.children[idx]?.classList.add('active');
+  }
+}
+
+/** Submit a score correction (opposing team disagrees with submitted score) */
+async function _playerSubmitCorrection(matchId, scoreCtx) {
+  const errDiv = document.getElementById('ps-err-' + matchId);
+  const btn = document.getElementById('ps-correct-save-' + matchId);
+  const _showErr = (msg) => { if (errDiv) errDiv.textContent = msg; };
+
+  // Detect whether the player has the sets view active for corrections
+  const setsDiv = document.getElementById('pc-sets-' + matchId);
+  const isTennis = setsDiv && !setsDiv.classList.contains('hidden');
+
+  let body;
+  let endpoint;
+  if (isTennis) {
+    // Gather set scores from correction inputs
+    const rawSets = [];
+    for (let i = 0; i < 10; i++) {
+      const e1 = document.getElementById('pcs1-' + matchId + '-' + i);
+      const e2 = document.getElementById('pcs2-' + matchId + '-' + i);
+      if (!e1 || !e2) break;
+      rawSets.push([+e1.value || 0, +e2.value || 0]);
+    }
+    const sets = [];
+    for (let i = 0; i < rawSets.length; i++) {
+      const [v1, v2] = rawSets[i];
+      if (v1 === 0 && v2 === 0) continue;
+      if (v1 === v2) { _showErr(t('txt_txt_set_equal_scores', { n: i + 1 })); return; }
+      sets.push([v1, v2]);
+    }
+    if (sets.length === 0) { _showErr(t('txt_txt_enter_at_least_one_set_score')); return; }
+    if (sets.length === 3) {
+      const w1 = sets[0][0] > sets[0][1] ? 'a' : 'b';
+      const w2 = sets[1][0] > sets[1][1] ? 'a' : 'b';
+      if (w1 === w2) { _showErr(t('txt_txt_third_set_needs_split')); return; }
+    }
+    body = JSON.stringify({ match_id: matchId, sets });
+    endpoint = 'correct-tennis';
+  } else {
+    const s1 = +(document.getElementById('pc1-' + matchId)?.value) || 0;
+    const s2 = +(document.getElementById('pc2-' + matchId)?.value) || 0;
+    // Mexicano sum validation
+    const isMex = scoreCtx === 'mex';
+    if (isMex && tvState.totalPts > 0 && s1 + s2 !== tvState.totalPts) {
+      _showErr(t('txt_txt_score_must_sum', { n: tvState.totalPts }));
+      return;
+    }
+    body = JSON.stringify({ match_id: matchId, score1: s1, score2: s2 });
+    endpoint = 'correct';
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  if (errDiv) errDiv.textContent = '';
+  try {
+    await _playerApi(`/api/tournaments/${TID}/matches/${matchId}/${endpoint}`, {
+      method: 'POST', body,
+    });
+    setTimeout(() => loadTV(), 600);
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = t('txt_txt_send'); }
+    _showErr(e.message);
+  }
+}
+
+/** Accept a correction proposed by the opposing team (submitter's action) */
+async function _playerAcceptCorrection(matchId) {
+  const errDiv = document.getElementById('ps-err-' + matchId);
+  if (errDiv) errDiv.textContent = '';
+  try {
+    await _playerApi(`/api/tournaments/${TID}/matches/${matchId}/accept-correction`, { method: 'POST' });
+    setTimeout(() => loadTV(), 600);
+  } catch (e) {
+    if (errDiv) errDiv.textContent = e.message;
+  }
+}
+
+/** Escalate disputed score to admin (submitter rejects the correction) */
+async function _playerEscalateDispute(matchId) {
+  const errDiv = document.getElementById('ps-err-' + matchId);
+  if (errDiv) errDiv.textContent = '';
+  try {
+    await _playerApi(`/api/tournaments/${TID}/matches/${matchId}/escalate-dispute`, { method: 'POST' });
+    setTimeout(() => loadTV(), 600);
+  } catch (e) {
+    if (errDiv) errDiv.textContent = e.message;
+  }
+}
+
+/** Auto-fill for Mexicano correction form */
+function _playerAutoFillCorrection(matchId, total) {
+  const s1El = document.getElementById('pc1-' + matchId);
+  const s2El = document.getElementById('pc2-' + matchId);
+  if (!s1El || !s2El) return;
+  const changed = document.activeElement === s1El ? 's1' : 's2';
+  if (changed === 's1') {
+    const v = Math.max(0, Math.min(total, +s1El.value || 0));
+    s2El.value = total - v;
+  } else {
+    const v = Math.max(0, Math.min(total, +s2El.value || 0));
+    s1El.value = total - v;
   }
 }
 
@@ -712,7 +1114,7 @@ function _startCountdown() {
         });
         if (!data) return; // 304 — version unchanged
         if (tvState.lastKnownVersion !== null && data.version !== tvState.lastKnownVersion) {
-          loadTV();
+          if (!_hasOpenScoreForm()) loadTV();
         }
         tvState.lastKnownVersion = data.version;
       } catch (_) { /* network blip — ignore */ }
@@ -729,7 +1131,7 @@ function _startCountdown() {
     if (tvState.countdown <= 0) {
       clearInterval(tvState.countdownInterval);
       tvState.countdownInterval = null;
-      loadTV();
+      if (!_hasOpenScoreForm()) loadTV();
     }
   }, 1000);
 }
@@ -801,6 +1203,8 @@ async function loadTV() {
     tvState.refreshIntervalSecs = tvSettings.refresh_interval ?? 15;
     tvState.scoreMode = tvSettings.score_mode || {};
     tvState.allowPlayerScoring = tvSettings.allow_player_scoring !== false;
+    tvState.scoreConfirmationMode = tvSettings.score_confirmation || 'immediate';
+    tvState.correctionWindowSecs = tvSettings.correction_window_seconds ?? 0;
     // Seed tvState.lastKnownVersion so first poll doesn’t trigger an immediate reload
     if (tvState.refreshIntervalSecs === -1 && tvState.lastKnownVersion === null) {
       try {
@@ -887,7 +1291,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
     if (tvSettings.show_past_matches) {
       const playoffPast = (playoffs?.matches || []).filter(m => m.status === 'completed');
       if (playoffPast.length > 0)
-        html += _buildPastMatches(playoffPast, tvSettings, false, t('txt_txt_play_off_matches'), 'past-playoffs');
+        html += _buildPastMatches(playoffPast, tvSettings, false, t('txt_txt_play_off_matches'), 'past-playoffs', 'gp-playoff');
     }
 
   if (tvSettings.show_bracket) {
@@ -906,7 +1310,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
     if (tvSettings.show_past_matches) {
       const groupPast = Object.values(groups.matches || {}).flat().filter(m => m.status === 'completed');
       if (groupPast.length > 0)
-        html += _buildPastMatches(groupPast, tvSettings, false, t('txt_txt_group_stage_matches'), 'past-groups');
+        html += _buildPastMatches(groupPast, tvSettings, false, t('txt_txt_group_stage_matches'), 'past-groups', 'gp-group');
     }
   } else {
     // Group phase: standings → group past matches
@@ -938,7 +1342,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
     if (tvSettings.show_past_matches) {
       const groupPast = Object.values(groups.matches || {}).flat().filter(m => m.status === 'completed');
       if (groupPast.length > 0)
-        html += _buildPastMatches(groupPast, tvSettings, false, t('txt_txt_group_stage_matches'), 'past-groups');
+        html += _buildPastMatches(groupPast, tvSettings, false, t('txt_txt_group_stage_matches'), 'past-groups', 'gp-group');
     }
   }
 
@@ -978,7 +1382,7 @@ function _renderPO(tvSettings, status, playoffs) {
   if (tvSettings.show_past_matches) {
     const past = (playoffs?.matches || []).filter(m => m.status === 'completed');
     if (past.length > 0)
-      html += _buildPastMatches(past, tvSettings, false, t('txt_txt_play_off_matches'), 'past-playoffs');
+      html += _buildPastMatches(past, tvSettings, false, t('txt_txt_play_off_matches'), 'past-playoffs', 'po-playoff');
   }
 
   document.getElementById('tv-root').innerHTML = html;
@@ -1011,7 +1415,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
     if (tvSettings.show_past_matches) {
       const playoffPast = (playoffs?.matches || []).filter(m => m.status === 'completed');
       if (playoffPast.length > 0)
-        html += _buildPastMatches(playoffPast, tvSettings, false, t('txt_txt_play_off_matches'), 'past-playoffs');
+        html += _buildPastMatches(playoffPast, tvSettings, false, t('txt_txt_play_off_matches'), 'past-playoffs', 'mex-playoff');
     }
 
     if (tvSettings.show_bracket) {
@@ -1034,7 +1438,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
     if (tvSettings.show_past_matches) {
       const mexPast = (matches.all_matches || []).filter(m => m.status === 'completed');
       if (mexPast.length > 0)
-        html += _buildPastMatches(mexPast, tvSettings, true, t('txt_txt_mexicano_rounds'), 'past-mexicano');
+        html += _buildPastMatches(mexPast, tvSettings, true, t('txt_txt_mexicano_rounds'), 'past-mexicano', 'mex');
     }
   } else {
     // Mexicano phase: leaderboard → mexicano rounds
@@ -1045,7 +1449,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
     if (tvSettings.show_past_matches) {
       const mexPast = (matches.all_matches || []).filter(m => m.status === 'completed');
       if (mexPast.length > 0)
-        html += _buildPastMatches(mexPast, tvSettings, true, t('txt_txt_mexicano_rounds'), 'past-mexicano');
+        html += _buildPastMatches(mexPast, tvSettings, true, t('txt_txt_mexicano_rounds'), 'past-mexicano', 'mex');
     }
   }
 
@@ -1302,7 +1706,8 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
       }
       html += `<div class="court-board">`;
       for (const key of _roundOrder) {
-        html += `<div class="court-card">`;
+        const hasMyMatch = scoreCtx && _byRound[key].some(bm => !_hasTbd(bm) && _playerIsInMatch(bm));
+        html += `<div class="court-card${hasMyMatch ? ' court-card--yours' : ''}">`;
         if (key) html += `<div class="court-name">${esc(key)}</div>`;
         for (const m of _byRound[key]) {
           const tbd = _hasTbd(m);
@@ -1353,7 +1758,9 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
     const m = currentByCourt[courtName];
     const t1 = _teamLabel(m.team1);
     const t2 = _teamLabel(m.team2);
-    html += `<div class="court-card">`;
+    const isMyMatch = scoreCtx && _playerIsInMatch(m);
+    html += `<div class="court-card${isMyMatch ? ' court-card--yours' : ''}">`;
+    if (isMyMatch) html += `<div class="court-yours-badge">${t('txt_tv_your_match_badge')}</div>`;
     html += `<div class="court-name">${esc(courtName)}</div>`;
     html += `<div class="court-match">`;
     html += `<div class="court-match-info"><div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(t2)}</div>`;
@@ -1388,7 +1795,8 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
     }
     html += `<div class="court-board">`;
     for (const key of roundOrder2) {
-      html += `<div class="court-card">`;
+      const hasMyMatch2 = scoreCtx && byRound2[key].some(bm => !_hasTbd2(bm) && _playerIsInMatch(bm));
+      html += `<div class="court-card${hasMyMatch2 ? ' court-card--yours' : ''}">`;
       if (key) html += `<div class="court-name">${esc(key)}</div>`;
       for (const m of byRound2[key]) {
         const tbd = _hasTbd2(m);
@@ -1407,7 +1815,7 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
   return html;
 }
 
-function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = t('txt_txt_past_matches'), tvKey = 'past-matches') {
+function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = t('txt_txt_past_matches'), tvKey = 'past-matches', scoreCtx = null) {
   if (!matches || matches.length === 0) return '';
 
   // Group by round_label first (more descriptive), fall back to round_number
@@ -1434,7 +1842,7 @@ function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = t('txt_txt
     html += `<summary class="round-summary">▶ ${esc(key)} — ${rMatches.length} ${rMatches.length > 1 ? t('txt_txt_matches') : t('txt_txt_match')}</summary>`;
     html += `<div class="round-body">`;
     for (const m of rMatches) {
-      html += _buildHistoryMatch(m, tvSettings, isMex);
+      html += _buildHistoryMatch(m, tvSettings, isMex, scoreCtx);
     }
     html += `</div></details>`;
   }
@@ -1443,11 +1851,22 @@ function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = t('txt_txt
   return html;
 }
 
-function _buildHistoryMatch(m, tvSettings, isMex) {
+function _buildHistoryMatch(m, tvSettings, isMex, scoreCtx = null) {
   const t1 = (m.team1 || []).join(' & ') || 'TBD';
   const t2 = (m.team2 || []).join(' & ') || 'TBD';
   const court = m.court ? `<span class="history-court">${esc(m.court)}</span>` : '';
 
+  // Pending confirmation indicator — only shown in 'required' mode where
+  // the score genuinely awaits opponent acceptance; in immediate mode the
+  // score counts right away so no indicator is needed (disputed still shows).
+  let pendingBadge = '';
+  if (m.scored_by && !m.score_confirmed && m.score) {
+    if (m.disputed) {
+      pendingBadge = `<span class="history-badge history-badge-dispute">⚠️</span>`;
+    } else if (tvState.scoreConfirmationMode !== 'immediate') {
+      pendingBadge = `<span class="history-badge history-badge-pending">⏳</span>`;
+    }
+  }
   let scoreHtml;
   if (m.score) {
     if (m.sets && m.sets.length > 0) {
@@ -1464,8 +1883,12 @@ function _buildHistoryMatch(m, tvSettings, isMex) {
   let html = `<div class="history-match">`;
   html += `<div class="history-teams">${esc(t1)}<span class="history-vs">${t('txt_txt_vs')}</span>${esc(t2)}</div>`;
   html += scoreHtml;
+  html += pendingBadge;
   html += court;
   html += `</div>`;
+
+  // Score lifecycle panel for unconfirmed matches in history view
+  if (scoreCtx) html += _buildPlayerScoreForm(m, scoreCtx);
 
   // Score breakdown for Mexicano matches
   if (isMex && tvSettings.show_score_breakdown) {

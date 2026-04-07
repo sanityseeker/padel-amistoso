@@ -282,24 +282,6 @@ function getTournamentIdFromUrl(url) {
 }
 
 /**
- * Refreshes the status of the tournament.
- * @param {Object} { id: string, alias: string }
- */
-async function refreshStatus() {
-  const { id: tournamentId, alias } = getTournamentIdFromUrl();
-  if (!tournamentId && !alias) {
-    return;
-  }
-  const response = await fetch(`/api/tournaments/${tournamentId}`);
-  if (!response.ok) {
-    console.error(`Failed to refresh status for tournament ${tournamentId}`);
-    return;
-  }
-  const data = await response.json();
-  console.log(`Status refreshed for tournament ${tournamentId}`, data);
-}
-
-/**
  * Sets the tournament link.
  * @param {Object} { id: string, alias: string }
  */

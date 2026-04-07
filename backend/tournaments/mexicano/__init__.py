@@ -145,6 +145,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         self._losses: dict[str, int] = {p.id: 0 for p in players}
         self.current_round: int = 0
         self.rounds: list[list[Match]] = []
+        self._match_index: dict[str, Match] = {}
 
         self.sit_outs: list[list[Player]] = []
         self._sit_out_counts: dict[str, int] = {p.id: 0 for p in players}
@@ -187,6 +188,10 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
             return value
         if name == "_raw_scores":
             value = self._rebuild_raw_scores()
+            object.__setattr__(self, name, value)
+            return value
+        if name == "_match_index":
+            value: dict[str, Match] = {m.id: m for rnd in self.rounds for m in rnd}
             object.__setattr__(self, name, value)
             return value
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
@@ -659,6 +664,8 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
                 matches.append(m)
 
             self.rounds.append(matches)
+            for m in matches:
+                self._match_index[m.id] = m
             self.current_round += 1
             return matches
 
@@ -688,6 +695,8 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
             matches.append(m)
 
         self.rounds.append(matches)
+        for m in matches:
+            self._match_index[m.id] = m
         self.current_round += 1
         return matches
 
@@ -751,6 +760,8 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
 
         self._pending_proposals.clear()
         self.rounds.append(matches)
+        for m in matches:
+            self._match_index[m.id] = m
         self.current_round += 1
         return matches
 

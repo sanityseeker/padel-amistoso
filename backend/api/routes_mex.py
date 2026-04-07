@@ -25,6 +25,9 @@ from .helpers import (
     _require_score_permission,
     _find_match,
     _store_tournament,
+    _get_tv_settings,
+    _apply_player_score_metadata,
+    _mark_admin_score,
 )
 from .schemas import (
     CreateMexicanoRequest,
@@ -186,10 +189,21 @@ async def mex_record(
         if match is None:
             raise HTTPException(404, "Match not found")
         _require_score_permission(tid, match, user, player)
+        is_player_action = player is not None and user is None
+        is_required = is_player_action and _get_tv_settings(tid).get("score_confirmation", "immediate") == "required"
         try:
-            t.record_result(req.match_id, (req.score1, req.score2))
-        except (KeyError, ValueError) as e:
+            if is_required:
+                t.store_pending_score(req.match_id, (req.score1, req.score2))
+            else:
+                t.record_result(req.match_id, (req.score1, req.score2))
+        except (KeyError, ValueError, RuntimeError) as e:
             raise HTTPException(400, str(e))
+        if is_player_action:
+            _apply_player_score_metadata(
+                match, player.player_id, score=[req.score1, req.score2], confirmed=not is_required
+            )
+        else:
+            _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
         breakdown = t.get_match_breakdown(req.match_id)
     return {"ok": True, "breakdown": breakdown}
@@ -436,6 +450,10 @@ async def mex_record_playoff(
             t.record_playoff_result(req.match_id, (req.score1, req.score2))
         except (KeyError, RuntimeError, ValueError) as e:
             raise HTTPException(400, str(e))
+        if player is not None and user is None:
+            _apply_player_score_metadata(match, player.player_id, score=[req.score1, req.score2], confirmed=True)
+        else:
+            _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
     return {"ok": True, "phase": t.phase}
 
@@ -459,6 +477,12 @@ async def mex_record_playoff_tennis(
             t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)
         except (KeyError, RuntimeError, ValueError) as e:
             raise HTTPException(400, str(e))
+        if player is not None and user is None:
+            _apply_player_score_metadata(
+                match, player.player_id, score=[total1, total2], sets=[list(s) for s in sets_tuples], confirmed=True
+            )
+        else:
+            _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
     return {
         "ok": True,

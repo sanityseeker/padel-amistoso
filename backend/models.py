@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -114,6 +115,50 @@ class Match:
     pair_index: int = -1
     # Optional admin comment shown to players alongside the match.
     comment: str = ""
+
+    # ── Score lifecycle fields ──────────────────────────────────────────────
+    # Set when a *player* submits a score; None when an admin/organiser records.
+    scored_by: str | None = None
+    # Unix timestamp (float) of when the score was first submitted.
+    scored_at: float | None = None
+    # True once the score is accepted by the opposing team, auto-finalised after
+    # the undo window, or recorded directly by an admin/organiser.
+    score_confirmed: bool = False
+    # True when the opposing team has submitted a correction that differs from
+    # the original score.  Cleared once an admin resolves the dispute.
+    disputed: bool = False
+    # The score proposed by the opposing team as a correction.
+    dispute_score: tuple[int, int] | None = None
+    # The sets proposed by the opposing team (tennis mode).
+    dispute_sets: list[tuple[int, int]] | None = None
+    # Player ID of the person who submitted the correction.
+    dispute_by: str | None = None
+    # Unix timestamp of when the correction was submitted.
+    dispute_at: float | None = None
+    # True when the original submitter has explicitly rejected the correction
+    # and wants the organiser/admin to decide.  While False, the original
+    # submitter can still accept the correction themselves.
+    dispute_escalated: bool = False
+    # Append-only audit log; each entry is a plain dict with keys:
+    # player_id, action, score, sets, timestamp.
+    score_history: list[dict[str, Any]] = field(default_factory=list)
+
+    def __getstate__(self) -> dict:
+        return self.__dict__.copy()
+
+    def __setstate__(self, state: dict) -> None:
+        # Provide safe defaults for score lifecycle fields missing in old pickles.
+        state.setdefault("scored_by", None)
+        state.setdefault("scored_at", None)
+        state.setdefault("score_confirmed", False)
+        state.setdefault("disputed", False)
+        state.setdefault("dispute_score", None)
+        state.setdefault("dispute_sets", None)
+        state.setdefault("dispute_by", None)
+        state.setdefault("dispute_at", None)
+        state.setdefault("dispute_escalated", False)
+        state.setdefault("score_history", [])
+        self.__dict__.update(state)
 
     @property
     def winner_team(self) -> list[Player] | None:

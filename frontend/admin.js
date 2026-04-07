@@ -747,6 +747,7 @@ let _tournamentMeta = {};
 let _openTournaments = [];  // [{id, type, name}] for quick-switch chips
 let _totalPts = 0;  // set per Mexicano tournament for auto-fill
 let _gpScoreMode = { 'gp-group': 'points', 'gp-playoff': 'points', 'mex-playoff': 'points', 'po-playoff': 'points' };
+let _scoreConfirmationMode = 'immediate';  // mirrors tvSettings.score_confirmation for matchRow badge display
 let _mexPlayers = [];  // [{id, name}] for manual editor
 let _mexBreakdowns = {};  // {match_id: {player_id: {raw, strength_mult, loss_disc, win_bonus, final}}}
 let _mexStrengthWeight = 0;
@@ -908,6 +909,20 @@ function _recoverFromMissingOpenTournament(renderTid, error) {
 function _autoFillScore(matchId, total) {
   const s1El = document.getElementById('s1-' + matchId);
   const s2El = document.getElementById('s2-' + matchId);
+  const changed = document.activeElement === s1El ? 's1' : 's2';
+  if (changed === 's1') {
+    const v = Math.max(0, Math.min(total, +s1El.value || 0));
+    s2El.value = total - v;
+  } else {
+    const v = Math.max(0, Math.min(total, +s2El.value || 0));
+    s1El.value = total - v;
+  }
+}
+
+/** Auto-fill complementary score in the dispute resolution custom inputs (Mexicano). */
+function _autoFillDisputeCustom(matchId, total) {
+  const s1El = document.getElementById('drs1-' + matchId);
+  const s2El = document.getElementById('drs2-' + matchId);
   const changed = document.activeElement === s1El ? 's1' : 's2';
   if (changed === 's1') {
     const v = Math.max(0, Math.min(total, +s1El.value || 0));
@@ -1692,6 +1707,7 @@ async function renderGP() {
     if (tvSettings.score_mode) {
       for (const [k, v] of Object.entries(tvSettings.score_mode)) if (k in _gpScoreMode) _gpScoreMode[k] = v;
     }
+    _scoreConfirmationMode = tvSettings.score_confirmation || 'immediate';
     _gpCurrentCourts = status.courts || [];
     _gpGroupNames = Object.keys(groups.standings);
     _gpCurrentPhase = status.phase;
@@ -1856,6 +1872,7 @@ async function renderPO() {
     if (tvSettings.score_mode) {
       for (const [k, v] of Object.entries(tvSettings.score_mode)) if (k in _gpScoreMode) _gpScoreMode[k] = v;
     }
+    _scoreConfirmationMode = tvSettings.score_confirmation || 'immediate';
     _poCurrentPhase = status.phase;
 
     const hasCourts = status.assign_courts !== false;
@@ -1946,12 +1963,67 @@ function matchRow(m, ctx) {
     html += `${roundLabel} <div class="match-teams"><span class="${t1Class}">${esc(t1)}</span> <span class="vs">vs</span> <span class="${t2Class}">${esc(t2)}</span></div> ${court}`;
     html += ` <span class="${scoreClass}" id="mscore-${m.id}">${scoreDisplay}</span>`;
     html += ` <span class="badge badge-completed">✓</span>`;
+    if (m.disputed) {
+      if (m.dispute_escalated) {
+        html += ` <span class="badge badge-dispute" title="${t('txt_txt_dispute_escalated_tip')}">⚠️ ${t('txt_txt_dispute_label')}</span>`;
+      } else {
+        html += ` <span class="badge badge-dispute badge-dispute-pending" title="${t('txt_txt_dispute_pending_tip')}">🔄 ${t('txt_txt_dispute_review_label')}</span>`;
+      }
+    } else if (m.scored_by && !m.score_confirmed && _scoreConfirmationMode !== 'immediate') {
+      html += ` <span class="badge badge-pending-score" title="Player-submitted, not yet confirmed">⏳</span>`;
+    }
     const _editSetsJson = JSON.stringify(m.sets || []);
     html += `<button type="button" class="match-edit-btn" id="medit-btn-${m.id}" data-sets='${_editSetsJson}' onclick="_toggleEditMatch('${m.id}','${ctx}',${sc[0]},${sc[1]})">${t('txt_txt_edit')}</button>`;
+    if (m.disputed) {
+      const origScore = (m.sets && m.sets.length > 0)
+        ? m.sets.map(s => `${s[0]}–${s[1]}`).join(' / ')
+        : (m.score ? `${m.score[0]}–${m.score[1]}` : '?');
+      const dispScore = (m.dispute_sets && m.dispute_sets.length > 0)
+        ? m.dispute_sets.map(s => `${s[0]}–${s[1]}`).join(' / ')
+        : (m.dispute_score ? `${m.dispute_score[0]}–${m.dispute_score[1]}` : '?');
+      const escalatedNote = m.dispute_escalated
+        ? `<div class="admin-dispute-note note-escalated">⚠️ ${t('txt_txt_escalated_by_player')}</div>`
+        : `<div class="admin-dispute-note note-reviewing">🔄 ${t('txt_txt_players_reviewing')}</div>`;
+      html += `<div class="admin-dispute-panel" id="dispute-panel-${m.id}">`;
+      html += escalatedNote;
+      html += `<div class="admin-dispute-scores">`;
+      html += `<label><input type="radio" name="dr-${m.id}" value="original" checked onclick="document.getElementById('dr-custom-${m.id}')?.classList.add('hidden')"> <span class="dispute-option-text">${t('txt_txt_original')}:</span> <span class="dispute-score-value">${origScore}</span></label>`;
+      html += `<label><input type="radio" name="dr-${m.id}" value="correction" onclick="document.getElementById('dr-custom-${m.id}')?.classList.add('hidden')"> <span class="dispute-option-text">${t('txt_txt_correction')}:</span> <span class="dispute-score-value">${dispScore}</span></label>`;
+      html += `<label><input type="radio" name="dr-${m.id}" value="custom" onclick="document.getElementById('dr-custom-${m.id}')?.classList.remove('hidden')"> <span class="dispute-option-text">${t('txt_txt_custom_score')}</span></label>`;
+      html += `</div>`;
+
+      // Custom score inputs (hidden until 'custom' radio is selected)
+      const isSetCtx = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff';
+      const custMode = _gpScoreMode[ctx] || 'points';
+      html += `<div class="admin-dispute-custom hidden" id="dr-custom-${m.id}">`;
+      if (isSetCtx) {
+        html += `<div id="dr-custom-pts-${m.id}" class="custom-score-row ${custMode === 'sets' ? 'hidden' : ''}">`;
+        html += `<input type="number" id="drs1-${m.id}" min="0" placeholder="0">`;
+        html += `<span>–</span>`;
+        html += `<input type="number" id="drs2-${m.id}" min="0" placeholder="0">`;
+        html += `</div>`;
+        html += `<div id="dr-custom-sets-${m.id}" class="${custMode === 'sets' ? '' : 'hidden'}">`;
+        html += `<div class="tennis-sets" id="dr-tennis-${m.id}">`;
+        html += _renderTennisSetInputs('dr-' + m.id, 3);
+        html += `</div></div>`;
+      } else {
+        const autoCalc = _totalPts > 0 && ctx === 'mex';
+        const onCustInput = autoCalc ? `oninput="_autoFillDisputeCustom('${m.id}', ${_totalPts})"` : '';
+        html += `<div class="custom-score-row">`;
+        html += `<input type="number" id="drs1-${m.id}" min="0" placeholder="0" ${onCustInput}>`;
+        html += `<span>–</span>`;
+        html += `<input type="number" id="drs2-${m.id}" min="0" placeholder="0" ${onCustInput}>`;
+        html += `</div>`;
+      }
+      html += `</div>`;
+
+      html += `<button type="button" class="btn btn-warning btn-sm admin-dispute-resolve" onclick="_adminResolveDispute('${m.id}','${ctx}')">${t('txt_txt_resolve_dispute')}</button>`;
+      html += `</div>`;
+    }
 
     // Inline edit form (hidden)
     const isSetScoringCtxEdit = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff';
-    const autoCalc = _totalPts > 0 && (ctx === 'mex' || ctx === 'mex-playoff');
+    const autoCalc = _totalPts > 0 && ctx === 'mex';
     const onInput = autoCalc ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"` : '';
     html += `<div class="match-actions hidden" id="medit-${m.id}">`;
     if (isSetScoringCtxEdit) {
@@ -2012,10 +2084,131 @@ function matchRow(m, ctx) {
     return html;
   }
 
+  // ── Pending confirmation — player submitted but score_confirmation="required" ──
+  // Match status may be in_progress with a score that's awaiting confirmation,
+  // or may even have a dispute. Show the score, lifecycle badges, and dispute panel.
+  if (m.score && m.scored_by && !m.score_confirmed) {
+    const sc = m.score;
+    let scoreDisplay;
+    let scoreClass = 'match-score';
+    if (m.sets && m.sets.length > 0) {
+      scoreClass = 'match-score sets-stack';
+      scoreDisplay = m.sets.map(s => `<span class="set-row">${s[0]}-${s[1]}</span>`).join('');
+    } else {
+      scoreDisplay = `${sc[0]} – ${sc[1]}`;
+    }
+
+    let html = `<div id="mcard-${m.id}" class="match-card" style="flex-wrap:wrap">`;
+    html += `${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
+    html += ` <span class="${scoreClass}" id="mscore-${m.id}">${scoreDisplay}</span>`;
+    if (m.disputed) {
+      if (m.dispute_escalated) {
+        html += ` <span class="badge badge-dispute" title="${t('txt_txt_dispute_escalated_tip')}">⚠️ ${t('txt_txt_dispute_label')}</span>`;
+      } else {
+        html += ` <span class="badge badge-dispute badge-dispute-pending" title="${t('txt_txt_dispute_pending_tip')}">🔄 ${t('txt_txt_dispute_review_label')}</span>`;
+      }
+    } else if (_scoreConfirmationMode !== 'immediate') {
+      html += ` <span class="badge badge-pending-score" title="Player-submitted, awaiting confirmation">⏳</span>`;
+    }
+    const _editSetsJson = JSON.stringify(m.sets || []);
+    html += `<button type="button" class="match-edit-btn" id="medit-btn-${m.id}" data-sets='${_editSetsJson}' onclick="_toggleEditMatch('${m.id}','${ctx}',${sc[0]},${sc[1]})">${t('txt_txt_edit')}</button>`;
+
+    if (m.disputed) {
+      const origScore = (m.sets && m.sets.length > 0)
+        ? m.sets.map(s => `${s[0]}–${s[1]}`).join(' / ')
+        : `${sc[0]}–${sc[1]}`;
+      const dispScore = (m.dispute_sets && m.dispute_sets.length > 0)
+        ? m.dispute_sets.map(s => `${s[0]}–${s[1]}`).join(' / ')
+        : (m.dispute_score ? `${m.dispute_score[0]}–${m.dispute_score[1]}` : '?');
+      const escalatedNote = m.dispute_escalated
+        ? `<div class="admin-dispute-note note-escalated">⚠️ ${t('txt_txt_escalated_by_player')}</div>`
+        : `<div class="admin-dispute-note note-reviewing">🔄 ${t('txt_txt_players_reviewing')}</div>`;
+      html += `<div class="admin-dispute-panel" id="dispute-panel-${m.id}">`;
+      html += escalatedNote;
+      html += `<div class="admin-dispute-scores">`;
+      html += `<label><input type="radio" name="dr-${m.id}" value="original" checked onclick="document.getElementById('dr-custom-${m.id}')?.classList.add('hidden')"> <span class="dispute-option-text">${t('txt_txt_original')}:</span> <span class="dispute-score-value">${origScore}</span></label>`;
+      html += `<label><input type="radio" name="dr-${m.id}" value="correction" onclick="document.getElementById('dr-custom-${m.id}')?.classList.add('hidden')"> <span class="dispute-option-text">${t('txt_txt_correction')}:</span> <span class="dispute-score-value">${dispScore}</span></label>`;
+      html += `<label><input type="radio" name="dr-${m.id}" value="custom" onclick="document.getElementById('dr-custom-${m.id}')?.classList.remove('hidden')"> <span class="dispute-option-text">${t('txt_txt_custom_score')}</span></label>`;
+      html += `</div>`;
+
+      const isSetCtx = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff';
+      const custMode = _gpScoreMode[ctx] || 'points';
+      html += `<div class="admin-dispute-custom hidden" id="dr-custom-${m.id}">`;
+      if (isSetCtx) {
+        html += `<div id="dr-custom-pts-${m.id}" class="custom-score-row ${custMode === 'sets' ? 'hidden' : ''}">`;
+        html += `<input type="number" id="drs1-${m.id}" min="0" placeholder="0">`;
+        html += `<span>–</span>`;
+        html += `<input type="number" id="drs2-${m.id}" min="0" placeholder="0">`;
+        html += `</div>`;
+        html += `<div id="dr-custom-sets-${m.id}" class="${custMode === 'sets' ? '' : 'hidden'}">`;
+        html += `<div class="tennis-sets" id="dr-tennis-${m.id}">`;
+        html += _renderTennisSetInputs('dr-' + m.id, 3);
+        html += `</div></div>`;
+      } else {
+        const autoCalc = _totalPts > 0 && ctx === 'mex';
+        const onCustInput = autoCalc ? `oninput="_autoFillDisputeCustom('${m.id}', ${_totalPts})"` : '';
+        html += `<div class="custom-score-row">`;
+        html += `<input type="number" id="drs1-${m.id}" min="0" placeholder="0" ${onCustInput}>`;
+        html += `<span>–</span>`;
+        html += `<input type="number" id="drs2-${m.id}" min="0" placeholder="0" ${onCustInput}>`;
+        html += `</div>`;
+      }
+      html += `</div>`;
+
+      html += `<button type="button" class="btn btn-warning btn-sm admin-dispute-resolve" onclick="_adminResolveDispute('${m.id}','${ctx}')">${t('txt_txt_resolve_dispute')}</button>`;
+      html += `</div>`;
+    }
+
+    // Inline edit form (hidden)
+    const isSetScoringCtxEdit = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff';
+    const autoCalcEdit = _totalPts > 0 && ctx === 'mex';
+    const onInputEdit = autoCalcEdit ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"` : '';
+    html += `<div class="match-actions hidden" id="medit-${m.id}">`;
+    if (isSetScoringCtxEdit) {
+      const stageMode = _gpScoreMode[ctx] || 'points';
+      html += `<div id="score-normal-${m.id}" class="${stageMode === 'sets' ? 'hidden' : ''}">`;
+      html += `<input type="number" id="s1-${m.id}" min="0" value="${sc[0]}" style="width:50px" ${onInputEdit}>`;
+      html += `<span>–</span>`;
+      html += `<input type="number" id="s2-${m.id}" min="0" value="${sc[1]}" style="width:50px" ${onInputEdit}>`;
+      html += `<button type="button" class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
+      html += `</div>`;
+      html += `<div id="score-tennis-${m.id}" class="${stageMode === 'sets' ? '' : 'hidden'}">`;
+      html += `<div class="tennis-sets" id="tennis-sets-${m.id}">`;
+      html += _renderTennisSetInputs(m.id, 3);
+      html += `</div>`;
+      html += `<button type="button" class="btn btn-success btn-sm" onclick="submitTennisScore('${m.id}','${ctx}')">${t('txt_txt_save_sets')}</button>`;
+      html += `</div>`;
+    } else {
+      html += `<input type="number" id="s1-${m.id}" min="0" value="${sc[0]}" style="width:50px" ${onInputEdit}>`;
+      html += `<span>–</span>`;
+      html += `<input type="number" id="s2-${m.id}" min="0" value="${sc[1]}" style="width:50px" ${onInputEdit}>`;
+      html += `<button type="button" class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
+    }
+    html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_cancelEditMatch('${m.id}')">✕</button>`;
+    html += `</div>`;
+
+    // Comment banner
+    html += `<div class="match-comment-banner">`;
+    if (m.comment) {
+      html += `<span class="match-comment-text" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_click_to_edit')}">💬 ${esc(m.comment)}</span>`;
+    } else {
+      html += `<span class="match-comment-add" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_comment_placeholder')}">💬 ${t('txt_match_add_comment')}</span>`;
+    }
+    html += `<div class="match-comment-edit hidden" id="mc-row-${m.id}">`;
+    html += `<input type="text" id="mc-${m.id}" value="${m.comment ? esc(m.comment) : ''}" placeholder="${t('txt_match_comment_placeholder')}" maxlength="500" onkeydown="if(event.key==='Enter')_setMatchComment('${m.id}')">`;
+    html += `<button type="button" class="btn-comment-save" onclick="_setMatchComment('${m.id}')">${t('txt_txt_save')}</button>`;
+    if (m.comment) html += `<button type="button" class="btn btn-danger btn-sm" onclick="_clearMatchComment('${m.id}')">✕</button>`;
+    html += `<button type="button" class="btn-comment-cancel" aria-label="${t('txt_txt_cancel')}" onclick="_closeCommentEdit('${m.id}')">✕</button>`;
+    html += `</div></div>`;
+
+    html += `</div>`;
+    return html;
+  }
+
   // Not yet completed — show input form
   const isMex = ctx === 'mex' || ctx === 'mex-playoff';
   const isSetScoringCtx = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff';
-  const autoCalc = _totalPts > 0 && (ctx === 'mex' || ctx === 'mex-playoff');
+  const autoCalc = _totalPts > 0 && ctx === 'mex';
   const onInput = autoCalc
     ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"`
     : '';
@@ -2616,6 +2809,7 @@ async function renderMex() {
     if (tvSettings.score_mode) {
       for (const [k, v] of Object.entries(tvSettings.score_mode)) if (k in _gpScoreMode) _gpScoreMode[k] = v;
     }
+    _scoreConfirmationMode = tvSettings.score_confirmation || 'immediate';
     _mexCurrentPhase = status.phase;
 
     const hasCourts = status.assign_courts !== false;
@@ -5312,14 +5506,43 @@ function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
   html += `</div>`;
 
   // Player scoring toggle
+  const _playerScoringOn = def('allow_player_scoring', true);
   html += `<div style="margin-top:0.65rem;padding-top:0.55rem;border-top:1px solid var(--border)">`;
   html += `<label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;font-size:0.84rem;">
-    <input type="checkbox" style="width:auto;min-height:auto;margin:0" ${def('allow_player_scoring', true) ? 'checked' : ''}
-      onchange="_updateTvSetting('allow_player_scoring', this.checked)">
+    <input type="checkbox" style="width:auto;min-height:auto;margin:0" ${_playerScoringOn ? 'checked' : ''}
+      onchange="_updateTvSetting('allow_player_scoring', this.checked); document.getElementById('scoring-dep-settings').style.opacity = this.checked ? '1' : '0.4'; document.getElementById('scoring-dep-settings').style.pointerEvents = this.checked ? '' : 'none'">
     ${t('txt_tv_allow_player_scoring')}
   </label>`;
   html += `<p style="color:var(--text-muted);font-size:0.76rem;margin:0.25rem 0 0 1.4rem">${t('txt_tv_allow_player_scoring_help')}</p>`;
   html += `</div>`;
+
+  // Dependent scoring settings — greyed out when player scoring is off
+  html += `<div id="scoring-dep-settings" style="transition:opacity 0.15s;${_playerScoringOn ? '' : 'opacity:0.4;pointer-events:none;'}">`;
+
+  // Score confirmation mode
+  html += `<div style="margin-top:0.65rem;padding-top:0.55rem;border-top:1px solid var(--border)">`;
+  const scoreConf = def('score_confirmation', 'immediate');
+  html += `<label style="font-size:0.84rem;display:block;margin-bottom:0.3rem">${t('txt_tv_score_confirmation')}</label>`;
+  html += `<select style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem" onchange="_updateTvSetting('score_confirmation', this.value)">`;
+  html += `<option value="immediate"${scoreConf === 'immediate' ? ' selected' : ''}>${t('txt_tv_score_confirmation_immediate')}</option>`;
+  html += `<option value="required"${scoreConf === 'required' ? ' selected' : ''}>${t('txt_tv_score_confirmation_required')}</option>`;
+  html += `</select>`;
+  html += `<p style="color:var(--text-muted);font-size:0.76rem;margin:0.25rem 0 0">${t('txt_tv_score_confirmation_help')}</p>`;
+  html += `</div>`;
+
+  // Correction window (displayed in minutes, stored as seconds)
+  const corrSecs = def('correction_window_seconds', 0);
+  const corrMins = Math.round(corrSecs / 60 * 10) / 10;
+  html += `<div style="margin-top:0.65rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">`;
+  html += `<label style="font-size:0.84rem;color:var(--text-muted);white-space:nowrap">${t('txt_tv_correction_window')}</label>`;
+  html += `<input type="number" min="0" max="60" step="0.5" value="${corrMins}" style="width:5rem;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem"`;
+  html += ` onchange="_updateTvSetting('correction_window_seconds', Math.max(0, Math.min(3600, Math.round((+this.value||0)*60))))">`;
+  html += `<span style="font-size:0.84rem;color:var(--text-muted)">${t('txt_tv_window_minutes_label')}</span>`;
+  html += `</div>`;
+  html += `<p style="color:var(--text-muted);font-size:0.76rem;margin:0.15rem 0 0">${t('txt_tv_correction_window_help')}</p>`;
+
+  html += `</div>`; // close #scoring-dep-settings
+
   const currentInterval = def('refresh_interval', 15);
   html += `<div style="margin-top:0.65rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">`;
   html += `<label style="font-size:0.84rem;color:var(--text-muted);white-space:nowrap">${t('txt_txt_auto_refresh_every')}</label>`;
@@ -5496,6 +5719,57 @@ async function _saveRegEmailSettings(rid) {
     }
   } catch (e) {
     console.error('Reg email settings save failed:', e.message);
+  }
+}
+
+/** Resolve a score dispute as admin. */
+async function _adminResolveDispute(matchId, ctx) {
+  if (!currentTid) return;
+  const radios = document.querySelectorAll(`input[name="dr-${matchId}"]`);
+  let chosen = 'original';
+  for (const r of radios) { if (r.checked) { chosen = r.value; break; } }
+
+  const payload = { chosen };
+
+  if (chosen === 'custom') {
+    // Check for tennis/sets mode in custom inputs
+    const setsDiv = document.getElementById('dr-custom-sets-' + matchId);
+    const isTennis = setsDiv && !setsDiv.classList.contains('hidden');
+    if (isTennis) {
+      const sets = [];
+      for (let i = 0; i < 10; i++) {
+        const e1 = document.getElementById('ts1-dr-' + matchId + '-' + i);
+        const e2 = document.getElementById('ts2-dr-' + matchId + '-' + i);
+        if (!e1 || !e2) break;
+        const v1 = +e1.value || 0;
+        const v2 = +e2.value || 0;
+        if (v1 === 0 && v2 === 0) continue;
+        sets.push([v1, v2]);
+      }
+      if (sets.length === 0) { _showToast(t('txt_txt_enter_at_least_one_set_score')); return; }
+      // Compute totals from sets
+      let t1 = 0, t2 = 0;
+      for (const s of sets) { t1 += s[0]; t2 += s[1]; }
+      payload.score1 = t1;
+      payload.score2 = t2;
+      payload.sets = sets;
+    } else {
+      const s1 = +(document.getElementById('drs1-' + matchId)?.value) || 0;
+      const s2 = +(document.getElementById('drs2-' + matchId)?.value) || 0;
+      if (s1 === 0 && s2 === 0) { _showToast(t('txt_txt_enter_custom_score')); return; }
+      payload.score1 = s1;
+      payload.score2 = s2;
+    }
+  }
+
+  try {
+    await api(`/api/tournaments/${currentTid}/matches/${matchId}/resolve-dispute`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    await _rerenderCurrentViewPreserveDrafts();
+  } catch (e) {
+    _showToast('Resolve dispute failed: ' + e.message);
   }
 }
 

@@ -17,6 +17,7 @@ from ..tournaments import GroupPlayoffTournament
 from ..viz import render_playoff_schema
 from .helpers import (
     _get_tournament,
+    _get_tv_settings,
     _is_bye_match,
     _serialize_match,
     _tennis_sets_to_scores,
@@ -26,6 +27,8 @@ from .helpers import (
     _require_score_permission,
     _find_match,
     _store_tournament,
+    _apply_player_score_metadata,
+    _mark_admin_score,
 )
 from .schemas import (
     CreateGroupPlayoffRequest,
@@ -156,6 +159,21 @@ async def gp_record_group(
             t.record_group_result(req.match_id, (req.score1, req.score2))
         except (KeyError, RuntimeError) as e:
             raise HTTPException(400, str(e))
+        is_player_action = player is not None and user is None
+        if is_player_action:
+            tv = _get_tv_settings(tid)
+            is_required = tv.get("score_confirmation", "immediate") == "required"
+            if is_required:
+                # Keep match score stored but don't count it in standings yet.
+                from ..models import MatchStatus
+
+                match.status = MatchStatus.IN_PROGRESS
+            _apply_player_score_metadata(
+                match, player.player_id, score=[req.score1, req.score2], confirmed=not is_required
+            )
+        else:
+            actor = user.username if user else None
+            _mark_admin_score(match, actor)
         _save_tournament(tid)
     return {"ok": True}
 
@@ -185,6 +203,24 @@ async def gp_record_group_tennis(
             )
         except (KeyError, RuntimeError) as e:
             raise HTTPException(400, str(e))
+        is_player_action = player is not None and user is None
+        if is_player_action:
+            tv = _get_tv_settings(tid)
+            is_required = tv.get("score_confirmation", "immediate") == "required"
+            if is_required:
+                from ..models import MatchStatus
+
+                match.status = MatchStatus.IN_PROGRESS
+            _apply_player_score_metadata(
+                match,
+                player.player_id,
+                score=[total1, total2],
+                sets=[list(s) for s in sets_tuples],
+                confirmed=not is_required,
+            )
+        else:
+            actor = user.username if user else None
+            _mark_admin_score(match, actor)
         _save_tournament(tid)
     return {
         "ok": True,
@@ -324,6 +360,10 @@ async def gp_record_playoff(
             t.record_playoff_result(req.match_id, (req.score1, req.score2))
         except (KeyError, RuntimeError, ValueError) as e:
             raise HTTPException(400, str(e))
+        if player is not None and user is None:
+            _apply_player_score_metadata(match, player.player_id, score=[req.score1, req.score2], confirmed=True)
+        else:
+            _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
     return {"ok": True, "phase": t.phase}
 
@@ -347,6 +387,12 @@ async def gp_record_playoff_tennis(
             t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)
         except (KeyError, RuntimeError, ValueError) as e:
             raise HTTPException(400, str(e))
+        if player is not None and user is None:
+            _apply_player_score_metadata(
+                match, player.player_id, score=[total1, total2], sets=[list(s) for s in sets_tuples], confirmed=True
+            )
+        else:
+            _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
     return {
         "ok": True,
