@@ -122,9 +122,18 @@ def get_tournament_lock(tid: str) -> asyncio.Lock:
 
 
 def _next_id() -> str:
-    """Return the next sequential tournament ID (e.g. ``t3``)."""
+    """Return the next sequential tournament ID (e.g. ``t3``) and persist it."""
     global _counter
     _counter += 1
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES ('tournament_counter', ?)"
+                " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (_counter,),
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not persist tournament counter: %s", exc)
     return f"t{_counter}"
 
 
@@ -353,6 +362,7 @@ def _delete_tournament(tid: str) -> None:
     try:
         with get_db() as conn:
             conn.execute("DELETE FROM tournament_shares WHERE tournament_id = ?", (tid,))
+            conn.execute("DELETE FROM player_secrets WHERE tournament_id = ?", (tid,))
             conn.execute("DELETE FROM tournaments WHERE id = ?", (tid,))
     except sqlite3.Error as exc:
         logger.warning("Could not delete tournament %s: %s", tid, exc)
@@ -405,6 +415,15 @@ def _load_state() -> None:
         # Keep the in-memory counter ahead of the highest persisted ID.
         if tid.startswith("t") and tid[1:].isdigit():
             _counter = max(_counter, int(tid[1:]))
+
+    # Also seed from the persisted counter so deleted IDs are never reused.
+    try:
+        with get_db() as conn:
+            row = conn.execute("SELECT value FROM meta WHERE key = 'tournament_counter'").fetchone()
+            if row:
+                _counter = max(_counter, row["value"])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not read tournament counter from meta: %s", exc)
 
     logger.info("Loaded %d tournament(s) from SQLite", len(_tournaments))
     purge_expired_secrets()

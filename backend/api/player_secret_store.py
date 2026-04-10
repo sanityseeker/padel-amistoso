@@ -601,7 +601,8 @@ def get_secrets_for_tournament(tournament_id: str) -> dict[str, dict]:
     try:
         with get_db() as conn:
             rows = conn.execute(
-                "SELECT player_id, player_name, passphrase, token, contact, email, profile_id FROM player_secrets WHERE tournament_id = ?",
+                "SELECT player_id, player_name, passphrase, token, contact, email, profile_id"
+                " FROM player_secrets WHERE tournament_id = ? AND finished_at IS NULL",
                 (tournament_id,),
             ).fetchall()
     except sqlite3.Error as exc:
