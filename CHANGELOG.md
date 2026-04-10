@@ -1,3 +1,9 @@
+## v1.3.7 (2026-04-10)
+
+### Fix
+
+- **tournament-creation**: don't reuse deleted tournaments ids
+
 ## v1.3.6 (2026-04-10)
 
 ### Fix
