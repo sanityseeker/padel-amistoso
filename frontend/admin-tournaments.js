@@ -201,7 +201,16 @@ let _mexSortDir = 'desc';    // 'asc' | 'desc'
 // ─── Admin live-refresh (SSE with polling fallback) ──────────
 let _adminVersionStream = null;
 let _adminLastKnownVersion = null;
+let _adminPendingReload = false;
 const _ADMIN_POLL_INTERVAL_MS = 30000;
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !currentTid) return;
+  if (_adminPendingReload) {
+    _adminPendingReload = false;
+    _rerenderCurrentViewPreserveDrafts();
+  }
+});
 
 function _startAdminVersionPoll() {
   _stopAdminVersionPoll();
@@ -210,13 +219,15 @@ function _startAdminVersionPoll() {
     url: `/api/tournaments/${currentTid}/events`,
     pollUrl: `/api/tournaments/${currentTid}/version`,
     pollIntervalMs: _ADMIN_POLL_INTERVAL_MS,
-    shouldPause: () => !currentTid || document.hidden,
     async onVersion(data) {
-      if (_adminLastKnownVersion !== null && data.version !== _adminLastKnownVersion) {
-        _adminLastKnownVersion = data.version;
-        await _rerenderCurrentViewPreserveDrafts();
-      } else {
-        _adminLastKnownVersion = data.version;
+      const changed = _adminLastKnownVersion !== null && data.version !== _adminLastKnownVersion;
+      _adminLastKnownVersion = data.version;
+      if (changed) {
+        if (document.hidden) {
+          _adminPendingReload = true;
+        } else {
+          await _rerenderCurrentViewPreserveDrafts();
+        }
       }
     },
   });
@@ -225,6 +236,7 @@ function _startAdminVersionPoll() {
 function _stopAdminVersionPoll() {
   if (_adminVersionStream) { _adminVersionStream.close(); _adminVersionStream = null; }
   _adminLastKnownVersion = null;
+  _adminPendingReload = false;
 }
 
 function _refreshCurrentView() {

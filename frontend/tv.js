@@ -85,6 +85,7 @@ const tvState = {
   mexTeamMode: false,       // mirrors status.team_mode
   mexSortCol: null,         // null = server default order
   mexSortDir: 'desc',       // 'asc' | 'desc'
+  _pendingReload: false,    // true when SSE detected a change while tab was hidden
 };
 
 // ── In-flight guards for version polling ──────────────────
@@ -1256,6 +1257,31 @@ function _stopAllSchedules() {
   _pickerVersionEtag = null;
 }
 
+// Catch-up when the tab becomes visible again.  In "On update" mode the SSE
+// stream always updates lastKnownVersion — even when the tab is hidden — but
+// defers the expensive loadTV() call and sets _pendingReload instead.  This
+// listener fires as soon as the user switches back and instantly reloads
+// without a redundant version fetch.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !TID) return;
+  if (tvState._pendingReload) {
+    tvState._pendingReload = false;
+    if (!tvState.isRefreshing && !_hasOpenScoreForm()) loadTV();
+    return;
+  }
+  // Fallback: if the SSE stream was down while the tab was hidden, we may
+  // have missed version bumps entirely.  A cheap server check covers that.
+  if (tvState.refreshIntervalSecs !== -1 || tvState.lastKnownVersion === null) return;
+  fetch(`${API}/api/tournaments/${TID}/version`)
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (!data || data.version === tvState.lastKnownVersion) return;
+      tvState.lastKnownVersion = data.version;
+      if (!tvState.isRefreshing && !_hasOpenScoreForm()) loadTV();
+    })
+    .catch(() => {});
+});
+
 function _updateCountdownEl(text) {
   const el = document.getElementById('tv-countdown');
   if (el) el.textContent = text;
@@ -1263,6 +1289,13 @@ function _updateCountdownEl(text) {
 
 function _startCountdown() {
   _stopAllSchedules();
+  // If a version change was deferred while loadTV() was refreshing, process it
+  // now rather than waiting for a visibilitychange that may never come.
+  if (tvState._pendingReload && !document.hidden && !_hasOpenScoreForm()) {
+    tvState._pendingReload = false;
+    loadTV();
+    return;
+  }
   if (tvState.refreshIntervalSecs === 0) {
     // “Never” — no auto-refresh
     _updateCountdownEl(t('txt_txt_manual_only'));
@@ -1275,12 +1308,16 @@ function _startCountdown() {
       url: `/api/tournaments/${TID}/events`,
       pollUrl: `/api/tournaments/${TID}/version`,
       pollIntervalMs: _TV_VERSION_POLL_INTERVAL_MS,
-      shouldPause: () => tvState.isRefreshing || !TID || document.hidden,
       onVersion(data) {
-        if (tvState.lastKnownVersion !== null && data.version !== tvState.lastKnownVersion) {
-          if (!_hasOpenScoreForm()) loadTV();
-        }
+        const changed = tvState.lastKnownVersion !== null && data.version !== tvState.lastKnownVersion;
         tvState.lastKnownVersion = data.version;
+        if (changed) {
+          if (document.hidden || tvState.isRefreshing || _hasOpenScoreForm()) {
+            tvState._pendingReload = true;
+          } else {
+            loadTV();
+          }
+        }
       },
     });
     return;
@@ -1303,6 +1340,7 @@ function _startCountdown() {
 async function loadTV() {
   if (tvState.isRefreshing) return;
   tvState.isRefreshing = true;
+  tvState._pendingReload = false;
   if (tvState.countdownInterval) clearInterval(tvState.countdownInterval);
 
   const dot = document.getElementById('refresh-dot');
@@ -2162,14 +2200,15 @@ async function _showPicker() {
     url: '/api/events',
     pollUrl: '/api/version',
     pollIntervalMs: _TV_PICKER_POLL_INTERVAL_MS,
-    shouldPause: () => document.hidden,
     async onVersion(data) {
       if (_pickerVersion !== null && data.version !== _pickerVersion) {
+        _pickerVersion = data.version;
         let list = [];
         try { list = await api('/api/tournaments'); } catch (_) {}
         _renderPickerHtml(list);
+      } else {
+        _pickerVersion = data.version;
       }
-      _pickerVersion = data.version;
     },
   });
 }

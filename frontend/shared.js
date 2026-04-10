@@ -517,11 +517,10 @@ document.addEventListener('click', (e) => {
  * @param {string} opts.pollUrl          Polling fallback URL, e.g. `/api/tournaments/t1/version`
  * @param {number} opts.pollIntervalMs   Polling interval in ms (default: 3000)
  * @param {function} opts.onVersion      Called with the parsed data object on each event
- * @param {function} [opts.shouldPause]  Returns true to skip processing (e.g. document.hidden)
  * @returns {{ close: function }}
  */
 function createVersionStream(opts) {
-  const { url, pollUrl, pollIntervalMs = 3000, onVersion, shouldPause } = opts;
+  const { url, pollUrl, pollIntervalMs = 3000, onVersion } = opts;
   let eventSource = null;
   let pollTimer = null;
   let pollEtag = null;
@@ -540,7 +539,6 @@ function createVersionStream(opts) {
     eventSource.onmessage = (ev) => {
       if (closed) return;
       reconnectAttempts = 0;
-      if (shouldPause && shouldPause()) return;
       try {
         const data = JSON.parse(ev.data);
         onVersion(data);
@@ -565,7 +563,6 @@ function createVersionStream(opts) {
     let _fetching = false;
     pollTimer = setInterval(async () => {
       if (closed || _fetching) return;
-      if (shouldPause && shouldPause()) return;
       _fetching = true;
       try {
         const r = await fetch(pollUrl, {
