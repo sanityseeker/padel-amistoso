@@ -779,3 +779,65 @@ class TestMultiTournamentConversion:
         assert [item["id"] for item in linked] == [tid1, tid2]
         assert all(item["name"] for item in linked)
         assert all("finished" in item for item in linked)
+
+
+class TestConvertClosedRegistration:
+    """Closed (non-archived) registrations can still be converted to tournaments."""
+
+    def _setup_registration(self, client: TestClient, auth_headers: dict, names: list[str]) -> str:
+        """Create a registration and register the given player names."""
+        r = client.post("/api/registrations", json={"name": "Closed Reg"}, headers=auth_headers)
+        assert r.status_code == 200
+        rid = r.json()["id"]
+        for name in names:
+            res = client.post(f"/api/registrations/{rid}/register", json={"player_name": name})
+            assert res.status_code == 200
+        return rid
+
+    def test_convert_closed_registration_succeeds(self, client, auth_headers):
+        """Closing a registration does not prevent conversion to a tournament."""
+        rid = self._setup_registration(client, auth_headers, ["Alice", "Bob", "Charlie", "Dave"])
+
+        close = client.patch(f"/api/registrations/{rid}", json={"open": False}, headers=auth_headers)
+        assert close.status_code == 200
+        assert client.get(f"/api/registrations/{rid}", headers=auth_headers).json()["open"] is False
+
+        r = client.post(
+            f"/api/registrations/{rid}/convert",
+            json={"tournament_type": "mexicano", "player_names": ["Alice", "Bob", "Charlie", "Dave"]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        assert r.json()["tournament_id"]
+
+    def test_convert_closed_registration_gp_succeeds(self, client, auth_headers):
+        """Closed registration converts to a group-playoff tournament."""
+        rid = self._setup_registration(client, auth_headers, ["Alice", "Bob", "Charlie", "Dave"])
+
+        client.patch(f"/api/registrations/{rid}", json={"open": False}, headers=auth_headers)
+
+        r = client.post(
+            f"/api/registrations/{rid}/convert",
+            json={
+                "tournament_type": "group_playoff",
+                "player_names": ["Alice", "Bob", "Charlie", "Dave"],
+                "num_groups": 1,
+            },
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        assert r.json()["tournament_id"]
+
+    def test_convert_archived_registration_fails(self, client, auth_headers):
+        """Archived registrations cannot be converted."""
+        rid = self._setup_registration(client, auth_headers, ["Alice", "Bob", "Charlie", "Dave"])
+
+        client.patch(f"/api/registrations/{rid}", json={"archived": True}, headers=auth_headers)
+
+        r = client.post(
+            f"/api/registrations/{rid}/convert",
+            json={"tournament_type": "mexicano", "player_names": ["Alice", "Bob", "Charlie", "Dave"]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 400
+        assert "archived" in r.json()["detail"].lower()

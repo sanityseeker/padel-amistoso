@@ -576,6 +576,7 @@ class TestPlayerScoreMexicano:
     def test_player_scores_mexicano_match(self, client, auth_headers):
         tid = _create_mex(client, auth_headers)
         secrets = _get_secrets(client, tid, auth_headers)
+        client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
 
         # Get current round matches via the matches endpoint
         r = client.get(f"/api/tournaments/{tid}/mex/matches", headers=auth_headers)
@@ -704,6 +705,7 @@ class TestAllowPlayerScoringToggle:
         """Player scoring disabled blocks mexicano matches too."""
         tid = _create_mex(client, auth_headers)
         secrets = _get_secrets(client, tid, auth_headers)
+        client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
         matches_r = client.get(f"/api/tournaments/{tid}/mex/matches", headers=auth_headers)
         matches = matches_r.json().get("current_matches", [])
         assert len(matches) > 0

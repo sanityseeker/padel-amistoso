@@ -355,10 +355,9 @@ function _renderRegDetailInline(rid) {
   // Convert button + close/open registration toggle
   const regBtnLabel = (r.converted_to_tids?.length > 0) ? t('txt_reg_create_another') : t('txt_reg_convert_to_tournament');
   let regConvDisabled = '';
-  if (!r.open) regConvDisabled = `disabled title="${t('txt_reg_closed_cannot_convert')}"`;
-  else if (r.registrants.length < 2) regConvDisabled = `disabled title="${t('txt_reg_min_registrants_needed')}"`;
+  if (r.registrants.length < 2) regConvDisabled = `disabled title="${t('txt_reg_min_registrants_needed')}"`;
   html += `<div style="display:flex;gap:0.75rem;justify-content:center;align-items:center;flex-wrap:wrap;margin-top:1.25rem">`;
-  if (!r.archived && r.open) {
+  if (!r.archived) {
     html += `<button type="button" class="btn btn-success" style="padding:0.7rem 1.5rem;font-size:1rem" onclick="_startConvertFromReg('${esc(rid)}')" ${regConvDisabled}>${regBtnLabel}</button>`;
   }
   html += `</div>`;
@@ -375,6 +374,21 @@ function _renderRegDetailInline(rid) {
   });
   const savedQuestionDraft = _captureRegQuestionsDraft(`reg-edit-questions-${rid}`);
   const scrollY = window.scrollY;
+  // Save answers-panel filter state (not captured by id-based savedInputs)
+  const savedParticipantFilter = el.querySelector('.reg-answers-participant-select')?.value ?? '';
+  const savedParticipantSearch = el.querySelector('.reg-answers-participant-search')?.value ?? '';
+  const savedActiveChoices = {};
+  const savedTextSearches = {};
+  const savedSpoilerOpen = new Set();
+  const savedSortedCards = new Set();
+  el.querySelectorAll('.reg-answer-card').forEach((card, i) => {
+    const activeBar = card.querySelector('.reg-answer-bar-row.active');
+    if (activeBar) savedActiveChoices[i] = activeBar.dataset.choice ?? '';
+    const search = card.querySelector('.reg-answer-text-search');
+    if (search?.value) savedTextSearches[i] = search.value;
+    if (card.querySelector('.reg-answer-spoiler')?.open) savedSpoilerOpen.add(i);
+    if (card.querySelector('.reg-answer-sort-btn')?.dataset.sorted === 'true') savedSortedCards.add(i);
+  });
 
   el.innerHTML = html;
 
@@ -388,7 +402,43 @@ function _renderRegDetailInline(rid) {
   }
   window.scrollTo({ top: scrollY });
 
-  el.querySelectorAll('.reg-answer-card.hide-empty').forEach(card => _regApplyRowFilters(card));
+  // Restore answers-panel filter state: active choices, spoilers, sort, text searches
+  el.querySelectorAll('.reg-answer-card').forEach((card, i) => {
+    if (i in savedActiveChoices) {
+      const barRow = Array.from(card.querySelectorAll('.reg-answer-bar-row'))
+        .find(r => r.dataset.choice === savedActiveChoices[i]);
+      if (barRow) barRow.classList.add('active');
+    }
+    if (savedTextSearches[i]) {
+      const search = card.querySelector('.reg-answer-text-search');
+      if (search) search.value = savedTextSearches[i];
+    }
+    if (savedSpoilerOpen.has(i) || i in savedActiveChoices) {
+      const spoiler = card.querySelector('.reg-answer-spoiler');
+      if (spoiler) spoiler.open = true;
+    }
+    if (savedSortedCards.has(i)) {
+      const sortBtn = card.querySelector('.reg-answer-sort-btn');
+      if (sortBtn) _regSortChoiceAnswers(sortBtn);
+    }
+  });
+  // Restore participant filter and re-apply all row filters (participant + choice + hide-empty)
+  const _restoredParticipantSearch = el.querySelector('.reg-answers-participant-search');
+  if (_restoredParticipantSearch && savedParticipantSearch) {
+    _restoredParticipantSearch.value = savedParticipantSearch;
+    _regFilterParticipantOptions(_restoredParticipantSearch);
+  }
+  const _restoredParticipantSelect = el.querySelector('.reg-answers-participant-select');
+  if (_restoredParticipantSelect && savedParticipantFilter) {
+    _restoredParticipantSelect.value = savedParticipantFilter;
+    _regFilterByParticipant(_restoredParticipantSelect);
+  } else if (!savedParticipantSearch) {
+    el.querySelectorAll('.reg-answer-card').forEach(card => _regApplyRowFilters(card));
+  }
+  // Re-apply text search filters after row visibility is settled
+  el.querySelectorAll('.reg-answer-text-search').forEach(search => {
+    if (search.value) _regFilterAnswers(search);
+  });
 
   const descEl = document.getElementById(`reg-edit-desc-${rid}`);
   if (descEl) _autoResizeTextarea(descEl);
@@ -836,9 +886,10 @@ function _renderAnswersPanel(rid, r, questions) {
   h += `</summary>`;
 
   const DICT_THRESHOLD = 25;
-  // Participant quick-filter
+  // Participant quick-filter (search input + select)
   h += `<div class="reg-answers-participant-filter-row">`;
   h += `<label class="reg-answers-participant-label">${t('txt_reg_participant_filter')}</label>`;
+  h += `<input type="text" class="reg-answers-participant-search" placeholder="${esc(t('txt_reg_search_by_name'))}" autocomplete="off" spellcheck="false" oninput="_regFilterParticipantOptions(this)">`;
   h += `<select class="reg-answers-participant-select" onchange="_regFilterByParticipant(this)">`;
   h += `<option value="">${t('txt_reg_all_participants')}</option>`;
   for (const reg of r.registrants) {
@@ -1001,6 +1052,24 @@ function _regFilterAnswers(input) {
     const nameMatch = !q || name.includes(q);
     row.style.display = (!nameMatch || (hideEmpty && !answered)) ? 'none' : '';
   }
+}
+
+function _regFilterParticipantOptions(searchInput) {
+  const q = searchInput.value.toLowerCase();
+  const select = searchInput.nextElementSibling;
+  if (!select) return;
+  for (const opt of select.options) {
+    if (!opt.value) { opt.hidden = false; continue; } // always show "All"
+    opt.hidden = q ? !opt.value.toLowerCase().includes(q) : false;
+  }
+  // Auto-select if exactly one visible match; reset to "All" when cleared
+  const visible = Array.from(select.options).filter(o => !o.hidden && o.value);
+  if (visible.length === 1) {
+    select.value = visible[0].value;
+  } else if (!q) {
+    select.value = '';
+  }
+  _regFilterByParticipant(select);
 }
 
 function _regFilterByParticipant(selectEl) {

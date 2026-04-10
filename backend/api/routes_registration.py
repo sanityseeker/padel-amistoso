@@ -992,10 +992,14 @@ async def convert_registration(
     """
     registration = _get_registration(rid)
     _require_registration_editor(registration, user)
+    if registration.get("archived"):
+        raise HTTPException(400, "Cannot convert an archived registration")
     reg_id = registration["id"]
 
     async with _get_registration_lock(reg_id):
         registration = _get_registration(reg_id)
+        if registration.get("archived"):
+            raise HTTPException(400, "Cannot convert an archived registration")
         registrants = _get_registrants(reg_id)
 
         # Determine the existing set of already-assigned player IDs across all

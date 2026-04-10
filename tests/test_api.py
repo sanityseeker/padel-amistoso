@@ -227,7 +227,7 @@ class TestMexicanoAPI:
     def test_create(self, client, auth_headers):
         r = client.post("/api/tournaments/mexicano", json=self.MEX_BODY, headers=auth_headers)
         assert r.status_code == 200
-        assert r.json()["current_round"] == 1
+        assert r.json()["current_round"] == 0
 
     def test_bad_player_count_too_few(self, client, auth_headers):
         body = {**self.MEX_BODY, "player_names": ["A", "B", "C"]}
@@ -249,7 +249,7 @@ class TestMexicanoAPI:
         r = client.get(f"/api/tournaments/{tid}/mex/status")
         assert r.status_code == 200
         data = r.json()
-        assert data["current_round"] == 1
+        assert data["current_round"] == 0
         assert len(data["leaderboard"]) == 8
 
     def test_matches_endpoint(self, client, auth_headers):
@@ -257,10 +257,11 @@ class TestMexicanoAPI:
         r = client.get(f"/api/tournaments/{tid}/mex/matches")
         assert r.status_code == 200
         data = r.json()
-        assert len(data["current_matches"]) == 2
+        assert len(data["current_matches"]) == 0
 
     def test_record_score(self, client, auth_headers):
         tid = self._create(client, auth_headers)
+        client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
         matches = client.get(f"/api/tournaments/{tid}/mex/matches").json()
         m = matches["current_matches"][0]
         r = client.post(
@@ -276,6 +277,7 @@ class TestMexicanoAPI:
 
     def test_record_bad_sum(self, client, auth_headers):
         tid = self._create(client, auth_headers)
+        client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
         matches = client.get(f"/api/tournaments/{tid}/mex/matches").json()
         m = matches["current_matches"][0]
         r = client.post(
@@ -291,11 +293,18 @@ class TestMexicanoAPI:
 
     def test_next_round_requires_completed(self, client, auth_headers):
         tid = self._create(client, auth_headers)
+        # Generate round 1 — no pending matches yet, must succeed
+        r = client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
+        assert r.status_code == 200
+        # Round 1 is now pending; generating round 2 must fail
         r = client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
         assert r.status_code == 400  # pending matches
 
     def test_full_mexicano_flow(self, client, auth_headers):
         tid = self._create(client, auth_headers)
+        # Generate round 1 via the same mechanism used for all subsequent rounds
+        r = client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
+        assert r.status_code == 200
 
         for rnd in range(3):
             # Get current matches
@@ -348,6 +357,7 @@ class TestMexicanoAPI:
         status = client.get(f"/api/tournaments/{tid}/mex/status").json()
         assert status["team_mode"] is True
 
+        client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
         matches = client.get(f"/api/tournaments/{tid}/mex/matches").json()
         for m in matches["current_matches"]:
             assert len(m["team1"]) == 1

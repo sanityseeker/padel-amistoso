@@ -172,6 +172,7 @@ class TestBannerAndComments:
         r = client.post("/api/tournaments/mexicano", json=body, headers=auth_headers)
         assert r.status_code == 200
         tid = r.json()["id"]
+        client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
 
         matches = client.get(f"/api/tournaments/{tid}/mex/matches").json()
         current = matches["current_matches"]

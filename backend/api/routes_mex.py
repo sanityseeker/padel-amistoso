@@ -128,8 +128,6 @@ async def create_mexicano(req: CreateMexicanoRequest, request: Request, user=Dep
         t.team_roster = team_roster
         t.team_member_names = team_member_names
 
-    t.generate_next_round()
-
     tid = await allocate_tournament_id()
     _store_tournament(
         tid,

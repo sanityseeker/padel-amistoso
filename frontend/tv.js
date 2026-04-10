@@ -55,6 +55,7 @@ const tvState = {
   tournamentType: null,
   tournamentName: '',
   tournamentSport: 'padel',
+  tournamentAlias: null,    // alias string or null
   refreshIntervalSecs: 15,
   countdown: 15,
   countdownInterval: null,
@@ -1180,6 +1181,7 @@ async function loadTV() {
     tvState.tournamentType = meta.type;
     tvState.tournamentName = meta.name;
     tvState.tournamentSport = meta.sport || 'padel';
+    tvState.tournamentAlias = meta.alias || null;
     document.title = `${_tvLabel()} | ${meta.name}`;
 
     // Load TV settings and tournament data in parallel
@@ -1607,9 +1609,22 @@ function _buildMexLeaderboard(_status) {
   return html;
 }
 
+function _copyTournamentSlug() {
+  const slug = tvState.tournamentAlias || TID;
+  if (!slug) return;
+  navigator.clipboard.writeText(slug).then(() => {
+    const el = document.getElementById('tv-slug-chip');
+    if (!el) return;
+    const prev = el.textContent;
+    el.textContent = '✓ ' + t('txt_txt_url_copied');
+    setTimeout(() => { el.textContent = prev; }, 1400);
+  });
+}
+
 function _buildHeader(name, phase, champion) {
   const phaseLabel = _phaseLabel(phase);
   const langToggle = _languageToggleMeta();
+  const _slug = tvState.tournamentAlias || TID || '';
   return `
     <div class="tv-header" id="tv-header-main">
       <div class="tv-header-title-row">
@@ -1626,6 +1641,7 @@ function _buildHeader(name, phase, champion) {
         ${phaseLabel && phase !== 'finished' ? `<span class="tv-badge tv-badge-phase">${esc(phaseLabel)}</span>` : ''}
         ${champion || phase === 'finished' ? `<span class="tv-badge tv-badge-champion">🏆 ${t('txt_txt_finished')}</span>` : ''}
       </div>
+      ${_slug ? `<div style="display:flex;justify-content:center;margin-top:0.25rem"><span id="tv-slug-chip" onclick="_copyTournamentSlug()" title="${escAttr(t('txt_tv_slug_copy_hint'))}" style="font-size:0.7rem;color:var(--text-muted);opacity:0.65;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:0.08rem 0.55rem;cursor:pointer;font-family:monospace;user-select:none;">${esc(_slug)}</span></div>` : ''}
       <div class="tv-header-row">
         <div class="tv-title">
           <button type="button" onclick="_backToTournaments()" style="background:var(--border);border:none;color:var(--text-muted);border-radius:999px;padding:0.3rem 0.8rem;cursor:pointer;font-size:0.78rem;font-weight:500;line-height:1;white-space:nowrap" title="${t('txt_txt_back_to_tournaments')}">← ${t('txt_txt_tournaments')}</button>

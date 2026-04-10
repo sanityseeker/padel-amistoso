@@ -3,14 +3,14 @@ async function _startConvertFromReg(rid) {
     const fresh = await api(`/api/registrations/${rid}`);
     _regDetails[rid] = fresh;
     _currentRegDetail = fresh;
-    if (!fresh.open || fresh.archived) {
+    if (fresh.archived) {
       _renderRegDetailInline(rid);
       return;
     }
   } catch (_) {
     const cached = _regDetails[rid];
     if (!cached) return;
-    if (!cached.open || cached.archived) {
+    if (cached.archived) {
       _renderRegDetailInline(rid);
       return;
     }

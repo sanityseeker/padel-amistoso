@@ -291,7 +291,7 @@
               <div class="adv-field">
                 <label data-i18n="txt_txt_rival_strength_label">Rival strength <small style="font-weight:400">(0–1)</small></label>
                 <input id="mex-strength-weight" type="number" value="0" min="0" max="1" step="0.05">
-                <small data-i18n="txt_txt_rival_strength_help">Buchholz-based bonus: boosts points when facing strong opponents (by their raw scoring average). Higher weight = stronger effect.</small>
+                <small data-i18n="txt_txt_rival_strength_help">Opponent-average bonus: boosts points when facing strong opponents (based on their average score). Higher weight = stronger effect.</small>
               </div>
               <div class="adv-field">
                 <label data-i18n="txt_txt_loss_discount_label">Loss discount <small style="font-weight:400">(1 = none)</small></label>
@@ -542,7 +542,7 @@
         <ul style="margin:0.3rem 0 0 1.1rem;font-size:0.84rem;color:var(--text-muted);line-height:1.7" data-i18n-html="txt_txt_info_formats_mex_list">
           <li><strong>Skill gap</strong> — max rating difference allowed within a group; blank falls back to snake-draft ordering.</li>
           <li><strong>Win bonus</strong> — extra points added to a winner's leaderboard score on top of raw game points.</li>
-          <li><strong>Rival strength (Buchholz, 0–1)</strong> — Buchholz-based bonus that rewards beating strong opponents; higher weight = bigger effect.</li>
+          <li><strong>Rival strength (0–1)</strong> — bonus that rewards facing strong opponents (based on their average score); higher weight = bigger effect.</li>
           <li><strong>Loss discount (0–1)</strong> — multiplier applied to the loser's scored points (e.g. 0.75 means losing 12–20 credits 9 pts instead of 12).</li>
           <li><strong>Balance tolerance</strong> — how much team-strength imbalance the pairing engine may accept in order to avoid repeat matchups.</li>
           <li><strong>Teammate / opponent repeat weights</strong> — penalties for repeating the same partner or opponent; higher values push the engine towards more varied combinations.</li>

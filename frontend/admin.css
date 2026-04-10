@@ -2436,6 +2436,19 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   white-space: nowrap;
   flex-shrink: 0;
 }
+.reg-answers-participant-search {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  width: 120px;
+}
+.reg-answers-participant-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
 .reg-answers-participant-select {
   font-size: 0.8rem;
   padding: 0.2rem 0.45rem;
@@ -2444,7 +2457,7 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   background: var(--bg);
   color: var(--text);
   cursor: pointer;
-  max-width: 220px;
+  max-width: 200px;
 }
 .reg-answers-participant-select:focus {
   outline: none;
