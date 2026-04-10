@@ -1,3 +1,9 @@
+## v1.2.3 (2026-04-10)
+
+### Fix
+
+- **mexicano**: propose the 1st round instead of generating automatically
+
 ## v1.2.2 (2026-04-10)
 
 ### Fix
