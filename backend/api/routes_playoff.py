@@ -21,6 +21,9 @@ from .helpers import (
     _is_bye_match,
     _require_score_permission,
     _find_match,
+    _schema_cache_get,
+    _schema_cache_key,
+    _schema_cache_put,
     _schema_image_response,
     _serialize_match,
     _tennis_sets_to_scores,
@@ -29,8 +32,9 @@ from .helpers import (
     _mark_admin_score,
 )
 from .schemas import CreatePlayoffRequest, RecordScoreRequest, RecordTennisScoreRequest
-from .state import allocate_tournament_id, _save_tournament, get_tournament_lock
+from .state import allocate_tournament_id, _save_tournament, _tournament_versions, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
+from .push_events import notify_champion
 
 router = APIRouter(prefix="/api/tournaments", tags=["playoff"])
 
@@ -158,6 +162,25 @@ async def po_playoffs_schema(
     if len(participant_names) < 2:
         raise HTTPException(400, "Need at least 2 participants for play-off schema")
 
+    version = _tournament_versions.get(tid, 0)
+    key = _schema_cache_key(
+        "po",
+        tid,
+        version,
+        tuple(participant_names),
+        "double" if t.double_elimination else "single",
+        title,
+        fmt,
+        box_scale,
+        line_width,
+        arrow_scale,
+        title_font_scale,
+        output_scale,
+    )
+    cached = _schema_cache_get(key)
+    if cached:
+        return _schema_image_response(cached[0], cached[1], etag=key[:16])
+
     img = render_playoff_schema(
         participant_names=participant_names,
         elimination="double" if t.double_elimination else "single",
@@ -170,7 +193,8 @@ async def po_playoffs_schema(
         title_font_scale=title_font_scale,
         output_scale=output_scale,
     )
-    return _schema_image_response(img, fmt)
+    _schema_cache_put(key, img, fmt)
+    return _schema_image_response(img, fmt, etag=key[:16])
 
 
 @router.post("/{tid}/po/record")
@@ -182,7 +206,8 @@ async def po_record(
 ) -> dict:
     """Record a raw-score result for a play-off match."""
     async with get_tournament_lock(tid):
-        t: PlayoffTournament = _get_tournament(tid, _PO)["tournament"]
+        data = _get_tournament(tid, _PO)
+        t: PlayoffTournament = data["tournament"]
         match = _find_match(t, req.match_id)
         if match is None:
             raise HTTPException(404, "Match not found")
@@ -196,6 +221,9 @@ async def po_record(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+    champ = t.champion()
+    if champ:
+        notify_champion(tid, data, [p.name for p in champ])
     return {"ok": True, "phase": t.phase}
 
 
@@ -209,7 +237,8 @@ async def po_record_tennis(
     """Record a play-off match using tennis-style set scores."""
     total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
     async with get_tournament_lock(tid):
-        t: PlayoffTournament = _get_tournament(tid, _PO)["tournament"]
+        data = _get_tournament(tid, _PO)
+        t: PlayoffTournament = data["tournament"]
         match = _find_match(t, req.match_id)
         if match is None:
             raise HTTPException(404, "Match not found")
@@ -225,6 +254,9 @@ async def po_record_tennis(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+    champ = t.champion()
+    if champ:
+        notify_champion(tid, data, [p.name for p in champ])
     return {
         "ok": True,
         "phase": t.phase,

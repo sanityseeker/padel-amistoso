@@ -490,7 +490,7 @@ class RegistrantIn(BaseModel):
     email: OptionalEmailStr = Field(default="")
     profile_passphrase: str | None = Field(
         default=None,
-        description="Optional Player Space passphrase to link this registration to a profile.",
+        description="Optional Player Hub passphrase to link this registration to a profile.",
     )
 
 

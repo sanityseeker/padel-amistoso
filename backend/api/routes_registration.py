@@ -99,6 +99,10 @@ _public_passphrase_rate_limiter = BoundedRateLimiter(
 
 _registration_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
+# Dedicated lock for sequential registration ID allocation — mirrors
+# ``_id_allocation_lock`` in ``state.py`` for tournament IDs.
+_reg_id_allocation_lock: asyncio.Lock = asyncio.Lock()
+
 
 def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
@@ -393,7 +397,8 @@ async def create_registration(
     client_ip = _client_ip(request)
     _create_rate_limiter.check(client_ip, "Too many registration creation attempts — try again later")
     _create_rate_limiter.record(client_ip)
-    rid = _next_registration_id()
+    async with _reg_id_allocation_lock:
+        rid = _next_registration_id()
     now = datetime.now(timezone.utc).isoformat()
     questions_json = json.dumps([q.model_dump() for q in req.questions]) if req.questions else None
     with get_db() as conn:
@@ -676,8 +681,13 @@ async def delete_registration(rid: str, user: User = Depends(get_current_user)) 
                     for row in linked
                 ],
             )
+        conn.execute("DELETE FROM registration_shares WHERE registration_id = ?", (reg_id,))
         conn.execute("DELETE FROM registrants WHERE registration_id = ?", (reg_id,))
         conn.execute("DELETE FROM registrations WHERE id = ?", (reg_id,))
+    _registration_locks.pop(reg_id, None)
+    from .db import invalidate_reg_co_editor_cache  # noqa: PLC0415
+
+    invalidate_reg_co_editor_cache(reg_id)
     return {"ok": True}
 
 
@@ -900,7 +910,7 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
 
     token = generate_token()
 
-    # Resolve optional Player Space profile link
+    # Resolve optional Player Hub profile link
     profile_id: str | None = None
     if req.profile_passphrase:
         profile = lookup_profile_by_passphrase(req.profile_passphrase.strip())
@@ -912,7 +922,7 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
                 passphrase = profile_passphrase_value
             profile_id = profile["id"]
 
-    # Auto-link by email: if the player provides an email that matches a Player Space
+    # Auto-link by email: if the player provides an email that matches a Player Hub
     # profile and they haven't explicitly linked via passphrase, link them silently.
     if profile_id is None:
         potential_email = req.email.strip()
@@ -1468,7 +1478,7 @@ def _get_reg_email_settings(reg: dict) -> EmailSettings:
     if raw:
         try:
             return EmailSettings(**json.loads(raw))
-        except Exception:
+        except (json.JSONDecodeError, ValueError, TypeError):
             pass
     return EmailSettings()
 

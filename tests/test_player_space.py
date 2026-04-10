@@ -1,4 +1,4 @@
-"""Tests for the Player Space feature: profile CRUD, login, dashboard, and linking."""
+"""Tests for the Player Hub feature: profile CRUD, login, dashboard, and linking."""
 
 from __future__ import annotations
 
@@ -331,7 +331,7 @@ class TestProfileLogin:
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Player Space dashboard (GET /space)
+# Player Hub dashboard (GET /space)
 # ────────────────────────────────────────────────────────────────────────────
 
 
@@ -803,7 +803,7 @@ class TestAutoLinkByEmail:
         return r.json()["id"]
 
     def test_auto_links_matching_email_to_profile(self, client: TestClient, auth_headers: dict) -> None:
-        # Create a Player Space profile with a known email
+        # Create a Player Hub profile with a known email
         _create_profile(client, name="AutoLink Player", email="autolink@example.com")
         with db_mod.get_db() as conn:
             profile_row = conn.execute("SELECT id FROM player_profiles WHERE email = 'autolink@example.com'").fetchone()

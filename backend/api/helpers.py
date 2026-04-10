@@ -4,8 +4,9 @@ Shared helpers for route modules.
 
 from __future__ import annotations
 
+import hashlib
 import time
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from typing import Any, Literal
 
 from fastapi import HTTPException
@@ -24,10 +25,61 @@ _SCHEMA_MEDIA_TYPES: dict[str, str] = {
     "pdf": "application/pdf",
 }
 
+# ── Bracket image LRU cache ─────────────────────────────────────────────────
+# Keyed by a SHA-256 digest of all render parameters (including tid+version
+# for live tournament brackets).  Avoids re-running matplotlib on every
+# request when nothing has changed.  Max 64 entries (~few MB of images).
+_SCHEMA_CACHE_MAX = 64
+_schema_cache: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
 
-def _schema_image_response(img: bytes, fmt: Literal["png", "svg", "pdf"]) -> Response:
-    """Wrap rendered image bytes in the correct FastAPI Response."""
-    return Response(content=img, media_type=_SCHEMA_MEDIA_TYPES[fmt])
+
+def _schema_cache_key(*parts: object) -> str:
+    """Build a deterministic cache key from arbitrary hashable parts."""
+    raw = "|".join(str(p) for p in parts)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _schema_cache_get(key: str) -> tuple[bytes, str] | None:
+    """Return cached ``(image_bytes, fmt)`` or ``None``."""
+    entry = _schema_cache.get(key)
+    if entry is not None:
+        _schema_cache.move_to_end(key)
+    return entry
+
+
+def _schema_cache_put(key: str, img: bytes, fmt: str) -> None:
+    """Store ``(image_bytes, fmt)`` evicting the oldest entry if needed."""
+    _schema_cache[key] = (img, fmt)
+    _schema_cache.move_to_end(key)
+    while len(_schema_cache) > _SCHEMA_CACHE_MAX:
+        _schema_cache.popitem(last=False)
+
+
+def invalidate_schema_cache_for(tid: str) -> None:
+    """Remove all cache entries whose key was built with *tid*.
+
+    Called when a tournament is mutated so stale bracket images don't linger.
+    In practice the version component of the key already prevents serving
+    stale data, but this keeps memory tidy for deleted tournaments.
+    """
+    # Keys are opaque SHA-256 hashes — we can't reverse them.  Instead, rely
+    # on version-based invalidation (the version is part of the key, so an
+    # updated tournament will simply miss the cache and generate a new entry;
+    # old entries age out via LRU eviction).
+    pass
+
+
+def _schema_image_response(img: bytes, fmt: Literal["png", "svg", "pdf"], *, etag: str | None = None) -> Response:
+    """Wrap rendered image bytes in the correct FastAPI Response.
+
+    When *etag* is provided the response includes ``ETag`` and a private
+    ``Cache-Control`` header so browsers can revalidate cheaply.
+    """
+    headers: dict[str, str] = {}
+    if etag:
+        headers["ETag"] = f'"{etag}"'
+        headers["Cache-Control"] = "private, max-age=300"
+    return Response(content=img, media_type=_SCHEMA_MEDIA_TYPES[fmt], headers=headers or None)
 
 
 def _store_tournament(

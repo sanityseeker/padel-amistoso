@@ -23,10 +23,12 @@ Safety guarantees
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import io
 import json
 import logging
 import pickle
+import sqlite3
 from dataclasses import fields as dataclass_fields
 
 from .db import get_db
@@ -34,8 +36,16 @@ from .player_secret_store import (
     delete_secrets_for_tournament,
     extract_history_stats,
     extract_partner_rival_stats,
+    invalidate_secrets_cache,
     purge_expired_secrets,
 )
+from .sse import notify_global, notify_tournament
+
+# ContextVar set to True when a _save_tournament() call fails to persist.
+# The CSRF/persist-warning middleware reads this to add an X-Persist-Warning
+# header on the HTTP response, alerting the frontend without breaking the
+# request/response flow.
+persist_failed: contextvars.ContextVar[bool] = contextvars.ContextVar("persist_failed", default=False)
 
 # ---------------------------------------------------------------------------
 # Restricted unpickler — stdlib and all project (backend.*) modules are allowed;
@@ -129,12 +139,14 @@ async def allocate_tournament_id() -> str:
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def _save_tournament(tid: str) -> None:
+def _save_tournament(tid: str) -> bool:
     """Persist a single tournament row to SQLite (upsert).
 
     Only the named tournament is written; all other rows are untouched.
-    Errors are logged but never raised — a failed save should not abort the
-    HTTP response that triggered it.
+    Returns ``True`` on success.  On failure the error is logged, the
+    ``persist_failed`` context-var is set to ``True`` (surfaced as an
+    ``X-Persist-Warning`` response header by middleware), and ``False`` is
+    returned.
     """
     global _state_version
     _state_version += 1
@@ -143,6 +155,7 @@ def _save_tournament(tid: str) -> None:
     _tournament_versions[tid] = version
 
     data = _tournaments[tid]
+    persisted = True
     try:
         blob = pickle.dumps(data["tournament"], protocol=pickle.HIGHEST_PROTOCOL)
         tv_raw = json.dumps(data["tv_settings"]) if data.get("tv_settings") else None
@@ -179,8 +192,10 @@ def _save_tournament(tid: str) -> None:
                     email_raw,
                 ),
             )
-    except Exception as exc:  # noqa: BLE001
+    except (sqlite3.Error, pickle.PicklingError, OSError) as exc:
         logger.warning("Could not save tournament %s: %s", tid, exc)
+        persist_failed.set(True)
+        persisted = False
 
     # Purge player secrets once the tournament enters the finished phase so
     # that old passphrases / QR tokens cannot be confused with new ones.
@@ -193,6 +208,12 @@ def _save_tournament(tid: str) -> None:
             sport=data.get("sport", "padel"),
             partner_rival_stats=extract_partner_rival_stats(data),
         )
+
+    # Push SSE notifications so connected clients learn about the change
+    # immediately instead of waiting for their next poll cycle.
+    notify_tournament(tid)
+    notify_global()
+    return persisted
 
 
 def get_tournament_data(tid: str) -> dict | None:
@@ -231,7 +252,7 @@ def get_tournament_data(tid: str) -> dict | None:
             "tournament": tournament,
             "sport": row["sport"] or "padel",
         }
-    except Exception as exc:  # noqa: BLE001
+    except (sqlite3.Error, pickle.UnpicklingError) as exc:
         logger.warning("Could not load tournament %s for backfill: %s", tid, exc)
         return None
 
@@ -316,17 +337,28 @@ def rename_player_in_tournament(tid: str, player_id: str, new_name: str) -> bool
 def _delete_tournament(tid: str) -> None:
     """Remove a tournament row from SQLite.
 
-    Errors are logged but never raised.
+    Errors are logged but never raised.  Also clears the co-editor cache
+    and player-secrets cache so stale entries don't accumulate.
     """
     global _state_version
     _state_version += 1
     _tournament_versions.pop(tid, None)
     _tournament_locks.pop(tid, None)
+
+    from .db import invalidate_co_editor_cache  # noqa: PLC0415
+
+    invalidate_co_editor_cache(tid)
+    invalidate_secrets_cache(tid)
+
     try:
         with get_db() as conn:
+            conn.execute("DELETE FROM tournament_shares WHERE tournament_id = ?", (tid,))
             conn.execute("DELETE FROM tournaments WHERE id = ?", (tid,))
-    except Exception as exc:  # noqa: BLE001
+    except sqlite3.Error as exc:
         logger.warning("Could not delete tournament %s: %s", tid, exc)
+
+    # Push SSE notification so the picker / admin panel learns immediately.
+    notify_global()
 
 
 def _load_state() -> None:
@@ -342,7 +374,7 @@ def _load_state() -> None:
             rows = conn.execute(
                 "SELECT id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport, assign_courts, email_settings FROM tournaments"
             ).fetchall()
-    except Exception as exc:  # noqa: BLE001  # noqa: BLE001
+    except sqlite3.Error as exc:  # noqa: BLE001
         logger.warning("Could not load state (starting fresh): %s", exc)
         return
 
@@ -350,7 +382,7 @@ def _load_state() -> None:
         tid = row["id"]
         try:
             tournament = _safe_loads(row["tournament_blob"])
-        except Exception as exc:  # noqa: BLE001
+        except (pickle.UnpicklingError, ImportError, AttributeError, ModuleNotFoundError) as exc:
             logger.warning("Could not deserialise tournament %s, skipping: %s", tid, exc)
             continue
 

@@ -9,6 +9,7 @@ Run with:
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from contextlib import asynccontextmanager
 from functools import lru_cache
@@ -27,6 +28,7 @@ from . import state as _state_module
 from ..auth import auth_router
 from ..auth.store import user_store
 from .db import init_db
+from .state import persist_failed as _persist_failed
 from .routes_crud import router as crud_router
 from .routes_gp import router as gp_router
 from .routes_mex import router as mex_router
@@ -38,6 +40,8 @@ from .routes_schema import router as schema_router
 from .routes_score_actions import router as score_actions_router
 from .routes_share import router as share_router
 from .routes_share import registration_share_router
+from .routes_push import router as push_router
+from .sse import router as sse_router
 from .state import (  # noqa: F401  — re-exported for tests
     _counter,
     _load_state,
@@ -55,6 +59,9 @@ async def _lifespan(_app: FastAPI):
     _load_state()
     user_store.load()
     user_store.bootstrap_default_admin()
+    from .push import init_push  # noqa: PLC0415
+
+    init_push()
     yield
 
 
@@ -109,7 +116,11 @@ async def csrf_origin_protection(request: Request, call_next):
         source_origin = origin or referer_origin
         if source_origin is not None and source_origin not in _ALLOWED_ORIGINS:
             return JSONResponse(status_code=403, content={"detail": "CSRF validation failed"})
-    return await call_next(request)
+    _persist_failed.set(False)
+    response = await call_next(request)
+    if _persist_failed.get():
+        response.headers["X-Persist-Warning"] = "true"
+    return response
 
 
 # Register routers
@@ -125,6 +136,8 @@ app.include_router(schema_router)
 app.include_router(score_actions_router)
 app.include_router(share_router)
 app.include_router(registration_share_router)
+app.include_router(push_router)
+app.include_router(sse_router)
 
 # ────────────────────────────────────────────────────────────────────────────
 # Config endpoint
@@ -178,31 +191,51 @@ def _read_frontend_bytes(filename: str) -> bytes:
     return path.read_bytes() if path.exists() else b""
 
 
-def _serve_js_file(filename: str) -> Response:
-    """Serve a JS file from the frontend directory with the correct MIME type."""
-    return Response(
-        content=_read_frontend_text(filename),
-        media_type="application/javascript",
-        headers={"Cache-Control": "public, max-age=300"},
-    )
+@lru_cache(maxsize=64)
+def _content_etag(filename: str) -> str | None:
+    """Return a quoted ETag derived from the content hash of a frontend file."""
+    if filename.endswith((".png", ".ico")):
+        data = _read_frontend_bytes(filename)
+        if not data:
+            return None
+        return f'"e{hashlib.md5(data).hexdigest()[:12]}"'  # noqa: S324
+    text = _read_frontend_text(filename)
+    if not text:
+        return None
+    return f'"e{hashlib.md5(text.encode()).hexdigest()[:12]}"'  # noqa: S324
 
 
-def _serve_css_file(filename: str) -> Response:
-    """Serve a CSS file from the frontend directory with the correct MIME type."""
-    return Response(
-        content=_read_frontend_text(filename),
-        media_type="text/css",
-        headers={"Cache-Control": "public, max-age=300"},
-    )
+def _serve_js_file(filename: str, request: Request | None = None) -> Response:
+    """Serve a JS file from the frontend directory with ETag-based caching."""
+    etag = _content_etag(filename)
+    if etag and request and request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    headers: dict[str, str] = {"Cache-Control": "public, max-age=300, must-revalidate"}
+    if etag:
+        headers["ETag"] = etag
+    return Response(content=_read_frontend_text(filename), media_type="application/javascript", headers=headers)
 
 
-def _serve_png_file(filename: str) -> Response:
-    """Serve a PNG file from the frontend directory."""
-    return Response(
-        content=_read_frontend_bytes(filename),
-        media_type="image/png",
-        headers={"Cache-Control": "public, max-age=86400"},
-    )
+def _serve_css_file(filename: str, request: Request | None = None) -> Response:
+    """Serve a CSS file from the frontend directory with ETag-based caching."""
+    etag = _content_etag(filename)
+    if etag and request and request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    headers: dict[str, str] = {"Cache-Control": "public, max-age=300, must-revalidate"}
+    if etag:
+        headers["ETag"] = etag
+    return Response(content=_read_frontend_text(filename), media_type="text/css", headers=headers)
+
+
+def _serve_png_file(filename: str, request: Request | None = None) -> Response:
+    """Serve a PNG file from the frontend directory with ETag-based caching."""
+    etag = _content_etag(filename)
+    if etag and request and request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    headers: dict[str, str] = {"Cache-Control": "public, max-age=86400, must-revalidate"}
+    if etag:
+        headers["ETag"] = etag
+    return Response(content=_read_frontend_bytes(filename), media_type="image/png", headers=headers)
 
 
 @app.get("/")
@@ -245,168 +278,170 @@ async def serve_register_alias(alias: str) -> Response:
 @app.get("/player")
 async def serve_player() -> Response:
     return Response(
-        content=_read_frontend_text("player.html") or "<h1>Player Space not found</h1>",
+        content=_read_frontend_text("player.html") or "<h1>Player Hub not found</h1>",
         media_type="text/html",
         headers={"Cache-Control": "no-cache"},
     )
 
 
 @app.get("/shared.js")
-async def serve_shared_js() -> Response:
+async def serve_shared_js(request: Request) -> Response:
     """Serve the shared JS utilities used by index.html and public.html (TV view)."""
-    return _serve_js_file("shared.js")
+    return _serve_js_file("shared.js", request)
 
 
 @app.get("/auth.js")
-async def serve_auth_js() -> Response:
+async def serve_auth_js(request: Request) -> Response:
     """Serve the authentication module used by index.html."""
-    return _serve_js_file("auth.js")
+    return _serve_js_file("auth.js", request)
 
 
 @app.get("/admin-utils.js")
-async def serve_admin_utils_js() -> Response:
+async def serve_admin_utils_js(request: Request) -> Response:
     """Serve admin UI utilities (theme, language, schema helpers)."""
-    return _serve_js_file("admin-utils.js")
+    return _serve_js_file("admin-utils.js", request)
 
 
 @app.get("/admin-tournaments.js")
-async def serve_admin_tournaments_js() -> Response:
+async def serve_admin_tournaments_js(request: Request) -> Response:
     """Serve admin tournament list and navigation logic."""
-    return _serve_js_file("admin-tournaments.js")
+    return _serve_js_file("admin-tournaments.js", request)
 
 
 @app.get("/admin-create.js")
-async def serve_admin_create_js() -> Response:
+async def serve_admin_create_js(request: Request) -> Response:
     """Serve admin tournament creation panel logic."""
-    return _serve_js_file("admin-create.js")
+    return _serve_js_file("admin-create.js", request)
 
 
 @app.get("/admin-gp.js")
-async def serve_admin_gp_js() -> Response:
+async def serve_admin_gp_js(request: Request) -> Response:
     """Serve Group+Playoff and Pure Playoff render logic and score actions."""
-    return _serve_js_file("admin-gp.js")
+    return _serve_js_file("admin-gp.js", request)
 
 
 @app.get("/admin-mex.js")
-async def serve_admin_mex_js() -> Response:
+async def serve_admin_mex_js(request: Request) -> Response:
     """Serve Mexicano render logic, pairing proposals, and export helpers."""
-    return _serve_js_file("admin-mex.js")
+    return _serve_js_file("admin-mex.js", request)
 
 
 @app.get("/admin-player-codes.js")
-async def serve_admin_player_codes_js() -> Response:
+async def serve_admin_player_codes_js(request: Request) -> Response:
     """Serve player codes panel and in-tournament player management."""
-    return _serve_js_file("admin-player-codes.js")
+    return _serve_js_file("admin-player-codes.js", request)
 
 
 @app.get("/admin-tv-email.js")
-async def serve_admin_tv_email_js() -> Response:
+async def serve_admin_tv_email_js(request: Request) -> Response:
     """Serve TV display settings, email controls, and tournament alias/banner."""
-    return _serve_js_file("admin-tv-email.js")
+    return _serve_js_file("admin-tv-email.js", request)
 
 
 @app.get("/admin-registration.js")
-async def serve_admin_registration_js() -> Response:
+async def serve_admin_registration_js(request: Request) -> Response:
     """Serve registration lobby management and answers panel."""
-    return _serve_js_file("admin-registration.js")
+    return _serve_js_file("admin-registration.js", request)
 
 
 @app.get("/admin-convert.js")
-async def serve_admin_convert_js() -> Response:
+async def serve_admin_convert_js(request: Request) -> Response:
     """Serve convert-from-registration flow."""
-    return _serve_js_file("admin-convert.js")
+    return _serve_js_file("admin-convert.js", request)
 
 
 @app.get("/admin-collaborators.js")
-async def serve_admin_collaborators_js() -> Response:
+async def serve_admin_collaborators_js(request: Request) -> Response:
     """Serve collaborator management for tournaments and registrations."""
-    return _serve_js_file("admin-collaborators.js")
+    return _serve_js_file("admin-collaborators.js", request)
 
 
 @app.get("/tv.js")
-async def serve_tv_js() -> Response:
+async def serve_tv_js(request: Request) -> Response:
     """Serve the TV view JavaScript for public.html."""
-    return _serve_js_file("tv.js")
+    return _serve_js_file("tv.js", request)
 
 
 @app.get("/admin.css")
-async def serve_admin_css() -> Response:
+async def serve_admin_css(request: Request) -> Response:
     """Serve the admin panel stylesheet for index.html."""
-    return _serve_css_file("admin.css")
+    return _serve_css_file("admin.css", request)
 
 
 @app.get("/tv.css")
-async def serve_tv_css() -> Response:
+async def serve_tv_css(request: Request) -> Response:
     """Serve the TV view stylesheet for public.html."""
-    return _serve_css_file("tv.css")
+    return _serve_css_file("tv.css", request)
 
 
 @app.get("/register.js")
-async def serve_register_js() -> Response:
+async def serve_register_js(request: Request) -> Response:
     """Serve the registration page JavaScript."""
-    return _serve_js_file("register.js")
+    return _serve_js_file("register.js", request)
 
 
 @app.get("/register.css")
-async def serve_register_css() -> Response:
+async def serve_register_css(request: Request) -> Response:
     """Serve the registration page stylesheet."""
-    return _serve_css_file("register.css")
+    return _serve_css_file("register.css", request)
 
 
 @app.get("/player.js")
-async def serve_player_js() -> Response:
-    """Serve the Player Space JavaScript."""
-    return _serve_js_file("player.js")
+async def serve_player_js(request: Request) -> Response:
+    """Serve the Player Hub JavaScript."""
+    return _serve_js_file("player.js", request)
 
 
 @app.get("/player.css")
-async def serve_player_css() -> Response:
-    """Serve the Player Space stylesheet."""
-    return _serve_css_file("player.css")
+async def serve_player_css(request: Request) -> Response:
+    """Serve the Player Hub stylesheet."""
+    return _serve_css_file("player.css", request)
 
 
 @app.get("/i18n.js")
-async def serve_i18n_js() -> Response:
+async def serve_i18n_js(request: Request) -> Response:
     """Serve the translation catalog used by the frontend i18n runtime."""
-    return _serve_js_file("i18n.js")
+    return _serve_js_file("i18n.js", request)
 
 
 @app.get("/manifest.json")
-async def serve_manifest() -> Response:
+async def serve_manifest(request: Request) -> Response:
     """Serve the PWA web app manifest."""
+    etag = _content_etag("manifest.json")
+    if etag and request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    headers: dict[str, str] = {"Cache-Control": "public, max-age=300, must-revalidate"}
+    if etag:
+        headers["ETag"] = etag
     return Response(
         content=_read_frontend_text("manifest.json") or "{}",
         media_type="application/manifest+json",
-        headers={"Cache-Control": "public, max-age=300"},
+        headers=headers,
     )
 
 
 @app.get("/service-worker.js")
-async def serve_service_worker() -> Response:
+async def serve_service_worker(request: Request) -> Response:
     """Serve the PWA service worker."""
-    return Response(
-        content=_read_frontend_text("service-worker.js"),
-        media_type="application/javascript",
-        headers={"Cache-Control": "no-cache"},
-    )
+    return _serve_js_file("service-worker.js", request)
 
 
 @app.get("/icon-192.png")
-async def serve_icon_192() -> Response:
+async def serve_icon_192(request: Request) -> Response:
     """Serve the 192×192 PWA icon."""
-    return _serve_png_file("icon-192.png")
+    return _serve_png_file("icon-192.png", request)
 
 
 @app.get("/icon-512.png")
-async def serve_icon_512() -> Response:
+async def serve_icon_512(request: Request) -> Response:
     """Serve the 512×512 PWA icon."""
-    return _serve_png_file("icon-512.png")
+    return _serve_png_file("icon-512.png", request)
 
 
 @app.get("/icon-512-maskable.png")
-async def serve_icon_512_maskable() -> Response:
+async def serve_icon_512_maskable(request: Request) -> Response:
     """Serve the 512×512 maskable PWA icon."""
-    return _serve_png_file("icon-512-maskable.png")
+    return _serve_png_file("icon-512-maskable.png", request)
 
 
 @app.get("/favicon.ico")
@@ -416,9 +451,9 @@ async def serve_favicon() -> RedirectResponse:
 
 
 @app.get("/404.png")
-async def serve_404_image() -> Response:
+async def serve_404_image(request: Request) -> Response:
     """Serve the 404 error illustration."""
-    return _serve_png_file("404.png")
+    return _serve_png_file("404.png", request)
 
 
 # ────────────────────────────────────────────────────────────────────────────

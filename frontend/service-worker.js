@@ -1,5 +1,5 @@
 // Service worker — optimal caching for performance + freshness.
-const CACHE_NAME = 'amistoso-v21';
+const CACHE_NAME = 'amistoso-v23';
 const STATIC_ASSETS = [
   '/shared.js', '/auth.js', '/i18n.js', '/manifest.json',
   '/admin-utils.js', '/admin-tournaments.js', '/admin-create.js',
@@ -64,6 +64,45 @@ self.addEventListener('fetch', (event) => {
         return response;
       });
       return cached || fetchPromise;
+    })
+  );
+});
+
+// ── Web Push Notifications ──────────────────────────────────────────────────
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    payload = { title: 'Torneos', body: event.data.text() };
+  }
+  const { title = 'Torneos', body = '', url = '/', tag = 'amistoso' } = payload;
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: '/assets/icons/icon-192x192.png',
+      badge: '/assets/icons/icon-192x192.png',
+      tag,
+      renotify: true,
+      data: { url },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      // Focus an existing tab navigated to the same tournament if possible.
+      for (const client of clients) {
+        if (new URL(client.url).pathname === target && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(target);
     })
   );
 });

@@ -40,6 +40,7 @@ from .helpers import (
 )
 from .schemas import RecordScoreRequest, RecordTennisScoreRequest
 from .state import _save_tournament, _tournaments, get_tournament_lock
+from .push_events import notify_score_accepted, notify_score_disputed, notify_champion
 
 router = APIRouter(prefix="/api/tournaments", tags=["score-actions"])
 
@@ -193,6 +194,10 @@ async def accept_score(
         )
         _save_tournament(tid)
 
+    notify_score_accepted(tid, data, match, player.player_id)
+    champ = getattr(t, "champion", lambda: None)()
+    if champ:
+        notify_champion(tid, data, [p.name for p in champ])
     return {"ok": True}
 
 
@@ -259,6 +264,7 @@ async def correct_score(
         )
         _save_tournament(tid)
 
+    notify_score_disputed(tid, data, match, player.player_id)
     return {"ok": True}
 
 
@@ -322,6 +328,7 @@ async def correct_score_tennis(
         )
         _save_tournament(tid)
 
+    notify_score_disputed(tid, data, match, player.player_id)
     return {"ok": True}
 
 
@@ -391,6 +398,10 @@ async def accept_correction(
         )
         _save_tournament(tid)
 
+    notify_score_accepted(tid, data, match, player.player_id)
+    champ = getattr(t, "champion", lambda: None)()
+    if champ:
+        notify_champion(tid, data, [p.name for p in champ])
     return {"ok": True}
 
 
@@ -519,6 +530,9 @@ async def resolve_dispute(
         )
         _save_tournament(tid)
 
+    champ = getattr(t, "champion", lambda: None)()
+    if champ:
+        notify_champion(tid, data, [p.name for p in champ])
     return {"ok": True}
 
 

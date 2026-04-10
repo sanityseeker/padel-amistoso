@@ -128,12 +128,12 @@ async def get_current_player(
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Profile authentication (cross-tournament Player Space identity)
+# Profile authentication (cross-tournament Player Hub identity)
 # ────────────────────────────────────────────────────────────────────────────
 
 
 class ProfileIdentity:
-    """Identity for a Player Space profile (cross-tournament, optional)."""
+    """Identity for a Player Hub profile (cross-tournament, optional)."""
 
     __slots__ = ("profile_id",)
 

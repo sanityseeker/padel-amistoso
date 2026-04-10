@@ -42,6 +42,7 @@ from .schemas import (
 )
 from .state import allocate_tournament_id, _save_tournament, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
+from .push_events import notify_matches_ready, notify_champion, notify_score_submitted
 
 router = APIRouter(prefix="/api/tournaments", tags=["mexicano"])
 
@@ -214,7 +215,8 @@ async def mex_record(
 ) -> dict:
     """Record a raw-score result for the current Mexicano match."""
     async with get_tournament_lock(tid):
-        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        data = _get_tournament(tid, _MEX)
+        t: MexicanoTournament = data["tournament"]
         match = _find_match(t, req.match_id)
         if match is None:
             raise HTTPException(404, "Match not found")
@@ -236,6 +238,8 @@ async def mex_record(
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
         breakdown = t.get_match_breakdown(req.match_id)
+    if is_player_action and is_required:
+        notify_score_submitted(tid, data, match, player.player_id)
     return {"ok": True, "breakdown": breakdown}
 
 
@@ -329,7 +333,8 @@ async def mex_next_round(tid: str, req: NextRoundRequest = NextRoundRequest(), u
     """Commit the chosen pairing proposal and generate the next Mexicano round."""
     _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
-        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        data = _get_tournament(tid, _MEX)
+        t: MexicanoTournament = data["tournament"]
         if t.pending_matches():
             raise HTTPException(400, "Current round has unfinished matches")
         try:
@@ -337,6 +342,7 @@ async def mex_next_round(tid: str, req: NextRoundRequest = NextRoundRequest(), u
         except (RuntimeError, KeyError) as e:
             raise HTTPException(400, str(e))
         _save_tournament(tid)
+    notify_matches_ready(tid, data, t.current_round_matches())
     return {"current_round": t.current_round}
 
 
@@ -345,7 +351,8 @@ async def mex_custom_round(tid: str, req: CustomRoundRequest, user=Depends(get_c
     """Commit a manually-specified round with user-defined pairings."""
     _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
-        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        data = _get_tournament(tid, _MEX)
+        t: MexicanoTournament = data["tournament"]
         if t.pending_matches():
             raise HTTPException(400, "Current round has unfinished matches")
         try:
@@ -356,6 +363,7 @@ async def mex_custom_round(tid: str, req: CustomRoundRequest, user=Depends(get_c
         except (RuntimeError, ValueError) as e:
             raise HTTPException(400, str(e))
         _save_tournament(tid)
+    notify_matches_ready(tid, data, t.current_round_matches())
     return {"current_round": t.current_round}
 
 
@@ -371,7 +379,8 @@ async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, user=D
     """Start play-offs after Mexicano rounds are complete."""
     _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
-        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        data = _get_tournament(tid, _MEX)
+        t: MexicanoTournament = data["tournament"]
         try:
             t.start_playoffs(
                 team_player_ids=req.team_player_ids,
@@ -384,6 +393,7 @@ async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, user=D
         except (RuntimeError, ValueError, KeyError) as e:
             raise HTTPException(400, str(e))
         _save_tournament(tid)
+    notify_matches_ready(tid, data, t.pending_playoff_matches())
     return {"phase": t.phase}
 
 
@@ -471,7 +481,8 @@ async def mex_record_playoff(
 ) -> dict:
     """Record a play-off match result."""
     async with get_tournament_lock(tid):
-        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        data = _get_tournament(tid, _MEX)
+        t: MexicanoTournament = data["tournament"]
         match = _find_match(t, req.match_id)
         if match is None:
             raise HTTPException(404, "Match not found")
@@ -485,6 +496,9 @@ async def mex_record_playoff(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+    champ = t.champion()
+    if champ:
+        notify_champion(tid, data, [p.name for p in champ])
     return {"ok": True, "phase": t.phase}
 
 
@@ -498,7 +512,8 @@ async def mex_record_playoff_tennis(
     """Record a Mexicano play-off match using tennis-style set scores."""
     total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
     async with get_tournament_lock(tid):
-        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        data = _get_tournament(tid, _MEX)
+        t: MexicanoTournament = data["tournament"]
         match = _find_match(t, req.match_id)
         if match is None:
             raise HTTPException(404, "Match not found")
@@ -514,6 +529,9 @@ async def mex_record_playoff_tennis(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+    champ = t.champion()
+    if champ:
+        notify_champion(tid, data, [p.name for p in champ])
     return {
         "ok": True,
         "phase": t.phase,

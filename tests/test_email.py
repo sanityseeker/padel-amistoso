@@ -18,6 +18,8 @@ from backend.email import (
     render_cancellation_email,
     render_credentials_email,
     render_next_round_email,
+    render_player_space_magic_link,
+    render_player_space_welcome,
     render_registration_confirmation,
     render_tournament_message_email,
     render_tournament_results_email,
@@ -128,6 +130,41 @@ class TestRenderCredentialsEmail:
         )
         assert "secret-word" in body
         assert "Fun Padel" in subject
+
+
+class TestRenderPlayerHubEmails:
+    """Player Hub profile email templates."""
+
+    def test_welcome_email_uses_player_hub_and_player_profile_wording(self) -> None:
+        with patch("backend.email.SITE_URL", "https://example.com"):
+            subject, body = render_player_space_welcome(
+                name="Alice",
+                email="alice@example.com",
+                passphrase="sun-river-sky",
+                access_token="tok123",
+            )
+
+        assert "Player Hub" in subject
+        assert "Welcome to Player Hub" in body
+        assert "Your player profile has been created" in body
+        assert "Open Player Hub" in body
+        assert "Player Space" not in body
+        assert "Player Space" not in subject
+
+    def test_magic_link_email_uses_player_hub_and_player_profile_wording(self) -> None:
+        with patch("backend.email.SITE_URL", "https://example.com"):
+            subject, body = render_player_space_magic_link(
+                name="Bob",
+                email="bob@example.com",
+                access_token="tok456",
+            )
+
+        assert "Player Hub" in subject
+        assert "Player Hub login link" in body
+        assert "access your player profile" in body
+        assert "Open Player Hub" in body
+        assert "Player Space" not in body
+        assert "Player Space" not in subject
 
 
 class TestRenderTournamentStartedEmail:

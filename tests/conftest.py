@@ -33,10 +33,13 @@ def _clean_state(tmp_path):
     import backend.api.routes_crud as crud_mod
     import backend.auth.routes as auth_routes_mod
     import backend.email as email_mod
+    import backend.api.helpers as helpers_mod
+    import backend.api.push as push_mod
 
     # Redirect the database to an isolated temp file so tests don't depend on
     # an already-existing padel.db file (e.g. in CI with a fresh checkout).
     orig_db_path = db_mod.DB_PATH
+    db_mod.close_thread_db()  # discard any cached connection to the old path
     db_mod.DB_PATH = tmp_path / "test.db"
     db_mod.init_db()
 
@@ -45,6 +48,14 @@ def _clean_state(tmp_path):
     state_mod._tournament_versions.clear()
     state_mod._tournament_locks.clear()
     state_mod._state_version = 0
+    # Clear co-editor in-memory caches so stale entries don't leak between tests.
+    db_mod._co_editor_cache.clear()
+    db_mod._reg_co_editor_cache.clear()
+    # Clear player secrets caches.
+    ps_mod._secrets_cache.clear()
+    ps_mod._contacts_cache.clear()
+    # Clear bracket image cache.
+    helpers_mod._schema_cache.clear()
 
     # Reset rate-limiters so test order does not affect results.
     rpa_mod._rate_limiter._log.clear()
@@ -76,6 +87,11 @@ def _clean_state(tmp_path):
         return None
 
     email_mod.aiosmtplib.send = _mock_aiosmtplib_send
+
+    # Disable real Web Push sending in tests and reset VAPID state.
+    push_mod._clear_push_state()
+    orig_do_send_push = push_mod._do_send_push
+    push_mod._do_send_push = lambda sub_info, payload: None
 
     # Disable persistence for the duration of the test.
     orig_save_tournament = state_mod._save_tournament
@@ -249,6 +265,14 @@ def _clean_state(tmp_path):
     state_mod._tournament_versions.clear()
     state_mod._tournament_locks.clear()
     state_mod._state_version = 0
+    # Clear co-editor in-memory caches so stale entries don't leak between tests.
+    db_mod._co_editor_cache.clear()
+    db_mod._reg_co_editor_cache.clear()
+    # Clear player secrets caches.
+    ps_mod._secrets_cache.clear()
+    ps_mod._contacts_cache.clear()
+    # Clear bracket image cache.
+    helpers_mod._schema_cache.clear()
     rpa_mod._rate_limiter._log.clear()
     gp_mod._create_rate_limiter.clear()
     mex_mod._create_rate_limiter.clear()
@@ -269,7 +293,12 @@ def _clean_state(tmp_path):
     email_mod.SMTP_PASS = orig_smtp_pass
     email_mod.aiosmtplib.send = orig_aiosmtplib_send
 
+    # Restore push state.
+    push_mod._clear_push_state()
+    push_mod._do_send_push = orig_do_send_push
+
     # Restore the real DB path (temp file is discarded automatically by pytest).
+    db_mod.close_thread_db()  # discard cached connection to the test temp DB
     db_mod.DB_PATH = orig_db_path
 
     ps_mod.create_secrets_for_tournament = orig_create_secrets

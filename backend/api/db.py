@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 from collections.abc import Generator
 from contextlib import contextmanager
 
@@ -83,7 +84,7 @@ CREATE INDEX IF NOT EXISTS idx_pat_email
     ON pending_auth_tokens (email);
 
 CREATE TABLE IF NOT EXISTS tournament_shares (
-    tournament_id TEXT NOT NULL,
+    tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
     username      TEXT NOT NULL,
     PRIMARY KEY (tournament_id, username)
 );
@@ -132,7 +133,7 @@ CREATE TABLE IF NOT EXISTS registrations (
 );
 
 CREATE TABLE IF NOT EXISTS registrants (
-    registration_id TEXT    NOT NULL,
+    registration_id TEXT    NOT NULL REFERENCES registrations(id) ON DELETE CASCADE,
     player_id       TEXT    NOT NULL,
     player_name     TEXT    NOT NULL,
     passphrase      TEXT    NOT NULL,
@@ -150,7 +151,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_reg_token
     ON registrants (token);
 
 CREATE TABLE IF NOT EXISTS registration_shares (
-    registration_id TEXT NOT NULL,
+    registration_id TEXT NOT NULL REFERENCES registrations(id) ON DELETE CASCADE,
     username        TEXT NOT NULL,
     PRIMARY KEY (registration_id, username)
 );
@@ -198,6 +199,21 @@ CREATE TABLE IF NOT EXISTS player_history (
 
 CREATE INDEX IF NOT EXISTS idx_player_history_profile
     ON player_history (profile_id);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    tournament_id      TEXT NOT NULL,
+    player_id          TEXT NOT NULL,
+    endpoint           TEXT NOT NULL,
+    subscription_json   TEXT NOT NULL,
+    created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (tournament_id, player_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_sub_tid
+    ON push_subscriptions (tournament_id);
+
+CREATE INDEX IF NOT EXISTS idx_push_sub_endpoint
+    ON push_subscriptions (endpoint);
 """
 
 
@@ -386,15 +402,34 @@ def init_db() -> None:
 
 # ── Co-editor / sharing helpers ─────────────────────────────────────────────
 
+# In-memory caches — populated on first access, invalidated on writes.
+# Eliminates a SQLite round-trip on every _require_editor_access() call.
+_co_editor_cache: dict[str, list[str]] = {}
+_reg_co_editor_cache: dict[str, list[str]] = {}
+
 
 def get_co_editors(tournament_id: str) -> list[str]:
-    """Return a list of usernames that have co-editor access to *tournament_id*."""
+    """Return a list of usernames that have co-editor access to *tournament_id*.
+
+    Results are cached in memory; the cache is invalidated by
+    ``add_co_editor`` / ``remove_co_editor``.
+    """
+    cached = _co_editor_cache.get(tournament_id)
+    if cached is not None:
+        return cached
     with get_db() as conn:
         rows = conn.execute(
             "SELECT username FROM tournament_shares WHERE tournament_id = ? ORDER BY username",
             (tournament_id,),
         ).fetchall()
-    return [row["username"] for row in rows]
+    result = [row["username"] for row in rows]
+    _co_editor_cache[tournament_id] = result
+    return result
+
+
+def invalidate_co_editor_cache(tournament_id: str) -> None:
+    """Drop the cached co-editor list for *tournament_id*."""
+    _co_editor_cache.pop(tournament_id, None)
 
 
 def get_shared_tournament_ids(username: str) -> list[str]:
@@ -408,34 +443,56 @@ def get_shared_tournament_ids(username: str) -> list[str]:
 
 
 def add_co_editor(tournament_id: str, username: str) -> None:
-    """Grant *username* co-editor access to *tournament_id* (idempotent)."""
+    """Grant *username* co-editor access to *tournament_id* (idempotent).
+
+    Invalidates the in-memory cache for this tournament.
+    """
     with get_db() as conn:
         conn.execute(
             "INSERT OR IGNORE INTO tournament_shares (tournament_id, username) VALUES (?, ?)",
             (tournament_id, username),
         )
+    invalidate_co_editor_cache(tournament_id)
 
 
 def remove_co_editor(tournament_id: str, username: str) -> None:
-    """Revoke co-editor access for *username* on *tournament_id*."""
+    """Revoke co-editor access for *username* on *tournament_id*.
+
+    Invalidates the in-memory cache for this tournament.
+    """
     with get_db() as conn:
         conn.execute(
             "DELETE FROM tournament_shares WHERE tournament_id = ? AND username = ?",
             (tournament_id, username),
         )
+    invalidate_co_editor_cache(tournament_id)
 
 
 # ── Registration co-editor / sharing helpers ─────────────────────────────────
 
 
 def get_registration_co_editors(registration_id: str) -> list[str]:
-    """Return a list of usernames that have co-editor access to *registration_id*."""
+    """Return a list of usernames that have co-editor access to *registration_id*.
+
+    Results are cached in memory; the cache is invalidated by
+    ``add_registration_co_editor`` / ``remove_registration_co_editor``.
+    """
+    cached = _reg_co_editor_cache.get(registration_id)
+    if cached is not None:
+        return cached
     with get_db() as conn:
         rows = conn.execute(
             "SELECT username FROM registration_shares WHERE registration_id = ? ORDER BY username",
             (registration_id,),
         ).fetchall()
-    return [row["username"] for row in rows]
+    result = [row["username"] for row in rows]
+    _reg_co_editor_cache[registration_id] = result
+    return result
+
+
+def invalidate_reg_co_editor_cache(registration_id: str) -> None:
+    """Drop the cached co-editor list for *registration_id*."""
+    _reg_co_editor_cache.pop(registration_id, None)
 
 
 def get_shared_registration_ids(username: str) -> list[str]:
@@ -449,43 +506,91 @@ def get_shared_registration_ids(username: str) -> list[str]:
 
 
 def add_registration_co_editor(registration_id: str, username: str) -> None:
-    """Grant *username* co-editor access to *registration_id* (idempotent)."""
+    """Grant *username* co-editor access to *registration_id* (idempotent).
+
+    Invalidates the in-memory cache for this registration.
+    """
     with get_db() as conn:
         conn.execute(
             "INSERT OR IGNORE INTO registration_shares (registration_id, username) VALUES (?, ?)",
             (registration_id, username),
         )
+    invalidate_reg_co_editor_cache(registration_id)
 
 
 def remove_registration_co_editor(registration_id: str, username: str) -> None:
-    """Revoke co-editor access for *username* on *registration_id*."""
+    """Revoke co-editor access for *username* on *registration_id*.
+
+    Invalidates the in-memory cache for this registration.
+    """
     with get_db() as conn:
         conn.execute(
             "DELETE FROM registration_shares WHERE registration_id = ? AND username = ?",
             (registration_id, username),
         )
+    invalidate_reg_co_editor_cache(registration_id)
 
 
 @contextmanager
 def get_db() -> Generator[sqlite3.Connection, None, None]:
     """Yield an open SQLite connection; commit on success, rollback on error.
 
-    WAL mode is re-asserted on every connection so new connections created
-    before the first ``init_db()`` call (e.g. in tests) still work correctly.
+    Connections are cached in a thread-local so PRAGMAs (WAL, foreign_keys,
+    busy_timeout, synchronous) are only run once per thread instead of on
+    every call.  The cached connection is automatically invalidated when
+    ``DB_PATH`` changes (e.g. between tests) or after a connection error.
 
     Usage::
 
         with get_db() as conn:
             conn.execute("INSERT INTO …", (…,))
     """
-    conn = sqlite3.connect(DB_PATH, timeout=SQLITE_TIMEOUT_SECS)
-    conn.row_factory = sqlite3.Row
-    _configure_connection(conn)
+    conn = _get_thread_connection()
     try:
         yield conn
         conn.commit()
     except Exception:
         conn.rollback()
         raise
-    finally:
-        conn.close()
+
+
+# ── Thread-local connection pool ─────────────────────────────────────────────
+
+_thread_local = threading.local()
+
+
+def _get_thread_connection() -> sqlite3.Connection:
+    """Return the thread-local SQLite connection, creating it if needed."""
+    db_path = str(DB_PATH)
+    conn: sqlite3.Connection | None = getattr(_thread_local, "conn", None)
+    cached_path: str | None = getattr(_thread_local, "conn_path", None)
+    if conn is not None and cached_path == db_path:
+        return conn
+    # Close stale connection if DB_PATH changed (e.g. between tests).
+    if conn is not None:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+    conn = sqlite3.connect(db_path, timeout=SQLITE_TIMEOUT_SECS)
+    conn.row_factory = sqlite3.Row
+    _configure_connection(conn)
+    _thread_local.conn = conn
+    _thread_local.conn_path = db_path
+    return conn
+
+
+def close_thread_db() -> None:
+    """Close and discard the thread-local connection (if any).
+
+    Call this during test teardown or when shutting down a thread pool to
+    avoid leaked file handles.
+    """
+    conn: sqlite3.Connection | None = getattr(_thread_local, "conn", None)
+    if conn is not None:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+    _thread_local.conn = None
+    _thread_local.conn_path = None

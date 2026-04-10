@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from collections import defaultdict
 from types import SimpleNamespace
 
@@ -17,6 +18,26 @@ from ..tournaments.player_secrets import PlayerSecret, generate_secrets_for_play
 from .db import get_db
 
 logger = logging.getLogger(__name__)
+
+# ────────────────────────────────────────────────────────────────────────────
+# In-memory caches — populated on first read, invalidated on every write.
+# Eliminates a SQLite round-trip on every player-auth and opponent lookup.
+# ────────────────────────────────────────────────────────────────────────────
+
+_secrets_cache: dict[str, dict[str, dict]] = {}
+_contacts_cache: dict[str, dict[str, str]] = {}
+
+
+def invalidate_secrets_cache(tournament_id: str) -> None:
+    """Drop cached secrets and contacts for *tournament_id*."""
+    _secrets_cache.pop(tournament_id, None)
+    _contacts_cache.pop(tournament_id, None)
+
+
+def _clear_all_secrets_caches() -> None:
+    """Drop all cached data (e.g. after a bulk purge)."""
+    _secrets_cache.clear()
+    _contacts_cache.clear()
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -75,6 +96,7 @@ def create_secrets_for_tournament(
             ],
         )
 
+    invalidate_secrets_cache(tournament_id)
     return secrets
 
 
@@ -180,7 +202,7 @@ def extract_history_stats(t_data: dict) -> dict[str, dict]:
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not extract history stats: %s", exc)
 
-    # Expand composite team stats to individual members so that Player Space
+    # Expand composite team stats to individual members so that Player Hub
     # histories are keyed by real (per-person) PIDs, not synthetic team PIDs.
     team_roster: dict[str, list[str]] = getattr(t, "team_roster", None) or {}
     for team_pid, member_ids in team_roster.items():
@@ -372,7 +394,7 @@ def delete_secrets_for_tournament(
 ) -> None:
     """Mark tournament player secrets as finished and persist linked history.
 
-    Any secrets linked to a Player Space profile are written to
+    Any secrets linked to a Player Hub profile are written to
     ``player_history`` so the player's dashboard retains a finished record.
     The ``player_secrets`` rows are preserved (with ``finished_at`` and
     snapshots) so the admin Players panel can still show participants after
@@ -467,8 +489,10 @@ def delete_secrets_for_tournament(
                         for row in rows
                     ],
                 )
-    except Exception as exc:  # noqa: BLE001
+    except sqlite3.Error as exc:
         logger.warning("Could not delete player secrets for %s: %s", tournament_id, exc)
+    finally:
+        invalidate_secrets_cache(tournament_id)
 
 
 def purge_expired_secrets() -> None:
@@ -476,7 +500,7 @@ def purge_expired_secrets() -> None:
 
     Called once on startup.  Secrets are preserved for 30 days after a
     tournament finishes so that unregistered players can still create a
-    Player Space profile and have their history backfilled.
+    Player Hub profile and have their history backfilled.
     """
     from datetime import datetime, timezone
 
@@ -487,7 +511,8 @@ def purge_expired_secrets() -> None:
                 "DELETE FROM player_secrets WHERE finished_at IS NOT NULL AND finished_at < datetime(?, '-30 days')",
                 (cutoff,),
             )
-    except Exception as exc:  # noqa: BLE001
+        _clear_all_secrets_caches()
+    except sqlite3.Error as exc:
         logger.warning("Could not purge expired player secrets: %s", exc)
 
 
@@ -509,6 +534,7 @@ def regenerate_secret(tournament_id: str, player_id: str) -> PlayerSecret | None
         )
         if cur.rowcount == 0:
             return None
+    invalidate_secrets_cache(tournament_id)
     return new
 
 
@@ -545,6 +571,7 @@ def add_player_secret(
             """,
             (tournament_id, player_id, player_name, passphrase, token),
         )
+    invalidate_secrets_cache(tournament_id)
 
 
 def remove_player_secret(tournament_id: str, player_id: str) -> bool:
@@ -558,21 +585,29 @@ def remove_player_secret(tournament_id: str, player_id: str) -> bool:
             "DELETE FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
             (tournament_id, player_id),
         )
+    invalidate_secrets_cache(tournament_id)
     return cur.rowcount > 0
 
 
 def get_secrets_for_tournament(tournament_id: str) -> dict[str, dict]:
-    """Return all secrets for a tournament as ``{player_id: {name, passphrase, token, contact, email, profile_id}}``."""
+    """Return all secrets for a tournament as ``{player_id: {name, passphrase, token, contact, email, profile_id}}``.
+
+    Results are cached in memory; the cache is invalidated by any write
+    operation on the same tournament's secrets.
+    """
+    cached = _secrets_cache.get(tournament_id)
+    if cached is not None:
+        return cached
     try:
         with get_db() as conn:
             rows = conn.execute(
                 "SELECT player_id, player_name, passphrase, token, contact, email, profile_id FROM player_secrets WHERE tournament_id = ?",
                 (tournament_id,),
             ).fetchall()
-    except Exception as exc:  # noqa: BLE001
+    except sqlite3.Error as exc:
         logger.warning("Could not load secrets for %s: %s", tournament_id, exc)
         return {}
-    return {
+    result = {
         row["player_id"]: {
             "name": row["player_name"],
             "passphrase": row["passphrase"],
@@ -583,6 +618,8 @@ def get_secrets_for_tournament(tournament_id: str) -> dict[str, dict]:
         }
         for row in rows
     }
+    _secrets_cache[tournament_id] = result
+    return result
 
 
 def update_contact(tournament_id: str, player_id: str, contact: str) -> bool:
@@ -603,16 +640,18 @@ def update_contact(tournament_id: str, player_id: str, contact: str) -> bool:
                 (contact, tournament_id, player_id),
             )
             return cur.rowcount > 0
-    except Exception as exc:  # noqa: BLE001
+    except sqlite3.Error as exc:
         logger.warning("Could not update contact for %s/%s: %s", tournament_id, player_id, exc)
         return False
+    finally:
+        invalidate_secrets_cache(tournament_id)
 
 
 def update_email(tournament_id: str, player_id: str, email: str) -> dict:
-    """Update the email address for a single player and auto-link a Player Space profile.
+    """Update the email address for a single player and auto-link a Player Hub profile.
 
     If the email matches an existing ``player_profiles`` row the ``profile_id``
-    is set on the secret so the tournament appears in that player's Player Space
+    is set on the secret so the tournament appears in that player's Player Hub
     immediately.  When the email is empty or matches no profile the
     ``profile_id`` is cleared (unlinked).
 
@@ -658,23 +697,34 @@ def update_email(tournament_id: str, player_id: str, email: str) -> dict:
                 "player_name": profile_name,
                 "contact": profile_contact,
             }
-    except Exception as exc:  # noqa: BLE001
+    except sqlite3.Error as exc:
         logger.warning("Could not update email for %s/%s: %s", tournament_id, player_id, exc)
         return {"updated": False, "profile_linked": False, "player_name": None, "contact": None}
+    finally:
+        invalidate_secrets_cache(tournament_id)
 
 
 def get_contacts_for_tournament(tournament_id: str) -> dict[str, str]:
-    """Return a ``{player_id: contact}`` mapping for all players in a tournament."""
+    """Return a ``{player_id: contact}`` mapping for all players in a tournament.
+
+    Results are cached in memory; the cache is invalidated by any write
+    operation on the same tournament's secrets.
+    """
+    cached = _contacts_cache.get(tournament_id)
+    if cached is not None:
+        return cached
     try:
         with get_db() as conn:
             rows = conn.execute(
                 "SELECT player_id, contact FROM player_secrets WHERE tournament_id = ?",
                 (tournament_id,),
             ).fetchall()
-    except Exception as exc:  # noqa: BLE001
+    except sqlite3.Error as exc:
         logger.warning("Could not load contacts for %s: %s", tournament_id, exc)
         return {}
-    return {row["player_id"]: row["contact"] or "" for row in rows}
+    result = {row["player_id"]: row["contact"] or "" for row in rows}
+    _contacts_cache[tournament_id] = result
+    return result
 
 
 def lookup_by_passphrase(tournament_id: str, passphrase: str) -> dict | None:
@@ -682,7 +732,7 @@ def lookup_by_passphrase(tournament_id: str, passphrase: str) -> dict | None:
 
     Returns ``{"player_id": ..., "player_name": ...}`` or ``None``.
     Checks both direct tournament secrets and the global profile passphrase
-    (unified auth fallback for players who linked via Player Space).
+    (unified auth fallback for players who linked via Player Hub).
     """
     try:
         with get_db() as conn:
@@ -710,7 +760,7 @@ def lookup_by_passphrase(tournament_id: str, passphrase: str) -> dict | None:
             if linked_row is None:
                 return None
             return {"player_id": linked_row["player_id"], "player_name": linked_row["player_name"]}
-    except Exception as exc:  # noqa: BLE001
+    except sqlite3.Error as exc:
         logger.warning("Passphrase lookup failed for %s: %s", tournament_id, exc)
         return None
 
@@ -719,7 +769,7 @@ def lookup_registrant_by_passphrase(registration_id: str, passphrase: str) -> di
     """Find a registrant in a lobby by passphrase.
 
     Checks both the registrant's own passphrase and the global profile
-    passphrase (unified auth fallback for players who linked via Player Space).
+    passphrase (unified auth fallback for players who linked via Player Hub).
 
     Returns ``{"player_id", "player_name", "passphrase", "token", "answers", "registered_at"}``
     or ``None`` if not found.
@@ -746,7 +796,7 @@ def lookup_registrant_by_passphrase(registration_id: str, passphrase: str) -> di
                         " FROM registrants WHERE registration_id = ? AND profile_id = ?",
                         (registration_id, profile_row["id"]),
                     ).fetchone()
-    except Exception as exc:  # noqa: BLE001
+    except sqlite3.Error as exc:
         logger.warning("Registrant passphrase lookup failed for %s: %s", registration_id, exc)
         return None
     if row is None:
@@ -757,7 +807,7 @@ def lookup_registrant_by_passphrase(registration_id: str, passphrase: str) -> di
     if row["answers"]:
         try:
             answers = _json.loads(row["answers"])
-        except Exception:  # noqa: BLE001
+        except (json.JSONDecodeError, ValueError):
             pass
     return {
         "player_id": row["player_id"],
@@ -782,7 +832,7 @@ def lookup_registrant_by_token(registration_id: str, token: str) -> dict | None:
                 " FROM registrants WHERE registration_id = ? AND token = ?",
                 (registration_id, token),
             ).fetchone()
-    except Exception as exc:  # noqa: BLE001
+    except sqlite3.Error as exc:
         logger.warning("Registrant token lookup failed for %s: %s", registration_id, exc)
         return None
     if row is None:
@@ -793,7 +843,7 @@ def lookup_registrant_by_token(registration_id: str, token: str) -> dict | None:
     if row["answers"]:
         try:
             answers = _json.loads(row["answers"])
-        except Exception:  # noqa: BLE001
+        except (json.JSONDecodeError, ValueError):
             pass
     return {
         "player_id": row["player_id"],
@@ -816,7 +866,7 @@ def lookup_by_token(token: str) -> dict | None:
                 "SELECT tournament_id, player_id, player_name FROM player_secrets WHERE token = ?",
                 (token,),
             ).fetchone()
-    except Exception as exc:  # noqa: BLE001
+    except sqlite3.Error as exc:
         logger.warning("Token lookup failed: %s", exc)
         return None
     if row is None:
@@ -829,7 +879,7 @@ def lookup_by_token(token: str) -> dict | None:
 
 
 def lookup_profile_by_passphrase(passphrase: str) -> dict | None:
-    """Look up a Player Space profile by its global passphrase.
+    """Look up a Player Hub profile by its global passphrase.
 
     Returns ``{"id": ..., "name": ..., "email": ..., "created_at": ...}`` or ``None``.
     """
@@ -839,7 +889,7 @@ def lookup_profile_by_passphrase(passphrase: str) -> dict | None:
                 "SELECT id, passphrase, name, email, contact, created_at FROM player_profiles WHERE passphrase = ?",
                 (passphrase,),
             ).fetchone()
-    except Exception as exc:  # noqa: BLE001
+    except sqlite3.Error as exc:
         logger.warning("Profile passphrase lookup failed: %s", exc)
         return None
     if row is None:

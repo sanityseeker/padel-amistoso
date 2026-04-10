@@ -13,7 +13,7 @@
   // Runs synchronously in <head> to avoid any flash of the admin page.
   (function () {
     try {
-      const PAGE_MAP = { tv: '/tv', register: '/register' };
+      const PAGE_MAP = { tv: '/tv', register: '/register', player: '/player' };
       const last = localStorage.getItem('amistoso-last-page');
       const dest = last && PAGE_MAP[last];
       if (dest) window.location.replace(dest);

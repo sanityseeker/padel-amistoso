@@ -393,8 +393,8 @@ async def update_player_email(
 ) -> dict:
     """Set the email address for a player (organizer/admin only).
 
-    When the supplied email matches an existing Player Space profile the player
-    is automatically linked — the tournament will appear in their Player Space.
+    When the supplied email matches an existing Player Hub profile the player
+    is automatically linked — the tournament will appear in their Player Hub.
     """
     _require_editor_access(tid, user)
     result = update_email(tid, player_id, req.email)

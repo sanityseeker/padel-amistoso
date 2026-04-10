@@ -385,6 +385,7 @@ details[open] > .breakdown-toggle { color: var(--accent); }
 .breakdown-table tr:last-child td { border-bottom: none; }
 
 /* ── Bracket ── */
+.bracket-scroll-wrapper { overflow: visible; }
 .bracket-img {
   max-width: 100%;
   width: 100%;
@@ -394,6 +395,13 @@ details[open] > .breakdown-toggle { color: var(--accent); }
   display: block;
   margin: 0 auto;
   cursor: zoom-in;
+}
+.bracket-tap-hint {
+  display: none; /* shown only on mobile via media query */
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin: 0.35rem 0 0;
 }
 
 /* ── Bracket image lightbox ── */
@@ -789,6 +797,15 @@ html[data-theme="light"] .standings-table tr:hover td {
   .theme-btn { min-height: 44px; min-width: 44px; }
   .tv-picker-form input,
   .tv-picker-form button { min-height: 44px; font-size: 1rem; }
+
+  /* Bracket: horizontal scroll at readable size on mobile */
+  .bracket-scroll-wrapper {
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  .bracket-scroll-wrapper .bracket-img {
+    width: auto; max-width: none; min-width: 580px;
+  }
+  .bracket-tap-hint { display: block; }
 }
 
 /* ── Abbreviation info button ── */
@@ -964,6 +981,18 @@ html[data-theme="light"] .standings-table tr:hover td {
 }
 .player-dropdown-logout-btn:hover { border-color: var(--red, #ef4444); color: var(--red, #ef4444); }
 
+/* Push notification toggle */
+.push-toggle-btn {
+  background: none; border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 4px; padding: 0.2rem 0.7rem; cursor: pointer; font-size: 0.78rem;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  display: inline-flex; align-items: center; gap: 0.3rem; margin-right: auto;
+}
+.push-toggle-btn:hover { border-color: var(--accent); color: var(--accent); }
+.push-toggle-btn--active { border-color: var(--accent); color: var(--accent); }
+.push-toggle-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.push-toggle-icon { font-size: 0.9rem; line-height: 1; }
+
 /* ─── Player login modal ───────────────────── */
 .player-login-overlay {
   position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.65);
@@ -994,6 +1023,24 @@ html[data-theme="light"] .standings-table tr:hover td {
 .player-login-modal .btn-primary { background: var(--accent); color: #fff; }
 .player-login-modal .login-error { color: var(--red); font-size: 0.8rem; min-height: 1.2rem; margin-bottom: 0.3rem; }
 .login-passphrase-hint { font-size: 0.75rem; color: var(--text-muted); margin: 0.1rem 0 0.6rem; }
+
+/* ─── Player login modal — separator & Player Hub ─── */
+.player-login-separator {
+  display: flex; align-items: center; gap: 0.8rem;
+  margin: 0.7rem 0 0.6rem; color: var(--text-muted); font-size: 0.78rem;
+}
+.player-login-separator::before, .player-login-separator::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+.btn-player-hub {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
+  width: 100%; padding: 0.5rem 1rem; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.btn-player-hub:hover { border-color: var(--accent); background: rgba(99,102,241,0.06); }
+.player-hub-icon { font-size: 1rem; }
 
 /* ─── Player score inputs on court cards ───── */
 .player-score-form {

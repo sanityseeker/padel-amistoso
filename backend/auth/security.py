@@ -136,7 +136,7 @@ PROFILE_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
 
 
 def create_profile_token(profile_id: str, *, expires_delta: timedelta | None = None) -> str:
-    """Create a signed JWT for a Player Space profile.
+    """Create a signed JWT for a Player Hub profile.
 
     The ``sub`` claim uses ``profile:<profile_id>`` and ``type=profile``
     to distinguish these tokens from admin and player JWTs.

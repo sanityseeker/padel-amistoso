@@ -630,10 +630,8 @@ def render_player_space_welcome(
     passphrase: str,
     access_token: str = "",
 ) -> tuple[str, str]:
-    """Return ``(subject, html_body)`` for a Player Space welcome / passphrase email."""
+    """Return ``(subject, html_body)`` for a Player Hub welcome / passphrase email."""
     base = _site_url()
-    # Embed the JWT in the fragment so the player is auto-logged-in on click.
-    # Fragments are never sent to the server, so the token stays client-side only.
     if base and access_token:
         player_url = f"{base}/player#token={access_token}"
     elif base:
@@ -642,19 +640,19 @@ def render_player_space_welcome(
         player_url = ""
     display_name = name.strip() or email
 
-    subject = "Your Player Space passphrase"
+    subject = "Your Player Hub passphrase"
     body = f"""\
 <div style="{_BASE_STYLE}">
-  <h2 style="margin-top:0">Welcome to Player Space 🏅</h2>
+  <h2 style="margin-top:0">Welcome to Player Hub 🏅</h2>
   <p>Hi <strong>{_esc(display_name)}</strong>!</p>
-  <p>Your Player Space has been created. Here is your personal passphrase — it's the
+  <p>Your player profile has been created. Here is your personal passphrase — it's the
      only thing you need to log in from any device:</p>
   <p style="text-align:center"><span style="{_CODE_STYLE}">{_esc(passphrase)}</span></p>
   <p style="font-size:.9em;color:#666">
-    Keep this passphrase safe. Use it to access your Player Space dashboard and
+    Keep this passphrase safe. Use it to access your Player Hub dashboard and
     to log in to any tournament or registration lobby you're linked to.
   </p>
-  {f'<p style="text-align:center"><a href="{_esc(player_url)}" style="{_BUTTON_STYLE}">Open Player Space</a></p>' if player_url else ""}
+  {f'<p style="text-align:center"><a href="{_esc(player_url)}" style="{_BUTTON_STYLE}">Open Player Hub</a></p>' if player_url else ""}
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
   <p style="font-size:.8em;color:#999">This is an automated message from Torneos Amistosos.</p>
 </div>"""
@@ -667,7 +665,7 @@ def render_player_space_magic_link(
     email: str,
     access_token: str,
 ) -> tuple[str, str]:
-    """Return ``(subject, html_body)`` for a Player Space one-click login link email.
+    """Return ``(subject, html_body)`` for a Player Hub one-click login link email.
 
     Used for passphrase recovery — sends a short-lived login link without
     revealing the passphrase in the email body.
@@ -676,15 +674,15 @@ def render_player_space_magic_link(
     player_url = f"{base}/player#token={access_token}" if base else ""
     display_name = name.strip() or email
 
-    subject = "Your Player Space login link"
+    subject = "Your Player Hub login link"
     body = f"""\
 <div style="{_BASE_STYLE}">
-  <h2 style="margin-top:0">Player Space login link 🏅</h2>
+  <h2 style="margin-top:0">Player Hub login link 🏅</h2>
   <p>Hi <strong>{_esc(display_name)}</strong>!</p>
-  <p>We received a request to access your Player Space. Click the button below to log
+  <p>We received a request to access your player profile. Click the button below to log
      in instantly — this link is valid for <strong>1 hour</strong> and can only be
      used once.</p>
-  {f'<p style="text-align:center"><a href="{_esc(player_url)}" style="{_BUTTON_STYLE}">Open Player Space</a></p>' if player_url else ""}
+  {f'<p style="text-align:center"><a href="{_esc(player_url)}" style="{_BUTTON_STYLE}">Open Player Hub</a></p>' if player_url else ""}
   <p style="font-size:.9em;color:#666">
     If you didn't request this link, you can safely ignore this email — your
     account has not been changed.

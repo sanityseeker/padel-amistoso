@@ -10,7 +10,12 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
 from ..viz import render_playoff_schema, render_schema
-from .helpers import _schema_image_response
+from .helpers import (
+    _schema_cache_get,
+    _schema_cache_key,
+    _schema_cache_put,
+    _schema_image_response,
+)
 from .schemas import SchemaPreviewRequest
 
 router = APIRouter(prefix="/api/schema", tags=["schema"])
@@ -45,6 +50,23 @@ async def schema_preview(
     except ValueError:
         raise HTTPException(400, "group_sizes must be comma-separated integers ≥ 2")
 
+    key = _schema_cache_key(
+        "gs",
+        tuple(sizes),
+        advance_per_group,
+        elimination,
+        title,
+        fmt,
+        box_scale,
+        line_width,
+        arrow_scale,
+        title_font_scale,
+        output_scale,
+    )
+    cached = _schema_cache_get(key)
+    if cached:
+        return _schema_image_response(cached[0], cached[1], etag=key[:16])
+
     img = render_schema(
         group_sizes=sizes,
         advance_per_group=advance_per_group,
@@ -58,7 +80,8 @@ async def schema_preview(
         output_scale=output_scale,
     )
 
-    return _schema_image_response(img, fmt)
+    _schema_cache_put(key, img, fmt)
+    return _schema_image_response(img, fmt, etag=key[:16])
 
 
 @router.get("/playoff-preview")
@@ -79,6 +102,24 @@ async def playoff_schema_preview(
         names = names[:participants]
     else:
         names = [str(i + 1) for i in range(participants)]
+
+    key = _schema_cache_key(
+        "po",
+        participants,
+        tuple(names),
+        elimination,
+        title,
+        fmt,
+        box_scale,
+        line_width,
+        arrow_scale,
+        title_font_scale,
+        output_scale,
+    )
+    cached = _schema_cache_get(key)
+    if cached:
+        return _schema_image_response(cached[0], cached[1], etag=key[:16])
+
     img = render_playoff_schema(
         participant_names=names,
         elimination=elimination,
@@ -90,12 +131,30 @@ async def playoff_schema_preview(
         title_font_scale=title_font_scale,
         output_scale=output_scale,
     )
-    return _schema_image_response(img, fmt)
+    _schema_cache_put(key, img, fmt)
+    return _schema_image_response(img, fmt, etag=key[:16])
 
 
 @router.post("/preview")
 async def schema_preview_post(req: SchemaPreviewRequest) -> Response:
     """POST variant — accepts a JSON body instead of query params."""
+    key = _schema_cache_key(
+        "gs_post",
+        tuple(req.group_sizes),
+        req.advance_per_group,
+        req.elimination,
+        req.title,
+        "png",
+        req.box_scale,
+        req.line_width,
+        req.arrow_scale,
+        req.title_font_scale,
+        req.output_scale,
+    )
+    cached = _schema_cache_get(key)
+    if cached:
+        return _schema_image_response(cached[0], cached[1], etag=key[:16])
+
     img = render_schema(
         group_sizes=req.group_sizes,
         advance_per_group=req.advance_per_group,
@@ -109,4 +168,5 @@ async def schema_preview_post(req: SchemaPreviewRequest) -> Response:
         output_scale=req.output_scale,
     )
 
-    return _schema_image_response(img, "png")
+    _schema_cache_put(key, img, "png")
+    return _schema_image_response(img, "png", etag=key[:16])

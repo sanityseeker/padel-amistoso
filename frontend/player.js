@@ -1,4 +1,4 @@
-/* ── Player Space page ──────────────────────────────────── */
+/* ── Player Hub page ──────────────────────────────────── */
 'use strict';
 
 // ── Remember this page for the page selector ──────────────
@@ -83,7 +83,7 @@ function _setHistoryPanelOpen(isOpen) {
 
 function _init() {
   // Check for JWT autologin via URL fragment (#token=<jwt>)
-  // This is used by the welcome email's "Open Player Space" link.
+  // This is used by the welcome email's "Open Player Hub" link.
   const _hashParams = new URLSearchParams(location.hash.slice(1));
   const _tokenFromHash = _hashParams.get('token');
   if (_tokenFromHash) {

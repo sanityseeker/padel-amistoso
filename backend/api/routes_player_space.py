@@ -1,5 +1,5 @@
 """
-Player Space routes.
+Player Hub routes.
 
 Provides a cross-tournament identity layer for players.  A *Player Profile*
 is a lightweight, platform-global identity keyed by a single 3-word
@@ -61,7 +61,7 @@ class ProfileCreateRequest(BaseModel):
 
 
 class ProfileLoginRequest(BaseModel):
-    """Authenticate to the Player Space with the global passphrase."""
+    """Authenticate to the Player Hub with the global passphrase."""
 
     passphrase: str = Field(min_length=1)
 
@@ -104,7 +104,7 @@ class ProfileOut(BaseModel):
 
 
 class PlayerSpaceEntry(BaseModel):
-    """A single participation entry in the Player Space dashboard."""
+    """A single participation entry in the Player Hub dashboard."""
 
     entity_type: str  # "tournament" or "registration"
     entity_id: str
@@ -133,7 +133,7 @@ class PlayerSpaceEntry(BaseModel):
 
 
 class PlayerSpaceResponse(BaseModel):
-    """Full Player Space dashboard payload."""
+    """Full Player Hub dashboard payload."""
 
     profile: ProfileOut
     access_token: str
@@ -597,7 +597,7 @@ def _backfill_finished_secrets(profile_id: str) -> None:
 
 @router.post("", response_model=PlayerSpaceResponse)
 async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerSpaceResponse:
-    """Create a new Player Space profile.
+    """Create a new Player Hub profile.
 
     Generates a unique 3-word passphrase and returns it in the response.
     Also returns an initial JWT so the player can immediately see their
@@ -685,7 +685,7 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
 
 @router.post("/login", response_model=ProfileLoginResponse)
 async def login_profile(req: ProfileLoginRequest, request: Request) -> ProfileLoginResponse:
-    """Authenticate to the Player Space with the 3-word global passphrase.
+    """Authenticate to the Player Hub with the 3-word global passphrase.
 
     Returns a 30-day JWT on success.
     """
@@ -736,7 +736,7 @@ async def recover_passphrase(req: ProfileRecoverRequest, request: Request) -> di
 async def get_player_space(
     identity: ProfileIdentity | None = Depends(get_current_profile),
 ) -> PlayerSpaceResponse:
-    """Return the full Player Space dashboard for the authenticated profile.
+    """Return the full Player Hub dashboard for the authenticated profile.
 
     Requires a valid profile JWT (``Authorization: Bearer <token>``).
     Active tournament and registration participations plus finished history
@@ -814,7 +814,7 @@ async def link_participation(
     The player proves ownership of the participation by providing the passphrase
     they originally received for that tournament or lobby.  On success the
     matching row gets ``profile_id`` set and the participation appears in the
-    Player Space dashboard.
+    Player Hub dashboard.
     """
     if identity is None:
         raise HTTPException(401, "Profile authentication required")

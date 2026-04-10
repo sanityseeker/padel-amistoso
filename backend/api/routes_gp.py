@@ -23,6 +23,9 @@ from .helpers import (
     _serialize_match,
     _tennis_sets_to_scores,
     _build_match_labels,
+    _schema_cache_get,
+    _schema_cache_key,
+    _schema_cache_put,
     _schema_image_response,
     _require_editor_access,
     _require_score_permission,
@@ -38,8 +41,9 @@ from .schemas import (
     StartGroupPlayoffsRequest,
     UpdateCourtsRequest,
 )
-from .state import allocate_tournament_id, _save_tournament, get_tournament_lock
+from .state import allocate_tournament_id, _save_tournament, _tournament_versions, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
+from .push_events import notify_matches_ready, notify_champion, notify_score_submitted
 
 router = APIRouter(prefix="/api/tournaments", tags=["group-playoff"])
 
@@ -180,7 +184,8 @@ async def gp_record_group(
 ) -> dict:
     """Record a raw-score result for a group-stage match."""
     async with get_tournament_lock(tid):
-        t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+        data = _get_tournament(tid, _GP)
+        t: GroupPlayoffTournament = data["tournament"]
         match = _find_match(t, req.match_id)
         if match is None:
             raise HTTPException(404, "Match not found")
@@ -205,6 +210,8 @@ async def gp_record_group(
             actor = user.username if user else None
             _mark_admin_score(match, actor)
         _save_tournament(tid)
+    if is_player_action and is_required:
+        notify_score_submitted(tid, data, match, player.player_id)
     return {"ok": True}
 
 
@@ -219,7 +226,8 @@ async def gp_record_group_tennis(
     Score = sum of game differences across all sets."""
     total1, total2, sets_tuples, third_set_decided = _tennis_sets_to_scores(req.sets)
     async with get_tournament_lock(tid):
-        t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+        data = _get_tournament(tid, _GP)
+        t: GroupPlayoffTournament = data["tournament"]
         match = _find_match(t, req.match_id)
         if match is None:
             raise HTTPException(404, "Match not found")
@@ -252,6 +260,8 @@ async def gp_record_group_tennis(
             actor = user.username if user else None
             _mark_admin_score(match, actor)
         _save_tournament(tid)
+    if is_player_action and is_required:
+        notify_score_submitted(tid, data, match, player.player_id)
     return {
         "ok": True,
         "score": [total1, total2],
@@ -283,12 +293,14 @@ async def gp_next_group_round(tid: str, user=Depends(get_current_user)) -> dict:
     """
     _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
-        t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+        data = _get_tournament(tid, _GP)
+        t: GroupPlayoffTournament = data["tournament"]
         try:
             new_matches = t.generate_next_group_round()
         except RuntimeError as e:
             raise HTTPException(400, str(e))
         _save_tournament(tid)
+    notify_matches_ready(tid, data, new_matches)
     return {
         "matches": [_serialize_match(m) for m in new_matches],
         "has_more_rounds": t.has_more_group_rounds,
@@ -311,7 +323,8 @@ async def gp_start_playoffs(
     """Seed the play-off bracket from group standings and transition to the playoffs phase."""
     _require_editor_access(tid, user)
     async with get_tournament_lock(tid):
-        t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+        data = _get_tournament(tid, _GP)
+        t: GroupPlayoffTournament = data["tournament"]
         try:
             t.start_playoffs(
                 advancing_player_ids=req.advancing_player_ids,
@@ -323,6 +336,7 @@ async def gp_start_playoffs(
         except (RuntimeError, KeyError, ValueError) as e:
             raise HTTPException(400, str(e))
         _save_tournament(tid)
+    notify_matches_ready(tid, data, t.pending_playoff_matches())
     return {"phase": t.phase}
 
 
@@ -357,6 +371,25 @@ async def gp_playoffs_schema(
     if len(participant_names) < 2:
         raise HTTPException(400, "Need at least 2 participants for play-off schema")
 
+    version = _tournament_versions.get(tid, 0)
+    key = _schema_cache_key(
+        "gp",
+        tid,
+        version,
+        tuple(participant_names),
+        "double" if t.double_elimination else "single",
+        title,
+        fmt,
+        box_scale,
+        line_width,
+        arrow_scale,
+        title_font_scale,
+        output_scale,
+    )
+    cached = _schema_cache_get(key)
+    if cached:
+        return _schema_image_response(cached[0], cached[1], etag=key[:16])
+
     img = render_playoff_schema(
         participant_names=participant_names,
         elimination="double" if t.double_elimination else "single",
@@ -369,7 +402,8 @@ async def gp_playoffs_schema(
         title_font_scale=title_font_scale,
         output_scale=output_scale,
     )
-    return _schema_image_response(img, fmt)
+    _schema_cache_put(key, img, fmt)
+    return _schema_image_response(img, fmt, etag=key[:16])
 
 
 @router.post("/{tid}/gp/record-playoff")
@@ -381,7 +415,8 @@ async def gp_record_playoff(
 ) -> dict:
     """Record a raw-score result for a play-off match."""
     async with get_tournament_lock(tid):
-        t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+        data = _get_tournament(tid, _GP)
+        t: GroupPlayoffTournament = data["tournament"]
         match = _find_match(t, req.match_id)
         if match is None:
             raise HTTPException(404, "Match not found")
@@ -395,6 +430,9 @@ async def gp_record_playoff(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+    champ = t.champion()
+    if champ:
+        notify_champion(tid, data, [p.name for p in champ])
     return {"ok": True, "phase": t.phase}
 
 
@@ -408,7 +446,8 @@ async def gp_record_playoff_tennis(
     """Record a playoff match using tennis-style set scores."""
     total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
     async with get_tournament_lock(tid):
-        t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+        data = _get_tournament(tid, _GP)
+        t: GroupPlayoffTournament = data["tournament"]
         match = _find_match(t, req.match_id)
         if match is None:
             raise HTTPException(404, "Match not found")
@@ -424,6 +463,9 @@ async def gp_record_playoff_tennis(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+    champ = t.champion()
+    if champ:
+        notify_champion(tid, data, [p.name for p in champ])
     return {
         "ok": True,
         "phase": t.phase,

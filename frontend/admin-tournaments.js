@@ -27,27 +27,23 @@ async function loadTournaments() {
       api('/api/tournaments'),
       isAuthenticated() ? api(registrationsPath).catch(() => []) : Promise.resolve([]),
     ]);
-    const visibleRegList = _showArchivedRegistrations
-      ? regList
-      : regList.filter(r => !r.archived);
+    const nonArchivedRegList = regList.filter(r => !r.archived);
+    const archivedRegList = regList.filter(r => r.archived);
+    const visibleArchivedRegList = _showArchivedRegistrations ? archivedRegList : [];
     _tournamentMeta = {};
     for (const tournament of list) _tournamentMeta[tournament.id] = tournament;
-    _registrations = visibleRegList;
+    _registrations = nonArchivedRegList;
     const el = document.getElementById('tournament-list');
     const archivedToggleEl = document.getElementById('archived-lobbies-toggle');
     const finEl = document.getElementById('finished-tournament-list');
     const finCard = document.getElementById('finished-tournaments-card');
     const active = list.filter(tr => tr.phase !== 'finished');
     const finished = list.filter(tr => tr.phase === 'finished');
-    // Active section: open lobbies and closed, never-converted lobbies (unless archived view is enabled).
-    // Finished section: converted and archived lobbies are always shown.
-    const lobbies = visibleRegList.filter(
-      r => r.open || (!r.open && !(r.converted_to_tids?.length) && !_showArchivedRegistrations)
-    );
-    const finishedLobbies = regList.filter(
-      r => !r.open && ((r.converted_to_tids?.length || 0) > 0 || r.archived)
-    );
-    const closedLobbiesCount = regList.filter(r => !r.open).length;
+    // Active section: open lobbies only.
+    // Finished section: all non-archived closed lobbies (converted or not).
+    const activeLobbies = nonArchivedRegList.filter(r => r.open);
+    const finishedLobbies = nonArchivedRegList.filter(r => !r.open);
+    const archivedLobbiesCount = archivedRegList.length;
     const renderTournamentCard = (tournament) => {
       const canEdit = isAdmin() || getAuthUsername() === tournament.owner || tournament.shared === true;
       const canDelete = isAdmin() || getAuthUsername() === tournament.owner;
@@ -107,22 +103,20 @@ async function loadTournaments() {
     };
     const _renderFinishedSection = () => {
       const finishedTournamentsHtml = finished.map(renderTournamentCard).join('');
-      const convertedLobbies = finishedLobbies.filter(r => (r.converted_to_tids?.length || 0) > 0 && !r.archived);
-      const archivedLobbies = finishedLobbies.filter(r => r.archived);
-      const convertedLobbiesHtml = convertedLobbies.map(_renderLobbyCard).join('');
-      const archivedCount = archivedLobbies.length;
+      const finishedLobbiesHtml = finishedLobbies.map(_renderLobbyCard).join('');
+      const archivedCount = visibleArchivedRegList.length;
       const archivedTabHtml = archivedCount > 0
         ? `<details class="card archived-lobbies-panel">
             <summary class="archived-lobbies-summary">${t('txt_reg_show_archived')} (${archivedCount})</summary>
-            <div class="archived-lobbies-body">${archivedLobbies.map(_renderLobbyCard).join('')}</div>
+            <div class="archived-lobbies-body">${visibleArchivedRegList.map(_renderLobbyCard).join('')}</div>
           </details>`
         : '';
       return {
-        hasContent: Boolean(finishedTournamentsHtml || convertedLobbiesHtml || archivedTabHtml),
-        html: `${finishedTournamentsHtml}${convertedLobbiesHtml}${archivedTabHtml}`,
+        hasContent: Boolean(finishedTournamentsHtml || finishedLobbiesHtml || archivedTabHtml),
+        html: `${finishedTournamentsHtml}${finishedLobbiesHtml}${archivedTabHtml}`,
       };
     };
-    if (!active.length && !lobbies.length) {
+    if (!active.length && !activeLobbies.length) {
       el.innerHTML = `<div class="tournaments-empty-state"><div class="tournaments-empty-icon">🏆</div><div class="tournaments-empty-title">${t('txt_txt_no_tournaments_yet')}</div><div class="tournaments-empty-hint">${t('txt_txt_no_tournaments_hint')}</div><button type="button" class="btn btn-primary btn-sm" onclick="setActiveTab('create')">${t('txt_txt_create_first')}</button></div>`;
       const finishedSection = _renderFinishedSection();
       if (finishedSection.hasContent) {
@@ -133,7 +127,7 @@ async function loadTournaments() {
       }
       return;
     }
-    const archivedToggle = isAuthenticated() && closedLobbiesCount > 0 ? `
+    const archivedToggle = isAuthenticated() && archivedLobbiesCount > 0 ? `
       <div class="archived-lobbies-toggle-wrap">
         <button
           type="button"
@@ -142,12 +136,12 @@ async function loadTournaments() {
           aria-pressed="${_showArchivedRegistrations ? 'true' : 'false'}"
         >
           <span>${t('txt_reg_show_archived')}</span>
-          <span class="archived-lobbies-count">${closedLobbiesCount}</span>
+          <span class="archived-lobbies-count">${archivedLobbiesCount}</span>
         </button>
       </div>
     ` : '';
-    // Lobbies first, then active tournaments
-    let html = lobbies.map(_renderLobbyCard).join('');
+    // Open lobbies first, then active tournaments
+    let html = activeLobbies.map(_renderLobbyCard).join('');
     html += active.map(renderTournamentCard).join('');
     el.innerHTML = html || `<em>${t('txt_txt_no_tournaments_yet')}</em>`;
     if (archivedToggleEl) archivedToggleEl.innerHTML = archivedToggle;
@@ -204,61 +198,33 @@ let _mexTeamMode = false;  // true when each participant is a pre-formed pair
 let _mexSortCol = null;      // null = server default order; otherwise a leaderboard field key
 let _mexSortDir = 'desc';    // 'asc' | 'desc'
 
-// ─── Admin live-refresh (version polling) ─────────────────
-let _adminVersionPollTimer = null;
+// ─── Admin live-refresh (SSE with polling fallback) ──────────
+let _adminVersionStream = null;
 let _adminLastKnownVersion = null;
-let _adminVersionEtag = null;
-let _adminVersionFetching = false;
 const _ADMIN_POLL_INTERVAL_MS = 30000;
 
 function _startAdminVersionPoll() {
   _stopAdminVersionPoll();
   if (!currentTid) return;
-  // Seed the version so the first poll doesn't trigger a spurious reload.
-  // Capture tid locally so the async callbacks don't clobber state for a
-  // different tournament if the user switches before the fetch resolves.
-  const _seedTid = currentTid;
-  fetch(`/api/tournaments/${_seedTid}/version`)
-    .then((r) => {
-      if (r.status === 304) return null;
-      const etag = r.headers.get('etag');
-      return r.json().then((d) => ({ etag, version: d.version }));
-    })
-    .then((d) => {
-      if (!d || currentTid !== _seedTid) return;
-      if (d.etag) _adminVersionEtag = d.etag;
-      _adminLastKnownVersion = d.version;
-    })
-    .catch(() => {});
-  _adminVersionPollTimer = setInterval(async () => {
-    if (!currentTid || _adminVersionFetching || document.hidden) return;
-    _adminVersionFetching = true;
-    try {
-      const d = await fetch(`/api/tournaments/${currentTid}/version`, {
-        headers: _adminVersionEtag ? { 'If-None-Match': _adminVersionEtag } : undefined,
-      }).then((r) => {
-        if (r.status === 304) return null;
-        const etag = r.headers.get('etag');
-        if (etag) _adminVersionEtag = etag;
-        return r.json();
-      });
-      if (!d) return; // 304 — version unchanged
-      if (_adminLastKnownVersion !== null && d.version !== _adminLastKnownVersion) {
-        _adminLastKnownVersion = d.version;
+  _adminVersionStream = createVersionStream({
+    url: `/api/tournaments/${currentTid}/events`,
+    pollUrl: `/api/tournaments/${currentTid}/version`,
+    pollIntervalMs: _ADMIN_POLL_INTERVAL_MS,
+    shouldPause: () => !currentTid || document.hidden,
+    async onVersion(data) {
+      if (_adminLastKnownVersion !== null && data.version !== _adminLastKnownVersion) {
+        _adminLastKnownVersion = data.version;
         await _rerenderCurrentViewPreserveDrafts();
       } else {
-        _adminLastKnownVersion = d.version;
+        _adminLastKnownVersion = data.version;
       }
-    } catch (_) { /* network blip — ignore */ }
-    finally { _adminVersionFetching = false; }
-  }, _ADMIN_POLL_INTERVAL_MS);
+    },
+  });
 }
 
 function _stopAdminVersionPoll() {
-  if (_adminVersionPollTimer) { clearInterval(_adminVersionPollTimer); _adminVersionPollTimer = null; }
+  if (_adminVersionStream) { _adminVersionStream.close(); _adminVersionStream = null; }
   _adminLastKnownVersion = null;
-  _adminVersionEtag = null;
-  _adminVersionFetching = false;
 }
 
 function _refreshCurrentView() {

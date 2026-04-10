@@ -503,3 +503,92 @@ document.addEventListener('click', (e) => {
   const sel = document.getElementById('page-selector');
   if (sel && !sel.contains(e.target)) sel.classList.remove('open');
 });
+
+// ── SSE (Server-Sent Events) helper ─────────────────────────────────────
+
+/**
+ * Subscribe to an SSE endpoint with automatic reconnection and polling fallback.
+ *
+ * Returns a controller object with a `close()` method to cleanly tear down the
+ * subscription (closes the EventSource or clears the poll timer).
+ *
+ * @param {object} opts
+ * @param {string} opts.url              SSE endpoint URL, e.g. `/api/tournaments/t1/events`
+ * @param {string} opts.pollUrl          Polling fallback URL, e.g. `/api/tournaments/t1/version`
+ * @param {number} opts.pollIntervalMs   Polling interval in ms (default: 3000)
+ * @param {function} opts.onVersion      Called with the parsed data object on each event
+ * @param {function} [opts.shouldPause]  Returns true to skip processing (e.g. document.hidden)
+ * @returns {{ close: function }}
+ */
+function createVersionStream(opts) {
+  const { url, pollUrl, pollIntervalMs = 3000, onVersion, shouldPause } = opts;
+  let eventSource = null;
+  let pollTimer = null;
+  let pollEtag = null;
+  let closed = false;
+  let reconnectAttempts = 0;
+  const MAX_RECONNECT_DELAY_MS = 30000;
+
+  function _connectSSE() {
+    if (closed) return;
+    try {
+      eventSource = new EventSource(url);
+    } catch (_) {
+      _fallbackToPoll();
+      return;
+    }
+    eventSource.onmessage = (ev) => {
+      if (closed) return;
+      reconnectAttempts = 0;
+      if (shouldPause && shouldPause()) return;
+      try {
+        const data = JSON.parse(ev.data);
+        onVersion(data);
+      } catch (_) {}
+    };
+    eventSource.onopen = () => { reconnectAttempts = 0; };
+    eventSource.onerror = () => {
+      if (closed) return;
+      // EventSource will auto-reconnect, but if we keep failing fall back
+      // to polling after a few attempts.
+      reconnectAttempts++;
+      if (reconnectAttempts > 3) {
+        eventSource.close();
+        eventSource = null;
+        _fallbackToPoll();
+      }
+    };
+  }
+
+  function _fallbackToPoll() {
+    if (closed || pollTimer) return;
+    let _fetching = false;
+    pollTimer = setInterval(async () => {
+      if (closed || _fetching) return;
+      if (shouldPause && shouldPause()) return;
+      _fetching = true;
+      try {
+        const r = await fetch(pollUrl, {
+          headers: pollEtag ? { 'If-None-Match': pollEtag } : undefined,
+        });
+        if (r.status === 304) return;
+        const etag = r.headers.get('etag');
+        if (etag) pollEtag = etag;
+        const data = await r.json();
+        onVersion(data);
+      } catch (_) {}
+      finally { _fetching = false; }
+    }, pollIntervalMs);
+  }
+
+  // Start with SSE; fall back automatically.
+  _connectSSE();
+
+  return {
+    close() {
+      closed = true;
+      if (eventSource) { eventSource.close(); eventSource = null; }
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    },
+  };
+}

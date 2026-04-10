@@ -95,6 +95,9 @@ let _tvVersionEtag = null;
 let _pickerVersionEtag = null;
 const _TV_VERSION_POLL_INTERVAL_MS = 3000;
 const _TV_PICKER_POLL_INTERVAL_MS = 3000;
+// SSE stream controllers — closed on teardown / navigation.
+let _tvVersionStream = null;
+let _pickerVersionStream = null;
 
 function _tvLabel() {
   return tvState.tournamentSport === 'tennis' ? t('txt_txt_tennis_tv') : t('txt_txt_padel_tv');
@@ -236,7 +239,7 @@ async function _handleTokenAutoLogin() {
   }
 }
 
-/** Try auto-login via Player Space profile passphrase stored in localStorage */
+/** Try auto-login via Player Hub profile passphrase stored in localStorage */
 async function _tryProfileAutoLogin() {
   if (!TID || _isPlayerLoggedIn()) return;
   try {
@@ -269,6 +272,10 @@ function _showPlayerLoginModal() {
       <div style="display:flex;justify-content:center;margin-top:0.4rem">
         <button class="btn btn-primary" onclick="_doPlayerLogin()">${t('txt_txt_login')}</button>
       </div>
+      <div class="player-login-separator"><span>${t('txt_txt_or_separator')}</span></div>
+      <button class="btn btn-player-hub" onclick="_doPlayerHubLogin()">
+        <span class="player-hub-icon">👤</span> ${t('txt_txt_login_player_hub')}
+      </button>
     </div>`;
   document.body.appendChild(overlay);
   const input = document.getElementById('player-passphrase-input');
@@ -292,10 +299,140 @@ async function _doPlayerLogin() {
   }
 }
 
+/** Attempt login using Player Hub profile passphrase from localStorage */
+async function _doPlayerHubLogin() {
+  const errEl = document.getElementById('player-login-error');
+  if (errEl) errEl.textContent = '';
+  try {
+    const raw = localStorage.getItem('padel-player-profile-data');
+    if (!raw) {
+      // No Player Hub profile — redirect to set one up
+      if (errEl) errEl.textContent = t('txt_txt_player_hub_no_profile');
+      setTimeout(() => { window.open('/player', '_blank'); }, 800);
+      return;
+    }
+    const profile = JSON.parse(raw);
+    if (!profile.passphrase) {
+      if (errEl) errEl.textContent = t('txt_txt_player_hub_no_profile');
+      setTimeout(() => { window.open('/player', '_blank'); }, 800);
+      return;
+    }
+    await _playerAuth(profile.passphrase, null);
+    document.getElementById('player-login-overlay')?.remove();
+    loadTV();
+  } catch {
+    if (errEl) errEl.textContent = t('txt_txt_player_hub_login_failed');
+  }
+}
+
 /** Logout player */
 function _playerLogout() {
   _clearPlayerSession();
   loadTV(); // re-render without score inputs
+}
+
+// ── Web Push Notifications ──────────────────────────────────────────────────
+
+/** Check whether push notifications are supported by the browser */
+function _pushSupported() {
+  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
+
+/** Check whether push is currently subscribed for this tournament */
+function _isPushSubscribed() {
+  if (!TID) return false;
+  return localStorage.getItem(`padel-push-${TID}`) === '1';
+}
+
+/** Fetch the VAPID public key from the server (cached per session) */
+let _vapidKeyCache = null;
+async function _getVapidKey() {
+  if (_vapidKeyCache) return _vapidKeyCache;
+  const res = await fetch(`${API}/api/tournaments/${TID}/push/vapid-key`);
+  if (!res.ok) return null;
+  const data = await res.json();
+  _vapidKeyCache = data.public_key;
+  return _vapidKeyCache;
+}
+
+/** Convert a URL-safe base64 string to a Uint8Array (for applicationServerKey) */
+function _urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+/** Subscribe to push notifications for the current tournament */
+async function _pushSubscribe() {
+  if (!TID || !tvState.playerJwt) return;
+  const vapidKey = await _getVapidKey();
+  if (!vapidKey) return;
+
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') return;
+
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: _urlBase64ToUint8Array(vapidKey),
+  });
+
+  const subJson = sub.toJSON();
+  await _playerApi(`/api/tournaments/${TID}/push/subscribe`, {
+    method: 'POST',
+    body: JSON.stringify({
+      endpoint: subJson.endpoint,
+      keys: { p256dh: subJson.keys.p256dh, auth: subJson.keys.auth },
+    }),
+  });
+  localStorage.setItem(`padel-push-${TID}`, '1');
+}
+
+/** Unsubscribe from push notifications for the current tournament */
+async function _pushUnsubscribe() {
+  if (!TID || !tvState.playerJwt) return;
+  try {
+    await _playerApi(`/api/tournaments/${TID}/push/unsubscribe`, { method: 'POST' });
+  } catch (_) { /* best effort */ }
+  localStorage.removeItem(`padel-push-${TID}`);
+  // Also unsubscribe the browser PushSubscription
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) await sub.unsubscribe();
+  } catch (_) { /* ignore */ }
+}
+
+/** Toggle push subscription on/off */
+async function _togglePush() {
+  const btn = document.getElementById('push-toggle-btn');
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    if (_isPushSubscribed()) {
+      await _pushUnsubscribe();
+    } else {
+      await _pushSubscribe();
+    }
+  } catch (e) {
+    console.warn('Push toggle error:', e);
+  }
+  _updatePushToggleUI();
+  if (btn) btn.disabled = false;
+}
+
+/** Update the push toggle button's visual state */
+function _updatePushToggleUI() {
+  const btn = document.getElementById('push-toggle-btn');
+  if (!btn) return;
+  const subscribed = _isPushSubscribed();
+  btn.innerHTML = subscribed
+    ? `<span class="push-toggle-icon">🔔</span> ${t('txt_txt_notifications_on')}`
+    : `<span class="push-toggle-icon">🔕</span> ${t('txt_txt_notifications_off')}`;
+  btn.classList.toggle('push-toggle-btn--active', subscribed);
 }
 
 /** Copy contact info to clipboard with brief visual feedback */
@@ -346,6 +483,9 @@ function _buildPlayerPanel() {
   const panel = document.createElement('div');
   panel.id = 'player-expand-panel';
   panel.className = 'player-expand-panel';
+  const pushBtnHtml = _pushSupported()
+    ? `<button id="push-toggle-btn" class="push-toggle-btn" onclick="_togglePush()"></button>`
+    : '';
   panel.innerHTML = `
     <button class="player-expand-close" onclick="_closePlayerPanel()" title="Close">✕</button>
     <div class="player-expand-inner">
@@ -353,8 +493,13 @@ function _buildPlayerPanel() {
       ${_buildPlayerOpponentsHtml()}
     </div>
     <div class="player-expand-footer">
+      ${pushBtnHtml}
       <button class="player-dropdown-logout-btn" onclick="_playerLogout()">${t('txt_txt_logout')}</button>
     </div>`;
+  // Initialise push toggle UI after insertion
+  if (_pushSupported()) {
+    requestAnimationFrame(() => _updatePushToggleUI());
+  }
   return panel;
 }
 
@@ -1103,6 +1248,8 @@ function _stopAllSchedules() {
   if (tvState.countdownInterval) { clearInterval(tvState.countdownInterval); tvState.countdownInterval = null; }
   if (tvState.versionPollTimer) { clearInterval(tvState.versionPollTimer); tvState.versionPollTimer = null; }
   if (tvState.pickerPollTimer) { clearInterval(tvState.pickerPollTimer); tvState.pickerPollTimer = null; }
+  if (_tvVersionStream) { _tvVersionStream.close(); _tvVersionStream = null; }
+  if (_pickerVersionStream) { _pickerVersionStream.close(); _pickerVersionStream = null; }
   _tvVersionFetching = false;
   _pickerFetching = false;
   _tvVersionEtag = null;
@@ -1122,28 +1269,20 @@ function _startCountdown() {
     return;
   }
   if (tvState.refreshIntervalSecs === -1) {
-    // “On update” — poll version endpoint every 2 s
+    // “On update” — use SSE (with polling fallback) for instant updates.
     _updateCountdownEl('');
-    tvState.versionPollTimer = setInterval(async () => {
-      if (tvState.isRefreshing || !TID || _tvVersionFetching || document.hidden) return;
-      _tvVersionFetching = true;
-      try {
-        const data = await fetch(`/api/tournaments/${TID}/version`, {
-          headers: _tvVersionEtag ? { 'If-None-Match': _tvVersionEtag } : undefined,
-        }).then((r) => {
-          if (r.status === 304) return null;
-          const etag = r.headers.get('etag');
-          if (etag) _tvVersionEtag = etag;
-          return r.json();
-        });
-        if (!data) return; // 304 — version unchanged
+    _tvVersionStream = createVersionStream({
+      url: `/api/tournaments/${TID}/events`,
+      pollUrl: `/api/tournaments/${TID}/version`,
+      pollIntervalMs: _TV_VERSION_POLL_INTERVAL_MS,
+      shouldPause: () => tvState.isRefreshing || !TID || document.hidden,
+      onVersion(data) {
         if (tvState.lastKnownVersion !== null && data.version !== tvState.lastKnownVersion) {
           if (!_hasOpenScoreForm()) loadTV();
         }
         tvState.lastKnownVersion = data.version;
-      } catch (_) { /* network blip — ignore */ }
-      finally { _tvVersionFetching = false; }
-    }, _TV_VERSION_POLL_INTERVAL_MS);
+      },
+    });
     return;
   }
   // Timer mode
@@ -1312,11 +1451,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
       const as_ = tvSettings.schema_arrow_scale || 1.0;
       const tfs = tvSettings.schema_title_font_scale || 1.0;
       const imgUrl = `/api/tournaments/${TID}/gp/playoffs-schema?fmt=png&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
-      html += `<details class="tv-collapsible" data-tv-key="bracket" open>`;
-      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2></summary>`;
-      html += `<div class="tv-section">`;
-      html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand" onerror="this.style.display='none'">`;
-      html += `</div></details>`;
+      html += _buildBracketSection(imgUrl);
     }
 
     if (tvSettings.show_past_matches) {
@@ -1384,11 +1519,7 @@ function _renderPO(tvSettings, status, playoffs) {
     const as_ = tvSettings.schema_arrow_scale      || 1.0;
     const tfs = tvSettings.schema_title_font_scale || 1.0;
     const imgUrl = `/api/tournaments/${TID}/po/playoffs-schema?fmt=png&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
-    html += `<details class="tv-collapsible" data-tv-key="bracket" open>`;
-    html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2></summary>`;
-    html += `<div class="tv-section">`;
-    html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand" onerror="this.style.display='none'">`;
-    html += `</div></details>`;
+    html += _buildBracketSection(imgUrl);
   }
 
   if (tvSettings.show_past_matches) {
@@ -1436,11 +1567,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
       const as_ = tvSettings.schema_arrow_scale || 1.0;
       const tfs = tvSettings.schema_title_font_scale || 1.0;
       const imgUrl = `/api/tournaments/${TID}/mex/playoffs-schema?fmt=png&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
-      html += `<details class="tv-collapsible" data-tv-key="bracket" open>`;
-      html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2></summary>`;
-      html += `<div class="tv-section">`;
-      html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand" onerror="this.style.display='none'">`;
-      html += `</div></details>`;
+      html += _buildBracketSection(imgUrl);
     }
 
     if (tvSettings.show_standings) {
@@ -1656,6 +1783,19 @@ function _buildHeader(name, phase, champion) {
         </div>
       </div>
     </div>`;
+}
+
+/** Build bracket section HTML with scrollable wrapper for mobile */
+function _buildBracketSection(imgUrl) {
+  let html = `<details class="tv-collapsible" data-tv-key="bracket" open>`;
+  html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2></summary>`;
+  html += `<div class="tv-section bracket-section">`;
+  html += `<div class="bracket-scroll-wrapper">`;
+  html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand" onerror="this.style.display='none'">`;
+  html += `</div>`;
+  html += `<p class="bracket-tap-hint">${t('txt_txt_tap_to_expand_bracket')}</p>`;
+  html += `</div></details>`;
+  return html;
 }
 
 function _buildBanner(tvSettings) {
@@ -2015,45 +2155,23 @@ async function _showPicker() {
   try { tournaments = await api('/api/tournaments'); } catch (_) {}
   _renderPickerHtml(tournaments);
 
-  // Poll /api/version (lightweight). Re-fetch + re-render only when
-  // the version changes, so visibility/creation changes appear within ~3 s.
-  if (tvState.pickerPollTimer) return; // already running — don't stack timers
+  // Use SSE (with polling fallback) to detect tournament list changes instantly.
+  if (_pickerVersionStream) return; // already running
   let _pickerVersion = null;
-  try {
-    const vd = await fetch('/api/version', {
-      headers: _pickerVersionEtag ? { 'If-None-Match': _pickerVersionEtag } : undefined,
-    }).then((r) => {
-      if (r.status === 304) return null;
-      const etag = r.headers.get('etag');
-      if (etag) _pickerVersionEtag = etag;
-      return r.json();
-    });
-    if (!vd) return;
-    _pickerVersion = vd.version;
-  } catch (_) {}
-
-  tvState.pickerPollTimer = setInterval(async () => {
-    if (_pickerFetching || document.hidden) return;
-    _pickerFetching = true;
-    try {
-      const vd = await fetch('/api/version', {
-        headers: _pickerVersionEtag ? { 'If-None-Match': _pickerVersionEtag } : undefined,
-      }).then((r) => {
-        if (r.status === 304) return null;
-        const etag = r.headers.get('etag');
-        if (etag) _pickerVersionEtag = etag;
-        return r.json();
-      });
-      if (!vd) return; // 304 — version unchanged
-      if (_pickerVersion !== null && vd.version !== _pickerVersion) {
+  _pickerVersionStream = createVersionStream({
+    url: '/api/events',
+    pollUrl: '/api/version',
+    pollIntervalMs: _TV_PICKER_POLL_INTERVAL_MS,
+    shouldPause: () => document.hidden,
+    async onVersion(data) {
+      if (_pickerVersion !== null && data.version !== _pickerVersion) {
         let list = [];
         try { list = await api('/api/tournaments'); } catch (_) {}
         _renderPickerHtml(list);
       }
-      _pickerVersion = vd.version;
-    } catch (_) { /* network blip — ignore */ }
-    finally { _pickerFetching = false; }
-  }, _TV_PICKER_POLL_INTERVAL_MS);
+      _pickerVersion = data.version;
+    },
+  });
 }
 
 function _backToTournaments() {

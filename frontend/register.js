@@ -57,7 +57,7 @@ let _pollTimer = null;
 let _lobbyFetching = false;
 let _rid = null;
 let _urlToken = null; // token passed via email link for auto-login
-let _linkedProfilePassphrase = null; // set when Player Space session is active
+let _linkedProfilePassphrase = null; // set when Player Hub session is active
 let _submittedEmail = ''; // email entered in the form, captured on submit
 let _skipProfileAutoLoginOnce = false;
 
@@ -297,7 +297,7 @@ function _render() {
   if (!_regData) return;
   try {
     if (!_regData.open) { _showClosed(_regData.converted); return; }
-    // If a Player Space session exists, try auto-login with the profile passphrase
+    // If a Player Hub session exists, try auto-login with the profile passphrase
     if (!_lastResult && !_skipProfileAutoLoginOnce) {
       _tryProfileAutoLogin().then(found => { if (!found) _showForm(); });
       return;
@@ -463,7 +463,7 @@ function _showForm() {
   html += `</div>`;
   html += `</div>`;
 
-  // Detect existing Player Space session or profile data
+  // Detect existing Player Hub session or profile data
   let _regPrefill = null;
   _linkedProfilePassphrase = null;
   try {
@@ -483,7 +483,7 @@ function _showForm() {
 
   html += `<form id="reg-form" onsubmit="return false">`;
 
-  // Player Space: logged-in banner shown at top of form
+  // Player Hub: logged-in banner shown at top of form
   if (isLoggedIn) {
     html += `<div class="reg-ps-logged-notice" id="reg-ps-logged-notice">`;
     html += `✦ ${t('txt_reg_ps_logged_in', { name: esc(prefillName || _regPrefill?.email || '') })}`;
@@ -498,7 +498,7 @@ function _showForm() {
     <input type="text" id="reg-player-name" maxlength="128" required placeholder="${esc(t('txt_reg_name_placeholder'))}" value="${esc(prefillName)}">
   </div>`;
 
-  // Player Space: subtle prefill link below name field (only if not already logged in)
+  // Player Hub: subtle prefill link below name field (only if not already logged in)
   if (!isLoggedIn) {
     html += `<div class="reg-ps-prefill" id="reg-ps-prefill">`;
     html += `<button type="button" class="reg-ps-prefill-link" id="reg-ps-prefill-link" onclick="_togglePsLogin()">🔑 ${t('txt_reg_ps_login')}</button>`;
@@ -534,7 +534,7 @@ function _showForm() {
     for (const q of _regData.questions) {
       const reqAttr = q.required ? 'required' : '';
       const optHint = q.required ? '' : ` <small class="reg-optional-hint">(${t('txt_txt_optional')})</small>`;
-      // Pre-fill contact question from Player Space profile
+      // Pre-fill contact question from Player Hub profile
       const contactPrefill = (q.key === 'contact' && prefillContact) ? prefillContact : '';
       html += `<div class="form-group"><label>${esc(q.label)}${optHint}</label>`;
       if (q.type === 'choice' && q.choices && q.choices.length) {
@@ -609,7 +609,7 @@ async function _loginPlayerSpace() {
       return;
     }
     const data = await res.json();
-    // Persist Player Space session
+    // Persist Player Hub session
     try {
       localStorage.setItem('padel-player-profile', data.access_token);
       localStorage.setItem('padel-player-profile-data', JSON.stringify(data.profile));
@@ -872,7 +872,7 @@ function _showSuccess() {
 
   html += _renderReturningPlayerEditor();
 
-  // Player Space: show create section only if no profile is linked and no existing session
+  // Player Hub: show create section only if no profile is linked and no existing session
   const _hasProfileSession = (() => {
     try {
       return !!(localStorage.getItem('padel-player-profile') && localStorage.getItem('padel-player-profile-data'));
@@ -959,7 +959,7 @@ async function _handleSubmit(e) {
   }
   if (Object.keys(answers).length) body.answers = answers;
 
-  // Auto-link Player Space profile if logged in
+  // Auto-link Player Hub profile if logged in
   if (_linkedProfilePassphrase) {
     body.profile_passphrase = _linkedProfilePassphrase;
   }
@@ -1162,7 +1162,7 @@ async function _createPlayerSpace() {
       return;
     }
     const data = await res.json();
-    // Persist Player Space session
+    // Persist Player Hub session
     try {
       localStorage.setItem('padel-player-profile', data.access_token);
       localStorage.setItem('padel-player-profile-data', JSON.stringify(data.profile));

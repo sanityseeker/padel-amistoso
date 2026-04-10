@@ -1,4 +1,4 @@
-/* ── Player Space styles (base theme/layout from tv.css) ── */
+/* ── Player Hub styles (base theme/layout from tv.css) ── */
 .container { max-width: 600px; width: 100%; margin: 0 auto; flex: 1; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
 
