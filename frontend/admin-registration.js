@@ -332,16 +332,16 @@ function _renderRegDetailInline(rid) {
   html += `</div>`;
 
   // Linked tournaments section (shown after first or more conversions)
-  if (r.converted_to_tids?.length > 0) {
-    const linkedById = new Map((r.linked_tournaments || []).map((item) => [item.id, item]));
+  const _linkedTournaments = (r.linked_tournaments || []).filter((item) => item?.id);
+  if (_linkedTournaments.length > 0) {
     html += `<div class="linked-tournaments">`;
     html += `<div class="linked-tournaments-title">${t('txt_reg_linked_tournaments')}</div>`;
     html += `<div class="linked-tournaments-list">`;
-    r.converted_to_tids.forEach(function(ltid) {
-      const linked = linkedById.get(ltid);
+    _linkedTournaments.forEach(function(linked) {
+      const ltid = linked.id;
       const fromMeta = _tournamentMeta?.[ltid] || (_openTournaments || []).find(function(tr) { return tr.id === ltid; });
-      const tname = linked?.name || fromMeta?.name || ltid;
-      const ttype = linked?.type || fromMeta?.type;
+      const tname = linked.name || fromMeta?.name || ltid;
+      const ttype = linked.type || fromMeta?.type;
       if (ttype) {
         html += `<a href="#" class="linked-tournament-link" onclick="openTournament('${esc(ltid)}','${esc(ttype)}','${esc(tname)}');return false" title="${esc(ltid)}">${esc(tname)}</a>`;
       } else {

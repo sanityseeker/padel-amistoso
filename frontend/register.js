@@ -408,11 +408,11 @@ function _renderLinkedTournaments() {
 
   tids.forEach(function(tid) {
     const linked = linkedById.get(tid);
-    const shortId = tid.length > 10 ? `${tid.slice(0, 10)}…` : tid;
-    const name = linked?.name || shortId;
+    if (!linked) return; // skip deleted tournaments
+    const name = linked.name;
     const label = `${t('txt_reg_view_tournament_btn')} · ${name}`;
     const linkHtml = `<a href="${_buildTournamentUrl(tid)}" class="linked-tournament-link" title="${esc(tid)}">${esc(label)}</a>`;
-    if (linked?.finished) {
+    if (linked.finished) {
       finishedLinks.push(linkHtml);
     } else {
       activeLinks.push(linkHtml);
