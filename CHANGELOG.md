@@ -1,3 +1,9 @@
+## v1.2.1 (2026-04-10)
+
+### Fix
+
+- **info**: fix translation into spanish
+
 ## v1.2.0 (2026-04-10)
 
 ### Feat
