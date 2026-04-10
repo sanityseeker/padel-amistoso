@@ -184,6 +184,15 @@ function applyI18n(root = document) {
     el.textContent = t(key);
   });
 
+  root.querySelectorAll('[data-i18n-html]').forEach((el) => {
+    const key = el.getAttribute('data-i18n-html');
+    if (!key) return;
+    const val = t(key);
+    // Only set innerHTML when the translation differs from the raw key
+    // (i.e., a real translation exists).
+    if (val !== key) el.innerHTML = val;
+  });
+
   root.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
     const key = el.getAttribute('data-i18n-placeholder');
     if (!key) return;
