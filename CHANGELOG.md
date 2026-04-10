@@ -1,3 +1,9 @@
+## v1.3.3 (2026-04-10)
+
+### Fix
+
+- **player-hub-login**: rename button
+
 ## v1.3.2 (2026-04-10)
 
 ### Fix
