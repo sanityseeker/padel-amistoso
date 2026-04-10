@@ -1,3 +1,9 @@
+## v1.3.4 (2026-04-10)
+
+### Fix
+
+- **registration-convertion**: propose 1st round in mexicano instead of starting automatically
+
 ## v1.3.3 (2026-04-10)
 
 ### Fix
