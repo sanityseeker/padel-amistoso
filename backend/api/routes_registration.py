@@ -1216,10 +1216,10 @@ async def convert_registration(
                     teammate_repeat_weight=req.teammate_repeat_weight,
                     opponent_repeat_weight=req.opponent_repeat_weight,
                     repeat_decay=req.repeat_decay,
+                    partner_balance_weight=req.partner_balance_weight,
                 )
             except ValueError as e:
                 raise HTTPException(400, str(e))
-            t.generate_next_round()
             _store_tournament(
                 tid,
                 name=tournament_name,

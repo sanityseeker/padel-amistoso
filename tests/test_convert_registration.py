@@ -343,7 +343,12 @@ class TestConvertWithStrength:
             assert players.index("Strong Team") < players.index("Weak Team")
 
     def test_convert_mexicano_team_mode_strength_aggregated(self, client, auth_headers):
-        """Team strength is the sum of member strengths; top-2 teams play each other in round 1."""
+        """Team strength is the sum of member strengths; top-2 teams play each other in round 1.
+
+        After conversion no round is auto-generated — admin must propose and commit pairings,
+        just like the direct admin creation flow.  Initial strengths are used by the proposal
+        engine to rank teams, so the recommended option should pair the top-2 teams together.
+        """
         names = ["Alice", "Bob", "Charlie", "Dave", "Eve", "Frank", "Grace", "Henry"]
         rid = self._setup_registration(client, auth_headers, names)
         r = client.post(
@@ -373,17 +378,34 @@ class TestConvertWithStrength:
         assert r.status_code == 200
         tid = r.json()["tournament_id"]
 
+        # After conversion, no round should be auto-generated — admin controls pairings.
+        matches_data = client.get(f"/api/tournaments/{tid}/mex/matches").json()
+        assert matches_data["all_matches"] == []
+        assert matches_data["current_round"] == 0
+
+        # Propose pairings — proposals must use initial_strength for ranking.
+        proposals_data = client.get(f"/api/tournaments/{tid}/mex/propose-pairings?n=3", headers=auth_headers).json()
+        proposals = proposals_data["proposals"]
+        assert len(proposals) >= 1
+
+        # Commit the recommended pairing proposal.
+        recommended = next((p for p in proposals if p.get("recommended")), proposals[0])
+        option_id = recommended["option_id"]
+        nr = client.post(
+            f"/api/tournaments/{tid}/mex/next-round",
+            json={"option_id": option_id},
+            headers=auth_headers,
+        )
+        assert nr.status_code == 200
+
+        # Round 1 must respect initial strength: AB (190) vs CD (150), EF (50) vs GH (15).
         matches_data = client.get(f"/api/tournaments/{tid}/mex/matches").json()
         all_matches = matches_data["all_matches"]
         round1 = [m for m in all_matches if m["round_number"] == 1]
-        # Two matches expected for 4 teams
         assert len(round1) == 2
 
-        # Build a set of (team1, team2) frozensets from round 1
         match_pairs = {frozenset(round1[i]["team1"] + round1[i]["team2"]) for i in range(len(round1))}
-        # Top-2 ranked teams (AB=190, CD=150) should play each other
         assert frozenset(["Team AB", "Team CD"]) in match_pairs
-        # Bottom-2 ranked teams (EF=50, GH=15) should play each other
         assert frozenset(["Team EF", "Team GH"]) in match_pairs
 
         """Conversion without strength scores should still work fine."""

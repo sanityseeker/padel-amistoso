@@ -637,6 +637,7 @@ class ConvertRegistrationRequest(BaseModel):
     teammate_repeat_weight: float = Field(default=2.0, ge=0.0)
     opponent_repeat_weight: float = Field(default=1.0, ge=0.0)
     repeat_decay: float = Field(default=0.5, ge=0.0)
+    partner_balance_weight: float = Field(default=0.0, ge=0.0)
     # Team formation (admin-composed teams from individual registrants)
     teams: list[list[str]] = Field(default_factory=list)
     team_names: list[str | None] = Field(default_factory=list)
