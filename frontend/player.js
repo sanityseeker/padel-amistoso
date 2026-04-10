@@ -336,7 +336,7 @@ function _buildAuthPanel() {
     html += `<button type="button" class="btn btn-primary btn-block" onclick="_doLogin()">${esc(t('txt_player_login_btn'))}</button>`;
 
     // Passphrase recovery
-    html += `<details class="player-recover">`;
+    html += `<details class="player-recover"${_recoverSent ? ' open' : ''}>`;
     html += `<summary class="player-recover-summary"><span class="player-recover-chevron">▶</span>${esc(t('txt_player_recover_title'))}</summary>`;
     html += `<div class="player-recover-body">`;
     html += `<p class="player-recover-help">${esc(t('txt_player_recover_help'))}</p>`;
