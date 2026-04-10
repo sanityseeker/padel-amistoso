@@ -1,3 +1,9 @@
+## v1.3.5 (2026-04-10)
+
+### Fix
+
+- **registration-conversion**: do not show tournaments that were deleted
+
 ## v1.3.4 (2026-04-10)
 
 ### Fix
