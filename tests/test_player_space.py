@@ -60,14 +60,14 @@ def _headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _insert_tournament(rid: str, name: str = "Test Tournament") -> None:
+def _insert_tournament(rid: str, name: str = "Test Tournament", alias: str | None = None) -> None:
     """Insert a minimal tournaments row so foreign-key joins resolve."""
     with db_mod.get_db() as conn:
         conn.execute(
             """INSERT OR IGNORE INTO tournaments
-               (id, name, type, owner, public, tournament_blob, version, sport)
-               VALUES (?, ?, 'group_playoff', 'admin', 1, ?, 0, 'padel')""",
-            (rid, name, b""),
+               (id, name, type, owner, public, tournament_blob, version, sport, alias)
+               VALUES (?, ?, 'group_playoff', 'admin', 1, ?, 0, 'padel', ?)""",
+            (rid, name, b"", alias),
         )
 
 
@@ -89,15 +89,15 @@ def _insert_player_secret(
         )
 
 
-def _insert_registration(rid: str, name: str = "Test Lobby") -> None:
+def _insert_registration(rid: str, name: str = "Test Lobby", alias: str | None = None) -> None:
     """Insert a minimal registrations row."""
     now = datetime.now(timezone.utc).isoformat()
     with db_mod.get_db() as conn:
         conn.execute(
             """INSERT OR IGNORE INTO registrations
-               (id, name, owner, open, sport, converted_to_tids, created_at)
-               VALUES (?, ?, 'admin', 1, 'padel', '[]', ?)""",
-            (rid, name, now),
+               (id, name, owner, open, sport, converted_to_tids, created_at, alias)
+               VALUES (?, ?, 'admin', 1, 'padel', '[]', ?, ?)""",
+            (rid, name, now, alias),
         )
 
 
@@ -684,6 +684,42 @@ class TestLinkParticipation:
                 (tid, "set-profile-pp"),
             ).fetchone()
         assert row["profile_id"] == profile_id
+
+    def test_link_tournament_by_alias_resolves_to_real_id(self, client: TestClient) -> None:
+        created = _create_profile(client)
+        token = created["access_token"]
+
+        tid = str(uuid.uuid4())
+        pid = str(uuid.uuid4())
+        _insert_tournament(tid, "Alias Tournament", alias="my-alias-t")
+        _insert_player_secret(tid, pid, "AliasPlayer", "alias-pass-t", "alias-tok-t")
+
+        res = client.post(
+            "/api/player-profile/link",
+            json={"entity_type": "tournament", "entity_id": "my-alias-t", "passphrase": "alias-pass-t"},
+            headers=_headers(token),
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["entity_id"] == tid
+        assert data["auto_login_token"] == "alias-tok-t"
+
+    def test_link_registration_by_alias_resolves_to_real_id(self, client: TestClient) -> None:
+        created = _create_profile(client)
+        token = created["access_token"]
+
+        rid = str(uuid.uuid4())
+        pid = str(uuid.uuid4())
+        _insert_registration(rid, "Alias Lobby", alias="my-alias-r")
+        _insert_registrant(rid, pid, "AliasReg", "alias-pass-r", "alias-tok-r")
+
+        res = client.post(
+            "/api/player-profile/link",
+            json={"entity_type": "registration", "entity_id": "my-alias-r", "passphrase": "alias-pass-r"},
+            headers=_headers(token),
+        )
+        assert res.status_code == 200
+        assert res.json()["entity_id"] == rid
 
 
 # ────────────────────────────────────────────────────────────────────────────

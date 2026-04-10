@@ -431,7 +431,10 @@ function _buildDashboard() {
   html += _buildGlobalStatsCard();
 
   // Active section
+  html += `<div class="player-section-header">`;
   html += `<div class="section-heading">${esc(t('txt_player_active'))}</div>`;
+  html += `<button type="button" class="btn btn-sm btn-secondary" onclick="_openLinkModal()">+ ${esc(t('txt_player_link_btn'))}</button>`;
+  html += `</div>`;
   if (active.length === 0) {
     html += `<div class="empty-state">${esc(t('txt_player_no_active'))}</div>`;
   } else {
@@ -440,14 +443,11 @@ function _buildDashboard() {
     }
   }
 
-  // Link + history (collapsed by default, persisted)
+  // History (collapsed by default, persisted)
   const historyOpenAttr = _isHistoryPanelOpen() ? ' open' : '';
   html += `<details class="player-history-panel" ontoggle="_rememberHistoryPanelOpen(this)"${historyOpenAttr}>`;
   html += `<summary class="player-history-summary"><span class="player-history-chevron">▶</span><span class="section-heading section-heading-inline">${esc(t('txt_player_finished'))}</span></summary>`;
   html += `<div class="player-history-body">`;
-  html += `<div class="player-history-header">`;
-  html += `<button type="button" class="btn btn-sm btn-secondary" onclick="_openLinkModal()">+ ${esc(t('txt_player_link_btn'))}</button>`;
-  html += `</div>`;
 
   if (history.length === 0) {
     html += `<div class="empty-state">${esc(t('txt_player_no_history'))}</div>`;
@@ -817,7 +817,7 @@ function _buildLinkModal() {
   html += `<div class="form-group"><label>${esc(t('txt_player_link_entity_type'))}</label>`;
   html += `<select id="link-type"><option value="tournament">${esc(t('txt_player_link_type_tournament'))}</option><option value="registration">${esc(t('txt_player_link_type_registration'))}</option></select></div>`;
   html += `<div class="form-group"><label>${esc(t('txt_player_link_entity_id'))}</label>`;
-  html += `<input type="text" id="link-entity-id" placeholder="e.g. t5 or r3" autocomplete="off"></div>`;
+  html += `<input type="text" id="link-entity-id" placeholder="e.g. t5, my-tourney or r3" autocomplete="off"></div>`;
   html += `<div class="form-group"><label>${esc(t('txt_player_link_passphrase'))}</label>`;
   html += `<input type="text" id="link-passphrase" placeholder="${esc(t('txt_player_passphrase_placeholder'))}" autocomplete="off" autocapitalize="none" spellcheck="false"></div>`;
   if (_errorMsg) html += `<div class="error-msg">${esc(_errorMsg)}</div>`;

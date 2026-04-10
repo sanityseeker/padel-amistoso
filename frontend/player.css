@@ -296,14 +296,16 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
   gap: 0.5rem;
 }
 
-.player-history-header {
+.player-section-header {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
+  margin-top: 1.25rem;
 }
+.player-section-header .section-heading { margin: 0; }
 
 .player-history-panel {
   margin-top: 0.5rem;

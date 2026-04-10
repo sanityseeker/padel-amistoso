@@ -830,18 +830,19 @@ async def link_participation(
                        t.sport, t.type AS ttype
                 FROM player_secrets ps
                 JOIN tournaments t ON t.id = ps.tournament_id
-                WHERE ps.tournament_id = ? AND ps.passphrase = ?
+                WHERE (ps.tournament_id = ? OR t.alias = ?) AND ps.passphrase = ?
                 """,
-                (req.entity_id, req.passphrase),
+                (req.entity_id, req.entity_id, req.passphrase),
             ).fetchone()
 
             if row is None:
                 _RATE_LIMITER.record(_client_ip(request))
                 raise HTTPException(401, "Invalid passphrase or tournament not found")
 
+            resolved_tid = row["tid"]
             conn.execute(
                 "UPDATE player_secrets SET profile_id = ? WHERE tournament_id = ? AND passphrase = ?",
-                (identity.profile_id, req.entity_id, req.passphrase),
+                (identity.profile_id, resolved_tid, req.passphrase),
             )
 
         if row["finished_at"]:
@@ -851,7 +852,7 @@ async def link_participation(
                 h = conn.execute(
                     "SELECT * FROM player_history"
                     " WHERE profile_id = ? AND entity_id = ? AND entity_type = 'tournament'",
-                    (identity.profile_id, req.entity_id),
+                    (identity.profile_id, resolved_tid),
                 ).fetchone()
             return PlayerSpaceEntry(
                 entity_type="tournament",
@@ -899,9 +900,9 @@ async def link_participation(
                        r.sport
                 FROM registrants rn
                 JOIN registrations r ON r.id = rn.registration_id
-                WHERE rn.registration_id = ? AND rn.passphrase = ?
+                WHERE (rn.registration_id = ? OR r.alias = ?) AND rn.passphrase = ?
                 """,
-                (req.entity_id, req.passphrase),
+                (req.entity_id, req.entity_id, req.passphrase),
             ).fetchone()
 
             if row is None:
@@ -910,7 +911,7 @@ async def link_participation(
 
             conn.execute(
                 "UPDATE registrants SET profile_id = ? WHERE registration_id = ? AND passphrase = ?",
-                (identity.profile_id, req.entity_id, req.passphrase),
+                (identity.profile_id, row["rid"], req.passphrase),
             )
 
         return PlayerSpaceEntry(
