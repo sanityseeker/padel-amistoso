@@ -202,7 +202,10 @@ let _mexSortDir = 'desc';    // 'asc' | 'desc'
 let _adminVersionStream = null;
 let _adminLastKnownVersion = null;
 let _adminPendingReload = false;
+let _adminSafetyPollTimer = null;
+let _adminSafetyFetching = false;
 const _ADMIN_POLL_INTERVAL_MS = 30000;
+const _ADMIN_SAFETY_POLL_MS = 20000;
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden || !currentTid) return;
@@ -212,31 +215,52 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+/** Handle a version change detected by SSE or the safety poll. */
+async function _adminHandleVersionChange(version) {
+  const changed = _adminLastKnownVersion !== null && version !== _adminLastKnownVersion;
+  _adminLastKnownVersion = version;
+  if (changed) {
+    if (document.hidden) {
+      _adminPendingReload = true;
+    } else {
+      await _rerenderCurrentViewPreserveDrafts();
+    }
+  }
+}
+
 function _startAdminVersionPoll() {
   _stopAdminVersionPoll();
   if (!currentTid) return;
+  // Primary: SSE stream (instant updates when it works)
   _adminVersionStream = createVersionStream({
     url: `/api/tournaments/${currentTid}/events`,
     pollUrl: `/api/tournaments/${currentTid}/version`,
     pollIntervalMs: _ADMIN_POLL_INTERVAL_MS,
     async onVersion(data) {
-      const changed = _adminLastKnownVersion !== null && data.version !== _adminLastKnownVersion;
-      _adminLastKnownVersion = data.version;
-      if (changed) {
-        if (document.hidden) {
-          _adminPendingReload = true;
-        } else {
-          await _rerenderCurrentViewPreserveDrafts();
-        }
-      }
+      await _adminHandleVersionChange(data.version);
     },
   });
+  // Safety net: independent poll every 5 s catches changes that SSE may
+  // silently drop (browser connection limits, proxy buffering, etc.).
+  _adminSafetyPollTimer = setInterval(async () => {
+    if (!currentTid || _adminSafetyFetching) return;
+    _adminSafetyFetching = true;
+    try {
+      const r = await fetch(`/api/tournaments/${currentTid}/version`);
+      if (!r.ok) return;
+      const d = await r.json();
+      await _adminHandleVersionChange(d.version);
+    } catch (_) {}
+    finally { _adminSafetyFetching = false; }
+  }, _ADMIN_SAFETY_POLL_MS);
 }
 
 function _stopAdminVersionPoll() {
   if (_adminVersionStream) { _adminVersionStream.close(); _adminVersionStream = null; }
+  if (_adminSafetyPollTimer) { clearInterval(_adminSafetyPollTimer); _adminSafetyPollTimer = null; }
   _adminLastKnownVersion = null;
   _adminPendingReload = false;
+  _adminSafetyFetching = false;
 }
 
 function _refreshCurrentView() {
