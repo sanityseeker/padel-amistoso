@@ -336,11 +336,12 @@ def _get_linked_tournaments_by_registration(
         rid: [
             LinkedTournamentOut(
                 id=tid,
-                name=rows_by_id.get(tid, {}).get("name", tid),
-                type=rows_by_id.get(tid, {}).get("type"),
+                name=rows_by_id[tid]["name"],
+                type=rows_by_id[tid]["type"],
                 finished=_is_finished(tid),
             )
             for tid in tids
+            if tid in rows_by_id
         ]
         for rid, tids in tids_by_registration.items()
     }
@@ -376,11 +377,12 @@ def _get_linked_tournaments(tids: list[str]) -> list[LinkedTournamentOut]:
     return [
         LinkedTournamentOut(
             id=tid,
-            name=rows_by_id.get(tid, {}).get("name", tid),
-            type=rows_by_id.get(tid, {}).get("type"),
+            name=rows_by_id[tid]["name"],
+            type=rows_by_id[tid]["type"],
             finished=_is_finished(tid),
         )
         for tid in tids
+        if tid in rows_by_id
     ]
 
 
