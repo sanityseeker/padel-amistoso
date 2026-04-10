@@ -1,3 +1,9 @@
+## v1.2.0 (2026-04-10)
+
+### Feat
+
+- **Player-Hub**: introduce player profile connecting all tournaments registrations into one space; calculate stats over match history; fix team mode creation; imrpove frontend
+
 ## v1.1.0 (2026-04-07)
 
 ### Feat
