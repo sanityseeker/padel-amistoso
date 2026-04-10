@@ -1,3 +1,9 @@
+## v1.3.0 (2026-04-10)
+
+### Feat
+
+- **tv-mode**: introduce notification system; multiple frontend-related fixes
+
 ## v1.2.3 (2026-04-10)
 
 ### Fix
