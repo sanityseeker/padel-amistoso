@@ -1,3 +1,9 @@
+## v1.2.2 (2026-04-10)
+
+### Fix
+
+- **player-hub**: resolve tournaments aliases
+
 ## v1.2.1 (2026-04-10)
 
 ### Fix
