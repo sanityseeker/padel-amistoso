@@ -37,7 +37,11 @@ from ..tournaments import GroupPlayoffTournament, MexicanoTournament, PlayoffTou
 from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .db import add_co_editor, get_db, get_registration_co_editors, get_shared_registration_ids
 from .helpers import _store_tournament
-from .player_secret_store import lookup_registrant_by_passphrase, lookup_registrant_by_token
+from .player_secret_store import (
+    lookup_registrant_by_passphrase,
+    lookup_registrant_by_token,
+    lookup_profile_by_passphrase,
+)
 from .schemas import (
     ConvertRegistrationRequest,
     EmailSettings,
@@ -644,7 +648,34 @@ async def delete_registration(rid: str, user: User = Depends(get_current_user)) 
     reg = _get_registration(rid)
     _require_registration_owner(reg, user)
     reg_id = reg["id"]
+    entity_name = reg.get("name", "")
+    finished_at = datetime.now(timezone.utc).isoformat()
     with get_db() as conn:
+        # Snapshot any profile-linked registrants into player_history before wiping them.
+        linked = conn.execute(
+            "SELECT profile_id, player_id, player_name FROM registrants"
+            " WHERE registration_id = ? AND profile_id IS NOT NULL",
+            (reg_id,),
+        ).fetchall()
+        if linked:
+            conn.executemany(
+                """INSERT OR IGNORE INTO player_history
+                   (profile_id, entity_type, entity_id, entity_name,
+                    player_id, player_name, finished_at, sport)
+                   VALUES (?, 'registration', ?, ?, ?, ?, ?, ?)""",
+                [
+                    (
+                        row["profile_id"],
+                        reg_id,
+                        entity_name,
+                        row["player_id"],
+                        row["player_name"],
+                        finished_at,
+                        reg.get("sport", "padel"),
+                    )
+                    for row in linked
+                ],
+            )
         conn.execute("DELETE FROM registrants WHERE registration_id = ?", (reg_id,))
         conn.execute("DELETE FROM registrations WHERE id = ?", (reg_id,))
     return {"ok": True}
@@ -869,6 +900,34 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
 
     token = generate_token()
 
+    # Resolve optional Player Space profile link
+    profile_id: str | None = None
+    if req.profile_passphrase:
+        profile = lookup_profile_by_passphrase(req.profile_passphrase.strip())
+        if profile is not None:
+            # Use the profile's global passphrase as the registrant's passphrase
+            # so the player only needs to remember one phrase across all events.
+            profile_passphrase_value = req.profile_passphrase.strip()
+            if profile_passphrase_value not in existing_passphrases:
+                passphrase = profile_passphrase_value
+            profile_id = profile["id"]
+
+    # Auto-link by email: if the player provides an email that matches a Player Space
+    # profile and they haven't explicitly linked via passphrase, link them silently.
+    if profile_id is None:
+        potential_email = req.email.strip()
+        if potential_email and is_valid_email(potential_email):
+            with get_db() as conn:
+                profile_row = conn.execute(
+                    "SELECT id, passphrase FROM player_profiles WHERE LOWER(email) = LOWER(?)",
+                    (potential_email,),
+                ).fetchone()
+            if profile_row is not None:
+                pp_val = profile_row["passphrase"]
+                if pp_val not in existing_passphrases:
+                    passphrase = pp_val
+                profile_id = profile_row["id"]
+
     answers_json = json.dumps(req.answers) if req.answers else None
     email = req.email.strip()
     email_mode = _email_requirement(reg)
@@ -885,9 +944,9 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
     with get_db() as conn:
         conn.execute(
             """INSERT INTO registrants
-               (registration_id, player_id, player_name, passphrase, token, answers, email, registered_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now),
+               (registration_id, player_id, player_name, passphrase, token, answers, email, registered_at, profile_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now, profile_id),
         )
 
     # Auto-send confirmation email if the lobby has auto_send_email enabled
@@ -1001,7 +1060,7 @@ async def convert_registration(
                     token = generate_token()
                 else:
                     token = reg["token"]
-                secret_rows.append((None, pid, name, reg["passphrase"], token))
+                secret_rows.append((reg.get("profile_id"), pid, name, reg["passphrase"], token))
                 answers = _parse_answers(reg.get("answers"))
                 if answers.get("contact"):
                     contact_map[pid] = answers["contact"]
@@ -1195,17 +1254,18 @@ async def convert_registration(
         # Populate player_secrets (reuse registrant passphrases/tokens where available)
         with get_db() as conn:
             conn.executemany(
-                """INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, contact, email)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                """INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, contact, email, profile_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(tournament_id, player_id) DO UPDATE SET
                        passphrase  = excluded.passphrase,
                        token       = excluded.token,
                        player_name = excluded.player_name,
                        contact     = excluded.contact,
-                       email       = excluded.email""",
+                       email       = excluded.email,
+                       profile_id  = excluded.profile_id""",
                 [
-                    (tid, pid, name, pp, tok, contact_map.get(pid, ""), email_map.get(pid, ""))
-                    for (_, pid, name, pp, tok) in secret_rows
+                    (tid, pid, name, pp, tok, contact_map.get(pid, ""), email_map.get(pid, ""), profile_id_val)
+                    for (profile_id_val, pid, name, pp, tok) in secret_rows
                 ],
             )
 

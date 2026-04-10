@@ -31,6 +31,7 @@ from .routes_crud import router as crud_router
 from .routes_gp import router as gp_router
 from .routes_mex import router as mex_router
 from .routes_player_auth import router as player_auth_router
+from .routes_player_space import router as player_space_router
 from .routes_playoff import router as playoff_router
 from .routes_registration import router as registration_router
 from .routes_schema import router as schema_router
@@ -117,6 +118,7 @@ app.include_router(crud_router)
 app.include_router(gp_router)
 app.include_router(mex_router)
 app.include_router(player_auth_router)
+app.include_router(player_space_router)
 app.include_router(playoff_router)
 app.include_router(registration_router)
 app.include_router(schema_router)
@@ -240,6 +242,15 @@ async def serve_register_alias(alias: str) -> Response:
     )
 
 
+@app.get("/player")
+async def serve_player() -> Response:
+    return Response(
+        content=_read_frontend_text("player.html") or "<h1>Player Space not found</h1>",
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 @app.get("/shared.js")
 async def serve_shared_js() -> Response:
     """Serve the shared JS utilities used by index.html and public.html (TV view)."""
@@ -252,10 +263,64 @@ async def serve_auth_js() -> Response:
     return _serve_js_file("auth.js")
 
 
-@app.get("/admin.js")
-async def serve_admin_js() -> Response:
-    """Serve the admin panel JavaScript for index.html."""
-    return _serve_js_file("admin.js")
+@app.get("/admin-utils.js")
+async def serve_admin_utils_js() -> Response:
+    """Serve admin UI utilities (theme, language, schema helpers)."""
+    return _serve_js_file("admin-utils.js")
+
+
+@app.get("/admin-tournaments.js")
+async def serve_admin_tournaments_js() -> Response:
+    """Serve admin tournament list and navigation logic."""
+    return _serve_js_file("admin-tournaments.js")
+
+
+@app.get("/admin-create.js")
+async def serve_admin_create_js() -> Response:
+    """Serve admin tournament creation panel logic."""
+    return _serve_js_file("admin-create.js")
+
+
+@app.get("/admin-gp.js")
+async def serve_admin_gp_js() -> Response:
+    """Serve Group+Playoff and Pure Playoff render logic and score actions."""
+    return _serve_js_file("admin-gp.js")
+
+
+@app.get("/admin-mex.js")
+async def serve_admin_mex_js() -> Response:
+    """Serve Mexicano render logic, pairing proposals, and export helpers."""
+    return _serve_js_file("admin-mex.js")
+
+
+@app.get("/admin-player-codes.js")
+async def serve_admin_player_codes_js() -> Response:
+    """Serve player codes panel and in-tournament player management."""
+    return _serve_js_file("admin-player-codes.js")
+
+
+@app.get("/admin-tv-email.js")
+async def serve_admin_tv_email_js() -> Response:
+    """Serve TV display settings, email controls, and tournament alias/banner."""
+    return _serve_js_file("admin-tv-email.js")
+
+
+@app.get("/admin-registration.js")
+async def serve_admin_registration_js() -> Response:
+    """Serve registration lobby management and answers panel."""
+    return _serve_js_file("admin-registration.js")
+
+
+@app.get("/admin-convert.js")
+async def serve_admin_convert_js() -> Response:
+    """Serve convert-from-registration flow."""
+    return _serve_js_file("admin-convert.js")
+
+
+@app.get("/admin-collaborators.js")
+async def serve_admin_collaborators_js() -> Response:
+    """Serve collaborator management for tournaments and registrations."""
+    return _serve_js_file("admin-collaborators.js")
 
 
 @app.get("/tv.js")
@@ -286,6 +351,18 @@ async def serve_register_js() -> Response:
 async def serve_register_css() -> Response:
     """Serve the registration page stylesheet."""
     return _serve_css_file("register.css")
+
+
+@app.get("/player.js")
+async def serve_player_js() -> Response:
+    """Serve the Player Space JavaScript."""
+    return _serve_js_file("player.js")
+
+
+@app.get("/player.css")
+async def serve_player_css() -> Response:
+    """Serve the Player Space stylesheet."""
+    return _serve_css_file("player.css")
 
 
 @app.get("/i18n.js")

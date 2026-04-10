@@ -160,6 +160,8 @@ Create a sign-up lobby and share the link with participants. Players self-regist
 
 You can also add **co-editors** (collaborators) to a registration lobby so multiple organizers can manage sign-ups together.
 
+Tip for organizers: encourage players to link registrations to their **Player Hub** profile passphrase (or use matching email) so events appear automatically in their `/player` dashboard.
+
 ### Player codes
 
 Every player automatically gets a unique **passphrase** (e.g. `brave-little-tiger`) and a **QR code**. Open the 🔑 Player Codes panel to view, copy, print, or regenerate credentials for individual players.
@@ -167,6 +169,9 @@ Every player automatically gets a unique **passphrase** (e.g. `brave-little-tige
 ### During the tournament
 
 - **Record scores** as points or best-of-3 sets (where the format supports it).
+- **Player score confirmation flow**: choose how player-submitted scores are handled:
+  - **Immediate**: submitted score is applied right away.
+  - **Required**: submitted score stays pending until the opposing team accepts it, sends a correction, or escalates to the organizer.
 - **Match comments**: add a short note to any match (e.g. "Moved to Court 2") — visible on the public screen.
 - **Announcement banner**: broadcast a message to all participants on the public screen.
 - **Co-editing**: share tournaments with other registered users as co-editors. Co-editors can manage rounds and scores, but only the owner/admin can delete the tournament or manage collaborators.
@@ -175,7 +180,7 @@ Every player automatically gets a unique **passphrase** (e.g. `brave-little-tige
 
 ### TV display
 
-Each tournament has a public TV view at `/tv/<id>`, or a custom alias like `/tv/summer-cup`. Configure which sections appear (standings, bracket, match list), the refresh mode, and bracket rendering from the Admin → TV Settings panel.
+Each tournament has a public TV view at `/tv/<id>`, or a custom alias like `/tv/summer-cup`. Configure which sections appear (standings, bracket, match list), the refresh mode, bracket rendering, and player score confirmation mode from the Admin → TV Settings panel.
 
 ### Exporting results
 
@@ -199,8 +204,19 @@ Players can submit scores for their own matches without an admin account:
 
 1. On the public view, click **Login** and enter your passphrase (or scan the QR code the organizer shared with you).
 2. Once logged in, a "Record Score" form appears on your pending matches.
+3. If score confirmation is set to **Required**, the opposing team reviews the submission and can accept it, propose a correction, or escalate it for organizer resolution.
 
 The organizer can disable self-scoring at any time from the TV Settings panel.
+
+### Player Hub
+
+Players can use a personal **Player Hub** at `/player` to track all their linked events in one place.
+
+- **Access**: log in with your profile passphrase (and, if configured, email-based magic link).
+- **Dashboard**: see active and finished tournaments/registrations, with quick links back to each event.
+- **Career stats**: aggregated wins/losses/draws, points for/against, plus best teammates and toughest rivals.
+- **Participant lookup**: search any participant you've played with/against and view together-vs-against records and win rates.
+- **Linking events**: link by passphrase from registrations or use "Link existing" inside Player Hub; matching-email registrations can be auto-linked.
 
 ---
 

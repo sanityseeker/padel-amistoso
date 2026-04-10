@@ -34,7 +34,7 @@ from .player_secret_store import (
     update_email,
 )
 from .schemas import PlayerEmailRequest
-from .state import _save_tournament, _tournaments, get_tournament_lock
+from .state import _save_tournament, _tournaments, get_tournament_lock, rename_player_in_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["player-auth"])
 
@@ -391,12 +391,22 @@ async def update_player_email(
     req: PlayerEmailRequest,
     user: User = Depends(get_current_user),
 ) -> dict:
-    """Set the email address for a player (organizer/admin only)."""
+    """Set the email address for a player (organizer/admin only).
+
+    When the supplied email matches an existing Player Space profile the player
+    is automatically linked — the tournament will appear in their Player Space.
+    """
     _require_editor_access(tid, user)
-    updated = update_email(tid, player_id, req.email)
-    if not updated:
+    result = update_email(tid, player_id, req.email)
+    if not result["updated"]:
         raise HTTPException(404, "Player not found in this tournament")
-    return {"player_id": player_id, "email": req.email}
+    resp: dict = {"player_id": player_id, "email": req.email, "profile_linked": result["profile_linked"]}
+    if result["profile_linked"]:
+        resp["player_name"] = result["player_name"]
+        resp["contact"] = result["contact"]
+        if result["player_name"]:
+            rename_player_in_tournament(tid, player_id, result["player_name"])
+    return resp
 
 
 @router.get("/{tid}/player/opponents")

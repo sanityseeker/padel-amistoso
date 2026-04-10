@@ -27,9 +27,15 @@ import io
 import json
 import logging
 import pickle
+from dataclasses import fields as dataclass_fields
 
 from .db import get_db
-from .player_secret_store import delete_secrets_for_tournament
+from .player_secret_store import (
+    delete_secrets_for_tournament,
+    extract_history_stats,
+    extract_partner_rival_stats,
+    purge_expired_secrets,
+)
 
 # ---------------------------------------------------------------------------
 # Restricted unpickler — stdlib and all project (backend.*) modules are allowed;
@@ -180,7 +186,131 @@ def _save_tournament(tid: str) -> None:
     # that old passphrases / QR tokens cannot be confused with new ones.
     tournament = data.get("tournament")
     if tournament is not None and str(getattr(tournament, "phase", "")) == "finished":
-        delete_secrets_for_tournament(tid)
+        delete_secrets_for_tournament(
+            tid,
+            entity_name=data.get("name", ""),
+            player_stats=extract_history_stats(data),
+            sport=data.get("sport", "padel"),
+            partner_rival_stats=extract_partner_rival_stats(data),
+        )
+
+
+def get_tournament_data(tid: str) -> dict | None:
+    """Return the full data dict for a tournament, loading from DB if not in memory.
+
+    Used for history backfills when a player creates a profile after a tournament
+    has already finished (and its player_secrets have been purged).
+
+    Args:
+        tid: Tournament ID, e.g. ``"t5"``.
+
+    Returns:
+        The same dict structure as ``_tournaments[tid]``, or ``None`` if the
+        tournament does not exist or its blob cannot be deserialised.
+    """
+    if tid in _tournaments:
+        return _tournaments[tid]
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                """SELECT id, name, type, owner, public, alias, tv_settings,
+                          tournament_blob, version, sport
+                   FROM tournaments WHERE id = ?""",
+                (tid,),
+            ).fetchone()
+        if row is None:
+            return None
+        tournament = _safe_loads(row["tournament_blob"])
+        return {
+            "name": row["name"],
+            "type": row["type"],
+            "owner": row["owner"],
+            "public": bool(row["public"]),
+            "alias": row["alias"],
+            "tv_settings": json.loads(row["tv_settings"]) if row["tv_settings"] else None,
+            "tournament": tournament,
+            "sport": row["sport"] or "padel",
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not load tournament %s for backfill: %s", tid, exc)
+        return None
+
+
+def rename_player_in_tournament(tid: str, player_id: str, new_name: str) -> bool:
+    """Update the ``name`` of every ``Player`` instance with *player_id* in a tournament.
+
+    Walks the tournament object graph recursively (containers, dataclass
+    fields, ``__dict__`` attributes) and mutates the ``name`` attribute on
+    every matching :class:`backend.models.Player` object found.  Because
+    Python stores objects by reference, a single mutation propagates to all
+    ``Match.team1`` / ``team2`` / ``Group.players`` / bracket slots that
+    share the same instance.
+
+    The tournament is saved to SQLite only when at least one rename occurred.
+
+    Args:
+        tid: Tournament ID.
+        player_id: The player whose name should change.
+        new_name: New display name.
+
+    Returns:
+        ``True`` if the rename was applied and the tournament saved; ``False``
+        if the tournament does not exist or the player was not found.
+    """
+    # Import here to avoid a circular import at module load time.
+    from ..models import Player  # noqa: PLC0415
+
+    if tid not in _tournaments:
+        return False
+
+    tournament = _tournaments[tid].get("tournament")
+    if tournament is None:
+        return False
+
+    visited: set[int] = set()
+    renamed: int = 0
+
+    def _walk(obj: object) -> None:
+        nonlocal renamed
+        oid = id(obj)
+        if oid in visited:
+            return
+        visited.add(oid)
+
+        if isinstance(obj, Player):
+            if obj.id == player_id and obj.name != new_name:
+                obj.name = new_name
+                renamed += 1
+            return
+
+        if isinstance(obj, dict):
+            for v in obj.values():
+                _walk(v)
+            return
+
+        if isinstance(obj, (list, tuple, set, frozenset)):
+            for item in obj:
+                _walk(item)
+            return
+
+        # Dataclass or regular object — inspect known fields first, then __dict__.
+        try:
+            for f in dataclass_fields(obj):  # type: ignore[arg-type]
+                _walk(getattr(obj, f.name, None))
+        except TypeError:
+            pass
+        obj_dict = getattr(obj, "__dict__", None)
+        if isinstance(obj_dict, dict):
+            for v in obj_dict.values():
+                _walk(v)
+
+    _walk(tournament)
+
+    if renamed:
+        _save_tournament(tid)
+        logger.debug("Renamed player %s → %r in %d object(s) for tournament %s", player_id, new_name, renamed, tid)
+        return True
+    return False
 
 
 def _delete_tournament(tid: str) -> None:
@@ -245,3 +375,4 @@ def _load_state() -> None:
             _counter = max(_counter, int(tid[1:]))
 
     logger.info("Loaded %d tournament(s) from SQLite", len(_tournaments))
+    purge_expired_secrets()

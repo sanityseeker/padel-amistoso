@@ -23,7 +23,12 @@ from ..email import (
 from ..models import MatchStatus
 from .helpers import _find_match, _require_editor_access, _require_owner_or_admin
 from .db import get_shared_tournament_ids
-from .player_secret_store import delete_secrets_for_tournament, get_secrets_for_tournament
+from .player_secret_store import (
+    delete_secrets_for_tournament,
+    extract_history_stats,
+    extract_partner_rival_stats,
+    get_secrets_for_tournament,
+)
 from .rate_limit import BoundedRateLimiter
 from .schemas import (
     EmailSettings,
@@ -90,9 +95,18 @@ async def delete_tournament(tournament_id: str, user: User = Depends(get_current
     async with state.get_tournament_lock(tournament_id):
         if tournament_id not in _tournaments:
             raise HTTPException(404, "Tournament not found")
+        t_data = _tournaments[tournament_id]
+        entity_name = t_data.get("name", "")
+        player_stats = extract_history_stats(t_data)
         del _tournaments[tournament_id]
         _delete_tournament(tournament_id)
-        delete_secrets_for_tournament(tournament_id)
+        delete_secrets_for_tournament(
+            tournament_id,
+            entity_name=entity_name,
+            player_stats=player_stats,
+            sport=t_data.get("sport", "padel"),
+            partner_rival_stats=extract_partner_rival_stats(t_data),
+        )
     return {"ok": True}
 
 

@@ -110,6 +110,23 @@ class TestConvertWithTeams:
         status = client.get(f"/api/tournaments/{tid}/po/status").json()
         assert status is not None
 
+    def test_convert_playoff_rejects_individual_mode_for_padel(self, client, auth_headers):
+        """Padel play-off conversion requires team mode."""
+        rid = self._setup_registration(client, auth_headers, ["Alice", "Bob", "Charlie", "Dave"])
+        r = client.post(
+            f"/api/registrations/{rid}/convert",
+            json={
+                "tournament_type": "playoff",
+                "player_names": ["Alice", "Bob", "Charlie", "Dave"],
+                "team_mode": False,
+                "sport": "padel",
+            },
+            headers=auth_headers,
+        )
+        assert r.status_code == 422
+        detail = r.json().get("detail", [])
+        assert any("requires team_mode=True" in str(item) for item in detail)
+
     def test_convert_mexicano_team_mode_forms_composite_teams(self, client, auth_headers):
         """Converting to Mexicano with teams creates fixed team Players, not individual players."""
         rid = self._setup_registration(client, auth_headers, ["Alice", "Bob", "Charlie", "Dave"])
@@ -492,7 +509,7 @@ class TestMultiTournamentConversion:
 
         r1 = client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"], "team_mode": True},
             headers=auth_headers,
         )
         assert r1.status_code == 200
@@ -500,7 +517,7 @@ class TestMultiTournamentConversion:
 
         r2 = client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Charlie", "Dave"]},
+            json={"tournament_type": "playoff", "player_names": ["Charlie", "Dave"], "team_mode": True},
             headers=auth_headers,
         )
         assert r2.status_code == 200
@@ -519,7 +536,7 @@ class TestMultiTournamentConversion:
 
         r1 = client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"], "team_mode": True},
             headers=auth_headers,
         )
         assert r1.status_code == 200
@@ -527,7 +544,7 @@ class TestMultiTournamentConversion:
         # Alice is already assigned — a second conversion with Alice must still succeed
         r2 = client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Alice", "Charlie"]},
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Charlie"], "team_mode": True},
             headers=auth_headers,
         )
         assert r2.status_code == 200
@@ -551,7 +568,7 @@ class TestMultiTournamentConversion:
 
         r = client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"], "team_mode": True},
             headers=auth_headers,
         )
         assert r.status_code == 200
@@ -568,12 +585,12 @@ class TestMultiTournamentConversion:
 
         client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"], "team_mode": True},
             headers=auth_headers,
         )
         r2 = client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Charlie", "Dave"]},
+            json={"tournament_type": "playoff", "player_names": ["Charlie", "Dave"], "team_mode": True},
             headers=auth_headers,
         )
         assert r2.status_code == 200
@@ -590,14 +607,14 @@ class TestMultiTournamentConversion:
 
         r1 = client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"], "team_mode": True},
             headers=auth_headers,
         )
         tid1 = r1.json()["tournament_id"]
 
         r2 = client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Charlie", "Dave"]},
+            json={"tournament_type": "playoff", "player_names": ["Charlie", "Dave"], "team_mode": True},
             headers=auth_headers,
         )
         tid2 = r2.json()["tournament_id"]
@@ -623,7 +640,7 @@ class TestMultiTournamentConversion:
         # Convert first pair
         client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"], "team_mode": True},
             headers=auth_headers,
         )
 
@@ -641,7 +658,7 @@ class TestMultiTournamentConversion:
 
         first = client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"], "team_mode": True},
             headers=auth_headers,
         )
         assert first.status_code == 200
@@ -658,7 +675,7 @@ class TestMultiTournamentConversion:
 
         second = client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": remaining_names},
+            json={"tournament_type": "playoff", "player_names": remaining_names, "team_mode": True},
             headers=auth_headers,
         )
         assert second.status_code == 200
@@ -710,7 +727,7 @@ class TestMultiTournamentConversion:
 
         client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"], "team_mode": True},
             headers=auth_headers,
         )
 
@@ -727,7 +744,7 @@ class TestMultiTournamentConversion:
         # Only Alice and Bob are converted
         client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"], "team_mode": True},
             headers=auth_headers,
         )
 
@@ -743,14 +760,14 @@ class TestMultiTournamentConversion:
 
         r1 = client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"], "team_mode": True},
             headers=auth_headers,
         )
         tid1 = r1.json()["tournament_id"]
 
         r2 = client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Charlie", "Dave"]},
+            json={"tournament_type": "playoff", "player_names": ["Charlie", "Dave"], "team_mode": True},
             headers=auth_headers,
         )
         tid2 = r2.json()["tournament_id"]

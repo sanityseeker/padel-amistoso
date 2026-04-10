@@ -159,6 +159,9 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         self._match_credits: dict[str, dict[str, dict]] = {}
         self._est_cache: dict[str, float] | None = None
 
+        self.team_roster: dict[str, list[str]] = {}
+        self.team_member_names: dict[str, list[str]] = {}
+
         self.playoff_bracket: SingleEliminationBracket | DoubleEliminationBracket | None = None
         self._phase: MexPhase = MexPhase.MEXICANO
         self._mexicano_ended: bool = False
@@ -181,6 +184,8 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
             "partner_balance_weight": 0.0,
             "_partner_history_rounds": {},
             "_opponent_history_rounds": {},
+            "team_roster": {},
+            "team_member_names": {},
         }
         if name in defaults:
             value = defaults[name]

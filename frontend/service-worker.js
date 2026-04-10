@@ -1,8 +1,12 @@
 // Service worker — optimal caching for performance + freshness.
-const CACHE_NAME = 'amistoso-v20';
+const CACHE_NAME = 'amistoso-v21';
 const STATIC_ASSETS = [
   '/shared.js', '/auth.js', '/i18n.js', '/manifest.json',
-  '/admin.js', '/tv.js', '/register.js',
+  '/admin-utils.js', '/admin-tournaments.js', '/admin-create.js',
+  '/admin-gp.js', '/admin-mex.js', '/admin-player-codes.js',
+  '/admin-tv-email.js', '/admin-registration.js', '/admin-convert.js',
+  '/admin-collaborators.js',
+  '/tv.js', '/register.js',
   '/admin.css', '/tv.css', '/register.css',
 ];
 const SHELL = ['/'];

@@ -235,6 +235,20 @@ async function _handleTokenAutoLogin() {
   }
 }
 
+/** Try auto-login via Player Space profile passphrase stored in localStorage */
+async function _tryProfileAutoLogin() {
+  if (!TID || _isPlayerLoggedIn()) return;
+  try {
+    const raw = localStorage.getItem('padel-player-profile-data');
+    if (!raw) return;
+    const profile = JSON.parse(raw);
+    if (!profile.passphrase) return;
+    await _playerAuth(profile.passphrase, null);
+  } catch {
+    // Profile passphrase doesn't match this tournament — ignore silently
+  }
+}
+
 /** Show the player login modal */
 function _showPlayerLoginModal() {
   const existing = document.getElementById('player-login-overlay');
@@ -1036,9 +1050,18 @@ async function api(path) {
   const res = await fetch(API + path);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || res.statusText);
+    const error = new Error(err.detail || res.statusText);
+    error.status = res.status;
+    throw error;
   }
   return res.json();
+}
+
+function _redirectToNotFoundPage(message, redirectTo = '/tv') {
+  const params = new URLSearchParams();
+  if (message) params.set('m', message);
+  if (redirectTo) params.set('to', redirectTo);
+  window.location.replace(`/404?${params.toString()}`);
 }
 
 
@@ -1154,24 +1177,6 @@ async function loadTV() {
     // Resolve tournament metadata — use /meta endpoint so private tournaments
     // are still accessible when reached by alias or direct ID.
     const meta = await api(`/api/tournaments/${TID}/meta`);
-    if (!meta) {
-      const root = document.getElementById('tv-root');
-      let _notFoundCountdown = 5;
-      const _notFoundMsg = () =>
-        `<div class="tv-error"><p>${t('txt_txt_tournament_not_found_value', { value: esc(TID) })}</p>` +
-        `<p>${t('txt_txt_redirecting_in_n', { n: _notFoundCountdown })}</p></div>`;
-      root.innerHTML = _notFoundMsg();
-      const _notFoundTimer = setInterval(() => {
-        _notFoundCountdown--;
-        if (_notFoundCountdown <= 0) {
-          clearInterval(_notFoundTimer);
-          location.href = '/tv';
-        } else {
-          root.innerHTML = _notFoundMsg();
-        }
-      }, 1000);
-      return;
-    }
     tvState.tournamentType = meta.type;
     tvState.tournamentName = meta.name;
     tvState.tournamentSport = meta.sport || 'padel';
@@ -1232,11 +1237,16 @@ async function loadTV() {
       for (const p of (status.players || [])) tvState.playerMap[p.id] = p.name;
       tvState.mexLeaderboard = status.leaderboard || [];
       tvState.mexTeamMode = status.team_mode || false;
+      tvState.teamRoster = status.team_roster || null;
       _captureOpenState();
       _renderMex(tvSettings, status, matches, playoffs);
       _applyOpenState();
     }
   } catch (e) {
+    if (e?.status === 404) {
+      _redirectToNotFoundPage(t('txt_tv_not_found_deleted_hint'), '/tv');
+      return;
+    }
     const root = document.getElementById('tv-root');
     if (root) root.innerHTML = `<div class="tv-error">${t('txt_txt_error_loading_data_value', { value: esc(e.message) })}</div>`;
   } finally {
@@ -1760,8 +1770,10 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
     const t2 = _teamLabel(m.team2);
     const isMyMatch = scoreCtx && _playerIsInMatch(m);
     html += `<div class="court-card${isMyMatch ? ' court-card--yours' : ''}">`;
-    if (isMyMatch) html += `<div class="court-yours-badge">${t('txt_tv_your_match_badge')}</div>`;
+    html += `<div class="court-card-header">`;
     html += `<div class="court-name">${esc(courtName)}</div>`;
+    if (isMyMatch) html += `<div class="court-yours-badge">${t('txt_tv_your_match_badge')}</div>`;
+    html += `</div>`;
     html += `<div class="court-match">`;
     html += `<div class="court-match-info"><div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(t2)}</div>`;
     if (m.round_label) html += `<div class="court-match-meta">${esc(m.round_label)}</div>`;
@@ -1933,16 +1945,12 @@ async function _resolveAlias() {
     try {
       const data = await api(`/api/tournaments/resolve-alias/${encodeURIComponent(_aliasParam)}`);
       TID = data.id;
-    } catch (_) {
-      await _showPicker();
-      const form = document.querySelector('.tv-picker-form');
-      if (form) {
-        const errDiv = document.createElement('div');
-        errDiv.className = 'tv-error picker-inline-error';
-        errDiv.style.marginTop = '0.75rem';
-        errDiv.innerHTML = `${t('txt_txt_no_tournament_found_with_alias')} <strong>${esc(_aliasParam)}</strong>`;
-        form.after(errDiv);
+    } catch (error) {
+      if (error?.status === 404) {
+        _redirectToNotFoundPage(t('txt_tv_not_found_deleted_hint'), '/tv');
+        return false;
       }
+      await _showPicker();
       return false;
     }
   }
@@ -2075,5 +2083,6 @@ async function _goToTournament(e) {
   if (!resolved) return;
   _loadPlayerSession();
   await _handleTokenAutoLogin();
+  await _tryProfileAutoLogin();
   loadTV();
 })();

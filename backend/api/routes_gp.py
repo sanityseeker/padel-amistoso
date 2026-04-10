@@ -4,6 +4,7 @@ Group + Play-off tournament routes.
 
 from __future__ import annotations
 
+import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -67,16 +68,41 @@ async def create_group_playoff(
     client_ip = _client_ip(request)
     _create_rate_limiter.check(client_ip, "Too many tournament creation attempts — try again later")
     _create_rate_limiter.record(client_ip)
-    players = [Player(name=n) for n in req.player_names]
+    individual_players = [Player(name=n) for n in req.player_names]
     courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 
     # Build initial_strength mapping keyed by player id
     initial_strength: dict[str, float] | None = None
     if req.player_strengths:
-        name_to_id = {p.name: p.id for p in players}
+        name_to_id = {p.name: p.id for p in individual_players}
         initial_strength = {
             name_to_id[name]: score for name, score in req.player_strengths.items() if name in name_to_id
         } or None
+
+    team_roster: dict[str, list[str]] = {}
+    team_member_names: dict[str, list[str]] = {}
+
+    if req.teams and req.team_mode:
+        # Composite teams: create synthetic team Player for each group
+        name_to_id = {p.name: p.id for p in individual_players}
+        team_players: list[Player] = []
+        for idx, member_names in enumerate(req.teams):
+            team_label = (
+                req.team_names[idx]
+                if idx < len(req.team_names) and req.team_names[idx].strip()
+                else " & ".join(member_names)
+            )
+            team_pid = uuid.uuid4().hex[:8]
+            team_player = Player(name=team_label, id=team_pid)
+            team_players.append(team_player)
+            member_ids = [name_to_id[n] for n in member_names if n in name_to_id]
+            team_roster[team_pid] = member_ids
+            team_member_names[team_pid] = list(member_names)
+            if initial_strength:
+                initial_strength[team_pid] = sum(initial_strength.get(mid, 0.0) for mid in member_ids)
+        players = team_players
+    else:
+        players = individual_players
 
     t = GroupPlayoffTournament(
         players=players,
@@ -88,6 +114,8 @@ async def create_group_playoff(
         group_names=req.group_names,
         initial_strength=initial_strength,
         group_assignments=req.group_assignments,
+        team_roster=team_roster,
+        team_member_names=team_member_names,
     )
     try:
         t.generate()
@@ -105,11 +133,13 @@ async def create_group_playoff(
         sport=req.sport.value,
         assign_courts=req.assign_courts,
     )
+    # Create secrets for individual players (each member gets their own passphrase)
     create_secrets_for_tournament(
         tid,
-        [{"id": p.id, "name": p.name} for p in players],
-        contacts={p.id: req.player_contacts[p.name] for p in players if p.name in req.player_contacts} or None,
-        emails={p.id: req.player_emails[p.name] for p in players if p.name in req.player_emails} or None,
+        [{"id": p.id, "name": p.name} for p in individual_players],
+        contacts={p.id: req.player_contacts[p.name] for p in individual_players if p.name in req.player_contacts}
+        or None,
+        emails={p.id: req.player_emails[p.name] for p in individual_players if p.name in req.player_emails} or None,
     )
     return {"id": tid, "phase": t.phase}
 

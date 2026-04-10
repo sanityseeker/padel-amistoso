@@ -484,6 +484,24 @@ class TestPlayoffAPI:
         assert "id" in data
         assert data["phase"] == "playoffs"
 
+    def test_create_rejects_padel_individual_mode(self, client, auth_headers):
+        body = {
+            **self.PO_BODY,
+            "sport": "padel",
+            "team_mode": False,
+        }
+        r = client.post("/api/tournaments/playoff", json=body, headers=auth_headers)
+        assert r.status_code == 422
+
+    def test_create_allows_tennis_individual_mode(self, client, auth_headers):
+        body = {
+            **self.PO_BODY,
+            "sport": "tennis",
+            "team_mode": False,
+        }
+        r = client.post("/api/tournaments/playoff", json=body, headers=auth_headers)
+        assert r.status_code == 200
+
     def test_appears_in_list(self, client, auth_headers):
         self._create(client, auth_headers)
         r = client.get("/api/tournaments")
@@ -597,6 +615,26 @@ class TestRegistrationAPI:
         r = client.get(f"/api/registrations/{rid}", headers=auth_headers)
         assert r.json()["listed"] is True
 
+    def test_patch_registration_name_treats_sql_payload_as_plain_text(self, client, auth_headers):
+        rid_target = self._create_registration(client, auth_headers, name="Target")
+        rid_other = self._create_registration(client, auth_headers, name="Other")
+
+        sql_payload = "x', listed = 1 WHERE id = 'r999' --"
+        patch = client.patch(
+            f"/api/registrations/{rid_target}",
+            json={"name": sql_payload},
+            headers=auth_headers,
+        )
+        assert patch.status_code == 200
+
+        target = client.get(f"/api/registrations/{rid_target}", headers=auth_headers)
+        other = client.get(f"/api/registrations/{rid_other}", headers=auth_headers)
+        assert target.status_code == 200
+        assert other.status_code == 200
+        assert target.json()["name"] == sql_payload
+        assert other.json()["name"] == "Other"
+        assert other.json()["listed"] is False
+
     def test_public_listing_returns_only_open_listed(self, client, auth_headers):
         # Create 3 registrations: listed+open, unlisted+open, listed+closed
         rid1 = self._create_registration(client, auth_headers, name="Listed Open", listed=True)
@@ -619,7 +657,7 @@ class TestRegistrationAPI:
         # Convert
         client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"], "team_mode": True},
             headers=auth_headers,
         )
         r = client.get("/api/registrations/public")
@@ -632,7 +670,7 @@ class TestRegistrationAPI:
         client.post(f"/api/registrations/{rid}/register", json={"player_name": "Bob"})
         conv = client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"], "team_mode": True},
             headers=auth_headers,
         )
         assert conv.status_code == 200
@@ -672,7 +710,7 @@ class TestRegistrationAPI:
         client.post(f"/api/registrations/{rid}/register", json={"player_name": "Bob"})
         conv = client.post(
             f"/api/registrations/{rid}/convert",
-            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"]},
+            json={"tournament_type": "playoff", "player_names": ["Alice", "Bob"], "team_mode": True},
             headers=auth_headers,
         )
         tid = conv.json()["tournament_id"]

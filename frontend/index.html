@@ -40,6 +40,10 @@
             <span class="page-selector-item-icon">🛠️</span>
             <span data-i18n="txt_nav_admin">Admin</span>
           </a>
+           <a href="/player" class="page-selector-item" data-page="player">
+            <span class="page-selector-item-icon">🎾</span>
+            <span data-i18n="txt_nav_player_space">Player Hub</span>
+          </a>
           <a href="/tv" class="page-selector-item" data-page="tv">
             <span class="page-selector-item-icon">📺</span>
             <span data-i18n="txt_nav_tv_view">TV View</span>
@@ -149,6 +153,16 @@
             <textarea id="gp-players" placeholder="One per line, e.g. Alice &amp; Bob"></textarea>
           </div>
         </div>
+        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="gp-contact-section">
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">📇 <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Add email and/or contact info (e.g. phone, WhatsApp) for each player. Used for notifications and shared with co-players.</p>
+          <div id="gp-contact-container"></div>
+        </details>
+        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="gp-strength-section">
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
+          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Assign a strength score to each player/team. Used for initial seeding only — real scores take over after round 1.</p>
+          <div id="gp-strength-container"></div>
+        </details>
         <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start;margin-top:0.5rem">
           <div class="field-section" style="flex:1;min-width:220px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.55rem">
@@ -180,16 +194,6 @@
           <input type="checkbox" id="gp-public" checked style="width:1rem;height:1rem;cursor:pointer">
           <label for="gp-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
-        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="gp-contact-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">📇 <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
-          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Add email and/or contact info (e.g. phone, WhatsApp) for each player. Used for notifications and shared with co-players.</p>
-          <div id="gp-contact-container"></div>
-        </details>
-        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="gp-strength-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
-          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Assign a strength score to each player/team. Used for initial seeding only — real scores take over after round 1.</p>
-          <div id="gp-strength-container"></div>
-        </details>
         <div id="gp-group-preview" class="field-section" style="display:none;margin-top:0.75rem"></div>
         <div id="gp-create-buttons" style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" data-action="withLoading" data-handler="previewGPGroups" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
         <div id="gp-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
@@ -226,6 +230,16 @@
             <textarea id="mex-players" placeholder="One per line"></textarea>
           </div>
         </div>
+        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="mex-contact-section">
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">📇 <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Add email and/or contact info (e.g. phone, WhatsApp) for each player. Used for notifications and shared with co-players.</p>
+          <div id="mex-contact-container"></div>
+        </details>
+        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="mex-strength-section">
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
+          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Assign a strength score to each player/team. Used for initial seeding only — real scores take over after round 1.</p>
+          <div id="mex-strength-container"></div>
+        </details>
         <div class="field-section" style="margin-top:0.5rem">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.55rem">
             <div class="field-section-title" style="margin-bottom:0" data-i18n="txt_txt_courts">Courts</div>
@@ -314,16 +328,6 @@
           <input type="checkbox" id="mex-public" checked style="width:1rem;height:1rem;cursor:pointer">
           <label for="mex-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
-        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="mex-contact-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">📇 <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
-          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Add email and/or contact info (e.g. phone, WhatsApp) for each player. Used for notifications and shared with co-players.</p>
-          <div id="mex-contact-container"></div>
-        </details>
-        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="mex-strength-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
-          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Assign a strength score to each player/team. Used for initial seeding only — real scores take over after round 1.</p>
-          <div id="mex-strength-container"></div>
-        </details>
         <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" data-action="withLoading" data-handler="createMex" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
         <div id="mex-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
@@ -360,6 +364,16 @@
             <textarea id="po-players" placeholder="One per line"></textarea>
           </div>
         </div>
+        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="po-contact-section">
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">📇 <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Add email and/or contact info (e.g. phone, WhatsApp) for each player. Used for notifications and shared with co-players.</p>
+          <div id="po-contact-container"></div>
+        </details>
+        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="po-strength-section">
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
+          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Assign a strength score to each player/team. Used for initial seeding only — real scores take over after round 1.</p>
+          <div id="po-strength-container"></div>
+        </details>
         <div class="field-section" style="margin-top:0.5rem">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.55rem">
             <div class="field-section-title" style="margin-bottom:0" data-i18n="txt_txt_courts">Courts</div>
@@ -393,16 +407,6 @@
           <input type="checkbox" id="po-public" checked style="width:1rem;height:1rem;cursor:pointer">
           <label for="po-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
-        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="po-contact-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">📇 <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
-          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Add email and/or contact info (e.g. phone, WhatsApp) for each player. Used for notifications and shared with co-players.</p>
-          <div id="po-contact-container"></div>
-        </details>
-        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="po-strength-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
-          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Assign a strength score to each player/team. Used for initial seeding only — real scores take over after round 1.</p>
-          <div id="po-strength-container"></div>
-        </details>
         <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" data-action="withLoading" data-handler="createPO" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
         <div id="po-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
       </div>
@@ -418,105 +422,169 @@
   <div class="tab-panel" id="panel-info" role="tabpanel">
     <div class="card">
       <h2 data-i18n="txt_txt_info">Info</h2>
-      <p style="color:var(--text-muted);font-size:0.85rem" data-i18n="txt_txt_info_tab_desc">A convenient platform for organising Padel and Tennis events. Run structured tournaments, open registration lobbies with custom questionnaires, and share a live public view with all participants.</p>
-      <p style="margin-top:1rem;font-size:0.85rem">
-        <a href="https://github.com/sanityseeker/padel-amistoso" target="_blank" rel="noopener" class="github-link" data-i18n="txt_txt_info_github_link">Full documentation on GitHub →</a>
-      </p>
-      <p style="margin-top:0.4rem;font-size:0.82rem;color:var(--text-muted)">
-        <span data-i18n="txt_txt_info_issue_prefix">Found a bug, weird behavior, or have a suggestion?</span>
-        <a href="https://github.com/sanityseeker/padel-amistoso/issues/new" target="_blank" rel="noopener" class="github-link" data-i18n="txt_txt_info_issue_link">Open an issue on GitHub</a>.
-      </p>
-    </div>
-
-    <!-- Registration Lobbies -->
-    <div class="card">
-      <h2 data-i18n="txt_txt_info_registration_title">Registration Lobbies</h2>
-      <p style="color:var(--text-muted);font-size:0.85rem" data-i18n="txt_txt_info_registration_intro">Open sign-up lobbies before a tournament starts to gather participants and collect custom information.</p>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_info_registration_q_title">Custom questionnaires</strong>
-        <p data-i18n="txt_txt_info_registration_q_desc">Define custom fields for each lobby — collect skill levels, shirt sizes, or any other information you need from participants before the event.</p>
-      </div>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_info_registration_manage_title">Participant management</strong>
-        <p data-i18n="txt_txt_info_registration_manage_desc">Review registrants, check their responses, and approve or remove entries from the admin panel before the tournament starts.</p>
-      </div>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_info_registration_convert_title">One-click conversion</strong>
-        <p data-i18n="txt_txt_info_registration_convert_desc">Once sign-ups close, convert the lobby to a live tournament with a single click — player credentials carry over automatically.</p>
-      </div>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_info_registration_collab_title">Co-editors for lobbies</strong>
-        <p data-i18n="txt_txt_info_registration_collab_desc">Invite other registered users to help manage registrants and answers before conversion.</p>
-      </div>
-    </div>
-
-    <!-- Collaboration & Access -->
-    <div class="card">
-      <h2 data-i18n="txt_txt_info_collab_title">Collaboration & Access</h2>
-      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_info_collab_intro">Share operational work safely across organizers while keeping ownership-sensitive actions restricted.</p>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_info_collab_coedit_title">Tournament co-editors</strong>
-        <p data-i18n="txt_txt_info_collab_coedit_desc">Grant co-editor access to registered users so they can run rounds and update scores. Only owner/admin can delete tournaments or manage collaborator lists.</p>
-      </div>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_info_collab_password_title">Password reset by email</strong>
-        <p data-i18n="txt_txt_info_collab_password_desc">With SMTP enabled, users can request a secure reset link from the login screen and set a new password without manual admin assistance.</p>
-      </div>
-    </div>
-
-    <!-- Group + Play-off -->
-    <div class="card">
-      <h2 data-i18n="txt_txt_fmt_gp_title">Group + Play‑off</h2>
-      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_gp_intro">Players or teams are divided into groups and play a round‑robin stage before the top finishers advance to play‑offs.</p>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_gp_team_mode_title">Team Mode</strong>
-        <p data-i18n="txt_txt_fmt_gp_team_mode_desc">Each fixed pair plays against every other pair in their group — a complete round‑robin. Final standings decide who advances to play‑offs.</p>
-      </div>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_gp_player_mode_title">Player Mode (Americano‑style)</strong>
-        <p data-i18n="txt_txt_fmt_gp_player_mode_desc">Partners rotate each round so that every player partners with all others at least once. Matchups are formed dynamically, slightly optimising against current group standings to keep each round competitive.</p>
-      </div>
-    </div>
-
-    <!-- Mexicano -->
-    <div class="card">
-      <h2 data-i18n="txt_txt_fmt_mex_title">Mexicano + Play‑offs</h2>
-      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_mex_intro">Pairings change every round based on current standings (leaders vs leaders) or by ratings to optimise cumulative team strength.</p>
-      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_mex_rounds_desc">Multiple valid pairing combinations usually exist for each round. The admin can browse several proposals and pick the one that best balances team strength and minimises repeated matchups. Scoring weights and pairing parameters are fully configurable in the advanced settings.</p>
-    </div>
-
-    <!-- Direct Play-offs -->
-    <div class="card">
-      <h2 data-i18n="txt_txt_fmt_po_title">Direct Play&#8209;offs</h2>
-      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_po_intro">Skip the group stage and go straight to the bracket. Seed your participants in order and the bracket is generated immediately.</p>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_playoffs_single_title">Knockout</strong>
-        <p data-i18n="txt_txt_fmt_playoffs_single_desc">Classic knock‑out bracket — lose once and you're out. Straightforward and fast to complete.</p>
-      </div>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_playoffs_double_title">Double Elimination (Espejo)</strong>
-        <p data-i18n="txt_txt_fmt_playoffs_double_desc">Each player or team gets a second chance through a losers' bracket before being eliminated. The finalist must be beaten twice to be knocked out — rewarding consistency over the whole bracket.</p>
-      </div>
-    </div>
-
-    <!-- Play-offs -->
-    <div class="card">
-      <h2 data-i18n="txt_txt_fmt_playoffs_title">Play‑offs</h2>
-      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_playoffs_intro">After any group stage or Mexicano rounds, the admin selects which players or teams advance to the play&#8209;off bracket. New (external) players can also be added directly into play&#8209;offs after the group stage — useful for seeded entries or late registrations.</p>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_playoffs_single_title">Knockout</strong>
-        <p data-i18n="txt_txt_fmt_playoffs_single_desc">Classic knock‑out bracket — lose once and you're out. Straightforward and fast to complete.</p>
-      </div>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_playoffs_double_title">Double Elimination (Espejo)</strong>
-        <p data-i18n="txt_txt_fmt_playoffs_double_desc">Each player or team gets a second chance through a losers' bracket before being eliminated. The finalist must be beaten twice to be knocked out — rewarding consistency over the whole bracket.</p>
-      </div>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_info_tab_desc">A practical control center for Padel and Tennis events: create tournaments or lobbies, manage rounds and scores, and share a live public view with players and guests.</p>
       <hr class="info-divider">
+      <h3 style="margin-top:0" id="info-toc">Table of contents</h3>
+      <ol style="margin:0.25rem 0 0 1.1rem;color:var(--text-muted);font-size:0.85rem;line-height:1.7">
+        <li><a href="#info-at-a-glance" class="github-link">At a glance</a></li>
+        <li><a href="#info-player-flow" class="github-link">Player flow</a></li>
+        <li><a href="#info-admin-flow" class="github-link">Admin flow</a></li>
+        <li><a href="#info-main-features" class="github-link">Main features</a></li>
+        <li><a href="#info-formats" class="github-link">Tournament formats</a></li>
+        <li><a href="#info-po-transition" class="github-link">Starting play-offs</a></li>
+        <li><a href="#info-help" class="github-link">Docs & support</a></li>
+      </ol>
+    </div>
+
+    <div class="card" id="info-at-a-glance">
+      <h2>At a glance</h2>
+      <div class="info-block">
+        <strong>Four pages, one workflow</strong>
+        <p><strong>Admin</strong> — the organizer's control panel for creating tournaments and lobbies, managing rounds and scores, and coordinating the team. <strong>TV View</strong> — a public read-only display at <code>/tv/&lt;id&gt;</code> showing live standings, results, and the bracket, designed to be shown on a big screen or shared with all participants. <strong>Registrations</strong> — a sign-up page where players self-register with custom questionnaires before an event starts. <strong>Player Hub</strong> — each participant's personal dashboard at <code>/player</code>, aggregating all their active and past events under one passphrase.</p>
+      </div>
+      <div class="info-block">
+        <strong>No accounts needed for players</strong>
+        <p>Participants never create a username or password. Each player is issued a unique passphrase — a short sequence of words — that gives access to their personal match view, score entry, and the Player Hub. The organizer can share it as a printed card, a QR code, or by email.</p>
+      </div>
+      <div class="info-block">
+        <strong>Designed for real events</strong>
+        <p>Supports multiple tournament formats (Group+Playoff, Mexicano, direct Playoffs), co-organizers, player self-scoring, announcements, shareable links, and quick transitions from registration lobby to live competition — with every player credential carried over automatically.</p>
+      </div>
+    </div>
+
+    <div class="card" id="info-player-flow">
+      <h2>Player flow</h2>
+      <p style="color:var(--text-muted);font-size:0.86rem">What participants typically do from sign-up to results.</p>
+      <div class="info-block">
+        <strong>1) Join</strong>
+        <p>Players register through a lobby (public list or join code) and submit answers to organizer-defined questions. On registration, each participant receives a unique passphrase — a short sequence of words that acts as their personal key throughout the app.</p>
+      </div>
+      <div class="info-block">
+        <strong>2) Access your personal area</strong>
+        <p>When a tournament starts, players enter their passphrase (or scan a QR code) to reach their personal match view — pairings, courts, standings, and score entry, all scoped to them. The passphrase can be shared by the organizer as a printed card, a QR code, or by email.</p>
+      </div>
+      <div class="info-block">
+        <strong>3) Participate</strong>
+        <p>Players can follow live standings, see their upcoming pairings and assigned courts, and (if enabled by the organizer) submit or confirm scores directly from their own view, reducing the admin's workload mid-event.</p>
+      </div>
+      <div class="info-block">
+        <strong>4) Stay informed</strong>
+        <p>Announcements, match comments, and optional email updates keep everyone aligned during the event.</p>
+      </div>
+      <div class="info-block">
+        <strong>5) Player Hub — one passphrase for everything</strong>
+        <p>Players can set up a Player Hub profile at <a href="/player" class="github-link">/player</a> with just an email. This gives them a single persistent passphrase that works across all events: registering for a lobby pre-fills name, email, and contact automatically; once a tournament starts it appears in the Hub dashboard alongside all other active and past events.</p>
+        <p style="margin-top:0.35rem">The Hub also tracks career stats — matches played, win rate, best rank — and lets you browse your history with any specific participant across all tournaments (who you played with, who you played against, and your win rate in each combination).</p>
+        <p style="margin-top:0.35rem">Players who don't have a Hub profile yet can still link individual events retroactively by entering the passphrase they received for that event.</p>
+      </div>
+    </div>
+
+    <div class="card" id="info-admin-flow">
+      <h2>Admin flow</h2>
+      <p style="color:var(--text-muted);font-size:0.86rem">Typical organizer path from planning to wrap-up.</p>
+      <div class="info-block">
+        <strong>1) Prepare</strong>
+        <p>Create a tournament directly with a fixed roster, or open a registration lobby first to gather participants before the event. Lobbies support custom questionnaires (skill level, availability, etc.), optional join-code access to restrict who can sign up, a public participant list so players can see who else is in, and co-editors to help manage incoming registrations.</p>
+      </div>
+      <div class="info-block">
+        <strong>2) Launch</strong>
+        <p>Convert a lobby into a live tournament with a single click — choose the format (Group+Playoff, Mexicano, or direct Playoffs), set group sizes, court names, and scoring rules. All registered players are pre-filled automatically and each player's passphrase carries over unchanged, so credentials printed or emailed before the event remain valid.</p>
+      </div>
+      <div class="info-block">
+        <strong>3) Distribute player credentials</strong>
+        <p>Use the Player Codes panel to view, copy, download, or print all passphrases as QR-code cards ready to hand out. You can also email credentials individually or in bulk directly from the panel. Players can optionally link their passphrase to their Player Hub profile for cross-event access.</p>
+      </div>
+      <div class="info-block">
+        <strong>4) Run rounds</strong>
+        <p>Generate pairings, assign courts, and enter or edit scores as each round plays out. For Mexicano, browse multiple proposed pairing sets and pick the best balance before confirming. Mid-event roster tools allow substitutions where the format supports it. When group rounds finish, trigger play-offs and seed the bracket — adding wildcards or late entries if needed.</p>
+      </div>
+      <div class="info-block">
+        <strong>5) Coordinate team</strong>
+        <p>Invite co-editors who gain full operational access (pairings, scores, announcements) while ownership-sensitive actions — deleting the tournament, managing credentials, changing core settings — stay restricted to the owner and platform admins.</p>
+      </div>
+      <div class="info-block">
+        <strong>6) Communicate and close</strong>
+        <p>Post announcements that appear on every player's view and the TV display. Send targeted email notifications to all players or selected individuals. Once the event is done, export a self-contained HTML or PDF summary with the full bracket and match history, then archive the tournament to keep the list tidy.</p>
+      </div>
+    </div>
+
+    <div class="card" id="info-main-features">
+      <h2>Main features</h2>
+      <div class="info-block">
+        <strong>Registration lobbies</strong>
+        <p>Custom questionnaires, participant review, co-editors, and one-click conversion into live tournaments.</p>
+      </div>
+      <div class="info-block">
+        <strong>Live operations</strong>
+        <p>Round management, score tracking, match comments, announcements, and mid-event roster tools (where supported).</p>
+      </div>
+      <div class="info-block">
+        <strong>Player access and self-scoring</strong>
+        <p>Per-player QR/passphrase login for personal match context and distributed score entry.</p>
+      </div>
+      <div class="info-block">
+        <strong>Public TV View</strong>
+        <p>Shareable live display for standings, results, bracket, and selected sections with configurable refresh behavior.</p>
+      </div>
+    </div>
+
+    <div class="card" id="info-formats">
+      <h2>Tournament formats</h2>
+      <div class="info-block">
+        <strong>Group + Play-off</strong>
+        <p>Participants are divided into groups for a round-robin stage, then top finishers advance to a knockout bracket. Supports both Padel and Tennis scoring.</p>
+        <p style="margin-top:0.35rem"><em>Team mode:</em> fixed pairs play every other pair in their group — a complete round-robin. <em>Player (Americano) mode:</em> partners rotate each round so players pair with all others at least once; matchups are formed dynamically to keep each round competitive relative to current group standings.</p>
+      </div>
+      <div class="info-block">
+        <strong>Mexicano + Play-offs</strong>
+        <p>Pairings are generated each round based on current standings: leaders play against leaders, weaker players against similarly ranked ones. Each round the admin can browse several proposed pairing sets and pick the best balance. Rounds can be unlimited (stop whenever you like) or set to a fixed count.</p>
+        <p style="margin-top:0.35rem">The <em>Advanced Settings</em> expose fine-grained control over scoring and pairing behaviour:</p>
+        <ul style="margin:0.3rem 0 0 1.1rem;font-size:0.84rem;color:var(--text-muted);line-height:1.7">
+          <li><strong>Skill gap</strong> — max rating difference allowed within a group; blank falls back to snake-draft ordering.</li>
+          <li><strong>Win bonus</strong> — extra points added to a winner's leaderboard score on top of raw game points.</li>
+          <li><strong>Rival strength (Buchholz, 0–1)</strong> — Buchholz-based bonus that rewards beating strong opponents; higher weight = bigger effect.</li>
+          <li><strong>Loss discount (0–1)</strong> — multiplier applied to the loser's scored points (e.g. 0.75 means losing 12–20 credits 9 pts instead of 12).</li>
+          <li><strong>Balance tolerance</strong> — how much team-strength imbalance the pairing engine may accept in order to avoid repeat matchups.</li>
+          <li><strong>Teammate / opponent repeat weights</strong> — penalties for repeating the same partner or opponent; higher values push the engine towards more varied combinations.</li>
+          <li><strong>Repeat decay</strong> — time-decay on repeat penalties so that recent repeats are penalised more than older ones.</li>
+          <li><strong>Partner balance weight</strong> — penalises pairing players with very different skill levels as partners.</li>
+        </ul>
+      </div>
+      <div class="info-block">
+        <strong>Direct Play-offs</strong>
+        <p>Start straight in a bracket — seed participants in the desired order and the bracket is generated immediately. No prior group stage needed. Useful for standalone knockout events or fully custom-seeded draws.</p>
+      </div>
+      <div class="info-block">
+        <strong>Single and double elimination</strong>
+        <p>Available in every format that includes play-offs. <em>Single elimination (knockout):</em> lose once and you're out. <em>Double elimination (Espejo):</em> a parallel losers' bracket gives everyone a second chance — the finalist must be beaten twice to be knocked out, rewarding consistency across the whole draw.</p>
+      </div>
+      <div class="info-block">
+        <strong>Bracket schema preview</strong>
+        <p>Use the built-in schema generator below to visualise and export the full bracket structure (PNG, SVG, or PDF) before committing to creating an event.</p>
+      </div>
+    </div>
+
+    <div class="card" id="info-po-transition">
+      <h2>Starting play-offs from group stage or Mexicano</h2>
+      <p style="color:var(--text-muted);font-size:0.86rem">Once qualifying rounds are done, the admin triggers the play-off phase. The workflow differs slightly per format.</p>
+      <div class="info-block">
+        <strong>From Group + Play-off</strong>
+        <p>When all pending group matches are completed a <em>Start Play-offs</em> button appears. Clicking it fetches a recommended list of advancing participants ranked by group standings. The admin can then tick or untick any participant to adjust the selection, add <em>external / seeded participants</em> by name and score (useful for wildcards or late entries that skip the group stage), choose single or double elimination, and confirm. The checked order determines bracket seeding.</p>
+      </div>
+      <div class="info-block">
+        <strong>From Mexicano</strong>
+        <p>Play-offs are optional and can be triggered at any point after any Mexicano round. When started, the admin sees a team-builder where each bracket seed slot has player dropdowns pre-filled based on leaderboard rankings. In <em>individual mode</em>, the admin pairs two players per slot to form a bracket team — the combined leaderboard score is shown as a guide. In <em>team mode</em>, each slot holds one pre-formed team. Any slot can be replaced by an external participant. Once all slots are confirmed, choose single or double elimination and launch the bracket.</p>
+      </div>
+      <div class="info-block">
+        <strong>External / late-entry participants</strong>
+        <p>Both formats support adding participants who were not in the qualifying stage directly into any bracket seed slot, with a manually assigned score. Useful for seeded wildcards, guests, or late registrations.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="txt_txt_tournament_bracket_schema">Tournament Bracket Schema</h2>
+      <p style="color:var(--text-muted);font-size:0.84rem;margin:0 0 0.75rem" data-i18n="txt_txt_generate_a_visual_diagram_of_the_tournament_structure_before_creating_it">Generate a visual diagram of the tournament structure before creating it.</p>
       <div class="schema-builder">
-        <div class="schema-builder-header">
-          <h3 data-i18n="txt_txt_tournament_bracket_schema">Tournament Bracket Schema</h3>
-          <p style="color:var(--text-muted);font-size:0.84rem;margin:0" data-i18n="txt_txt_generate_a_visual_diagram_of_the_tournament_structure_before_creating_it">Generate a visual diagram of the tournament structure before creating it.</p>
-        </div>
         <div class="schema-presets">
           <button type="button" class="schema-preset-btn" data-preset="2×4" data-action="applySchemaPreset">2×4</button>
           <button type="button" class="schema-preset-btn" data-preset="3×4" data-action="applySchemaPreset">3×4</button>
@@ -601,52 +669,15 @@
       </div>
     </div>
 
-    <!-- TV Display -->
-    <div class="card">
-      <h2 data-i18n="txt_txt_fmt_tv_title">Public Display</h2>
-      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_tv_intro">A read-only live view for guests and participants, available on all devices. Auto-refreshes in real time — no login required.</p>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_tv_sections_title">Visible sections</strong>
-        <p data-i18n="txt_txt_fmt_tv_sections_desc">Choose which blocks appear: past matches, standings / leaderboard, score breakdowns, and the play&#8209;off bracket.</p>
-      </div>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_tv_refresh_title">Auto-refresh</strong>
-        <p data-i18n="txt_txt_fmt_tv_refresh_desc">Set the refresh interval (5s – 5min), trigger on every score update, or disable entirely.</p>
-      </div>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_tv_alias_title">Custom URL alias</strong>
-        <p data-i18n="txt_txt_fmt_tv_alias_desc">Assign a memorable slug (e.g. "summer-cup") so the TV URL is easy to share and type on any device.</p>
-      </div>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_tv_rendering_title">Bracket rendering</strong>
-        <p data-i18n="txt_txt_fmt_tv_rendering_desc">Fine-tune box size, line width, arrow size, and header size for the play&#8209;off bracket diagram.</p>
-      </div>
-    </div>
-
-    <!-- Match Management -->
-    <div class="card">
-      <h2 data-i18n="txt_txt_fmt_admin_title">Match Management</h2>
-      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_fmt_admin_intro">Admins have several tools to annotate matches, communicate with players, and allow self&#8209;service scoring.</p>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_comments_title">Match comments</strong>
-        <p data-i18n="txt_txt_fmt_comments_desc">Add a short comment to any match (pending or completed). Comments are visible on the public TV view and useful for noting court changes, delays, or special instructions.</p>
-      </div>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_player_login_title">Player self&#8209;scoring</strong>
-        <p data-i18n="txt_txt_fmt_player_login_desc">Each player receives a unique passphrase and QR code when the tournament is created. Players can scan the QR or enter their passphrase on the public view to log in and submit their own match scores — no admin account needed.</p>
-      </div>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_banner_title">Announcement banner</strong>
-        <p data-i18n="txt_txt_fmt_banner_desc">Set a banner message that appears at the top of the public view for all participants. Useful for schedule updates, break announcements, or any broadcast message.</p>
-      </div>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_roster_title">Mid-tournament roster updates</strong>
-        <p data-i18n="txt_txt_fmt_roster_desc">Add players during active tournaments (Mexicano and Group + Play-off group stage), and remove players in Mexicano when they are not assigned to pending matches.</p>
-      </div>
-      <div class="info-block">
-        <strong data-i18n="txt_txt_fmt_email_updates_title">Email updates for participants</strong>
-        <p data-i18n="txt_txt_fmt_email_updates_desc">When SMTP is configured, organizers can deliver round updates, announcements, and final results by email to players with saved addresses.</p>
-      </div>
+    <div class="card" id="info-help">
+      <h2>Docs & support</h2>
+      <p style="margin-top:0.2rem;font-size:0.85rem">
+        <a href="https://github.com/sanityseeker/padel-amistoso" target="_blank" rel="noopener" class="github-link" data-i18n="txt_txt_info_github_link">Full documentation on GitHub →</a>
+      </p>
+      <p style="margin-top:0.4rem;font-size:0.82rem;color:var(--text-muted)">
+        <span data-i18n="txt_txt_info_issue_prefix">Found a bug, weird behavior, or have a suggestion?</span>
+        <a href="https://github.com/sanityseeker/padel-amistoso/issues/new" target="_blank" rel="noopener" class="github-link" data-i18n="txt_txt_info_issue_link">Open an issue on GitHub</a>.
+      </p>
     </div>
   </div>
 </div>
@@ -712,6 +743,7 @@
   <p class="modal-footer-links">
     <a href="/tv" class="modal-link">📺 <span data-i18n="txt_nav_tv_view">TV View</span></a>
     <a href="/register" class="modal-link">📋 <span data-i18n="txt_nav_registrations">Registrations</span></a>
+    <a href="/player" class="modal-link">🎾 <span data-i18n="txt_nav_player_space">Player Hub</span></a>
   </p>
 </div>
 
@@ -865,7 +897,16 @@
 <script src="/i18n.js"></script>
 <script src="/shared.js"></script>
 <script src="/auth.js"></script>
-<script src="/admin.js"></script>
+<script src="/admin-utils.js"></script>
+<script src="/admin-tournaments.js"></script>
+<script src="/admin-create.js"></script>
+<script src="/admin-gp.js"></script>
+<script src="/admin-mex.js"></script>
+<script src="/admin-player-codes.js"></script>
+<script src="/admin-tv-email.js"></script>
+<script src="/admin-registration.js"></script>
+<script src="/admin-convert.js"></script>
+<script src="/admin-collaborators.js"></script>
 
 </body>
 </html>

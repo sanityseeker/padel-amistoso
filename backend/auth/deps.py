@@ -13,7 +13,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .models import User, UserRole
-from .security import decode_access_token, decode_player_token
+from .security import decode_access_token, decode_player_token, decode_profile_token
 from .store import user_store
 
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -125,3 +125,36 @@ async def get_current_player(
     if result is None:
         return None
     return PlayerIdentity(tournament_id=result[0], player_id=result[1])
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Profile authentication (cross-tournament Player Space identity)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class ProfileIdentity:
+    """Identity for a Player Space profile (cross-tournament, optional)."""
+
+    __slots__ = ("profile_id",)
+
+    def __init__(self, profile_id: str) -> None:
+        self.profile_id = profile_id
+
+
+_profile_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def get_current_profile(
+    creds: HTTPAuthorizationCredentials | None = Depends(_profile_bearer_scheme),
+) -> ProfileIdentity | None:
+    """Extract profile identity from the ``Authorization`` header.
+
+    Returns ``None`` when no valid profile token is present (never raises).
+    The profile JWT is distinguished by its ``type=profile`` claim.
+    """
+    if creds is None:
+        return None
+    profile_id = decode_profile_token(creds.credentials)
+    if profile_id is None:
+        return None
+    return ProfileIdentity(profile_id=profile_id)

@@ -115,7 +115,7 @@ def _clean_state(tmp_path):
         }
         return secrets
 
-    def _mock_delete(tournament_id):
+    def _mock_delete(tournament_id, **kwargs):
         _test_secrets.pop(tournament_id, None)
 
     def _mock_get(tournament_id):
@@ -133,9 +133,9 @@ def _clean_state(tmp_path):
 
     def _mock_update_email(tournament_id, player_id, email):
         if tournament_id not in _test_secrets or player_id not in _test_secrets[tournament_id]:
-            return False
+            return {"updated": False, "profile_linked": False}
         _test_secrets[tournament_id][player_id]["email"] = email
-        return True
+        return {"updated": True, "profile_linked": False}
 
     def _mock_get_contacts(tournament_id):
         return {pid: sec.get("contact", "") for pid, sec in _test_secrets.get(tournament_id, {}).items()}

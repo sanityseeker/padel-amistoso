@@ -457,6 +457,7 @@ function _bracketLightboxKeyHandler(e) {
 function buildPageSelectorHtml(currentPage) {
   const pages = [
     { key: 'admin', href: '/', icon: '🛠️', label: t('txt_nav_admin') },
+    { key: 'player', href: '/player', icon: '🎾', label: t('txt_nav_player_space') },
     { key: 'tv', href: '/tv', icon: '📺', label: t('txt_nav_tv_view') },
     { key: 'register', href: '/register', icon: '📋', label: t('txt_nav_registrations') },
   ];

@@ -8,6 +8,8 @@ import pytest
 import zxingcpp
 from PIL import Image
 
+from backend.api.db import get_db
+from backend.api.player_secret_store import delete_secrets_for_tournament as real_delete_secrets_for_tournament
 from backend.tournaments.player_secrets import (
     PlayerSecret,
     generate_passphrase,
@@ -88,6 +90,68 @@ class TestPlayerSecretModel:
         sec = PlayerSecret(passphrase="a-b-c", token="tok")
         with pytest.raises(Exception):
             sec.passphrase = "new"  # type: ignore[misc]
+
+
+class TestDeleteSecretsForTournament:
+    def test_keeps_linked_rows_after_finish_and_writes_history(self):
+        tid = "t-finished-keep-linked"
+        with get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (tid, "p-linked", "Linked Player", "pp-linked", "tok-linked", "profile-1"),
+            )
+            conn.execute(
+                """
+                INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (tid, "p-unlinked", "Unlinked Player", "pp-unlinked", "tok-unlinked", None),
+            )
+
+        real_delete_secrets_for_tournament(
+            tid,
+            entity_name="Finished Cup",
+            player_stats={
+                "p-linked": {"rank": 1, "total_players": 2, "wins": 3, "losses": 0, "draws": 0, "points_for": 18},
+                "p-unlinked": {
+                    "rank": 2,
+                    "total_players": 2,
+                    "wins": 0,
+                    "losses": 3,
+                    "draws": 0,
+                    "points_for": 9,
+                },
+            },
+        )
+
+        with get_db() as conn:
+            rows = conn.execute(
+                """
+                SELECT player_id, profile_id, finished_at, tournament_name
+                  FROM player_secrets
+                 WHERE tournament_id = ?
+                """,
+                (tid,),
+            ).fetchall()
+            assert len(rows) == 2
+            by_id = {row["player_id"]: row for row in rows}
+            assert by_id["p-linked"]["profile_id"] == "profile-1"
+            assert by_id["p-linked"]["finished_at"]
+            assert by_id["p-unlinked"]["finished_at"]
+            assert by_id["p-linked"]["tournament_name"] == "Finished Cup"
+
+            history = conn.execute(
+                """
+                SELECT profile_id, entity_type, entity_id
+                  FROM player_history
+                 WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?
+                """,
+                ("profile-1", tid),
+            ).fetchone()
+            assert history is not None
 
 
 # ────────────────────────────────────────────────────────────────────────────

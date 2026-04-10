@@ -126,3 +126,43 @@ def decode_player_token(token: str) -> tuple[str, str] | None:
     if len(parts) != 3 or parts[0] != "player":
         return None
     return parts[1], parts[2]
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Profile tokens (cross-tournament player identity, long-lived)
+# ────────────────────────────────────────────────────────────────────────────
+
+PROFILE_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
+
+
+def create_profile_token(profile_id: str, *, expires_delta: timedelta | None = None) -> str:
+    """Create a signed JWT for a Player Space profile.
+
+    The ``sub`` claim uses ``profile:<profile_id>`` and ``type=profile``
+    to distinguish these tokens from admin and player JWTs.
+    """
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=PROFILE_TOKEN_EXPIRE_MINUTES))
+    payload = {
+        "sub": f"profile:{profile_id}",
+        "exp": expire,
+        "type": "profile",
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=_ALGORITHM)
+
+
+def decode_profile_token(token: str) -> str | None:
+    """Decode a profile JWT and return the ``profile_id``.
+
+    Returns ``None`` if the token is invalid, expired, or not a profile token.
+    """
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[_ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("type") != "profile":
+        return None
+    sub: str = payload.get("sub", "")
+    parts = sub.split(":", 1)
+    if len(parts) != 2 or parts[0] != "profile":
+        return None
+    return parts[1]

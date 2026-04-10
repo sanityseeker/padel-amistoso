@@ -160,6 +160,44 @@ CREATE INDEX IF NOT EXISTS idx_registration_shares_rid
 
 CREATE INDEX IF NOT EXISTS idx_registration_shares_username
     ON registration_shares (username);
+
+CREATE TABLE IF NOT EXISTS player_profiles (
+    id          TEXT PRIMARY KEY,
+    passphrase  TEXT NOT NULL UNIQUE,
+    name        TEXT NOT NULL DEFAULT '',
+    email       TEXT NOT NULL DEFAULT '',
+    contact     TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_player_profiles_passphrase
+    ON player_profiles (passphrase);
+
+CREATE TABLE IF NOT EXISTS player_history (
+    profile_id      TEXT NOT NULL,
+    entity_type     TEXT NOT NULL,
+    entity_id       TEXT NOT NULL,
+    entity_name     TEXT NOT NULL DEFAULT '',
+    player_id       TEXT NOT NULL,
+    player_name     TEXT NOT NULL DEFAULT '',
+    finished_at     TEXT NOT NULL,
+    rank            INTEGER,
+    total_players   INTEGER,
+    wins            INTEGER NOT NULL DEFAULT 0,
+    losses          INTEGER NOT NULL DEFAULT 0,
+    draws           INTEGER NOT NULL DEFAULT 0,
+    points_for      INTEGER NOT NULL DEFAULT 0,
+    points_against  INTEGER NOT NULL DEFAULT 0,
+    sport           TEXT    NOT NULL DEFAULT 'padel',
+    top_partners    TEXT,
+    top_rivals      TEXT,
+    all_partners    TEXT,
+    all_rivals      TEXT,
+    PRIMARY KEY (profile_id, entity_type, entity_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_history_profile
+    ON player_history (profile_id);
 """
 
 
@@ -297,6 +335,53 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE registrants ADD COLUMN answers TEXT")
             if "email" not in rnt_cols:
                 conn.execute("ALTER TABLE registrants ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+            if "profile_id" not in rnt_cols:
+                conn.execute("ALTER TABLE registrants ADD COLUMN profile_id TEXT")
+        # Migrate: add contact column to player_profiles if missing
+        pp_cols = {r[1] for r in conn.execute("PRAGMA table_info(player_profiles)").fetchall()}
+        if pp_cols and "contact" not in pp_cols:
+            conn.execute("ALTER TABLE player_profiles ADD COLUMN contact TEXT NOT NULL DEFAULT ''")
+        # Migrate: add profile_id to player_secrets if missing
+        if ps_cols and "profile_id" not in ps_cols:
+            conn.execute("ALTER TABLE player_secrets ADD COLUMN profile_id TEXT")
+        # Migrate: keep finished secrets for 30 days so players can still claim them;
+        # stats columns store the result snapshot so backfill works even after restart.
+        if ps_cols and "finished_at" not in ps_cols:
+            conn.execute("ALTER TABLE player_secrets ADD COLUMN finished_at TEXT")
+        if ps_cols and "tournament_name" not in ps_cols:
+            conn.execute("ALTER TABLE player_secrets ADD COLUMN tournament_name TEXT NOT NULL DEFAULT ''")
+        if ps_cols and "finished_sport" not in ps_cols:
+            conn.execute("ALTER TABLE player_secrets ADD COLUMN finished_sport TEXT NOT NULL DEFAULT 'padel'")
+        if ps_cols and "finished_stats" not in ps_cols:
+            conn.execute("ALTER TABLE player_secrets ADD COLUMN finished_stats TEXT")
+        if ps_cols and "finished_top_partners" not in ps_cols:
+            conn.execute("ALTER TABLE player_secrets ADD COLUMN finished_top_partners TEXT")
+        if ps_cols and "finished_top_rivals" not in ps_cols:
+            conn.execute("ALTER TABLE player_secrets ADD COLUMN finished_top_rivals TEXT")
+        if ps_cols and "finished_all_partners" not in ps_cols:
+            conn.execute("ALTER TABLE player_secrets ADD COLUMN finished_all_partners TEXT")
+        if ps_cols and "finished_all_rivals" not in ps_cols:
+            conn.execute("ALTER TABLE player_secrets ADD COLUMN finished_all_rivals TEXT")
+        # Migrate: add stats columns to player_history if missing
+        ph_cols = {r[1] for r in conn.execute("PRAGMA table_info(player_history)").fetchall()}
+        if ph_cols:
+            for col, ddl in [
+                ("entity_name", "ALTER TABLE player_history ADD COLUMN entity_name TEXT NOT NULL DEFAULT ''"),
+                ("rank", "ALTER TABLE player_history ADD COLUMN rank INTEGER"),
+                ("total_players", "ALTER TABLE player_history ADD COLUMN total_players INTEGER"),
+                ("wins", "ALTER TABLE player_history ADD COLUMN wins INTEGER NOT NULL DEFAULT 0"),
+                ("losses", "ALTER TABLE player_history ADD COLUMN losses INTEGER NOT NULL DEFAULT 0"),
+                ("draws", "ALTER TABLE player_history ADD COLUMN draws INTEGER NOT NULL DEFAULT 0"),
+                ("points_for", "ALTER TABLE player_history ADD COLUMN points_for INTEGER NOT NULL DEFAULT 0"),
+                ("points_against", "ALTER TABLE player_history ADD COLUMN points_against INTEGER NOT NULL DEFAULT 0"),
+                ("sport", "ALTER TABLE player_history ADD COLUMN sport TEXT NOT NULL DEFAULT 'padel'"),
+                ("top_partners", "ALTER TABLE player_history ADD COLUMN top_partners TEXT"),
+                ("top_rivals", "ALTER TABLE player_history ADD COLUMN top_rivals TEXT"),
+                ("all_partners", "ALTER TABLE player_history ADD COLUMN all_partners TEXT"),
+                ("all_rivals", "ALTER TABLE player_history ADD COLUMN all_rivals TEXT"),
+            ]:
+                if col not in ph_cols:
+                    conn.execute(ddl)
 
 
 # ── Co-editor / sharing helpers ─────────────────────────────────────────────

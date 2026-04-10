@@ -48,6 +48,12 @@
     font-size: 1rem;
     color: #94a3b8;
   }
+  .context-msg {
+    font-size: 0.95rem;
+    color: #f59e0b;
+    max-width: 48rem;
+  }
+  [data-theme="light"] .context-msg { color: #b45309; }
   .countdown span {
     font-weight: 700;
     color: #3b82f6;
@@ -68,10 +74,22 @@
 </head>
 <body>
   <img id="error-img" src="/404.png" alt="404 – Page not found">
+  <p id="context-msg" class="context-msg" style="display:none"></p>
   <p class="countdown">Redirecting to home in <span id="counter">5</span> seconds…</p>
-  <a class="home-link" href="/">Go home now</a>
+  <a id="home-link" class="home-link" href="/">Go home now</a>
 
 <script>
+  const params = new URLSearchParams(window.location.search);
+  const context = params.get('m');
+  const redirectTarget = params.get('to') || '/';
+  if (context) {
+    const contextEl = document.getElementById('context-msg');
+    contextEl.textContent = context;
+    contextEl.style.display = '';
+  }
+  const homeLink = document.getElementById('home-link');
+  if (homeLink) homeLink.setAttribute('href', redirectTarget);
+
   let seconds = 5;
   const el = document.getElementById('counter');
   const timer = setInterval(() => {
@@ -79,7 +97,7 @@
     el.textContent = seconds;
     if (seconds <= 0) {
       clearInterval(timer);
-      window.location.replace('/');
+      window.location.replace(redirectTarget);
     }
   }, 1000);
 </script>

@@ -57,17 +57,33 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
     client_ip = _client_ip(request)
     _create_rate_limiter.check(client_ip, "Too many tournament creation attempts — try again later")
     _create_rate_limiter.record(client_ip)
-    # Each participant name becomes a single-entry team in the bracket.
-    teams: list[list[Player]] = [[Player(name=n)] for n in req.participant_names]
     courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 
     # Build initial_strength mapping keyed by player id
     initial_strength: dict[str, float] | None = None
-    if req.player_strengths:
-        name_to_id = {team[0].name: team[0].id for team in teams}
-        initial_strength = {
-            name_to_id[name]: score for name, score in req.player_strengths.items() if name in name_to_id
-        } or None
+
+    if req.teams and req.team_mode:
+        # Composite teams: each entry in req.teams is a list of member names
+        individual_players = [Player(name=n) for n in req.participant_names]
+        name_to_player = {p.name: p for p in individual_players}
+        if req.player_strengths:
+            initial_strength = {
+                name_to_player[name].id: score for name, score in req.player_strengths.items() if name in name_to_player
+            } or None
+        teams: list[list[Player]] = []
+        for member_names in req.teams:
+            team_members = [name_to_player[n] for n in member_names if n in name_to_player]
+            teams.append(team_members)
+        all_players = individual_players
+    else:
+        # Each participant name becomes a single-entry team in the bracket.
+        teams = [[Player(name=n)] for n in req.participant_names]
+        all_players = [p for team in teams for p in team]
+        if req.player_strengths:
+            name_to_id = {team[0].name: team[0].id for team in teams}
+            initial_strength = {
+                name_to_id[name]: score for name, score in req.player_strengths.items() if name in name_to_id
+            } or None
 
     t = PlayoffTournament(
         teams=teams,
@@ -77,7 +93,6 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
         initial_strength=initial_strength,
     )
 
-    all_players = [p for team in teams for p in team]
     tid = await allocate_tournament_id()
     _store_tournament(
         tid,
@@ -89,7 +104,7 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
         sport=req.sport.value,
         assign_courts=req.assign_courts,
     )
-    # Flatten all teams into individual players for secret generation.
+    # Create secrets for individual players (each member gets their own passphrase)
     contact_map = {p.id: req.player_contacts[p.name] for p in all_players if p.name in req.player_contacts} or None
     email_map = {p.id: req.player_emails[p.name] for p in all_players if p.name in req.player_emails} or None
     create_secrets_for_tournament(

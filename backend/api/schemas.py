@@ -50,6 +50,15 @@ def _validate_player_emails(emails: dict[str, str]) -> dict[str, str]:
     return out
 
 
+def _coerce_team_names(values: list[str | None]) -> list[str]:
+    """Coerce a team_names list by converting None entries to empty strings.
+
+    This guards against sparse-array holes serialised as JSON null by the
+    frontend, which Pydantic would otherwise reject as invalid strings.
+    """
+    return [(v or "").strip() for v in values]
+
+
 class CreateGroupPlayoffRequest(BaseModel):
     name: str = Field(default="My Tournament", max_length=255)
     player_names: list[str] = Field(min_length=2, max_length=256)
@@ -66,6 +75,13 @@ class CreateGroupPlayoffRequest(BaseModel):
     player_strengths: dict[str, float] = Field(default_factory=dict)
     player_emails: dict[str, str] = Field(default_factory=dict)
     player_contacts: dict[str, str] = Field(default_factory=dict)
+    teams: list[list[str]] = Field(default_factory=list)
+    team_names: list[str | None] = Field(default_factory=list)
+
+    @field_validator("team_names", mode="before")
+    @classmethod
+    def coerce_team_names_gp(cls, v: list[str | None]) -> list[str]:
+        return _coerce_team_names(v)
 
     @field_validator("player_names")
     @classmethod
@@ -80,9 +96,20 @@ class CreateGroupPlayoffRequest(BaseModel):
         return _validate_player_emails(v)
 
     @model_validator(mode="after")
-    def validate_courts(self) -> "CreateGroupPlayoffRequest":
+    def validate_courts_and_teams(self) -> "CreateGroupPlayoffRequest":
         if self.assign_courts and len(self.court_names) < 1:
             raise ValueError("Need at least 1 court when assign_courts is True")
+        if self.teams:
+            if not self.team_mode:
+                raise ValueError("teams requires team_mode=True")
+            seen: set[str] = set()
+            for team in self.teams:
+                if len(team) < 1:
+                    raise ValueError("Each team must have at least 1 player")
+                for name in team:
+                    if name in seen:
+                        raise ValueError(f"Player '{name}' appears in multiple teams")
+                    seen.add(name)
         return self
 
 
@@ -108,6 +135,13 @@ class CreateMexicanoRequest(BaseModel):
     player_strengths: dict[str, float] = Field(default_factory=dict)
     player_emails: dict[str, str] = Field(default_factory=dict)
     player_contacts: dict[str, str] = Field(default_factory=dict)
+    teams: list[list[str]] = Field(default_factory=list)
+    team_names: list[str | None] = Field(default_factory=list)
+
+    @field_validator("team_names", mode="before")
+    @classmethod
+    def coerce_team_names_mex(cls, v: list[str | None]) -> list[str]:
+        return _coerce_team_names(v)
 
     @field_validator("player_names")
     @classmethod
@@ -122,11 +156,22 @@ class CreateMexicanoRequest(BaseModel):
         return _validate_player_emails(v)
 
     @model_validator(mode="after")
-    def validate_player_count_for_mode(self) -> "CreateMexicanoRequest":
+    def validate_player_count_and_teams(self) -> "CreateMexicanoRequest":
         if not self.team_mode and len(self.player_names) < 4:
             raise ValueError("Need at least 4 players for Mexicano format (or enable team mode)")
         if self.assign_courts and len(self.court_names) < 1:
             raise ValueError("Need at least 1 court when assign_courts is True")
+        if self.teams:
+            if not self.team_mode:
+                raise ValueError("teams requires team_mode=True")
+            seen: set[str] = set()
+            for team in self.teams:
+                if len(team) < 1:
+                    raise ValueError("Each team must have at least 1 player")
+                for name in team:
+                    if name in seen:
+                        raise ValueError(f"Player '{name}' appears in multiple teams")
+                    seen.add(name)
         return self
 
 
@@ -142,6 +187,13 @@ class CreatePlayoffRequest(BaseModel):
     player_strengths: dict[str, float] = Field(default_factory=dict)
     player_emails: dict[str, str] = Field(default_factory=dict)
     player_contacts: dict[str, str] = Field(default_factory=dict)
+    teams: list[list[str]] = Field(default_factory=list)
+    team_names: list[str | None] = Field(default_factory=list)
+
+    @field_validator("team_names", mode="before")
+    @classmethod
+    def coerce_team_names_po(cls, v: list[str | None]) -> list[str]:
+        return _coerce_team_names(v)
 
     @field_validator("participant_names")
     @classmethod
@@ -156,9 +208,22 @@ class CreatePlayoffRequest(BaseModel):
         return _validate_player_emails(v)
 
     @model_validator(mode="after")
-    def validate_courts(self) -> "CreatePlayoffRequest":
+    def validate_courts_and_teams(self) -> "CreatePlayoffRequest":
+        if self.sport == Sport.PADEL and not self.team_mode:
+            raise ValueError("Play-off creation for padel requires team_mode=True")
         if self.assign_courts and len(self.court_names) < 1:
             raise ValueError("Need at least 1 court when assign_courts is True")
+        if self.teams:
+            if not self.team_mode:
+                raise ValueError("teams requires team_mode=True")
+            seen: set[str] = set()
+            for team in self.teams:
+                if len(team) < 1:
+                    raise ValueError("Each team must have at least 1 player")
+                for name in team:
+                    if name in seen:
+                        raise ValueError(f"Player '{name}' appears in multiple teams")
+                    seen.add(name)
         return self
 
 
@@ -423,6 +488,10 @@ class RegistrantIn(BaseModel):
     join_code: str | None = None
     answers: dict[str, str] = Field(default_factory=dict)
     email: OptionalEmailStr = Field(default="")
+    profile_passphrase: str | None = Field(
+        default=None,
+        description="Optional Player Space passphrase to link this registration to a profile.",
+    )
 
 
 class RegistrantOut(BaseModel):
@@ -570,9 +639,14 @@ class ConvertRegistrationRequest(BaseModel):
     repeat_decay: float = Field(default=0.5, ge=0.0)
     # Team formation (admin-composed teams from individual registrants)
     teams: list[list[str]] = Field(default_factory=list)
-    team_names: list[str] = Field(default_factory=list)
+    team_names: list[str | None] = Field(default_factory=list)
     # Per-player initial strength for seeding
     player_strengths: dict[str, float] = Field(default_factory=dict)
+
+    @field_validator("team_names", mode="before")
+    @classmethod
+    def coerce_team_names_convert(cls, v: list[str | None]) -> list[str]:
+        return _coerce_team_names(v)
 
     @field_validator("player_names")
     @classmethod
@@ -583,6 +657,9 @@ class ConvertRegistrationRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_teams(self) -> "ConvertRegistrationRequest":
+        if self.tournament_type == "playoff" and self.sport == Sport.PADEL and not self.team_mode:
+            raise ValueError("Play-off conversion for padel requires team_mode=True")
+
         if self.teams:
             if not self.team_mode:
                 raise ValueError("teams requires team_mode=True")

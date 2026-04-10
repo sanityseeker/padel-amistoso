@@ -57,6 +57,16 @@ let _pollTimer = null;
 let _lobbyFetching = false;
 let _rid = null;
 let _urlToken = null; // token passed via email link for auto-login
+let _linkedProfilePassphrase = null; // set when Player Space session is active
+let _submittedEmail = ''; // email entered in the form, captured on submit
+let _skipProfileAutoLoginOnce = false;
+
+function _redirectToNotFoundPage(message, redirectTo = '/register') {
+  const params = new URLSearchParams();
+  if (message) params.set('m', message);
+  if (redirectTo) params.set('to', redirectTo);
+  window.location.replace(`/404?${params.toString()}`);
+}
 
 function _isValidEmail(value) {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test((value || '').trim());
@@ -135,11 +145,11 @@ function _fullRender() {
   const isDirectory = !_lastResult && !_regData && !_rid;
   let html = isDirectory ? '' : _buildHeader();
   html += `<div id="state-loading" class="loading">${t('txt_txt_loading')}</div>`;
-  html += `<div id="state-directory" style="display:none"></div>`;
-  html += `<div id="state-closed" class="card state-msg" style="display:none"></div>`;
-  html += `<div id="state-form" class="card" style="display:none"></div>`;
-  html += `<div id="state-success" class="card success-card" style="display:none"></div>`;
-  html += `<div id="state-error" class="card state-msg" style="display:none"></div>`;
+  html += `<div id="state-directory" class="reg-hidden"></div>`;
+  html += `<div id="state-closed" class="card state-msg reg-hidden"></div>`;
+  html += `<div id="state-form" class="card reg-hidden"></div>`;
+  html += `<div id="state-success" class="card success-card reg-hidden"></div>`;
+  html += `<div id="state-error" class="card state-msg reg-hidden"></div>`;
   root.innerHTML = html;
 
   if (_lastResult) { _showSuccess(); }
@@ -173,23 +183,7 @@ async function _fetchRegistration(rid) {
     const res = await fetch(`${API}/${encodeURIComponent(rid)}/public`);
     if (!res.ok) {
       if (res.status === 404) {
-        _hideAll();
-        const el = document.getElementById('state-error');
-        let _regNotFoundCountdown = 5;
-        const _regNotFoundMsg = () =>
-          `<h2>⚠️</h2><p>${esc(t('txt_reg_not_found'))}</p>` +
-          `<p>${esc(t('txt_reg_redirecting_in_n', { n: _regNotFoundCountdown }))}</p>`;
-        el.innerHTML = _regNotFoundMsg();
-        el.style.display = '';
-        const _regNotFoundTimer = setInterval(() => {
-          _regNotFoundCountdown--;
-          if (_regNotFoundCountdown <= 0) {
-            clearInterval(_regNotFoundTimer);
-            location.href = '/register';
-          } else {
-            el.innerHTML = _regNotFoundMsg();
-          }
-        }, 1000);
+        _redirectToNotFoundPage(t('txt_reg_not_found_deleted_hint'), '/register');
       } else {
         _showError(t('txt_reg_error'));
       }
@@ -212,7 +206,7 @@ async function _showDirectory() {
   _hideAll();
   const el = document.getElementById('state-directory');
   el.innerHTML = `<div class="loading">${t('txt_txt_loading')}</div>`;
-  el.style.display = '';
+  el.style.display = 'block';
 
   try {
     const res = await fetch(`${API}/public`);
@@ -230,7 +224,7 @@ function _renderDirectory(lobbies) {
   const themeIcon = _theme === 'dark' ? '🌙' : '☀️';
 
   let html = `<div class="tv-picker">`;
-  html += `<div class="tv-header-title-row" style="margin-bottom:1rem">`;
+  html += `<div class="tv-header-title-row reg-directory-header-row">`;
   html += `<div class="tv-lang-cell"><button type="button" class="theme-btn" onclick="_regToggleLanguage()" title="${esc(langMeta.label)}" aria-label="${esc(langMeta.label)}">${langMeta.icon}</button></div>`;
   html += buildPageSelectorHtml('register');
   html += `<div class="tv-toggle-btns">`;
@@ -260,7 +254,7 @@ function _renderDirectory(lobbies) {
       html += `</a>`;
     }
     html += `</ul>`;
-    html += `<div style="color:var(--text-muted);font-size:0.85rem;margin-top:1.5rem;margin-bottom:0.5rem">${t('txt_reg_or_enter_id')}</div>`;
+    html += `<div class="reg-directory-enter-id-hint">${t('txt_reg_or_enter_id')}</div>`;
   }
   html += `<form class="tv-picker-form" onsubmit="return _goToLobby(event)">`;
   html += `<input type="text" id="reg-picker-input" placeholder="${t('txt_reg_id_or_alias')}">`;
@@ -287,7 +281,7 @@ async function _goToLobby(e) {
     if (form) {
       const errDiv = document.createElement('div');
       errDiv.className = 'tv-error picker-inline-error';
-      errDiv.style.marginTop = '0.75rem';
+      errDiv.classList.add('picker-inline-error-spaced');
       errDiv.textContent = err.message === 'not_found' ? t('txt_reg_not_found') : t('txt_reg_error');
       form.after(errDiv);
     }
@@ -303,9 +297,49 @@ function _render() {
   if (!_regData) return;
   try {
     if (!_regData.open) { _showClosed(_regData.converted); return; }
+    // If a Player Space session exists, try auto-login with the profile passphrase
+    if (!_lastResult && !_skipProfileAutoLoginOnce) {
+      _tryProfileAutoLogin().then(found => { if (!found) _showForm(); });
+      return;
+    }
+    _skipProfileAutoLoginOnce = false;
     _showForm();
   } catch (_) {
     _showError(t('txt_reg_error'));
+  }
+}
+
+async function _tryProfileAutoLogin() {
+  try {
+    const rawData = localStorage.getItem('padel-player-profile-data');
+    const rawJwt = localStorage.getItem('padel-player-profile');
+    if (!rawData || !rawJwt) return false;
+    const profile = JSON.parse(rawData);
+    const passphrase = profile?.passphrase;
+    if (!passphrase) return false;
+
+    const res = await fetch(`${API}/${encodeURIComponent(_rid)}/player-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passphrase }),
+    });
+    if (!res.ok) return false;
+
+    const data = await res.json();
+    _linkedProfilePassphrase = passphrase;
+    _lastResult = {
+      player_id: data.player_id,
+      player_name: data.player_name,
+      passphrase: data.passphrase,
+      answers: data.answers || {},
+      token: data.token || null,
+      from_login: true,
+    };
+    if (data.token) _setRegToken(data.token);
+    _showSuccess();
+    return true;
+  } catch (_) {
+    return false;
   }
 }
 
@@ -320,7 +354,7 @@ function _showError(msg) {
   _hideAll();
   const el = document.getElementById('state-error');
   el.innerHTML = `<h2>⚠️</h2><p>${esc(msg)}</p>`;
-  el.style.display = '';
+  el.style.display = 'block';
 }
 
 function _showClosed(converted) {
@@ -337,10 +371,10 @@ function _showClosed(converted) {
     html += `<p>${t('txt_reg_converted_msg')}</p>`;
     html += _renderLinkedTournaments();
   } else {
-    html += `<p class="subtitle" style="font-weight:700">${t('txt_reg_closed_msg')}</p>`;
+    html += `<p class="subtitle subtitle-strong">${t('txt_reg_closed_msg')}</p>`;
   }
   el.innerHTML = html;
-  el.style.display = '';
+  el.style.display = 'block';
 }
 
 function _getLinkedTournamentIds() {
@@ -419,21 +453,65 @@ function _showForm() {
   html += `<span class="returning-player-toggle-icon" id="returning-toggle-icon">▸</span>`;
   html += `${t('txt_reg_returning_player')}`;
   html += `</button>`;
-  html += `<div class="returning-player-panel" id="returning-player-panel" style="display:none">`;
-  html += `<div class="form-group" style="margin-bottom:0.75rem">`;
+  html += `<div class="returning-player-panel reg-hidden" id="returning-player-panel">`;
+  html += `<div class="form-group returning-player-input-group">`;
   html += `<label>${t('txt_reg_enter_passphrase')}</label>`;
-  html += `<input type="text" id="reg-returning-passphrase" maxlength="128" placeholder="word-word-word" autocomplete="off" spellcheck="false" style="font-family:monospace">`;
+  html += `<input type="text" id="reg-returning-passphrase" class="returning-player-passphrase" maxlength="128" placeholder="word-word-word" autocomplete="off" spellcheck="false">`;
   html += `</div>`;
   html += `<div class="error-msg" id="reg-returning-error"></div>`;
   html += `<button type="button" class="btn btn-secondary" id="reg-returning-btn" onclick="_lookupPlayer()">${t('txt_reg_lookup_btn')}</button>`;
   html += `</div>`;
   html += `</div>`;
 
+  // Detect existing Player Space session or profile data
+  let _regPrefill = null;
+  _linkedProfilePassphrase = null;
+  try {
+    const rawData = localStorage.getItem('padel-player-profile-data');
+    const rawJwt = localStorage.getItem('padel-player-profile');
+    if (rawData && rawJwt) {
+      _regPrefill = JSON.parse(rawData);
+      _linkedProfilePassphrase = _regPrefill?.passphrase || null;
+    } else if (rawData) {
+      _regPrefill = JSON.parse(rawData);
+    }
+  } catch (_) {}
+  const prefillName = _regPrefill?.name || '';
+  const prefillEmail = _regPrefill?.email || '';
+  const prefillContact = _regPrefill?.contact || '';
+  const isLoggedIn = !!_linkedProfilePassphrase;
+
   html += `<form id="reg-form" onsubmit="return false">`;
+
+  // Player Space: logged-in banner shown at top of form
+  if (isLoggedIn) {
+    html += `<div class="reg-ps-logged-notice" id="reg-ps-logged-notice">`;
+    html += `✦ ${t('txt_reg_ps_logged_in', { name: esc(prefillName || _regPrefill?.email || '') })}`;
+    html += `<button type="button" class="reg-ps-logout-link" onclick="_logoutPlayerSpace()">${t('txt_reg_ps_logout')}</button>`;
+    html += `</div>`;
+  } else if (prefillName || prefillEmail) {
+    html += `<p class="reg-prefill-notice">✦ ${t('txt_reg_prefilled_from_profile')}</p>`;
+  }
+
   html += `<div class="form-group">
     <label>${t('txt_reg_name')}</label>
-    <input type="text" id="reg-player-name" maxlength="128" required placeholder="${esc(t('txt_reg_name_placeholder'))}">
+    <input type="text" id="reg-player-name" maxlength="128" required placeholder="${esc(t('txt_reg_name_placeholder'))}" value="${esc(prefillName)}">
   </div>`;
+
+  // Player Space: subtle prefill link below name field (only if not already logged in)
+  if (!isLoggedIn) {
+    html += `<div class="reg-ps-prefill" id="reg-ps-prefill">`;
+    html += `<button type="button" class="reg-ps-prefill-link" id="reg-ps-prefill-link" onclick="_togglePsLogin()">🔑 ${t('txt_reg_ps_login')}</button>`;
+    html += `<div class="reg-ps-prefill-panel reg-hidden" id="reg-ps-login-panel">`;
+    html += `<div class="form-group">`;
+    html += `<label>${t('txt_player_passphrase_label')}</label>`;
+    html += `<input type="text" id="reg-ps-passphrase" maxlength="128" placeholder="${esc(t('txt_player_passphrase_placeholder'))}" autocomplete="off" autocapitalize="none" spellcheck="false">`;
+    html += `</div>`;
+    html += `<div class="reg-ps-login-error" id="reg-ps-login-error"></div>`;
+    html += `<button type="button" class="btn btn-secondary" id="reg-ps-login-btn" onclick="_loginPlayerSpace()">${t('txt_player_login_btn')}</button>`;
+    html += `</div>`;
+    html += `</details>`;
+  }
 
   const emailMode = _regData?.email_requirement || 'optional';
   if (emailMode !== 'disabled') {
@@ -441,7 +519,7 @@ function _showForm() {
     const emailRequiredAttr = emailMode === 'required' ? 'required' : '';
     html += `<div class="form-group">
       <label>${emailLabel}</label>
-      <input type="email" id="reg-player-email" maxlength="320" ${emailRequiredAttr} placeholder="${esc(t('txt_email_placeholder'))}">
+      <input type="email" id="reg-player-email" maxlength="320" ${emailRequiredAttr} placeholder="${esc(t('txt_email_placeholder'))}" value="${esc(prefillEmail)}">
     </div>`;
   }
 
@@ -455,7 +533,9 @@ function _showForm() {
   if (_regData.questions && _regData.questions.length) {
     for (const q of _regData.questions) {
       const reqAttr = q.required ? 'required' : '';
-      const optHint = q.required ? '' : ` <small style="font-weight:400;color:var(--text-muted)">(${t('txt_txt_optional')})</small>`;
+      const optHint = q.required ? '' : ` <small class="reg-optional-hint">(${t('txt_txt_optional')})</small>`;
+      // Pre-fill contact question from Player Space profile
+      const contactPrefill = (q.key === 'contact' && prefillContact) ? prefillContact : '';
       html += `<div class="form-group"><label>${esc(q.label)}${optHint}</label>`;
       if (q.type === 'choice' && q.choices && q.choices.length) {
         html += `<select class="reg-answer" data-key="${esc(q.key)}" ${reqAttr}>`;
@@ -471,9 +551,9 @@ function _showForm() {
         }
         html += `</div>`;
       } else if (q.type === 'number') {
-        html += `<input type="number" class="reg-answer" data-key="${esc(q.key)}" step="any" ${reqAttr}>`;
+        html += `<input type="number" class="reg-answer" data-key="${esc(q.key)}" step="any" ${reqAttr} value="${esc(contactPrefill)}">`;
       } else {
-        html += `<textarea class="reg-answer reg-text-expand" data-key="${esc(q.key)}" maxlength="512" rows="1" ${reqAttr} oninput="_regAutoResize(this)"></textarea>`;
+        html += `<textarea class="reg-answer reg-text-expand" data-key="${esc(q.key)}" maxlength="512" rows="1" ${reqAttr} oninput="_regAutoResize(this)">${esc(contactPrefill)}</textarea>`;
       }
       html += `</div>`;
     }
@@ -484,7 +564,7 @@ function _showForm() {
   html += `</form>`;
 
   el.innerHTML = html;
-  el.style.display = '';
+  el.style.display = 'block';
 
   document.getElementById('reg-form').addEventListener('submit', _handleSubmit);
   el.querySelectorAll('textarea.reg-text-expand').forEach(_regAutoResize);
@@ -495,10 +575,61 @@ function _toggleReturningPanel() {
   const btn = panel?.previousElementSibling;
   const icon = document.getElementById('returning-toggle-icon');
   if (!panel) return;
-  const isOpen = panel.style.display !== 'none';
-  panel.style.display = isOpen ? 'none' : '';
+  const isOpen = !panel.classList.contains('reg-hidden');
+  panel.classList.toggle('reg-hidden', isOpen);
   if (btn) btn.classList.toggle('open', !isOpen);
   if (!isOpen) document.getElementById('reg-returning-passphrase')?.focus();
+}
+
+function _togglePsLogin() {
+  const panel = document.getElementById('reg-ps-login-panel');
+  const link = document.getElementById('reg-ps-prefill-link');
+  if (!panel) return;
+  const isOpen = !panel.classList.contains('reg-hidden');
+  panel.classList.toggle('reg-hidden', isOpen);
+  if (link) link.classList.toggle('open', !isOpen);
+  if (!isOpen) document.getElementById('reg-ps-passphrase')?.focus();
+}
+
+async function _loginPlayerSpace() {
+  const passphrase = document.getElementById('reg-ps-passphrase')?.value?.trim();
+  const errorEl = document.getElementById('reg-ps-login-error');
+  const btn = document.getElementById('reg-ps-login-btn');
+  if (!passphrase) return;
+  if (errorEl) errorEl.textContent = '';
+  if (btn) { btn.disabled = true; btn.textContent = t('txt_reg_ps_logging_in'); }
+  try {
+    const res = await fetch('/api/player-profile/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passphrase }),
+    });
+    if (!res.ok) {
+      if (errorEl) errorEl.textContent = t('txt_reg_ps_login_error');
+      return;
+    }
+    const data = await res.json();
+    // Persist Player Space session
+    try {
+      localStorage.setItem('padel-player-profile', data.access_token);
+      localStorage.setItem('padel-player-profile-data', JSON.stringify(data.profile));
+    } catch (_) {}
+    // Re-render form with prefilled data
+    _showForm();
+  } catch (_) {
+    if (errorEl) errorEl.textContent = t('txt_reg_ps_login_error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = t('txt_player_login_btn'); }
+  }
+}
+
+function _logoutPlayerSpace() {
+  _linkedProfilePassphrase = null;
+  try {
+    localStorage.removeItem('padel-player-profile');
+    localStorage.removeItem('padel-player-profile-data');
+  } catch (_) {}
+  _showForm();
 }
 
 async function _autoLoginWithToken(token) {
@@ -577,7 +708,7 @@ function _renderReturningPlayerEditor() {
     for (const q of _regData.questions) {
       const reqAttr = q.required ? 'required' : '';
       const existingValue = _lastResult.answers?.[q.key] || '';
-      const optHint = q.required ? '' : ` <small style="font-weight:400;color:var(--text-muted)">(${t('txt_txt_optional')})</small>`;
+      const optHint = q.required ? '' : ` <small class="reg-optional-hint">(${t('txt_txt_optional')})</small>`;
       html += `<div class="form-group"><label>${esc(q.label)}${optHint}</label>`;
       if (q.type === 'choice' && q.choices && q.choices.length) {
         html += `<select class="returning-answer" data-key="${esc(q.key)}" ${reqAttr}>`;
@@ -727,19 +858,11 @@ function _showSuccess() {
     _setRegToken(r.token);
   }
 
-  const hasLinkedTournament = _getLinkedTournamentIds().length > 0;
-
   let html = `<h2>✅ ${t('txt_reg_registered', { name: r.player_name })}</h2>`;
   html += `<div class="passphrase-label">${t('txt_reg_your_passphrase')}</div>`;
   html += `<div class="passphrase-box">${esc(r.passphrase)}</div>`;
   html += `<p class="keep-note">${t('txt_reg_keep_code')}</p>`;
-
-  if (!hasLinkedTournament) {
-    html += `<div class="reg-waiting-state">`;
-    html += `<p class="reg-waiting-title">⏳ ${t('txt_reg_waiting_title')}</p>`;
-    html += `<p class="reg-waiting-note">${t('txt_reg_waiting_note')}</p>`;
-    html += `</div>`;
-  }
+  html += `<div class="success-actions"><a href="/register" class="btn btn-primary success-back-btn">${t('txt_reg_back_home')}</a><button type="button" class="success-register-another" onclick="_registerAnother()">${t('txt_reg_register_another')}</button></div>`;
 
   html += _renderMessage();
 
@@ -749,10 +872,33 @@ function _showSuccess() {
 
   html += _renderReturningPlayerEditor();
 
-  html += `<div class="success-actions"><a href="/register" class="btn btn-primary success-back-btn">${t('txt_reg_back_home')}</a><button type="button" class="success-register-another" onclick="_registerAnother()">${t('txt_reg_register_another')}</button></div>`;
+  // Player Space: show create section only if no profile is linked and no existing session
+  const _hasProfileSession = (() => {
+    try {
+      return !!(localStorage.getItem('padel-player-profile') && localStorage.getItem('padel-player-profile-data'));
+    } catch (_) { return false; }
+  })();
+  if (!_linkedProfilePassphrase && !_hasProfileSession) {
+    const emailMode = _regData?.email_requirement || 'optional';
+    const hasEmail = !!_submittedEmail;
+    const needsEmail = emailMode === 'disabled' || !hasEmail;
+
+    html += `<details class="reg-ps-create-section" id="reg-ps-create-section">`;
+    html += `<summary class="reg-ps-create-summary">💡 ${t('txt_reg_ps_save_help')}</summary>`;
+    html += `<div class="reg-ps-create-body">`;
+    if (needsEmail) {
+      html += `<div class="reg-ps-create-email"><label style="font-size:0.8rem;color:var(--text-muted)">${t('txt_reg_ps_email_needed')}</label>`;
+      html += `<input type="email" id="reg-ps-create-email-input" maxlength="320" placeholder="${esc(t('txt_email_placeholder'))}"></div>`;
+    }
+    html += `<button type="button" class="reg-ps-create-btn" id="reg-ps-create-btn" onclick="_createPlayerSpace()">${t('txt_reg_ps_save')}</button>`;
+    html += `<div class="reg-ps-create-error" id="reg-ps-create-error"></div>`;
+    html += `<p class="reg-ps-already-have">${t('txt_reg_ps_already_have')} <a href="/player">${t('txt_player_login')}</a></p>`;
+    html += `</div>`;
+    html += `</div>`;
+  }
 
   el.innerHTML = html;
-  el.style.display = '';
+  el.style.display = 'block';
   el.querySelectorAll('textarea.reg-text-expand').forEach(_regAutoResize);
 
   _startPolling();
@@ -813,6 +959,14 @@ async function _handleSubmit(e) {
   }
   if (Object.keys(answers).length) body.answers = answers;
 
+  // Auto-link Player Space profile if logged in
+  if (_linkedProfilePassphrase) {
+    body.profile_passphrase = _linkedProfilePassphrase;
+  }
+
+  // Capture submitted email for post-registration profile creation
+  _submittedEmail = playerEmail;
+
   submitBtn.disabled = true;
   try {
     const res = await fetch(`${API}/${encodeURIComponent(_regData.id)}/register`, {
@@ -828,6 +982,9 @@ async function _handleSubmit(e) {
       return;
     }
     _lastResult = await res.json();
+    // Backend response doesn't include answers; attach them so
+    // _createPlayerSpace can access the contact answer.
+    _lastResult.answers = answers;
     _regData.registrant_count++;
     _showSuccess();
   } catch (err) {
@@ -958,9 +1115,78 @@ function _regAutoResize(el) {
 // ── Public API (for onclick handlers) ────────────────────
 
 function _registerAnother() {
+  _skipProfileAutoLoginOnce = true;
   _lastResult = null;
+  _submittedEmail = '';
   _stopPolling();
   _render();
+}
+
+async function _createPlayerSpace() {
+  const errorEl = document.getElementById('reg-ps-create-error');
+  const btn = document.getElementById('reg-ps-create-btn');
+  if (errorEl) errorEl.textContent = '';
+
+  const r = _lastResult;
+  if (!r?.passphrase) return;
+
+  // Determine email: use submitted email or inline input
+  let email = _submittedEmail || '';
+  const emailInput = document.getElementById('reg-ps-create-email-input');
+  if (emailInput) email = emailInput.value.trim();
+  if (!email || !_isValidEmail(email)) {
+    if (errorEl) errorEl.textContent = t('txt_reg_ps_email_needed');
+    if (emailInput) emailInput.focus();
+    return;
+  }
+
+  // Collect contact from answers if available
+  let contact = '';
+  if (r.answers?.contact) contact = r.answers.contact;
+
+  if (btn) { btn.disabled = true; btn.textContent = t('txt_reg_ps_creating'); }
+  try {
+    const res = await fetch('/api/player-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        participant_passphrase: r.passphrase,
+        name: r.player_name || '',
+        email,
+        contact,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (errorEl) errorEl.textContent = data.detail || t('txt_reg_ps_create_error');
+      return;
+    }
+    const data = await res.json();
+    // Persist Player Space session
+    try {
+      localStorage.setItem('padel-player-profile', data.access_token);
+      localStorage.setItem('padel-player-profile-data', JSON.stringify(data.profile));
+    } catch (_) {}
+    // Replace the create section with success
+    const section = document.getElementById('reg-ps-create-section');
+    if (section) {
+      const samePassphrase = data.profile.passphrase === r.passphrase;
+      let html = `<div class="reg-ps-create-success">`;
+      html += `<p>✅ ${t('txt_reg_ps_created')}</p>`;
+      if (samePassphrase) {
+        html += `<p>${t('txt_reg_ps_created_same_pp')}</p>`;
+      } else {
+        html += `<p>${t('txt_reg_ps_created_diff_pp')}</p>`;
+        html += `<div class="passphrase-box">${esc(data.profile.passphrase)}</div>`;
+      }
+      html += `</div>`;
+      section.innerHTML = html;
+    }
+  } catch (_) {
+    if (errorEl) errorEl.textContent = t('txt_reg_ps_create_error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = t('txt_reg_ps_save'); }
+  }
 }
 
 // ── Boot ─────────────────────────────────────────────────
