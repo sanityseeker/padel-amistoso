@@ -1,3 +1,9 @@
+## v1.5.1 (2026-04-12)
+
+### Fix
+
+- **tests**: fix email verification test rate limiter
+
 ## v1.5.0 (2026-04-12)
 
 ### Feat
