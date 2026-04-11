@@ -285,11 +285,12 @@ def _send_email_verification(
 ) -> None:
     """Send a Player Hub welcome email that includes a one-click email verification link."""
     verify_token = create_profile_email_verify_token(profile_id, email)
+    login_token = access_token or create_profile_token(profile_id, expires_delta=timedelta(hours=1))
     subject, html_body = render_player_space_welcome(
         name=name,
         email=email,
         passphrase=passphrase,
-        access_token=access_token,
+        access_token=login_token,
         verify_token=verify_token,
     )
     send_email_background(email, subject, html_body)

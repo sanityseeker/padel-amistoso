@@ -166,6 +166,18 @@ class TestRenderPlayerHubEmails:
         assert "Player Space" not in body
         assert "Player Space" not in subject
 
+    def test_welcome_email_verify_link_combines_verify_and_login_tokens(self) -> None:
+        with patch("backend.email.SITE_URL", "https://example.com"):
+            _, body = render_player_space_welcome(
+                name="Alice",
+                email="alice@example.com",
+                passphrase="sun-river-sky",
+                access_token="login_tok",
+                verify_token="verify_tok",
+            )
+
+        assert "#verify_token=verify_tok&token=login_tok" in body
+
 
 class TestRenderTournamentStartedEmail:
     """Tournament-started notification email template."""

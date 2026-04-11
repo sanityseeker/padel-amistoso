@@ -639,7 +639,12 @@ def render_player_space_welcome(
         player_url = f"{base}/player"
     else:
         player_url = ""
-    verify_url = f"{base}/player#verify_token={verify_token}" if base and verify_token else ""
+    if base and verify_token and access_token:
+        verify_url = f"{base}/player#verify_token={verify_token}&token={access_token}"
+    elif base and verify_token:
+        verify_url = f"{base}/player#verify_token={verify_token}"
+    else:
+        verify_url = ""
     display_name = name.strip() or email
 
     subject = "Your Player Hub passphrase"

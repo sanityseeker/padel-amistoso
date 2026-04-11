@@ -983,6 +983,30 @@ class TestEmailVerification:
         assert res.json()["ok"] is True
         assert res.json()["already_verified"] is True
 
+    def test_resend_verification_email_contains_verify_and_login_tokens(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sent_html: list[str] = []
+
+        def _capture_email(_to: str, _subject: str, html_body: str) -> None:
+            sent_html.append(html_body)
+
+        monkeypatch.setattr("backend.api.routes_player_space.send_email_background", _capture_email)
+
+        created = _create_profile(client, name="Resend Link", email="resendlink@example.com")
+        token = created["access_token"]
+
+        res = client.post("/api/player-profile/resend-verification", headers=_headers(token))
+        assert res.status_code == 200
+        assert res.json()["ok"] is True
+        assert res.json()["already_verified"] is False
+
+        assert sent_html
+        html_body = sent_html[-1]
+        assert "#verify_token=" in html_body
+        assert "&token=" in html_body
+        assert html_body.find("#verify_token=") < html_body.find("&token=")
+
     def test_no_profile_email_no_auto_link(self, client: TestClient, auth_headers: dict) -> None:
         rid = self._create_lobby(client, auth_headers)
         res = client.post(

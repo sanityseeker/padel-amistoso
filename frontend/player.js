@@ -165,8 +165,13 @@ function _init() {
           await _apiPost('/verify-email', { token: _verifyTokenFromHash });
           _successMsg = t('txt_player_email_verified_success');
         }
-        if (_tokenFromHash) {
-          _jwt = _tokenFromHash;
+        let _tokenFromStorage = null;
+        try {
+          _tokenFromStorage = localStorage.getItem(STORAGE_JWT_KEY) || null;
+        } catch (_) {}
+        const _effectiveToken = _tokenFromHash || _tokenFromStorage;
+        if (_effectiveToken) {
+          _jwt = _effectiveToken;
           await _fetchSpace();
         }
       })
