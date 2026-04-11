@@ -1,3 +1,9 @@
+## v1.4.0 (2026-04-11)
+
+### Feat
+
+- **player-hub**: improve login screen; add a possibility to unlink tournaments; add an admin panel to manage players
+
 ## v1.3.7 (2026-04-10)
 
 ### Fix
