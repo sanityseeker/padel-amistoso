@@ -133,6 +133,7 @@ def decode_player_token(token: str) -> tuple[str, str] | None:
 # ────────────────────────────────────────────────────────────────────────────
 
 PROFILE_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
+PROFILE_EMAIL_VERIFY_EXPIRE_MINUTES = 60  # 1 hour
 
 
 def create_profile_token(profile_id: str, *, expires_delta: timedelta | None = None) -> str:
@@ -166,3 +167,38 @@ def decode_profile_token(token: str) -> str | None:
     if len(parts) != 2 or parts[0] != "profile":
         return None
     return parts[1]
+
+
+def create_profile_email_verify_token(
+    profile_id: str,
+    email: str,
+    *,
+    expires_delta: timedelta | None = None,
+) -> str:
+    """Create a signed JWT used to verify ownership of a profile email address."""
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=PROFILE_EMAIL_VERIFY_EXPIRE_MINUTES))
+    payload = {
+        "sub": f"profile:{profile_id}",
+        "exp": expire,
+        "type": "profile_email_verify",
+        "email": email.strip().lower(),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=_ALGORITHM)
+
+
+def decode_profile_email_verify_token(token: str) -> tuple[str, str] | None:
+    """Decode a profile email verification JWT and return ``(profile_id, email)``."""
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[_ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("type") != "profile_email_verify":
+        return None
+    sub: str = payload.get("sub", "")
+    parts = sub.split(":", 1)
+    if len(parts) != 2 or parts[0] != "profile":
+        return None
+    email: str = str(payload.get("email", "")).strip().lower()
+    if not email:
+        return None
+    return parts[1], email

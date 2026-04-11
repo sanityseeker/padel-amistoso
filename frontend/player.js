@@ -16,6 +16,7 @@ const STORAGE_JWT_KEY = 'padel-player-profile';
 const STORAGE_PROFILE_KEY = 'padel-player-profile-data';
 const STORAGE_PARTICIPANT_LOOKUP_KEY = 'padel-player-participant-lookup';
 const STORAGE_HISTORY_PANEL_KEY = 'padel-player-history-panel-open';
+const STORAGE_PATH_PANEL_KEY = 'padel-player-path-panel-open';
 
 let _jwt = null;
 let _profile = null;
@@ -30,9 +31,33 @@ let _showPassphrase = false;
 let _recoverSent = false;
 let _errorMsg = '';
 let _successMsg = '';
+let _passphraseEmailedMsg = '';
 let _spacePollTimer = null;
 let _spacePollInFlight = false;
+let _passphraseEmailedMsgTimer = null;
+let _pathPanelOpen = _getPathPanelState();
+let _pathCache = {};
+let _pathLoading = {};
+let _pathErrors = {};
 const SPACE_POLL_MS = 30000;
+const PASSPHRASE_EMAILED_MSG_MS = 10000;
+
+function _clearPassphraseEmailedMsgTimer() {
+  if (_passphraseEmailedMsgTimer) {
+    clearTimeout(_passphraseEmailedMsgTimer);
+    _passphraseEmailedMsgTimer = null;
+  }
+}
+
+function _setPassphraseEmailedMsg(message) {
+  _passphraseEmailedMsg = message;
+  _clearPassphraseEmailedMsgTimer();
+  _passphraseEmailedMsgTimer = setTimeout(() => {
+    _passphraseEmailedMsg = '';
+    _passphraseEmailedMsgTimer = null;
+    _render();
+  }, PASSPHRASE_EMAILED_MSG_MS);
+}
 
 function _participantSortModeOrDefault(value) {
   const allowed = new Set(['interactions', 'together', 'against', 'win_rate', 'name']);
@@ -81,22 +106,79 @@ function _setHistoryPanelOpen(isOpen) {
   } catch (_) {}
 }
 
+function _getPathPanelState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_PATH_PANEL_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed;
+  } catch (_) {
+    return {};
+  }
+}
+
+function _savePathPanelState() {
+  try {
+    localStorage.setItem(STORAGE_PATH_PANEL_KEY, JSON.stringify(_pathPanelOpen || {}));
+  } catch (_) {}
+}
+
+function _entryPathKey(entry) {
+  return `${entry.entity_id}::${entry.player_id}`;
+}
+
+function _prunePathState() {
+  const valid = new Set(_entries.filter(_supportsPath).map(_entryPathKey));
+
+  const nextOpen = {};
+  for (const key of Object.keys(_pathPanelOpen)) {
+    if (valid.has(key)) nextOpen[key] = !!_pathPanelOpen[key];
+  }
+  _pathPanelOpen = nextOpen;
+
+  for (const key of Object.keys(_pathCache)) {
+    if (!valid.has(key)) delete _pathCache[key];
+  }
+  for (const key of Object.keys(_pathLoading)) {
+    if (!valid.has(key)) delete _pathLoading[key];
+  }
+  for (const key of Object.keys(_pathErrors)) {
+    if (!valid.has(key)) delete _pathErrors[key];
+  }
+
+  _savePathPanelState();
+}
+
 // ── Init ─────────────────────────────────────────────────
 
 function _init() {
-  // Check for JWT autologin via URL fragment (#token=<jwt>)
-  // This is used by the welcome email's "Open Player Hub" link.
+  // Check for JWT autologin and/or email verification via URL fragment.
+  // Used by email links like #token=<jwt> and #verify_token=<jwt>.
   const _hashParams = new URLSearchParams(location.hash.slice(1));
   const _tokenFromHash = _hashParams.get('token');
-  if (_tokenFromHash) {
-    // Clear the fragment so the token isn't visible in the address bar
+  const _verifyTokenFromHash = _hashParams.get('verify_token');
+  if (_tokenFromHash || _verifyTokenFromHash) {
     history.replaceState(null, '', location.pathname + location.search);
-    _jwt = _tokenFromHash;
-    _fetchSpace()
+    Promise.resolve()
+      .then(async () => {
+        if (_verifyTokenFromHash) {
+          await _apiPost('/verify-email', { token: _verifyTokenFromHash });
+          _successMsg = t('txt_player_email_verified_success');
+        }
+        if (_tokenFromHash) {
+          _jwt = _tokenFromHash;
+          await _fetchSpace();
+        }
+      })
       .then(() => _render())
-      .catch(() => {
-        _jwt = null;
-        _profile = null;
+      .catch(err => {
+        if (_verifyTokenFromHash) {
+          _errorMsg = err?.message || t('txt_player_email_verified_error');
+        }
+        if (_tokenFromHash) {
+          _jwt = null;
+          _profile = null;
+        }
         _render();
       });
     return;
@@ -235,6 +317,7 @@ async function _fetchSpace() {
   _jwt = data.access_token;
   _profile = data.profile;
   _entries = data.entries || [];
+  _prunePathState();
   _saveSession();
 }
 
@@ -250,6 +333,10 @@ function _clearSession() {
   _jwt = null;
   _profile = null;
   _entries = [];
+  _pathPanelOpen = {};
+  _pathCache = {};
+  _pathLoading = {};
+  _pathErrors = {};
   try {
     localStorage.removeItem(STORAGE_JWT_KEY);
     localStorage.removeItem(STORAGE_PROFILE_KEY);
@@ -280,6 +367,154 @@ function _entityUrl(entry) {
   // registration
   if (entry.auto_login_token) return `/register/${encodeURIComponent(slug)}?token=${encodeURIComponent(entry.auto_login_token)}`;
   return `/register/${encodeURIComponent(slug)}`;
+}
+
+function _supportsPath(entry) {
+  if (!entry || entry.entity_type !== 'tournament') return false;
+  return entry.tournament_type === 'group_playoff' || entry.tournament_type === 'mexicano';
+}
+
+function _isPathOpen(entry) {
+  return !!_pathPanelOpen[_entryPathKey(entry)];
+}
+
+function _setPathOpen(entry, isOpen) {
+  _pathPanelOpen[_entryPathKey(entry)] = !!isOpen;
+  _savePathPanelState();
+}
+
+async function _loadPathForEntry(entry) {
+  const key = _entryPathKey(entry);
+  if (_pathLoading[key] || _pathCache[key]) return;
+  _pathLoading[key] = true;
+  _pathErrors[key] = '';
+  _render();
+  try {
+    const path = `/tournament-path/${encodeURIComponent(entry.entity_id)}/${encodeURIComponent(entry.player_id)}`;
+    _pathCache[key] = await _apiGet(path, _jwt);
+  } catch (err) {
+    _pathErrors[key] = err.message || t('txt_player_path_error');
+  } finally {
+    _pathLoading[key] = false;
+    _render();
+  }
+}
+
+function _togglePath(entityId, playerId) {
+  const entry = _entries.find(e => e.entity_id === entityId && e.player_id === playerId && _supportsPath(e));
+  if (!entry) return;
+  const willOpen = !_isPathOpen(entry);
+  _setPathOpen(entry, willOpen);
+  _render();
+  if (willOpen) {
+    _loadPathForEntry(entry);
+  }
+}
+
+function _buildPathPanel(entry) {
+  const key = _entryPathKey(entry);
+  const loading = !!_pathLoading[key];
+  const errorMsg = _pathErrors[key] || '';
+  const payload = _pathCache[key] || null;
+
+  let html = `<div class="entry-path-panel">`;
+  html += `<div class="entry-path-title">${esc(t('txt_player_path_title'))}</div>`;
+
+  if (loading) {
+    html += `<div class="entry-path-empty">${esc(t('txt_player_path_loading'))}</div>`;
+    html += `</div>`;
+    return html;
+  }
+
+  if (errorMsg) {
+    html += `<div class="entry-path-empty">${esc(errorMsg)}</div>`;
+    html += `</div>`;
+    return html;
+  }
+
+  if (!payload || payload.available === false) {
+    html += `<div class="entry-path-empty">${esc(t('txt_player_path_unavailable'))}</div>`;
+    html += `</div>`;
+    return html;
+  }
+
+  const rows = Array.isArray(payload.rounds) ? payload.rounds : [];
+  if (rows.length === 0) {
+    html += `<div class="entry-path-empty">${esc(t('txt_player_path_empty'))}</div>`;
+    html += `</div>`;
+    return html;
+  }
+
+  // ── Summary bar ────────────────────────────────────────
+  const playedWithRank = rows.filter(r => r.played && r.rank != null);
+  if (playedWithRank.length >= 2) {
+    const firstRank = playedWithRank[0].rank;
+    const lastRank  = playedWithRank[playedWithRank.length - 1].rank;
+    const total     = playedWithRank[playedWithRank.length - 1].total_players || '?';
+    const delta     = lastRank - firstRank;
+    let deltaHtml;
+    if (delta < 0)      deltaHtml = `<span class="entry-path-summary-delta entry-path-summary-delta--up">▲ ${Math.abs(delta)}</span>`;
+    else if (delta > 0) deltaHtml = `<span class="entry-path-summary-delta entry-path-summary-delta--down">▼ ${delta}</span>`;
+    else                deltaHtml = `<span class="entry-path-summary-delta entry-path-summary-delta--same">=</span>`;
+    html += `<div class="entry-path-summary">#${firstRank}/${total} → #${lastRank}/${total} ${deltaHtml}</div>`;
+  }
+
+  // ── Best rank across all played rounds ─────────────────
+  const bestRank = playedWithRank.length ? Math.min(...playedWithRank.map(r => r.rank)) : null;
+
+  html += `<div class="entry-path-list">`;
+  let _prevRank  = null;
+  let _prevPoints = 0;
+  for (const row of rows) {
+    const rankText    = row.rank ? `#${row.rank}/${row.total_players || '?'}` : '—';
+    const partnerText = (row.partners || []).length ? row.partners.join(', ') : (row.played ? '—' : t('txt_player_path_sit_out'));
+    const opponentText = (row.opponents || []).length ? row.opponents.join(', ') : (row.played ? '—' : t('txt_player_path_sit_out'));
+
+    // Rank trend
+    let dotMod = '', trendArrow = '', trendClass = '';
+    if (row.played && row.rank != null && _prevRank != null) {
+      if (row.rank < _prevRank)      { dotMod = ' entry-path-row--up';   trendArrow = '↑'; trendClass = 'up'; }
+      else if (row.rank > _prevRank) { dotMod = ' entry-path-row--down'; trendArrow = '↓'; trendClass = 'down'; }
+      else                           { dotMod = ' entry-path-row--same'; trendArrow = '→'; trendClass = 'same'; }
+    }
+    if (row.rank != null) _prevRank = row.rank;
+
+    // Points delta
+    const roundPoints = row.played ? (row.cumulative_points || 0) - _prevPoints : 0;
+    if (row.played) _prevPoints = row.cumulative_points || 0;
+
+    // Best-rank highlight
+    const isBest = bestRank != null && row.rank === bestRank && row.played;
+    let rowClass = (row.played ? 'entry-path-row' : 'entry-path-row is-sitout') + dotMod;
+    if (isBest) rowClass += ' entry-path-row--best';
+
+    const deltaPtsHtml  = (row.played && roundPoints > 0)
+      ? ` <span class="entry-path-pts-delta">+${roundPoints}</span>` : '';
+    const rankArrowHtml = trendArrow
+      ? ` <span class="entry-path-rank-arrow entry-path-rank-arrow--${trendClass}">${trendArrow}</span>` : '';
+
+    html += `<div class="${rowClass}">`;
+    html += `<div class="entry-path-head">`;
+    html += `<div class="entry-path-round">${esc(row.round_label || `${t('txt_player_path_round')} ${row.round_number || ''}`)}</div>`;
+    html += `<div class="entry-path-chips">`;
+    html += `<span class="entry-path-chip"><strong>${esc(t('txt_player_path_points'))}</strong> ${esc(String(row.cumulative_points || 0))}${deltaPtsHtml}</span>`;
+    html += `<span class="entry-path-chip"><strong>${esc(t('txt_player_path_rank'))}</strong> ${esc(rankText)}${rankArrowHtml}</span>`;
+    html += `</div>`;
+    html += `</div>`;
+
+    html += `<div class="entry-path-meta entry-path-meta-block">`;
+    html += `<span class="entry-path-label">${esc(t('txt_player_path_partners'))}</span>`;
+    html += `<span>${esc(partnerText)}</span>`;
+    html += `</div>`;
+    html += `<div class="entry-path-meta entry-path-meta-block">`;
+    html += `<span class="entry-path-label">${esc(t('txt_player_path_opponents'))}</span>`;
+    html += `<span>${esc(opponentText)}</span>`;
+    html += `</div>`;
+    html += `</div>`;
+  }
+  html += `</div>`;
+  html += `</div>`;
+  return html;
 }
 
 function _toggleTheme() {
@@ -333,6 +568,7 @@ function _buildHeader() {
 function _buildAuthPanel() {
   let html = `<div class="card">`;
   html += `<p class="subtitle">${esc(t('txt_player_space_subtitle'))}</p>`;
+  if (_successMsg) html += `<div class="success-msg">${esc(_successMsg)}</div>`;
 
   if (_authStep === 'passphrase') {
     // ── Info panel: why Player Hub ──
@@ -416,15 +652,27 @@ function _buildDashboard() {
   let html = ``;
 
   // Profile bar
-  html += `<div class="profile-bar">`;
-  html += `<div>`;
   const name = _profile.name || `ID: ${_profile.id.slice(0, 8)}`;
+  const emailUnverified = Boolean(_profile.email && !_profile.email_verified);
+  html += `<div class="profile-bar">`;
+  html += `<div class="profile-bar-top">`;
+  html += `<div class="profile-bar-main">`;
   html += `<div class="profile-bar-name">${esc(name)}</div>`;
-  if (_profile.email) html += `<div class="profile-bar-meta">${esc(_profile.email)}</div>`;
+  if (_profile.email) {
+    html += `<div class="profile-email-row">`;
+    html += `<div class="profile-bar-meta">${esc(_profile.email)}</div>`;
+    if (emailUnverified) {
+      html += `<div class="profile-verify-row">`;
+      html += `<span class="badge badge-verify-pending">⚠ ${esc(t('txt_player_email_unverified_badge'))}</span>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+  html += `</div>`;
   html += `</div>`;
   html += `<div class="player-profile-actions">`;
   html += `<button type="button" class="btn btn-sm btn-secondary" onclick="_toggleEditProfile()">${esc(t('txt_player_edit_btn'))}</button>`;
-  html += `<button type="button" class="btn btn-sm btn-danger-outline" onclick="_doLogout()">${esc(t('txt_player_logout_btn'))}</button>`;
+  html += `<button type="button" class="btn btn-sm btn-danger-outline player-logout-btn" onclick="_doLogout()">${esc(t('txt_player_logout_btn'))}</button>`;
   html += `</div>`;
   html += `</div>`;
 
@@ -433,6 +681,9 @@ function _buildDashboard() {
   html += `<span class="passphrase-strip-label">${esc(t('txt_player_your_passphrase'))}</span>`;
   html += `<span id="ps-phrase-text" class="passphrase-strip-text${_showPassphrase ? '' : ' passphrase-hidden'}">${esc(_profile.passphrase || '***')}</span>`;
   html += `<button type="button" class="btn btn-sm btn-secondary" onclick="_togglePassphrase()">${esc(_showPassphrase ? t('txt_player_hide_passphrase') : t('txt_player_reveal_passphrase'))}</button>`;
+  if (_passphraseEmailedMsg) {
+    html += `<div class="success-msg passphrase-strip-success">${esc(_passphraseEmailedMsg)}</div>`;
+  }
   html += `</div>`;
 
   // Edit profile inline
@@ -453,13 +704,9 @@ function _buildDashboard() {
     html += `</div></div>`;
   }
 
-  // New passphrase reveal after create (only shown immediately post-create)
+  // Post-create success notice (passphrase already shown in strip above)
   if (_successMsg && !_editMode) {
     html += `<div class="card">`;
-    html += `<div class="form-group"><label>${esc(t('txt_player_your_passphrase'))}</label>`;
-    html += `<div class="passphrase-reveal-box">`;
-    html += `<span class="passphrase-text">${esc(_profile.passphrase || '')}</span>`;
-    html += `</div></div>`;
     html += `<div class="success-msg">${esc(_successMsg)}</div>`;
     html += `</div>`;
   }
@@ -467,10 +714,20 @@ function _buildDashboard() {
   // Career stats card — shown only when there is finished history
   html += _buildGlobalStatsCard();
 
+  if (emailUnverified) {
+    html += `<div class="card player-verification-card">`;
+    html += `<div class="player-verification-title">${esc(t('txt_player_email_unverified_section_title'))}</div>`;
+    html += `<div class="profile-verify-help">${esc(t('txt_player_email_unverified_help'))}</div>`;
+    html += `<div class="player-verification-actions">`;
+    html += `<button type="button" class="btn btn-sm btn-primary" onclick="_doResendVerification()">${esc(t('txt_player_send_verification_email_btn'))}</button>`;
+    html += `</div>`;
+    html += `</div>`;
+  }
+
   // Active section
   html += `<div class="player-section-header">`;
   html += `<div class="section-heading">${esc(t('txt_player_active'))}</div>`;
-  html += `<button type="button" class="btn btn-sm btn-secondary" onclick="_openLinkModal()">+ ${esc(t('txt_player_link_btn'))}</button>`;
+  html += `<button type="button" class="player-link-existing-btn" onclick="_openLinkModal()">+ ${esc(t('txt_player_link_btn'))}</button>`;
   html += `</div>`;
   if (active.length === 0) {
     html += `<div class="empty-state">${esc(t('txt_player_no_active'))}</div>`;
@@ -673,8 +930,8 @@ function _buildParticipantExplorer(rows) {
     const totalWinRate = totalGames > 0 ? Math.round((totalWins / totalGames) * 100) : 0;
     html += `<div class="player-participant-row${isVisible ? '' : ' is-hidden'}" data-name="${esc(searchKey)}" data-together-games="${row.together_games || 0}" data-against-games="${row.against_games || 0}" data-total-games="${totalGames}" data-total-win-rate="${totalWinRate}">`;
     html += `<span class="player-participant-name">${esc(row.name)}</span>`;
-    html += `<span>${esc(_formatParticipantStat(row.together_games, row.together_wins))}</span>`;
-    html += `<span>${esc(_formatParticipantStat(row.against_games, row.against_wins))}</span>`;
+    html += `<span class="player-participant-stat"><span class="player-participant-mobile-label">${esc(t('txt_player_participant_mobile_with'))}:</span>${esc(_formatParticipantStat(row.together_games, row.together_wins))}</span>`;
+    html += `<span class="player-participant-stat"><span class="player-participant-mobile-label">${esc(t('txt_player_participant_mobile_vs'))}:</span>${esc(_formatParticipantStat(row.against_games, row.against_wins))}</span>`;
     html += `</div>`;
   }
 
@@ -788,10 +1045,21 @@ function _buildEntryCard(entry) {
   const url = _entityUrl(entry);
   const isFinished = entry.status === 'finished';
   const canViewFinishedTournament = !(isFinished && entry.entity_type === 'tournament' && entry.entity_deleted);
-  const btnLabel = isFinished ? t('txt_player_results_btn') : t('txt_player_open_btn');
+  const canUnlink = entry.entity_type === 'tournament';
+  const canShowPath = _supportsPath(entry);
+  const isPathOpen = canShowPath ? _isPathOpen(entry) : false;
   let html = `<div class="entry-card${isFinished ? ' finished' : ''}">`;
   html += `<div class="entry-card-info">`;
-  html += `<div class="entry-card-name">${esc(entry.entity_name)}</div>`;
+  html += `<div class="entry-card-title-row">`;
+  if (canViewFinishedTournament) {
+    html += `<a href="${esc(url)}" class="entry-card-name entry-card-name--link">${esc(entry.entity_name)}</a>`;
+  } else {
+    html += `<div class="entry-card-name">${esc(entry.entity_name)}</div>`;
+  }
+  if (canUnlink) {
+    html += `<button type="button" class="entry-card-unlink-inline" onclick="_doUnlink('${esc(entry.entity_type)}','${esc(entry.entity_id)}',${isFinished})">${esc(t('txt_player_unlink_btn'))}</button>`;
+  }
+  html += `</div>`;
   html += `<div class="entry-card-badges">`;
   html += `<span class="badge badge-sport">${esc(_sportLabel(entry.sport))}</span>`;
   html += `<span class="badge badge-type">${esc(_typeLabel(entry.tournament_type))}</span>`;
@@ -810,15 +1078,12 @@ function _buildEntryCard(entry) {
     const social = _buildPartnerRivalSection(entry);
     if (social) html += social;
   }
-  html += `</div>`;
-  const canUnlink = entry.entity_type === 'tournament';
-  html += `<div class="entry-card-actions">`;
-  if (canViewFinishedTournament) {
-    html += `<a href="${esc(url)}" class="btn btn-sm btn-primary">${esc(btnLabel)}</a>`;
+  if (canShowPath) {
+    const pathBtnText = isPathOpen ? t('txt_player_path_hide') : t('txt_player_path_show');
+    html += `<div class="entry-card-path-row"><button type="button" class="entry-card-path-btn" onclick="_togglePath('${esc(entry.entity_id)}','${esc(entry.player_id)}')">${esc(pathBtnText)}</button></div>`;
   }
-  if (canUnlink) {
-    const unlinkBtnClass = isFinished ? 'btn btn-sm btn-danger-outline' : 'btn btn-sm btn-muted';
-    html += `<button type="button" class="${unlinkBtnClass}" onclick="_doUnlink('${esc(entry.entity_type)}','${esc(entry.entity_id)}',${isFinished})">${esc(t('txt_player_unlink_btn'))}</button>`;
+  if (_supportsPath(entry) && _isPathOpen(entry)) {
+    html += _buildPathPanel(entry);
   }
   html += `</div>`;
   html += `</div>`;
@@ -874,7 +1139,7 @@ function _buildLinkModal() {
   if (_errorMsg) html += `<div class="error-msg">${esc(_errorMsg)}</div>`;
   if (_successMsg) html += `<div class="success-msg">${esc(_successMsg)}</div>`;
   html += `<div class="player-link-modal-actions">`;
-  html += `<button type="button" class="btn btn-primary btn-sm" onclick="_doLink()">${esc(t('txt_player_link_submit'))}</button>`;
+  html += `<button type="button" class="player-link-existing-btn player-link-modal-submit" onclick="_doLink()">${esc(t('txt_player_link_submit'))}</button>`;
   html += `<button type="button" class="btn btn-secondary btn-sm" onclick="_closeLinkModal(null)">✕</button>`;
   html += `</div>`;
   html += `</div></div>`;
@@ -964,6 +1229,25 @@ async function _doRecover() {
   _render();
 }
 
+async function _doResendVerification() {
+  _errorMsg = '';
+  _successMsg = '';
+  _render();
+  try {
+    const res = await _apiPost('/resend-verification', {}, _jwt);
+    if (res?.already_verified) {
+      _successMsg = t('txt_player_email_already_verified');
+    } else {
+      _successMsg = t('txt_player_resend_verification_sent');
+    }
+    await _fetchSpace();
+    _render();
+  } catch (err) {
+    _errorMsg = err.message || t('txt_player_resend_verification_error');
+    _render();
+  }
+}
+
 async function _doCreate() {
   const participantPp = _resolvedPassphrase;
   const name = (document.getElementById('ps-name')?.value || '').trim();
@@ -985,7 +1269,7 @@ async function _doCreate() {
     _jwt = data.access_token;
     _profile = data.profile;
     _entries = data.entries || [];
-    _successMsg = t('txt_player_passphrase_emailed', { email: data.profile.email });
+    _setPassphraseEmailedMsg(t('txt_player_passphrase_emailed', { email: data.profile.email }));
     _showPassphrase = true;
     _saveSession();
     _render();
@@ -997,6 +1281,8 @@ async function _doCreate() {
 
 function _doLogout() {
   _clearSession();
+  _clearPassphraseEmailedMsgTimer();
+  _passphraseEmailedMsg = '';
   _errorMsg = '';
   _successMsg = '';
   _editMode = false;

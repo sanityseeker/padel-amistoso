@@ -17,6 +17,7 @@ Authentication flow
 
 from __future__ import annotations
 
+from collections import defaultdict
 import json
 import logging
 import uuid
@@ -26,7 +27,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..auth.deps import ProfileIdentity, get_current_profile
-from ..auth.security import create_profile_token
+from ..auth.security import (
+    create_profile_email_verify_token,
+    create_profile_token,
+    decode_profile_email_verify_token,
+)
 from ..email import is_valid_email, render_player_space_magic_link, render_player_space_welcome, send_email_background
 from ..tournaments.player_secrets import generate_passphrase
 from .db import get_db
@@ -45,6 +50,7 @@ router = APIRouter(prefix="/api/player-profile", tags=["player-space"])
 
 _RATE_LIMITER = BoundedRateLimiter(max_attempts=20, window_seconds=60, max_tracked_ips=4096)
 _RECOVER_RATE_LIMITER = BoundedRateLimiter(max_attempts=3, window_seconds=900, max_tracked_ips=4096)
+_PATH_CACHE_MEM: dict[tuple[str, str, str, int | None], TournamentPathResponse] = {}
 
 
 def _client_ip(request: Request) -> str:
@@ -132,6 +138,7 @@ class ProfileOut(BaseModel):
     id: str
     name: str
     email: str
+    email_verified: bool = False
     contact: str = ""
     created_at: str
     passphrase: str | None = None
@@ -174,11 +181,41 @@ class PlayerSpaceResponse(BaseModel):
     entries: list[PlayerSpaceEntry]
 
 
+class PlayerPathRound(BaseModel):
+    """A single round row in a player's tournament path."""
+
+    round_number: int
+    round_label: str
+    cumulative_points: int
+    rank: int | None
+    total_players: int
+    partners: list[str] = Field(default_factory=list)
+    opponents: list[str] = Field(default_factory=list)
+    played: bool = False
+
+
+class TournamentPathResponse(BaseModel):
+    """Round-by-round path payload for one player in one tournament."""
+
+    entity_id: str
+    player_id: str
+    tournament_type: str | None
+    available: bool
+    reason: str | None = None
+    rounds: list[PlayerPathRound] = Field(default_factory=list)
+
+
 class ProfileLoginResponse(BaseModel):
     """JWT returned after successful profile login."""
 
     access_token: str
     profile: ProfileOut
+
+
+class VerifyEmailRequest(BaseModel):
+    """Verify ownership of a profile email using an email-only token."""
+
+    token: str = Field(min_length=1)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -206,7 +243,7 @@ def _get_profile(profile_id: str) -> dict | None:
     """Return a profile row as a dict, or None if not found."""
     with get_db() as conn:
         row = conn.execute(
-            "SELECT id, passphrase, name, email, contact, created_at FROM player_profiles WHERE id = ?",
+            "SELECT id, passphrase, name, email, email_verified_at, contact, created_at FROM player_profiles WHERE id = ?",
             (profile_id,),
         ).fetchone()
     if row is None:
@@ -219,10 +256,43 @@ def _row_to_profile_out(row: dict) -> ProfileOut:
         id=row["id"],
         name=row["name"] or "",
         email=row["email"] or "",
+        email_verified=bool(row.get("email_verified_at")),
         contact=row.get("contact") or "",
         created_at=row["created_at"],
         passphrase=row.get("passphrase"),
     )
+
+
+def _link_email_participations(profile_id: str, email: str) -> None:
+    """Link all unclaimed participations that match ``email`` to ``profile_id``."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE player_secrets SET profile_id = ? WHERE LOWER(email) = LOWER(?) AND profile_id IS NULL",
+            (profile_id, email),
+        )
+        conn.execute(
+            "UPDATE registrants SET profile_id = ? WHERE LOWER(email) = LOWER(?) AND profile_id IS NULL",
+            (profile_id, email),
+        )
+
+
+def _send_email_verification(
+    profile_id: str,
+    email: str,
+    name: str,
+    passphrase: str,
+    access_token: str = "",
+) -> None:
+    """Send a Player Hub welcome email that includes a one-click email verification link."""
+    verify_token = create_profile_email_verify_token(profile_id, email)
+    subject, html_body = render_player_space_welcome(
+        name=name,
+        email=email,
+        passphrase=passphrase,
+        access_token=access_token,
+        verify_token=verify_token,
+    )
+    send_email_background(email, subject, html_body)
 
 
 def _build_active_entries(profile_id: str) -> list[PlayerSpaceEntry]:
@@ -566,6 +636,575 @@ def _deduplicate_entries(entries: list[PlayerSpaceEntry]) -> list[PlayerSpaceEnt
     return deduplicated
 
 
+def _side_score(match: object, is_team1: bool) -> int:
+    """Return the side score for a match side, or 0 when score is missing."""
+    score = getattr(match, "score", None)
+    if not score:
+        return 0
+    return int(score[0] if is_team1 else score[1])
+
+
+def _is_completed_match(match: object) -> bool:
+    """Return whether a match has a completed status and score."""
+    status = str(getattr(match, "status", ""))
+    return status == "completed" and getattr(match, "score", None) is not None
+
+
+def _expand_side_player_ids(side_ids: list[str], team_roster: dict[str, list[str]]) -> list[str]:
+    """Expand composite team IDs to member IDs when roster data is available."""
+    expanded: list[str] = []
+    for pid in side_ids:
+        members = team_roster.get(pid)
+        if members:
+            expanded.extend(members)
+        else:
+            expanded.append(pid)
+    return expanded
+
+
+def _member_name_map(tournament: object, team_roster: dict[str, list[str]]) -> dict[str, str]:
+    """Build best-effort player ID -> display name mapping."""
+    name_map: dict[str, str] = {}
+    players = getattr(tournament, "players", []) or []
+    for p in players:
+        pid = getattr(p, "id", "")
+        if pid:
+            name_map[pid] = getattr(p, "name", pid)
+
+    team_member_names = getattr(tournament, "team_member_names", None) or {}
+    for team_id, member_ids in team_roster.items():
+        names = team_member_names.get(team_id) or []
+        for idx, member_id in enumerate(member_ids):
+            if idx < len(names) and names[idx]:
+                name_map[member_id] = names[idx]
+    return name_map
+
+
+def _names_from_ids(ids: list[str], name_map: dict[str, str]) -> list[str]:
+    """Resolve IDs to names with graceful fallback labels."""
+    return [name_map.get(pid) or f"ID {pid[:8]}" for pid in ids]
+
+
+def _rank_order_by_points(points_by_id: dict[str, int], cohort_ids: list[str]) -> list[str]:
+    """Return participant IDs sorted by cumulative points descending."""
+    return sorted(cohort_ids, key=lambda pid: (-points_by_id.get(pid, 0), pid))
+
+
+def _mex_rank_order(points_by_id: dict[str, int], played_by_id: dict[str, int], cohort_ids: list[str]) -> list[str]:
+    """Return Mexicano rank order, mirroring leaderboard avg-vs-total behavior."""
+    played_counts = {played_by_id.get(pid, 0) for pid in cohort_ids}
+    ranked_by_avg = len(played_counts) > 1
+
+    def _avg(pid: str) -> float:
+        played = played_by_id.get(pid, 0)
+        if played <= 0:
+            return 0.0
+        return float(points_by_id.get(pid, 0)) / float(played)
+
+    if ranked_by_avg:
+        return sorted(cohort_ids, key=lambda pid: (-_avg(pid), -points_by_id.get(pid, 0), pid))
+    return sorted(cohort_ids, key=lambda pid: (-points_by_id.get(pid, 0), -_avg(pid), pid))
+
+
+def _rank_for_id(ranked_ids: list[str], target_id: str) -> int | None:
+    """Return 1-based rank position for an ID in an ordered ranking list."""
+    for idx, pid in enumerate(ranked_ids, start=1):
+        if pid == target_id:
+            return idx
+    return None
+
+
+def _group_rank_and_points_for_round(group: object, up_to_round: int) -> tuple[dict[str, int], dict[str, int]]:
+    """Return exact group rank and points_for maps using native standings criteria."""
+    table: dict[str, dict] = {}
+    for player in getattr(group, "players", []) or []:
+        pid = getattr(player, "id", "")
+        if pid:
+            table[pid] = {
+                "player": player,
+                "wins": 0,
+                "draws": 0,
+                "losses": 0,
+                "sets_won": 0,
+                "sets_lost": 0,
+                "points_for": 0,
+                "points_against": 0,
+            }
+
+    uses_sets = False
+    for match in getattr(group, "matches", []) or []:
+        rn = int(getattr(match, "round_number", 0) or 0)
+        if rn <= 0 or rn > up_to_round or not _is_completed_match(match):
+            continue
+
+        team1_ids = [getattr(p, "id", "") for p in getattr(match, "team1", []) or []]
+        team2_ids = [getattr(p, "id", "") for p in getattr(match, "team2", []) or []]
+        if any(pid not in table for pid in team1_ids + team2_ids):
+            continue
+
+        sets = getattr(match, "sets", None)
+        if sets:
+            uses_sets = True
+            games1 = sum(int(s[0]) for s in sets)
+            games2 = sum(int(s[1]) for s in sets)
+            sets1 = sum(1 for s in sets if int(s[0]) > int(s[1]))
+            sets2 = sum(1 for s in sets if int(s[1]) > int(s[0]))
+            if sets1 > sets2:
+                team1_won: bool | None = True
+            elif sets2 > sets1:
+                team1_won = False
+            else:
+                team1_won = None
+
+            for pid in team1_ids:
+                row = table[pid]
+                row["points_for"] += games1
+                row["points_against"] += games2
+                row["sets_won"] += sets1
+                row["sets_lost"] += sets2
+                if team1_won is True:
+                    row["wins"] += 1
+                elif team1_won is False:
+                    row["losses"] += 1
+                else:
+                    row["draws"] += 1
+
+            for pid in team2_ids:
+                row = table[pid]
+                row["points_for"] += games2
+                row["points_against"] += games1
+                row["sets_won"] += sets2
+                row["sets_lost"] += sets1
+                if team1_won is True:
+                    row["losses"] += 1
+                elif team1_won is False:
+                    row["wins"] += 1
+                else:
+                    row["draws"] += 1
+            continue
+
+        score = getattr(match, "score", None)
+        if not score:
+            continue
+        s1, s2 = int(score[0]), int(score[1])
+
+        for pid in team1_ids:
+            row = table[pid]
+            row["points_for"] += s1
+            row["points_against"] += s2
+            if s1 > s2:
+                row["wins"] += 1
+            elif s1 < s2:
+                row["losses"] += 1
+            else:
+                row["draws"] += 1
+
+        for pid in team2_ids:
+            row = table[pid]
+            row["points_for"] += s2
+            row["points_against"] += s1
+            if s2 > s1:
+                row["wins"] += 1
+            elif s2 < s1:
+                row["losses"] += 1
+            else:
+                row["draws"] += 1
+
+    rows = list(table.values())
+    if uses_sets:
+        rows.sort(
+            key=lambda row: (
+                row["wins"],
+                row["sets_won"] - row["sets_lost"],
+                row["points_for"] - row["points_against"],
+                row["points_for"],
+            ),
+            reverse=True,
+        )
+    else:
+        rows.sort(
+            key=lambda row: (
+                row["wins"],
+                row["points_for"] - row["points_against"],
+                row["points_for"],
+            ),
+            reverse=True,
+        )
+
+    rank_map = {row["player"].id: idx for idx, row in enumerate(rows, start=1)}
+    points_map = {row["player"].id: int(row["points_for"]) for row in rows}
+    return rank_map, points_map
+
+
+def _group_identity_context(
+    tournament: object,
+    player_id: str,
+    team_roster: dict[str, list[str]],
+) -> tuple[object | None, str | None, list[str]]:
+    """Resolve group object, canonical scoring ID, and cohort IDs for a player."""
+    member_to_team: dict[str, str] = {}
+    for team_id, members in team_roster.items():
+        for member_id in members:
+            member_to_team[member_id] = team_id
+
+    canonical_id = member_to_team.get(player_id, player_id)
+    groups = getattr(tournament, "groups", []) or []
+    for group in groups:
+        group_ids = [getattr(p, "id", "") for p in getattr(group, "players", []) or []]
+        if canonical_id in group_ids:
+            return group, canonical_id, group_ids
+    return None, None, []
+
+
+def _build_group_path_rows(tournament: object, player_id: str) -> list[PlayerPathRound]:
+    """Build round-path rows for Group+Playoff group-stage rounds only."""
+    team_roster: dict[str, list[str]] = getattr(tournament, "team_roster", None) or {}
+    name_map = _member_name_map(tournament, team_roster)
+
+    group, canonical_id, cohort_ids = _group_identity_context(tournament, player_id, team_roster)
+    if group is None or canonical_id is None or not cohort_ids:
+        return []
+
+    matches = [m for m in (getattr(group, "matches", []) or []) if int(getattr(m, "round_number", 0) or 0) > 0]
+    round_numbers = sorted({int(getattr(m, "round_number", 0) or 0) for m in matches})
+    rows: list[PlayerPathRound] = []
+
+    for round_number in round_numbers:
+        played = False
+        partners: list[str] = []
+        opponents: list[str] = []
+
+        round_matches = [m for m in matches if int(getattr(m, "round_number", 0) or 0) == round_number]
+        for match in round_matches:
+            if not _is_completed_match(match):
+                continue
+
+            team1_ids = [getattr(p, "id", "") for p in getattr(match, "team1", []) or []]
+            team2_ids = [getattr(p, "id", "") for p in getattr(match, "team2", []) or []]
+
+            in_team1 = canonical_id in team1_ids
+            in_team2 = canonical_id in team2_ids
+
+            if in_team1:
+                side_ids = _expand_side_player_ids(team1_ids, team_roster)
+                opp_ids = _expand_side_player_ids(team2_ids, team_roster)
+                played = True
+            elif in_team2:
+                side_ids = _expand_side_player_ids(team2_ids, team_roster)
+                opp_ids = _expand_side_player_ids(team1_ids, team_roster)
+                played = True
+            else:
+                side_ids = []
+                opp_ids = []
+
+            if played:
+                for partner_id in side_ids:
+                    if partner_id != player_id and partner_id not in partners:
+                        partners.append(partner_id)
+                for opponent_id in opp_ids:
+                    if opponent_id != player_id and opponent_id not in opponents:
+                        opponents.append(opponent_id)
+
+        rank_map, points_map = _group_rank_and_points_for_round(group, round_number)
+        label = f"Group {getattr(group, 'name', '')} R{round_number}".strip()
+        rows.append(
+            PlayerPathRound(
+                round_number=round_number,
+                round_label=label,
+                cumulative_points=int(points_map.get(canonical_id, 0)),
+                rank=rank_map.get(canonical_id),
+                total_players=len(cohort_ids),
+                partners=_names_from_ids(partners, name_map),
+                opponents=_names_from_ids(opponents, name_map),
+                played=played,
+            )
+        )
+
+    return rows
+
+
+def _match_credit_for_pid(tournament: object, match: object, pid: str, fallback: int) -> int:
+    """Resolve a player's credited points for a match from stored credit breakdowns."""
+    credits = getattr(tournament, "_match_credits", None) or {}
+    entry = (credits.get(getattr(match, "id", ""), {}) or {}).get(pid)
+    if isinstance(entry, dict):
+        return int(round(float(entry.get("final", entry.get("raw", fallback)))))
+    if isinstance(entry, (int, float)):
+        return int(round(float(entry)))
+    return fallback
+
+
+def _match_raw_for_pid(tournament: object, match: object, pid: str, fallback: int) -> int:
+    """Resolve a player's raw (pre-modifier) points for a match."""
+    credits = getattr(tournament, "_match_credits", None) or {}
+    entry = (credits.get(getattr(match, "id", ""), {}) or {}).get(pid)
+    if isinstance(entry, dict):
+        return int(round(float(entry.get("raw", fallback))))
+    if isinstance(entry, (int, float)):
+        return fallback
+    return fallback
+
+
+def _mex_buchholz(raw_by_id: dict[str, int], opp_counts: dict[str, dict[str, int]], pid: str) -> float:
+    """Compute Buchholz tie-break the same way as Mexicano leaderboard."""
+    total = 0.0
+    for opp_id, count in (opp_counts.get(pid, {}) or {}).items():
+        if count > 0:
+            total += float(raw_by_id.get(opp_id, 0)) * float(count)
+    return total
+
+
+def _mex_rank_order_exact(
+    points_by_id: dict[str, int],
+    raw_by_id: dict[str, int],
+    played_by_id: dict[str, int],
+    opp_counts: dict[str, dict[str, int]],
+    cohort_ids: list[str],
+) -> list[str]:
+    """Return Mexicano rank order with exact leaderboard tie-break criteria."""
+    played_counts = {played_by_id.get(pid, 0) for pid in cohort_ids}
+    ranked_by_avg = len(played_counts) > 1
+
+    def _avg(pid: str) -> float:
+        played = played_by_id.get(pid, 0)
+        if played <= 0:
+            return 0.0
+        return float(points_by_id.get(pid, 0)) / float(played)
+
+    if ranked_by_avg:
+        return sorted(
+            cohort_ids,
+            key=lambda pid: (
+                -_avg(pid),
+                -float(points_by_id.get(pid, 0)),
+                -_mex_buchholz(raw_by_id, opp_counts, pid),
+            ),
+        )
+    return sorted(
+        cohort_ids,
+        key=lambda pid: (
+            -float(points_by_id.get(pid, 0)),
+            -_avg(pid),
+            -_mex_buchholz(raw_by_id, opp_counts, pid),
+        ),
+    )
+
+
+def _build_mex_path_rows(tournament: object, player_id: str) -> list[PlayerPathRound]:
+    """Build round-path rows for Mexicano rounds."""
+    team_roster: dict[str, list[str]] = getattr(tournament, "team_roster", None) or {}
+    name_map = _member_name_map(tournament, team_roster)
+
+    member_to_team: dict[str, str] = {}
+    for team_id, members in team_roster.items():
+        for member_id in members:
+            member_to_team[member_id] = team_id
+    canonical_id = member_to_team.get(player_id, player_id)
+
+    cohort_ids = [getattr(p, "id", "") for p in getattr(tournament, "players", []) or []]
+    if canonical_id not in cohort_ids:
+        return []
+
+    rounds = getattr(tournament, "rounds", []) or []
+    points_by_id: dict[str, int] = defaultdict(int)
+    raw_by_id: dict[str, int] = defaultdict(int)
+    played_by_id: dict[str, int] = defaultdict(int)
+    opp_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    rows: list[PlayerPathRound] = []
+
+    for idx, round_matches in enumerate(rounds, start=1):
+        played = False
+        partners: list[str] = []
+        opponents: list[str] = []
+
+        for match in round_matches:
+            if not _is_completed_match(match):
+                continue
+
+            team1_ids = [getattr(p, "id", "") for p in getattr(match, "team1", []) or []]
+            team2_ids = [getattr(p, "id", "") for p in getattr(match, "team2", []) or []]
+
+            for pid in team1_ids:
+                points_by_id[pid] += _match_credit_for_pid(tournament, match, pid, _side_score(match, True))
+                raw_by_id[pid] += _match_raw_for_pid(tournament, match, pid, _side_score(match, True))
+                played_by_id[pid] += 1
+            for pid in team2_ids:
+                points_by_id[pid] += _match_credit_for_pid(tournament, match, pid, _side_score(match, False))
+                raw_by_id[pid] += _match_raw_for_pid(tournament, match, pid, _side_score(match, False))
+                played_by_id[pid] += 1
+
+            for pid1 in team1_ids:
+                for pid2 in team2_ids:
+                    opp_counts[pid1][pid2] += 1
+                    opp_counts[pid2][pid1] += 1
+
+            in_team1 = canonical_id in team1_ids
+            in_team2 = canonical_id in team2_ids
+            if in_team1:
+                side_ids = _expand_side_player_ids(team1_ids, team_roster)
+                opp_ids = _expand_side_player_ids(team2_ids, team_roster)
+                played = True
+            elif in_team2:
+                side_ids = _expand_side_player_ids(team2_ids, team_roster)
+                opp_ids = _expand_side_player_ids(team1_ids, team_roster)
+                played = True
+            else:
+                side_ids = []
+                opp_ids = []
+
+            if played:
+                for partner_id in side_ids:
+                    if partner_id != player_id and partner_id not in partners:
+                        partners.append(partner_id)
+                for opponent_id in opp_ids:
+                    if opponent_id != player_id and opponent_id not in opponents:
+                        opponents.append(opponent_id)
+
+        ranked_ids = _mex_rank_order_exact(points_by_id, raw_by_id, played_by_id, opp_counts, cohort_ids)
+        sample_match = round_matches[0] if round_matches else None
+        label = getattr(sample_match, "round_label", "") if sample_match is not None else ""
+        if not label:
+            label = f"Round {idx}"
+        rows.append(
+            PlayerPathRound(
+                round_number=idx,
+                round_label=label,
+                cumulative_points=int(points_by_id.get(canonical_id, 0)),
+                rank=_rank_for_id(ranked_ids, canonical_id),
+                total_players=len(cohort_ids),
+                partners=_names_from_ids(partners, name_map),
+                opponents=_names_from_ids(opponents, name_map),
+                played=played,
+            )
+        )
+
+    return rows
+
+
+def _ensure_profile_owns_tournament_player(profile_id: str, entity_id: str, player_id: str) -> None:
+    """Validate that a tournament participation belongs to the authenticated profile."""
+    with get_db() as conn:
+        active = conn.execute(
+            """
+            SELECT 1
+            FROM player_secrets
+            WHERE profile_id = ? AND tournament_id = ? AND player_id = ?
+            LIMIT 1
+            """,
+            (profile_id, entity_id, player_id),
+        ).fetchone()
+        if active is not None:
+            return
+
+        history = conn.execute(
+            """
+            SELECT 1
+            FROM player_history
+            WHERE profile_id = ?
+              AND entity_type = 'tournament'
+              AND entity_id = ?
+              AND player_id = ?
+            LIMIT 1
+            """,
+            (profile_id, entity_id, player_id),
+        ).fetchone()
+        if history is not None:
+            return
+
+    raise HTTPException(404, "Participation not found")
+
+
+def _get_tournament_version(entity_id: str) -> int | None:
+    """Return persisted tournament version, or None when tournament row is missing."""
+    with get_db() as conn:
+        row = conn.execute("SELECT version FROM tournaments WHERE id = ?", (entity_id,)).fetchone()
+    if row is None:
+        return None
+    return int(row["version"] or 0)
+
+
+def _get_cached_tournament_path(
+    profile_id: str,
+    entity_id: str,
+    player_id: str,
+    tournament_version: int | None,
+) -> tuple[TournamentPathResponse | None, int | None]:
+    """Return cached path payload and its stored version when valid."""
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            SELECT tournament_version, payload
+            FROM player_tournament_path_cache
+            WHERE profile_id = ? AND entity_id = ? AND player_id = ?
+            """,
+            (profile_id, entity_id, player_id),
+        ).fetchone()
+
+    if row is None:
+        return None, None
+
+    cached_version = int(row["tournament_version"] or -1)
+    if tournament_version is not None and cached_version != tournament_version:
+        return None, cached_version
+
+    try:
+        raw = json.loads(row["payload"])
+    except Exception:  # noqa: BLE001
+        return None, cached_version
+
+    if not isinstance(raw, dict):
+        return None, cached_version
+
+    rounds_raw = raw.get("rounds") if isinstance(raw.get("rounds"), list) else []
+    rounds: list[PlayerPathRound] = []
+    for rr in rounds_raw:
+        if not isinstance(rr, dict):
+            continue
+        try:
+            rounds.append(PlayerPathRound.model_validate(rr))
+        except Exception:  # noqa: BLE001
+            continue
+
+    payload = TournamentPathResponse(
+        entity_id=str(raw.get("entity_id") or entity_id),
+        player_id=str(raw.get("player_id") or player_id),
+        tournament_type=raw.get("tournament_type"),
+        available=bool(raw.get("available", True)),
+        reason=raw.get("reason"),
+        rounds=rounds,
+    )
+    return payload, cached_version
+
+
+def _save_cached_tournament_path(
+    profile_id: str,
+    entity_id: str,
+    player_id: str,
+    tournament_version: int | None,
+    payload: TournamentPathResponse,
+) -> None:
+    """Upsert cached path payload for a profile/tournament/player tuple."""
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO player_tournament_path_cache
+                (profile_id, entity_id, player_id, tournament_version, payload, updated_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(profile_id, entity_id, player_id) DO UPDATE SET
+                tournament_version = excluded.tournament_version,
+                payload = excluded.payload,
+                updated_at = excluded.updated_at
+            """,
+            (
+                profile_id,
+                entity_id,
+                player_id,
+                int(tournament_version) if tournament_version is not None else -1,
+                json.dumps(payload.model_dump()),
+            ),
+        )
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # Public endpoints
 # ────────────────────────────────────────────────────────────────────────────
@@ -703,7 +1342,10 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
 
     with get_db() as conn:
         conn.execute(
-            "INSERT INTO player_profiles (id, passphrase, name, email, contact, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            """
+            INSERT INTO player_profiles (id, passphrase, name, email, email_verified_at, contact, created_at)
+            VALUES (?, ?, ?, ?, NULL, ?, ?)
+            """,
             (profile_id, passphrase, clean_name, clean_email, clean_contact, now),
         )
         # Auto-link the participation the player used to prove identity.
@@ -718,16 +1360,6 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
             "UPDATE registrants SET profile_id = ? WHERE passphrase = ? AND profile_id IS NULL",
             (profile_id, clean_passphrase),
         )
-        # Also bulk-link every other existing participation that shares the same
-        # email address so they all appear in the dashboard immediately.
-        conn.execute(
-            "UPDATE player_secrets SET profile_id = ? WHERE LOWER(email) = LOWER(?) AND profile_id IS NULL",
-            (profile_id, clean_email),
-        )
-        conn.execute(
-            "UPDATE registrants SET profile_id = ? WHERE LOWER(email) = LOWER(?) AND profile_id IS NULL",
-            (profile_id, clean_email),
-        )
 
     profile_dict = {
         "id": profile_id,
@@ -739,10 +1371,13 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
     profile_out = _row_to_profile_out(profile_dict)
     token = create_profile_token(profile_id)
 
-    subject, html_body = render_player_space_welcome(
-        name=clean_name, email=clean_email, passphrase=passphrase, access_token=token
+    _send_email_verification(
+        profile_id=profile_id,
+        email=clean_email,
+        name=clean_name,
+        passphrase=passphrase,
+        access_token=token,
     )
-    send_email_background(clean_email, subject, html_body)
 
     _backfill_history_for_profile(profile_id)
     _backfill_finished_secrets(profile_id)
@@ -754,6 +1389,75 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
         access_token=token,
         entries=_deduplicate_entries(active + history),
     )
+
+
+@router.post("/verify-email")
+async def verify_profile_email(req: VerifyEmailRequest) -> dict:
+    """Verify a profile email using a one-click token delivered by email."""
+    decoded = decode_profile_email_verify_token(req.token.strip())
+    if decoded is None:
+        raise HTTPException(400, "Invalid or expired verification token")
+
+    profile_id, email = decoded
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            SELECT id, email
+              FROM player_profiles
+             WHERE id = ?
+            """,
+            (profile_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(404, "Profile not found")
+        if (row["email"] or "").strip().lower() != email:
+            raise HTTPException(400, "Verification token does not match current profile email")
+        conn.execute("UPDATE player_profiles SET email_verified_at = ? WHERE id = ?", (now, profile_id))
+
+    _link_email_participations(profile_id, email)
+    return {"ok": True}
+
+
+@router.post("/resend-verification")
+async def resend_profile_email_verification(
+    request: Request,
+    identity: ProfileIdentity | None = Depends(get_current_profile),
+) -> dict:
+    """Resend email verification link for the authenticated profile."""
+    if identity is None:
+        raise HTTPException(401, "Profile authentication required")
+
+    _RECOVER_RATE_LIMITER.check(_client_ip(request), "Too many verification emails — try again in 15 minutes")
+    _RECOVER_RATE_LIMITER.record(_client_ip(request))
+
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            SELECT id, passphrase, name, email, email_verified_at
+              FROM player_profiles
+             WHERE id = ?
+            """,
+            (identity.profile_id,),
+        ).fetchone()
+
+    if row is None:
+        raise HTTPException(404, "Profile not found")
+
+    email = (row["email"] or "").strip()
+    if not email or not is_valid_email(email):
+        return {"ok": True, "already_verified": False}
+
+    if row["email_verified_at"]:
+        return {"ok": True, "already_verified": True}
+
+    _send_email_verification(
+        profile_id=row["id"],
+        email=email,
+        name=row["name"] or "",
+        passphrase=row["passphrase"] or "",
+    )
+    return {"ok": True, "already_verified": False}
 
 
 @router.post("/login", response_model=ProfileLoginResponse)
@@ -790,7 +1494,12 @@ async def recover_passphrase(req: ProfileRecoverRequest, request: Request) -> di
 
     with get_db() as conn:
         row = conn.execute(
-            "SELECT id, passphrase, name, email FROM player_profiles WHERE LOWER(email) = LOWER(?)",
+            """
+                        SELECT id, passphrase, name, email
+                            FROM player_profiles
+                         WHERE LOWER(email) = LOWER(?)
+                             AND email_verified_at IS NOT NULL
+                        """,
             (clean_email,),
         ).fetchone()
 
@@ -835,6 +1544,68 @@ async def get_player_space(
     )
 
 
+@router.get("/tournament-path/{entity_id}/{player_id}", response_model=TournamentPathResponse)
+async def get_tournament_path(
+    entity_id: str,
+    player_id: str,
+    identity: ProfileIdentity | None = Depends(get_current_profile),
+) -> TournamentPathResponse:
+    """Return round-by-round path data for one player in one tournament."""
+    if identity is None:
+        raise HTTPException(401, "Profile authentication required")
+
+    _ensure_profile_owns_tournament_player(identity.profile_id, entity_id, player_id)
+
+    tournament_version = _get_tournament_version(entity_id)
+    mem_key = (identity.profile_id, entity_id, player_id, tournament_version)
+    cached_mem = _PATH_CACHE_MEM.get(mem_key)
+    if cached_mem is not None:
+        return cached_mem
+
+    cached, _cached_version = _get_cached_tournament_path(
+        identity.profile_id,
+        entity_id,
+        player_id,
+        tournament_version,
+    )
+    if cached is not None:
+        _PATH_CACHE_MEM[mem_key] = cached
+        return cached
+
+    t_data = get_tournament_data(entity_id)
+    if t_data is None:
+        return TournamentPathResponse(
+            entity_id=entity_id,
+            player_id=player_id,
+            tournament_type=None,
+            available=False,
+            reason="tournament_unavailable",
+            rounds=[],
+        )
+
+    t_type = t_data.get("type")
+    tournament = t_data.get("tournament")
+    if t_type not in {"group_playoff", "mexicano"}:
+        raise HTTPException(400, "Path is available only for Group+Playoff and Mexicano tournaments")
+
+    if t_type == "group_playoff":
+        rows = _build_group_path_rows(tournament, player_id)
+    else:
+        rows = _build_mex_path_rows(tournament, player_id)
+
+    response = TournamentPathResponse(
+        entity_id=entity_id,
+        player_id=player_id,
+        tournament_type=t_type,
+        available=True,
+        reason=None,
+        rounds=rows,
+    )
+    _PATH_CACHE_MEM[mem_key] = response
+    _save_cached_tournament_path(identity.profile_id, entity_id, player_id, tournament_version, response)
+    return response
+
+
 @router.put("", response_model=ProfileOut)
 async def update_profile(
     req: ProfileUpdateRequest,
@@ -851,11 +1622,26 @@ async def update_profile(
 
     new_email = req.email.strip()
     new_contact = req.contact.strip()
+    if new_email and not is_valid_email(new_email):
+        raise HTTPException(422, "A valid email address is required")
 
     with get_db() as conn:
+        current = conn.execute(
+            "SELECT email, passphrase, name FROM player_profiles WHERE id = ?", (identity.profile_id,)
+        ).fetchone()
+        if current is None:
+            raise HTTPException(404, "Profile not found")
+        email_changed = (current["email"] or "").strip().lower() != new_email.lower()
         cur = conn.execute(
-            "UPDATE player_profiles SET name = ?, email = ?, contact = ? WHERE id = ?",
-            (req.name.strip(), new_email, new_contact, identity.profile_id),
+            """
+            UPDATE player_profiles
+               SET name = ?,
+                   email = ?,
+                   email_verified_at = CASE WHEN ? THEN NULL ELSE email_verified_at END,
+                   contact = ?
+             WHERE id = ?
+            """,
+            (req.name.strip(), new_email, 1 if email_changed else 0, new_contact, identity.profile_id),
         )
         if cur.rowcount == 0:
             raise HTTPException(404, "Profile not found")
@@ -869,9 +1655,17 @@ async def update_profile(
             (new_email, new_contact, identity.profile_id),
         )
         row = conn.execute(
-            "SELECT id, passphrase, name, email, contact, created_at FROM player_profiles WHERE id = ?",
+            "SELECT id, passphrase, name, email, email_verified_at, contact, created_at FROM player_profiles WHERE id = ?",
             (identity.profile_id,),
         ).fetchone()
+
+    if email_changed and new_email:
+        _send_email_verification(
+            profile_id=identity.profile_id,
+            email=new_email,
+            name=req.name.strip() or (current["name"] or ""),
+            passphrase=current["passphrase"] or "",
+        )
 
     return _row_to_profile_out(dict(row))
 

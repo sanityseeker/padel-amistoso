@@ -18,7 +18,7 @@ from backend.api.player_secret_store import (
     upsert_live_stats,
 )
 from backend.api.state import maybe_update_live_stats, _tournaments
-from backend.auth.security import create_profile_token
+from backend.auth.security import create_profile_email_verify_token, create_profile_token
 
 
 @pytest.fixture
@@ -143,6 +143,7 @@ class TestCreateProfile:
         data = _create_profile(client, name="Alice Padel", email="alice@example.com")
         assert data["profile"]["name"] == "Alice Padel"
         assert data["profile"]["email"] == "alice@example.com"
+        assert data["profile"]["email_verified"] is False
 
     def test_create_generates_unique_passphrases(self, client: TestClient) -> None:
         for i in range(5):
@@ -787,6 +788,13 @@ class TestRecoverPassphrase:
         res = client.post("/api/player-profile/recover", json={"email": "case@example.com"})
         assert res.status_code == 200
 
+    def test_recover_unverified_email_still_returns_200(self, client: TestClient) -> None:
+        _create_profile(client, name="Unverified", email="unverified@example.com")
+        res = client.post("/api/player-profile/recover", json={"email": "unverified@example.com"})
+        assert res.status_code in (200, 429)
+        if res.status_code == 200:
+            assert res.json() == {"ok": True}
+
     def test_recover_invalid_email_does_not_raise_validation_error(self, client: TestClient) -> None:
         # Invalid email silently does nothing; rate limiter may fire in test runs (429 also acceptable)
         res = client.post("/api/player-profile/recover", json={"email": "notanemail"})
@@ -810,11 +818,14 @@ class TestAutoLinkByEmail:
         return r.json()["id"]
 
     def test_auto_links_matching_email_to_profile(self, client: TestClient, auth_headers: dict) -> None:
-        # Create a Player Hub profile with a known email
+        # Create and verify a Player Hub profile with a known email
         _create_profile(client, name="AutoLink Player", email="autolink@example.com")
         with db_mod.get_db() as conn:
             profile_row = conn.execute("SELECT id FROM player_profiles WHERE email = 'autolink@example.com'").fetchone()
         profile_id = profile_row["id"]
+        verify_token = create_profile_email_verify_token(profile_id, "autolink@example.com")
+        verify_res = client.post("/api/player-profile/verify-email", json={"token": verify_token})
+        assert verify_res.status_code == 200
 
         rid = self._create_lobby(client, auth_headers)
         res = client.post(
@@ -836,9 +847,12 @@ class TestAutoLinkByEmail:
         _create_profile(client, name="PP Test", email="pptest@example.com")
         with db_mod.get_db() as conn:
             pp_row = conn.execute(
-                "SELECT passphrase FROM player_profiles WHERE email = 'pptest@example.com'"
+                "SELECT id, passphrase FROM player_profiles WHERE email = 'pptest@example.com'"
             ).fetchone()
         global_pp = pp_row["passphrase"]
+        verify_token = create_profile_email_verify_token(pp_row["id"], "pptest@example.com")
+        verify_res = client.post("/api/player-profile/verify-email", json={"token": verify_token})
+        assert verify_res.status_code == 200
 
         rid = self._create_lobby(client, auth_headers)
         res = client.post(
@@ -848,6 +862,126 @@ class TestAutoLinkByEmail:
         assert res.status_code == 200
         # The registration response passphrase should be the global profile passphrase
         assert res.json()["passphrase"] == global_pp
+
+    def test_unverified_email_does_not_auto_link(self, client: TestClient, auth_headers: dict) -> None:
+        _create_profile(client, name="No Verify", email="noverify@example.com")
+        with db_mod.get_db() as conn:
+            profile_row = conn.execute("SELECT id FROM player_profiles WHERE email = 'noverify@example.com'").fetchone()
+
+        rid = self._create_lobby(client, auth_headers)
+        res = client.post(
+            f"/api/registrations/{rid}/register",
+            json={"player_name": "No Verify", "email": "noverify@example.com"},
+        )
+        assert res.status_code == 200
+        with db_mod.get_db() as conn:
+            row = conn.execute(
+                "SELECT profile_id FROM registrants WHERE registration_id = ? AND player_name = ?",
+                (rid, "No Verify"),
+            ).fetchone()
+        assert row["profile_id"] is None
+        assert profile_row["id"] is not None
+
+
+class TestEmailVerification:
+    def _create_lobby(self, client: TestClient, auth_headers: dict) -> str:
+        r = client.post("/api/registrations", json={"name": "AutoLink Lobby"}, headers=auth_headers)
+        assert r.status_code == 200, r.text
+        return r.json()["id"]
+
+    def test_verify_email_marks_profile_verified_and_links_by_email(self, client: TestClient) -> None:
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        pid = f"p-{uuid.uuid4().hex[:8]}"
+        pp = f"pp-{uuid.uuid4().hex[:12]}"
+        _insert_tournament(tid, "Verify Cup")
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO player_secrets
+                    (tournament_id, player_id, player_name, passphrase, token, contact, email, profile_id)
+                VALUES (?, ?, ?, ?, ?, '', ?, NULL)
+                """,
+                (tid, pid, "Verify Player", pp, uuid.uuid4().hex, "verify@example.com"),
+            )
+
+        created = _create_profile(
+            client,
+            name="Verify Player",
+            email="verify@example.com",
+            participant_passphrase=pp,
+        )
+        profile_id = created["profile"]["id"]
+
+        with db_mod.get_db() as conn:
+            before = conn.execute(
+                "SELECT profile_id FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
+                (tid, pid),
+            ).fetchone()
+        assert before["profile_id"] == profile_id
+
+        tid_other = f"t-{uuid.uuid4().hex[:8]}"
+        pid_other = f"p-{uuid.uuid4().hex[:8]}"
+        _insert_tournament(tid_other, "Verify Cup 2")
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO player_secrets
+                    (tournament_id, player_id, player_name, passphrase, token, contact, email, profile_id)
+                VALUES (?, ?, ?, ?, ?, '', ?, NULL)
+                """,
+                (
+                    tid_other,
+                    pid_other,
+                    "Verify Player 2",
+                    f"pp-{uuid.uuid4().hex[:12]}",
+                    uuid.uuid4().hex,
+                    "verify@example.com",
+                ),
+            )
+
+        verify_token = create_profile_email_verify_token(profile_id, "verify@example.com")
+        res = client.post("/api/player-profile/verify-email", json={"token": verify_token})
+        assert res.status_code == 200
+        assert res.json() == {"ok": True}
+
+        with db_mod.get_db() as conn:
+            prof = conn.execute("SELECT email_verified_at FROM player_profiles WHERE id = ?", (profile_id,)).fetchone()
+            linked = conn.execute(
+                "SELECT profile_id FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
+                (tid_other, pid_other),
+            ).fetchone()
+        assert prof["email_verified_at"] is not None
+        assert linked["profile_id"] == profile_id
+
+    def test_verify_email_invalid_token_returns_400(self, client: TestClient) -> None:
+        res = client.post("/api/player-profile/verify-email", json={"token": "bad-token"})
+        assert res.status_code == 400
+
+    def test_resend_verification_requires_auth(self, client: TestClient) -> None:
+        res = client.post("/api/player-profile/resend-verification")
+        assert res.status_code == 401
+
+    def test_resend_verification_unverified_profile_returns_ok(self, client: TestClient) -> None:
+        created = _create_profile(client, name="Resend", email="resend@example.com")
+        token = created["access_token"]
+        res = client.post("/api/player-profile/resend-verification", headers=_headers(token))
+        assert res.status_code == 200
+        assert res.json()["ok"] is True
+        assert res.json()["already_verified"] is False
+
+    def test_resend_verification_verified_profile_reports_already_verified(self, client: TestClient) -> None:
+        created = _create_profile(client, name="Resend Verified", email="resendv@example.com")
+        token = created["access_token"]
+        profile_id = created["profile"]["id"]
+
+        verify_token = create_profile_email_verify_token(profile_id, "resendv@example.com")
+        verify_res = client.post("/api/player-profile/verify-email", json={"token": verify_token})
+        assert verify_res.status_code == 200
+
+        res = client.post("/api/player-profile/resend-verification", headers=_headers(token))
+        assert res.status_code == 200
+        assert res.json()["ok"] is True
+        assert res.json()["already_verified"] is True
 
     def test_no_profile_email_no_auto_link(self, client: TestClient, auth_headers: dict) -> None:
         rid = self._create_lobby(client, auth_headers)
@@ -1533,6 +1667,421 @@ class TestTeamStatsExpansion:
             assert stats[nid]["wins"] == 0
             assert stats[nid]["losses"] == 1
             assert stats[nid]["draws"] == 0
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Tournament path endpoint (GET /player-profile/tournament-path/...)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestTournamentPath:
+    def test_tournament_path_requires_auth(self, client: TestClient) -> None:
+        res = client.get("/api/player-profile/tournament-path/tid/pid")
+        assert res.status_code == 401
+
+    def test_tournament_path_group_playoff_returns_round_rows(self, client: TestClient) -> None:
+        from backend.models import MatchStatus
+        from backend.models import Court, Player
+        from backend.tournaments.group_stage import Group
+        from backend.tournaments.group_playoff import GroupPlayoffTournament
+
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        passphrase = f"pp-{uuid.uuid4().hex[:12]}"
+
+        p1 = Player(name="Alice")
+        p2 = Player(name="Bob")
+        p3 = Player(name="Charlie")
+        p4 = Player(name="Dani")
+
+        _insert_tournament(tid, name="Group Path Cup")
+        _insert_player_secret(tid, p1.id, p1.name, passphrase, uuid.uuid4().hex)
+        created = _create_profile(client, name=p1.name, participant_passphrase=passphrase)
+        token = created["access_token"]
+
+        t = GroupPlayoffTournament(
+            players=[p1, p2, p3, p4],
+            num_groups=1,
+            courts=[Court(name="C1")],
+            top_per_group=2,
+            team_mode=False,
+        )
+        t.generate()
+        pending = [m for m in t.pending_group_matches() if m.status != MatchStatus.COMPLETED]
+        for idx, match in enumerate(pending):
+            if idx % 2 == 0:
+                t.record_group_result(match.id, (9, 8))
+            else:
+                t.record_group_result(match.id, (3, 12))
+
+        if t.has_more_group_rounds:
+            t.generate_next_group_round()
+            pending2 = [m for m in t.pending_group_matches() if m.status != MatchStatus.COMPLETED]
+            for idx, match in enumerate(pending2):
+                if idx % 2 == 0:
+                    t.record_group_result(match.id, (11, 4))
+                else:
+                    t.record_group_result(match.id, (6, 7))
+
+        _tournaments[tid] = {
+            "name": "Group Path Cup",
+            "type": "group_playoff",
+            "tournament": t,
+            "owner": "admin",
+            "public": True,
+            "sport": "padel",
+            "assign_courts": True,
+        }
+
+        try:
+            res = client.get(
+                f"/api/player-profile/tournament-path/{tid}/{p1.id}",
+                headers=_headers(token),
+            )
+            assert res.status_code == 200, res.text
+            data = res.json()
+            assert data["available"] is True
+            assert data["tournament_type"] == "group_playoff"
+            assert len(data["rounds"]) >= 1
+
+            played_rows = [row for row in data["rounds"] if row["played"]]
+            assert played_rows
+
+            group = t.groups[0]
+            for row in played_rows:
+                shadow = Group(name=group.name, players=list(group.players), team_mode=group.team_mode)
+                shadow.matches = [
+                    m for m in group.matches if int(getattr(m, "round_number", 0) or 0) <= int(row["round_number"])
+                ]
+                standings = shadow.standings()
+                rank_map = {entry.player.id: idx for idx, entry in enumerate(standings, start=1)}
+                points_map = {entry.player.id: entry.points_for for entry in standings}
+                assert row["rank"] == rank_map[p1.id]
+                assert row["cumulative_points"] == points_map[p1.id]
+
+            for row in played_rows:
+                assert 1 <= (row["rank"] or 1) <= row["total_players"]
+                assert len(row["partners"]) >= 1
+                assert len(row["opponents"]) >= 1
+        finally:
+            _tournaments.pop(tid, None)
+
+    def test_tournament_path_mexicano_returns_round_rows(self, client: TestClient) -> None:
+        from backend.models import Court, Player
+        from backend.tournaments.mexicano import MexicanoTournament
+
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        passphrase = f"pp-{uuid.uuid4().hex[:12]}"
+
+        p1 = Player(name="Alice")
+        p2 = Player(name="Bob")
+        p3 = Player(name="Charlie")
+        p4 = Player(name="Dani")
+
+        _insert_tournament(tid, name="Mex Path Cup")
+        _insert_player_secret(tid, p1.id, p1.name, passphrase, uuid.uuid4().hex)
+        created = _create_profile(client, name=p1.name, participant_passphrase=passphrase)
+        token = created["access_token"]
+
+        t = MexicanoTournament(
+            players=[p1, p2, p3, p4],
+            courts=[Court(name="C1")],
+            num_rounds=2,
+            total_points_per_match=32,
+        )
+        t.generate_next_round()
+        for match in t.current_round_matches():
+            t.record_result(match.id, (20, 12))
+        t.generate_next_round()
+        for match in t.current_round_matches():
+            t.record_result(match.id, (18, 14))
+
+        _tournaments[tid] = {
+            "name": "Mex Path Cup",
+            "type": "mexicano",
+            "tournament": t,
+            "owner": "admin",
+            "public": True,
+            "sport": "padel",
+            "assign_courts": True,
+        }
+
+        try:
+            res = client.get(
+                f"/api/player-profile/tournament-path/{tid}/{p1.id}",
+                headers=_headers(token),
+            )
+            assert res.status_code == 200, res.text
+            data = res.json()
+            assert data["available"] is True
+            assert data["tournament_type"] == "mexicano"
+            assert len(data["rounds"]) == 2
+
+            points: dict[str, int] = {p.id: 0 for p in t.players}
+            raw_points: dict[str, int] = {p.id: 0 for p in t.players}
+            played: dict[str, int] = {p.id: 0 for p in t.players}
+            opp_counts: dict[str, dict[str, int]] = {p.id: {} for p in t.players}
+
+            def _buchholz(pid: str) -> float:
+                total = 0.0
+                for opp_id, count in opp_counts.get(pid, {}).items():
+                    total += float(raw_points.get(opp_id, 0)) * float(count)
+                return total
+
+            for idx, round_matches in enumerate(t.rounds, start=1):
+                for match in round_matches:
+                    team1_ids = [p.id for p in match.team1]
+                    team2_ids = [p.id for p in match.team2]
+                    score1 = int(match.score[0]) if match.score else 0
+                    score2 = int(match.score[1]) if match.score else 0
+                    breakdown = t.get_match_breakdown(match.id) or {}
+
+                    for pid in team1_ids:
+                        detail = breakdown.get(pid, {}) if isinstance(breakdown, dict) else {}
+                        credited = int(detail.get("final", score1)) if isinstance(detail, dict) else score1
+                        raw = int(detail.get("raw", score1)) if isinstance(detail, dict) else score1
+                        points[pid] += credited
+                        raw_points[pid] += raw
+                        played[pid] += 1
+
+                    for pid in team2_ids:
+                        detail = breakdown.get(pid, {}) if isinstance(breakdown, dict) else {}
+                        credited = int(detail.get("final", score2)) if isinstance(detail, dict) else score2
+                        raw = int(detail.get("raw", score2)) if isinstance(detail, dict) else score2
+                        points[pid] += credited
+                        raw_points[pid] += raw
+                        played[pid] += 1
+
+                    for pid1 in team1_ids:
+                        for pid2 in team2_ids:
+                            opp_counts.setdefault(pid1, {})[pid2] = opp_counts.setdefault(pid1, {}).get(pid2, 0) + 1
+                            opp_counts.setdefault(pid2, {})[pid1] = opp_counts.setdefault(pid2, {}).get(pid1, 0) + 1
+
+                cohort_ids = [p.id for p in t.players]
+                by_avg = len({played.get(pid, 0) for pid in cohort_ids}) > 1
+
+                def _avg(pid: str) -> float:
+                    val = played.get(pid, 0)
+                    return float(points.get(pid, 0)) / float(val) if val else 0.0
+
+                if by_avg:
+                    ranked = sorted(
+                        cohort_ids,
+                        key=lambda pid: (-_avg(pid), -float(points.get(pid, 0)), -_buchholz(pid)),
+                    )
+                else:
+                    ranked = sorted(
+                        cohort_ids,
+                        key=lambda pid: (-float(points.get(pid, 0)), -_avg(pid), -_buchholz(pid)),
+                    )
+
+                expected_rank = ranked.index(p1.id) + 1
+                path_row = data["rounds"][idx - 1]
+                assert path_row["rank"] == expected_rank
+                assert path_row["cumulative_points"] == points[p1.id]
+
+            assert data["rounds"][1]["cumulative_points"] >= data["rounds"][0]["cumulative_points"]
+        finally:
+            _tournaments.pop(tid, None)
+
+    def test_tournament_path_returns_unavailable_when_tournament_missing(self, client: TestClient) -> None:
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        pid = f"p-{uuid.uuid4().hex[:8]}"
+        passphrase = f"pp-{uuid.uuid4().hex[:12]}"
+
+        _insert_player_secret(tid, pid, "Ghost", passphrase, uuid.uuid4().hex)
+        created = _create_profile(client, name="Ghost", participant_passphrase=passphrase)
+        token = created["access_token"]
+
+        res = client.get(f"/api/player-profile/tournament-path/{tid}/{pid}", headers=_headers(token))
+        assert res.status_code == 200
+        data = res.json()
+        assert data["available"] is False
+        assert data["reason"] == "tournament_unavailable"
+        assert data["rounds"] == []
+
+    def test_tournament_path_other_profile_gets_404(self, client: TestClient) -> None:
+        from backend.models import Court, Player
+        from backend.tournaments.mexicano import MexicanoTournament
+
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        owner_pid = f"p-{uuid.uuid4().hex[:8]}"
+        owner_pp = f"pp-{uuid.uuid4().hex[:12]}"
+
+        _insert_tournament(tid, name="Private Path Cup")
+        _insert_player_secret(tid, owner_pid, "Owner", owner_pp, uuid.uuid4().hex)
+        _create_profile(client, name="Owner", participant_passphrase=owner_pp)
+
+        p1 = Player(name="Owner")
+        p2 = Player(name="R1")
+        p3 = Player(name="R2")
+        p4 = Player(name="R3")
+        t = MexicanoTournament(
+            players=[p1, p2, p3, p4],
+            courts=[Court(name="C1")],
+            num_rounds=1,
+            total_points_per_match=32,
+        )
+        t.generate_next_round()
+        for match in t.current_round_matches():
+            t.record_result(match.id, (20, 12))
+
+        _tournaments[tid] = {
+            "name": "Private Path Cup",
+            "type": "mexicano",
+            "tournament": t,
+            "owner": "admin",
+            "public": True,
+            "sport": "padel",
+            "assign_courts": True,
+        }
+
+        other_tid = f"t-{uuid.uuid4().hex[:8]}"
+        other_pp = f"pp-{uuid.uuid4().hex[:12]}"
+        _insert_player_secret(other_tid, f"p-{uuid.uuid4().hex[:8]}", "Other", other_pp, uuid.uuid4().hex)
+        other = _create_profile(client, name="Other", participant_passphrase=other_pp)
+
+        try:
+            res = client.get(
+                f"/api/player-profile/tournament-path/{tid}/{owner_pid}",
+                headers=_headers(other["access_token"]),
+            )
+            assert res.status_code == 404
+        finally:
+            _tournaments.pop(tid, None)
+
+    def test_tournament_path_uses_cached_payload_same_version(self, client: TestClient, monkeypatch) -> None:
+        from backend.models import Court, Player
+        from backend.tournaments.mexicano import MexicanoTournament
+        import backend.api.routes_player_space as rps
+
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        passphrase = f"pp-{uuid.uuid4().hex[:12]}"
+
+        p1 = Player(name="Alice")
+        p2 = Player(name="Bob")
+        p3 = Player(name="Charlie")
+        p4 = Player(name="Dani")
+
+        _insert_tournament(tid, name="Cached Path Cup")
+        _insert_player_secret(tid, p1.id, p1.name, passphrase, uuid.uuid4().hex)
+        created = _create_profile(client, name=p1.name, participant_passphrase=passphrase)
+        token = created["access_token"]
+
+        t = MexicanoTournament(
+            players=[p1, p2, p3, p4],
+            courts=[Court(name="C1")],
+            num_rounds=1,
+            total_points_per_match=32,
+        )
+        t.generate_next_round()
+        for match in t.current_round_matches():
+            t.record_result(match.id, (20, 12))
+
+        _tournaments[tid] = {
+            "name": "Cached Path Cup",
+            "type": "mexicano",
+            "tournament": t,
+            "owner": "admin",
+            "public": True,
+            "sport": "padel",
+            "assign_courts": True,
+        }
+
+        try:
+            first = client.get(
+                f"/api/player-profile/tournament-path/{tid}/{p1.id}",
+                headers=_headers(token),
+            )
+            assert first.status_code == 200, first.text
+            first_data = first.json()
+            assert first_data["available"] is True
+
+            def _fail_recompute(*_args, **_kwargs):
+                raise AssertionError("Path was recomputed instead of using cache")
+
+            monkeypatch.setattr(rps, "_build_mex_path_rows", _fail_recompute)
+
+            second = client.get(
+                f"/api/player-profile/tournament-path/{tid}/{p1.id}",
+                headers=_headers(token),
+            )
+            assert second.status_code == 200, second.text
+            assert second.json() == first_data
+        finally:
+            _tournaments.pop(tid, None)
+
+    def test_tournament_path_recomputes_after_version_bump(self, client: TestClient, monkeypatch) -> None:
+        from backend.api.state import bump_tournament_version
+        from backend.models import Court, Player
+        from backend.tournaments.mexicano import MexicanoTournament
+        import backend.api.routes_player_space as rps
+
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        passphrase = f"pp-{uuid.uuid4().hex[:12]}"
+
+        p1 = Player(name="Alice")
+        p2 = Player(name="Bob")
+        p3 = Player(name="Charlie")
+        p4 = Player(name="Dani")
+
+        _insert_tournament(tid, name="Versioned Path Cup")
+        _insert_player_secret(tid, p1.id, p1.name, passphrase, uuid.uuid4().hex)
+        created = _create_profile(client, name=p1.name, participant_passphrase=passphrase)
+        token = created["access_token"]
+
+        t = MexicanoTournament(
+            players=[p1, p2, p3, p4],
+            courts=[Court(name="C1")],
+            num_rounds=1,
+            total_points_per_match=32,
+        )
+        t.generate_next_round()
+        for match in t.current_round_matches():
+            t.record_result(match.id, (20, 12))
+
+        _tournaments[tid] = {
+            "name": "Versioned Path Cup",
+            "type": "mexicano",
+            "tournament": t,
+            "owner": "admin",
+            "public": True,
+            "sport": "padel",
+            "assign_courts": True,
+        }
+
+        try:
+            first = client.get(
+                f"/api/player-profile/tournament-path/{tid}/{p1.id}",
+                headers=_headers(token),
+            )
+            assert first.status_code == 200, first.text
+
+            bump_tournament_version(tid)
+
+            patched_rows = [
+                rps.PlayerPathRound(
+                    round_number=1,
+                    round_label="Round 1",
+                    cumulative_points=999,
+                    rank=1,
+                    total_players=4,
+                    partners=["Patched Partner"],
+                    opponents=["Patched Opponent"],
+                    played=True,
+                )
+            ]
+            monkeypatch.setattr(rps, "_build_mex_path_rows", lambda *_args, **_kwargs: patched_rows)
+
+            second = client.get(
+                f"/api/player-profile/tournament-path/{tid}/{p1.id}",
+                headers=_headers(token),
+            )
+            assert second.status_code == 200, second.text
+            rows = second.json()["rounds"]
+            assert rows and rows[0]["cumulative_points"] == 999
+            assert rows[0]["partners"] == ["Patched Partner"]
+        finally:
+            _tournaments.pop(tid, None)
 
 
 # ────────────────────────────────────────────────────────────────────────────

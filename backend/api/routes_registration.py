@@ -950,7 +950,12 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
         if potential_email and is_valid_email(potential_email):
             with get_db() as conn:
                 profile_row = conn.execute(
-                    "SELECT id, passphrase FROM player_profiles WHERE LOWER(email) = LOWER(?)",
+                    """
+                                        SELECT id, passphrase
+                                            FROM player_profiles
+                                         WHERE LOWER(email) = LOWER(?)
+                                             AND email_verified_at IS NOT NULL
+                                        """,
                     (potential_email,),
                 ).fetchone()
             if profile_row is not None:

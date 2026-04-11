@@ -629,6 +629,7 @@ def render_player_space_welcome(
     email: str,
     passphrase: str,
     access_token: str = "",
+    verify_token: str = "",
 ) -> tuple[str, str]:
     """Return ``(subject, html_body)`` for a Player Hub welcome / passphrase email."""
     base = _site_url()
@@ -638,6 +639,7 @@ def render_player_space_welcome(
         player_url = f"{base}/player"
     else:
         player_url = ""
+    verify_url = f"{base}/player#verify_token={verify_token}" if base and verify_token else ""
     display_name = name.strip() or email
 
     subject = "Your Player Hub passphrase"
@@ -652,6 +654,7 @@ def render_player_space_welcome(
     Keep this passphrase safe. Use it to access your Player Hub dashboard and
     to log in to any tournament or registration lobby you're linked to.
   </p>
+    {f'<p style="font-size:.9em;color:#666">Please verify your email address to enable secure account recovery and automatic linking by email.</p><p style="text-align:center"><a href="{_esc(verify_url)}" style="{_BUTTON_STYLE}">Verify email</a></p>' if verify_url else ""}
   {f'<p style="text-align:center"><a href="{_esc(player_url)}" style="{_BUTTON_STYLE}">Open Player Hub</a></p>' if player_url else ""}
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
   <p style="font-size:.8em;color:#999">This is an automated message from Torneos Amistosos.</p>

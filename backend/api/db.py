@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS player_profiles (
     passphrase  TEXT NOT NULL UNIQUE,
     name        TEXT NOT NULL DEFAULT '',
     email       TEXT NOT NULL DEFAULT '',
+    email_verified_at TEXT,
     contact     TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL
 );
@@ -199,6 +200,19 @@ CREATE TABLE IF NOT EXISTS player_history (
 
 CREATE INDEX IF NOT EXISTS idx_player_history_profile
     ON player_history (profile_id);
+
+CREATE TABLE IF NOT EXISTS player_tournament_path_cache (
+    profile_id         TEXT    NOT NULL,
+    entity_id          TEXT    NOT NULL,
+    player_id          TEXT    NOT NULL,
+    tournament_version INTEGER NOT NULL,
+    payload            TEXT    NOT NULL,
+    updated_at         TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (profile_id, entity_id, player_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_path_cache_profile
+    ON player_tournament_path_cache (profile_id);
 
 CREATE TABLE IF NOT EXISTS push_subscriptions (
     tournament_id      TEXT NOT NULL,
@@ -357,6 +371,8 @@ def init_db() -> None:
         pp_cols = {r[1] for r in conn.execute("PRAGMA table_info(player_profiles)").fetchall()}
         if pp_cols and "contact" not in pp_cols:
             conn.execute("ALTER TABLE player_profiles ADD COLUMN contact TEXT NOT NULL DEFAULT ''")
+        if pp_cols and "email_verified_at" not in pp_cols:
+            conn.execute("ALTER TABLE player_profiles ADD COLUMN email_verified_at TEXT")
         # Migrate: add profile_id to player_secrets if missing
         if ps_cols and "profile_id" not in ps_cols:
             conn.execute("ALTER TABLE player_secrets ADD COLUMN profile_id TEXT")

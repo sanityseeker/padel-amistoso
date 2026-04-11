@@ -738,7 +738,12 @@ def update_email(tournament_id: str, player_id: str, email: str) -> dict:
             profile_contact: str | None = None
             if email:
                 row = conn.execute(
-                    "SELECT id, name, contact FROM player_profiles WHERE email = ?",
+                    """
+                                        SELECT id, name, contact
+                                            FROM player_profiles
+                                         WHERE LOWER(email) = LOWER(?)
+                                             AND email_verified_at IS NOT NULL
+                                        """,
                     (email,),
                 ).fetchone()
                 if row:
@@ -954,7 +959,11 @@ def lookup_profile_by_passphrase(passphrase: str) -> dict | None:
     try:
         with get_db() as conn:
             row = conn.execute(
-                "SELECT id, passphrase, name, email, contact, created_at FROM player_profiles WHERE passphrase = ?",
+                """
+                SELECT id, passphrase, name, email, email_verified_at, contact, created_at
+                  FROM player_profiles
+                 WHERE passphrase = ?
+                """,
                 (passphrase,),
             ).fetchone()
     except sqlite3.Error as exc:
