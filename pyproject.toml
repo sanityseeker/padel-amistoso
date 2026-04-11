@@ -1,6 +1,6 @@
 [project]
 name = "padel-amistoso"
-version = "1.5.3"
+version = "1.5.4"
 description = "Padel tournament manager — group+playoff and Mexicano formats"
 readme = "README.md"
 requires-python = ">=3.12"
