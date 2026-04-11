@@ -1,3 +1,9 @@
+## v1.5.2 (2026-04-12)
+
+### Fix
+
+- **email-verification**: fix frontend
+
 ## v1.5.1 (2026-04-12)
 
 ### Fix
