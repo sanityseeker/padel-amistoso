@@ -1,3 +1,9 @@
+## v1.4.1 (2026-04-11)
+
+### Fix
+
+- **public-links**: use uuids for tournaments and registrations links to avoid collisions
+
 ## v1.4.0 (2026-04-11)
 
 ### Feat
