@@ -1,3 +1,9 @@
+## v1.5.0 (2026-04-12)
+
+### Feat
+
+- **player-hub**: add email verification; frontend enhancements; add a tournament path feature
+
 ## v1.4.1 (2026-04-11)
 
 ### Fix
