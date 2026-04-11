@@ -1004,8 +1004,8 @@ class TestEmailVerification:
         assert sent_html
         html_body = sent_html[-1]
         assert "#verify_token=" in html_body
-        assert "&token=" in html_body
-        assert html_body.find("#verify_token=") < html_body.find("&token=")
+        assert "&amp;token=" in html_body
+        assert html_body.find("#verify_token=") < html_body.find("&amp;token=")
 
     def test_no_profile_email_no_auto_link(self, client: TestClient, auth_headers: dict) -> None:
         rid = self._create_lobby(client, auth_headers)

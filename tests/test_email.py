@@ -176,7 +176,7 @@ class TestRenderPlayerHubEmails:
                 verify_token="verify_tok",
             )
 
-        assert "#verify_token=verify_tok&token=login_tok" in body
+        assert "#verify_token=verify_tok&amp;token=login_tok" in body
 
 
 class TestRenderTournamentStartedEmail:
