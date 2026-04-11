@@ -30,9 +30,14 @@ from ..auth.security import create_profile_token
 from ..email import is_valid_email, render_player_space_magic_link, render_player_space_welcome, send_email_background
 from ..tournaments.player_secrets import generate_passphrase
 from .db import get_db
-from .player_secret_store import extract_history_stats, extract_partner_rival_stats, lookup_profile_by_passphrase
+from .player_secret_store import (
+    extract_history_stats,
+    extract_partner_rival_stats,
+    lookup_profile_by_passphrase,
+    resolve_passphrase,
+)
 from .rate_limit import BoundedRateLimiter
-from .state import get_tournament_data
+from .state import bump_tournament_version, get_tournament_data
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +95,35 @@ class ProfileLinkRequest(BaseModel):
     entity_type: str = Field(pattern="^(tournament|registration)$")
     entity_id: str = Field(min_length=1)
     passphrase: str = Field(min_length=1)
+
+
+class ProfileUnlinkRequest(BaseModel):
+    """Unlink a tournament participation from this profile."""
+
+    entity_type: str = Field(pattern="^tournament$")
+    entity_id: str = Field(min_length=1)
+
+
+class PassphraseResolveRequest(BaseModel):
+    """Resolve a passphrase to determine what it matches."""
+
+    passphrase: str = Field(min_length=1, max_length=256)
+
+
+class ParticipationMatch(BaseModel):
+    """A single participation match returned by the resolve endpoint."""
+
+    entity_type: str
+    entity_id: str
+    entity_name: str
+    player_name: str
+
+
+class PassphraseResolveResponse(BaseModel):
+    """Result of resolving a passphrase."""
+
+    type: str  # "profile" | "participation" | "not_found"
+    matches: list[ParticipationMatch] = Field(default_factory=list)
 
 
 class ProfileOut(BaseModel):
@@ -210,7 +244,25 @@ def _build_active_entries(profile_id: str) -> list[PlayerSpaceEntry]:
             (profile_id,),
         ).fetchall()
 
+        # Bulk-load in-progress stats snapshots for active tournaments.
+        live_stats: dict[str, dict] = {}
+        active_tids = [r["tid"] for r in t_rows]
+        if active_tids:
+            placeholders = ",".join("?" * len(active_tids))
+            stat_rows = conn.execute(
+                f"""SELECT entity_id, rank, total_players,
+                           wins, losses, draws, points_for, points_against
+                    FROM player_history
+                    WHERE profile_id = ? AND entity_type = 'tournament'
+                      AND finished_at = ''
+                      AND entity_id IN ({placeholders})""",
+                [profile_id, *active_tids],
+            ).fetchall()
+            for sr in stat_rows:
+                live_stats[sr["entity_id"]] = dict(sr)
+
         for row in t_rows:
+            ls = live_stats.get(row["tid"], {})
             entries.append(
                 PlayerSpaceEntry(
                     entity_type="tournament",
@@ -225,6 +277,13 @@ def _build_active_entries(profile_id: str) -> list[PlayerSpaceEntry]:
                     tournament_type=row["ttype"],
                     entity_deleted=False,
                     finished_at=None,
+                    rank=ls.get("rank"),
+                    total_players=ls.get("total_players"),
+                    wins=ls.get("wins", 0),
+                    losses=ls.get("losses", 0),
+                    draws=ls.get("draws", 0),
+                    points_for=ls.get("points_for", 0),
+                    points_against=ls.get("points_against", 0),
                 )
             )
 
@@ -397,6 +456,7 @@ def _build_history_entries(profile_id: str) -> list[PlayerSpaceEntry]:
                      ph.sport, ph.top_partners, ph.top_rivals, ph.all_partners, ph.all_rivals
             FROM player_history ph
             WHERE ph.profile_id = ?
+              AND ph.finished_at != ''
             ORDER BY ph.finished_at DESC
             """,
             (profile_id,),
@@ -593,6 +653,19 @@ def _backfill_finished_secrets(profile_id: str) -> None:
             "DELETE FROM player_secrets WHERE profile_id = ? AND tournament_id = ? AND player_id = ?",
             [(profile_id, row["tournament_id"], row["player_id"]) for row in rows],
         )
+
+
+@router.post("/resolve", response_model=PassphraseResolveResponse)
+async def resolve_profile_passphrase(req: PassphraseResolveRequest, request: Request) -> PassphraseResolveResponse:
+    """Resolve a passphrase to determine if it belongs to a hub profile or a tournament/registration.
+
+    This is a read-only discovery endpoint: it does not create sessions or return JWTs.
+    """
+    _RATE_LIMITER.check(_client_ip(request), "Too many requests \u2014 try again later")
+    clean = req.passphrase.strip()
+    result = resolve_passphrase(clean)
+    matches = [ParticipationMatch(**m) for m in result.get("matches", [])]
+    return PassphraseResolveResponse(type=result["type"], matches=matches)
 
 
 @router.post("", response_model=PlayerSpaceResponse)
@@ -801,6 +874,78 @@ async def update_profile(
         ).fetchone()
 
     return _row_to_profile_out(dict(row))
+
+
+@router.delete("/unlink")
+async def unlink_participation(
+    req: ProfileUnlinkRequest,
+    identity: ProfileIdentity | None = Depends(get_current_profile),
+) -> dict:
+    """Unlink a tournament participation from the authenticated player's profile.
+
+    For **active** tournaments the ``profile_id`` is simply set to NULL on
+    the ``player_secrets`` row — the player can re-link later using their
+    passphrase.
+
+    For **finished** tournaments the ``player_history`` row is deleted,
+    permanently removing the stats from the player's hub.  A warning is
+    included in the response so the frontend can surface it.
+    """
+    if identity is None:
+        raise HTTPException(401, "Profile authentication required")
+
+    pid = identity.profile_id
+
+    with get_db() as conn:
+        # Try active first (player_secrets row still present).
+        row = conn.execute(
+            "SELECT profile_id, finished_at FROM player_secrets WHERE tournament_id = ? AND profile_id = ?",
+            (req.entity_id, pid),
+        ).fetchone()
+
+        if row is not None:
+            if row["finished_at"] is None:
+                # Active tournament — just clear the link.
+                conn.execute(
+                    "UPDATE player_secrets SET profile_id = NULL WHERE tournament_id = ? AND profile_id = ?",
+                    (req.entity_id, pid),
+                )
+                bump_tournament_version(req.entity_id)
+                return {"ok": True, "status": "active", "warning": None}
+            else:
+                # Finished but player_secrets row still exists.
+                conn.execute(
+                    "UPDATE player_secrets SET profile_id = NULL WHERE tournament_id = ? AND profile_id = ?",
+                    (req.entity_id, pid),
+                )
+                conn.execute(
+                    "DELETE FROM player_history WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
+                    (pid, req.entity_id),
+                )
+                bump_tournament_version(req.entity_id)
+                return {
+                    "ok": True,
+                    "status": "finished",
+                    "warning": "Stats have been permanently removed from your hub.",
+                }
+
+        # No player_secrets row — check player_history directly.
+        hist = conn.execute(
+            "SELECT 1 FROM player_history WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
+            (pid, req.entity_id),
+        ).fetchone()
+        if hist is not None:
+            conn.execute(
+                "DELETE FROM player_history WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
+                (pid, req.entity_id),
+            )
+            return {
+                "ok": True,
+                "status": "finished",
+                "warning": "Stats have been permanently removed from your hub.",
+            }
+
+    raise HTTPException(404, "Participation not found")
 
 
 @router.post("/link", response_model=PlayerSpaceEntry)

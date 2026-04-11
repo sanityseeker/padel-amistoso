@@ -299,7 +299,8 @@ function updateAuthUI() {
   if (authStatus) {
     if (username) {
       const adminBtn = isAdmin()
-        ? `<button class="btn btn-sm" onclick="showUserMgmt()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="User management">👥</button>`
+        ? `<button class="btn btn-sm" onclick="setActiveTab('players-hub')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="Players Hub">🎾</button>`
+          + `<button class="btn btn-sm" onclick="showUserMgmt()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="User management">👥</button>`
         : '';
       const changePwdBtn = `<button class="btn btn-sm" onclick="showChangePasswordDialog()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_change_password')}">🔑</button>`;
       authStatus.innerHTML = `

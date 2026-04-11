@@ -20,8 +20,10 @@ const STORAGE_HISTORY_PANEL_KEY = 'padel-player-history-panel-open';
 let _jwt = null;
 let _profile = null;
 let _entries = [];
-let _authTab = 'login'; // 'login' | 'create'
-try { _authTab = localStorage.getItem('amistoso-player-auth-tab') || 'login'; } catch (_) {}
+let _authStep = 'passphrase'; // 'passphrase' | 'create'
+let _resolveResult = null;    // null | {type: 'profile'|'participation'|'not_found', matches: [...]}
+let _resolvedPassphrase = ''; // the passphrase that was resolved
+let _resolving = false;
 let _editMode = false;
 let _showLinkModal = false;
 let _showPassphrase = false;
@@ -217,6 +219,17 @@ async function _apiPut(path, body, auth) {
   return res.json();
 }
 
+async function _apiDelete(path, body, auth) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (auth) headers['Authorization'] = `Bearer ${auth}`;
+  const res = await fetch(`${API}${path}`, { method: 'DELETE', headers, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Error ${res.status}`);
+  }
+  return res.json();
+}
+
 async function _fetchSpace() {
   const data = await _apiGet('/space', _jwt);
   _jwt = data.access_token;
@@ -321,21 +334,25 @@ function _buildAuthPanel() {
   let html = `<div class="card">`;
   html += `<p class="subtitle">${esc(t('txt_player_space_subtitle'))}</p>`;
 
-  // Tabs
-  html += `<div class="auth-tabs">`;
-  html += `<button type="button" class="auth-tab${_authTab === 'login' ? ' active' : ''}" onclick="_setAuthTab('login')">${esc(t('txt_player_login'))}</button>`;
-  html += `<button type="button" class="auth-tab${_authTab === 'create' ? ' active' : ''}" onclick="_setAuthTab('create')">${esc(t('txt_player_create'))}</button>`;
-  html += `</div>`;
+  if (_authStep === 'passphrase') {
+    // ── Info panel: why Player Hub ──
+    html += `<div class="hub-info-panel">`;
+    html += `<div class="hub-info-item"><span class="hub-info-bullet" aria-hidden="true"></span><span>${esc(t('txt_player_hub_benefit_stats'))}</span></div>`;
+    html += `<div class="hub-info-item"><span class="hub-info-bullet" aria-hidden="true"></span><span>${esc(t('txt_player_hub_benefit_history'))}</span></div>`;
+    html += `<div class="hub-info-item"><span class="hub-info-bullet" aria-hidden="true"></span><span>${esc(t('txt_player_hub_benefit_login'))}</span></div>`;
+    html += `<div class="hub-info-item"><span class="hub-info-bullet" aria-hidden="true"></span><span>${esc(t('txt_player_hub_benefit_email'))}</span></div>`;
+    html += `<div class="hub-info-item"><span class="hub-info-bullet" aria-hidden="true"></span><span>${esc(t('txt_player_hub_benefit_one_phrase'))}</span></div>`;
+    html += `</div>`;
 
-  if (_authTab === 'login') {
+    // ── Step 1: single passphrase input ──
     html += `<div class="form-group">
       <label>${esc(t('txt_player_passphrase_label'))}</label>
       <input type="text" id="ps-passphrase" placeholder="${esc(t('txt_player_passphrase_placeholder'))}" autocomplete="off" autocapitalize="none" spellcheck="false">
     </div>`;
     if (_errorMsg) html += `<div class="error-msg">${esc(_errorMsg)}</div>`;
-    html += `<button type="button" class="btn btn-primary btn-block" onclick="_doLogin()">${esc(t('txt_player_login_btn'))}</button>`;
+    html += `<button type="button" class="btn btn-primary btn-block" onclick="_doResolve()"${_resolving ? ' disabled' : ''}>${esc(_resolving ? t('txt_player_resolving') : t('txt_player_resolve_btn'))}</button>`;
 
-    // Passphrase recovery
+    // Passphrase recovery (collapsed)
     html += `<details class="player-recover"${_recoverSent ? ' open' : ''}>`;
     html += `<summary class="player-recover-summary"><span class="player-recover-chevron">▶</span>${esc(t('txt_player_recover_title'))}</summary>`;
     html += `<div class="player-recover-body">`;
@@ -347,15 +364,29 @@ function _buildAuthPanel() {
       html += `<button type="button" class="btn btn-secondary btn-block" onclick="_doRecover()">${esc(t('txt_player_recover_btn'))}</button>`;
     }
     html += `</div></details>`;
-  } else {
-    html += `<p class="player-auth-create-help">${esc(t('txt_player_participant_pp_help'))}</p>`;
-    html += `<div class="form-group">
-      <label>${esc(t('txt_player_participant_pp_label'))} <span class="required-mark">*</span></label>
-      <input type="text" id="ps-participant-pp" placeholder="${esc(t('txt_player_passphrase_placeholder'))}" autocomplete="off" autocapitalize="none" spellcheck="false">
-    </div>`;
+
+  } else if (_authStep === 'create') {
+    // ── Step 2b: participation found — show matches + create profile form ──
+    html += `<button type="button" class="btn btn-sm btn-secondary resolve-back-btn" onclick="_goBackToPassphrase()">${esc(t('txt_player_back_btn'))}</button>`;
+
+    // Show matched participations
+    html += `<p class="resolve-found-msg">${esc(t('txt_player_found_participation'))}</p>`;
+    html += `<ul class="resolve-matches-list">`;
+    for (const m of (_resolveResult?.matches || [])) {
+      const typeLabel = m.entity_type === 'tournament' ? t('txt_player_match_tournament') : t('txt_player_match_registration');
+      html += `<li class="resolve-match-item">`;
+      html += `<span class="resolve-match-type">${esc(typeLabel)}</span>`;
+      html += `<span class="resolve-match-name">${esc(m.entity_name)}</span>`;
+      html += `<span class="resolve-match-player">— ${esc(m.player_name)}</span>`;
+      html += `</li>`;
+    }
+    html += `</ul>`;
+
+    // Profile creation form
+    html += `<p class="resolve-create-prompt">${esc(t('txt_player_found_create_prompt'))}</p>`;
     html += `<div class="form-group">
       <label>${esc(t('txt_player_name_label'))}</label>
-      <input type="text" id="ps-name" placeholder="" autocomplete="name">
+      <input type="text" id="ps-name" value="${esc(_prefillName())}" autocomplete="name">
     </div>`;
     html += `<div class="form-group">
       <label>${esc(t('txt_player_email_label'))} <span class="required-mark">*</span></label>
@@ -368,8 +399,14 @@ function _buildAuthPanel() {
     if (_errorMsg) html += `<div class="error-msg">${esc(_errorMsg)}</div>`;
     html += `<button type="button" class="btn btn-primary btn-block" onclick="_doCreate()">${esc(t('txt_player_create_btn'))}</button>`;
   }
+
   html += `</div>`;
   return html;
+}
+
+function _prefillName() {
+  if (!_resolveResult?.matches?.length) return '';
+  return _resolveResult.matches[0].player_name || '';
 }
 
 function _buildDashboard() {
@@ -715,12 +752,16 @@ function _sortParticipantRows(selectEl) {
 }
 
 function _buildGlobalStatsCard() {
-  const finished = _entries.filter(e => e.status === 'finished');
-  if (finished.length === 0) return '';
+  const withStats = _entries.filter(e => {
+    if (e.status === 'finished') return true;
+    // Include active entries that have live stats from round completions
+    return (e.wins || 0) + (e.losses || 0) + (e.draws || 0) > 0;
+  });
+  if (withStats.length === 0) return '';
 
-  // Group finished entries by sport
+  // Group entries with stats by sport
   const bySport = {};
-  for (const e of finished) {
+  for (const e of withStats) {
     const sport = e.sport || 'padel';
     if (!bySport[sport]) bySport[sport] = [];
     bySport[sport].push(e);
@@ -731,7 +772,7 @@ function _buildGlobalStatsCard() {
 
   if (sports.length === 1) {
     // Single sport — use generic heading
-    html += _buildStatsCardForEntries(finished, t('txt_player_career_stats'));
+    html += _buildStatsCardForEntries(withStats, t('txt_player_career_stats'));
   } else {
     // Multiple sports — one card per sport with sport-qualified heading
     for (const sport of sports) {
@@ -760,16 +801,26 @@ function _buildEntryCard(entry) {
   }
   html += `</div>`;
   if (entry.player_name) html += `<div class="entry-card-meta">${esc(entry.player_name)}</div>`;
-  if (isFinished) {
+  const hasStats = (entry.wins || 0) + (entry.losses || 0) + (entry.draws || 0) > 0 || (entry.rank != null && entry.rank > 0);
+  if (isFinished || hasStats) {
     const statsLine = _buildStatsLine(entry);
     if (statsLine) html += `<div class="entry-card-stats">${statsLine}</div>`;
+  }
+  if (isFinished) {
     const social = _buildPartnerRivalSection(entry);
     if (social) html += social;
   }
   html += `</div>`;
+  const canUnlink = entry.entity_type === 'tournament';
+  html += `<div class="entry-card-actions">`;
   if (canViewFinishedTournament) {
     html += `<a href="${esc(url)}" class="btn btn-sm btn-primary">${esc(btnLabel)}</a>`;
   }
+  if (canUnlink) {
+    const unlinkBtnClass = isFinished ? 'btn btn-sm btn-danger-outline' : 'btn btn-sm btn-muted';
+    html += `<button type="button" class="${unlinkBtnClass}" onclick="_doUnlink('${esc(entry.entity_type)}','${esc(entry.entity_id)}',${isFinished})">${esc(t('txt_player_unlink_btn'))}</button>`;
+  }
+  html += `</div>`;
   html += `</div>`;
   return html;
 }
@@ -832,12 +883,56 @@ function _buildLinkModal() {
 
 // ── Actions ───────────────────────────────────────────────
 
-function _setAuthTab(tab) {
-  _authTab = tab;
-  try { localStorage.setItem('amistoso-player-auth-tab', tab); } catch (_) {}
+function _goBackToPassphrase() {
+  _authStep = 'passphrase';
+  _resolveResult = null;
+  _resolvedPassphrase = '';
   _errorMsg = '';
-  _recoverSent = false;
   _render();
+}
+
+async function _doResolve() {
+  const input = document.getElementById('ps-passphrase');
+  const passphrase = (input?.value || '').trim();
+  if (!passphrase) return;
+  _errorMsg = '';
+  _resolving = true;
+  _render();
+  try {
+    const result = await _apiPost('/resolve', { passphrase });
+    _resolveResult = result;
+    _resolvedPassphrase = passphrase;
+
+    if (result.type === 'profile') {
+      // Auto-login immediately
+      try {
+        const data = await _apiPost('/login', { passphrase });
+        _jwt = data.access_token;
+        _profile = data.profile;
+        _successMsg = '';
+        _saveSession();
+        await _fetchSpace();
+        _resolving = false;
+        _render();
+      } catch (loginErr) {
+        _resolving = false;
+        _errorMsg = loginErr.message || t('txt_player_wrong_passphrase');
+        _render();
+      }
+    } else if (result.type === 'participation') {
+      _authStep = 'create';
+      _resolving = false;
+      _render();
+    } else {
+      _resolving = false;
+      _errorMsg = t('txt_player_not_found');
+      _render();
+    }
+  } catch (err) {
+    _resolving = false;
+    _errorMsg = err.message;
+    _render();
+  }
 }
 
 async function _doLogin() {
@@ -870,7 +965,7 @@ async function _doRecover() {
 }
 
 async function _doCreate() {
-  const participantPp = (document.getElementById('ps-participant-pp')?.value || '').trim();
+  const participantPp = _resolvedPassphrase;
   const name = (document.getElementById('ps-name')?.value || '').trim();
   const email = (document.getElementById('ps-email')?.value || '').trim();
   const contact = (document.getElementById('ps-contact')?.value || '').trim();
@@ -944,6 +1039,20 @@ function _openLinkModal() {
   _render();
 }
 
+async function _doUnlink(entityType, entityId, isFinished) {
+  const msg = isFinished
+    ? t('txt_player_unlink_confirm_finished')
+    : t('txt_player_unlink_confirm_active');
+  if (!confirm(msg)) return;
+  try {
+    await _apiDelete('/unlink', { entity_type: entityType, entity_id: entityId }, _jwt);
+    await _fetchSpace();
+    _render();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
 function _closeLinkModal(event) {
   if (event && event.type === 'click' && event.target !== event.currentTarget) return;
   _showLinkModal = false;
@@ -979,8 +1088,8 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Enter') {
     if (_showLinkModal) { _doLink(); return; }
-    if (_authTab === 'login' && !_jwt) { _doLogin(); return; }
-    if (_authTab === 'create' && !_jwt) { _doCreate(); }
+    if (!_jwt && _authStep === 'passphrase') { _doResolve(); return; }
+    if (!_jwt && _authStep === 'create') { _doCreate(); }
   }
 });
 

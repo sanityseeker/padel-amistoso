@@ -698,3 +698,54 @@ class TournamentMessageRequest(BaseModel):
     """Request body for sending an organizer message to tournament players."""
 
     message: str = Field(min_length=1, max_length=2000)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Admin Player Hub management
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class AdminPlayerProfileSummary(BaseModel):
+    """Lightweight profile row for list views."""
+
+    id: str
+    name: str
+    email: str
+    passphrase: str
+    created_at: str
+
+
+class AdminParticipationLink(BaseModel):
+    """A single tournament/registration participation linked to a profile."""
+
+    tournament_id: str
+    player_id: str
+    player_name: str
+    tournament_name: str
+    status: str  # "active" or "finished"
+    finished_at: str | None = None
+    rank: int | None = None
+    total_players: int | None = None
+    wins: int = 0
+    losses: int = 0
+    draws: int = 0
+    points_for: int = 0
+    points_against: int = 0
+
+
+class AdminPlayerProfileDetail(BaseModel):
+    """Full profile with all linked participations."""
+
+    id: str
+    name: str
+    email: str
+    contact: str
+    passphrase: str
+    created_at: str
+    participations: list[AdminParticipationLink]
+
+
+class AdminEmailUpdate(BaseModel):
+    """Request body for updating a profile's email."""
+
+    email: OptionalEmailStr = Field(default="")

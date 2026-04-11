@@ -3,11 +3,21 @@
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
 
 /* Auth panel */
-.auth-tabs { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 1.5rem; }
+.auth-tabs { display: none; } /* Legacy — no longer rendered */
 .auth-tab { flex: 1; padding: 0.65rem 0.5rem; background: var(--bg); border: none; color: var(--text-muted); font-size: 0.88rem; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; }
 .auth-tab.active { background: var(--accent); color: #fff; }
 .auth-tab:first-child { border-radius: 9px 0 0 9px; }
 .auth-tab:last-child  { border-radius: 0 9px 9px 0; }
+
+/* Unified resolve flow */
+.resolve-back-btn { margin-bottom: 1rem; }
+.resolve-found-msg { font-weight: 600; margin-bottom: 0.5rem; color: var(--text); }
+.resolve-matches-list { list-style: none; padding: 0; margin: 0 0 1.25rem 0; }
+.resolve-match-item { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: baseline; padding: 0.55rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.4rem; font-size: 0.88rem; }
+.resolve-match-type { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent); white-space: nowrap; }
+.resolve-match-name { font-weight: 600; color: var(--text); }
+.resolve-match-player { color: var(--text-muted); font-size: 0.84rem; }
+.resolve-create-prompt { color: var(--text-muted); font-size: 0.88rem; margin-bottom: 1rem; }
 
 /* Passphrase reveal box */
 .passphrase-reveal-box {
@@ -100,6 +110,7 @@
 }
 .entry-card.finished { opacity: 0.75; }
 .entry-card-info { flex: 1; min-width: 0; }
+.entry-card-actions { display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-end; flex-shrink: 0; }
 .entry-card-name {
   font-weight: 600;
   font-size: 0.95rem;
@@ -450,3 +461,8 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
 
 h1 { font-size: 1.5rem; margin-bottom: 0.3rem; text-align: center; }
 .subtitle { font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 1.5rem; }
+
+/* Hub info panel (benefits) */
+.hub-info-panel { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 0.45rem; }
+.hub-info-item { display: flex; align-items: flex-start; gap: 0.55rem; font-size: 0.84rem; color: var(--text-muted); line-height: 1.35; }
+.hub-info-bullet { flex-shrink: 0; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); margin-top: 0.45em; }

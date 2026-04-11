@@ -42,6 +42,7 @@ function setActiveTab(tabName) {
       btn.setAttribute('aria-selected', 'true');
     }
     if (tabName === 'home' && isAuthenticated()) { loadTournaments(); _startRegPoll(); } else { _stopRegPoll(); }
+    if (tabName === 'players-hub' && isAuthenticated()) { phSearch(); }
     _stopRegDetailPoll();
   }
 }

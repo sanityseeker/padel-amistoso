@@ -38,6 +38,7 @@ from .player_secret_store import (
     extract_partner_rival_stats,
     invalidate_secrets_cache,
     purge_expired_secrets,
+    upsert_live_stats,
 )
 from .sse import notify_global, notify_tournament
 
@@ -148,6 +149,26 @@ async def allocate_tournament_id() -> str:
 # ────────────────────────────────────────────────────────────────────────────
 
 
+def bump_tournament_version(tid: str) -> None:
+    """Increment the version counter for a tournament without saving its blob.
+
+    This is useful for metadata-only changes (e.g. player_secrets.profile_id)
+    that should trigger an admin UI refresh via SSE/polling but don't modify
+    the tournament data itself.
+    """
+    global _state_version
+    _state_version += 1
+
+    version = _tournament_versions.get(tid, 0) + 1
+    _tournament_versions[tid] = version
+
+    try:
+        with get_db() as conn:
+            conn.execute("UPDATE tournaments SET version = ? WHERE id = ?", (version, tid))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not persist version bump for %s: %s", tid, exc)
+
+
 def _save_tournament(tid: str) -> bool:
     """Persist a single tournament row to SQLite (upsert).
 
@@ -223,6 +244,44 @@ def _save_tournament(tid: str) -> bool:
     notify_tournament(tid)
     notify_global()
     return persisted
+
+
+def maybe_update_live_stats(tid: str) -> None:
+    """Snapshot in-progress stats to Player Hub if a round just completed.
+
+    Checks whether all current-round matches are scored (i.e. no pending
+    matches remain).  If so, calls :func:`upsert_live_stats` to write or
+    update the ``player_history`` rows with ``finished_at = ''``.
+
+    Safe to call after every score recording — the pending-matches check is
+    a cheap in-memory scan and the DB write only happens on round boundaries.
+    Skips silently if the tournament is already finished (final stats are
+    handled by :func:`delete_secrets_for_tournament`).
+    """
+    data = _tournaments.get(tid)
+    if data is None:
+        return
+    tournament = data.get("tournament")
+    if tournament is None:
+        return
+    phase = str(getattr(tournament, "phase", ""))
+    if phase == "finished":
+        return
+
+    t_type = data.get("type", "")
+    has_pending = True
+    try:
+        if t_type in ("mexicano", "mex-playoff"):
+            has_pending = len(tournament.pending_matches()) > 0
+        elif t_type == "group_playoff":
+            has_pending = len(tournament.pending_group_matches()) > 0
+        elif t_type == "playoff":
+            has_pending = len(tournament.pending_matches()) > 0
+    except Exception:  # noqa: BLE001
+        return
+
+    if not has_pending:
+        upsert_live_stats(tid, data)
 
 
 def get_tournament_data(tid: str) -> dict | None:

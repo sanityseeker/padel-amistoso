@@ -40,7 +40,7 @@ from .schemas import (
     StartMexicanoPlayoffsRequest,
     UpdateCourtsRequest,
 )
-from .state import allocate_tournament_id, _save_tournament, get_tournament_lock
+from .state import allocate_tournament_id, _save_tournament, get_tournament_lock, maybe_update_live_stats
 from .player_secret_store import create_secrets_for_tournament
 from .push_events import notify_matches_ready, notify_champion, notify_score_submitted
 
@@ -237,6 +237,7 @@ async def mex_record(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+        maybe_update_live_stats(tid)
         breakdown = t.get_match_breakdown(req.match_id)
     if is_player_action and is_required:
         notify_score_submitted(tid, data, match, player.player_id)
@@ -496,6 +497,7 @@ async def mex_record_playoff(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+        maybe_update_live_stats(tid)
     champ = t.champion()
     if champ:
         notify_champion(tid, data, [p.name for p in champ])
@@ -529,6 +531,7 @@ async def mex_record_playoff_tennis(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+        maybe_update_live_stats(tid)
     champ = t.champion()
     if champ:
         notify_champion(tid, data, [p.name for p in champ])

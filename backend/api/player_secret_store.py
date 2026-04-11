@@ -384,6 +384,73 @@ def extract_partner_rival_stats(t_data: dict) -> dict[str, dict]:
         return {}
 
 
+def upsert_live_stats(
+    tournament_id: str,
+    t_data: dict,
+) -> None:
+    """Write or update in-progress stats for linked Player Hub profiles.
+
+    Called when a round completes (all current-round matches scored) so
+    that players see their W/L/D progress in the Hub while the tournament
+    is still running.  Only players who have linked a Hub profile get rows.
+
+    In-progress rows use ``finished_at = ''`` (empty string) to distinguish
+    them from real finished rows.  The existing primary key
+    ``(profile_id, entity_type, entity_id)`` ensures each player has at most
+    one row per tournament, and ``INSERT OR REPLACE`` overwrites the previous
+    snapshot on every round completion.
+
+    Args:
+        tournament_id: The tournament whose stats should be snapshot.
+        t_data: The value stored in ``_tournaments[tid]``.
+    """
+    entity_name = t_data.get("name", "")
+    sport = t_data.get("sport", "padel")
+    ps = extract_history_stats(t_data)
+    if not ps:
+        return
+    try:
+        with get_db() as conn:
+            linked = conn.execute(
+                "SELECT profile_id, player_id, player_name"
+                " FROM player_secrets"
+                " WHERE tournament_id = ? AND profile_id IS NOT NULL AND finished_at IS NULL",
+                (tournament_id,),
+            ).fetchall()
+            if not linked:
+                return
+            conn.executemany(
+                """INSERT OR REPLACE INTO player_history
+                   (profile_id, entity_type, entity_id, entity_name,
+                    player_id, player_name, finished_at,
+                    rank, total_players, wins, losses, draws, points_for, points_against,
+                    sport, top_partners, top_rivals, all_partners, all_rivals)
+                   VALUES (?, 'tournament', ?, ?, ?, ?, '',
+                           ?, ?, ?, ?, ?, ?, ?,
+                           ?, '[]', '[]', '[]', '[]')""",
+                [
+                    (
+                        row["profile_id"],
+                        tournament_id,
+                        entity_name,
+                        row["player_id"],
+                        row["player_name"],
+                        ps.get(row["player_id"], {}).get("rank"),
+                        ps.get(row["player_id"], {}).get("total_players"),
+                        ps.get(row["player_id"], {}).get("wins", 0),
+                        ps.get(row["player_id"], {}).get("losses", 0),
+                        ps.get(row["player_id"], {}).get("draws", 0),
+                        ps.get(row["player_id"], {}).get("points_for", 0),
+                        ps.get(row["player_id"], {}).get("points_against", 0),
+                        sport,
+                    )
+                    for row in linked
+                ],
+            )
+    except sqlite3.Error as exc:
+        logger.warning("Could not upsert live stats for %s: %s", tournament_id, exc)
+
+
 def delete_secrets_for_tournament(
     tournament_id: str,
     *,
@@ -425,7 +492,7 @@ def delete_secrets_for_tournament(
             ).fetchall()
             if linked:
                 conn.executemany(
-                    """INSERT OR IGNORE INTO player_history
+                    """INSERT OR REPLACE INTO player_history
                        (profile_id, entity_type, entity_id, entity_name,
                         player_id, player_name, finished_at,
                         rank, total_players, wins, losses, draws, points_for, points_against,
@@ -896,3 +963,72 @@ def lookup_profile_by_passphrase(passphrase: str) -> dict | None:
     if row is None:
         return None
     return dict(row)
+
+
+def resolve_passphrase(passphrase: str) -> dict:
+    """Resolve a passphrase against hub profiles, tournaments, and registrations.
+
+    Returns a dict with ``"type"`` being one of:
+    - ``"profile"`` — passphrase belongs to a Player Hub profile.
+    - ``"participation"`` — passphrase found in tournament or registration participations
+      (but no hub profile exists). Includes ``"matches"`` list.
+    - ``"not_found"`` — passphrase not recognised anywhere.
+    """
+    try:
+        with get_db() as conn:
+            # 1. Check hub profiles first
+            profile_row = conn.execute(
+                "SELECT id FROM player_profiles WHERE passphrase = ?",
+                (passphrase,),
+            ).fetchone()
+            if profile_row is not None:
+                return {"type": "profile"}
+
+            # 2. Check tournament participations
+            matches: list[dict] = []
+            tournament_rows = conn.execute(
+                """
+                SELECT ps.tournament_id, ps.player_id, ps.player_name, t.name AS tournament_name
+                FROM player_secrets ps
+                JOIN tournaments t ON t.id = ps.tournament_id
+                WHERE ps.passphrase = ?
+                """,
+                (passphrase,),
+            ).fetchall()
+            for row in tournament_rows:
+                matches.append(
+                    {
+                        "entity_type": "tournament",
+                        "entity_id": row["tournament_id"],
+                        "entity_name": row["tournament_name"],
+                        "player_name": row["player_name"],
+                    }
+                )
+
+            # 3. Check registration participations
+            registration_rows = conn.execute(
+                """
+                SELECT r.registration_id, r.player_id, r.player_name, reg.name AS registration_name
+                FROM registrants r
+                JOIN registrations reg ON reg.id = r.registration_id
+                WHERE r.passphrase = ?
+                """,
+                (passphrase,),
+            ).fetchall()
+            for row in registration_rows:
+                matches.append(
+                    {
+                        "entity_type": "registration",
+                        "entity_id": row["registration_id"],
+                        "entity_name": row["registration_name"],
+                        "player_name": row["player_name"],
+                    }
+                )
+
+            if matches:
+                return {"type": "participation", "matches": matches}
+
+            return {"type": "not_found"}
+    except sqlite3.Error as exc:
+        logger.warning("Passphrase resolve failed: %s", exc)
+        return {"type": "not_found"}

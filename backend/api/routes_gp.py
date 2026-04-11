@@ -41,7 +41,13 @@ from .schemas import (
     StartGroupPlayoffsRequest,
     UpdateCourtsRequest,
 )
-from .state import allocate_tournament_id, _save_tournament, _tournament_versions, get_tournament_lock
+from .state import (
+    allocate_tournament_id,
+    _save_tournament,
+    _tournament_versions,
+    get_tournament_lock,
+    maybe_update_live_stats,
+)
 from .player_secret_store import create_secrets_for_tournament
 from .push_events import notify_matches_ready, notify_champion, notify_score_submitted
 
@@ -210,6 +216,7 @@ async def gp_record_group(
             actor = user.username if user else None
             _mark_admin_score(match, actor)
         _save_tournament(tid)
+        maybe_update_live_stats(tid)
     if is_player_action and is_required:
         notify_score_submitted(tid, data, match, player.player_id)
     return {"ok": True}
@@ -260,6 +267,7 @@ async def gp_record_group_tennis(
             actor = user.username if user else None
             _mark_admin_score(match, actor)
         _save_tournament(tid)
+        maybe_update_live_stats(tid)
     if is_player_action and is_required:
         notify_score_submitted(tid, data, match, player.player_id)
     return {
@@ -430,6 +438,7 @@ async def gp_record_playoff(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+        maybe_update_live_stats(tid)
     champ = t.champion()
     if champ:
         notify_champion(tid, data, [p.name for p in champ])
@@ -463,6 +472,7 @@ async def gp_record_playoff_tennis(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+        maybe_update_live_stats(tid)
     champ = t.champion()
     if champ:
         notify_champion(tid, data, [p.name for p in champ])

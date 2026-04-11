@@ -418,6 +418,20 @@
     <div id="view-content"></div>
   </div>
 
+  <!-- ─── PLAYERS HUB ADMIN ─────────────────────────────── -->
+  <div class="tab-panel" id="panel-players-hub" role="tabpanel">
+    <div class="card">
+      <h2 style="margin:0 0 0.75rem">🎾 Players Hub Admin</h2>
+      <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem">Search and manage Player Hub profiles. Link or unlink tournament participations and reset credentials.</p>
+      <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
+        <input type="text" id="ph-search-input" placeholder="Search by name or email…" style="flex:1;min-width:200px;padding:0.45rem 0.65rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
+        <button type="button" class="btn btn-primary btn-sm" id="ph-search-btn" onclick="phSearch()">🔍 Search</button>
+      </div>
+      <div id="ph-results"></div>
+    </div>
+    <div id="ph-detail" style="display:none"></div>
+  </div>
+
   <!-- ─── INFO ──────────────────────────────────────────── -->
   <div class="tab-panel" id="panel-info" role="tabpanel">
     <div class="card">
@@ -907,6 +921,7 @@
 <script src="/admin-registration.js"></script>
 <script src="/admin-convert.js"></script>
 <script src="/admin-collaborators.js"></script>
+<script src="/admin-players.js"></script>
 
 </body>
 </html>

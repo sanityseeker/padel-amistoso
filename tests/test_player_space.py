@@ -5,12 +5,19 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
 import backend.api.db as db_mod
 from backend.api import app
+from backend.api.player_secret_store import (
+    delete_secrets_for_tournament as _real_delete_secrets,
+    extract_history_stats,
+    upsert_live_stats,
+)
+from backend.api.state import maybe_update_live_stats, _tournaments
 from backend.auth.security import create_profile_token
 
 
@@ -885,6 +892,202 @@ class TestAutoLinkByEmail:
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# Unlink a participation from the player's own profile
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestUnlinkParticipation:
+    def test_unlink_active_tournament(self, client: TestClient) -> None:
+        created = _create_profile(client, name="Unlinker")
+        token = created["access_token"]
+        profile_id = created["profile"]["id"]
+
+        tid = str(uuid.uuid4())
+        pid = str(uuid.uuid4())
+        _insert_tournament(tid, "Unlinkable Tournament")
+        _insert_player_secret(tid, pid, "Unlinker", "unlink-pass-active", "tok-unl-a", profile_id)
+
+        # Confirm it appears in dashboard
+        res = client.get("/api/player-profile/space", headers=_headers(token))
+        assert any(e["entity_id"] == tid for e in res.json()["entries"])
+
+        # Unlink
+        res = client.request(
+            "DELETE",
+            "/api/player-profile/unlink",
+            json={"entity_type": "tournament", "entity_id": tid},
+            headers=_headers(token),
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["ok"] is True
+        assert data["status"] == "active"
+        assert data["warning"] is None
+
+        # Confirm profile_id is cleared in DB
+        with db_mod.get_db() as conn:
+            row = conn.execute(
+                "SELECT profile_id FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
+                (tid, pid),
+            ).fetchone()
+        assert row["profile_id"] is None
+
+        # Confirm it disappears from dashboard
+        res = client.get("/api/player-profile/space", headers=_headers(token))
+        assert not any(e["entity_id"] == tid for e in res.json()["entries"])
+
+    def test_unlink_finished_tournament_deletes_history(self, client: TestClient) -> None:
+        created = _create_profile(client, name="History Unlinker")
+        token = created["access_token"]
+        profile_id = created["profile"]["id"]
+
+        eid = str(uuid.uuid4())
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_history
+                   (profile_id, entity_type, entity_id, player_id, player_name, finished_at, wins, losses)
+                   VALUES (?, 'tournament', ?, 'p1', 'History Unlinker', ?, 5, 3)""",
+                (profile_id, eid, datetime.now(timezone.utc).isoformat()),
+            )
+
+        # Confirm finished entry exists in dashboard
+        res = client.get("/api/player-profile/space", headers=_headers(token))
+        assert any(e["entity_id"] == eid and e["status"] == "finished" for e in res.json()["entries"])
+
+        # Unlink
+        res = client.request(
+            "DELETE",
+            "/api/player-profile/unlink",
+            json={"entity_type": "tournament", "entity_id": eid},
+            headers=_headers(token),
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["ok"] is True
+        assert data["status"] == "finished"
+        assert data["warning"] is not None
+
+        # Confirm history row is deleted
+        with db_mod.get_db() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM player_history WHERE profile_id = ? AND entity_id = ?",
+                (profile_id, eid),
+            ).fetchone()
+        assert row is None
+
+        # Confirm it disappears from dashboard
+        res = client.get("/api/player-profile/space", headers=_headers(token))
+        assert not any(e["entity_id"] == eid for e in res.json()["entries"])
+
+    def test_unlink_finished_with_secrets_row(self, client: TestClient) -> None:
+        """Finished tournament where the player_secrets row still exists."""
+        created = _create_profile(client, name="SecretFinished")
+        token = created["access_token"]
+        profile_id = created["profile"]["id"]
+
+        tid = str(uuid.uuid4())
+        pid = str(uuid.uuid4())
+        finished_at = datetime.now(timezone.utc).isoformat()
+        _insert_tournament(tid, "Finished With Secret")
+        _insert_player_secret(tid, pid, "SecretFinished", "unlink-pass-fin", "tok-fin", profile_id)
+        # Mark as finished
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "UPDATE player_secrets SET finished_at = ? WHERE tournament_id = ? AND player_id = ?",
+                (finished_at, tid, pid),
+            )
+            conn.execute(
+                """INSERT INTO player_history
+                   (profile_id, entity_type, entity_id, player_id, player_name, finished_at, wins, losses)
+                   VALUES (?, 'tournament', ?, ?, 'SecretFinished', ?, 2, 1)""",
+                (profile_id, tid, pid, finished_at),
+            )
+
+        res = client.request(
+            "DELETE",
+            "/api/player-profile/unlink",
+            json={"entity_type": "tournament", "entity_id": tid},
+            headers=_headers(token),
+        )
+        assert res.status_code == 200
+        assert res.json()["status"] == "finished"
+
+        # Both profile_id cleared in secrets and history row deleted
+        with db_mod.get_db() as conn:
+            sec = conn.execute(
+                "SELECT profile_id FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
+                (tid, pid),
+            ).fetchone()
+            hist = conn.execute(
+                "SELECT 1 FROM player_history WHERE profile_id = ? AND entity_id = ?",
+                (profile_id, tid),
+            ).fetchone()
+        assert sec["profile_id"] is None
+        assert hist is None
+
+    def test_unlink_not_found_returns_404(self, client: TestClient) -> None:
+        created = _create_profile(client, name="Ghost Unlinker")
+        token = created["access_token"]
+
+        res = client.request(
+            "DELETE",
+            "/api/player-profile/unlink",
+            json={"entity_type": "tournament", "entity_id": "nonexistent-tid"},
+            headers=_headers(token),
+        )
+        assert res.status_code == 404
+
+    def test_unlink_unauthenticated_returns_401(self, client: TestClient) -> None:
+        res = client.request(
+            "DELETE",
+            "/api/player-profile/unlink",
+            json={"entity_type": "tournament", "entity_id": "some-tid"},
+        )
+        assert res.status_code == 401
+
+    def test_unlink_other_players_tournament_returns_404(self, client: TestClient) -> None:
+        """A player cannot unlink a tournament owned by a different profile."""
+        created_a = _create_profile(client, name="Owner A", email="a@example.com")
+        created_b = _create_profile(client, name="Owner B", email="b@example.com")
+        profile_a = created_a["profile"]["id"]
+        token_b = created_b["access_token"]
+
+        tid = str(uuid.uuid4())
+        pid = str(uuid.uuid4())
+        _insert_tournament(tid, "A's Tournament")
+        _insert_player_secret(tid, pid, "Owner A", "cross-pass", "tok-cross", profile_a)
+
+        # Profile B tries to unlink Profile A's tournament
+        res = client.request(
+            "DELETE",
+            "/api/player-profile/unlink",
+            json={"entity_type": "tournament", "entity_id": tid},
+            headers=_headers(token_b),
+        )
+        assert res.status_code == 404
+
+        # Profile A's link is unchanged
+        with db_mod.get_db() as conn:
+            row = conn.execute(
+                "SELECT profile_id FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
+                (tid, pid),
+            ).fetchone()
+        assert row["profile_id"] == profile_a
+
+    def test_unlink_registration_returns_422(self, client: TestClient) -> None:
+        created = _create_profile(client, name="Reg Unlinker")
+        token = created["access_token"]
+
+        res = client.request(
+            "DELETE",
+            "/api/player-profile/unlink",
+            json={"entity_type": "registration", "entity_id": "some-rid"},
+            headers=_headers(token),
+        )
+        assert res.status_code == 422
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # History stats — rank, W/L stored when secrets are purged
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -1105,7 +1308,6 @@ class TestTeamStatsExpansion:
 
     def test_extract_history_stats_expands_team_to_individuals_gp(self) -> None:
         """extract_history_stats should produce entries for individual members of GP teams."""
-        from backend.api.player_secret_store import extract_history_stats
         from backend.models import Court, Player
         from backend.tournaments.group_playoff import GroupPlayoffTournament
 
@@ -1232,7 +1434,6 @@ class TestTeamStatsExpansion:
 
     def test_extract_history_stats_expands_team_to_individuals_mex(self) -> None:
         """extract_history_stats expands Mex team leaderboard to individual members."""
-        from backend.api.player_secret_store import extract_history_stats
         from backend.models import Court, Player
         from backend.tournaments.mexicano import MexicanoTournament
 
@@ -1270,7 +1471,6 @@ class TestTeamStatsExpansion:
 
     def test_extract_history_stats_playoff_uses_original_teams(self) -> None:
         """extract_history_stats for playoff type should use original_teams, not .players."""
-        from backend.api.player_secret_store import extract_history_stats
         from backend.models import Court, Player
         from backend.tournaments.playoff_tournament import PlayoffTournament
 
@@ -1297,7 +1497,6 @@ class TestTeamStatsExpansion:
 
     def test_extract_history_stats_playoff_champion_gets_rank1(self) -> None:
         """Champion team members should receive rank=1 in playoff stats."""
-        from backend.api.player_secret_store import extract_history_stats
         from backend.models import Court, Player
         from backend.tournaments.playoff_tournament import PlayoffTournament
 
@@ -1334,3 +1533,340 @@ class TestTeamStatsExpansion:
             assert stats[nid]["wins"] == 0
             assert stats[nid]["losses"] == 1
             assert stats[nid]["draws"] == 0
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Live in-progress stats — upsert_live_stats / maybe_update_live_stats
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestLiveStats:
+    """Tests for incremental Player Hub stats written on round completion."""
+
+    def _setup_active_tournament(
+        self, client: TestClient, *, profile_name: str = "Live Player"
+    ) -> tuple[str, str, str, str, str]:
+        """Create a profile, tournament, and linked player secret.
+
+        Returns (profile_id, token, tid, player_id, passphrase).
+        """
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        pid = f"p-{uuid.uuid4().hex[:8]}"
+        pp = f"pp-{uuid.uuid4().hex[:12]}"
+        _insert_tournament(tid, name="Live Cup")
+        _insert_player_secret(tid, pid, profile_name, pp, uuid.uuid4().hex)
+        created = _create_profile(client, name=profile_name, participant_passphrase=pp)
+        profile_id = created["profile"]["id"]
+        token = created["access_token"]
+        return profile_id, token, tid, pid, pp
+
+    def test_upsert_live_stats_writes_in_progress_row(self, client: TestClient) -> None:
+        """upsert_live_stats writes a player_history row with finished_at=''."""
+        profile_id, token, tid, pid, _ = self._setup_active_tournament(client)
+
+        # Simulate tournament data with stats for the player
+        t_data = {
+            "name": "Live Cup",
+            "type": "mexicano",
+            "sport": "padel",
+            "tournament": SimpleNamespace(
+                leaderboard=lambda: [
+                    {"player_id": pid, "rank": 2, "total_points": 30, "wins": 3, "losses": 1, "draws": 0}
+                ],
+                team_roster={},
+            ),
+        }
+        upsert_live_stats(tid, t_data)
+
+        with db_mod.get_db() as conn:
+            row = conn.execute(
+                "SELECT * FROM player_history WHERE profile_id = ? AND entity_id = ?",
+                (profile_id, tid),
+            ).fetchone()
+        assert row is not None
+        assert row["finished_at"] == ""
+        assert row["wins"] == 3
+        assert row["losses"] == 1
+        assert row["rank"] == 2
+
+    def test_upsert_live_stats_updates_on_subsequent_rounds(self, client: TestClient) -> None:
+        """Calling upsert_live_stats again replaces the previous in-progress snapshot."""
+        profile_id, token, tid, pid, _ = self._setup_active_tournament(client)
+
+        def make_t_data(wins: int, losses: int) -> dict:
+            return {
+                "name": "Live Cup",
+                "type": "mexicano",
+                "sport": "padel",
+                "tournament": SimpleNamespace(
+                    leaderboard=lambda wins=wins, losses=losses: [
+                        {"player_id": pid, "rank": 1, "total_points": 50, "wins": wins, "losses": losses, "draws": 0}
+                    ],
+                    team_roster={},
+                ),
+            }
+
+        upsert_live_stats(tid, make_t_data(2, 0))
+        upsert_live_stats(tid, make_t_data(4, 1))
+
+        with db_mod.get_db() as conn:
+            row = conn.execute(
+                "SELECT * FROM player_history WHERE profile_id = ? AND entity_id = ?",
+                (profile_id, tid),
+            ).fetchone()
+        assert row["wins"] == 4
+        assert row["losses"] == 1
+
+    def test_dashboard_active_entry_includes_live_stats(self, client: TestClient) -> None:
+        """GET /player/space returns W/L/D on active entries after upsert_live_stats."""
+        profile_id, token, tid, pid, _ = self._setup_active_tournament(client)
+
+        t_data = {
+            "name": "Live Cup",
+            "type": "mexicano",
+            "sport": "padel",
+            "tournament": SimpleNamespace(
+                leaderboard=lambda: [
+                    {"player_id": pid, "rank": 1, "total_points": 40, "wins": 5, "losses": 2, "draws": 1}
+                ],
+                team_roster={},
+            ),
+        }
+        upsert_live_stats(tid, t_data)
+
+        res = client.get("/api/player-profile/space", headers=_headers(token))
+        assert res.status_code == 200
+        entries = res.json()["entries"]
+        active = [e for e in entries if e["status"] == "active" and e["entity_id"] == tid]
+        assert len(active) == 1
+        entry = active[0]
+        assert entry["wins"] == 5
+        assert entry["losses"] == 2
+        assert entry["draws"] == 1
+        assert entry["rank"] == 1
+
+    def test_in_progress_row_excluded_from_history_section(self, client: TestClient) -> None:
+        """In-progress rows (finished_at='') do not appear as 'finished' entries."""
+        profile_id, token, tid, pid, _ = self._setup_active_tournament(client)
+
+        t_data = {
+            "name": "Live Cup",
+            "type": "mexicano",
+            "sport": "padel",
+            "tournament": SimpleNamespace(
+                leaderboard=lambda: [
+                    {"player_id": pid, "rank": 1, "total_points": 10, "wins": 1, "losses": 0, "draws": 0}
+                ],
+                team_roster={},
+            ),
+        }
+        upsert_live_stats(tid, t_data)
+
+        res = client.get("/api/player-profile/space", headers=_headers(token))
+        entries = res.json()["entries"]
+        finished = [e for e in entries if e["status"] == "finished" and e["entity_id"] == tid]
+        assert len(finished) == 0
+
+    def test_finish_overwrites_in_progress_row(self, client: TestClient) -> None:
+        """delete_secrets_for_tournament replaces the in-progress row with final stats."""
+        profile_id, token, tid, pid, _ = self._setup_active_tournament(client)
+
+        # Write in-progress snapshot
+        t_data = {
+            "name": "Live Cup",
+            "type": "mexicano",
+            "sport": "padel",
+            "tournament": SimpleNamespace(
+                leaderboard=lambda: [
+                    {"player_id": pid, "rank": 2, "total_points": 20, "wins": 2, "losses": 1, "draws": 0}
+                ],
+                team_roster={},
+            ),
+        }
+        upsert_live_stats(tid, t_data)
+
+        # Call the REAL function (conftest mocks the module attribute).
+        _real_delete_secrets(
+            tid,
+            entity_name="Live Cup",
+            player_stats={
+                pid: {
+                    "rank": 1,
+                    "total_players": 8,
+                    "wins": 5,
+                    "losses": 2,
+                    "draws": 0,
+                    "points_for": 60,
+                    "points_against": 30,
+                }
+            },
+            sport="padel",
+            partner_rival_stats={
+                pid: {
+                    "top_partners": [{"name": "Bob", "wins": 3, "games": 4, "win_pct": 75}],
+                    "top_rivals": [],
+                    "all_partners": [],
+                    "all_rivals": [],
+                }
+            },
+        )
+
+        with db_mod.get_db() as conn:
+            rows = conn.execute(
+                "SELECT * FROM player_history WHERE profile_id = ? AND entity_id = ?",
+                (profile_id, tid),
+            ).fetchall()
+        # Should have exactly one row (replaced, not duplicated)
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["finished_at"] != ""
+        assert row["wins"] == 5
+        assert row["rank"] == 1
+
+    def test_maybe_update_live_stats_skips_finished_tournament(self) -> None:
+        """maybe_update_live_stats does nothing for finished tournaments."""
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        _tournaments[tid] = {
+            "name": "Done Cup",
+            "type": "mexicano",
+            "sport": "padel",
+            "tournament": SimpleNamespace(phase="finished"),
+        }
+        try:
+            # Should not raise, should be a no-op
+            maybe_update_live_stats(tid)
+        finally:
+            _tournaments.pop(tid, None)
+
+    def test_upsert_live_stats_skips_when_no_linked_profiles(self) -> None:
+        """upsert_live_stats gracefully does nothing when no profiles are linked."""
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        pid = f"p-{uuid.uuid4().hex[:8]}"
+        _insert_tournament(tid, name="No Links")
+        # player secret without profile_id
+        _insert_player_secret(tid, pid, "Solo", f"pp-{uuid.uuid4().hex}", uuid.uuid4().hex)
+
+        t_data = {
+            "name": "No Links",
+            "type": "mexicano",
+            "sport": "padel",
+            "tournament": SimpleNamespace(
+                leaderboard=lambda: [
+                    {"player_id": pid, "rank": 1, "total_points": 10, "wins": 1, "losses": 0, "draws": 0}
+                ],
+                team_roster={},
+            ),
+        }
+        upsert_live_stats(tid, t_data)
+
+        with db_mod.get_db() as conn:
+            rows = conn.execute("SELECT * FROM player_history WHERE entity_id = ?", (tid,)).fetchall()
+        assert len(rows) == 0
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Passphrase resolve endpoint
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestResolvePassphrase:
+    """Tests for POST /api/player-profile/resolve — unified login discovery."""
+
+    def test_resolve_not_found(self, client: TestClient) -> None:
+        res = client.post("/api/player-profile/resolve", json={"passphrase": "nonexistent-phrase-here"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["type"] == "not_found"
+        assert data["matches"] == []
+
+    def test_resolve_tournament_match(self, client: TestClient) -> None:
+        tid = f"t-resolve-{uuid.uuid4().hex[:8]}"
+        pid = f"p-resolve-{uuid.uuid4().hex[:8]}"
+        pp = f"resolve-tourn-{uuid.uuid4().hex[:8]}"
+        _insert_tournament(tid, name="Summer Cup")
+        _insert_player_secret(tid, pid, "Alice", pp, uuid.uuid4().hex)
+
+        res = client.post("/api/player-profile/resolve", json={"passphrase": pp})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["type"] == "participation"
+        assert len(data["matches"]) == 1
+        m = data["matches"][0]
+        assert m["entity_type"] == "tournament"
+        assert m["entity_name"] == "Summer Cup"
+        assert m["player_name"] == "Alice"
+
+    def test_resolve_registration_match(self, client: TestClient) -> None:
+        rid = f"r-resolve-{uuid.uuid4().hex[:8]}"
+        pid = f"p-resolve-{uuid.uuid4().hex[:8]}"
+        pp = f"resolve-reg-{uuid.uuid4().hex[:8]}"
+        _insert_registration(rid, name="Winter Lobby")
+        _insert_registrant(rid, pid, "Bob", pp, uuid.uuid4().hex)
+
+        res = client.post("/api/player-profile/resolve", json={"passphrase": pp})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["type"] == "participation"
+        assert len(data["matches"]) == 1
+        m = data["matches"][0]
+        assert m["entity_type"] == "registration"
+        assert m["entity_name"] == "Winter Lobby"
+        assert m["player_name"] == "Bob"
+
+    def test_resolve_multiple_matches(self, client: TestClient) -> None:
+        """Same passphrase in two tournaments → both returned."""
+        pp = f"resolve-multi-{uuid.uuid4().hex[:8]}"
+        tid1 = f"t-multi1-{uuid.uuid4().hex[:8]}"
+        tid2 = f"t-multi2-{uuid.uuid4().hex[:8]}"
+        _insert_tournament(tid1, name="Cup A")
+        _insert_tournament(tid2, name="Cup B")
+        _insert_player_secret(tid1, "p1", "Carol", pp, uuid.uuid4().hex)
+        _insert_player_secret(tid2, "p2", "Carol", pp, uuid.uuid4().hex)
+
+        res = client.post("/api/player-profile/resolve", json={"passphrase": pp})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["type"] == "participation"
+        assert len(data["matches"]) == 2
+        names = {m["entity_name"] for m in data["matches"]}
+        assert names == {"Cup A", "Cup B"}
+
+    def test_resolve_profile_match(self, client: TestClient) -> None:
+        """When a profile exists with this passphrase, resolve returns 'profile'."""
+        tid = f"t-profres-{uuid.uuid4().hex[:8]}"
+        pid = f"p-profres-{uuid.uuid4().hex[:8]}"
+        pp = f"resolve-prof-{uuid.uuid4().hex[:8]}"
+        _insert_tournament(tid)
+        _insert_player_secret(tid, pid, "Dave", pp, uuid.uuid4().hex)
+
+        # Create a profile so the passphrase gets claimed as a profile passphrase
+        resp = _create_profile(client, name="Dave", email="dave@example.com", participant_passphrase=pp)
+        profile_pp = resp["profile"]["passphrase"]
+
+        res = client.post("/api/player-profile/resolve", json={"passphrase": profile_pp})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["type"] == "profile"
+        assert data["matches"] == []
+
+    def test_resolve_empty_passphrase_rejected(self, client: TestClient) -> None:
+        res = client.post("/api/player-profile/resolve", json={"passphrase": ""})
+        assert res.status_code == 422
+
+    def test_resolve_mixed_tournament_and_registration(self, client: TestClient) -> None:
+        """Passphrase matches both a tournament and a registration."""
+        pp = f"resolve-mixed-{uuid.uuid4().hex[:8]}"
+        tid = f"t-mixed-{uuid.uuid4().hex[:8]}"
+        rid = f"r-mixed-{uuid.uuid4().hex[:8]}"
+        _insert_tournament(tid, name="Mixed Cup")
+        _insert_player_secret(tid, "p1", "Eve", pp, uuid.uuid4().hex)
+        _insert_registration(rid, name="Mixed Lobby")
+        _insert_registrant(rid, "p2", "Eve", pp, uuid.uuid4().hex)
+
+        res = client.post("/api/player-profile/resolve", json={"passphrase": pp})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["type"] == "participation"
+        assert len(data["matches"]) == 2
+        types = {m["entity_type"] for m in data["matches"]}
+        assert types == {"tournament", "registration"}

@@ -29,6 +29,7 @@ from ..auth import auth_router
 from ..auth.store import user_store
 from .db import init_db
 from .state import persist_failed as _persist_failed
+from .routes_admin_players import router as admin_players_router
 from .routes_crud import router as crud_router
 from .routes_gp import router as gp_router
 from .routes_mex import router as mex_router
@@ -124,6 +125,7 @@ async def csrf_origin_protection(request: Request, call_next):
 
 
 # Register routers
+app.include_router(admin_players_router)
 app.include_router(auth_router)
 app.include_router(crud_router)
 app.include_router(gp_router)
@@ -354,6 +356,12 @@ async def serve_admin_convert_js(request: Request) -> Response:
 async def serve_admin_collaborators_js(request: Request) -> Response:
     """Serve collaborator management for tournaments and registrations."""
     return _serve_js_file("admin-collaborators.js", request)
+
+
+@app.get("/admin-players.js")
+async def serve_admin_players_js(request: Request) -> Response:
+    """Serve Player Hub admin management."""
+    return _serve_js_file("admin-players.js", request)
 
 
 @app.get("/tv.js")
