@@ -26,6 +26,7 @@ def _clean_state(tmp_path):
     import backend.api.state as state_mod
     import backend.api.player_secret_store as ps_mod
     import backend.api.routes_player_auth as rpa_mod
+    import backend.api.routes_player_space as ps_routes_mod
     import backend.api.routes_registration as reg_mod
     import backend.api.routes_gp as gp_mod
     import backend.api.routes_mex as mex_mod
@@ -69,6 +70,8 @@ def _clean_state(tmp_path):
     auth_routes_mod._login_rate_limiter.clear()
     crud_mod._notify_rate_limiter.clear()
     crud_mod._email_send_rate_limiter.clear()
+    ps_routes_mod._RATE_LIMITER.clear()
+    ps_routes_mod._RECOVER_RATE_LIMITER.clear()
 
     # Disable outbound email globally for tests and stub SMTP transport so
     # test runs never depend on local SMTP env or network availability.
