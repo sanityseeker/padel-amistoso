@@ -1,3 +1,9 @@
+## v1.5.3 (2026-04-12)
+
+### Fix
+
+- **tests**: fix email verification test
+
 ## v1.5.2 (2026-04-12)
 
 ### Fix
