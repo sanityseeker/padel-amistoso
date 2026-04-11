@@ -259,6 +259,16 @@ async def serve_tv(slug: str | None = None) -> Response:
     )
 
 
+@app.get("/t")
+async def serve_tv_legacy_root() -> Response:
+    return RedirectResponse(url="/tv", status_code=307)
+
+
+@app.get("/t/{slug}")
+async def serve_tv_legacy(slug: str) -> Response:
+    return RedirectResponse(url=f"/tv/{slug}", status_code=307)
+
+
 @app.get("/register")
 async def serve_register() -> Response:
     return Response(
@@ -275,6 +285,16 @@ async def serve_register_alias(alias: str) -> Response:
         media_type="text/html",
         headers={"Cache-Control": "no-cache"},
     )
+
+
+@app.get("/r")
+async def serve_register_legacy_root() -> Response:
+    return RedirectResponse(url="/register", status_code=307)
+
+
+@app.get("/r/{slug}")
+async def serve_register_legacy(slug: str) -> Response:
+    return RedirectResponse(url=f"/register/{slug}", status_code=307)
 
 
 @app.get("/player")

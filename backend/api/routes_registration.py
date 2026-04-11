@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import secrets
+import sqlite3
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -99,9 +101,13 @@ _public_passphrase_rate_limiter = BoundedRateLimiter(
 
 _registration_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
-# Dedicated lock for sequential registration ID allocation — mirrors
+# Dedicated lock for registration ID allocation/insertion — mirrors
 # ``_id_allocation_lock`` in ``state.py`` for tournament IDs.
 _reg_id_allocation_lock: asyncio.Lock = asyncio.Lock()
+
+_REGISTRATION_ID_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz"
+_REGISTRATION_ID_LEN = 8
+_REGISTRATION_ID_MAX_ATTEMPTS = 32
 
 
 def _client_ip(request: Request) -> str:
@@ -124,16 +130,26 @@ def _email_requirement(reg: dict) -> str:
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def _next_registration_id() -> str:
-    """Return the next sequential registration ID (e.g. ``r3``)."""
+def _candidate_registration_id() -> str:
+    """Return a short candidate registration ID (e.g. ``"rg_8k3w9q2h"``)."""
+    suffix = "".join(secrets.choice(_REGISTRATION_ID_ALPHABET) for _ in range(_REGISTRATION_ID_LEN))
+    return f"rg_{suffix}"
+
+
+def _registration_id_exists(rid: str) -> bool:
+    """Return True if *rid* already exists in the registrations table."""
     with get_db() as conn:
-        row = conn.execute("SELECT value FROM meta WHERE key = 'reg_counter'").fetchone()
-        if row is None:
-            conn.execute("INSERT INTO meta (key, value) VALUES ('reg_counter', 1)")
-            return "r1"
-        new_val = row["value"] + 1
-        conn.execute("UPDATE meta SET value = ? WHERE key = 'reg_counter'", (new_val,))
-        return f"r{new_val}"
+        row = conn.execute("SELECT 1 FROM registrations WHERE id = ? LIMIT 1", (rid,)).fetchone()
+        return row is not None
+
+
+def _next_registration_id() -> str:
+    """Return a short unique registration ID."""
+    for _ in range(_REGISTRATION_ID_MAX_ATTEMPTS):
+        rid = _candidate_registration_id()
+        if not _registration_id_exists(rid):
+            return rid
+    return _candidate_registration_id()
 
 
 def _get_registration(rid: str) -> dict:
@@ -399,30 +415,33 @@ async def create_registration(
     client_ip = _client_ip(request)
     _create_rate_limiter.check(client_ip, "Too many registration creation attempts — try again later")
     _create_rate_limiter.record(client_ip)
-    async with _reg_id_allocation_lock:
-        rid = _next_registration_id()
     now = datetime.now(timezone.utc).isoformat()
     questions_json = json.dumps([q.model_dump() for q in req.questions]) if req.questions else None
-    with get_db() as conn:
-        conn.execute(
-            """INSERT INTO registrations
-               (id, name, owner, open, join_code, questions, description, message, listed, sport, auto_send_email, email_requirement, created_at)
-               VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                rid,
-                req.name,
-                user.username,
-                req.join_code,
-                questions_json,
-                req.description,
-                req.message,
-                1 if req.listed else 0,
-                req.sport.value,
-                1 if req.auto_send_email else 0,
-                req.email_requirement,
-                now,
-            ),
-        )
+    async with _reg_id_allocation_lock:
+        rid = _next_registration_id()
+        try:
+            with get_db() as conn:
+                conn.execute(
+                    """INSERT INTO registrations
+                       (id, name, owner, open, join_code, questions, description, message, listed, sport, auto_send_email, email_requirement, created_at)
+                       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        rid,
+                        req.name,
+                        user.username,
+                        req.join_code,
+                        questions_json,
+                        req.description,
+                        req.message,
+                        1 if req.listed else 0,
+                        req.sport.value,
+                        1 if req.auto_send_email else 0,
+                        req.email_requirement,
+                        now,
+                    ),
+                )
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(409, "Could not allocate a unique registration ID") from exc
     return {"id": rid, "name": req.name}
 
 

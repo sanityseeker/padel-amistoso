@@ -153,7 +153,7 @@ def render_registration_confirmation(
 ) -> tuple[str, str]:
     """Return ``(subject, html_body)`` for a registration confirmation email."""
     base = _site_url()
-    lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register?id={lobby_id}"
+    lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register/{lobby_id}"
     login_url = f"{base}{lobby_path}?token={token}" if base else ""
 
     subject = f"Registration confirmed — {lobby_name}"
@@ -193,7 +193,7 @@ def render_credentials_email(
 ) -> tuple[str, str]:
     """Return ``(subject, html_body)`` for a credentials reminder email."""
     base = _site_url()
-    lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register?id={lobby_id}"
+    lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register/{lobby_id}"
     login_url = f"{base}{lobby_path}?token={token}" if base else ""
 
     subject = f"Your login details — {lobby_name}"
@@ -266,7 +266,7 @@ def render_organizer_message_email(
 ) -> tuple[str, str]:
     """Return ``(subject, html_body)`` for an organizer announcement email."""
     base = _site_url()
-    lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register?id={lobby_id}"
+    lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register/{lobby_id}"
     login_url = f"{base}{lobby_path}?token={token}" if base else ""
 
     subject = f"Message from organizer — {lobby_name}"
@@ -522,7 +522,7 @@ def render_cancellation_email(
 ) -> tuple[str, str]:
     """Return ``(subject, html_body)`` for a registration-cancellation confirmation."""
     base = _site_url()
-    lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register?id={lobby_id}"
+    lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register/{lobby_id}"
     register_url = f"{base}{lobby_path}" if base else ""
 
     subject = f"Registration cancelled — {lobby_name}"
@@ -553,7 +553,7 @@ def render_waitlist_spot_email(
 ) -> tuple[str, str]:
     """Return ``(subject, html_body)`` for a waitlist spot-available notification."""
     base = _site_url()
-    lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register?id={lobby_id}"
+    lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register/{lobby_id}"
     login_url = f"{base}{lobby_path}?token={token}" if base else ""
 
     subject = f"A spot opened up — {lobby_name}"

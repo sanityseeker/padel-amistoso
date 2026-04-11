@@ -45,7 +45,7 @@ def _opponent_player_ids(match: Match, submitter_id: str) -> set[str]:
 def _tv_url(tid: str, alias: str | None) -> str:
     """Build the TV page URL for a tournament."""
     slug = alias or tid
-    return f"/t/{slug}"
+    return f"/tv/{slug}"
 
 
 # ────────────────────────────────────────────────────────────────────────────

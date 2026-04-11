@@ -238,7 +238,7 @@ function _renderDirectory(lobbies) {
     for (const lobby of lobbies) {
       const url = lobby.alias
         ? `/register/${encodeURIComponent(lobby.alias)}`
-        : `/register?id=${encodeURIComponent(lobby.id)}`;
+        : `/register/${encodeURIComponent(lobby.id)}`;
       const count = lobby.registrant_count || 0;
       const countText = `${count} ${t(count === 1 ? 'txt_reg_player_singular' : 'txt_reg_players_plural')}`;
       const isTennis = lobby.sport === 'tennis';

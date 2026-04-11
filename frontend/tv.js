@@ -47,7 +47,7 @@ const _pathSlug = (() => {
   return m ? decodeURIComponent(m[1]) : null;
 })();
 // Legacy query-param support (?tid= / ?t=) kept for backwards compat
-let TID = _params.get('tid') || (/^t\d+$/.test(_pathSlug) ? _pathSlug : null);
+let TID = _params.get('tid') || null;
 const _aliasParam = _params.get('t') || (!TID ? _pathSlug : null);
 
 // ── State ─────────────────────────────────────────────────
@@ -2141,11 +2141,11 @@ async function _resolveAlias() {
       TID = data.id;
     } catch (error) {
       if (error?.status === 404) {
-        _redirectToNotFoundPage(t('txt_tv_not_found_deleted_hint'), '/tv');
+        TID = _aliasParam;
+      } else {
+        await _showPicker();
         return false;
       }
-      await _showPicker();
-      return false;
     }
   }
   return true;
@@ -2228,10 +2228,11 @@ async function _goToTournament(e) {
   document.querySelector('.picker-inline-error')?.remove();
 
   try {
-    if (/^t\d+$/.test(val)) {
-      await api(`/api/tournaments/${encodeURIComponent(val)}/meta`);
-    } else {
+    try {
       await api(`/api/tournaments/resolve-alias/${encodeURIComponent(val)}`);
+    } catch (aliasErr) {
+      if (aliasErr?.status !== 404) throw aliasErr;
+      await api(`/api/tournaments/${encodeURIComponent(val)}/meta`);
     }
     location.href = `/tv/${encodeURIComponent(val)}`;
   } catch (_) {

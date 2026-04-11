@@ -28,6 +28,7 @@ import io
 import json
 import logging
 import pickle
+import secrets
 import sqlite3
 from dataclasses import fields as dataclass_fields
 
@@ -91,8 +92,9 @@ logger = logging.getLogger(__name__)
 # ────────────────────────────────────────────────────────────────────────────
 
 _tournaments: dict[str, dict] = {}
+# Legacy compatibility symbol kept for tests and backend.api re-exports.
+# Tournament IDs are now UUIDv7-based; this counter is no longer used.
 _counter: int = 0
-
 # Per-tournament version counters — bumped on every _save_tournament() call.
 # The TV display polls /{tid}/version cheaply and reloads only on change.
 _tournament_versions: dict[str, int] = {}
@@ -122,20 +124,37 @@ def get_tournament_lock(tid: str) -> asyncio.Lock:
     return lock
 
 
-def _next_id() -> str:
-    """Return the next sequential tournament ID (e.g. ``t3``) and persist it."""
-    global _counter
-    _counter += 1
+_TOURNAMENT_ID_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz"
+_TOURNAMENT_ID_LEN = 8
+_TOURNAMENT_ID_MAX_ATTEMPTS = 32
+
+
+def _candidate_tournament_id() -> str:
+    """Return a short candidate tournament ID (e.g. ``"tm_8k3w9q2h"``)."""
+    suffix = "".join(secrets.choice(_TOURNAMENT_ID_ALPHABET) for _ in range(_TOURNAMENT_ID_LEN))
+    return f"tm_{suffix}"
+
+
+def _tournament_id_exists(tid: str) -> bool:
+    """Return True if *tid* already exists in memory or persisted storage."""
+    if tid in _tournaments:
+        return True
     try:
         with get_db() as conn:
-            conn.execute(
-                "INSERT INTO meta (key, value) VALUES ('tournament_counter', ?)"
-                " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (_counter,),
-            )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not persist tournament counter: %s", exc)
-    return f"t{_counter}"
+            row = conn.execute("SELECT 1 FROM tournaments WHERE id = ? LIMIT 1", (tid,)).fetchone()
+            return row is not None
+    except sqlite3.Error as exc:
+        logger.warning("Could not check tournament ID collision for %s: %s", tid, exc)
+        return False
+
+
+def _next_id() -> str:
+    """Return a short, globally unique tournament ID."""
+    for _ in range(_TOURNAMENT_ID_MAX_ATTEMPTS):
+        tid = _candidate_tournament_id()
+        if not _tournament_id_exists(tid):
+            return tid
+    return _candidate_tournament_id()
 
 
 async def allocate_tournament_id() -> str:
@@ -291,7 +310,7 @@ def get_tournament_data(tid: str) -> dict | None:
     has already finished (and its player_secrets have been purged).
 
     Args:
-        tid: Tournament ID, e.g. ``"t5"``.
+        tid: Tournament ID (legacy like ``"t5"`` or UUIDv7).
 
     Returns:
         The same dict structure as ``_tournaments[tid]``, or ``None`` if the
@@ -436,8 +455,6 @@ def _load_state() -> None:
     Rows whose BLOB cannot be deserialised (e.g. after a schema-breaking code
     change) are skipped with a warning rather than crashing the server.
     """
-    global _counter
-
     try:
         with get_db() as conn:
             rows = conn.execute(
@@ -470,19 +487,6 @@ def _load_state() -> None:
             else None,
         }
         _tournament_versions[tid] = row["version"]
-
-        # Keep the in-memory counter ahead of the highest persisted ID.
-        if tid.startswith("t") and tid[1:].isdigit():
-            _counter = max(_counter, int(tid[1:]))
-
-    # Also seed from the persisted counter so deleted IDs are never reused.
-    try:
-        with get_db() as conn:
-            row = conn.execute("SELECT value FROM meta WHERE key = 'tournament_counter'").fetchone()
-            if row:
-                _counter = max(_counter, row["value"])
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not read tournament counter from meta: %s", exc)
 
     logger.info("Loaded %d tournament(s) from SQLite", len(_tournaments))
     purge_expired_secrets()

@@ -54,7 +54,7 @@ def create_secrets_for_tournament(
     """Generate and persist secrets for every player in a tournament.
 
     Args:
-        tournament_id: The tournament ID (e.g. ``"t5"``).
+        tournament_id: The tournament ID (legacy like ``"t5"`` or UUIDv7).
         players: List of dicts with ``"id"`` and ``"name"`` keys.
         contacts: Optional mapping of player_id → contact string. Missing
             entries default to an empty string.

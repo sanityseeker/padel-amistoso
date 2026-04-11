@@ -188,10 +188,10 @@ class TestPushEventHelpers:
         assert opps2 == {p1.id, p2.id}
 
     def test_tv_url_with_alias(self):
-        assert _tv_url("t123", "my-tourney") == "/t/my-tourney"
+        assert _tv_url("t123", "my-tourney") == "/tv/my-tourney"
 
     def test_tv_url_without_alias(self):
-        assert _tv_url("t123", None) == "/t/t123"
+        assert _tv_url("t123", None) == "/tv/t123"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

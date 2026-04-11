@@ -7,6 +7,8 @@ Fixtures (client, auth_headers, _clean_state) are provided by conftest.py.
 
 from __future__ import annotations
 
+import re
+
 
 # ── General ────────────────────────────────────────────────
 
@@ -21,6 +23,30 @@ class TestGeneral:
         r = client.get("/api/tournaments")
         assert r.status_code == 200
         assert r.json() == []
+
+    def test_created_tournament_ids_are_unique_short_format(self, client, auth_headers):
+        body = {
+            "name": "UUID Cup",
+            "player_names": ["A", "B", "C", "D"],
+            "team_mode": False,
+            "court_names": ["Court 1"],
+            "num_groups": 1,
+            "top_per_group": 1,
+            "double_elimination": False,
+        }
+
+        first = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers)
+        second = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers)
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+
+        tid1 = first.json()["id"]
+        tid2 = second.json()["id"]
+
+        assert tid1 != tid2
+        assert re.fullmatch(r"tm_[23456789abcdefghjkmnpqrstuvwxyz]{8}", tid1)
+        assert re.fullmatch(r"tm_[23456789abcdefghjkmnpqrstuvwxyz]{8}", tid2)
 
 
 # ── Group + Play-off API ──────────────────────────────────
@@ -605,6 +631,10 @@ class TestRegistrationAPI:
         r = client.get("/api/registrations", headers=auth_headers)
         assert r.status_code == 200
         assert any(reg["id"] == rid for reg in r.json())
+
+    def test_create_returns_short_registration_id_format(self, client, auth_headers):
+        rid = self._create_registration(client, auth_headers)
+        assert re.fullmatch(r"rg_[23456789abcdefghjkmnpqrstuvwxyz]{8}", rid)
 
     def test_create_with_listed(self, client, auth_headers):
         rid = self._create_registration(client, auth_headers, listed=True)

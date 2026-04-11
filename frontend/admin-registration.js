@@ -168,7 +168,7 @@ function _renderRegDetailInline(rid) {
   const regAlias = r.alias || '';
   const regUrl = regAlias
     ? `${window.location.origin}/register/${regAlias}`
-    : `${window.location.origin}/register?id=${esc(r.id)}`;
+    : `${window.location.origin}/register/${esc(r.id)}`;
 
   // Registration link + alias section
   html += `<div style="margin-bottom:1rem;padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px">`;
@@ -454,7 +454,7 @@ function _copyRegLink(rid) {
   const alias = _regDetails[rid]?.alias;
   const url = alias
     ? `${window.location.origin}/register/${alias}`
-    : `${window.location.origin}/register?id=${rid}`;
+    : `${window.location.origin}/register/${rid}`;
   navigator.clipboard.writeText(url).then(() => {
     const origText = event?.target?.textContent;
     if (event?.target) { event.target.textContent = '✓'; setTimeout(() => { event.target.textContent = origText || t('txt_reg_copy_link'); }, 1200); }

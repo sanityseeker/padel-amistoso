@@ -513,8 +513,8 @@ document.addEventListener('click', (e) => {
  * subscription (closes the EventSource or clears the poll timer).
  *
  * @param {object} opts
- * @param {string} opts.url              SSE endpoint URL, e.g. `/api/tournaments/t1/events`
- * @param {string} opts.pollUrl          Polling fallback URL, e.g. `/api/tournaments/t1/version`
+ * @param {string} opts.url              SSE endpoint URL, e.g. `/api/tournaments/018f0c36-7b4a-7cc2-9e6b-7f6cfd6d3f6c/events`
+ * @param {string} opts.pollUrl          Polling fallback URL, e.g. `/api/tournaments/018f0c36-7b4a-7cc2-9e6b-7f6cfd6d3f6c/version`
  * @param {number} opts.pollIntervalMs   Polling interval in ms (default: 3000)
  * @param {function} opts.onVersion      Called with the parsed data object on each event
  * @returns {{ close: function }}

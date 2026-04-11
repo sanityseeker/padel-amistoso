@@ -868,7 +868,7 @@ function _buildLinkModal() {
   html += `<div class="form-group"><label>${esc(t('txt_player_link_entity_type'))}</label>`;
   html += `<select id="link-type"><option value="tournament">${esc(t('txt_player_link_type_tournament'))}</option><option value="registration">${esc(t('txt_player_link_type_registration'))}</option></select></div>`;
   html += `<div class="form-group"><label>${esc(t('txt_player_link_entity_id'))}</label>`;
-  html += `<input type="text" id="link-entity-id" placeholder="e.g. t5, my-tourney or r3" autocomplete="off"></div>`;
+  html += `<input type="text" id="link-entity-id" placeholder="e.g. tournament UUID, alias, or registration ID" autocomplete="off"></div>`;
   html += `<div class="form-group"><label>${esc(t('txt_player_link_passphrase'))}</label>`;
   html += `<input type="text" id="link-passphrase" placeholder="${esc(t('txt_player_passphrase_placeholder'))}" autocomplete="off" autocapitalize="none" spellcheck="false"></div>`;
   if (_errorMsg) html += `<div class="error-msg">${esc(_errorMsg)}</div>`;
