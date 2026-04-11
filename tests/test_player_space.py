@@ -988,6 +988,8 @@ class TestEmailVerification:
     ) -> None:
         sent_html: list[str] = []
 
+        monkeypatch.setattr("backend.email.SITE_URL", "https://example.com")
+
         def _capture_email(_to: str, _subject: str, html_body: str) -> None:
             sent_html.append(html_body)
 
