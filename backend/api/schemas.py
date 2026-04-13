@@ -9,7 +9,7 @@ from typing import Annotated, Literal
 from email_validator import EmailNotValidError, validate_email as _validate_email
 from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
 
-from backend.models import Sport
+from backend.models import EliminationType, ParticipationStatus, QuestionType, ScoreConfirmation, Sport, TournamentType
 
 
 def _coerce_optional_email(v: str) -> str:
@@ -130,6 +130,10 @@ class CreateMexicanoRequest(BaseModel):
     opponent_repeat_weight: float = Field(default=1.0, ge=0.0)
     repeat_decay: float = Field(default=0.5, ge=0.0)
     partner_balance_weight: float = Field(default=0.0, ge=0.0)
+    strength_min_matches: int = Field(default=4, ge=0)
+    strength_win_factor: float = Field(default=1.0, ge=0.0, le=1.0)
+    strength_draw_factor: float = Field(default=0.75, ge=0.0, le=1.0)
+    strength_loss_factor: float = Field(default=0.5, ge=0.0, le=1.0)
     public: bool = True
     assign_courts: bool = True
     player_strengths: dict[str, float] = Field(default_factory=dict)
@@ -245,7 +249,7 @@ class TvSettingsRequest(BaseModel):
     schema_output_scale: float | None = Field(default=None, ge=0.5, le=3.0)
     score_mode: dict[str, str] | None = None
     banner_text: str | None = None
-    score_confirmation: str | None = None
+    score_confirmation: ScoreConfirmation | None = None
     # Seconds the opposing team has to submit a correction after the score is
     # submitted.  0 means no limit (corrections are always allowed until confirmed).
     correction_window_seconds: int | None = Field(default=None, ge=0, le=3600)
@@ -271,17 +275,18 @@ class TvSettings(BaseModel):
     banner_text: str = ""
     # "immediate": score counts on submit (good for fast Mexicano rounds).
     # "required": score stays pending until accepted/auto-finalised by opposing team.
-    score_confirmation: str = "immediate"
+    score_confirmation: ScoreConfirmation = ScoreConfirmation.IMMEDIATE
     # Seconds the opposing team has to submit a correction (0 = no limit).
     correction_window_seconds: int = 0
 
-    @field_validator("score_confirmation")
+    @field_validator("score_confirmation", mode="before")
     @classmethod
-    def validate_score_confirmation(cls, v: str) -> str:
-        allowed = {"immediate", "required"}
-        if v not in allowed:
+    def validate_score_confirmation(cls, v: str) -> ScoreConfirmation:
+        try:
+            return ScoreConfirmation(v)
+        except ValueError:
+            allowed = {m.value for m in ScoreConfirmation}
             raise ValueError(f"score_confirmation must be one of {allowed}")
-        return v
 
 
 class EmailSettingsRequest(BaseModel):
@@ -374,6 +379,10 @@ class PatchMexSettingsRequest(BaseModel):
     opponent_repeat_weight: float = Field(ge=0.0)
     repeat_decay: float = Field(ge=0.0)
     partner_balance_weight: float = Field(default=0.0, ge=0.0)
+    strength_min_matches: int = Field(default=4, ge=0)
+    strength_win_factor: float = Field(default=1.0, ge=0.0, le=1.0)
+    strength_draw_factor: float = Field(default=0.75, ge=0.0, le=1.0)
+    strength_loss_factor: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
 class NextRoundRequest(BaseModel):
@@ -414,7 +423,7 @@ class StartGroupPlayoffsRequest(BaseModel):
 class SchemaPreviewRequest(BaseModel):
     group_sizes: list[int]
     advance_per_group: int = Field(default=2, ge=1)
-    elimination: Literal["single", "double"] = "single"
+    elimination: EliminationType = EliminationType.SINGLE
     title: str | None = None
     box_scale: float = Field(default=1.0, ge=0.3, le=3.0)
     line_width: float = Field(default=1.0, ge=0.3, le=5.0)
@@ -442,7 +451,7 @@ class QuestionDef(BaseModel):
 
     key: str = Field(min_length=1, max_length=64)
     label: str = Field(min_length=1, max_length=128)
-    type: Literal["text", "choice", "multichoice", "number"] = "text"
+    type: QuestionType = QuestionType.TEXT
     required: bool = False
     choices: list[str] = Field(default_factory=list)
 
@@ -569,7 +578,7 @@ class RegistrationPublicOut(BaseModel):
     linked_tournaments: list[LinkedTournamentOut] = Field(default_factory=list)
     listed: bool = False
     archived: bool = False
-    sport: str = "padel"
+    sport: Sport = Sport.PADEL
     auto_send_email: bool = False
     email_requirement: EmailRequirement = "optional"
     registrant_count: int = 0
@@ -586,7 +595,7 @@ class RegistrationAdminOut(BaseModel):
     questions: list[QuestionDef] = Field(default_factory=list)
     listed: bool = False
     archived: bool = False
-    sport: str = "padel"
+    sport: Sport = Sport.PADEL
     description: str | None = None
     message: str | None = None
     alias: str | None = None
@@ -612,7 +621,7 @@ class RegistrantPatch(BaseModel):
 class ConvertRegistrationRequest(BaseModel):
     """Convert a registration lobby into a tournament."""
 
-    tournament_type: Literal["group_playoff", "mexicano", "playoff"]
+    tournament_type: TournamentType
     name: str | None = Field(default=None, max_length=255)
     player_names: list[str] = Field(default_factory=list)
     # Group+Playoff specific
@@ -638,6 +647,10 @@ class ConvertRegistrationRequest(BaseModel):
     opponent_repeat_weight: float = Field(default=1.0, ge=0.0)
     repeat_decay: float = Field(default=0.5, ge=0.0)
     partner_balance_weight: float = Field(default=0.0, ge=0.0)
+    strength_min_matches: int = Field(default=4, ge=0)
+    strength_win_factor: float = Field(default=1.0, ge=0.0, le=1.0)
+    strength_draw_factor: float = Field(default=0.75, ge=0.0, le=1.0)
+    strength_loss_factor: float = Field(default=0.5, ge=0.0, le=1.0)
     # Team formation (admin-composed teams from individual registrants)
     teams: list[list[str]] = Field(default_factory=list)
     team_names: list[str | None] = Field(default_factory=list)
@@ -658,7 +671,7 @@ class ConvertRegistrationRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_teams(self) -> "ConvertRegistrationRequest":
-        if self.tournament_type == "playoff" and self.sport == Sport.PADEL and not self.team_mode:
+        if self.tournament_type == TournamentType.PLAYOFF and self.sport == Sport.PADEL and not self.team_mode:
             raise ValueError("Play-off conversion for padel requires team_mode=True")
 
         if self.teams:
@@ -722,7 +735,7 @@ class AdminParticipationLink(BaseModel):
     player_id: str
     player_name: str
     tournament_name: str
-    status: str  # "active" or "finished"
+    status: ParticipationStatus  # "active" or "finished"
     finished_at: str | None = None
     rank: int | None = None
     total_players: int | None = None

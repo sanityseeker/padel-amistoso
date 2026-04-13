@@ -474,6 +474,7 @@ function _buildPathPanel(entry) {
     const rankText    = row.rank ? `#${row.rank}/${row.total_players || '?'}` : '—';
     const partnerText = (row.partners || []).length ? row.partners.join(', ') : (row.played ? '—' : t('txt_player_path_sit_out'));
     const opponentText = (row.opponents || []).length ? row.opponents.join(', ') : (row.played ? '—' : t('txt_player_path_sit_out'));
+    const isTennisRow = row.score_mode === 'tennis';
 
     // Rank trend
     let dotMod = '', trendArrow = '', trendClass = '';
@@ -484,9 +485,11 @@ function _buildPathPanel(entry) {
     }
     if (row.rank != null) _prevRank = row.rank;
 
-    // Points delta
-    const roundPoints = row.played ? (row.cumulative_points || 0) - _prevPoints : 0;
-    if (row.played) _prevPoints = row.cumulative_points || 0;
+    // Points delta (or explicit backend-provided value)
+    const roundPoints = row.played
+      ? (row.round_points_delta != null ? row.round_points_delta : (row.cumulative_points || 0) - _prevPoints)
+      : 0;
+    if (row.played && !isTennisRow) _prevPoints = row.cumulative_points || 0;
 
     // Best-rank highlight
     const isBest = bestRank != null && row.rank === bestRank && row.played;
@@ -498,14 +501,41 @@ function _buildPathPanel(entry) {
     const rankArrowHtml = trendArrow
       ? ` <span class="entry-path-rank-arrow entry-path-rank-arrow--${trendClass}">${trendArrow}</span>` : '';
 
+    const _fmtSigned = (n) => {
+      if (n == null) return '0';
+      const num = Number(n) || 0;
+      return num > 0 ? `+${num}` : `${num}`;
+    };
+    const setsDeltaHtml = (row.round_sets_diff_delta == null || row.round_sets_diff_delta === 0)
+      ? ''
+      : ` <span class="entry-path-pts-delta">${esc(_fmtSigned(row.round_sets_diff_delta))}</span>`;
+    const gamesDeltaHtml = (row.round_games_diff_delta == null || row.round_games_diff_delta === 0)
+      ? ''
+      : ` <span class="entry-path-pts-delta">${esc(_fmtSigned(row.round_games_diff_delta))}</span>`;
+    const eliminatedBadgeHtml = row.eliminated
+      ? ` <span class="entry-path-eliminated-badge">${esc(t('txt_player_path_eliminated'))}</span>`
+      : '';
+
     html += `<div class="${rowClass}">`;
     html += `<div class="entry-path-head">`;
-    html += `<div class="entry-path-round">${esc(row.round_label || `${t('txt_player_path_round')} ${row.round_number || ''}`)}</div>`;
+    html += `<div class="entry-path-round">${esc(row.round_label || `${t('txt_player_path_round')} ${row.round_number || ''}`)}${eliminatedBadgeHtml}</div>`;
     html += `<div class="entry-path-chips">`;
-    html += `<span class="entry-path-chip"><strong>${esc(t('txt_player_path_points'))}</strong> ${esc(String(row.cumulative_points || 0))}${deltaPtsHtml}</span>`;
+    if (isTennisRow) {
+      html += `<span class="entry-path-chip"><strong>${esc(t('txt_player_path_sets_diff'))}</strong> ${esc(_fmtSigned(row.cumulative_sets_diff || 0))}${setsDeltaHtml}</span>`;
+      html += `<span class="entry-path-chip"><strong>${esc(t('txt_player_path_games_diff'))}</strong> ${esc(_fmtSigned(row.cumulative_games_diff || 0))}${gamesDeltaHtml}</span>`;
+    } else {
+      html += `<span class="entry-path-chip"><strong>${esc(t('txt_player_path_points'))}</strong> ${esc(String(row.cumulative_points || 0))}${deltaPtsHtml}</span>`;
+    }
     html += `<span class="entry-path-chip"><strong>${esc(t('txt_player_path_rank'))}</strong> ${esc(rankText)}${rankArrowHtml}</span>`;
     html += `</div>`;
     html += `</div>`;
+
+    if (row.score) {
+      html += `<div class="entry-path-meta entry-path-meta-block">`;
+      html += `<span class="entry-path-label">${esc(t('txt_player_path_score'))}</span>`;
+      html += `<span>${esc(row.score)}</span>`;
+      html += `</div>`;
+    }
 
     html += `<div class="entry-path-meta entry-path-meta-block">`;
     html += `<span class="entry-path-label">${esc(t('txt_player_path_partners'))}</span>`;
@@ -716,9 +746,6 @@ function _buildDashboard() {
     html += `</div>`;
   }
 
-  // Career stats card — shown only when there is finished history
-  html += _buildGlobalStatsCard();
-
   if (emailUnverified) {
     html += `<div class="card player-verification-card">`;
     html += `<div class="player-verification-title">${esc(t('txt_player_email_unverified_section_title'))}</div>`;
@@ -728,6 +755,9 @@ function _buildDashboard() {
     html += `</div>`;
     html += `</div>`;
   }
+
+  // Career stats card — shown only when there is finished history
+  html += _buildGlobalStatsCard();
 
   // Active section
   html += `<div class="player-section-header">`;
@@ -768,7 +798,6 @@ function _rememberHistoryPanelOpen(detailsEl) {
 
 function _buildStatsCardForEntries(entries, heading) {
   let totalTournaments = 0, totalWins = 0, totalLosses = 0, totalDraws = 0;
-  let bestRank = null;
   const partnerMap = {};
   const rivalMap = {};
 
@@ -780,7 +809,6 @@ function _buildStatsCardForEntries(entries, heading) {
       totalLosses += e.losses || 0;
       totalDraws  += e.draws  || 0;
     }
-    if (e.rank && e.rank > 0 && (bestRank === null || e.rank < bestRank)) bestRank = e.rank;
     const partners = (e.all_partners && e.all_partners.length > 0) ? e.all_partners : (e.top_partners || []);
     const rivals = (e.all_rivals && e.all_rivals.length > 0) ? e.all_rivals : (e.top_rivals || []);
     for (const p of partners) {
@@ -827,16 +855,14 @@ function _buildStatsCardForEntries(entries, heading) {
     });
 
   const fmt = arr => arr.map(p => `${esc(p.name)} <em>${p.win_pct}%</em>`).join(', ');
-  const rankLabel = bestRank === 1 ? '🥇' : bestRank === 2 ? '🥈' : bestRank === 3 ? '🥉' : bestRank ? `#${bestRank}` : null;
-
   let html = `<div class="card global-stats-card">`;
   html += `<div class="section-heading section-heading-card">${esc(heading)}</div>`;
   html += `<div class="global-stats-grid">`;
   html += `<div class="global-stats-cell"><div class="global-stats-value">${totalTournaments}</div><div class="global-stats-label">${esc(t('txt_player_career_played'))}</div></div>`;
+  html += `<div class="global-stats-divider"></div>`;
   html += `<div class="global-stats-cell"><div class="global-stats-value">${totalWins}</div><div class="global-stats-label">${esc(t('txt_player_career_wins'))}</div></div>`;
   html += `<div class="global-stats-cell"><div class="global-stats-value">${totalLosses}</div><div class="global-stats-label">${esc(t('txt_player_career_losses'))}</div></div>`;
   if (winRate !== null) html += `<div class="global-stats-cell"><div class="global-stats-value">${winRate}%</div><div class="global-stats-label">${esc(t('txt_player_career_win_rate'))}</div></div>`;
-  if (rankLabel)       html += `<div class="global-stats-cell"><div class="global-stats-value">${rankLabel}</div><div class="global-stats-label">${esc(t('txt_player_career_best_rank'))}</div></div>`;
   html += `</div>`;
 
   if (topPartners.length > 0 || topRivals.length > 0) {
@@ -849,6 +875,56 @@ function _buildStatsCardForEntries(entries, heading) {
 
   html += _buildParticipantExplorer(participantRows);
 
+  html += `</div>`;
+  return html;
+}
+
+function _formatRankLabel(rank) {
+  if (!rank) return null;
+  if (rank === 1) return '🥇';
+  if (rank === 2) return '🥈';
+  if (rank === 3) return '🥉';
+  return `#${rank}`;
+}
+
+function _bestAchievements(entries) {
+  let bestGroupRank = null;
+  let bestPlayoffStage = null;
+  let bestPlayoffStageRank = null;
+
+  for (const e of entries) {
+    if (e.rank && e.rank > 0 && (bestGroupRank === null || e.rank < bestGroupRank)) {
+      bestGroupRank = e.rank;
+    }
+    if (e.playoff_stage && e.playoff_stage_rank != null) {
+      if (bestPlayoffStageRank === null || e.playoff_stage_rank < bestPlayoffStageRank) {
+        bestPlayoffStageRank = e.playoff_stage_rank;
+        bestPlayoffStage = e.playoff_stage;
+      }
+    }
+  }
+
+  return {
+    bestGroupRank,
+    bestPlayoffStage,
+  };
+}
+
+function _buildBestResultsCardForEntries(entries, heading) {
+  const { bestGroupRank, bestPlayoffStage } = _bestAchievements(entries);
+  const groupRankLabel = _formatRankLabel(bestGroupRank);
+  if (!groupRankLabel && !bestPlayoffStage) return '';
+
+  let html = `<div class="card global-stats-card">`;
+  html += `<div class="section-heading section-heading-card">${esc(heading)}</div>`;
+  html += `<div class="global-stats-grid">`;
+  if (groupRankLabel) {
+    html += `<div class="global-stats-cell"><div class="global-stats-value">${groupRankLabel}</div><div class="global-stats-label">${esc(t('txt_player_career_best_group_rank'))}</div></div>`;
+  }
+  if (bestPlayoffStage) {
+    html += `<div class="global-stats-cell"><div class="global-stats-value">${esc(bestPlayoffStage)}</div><div class="global-stats-label">${esc(t('txt_player_career_best_playoff_stage'))}</div></div>`;
+  }
+  html += `</div>`;
   html += `</div>`;
   return html;
 }
@@ -1035,11 +1111,15 @@ function _buildGlobalStatsCard() {
   if (sports.length === 1) {
     // Single sport — use generic heading
     html += _buildStatsCardForEntries(withStats, t('txt_player_career_stats'));
+    html += _buildBestResultsCardForEntries(withStats, t('txt_player_career_best_results'));
   } else {
     // Multiple sports — one card per sport with sport-qualified heading
     for (const sport of sports) {
-      const heading = t('txt_player_career_stats_sport').replace('{sport}', _sportLabel(sport));
-      html += _buildStatsCardForEntries(bySport[sport], heading);
+      const sportLabel = _sportLabel(sport);
+      const statsHeading = t('txt_player_career_stats_sport').replace('{sport}', sportLabel);
+      const bestResultsHeading = t('txt_player_career_best_results_sport').replace('{sport}', sportLabel);
+      html += _buildStatsCardForEntries(bySport[sport], statsHeading);
+      html += _buildBestResultsCardForEntries(bySport[sport], bestResultsHeading);
     }
   }
 
@@ -1074,7 +1154,7 @@ function _buildEntryCard(entry) {
   }
   html += `</div>`;
   if (entry.player_name) html += `<div class="entry-card-meta">${esc(entry.player_name)}</div>`;
-  const hasStats = (entry.wins || 0) + (entry.losses || 0) + (entry.draws || 0) > 0 || (entry.rank != null && entry.rank > 0);
+  const hasStats = (entry.wins || 0) + (entry.losses || 0) + (entry.draws || 0) > 0 || (entry.rank != null && entry.rank > 0) || !!entry.playoff_stage;
   if (isFinished || hasStats) {
     const statsLine = _buildStatsLine(entry);
     if (statsLine) html += `<div class="entry-card-stats">${statsLine}</div>`;
@@ -1097,12 +1177,15 @@ function _buildEntryCard(entry) {
 
 function _buildStatsLine(entry) {
   const hasRank = entry.rank != null && entry.rank > 0;
+  const hasPlayoffStage = !!entry.playoff_stage;
   const hasWL = (entry.wins || 0) + (entry.losses || 0) + (entry.draws || 0) > 0;
   const parts = [];
   if (hasRank) {
     const suffix = entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `#${entry.rank}`;
     const of = entry.total_players ? ` ${t('txt_player_stats_of')} ${entry.total_players}` : '';
     parts.push(`${suffix}${of}`);
+  } else if (hasPlayoffStage) {
+    parts.push(entry.playoff_stage);
   }
   if (hasWL) {
     let wl = `${entry.wins || 0}W`;

@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from .rate_limit import BoundedRateLimiter
 from ..auth.deps import get_current_user, get_current_user_optional, get_current_player, PlayerIdentity
 from ..auth.models import User
-from ..models import Court, Player, TournamentType
+from ..models import Court, Player, TournamentType, EliminationType
 from ..tournaments import PlayoffTournament
 from ..viz import render_playoff_schema
 from .helpers import (
@@ -168,7 +168,7 @@ async def po_playoffs_schema(
         tid,
         version,
         tuple(participant_names),
-        "double" if t.double_elimination else "single",
+        EliminationType.DOUBLE if t.double_elimination else EliminationType.SINGLE,
         title,
         fmt,
         box_scale,
@@ -183,7 +183,7 @@ async def po_playoffs_schema(
 
     img = render_playoff_schema(
         participant_names=participant_names,
-        elimination="double" if t.double_elimination else "single",
+        elimination=EliminationType.DOUBLE if t.double_elimination else EliminationType.SINGLE,
         match_labels=_build_match_labels(t.bracket),
         title=title,
         fmt=fmt,

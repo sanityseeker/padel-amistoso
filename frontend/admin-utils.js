@@ -205,6 +205,10 @@ function _mexFormatInfoHtml() {
     <h3 id="format-info-heading">${t('txt_txt_fmt_mex_title')}</h3>
     <p>${ts('txt_txt_fmt_mex_intro', s)}</p>
     <p>${ts('txt_txt_fmt_mex_rounds_desc', s)}</p>
+    <div class="info-block">
+      <strong>${t('txt_txt_fmt_mex_strength_title')}</strong>
+      <p>${t('txt_txt_fmt_mex_strength_desc')}</p>
+    </div>
     ${_playoffsInfoHtml()}`;
 }
 
@@ -386,6 +390,50 @@ function _initPageSelector() {
       }
     });
   });
+  // Refresh pin indicators and pin button state
+  _refreshAdminPinState();
+}
+
+function _refreshAdminPinState() {
+  const homePage = getHomePage();
+  const isPinned = homePage === 'admin';
+  // Update pin indicators on menu items
+  document.querySelectorAll('.page-selector-item').forEach(a => {
+    const page = a.getAttribute('data-page');
+    const label = a.querySelector('[data-i18n]');
+    if (label) {
+      // Remove existing pin indicator
+      const existing = a.querySelector('.pin-indicator');
+      if (existing) existing.remove();
+      // Add pin indicator if this is the home page
+      if (page === homePage) {
+        const pin = document.createElement('span');
+        pin.className = 'pin-indicator';
+        pin.textContent = ' 📌';
+        label.after(pin);
+      }
+    }
+  });
+  // Update the pin button
+  const btn = document.getElementById('admin-pin-home-btn');
+  if (btn) {
+    const icon = btn.querySelector('.pin-icon');
+    const label = btn.querySelector('.pin-label');
+    if (icon) icon.textContent = isPinned ? '📌' : '📍';
+    if (label) {
+      label.textContent = isPinned ? t('txt_nav_unset_home') : t('txt_nav_set_home');
+      label.setAttribute('data-i18n', isPinned ? 'txt_nav_unset_home' : 'txt_nav_set_home');
+    }
+  }
+}
+
+function _toggleAdminHomePin() {
+  if (getHomePage() === 'admin') {
+    clearHomePage();
+  } else {
+    setHomePage('admin');
+  }
+  _refreshAdminPinState();
 }
 
 // ─── Schema preview ────────────────────────────────────────

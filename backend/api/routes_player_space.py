@@ -22,6 +22,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -33,6 +34,7 @@ from ..auth.security import (
     decode_profile_email_verify_token,
 )
 from ..email import is_valid_email, render_player_space_magic_link, render_player_space_welcome, send_email_background
+from ..models import EntityType, MatchStatus, ParticipationStatus, ScoreMode, Sport, TournamentType
 from ..tournaments.player_secrets import generate_passphrase
 from .db import get_db
 from .player_secret_store import (
@@ -50,7 +52,8 @@ router = APIRouter(prefix="/api/player-profile", tags=["player-space"])
 
 _RATE_LIMITER = BoundedRateLimiter(max_attempts=20, window_seconds=60, max_tracked_ips=4096)
 _RECOVER_RATE_LIMITER = BoundedRateLimiter(max_attempts=3, window_seconds=900, max_tracked_ips=4096)
-_PATH_CACHE_MEM: dict[tuple[str, str, str, int | None], TournamentPathResponse] = {}
+_PATH_CACHE_SCHEMA_VERSION = 2
+_PATH_CACHE_MEM: dict[tuple[str, str, str, int | None, int], TournamentPathResponse] = {}
 
 
 def _client_ip(request: Request) -> str:
@@ -98,7 +101,7 @@ class ProfileLinkRequest(BaseModel):
     that specific entity (tournament or lobby).
     """
 
-    entity_type: str = Field(pattern="^(tournament|registration)$")
+    entity_type: EntityType
     entity_id: str = Field(min_length=1)
     passphrase: str = Field(min_length=1)
 
@@ -106,7 +109,7 @@ class ProfileLinkRequest(BaseModel):
 class ProfileUnlinkRequest(BaseModel):
     """Unlink a tournament participation from this profile."""
 
-    entity_type: str = Field(pattern="^tournament$")
+    entity_type: Literal[EntityType.TOURNAMENT] = EntityType.TOURNAMENT
     entity_id: str = Field(min_length=1)
 
 
@@ -119,7 +122,7 @@ class PassphraseResolveRequest(BaseModel):
 class ParticipationMatch(BaseModel):
     """A single participation match returned by the resolve endpoint."""
 
-    entity_type: str
+    entity_type: EntityType
     entity_id: str
     entity_name: str
     player_name: str
@@ -147,12 +150,12 @@ class ProfileOut(BaseModel):
 class PlayerSpaceEntry(BaseModel):
     """A single participation entry in the Player Hub dashboard."""
 
-    entity_type: str  # "tournament" or "registration"
+    entity_type: EntityType
     entity_id: str
     entity_name: str
     player_id: str
     player_name: str
-    status: str  # "active" or "finished"
+    status: ParticipationStatus
     alias: str | None
     auto_login_token: str | None  # None for finished entries
     sport: str
@@ -167,6 +170,8 @@ class PlayerSpaceEntry(BaseModel):
     draws: int = 0
     points_for: int = 0
     points_against: int = 0
+    playoff_stage: str | None = None
+    playoff_stage_rank: int | None = None
     top_partners: list[dict] = Field(default_factory=list)
     top_rivals: list[dict] = Field(default_factory=list)
     all_partners: list[dict] = Field(default_factory=list)
@@ -192,6 +197,15 @@ class PlayerPathRound(BaseModel):
     partners: list[str] = Field(default_factory=list)
     opponents: list[str] = Field(default_factory=list)
     played: bool = False
+    score: str | None = None
+    score_mode: ScoreMode = ScoreMode.POINTS
+    round_points_delta: int | None = None
+    round_sets_diff_delta: int | None = None
+    round_games_diff_delta: int | None = None
+    cumulative_sets_diff: int | None = None
+    cumulative_games_diff: int | None = None
+    eliminated: bool = False
+    stage: str = "groups"
 
 
 class TournamentPathResponse(BaseModel):
@@ -336,15 +350,15 @@ def _build_active_entries(profile_id: str) -> list[PlayerSpaceEntry]:
             ls = live_stats.get(row["tid"], {})
             entries.append(
                 PlayerSpaceEntry(
-                    entity_type="tournament",
+                    entity_type=EntityType.TOURNAMENT,
                     entity_id=row["tid"],
                     entity_name=row["tname"],
                     player_id=row["player_id"],
                     player_name=row["player_name"],
-                    status="active",
+                    status=ParticipationStatus.ACTIVE,
                     alias=row["talias"],
                     auto_login_token=row["token"],
-                    sport=row["sport"] or "padel",
+                    sport=row["sport"] or Sport.PADEL,
                     tournament_type=row["ttype"],
                     entity_deleted=False,
                     finished_at=None,
@@ -376,15 +390,15 @@ def _build_active_entries(profile_id: str) -> list[PlayerSpaceEntry]:
         for row in r_rows:
             entries.append(
                 PlayerSpaceEntry(
-                    entity_type="registration",
+                    entity_type=EntityType.REGISTRATION,
                     entity_id=row["rid"],
                     entity_name=row["rname"],
                     player_id=row["player_id"],
                     player_name=row["player_name"],
-                    status="active",
+                    status=ParticipationStatus.ACTIVE,
                     alias=row["ralias"],
                     auto_login_token=row["token"],
-                    sport=row["sport"] or "padel",
+                    sport=row["sport"] or Sport.PADEL,
                     tournament_type=None,
                     entity_deleted=False,
                     finished_at=None,
@@ -450,7 +464,7 @@ def _backfill_history_for_profile(profile_id: str) -> int:
 
             ps = extract_history_stats(t_data)
             pr = extract_partner_rival_stats(t_data)
-            sport = t_data.get("sport") or reg["sport"] or "padel"
+            sport = t_data.get("sport") or reg["sport"] or Sport.PADEL
             tournament_name = t_data.get("name") or reg["name"]
 
             for registrant in pid_by_reg.get(reg["id"], []):
@@ -517,6 +531,37 @@ def _build_history_entries(profile_id: str) -> list[PlayerSpaceEntry]:
     """Load finished participation history for a profile from player_history."""
     entries: list[PlayerSpaceEntry] = []
 
+    def _fresh_snapshot(entity_id: str, player_id: str) -> dict | None:
+        try:
+            t_data = get_tournament_data(entity_id)
+        except Exception:  # noqa: BLE001
+            return None
+        if t_data is None:
+            return None
+        ps = extract_history_stats(t_data)
+        stats = ps.get(player_id)
+        if not stats:
+            return None
+        pr = extract_partner_rival_stats(t_data)
+        pr_data = pr.get(player_id, {})
+        return {
+            "entity_name": t_data.get("name") or "",
+            "sport": t_data.get("sport") or Sport.PADEL,
+            "rank": stats.get("rank"),
+            "total_players": stats.get("total_players"),
+            "wins": stats.get("wins", 0),
+            "losses": stats.get("losses", 0),
+            "draws": stats.get("draws", 0),
+            "points_for": stats.get("points_for", 0),
+            "points_against": stats.get("points_against", 0),
+            "playoff_stage": stats.get("playoff_stage"),
+            "playoff_stage_rank": stats.get("playoff_stage_rank"),
+            "top_partners": pr_data.get("top_partners", []),
+            "top_rivals": pr_data.get("top_rivals", []),
+            "all_partners": pr_data.get("all_partners", []),
+            "all_rivals": pr_data.get("all_rivals", []),
+        }
+
     with get_db() as conn:
         rows = conn.execute(
             """
@@ -535,8 +580,8 @@ def _build_history_entries(profile_id: str) -> list[PlayerSpaceEntry]:
 
         # Collect entity IDs by type for a single bulk lookup of alias and type.
         # sport is now stored on player_history so the live lookup is only needed for alias/type.
-        t_ids = [r["entity_id"] for r in rows if r["entity_type"] == "tournament"]
-        r_ids = [r["entity_id"] for r in rows if r["entity_type"] == "registration"]
+        t_ids = [r["entity_id"] for r in rows if r["entity_type"] == EntityType.TOURNAMENT]
+        r_ids = [r["entity_id"] for r in rows if r["entity_type"] == EntityType.REGISTRATION]
 
         t_meta: dict[str, dict] = {}
         r_meta: dict[str, dict] = {}
@@ -560,35 +605,42 @@ def _build_history_entries(profile_id: str) -> list[PlayerSpaceEntry]:
     for row in rows:
         etype = row["entity_type"]
         eid = row["entity_id"]
+        fresh = _fresh_snapshot(eid, row["player_id"]) if etype == EntityType.TOURNAMENT else None
         stored_name = row["entity_name"] or ""
-        stored_sport = row["sport"] or "padel"
-        top_partners = json.loads(row["top_partners"]) if row["top_partners"] else []
-        top_rivals = json.loads(row["top_rivals"]) if row["top_rivals"] else []
-        all_partners = json.loads(row["all_partners"]) if row["all_partners"] else []
-        all_rivals = json.loads(row["all_rivals"]) if row["all_rivals"] else []
-        if etype == "tournament":
+        stored_sport = row["sport"] or Sport.PADEL
+        top_partners = (
+            fresh["top_partners"] if fresh else (json.loads(row["top_partners"]) if row["top_partners"] else [])
+        )
+        top_rivals = fresh["top_rivals"] if fresh else (json.loads(row["top_rivals"]) if row["top_rivals"] else [])
+        all_partners = (
+            fresh["all_partners"] if fresh else (json.loads(row["all_partners"]) if row["all_partners"] else [])
+        )
+        all_rivals = fresh["all_rivals"] if fresh else (json.loads(row["all_rivals"]) if row["all_rivals"] else [])
+        if etype == EntityType.TOURNAMENT:
             meta = t_meta.get(eid, {})
             entries.append(
                 PlayerSpaceEntry(
-                    entity_type="tournament",
+                    entity_type=EntityType.TOURNAMENT,
                     entity_id=eid,
-                    entity_name=stored_name or meta.get("name", eid),
+                    entity_name=(fresh["entity_name"] if fresh else stored_name) or meta.get("name", eid),
                     player_id=row["player_id"],
                     player_name=row["player_name"],
-                    status="finished",
+                    status=ParticipationStatus.FINISHED,
                     alias=meta.get("alias"),
                     auto_login_token=None,
-                    sport=stored_sport,
+                    sport=fresh["sport"] if fresh else stored_sport,
                     tournament_type=meta.get("type"),
                     entity_deleted=not bool(meta),
                     finished_at=row["finished_at"],
-                    rank=row["rank"],
-                    total_players=row["total_players"],
-                    wins=row["wins"] or 0,
-                    losses=row["losses"] or 0,
-                    draws=row["draws"] or 0,
-                    points_for=row["points_for"] or 0,
-                    points_against=row["points_against"] or 0,
+                    rank=fresh["rank"] if fresh else row["rank"],
+                    total_players=fresh["total_players"] if fresh else row["total_players"],
+                    wins=fresh["wins"] if fresh else (row["wins"] or 0),
+                    losses=fresh["losses"] if fresh else (row["losses"] or 0),
+                    draws=fresh["draws"] if fresh else (row["draws"] or 0),
+                    points_for=fresh["points_for"] if fresh else (row["points_for"] or 0),
+                    points_against=fresh["points_against"] if fresh else (row["points_against"] or 0),
+                    playoff_stage=fresh["playoff_stage"] if fresh else None,
+                    playoff_stage_rank=fresh["playoff_stage_rank"] if fresh else None,
                     top_partners=top_partners,
                     top_rivals=top_rivals,
                     all_partners=all_partners,
@@ -599,12 +651,12 @@ def _build_history_entries(profile_id: str) -> list[PlayerSpaceEntry]:
             meta = r_meta.get(eid, {})
             entries.append(
                 PlayerSpaceEntry(
-                    entity_type="registration",
+                    entity_type=EntityType.REGISTRATION,
                     entity_id=eid,
                     entity_name=stored_name or meta.get("name", eid),
                     player_id=row["player_id"],
                     player_name=row["player_name"],
-                    status="finished",
+                    status=ParticipationStatus.FINISHED,
                     alias=meta.get("alias"),
                     auto_login_token=None,
                     sport=stored_sport,
@@ -648,7 +700,42 @@ def _side_score(match: object, is_team1: bool) -> int:
 def _is_completed_match(match: object) -> bool:
     """Return whether a match has a completed status and score."""
     status = str(getattr(match, "status", ""))
-    return status == "completed" and getattr(match, "score", None) is not None
+    return status == MatchStatus.COMPLETED and getattr(match, "score", None) is not None
+
+
+def _format_match_score(match: object, in_team1: bool) -> str | None:
+    """Return a compact score string with the player side shown first."""
+    sets = getattr(match, "sets", None)
+    if isinstance(sets, list) and sets:
+        if in_team1:
+            return ", ".join(f"{int(s[0])}-{int(s[1])}" for s in sets)
+        return ", ".join(f"{int(s[1])}-{int(s[0])}" for s in sets)
+
+    score = getattr(match, "score", None)
+    if not score:
+        return None
+    if in_team1:
+        return f"{int(score[0])}-{int(score[1])}"
+    return f"{int(score[1])}-{int(score[0])}"
+
+
+def _match_side_metrics(match: object, in_team1: bool) -> tuple[ScoreMode, int, int, int | None]:
+    """Return score mode and per-match deltas for the player side."""
+    sets = getattr(match, "sets", None)
+    if isinstance(sets, list) and sets:
+        games1 = sum(int(s[0]) for s in sets)
+        games2 = sum(int(s[1]) for s in sets)
+        sets1 = sum(1 for s in sets if int(s[0]) > int(s[1]))
+        sets2 = sum(1 for s in sets if int(s[1]) > int(s[0]))
+        if in_team1:
+            return ScoreMode.TENNIS, sets1 - sets2, games1 - games2, None
+        return ScoreMode.TENNIS, sets2 - sets1, games2 - games1, None
+
+    score = getattr(match, "score", None)
+    if not score:
+        return ScoreMode.POINTS, 0, 0, 0
+    side_points = int(score[0]) if in_team1 else int(score[1])
+    return ScoreMode.POINTS, 0, 0, side_points
 
 
 def _expand_side_player_ids(side_ids: list[str], team_roster: dict[str, list[str]]) -> list[str]:
@@ -715,8 +802,11 @@ def _rank_for_id(ranked_ids: list[str], target_id: str) -> int | None:
     return None
 
 
-def _group_rank_and_points_for_round(group: object, up_to_round: int) -> tuple[dict[str, int], dict[str, int]]:
-    """Return exact group rank and points_for maps using native standings criteria."""
+def _group_rank_and_points_for_round(
+    group: object,
+    up_to_round: int,
+) -> tuple[dict[str, int], dict[str, int], bool, dict[str, int], dict[str, int]]:
+    """Return exact group rank and cumulative metric maps for one round snapshot."""
     table: dict[str, dict] = {}
     for player in getattr(group, "players", []) or []:
         pid = getattr(player, "id", "")
@@ -834,7 +924,82 @@ def _group_rank_and_points_for_round(group: object, up_to_round: int) -> tuple[d
 
     rank_map = {row["player"].id: idx for idx, row in enumerate(rows, start=1)}
     points_map = {row["player"].id: int(row["points_for"]) for row in rows}
-    return rank_map, points_map
+    sets_diff_map = {row["player"].id: int(row["sets_won"] - row["sets_lost"]) for row in rows}
+    games_diff_map = {row["player"].id: int(row["points_for"] - row["points_against"]) for row in rows}
+    return rank_map, points_map, uses_sets, sets_diff_map, games_diff_map
+
+
+def _build_group_playoff_rows(
+    tournament: object,
+    player_id: str,
+    name_map: dict[str, str],
+    team_roster: dict[str, list[str]],
+    canonical_id: str,
+    start_round_number: int,
+) -> list[PlayerPathRound]:
+    """Build completed playoff rows for one player in Group+Playoff tournaments."""
+    matches = list(getattr(tournament, "playoff_matches", lambda: [])() or [])
+    if not matches:
+        return []
+
+    rows: list[PlayerPathRound] = []
+    cumulative_points = 0
+    cumulative_sets_diff = 0
+    cumulative_games_diff = 0
+    losing_row_indexes: list[int] = []
+
+    for match in matches:
+        if not _is_completed_match(match):
+            continue
+
+        team1_ids = [getattr(p, "id", "") for p in getattr(match, "team1", []) or []]
+        team2_ids = [getattr(p, "id", "") for p in getattr(match, "team2", []) or []]
+
+        in_team1 = canonical_id in team1_ids
+        in_team2 = canonical_id in team2_ids
+        if not in_team1 and not in_team2:
+            continue
+
+        side_ids = _expand_side_player_ids(team1_ids if in_team1 else team2_ids, team_roster)
+        opp_ids = _expand_side_player_ids(team2_ids if in_team1 else team1_ids, team_roster)
+        score_mode, set_diff_delta, game_diff_delta, points_delta = _match_side_metrics(match, in_team1)
+
+        if score_mode == ScoreMode.TENNIS:
+            cumulative_sets_diff += int(set_diff_delta)
+            cumulative_games_diff += int(game_diff_delta)
+        else:
+            cumulative_points += int(points_delta or 0)
+
+        row = PlayerPathRound(
+            round_number=start_round_number + len(rows) + 1,
+            round_label=str(getattr(match, "round_label", "Play-off") or "Play-off"),
+            cumulative_points=int(cumulative_points),
+            rank=None,
+            total_players=len(getattr(tournament, "players", []) or []),
+            partners=_names_from_ids([pid for pid in side_ids if pid != player_id], name_map),
+            opponents=_names_from_ids([pid for pid in opp_ids if pid != player_id], name_map),
+            played=True,
+            score=_format_match_score(match, in_team1),
+            score_mode=score_mode,
+            round_points_delta=int(points_delta) if points_delta is not None else None,
+            round_sets_diff_delta=int(set_diff_delta) if score_mode == ScoreMode.TENNIS else None,
+            round_games_diff_delta=int(game_diff_delta) if score_mode == ScoreMode.TENNIS else None,
+            cumulative_sets_diff=int(cumulative_sets_diff) if score_mode == ScoreMode.TENNIS else None,
+            cumulative_games_diff=int(cumulative_games_diff) if score_mode == ScoreMode.TENNIS else None,
+            stage="playoff",
+        )
+        rows.append(row)
+
+        score = getattr(match, "score", None)
+        if score:
+            s1, s2 = int(score[0]), int(score[1])
+            player_lost = (in_team1 and s1 < s2) or (in_team2 and s2 < s1)
+            if player_lost:
+                losing_row_indexes.append(len(rows) - 1)
+
+    if losing_row_indexes:
+        rows[losing_row_indexes[-1]].eliminated = True
+    return rows
 
 
 def _group_identity_context(
@@ -858,7 +1023,7 @@ def _group_identity_context(
 
 
 def _build_group_path_rows(tournament: object, player_id: str) -> list[PlayerPathRound]:
-    """Build round-path rows for Group+Playoff group-stage rounds only."""
+    """Build round-path rows for Group+Playoff group and playoff stages."""
     team_roster: dict[str, list[str]] = getattr(tournament, "team_roster", None) or {}
     name_map = _member_name_map(tournament, team_roster)
 
@@ -874,6 +1039,8 @@ def _build_group_path_rows(tournament: object, player_id: str) -> list[PlayerPat
         played = False
         partners: list[str] = []
         opponents: list[str] = []
+        player_match: object | None = None
+        player_in_team1 = False
 
         round_matches = [m for m in matches if int(getattr(m, "round_number", 0) or 0) == round_number]
         for match in round_matches:
@@ -890,10 +1057,14 @@ def _build_group_path_rows(tournament: object, player_id: str) -> list[PlayerPat
                 side_ids = _expand_side_player_ids(team1_ids, team_roster)
                 opp_ids = _expand_side_player_ids(team2_ids, team_roster)
                 played = True
+                player_match = match
+                player_in_team1 = True
             elif in_team2:
                 side_ids = _expand_side_player_ids(team2_ids, team_roster)
                 opp_ids = _expand_side_player_ids(team1_ids, team_roster)
                 played = True
+                player_match = match
+                player_in_team1 = False
             else:
                 side_ids = []
                 opp_ids = []
@@ -906,8 +1077,34 @@ def _build_group_path_rows(tournament: object, player_id: str) -> list[PlayerPat
                     if opponent_id != player_id and opponent_id not in opponents:
                         opponents.append(opponent_id)
 
-        rank_map, points_map = _group_rank_and_points_for_round(group, round_number)
+        rank_map, points_map, uses_sets, sets_diff_map, games_diff_map = _group_rank_and_points_for_round(
+            group, round_number
+        )
         label = f"Group {getattr(group, 'name', '')} R{round_number}".strip()
+        score_mode: ScoreMode = ScoreMode.POINTS
+        score_value = None
+        round_sets_diff_delta: int | None = None
+        round_games_diff_delta: int | None = None
+        round_points_delta: int | None = None
+        cumulative_sets_diff: int | None = None
+        cumulative_games_diff: int | None = None
+        if player_match is not None:
+            score_mode, set_diff_delta, game_diff_delta, points_delta = _match_side_metrics(
+                player_match, player_in_team1
+            )
+            score_value = _format_match_score(player_match, player_in_team1)
+            if score_mode == ScoreMode.TENNIS:
+                round_sets_diff_delta = int(set_diff_delta)
+                round_games_diff_delta = int(game_diff_delta)
+                cumulative_sets_diff = int(sets_diff_map.get(canonical_id, 0))
+                cumulative_games_diff = int(games_diff_map.get(canonical_id, 0))
+            else:
+                round_points_delta = int(points_delta or 0)
+        elif uses_sets:
+            score_mode = ScoreMode.TENNIS
+            cumulative_sets_diff = int(sets_diff_map.get(canonical_id, 0))
+            cumulative_games_diff = int(games_diff_map.get(canonical_id, 0))
+
         rows.append(
             PlayerPathRound(
                 round_number=round_number,
@@ -918,8 +1115,26 @@ def _build_group_path_rows(tournament: object, player_id: str) -> list[PlayerPat
                 partners=_names_from_ids(partners, name_map),
                 opponents=_names_from_ids(opponents, name_map),
                 played=played,
+                score=score_value,
+                score_mode=score_mode,
+                round_points_delta=round_points_delta,
+                round_sets_diff_delta=round_sets_diff_delta,
+                round_games_diff_delta=round_games_diff_delta,
+                cumulative_sets_diff=cumulative_sets_diff,
+                cumulative_games_diff=cumulative_games_diff,
+                stage="groups",
             )
         )
+
+    playoff_rows = _build_group_playoff_rows(
+        tournament=tournament,
+        player_id=player_id,
+        name_map=name_map,
+        team_roster=team_roster,
+        canonical_id=canonical_id,
+        start_round_number=len(rows),
+    )
+    rows.extend(playoff_rows)
 
     return rows
 
@@ -1012,11 +1227,20 @@ def _build_mex_path_rows(tournament: object, player_id: str) -> list[PlayerPathR
     played_by_id: dict[str, int] = defaultdict(int)
     opp_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     rows: list[PlayerPathRound] = []
+    cumulative_sets_diff = 0
+    cumulative_games_diff = 0
 
     for idx, round_matches in enumerate(rounds, start=1):
         played = False
         partners: list[str] = []
         opponents: list[str] = []
+        score_value: str | None = None
+        score_mode: ScoreMode = ScoreMode.POINTS
+        round_points_delta: int | None = None
+        round_sets_diff_delta: int | None = None
+        round_games_diff_delta: int | None = None
+        in_team1_for_player = False
+        player_match: object | None = None
 
         for match in round_matches:
             if not _is_completed_match(match):
@@ -1045,10 +1269,14 @@ def _build_mex_path_rows(tournament: object, player_id: str) -> list[PlayerPathR
                 side_ids = _expand_side_player_ids(team1_ids, team_roster)
                 opp_ids = _expand_side_player_ids(team2_ids, team_roster)
                 played = True
+                player_match = match
+                in_team1_for_player = True
             elif in_team2:
                 side_ids = _expand_side_player_ids(team2_ids, team_roster)
                 opp_ids = _expand_side_player_ids(team1_ids, team_roster)
                 played = True
+                player_match = match
+                in_team1_for_player = False
             else:
                 side_ids = []
                 opp_ids = []
@@ -1060,6 +1288,22 @@ def _build_mex_path_rows(tournament: object, player_id: str) -> list[PlayerPathR
                 for opponent_id in opp_ids:
                     if opponent_id != player_id and opponent_id not in opponents:
                         opponents.append(opponent_id)
+
+        if player_match is not None:
+            score_value = _format_match_score(player_match, in_team1_for_player)
+            score_mode, set_diff_delta, game_diff_delta, _ = _match_side_metrics(player_match, in_team1_for_player)
+            if score_mode == ScoreMode.TENNIS:
+                round_sets_diff_delta = int(set_diff_delta)
+                round_games_diff_delta = int(game_diff_delta)
+                cumulative_sets_diff += int(set_diff_delta)
+                cumulative_games_diff += int(game_diff_delta)
+            else:
+                round_points_delta = _match_credit_for_pid(
+                    tournament,
+                    player_match,
+                    canonical_id,
+                    _side_score(player_match, in_team1_for_player),
+                )
 
         ranked_ids = _mex_rank_order_exact(points_by_id, raw_by_id, played_by_id, opp_counts, cohort_ids)
         sample_match = round_matches[0] if round_matches else None
@@ -1076,6 +1320,14 @@ def _build_mex_path_rows(tournament: object, player_id: str) -> list[PlayerPathR
                 partners=_names_from_ids(partners, name_map),
                 opponents=_names_from_ids(opponents, name_map),
                 played=played,
+                score=score_value,
+                score_mode=score_mode,
+                round_points_delta=int(round_points_delta) if round_points_delta is not None else None,
+                round_sets_diff_delta=round_sets_diff_delta,
+                round_games_diff_delta=round_games_diff_delta,
+                cumulative_sets_diff=int(cumulative_sets_diff) if score_mode == ScoreMode.TENNIS else None,
+                cumulative_games_diff=int(cumulative_games_diff) if score_mode == ScoreMode.TENNIS else None,
+                stage="groups",
             )
         )
 
@@ -1156,6 +1408,10 @@ def _get_cached_tournament_path(
     if not isinstance(raw, dict):
         return None, cached_version
 
+    raw_schema_version = int(raw.get("__schema_version", 0) or 0)
+    if raw_schema_version != _PATH_CACHE_SCHEMA_VERSION:
+        return None, cached_version
+
     rounds_raw = raw.get("rounds") if isinstance(raw.get("rounds"), list) else []
     rounds: list[PlayerPathRound] = []
     for rr in rounds_raw:
@@ -1185,6 +1441,8 @@ def _save_cached_tournament_path(
     payload: TournamentPathResponse,
 ) -> None:
     """Upsert cached path payload for a profile/tournament/player tuple."""
+    payload_dict = payload.model_dump()
+    payload_dict["__schema_version"] = _PATH_CACHE_SCHEMA_VERSION
     with get_db() as conn:
         conn.execute(
             """
@@ -1201,7 +1459,7 @@ def _save_cached_tournament_path(
                 entity_id,
                 player_id,
                 int(tournament_version) if tournament_version is not None else -1,
-                json.dumps(payload.model_dump()),
+                json.dumps(payload_dict),
             ),
         )
 
@@ -1282,7 +1540,7 @@ def _backfill_finished_secrets(profile_id: str) -> None:
                     stats.get("draws", 0),
                     stats.get("points_for", 0),
                     stats.get("points_against", 0),
-                    row["finished_sport"] or "padel",
+                    row["finished_sport"] or Sport.PADEL,
                     json.dumps(top_partners),
                     json.dumps(top_rivals),
                     json.dumps(all_partners),
@@ -1558,7 +1816,7 @@ async def get_tournament_path(
     _ensure_profile_owns_tournament_player(identity.profile_id, entity_id, player_id)
 
     tournament_version = _get_tournament_version(entity_id)
-    mem_key = (identity.profile_id, entity_id, player_id, tournament_version)
+    mem_key = (identity.profile_id, entity_id, player_id, tournament_version, _PATH_CACHE_SCHEMA_VERSION)
     cached_mem = _PATH_CACHE_MEM.get(mem_key)
     if cached_mem is not None:
         return cached_mem
@@ -1586,10 +1844,10 @@ async def get_tournament_path(
 
     t_type = t_data.get("type")
     tournament = t_data.get("tournament")
-    if t_type not in {"group_playoff", "mexicano"}:
+    if t_type not in {TournamentType.GROUP_PLAYOFF, TournamentType.MEXICANO}:
         raise HTTPException(400, "Path is available only for Group+Playoff and Mexicano tournaments")
 
-    if t_type == "group_playoff":
+    if t_type == TournamentType.GROUP_PLAYOFF:
         rows = _build_group_path_rows(tournament, player_id)
     else:
         rows = _build_mex_path_rows(tournament, player_id)
@@ -1706,7 +1964,7 @@ async def unlink_participation(
                     (req.entity_id, pid),
                 )
                 bump_tournament_version(req.entity_id)
-                return {"ok": True, "status": "active", "warning": None}
+                return {"ok": True, "status": ParticipationStatus.ACTIVE, "warning": None}
             else:
                 # Finished but player_secrets row still exists.
                 conn.execute(
@@ -1720,7 +1978,7 @@ async def unlink_participation(
                 bump_tournament_version(req.entity_id)
                 return {
                     "ok": True,
-                    "status": "finished",
+                    "status": ParticipationStatus.FINISHED,
                     "warning": "Stats have been permanently removed from your hub.",
                 }
 
@@ -1736,7 +1994,7 @@ async def unlink_participation(
             )
             return {
                 "ok": True,
-                "status": "finished",
+                "status": ParticipationStatus.FINISHED,
                 "warning": "Stats have been permanently removed from your hub.",
             }
 
@@ -1761,7 +2019,7 @@ async def link_participation(
 
     _RATE_LIMITER.check(_client_ip(request), "Too many requests — try again later")
 
-    if req.entity_type == "tournament":
+    if req.entity_type == EntityType.TOURNAMENT:
         with get_db() as conn:
             row = conn.execute(
                 """
@@ -1795,15 +2053,15 @@ async def link_participation(
                     (identity.profile_id, resolved_tid),
                 ).fetchone()
             return PlayerSpaceEntry(
-                entity_type="tournament",
+                entity_type=EntityType.TOURNAMENT,
                 entity_id=row["tid"],
                 entity_name=row["tname"] or (h["entity_name"] if h else ""),
                 player_id=row["player_id"],
                 player_name=row["player_name"],
-                status="finished",
+                status=ParticipationStatus.FINISHED,
                 alias=row["talias"],
                 auto_login_token=None,
-                sport=row["sport"] or (h["sport"] if h else "padel") or "padel",
+                sport=row["sport"] or (h["sport"] if h else Sport.PADEL) or Sport.PADEL,
                 tournament_type=row["ttype"],
                 finished_at=h["finished_at"] if h else None,
                 rank=h["rank"] if h else None,
@@ -1818,15 +2076,15 @@ async def link_participation(
             )
 
         return PlayerSpaceEntry(
-            entity_type="tournament",
+            entity_type=EntityType.TOURNAMENT,
             entity_id=row["tid"],
             entity_name=row["tname"],
             player_id=row["player_id"],
             player_name=row["player_name"],
-            status="active",
+            status=ParticipationStatus.ACTIVE,
             alias=row["talias"],
             auto_login_token=row["token"],
-            sport=row["sport"] or "padel",
+            sport=row["sport"] or Sport.PADEL,
             tournament_type=row["ttype"],
             finished_at=None,
         )
@@ -1855,15 +2113,15 @@ async def link_participation(
             )
 
         return PlayerSpaceEntry(
-            entity_type="registration",
+            entity_type=EntityType.REGISTRATION,
             entity_id=row["rid"],
             entity_name=row["rname"],
             player_id=row["player_id"],
             player_name=row["player_name"],
-            status="active",
+            status=ParticipationStatus.ACTIVE,
             alias=row["ralias"],
             auto_login_token=row["token"],
-            sport=row["sport"] or "padel",
+            sport=row["sport"] or Sport.PADEL,
             tournament_type=None,
             finished_at=None,
         )

@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from ...models import Court, Match, MatchStatus, MexPhase, Player
+from ...models import Court, Match, MatchStatus, MexPhase, Player, SitOutStrategy
 from .grouping import GroupingMixin
 from .scoring import ScoringMixin
 from .sit_outs import SitOutMixin
@@ -52,6 +52,10 @@ class MexicanoConfig(BaseModel):
     opponent_repeat_weight: float = Field(default=1.0, ge=0.0)
     repeat_decay: float = Field(default=0.5, ge=0.0)
     partner_balance_weight: float = Field(default=0.0, ge=0.0)
+    strength_min_matches: int = Field(default=4, ge=0)
+    strength_win_factor: float = Field(default=1.0, ge=0.0, le=1.0)
+    strength_draw_factor: float = Field(default=0.75, ge=0.0, le=1.0)
+    strength_loss_factor: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
 class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
@@ -97,6 +101,10 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         opponent_repeat_weight: float = 1.0,
         repeat_decay: float = 0.5,
         partner_balance_weight: float = 0.0,
+        strength_min_matches: int = 4,
+        strength_win_factor: float = 1.0,
+        strength_draw_factor: float = 0.75,
+        strength_loss_factor: float = 0.5,
     ):
         min_players = 2 if team_mode else 4
         if len(players) < min_players:
@@ -118,6 +126,10 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
                 opponent_repeat_weight=opponent_repeat_weight,
                 repeat_decay=repeat_decay,
                 partner_balance_weight=partner_balance_weight,
+                strength_min_matches=strength_min_matches,
+                strength_win_factor=strength_win_factor,
+                strength_draw_factor=strength_draw_factor,
+                strength_loss_factor=strength_loss_factor,
             )
         except ValidationError as exc:
             raise ValueError(str(exc)) from exc
@@ -136,6 +148,10 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         self.opponent_repeat_weight: float = cfg.opponent_repeat_weight
         self.repeat_decay: float = cfg.repeat_decay
         self.partner_balance_weight: float = cfg.partner_balance_weight
+        self.strength_min_matches: int = cfg.strength_min_matches
+        self.strength_win_factor: float = cfg.strength_win_factor
+        self.strength_draw_factor: float = cfg.strength_draw_factor
+        self.strength_loss_factor: float = cfg.strength_loss_factor
 
         self.scores: dict[str, int] = {p.id: 0 for p in players}
         self._raw_scores: dict[str, int] = {p.id: 0 for p in players}
@@ -267,7 +283,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
             "skill_gap_violations": violating_groups,
             "skill_gap_worst_excess": round(worst_gap_excess, 2),
             "exact_prev_round_repeats": self._annotate_exact_previous_round_repeats(match_plans),
-            "strategy": "balanced",
+            "strategy": SitOutStrategy.BALANCED,
         }
 
     def _plan_round_seeded_position(
@@ -336,7 +352,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
             "skill_gap_violations": violating_pairs,
             "skill_gap_worst_excess": round(worst_gap_excess, 2),
             "exact_prev_round_repeats": self._annotate_exact_previous_round_repeats(match_plans),
-            "strategy": "seeded",
+            "strategy": SitOutStrategy.SEEDED,
             "variant": variant_name,
             "variant_repeats": minimize_repeats,
         }
@@ -422,7 +438,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
             "skill_gap_violations": 0,
             "skill_gap_worst_excess": 0.0,
             "exact_prev_round_repeats": self._annotate_exact_previous_round_repeats(match_plans),
-            "strategy": "seeded",
+            "strategy": SitOutStrategy.SEEDED,
             "variant": variant_name,
             "variant_repeats": minimize_repeats,
         }
@@ -573,8 +589,8 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
                     plan["option_id"] = f"prop-{random.randbytes(8).hex()}"
                     balanced.append(plan)
 
-        self._annotate_weighted_scores(balanced, "balanced")
-        self._annotate_weighted_scores(seeded, "seeded")
+        self._annotate_weighted_scores(balanced, SitOutStrategy.BALANCED)
+        self._annotate_weighted_scores(seeded, SitOutStrategy.SEEDED)
 
         balanced.sort(key=lambda p: (p["weighted_score"], p["score_imbalance"], p["repeat_count"]))
         seeded.sort(key=lambda p: (p["weighted_score"], p["score_imbalance"], p["repeat_count"]))

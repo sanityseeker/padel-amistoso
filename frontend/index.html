@@ -9,14 +9,17 @@
 <link rel="apple-touch-icon" href="/icon-192.png">
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');</script>
 <script>
-  // Restore last-visited page so PWA users land where they left off.
+  // Restore pinned home page or last-visited page so PWA users land where they left off.
   // Runs synchronously in <head> to avoid any flash of the admin page.
+  // Only redirects on cold start (new browser session); in-app navigation is never overridden.
   (function () {
     try {
+      if (sessionStorage.getItem('amistoso-session-active')) return;
+      sessionStorage.setItem('amistoso-session-active', '1');
       const PAGE_MAP = { tv: '/tv', register: '/register', player: '/player' };
-      const last = localStorage.getItem('amistoso-last-page');
-      const dest = last && PAGE_MAP[last];
-      if (dest) window.location.replace(dest);
+      const home = localStorage.getItem('amistoso-home-page');
+      const key = home || localStorage.getItem('amistoso-last-page');
+      if (key && PAGE_MAP[key]) window.location.replace(PAGE_MAP[key]);
     } catch (_) {}
   })();
 </script>
@@ -52,6 +55,10 @@
             <span class="page-selector-item-icon">📋</span>
             <span data-i18n="txt_nav_registrations">Registrations</span>
           </a>
+          <div class="page-selector-divider"></div>
+          <button type="button" class="page-selector-pin-btn" id="admin-pin-home-btn" data-action="toggleHomePin">
+            <span class="pin-icon">📍</span> <span class="pin-label" data-i18n="txt_nav_set_home">Set as home page</span>
+          </button>
         </div>
       </div>
       <div class="header-toggle-btns">
@@ -292,6 +299,26 @@
                 <label data-i18n="txt_txt_rival_strength_label">Rival strength <small style="font-weight:400">(0–1)</small></label>
                 <input id="mex-strength-weight" type="number" value="0" min="0" max="1" step="0.05">
                 <small data-i18n="txt_txt_rival_strength_help">Opponent-average bonus: boosts points when facing strong opponents (based on their average score). Higher weight = stronger effect.</small>
+              </div>
+              <div class="adv-field">
+                <label data-i18n="txt_txt_strength_min_matches_label">Min. matches for strength bonus</label>
+                <input id="mex-strength-min-matches" type="number" value="4" min="0" step="1">
+                <small data-i18n="txt_txt_strength_min_matches_help">Strength multiplier only activates once all four players in a match have played at least this many non-skipped games.</small>
+              </div>
+              <div class="adv-field">
+                <label data-i18n="txt_txt_strength_win_factor_label">Strength factor — win</label>
+                <input id="mex-strength-win-factor" type="number" value="1" min="0" max="1" step="0.05">
+                <small data-i18n="txt_txt_strength_win_factor_help">Fraction of the strength multiplier applied to the winning team. 1.0 = full bonus.</small>
+              </div>
+              <div class="adv-field">
+                <label data-i18n="txt_txt_strength_draw_factor_label">Strength factor — draw</label>
+                <input id="mex-strength-draw-factor" type="number" value="0.75" min="0" max="1" step="0.05">
+                <small data-i18n="txt_txt_strength_draw_factor_help">Fraction of the strength multiplier applied on a draw.</small>
+              </div>
+              <div class="adv-field">
+                <label data-i18n="txt_txt_strength_loss_factor_label">Strength factor — loss</label>
+                <input id="mex-strength-loss-factor" type="number" value="0.5" min="0" max="1" step="0.05">
+                <small data-i18n="txt_txt_strength_loss_factor_help">Fraction of the strength multiplier applied to the losing team.</small>
               </div>
               <div class="adv-field">
                 <label data-i18n="txt_txt_loss_discount_label">Loss discount <small style="font-weight:400">(1 = none)</small></label>

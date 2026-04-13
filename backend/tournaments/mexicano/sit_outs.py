@@ -6,7 +6,7 @@ import itertools
 import math
 import random
 
-from ...models import Player
+from ...models import Player, SitOutStrategy
 
 
 class SitOutMixin:
@@ -76,7 +76,7 @@ class SitOutMixin:
             sitting_ids = {p.id for p in combo}
             playing = [p for p in ranked if p.id not in sitting_ids]
             # quick=True uses 1 optimization pass — sufficient for ranking
-            obj = self._projected_round_objective(playing, strategy="balanced", quick=True)
+            obj = self._projected_round_objective(playing, strategy=SitOutStrategy.BALANCED, quick=True)
             scored.append((obj, list(combo)))
 
         scored.sort(key=lambda x: x[0])
@@ -101,14 +101,14 @@ class SitOutMixin:
     def _weighted_metrics_score(
         self,
         *,
-        strategy: str,
+        strategy: SitOutStrategy,
         skill_gap_violations: int,
         exact_prev_round_repeats: int,
         score_imbalance: float,
         repeat_count: float,
     ) -> float:
         """Weighted score used to optimize plans across all metrics."""
-        if strategy == "seeded":
+        if strategy == SitOutStrategy.SEEDED:
             score_weight = 3.0
             repeat_weight = 1.4
             exact_weight = 120.0
@@ -125,7 +125,7 @@ class SitOutMixin:
             + repeat_count * repeat_weight
         )
 
-    def _annotate_weighted_scores(self, proposals: list[dict], strategy: str) -> None:
+    def _annotate_weighted_scores(self, proposals: list[dict], strategy: SitOutStrategy) -> None:
         """Compute and attach ``weighted_score`` to each proposal in-place."""
         for p in proposals:
             p["weighted_score"] = round(
@@ -143,7 +143,7 @@ class SitOutMixin:
         self,
         playing: list[Player],
         *,
-        strategy: str,
+        strategy: SitOutStrategy,
         quick: bool = False,
     ) -> tuple[float, int, int, float, int]:
         """Compute proposal-style objective tuple for a candidate playing set.
@@ -153,7 +153,7 @@ class SitOutMixin:
 
         Args:
             playing: Players not sitting out this round.
-            strategy: Weighting profile for the objective (``"balanced"`` or ``"seeded"``).
+            strategy: Weighting profile for the objective (``SitOutStrategy.BALANCED`` or ``SitOutStrategy.SEEDED``).
             quick: When ``True``, use only 1 optimization pass instead of 3.
                    Sufficient for ranking purposes; avoids full hill-climb cost.
         """

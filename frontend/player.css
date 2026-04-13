@@ -300,6 +300,19 @@
   color: var(--text);
 }
 
+.entry-path-eliminated-badge {
+  display: inline-flex;
+  margin-left: 0.35rem;
+  padding: 0.02rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--red) 45%, var(--border));
+  color: var(--red);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .entry-path-chips {
   display: flex;
   gap: 0.25rem;
@@ -391,9 +404,20 @@
 
 /* Global career stats card */
 .global-stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
+  align-items: stretch;
+}
+.global-stats-grid > .global-stats-cell {
+  flex: 1 1 58px;
+  min-width: 58px;
+}
+.global-stats-divider {
+  width: 1px;
+  background: var(--border);
+  align-self: stretch;
+  margin: 0.3rem 0.15rem;
 }
 .global-stats-cell {
   background: var(--bg);

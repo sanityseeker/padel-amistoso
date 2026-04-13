@@ -16,7 +16,7 @@ Usage
 >>> png_bytes = render_schema(
 ...     group_sizes=[4, 4],
 ...     advance_per_group=2,
-...     elimination="single",
+...     elimination=EliminationType.SINGLE,
 ... )
 >>> Path("schema.png").write_bytes(png_bytes)
 """
@@ -28,6 +28,8 @@ import math
 from typing import Literal
 
 import matplotlib
+
+from ..models import BracketNodeKind, EliminationType
 
 matplotlib.use("Agg")  # headless — no display needed
 import matplotlib.patches as mpatches
@@ -72,7 +74,7 @@ def _fig_to_bytes(
 def render_schema(
     group_sizes: list[int],
     advance_per_group: int = 2,
-    elimination: Literal["single", "double"] = "single",
+    elimination: EliminationType = EliminationType.SINGLE,
     *,
     title: str | None = None,
     fmt: Literal["png", "svg", "pdf"] = "png",
@@ -135,7 +137,7 @@ def render_schema(
 
 def render_playoff_schema(
     participant_names: list[str],
-    elimination: Literal["single", "double"] = "single",
+    elimination: EliminationType = EliminationType.SINGLE,
     *,
     match_labels: dict[str, dict] | None = None,
     title: str | None = None,
@@ -170,7 +172,7 @@ def render_playoff_schema(
 def build_graph(
     group_sizes: list[int],
     advance_per_group: int = 2,
-    elimination: Literal["single", "double"] = "single",
+    elimination: EliminationType = EliminationType.SINGLE,
 ) -> nx.DiGraph:
     """Return the raw networkx DiGraph (useful for tests / further processing)."""
     layout = _compute_layout(group_sizes, advance_per_group, elimination)
@@ -250,7 +252,7 @@ def _compute_layout(
         gid = f"group_{gi}"
         label = f"Group {chr(65 + gi)}\n({group_sizes[gi]} players)"
         G.add_node(gid)
-        node_meta[gid] = {"label": label, "kind": "group", "stage": 0, "group": gi}
+        node_meta[gid] = {"label": label, "kind": BracketNodeKind.GROUP, "stage": 0, "group": gi}
         positions[gid] = (x_groups, y_group_start - gi * group_height)
         group_nodes.append(gid)
 
@@ -291,7 +293,7 @@ def _compute_layout(
         rank = ai + 1
         label = f"#{rank} Grp {chr(65 + gi)}"
         G.add_node(aid)
-        node_meta[aid] = {"label": label, "kind": "advance", "stage": 1, "group": gi}
+        node_meta[aid] = {"label": label, "kind": BracketNodeKind.ADVANCE, "stage": 1, "group": gi}
         positions[aid] = (x_advance, y_adv_start - slot_idx * slot_spacing)
         advance_nodes.append(aid)
         # Edge from group to advancing slot
@@ -300,7 +302,7 @@ def _compute_layout(
     stages.append({"name": "Advance", "x": x_advance, "nodes": list(advance_nodes)})
 
     # ── Stage 2+: Play‑off bracket ─────────────────────────────────────
-    if elimination == "single":
+    if elimination == EliminationType.SINGLE:
         _build_single_elim_bracket(
             G,
             positions,
@@ -355,7 +357,7 @@ def _compute_playoff_layout(
         G.add_node(node_id)
         node_meta[node_id] = {
             "label": name,
-            "kind": "advance",
+            "kind": BracketNodeKind.ADVANCE,
             "stage": 0,
         }
         positions[node_id] = (x_participants, y_start - idx * slot_spacing)
@@ -363,7 +365,7 @@ def _compute_playoff_layout(
 
     stages.append({"name": "Participants", "x": x_participants, "nodes": list(participant_nodes)})
 
-    if elimination == "single":
+    if elimination == EliminationType.SINGLE:
         _build_single_elim_bracket(
             G,
             positions,
@@ -498,7 +500,7 @@ def _build_single_elim_bracket(
                 # Bye — route through a bye marker so the graph stays linear
                 bye_id = f"bye_r0_p{p_idx}"
                 G.add_node(bye_id)
-                node_meta[bye_id] = {"label": "BYE", "kind": "bye", "stage": 2 + r}
+                node_meta[bye_id] = {"label": "BYE", "kind": BracketNodeKind.BYE, "stage": 2 + r}
                 positions[bye_id] = (x_round, y_mid)
                 G.add_edge(n1, bye_id)
                 round_nodes.append(bye_id)  # bye feeds into next round
@@ -506,7 +508,7 @@ def _build_single_elim_bracket(
             if r == 0 and n1 is None and n2 is not None:
                 bye_id = f"bye_r0_p{p_idx}"
                 G.add_node(bye_id)
-                node_meta[bye_id] = {"label": "BYE", "kind": "bye", "stage": 2 + r}
+                node_meta[bye_id] = {"label": "BYE", "kind": BracketNodeKind.BYE, "stage": 2 + r}
                 positions[bye_id] = (x_round, y_mid)
                 G.add_edge(n2, bye_id)
                 round_nodes.append(bye_id)  # bye feeds into next round
@@ -520,7 +522,7 @@ def _build_single_elim_bracket(
             G.add_node(mid)
             node_meta[mid] = {
                 "label": label,
-                "kind": "match",
+                "kind": BracketNodeKind.MATCH,
                 "stage": 2 + r,
                 "round": round_label,
                 "round_header": round_label,
@@ -538,7 +540,7 @@ def _build_single_elim_bracket(
             for feeder in (n1, n2):
                 if feeder is not None:
                     feeder_kind = node_meta.get(feeder, {}).get("kind", "")
-                    rel = "neutral" if feeder_kind in ("advance", "bye") else "win"
+                    rel = "neutral" if feeder_kind in (BracketNodeKind.ADVANCE, BracketNodeKind.BYE) else "win"
                     G.add_edge(feeder, mid, relation=rel)
 
             round_nodes.append(mid)
@@ -655,7 +657,12 @@ def _build_double_elim_bracket(
             round_name = f"Winners R{r + 1}"
             label = f"Match {p_idx + 1}" if num_pairs > 1 else ""
             G.add_node(mid)
-            node_meta[mid] = {"label": label, "kind": "winners_match", "stage": 2 + r, "round_header": round_name}
+            node_meta[mid] = {
+                "label": label,
+                "kind": BracketNodeKind.WINNERS_MATCH,
+                "stage": 2 + r,
+                "round_header": round_name,
+            }
             # Overlay actual team names + score if available
             md = (match_labels or {}).get(mid)
             if md:
@@ -666,7 +673,7 @@ def _build_double_elim_bracket(
             for feeder in (n1, n2):
                 if feeder:
                     feeder_kind = node_meta.get(feeder, {}).get("kind", "")
-                    rel = "neutral" if feeder_kind in ("advance", "bye") else "win"
+                    rel = "neutral" if feeder_kind in (BracketNodeKind.ADVANCE, BracketNodeKind.BYE) else "win"
                     G.add_edge(feeder, mid, relation=rel)
             w_curr.append(mid)
             round_match_nodes.append(mid)
@@ -702,7 +709,8 @@ def _build_double_elim_bracket(
     lowest_winners_y = min(
         positions[n][1]
         for n in positions
-        if node_meta.get(n, {}).get("kind") in ("winners_match", "advance", "group", "bye")
+        if node_meta.get(n, {}).get("kind")
+        in (BracketNodeKind.WINNERS_MATCH, BracketNodeKind.ADVANCE, BracketNodeKind.GROUP, BracketNodeKind.BYE)
     )
     losers_gap = 2.0
     y_losers_top = lowest_winners_y - losers_gap
@@ -773,7 +781,7 @@ def _build_double_elim_bracket(
             G.add_node(_mid)
             node_meta[_mid] = {
                 "label": _label,
-                "kind": "losers_match",
+                "kind": BracketNodeKind.LOSERS_MATCH,
                 "stage": losers_stage_offset + _lr_round_idx,
                 "round_header": _round_name,
             }
@@ -801,7 +809,7 @@ def _build_double_elim_bracket(
             continue
         if _from_viz not in positions or _to_viz not in positions:
             continue
-        if node_meta.get(_to_viz, {}).get("kind") == "winners_match":
+        if node_meta.get(_to_viz, {}).get("kind") == BracketNodeKind.WINNERS_MATCH:
             continue  # WR→WR edges already created by winners loop
         _relation = "loss" if _edge.is_loser else "win"
         if G.has_edge(_from_viz, _to_viz):
@@ -853,7 +861,7 @@ def _build_double_elim_bracket(
     y_gf = 0.0
     gf_id = "grand_final"
     G.add_node(gf_id)
-    gf_meta: dict = {"label": "", "kind": "grand_final", "stage": 90, "round_header": "Grand Final"}
+    gf_meta: dict = {"label": "", "kind": BracketNodeKind.GRAND_FINAL, "stage": 90, "round_header": "Grand Final"}
     gf_md = (match_labels or {}).get("grand_final")
     if gf_md:
         gf_meta["label"] = _label_from_match_data(gf_md)
@@ -875,16 +883,16 @@ def _build_double_elim_bracket(
 
 # Colour palette (kind → facecolor, edgecolor, text colour)
 _STYLE: dict[str, dict] = {
-    "group": {"fc": "#4A90D9", "ec": "#2C5F8A", "tc": "white"},
-    "advance": {"fc": "#E8E8E8", "ec": "#999999", "tc": "#333333"},
-    "bye": {"fc": "#F5F5F5", "ec": "#CCCCCC", "tc": "#999999"},
-    "match": {"fc": "#F5A623", "ec": "#C47D10", "tc": "white"},
-    "winners_match": {"fc": "#F5A623", "ec": "#C47D10", "tc": "white"},
-    "losers_match": {"fc": "#D07050", "ec": "#A04830", "tc": "white"},
-    "losers_block": {"fc": "#D04545", "ec": "#992D2D", "tc": "white"},
-    "grand_final": {"fc": "#8B5CF6", "ec": "#6D3FCC", "tc": "white"},
-    "gf_reset": {"fc": "#8B5CF6", "ec": "#6D3FCC", "tc": "white"},
-    "champion": {"fc": "#FFD700", "ec": "#B8960F", "tc": "#333333"},
+    BracketNodeKind.GROUP: {"fc": "#4A90D9", "ec": "#2C5F8A", "tc": "white"},
+    BracketNodeKind.ADVANCE: {"fc": "#E8E8E8", "ec": "#999999", "tc": "#333333"},
+    BracketNodeKind.BYE: {"fc": "#F5F5F5", "ec": "#CCCCCC", "tc": "#999999"},
+    BracketNodeKind.MATCH: {"fc": "#F5A623", "ec": "#C47D10", "tc": "white"},
+    BracketNodeKind.WINNERS_MATCH: {"fc": "#F5A623", "ec": "#C47D10", "tc": "white"},
+    BracketNodeKind.LOSERS_MATCH: {"fc": "#D07050", "ec": "#A04830", "tc": "white"},
+    BracketNodeKind.LOSERS_BLOCK: {"fc": "#D04545", "ec": "#992D2D", "tc": "white"},
+    BracketNodeKind.GRAND_FINAL: {"fc": "#8B5CF6", "ec": "#6D3FCC", "tc": "white"},
+    BracketNodeKind.GF_RESET: {"fc": "#8B5CF6", "ec": "#6D3FCC", "tc": "white"},
+    BracketNodeKind.CHAMPION: {"fc": "#FFD700", "ec": "#B8960F", "tc": "#333333"},
 }
 
 # Edge styles by relation type
@@ -976,15 +984,15 @@ def _draw(
 
     def _node_box_size(kind: str) -> tuple[float, float]:
         """Box size in data units for a given node kind."""
-        if kind in ("group", "losers_block"):
+        if kind in (BracketNodeKind.GROUP, BracketNodeKind.LOSERS_BLOCK):
             return 1.8 * box_scale, 0.9 * box_scale
-        if kind == "champion":
+        if kind == BracketNodeKind.CHAMPION:
             return 1.8 * box_scale, 0.7 * box_scale
-        if kind in ("grand_final", "gf_reset"):
+        if kind in (BracketNodeKind.GRAND_FINAL, BracketNodeKind.GF_RESET):
             return 1.8 * box_scale, 0.7 * box_scale
-        if kind == "advance":
+        if kind == BracketNodeKind.ADVANCE:
             return 1.3 * box_scale, 0.5 * box_scale
-        if kind == "bye":
+        if kind == BracketNodeKind.BYE:
             return 0.9 * box_scale, 0.4 * box_scale
         return 1.6 * box_scale, 0.85 * box_scale
 
@@ -1006,7 +1014,7 @@ def _draw(
     node_sizes: dict[str, tuple[float, float]] = {}
     for nid in G.nodes():
         meta = node_meta.get(nid, {})
-        kind = meta.get("kind", "match")
+        kind = meta.get("kind", BracketNodeKind.MATCH)
         bw, bh = _node_box_size(kind)
         if meta.get("has_teams"):
             # Taller & slightly wider box to fit 3-line team display
@@ -1021,8 +1029,8 @@ def _draw(
             continue
         x0, y0 = positions[u]
         x1, y1 = positions[v]
-        bw0, bh0 = node_sizes.get(u, _node_box_size("match"))
-        bw1, bh1 = node_sizes.get(v, _node_box_size("match"))
+        bw0, bh0 = node_sizes.get(u, _node_box_size(BracketNodeKind.MATCH))
+        bw1, bh1 = node_sizes.get(v, _node_box_size(BracketNodeKind.MATCH))
         dx, dy = x1 - x0, y1 - y0
 
         sx, sy = _edge_center_anchor(x0, y0, bw0, bh0, dx, dy)
@@ -1050,18 +1058,18 @@ def _draw(
         if nid not in positions:
             continue
         meta = node_meta.get(nid, {})
-        kind = meta.get("kind", "match")
+        kind = meta.get("kind", BracketNodeKind.MATCH)
         label = meta.get("label", nid)
         gi = meta.get("group")
         rnd = meta.get("round")
-        if kind == "group" and gi is not None:
+        if kind == BracketNodeKind.GROUP and gi is not None:
             style = _group_style(gi)
-        elif kind == "advance" and gi is not None:
+        elif kind == BracketNodeKind.ADVANCE and gi is not None:
             style = _advance_style(gi)
-        elif kind == "match" and rnd and rnd in _ROUND_COLOURS:
+        elif kind == BracketNodeKind.MATCH and rnd and rnd in _ROUND_COLOURS:
             style = _ROUND_COLOURS[rnd]
         else:
-            style = _STYLE.get(kind, _STYLE["match"])
+            style = _STYLE.get(kind, _STYLE[BracketNodeKind.MATCH])
 
         x, y = positions[nid]
 
@@ -1080,7 +1088,7 @@ def _draw(
         )
         ax.add_patch(box)
 
-        fontsize = (7 if kind == "bye" else (8 if kind == "advance" else 9)) * box_scale
+        fontsize = (7 if kind == BracketNodeKind.BYE else (8 if kind == BracketNodeKind.ADVANCE else 9)) * box_scale
         round_header = meta.get("round_header", "")
         header_fs = 8 * box_scale * title_font_scale
         if round_header and meta.get("has_teams"):

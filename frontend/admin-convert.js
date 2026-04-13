@@ -620,6 +620,10 @@ function _renderConvSettings(rid) {
     html += `<div class="adv-field"><label>${t('txt_txt_skill_gap_label')}</label><input id="conv-mex-skill-gap" type="number" placeholder="e.g. 50" min="0"></div>`;
     html += `<div class="adv-field"><label>${t('txt_txt_win_bonus_label')}</label><input id="conv-mex-win-bonus" type="number" value="0" min="0"></div>`;
     html += `<div class="adv-field"><label>${t('txt_txt_rival_strength_label')}</label><input id="conv-mex-strength-weight" type="number" value="0" min="0" max="1" step="0.05"></div>`;
+    html += `<div class="adv-field"><label>${t('txt_txt_strength_min_matches_label')}</label><input id="conv-mex-strength-min-matches" type="number" value="4" min="0" step="1"></div>`;
+    html += `<div class="adv-field"><label>${t('txt_txt_strength_win_factor_label')}</label><input id="conv-mex-strength-win-factor" type="number" value="1" min="0" max="1" step="0.05"></div>`;
+    html += `<div class="adv-field"><label>${t('txt_txt_strength_draw_factor_label')}</label><input id="conv-mex-strength-draw-factor" type="number" value="0.75" min="0" max="1" step="0.05"></div>`;
+    html += `<div class="adv-field"><label>${t('txt_txt_strength_loss_factor_label')}</label><input id="conv-mex-strength-loss-factor" type="number" value="0.5" min="0" max="1" step="0.05"></div>`;
     html += `<div class="adv-field"><label>${t('txt_txt_loss_discount_label')}</label><input id="conv-mex-loss-discount" type="number" value="1" min="0" max="1" step="0.05"></div>`;
     html += `<div class="adv-field"><label>${t('txt_txt_balance_tolerance_label')}</label><input id="conv-mex-balance-tol" type="number" value="0.2" min="0" max="2" step="0.1"></div>`;
     html += `<div class="adv-field"><label>${t('txt_txt_teammate_repeat_weight_label')}</label><input id="conv-mex-teammate-repeat-wt" type="number" value="2" min="0" step="0.1"></div>`;
@@ -881,6 +885,10 @@ async function _submitConvert(rid) {
       body.skill_gap = sg === '' || sg == null ? null : +sg;
       body.win_bonus = +(document.getElementById('conv-mex-win-bonus')?.value || 0);
       body.strength_weight = +(document.getElementById('conv-mex-strength-weight')?.value || 0);
+      body.strength_min_matches = +(document.getElementById('conv-mex-strength-min-matches')?.value ?? 4);
+      body.strength_win_factor = +(document.getElementById('conv-mex-strength-win-factor')?.value ?? 1);
+      body.strength_draw_factor = +(document.getElementById('conv-mex-strength-draw-factor')?.value ?? 0.75);
+      body.strength_loss_factor = +(document.getElementById('conv-mex-strength-loss-factor')?.value ?? 0.5);
       body.loss_discount = +(document.getElementById('conv-mex-loss-discount')?.value || 1);
       body.balance_tolerance = +(document.getElementById('conv-mex-balance-tol')?.value || 0.2);
       body.teammate_repeat_weight = +(document.getElementById('conv-mex-teammate-repeat-wt')?.value || 2);

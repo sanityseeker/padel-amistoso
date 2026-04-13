@@ -57,6 +57,68 @@ class POPhase(StrEnum):
     FINISHED = "finished"
 
 
+class EliminationType(StrEnum):
+    SINGLE = "single"
+    DOUBLE = "double"
+
+
+class ScoreMode(StrEnum):
+    POINTS = "points"
+    TENNIS = "tennis"
+
+
+class ScoreConfirmation(StrEnum):
+    IMMEDIATE = "immediate"
+    REQUIRED = "required"
+
+
+class EntityType(StrEnum):
+    TOURNAMENT = "tournament"
+    REGISTRATION = "registration"
+
+
+class ParticipationStatus(StrEnum):
+    ACTIVE = "active"
+    FINISHED = "finished"
+
+
+class TokenType(StrEnum):
+    PLAYER = "player"
+    PROFILE = "profile"
+    PROFILE_EMAIL_VERIFY = "profile_email_verify"
+
+
+class DisputeChoice(StrEnum):
+    ORIGINAL = "original"
+    CORRECTION = "correction"
+    CUSTOM = "custom"
+
+
+class QuestionType(StrEnum):
+    TEXT = "text"
+    CHOICE = "choice"
+    MULTICHOICE = "multichoice"
+    NUMBER = "number"
+
+
+class SitOutStrategy(StrEnum):
+    SEEDED = "seeded"
+    BALANCED = "balanced"
+
+
+class BracketNodeKind(StrEnum):
+    CHAMPION = "champion"
+    ADVANCE = "advance"
+    BYE = "bye"
+    GROUP = "group"
+    MATCH = "match"
+    WINNERS_MATCH = "winners_match"
+    LOSERS_MATCH = "losers_match"
+    LOSERS_BLOCK = "losers_block"
+    GRAND_FINAL = "grand_final"
+    GF_RESET = "gf_reset"
+
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------

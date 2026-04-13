@@ -20,7 +20,7 @@ from ..email import (
     render_tournament_started_email,
     send_email,
 )
-from ..models import MatchStatus
+from ..models import GPPhase, MatchStatus, Sport
 from .helpers import _find_match, _require_editor_access, _require_owner_or_admin
 from .db import get_shared_tournament_ids
 from .player_secret_store import (
@@ -79,10 +79,10 @@ async def list_tournaments(current_user: User | None = Depends(get_current_user_
                 "type": data["type"],
                 "alias": data.get("alias"),
                 "team_mode": t.team_mode if t else False,
-                "phase": t.phase if t else "setup",
+                "phase": t.phase if t else GPPhase.SETUP,
                 "owner": data.get("owner"),
                 "public": data.get("public", True),
-                "sport": data.get("sport", "padel"),
+                "sport": data.get("sport", Sport.PADEL),
                 "shared": current_user is not None and tid in shared_ids,
             }
         )
@@ -104,7 +104,7 @@ async def delete_tournament(tournament_id: str, user: User = Depends(get_current
             tournament_id,
             entity_name=entity_name,
             player_stats=player_stats,
-            sport=t_data.get("sport", "padel"),
+            sport=t_data.get("sport", Sport.PADEL),
             partner_rival_stats=extract_partner_rival_stats(t_data),
         )
     return {"ok": True}
@@ -245,7 +245,7 @@ async def resolve_alias(alias: str) -> dict:
     """Resolve a tournament alias to its ID. Public (used by TV page)."""
     for tid, data in _tournaments.items():
         if data.get("alias") == alias:
-            return {"id": tid, "name": data["name"], "type": data["type"], "sport": data.get("sport", "padel")}
+            return {"id": tid, "name": data["name"], "type": data["type"], "sport": data.get("sport", Sport.PADEL)}
     raise HTTPException(404, f"No tournament with alias '{alias}'")
 
 
@@ -266,8 +266,8 @@ async def get_tournament_meta(tid: str) -> dict:
         "type": data["type"],
         "alias": data.get("alias"),
         "team_mode": t.team_mode if t else False,
-        "phase": t.phase if t else "setup",
-        "sport": data.get("sport", "padel"),
+        "phase": t.phase if t else GPPhase.SETUP,
+        "sport": data.get("sport", Sport.PADEL),
     }
 
 

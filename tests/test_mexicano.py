@@ -684,6 +684,224 @@ class TestMexicanoBuchholzStrength:
             assert abs(bh - expected) < 0.01
 
 
+class TestStrengthMinMatchesAndOutcomeFactors:
+    """Strength modification gated by min matches and scaled by outcome factors."""
+
+    def _setup_experienced(self, players, t, played=10):
+        """Give all players enough matches played so strength gate passes."""
+        for p in players:
+            t._raw_scores[p.id] = 15 * played  # avg 15
+            t._matches_played[p.id] = played
+            t.scores[p.id] = 15 * played
+        # Make one pair stronger so relative_strength is non-zero
+        t._raw_scores[players[0].id] = 20 * played
+        t.scores[players[0].id] = 20 * played
+        t._raw_scores[players[1].id] = 20 * played
+        t.scores[players[1].id] = 20 * played
+        t._est_cache = None
+
+    def test_strength_skipped_when_player_below_min_matches(self):
+        """Strength mod should NOT apply when any participant has < strength_min_matches games."""
+        players = _make_players(4)
+        t = MexicanoTournament(
+            players,
+            _make_courts(1),
+            total_points_per_match=32,
+            num_rounds=3,
+            strength_weight=1.0,
+            strength_min_matches=4,
+        )
+        # 3 players played 10 matches, 1 only played 2 (e.g. just joined / sat out)
+        for p in players[:3]:
+            t._raw_scores[p.id] = 200
+            t._matches_played[p.id] = 10
+            t.scores[p.id] = 200
+        t._raw_scores[players[3].id] = 10
+        t._matches_played[players[3].id] = 2
+        t.scores[players[3].id] = 10
+        t._est_cache = None
+
+        t.generate_next_round()
+        m = t.current_round_matches()[0]
+        before = {p.id: t.scores[p.id] for p in players}
+        t.record_result(m.id, (20, 12))
+
+        # Since one player has < 4 matches, strength is disabled → raw scores only
+        for p in m.team1:
+            assert t.scores[p.id] - before[p.id] == 20
+        for p in m.team2:
+            assert t.scores[p.id] - before[p.id] == 12
+
+    def test_strength_applied_when_all_above_min_matches(self):
+        """Strength mod applies when all participants have >= strength_min_matches games."""
+        players = _make_players(4)
+        t = MexicanoTournament(
+            players,
+            _make_courts(1),
+            total_points_per_match=32,
+            num_rounds=3,
+            strength_weight=1.0,
+            strength_min_matches=4,
+        )
+        # All players well above threshold, with different averages
+        t._raw_scores[players[0].id] = 200  # avg 20
+        t._raw_scores[players[1].id] = 200  # avg 20
+        t._raw_scores[players[2].id] = 50  # avg 5
+        t._raw_scores[players[3].id] = 50  # avg 5
+        for p in players:
+            t._matches_played[p.id] = 10
+            t.scores[p.id] = t._raw_scores[p.id]
+        t._est_cache = None
+
+        t.generate_next_round()
+        m = t.current_round_matches()[0]
+
+        # Determine which team is weaker
+        team1_avg = sum(t._raw_scores[p.id] / t._matches_played[p.id] for p in m.team1) / len(m.team1)
+        team2_avg = sum(t._raw_scores[p.id] / t._matches_played[p.id] for p in m.team2) / len(m.team2)
+
+        before = {p.id: t.scores[p.id] for p in players}
+        t.record_result(m.id, (20, 12))
+
+        # The weaker team facing stronger opponents should get a bonus (mult > 1)
+        if team1_avg < team2_avg:
+            # team1 is weaker, scored 20 → should get more than 20
+            for p in m.team1:
+                assert t.scores[p.id] - before[p.id] > 20
+        elif team2_avg < team1_avg:
+            # team2 is weaker, scored 12 → should get more than 12
+            for p in m.team2:
+                assert t.scores[p.id] - before[p.id] > 12
+
+    def test_strength_min_matches_zero_always_applies(self):
+        """With strength_min_matches=0, strength always applies from round 1."""
+        players = _make_players(4)
+        t = MexicanoTournament(
+            players,
+            _make_courts(1),
+            total_points_per_match=32,
+            num_rounds=3,
+            strength_weight=1.0,
+            strength_min_matches=0,
+        )
+        # Give players different averages but 0 matches played via 1 pre-match
+        for i, p in enumerate(players):
+            t._raw_scores[p.id] = (i + 1) * 20
+            t._matches_played[p.id] = 1
+            t.scores[p.id] = (i + 1) * 20
+        t._est_cache = None
+
+        t.generate_next_round()
+        m = t.current_round_matches()[0]
+        # Just verify it doesn't crash and produces results
+        t.record_result(m.id, (20, 12))
+
+    def test_outcome_factors_win_gets_full_strength(self):
+        """Winner gets full strength_win_factor, loser gets strength_loss_factor."""
+        players = _make_players(4)
+        t = MexicanoTournament(
+            players,
+            _make_courts(1),
+            total_points_per_match=32,
+            num_rounds=3,
+            strength_weight=1.0,
+            strength_min_matches=0,
+            strength_win_factor=1.0,
+            strength_loss_factor=0.0,
+        )
+        # Make P2,P3 much weaker so both teams see asymmetric relative strength
+        t._raw_scores[players[0].id] = 100
+        t._raw_scores[players[1].id] = 100
+        t._raw_scores[players[2].id] = 20
+        t._raw_scores[players[3].id] = 20
+        for p in players:
+            t._matches_played[p.id] = 5
+            t.scores[p.id] = t._raw_scores[p.id]
+        t._est_cache = None
+
+        t.generate_next_round()
+        m = t.current_round_matches()[0]
+
+        before = {p.id: t.scores[p.id] for p in players}
+        # Team1 wins 20-12
+        t.record_result(m.id, (20, 12))
+
+        # The losing team's strength_loss_factor=0.0, so their mult should be 1.0
+        # (no strength bonus even if they face stronger opponents)
+        for p in m.team2:
+            assert t.scores[p.id] - before[p.id] == 12  # raw only, no strength bonus
+
+    def test_outcome_factors_draw(self):
+        """On a draw, both teams use strength_draw_factor."""
+        players = _make_players(4)
+        t = MexicanoTournament(
+            players,
+            _make_courts(1),
+            total_points_per_match=32,
+            num_rounds=3,
+            strength_weight=1.0,
+            strength_min_matches=0,
+            strength_win_factor=1.0,
+            strength_draw_factor=0.5,
+            strength_loss_factor=0.0,
+        )
+        t._raw_scores[players[0].id] = 100
+        t._raw_scores[players[1].id] = 100
+        t._raw_scores[players[2].id] = 20
+        t._raw_scores[players[3].id] = 20
+        for p in players:
+            t._matches_played[p.id] = 5
+            t.scores[p.id] = t._raw_scores[p.id]
+        t._est_cache = None
+
+        t.generate_next_round()
+        m = t.current_round_matches()[0]
+        before = {p.id: t.scores[p.id] for p in players}
+        t.record_result(m.id, (16, 16))
+
+        # On a draw, the relative_strength bonus is scaled by 0.5
+        # Verify at least the weaker team got more than raw 16 (draw_factor > 0)
+        team1_avg = sum(t._raw_scores[p.id] / 5 for p in m.team1) / len(m.team1)
+        team2_avg = sum(t._raw_scores[p.id] / 5 for p in m.team2) / len(m.team2)
+        weaker_team = m.team1 if team1_avg < team2_avg else m.team2
+        if team1_avg != team2_avg:
+            for p in weaker_team:
+                # draw_factor=0.5 so bonus is halved, but should still be > 16
+                assert t.scores[p.id] - before[p.id] > 16
+
+    def test_default_outcome_factors(self):
+        """Default factors are 1.0 (win), 0.75 (draw), 0.5 (loss)."""
+        t = MexicanoTournament(
+            _make_players(4),
+            _make_courts(1),
+            strength_weight=0.5,
+        )
+        assert t.strength_min_matches == 4
+        assert t.strength_win_factor == 1.0
+        assert t.strength_draw_factor == 0.75
+        assert t.strength_loss_factor == 0.5
+
+    def test_config_validation_rejects_out_of_range(self):
+        with pytest.raises(ValueError):
+            MexicanoTournament(
+                _make_players(4),
+                _make_courts(1),
+                strength_win_factor=1.5,
+            )
+        with pytest.raises(ValueError):
+            MexicanoTournament(
+                _make_players(4),
+                _make_courts(1),
+                strength_loss_factor=-0.1,
+            )
+        with pytest.raises(ValueError):
+            MexicanoTournament(
+                _make_players(4),
+                _make_courts(1),
+                strength_min_matches=-1,
+            )
+
+
 class TestMexicanoLossDiscount:
     """Loss discount applies a multiplier to the losing team's scored points."""
 

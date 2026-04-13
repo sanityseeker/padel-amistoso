@@ -9,6 +9,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
+from ..models import EliminationType
 from ..viz import render_playoff_schema, render_schema
 from .helpers import (
     _schema_cache_get,
@@ -28,7 +29,7 @@ async def schema_preview(
         description="Comma-separated group sizes, e.g. '4,4' for two groups of 4",
     ),
     advance_per_group: int = Query(2, ge=1),
-    elimination: Literal["single", "double"] = Query("single"),
+    elimination: EliminationType = Query(EliminationType.SINGLE),
     title: str | None = Query(None),
     fmt: Literal["png", "svg", "pdf"] = Query("png"),
     box_scale: float = Query(1.0, ge=0.3, le=3.0),
@@ -88,7 +89,7 @@ async def schema_preview(
 async def playoff_schema_preview(
     participants: int = Query(..., ge=2, le=128, description="Number of participants"),
     names: list[str] = Query(default=[]),
-    elimination: Literal["single", "double"] = Query("single"),
+    elimination: EliminationType = Query(EliminationType.SINGLE),
     title: str | None = Query(None),
     fmt: Literal["png", "svg", "pdf"] = Query("png"),
     box_scale: float = Query(1.0, ge=0.3, le=3.0),

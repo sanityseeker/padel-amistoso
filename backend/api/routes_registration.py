@@ -34,7 +34,7 @@ from ..email import (
     send_email,
     send_email_background,
 )
-from ..models import Court, Player, TournamentType
+from ..models import Court, GPPhase, Player, QuestionType, Sport, TournamentType
 from ..tournaments import GroupPlayoffTournament, MexicanoTournament, PlayoffTournament
 from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .db import add_co_editor, get_db, get_registration_co_editors, get_shared_registration_ids
@@ -226,7 +226,7 @@ def _validate_answers(questions: list[QuestionDef], answers: dict[str, str]) -> 
         value = answers.get(q.key)
         if q.required and not value:
             raise HTTPException(400, f"Answer required for: {q.label}")
-        if value and q.type == "multichoice" and q.choices:
+        if value and q.type == QuestionType.MULTICHOICE and q.choices:
             try:
                 selected = json.loads(value)
             except (json.JSONDecodeError, TypeError):
@@ -346,7 +346,7 @@ def _get_linked_tournaments_by_registration(
         if tournament_data is None:
             return True
         tournament = tournament_data.get("tournament")
-        return str(getattr(tournament, "phase", "")) == "finished"
+        return str(getattr(tournament, "phase", "")) == GPPhase.FINISHED
 
     return {
         rid: [
@@ -388,7 +388,7 @@ def _get_linked_tournaments(tids: list[str]) -> list[LinkedTournamentOut]:
         if tournament_data is None:
             return True
         tournament = tournament_data.get("tournament")
-        return str(getattr(tournament, "phase", "")) == "finished"
+        return str(getattr(tournament, "phase", "")) == GPPhase.FINISHED
 
     return [
         LinkedTournamentOut(
@@ -537,7 +537,7 @@ async def list_public_registrations() -> list[RegistrationPublicOut]:
                 linked_tournaments=linked_tournaments,
                 listed=True,
                 archived=bool(r.get("archived", 0)),
-                sport=r.get("sport", "padel"),
+                sport=r.get("sport", Sport.PADEL),
                 email_requirement=_email_requirement(r),
                 registrant_count=len(registrants),
                 registrants=[],
@@ -565,7 +565,7 @@ async def get_registration(rid: str, user: User = Depends(get_current_user)) -> 
         questions=_parse_questions(reg.get("questions")),
         listed=bool(reg.get("listed", 0)),
         archived=bool(reg.get("archived", 0)),
-        sport=reg.get("sport", "padel"),
+        sport=reg.get("sport", Sport.PADEL),
         description=reg.get("description"),
         message=reg.get("message"),
         alias=reg.get("alias"),
@@ -697,7 +697,7 @@ async def delete_registration(rid: str, user: User = Depends(get_current_user)) 
                         row["player_id"],
                         row["player_name"],
                         finished_at,
-                        reg.get("sport", "padel"),
+                        reg.get("sport", Sport.PADEL),
                     )
                     for row in linked
                 ],
@@ -874,7 +874,7 @@ async def get_registration_public(rid: str) -> RegistrationPublicOut:
         linked_tournaments=linked_tournaments,
         listed=bool(reg.get("listed", 0)),
         archived=bool(reg.get("archived", 0)),
-        sport=reg.get("sport", "padel"),
+        sport=reg.get("sport", Sport.PADEL),
         email_requirement=_email_requirement(reg),
         registrant_count=len(registrants),
         registrants=[],
@@ -1129,7 +1129,7 @@ async def convert_registration(
 
         tid = await allocate_tournament_id()
 
-        if req.tournament_type == "group_playoff":
+        if req.tournament_type == TournamentType.GROUP_PLAYOFF:
             courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
             team_roster: dict[str, list[str]] = {}
             team_member_names: dict[str, list[str]] = {}
@@ -1186,7 +1186,7 @@ async def convert_registration(
                 assign_courts=req.assign_courts,
             )
 
-        elif req.tournament_type == "mexicano":
+        elif req.tournament_type == TournamentType.MEXICANO:
             courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 
             if req.teams and req.team_mode:
@@ -1243,6 +1243,10 @@ async def convert_registration(
                     opponent_repeat_weight=req.opponent_repeat_weight,
                     repeat_decay=req.repeat_decay,
                     partner_balance_weight=req.partner_balance_weight,
+                    strength_min_matches=req.strength_min_matches,
+                    strength_win_factor=req.strength_win_factor,
+                    strength_draw_factor=req.strength_draw_factor,
+                    strength_loss_factor=req.strength_loss_factor,
                 )
             except ValueError as e:
                 raise HTTPException(400, str(e))
@@ -1257,7 +1261,7 @@ async def convert_registration(
                 assign_courts=req.assign_courts,
             )
 
-        elif req.tournament_type == "playoff":
+        elif req.tournament_type == TournamentType.PLAYOFF:
             courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 
             if req.teams and req.team_mode:

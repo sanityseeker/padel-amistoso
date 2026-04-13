@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth.deps import require_admin
 from ..auth.models import User
+from ..models import ParticipationStatus, Sport
 from ..tournaments.player_secrets import generate_passphrase
 from .db import get_db
 from .schemas import (
@@ -129,7 +130,7 @@ def _build_participations(conn, profile_id: str) -> list[AdminParticipationLink]
                 player_id=r["player_id"],
                 player_name=r["player_name"],
                 tournament_name=r["tournament_name"],
-                status="active",
+                status=ParticipationStatus.ACTIVE,
             )
         )
 
@@ -153,7 +154,7 @@ def _build_participations(conn, profile_id: str) -> list[AdminParticipationLink]
                 player_id=r["player_id"],
                 player_name=r["player_name"],
                 tournament_name=r["tournament_name"],
-                status="finished",
+                status=ParticipationStatus.FINISHED,
                 finished_at=r["finished_at"],
                 rank=r["rank"],
                 total_players=r["total_players"],
@@ -219,7 +220,7 @@ async def admin_link_participation(
             # Backfill into player_history using the snapshot stored at finish time.
             _backfill_single_finished_secret(conn, profile_id, tid, player_id)
 
-    return {"ok": True, "status": "finished" if is_finished else "active"}
+    return {"ok": True, "status": ParticipationStatus.FINISHED if is_finished else ParticipationStatus.ACTIVE}
 
 
 def _backfill_single_finished_secret(conn, profile_id: str, tid: str, player_id: str) -> None:
@@ -283,7 +284,7 @@ def _backfill_single_finished_secret(conn, profile_id: str, tid: str, player_id:
             stats.get("draws", 0),
             stats.get("points_for", 0),
             stats.get("points_against", 0),
-            row["finished_sport"] or "padel",
+            row["finished_sport"] or Sport.PADEL,
             json.dumps(top_partners),
             json.dumps(top_rivals),
             json.dumps(all_partners),
@@ -331,7 +332,7 @@ async def admin_unlink_participation(
                     "UPDATE player_secrets SET profile_id = NULL WHERE tournament_id = ? AND player_id = ?",
                     (tid, player_id),
                 )
-                return {"ok": True, "status": "active", "warning": None}
+                return {"ok": True, "status": ParticipationStatus.ACTIVE, "warning": None}
             else:
                 # Finished but player_secrets row still exists (edge case: finished
                 # but backfill hasn't run yet).  Clear profile_id and remove any
@@ -347,7 +348,7 @@ async def admin_unlink_participation(
                 )
                 return {
                     "ok": True,
-                    "status": "finished",
+                    "status": ParticipationStatus.FINISHED,
                     "warning": "Stats have been permanently removed from this player's hub.",
                 }
 
@@ -363,7 +364,7 @@ async def admin_unlink_participation(
             )
             return {
                 "ok": True,
-                "status": "finished",
+                "status": ParticipationStatus.FINISHED,
                 "warning": "Stats have been permanently removed from this player's hub.",
             }
 

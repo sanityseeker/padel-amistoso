@@ -13,7 +13,7 @@ from fastapi.responses import Response
 from .rate_limit import BoundedRateLimiter
 from ..auth.deps import get_current_user, get_current_user_optional, get_current_player, PlayerIdentity
 from ..auth.models import User
-from ..models import Court, Player, TournamentType
+from ..models import Court, Player, TournamentType, EliminationType, ScoreConfirmation
 from ..tournaments import MexicanoTournament
 from ..viz import render_playoff_schema
 from .helpers import (
@@ -121,6 +121,10 @@ async def create_mexicano(req: CreateMexicanoRequest, request: Request, user=Dep
             opponent_repeat_weight=req.opponent_repeat_weight,
             repeat_decay=req.repeat_decay,
             partner_balance_weight=req.partner_balance_weight,
+            strength_min_matches=req.strength_min_matches,
+            strength_win_factor=req.strength_win_factor,
+            strength_draw_factor=req.strength_draw_factor,
+            strength_loss_factor=req.strength_loss_factor,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -172,6 +176,10 @@ async def mex_status(tid: str) -> dict:
         "opponent_repeat_weight": t.opponent_repeat_weight,
         "repeat_decay": t.repeat_decay,
         "partner_balance_weight": t.partner_balance_weight,
+        "strength_min_matches": t.strength_min_matches,
+        "strength_win_factor": t.strength_win_factor,
+        "strength_draw_factor": t.strength_draw_factor,
+        "strength_loss_factor": t.strength_loss_factor,
         "phase": t.phase,
         "is_finished": t.is_finished,
         "assign_courts": data.get("assign_courts", True),
@@ -222,7 +230,11 @@ async def mex_record(
             raise HTTPException(404, "Match not found")
         _require_score_permission(tid, match, user, player)
         is_player_action = player is not None and user is None
-        is_required = is_player_action and _get_tv_settings(tid).get("score_confirmation", "immediate") == "required"
+        is_required = (
+            is_player_action
+            and _get_tv_settings(tid).get("score_confirmation", ScoreConfirmation.IMMEDIATE)
+            == ScoreConfirmation.REQUIRED
+        )
         try:
             if is_required:
                 t.store_pending_score(req.match_id, (req.score1, req.score2))
@@ -260,6 +272,10 @@ async def mex_update_settings(tid: str, req: PatchMexSettingsRequest, user=Depen
         t.opponent_repeat_weight = req.opponent_repeat_weight
         t.repeat_decay = req.repeat_decay
         t.partner_balance_weight = req.partner_balance_weight
+        t.strength_min_matches = req.strength_min_matches
+        t.strength_win_factor = req.strength_win_factor
+        t.strength_draw_factor = req.strength_draw_factor
+        t.strength_loss_factor = req.strength_loss_factor
         _save_tournament(tid)
     return {
         "num_rounds": t.num_rounds,
@@ -272,6 +288,10 @@ async def mex_update_settings(tid: str, req: PatchMexSettingsRequest, user=Depen
         "opponent_repeat_weight": t.opponent_repeat_weight,
         "repeat_decay": t.repeat_decay,
         "partner_balance_weight": t.partner_balance_weight,
+        "strength_min_matches": t.strength_min_matches,
+        "strength_win_factor": t.strength_win_factor,
+        "strength_draw_factor": t.strength_draw_factor,
+        "strength_loss_factor": t.strength_loss_factor,
     }
 
 
@@ -460,7 +480,7 @@ async def mex_playoffs_schema(
 
     img = render_playoff_schema(
         participant_names=participant_names,
-        elimination="double" if hasattr(t.playoff_bracket, "all_matches") else "single",
+        elimination=EliminationType.DOUBLE if hasattr(t.playoff_bracket, "all_matches") else EliminationType.SINGLE,
         match_labels=_build_match_labels(t.playoff_bracket),
         title=title,
         fmt=fmt,

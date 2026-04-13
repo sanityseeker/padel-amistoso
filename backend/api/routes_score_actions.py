@@ -17,7 +17,6 @@ Admin/organiser-submitted scores are immediately confirmed and bypass this flow.
 from __future__ import annotations
 
 import time
-from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -28,7 +27,7 @@ from ..auth.deps import (
     get_current_user,
 )
 from ..auth.models import User
-from ..models import Match, MatchStatus, TournamentType
+from ..models import Match, MatchStatus, TournamentType, DisputeChoice, ScoreConfirmation
 from ..tournaments import GroupPlayoffTournament
 from .helpers import (
     _find_match_full,
@@ -52,7 +51,7 @@ router = APIRouter(prefix="/api/tournaments", tags=["score-actions"])
 class ResolveDisputeRequest(BaseModel):
     """Choose how to resolve a score dispute."""
 
-    chosen: Literal["original", "correction", "custom"]
+    chosen: DisputeChoice
     # Required when chosen == "custom".
     score1: int | None = Field(default=None, ge=0)
     score2: int | None = Field(default=None, ge=0)
@@ -173,10 +172,10 @@ async def accept_score(
             raise HTTPException(403, "Only an opposing team member may accept this score")
 
         tv = _get_tv_settings_from_data(data)
-        mode = tv.get("score_confirmation", "immediate")
+        mode = tv.get("score_confirmation", ScoreConfirmation.IMMEDIATE)
 
         # In 'required' mode, apply the pending score to the engine.
-        if mode == "required" and match.status == MatchStatus.IN_PROGRESS:
+        if mode == ScoreConfirmation.REQUIRED and match.status == MatchStatus.IN_PROGRESS:
             try:
                 _apply_score_to_tournament(tid, data, match, match.score, match.sets)
             except (ValueError, RuntimeError, KeyError) as e:
@@ -485,10 +484,10 @@ async def resolve_dispute(
         now = time.time()
         actor = user.username
 
-        if req.chosen == "original":
+        if req.chosen == DisputeChoice.ORIGINAL:
             final_score = match.score
             final_sets = match.sets
-        elif req.chosen == "correction":
+        elif req.chosen == DisputeChoice.CORRECTION:
             if match.dispute_score is None:
                 raise HTTPException(400, "No correction score available")
             final_score = match.dispute_score

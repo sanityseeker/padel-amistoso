@@ -14,6 +14,9 @@ import sqlite3
 from collections import defaultdict
 from types import SimpleNamespace
 
+from ..models import EntityType
+
+from ..models import Sport, TournamentType
 from ..tournaments.player_secrets import PlayerSecret, generate_secrets_for_players
 from .db import get_db
 
@@ -121,7 +124,7 @@ def extract_history_stats(t_data: dict) -> dict[str, dict]:
     if t is None:
         return stats
     try:
-        if t_type in ("mexicano", "mex-playoff"):
+        if t_type in (TournamentType.MEXICANO, "mex-playoff"):
             board = t.leaderboard()
             active = [e for e in board if not e.get("removed")]
             total = len(active)
@@ -135,7 +138,7 @@ def extract_history_stats(t_data: dict) -> dict[str, dict]:
                     "points_for": int(entry.get("total_points", 0)),
                     "points_against": 0,
                 }
-        elif t_type == "group_playoff":
+        elif t_type == TournamentType.GROUP_PLAYOFF:
             all_standings = t.group_standings()
             rows = [row for grp_rows in all_standings.values() for row in grp_rows]
             rows.sort(
@@ -157,7 +160,77 @@ def extract_history_stats(t_data: dict) -> dict[str, dict]:
                     "points_for": row.get("points_for", 0),
                     "points_against": row.get("points_against", 0),
                 }
-        elif t_type == "playoff":
+
+            # Group standings only include group-stage matches. Fold in
+            # completed playoff matches so history W/L/D and points reflect
+            # the full tournament path.
+            group_match_ids = {
+                m.id for grp in (getattr(t, "groups", []) or []) for m in (getattr(grp, "matches", []) or [])
+            }
+            playoff_matches = [m for m in _collect_all_completed_matches(t) if m.id not in group_match_ids]
+            for m in playoff_matches:
+                s1, s2 = int(m.score[0]), int(m.score[1])
+                team1_ids = [p.id for p in (m.team1 or [])]
+                team2_ids = [p.id for p in (m.team2 or [])]
+
+                for pid in team1_ids:
+                    if pid not in stats:
+                        stats[pid] = {
+                            "rank": None,
+                            "total_players": total,
+                            "wins": 0,
+                            "losses": 0,
+                            "draws": 0,
+                            "points_for": 0,
+                            "points_against": 0,
+                        }
+                    stats[pid]["points_for"] += s1
+                    stats[pid]["points_against"] += s2
+
+                for pid in team2_ids:
+                    if pid not in stats:
+                        stats[pid] = {
+                            "rank": None,
+                            "total_players": total,
+                            "wins": 0,
+                            "losses": 0,
+                            "draws": 0,
+                            "points_for": 0,
+                            "points_against": 0,
+                        }
+                    stats[pid]["points_for"] += s2
+                    stats[pid]["points_against"] += s1
+
+                if s1 > s2:
+                    for pid in team1_ids:
+                        stats[pid]["wins"] += 1
+                    for pid in team2_ids:
+                        stats[pid]["losses"] += 1
+                elif s2 > s1:
+                    for pid in team2_ids:
+                        stats[pid]["wins"] += 1
+                    for pid in team1_ids:
+                        stats[pid]["losses"] += 1
+                else:
+                    for pid in team1_ids + team2_ids:
+                        stats[pid]["draws"] += 1
+
+            champion_ids = {p.id for p in (t.champion() or [])}
+            playoff_stage = _compute_playoff_stage_by_player(playoff_matches, champion_ids)
+            for pid, stage_data in playoff_stage.items():
+                if pid not in stats:
+                    stats[pid] = {
+                        "rank": None,
+                        "total_players": total,
+                        "wins": 0,
+                        "losses": 0,
+                        "draws": 0,
+                        "points_for": 0,
+                        "points_against": 0,
+                    }
+                stats[pid]["playoff_stage"] = stage_data["playoff_stage"]
+                stats[pid]["playoff_stage_rank"] = stage_data["playoff_stage_rank"]
+        elif t_type == TournamentType.PLAYOFF:
             champion = t.champion()
             champion_ids = {p.id for p in (champion or [])}
             all_players = [p for team in getattr(t, "original_teams", []) for p in team]
@@ -199,6 +272,13 @@ def extract_history_stats(t_data: dict) -> dict[str, dict]:
                 else:
                     for pid in team1_ids + team2_ids:
                         stats[pid]["draws"] += 1
+
+            playoff_stage = _compute_playoff_stage_by_player(matches, champion_ids)
+            for pid, stage_data in playoff_stage.items():
+                if pid not in stats:
+                    continue
+                stats[pid]["playoff_stage"] = stage_data["playoff_stage"]
+                stats[pid]["playoff_stage_rank"] = stage_data["playoff_stage_rank"]
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not extract history stats: %s", exc)
 
@@ -246,6 +326,65 @@ def _collect_all_completed_matches(t: object) -> list:
             seen.add(m.id)
             result.append(m)
     return result
+
+
+def _playoff_stage_rank(round_label: str) -> int:
+    """Return a sortable rank where smaller means deeper playoff achievement."""
+    label = (round_label or "").strip()
+    if label == "Champion":
+        return 0
+    if label == "Grand Final Reset":
+        return 1
+    if label in {"Grand Final", "Final"}:
+        return 2
+    if label == "Semi-Final":
+        return 3
+    if label == "Quarter-Final":
+        return 4
+    if label.startswith("Round of "):
+        try:
+            size = int(label.removeprefix("Round of "))
+        except ValueError:
+            return 999
+        return 100 + size
+    if label.startswith("Winners R"):
+        try:
+            idx = int(label.removeprefix("Winners R"))
+        except ValueError:
+            return 999
+        return 200 - idx
+    if label.startswith("Losers R"):
+        try:
+            idx = int(label.removeprefix("Losers R"))
+        except ValueError:
+            return 999
+        return 300 - idx
+    return 999
+
+
+def _compute_playoff_stage_by_player(matches: list, champion_ids: set[str]) -> dict[str, dict[str, str | int]]:
+    """Compute best playoff stage reached for each player id."""
+    best: dict[str, dict[str, str | int]] = {}
+    for m in matches:
+        label = str(getattr(m, "round_label", "") or "").strip()
+        if not label:
+            continue
+        rank = _playoff_stage_rank(label)
+        for p in [*(getattr(m, "team1", None) or []), *(getattr(m, "team2", None) or [])]:
+            pid = p.id
+            prev = best.get(pid)
+            if prev is None or rank < int(prev["playoff_stage_rank"]):
+                best[pid] = {
+                    "playoff_stage": label,
+                    "playoff_stage_rank": rank,
+                }
+
+    for pid in champion_ids:
+        best[pid] = {
+            "playoff_stage": "Champion",
+            "playoff_stage_rank": 0,
+        }
+    return best
 
 
 def _expand_team_matches(
@@ -405,7 +544,7 @@ def upsert_live_stats(
         t_data: The value stored in ``_tournaments[tid]``.
     """
     entity_name = t_data.get("name", "")
-    sport = t_data.get("sport", "padel")
+    sport = t_data.get("sport", Sport.PADEL)
     ps = extract_history_stats(t_data)
     if not ps:
         return
@@ -456,7 +595,7 @@ def delete_secrets_for_tournament(
     *,
     entity_name: str = "",
     player_stats: dict[str, dict] | None = None,
-    sport: str = "padel",
+    sport: str = Sport.PADEL,
     partner_rival_stats: dict[str, dict] | None = None,
 ) -> None:
     """Mark tournament player secrets as finished and persist linked history.
@@ -1007,7 +1146,7 @@ def resolve_passphrase(passphrase: str) -> dict:
             for row in tournament_rows:
                 matches.append(
                     {
-                        "entity_type": "tournament",
+                        "entity_type": EntityType.TOURNAMENT,
                         "entity_id": row["tournament_id"],
                         "entity_name": row["tournament_name"],
                         "player_name": row["player_name"],
@@ -1027,7 +1166,7 @@ def resolve_passphrase(passphrase: str) -> dict:
             for row in registration_rows:
                 matches.append(
                     {
-                        "entity_type": "registration",
+                        "entity_type": EntityType.REGISTRATION,
                         "entity_id": row["registration_id"],
                         "entity_name": row["registration_name"],
                         "player_name": row["player_name"],

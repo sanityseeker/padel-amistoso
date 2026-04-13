@@ -194,6 +194,7 @@ document.addEventListener('click', (e) => {
   switch (el.dataset.action) {
     case 'toggleLanguage': toggleLanguage(); break;
     case 'togglePageSelector': togglePageSelector(); break;
+    case 'toggleHomePin': _toggleAdminHomePin(); break;
     case 'toggleTheme': toggleTheme(); break;
     case 'refreshCurrentView': _refreshCurrentView(); break;
     case 'openFormatInfo': openFormatInfo(); break;

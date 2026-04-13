@@ -785,6 +785,10 @@ function _renderMexSettingsSection() {
   html += `<div class="adv-field"><label>${t('txt_txt_skill_gap_label')}</label><input id="mex-settings-skill-gap" type="number" min="0" placeholder="${t('txt_txt_skill_gap_placeholder')}" value="${s.skill_gap ?? ''}"></div>`;
   html += `<div class="adv-field"><label>${t('txt_txt_win_bonus_label')}</label><input id="mex-settings-win-bonus" type="number" min="0" value="${s.win_bonus ?? 0}"></div>`;
   html += `<div class="adv-field"><label>${t('txt_txt_rival_strength_label')}</label><input id="mex-settings-strength-weight" type="number" min="0" max="1" step="0.05" value="${s.strength_weight ?? 0}"></div>`;
+  html += `<div class="adv-field"><label>${t('txt_txt_strength_min_matches_label')}</label><input id="mex-settings-strength-min-matches" type="number" min="0" step="1" value="${s.strength_min_matches ?? 4}"></div>`;
+  html += `<div class="adv-field"><label>${t('txt_txt_strength_win_factor_label')}</label><input id="mex-settings-strength-win-factor" type="number" min="0" max="1" step="0.05" value="${s.strength_win_factor ?? 1}"></div>`;
+  html += `<div class="adv-field"><label>${t('txt_txt_strength_draw_factor_label')}</label><input id="mex-settings-strength-draw-factor" type="number" min="0" max="1" step="0.05" value="${s.strength_draw_factor ?? 0.75}"></div>`;
+  html += `<div class="adv-field"><label>${t('txt_txt_strength_loss_factor_label')}</label><input id="mex-settings-strength-loss-factor" type="number" min="0" max="1" step="0.05" value="${s.strength_loss_factor ?? 0.5}"></div>`;
   html += `<div class="adv-field"><label>${t('txt_txt_loss_discount_label')}</label><input id="mex-settings-loss-discount" type="number" min="0" max="1" step="0.05" value="${s.loss_discount ?? 1}"></div>`;
   html += `<div class="adv-field"><label>${t('txt_txt_balance_tolerance_label')}</label><input id="mex-settings-balance-tol" type="number" min="0" step="0.1" value="${s.balance_tolerance ?? 0.2}"></div>`;
   html += `<div class="adv-field"><label>${t('txt_txt_teammate_repeat_weight_label')}</label><input id="mex-settings-teammate-repeat-wt" type="number" min="0" step="0.1" value="${s.teammate_repeat_weight ?? 2}"></div>`;
@@ -816,6 +820,10 @@ async function _saveMexSettings() {
     skill_gap: skillGapRaw === '' ? null : +skillGapRaw,
     win_bonus: +(document.getElementById('mex-settings-win-bonus')?.value || 0),
     strength_weight: +(document.getElementById('mex-settings-strength-weight')?.value || 0),
+    strength_min_matches: +(document.getElementById('mex-settings-strength-min-matches')?.value ?? 4),
+    strength_win_factor: +(document.getElementById('mex-settings-strength-win-factor')?.value ?? 1),
+    strength_draw_factor: +(document.getElementById('mex-settings-strength-draw-factor')?.value ?? 0.75),
+    strength_loss_factor: +(document.getElementById('mex-settings-strength-loss-factor')?.value ?? 0.5),
     loss_discount: +(document.getElementById('mex-settings-loss-discount')?.value || 1),
     balance_tolerance: +(document.getElementById('mex-settings-balance-tol')?.value || 0.2),
     teammate_repeat_weight: +(document.getElementById('mex-settings-teammate-repeat-wt')?.value || 2),

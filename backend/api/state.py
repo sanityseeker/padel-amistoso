@@ -32,6 +32,7 @@ import secrets
 import sqlite3
 from dataclasses import fields as dataclass_fields
 
+from ..models import GPPhase, Sport
 from .db import get_db
 from .player_secret_store import (
     delete_secrets_for_tournament,
@@ -236,7 +237,7 @@ def _save_tournament(tid: str) -> bool:
                     tv_raw,
                     blob,
                     version,
-                    data.get("sport", "padel"),
+                    data.get("sport", Sport.PADEL),
                     int(data.get("assign_courts", True)),
                     email_raw,
                 ),
@@ -249,12 +250,12 @@ def _save_tournament(tid: str) -> bool:
     # Purge player secrets once the tournament enters the finished phase so
     # that old passphrases / QR tokens cannot be confused with new ones.
     tournament = data.get("tournament")
-    if tournament is not None and str(getattr(tournament, "phase", "")) == "finished":
+    if tournament is not None and str(getattr(tournament, "phase", "")) == GPPhase.FINISHED:
         delete_secrets_for_tournament(
             tid,
             entity_name=data.get("name", ""),
             player_stats=extract_history_stats(data),
-            sport=data.get("sport", "padel"),
+            sport=data.get("sport", Sport.PADEL),
             partner_rival_stats=extract_partner_rival_stats(data),
         )
 
@@ -266,16 +267,16 @@ def _save_tournament(tid: str) -> bool:
 
 
 def maybe_update_live_stats(tid: str) -> None:
-    """Snapshot in-progress stats to Player Hub if a round just completed.
+    """Snapshot in-progress stats to Player Hub after every score recording.
 
-    Checks whether all current-round matches are scored (i.e. no pending
-    matches remain).  If so, calls :func:`upsert_live_stats` to write or
-    update the ``player_history`` rows with ``finished_at = ''``.
+    Calls :func:`upsert_live_stats` to write or update the
+    ``player_history`` rows with ``finished_at = ''`` so that players see
+    real-time match updates in the Hub stats card — not just at round
+    boundaries.
 
-    Safe to call after every score recording — the pending-matches check is
-    a cheap in-memory scan and the DB write only happens on round boundaries.
-    Skips silently if the tournament is already finished (final stats are
-    handled by :func:`delete_secrets_for_tournament`).
+    Safe to call after every score recording.  Skips silently if the
+    tournament is already finished (final stats are handled by
+    :func:`delete_secrets_for_tournament`).
     """
     data = _tournaments.get(tid)
     if data is None:
@@ -284,23 +285,10 @@ def maybe_update_live_stats(tid: str) -> None:
     if tournament is None:
         return
     phase = str(getattr(tournament, "phase", ""))
-    if phase == "finished":
+    if phase == GPPhase.FINISHED:
         return
 
-    t_type = data.get("type", "")
-    has_pending = True
-    try:
-        if t_type in ("mexicano", "mex-playoff"):
-            has_pending = len(tournament.pending_matches()) > 0
-        elif t_type == "group_playoff":
-            has_pending = len(tournament.pending_group_matches()) > 0
-        elif t_type == "playoff":
-            has_pending = len(tournament.pending_matches()) > 0
-    except Exception:  # noqa: BLE001
-        return
-
-    if not has_pending:
-        upsert_live_stats(tid, data)
+    upsert_live_stats(tid, data)
 
 
 def get_tournament_data(tid: str) -> dict | None:
@@ -337,7 +325,7 @@ def get_tournament_data(tid: str) -> dict | None:
             "alias": row["alias"],
             "tv_settings": json.loads(row["tv_settings"]) if row["tv_settings"] else None,
             "tournament": tournament,
-            "sport": row["sport"] or "padel",
+            "sport": row["sport"] or Sport.PADEL,
         }
     except (sqlite3.Error, pickle.UnpicklingError) as exc:
         logger.warning("Could not load tournament %s for backfill: %s", tid, exc)
@@ -480,7 +468,7 @@ def _load_state() -> None:
             "alias": row["alias"],
             "tv_settings": json.loads(row["tv_settings"]) if row["tv_settings"] else None,
             "tournament": tournament,
-            "sport": row["sport"] if "sport" in row.keys() else "padel",
+            "sport": row["sport"] if "sport" in row.keys() else Sport.PADEL,
             "assign_courts": bool(row["assign_courts"]) if "assign_courts" in row.keys() else True,
             "email_settings": json.loads(row["email_settings"])
             if "email_settings" in row.keys() and row["email_settings"]

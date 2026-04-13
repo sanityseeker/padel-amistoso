@@ -31,6 +31,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 
 from ..config import DATA_DIR
+from ..models import QuestionType
 
 import json
 
@@ -307,7 +308,7 @@ def init_db() -> None:
                         q = {
                             "key": "level",
                             "label": llabel or "Level",
-                            "type": "choice" if ltype == "category" else "text",
+                            "type": QuestionType.CHOICE if ltype == "category" else QuestionType.TEXT,
                             "required": bool(lreq),
                             "choices": [],
                         }

@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from ..auth.deps import PlayerIdentity, get_current_player, get_current_user
 from ..auth.models import User
 from ..auth.security import create_player_token
-from ..models import Player
+from ..models import GPPhase, Player, TournamentType
 from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .helpers import _require_editor_access
 from .player_secret_store import (
@@ -198,16 +198,16 @@ async def add_player_to_tournament(
         if data is None:
             raise HTTPException(404, "Tournament not found")
         t_type = data["type"]
-        if t_type not in ("mexicano", "group_playoff"):
+        if t_type not in (TournamentType.MEXICANO, TournamentType.GROUP_PLAYOFF):
             raise HTTPException(
                 409, "Adding players mid-tournament is only supported for Mexicano and Group-Playoff formats"
             )
         t = data["tournament"]
-        if str(getattr(t, "phase", "")) == "finished":
+        if str(getattr(t, "phase", "")) == GPPhase.FINISHED:
             raise HTTPException(409, "Cannot add players to a finished tournament")
-        if t_type == "group_playoff" and str(getattr(t, "phase", "")) != "groups":
+        if t_type == TournamentType.GROUP_PLAYOFF and str(getattr(t, "phase", "")) != GPPhase.GROUPS:
             raise HTTPException(409, "Players can only be added during the group stage")
-        if t_type == "group_playoff" and not req.group_name:
+        if t_type == TournamentType.GROUP_PLAYOFF and not req.group_name:
             raise HTTPException(422, "group_name is required when adding a player to a Group-Playoff tournament")
 
         name = req.name.strip()
@@ -217,7 +217,7 @@ async def add_player_to_tournament(
         player = Player(name=name)
         pid = player.id
 
-        if t_type == "mexicano":
+        if t_type == TournamentType.MEXICANO:
             t.players.append(player)
             t.scores[pid] = 0
             t._raw_scores[pid] = 0
@@ -230,7 +230,7 @@ async def add_player_to_tournament(
             t._opponent_history[pid] = defaultdict(int)
             t._player_map[pid] = player
             t._est_cache = None
-        elif t_type == "group_playoff":
+        elif t_type == TournamentType.GROUP_PLAYOFF:
             try:
                 t.add_player_to_group(player, req.group_name)  # type: ignore[arg-type]
             except KeyError as exc:
@@ -274,10 +274,10 @@ async def remove_player_from_tournament(
         data = _tournaments.get(tid)
         if data is None:
             raise HTTPException(404, "Tournament not found")
-        if data["type"] != "mexicano":
+        if data["type"] != TournamentType.MEXICANO:
             raise HTTPException(409, "Removing players mid-tournament is only supported for Mexicano format")
         t = data["tournament"]
-        if str(getattr(t, "phase", "")) == "finished":
+        if str(getattr(t, "phase", "")) == GPPhase.FINISHED:
             raise HTTPException(409, "Cannot remove players from a finished tournament")
 
         player = next((p for p in t.players if p.id == player_id), None)
@@ -444,13 +444,13 @@ async def get_player_opponents(
 
     # Collect all future non-completed matches with full teams.
     pending_matches: list = []
-    if t_type == "mexicano":
+    if t_type == TournamentType.MEXICANO:
         pending_matches = [m for m in t.pending_matches() if m.team1 and m.team2]
         pending_matches += [m for m in t.pending_playoff_matches() if m.team1 and m.team2]
-    elif t_type == "group_playoff":
+    elif t_type == TournamentType.GROUP_PLAYOFF:
         pending_matches = [m for m in t.pending_group_matches() if m.team1 and m.team2]
         pending_matches += [m for m in t.pending_playoff_matches() if m.team1 and m.team2]
-    elif t_type == "playoff":
+    elif t_type == TournamentType.PLAYOFF:
         pending_matches = [m for m in t.pending_matches() if m.team1 and m.team2]
 
     my_matches = [m for m in pending_matches if _player_in_side(m.team1) or _player_in_side(m.team2)]

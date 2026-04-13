@@ -116,6 +116,14 @@ body.login-dialog-open .container { filter: blur(3px); pointer-events: none; tra
 .page-selector-item:hover { background: var(--bg); }
 .page-selector-item.active { color: var(--accent); font-weight: 600; }
 .page-selector-item-icon { font-size: 1rem; flex-shrink: 0; }
+.page-selector-divider { height: 1px; background: var(--border); margin: 0.3rem 0; }
+.page-selector-pin-btn {
+  display: flex; align-items: center; gap: 0.5rem;
+  width: 100%; padding: 0.55rem 0.85rem; font-size: 0.8rem; font-weight: 500;
+  color: var(--text-muted); background: none; border: none; cursor: pointer;
+  font-family: inherit; transition: background 0.1s;
+}
+.page-selector-pin-btn:hover { background: var(--bg); color: var(--text); }
 .tab-btn {
   padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 6px;
   background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.9rem;

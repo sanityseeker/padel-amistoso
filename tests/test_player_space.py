@@ -1355,6 +1355,96 @@ class TestHistoryStats:
         assert entry["wins"] == 0
         assert entry["losses"] == 0
 
+    def test_dashboard_history_refreshes_stats_with_playoff_results(self, client: TestClient) -> None:
+        from backend.models import Court, Player
+        from backend.tournaments.group_playoff import GroupPlayoffTournament
+
+        created = _create_profile(client)
+        token = created["access_token"]
+        profile_id = created["profile"]["id"]
+
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        _insert_tournament(tid, name="Refresh Cup")
+
+        p1 = Player(name="Alice")
+        p2 = Player(name="Bob")
+        p3 = Player(name="Charlie")
+        p4 = Player(name="Dani")
+
+        t = GroupPlayoffTournament(
+            players=[p1, p2, p3, p4],
+            num_groups=1,
+            courts=[Court(name="C1")],
+            top_per_group=4,
+            team_mode=True,
+        )
+        t.generate()
+        for idx, match in enumerate(t.pending_group_matches()):
+            if idx % 2 == 0:
+                t.record_group_result(match.id, (10, 6))
+            else:
+                t.record_group_result(match.id, (6, 10))
+
+        t.start_playoffs()
+        po_match = next(
+            m
+            for m in t.pending_playoff_matches()
+            if p1.id in {pp.id for pp in m.team1} or p1.id in {pp.id for pp in m.team2}
+        )
+        if p1.id in {pp.id for pp in po_match.team1}:
+            t.record_playoff_result(po_match.id, (4, 10))
+        else:
+            t.record_playoff_result(po_match.id, (10, 4))
+
+        _tournaments[tid] = {
+            "name": "Refresh Cup",
+            "type": "group_playoff",
+            "tournament": t,
+            "owner": "admin",
+            "public": True,
+            "sport": "padel",
+            "assign_courts": True,
+        }
+
+        expected = extract_history_stats({"type": "group_playoff", "tournament": t})[p1.id]
+
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_history
+                   (profile_id, entity_type, entity_id, entity_name, player_id, player_name, finished_at,
+                    rank, total_players, wins, losses, draws, points_for, points_against)
+                   VALUES (?, 'tournament', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    profile_id,
+                    tid,
+                    "Refresh Cup",
+                    p1.id,
+                    p1.name,
+                    datetime.now(timezone.utc).isoformat(),
+                    None,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                ),
+            )
+
+        try:
+            res = client.get("/api/player-profile/space", headers=_headers(token))
+            assert res.status_code == 200, res.text
+            entry = next(e for e in res.json()["entries"] if e["entity_id"] == tid)
+            assert entry["playoff_stage"] == expected.get("playoff_stage")
+            assert entry["playoff_stage_rank"] == expected.get("playoff_stage_rank")
+            assert entry["wins"] == expected["wins"]
+            assert entry["losses"] == expected["losses"]
+            assert entry["draws"] == expected["draws"]
+            assert entry["points_for"] == expected["points_for"]
+            assert entry["points_against"] == expected["points_against"]
+        finally:
+            _tournaments.pop(tid, None)
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Registration deletion → history snapshot
@@ -1788,6 +1878,83 @@ class TestTournamentPath:
                 assert 1 <= (row["rank"] or 1) <= row["total_players"]
                 assert len(row["partners"]) >= 1
                 assert len(row["opponents"]) >= 1
+                assert row["score"] is not None
+                assert row["score_mode"] in {"points", "tennis"}
+        finally:
+            _tournaments.pop(tid, None)
+
+    def test_tournament_path_group_playoff_includes_playoff_rows_and_elimination(self, client: TestClient) -> None:
+        from backend.models import Court, Player
+        from backend.tournaments.group_playoff import GroupPlayoffTournament
+
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        passphrase = f"pp-{uuid.uuid4().hex[:12]}"
+
+        p1 = Player(name="Alice")
+        p2 = Player(name="Bob")
+        p3 = Player(name="Charlie")
+        p4 = Player(name="Dani")
+
+        _insert_tournament(tid, name="Path Playoff Cup")
+        _insert_player_secret(tid, p1.id, p1.name, passphrase, uuid.uuid4().hex)
+        created = _create_profile(client, name=p1.name, participant_passphrase=passphrase)
+        token = created["access_token"]
+
+        t = GroupPlayoffTournament(
+            players=[p1, p2, p3, p4],
+            num_groups=1,
+            courts=[Court(name="C1")],
+            top_per_group=4,
+            team_mode=True,
+        )
+        t.generate()
+        for idx, match in enumerate(t.pending_group_matches()):
+            if idx % 2 == 0:
+                t.record_group_result(match.id, (9, 7))
+            else:
+                t.record_group_result(match.id, (5, 8))
+
+        t.start_playoffs()
+        target_match = None
+        for match in t.pending_playoff_matches():
+            team1_ids = {pp.id for pp in match.team1}
+            team2_ids = {pp.id for pp in match.team2}
+            if p1.id in team1_ids or p1.id in team2_ids:
+                target_match = match
+                break
+
+        assert target_match is not None
+        if p1.id in {pp.id for pp in target_match.team1}:
+            t.record_playoff_result(target_match.id, (4, 10))
+        else:
+            t.record_playoff_result(target_match.id, (10, 4))
+
+        _tournaments[tid] = {
+            "name": "Path Playoff Cup",
+            "type": "group_playoff",
+            "tournament": t,
+            "owner": "admin",
+            "public": True,
+            "sport": "padel",
+            "assign_courts": True,
+        }
+
+        try:
+            res = client.get(
+                f"/api/player-profile/tournament-path/{tid}/{p1.id}",
+                headers=_headers(token),
+            )
+            assert res.status_code == 200, res.text
+            data = res.json()
+
+            playoff_rows = [row for row in data["rounds"] if row.get("stage") == "playoff"]
+            assert playoff_rows
+            assert any(row.get("score") for row in playoff_rows)
+            assert any(row.get("eliminated") is True for row in playoff_rows)
+
+            expected_score = "4-10"
+            eliminated_row = next(row for row in playoff_rows if row.get("eliminated") is True)
+            assert eliminated_row.get("score") == expected_score
         finally:
             _tournaments.pop(tid, None)
 
@@ -2033,6 +2200,88 @@ class TestTournamentPath:
             )
             assert second.status_code == 200, second.text
             assert second.json() == first_data
+        finally:
+            _tournaments.pop(tid, None)
+
+    def test_tournament_path_ignores_stale_cache_schema(self, client: TestClient, monkeypatch) -> None:
+        import backend.api.routes_player_space as rps
+
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        pid = f"p-{uuid.uuid4().hex[:8]}"
+        passphrase = f"pp-{uuid.uuid4().hex[:12]}"
+
+        _insert_tournament(tid, name="Stale Cache Cup")
+        _insert_player_secret(tid, pid, "Alice", passphrase, uuid.uuid4().hex)
+        created = _create_profile(client, name="Alice", participant_passphrase=passphrase)
+        token = created["access_token"]
+
+        _tournaments[tid] = {
+            "name": "Stale Cache Cup",
+            "type": "mexicano",
+            "tournament": object(),
+            "owner": "admin",
+            "public": True,
+            "sport": "padel",
+            "assign_courts": True,
+        }
+
+        stale_payload = {
+            "entity_id": tid,
+            "player_id": pid,
+            "tournament_type": "mexicano",
+            "available": True,
+            "reason": None,
+            "rounds": [
+                {
+                    "round_number": 1,
+                    "round_label": "Round 1",
+                    "cumulative_points": 10,
+                    "rank": 1,
+                    "total_players": 4,
+                    "partners": [],
+                    "opponents": [],
+                    "played": True,
+                    "score": "10-4",
+                    "score_mode": "points",
+                    "stage": "groups",
+                }
+            ],
+        }
+
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO player_tournament_path_cache
+                    (profile_id, entity_id, player_id, tournament_version, payload, updated_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
+                """,
+                (created["profile"]["id"], tid, pid, 0, json.dumps(stale_payload)),
+            )
+
+        def _fresh_rows(_tournament: object, _player_id: str) -> list[rps.PlayerPathRound]:
+            return [
+                rps.PlayerPathRound(
+                    round_number=1,
+                    round_label="Round 1",
+                    cumulative_points=4,
+                    rank=2,
+                    total_players=4,
+                    partners=[],
+                    opponents=[],
+                    played=True,
+                    score="4-10",
+                    stage="groups",
+                )
+            ]
+
+        monkeypatch.setattr(rps, "_build_mex_path_rows", _fresh_rows)
+
+        try:
+            res = client.get(f"/api/player-profile/tournament-path/{tid}/{pid}", headers=_headers(token))
+            assert res.status_code == 200, res.text
+            data = res.json()
+            assert data["available"] is True
+            assert data["rounds"][0]["score"] == "4-10"
         finally:
             _tournaments.pop(tid, None)
 

@@ -293,11 +293,20 @@ class ScoringMixin:
         m.status = MatchStatus.COMPLETED
 
         # Compute strength multipliers BEFORE updating scores
-        if self.strength_weight > 0.0:
+        all_players = list(m.team1) + list(m.team2)
+        all_experienced = all(self._matches_played[p.id] >= self.strength_min_matches for p in all_players)
+        if self.strength_weight > 0.0 and all_experienced:
             rs1 = self._relative_strength(m.team1, m.team2)
             rs2 = self._relative_strength(m.team2, m.team1)
-            mult1 = 1.0 + self.strength_weight * rs1
-            mult2 = 1.0 + self.strength_weight * rs2
+            # Scale the strength effect by outcome factor
+            if s1 > s2:
+                factor1, factor2 = self.strength_win_factor, self.strength_loss_factor
+            elif s1 < s2:
+                factor1, factor2 = self.strength_loss_factor, self.strength_win_factor
+            else:
+                factor1 = factor2 = self.strength_draw_factor
+            mult1 = 1.0 + self.strength_weight * rs1 * factor1
+            mult2 = 1.0 + self.strength_weight * rs2 * factor2
         else:
             rs1 = rs2 = 0.0
             mult1 = mult2 = 1.0

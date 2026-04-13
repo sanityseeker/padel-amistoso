@@ -17,6 +17,7 @@ import bcrypt
 import jwt
 
 from ..config import DATA_DIR
+from ..models import TokenType
 
 # ────────────────────────────────────────────────────────────────────────────
 # JWT configuration
@@ -105,7 +106,7 @@ def create_player_token(
     payload = {
         "sub": f"player:{tournament_id}:{player_id}",
         "exp": expire,
-        "type": "player",
+        "type": TokenType.PLAYER,
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=_ALGORITHM)
 
@@ -119,11 +120,11 @@ def decode_player_token(token: str) -> tuple[str, str] | None:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[_ALGORITHM])
     except jwt.PyJWTError:
         return None
-    if payload.get("type") != "player":
+    if payload.get("type") != TokenType.PLAYER:
         return None
     sub: str = payload.get("sub", "")
     parts = sub.split(":", 2)
-    if len(parts) != 3 or parts[0] != "player":
+    if len(parts) != 3 or parts[0] != TokenType.PLAYER:
         return None
     return parts[1], parts[2]
 
@@ -146,7 +147,7 @@ def create_profile_token(profile_id: str, *, expires_delta: timedelta | None = N
     payload = {
         "sub": f"profile:{profile_id}",
         "exp": expire,
-        "type": "profile",
+        "type": TokenType.PROFILE,
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=_ALGORITHM)
 
@@ -160,11 +161,11 @@ def decode_profile_token(token: str) -> str | None:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[_ALGORITHM])
     except jwt.PyJWTError:
         return None
-    if payload.get("type") != "profile":
+    if payload.get("type") != TokenType.PROFILE:
         return None
     sub: str = payload.get("sub", "")
     parts = sub.split(":", 1)
-    if len(parts) != 2 or parts[0] != "profile":
+    if len(parts) != 2 or parts[0] != TokenType.PROFILE:
         return None
     return parts[1]
 
@@ -180,7 +181,7 @@ def create_profile_email_verify_token(
     payload = {
         "sub": f"profile:{profile_id}",
         "exp": expire,
-        "type": "profile_email_verify",
+        "type": TokenType.PROFILE_EMAIL_VERIFY,
         "email": email.strip().lower(),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=_ALGORITHM)
@@ -192,11 +193,11 @@ def decode_profile_email_verify_token(token: str) -> tuple[str, str] | None:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[_ALGORITHM])
     except jwt.PyJWTError:
         return None
-    if payload.get("type") != "profile_email_verify":
+    if payload.get("type") != TokenType.PROFILE_EMAIL_VERIFY:
         return None
     sub: str = payload.get("sub", "")
     parts = sub.split(":", 1)
-    if len(parts) != 2 or parts[0] != "profile":
+    if len(parts) != 2 or parts[0] != TokenType.PROFILE:
         return None
     email: str = str(payload.get("email", "")).strip().lower()
     if not email:

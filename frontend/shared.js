@@ -5,6 +5,10 @@
  * variables defined here are not available to the global scope.
  */
 
+// Mark this session as active so the cold-start redirect in index.html
+// doesn't fire when navigating back to the admin page from another page.
+try { sessionStorage.setItem('amistoso-session-active', '1'); } catch (_) {}
+
 // ── HTML escaping ─────────────────────────────────────────
 
 /** Lookup map for HTML-escape characters — avoids creating a DOM node per call. */
@@ -471,6 +475,8 @@ function buildPageSelectorHtml(currentPage) {
     { key: 'register', href: '/register', icon: '📋', label: t('txt_nav_registrations') },
   ];
   const current = pages.find(p => p.key === currentPage) || pages[0];
+  const homePage = getHomePage();
+  const isPinned = homePage === currentPage;
   let html = `<div class="tv-page-selector" id="page-selector">`;
   html += `<button type="button" class="tv-page-selector-btn" onclick="togglePageSelectorDropdown()">`;
   html += `<span>${current.icon}</span> <span>${esc(current.label)}</span> <span style="font-size:0.7rem;color:var(--text-muted)">▾</span>`;
@@ -478,9 +484,16 @@ function buildPageSelectorHtml(currentPage) {
   html += `<div class="tv-page-selector-menu" id="page-selector-menu">`;
   for (const p of pages) {
     const active = p.key === currentPage ? ' active' : '';
+    const pinIndicator = p.key === homePage ? ' 📌' : '';
     html += `<a href="${p.href}" class="tv-page-selector-item${active}" onclick="savePageChoice('${p.key}')">`;
-    html += `<span>${p.icon}</span> <span>${esc(p.label)}</span></a>`;
+    html += `<span>${p.icon}</span> <span>${esc(p.label)}${pinIndicator}</span></a>`;
   }
+  html += `<div class="page-selector-divider"></div>`;
+  html += `<button type="button" class="page-selector-pin-btn" onclick="toggleHomePage('${currentPage}')">`;
+  html += isPinned
+    ? `<span>📌</span> <span>${esc(t('txt_nav_unset_home'))}</span>`
+    : `<span>📍</span> <span>${esc(t('txt_nav_set_home'))}</span>`;
+  html += `</button>`;
   html += `</div></div>`;
   return html;
 }
@@ -496,6 +509,38 @@ function togglePageSelectorDropdown() {
 
 function savePageChoice(page) {
   try { localStorage.setItem('amistoso-last-page', page); } catch (_) {}
+}
+
+const HOME_PAGE_KEY = 'amistoso-home-page';
+
+function getHomePage() {
+  try { return localStorage.getItem(HOME_PAGE_KEY); } catch (_) { return null; }
+}
+
+function setHomePage(page) {
+  try { localStorage.setItem(HOME_PAGE_KEY, page); } catch (_) {}
+}
+
+function clearHomePage() {
+  try { localStorage.removeItem(HOME_PAGE_KEY); } catch (_) {}
+}
+
+function toggleHomePage(currentPage) {
+  if (getHomePage() === currentPage) {
+    clearHomePage();
+  } else {
+    setHomePage(currentPage);
+  }
+  // Re-render the dropdown to reflect the new state
+  const sel = document.getElementById('page-selector');
+  if (sel) {
+    const parent = sel.parentNode;
+    const newHtml = buildPageSelectorHtml(currentPage);
+    sel.outerHTML = newHtml;
+    // Re-open the dropdown so the user sees the change
+    const newSel = document.getElementById('page-selector');
+    if (newSel) newSel.classList.add('open');
+  }
 }
 
 // Close page selector when clicking outside
