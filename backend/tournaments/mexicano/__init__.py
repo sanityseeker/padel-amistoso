@@ -40,6 +40,17 @@ class MexicanoConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    def __setstate__(self, state: dict) -> None:
+        """Handle legacy pickled configs that are missing newer fields by filling in defaults."""
+        fields_with_defaults = {
+            name: field.default
+            for name, field in self.model_fields.items()
+            if field.default is not None or not field.is_required()
+        }
+        merged = {**fields_with_defaults, **state.get("__dict__", state)}
+        object.__setattr__(self, "__dict__", merged)
+        object.__setattr__(self, "__pydantic_fields_set__", state.get("__pydantic_fields_set__", set()))
+
     total_points_per_match: int = Field(default=32, ge=1)
     num_rounds: int = Field(default=8, ge=0)
     skill_gap: int | None = Field(default=None, ge=0)
