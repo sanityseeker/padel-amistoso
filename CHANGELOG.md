@@ -1,3 +1,9 @@
+## v1.6.1 (2026-04-13)
+
+### Fix
+
+- **mexicano**: allow loading older format of tournaments
+
 ## v1.6.0 (2026-04-13)
 
 ### Feat
