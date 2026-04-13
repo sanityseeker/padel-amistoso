@@ -1,3 +1,9 @@
+## v1.6.0 (2026-04-13)
+
+### Feat
+
+- **players-path,-frontend**: add play off stats to players path; separate group stage and play offs in general stats; add a pin for a home page; fix scores mofifiers based on teams balance
+
 ## v1.5.4 (2026-04-12)
 
 ### Fix
