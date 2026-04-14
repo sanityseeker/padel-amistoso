@@ -36,8 +36,8 @@ PARTNER_ADJUSTMENT_MIN: float = 0.5
 PARTNER_ADJUSTMENT_MAX: float = 1.5
 
 K_FACTOR_TIERS: list[tuple[int, int]] = [
-    (15, 40),
-    (50, 20),
+    (20, 40),
+    (40, 20),
 ]
 """(threshold, K) pairs evaluated in order.  If ``matches_played <= threshold``
 the corresponding K is returned.  Falls through to ``K_FACTOR_DEFAULT``.

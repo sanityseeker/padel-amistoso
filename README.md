@@ -251,6 +251,67 @@ Players can use a personal **Player Hub** at `/player` to track all their linked
 
 ---
 
+## ELO Rating System
+
+An ELO rating tracks each player's relative skill across tournaments. Ratings update after every completed match and are visible in the **Player Hub** career stats.
+
+### Core formula
+
+The engine uses a **margin-aware** variant of classic ELO. Instead of a pure win/loss binary, the actual outcome blends a binary component with a continuous score ratio:
+
+$$S = \alpha \cdot W + (1 - \alpha) \cdot R$$
+
+| Symbol | Meaning |
+| --- | --- |
+| $W$ | Binary result: 1 (win), 0.5 (draw), 0 (loss) |
+| $R$ | Continuous ratio: $0.5 + (a - b) \;/\; 2(a + b)$ |
+| $\alpha$ | Blend weight (default **0.5**) — higher = more binary, lower = more margin-sensitive |
+
+The expected score uses the standard ELO formula:
+
+$$E = \frac{1}{1 + 10^{(R_{opp} - R_{player}) \;/\; 400}}$$
+
+New players start at **1000**.
+
+### K-factor tiers
+
+The K-factor controls how fast ratings change. New players move faster; experienced players are more stable.
+
+| Matches played | K |
+| --- | --- |
+| ≤ 20 | 40 |
+| ≤ 40 | 20 |
+| > 50 | 10 |
+
+### 1v1 update
+
+$$R'_{player} = R_{player} + K \cdot (S - E)$$
+
+### 2v2 update (partner-adjusted)
+
+In doubles, the expected score uses team-average ratings:
+
+$$E = E\!\left(\frac{R_{player} + R_{partner}}{2},\; \frac{R_{opp1} + R_{opp2}}{2}\right)$$
+
+A **partner-strength adjustment** compensates for mismatched partnerships:
+
+$$\text{adj} = \text{clamp}\!\left(1.0 - 0.25 \cdot \frac{R_{partner} - R_{player}}{400},\;\; 0.5,\;\; 1.5\right)$$
+
+- Weaker partner → adj > 1 (amplifies wins, softens losses)
+- Stronger partner → adj < 1
+
+$$\Delta = K \cdot \text{adj} \cdot (S - E)$$
+
+### Minimum delta clamping
+
+Winners always gain at least **+1** ELO and losers always lose at least **−1**, regardless of margin or expected score. This guarantees every result is meaningful.
+
+### Tennis matches
+
+For tennis (set-based scoring), total games across all sets are summed into a single score pair before the ELO calculation.
+
+---
+
 ## Authentication
 
 All tournament mutations (creating tournaments, recording scores, advancing

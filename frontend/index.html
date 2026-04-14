@@ -479,6 +479,7 @@
         <li><a href="#info-admin-flow" class="github-link" data-i18n="txt_txt_info_toc_admin_flow">Admin flow</a></li>
         <li><a href="#info-main-features" class="github-link" data-i18n="txt_txt_info_toc_main_features">Main features</a></li>
         <li><a href="#info-formats" class="github-link" data-i18n="txt_txt_info_toc_formats">Tournament formats</a></li>
+        <li><a href="#info-elo" class="github-link" data-i18n="txt_txt_info_toc_elo">ELO rating system</a></li>
         <li><a href="#info-po-transition" class="github-link" data-i18n="txt_txt_info_toc_po_transition">Starting play-offs</a></li>
         <li><a href="#info-help" class="github-link" data-i18n="txt_txt_info_toc_help">Docs &amp; support</a></li>
       </ol>
@@ -609,6 +610,27 @@
       <div class="info-block">
         <strong data-i18n="txt_txt_info_formats_schema_title">Bracket schema preview</strong>
         <p data-i18n="txt_txt_info_formats_schema_desc">Use the built-in schema generator below to visualise and export the full bracket structure (PNG, SVG, or PDF) before committing to creating an event.</p>
+      </div>
+    </div>
+
+    <div class="card" id="info-elo">
+      <h2 data-i18n="txt_txt_info_elo_title">ELO rating system</h2>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_info_elo_subtitle">A margin-aware ELO engine tracks player skill across tournaments. Ratings update after every completed match and appear in the Player Hub.</p>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_elo_formula_title">Blended outcome</strong>
+        <p data-i18n-html="txt_txt_info_elo_formula_desc">Instead of pure win/loss, the actual score blends a binary component <em>W</em> (1/0.5/0) with a continuous ratio <em>R = 0.5 + (a − b) / 2(a+b)</em> using weight <strong>α = 0.5</strong>: <code>S = α·W + (1−α)·R</code>. Close wins and blowouts produce different rating changes.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_elo_kfactor_title">K-factor tiers</strong>
+        <p data-i18n="txt_txt_info_elo_kfactor_desc">New players move faster: K = 40 for the first 20 matches, K = 20 up to 40 matches, then K = 10. This lets newcomers find their level quickly while experienced players have stable ratings.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_elo_doubles_title">Doubles (2v2) adjustment</strong>
+        <p data-i18n-html="txt_txt_info_elo_doubles_desc">Expected score uses <em>team-average</em> ratings. A partner-strength multiplier compensates for mismatched pairs: a strong player paired with a weaker partner gets amplified gains and softened losses, and vice versa. The multiplier ranges from 0.5× to 1.5×.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_elo_clamp_title">Minimum delta</strong>
+        <p data-i18n="txt_txt_info_elo_clamp_desc">Winners always gain at least +1 ELO and losers always lose at least −1, regardless of margin or expected score. Every match result is meaningful.</p>
       </div>
     </div>
 
