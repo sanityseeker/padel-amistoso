@@ -1,3 +1,9 @@
+## v1.6.2 (2026-04-14)
+
+### Fix
+
+- **frontend**: fix loading older mexicano tournaments; improve admin tournament creation frontend with linking Hub players; improve matches history frontend in Hub
+
 ## v1.6.1 (2026-04-13)
 
 ### Fix
