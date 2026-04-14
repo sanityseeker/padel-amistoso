@@ -281,7 +281,7 @@ The K-factor controls how fast ratings change. New players move faster; experien
 | --- | --- |
 | ≤ 20 | 40 |
 | ≤ 40 | 20 |
-| > 50 | 10 |
+| > 40 | 10 |
 
 ### 1v1 update
 

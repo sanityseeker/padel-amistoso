@@ -572,7 +572,7 @@ const I18N_MESSAGES = {
     "txt_txt_info_elo_formula_title": "Blended outcome",
     "txt_txt_info_elo_formula_desc": "Instead of pure win/loss, the actual score blends a binary component <em>W</em> (1/0.5/0) with a continuous ratio <em>R\u2009=\u20090.5 + (a\u2009\u2212\u2009b) / 2(a+b)</em> using weight <strong>\u03b1\u2009=\u20090.5</strong>: <code>S = \u03b1\u00b7W + (1\u2212\u03b1)\u00b7R</code>. Close wins and blowouts produce different rating changes.",
     "txt_txt_info_elo_kfactor_title": "K-factor tiers",
-    "txt_txt_info_elo_kfactor_desc": "New players move faster: K\u2009=\u200940 for the first 15 matches, K\u2009=\u200920 up to 50 matches, then K\u2009=\u200910. This lets newcomers find their level quickly while experienced players have stable ratings.",
+    "txt_txt_info_elo_kfactor_desc": "New players move faster: K\u2009=\u200940 for the first 20 matches, K\u2009=\u200920 up to 40 matches, then K\u2009=\u200910. This lets newcomers find their level quickly while experienced players have stable ratings.",
     "txt_txt_info_elo_doubles_title": "Doubles (2v2) adjustment",
     "txt_txt_info_elo_doubles_desc": "Expected score uses <em>team-average</em> ratings. A partner-strength multiplier compensates for mismatched pairs: a strong player paired with a weaker partner gets amplified gains and softened losses, and vice versa. The multiplier ranges from 0.5\u00d7 to 1.5\u00d7.",
     "txt_txt_info_elo_clamp_title": "Minimum delta",
