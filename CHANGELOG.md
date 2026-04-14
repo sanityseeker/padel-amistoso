@@ -1,3 +1,9 @@
+## v1.7.2 (2026-04-15)
+
+### Fix
+
+- **elo**: fix recalculation from history for linked players
+
 ## v1.7.1 (2026-04-15)
 
 ### Fix
