@@ -382,6 +382,7 @@
 }
 
 .entry-path-team-names {
+  display: block;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -917,14 +918,21 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
 
 @media (max-width: 430px) {
   .entry-path-match {
-    grid-template-columns: 1fr;
-    gap: 0.2rem;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 0.28rem;
   }
 
   .entry-path-team--opponents,
   .entry-path-team--player,
   .entry-path-score-center {
-    text-align: left;
+    text-align: center;
+  }
+
+  .entry-path-team--player { text-align: right; }
+  .entry-path-team--opponents { text-align: left; }
+
+  .entry-path-team {
+    font-size: 0.74rem;
   }
 }
 
