@@ -96,6 +96,37 @@ Scales points up for beating a stronger opponent. The multiplier is `1.0 + stren
 
 > Useful in open-level events where you want to reward upsets, not just reward players who happen to face weaker opponents.
 
+**`strength_min_matches`** (default: `4`, range `0+`)
+
+The strength multiplier is applied only when every player in the match has played at least this many non-skipped matches.
+
+- `0` - always enabled from round 1.
+- `4` - waits until ratings are more stable before scaling starts.
+
+> Helps avoid large early-round swings, especially with late joins or sit-outs.
+
+**`strength_win_factor` / `strength_draw_factor` / `strength_loss_factor`** (defaults: `1.0` / `0.75` / `0.5`, range `0.0-1.0`)
+
+These factors control how much of the strength effect is kept for each outcome:
+
+- Win: `strength_win_factor`
+- Draw: `strength_draw_factor`
+- Loss: `strength_loss_factor`
+
+Applied multiplier:
+
+`1.0 + strength_weight × relative_strength × outcome_factor`
+
+Example with `strength_weight = 0.6` and `relative_strength = 0.5`:
+
+| Outcome | Outcome factor | Multiplier |
+| --- | --- | --- |
+| Win | `1.0` | `1 + 0.6 × 0.5 × 1.0 = 1.30` |
+| Draw | `0.75` | `1 + 0.6 × 0.5 × 0.75 = 1.225` |
+| Loss | `0.5` | `1 + 0.6 × 0.5 × 0.5 = 1.15` |
+
+> Common setup: `1.0 / 0.75 / 0.5` gives full effect on wins, medium on draws, and lower effect on losses.
+
 **`loss_discount`** (default: `1.0`, range `0.0–1.0`)
 
 Multiplier applied to losers' credited points (winners are never discounted).

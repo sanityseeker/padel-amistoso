@@ -496,3 +496,70 @@ class TestUnlinkedPlayers:
         resp = client.get("/api/admin/player-profiles/unlinked/t1", headers=auth_headers)
         data = resp.json()
         assert len(data) == 0
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# K-factor override
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestKFactorOverride:
+    def test_update_k_factor_requires_admin(self, client: TestClient, alice_headers: dict) -> None:
+        resp = client.put(
+            "/api/admin/player-profiles/fake/k-factor", headers=alice_headers, json={"k_factor_override": 30}
+        )
+        assert resp.status_code == 403
+
+    def test_set_k_factor_override(self, client: TestClient, auth_headers: dict) -> None:
+        pid = _insert_profile(name="Alice")
+        resp = client.put(
+            f"/api/admin/player-profiles/{pid}/k-factor", headers=auth_headers, json={"k_factor_override": 30}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["k_factor_override"] == 30
+
+        # Verify it shows up in profile detail
+        detail = client.get(f"/api/admin/player-profiles/{pid}", headers=auth_headers).json()
+        assert detail["k_factor_override"] == 30
+
+    def test_clear_k_factor_override(self, client: TestClient, auth_headers: dict) -> None:
+        pid = _insert_profile(name="Alice")
+        # Set it first
+        client.put(f"/api/admin/player-profiles/{pid}/k-factor", headers=auth_headers, json={"k_factor_override": 50})
+        # Clear it
+        resp = client.put(
+            f"/api/admin/player-profiles/{pid}/k-factor", headers=auth_headers, json={"k_factor_override": None}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["k_factor_override"] is None
+
+        detail = client.get(f"/api/admin/player-profiles/{pid}", headers=auth_headers).json()
+        assert detail["k_factor_override"] is None
+
+    def test_k_factor_in_list_profiles(self, client: TestClient, auth_headers: dict) -> None:
+        pid = _insert_profile(name="Bob")
+        client.put(f"/api/admin/player-profiles/{pid}/k-factor", headers=auth_headers, json={"k_factor_override": 25})
+
+        profiles = client.get("/api/admin/player-profiles", headers=auth_headers).json()
+        bob = next(p for p in profiles if p["id"] == pid)
+        assert bob["k_factor_override"] == 25
+
+    def test_k_factor_not_found(self, client: TestClient, auth_headers: dict) -> None:
+        resp = client.put(
+            "/api/admin/player-profiles/nonexistent/k-factor", headers=auth_headers, json={"k_factor_override": 30}
+        )
+        assert resp.status_code == 404
+
+    def test_k_factor_validation_too_high(self, client: TestClient, auth_headers: dict) -> None:
+        pid = _insert_profile(name="Alice")
+        resp = client.put(
+            f"/api/admin/player-profiles/{pid}/k-factor", headers=auth_headers, json={"k_factor_override": 300}
+        )
+        assert resp.status_code == 422
+
+    def test_k_factor_validation_too_low(self, client: TestClient, auth_headers: dict) -> None:
+        pid = _insert_profile(name="Alice")
+        resp = client.put(
+            f"/api/admin/player-profiles/{pid}/k-factor", headers=auth_headers, json={"k_factor_override": 0}
+        )
+        assert resp.status_code == 422

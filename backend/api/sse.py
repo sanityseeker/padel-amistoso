@@ -49,6 +49,9 @@ _global_subscribers: set[asyncio.Queue] = set()
 # from closing idle connections.
 _HEARTBEAT_INTERVAL_SECS = 25
 
+# Set during application shutdown to unblock all SSE streams.
+_shutdown_event = asyncio.Event()
+
 
 def notify_tournament(tid: str) -> None:
     """Push a version-changed event to all subscribers of *tid*.
@@ -77,6 +80,26 @@ def notify_global() -> None:
             q.put_nowait(payload)
         except asyncio.QueueFull:
             pass
+
+
+def shutdown() -> None:
+    """Signal all SSE streams to close.
+
+    Pushes a ``None`` sentinel into every subscriber queue so that
+    ``_event_stream`` generators exit immediately instead of blocking
+    on the next heartbeat timeout.
+    """
+    _shutdown_event.set()
+    all_queues: list[asyncio.Queue] = []
+    for subs in _tournament_subscribers.values():
+        all_queues.extend(subs)
+    all_queues.extend(_global_subscribers)
+    for q in all_queues:
+        try:
+            q.put_nowait(None)
+        except asyncio.QueueFull:
+            pass
+    logger.info("SSE shutdown: signalled %d streams to close", len(all_queues))
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -108,8 +131,12 @@ async def _event_stream(
             # heartbeat comment (keeps reverse-proxies happy).
             try:
                 data = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_INTERVAL_SECS)
+                if data is None:  # shutdown sentinel
+                    break
                 yield f"data: {data}\n\n"
             except asyncio.TimeoutError:
+                if _shutdown_event.is_set():
+                    break
                 # SSE comment line — the browser ignores it, but it resets
                 # the proxy idle timer.
                 yield ": heartbeat\n\n"

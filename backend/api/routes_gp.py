@@ -50,6 +50,8 @@ from .state import (
 )
 from .player_secret_store import create_secrets_for_tournament
 from .push_events import notify_matches_ready, notify_champion, notify_score_submitted
+from .elo_integration import elo_after_score, elo_finish_tournament, elo_init_tournament
+from .elo_store import get_tournament_elos
 
 router = APIRouter(prefix="/api/tournaments", tags=["group-playoff"])
 
@@ -151,6 +153,7 @@ async def create_group_playoff(
         or None,
         emails={p.id: req.player_emails[p.name] for p in individual_players if p.name in req.player_emails} or None,
     )
+    elo_init_tournament(tid, [p.id for p in individual_players], req.sport.value)
     return {"id": tid, "phase": t.phase}
 
 
@@ -167,15 +170,23 @@ async def gp_status(tid: str) -> dict:
         "courts": [{"id": c.id, "name": c.name} for c in t.courts],
         "champion": [p.name for p in t.champion()] if t.champion() else None,
         "team_roster": getattr(t, "team_roster", None) or {},
+        "sport": data.get("sport", "padel"),
     }
 
 
 @router.get("/{tid}/gp/groups")
 async def gp_groups(tid: str) -> dict:
     """Return standings, all matches for each group, and whether more rounds can be generated."""
-    t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+    data = _get_tournament(tid, _GP)
+    t: GroupPlayoffTournament = data["tournament"]
+    sport = data.get("sport", "padel")
+    elos = get_tournament_elos(tid, sport)
+    standings = t.group_standings()
+    for group_entries in standings.values():
+        for entry in group_entries:
+            entry["elo"] = round(elos.get(entry["player_id"], 0), 1) or None
     return {
-        "standings": t.group_standings(),
+        "standings": standings,
         "matches": {g.name: [_serialize_match(m) for m in g.matches] for g in t.groups},
         "has_more_rounds": t.has_more_group_rounds,
     }
@@ -201,6 +212,7 @@ async def gp_record_group(
         except (KeyError, RuntimeError) as e:
             raise HTTPException(400, str(e))
         is_player_action = player is not None and user is None
+        is_required = False
         if is_player_action:
             tv = _get_tv_settings(tid)
             is_required = tv.get("score_confirmation", ScoreConfirmation.IMMEDIATE) == ScoreConfirmation.REQUIRED
@@ -216,6 +228,8 @@ async def gp_record_group(
             actor = user.username if user else None
             _mark_admin_score(match, actor)
         _save_tournament(tid)
+        if not (is_player_action and is_required):
+            elo_after_score(tid, data, match)
         maybe_update_live_stats(tid)
     if is_player_action and is_required:
         notify_score_submitted(tid, data, match, player.player_id)
@@ -249,6 +263,7 @@ async def gp_record_group_tennis(
         except (KeyError, RuntimeError) as e:
             raise HTTPException(400, str(e))
         is_player_action = player is not None and user is None
+        is_required = False
         if is_player_action:
             tv = _get_tv_settings(tid)
             is_required = tv.get("score_confirmation", ScoreConfirmation.IMMEDIATE) == ScoreConfirmation.REQUIRED
@@ -267,6 +282,8 @@ async def gp_record_group_tennis(
             actor = user.username if user else None
             _mark_admin_score(match, actor)
         _save_tournament(tid)
+        if not (is_player_action and is_required):
+            elo_after_score(tid, data, match)
         maybe_update_live_stats(tid)
     if is_player_action and is_required:
         notify_score_submitted(tid, data, match, player.player_id)
@@ -340,6 +357,7 @@ async def gp_start_playoffs(
                 if req.extra_participants
                 else None,
                 double_elimination=req.double_elimination,
+                playoff_teams=req.playoff_teams,
             )
         except (RuntimeError, KeyError, ValueError) as e:
             raise HTTPException(400, str(e))
@@ -438,9 +456,11 @@ async def gp_record_playoff(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+        elo_after_score(tid, data, match)
         maybe_update_live_stats(tid)
     champ = t.champion()
     if champ:
+        elo_finish_tournament(tid)
         notify_champion(tid, data, [p.name for p in champ])
     return {"ok": True, "phase": t.phase}
 
@@ -472,9 +492,11 @@ async def gp_record_playoff_tennis(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+        elo_after_score(tid, data, match)
         maybe_update_live_stats(tid)
     champ = t.champion()
     if champ:
+        elo_finish_tournament(tid)
         notify_champion(tid, data, [p.name for p in champ])
     return {
         "ok": True,

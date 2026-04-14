@@ -412,12 +412,14 @@ class StartMexicanoPlayoffsRequest(BaseModel):
     n_teams: int = Field(default=4, ge=2)
     double_elimination: bool = False
     extra_participants: list[ExternalParticipant] | None = None
+    playoff_teams: list[list[str]] | None = None
 
 
 class StartGroupPlayoffsRequest(BaseModel):
     advancing_player_ids: list[str] | None = None
     extra_participants: list[ExternalParticipant] | None = None
     double_elimination: bool | None = None
+    playoff_teams: list[list[str]] | None = None
 
 
 class SchemaPreviewRequest(BaseModel):
@@ -726,6 +728,11 @@ class AdminPlayerProfileSummary(BaseModel):
     email: str
     passphrase: str
     created_at: str
+    elo_padel: float
+    elo_padel_matches: int
+    elo_tennis: float
+    elo_tennis_matches: int
+    k_factor_override: int | None = None
 
 
 class AdminParticipationLink(BaseModel):
@@ -755,6 +762,11 @@ class AdminPlayerProfileDetail(BaseModel):
     contact: str
     passphrase: str
     created_at: str
+    elo_padel: float
+    elo_padel_matches: int
+    elo_tennis: float
+    elo_tennis_matches: int
+    k_factor_override: int | None = None
     participations: list[AdminParticipationLink]
 
 
@@ -762,3 +774,9 @@ class AdminEmailUpdate(BaseModel):
     """Request body for updating a profile's email."""
 
     email: OptionalEmailStr = Field(default="")
+
+
+class AdminKFactorUpdate(BaseModel):
+    """Request body for updating a profile's K-factor override."""
+
+    k_factor_override: int | None = Field(default=None, ge=1, le=200)

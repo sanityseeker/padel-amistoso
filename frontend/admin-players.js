@@ -29,14 +29,20 @@ async function phSearch() {
     html += '<thead><tr class="player-codes-head-row">';
     html += '<th class="player-codes-th">Name</th>';
     html += '<th class="player-codes-th">Email</th>';
+    html += '<th class="player-codes-th-center">Padel ELO</th>';
+    html += '<th class="player-codes-th-center">Tennis ELO</th>';
     html += '<th class="player-codes-th">Passphrase</th>';
     html += '<th class="player-codes-th">Created</th>';
     html += '<th class="player-codes-th-center"></th>';
     html += '</tr></thead><tbody>';
     for (const p of profiles) {
+      const padelElo = p.elo_padel_matches > 0 ? `${Math.round(p.elo_padel)} <span style="font-size:0.75rem;color:var(--text-muted)">(${p.elo_padel_matches})</span>` : '<span style="color:var(--text-muted)">—</span>';
+      const tennisElo = p.elo_tennis_matches > 0 ? `${Math.round(p.elo_tennis)} <span style="font-size:0.75rem;color:var(--text-muted)">(${p.elo_tennis_matches})</span>` : '<span style="color:var(--text-muted)">—</span>';
       html += `<tr class="player-codes-row">`;
       html += `<td class="player-codes-name">${esc(p.name || '—')}</td>`;
       html += `<td class="player-codes-cell">${esc(p.email || '—')}</td>`;
+      html += `<td class="player-codes-cell-center">${padelElo}</td>`;
+      html += `<td class="player-codes-cell-center">${tennisElo}</td>`;
       html += `<td class="player-codes-cell"><code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(p.passphrase)}</code></td>`;
       html += `<td class="player-codes-cell" style="font-size:0.8rem;color:var(--text-muted)">${_phFormatDate(p.created_at)}</td>`;
       html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-primary btn-sm" onclick="phLoadProfile('${escAttr(p.id)}')">Manage</button></td>`;
@@ -85,6 +91,30 @@ function _phRenderDetail(data) {
   html += `<strong>Email:</strong><span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap"><input type="email" id="ph-email-input" value="${escAttr(data.email || '')}" style="flex:1;min-width:180px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" onclick="phUpdateEmail('${escAttr(data.id)}')" id="ph-email-save-btn">Save</button></span>`;
   html += `<strong>Contact:</strong><span>${esc(data.contact || '—')}</span>`;
   html += `<strong>Created:</strong><span>${_phFormatDate(data.created_at)}</span>`;
+  html += '</div>';
+
+  // ELO ratings
+  html += '<div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1rem">';
+  if (data.elo_padel_matches > 0) {
+    html += `<div style="padding:0.5rem 0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:0.88rem">`;
+    html += `<strong>Padel ELO:</strong> ${Math.round(data.elo_padel)} <span style="color:var(--text-muted)">(${data.elo_padel_matches} matches)</span></div>`;
+  }
+  if (data.elo_tennis_matches > 0) {
+    html += `<div style="padding:0.5rem 0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:0.88rem">`;
+    html += `<strong>Tennis ELO:</strong> ${Math.round(data.elo_tennis)} <span style="color:var(--text-muted)">(${data.elo_tennis_matches} matches)</span></div>`;
+  }
+  if (data.elo_padel_matches === 0 && data.elo_tennis_matches === 0) {
+    html += '<span style="color:var(--text-muted);font-size:0.84rem">No ELO ratings yet.</span>';
+  }
+  html += '</div>';
+
+  // K-factor override
+  const kVal = data.k_factor_override != null ? data.k_factor_override : '';
+  html += '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;font-size:0.88rem">';
+  html += `<strong>K-factor override:</strong>`;
+  html += `<input type="number" id="ph-kfactor-input" value="${escAttr(String(kVal))}" placeholder="auto" min="1" max="200" style="width:80px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">`;
+  html += `<button type="button" class="btn btn-sm" onclick="phUpdateKFactor('${escAttr(data.id)}')" id="ph-kfactor-save-btn">Save</button>`;
+  html += `<span style="color:var(--text-muted);font-size:0.8rem">Leave empty for automatic (tier-based)</span>`;
   html += '</div>';
 
   // New passphrase result area
@@ -188,6 +218,32 @@ async function phUpdateEmail(profileId) {
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
     alert('Failed to update email: ' + e.message);
+  }
+}
+
+/** Update a profile's K-factor override */
+async function phUpdateKFactor(profileId) {
+  const input = document.getElementById('ph-kfactor-input');
+  const btn = document.getElementById('ph-kfactor-save-btn');
+  if (!input) return;
+  const raw = input.value.trim();
+  const kValue = raw === '' ? null : parseInt(raw, 10);
+  if (kValue !== null && (isNaN(kValue) || kValue < 1 || kValue > 200)) {
+    alert('K-factor must be between 1 and 200, or empty for automatic.');
+    return;
+  }
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    await api(`/api/admin/player-profiles/${profileId}/k-factor`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ k_factor_override: kValue }),
+    });
+    if (btn) { btn.disabled = false; btn.textContent = 'Saved ✓'; }
+    setTimeout(() => { if (btn) btn.textContent = 'Save'; }, 1500);
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+    alert('Failed to update K-factor: ' + e.message);
   }
 }
 

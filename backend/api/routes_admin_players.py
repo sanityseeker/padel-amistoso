@@ -23,6 +23,7 @@ from .player_secret_store import invalidate_secrets_cache
 from .state import rename_player_in_tournament
 from .schemas import (
     AdminEmailUpdate,
+    AdminKFactorUpdate,
     AdminParticipationLink,
     AdminPlayerProfileDetail,
     AdminPlayerProfileSummary,
@@ -48,17 +49,18 @@ async def list_profiles(
     Args:
         q: Optional search string matched against name and email (case-insensitive).
     """
+    elo_cols = ", elo_padel, elo_padel_matches, elo_tennis, elo_tennis_matches, k_factor_override"
     with get_db() as conn:
         if q.strip():
             pattern = f"%{q.strip()}%"
             rows = conn.execute(
-                "SELECT id, name, email, passphrase, created_at FROM player_profiles"
+                f"SELECT id, name, email, passphrase, created_at{elo_cols} FROM player_profiles"
                 " WHERE name LIKE ? OR email LIKE ? ORDER BY created_at DESC",
                 (pattern, pattern),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT id, name, email, passphrase, created_at FROM player_profiles ORDER BY created_at DESC"
+                f"SELECT id, name, email, passphrase, created_at{elo_cols} FROM player_profiles ORDER BY created_at DESC"
             ).fetchall()
 
     return [
@@ -68,6 +70,11 @@ async def list_profiles(
             email=r["email"],
             passphrase=r["passphrase"],
             created_at=r["created_at"],
+            elo_padel=r["elo_padel"],
+            elo_padel_matches=r["elo_padel_matches"],
+            elo_tennis=r["elo_tennis"],
+            elo_tennis_matches=r["elo_tennis_matches"],
+            k_factor_override=r["k_factor_override"],
         )
         for r in rows
     ]
@@ -86,7 +93,10 @@ async def get_profile_detail(
     """Return a single profile along with all linked participations (active + history)."""
     with get_db() as conn:
         profile = conn.execute(
-            "SELECT id, name, email, contact, passphrase, created_at FROM player_profiles WHERE id = ?",
+            "SELECT id, name, email, contact, passphrase, created_at,"
+            " elo_padel, elo_padel_matches, elo_tennis, elo_tennis_matches,"
+            " k_factor_override"
+            " FROM player_profiles WHERE id = ?",
             (profile_id,),
         ).fetchone()
         if profile is None:
@@ -101,6 +111,11 @@ async def get_profile_detail(
         contact=profile["contact"],
         passphrase=profile["passphrase"],
         created_at=profile["created_at"],
+        elo_padel=profile["elo_padel"],
+        elo_padel_matches=profile["elo_padel_matches"],
+        elo_tennis=profile["elo_tennis"],
+        elo_tennis_matches=profile["elo_tennis_matches"],
+        k_factor_override=profile["k_factor_override"],
         participations=participations,
     )
 
@@ -515,3 +530,31 @@ async def list_unlinked_players(
         ).fetchall()
 
     return [{"player_id": r["player_id"], "player_name": r["player_name"]} for r in rows]
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Update profile K-factor override
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@router.put("/{profile_id}/k-factor")
+async def admin_update_k_factor(
+    profile_id: str,
+    req: AdminKFactorUpdate,
+    _admin: User = Depends(require_admin),
+) -> dict:
+    """Set or clear a custom K-factor override for a player profile.
+
+    When set, the player's ELO updates will use this K value instead of
+    the default tier-based calculation.  Pass ``null`` to remove the
+    override and revert to automatic K-factor.
+    """
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE player_profiles SET k_factor_override = ? WHERE id = ?",
+            (req.k_factor_override, profile_id),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Profile not found")
+
+    return {"ok": True, "k_factor_override": req.k_factor_override}

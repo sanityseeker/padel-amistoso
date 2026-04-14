@@ -102,7 +102,6 @@
         <h2 style="margin:0" data-i18n="txt_txt_finished_tournaments">Finished tournaments</h2>
         <div id="archived-lobbies-toggle"></div>
       </div>
-      <div id="archived-lobbies-helper"></div>
       <div id="finished-tournament-list"></div>
     </div>
   </div>
@@ -372,7 +371,12 @@
         <div class="field-section" style="margin-bottom:0.75rem">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
             <input id="po-name" value="Play-offs 2026" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
-
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.3rem;flex-shrink:0">
+              <div class="score-mode-toggle entry-mode-toggle" id="po-entry-mode-toggle" style="display:none">
+                <button type="button" data-mode="individual" data-action="setEntryMode" data-entry-ctx="po" data-entry-mode="individual" data-i18n="txt_txt_individual_mode">Individual</button>
+                <button type="button" data-mode="team" class="active" data-action="setEntryMode" data-entry-ctx="po" data-entry-mode="team" data-i18n="txt_txt_team_mode_short">Team</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="field-section">

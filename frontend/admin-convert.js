@@ -44,11 +44,14 @@ function _isTennisRegistration(rid = _convRid) {
 }
 
 function _usesConvTeamBuilder(rid = _convRid) {
-  return !_isTennisRegistration(rid) && _convTeamMode;
+  return _convTeamMode;
 }
 
 function _getConvEffectiveTeamMode(rid = _convRid) {
-  return _isTennisRegistration(rid) ? true : _convTeamMode;
+  if (_isTennisRegistration(rid)) {
+    return _convType === 'playoff' ? _convTeamMode : true;
+  }
+  return _convTeamMode;
 }
 
 function _renderConvertPanel(rid, preserveState = false) {
@@ -123,14 +126,12 @@ function _renderConvertPanel(rid, preserveState = false) {
   html += `<button type="button" onclick="_setConvType('mexicano')">${t('txt_txt_mexicano_play_offs')}</button>`;
   html += `<button type="button" onclick="_setConvType('playoff')">${t('txt_txt_play_offs_only')}</button>`;
   html += `</div>`;
-  if (!isTennis) {
-    html += `<div style="margin-top:0.5rem">`;
-    html += `<div class="score-mode-toggle" id="conv-team-toggle">`;
-    html += `<button type="button" class="active" onclick="_setConvTeamMode(false)">${t('txt_txt_individual_mode')}</button>`;
-    html += `<button type="button" onclick="_setConvTeamMode(true)">${t('txt_txt_team_mode_short')}</button>`;
-    html += `</div>`;
-    html += `</div>`;
-  }
+  html += `<div style="margin-top:0.5rem">`;
+  html += `<div class="score-mode-toggle" id="conv-team-toggle">`;
+  html += `<button type="button" class="active" onclick="_setConvTeamMode(false)">${t('txt_txt_individual_mode')}</button>`;
+  html += `<button type="button" onclick="_setConvTeamMode(true)">${t('txt_txt_team_mode_short')}</button>`;
+  html += `</div>`;
+  html += `</div>`;
   html += `</div>`;
 
   // Extra players (individual mode only)
@@ -359,7 +360,6 @@ function _setConvType(type) {
 }
 
 function _setConvTeamMode(isTeam) {
-  if (_isTennisRegistration()) isTeam = false;
   if (!_isTennisRegistration() && _convType === 'playoff') isTeam = true;
   _convTeamMode = isTeam;
   const toggle = document.getElementById('conv-team-toggle');

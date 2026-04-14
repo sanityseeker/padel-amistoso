@@ -64,6 +64,12 @@ async def _lifespan(_app: FastAPI):
 
     init_push()
     yield
+    # ── Shutdown cleanup ──
+    from .push import shutdown_push  # noqa: PLC0415
+    from .sse import shutdown as shutdown_sse  # noqa: PLC0415
+
+    shutdown_sse()
+    shutdown_push()
 
 
 # ────────────────────────────────────────────────────────────────────────────

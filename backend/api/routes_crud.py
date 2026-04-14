@@ -42,6 +42,7 @@ from .schemas import (
 )
 from . import state
 from .state import _delete_tournament, _save_tournament, _tournaments
+from .elo_store import delete_tournament_elos
 
 router = APIRouter(prefix="/api/tournaments", tags=["tournaments"])
 
@@ -79,6 +80,7 @@ async def list_tournaments(current_user: User | None = Depends(get_current_user_
                 "type": data["type"],
                 "alias": data.get("alias"),
                 "team_mode": t.team_mode if t else False,
+                "has_team_roster": bool(t.team_roster) if t and hasattr(t, "team_roster") else False,
                 "phase": t.phase if t else GPPhase.SETUP,
                 "owner": data.get("owner"),
                 "public": data.get("public", True),
@@ -107,6 +109,7 @@ async def delete_tournament(tournament_id: str, user: User = Depends(get_current
             sport=t_data.get("sport", Sport.PADEL),
             partner_rival_stats=extract_partner_rival_stats(t_data),
         )
+        delete_tournament_elos(tournament_id)
     return {"ok": True}
 
 

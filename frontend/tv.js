@@ -1507,13 +1507,14 @@ function _renderGP(tvSettings, status, groups, playoffs) {
         const hasSets = rows.some(r => r.sets_won > 0 || r.sets_lost > 0);
         html += `<div class="group-block"><h3>${t('txt_txt_group_name_value', { value: esc(gName) })}</h3>`;
         html += `<table class="standings-table" data-type="gp"><thead><tr>`;
-        html += `<th class="col-hash">#</th><th class="col-player">${status.team_mode ? t('txt_txt_team') : t('txt_txt_player')}</th><th class="col-played">${t('txt_txt_p_abbrev')}</th><th class="col-w">${t('txt_txt_w_abbrev')}</th><th class="col-d">${t('txt_txt_d_abbrev')}</th><th class="col-l">${t('txt_txt_l_abbrev')}</th>`;
+        html += `<th class="col-hash">#</th><th class="col-player">${(status.team_roster && Object.keys(status.team_roster).length > 0) ? t('txt_txt_team') : t('txt_txt_player')}</th><th class="col-played">${t('txt_txt_p_abbrev')}</th><th class="col-w">${t('txt_txt_w_abbrev')}</th><th class="col-d">${t('txt_txt_d_abbrev')}</th><th class="col-l">${t('txt_txt_l_abbrev')}</th>`;
         if (hasSets) html += `<th class="col-sw">${t('txt_txt_sw_abbrev')}</th><th class="col-sl">${t('txt_txt_sl_abbrev')}</th><th class="col-sd">${t('txt_txt_sd_abbrev')}</th>`;
         html += `<th class="col-pf">${t('txt_txt_pf_abbrev')}</th><th class="col-pa">${t('txt_txt_pa_abbrev')}</th><th class="col-diff">${t('txt_txt_diff_abbrev')}</th>`;
         html += `</tr></thead><tbody>`;
         rows.forEach((r, i) => {
           const isMe = tvState.playerId && r.player_id === tvState.playerId;
-          html += `<tr${isMe ? ' class="my-row"' : ''}><td class="rank-cell col-hash">${i + 1}</td><td class="player-cell col-player">${esc(r.player)}</td>`;
+          const eloHtml = r.elo ? ` <span class="elo-badge">${Math.round(r.elo)}</span>` : '';
+          html += `<tr${isMe ? ' class="my-row"' : ''}><td class="rank-cell col-hash">${i + 1}</td><td class="player-cell col-player">${esc(r.player)}${eloHtml}</td>`;
           html += `<td class="col-played">${r.played}</td><td class="col-w">${r.wins}</td><td class="col-d">${r.draws}</td><td class="col-l">${r.losses}</td>`;
           if (hasSets) html += `<td class="col-sw">${r.sets_won}</td><td class="col-sl">${r.sets_lost}</td><td class="col-sd">${r.sets_diff}</td>`;
           html += `<td class="col-pf">${r.points_for}</td><td class="col-pa">${r.points_against}</td>`;
@@ -1682,7 +1683,7 @@ function _tvRenderMexLeaderboard() {
 
   let html = `<table class="standings-table" data-type="mex"><thead><tr>`;
   html += thHtml('rank', '#');
-  html += thHtml('player', tvState.mexTeamMode ? t('txt_txt_team') : t('txt_txt_player'));
+  html += thHtml('player', (tvState.teamRoster && Object.keys(tvState.teamRoster).length > 0) ? t('txt_txt_team') : t('txt_txt_player'));
   html += thHtml('total_points', t('txt_txt_total_pts_abbrev'));
   html += thHtml('matches_played', t('txt_txt_played_abbrev'));
   html += thHtml('wins', t('txt_txt_w_abbrev'));
@@ -1697,7 +1698,7 @@ function _tvRenderMexLeaderboard() {
     const rankCell = r.removed ? `<span style="color:var(--text-muted)">—</span>` : r.rank;
     const nameCell = r.removed
       ? `${esc(r.player)} <span style="font-size:0.7em;opacity:0.7">(${t('txt_txt_removed')})</span>`
-      : esc(r.player);
+      : esc(r.player) + (r.elo ? ` <span class="elo-badge">${Math.round(r.elo)}</span>` : '');
     html += `<tr${isMe ? ' class="my-row"' : ''}${removedStyle ? ` style="${removedStyle}"` : ''}><td class="rank-cell">${rankCell}</td><td class="player-cell">${nameCell}</td>`;
     const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
     const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
@@ -2166,14 +2167,14 @@ function _renderPickerHtml(tournaments) {
     html += `<div class="subtitle">${t('txt_txt_select_a_tournament_to_display')}</div>`;
     html += `<ul class="tv-picker-list">`;
     for (const tournament of tournaments) {
-      const modeLabel = tournament.team_mode ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode');
+      const modeLabel = tournament.has_team_roster ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode');
       const phaseLabel = _phaseLabel(tournament.phase);
       const aliasTag = tournament.alias ? `<span class="picker-alias">${esc(tournament.alias)}</span>` : '';
       const isTennis = tournament.sport === 'tennis';
       const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
       const pickerSlug = tournament.alias || tournament.id;
       html += `<a class="tv-picker-item" href="/tv/${encodeURIComponent(pickerSlug)}">`;
-      html += `${esc(tournament.name)}<span class="picker-badge picker-badge-sport">${esc(sportLabel)}</span>${!isTennis ? `<span class="picker-badge picker-badge-type">${esc(modeLabel)}</span>` : ''}<span class="picker-badge picker-badge-phase">${esc(phaseLabel)}</span>${aliasTag}`;
+      html += `${esc(tournament.name)}<span class="picker-badge picker-badge-sport">${esc(sportLabel)}</span><span class="picker-badge picker-badge-type">${esc(modeLabel)}</span><span class="picker-badge picker-badge-phase">${esc(phaseLabel)}</span>${aliasTag}`;
       html += `</a>`;
     }
     html += `</ul>`;

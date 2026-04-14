@@ -343,6 +343,7 @@ class GroupPlayoffTournament:
         advancing_player_ids: list[str] | None = None,
         extra_players: list[tuple[str, float]] | None = None,
         double_elimination: bool | None = None,
+        playoff_teams: list[list[str]] | None = None,
     ) -> None:
         """Seed the play‑off bracket from group results.
 
@@ -354,6 +355,11 @@ class GroupPlayoffTournament:
 
         In **team mode**, each advancing entry is already a team and
         enters the bracket directly.
+
+        When ``playoff_teams`` is provided, each entry is a list of
+        player IDs forming one bracket entry.  This overrides automatic
+        pairing and allows composing teams for the playoff bracket
+        regardless of the tournament's ``team_mode``.
 
         All teams (or individual-mode formed pairs) are sorted by
         combined score descending before seeding into the bracket so
@@ -371,6 +377,10 @@ class GroupPlayoffTournament:
         double_elimination : bool | None
             Override the tournament-level setting.  ``None`` keeps the
             value from ``__init__``.
+        playoff_teams : list[list[str]] | None
+            Pre-composed teams as lists of player IDs.  When provided,
+            the bracket uses these teams directly instead of automatic
+            pairing.
         """
         if self._phase != GPPhase.GROUPS:
             raise RuntimeError("Must be in group phase to start play‑offs")
@@ -450,7 +460,23 @@ class GroupPlayoffTournament:
                     return player_group_index[p.id]
             return -1
 
-        if self.team_mode:
+        if playoff_teams is not None:
+            # Pre-composed teams override automatic pairing.
+            teams = []
+            for member_ids in playoff_teams:
+                team_members = []
+                for pid in member_ids:
+                    if pid not in player_map:
+                        raise KeyError(f"Player {pid} not found in tournament")
+                    team_members.append(player_map[pid])
+                teams.append(team_members)
+            # Apply group-diversity seeding when multiple groups exist.
+            if self.num_groups > 1:
+                group_ids = [_team_group(t) for t in teams]
+                teams = pairing_mod.seed_with_group_diversity(teams, group_ids, _seed_key)
+            else:
+                teams.sort(key=lambda t: tuple(-x for x in _seed_key(t)))
+        elif self.team_mode:
             # In team mode each advancing entry IS a team already.
             # Build teams, then apply group-diversity seeding when multiple
             # groups exist so first-round opponents come from different groups.

@@ -15,6 +15,8 @@ async function renderMex() {
     _totalPts = status.total_points_per_match || 0;
     _mexPlayers = status.players || [];
     _mexTeamMode = status.team_mode || false;
+    _mexTeamRoster = status.team_roster || {};
+    _mexSport = status.sport || 'padel';
     _mexBreakdowns = matches.breakdowns || {};
     _mexStrengthWeight = status.strength_weight || 0;
     _mexPlayerMap = {};
@@ -293,7 +295,7 @@ function _renderMexLeaderboard() {
   let html = `<h2 class="card-heading-row">${t('txt_txt_leaderboard')} <button class="format-info-btn" onclick="showAbbrevPopup(event,'leaderboard')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h2>`;
   html += `<table><thead><tr>`;
   html += thHtml('rank', t('txt_txt_rank'));
-  html += thHtml('player', _mexTeamMode ? t('txt_txt_team') : t('txt_txt_player'));
+  html += thHtml('player', (_mexTeamRoster && Object.keys(_mexTeamRoster).length > 0) ? t('txt_txt_team') : t('txt_txt_player'));
   html += thHtml('total_points', t('txt_txt_total_pts_abbrev'));
   html += thHtml('matches_played', t('txt_txt_played_abbrev'));
   html += thHtml('wins', t('txt_txt_w_abbrev'));
@@ -1456,21 +1458,24 @@ let _savedPlayoffTeams = {};  // teamIndex → { a: playerId, b: playerId }
 let _mexExternalParticipants = [];  // {name, score, id}[] external participants for mex playoffs
 let _mexExtCounter = 0;  // counter for generating unique temp IDs
 let _teamCountDebounceTimer = null;
+let _mexPlayoffTeamToggle = false;  // team mode toggle for tennis individual playoffs
+let _mexPlayoffComposedTeams = [];  // [[pid1, pid2], ...] pre-composed teams
 
 async function proposeMexPlayoffs(teamCount = null) {
   try {
+    const effectiveTeamMode = _mexGetEffectiveTeamMode();
     const regularCount = (_mexPlayers || []).length;
     const extCount = _mexExternalParticipants.length;
     const totalPool = regularCount + extCount;
-    const maxTeams = _mexTeamMode
+    const maxTeams = effectiveTeamMode
       ? Math.max(2, totalPool)
       : Math.max(2, Math.floor(totalPool / 2));
     const requestedTeams = Math.max(2, Math.min(maxTeams, Number(teamCount || _mexPlayoffTeamCount || 4)));
     _mexPlayoffTeamCount = requestedTeams;
     // Cap API fetch to available regular players
-    const regularMaxTeams = _mexTeamMode ? regularCount : Math.floor(regularCount / 2);
+    const regularMaxTeams = effectiveTeamMode ? regularCount : Math.floor(regularCount / 2);
     const apiTeamsToFetch = Math.max(0, Math.min(requestedTeams, regularMaxTeams));
-    const participantsToRecommend = _mexTeamMode ? apiTeamsToFetch : apiTeamsToFetch * 2;
+    const participantsToRecommend = effectiveTeamMode ? apiTeamsToFetch : apiTeamsToFetch * 2;
     if (participantsToRecommend > 0) {
       const data = await api(`/api/tournaments/${currentTid}/mex/recommend-playoffs?n_teams=${participantsToRecommend}`);
       _playoffTeams = data.recommended_teams.map(t => ({ id: t.player_id, name: t.player, score: t.total_points ?? 0, estimatedScore: t.estimated_points ?? t.total_points ?? 0, rankedByAvg: t.ranked_by_avg, avgScore: t.avg_points ?? 0 }));
@@ -1519,17 +1524,41 @@ async function finishMexicanoAsIs() {
   } catch (e) { alert(e.message); }
 }
 
+function _mexGetEffectiveTeamMode() {
+  // For tennis individual tournaments, the toggle can switch playoff to team mode.
+  // _mexTeamMode=true means 1-per-slot (individual bracket); toggle flips to 2-per-slot.
+  const isIndividualTennis = _mexSport === 'tennis' && (!_mexTeamRoster || Object.keys(_mexTeamRoster).length === 0);
+  return isIndividualTennis && _mexPlayoffTeamToggle ? false : _mexTeamMode;
+}
+
+function _mexIsIndividualTennis() {
+  return _mexSport === 'tennis' && (!_mexTeamRoster || Object.keys(_mexTeamRoster).length === 0);
+}
+
 function _renderPlayoffEditor() {
+  const effectiveTeamMode = _mexGetEffectiveTeamMode();
+
   let html = `<div class="card">`;
   html += `<h2>${t('txt_txt_configure_mexicano_playoffs')}</h2>`;
   const _useEstNote = _playoffTeams.length > 0 && _playoffTeams[0].rankedByAvg;
   const estNote = _useEstNote ? `<span class="playoff-editor-est-note">${t('txt_txt_estimated_points_note')}</span>` : '';
-  html += `<p class="playoff-editor-intro">${_mexTeamMode ? ts('txt_txt_participant_row_instructions', _currentSport) : ts('txt_txt_team_row_instructions', _currentSport)} ${estNote}</p>`;
+  html += `<p class="playoff-editor-intro">${effectiveTeamMode ? ts('txt_txt_participant_row_instructions', _currentSport) : ts('txt_txt_team_row_instructions', _currentSport)} ${estNote}</p>`;
+
+  // Playoff team mode toggle — shown for tennis individual tournaments
+  if (_mexIsIndividualTennis()) {
+    html += `<div style="margin-bottom:0.75rem">`;
+    html += `<div class="form-group"><label>${t('txt_txt_playoff_mode')}</label>`;
+    html += `<div class="score-mode-toggle" id="mex-playoff-team-toggle">`;
+    html += `<button type="button" class="${!_mexPlayoffTeamToggle ? 'active' : ''}" onclick="_mexSetPlayoffTeamToggle(false)">${t('txt_txt_individual_mode')}</button>`;
+    html += `<button type="button" class="${_mexPlayoffTeamToggle ? 'active' : ''}" onclick="_mexSetPlayoffTeamToggle(true)">${t('txt_txt_team_mode_short')}</button>`;
+    html += `</div></div>`;
+    html += `</div>`;
+  }
 
   const regularCount = (_mexPlayers || []).length;
   const extCount = _mexExternalParticipants.length;
   const totalPool = regularCount + extCount;
-  const maxTeams = _mexTeamMode
+  const maxTeams = effectiveTeamMode
     ? Math.max(2, totalPool)
     : Math.max(2, Math.floor(totalPool / 2));
   html += `<div class="inline-group playoff-editor-inline-group">`;
@@ -1557,7 +1586,7 @@ function _renderPlayoffEditor() {
     html += `</div>`;
   }
   html += `<div class="playoff-editor-external-add">`;
-  html += `<input type="text" id="mex-external-name" class="playoff-editor-external-name-input" placeholder="${_mexTeamMode ? t('txt_txt_add_external_team') : t('txt_txt_add_external_player')}" onkeydown="if(event.key==='Enter')_mexAddExternal()">`;
+  html += `<input type="text" id="mex-external-name" class="playoff-editor-external-name-input" placeholder="${effectiveTeamMode ? t('txt_txt_add_external_team') : t('txt_txt_add_external_player')}" onkeydown="if(event.key==='Enter')_mexAddExternal()">`;
   html += `<input type="number" id="mex-external-score" class="playoff-editor-score-input" placeholder="${t('txt_txt_score')}" value="0">`;
   html += `<button type="button" class="btn btn-sm btn-primary" onclick="_mexAddExternal()">+</button>`;
   html += `</div>`;
@@ -1596,7 +1625,7 @@ function _renderPlayoffEditor() {
   for (let i = 0; i < teamCount; i++) {
     html += `<div class="playoff-team-item playoff-team-item-compact">`;
     html += `<span class="seed playoff-team-seed">${ts('txt_txt_team_n', _currentSport, { n: i + 1 })}</span>`;
-    if (_mexTeamMode) {
+    if (effectiveTeamMode) {
       // Team mode: one participant = one playoff slot
       const defaultId = _playoffTeams[i]?.id || '';
       const initScore = singleScore(defaultId);
@@ -1630,14 +1659,23 @@ function _renderPlayoffEditor() {
   return html;
 }
 
+function _mexSetPlayoffTeamToggle(isTeam) {
+  _mexPlayoffTeamToggle = isTeam;
+  _savedPlayoffTeams = {};
+  // Re-fetch with correct slot count for the new mode, then re-render
+  proposeMexPlayoffs(_mexPlayoffTeamCount);
+}
+
 async function _startMexPlayoffs() {
+  const effectiveTeamMode = _mexGetEffectiveTeamMode();
   const allIds = [];  // all selected IDs (real + ext_ placeholders)
+  const composedTeams = [];  // for playoff_teams when toggle is on
   const used = new Set();
   const teamCount = _mexPlayoffTeamCount;
   for (let i = 0; i < teamCount; i++) {
     const left = document.getElementById(`playoff-team-${i}-a`)?.value || '';
 
-    if (_mexTeamMode) {
+    if (effectiveTeamMode) {
       // Team mode: one participant per playoff slot
       if (!left) {
         alert(t('txt_txt_team_n_select_both_players', { n: i + 1 }));
@@ -1667,6 +1705,7 @@ async function _startMexPlayoffs() {
       used.add(left);
       used.add(right);
       allIds.push(left, right);
+      if (_mexPlayoffTeamToggle) composedTeams.push([left, right]);
     }
   }
   // Separate real player IDs from ext_ placeholder IDs
@@ -1690,6 +1729,7 @@ async function _startMexPlayoffs() {
         team_player_ids: teamIds,
         double_elimination: fmt === 'double',
         extra_participants: extra,
+        playoff_teams: _mexPlayoffTeamToggle ? composedTeams : null,
       }),
     });
     _playoffTeams = [];
@@ -1704,7 +1744,8 @@ function _updateTeamScore(i) {
   const el = document.getElementById(`team-score-${i}`);
   if (!el) return;
   const useEst = _playoffTeams.length > 0 && _playoffTeams[0].rankedByAvg;
-  if (_mexTeamMode) {
+  const effectiveTeamMode = _mexGetEffectiveTeamMode();
+  if (effectiveTeamMode) {
     if (!aId) { el.textContent = '—'; return; }
     const val = _playoffScoreMap[aId] || 0;
     el.textContent = useEst ? `${val.toFixed(1)}* pts` : `${val} pts`;
@@ -1765,7 +1806,7 @@ function _getLockedPlayoffIds(exceptTeamIdx = -1) {
   for (const [idx, team] of Object.entries(_savedPlayoffTeams)) {
     if (Number(idx) === exceptTeamIdx) continue;
     if (team.a) ids.add(team.a);
-    if (!_mexTeamMode && team.b) ids.add(team.b);
+    if (!_mexGetEffectiveTeamMode() && team.b) ids.add(team.b);
   }
   return ids;
 }
@@ -1773,7 +1814,8 @@ function _getLockedPlayoffIds(exceptTeamIdx = -1) {
 function _savePlayoffTeam(i) {
   const aEl = document.getElementById(`playoff-team-${i}-a`);
   const a = aEl?.value || '';
-  if (_mexTeamMode) {
+  const effectiveTeamMode = _mexGetEffectiveTeamMode();
+  if (effectiveTeamMode) {
     if (!a) { alert(t('txt_txt_team_n_select_both_players_before_saving', { n: i + 1 })); return; }
     _savedPlayoffTeams[i] = { a };
   } else {
@@ -1797,7 +1839,7 @@ function _refreshPlayoffOptions() {
 
   for (let i = 0; i < teamCount; i++) {
     const aEl = document.getElementById(`playoff-team-${i}-a`);
-    const bEl = _mexTeamMode ? null : document.getElementById(`playoff-team-${i}-b`);
+    const bEl = _mexGetEffectiveTeamMode() ? null : document.getElementById(`playoff-team-${i}-b`);
     const saveBtn  = document.getElementById(`playoff-save-${i}`);
     const editBtn  = document.getElementById(`playoff-edit-${i}`);
     const badge    = document.getElementById(`playoff-saved-badge-${i}`);

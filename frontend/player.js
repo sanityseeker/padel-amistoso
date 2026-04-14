@@ -17,10 +17,16 @@ const STORAGE_PROFILE_KEY = 'padel-player-profile-data';
 const STORAGE_PARTICIPANT_LOOKUP_KEY = 'padel-player-participant-lookup';
 const STORAGE_HISTORY_PANEL_KEY = 'padel-player-history-panel-open';
 const STORAGE_PATH_PANEL_KEY = 'padel-player-path-panel-open';
+const STORAGE_ELO_HISTORY_KEY = 'padel-player-elo-history-settings';
+const STORAGE_ELO_HISTORY_PANEL_KEY = 'padel-player-elo-history-panel-open';
+const STORAGE_LEADERBOARD_PANEL_KEY = 'padel-player-leaderboard-panel-open';
 
 let _jwt = null;
 let _profile = null;
 let _entries = [];
+let _eloHistory = [];
+let _leaderboard = null; // { padel: [], tennis: [] } or null
+let _leaderboardSport = 'padel'; // 'padel' | 'tennis'
 let _authStep = 'passphrase'; // 'passphrase' | 'create'
 let _resolveResult = null;    // null | {type: 'profile'|'participation'|'not_found', matches: [...]}
 let _resolvedPassphrase = ''; // the passphrase that was resolved
@@ -92,6 +98,31 @@ function _setParticipantLookupState(patch) {
   } catch (_) {}
 }
 
+function _eloHistoryLimitOrDefault(value) {
+  const n = Number(value);
+  return n === 5 || n === 10 || n === 20 || n === 50 ? n : 5;
+}
+
+function _getEloHistorySettings() {
+  const defaults = { limit: 5 };
+  try {
+    const raw = localStorage.getItem(STORAGE_ELO_HISTORY_KEY);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw);
+    return { limit: _eloHistoryLimitOrDefault(parsed?.limit) };
+  } catch (_) {
+    return defaults;
+  }
+}
+
+function _setEloHistorySettings(patch) {
+  const prev = _getEloHistorySettings();
+  const next = { limit: _eloHistoryLimitOrDefault(patch?.limit ?? prev.limit) };
+  try {
+    localStorage.setItem(STORAGE_ELO_HISTORY_KEY, JSON.stringify(next));
+  } catch (_) {}
+}
+
 function _isHistoryPanelOpen() {
   try {
     return localStorage.getItem(STORAGE_HISTORY_PANEL_KEY) === '1';
@@ -103,6 +134,34 @@ function _isHistoryPanelOpen() {
 function _setHistoryPanelOpen(isOpen) {
   try {
     localStorage.setItem(STORAGE_HISTORY_PANEL_KEY, isOpen ? '1' : '0');
+  } catch (_) {}
+}
+
+function _isEloHistoryPanelOpen() {
+  try {
+    return sessionStorage.getItem(STORAGE_ELO_HISTORY_PANEL_KEY) === '1';
+  } catch (_) {
+    return false;
+  }
+}
+
+function _setEloHistoryPanelOpen(isOpen) {
+  try {
+    sessionStorage.setItem(STORAGE_ELO_HISTORY_PANEL_KEY, isOpen ? '1' : '0');
+  } catch (_) {}
+}
+
+function _isLeaderboardPanelOpen() {
+  try {
+    return sessionStorage.getItem(STORAGE_LEADERBOARD_PANEL_KEY) === '1';
+  } catch (_) {
+    return false;
+  }
+}
+
+function _setLeaderboardPanelOpen(isOpen) {
+  try {
+    sessionStorage.setItem(STORAGE_LEADERBOARD_PANEL_KEY, isOpen ? '1' : '0');
   } catch (_) {}
 }
 
@@ -152,6 +211,9 @@ function _prunePathState() {
 // ── Init ─────────────────────────────────────────────────
 
 function _init() {
+  // Fetch leaderboard (public, no auth) — fire-and-forget, re-renders when ready
+  _fetchLeaderboard().then(() => _render()).catch(() => {});
+
   // Check for JWT autologin and/or email verification via URL fragment.
   // Used by email links like #token=<jwt> and #verify_token=<jwt>.
   const _hashParams = new URLSearchParams(location.hash.slice(1));
@@ -243,10 +305,12 @@ async function _pollSpace() {
   try {
     const prevProfile = JSON.stringify(_profile || {});
     const prevEntries = JSON.stringify(_entries || []);
+    const prevEloHistory = JSON.stringify(_eloHistory || []);
     await _fetchSpace();
     const nextProfile = JSON.stringify(_profile || {});
     const nextEntries = JSON.stringify(_entries || []);
-    if (prevProfile !== nextProfile || prevEntries !== nextEntries) {
+    const nextEloHistory = JSON.stringify(_eloHistory || []);
+    if (prevProfile !== nextProfile || prevEntries !== nextEntries || prevEloHistory !== nextEloHistory) {
       _render();
     }
   } catch (_) {
@@ -318,12 +382,24 @@ async function _apiDelete(path, body, auth) {
 }
 
 async function _fetchSpace() {
-  const data = await _apiGet('/space', _jwt);
+  const settings = _getEloHistorySettings();
+  const data = await _apiGet(`/space?elo_history_limit=${settings.limit}`, _jwt);
   _jwt = data.access_token;
   _profile = data.profile;
   _entries = data.entries || [];
+  _eloHistory = data.elo_history || [];
   _prunePathState();
   _saveSession();
+}
+
+async function _fetchLeaderboard() {
+  try {
+    const res = await fetch(`${API}/leaderboard`);
+    if (!res.ok) return;
+    _leaderboard = await res.json();
+  } catch (_) {
+    // Silently ignore — leaderboard is non-critical
+  }
 }
 
 function _saveSession() {
@@ -338,6 +414,7 @@ function _clearSession() {
   _jwt = null;
   _profile = null;
   _entries = [];
+  _eloHistory = [];
   _pathPanelOpen = {};
   _pathCache = {};
   _pathLoading = {};
@@ -570,6 +647,79 @@ function _toggleLanguage() {
   _render();
 }
 
+// ── Leaderboard ───────────────────────────────────────────
+
+function _toggleLeaderboardPanel() {
+  const next = !_isLeaderboardPanelOpen();
+  _setLeaderboardPanelOpen(next);
+  _render();
+}
+
+function _setLeaderboardSport(sport) {
+  _leaderboardSport = sport;
+  _render();
+}
+
+function _buildLeaderboardTable(entries) {
+  if (!entries || entries.length === 0) {
+    return `<div class="leaderboard-empty">${esc(t('txt_player_leaderboard_empty'))}</div>`;
+  }
+  let html = `<table class="leaderboard-table">`;
+  html += `<thead><tr>`;
+  html += `<th class="leaderboard-col-rank">${esc(t('txt_player_leaderboard_rank'))}</th>`;
+  html += `<th class="leaderboard-col-name">${esc(t('txt_player_leaderboard_name'))}</th>`;
+  html += `<th class="leaderboard-col-elo">${esc(t('txt_player_leaderboard_elo'))}</th>`;
+  html += `<th class="leaderboard-col-matches">${esc(t('txt_player_leaderboard_matches'))}</th>`;
+  html += `</tr></thead><tbody>`;
+  const currentName = _profile ? _profile.name : null;
+  for (const e of entries) {
+    const isMe = currentName && e.name === currentName;
+    html += `<tr${isMe ? ' class="leaderboard-row--me"' : ''}>`;
+    html += `<td class="leaderboard-col-rank">${esc(String(e.rank))}</td>`;
+    html += `<td class="leaderboard-col-name${e.has_profile === false ? ' leaderboard-name--unlinked' : ''}">${esc(e.name)}</td>`;
+    html += `<td class="leaderboard-col-elo">${esc(String(Math.round(e.elo)))}</td>`;
+    html += `<td class="leaderboard-col-matches">${esc(String(e.matches))}</td>`;
+    html += `</tr>`;
+  }
+  html += `</tbody></table>`;
+  return html;
+}
+
+function _buildLeaderboardPanel() {
+  if (!_leaderboard) return '';
+  const hasPadel = _leaderboard.padel && _leaderboard.padel.length > 0;
+  const hasTennis = _leaderboard.tennis && _leaderboard.tennis.length > 0;
+  if (!hasPadel && !hasTennis) return '';
+
+  const isOpen = _isLeaderboardPanelOpen();
+  const chevron = isOpen ? '▼' : '▶';
+
+  let html = `<div class="card leaderboard-card">`;
+  html += `<div class="leaderboard-header" onclick="_toggleLeaderboardPanel()">`;
+  html += `<span class="leaderboard-chevron">${chevron}</span>`;
+  html += `<h3 class="leaderboard-title">${esc(t('txt_player_leaderboard_title'))}</h3>`;
+  html += `</div>`;
+
+  if (isOpen) {
+    // Sport toggle pills (only if both sports have data)
+    if (hasPadel && hasTennis) {
+      const activeSport = _leaderboardSport;
+      html += `<div class="leaderboard-sport-toggle">`;
+      html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" onclick="event.stopPropagation(); _setLeaderboardSport('padel')">Padel</button>`;
+      html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" onclick="event.stopPropagation(); _setLeaderboardSport('tennis')">Tennis</button>`;
+      html += `</div>`;
+    }
+
+    // Show active sport (or whichever has data)
+    const activeSport = (hasPadel && hasTennis) ? _leaderboardSport : (hasPadel ? 'padel' : 'tennis');
+    const entries = activeSport === 'tennis' ? _leaderboard.tennis : _leaderboard.padel;
+    html += _buildLeaderboardTable(entries);
+  }
+
+  html += `</div>`;
+  return html;
+}
+
 // ── Render ────────────────────────────────────────────────
 
 function _render() {
@@ -583,6 +733,7 @@ function _render() {
   } else {
     html += _buildAuthPanel();
   }
+  html += _buildLeaderboardPanel();
   if (_showLinkModal) html += _buildLinkModal();
   root.innerHTML = html;
 }
@@ -683,6 +834,13 @@ function _prefillName() {
   return _resolveResult.matches[0].player_name || '';
 }
 
+function _formatEloChip(sportLabel, eloValue, matchCount) {
+  const matches = Number.isFinite(matchCount) ? matchCount : 0;
+  const hasRatedElo = Number.isFinite(eloValue) && matches > 0;
+  if (!hasRatedElo) return '';
+  return `<span class="elo-chip elo-chip--rated">${esc(sportLabel)} <strong>${Math.round(eloValue)}</strong> <span class="elo-chip-count">(${matches})</span></span>`;
+}
+
 function _buildDashboard() {
   const active = _entries.filter(e => e.status === 'active');
   const history = _entries.filter(e => e.status === 'finished');
@@ -693,25 +851,26 @@ function _buildDashboard() {
   const name = _profile.name || `ID: ${_profile.id.slice(0, 8)}`;
   const emailUnverified = Boolean(_profile.email && !_profile.email_verified);
   html += `<div class="profile-bar">`;
-  html += `<div class="profile-bar-top">`;
-  html += `<div class="profile-bar-main">`;
+  html += `<div class="profile-bar-header">`;
   html += `<div class="profile-bar-name">${esc(name)}</div>`;
-  if (_profile.email) {
-    html += `<div class="profile-email-row">`;
-    html += `<div class="profile-bar-meta">${esc(_profile.email)}</div>`;
-    if (emailUnverified) {
-      html += `<div class="profile-verify-row">`;
-      html += `<span class="badge badge-verify-pending">⚠ ${esc(t('txt_player_email_unverified_badge'))}</span>`;
-      html += `</div>`;
-    }
-    html += `</div>`;
-  }
-  html += `</div>`;
-  html += `</div>`;
+  const eloChipsHtml = [
+    _formatEloChip(t('txt_player_sport_padel'), _profile.elo_padel, _profile.elo_padel_matches),
+    _formatEloChip(t('txt_player_sport_tennis'), _profile.elo_tennis, _profile.elo_tennis_matches),
+  ].filter(Boolean).join('');
+  if (eloChipsHtml) html += `<div class="profile-elo-row">${eloChipsHtml}</div>`;
   html += `<div class="player-profile-actions">`;
   html += `<button type="button" class="btn btn-sm btn-secondary" onclick="_toggleEditProfile()">${esc(t('txt_player_edit_btn'))}</button>`;
   html += `<button type="button" class="btn btn-sm btn-danger-outline player-logout-btn" onclick="_doLogout()">${esc(t('txt_player_logout_btn'))}</button>`;
   html += `</div>`;
+  html += `</div>`;
+  if (_profile.email) {
+    html += `<div class="profile-email-row">`;
+    html += `<span class="profile-bar-meta">${esc(_profile.email)}</span>`;
+    if (emailUnverified) {
+      html += `<span class="badge badge-verify-pending">⚠ ${esc(t('txt_player_email_unverified_badge'))}</span>`;
+    }
+    html += `</div>`;
+  }
   html += `</div>`;
 
   // Compact passphrase strip (always visible)
@@ -760,6 +919,7 @@ function _buildDashboard() {
 
   // Career stats card — shown only when there is finished history
   html += _buildGlobalStatsCard();
+  html += _buildEloHistoryCard();
 
   // Active section
   html += `<div class="player-section-header">`;
@@ -796,6 +956,10 @@ function _buildDashboard() {
 
 function _rememberHistoryPanelOpen(detailsEl) {
   _setHistoryPanelOpen(!!detailsEl?.open);
+}
+
+function _rememberEloHistoryPanelOpen(detailsEl) {
+  _setEloHistoryPanelOpen(!!detailsEl?.open);
 }
 
 function _buildStatsCardForEntries(entries, heading) {
@@ -1138,6 +1302,97 @@ function _buildGlobalStatsCard() {
   return html;
 }
 
+function _formatEloHistoryScore(match) {
+  if (Array.isArray(match.sets) && match.sets.length > 0) {
+    return match.sets.map(s => `${s[0]}-${s[1]}`).join(', ');
+  }
+  if (Array.isArray(match.score) && match.score.length === 2) {
+    return `${match.score[0]}-${match.score[1]}`;
+  }
+  return '—';
+}
+
+function _findCurrentPlayerEloChange(match) {
+  const allPlayers = [...(match.team1 || []), ...(match.team2 || [])];
+  const current = allPlayers.find((p) => match.player_id && p.player_id === match.player_id);
+  if (!current) return null;
+  const before = Number(current.elo_before);
+  const after = Number(current.elo_after);
+  if (!Number.isFinite(before) || !Number.isFinite(after)) return null;
+  return { before: Math.round(before), after: Math.round(after), delta: Math.round(after - before) };
+}
+
+function _formatEloTeamSide(players, currentPid) {
+  if (!Array.isArray(players) || players.length === 0) return '<span class="elo-team-player">—</span>';
+  return players.map((p, idx) => {
+    const d = Math.round((p.elo_after || 0) - (p.elo_before || 0));
+    const isCurrent = currentPid && p.player_id === currentPid;
+    const cls = isCurrent ? (d > 0 ? 'elo-delta--gain' : d < 0 ? 'elo-delta--loss' : 'elo-delta--neutral') : 'elo-delta--dim';
+    const joiner = idx < players.length - 1 ? '<span class="elo-team-join">&amp;</span>' : '';
+    return `<span class="elo-team-player">${esc(p.player_name)}<span class="elo-player-rating">${Math.round(p.elo_before)}</span><span class="elo-player-delta ${cls}">${d > 0 ? '+' : ''}${d}</span>${joiner}</span>`;
+  }).join('');
+}
+
+function _formatEloTeamVsLine(team1, team2, currentPid, scoreStr) {
+  const mid = scoreStr ? `<span class="elo-score-sep">${esc(scoreStr)}</span>` : `<span class="elo-vs-sep">vs</span>`;
+  return `<span class="elo-team elo-team--a">${_formatEloTeamSide(team1, currentPid)}</span>${mid}<span class="elo-team elo-team--b">${_formatEloTeamSide(team2, currentPid)}</span>`;
+}
+
+function _buildEloHistoryCard() {
+  const settings = _getEloHistorySettings();
+  const openAttr = _isEloHistoryPanelOpen() ? ' open' : '';
+  let html = `<details class="player-history-panel" ontoggle="_rememberEloHistoryPanelOpen(this)"${openAttr}>`;
+  html += `<summary class="player-history-summary"><span class="player-history-chevron">▶</span><span class="section-heading section-heading-inline">${esc(t('txt_player_elo_history'))}</span></summary>`;
+  html += `<div class="player-history-body">`;
+  html += `<div class="player-elo-controls">`;
+  html += `<label class="player-elo-control-label">${esc(t('txt_player_elo_show_last'))}</label>`;
+  html += `<select class="player-elo-control-select" onchange="_onEloHistoryLimitChange(this)">`;
+  html += `<option value="5"${settings.limit === 5 ? ' selected' : ''}>5</option>`;
+  html += `<option value="10"${settings.limit === 10 ? ' selected' : ''}>10</option>`;
+  html += `<option value="20"${settings.limit === 20 ? ' selected' : ''}>20</option>`;
+  html += `<option value="50"${settings.limit === 50 ? ' selected' : ''}>50</option>`;
+  html += `</select>`;
+  html += `</div>`;
+
+  if (!_eloHistory.length) {
+    html += `<div class="empty-state">${esc(t('txt_player_elo_no_history'))}</div>`;
+    html += `</div></details>`;
+    return html;
+  }
+
+  html += `<div class="elo-log">`;
+  for (const match of _eloHistory) {
+    const url = _entityUrl({ entity_type: 'tournament', entity_id: match.tournament_id, alias: match.tournament_alias });
+    const when = match.updated_at
+      ? new Date(match.updated_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+      : '';
+    const change = _findCurrentPlayerEloChange(match);
+    const changeClass = change
+      ? (change.delta > 0 ? 'elo-transition--gain' : change.delta < 0 ? 'elo-transition--loss' : 'elo-transition--neutral')
+      : 'elo-transition--neutral';
+    const changeText = change ? `${change.before} -> ${change.after}` : '->';
+    html += `<div class="elo-log-row">`;
+    html += `<div class="elo-log-main">`;
+    html += `<a href="${esc(url)}" class="elo-log-name">${esc(match.tournament_name || match.tournament_id)}</a>`;
+    if (match.match_order) html += `<span class="elo-log-dim">#${match.match_order}</span>`;
+    if (when) html += `<span class="elo-log-dim">${esc(when)}</span>`;
+    html += `<span class="elo-transition ${changeClass}">${esc(changeText)}</span>`;
+    html += `</div>`;
+    html += `<div class="elo-log-teams">${_formatEloTeamVsLine(match.team1, match.team2, match.player_id, _formatEloHistoryScore(match))}</div>`;
+    html += `</div>`;
+  }
+  html += `</div>`;
+
+  html += `</div></details>`;
+  return html;
+}
+
+async function _onEloHistoryLimitChange(selectEl) {
+  const limit = _eloHistoryLimitOrDefault(selectEl?.value);
+  _setEloHistorySettings({ limit });
+  await _refreshSpaceNow();
+}
+
 function _buildEntryCard(entry) {
   const url = _entityUrl(entry);
   const isFinished = entry.status === 'finished';
@@ -1166,7 +1421,11 @@ function _buildEntryCard(entry) {
   }
   html += `</div>`;
   if (entry.player_name) html += `<div class="entry-card-meta">${esc(entry.player_name)}</div>`;
-  const hasStats = (entry.wins || 0) + (entry.losses || 0) + (entry.draws || 0) > 0 || (entry.rank != null && entry.rank > 0) || !!entry.playoff_stage;
+  const hasStats =
+    (entry.wins || 0) + (entry.losses || 0) + (entry.draws || 0) > 0 ||
+    (entry.rank != null && entry.rank > 0) ||
+    !!entry.playoff_stage ||
+    (entry.elo_before != null && entry.elo_after != null);
   if (isFinished || hasStats) {
     const statsLine = _buildStatsLine(entry);
     if (statsLine) html += `<div class="entry-card-stats">${statsLine}</div>`;
@@ -1204,6 +1463,11 @@ function _buildStatsLine(entry) {
     if (entry.losses) wl += ` ${entry.losses}L`;
     if (entry.draws) wl += ` ${entry.draws}D`;
     parts.push(wl);
+  }
+  if (entry.elo_before != null && entry.elo_after != null) {
+    const delta = Math.round(entry.elo_after - entry.elo_before);
+    const sign = delta >= 0 ? '+' : '';
+    parts.push(`ELO ${sign}${delta}`);
   }
   return parts.join(' · ');
 }

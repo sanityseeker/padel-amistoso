@@ -229,6 +229,43 @@ CREATE INDEX IF NOT EXISTS idx_push_sub_tid
 
 CREATE INDEX IF NOT EXISTS idx_push_sub_endpoint
     ON push_subscriptions (endpoint);
+
+CREATE TABLE IF NOT EXISTS player_elo (
+    tournament_id   TEXT    NOT NULL,
+    player_id       TEXT    NOT NULL,
+    sport           TEXT    NOT NULL DEFAULT 'padel',
+    elo_before      REAL    NOT NULL,
+    elo_after       REAL    NOT NULL,
+    matches_played  INTEGER NOT NULL DEFAULT 0,
+    updated_at      TEXT    NOT NULL,
+    PRIMARY KEY (tournament_id, player_id, sport)
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_elo_player
+    ON player_elo (player_id, sport);
+
+CREATE INDEX IF NOT EXISTS idx_player_elo_tournament
+    ON player_elo (tournament_id);
+
+CREATE TABLE IF NOT EXISTS player_elo_log (
+    tournament_id   TEXT    NOT NULL,
+    sport           TEXT    NOT NULL DEFAULT 'padel',
+    match_id        TEXT    NOT NULL,
+    player_id       TEXT    NOT NULL,
+    match_order     INTEGER NOT NULL DEFAULT 0,
+    elo_before      REAL    NOT NULL,
+    elo_after       REAL    NOT NULL,
+    elo_delta       REAL    NOT NULL,
+    match_payload   TEXT    NOT NULL,
+    updated_at      TEXT    NOT NULL,
+    PRIMARY KEY (tournament_id, sport, match_id, player_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_elo_log_player
+    ON player_elo_log (player_id, sport, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_player_elo_log_tournament
+    ON player_elo_log (tournament_id, sport, updated_at DESC);
 """
 
 
@@ -412,8 +449,27 @@ def init_db() -> None:
                 ("top_rivals", "ALTER TABLE player_history ADD COLUMN top_rivals TEXT"),
                 ("all_partners", "ALTER TABLE player_history ADD COLUMN all_partners TEXT"),
                 ("all_rivals", "ALTER TABLE player_history ADD COLUMN all_rivals TEXT"),
+                ("elo_before", "ALTER TABLE player_history ADD COLUMN elo_before REAL"),
+                ("elo_after", "ALTER TABLE player_history ADD COLUMN elo_after REAL"),
             ]:
                 if col not in ph_cols:
+                    conn.execute(ddl)
+        # Migrate: add ELO columns to player_profiles if missing
+        if pp_cols:
+            for col, ddl in [
+                ("elo_padel", "ALTER TABLE player_profiles ADD COLUMN elo_padel REAL NOT NULL DEFAULT 1000"),
+                ("elo_tennis", "ALTER TABLE player_profiles ADD COLUMN elo_tennis REAL NOT NULL DEFAULT 1000"),
+                (
+                    "elo_padel_matches",
+                    "ALTER TABLE player_profiles ADD COLUMN elo_padel_matches INTEGER NOT NULL DEFAULT 0",
+                ),
+                (
+                    "elo_tennis_matches",
+                    "ALTER TABLE player_profiles ADD COLUMN elo_tennis_matches INTEGER NOT NULL DEFAULT 0",
+                ),
+                ("k_factor_override", "ALTER TABLE player_profiles ADD COLUMN k_factor_override INTEGER"),
+            ]:
+                if col not in pp_cols:
                     conn.execute(ddl)
 
 

@@ -43,6 +43,8 @@ from .schemas import (
 from .state import allocate_tournament_id, _save_tournament, get_tournament_lock, maybe_update_live_stats
 from .player_secret_store import create_secrets_for_tournament
 from .push_events import notify_matches_ready, notify_champion, notify_score_submitted
+from .elo_integration import elo_after_score, elo_finish_tournament, elo_init_tournament
+from .elo_store import get_tournament_elos
 
 router = APIRouter(prefix="/api/tournaments", tags=["mexicano"])
 
@@ -152,6 +154,7 @@ async def create_mexicano(req: CreateMexicanoRequest, request: Request, user=Dep
         or None,
         emails={p.id: req.player_emails[p.name] for p in individual_players if p.name in req.player_emails} or None,
     )
+    elo_init_tournament(tid, [p.id for p in individual_players], req.sport.value)
     return {"id": tid, "current_round": t.current_round}
 
 
@@ -160,6 +163,11 @@ async def mex_status(tid: str) -> dict:
     """Return comprehensive Mexicano tournament status including leaderboard, rounds, and sit-out info."""
     data = _get_tournament(tid, _MEX)
     t: MexicanoTournament = data["tournament"]
+    sport = data.get("sport", "padel")
+    elos = get_tournament_elos(tid, sport)
+    board = t.leaderboard()
+    for entry in board:
+        entry["elo"] = round(elos.get(entry["player_id"], 0), 1) or None
     return {
         "current_round": t.current_round,
         "num_rounds": t.num_rounds,
@@ -184,7 +192,7 @@ async def mex_status(tid: str) -> dict:
         "is_finished": t.is_finished,
         "assign_courts": data.get("assign_courts", True),
         "courts": [{"id": c.id, "name": c.name} for c in t.courts],
-        "leaderboard": t.leaderboard(),
+        "leaderboard": board,
         "players": [{"id": p.id, "name": p.name} for p in t.players],
         "team_roster": getattr(t, "team_roster", None) or {},
         "sit_out_count": t._sit_out_count,
@@ -198,6 +206,7 @@ async def mex_status(tid: str) -> dict:
             for p in t.players
         },
         "champion": [p.name for p in t.champion()] if t.champion() else None,
+        "sport": data.get("sport", "padel"),
     }
 
 
@@ -249,6 +258,8 @@ async def mex_record(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+        if not is_required:
+            elo_after_score(tid, data, match)
         maybe_update_live_stats(tid)
         breakdown = t.get_match_breakdown(req.match_id)
     if is_player_action and is_required:
@@ -410,6 +421,7 @@ async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, user=D
                 extra_participants=[ep.model_dump() for ep in req.extra_participants]
                 if req.extra_participants
                 else None,
+                playoff_teams=req.playoff_teams,
             )
         except (RuntimeError, ValueError, KeyError) as e:
             raise HTTPException(400, str(e))
@@ -443,6 +455,7 @@ async def mex_finish(tid: str, user=Depends(get_current_user)) -> dict:
         except RuntimeError as e:
             raise HTTPException(400, str(e))
         _save_tournament(tid)
+    elo_finish_tournament(tid)
     return {"phase": t.phase, "is_finished": t.is_finished}
 
 
@@ -517,9 +530,11 @@ async def mex_record_playoff(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+        elo_after_score(tid, data, match)
         maybe_update_live_stats(tid)
     champ = t.champion()
     if champ:
+        elo_finish_tournament(tid)
         notify_champion(tid, data, [p.name for p in champ])
     return {"ok": True, "phase": t.phase}
 
@@ -551,9 +566,11 @@ async def mex_record_playoff_tennis(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+        elo_after_score(tid, data, match)
         maybe_update_live_stats(tid)
     champ = t.champion()
     if champ:
+        elo_finish_tournament(tid)
         notify_champion(tid, data, [p.name for p in champ])
     return {
         "ok": True,

@@ -35,6 +35,7 @@ from .schemas import CreatePlayoffRequest, RecordScoreRequest, RecordTennisScore
 from .state import allocate_tournament_id, _save_tournament, _tournament_versions, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
 from .push_events import notify_champion
+from .elo_integration import elo_after_score, elo_finish_tournament, elo_init_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["playoff"])
 
@@ -117,6 +118,7 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
         contacts=contact_map,
         emails=email_map,
     )
+    elo_init_tournament(tid, [p.id for p in all_players], req.sport.value)
     return {"id": tid, "phase": t.phase}
 
 
@@ -131,6 +133,7 @@ async def po_status(tid: str) -> dict:
         "double_elimination": t.double_elimination,
         "assign_courts": data.get("assign_courts", True),
         "champion": [p.name for p in t.champion()] if t.champion() else None,
+        "sport": data.get("sport", "padel"),
     }
 
 
@@ -221,8 +224,10 @@ async def po_record(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+        elo_after_score(tid, data, match)
     champ = t.champion()
     if champ:
+        elo_finish_tournament(tid)
         notify_champion(tid, data, [p.name for p in champ])
     return {"ok": True, "phase": t.phase}
 
@@ -254,8 +259,10 @@ async def po_record_tennis(
         else:
             _mark_admin_score(match, user.username if user else None)
         _save_tournament(tid)
+        elo_after_score(tid, data, match)
     champ = t.champion()
     if champ:
+        elo_finish_tournament(tid)
         notify_champion(tid, data, [p.name for p in champ])
     return {
         "ok": True,

@@ -863,6 +863,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         n_teams: int = 4,
         double_elimination: bool = False,
         extra_participants: list[dict] | None = None,
+        playoff_teams: list[list[str]] | None = None,
     ):
         """Start a play-off bracket after the Mexicano rounds are complete."""
         if self.pending_matches():
@@ -915,7 +916,18 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
             for ep in extra_singleton_players:
                 est[ep.id] = float(self.scores[ep.id])
 
-        if self.team_mode:
+        if playoff_teams is not None:
+            # Pre-composed teams override automatic pairing.
+            teams = []
+            for member_ids in playoff_teams:
+                team_members = [self._player_by_id(pid) for pid in member_ids]
+                teams.append(team_members)
+            # Sort by combined estimated score descending.
+            teams.sort(
+                key=lambda team: sum(est.get(p.id, 0.0) for p in team),
+                reverse=True,
+            )
+        elif self.team_mode:
             sorted_ids = sorted(team_player_ids, key=lambda pid: est.get(pid, 0.0), reverse=True)
             teams = [[self._player_by_id(pid)] for pid in sorted_ids]
         else:

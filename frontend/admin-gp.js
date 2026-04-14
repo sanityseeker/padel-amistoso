@@ -20,6 +20,9 @@ async function renderGP() {
     _gpCurrentCourts = status.courts || [];
     _gpGroupNames = Object.keys(groups.standings);
     _gpCurrentPhase = status.phase;
+    _gpSport = status.sport || 'padel';
+    _gpTeamRoster = status.team_roster || {};
+    _gpTeamMode = status.team_mode || false;
 
     const hasCourts = status.assign_courts !== false;
     let html = '';
@@ -76,7 +79,7 @@ async function renderGP() {
     // Group standings
     for (const [gName, rows] of Object.entries(groups.standings)) {
       html += `<div class="card" id="gp-group-card-${escAttr(gName)}"><h3 class="card-heading-row">${t('txt_txt_group_name_value', { value: esc(gName) })} <button class="format-info-btn" onclick="showAbbrevPopup(event,'standings')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h3>`;
-      const hParticipant = status.team_mode ? t('txt_txt_team') : t('txt_txt_player');
+      const hParticipant = (status.team_roster && Object.keys(status.team_roster).length > 0) ? t('txt_txt_team') : t('txt_txt_player');
       const hasSets = rows.some(r => r.sets_won > 0 || r.sets_lost > 0);
       html += `<table><thead><tr><th>${hParticipant}</th><th>${t('txt_txt_p_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th>`;
       if (hasSets) html += `<th>${t('txt_txt_sw_abbrev')}</th><th>${t('txt_txt_sl_abbrev')}</th><th>${t('txt_txt_sd_abbrev')}</th>`;
@@ -939,6 +942,8 @@ async function proposeGpPlayoffs() {
     _gpRecommended = data.recommended_participants || [];
     _gpAdvancingIds = new Set(_gpRecommended.map(r => r.player_id));
     _gpExternalParticipants = [];
+    _gpPlayoffTeamMode = false;
+    _gpPlayoffTeams = [];
     const section = document.getElementById('gp-playoffs-section');
     if (section) section.innerHTML = _renderGpPlayoffEditor();
   } catch (e) { alert(e.message); }
@@ -1001,6 +1006,25 @@ function _renderGpPlayoffEditor() {
   html += `<div class="form-group"><label>${t('txt_txt_format')}</label><select id="gp-playoff-format"><option value="single">${t('txt_txt_single_elimination')}</option><option value="double">${t('txt_txt_double_elimination')}</option></select></div>`;
   html += `</div>`;
 
+  // Playoff team mode toggle — shown for tennis individual tournaments
+  const _gpIsIndividualTennis = _gpSport === 'tennis' && (!_gpTeamRoster || Object.keys(_gpTeamRoster).length === 0);
+  if (_gpIsIndividualTennis) {
+    html += `<div class="gp-format-row" style="margin-top:0.5rem">`;
+    html += `<div class="form-group"><label>${t('txt_txt_playoff_mode')}</label>`;
+    html += `<div class="score-mode-toggle" id="gp-playoff-team-toggle">`;
+    html += `<button type="button" class="${!_gpPlayoffTeamMode ? 'active' : ''}" onclick="_gpSetPlayoffTeamMode(false)">${t('txt_txt_individual_mode')}</button>`;
+    html += `<button type="button" class="${_gpPlayoffTeamMode ? 'active' : ''}" onclick="_gpSetPlayoffTeamMode(true)">${t('txt_txt_team_mode_short')}</button>`;
+    html += `</div></div>`;
+    html += `</div>`;
+    html += `<div id="gp-playoff-teams-section" style="display:${_gpPlayoffTeamMode ? '' : 'none'};margin-top:0.5rem">`;
+    html += `<div id="gp-playoff-teams-container"></div>`;
+    html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem">`;
+    html += `<button type="button" class="add-participant-btn" style="flex:1" onclick="_gpAddPlayoffTeam()">+ ${t('txt_txt_add_team')}</button>`;
+    html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_gpAutoPlayoffTeams()">${t('txt_conv_auto_pair')}</button>`;
+    html += `</div>`;
+    html += `</div>`;
+  }
+
   // Courts + action buttons
   html += _renderCourtsSection(_gpCurrentCourts, `/api/tournaments/${currentTid}/gp/courts`);
   html += `<div class="proposal-actions proposal-actions-top">`;
@@ -1041,6 +1065,80 @@ function _gpUpdateExternalScore(idx, value) {
   }
 }
 
+// ─── GP Playoff Team Composition (for tennis individual → team playoffs) ──
+
+let _gpPlayoffTeamMode = false;
+let _gpPlayoffTeams = [];  // [[pid1, pid2], ...]
+
+function _gpSetPlayoffTeamMode(isTeam) {
+  _gpPlayoffTeamMode = isTeam;
+  const toggle = document.getElementById('gp-playoff-team-toggle');
+  if (toggle) {
+    toggle.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === (isTeam ? 1 : 0)));
+  }
+  const section = document.getElementById('gp-playoff-teams-section');
+  if (section) section.style.display = isTeam ? '' : 'none';
+  if (isTeam && _gpPlayoffTeams.length === 0) _gpAutoPlayoffTeams();
+}
+
+function _gpAutoPlayoffTeams() {
+  const ids = [..._gpAdvancingIds];
+  _gpPlayoffTeams = [];
+  for (let i = 0; i + 1 < ids.length; i += 2) {
+    _gpPlayoffTeams.push([ids[i], ids[i + 1]]);
+  }
+  _gpRenderPlayoffTeams();
+}
+
+function _gpAddPlayoffTeam() {
+  _gpPlayoffTeams.push(['', '']);
+  _gpRenderPlayoffTeams();
+}
+
+function _gpRemovePlayoffTeam(idx) {
+  if (_gpPlayoffTeams.length <= 1) return;
+  _gpPlayoffTeams.splice(idx, 1);
+  _gpRenderPlayoffTeams();
+}
+
+function _gpRenderPlayoffTeams() {
+  const container = document.getElementById('gp-playoff-teams-container');
+  if (!container) return;
+  // Collect names for the advancing players
+  const nameMap = {};
+  for (const r of _gpRecommended) nameMap[r.player_id] = r.player;
+  for (const ep of _gpExternalParticipants) nameMap[`ext_${ep.name}`] = ep.name;
+  const allIds = [..._gpAdvancingIds, ..._gpExternalParticipants.map(ep => `ext_${ep.name}`)];
+  const assigned = new Set(_gpPlayoffTeams.flat().filter(Boolean));
+
+  let html = '';
+  _gpPlayoffTeams.forEach((team, idx) => {
+    html += `<div class="conv-team-row" style="margin-bottom:0.5rem;padding:0.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg)">`;
+    html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem">`;
+    html += `<span style="font-size:0.78rem;font-weight:700;color:var(--text-muted)">${t('txt_conv_team')} ${idx + 1}</span>`;
+    html += `<button type="button" class="participant-remove-btn" onclick="_gpRemovePlayoffTeam(${idx})" title="${t('txt_txt_remove')}">×</button>`;
+    html += `</div>`;
+    html += `<div style="display:flex;gap:0.4rem;flex-wrap:wrap">`;
+    team.forEach((pid, mi) => {
+      html += `<select data-team="${idx}" data-slot="${mi}" onchange="_gpPlayoffTeams[${idx}][${mi}]=this.value;_gpRenderPlayoffTeams()" style="flex:1;min-width:120px;font-size:0.85rem;padding:0.3rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">`;
+      html += `<option value="">—</option>`;
+      for (const id of allIds) {
+        const taken = assigned.has(id) && id !== pid;
+        html += `<option value="${esc(id)}" ${id === pid ? 'selected' : ''} ${taken ? 'disabled style="color:var(--text-muted)"' : ''}>${esc(nameMap[id] || id)}</option>`;
+      }
+      html += `</select>`;
+    });
+    html += `</div>`;
+    html += `</div>`;
+  });
+
+  const unassigned = allIds.filter(id => !assigned.has(id));
+  if (unassigned.length > 0) {
+    html += `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.3rem">${t('txt_conv_unassigned')}: ${unassigned.map(id => `<span style="font-weight:600">${esc(nameMap[id] || id)}</span>`).join(', ')}</div>`;
+  }
+  container.innerHTML = html;
+}
+
 async function _confirmGpPlayoffs() {
   const ids = [..._gpAdvancingIds];
   const fmt = document.getElementById('gp-playoff-format')?.value || 'single';
@@ -1052,18 +1150,29 @@ async function _confirmGpPlayoffs() {
     alert(t('txt_txt_team_n_select_both_players', { n: 1 }));
     return;
   }
+  const body = {
+    advancing_player_ids: ids.length > 0 ? ids : null,
+    extra_participants: extra,
+    double_elimination: fmt === 'double',
+  };
+  if (_gpPlayoffTeamMode && _gpPlayoffTeams.length > 0) {
+    const validTeams = _gpPlayoffTeams.filter(team => team.every(pid => pid));
+    if (validTeams.length < 2) {
+      alert(t('txt_txt_need_at_least_2_teams'));
+      return;
+    }
+    body.playoff_teams = validTeams;
+  }
   try {
     await api(`/api/tournaments/${currentTid}/gp/start-playoffs`, {
       method: 'POST',
-      body: JSON.stringify({
-        advancing_player_ids: ids.length > 0 ? ids : null,
-        extra_participants: extra,
-        double_elimination: fmt === 'double',
-      }),
+      body: JSON.stringify(body),
     });
     _gpRecommended = [];
     _gpAdvancingIds = new Set();
     _gpExternalParticipants = [];
+    _gpPlayoffTeamMode = false;
+    _gpPlayoffTeams = [];
     renderGP();
   } catch (e) { alert(e.message); }
 }

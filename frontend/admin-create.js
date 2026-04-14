@@ -14,25 +14,25 @@ function setSport(sport) {
 
 function _applySportToCreatePanel() {
   const isTennis = _currentSport === 'tennis';
-  // gp and mex have a visible entry-mode toggle to hide
+  // gp and mex entry-mode toggles: always visible
   for (const mode of ['gp', 'mex']) {
     const toggle = document.getElementById(`${mode}-entry-mode-toggle`);
     if (!toggle) continue;
-    if (isTennis) {
-      toggle.style.display = 'none';
-      setEntryMode(mode, 'individual');
-    } else {
-      toggle.style.display = '';
-      const btns = toggle.querySelectorAll('button');
-      btns[0].textContent = t('txt_txt_individual_mode');
-      btns[1].textContent = t('txt_txt_team_mode_short');
-    }
+    toggle.style.display = '';
+    const btns = toggle.querySelectorAll('button');
+    btns[0].textContent = t('txt_txt_individual_mode');
+    btns[1].textContent = t('txt_txt_team_mode_short');
   }
-  // po has no toggle but needs individual-style defaults for tennis
-  if (isTennis) {
-    setEntryMode('po', 'individual');
-  } else {
-    setEntryMode('po', 'team');
+  // po entry-mode toggle: visible for tennis (default individual), hidden for padel (locked to team)
+  const poToggle = document.getElementById('po-entry-mode-toggle');
+  if (poToggle) {
+    if (isTennis) {
+      poToggle.style.display = '';
+      setEntryMode('po', 'individual');
+    } else {
+      poToggle.style.display = 'none';
+      setEntryMode('po', 'team');
+    }
   }
   // Update lobby name if it still has a default value
   const regNameEl = document.getElementById('reg-new-name');
@@ -828,7 +828,7 @@ async function createPO() {
       participant_names: useBuilder ? _getTeamBuilderPlayerNames('po') : getParticipantNames('po'),
       assign_courts: document.getElementById('po-assign-courts')?.checked !== false,
       court_names: getCourtNames('po'),
-      team_mode: true,
+      team_mode: _currentSport === 'tennis' ? _entryModeIsTeam('po') : true,
       double_elimination: document.getElementById('po-double-elim').checked,
       public: document.getElementById('po-public').checked,
       sport: _currentSport,

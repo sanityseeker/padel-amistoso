@@ -1248,60 +1248,54 @@ tr:hover { background: rgba(59,130,246,0.05); }
   justify-content: space-between;
   gap: 0.6rem;
   flex-wrap: wrap;
-  margin-bottom: 0.55rem;
+  margin-bottom: 0.7rem;
 }
 
 .archived-lobbies-toggle-wrap {
-  margin: 0;
+  margin: 0.1rem 0 0.2rem;
   display: flex;
   justify-content: flex-start;
 }
 .archived-lobbies-toggle {
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
   color: var(--text-muted);
   border-radius: 999px;
-  padding: 0.12rem;
-  font-size: 0.75rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.77rem;
   line-height: 1.2;
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
-  transition: border-color 0.15s, background 0.15s;
-}
-.archived-lobbies-option {
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  border-radius: 999px;
-  padding: 0.23rem 0.6rem;
-  font-size: 0.72rem;
-  line-height: 1.2;
+  gap: 0.44rem;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: border-color 0.16s, background 0.16s, color 0.16s, box-shadow 0.16s;
 }
-.archived-lobbies-option:hover {
+.archived-lobbies-toggle:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
   color: var(--text);
 }
-.archived-lobbies-option.active {
-  background: rgba(59,130,246,0.08);
-  border: 1px solid rgba(59,130,246,0.45);
+.archived-lobbies-toggle.pressed {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
   color: var(--text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.archived-lobbies-toggle-state {
+  font-size: 0.84rem;
+  line-height: 1;
+}
+.archived-lobbies-toggle-label {
+  font-weight: 600;
 }
 .archived-lobbies-count {
   min-width: 1.1rem;
-  padding: 0 0.34rem;
+  padding: 0 0.38rem;
   border-radius: 999px;
-  background: transparent;
-  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
   font-weight: 700;
   text-align: center;
-  color: var(--text-muted);
-}
-.archived-lobbies-helper-text {
-  margin: -0.1rem 0 0.55rem;
-  font-size: 0.78rem;
-  color: var(--text-muted);
+  color: inherit;
 }
 
 .alert { padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }

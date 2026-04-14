@@ -46,6 +46,11 @@ _push_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="webpush")
 _vapid_claims_contact: str = "mailto:admin@example.com"
 
 
+def shutdown_push() -> None:
+    """Shut down the push thread pool without waiting for in-flight tasks."""
+    _push_executor.shutdown(wait=False)
+
+
 def _generate_vapid_keys() -> tuple[str, str]:
     """Generate a fresh ECDSA P-256 key pair and return (private_pem, public_b64url)."""
     from cryptography.hazmat.primitives.asymmetric import ec

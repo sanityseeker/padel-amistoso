@@ -380,6 +380,131 @@ class TestGetPlayerSpace:
         entries = res.json()["entries"]
         assert any(e["entity_id"] == tid and e["entity_type"] == "tournament" for e in entries)
 
+    def test_dashboard_active_tournament_includes_live_elo(self, client: TestClient) -> None:
+        created = _create_profile(client, name="Live Elo")
+        profile_id = created["profile"]["id"]
+
+        tid = str(uuid.uuid4())
+        pid = str(uuid.uuid4())
+        _insert_tournament(tid, "Live Elo Tournament")
+        _insert_player_secret(tid, pid, "LiveEloPlayer", "live-elo-pass", "tok-live-elo", profile_id)
+
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO player_elo
+                    (tournament_id, player_id, sport, elo_before, elo_after, matches_played, updated_at)
+                VALUES (?, ?, 'padel', ?, ?, ?, ?)
+                """,
+                (tid, pid, 1000.0, 1014.25, 1, now),
+            )
+
+        token = created["access_token"]
+        res = client.get("/api/player-profile/space", headers=_headers(token))
+        assert res.status_code == 200
+        entry = next(e for e in res.json()["entries"] if e["entity_id"] == tid and e["entity_type"] == "tournament")
+        assert entry["status"] == "active"
+        assert entry["elo_before"] == 1000.0
+        assert entry["elo_after"] == 1014.25
+
+    def test_dashboard_includes_recent_elo_history_rows(self, client: TestClient) -> None:
+        created = _create_profile(client, name="Elo History")
+        profile_id = created["profile"]["id"]
+
+        tid = str(uuid.uuid4())
+        pid = str(uuid.uuid4())
+        _insert_tournament(tid, "Elo History Tournament")
+        _insert_player_secret(tid, pid, "EloPlayer", "elo-history-pass", "tok-elo-history", profile_id)
+
+        payload = {
+            "match_id": "m-1",
+            "score": [21, 17],
+            "sets": [],
+            "team1": [
+                {"player_id": pid, "player_name": "EloPlayer", "elo_before": 1000.0, "elo_after": 1014.0},
+                {"player_id": "p2", "player_name": "Mate", "elo_before": 1000.0, "elo_after": 1012.0},
+            ],
+            "team2": [
+                {"player_id": "p3", "player_name": "Opp1", "elo_before": 1000.0, "elo_after": 988.0},
+                {"player_id": "p4", "player_name": "Opp2", "elo_before": 1000.0, "elo_after": 986.0},
+            ],
+        }
+
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO player_elo_log
+                    (tournament_id, sport, match_id, player_id, match_order,
+                     elo_before, elo_after, elo_delta, match_payload, updated_at)
+                VALUES (?, 'padel', 'm-1', ?, 1, ?, ?, ?, ?, ?)
+                """,
+                (tid, pid, 1000.0, 1014.0, 14.0, json.dumps(payload), now),
+            )
+
+        token = created["access_token"]
+        res = client.get("/api/player-profile/space", headers=_headers(token))
+        assert res.status_code == 200
+        history = res.json()["elo_history"]
+        assert len(history) == 1
+        assert history[0]["tournament_id"] == tid
+        assert history[0]["match_id"] == "m-1"
+        assert history[0]["elo_delta"] == 14.0
+        assert history[0]["score"] == [21, 17]
+        assert history[0]["team1"][0]["player_id"] == pid
+
+    def test_dashboard_elo_history_limit_query_param(self, client: TestClient) -> None:
+        created = _create_profile(client, name="Elo Limit")
+        profile_id = created["profile"]["id"]
+
+        tid = str(uuid.uuid4())
+        pid = str(uuid.uuid4())
+        _insert_tournament(tid, "Elo Limit Tournament")
+        _insert_player_secret(tid, pid, "EloLimitPlayer", "elo-limit-pass", "tok-elo-limit", profile_id)
+
+        now = datetime.now(timezone.utc)
+        with db_mod.get_db() as conn:
+            for idx in range(12):
+                payload = {
+                    "match_id": f"m-{idx}",
+                    "score": [21, 19],
+                    "sets": [],
+                    "team1": [
+                        {
+                            "player_id": pid,
+                            "player_name": "EloLimitPlayer",
+                            "elo_before": 1000.0,
+                            "elo_after": 1001.0 + idx,
+                        }
+                    ],
+                    "team2": [],
+                }
+                conn.execute(
+                    """
+                    INSERT INTO player_elo_log
+                        (tournament_id, sport, match_id, player_id, match_order,
+                         elo_before, elo_after, elo_delta, match_payload, updated_at)
+                    VALUES (?, 'padel', ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        tid,
+                        f"m-{idx}",
+                        pid,
+                        idx + 1,
+                        1000.0 + idx,
+                        1001.0 + idx,
+                        1.0,
+                        json.dumps(payload),
+                        (now.replace(microsecond=0) if idx == 0 else now).isoformat(),
+                    ),
+                )
+
+        token = created["access_token"]
+        res = client.get("/api/player-profile/space?elo_history_limit=10", headers=_headers(token))
+        assert res.status_code == 200
+        assert len(res.json()["elo_history"]) == 10
+
     def test_dashboard_includes_linked_registration(self, client: TestClient) -> None:
         created = _create_profile(client, name="With Registration")
         profile_id = created["profile"]["id"]
@@ -2694,3 +2819,106 @@ class TestResolvePassphrase:
         assert len(data["matches"]) == 2
         types = {m["entity_type"] for m in data["matches"]}
         assert types == {"tournament", "registration"}
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Leaderboard (public, no auth)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestLeaderboard:
+    """GET /api/player-profile/leaderboard — public ELO leaderboard."""
+
+    def test_leaderboard_empty_when_no_rated_profiles(self, client: TestClient) -> None:
+        res = client.get("/api/player-profile/leaderboard")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["padel"] == []
+        assert data["tennis"] == []
+
+    def test_leaderboard_returns_rated_padel_players_sorted(self, client: TestClient) -> None:
+        p1 = _create_profile(client, name="Alice Padel", email="alice-lb@example.com")
+        p2 = _create_profile(client, name="Bob Padel", email="bob-lb@example.com")
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "UPDATE player_profiles SET elo_padel = 1200, elo_padel_matches = 5 WHERE id = ?",
+                (p1["profile"]["id"],),
+            )
+            conn.execute(
+                "UPDATE player_profiles SET elo_padel = 1300, elo_padel_matches = 3 WHERE id = ?",
+                (p2["profile"]["id"],),
+            )
+
+        res = client.get("/api/player-profile/leaderboard")
+        assert res.status_code == 200
+        padel = res.json()["padel"]
+        assert len(padel) >= 2
+        # Bob has higher ELO → should be first
+        names = [e["name"] for e in padel]
+        assert names.index("Bob Padel") < names.index("Alice Padel")
+        bob_entry = next(e for e in padel if e["name"] == "Bob Padel")
+        assert bob_entry["rank"] == names.index("Bob Padel") + 1
+        assert bob_entry["elo"] == 1300
+        assert bob_entry["matches"] == 3
+
+    def test_leaderboard_excludes_unrated_players(self, client: TestClient) -> None:
+        _create_profile(client, name="Unrated Player", email="unrated-lb@example.com")
+        res = client.get("/api/player-profile/leaderboard")
+        assert res.status_code == 200
+        names = [e["name"] for e in res.json()["padel"]]
+        assert "Unrated Player" not in names
+
+    def test_leaderboard_returns_tennis_players(self, client: TestClient) -> None:
+        p1 = _create_profile(client, name="Tennis Player", email="tennis-lb@example.com")
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "UPDATE player_profiles SET elo_tennis = 1100, elo_tennis_matches = 2 WHERE id = ?",
+                (p1["profile"]["id"],),
+            )
+
+        res = client.get("/api/player-profile/leaderboard")
+        assert res.status_code == 200
+        tennis = res.json()["tennis"]
+        tennis_names = [e["name"] for e in tennis]
+        assert "Tennis Player" in tennis_names
+
+    def test_leaderboard_no_auth_required(self, client: TestClient) -> None:
+        """Ensure endpoint works without any Authorization header."""
+        res = client.get("/api/player-profile/leaderboard")
+        assert res.status_code == 200
+
+    def test_leaderboard_includes_unlinked_players(self, client: TestClient) -> None:
+        """Unlinked tournament participants should appear with has_profile=False."""
+        tid = f"t-lb-unlinked-{uuid.uuid4().hex[:8]}"
+        _insert_tournament(tid, name="Leaderboard Cup")
+        _insert_player_secret(tid, "p-unlinked", "Unlinked Player", "pp-unlinked", uuid.uuid4().hex)
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "INSERT INTO player_elo (tournament_id, player_id, sport, elo_before, elo_after, matches_played, updated_at)"
+                " VALUES (?, ?, 'padel', 1000, 1050, 3, ?)",
+                (tid, "p-unlinked", now),
+            )
+
+        res = client.get("/api/player-profile/leaderboard")
+        assert res.status_code == 200
+        padel = res.json()["padel"]
+        entry = next((e for e in padel if e["name"] == "Unlinked Player"), None)
+        assert entry is not None
+        assert entry["has_profile"] is False
+        assert entry["elo"] == 1050
+        assert entry["matches"] == 3
+
+    def test_leaderboard_profile_players_have_has_profile_true(self, client: TestClient) -> None:
+        p1 = _create_profile(client, name="Profiled Player", email="profiled-lb@example.com")
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "UPDATE player_profiles SET elo_padel = 1150, elo_padel_matches = 4 WHERE id = ?",
+                (p1["profile"]["id"],),
+            )
+
+        res = client.get("/api/player-profile/leaderboard")
+        assert res.status_code == 200
+        entry = next((e for e in res.json()["padel"] if e["name"] == "Profiled Player"), None)
+        assert entry is not None
+        assert entry["has_profile"] is True

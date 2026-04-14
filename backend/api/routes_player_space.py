@@ -24,7 +24,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from ..auth.deps import ProfileIdentity, get_current_profile
@@ -45,6 +45,7 @@ from .player_secret_store import (
 )
 from .rate_limit import BoundedRateLimiter
 from .state import bump_tournament_version, get_tournament_data
+from .elo_store import get_profile_recent_elo_logs, retroactive_transfer_elo
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,10 @@ class ProfileOut(BaseModel):
     contact: str = ""
     created_at: str
     passphrase: str | None = None
+    elo_padel: float | None = None
+    elo_tennis: float | None = None
+    elo_padel_matches: int = 0
+    elo_tennis_matches: int = 0
 
 
 class PlayerSpaceEntry(BaseModel):
@@ -176,6 +181,37 @@ class PlayerSpaceEntry(BaseModel):
     top_rivals: list[dict] = Field(default_factory=list)
     all_partners: list[dict] = Field(default_factory=list)
     all_rivals: list[dict] = Field(default_factory=list)
+    elo_before: float | None = None
+    elo_after: float | None = None
+
+
+class EloHistoryParticipant(BaseModel):
+    """One participant row in an ELO history match snapshot."""
+
+    player_id: str
+    player_name: str
+    elo_before: float
+    elo_after: float
+
+
+class EloHistoryMatch(BaseModel):
+    """Per-match ELO event from the profile perspective."""
+
+    tournament_id: str
+    tournament_name: str
+    tournament_alias: str | None = None
+    sport: str = Sport.PADEL
+    match_id: str
+    match_order: int = 0
+    updated_at: str
+    player_id: str
+    elo_before: float
+    elo_after: float
+    elo_delta: float
+    score: list[int] = Field(default_factory=list)
+    sets: list[list[int]] = Field(default_factory=list)
+    team1: list[EloHistoryParticipant] = Field(default_factory=list)
+    team2: list[EloHistoryParticipant] = Field(default_factory=list)
 
 
 class PlayerSpaceResponse(BaseModel):
@@ -184,6 +220,7 @@ class PlayerSpaceResponse(BaseModel):
     profile: ProfileOut
     access_token: str
     entries: list[PlayerSpaceEntry]
+    elo_history: list[EloHistoryMatch] = Field(default_factory=list)
 
 
 class PlayerPathRound(BaseModel):
@@ -217,6 +254,23 @@ class TournamentPathResponse(BaseModel):
     available: bool
     reason: str | None = None
     rounds: list[PlayerPathRound] = Field(default_factory=list)
+
+
+class LeaderboardEntry(BaseModel):
+    """A single row in the ELO leaderboard."""
+
+    rank: int
+    name: str
+    elo: float
+    matches: int
+    has_profile: bool = True
+
+
+class LeaderboardResponse(BaseModel):
+    """Public ELO leaderboard grouped by sport."""
+
+    padel: list[LeaderboardEntry] = Field(default_factory=list)
+    tennis: list[LeaderboardEntry] = Field(default_factory=list)
 
 
 class ProfileLoginResponse(BaseModel):
@@ -257,7 +311,9 @@ def _get_profile(profile_id: str) -> dict | None:
     """Return a profile row as a dict, or None if not found."""
     with get_db() as conn:
         row = conn.execute(
-            "SELECT id, passphrase, name, email, email_verified_at, contact, created_at FROM player_profiles WHERE id = ?",
+            "SELECT id, passphrase, name, email, email_verified_at, contact, created_at,"
+            " elo_padel, elo_tennis, elo_padel_matches, elo_tennis_matches"
+            " FROM player_profiles WHERE id = ?",
             (profile_id,),
         ).fetchone()
     if row is None:
@@ -274,6 +330,10 @@ def _row_to_profile_out(row: dict) -> ProfileOut:
         contact=row.get("contact") or "",
         created_at=row["created_at"],
         passphrase=row.get("passphrase"),
+        elo_padel=row.get("elo_padel"),
+        elo_tennis=row.get("elo_tennis"),
+        elo_padel_matches=row.get("elo_padel_matches") or 0,
+        elo_tennis_matches=row.get("elo_tennis_matches") or 0,
     )
 
 
@@ -320,9 +380,15 @@ def _build_active_entries(profile_id: str) -> list[PlayerSpaceEntry]:
             """
             SELECT ps.player_id, ps.player_name, ps.token,
                    t.id AS tid, t.name AS tname, t.alias AS talias,
-                   t.sport, t.type AS ttype
+                 t.sport, t.type AS ttype,
+                 pe.elo_before AS elo_before,
+                 pe.elo_after AS elo_after
             FROM player_secrets ps
             JOIN tournaments t ON t.id = ps.tournament_id
+             LEFT JOIN player_elo pe
+                 ON pe.tournament_id = t.id
+                AND pe.player_id = ps.player_id
+                AND pe.sport = COALESCE(t.sport, 'padel')
             WHERE ps.profile_id = ?
               AND ps.finished_at IS NULL
             """,
@@ -369,6 +435,8 @@ def _build_active_entries(profile_id: str) -> list[PlayerSpaceEntry]:
                     draws=ls.get("draws", 0),
                     points_for=ls.get("points_for", 0),
                     points_against=ls.get("points_against", 0),
+                    elo_before=row["elo_before"],
+                    elo_after=row["elo_after"],
                 )
             )
 
@@ -569,7 +637,8 @@ def _build_history_entries(profile_id: str) -> list[PlayerSpaceEntry]:
                    ph.player_id, ph.player_name, ph.finished_at,
                    ph.rank, ph.total_players,
                    ph.wins, ph.losses, ph.draws, ph.points_for, ph.points_against,
-                     ph.sport, ph.top_partners, ph.top_rivals, ph.all_partners, ph.all_rivals
+                   ph.sport, ph.top_partners, ph.top_rivals, ph.all_partners, ph.all_rivals,
+                   ph.elo_before, ph.elo_after
             FROM player_history ph
             WHERE ph.profile_id = ?
               AND ph.finished_at != ''
@@ -645,6 +714,8 @@ def _build_history_entries(profile_id: str) -> list[PlayerSpaceEntry]:
                     top_rivals=top_rivals,
                     all_partners=all_partners,
                     all_rivals=all_rivals,
+                    elo_before=row["elo_before"],
+                    elo_after=row["elo_after"],
                 )
             )
         else:
@@ -687,6 +758,73 @@ def _deduplicate_entries(entries: list[PlayerSpaceEntry]) -> list[PlayerSpaceEnt
         seen.add(key)
         deduplicated.append(entry)
     return deduplicated
+
+
+def _build_elo_history(profile_id: str, limit: int = 5) -> list[EloHistoryMatch]:
+    """Return the latest per-match ELO events for a profile across tournaments."""
+    rows = get_profile_recent_elo_logs(profile_id, limit=limit)
+    events: list[EloHistoryMatch] = []
+
+    for row in rows:
+        payload_raw = row.get("match_payload") or "{}"
+        try:
+            payload = json.loads(payload_raw)
+        except json.JSONDecodeError:
+            payload = {}
+
+        def _participants(side_key: str) -> list[EloHistoryParticipant]:
+            side = payload.get(side_key) or []
+            out: list[EloHistoryParticipant] = []
+            for p in side:
+                pid = str(p.get("player_id") or "")
+                if not pid:
+                    continue
+                out.append(
+                    EloHistoryParticipant(
+                        player_id=pid,
+                        player_name=str(p.get("player_name") or pid),
+                        elo_before=float(p.get("elo_before") or 0.0),
+                        elo_after=float(p.get("elo_after") or 0.0),
+                    )
+                )
+            return out
+
+        score_raw = payload.get("score") or []
+        sets_raw = payload.get("sets") or []
+        score_pair = [int(score_raw[0]), int(score_raw[1])] if len(score_raw) == 2 else []
+        sets_pairs = [[int(s[0]), int(s[1])] for s in sets_raw if isinstance(s, list) and len(s) == 2]
+        team1_parts = _participants("team1")
+        team2_parts = _participants("team2")
+
+        # Ensure the requesting player's team is always listed first.
+        requesting_pid = row.get("player_id") or ""
+        if requesting_pid and requesting_pid not in {p.player_id for p in team1_parts}:
+            if any(p.player_id == requesting_pid for p in team2_parts):
+                team1_parts, team2_parts = team2_parts, team1_parts
+                if score_pair:
+                    score_pair = [score_pair[1], score_pair[0]]
+                sets_pairs = [[s[1], s[0]] for s in sets_pairs]
+
+        events.append(
+            EloHistoryMatch(
+                tournament_id=row["tournament_id"],
+                tournament_name=row.get("tournament_name") or row["tournament_id"],
+                tournament_alias=row.get("tournament_alias"),
+                sport=row.get("sport") or Sport.PADEL,
+                match_id=row.get("match_id") or "",
+                match_order=int(row.get("match_order") or 0),
+                updated_at=row.get("updated_at") or "",
+                player_id=row.get("player_id") or "",
+                elo_before=float(row.get("elo_before") or 0.0),
+                elo_after=float(row.get("elo_after") or 0.0),
+                elo_delta=float(row.get("elo_delta") or 0.0),
+                score=score_pair,
+                sets=sets_pairs,
+                team1=team1_parts,
+                team2=team2_parts,
+            )
+        )
+    return events
 
 
 def _side_score(match: object, is_team1: bool) -> int:
@@ -1553,6 +1691,70 @@ def _backfill_finished_secrets(profile_id: str) -> None:
         )
 
 
+@router.get("/leaderboard", response_model=LeaderboardResponse)
+async def get_leaderboard() -> LeaderboardResponse:
+    """Public ELO leaderboard — no authentication required.
+
+    Returns rated players for each sport, sorted by ELO descending.
+    Includes both Player Hub members and unlinked tournament participants.
+    """
+    padel = _leaderboard_for_sport("padel")
+    tennis = _leaderboard_for_sport("tennis")
+    return LeaderboardResponse(padel=padel, tennis=tennis)
+
+
+def _leaderboard_for_sport(sport: str) -> list[LeaderboardEntry]:
+    """Build a ranked leaderboard for a single sport.
+
+    Combines profile-based ELOs with unlinked tournament participant ELOs.
+    """
+    elo_col = "elo_padel" if sport == "padel" else "elo_tennis"
+    matches_col = "elo_padel_matches" if sport == "padel" else "elo_tennis_matches"
+
+    with get_db() as conn:
+        # 1) Players with Hub profiles
+        profile_rows = conn.execute(
+            f"SELECT name, {elo_col} AS elo, {matches_col} AS matches FROM player_profiles WHERE {matches_col} > 0",
+        ).fetchall()
+
+        # 2) Unlinked tournament participants: aggregate from player_elo + player_secrets
+        #    Exclude player_ids already linked to a profile to avoid duplicates.
+        unlinked_rows = conn.execute(
+            "SELECT ps.player_name AS name,"
+            "       pe.elo_after AS elo,"
+            "       SUM(pe.matches_played) AS matches"
+            " FROM player_elo pe"
+            " JOIN player_secrets ps ON ps.tournament_id = pe.tournament_id"
+            "   AND ps.player_id = pe.player_id"
+            " WHERE pe.sport = ?"
+            "   AND pe.matches_played > 0"
+            "   AND ps.profile_id IS NULL"
+            " GROUP BY ps.player_name"
+            " HAVING matches > 0",
+            (sport,),
+        ).fetchall()
+
+    # Merge both lists
+    combined: list[dict] = []
+    for r in profile_rows:
+        combined.append({"name": r["name"], "elo": r["elo"], "matches": r["matches"], "has_profile": True})
+
+    # For unlinked players grouped by name, pick the latest ELO (max elo_after
+    # from the query — SQLite picks the elo_after from an arbitrary row in the
+    # GROUP BY, but that's the most recent tournament's final ELO which is
+    # acceptable).  We also need to deduplicate against profile names.
+    profile_names = {r["name"] for r in profile_rows}
+    for r in unlinked_rows:
+        if r["name"] not in profile_names:
+            combined.append({"name": r["name"], "elo": r["elo"], "matches": r["matches"], "has_profile": False})
+
+    combined.sort(key=lambda x: x["elo"], reverse=True)
+    return [
+        LeaderboardEntry(rank=i + 1, name=e["name"], elo=e["elo"], matches=e["matches"], has_profile=e["has_profile"])
+        for i, e in enumerate(combined)
+    ]
+
+
 @router.post("/resolve", response_model=PassphraseResolveResponse)
 async def resolve_profile_passphrase(req: PassphraseResolveRequest, request: Request) -> PassphraseResolveResponse:
     """Resolve a passphrase to determine if it belongs to a hub profile or a tournament/registration.
@@ -1647,6 +1849,7 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
         profile=profile_out,
         access_token=token,
         entries=_deduplicate_entries(active + history),
+        elo_history=_build_elo_history(profile_id),
     )
 
 
@@ -1776,6 +1979,7 @@ async def recover_passphrase(req: ProfileRecoverRequest, request: Request) -> di
 @router.get("/space", response_model=PlayerSpaceResponse)
 async def get_player_space(
     identity: ProfileIdentity | None = Depends(get_current_profile),
+    elo_history_limit: int = Query(default=5, ge=5, le=50),
 ) -> PlayerSpaceResponse:
     """Return the full Player Hub dashboard for the authenticated profile.
 
@@ -1800,6 +2004,7 @@ async def get_player_space(
         profile=_row_to_profile_out(profile),
         access_token=token,
         entries=_deduplicate_entries(active + history),
+        elo_history=_build_elo_history(identity.profile_id, limit=elo_history_limit),
     )
 
 
@@ -2046,6 +2251,7 @@ async def link_participation(
         if row["finished_at"]:
             # Tournament already finished — backfill history and return a finished entry.
             _backfill_finished_secrets(identity.profile_id)
+            retroactive_transfer_elo(identity.profile_id, row["player_id"])
             with get_db() as conn:
                 h = conn.execute(
                     "SELECT * FROM player_history"
