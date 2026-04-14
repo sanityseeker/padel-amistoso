@@ -432,6 +432,7 @@ function renderContactFields(mode) {
     html += `<label title="${escaped}">${escaped}</label>`;
     html += `<input type="email" class="create-contact-email" data-mode="${mode}" data-key="${escaped}" value="${esc(emailVal)}" placeholder="${t('txt_contact_email_placeholder')}" oninput="_participantEmails['${mode}'][this.dataset.key]=this.value.trim()">`;
     html += `<input type="text" class="create-contact-info" data-mode="${mode}" data-key="${escaped}" value="${esc(contactVal)}" placeholder="${t('txt_contact_info_placeholder')}" oninput="_participantContacts['${mode}'][this.dataset.key]=this.value.trim()">`;
+    html += `<button type="button" class="contact-hub-btn" title="${t('txt_hub_link')}" onclick="_createHubOpen('${escAttr(mode)}','${escAttr(name)}')">🔗</button>`;
     html += `</div>`;
   });
   html += '</div>';
@@ -857,6 +858,100 @@ async function createPO() {
       openTournament(res.id, 'playoff', body.name || t('txt_txt_play_off_only_tournament'));
     }
   } catch (e) { msg.className = 'alert alert-error'; msg.textContent = e.message; msg.classList.remove('hidden'); }
+}
+
+// ─── Hub profile search for contact fields ────────────────
+let _createHubTimer = null;
+let _createHubMode = null;
+let _createHubName = null;
+
+function _createHubEnsureModal() {
+  if (document.getElementById('create-hub-modal')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'create-hub-modal';
+  overlay.className = 'pc-hub-modal-overlay';
+  overlay.innerHTML = `<div class="pc-hub-modal-box">`
+    + `<div class="pc-hub-modal-header">`
+    + `<span class="pc-hub-modal-title">🔗 ${t('txt_hub_link')}</span>`
+    + `<button type="button" class="pc-hub-close-btn" onclick="_createHubClose()">✕</button>`
+    + `</div>`
+    + `<input type="text" id="create-hub-q" class="player-codes-input" placeholder="${t('txt_hub_search_placeholder')}" oninput="_createHubDebouncedSearch()">`
+    + `<div id="create-hub-results" class="pc-hub-results"></div>`
+    + `</div>`;
+  overlay.addEventListener('click', e => { if (e.target === overlay) _createHubClose(); });
+  document.body.appendChild(overlay);
+}
+
+function _createHubOpen(mode, playerName) {
+  _createHubMode = mode;
+  _createHubName = playerName;
+  _createHubEnsureModal();
+  const modal = document.getElementById('create-hub-modal');
+  const input = document.getElementById('create-hub-q');
+  modal.classList.add('active');
+  input.value = playerName || '';
+  document.getElementById('create-hub-results').innerHTML = '';
+  _createHubDoSearch();
+  input.focus();
+}
+
+function _createHubClose() {
+  const modal = document.getElementById('create-hub-modal');
+  if (modal) modal.classList.remove('active');
+  _createHubMode = null;
+  _createHubName = null;
+}
+
+function _createHubDebouncedSearch() {
+  clearTimeout(_createHubTimer);
+  _createHubTimer = setTimeout(() => _createHubDoSearch(), 250);
+}
+
+async function _createHubDoSearch() {
+  const input = document.getElementById('create-hub-q');
+  const results = document.getElementById('create-hub-results');
+  if (!input || !results) return;
+  const q = input.value.trim();
+  results.innerHTML = '<em style="font-size:0.8rem;color:var(--text-muted)">…</em>';
+  try {
+    const profiles = await api(`/api/admin/player-profiles?q=${encodeURIComponent(q)}`);
+    if (profiles.length === 0) {
+      results.innerHTML = `<div style="font-size:0.8rem;color:var(--text-muted);padding:0.3rem 0">${t('txt_hub_no_results')}</div>`;
+      return;
+    }
+    let html = '';
+    for (const p of profiles) {
+      html += `<div class="pc-hub-result-item" onclick="_createHubSelect('${escAttr(p.id)}')">`;
+      html += `<span class="pc-hub-result-name">${esc(p.name || '—')}</span>`;
+      if (p.email) html += `<span class="pc-hub-result-email">${esc(p.email)}</span>`;
+      html += `</div>`;
+    }
+    results.innerHTML = html;
+  } catch (e) {
+    results.innerHTML = `<div style="font-size:0.8rem;color:var(--danger)">${esc(e.message)}</div>`;
+  }
+}
+
+async function _createHubSelect(profileId) {
+  try {
+    const profile = await api(`/api/admin/player-profiles/${profileId}`);
+    const mode = _createHubMode;
+    const name = _createHubName;
+    if (!mode || !name) return;
+    if (profile.email) {
+      _participantEmails[mode][name] = profile.email;
+      const el = document.querySelector(`.create-contact-email[data-mode="${mode}"][data-key="${CSS.escape(name)}"]`);
+      if (el) el.value = profile.email;
+    }
+    if (profile.contact) {
+      _participantContacts[mode][name] = profile.contact;
+      const el = document.querySelector(`.create-contact-info[data-mode="${mode}"][data-key="${CSS.escape(name)}"]`);
+      if (el) el.value = profile.contact;
+    }
+    _createHubClose();
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 // ─── Render Group+Playoff ─────────────────────────────────

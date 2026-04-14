@@ -675,6 +675,71 @@ tr:hover { background: rgba(59,130,246,0.05); }
 .player-codes-linked-badge { font-size: 0.78rem; opacity: 0.75; cursor: default; user-select: none; }
 .player-codes-add-row { margin-top: 0.5rem; }
 
+/* Hub link dropdown */
+.pc-hub-badge { font-size: 0.82rem; opacity: 0.5; }
+.pc-hub-badge--active { opacity: 1; }
+.pc-hub-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0,0,0,0.4);
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.pc-hub-modal-overlay.active {
+  display: flex;
+}
+.pc-hub-modal-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  padding: 1rem;
+  width: 92vw;
+  max-width: 340px;
+  font-size: 0.88rem;
+}
+@media (min-width: 600px) {
+  .pc-hub-modal-box { max-width: 420px; padding: 1.2rem; font-size: 0.92rem; }
+  .pc-hub-results { max-height: 320px; }
+}
+@media (min-width: 1024px) {
+  .pc-hub-modal-box { max-width: 500px; padding: 1.4rem; font-size: 0.95rem; }
+  .pc-hub-results { max-height: 400px; }
+}
+.pc-hub-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+.pc-hub-modal-title { font-weight: 700; font-size: 0.95rem; }
+.pc-hub-close-btn {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  line-height: 1;
+}
+.pc-hub-close-btn:hover { background: var(--hover, rgba(0,0,0,0.08)); }
+.pc-hub-modal-box .player-codes-input { width: 100%; margin-bottom: 0.5rem; }
+.pc-hub-results { max-height: 220px; overflow-y: auto; }
+.pc-hub-result-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.pc-hub-result-item:hover { background: var(--hover, rgba(0,0,0,0.05)); }
+.pc-hub-result-name { font-weight: 600; font-size: 0.84rem; }
+.pc-hub-result-email { font-size: 0.76rem; color: var(--text-muted); }
+
 .player-codes-organizer {
   margin-top: 0.75rem;
   border-top: 1px solid var(--border);
@@ -3046,6 +3111,19 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   flex-direction: column;
   gap: 0.4rem;
 }
+.contact-hub-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 0.2rem 0.35rem;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.contact-hub-btn:hover { opacity: 1; }
 
 /* ── Group Preview / Assignment Editor ── */
 .gp-group-preview-title-row {

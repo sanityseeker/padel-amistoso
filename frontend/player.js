@@ -472,8 +472,11 @@ function _buildPathPanel(entry) {
   let _prevPoints = 0;
   for (const row of rows) {
     const rankText    = row.rank ? `#${row.rank}/${row.total_players || '?'}` : '—';
-    const partnerText = (row.partners || []).length ? row.partners.join(', ') : (row.played ? '—' : t('txt_player_path_sit_out'));
-    const opponentText = (row.opponents || []).length ? row.opponents.join(', ') : (row.played ? '—' : t('txt_player_path_sit_out'));
+    const partners = Array.isArray(row.partners) ? row.partners.filter(Boolean) : [];
+    const opponents = Array.isArray(row.opponents) ? row.opponents.filter(Boolean) : [];
+    const playerTeam = [(_profile && _profile.name) ? _profile.name : '', ...partners].filter(Boolean);
+    const playerTeamText = playerTeam.length ? playerTeam.join(', ') : (row.played ? '—' : t('txt_player_path_sit_out'));
+    const opponentText = opponents.length ? opponents.join(', ') : (row.played ? '—' : t('txt_player_path_sit_out'));
     const isTennisRow = row.score_mode === 'tennis';
 
     // Rank trend
@@ -518,32 +521,26 @@ function _buildPathPanel(entry) {
 
     html += `<div class="${rowClass}">`;
     html += `<div class="entry-path-head">`;
+    html += `<div class="entry-path-head-top">`;
     html += `<div class="entry-path-round">${esc(row.round_label || `${t('txt_player_path_round')} ${row.round_number || ''}`)}${eliminatedBadgeHtml}</div>`;
-    html += `<div class="entry-path-chips">`;
+    html += `<div class="entry-path-chips entry-path-chips--perf">`;
     if (isTennisRow) {
       html += `<span class="entry-path-chip"><strong>${esc(t('txt_player_path_sets_diff'))}</strong> ${esc(_fmtSigned(row.cumulative_sets_diff || 0))}${setsDeltaHtml}</span>`;
       html += `<span class="entry-path-chip"><strong>${esc(t('txt_player_path_games_diff'))}</strong> ${esc(_fmtSigned(row.cumulative_games_diff || 0))}${gamesDeltaHtml}</span>`;
     } else {
       html += `<span class="entry-path-chip"><strong>${esc(t('txt_player_path_points'))}</strong> ${esc(String(row.cumulative_points || 0))}${deltaPtsHtml}</span>`;
     }
+    html += `</div>`;
+    html += `<div class="entry-path-chips entry-path-chips--rank">`;
     html += `<span class="entry-path-chip"><strong>${esc(t('txt_player_path_rank'))}</strong> ${esc(rankText)}${rankArrowHtml}</span>`;
     html += `</div>`;
     html += `</div>`;
-
-    if (row.score) {
-      html += `<div class="entry-path-meta entry-path-meta-block">`;
-      html += `<span class="entry-path-label">${esc(t('txt_player_path_score'))}</span>`;
-      html += `<span>${esc(row.score)}</span>`;
-      html += `</div>`;
-    }
-
-    html += `<div class="entry-path-meta entry-path-meta-block">`;
-    html += `<span class="entry-path-label">${esc(t('txt_player_path_partners'))}</span>`;
-    html += `<span>${esc(partnerText)}</span>`;
     html += `</div>`;
-    html += `<div class="entry-path-meta entry-path-meta-block">`;
-    html += `<span class="entry-path-label">${esc(t('txt_player_path_opponents'))}</span>`;
-    html += `<span>${esc(opponentText)}</span>`;
+
+    html += `<div class="entry-path-match">`;
+    html += `<div class="entry-path-team entry-path-team--player"><span class="entry-path-team-names">${esc(playerTeamText)}</span></div>`;
+    html += `<div class="entry-path-score-center">${esc(row.score || '—')}</div>`;
+    html += `<div class="entry-path-team entry-path-team--opponents"><span class="entry-path-team-names">${esc(opponentText)}</span></div>`;
     html += `</div>`;
     html += `</div>`;
   }
@@ -732,9 +729,8 @@ function _buildDashboard() {
     html += `<input type="text" id="edit-contact" value="${esc(_profile.contact || '')}" autocomplete="tel" placeholder="e.g. +34 600 000 000"></div>`;
 
     if (_errorMsg) html += `<div class="error-msg">${esc(_errorMsg)}</div>`;
-    if (_successMsg) html += `<div class="success-msg">${esc(_successMsg)}</div>`;
     html += `<div class="player-edit-actions">`;
-    html += `<button type="button" class="btn btn-primary btn-sm" onclick="_doSaveProfile()">${esc(t('txt_player_save_btn'))}</button>`;
+    html += `<button type="button" id="save-profile-btn" class="btn btn-primary btn-sm" onclick="_doSaveProfile()">${esc(t('txt_player_save_btn'))}</button>`;
     html += `<button type="button" class="btn btn-secondary btn-sm" onclick="_toggleEditProfile()">✕</button>`;
     html += `</div></div>`;
   }
@@ -889,29 +885,35 @@ function _formatRankLabel(rank) {
 
 function _bestAchievements(entries) {
   let bestGroupRank = null;
+  let bestGroupRankTournament = null;
   let bestPlayoffStage = null;
   let bestPlayoffStageRank = null;
+  let bestPlayoffStageTournament = null;
 
   for (const e of entries) {
     if (e.rank && e.rank > 0 && (bestGroupRank === null || e.rank < bestGroupRank)) {
       bestGroupRank = e.rank;
+      bestGroupRankTournament = e.entity_name || null;
     }
     if (e.playoff_stage && e.playoff_stage_rank != null) {
       if (bestPlayoffStageRank === null || e.playoff_stage_rank < bestPlayoffStageRank) {
         bestPlayoffStageRank = e.playoff_stage_rank;
         bestPlayoffStage = e.playoff_stage;
+        bestPlayoffStageTournament = e.entity_name || null;
       }
     }
   }
 
   return {
     bestGroupRank,
+    bestGroupRankTournament,
     bestPlayoffStage,
+    bestPlayoffStageTournament,
   };
 }
 
 function _buildBestResultsCardForEntries(entries, heading) {
-  const { bestGroupRank, bestPlayoffStage } = _bestAchievements(entries);
+  const { bestGroupRank, bestGroupRankTournament, bestPlayoffStage, bestPlayoffStageTournament } = _bestAchievements(entries);
   const groupRankLabel = _formatRankLabel(bestGroupRank);
   if (!groupRankLabel && !bestPlayoffStage) return '';
 
@@ -919,10 +921,14 @@ function _buildBestResultsCardForEntries(entries, heading) {
   html += `<div class="section-heading section-heading-card">${esc(heading)}</div>`;
   html += `<div class="global-stats-grid">`;
   if (groupRankLabel) {
-    html += `<div class="global-stats-cell"><div class="global-stats-value">${groupRankLabel}</div><div class="global-stats-label">${esc(t('txt_player_career_best_group_rank'))}</div></div>`;
+    html += `<div class="global-stats-cell"><div class="global-stats-value">${groupRankLabel}</div><div class="global-stats-label">${esc(t('txt_player_career_best_group_rank'))}</div>`;
+    if (bestGroupRankTournament) html += `<div class="global-stats-tournament">${esc(bestGroupRankTournament)}</div>`;
+    html += `</div>`;
   }
   if (bestPlayoffStage) {
-    html += `<div class="global-stats-cell"><div class="global-stats-value">${esc(bestPlayoffStage)}</div><div class="global-stats-label">${esc(t('txt_player_career_best_playoff_stage'))}</div></div>`;
+    html += `<div class="global-stats-cell"><div class="global-stats-value">${esc(bestPlayoffStage)}</div><div class="global-stats-label">${esc(t('txt_player_career_best_playoff_stage'))}</div>`;
+    if (bestPlayoffStageTournament) html += `<div class="global-stats-tournament">${esc(bestPlayoffStageTournament)}</div>`;
+    html += `</div>`;
   }
   html += `</div>`;
   html += `</div>`;
@@ -1397,9 +1403,17 @@ async function _doSaveProfile() {
   try {
     const updated = await _apiPut('', { name, email, contact }, _jwt);
     _profile = { ..._profile, ...updated };
-    _successMsg = t('txt_player_save_btn') + ' ✓';
     _saveSession();
-    _render();
+    const btn = document.getElementById('save-profile-btn');
+    if (btn) {
+      btn.textContent = '✓ ' + t('txt_player_save_btn');
+      btn.classList.add('btn-save-success');
+      setTimeout(() => btn.classList.add('fade-out'), 1200);
+      setTimeout(() => {
+        btn.textContent = t('txt_player_save_btn');
+        btn.classList.remove('btn-save-success', 'fade-out');
+      }, 1800);
+    }
   } catch (err) {
     _errorMsg = err.message;
     _render();

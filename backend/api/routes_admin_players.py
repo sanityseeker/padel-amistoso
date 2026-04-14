@@ -19,6 +19,8 @@ from ..auth.models import User
 from ..models import ParticipationStatus, Sport
 from ..tournaments.player_secrets import generate_passphrase
 from .db import get_db
+from .player_secret_store import invalidate_secrets_cache
+from .state import rename_player_in_tournament
 from .schemas import (
     AdminEmailUpdate,
     AdminParticipationLink,
@@ -206,21 +208,67 @@ async def admin_link_participation(
             raise HTTPException(404, "Player secret not found for this tournament/player")
 
         if row["profile_id"] is not None:
-            raise HTTPException(409, "This participation is already linked to a profile")
+            if row["profile_id"] == profile_id:
+                # Already linked to the same profile — idempotent success.
+                return {
+                    "ok": True,
+                    "status": ParticipationStatus.FINISHED if row["finished_at"] else ParticipationStatus.ACTIVE,
+                    "populated": {},
+                }
+            # Linked to a different profile — clear the old link first.
+            old_profile_id = row["profile_id"]
+            conn.execute(
+                "UPDATE player_secrets SET profile_id = NULL WHERE tournament_id = ? AND player_id = ?",
+                (tid, player_id),
+            )
+            if row["finished_at"] is not None:
+                conn.execute(
+                    "DELETE FROM player_history WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
+                    (old_profile_id, tid),
+                )
 
-        # Set the profile_id.
+        # Fetch profile name/email/contact to populate empty fields.
+        prof = conn.execute("SELECT name, email, contact FROM player_profiles WHERE id = ?", (profile_id,)).fetchone()
+        populated = {}
+        sec_row = conn.execute(
+            "SELECT player_name, contact, email FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
+            (tid, player_id),
+        ).fetchone()
+        updates = []
+        if prof and prof["name"]:
+            updates.append("player_name = ?")
+            populated["name"] = prof["name"]
+        if prof and prof["email"] and not sec_row["email"]:
+            updates.append("email = ?")
+            populated["email"] = prof["email"]
+        if prof and prof["contact"] and not sec_row["contact"]:
+            updates.append("contact = ?")
+            populated["contact"] = prof["contact"]
+
+        # Set the profile_id (and optionally email/contact).
+        set_clause = "profile_id = ?" + (", " + ", ".join(updates) if updates else "")
+        params = [profile_id] + list(populated.values()) + [tid, player_id]
         conn.execute(
-            "UPDATE player_secrets SET profile_id = ? WHERE tournament_id = ? AND player_id = ?",
-            (profile_id, tid, player_id),
+            f"UPDATE player_secrets SET {set_clause} WHERE tournament_id = ? AND player_id = ?",
+            params,
         )
 
         is_finished = row["finished_at"] is not None
+
+        # Rename the player in the live tournament object if name was populated.
+        if "name" in populated and not is_finished:
+            rename_player_in_tournament(tid, player_id, populated["name"])
 
         if is_finished:
             # Backfill into player_history using the snapshot stored at finish time.
             _backfill_single_finished_secret(conn, profile_id, tid, player_id)
 
-    return {"ok": True, "status": ParticipationStatus.FINISHED if is_finished else ParticipationStatus.ACTIVE}
+    invalidate_secrets_cache(tid)
+    return {
+        "ok": True,
+        "status": ParticipationStatus.FINISHED if is_finished else ParticipationStatus.ACTIVE,
+        "populated": populated,
+    }
 
 
 def _backfill_single_finished_secret(conn, profile_id: str, tid: str, player_id: str) -> None:
@@ -332,6 +380,7 @@ async def admin_unlink_participation(
                     "UPDATE player_secrets SET profile_id = NULL WHERE tournament_id = ? AND player_id = ?",
                     (tid, player_id),
                 )
+                invalidate_secrets_cache(tid)
                 return {"ok": True, "status": ParticipationStatus.ACTIVE, "warning": None}
             else:
                 # Finished but player_secrets row still exists (edge case: finished
@@ -346,6 +395,7 @@ async def admin_unlink_participation(
                     "DELETE FROM player_history WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
                     (old_profile_id, tid),
                 )
+                invalidate_secrets_cache(tid)
                 return {
                     "ok": True,
                     "status": ParticipationStatus.FINISHED,

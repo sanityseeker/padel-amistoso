@@ -313,14 +313,30 @@ class TestLinkParticipation:
             secret = conn.execute("SELECT 1 FROM player_secrets WHERE tournament_id='t1' AND player_id='p1'").fetchone()
         assert secret is None
 
-    def test_link_already_linked_returns_409(self, client: TestClient, auth_headers: dict) -> None:
+    def test_link_already_linked_relinks_to_new_profile(self, client: TestClient, auth_headers: dict) -> None:
+        """Linking a player already linked to a different profile re-links it."""
         pid = _insert_profile(name="Alice")
         other_pid = _insert_profile(name="Bob", email="bob@example.com", passphrase="unique-phrase-bob")
         _insert_tournament("t1")
         _insert_player_secret("t1", "p1", "Alice", profile_id=other_pid)
 
         resp = client.post(f"/api/admin/player-profiles/{pid}/link/t1/p1", headers=auth_headers)
-        assert resp.status_code == 409
+        assert resp.status_code == 200
+        # Verify the link was updated to the new profile
+        with db_mod.get_db() as conn:
+            row = conn.execute(
+                "SELECT profile_id FROM player_secrets WHERE tournament_id = 't1' AND player_id = 'p1'"
+            ).fetchone()
+            assert row["profile_id"] == pid
+
+    def test_link_same_profile_idempotent(self, client: TestClient, auth_headers: dict) -> None:
+        """Linking to the same profile that's already linked returns success."""
+        pid = _insert_profile(name="Alice")
+        _insert_tournament("t1")
+        _insert_player_secret("t1", "p1", "Alice", profile_id=pid)
+
+        resp = client.post(f"/api/admin/player-profiles/{pid}/link/t1/p1", headers=auth_headers)
+        assert resp.status_code == 200
 
     def test_link_nonexistent_profile_returns_404(self, client: TestClient, auth_headers: dict) -> None:
         _insert_tournament("t1")

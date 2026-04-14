@@ -46,6 +46,7 @@ function _renderPlayerCodes(secrets) {
     html += `<th class="player-codes-th">${t('txt_txt_player')}</th>`;
     html += `<th class="player-codes-th">${t('txt_txt_passphrase')}</th>`;
     html += `<th class="player-codes-th">${t('txt_txt_contact')}</th>`;
+    html += `<th class="player-codes-th-center">${t('txt_hub_link')}</th>`;
     if (_showEmail) html += `<th class="player-codes-th">${t('txt_email')}</th>`;
     html += `<th class="player-codes-th-center">${t('txt_txt_qr_code')}</th>`;
     html += `<th class="player-codes-th-center"></th>`;
@@ -56,11 +57,19 @@ function _renderPlayerCodes(secrets) {
       html += `<td class="player-codes-name" id="pc-name-${pid}">${esc(info.name)}</td>`;
       html += `<td class="player-codes-cell"><code id="pc-pass-${pid}" class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(info.passphrase)}</code></td>`;
       html += `<td class="player-codes-cell"><span class="player-codes-edit-wrap"><input type="text" id="pc-contact-${pid}" value="${escAttr(info.contact || '')}" placeholder="${t('txt_reg_contact_placeholder')}" class="player-codes-input"><button type="button" class="btn btn-sm player-codes-action-btn" onclick="_savePlayerContact('${pid}')" id="pc-contact-save-${pid}">${t('txt_txt_save_contact')}</button></span></td>`;
-      if (_showEmail) {
+      {
         const _isLinked = Boolean(info.profile_id);
+        html += `<td class="player-codes-cell-center">`;
+        if (_isLinked) {
+          html += `<span class="pc-hub-badge pc-hub-badge--active" title="${t('txt_hub_linked')}" onclick="_hubUnlink('${pid}')" style="cursor:pointer">🔗</span>`;
+        } else {
+          html += `<button type="button" class="btn btn-sm btn-muted player-codes-icon-btn" onclick="_hubOpenSearch('${pid}')" title="${t('txt_hub_link')}">🔗</button>`;
+        }
+        html += `</td>`;
+      }
+      if (_showEmail) {
         html += `<td class="player-codes-cell"><span class="player-codes-edit-wrap"><input type="email" id="pc-email-${pid}" value="${escAttr(info.email || '')}" placeholder="${t('txt_email_placeholder')}" class="player-codes-input player-codes-input-email"><button type="button" class="btn btn-sm player-codes-action-btn" onclick="_savePlayerEmail('${pid}')" id="pc-email-save-${pid}">${t('txt_email_save_email')}</button>`;
         if (info.email) html += `<button type="button" class="btn btn-sm player-codes-icon-btn" onclick="_sendPlayerEmail('${pid}')" title="${t('txt_email_send')}">✉️</button>`;
-        html += `<span id="pc-linked-${pid}" class="player-codes-linked-badge" title="${t('txt_email_profile_linked')}" ${_isLinked ? '' : 'hidden'}>🔗</span>`;
         html += `</span></td>`;
       }
       html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-sm player-codes-action-btn" onclick="_showPlayerQr('${escAttr(pid)}','${escAttr(info.name)}')">📱 ${t('txt_txt_qr_code')}</button></td>`;
@@ -434,6 +443,133 @@ async function _sendTournamentMessageEmails() {
     textarea.value = '';
   } catch (e) {
     alert(t('txt_email_failed') + ': ' + e.message);
+  }
+}
+
+// ─── Hub link search modal ────────────────────────────────────────────────
+
+let _hubSearchTimer = null;
+let _hubCurrentPlayerId = null;
+
+function _hubEnsureModal() {
+  if (document.getElementById('pc-hub-modal')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'pc-hub-modal';
+  overlay.className = 'pc-hub-modal-overlay';
+  overlay.innerHTML = `<div class="pc-hub-modal-box">`
+    + `<div class="pc-hub-modal-header">`
+    + `<span class="pc-hub-modal-title">🔗 ${t('txt_hub_link')}</span>`
+    + `<button type="button" class="pc-hub-close-btn" onclick="_hubCloseModal()">✕</button>`
+    + `</div>`
+    + `<input type="text" id="pc-hub-modal-q" class="player-codes-input" placeholder="${t('txt_hub_search_placeholder')}" oninput="_hubDebouncedSearch()">`
+    + `<div id="pc-hub-modal-results" class="pc-hub-results"></div>`
+    + `</div>`;
+  overlay.addEventListener('click', e => { if (e.target === overlay) _hubCloseModal(); });
+  document.body.appendChild(overlay);
+}
+
+/** Open the hub profile search modal for a player */
+function _hubOpenSearch(playerId) {
+  _hubCurrentPlayerId = playerId;
+  _hubEnsureModal();
+  const modal = document.getElementById('pc-hub-modal');
+  const input = document.getElementById('pc-hub-modal-q');
+  const results = document.getElementById('pc-hub-modal-results');
+  modal.classList.add('active');
+  input.value = '';
+  results.innerHTML = '';
+  // Pre-fill search with player name for convenience
+  const name = _playerSecrets[playerId]?.name || '';
+  if (name) { input.value = name; }
+  _hubDoSearch();
+  input.focus();
+}
+
+function _hubCloseModal() {
+  const modal = document.getElementById('pc-hub-modal');
+  if (modal) modal.classList.remove('active');
+  _hubCurrentPlayerId = null;
+}
+
+function _hubDebouncedSearch() {
+  clearTimeout(_hubSearchTimer);
+  _hubSearchTimer = setTimeout(() => _hubDoSearch(), 250);
+}
+
+async function _hubDoSearch() {
+  const input = document.getElementById('pc-hub-modal-q');
+  const results = document.getElementById('pc-hub-modal-results');
+  if (!input || !results) return;
+  const q = input.value.trim();
+  results.innerHTML = '<em style="font-size:0.8rem;color:var(--text-muted)">…</em>';
+  try {
+    const profiles = await api(`/api/admin/player-profiles?q=${encodeURIComponent(q)}`);
+    if (profiles.length === 0) {
+      results.innerHTML = `<div style="font-size:0.8rem;color:var(--text-muted);padding:0.3rem 0">${t('txt_hub_no_results')}</div>`;
+      return;
+    }
+    let html = '';
+    for (const p of profiles) {
+      html += `<div class="pc-hub-result-item" onclick="_hubLinkProfile('${escAttr(p.id)}')">`;
+      html += `<span class="pc-hub-result-name">${esc(p.name || '—')}</span>`;
+      if (p.email) html += `<span class="pc-hub-result-email">${esc(p.email)}</span>`;
+      html += `</div>`;
+    }
+    results.innerHTML = html;
+  } catch (e) {
+    results.innerHTML = `<div style="font-size:0.8rem;color:var(--danger)">${esc(e.message)}</div>`;
+  }
+}
+
+async function _hubLinkProfile(profileId) {
+  const playerId = _hubCurrentPlayerId;
+  if (!playerId) return;
+  try {
+    const res = await api(`/api/admin/player-profiles/${profileId}/link/${currentTid}/${playerId}`, { method: 'POST' });
+    if (_playerSecrets[playerId]) _playerSecrets[playerId].profile_id = profileId;
+    _hubCloseModal();
+    // Update the cell to show active badge
+    const row = document.getElementById(`pc-row-${playerId}`);
+    const cell = row?.querySelector('.player-codes-cell-center');
+    if (cell) {
+      cell.innerHTML = `<span class="pc-hub-badge pc-hub-badge--active" title="${t('txt_hub_linked')}" onclick="_hubUnlink('${playerId}')" style="cursor:pointer">🔗</span>`;
+    }
+    // Populate name/contact/email from hub profile if returned
+    if (res.populated) {
+      if (res.populated.name) {
+        const nameCell = document.getElementById(`pc-name-${playerId}`);
+        if (nameCell) nameCell.textContent = res.populated.name;
+        if (_playerSecrets[playerId]) _playerSecrets[playerId].name = res.populated.name;
+      }
+      if (res.populated.contact) {
+        const cInput = document.getElementById(`pc-contact-${playerId}`);
+        if (cInput) cInput.value = res.populated.contact;
+        if (_playerSecrets[playerId]) _playerSecrets[playerId].contact = res.populated.contact;
+      }
+      if (res.populated.email) {
+        const eInput = document.getElementById(`pc-email-${playerId}`);
+        if (eInput) eInput.value = res.populated.email;
+        if (_playerSecrets[playerId]) _playerSecrets[playerId].email = res.populated.email;
+      }
+    }
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+async function _hubUnlink(playerId) {
+  if (!confirm(t('txt_hub_unlink_confirm'))) return;
+  try {
+    await api(`/api/admin/player-profiles/link/${currentTid}/${playerId}`, { method: 'DELETE' });
+    if (_playerSecrets[playerId]) _playerSecrets[playerId].profile_id = null;
+    // Update the cell to show link button
+    const row = document.getElementById(`pc-row-${playerId}`);
+    const cell = row?.querySelector('.pc-hub-badge')?.closest('td');
+    if (cell) {
+      cell.innerHTML = `<button type="button" class="btn btn-sm btn-muted player-codes-icon-btn" onclick="_hubOpenSearch('${playerId}')" title="${t('txt_hub_link')}">🔗</button>`;
+    }
+  } catch (e) {
+    alert(e.message);
   }
 }
 
