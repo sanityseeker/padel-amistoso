@@ -1,3 +1,9 @@
+## v1.6.3 (2026-04-14)
+
+### Fix
+
+- **frontend**: fixes in admin and hub panels
+
 ## v1.6.2 (2026-04-14)
 
 ### Fix
