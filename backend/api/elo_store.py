@@ -61,35 +61,48 @@ def initialize_tournament_elos(
     tournament_id: str,
     player_ids: list[str],
     sport: str = Sport.PADEL,
+    *,
+    elo_overrides: dict[str, float] | None = None,
+    match_count_overrides: dict[str, int] | None = None,
 ) -> None:
     """Seed ELO rows for every player at tournament start.
 
     For players linked to a profile, their current profile ELO is used.
     Unlinked players start at ``DEFAULT_RATING``.
+
+    When ``elo_overrides`` / ``match_count_overrides`` are supplied (e.g.
+    during a retroactive recalculation), those values take precedence over
+    the player-profile lookup so the original pre-tournament state is
+    restored exactly.
     """
     now = datetime.now(timezone.utc).isoformat()
     with get_db() as conn:
-        # Look up profile ELO for linked players
+        # Look up profile ELO for linked players (skipped when overrides cover everyone)
         profile_elos: dict[str, float] = {}
         profile_counts: dict[str, int] = {}
-        linked = conn.execute(
-            "SELECT player_id, profile_id FROM player_secrets WHERE tournament_id = ? AND profile_id IS NOT NULL",
-            (tournament_id,),
-        ).fetchall()
-        if linked:
-            elo_col = "elo_padel" if sport == Sport.PADEL else "elo_tennis"
-            matches_col = "elo_padel_matches" if sport == Sport.PADEL else "elo_tennis_matches"
-            profile_ids = [r["profile_id"] for r in linked]
-            pid_to_player = {r["profile_id"]: r["player_id"] for r in linked}
-            placeholders = ",".join("?" for _ in profile_ids)
-            profiles = conn.execute(
-                f"SELECT id, {elo_col}, {matches_col} FROM player_profiles WHERE id IN ({placeholders})",
-                profile_ids,
+        if elo_overrides is None:
+            linked = conn.execute(
+                "SELECT player_id, profile_id FROM player_secrets WHERE tournament_id = ? AND profile_id IS NOT NULL",
+                (tournament_id,),
             ).fetchall()
-            for p in profiles:
-                player_id = pid_to_player[p["id"]]
-                profile_elos[player_id] = p[elo_col]
-                profile_counts[player_id] = p[matches_col]
+            if linked:
+                elo_col = "elo_padel" if sport == Sport.PADEL else "elo_tennis"
+                matches_col = "elo_padel_matches" if sport == Sport.PADEL else "elo_tennis_matches"
+                profile_ids = [r["profile_id"] for r in linked]
+                pid_to_player = {r["profile_id"]: r["player_id"] for r in linked}
+                placeholders = ",".join("?" for _ in profile_ids)
+                profiles = conn.execute(
+                    f"SELECT id, {elo_col}, {matches_col} FROM player_profiles WHERE id IN ({placeholders})",
+                    profile_ids,
+                ).fetchall()
+                for p in profiles:
+                    player_id = pid_to_player[p["id"]]
+                    profile_elos[player_id] = p[elo_col]
+                    profile_counts[player_id] = p[matches_col]
+
+        # Merge: explicit overrides win over profile lookups
+        starting_elos = {**profile_elos, **(elo_overrides or {})}
+        starting_counts = {**profile_counts, **(match_count_overrides or {})}
 
         conn.executemany(
             """INSERT OR IGNORE INTO player_elo
@@ -100,9 +113,9 @@ def initialize_tournament_elos(
                     tournament_id,
                     pid,
                     sport,
-                    profile_elos.get(pid, DEFAULT_RATING),
-                    profile_elos.get(pid, DEFAULT_RATING),
-                    profile_counts.get(pid, 0),
+                    starting_elos.get(pid, DEFAULT_RATING),
+                    starting_elos.get(pid, DEFAULT_RATING),
+                    starting_counts.get(pid, 0),
                     now,
                 )
                 for pid in player_ids
@@ -388,6 +401,92 @@ def sync_live_elos_to_profiles(
                 f"UPDATE player_profiles SET {elo_col} = ?, {matches_col} = ? WHERE id = ?",
                 (r["elo_after"], r["matches_played"], r["profile_id"]),
             )
+
+
+def get_tournament_elo_snapshots(
+    tournament_id: str,
+    sport: str = Sport.PADEL,
+) -> dict[str, tuple[float, int]]:
+    """Return ``{player_id: (elo_before, matches_played_at_start)}`` for a tournament.
+
+    The values represent the player's state *before* the first match in the
+    tournament was played, which is exactly what a retroactive recalculation
+    needs to restore as the starting point.
+
+    ``matches_played_at_start`` is inferred as
+    ``current matches_played − number_of_elo_log_entries`` for the player in
+    this tournament, since each completed match adds exactly one log row.
+    """
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT pe.player_id, pe.elo_before, pe.matches_played,"
+            "       (SELECT COUNT(*) FROM player_elo_log el"
+            "         WHERE el.tournament_id = pe.tournament_id"
+            "           AND el.sport = pe.sport"
+            "           AND el.player_id = pe.player_id) AS log_count"
+            " FROM player_elo pe"
+            " WHERE pe.tournament_id = ? AND pe.sport = ?",
+            (tournament_id, sport),
+        ).fetchall()
+    return {r["player_id"]: (r["elo_before"], r["matches_played"] - r["log_count"]) for r in rows}
+
+
+def safe_transfer_elos_to_profiles(
+    tournament_id: str,
+    sport: str = Sport.PADEL,
+) -> None:
+    """Transfer ELO to profiles only when this tournament is the player's latest.
+
+    For each linked player, we check whether any *other* tournament produced
+    a more recent ``player_elo`` row (by ``updated_at``).  If so, we skip the
+    profile update for that player so that later tournament results are not
+    overwritten.  The ``player_history`` row for *this* tournament is always
+    updated regardless.
+    """
+    elo_col = "elo_padel" if sport == Sport.PADEL else "elo_tennis"
+    matches_col = "elo_padel_matches" if sport == Sport.PADEL else "elo_tennis_matches"
+
+    with get_db() as conn:
+        linked = conn.execute(
+            "SELECT player_id, profile_id FROM player_secrets WHERE tournament_id = ? AND profile_id IS NOT NULL",
+            (tournament_id,),
+        ).fetchall()
+
+        for row in linked:
+            pid, profile_id = row["player_id"], row["profile_id"]
+            elo_row = conn.execute(
+                "SELECT elo_before, elo_after, matches_played FROM player_elo"
+                " WHERE tournament_id = ? AND player_id = ? AND sport = ?",
+                (tournament_id, pid, sport),
+            ).fetchone()
+            if elo_row is None:
+                continue
+
+            # Always update the history snapshot for this tournament
+            conn.execute(
+                "UPDATE player_history SET elo_before = ?, elo_after = ?"
+                " WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
+                (elo_row["elo_before"], elo_row["elo_after"], profile_id, tournament_id),
+            )
+
+            # Only update the profile if no later tournament exists for this player
+            later = conn.execute(
+                "SELECT 1 FROM player_elo pe"
+                " JOIN player_secrets ps"
+                "   ON ps.tournament_id = pe.tournament_id AND ps.player_id = pe.player_id"
+                " WHERE ps.profile_id = ? AND pe.sport = ?"
+                "   AND pe.tournament_id != ? AND pe.updated_at > ("
+                "     SELECT updated_at FROM player_elo"
+                "      WHERE tournament_id = ? AND player_id = ? AND sport = ?"
+                "   )"
+                " LIMIT 1",
+                (profile_id, sport, tournament_id, tournament_id, pid, sport),
+            ).fetchone()
+            if later is None:
+                conn.execute(
+                    f"UPDATE player_profiles SET {elo_col} = ?, {matches_col} = ? WHERE id = ?",
+                    (elo_row["elo_after"], elo_row["matches_played"], profile_id),
+                )
 
 
 def retroactive_transfer_elo(profile_id: str, player_id: str) -> None:

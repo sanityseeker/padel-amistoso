@@ -16,6 +16,7 @@ from backend.tournaments.elo import compute_match_elo_updates
 from .elo_store import (
     bulk_transfer_elos_to_profiles,
     get_k_factor_overrides,
+    get_tournament_elo_snapshots,
     upsert_tournament_elo_log,
     get_tournament_elos,
     get_tournament_match_counts,
@@ -91,10 +92,21 @@ def elo_recalculate_tournament(tournament_id: str) -> None:
     player_ids = _extract_player_ids(tournament, ttype)
 
     try:
-        # Reset and re-seed
+        # Snapshot original starting state before wiping rows
+        snapshots = get_tournament_elo_snapshots(tournament_id, sport)
+        saved_elos = {pid: elo for pid, (elo, _cnt) in snapshots.items()}
+        saved_counts = {pid: cnt for pid, (_elo, cnt) in snapshots.items()}
+
+        # Reset and re-seed with the saved pre-tournament values
         reset_tournament_elos(tournament_id, sport)
         reset_tournament_elo_logs(tournament_id, sport)
-        initialize_tournament_elos(tournament_id, player_ids, sport)
+        initialize_tournament_elos(
+            tournament_id,
+            player_ids,
+            sport,
+            elo_overrides=saved_elos,
+            match_count_overrides=saved_counts,
+        )
 
         k_overrides = get_k_factor_overrides(tournament_id)
 

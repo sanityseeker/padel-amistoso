@@ -158,6 +158,7 @@ function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
       onchange="_updateTvSetting('${key}', +this.value)">`;
   });
   html += `</div></details>`;
+  html += _renderEloSection();
   html += `</div>`;
   html += `</details>`;
   return html;
@@ -218,6 +219,31 @@ function _renderEmailControls(emailSettings) {
 
   html += `</div></details>`;
   return html;
+}
+
+/** Render a small ELO recalculate section (meant to be placed inside the TV controls card). */
+function _renderEloSection() {
+  if (!currentTid) return '';
+  let html = `<div style="margin-top:0.65rem;padding-top:0.55rem;border-top:1px solid var(--border)">`;
+  html += `<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">`;
+  html += `<button type="button" class="btn btn-warning btn-sm" onclick="withLoading(this,_recalculateTournamentElo)">`;
+  html += `♻️ ${t('txt_txt_recalculate_elo')}`;
+  html += `</button>`;
+  html += `</div></div>`;
+  return html;
+}
+
+/** Trigger full tournament ELO recomputation from completed matches. */
+async function _recalculateTournamentElo() {
+  if (!currentTid) return;
+  if (!confirm(t('txt_txt_confirm_recalculate_elo'))) return;
+  try {
+    await api(`/api/tournaments/${currentTid}/elo/recalculate`, { method: 'POST' });
+    await _rerenderCurrentViewPreserveDrafts();
+    _showToast(t('txt_txt_elo_recalculated'));
+  } catch (e) {
+    _showToast(t('txt_txt_elo_recalc_failed_value', { value: e.message }));
+  }
 }
 
 /** Send next-round schedule notifications to all players with email addresses. */

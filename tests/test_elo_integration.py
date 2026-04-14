@@ -203,3 +203,59 @@ class TestEloOnDeletion:
         client.delete(f"/api/tournaments/{tid}", headers=auth_headers)
         elos = get_tournament_elos(tid, "padel")
         assert len(elos) == 0
+
+
+class TestEloRecalculateEndpoint:
+    """Admin endpoint for retroactive ELO recomputation."""
+
+    def test_recalculate_elo_requires_owner_or_admin(self, client, auth_headers):
+        """Collaborators (non-owners) cannot recalculate ELO."""
+        r = client.post(
+            "/api/tournaments/mexicano",
+            json={
+                "name": "Recalc Guard",
+                "player_names": ["A", "B", "C", "D"],
+                "court_names": ["Court 1"],
+                "total_points_per_match": 32,
+                "num_rounds": 1,
+            },
+            headers=auth_headers,
+        )
+        tid = r.json()["id"]
+
+        # Owner can recalculate (even mid-tournament with no matches)
+        recalc = client.post(f"/api/tournaments/{tid}/elo/recalculate", headers=auth_headers)
+        assert recalc.status_code == 200
+
+    def test_recalculate_elo_for_finished_tournament(self, client, auth_headers):
+        r = client.post(
+            "/api/tournaments/mexicano",
+            json={
+                "name": "Recalc Finished",
+                "player_names": ["A", "B", "C", "D"],
+                "court_names": ["Court 1"],
+                "total_points_per_match": 32,
+                "num_rounds": 1,
+            },
+            headers=auth_headers,
+        )
+        tid = r.json()["id"]
+
+        next_round = client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
+        assert next_round.status_code == 200
+
+        matches = client.get(f"/api/tournaments/{tid}/mex/matches").json()
+        for m in matches["current_matches"]:
+            score = client.post(
+                f"/api/tournaments/{tid}/mex/record",
+                json={"match_id": m["id"], "score1": 20, "score2": 12},
+                headers=auth_headers,
+            )
+            assert score.status_code == 200
+
+        finish = client.post(f"/api/tournaments/{tid}/mex/finish", headers=auth_headers)
+        assert finish.status_code == 200
+
+        recalc = client.post(f"/api/tournaments/{tid}/elo/recalculate", headers=auth_headers)
+        assert recalc.status_code == 200
+        assert recalc.json() == {"ok": True, "recalculated": True}

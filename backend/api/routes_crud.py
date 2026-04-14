@@ -42,6 +42,8 @@ from .schemas import (
 )
 from . import state
 from .state import _delete_tournament, _save_tournament, _tournaments
+from .elo_integration import elo_recalculate_tournament
+from .elo_store import safe_transfer_elos_to_profiles
 from .elo_store import delete_tournament_elos
 
 router = APIRouter(prefix="/api/tournaments", tags=["tournaments"])
@@ -213,6 +215,27 @@ async def set_public(tid: str, req: SetPublicRequest, user: User = Depends(get_c
         _tournaments[tid]["public"] = req.public
         _save_tournament(tid)
     return {"ok": True, "public": req.public}
+
+
+@router.post("/{tid}/elo/recalculate")
+async def recalculate_elo(tid: str, user: User = Depends(get_current_user)) -> dict:
+    """Recalculate tournament ELO from all completed matches.
+
+    Restricted to the tournament owner or site admins.
+    """
+    _require_owner_or_admin(tid, user)
+    async with state.get_tournament_lock(tid):
+        data = _tournaments.get(tid)
+        if data is None:
+            raise HTTPException(404, "Tournament not found")
+
+        elo_recalculate_tournament(tid)
+        # Sync profiles safely: only updates a profile when this tournament is
+        # the player's chronologically latest, so later results aren't clobbered.
+        sport = data.get("sport", "padel")
+        safe_transfer_elos_to_profiles(tid, sport)
+
+    return {"ok": True, "recalculated": True}
 
 
 @router.put("/{tid}/alias")
