@@ -1,3 +1,9 @@
+## v1.7.5 (2026-04-15)
+
+### Fix
+
+- **elo-history**: add sport selector
+
 ## v1.7.4 (2026-04-15)
 
 ### Fix
