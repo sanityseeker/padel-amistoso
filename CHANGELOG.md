@@ -1,3 +1,9 @@
+## v1.7.3 (2026-04-15)
+
+### Fix
+
+- **readme**: add documentation on elo
+
 ## v1.7.2 (2026-04-15)
 
 ### Fix
