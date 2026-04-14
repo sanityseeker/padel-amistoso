@@ -27,6 +27,7 @@ let _entries = [];
 let _eloHistory = [];
 let _leaderboard = null; // { padel: [], tennis: [] } or null
 let _leaderboardSport = 'padel'; // 'padel' | 'tennis'
+let _eloHistorySport = 'padel'; // 'padel' | 'tennis'
 let _authStep = 'passphrase'; // 'passphrase' | 'create'
 let _resolveResult = null;    // null | {type: 'profile'|'participation'|'not_found', matches: [...]}
 let _resolvedPassphrase = ''; // the passphrase that was resolved
@@ -1338,12 +1339,29 @@ function _formatEloTeamVsLine(team1, team2, currentPid, scoreStr) {
   return `<span class="elo-team elo-team--a">${_formatEloTeamSide(team1, currentPid)}</span>${mid}<span class="elo-team elo-team--b">${_formatEloTeamSide(team2, currentPid)}</span>`;
 }
 
+function _setEloHistorySport(sport) {
+  _eloHistorySport = sport;
+  _render();
+}
+
 function _buildEloHistoryCard() {
   const settings = _getEloHistorySettings();
   const openAttr = _isEloHistoryPanelOpen() ? ' open' : '';
   let html = `<details class="player-history-panel" ontoggle="_rememberEloHistoryPanelOpen(this)"${openAttr}>`;
   html += `<summary class="player-history-summary"><span class="player-history-chevron">▶</span><span class="section-heading section-heading-inline">${esc(t('txt_player_elo_history'))}</span></summary>`;
   html += `<div class="player-history-body">`;
+
+  // Sport toggle pills (only when both sports have history)
+  const hasPadel = _eloHistory.some(m => m.sport === 'padel');
+  const hasTennis = _eloHistory.some(m => m.sport === 'tennis');
+  const activeSport = (hasPadel && hasTennis) ? _eloHistorySport : (hasPadel ? 'padel' : 'tennis');
+  if (hasPadel && hasTennis) {
+    html += `<div class="leaderboard-sport-toggle">`;
+    html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" onclick="event.stopPropagation(); _setEloHistorySport('padel')">Padel</button>`;
+    html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" onclick="event.stopPropagation(); _setEloHistorySport('tennis')">Tennis</button>`;
+    html += `</div>`;
+  }
+
   html += `<div class="player-elo-controls">`;
   html += `<label class="player-elo-control-label">${esc(t('txt_player_elo_show_last'))}</label>`;
   html += `<select class="player-elo-control-select" onchange="_onEloHistoryLimitChange(this)">`;
@@ -1354,14 +1372,16 @@ function _buildEloHistoryCard() {
   html += `</select>`;
   html += `</div>`;
 
-  if (!_eloHistory.length) {
+  const filtered = _eloHistory.filter(m => m.sport === activeSport);
+
+  if (!filtered.length) {
     html += `<div class="empty-state">${esc(t('txt_player_elo_no_history'))}</div>`;
     html += `</div></details>`;
     return html;
   }
 
   html += `<div class="elo-log">`;
-  for (const match of _eloHistory) {
+  for (const match of filtered) {
     const url = _entityUrl({ entity_type: 'tournament', entity_id: match.tournament_id, alias: match.tournament_alias });
     const when = match.updated_at
       ? new Date(match.updated_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
