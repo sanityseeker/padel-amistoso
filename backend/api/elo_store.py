@@ -24,6 +24,33 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def _get_linked_profiles(tournament_id: str, conn=None) -> list[dict]:
+    """Return ``[{player_id, profile_id}]`` for all players linked to a profile.
+
+    Checks both ``player_secrets`` (active/in-progress tournaments) and
+    ``player_history`` (finished tournaments whose secrets were migrated).
+    When a player appears in both, ``player_secrets`` wins.
+    """
+
+    def _query(c):
+        rows = c.execute(
+            "SELECT player_id, profile_id FROM player_secrets WHERE tournament_id = ? AND profile_id IS NOT NULL",
+            (tournament_id,),
+        ).fetchall()
+        seen = {r["player_id"] for r in rows}
+        history_rows = c.execute(
+            "SELECT player_id, profile_id FROM player_history WHERE entity_type = 'tournament' AND entity_id = ?",
+            (tournament_id,),
+        ).fetchall()
+        rows = list(rows) + [r for r in history_rows if r["player_id"] not in seen]
+        return rows
+
+    if conn is not None:
+        return _query(conn)
+    with get_db() as c:
+        return _query(c)
+
+
 def get_tournament_elos(tournament_id: str, sport: str = Sport.PADEL) -> dict[str, float]:
     """Return ``{player_id: current_elo}`` for all players in a tournament."""
     with get_db() as conn:
@@ -47,14 +74,17 @@ def get_tournament_match_counts(tournament_id: str, sport: str = Sport.PADEL) ->
 def get_k_factor_overrides(tournament_id: str) -> dict[str, int]:
     """Return ``{player_id: k_factor}`` for linked players with a K-factor override."""
     with get_db() as conn:
+        linked = _get_linked_profiles(tournament_id, conn)
+        if not linked:
+            return {}
+        profile_map = {r["profile_id"]: r["player_id"] for r in linked}
+        placeholders = ",".join("?" for _ in profile_map)
         rows = conn.execute(
-            "SELECT ps.player_id, pp.k_factor_override"
-            " FROM player_secrets ps"
-            " JOIN player_profiles pp ON pp.id = ps.profile_id"
-            " WHERE ps.tournament_id = ? AND pp.k_factor_override IS NOT NULL",
-            (tournament_id,),
+            f"SELECT id, k_factor_override FROM player_profiles"
+            f" WHERE id IN ({placeholders}) AND k_factor_override IS NOT NULL",
+            list(profile_map.keys()),
         ).fetchall()
-    return {r["player_id"]: r["k_factor_override"] for r in rows}
+    return {profile_map[r["id"]]: r["k_factor_override"] for r in rows}
 
 
 def initialize_tournament_elos(
@@ -77,14 +107,15 @@ def initialize_tournament_elos(
     """
     now = datetime.now(timezone.utc).isoformat()
     with get_db() as conn:
-        # Look up profile ELO for linked players (skipped when overrides cover everyone)
+        # Look up profile ELO for linked players not already covered by overrides
         profile_elos: dict[str, float] = {}
         profile_counts: dict[str, int] = {}
-        if elo_overrides is None:
-            linked = conn.execute(
-                "SELECT player_id, profile_id FROM player_secrets WHERE tournament_id = ? AND profile_id IS NOT NULL",
-                (tournament_id,),
-            ).fetchall()
+        covered_pids = set(elo_overrides or {}) & set(match_count_overrides or {})
+        uncovered_pids = [pid for pid in player_ids if pid not in covered_pids]
+        if uncovered_pids:
+            linked = _get_linked_profiles(tournament_id, conn)
+            # Only look up profiles for players we don't already have overrides for
+            linked = [r for r in linked if r["player_id"] in set(uncovered_pids)]
             if linked:
                 elo_col = "elo_padel" if sport == Sport.PADEL else "elo_tennis"
                 matches_col = "elo_padel_matches" if sport == Sport.PADEL else "elo_tennis_matches"
@@ -359,14 +390,10 @@ def bulk_transfer_elos_to_profiles(
 ) -> None:
     """Transfer ELO for all linked players in a finished tournament.
 
-    Looks up which players have profiles via ``player_secrets`` and
-    calls :func:`transfer_elo_to_profile` for each.
+    Looks up which players have profiles via ``player_secrets`` or
+    ``player_history`` and calls :func:`transfer_elo_to_profile` for each.
     """
-    with get_db() as conn:
-        linked = conn.execute(
-            "SELECT player_id, profile_id FROM player_secrets WHERE tournament_id = ? AND profile_id IS NOT NULL",
-            (tournament_id,),
-        ).fetchall()
+    linked = _get_linked_profiles(tournament_id)
 
     for row in linked:
         transfer_elo_to_profile(row["profile_id"], tournament_id, row["player_id"], sport)
@@ -385,21 +412,21 @@ def sync_live_elos_to_profiles(
     matches_col = "elo_padel_matches" if sport == Sport.PADEL else "elo_tennis_matches"
 
     with get_db() as conn:
+        linked = _get_linked_profiles(tournament_id, conn)
+        profile_by_pid = {r["player_id"]: r["profile_id"] for r in linked}
+        if not profile_by_pid:
+            return
         rows = conn.execute(
-            """SELECT pe.player_id, pe.elo_after, pe.matches_played, ps.profile_id
-                 FROM player_elo pe
-                 JOIN player_secrets ps
-                   ON ps.tournament_id = pe.tournament_id
-                  AND ps.player_id = pe.player_id
-                WHERE pe.tournament_id = ?
-                  AND pe.sport = ?
-                  AND ps.profile_id IS NOT NULL""",
+            "SELECT player_id, elo_after, matches_played FROM player_elo WHERE tournament_id = ? AND sport = ?",
             (tournament_id, sport),
         ).fetchall()
         for r in rows:
+            profile_id = profile_by_pid.get(r["player_id"])
+            if profile_id is None:
+                continue
             conn.execute(
                 f"UPDATE player_profiles SET {elo_col} = ?, {matches_col} = ? WHERE id = ?",
-                (r["elo_after"], r["matches_played"], r["profile_id"]),
+                (r["elo_after"], r["matches_played"], profile_id),
             )
 
 
@@ -447,10 +474,7 @@ def safe_transfer_elos_to_profiles(
     matches_col = "elo_padel_matches" if sport == Sport.PADEL else "elo_tennis_matches"
 
     with get_db() as conn:
-        linked = conn.execute(
-            "SELECT player_id, profile_id FROM player_secrets WHERE tournament_id = ? AND profile_id IS NOT NULL",
-            (tournament_id,),
-        ).fetchall()
+        linked = _get_linked_profiles(tournament_id, conn)
 
         for row in linked:
             pid, profile_id = row["player_id"], row["profile_id"]
@@ -469,18 +493,24 @@ def safe_transfer_elos_to_profiles(
                 (elo_row["elo_before"], elo_row["elo_after"], profile_id, tournament_id),
             )
 
-            # Only update the profile if no later tournament exists for this player
+            # Only update the profile if no later tournament exists for this player.
+            # Check both player_secrets and player_history for other tournaments
+            # linked to the same profile.
+            this_updated = conn.execute(
+                "SELECT updated_at FROM player_elo WHERE tournament_id = ? AND player_id = ? AND sport = ?",
+                (tournament_id, pid, sport),
+            ).fetchone()
             later = conn.execute(
-                "SELECT 1 FROM player_elo pe"
-                " JOIN player_secrets ps"
-                "   ON ps.tournament_id = pe.tournament_id AND ps.player_id = pe.player_id"
-                " WHERE ps.profile_id = ? AND pe.sport = ?"
-                "   AND pe.tournament_id != ? AND pe.updated_at > ("
-                "     SELECT updated_at FROM player_elo"
-                "      WHERE tournament_id = ? AND player_id = ? AND sport = ?"
-                "   )"
-                " LIMIT 1",
-                (profile_id, sport, tournament_id, tournament_id, pid, sport),
+                "SELECT 1 FROM player_elo pe WHERE pe.sport = ? AND pe.tournament_id != ?"
+                " AND pe.updated_at > ? AND ("
+                "   EXISTS (SELECT 1 FROM player_secrets ps"
+                "     WHERE ps.tournament_id = pe.tournament_id AND ps.player_id = pe.player_id"
+                "       AND ps.profile_id = ?)"
+                "   OR EXISTS (SELECT 1 FROM player_history ph"
+                "     WHERE ph.entity_type = 'tournament' AND ph.entity_id = pe.tournament_id"
+                "       AND ph.player_id = pe.player_id AND ph.profile_id = ?)"
+                " ) LIMIT 1",
+                (sport, tournament_id, this_updated["updated_at"], profile_id, profile_id),
             ).fetchone()
             if later is None:
                 conn.execute(

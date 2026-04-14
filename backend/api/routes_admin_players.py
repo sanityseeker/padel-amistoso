@@ -19,6 +19,7 @@ from ..auth.models import User
 from ..models import ParticipationStatus, Sport
 from ..tournaments.player_secrets import generate_passphrase
 from .db import get_db
+from .elo_store import retroactive_transfer_elo
 from .player_secret_store import invalidate_secrets_cache
 from .state import rename_player_in_tournament
 from .schemas import (
@@ -277,6 +278,9 @@ async def admin_link_participation(
         if is_finished:
             # Backfill into player_history using the snapshot stored at finish time.
             _backfill_single_finished_secret(conn, profile_id, tid, player_id)
+
+    if is_finished:
+        retroactive_transfer_elo(profile_id, player_id)
 
     invalidate_secrets_cache(tid)
     return {

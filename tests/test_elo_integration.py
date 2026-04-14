@@ -258,4 +258,48 @@ class TestEloRecalculateEndpoint:
 
         recalc = client.post(f"/api/tournaments/{tid}/elo/recalculate", headers=auth_headers)
         assert recalc.status_code == 200
-        assert recalc.json() == {"ok": True, "recalculated": True}
+        body = recalc.json()
+        assert body["ok"] is True
+        assert body["recalculated"] is True
+        assert body["players_with_elo"] == 4
+
+    def test_recalculate_elo_includes_removed_players(self, client, auth_headers):
+        """Players removed mid-tournament must still be included in ELO recalc."""
+        r = client.post(
+            "/api/tournaments/mexicano",
+            json={
+                "name": "Recalc Removed",
+                "player_names": ["A", "B", "C", "D", "E", "F", "G", "H"],
+                "court_names": ["Court 1", "Court 2"],
+                "total_points_per_match": 32,
+                "num_rounds": 2,
+            },
+            headers=auth_headers,
+        )
+        tid = r.json()["id"]
+
+        # Play round 1 (all 8 players participate, 2 courts × 4 players)
+        next_round = client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
+        assert next_round.status_code == 200
+        matches = client.get(f"/api/tournaments/{tid}/mex/matches").json()
+        for m in matches["current_matches"]:
+            client.post(
+                f"/api/tournaments/{tid}/mex/record",
+                json={"match_id": m["id"], "score1": 20, "score2": 12},
+                headers=auth_headers,
+            )
+
+        # Pick a player who just played and remove them before round 2
+        played_match = matches["current_matches"][0]
+        removed_pid = played_match["team1_ids"][0]
+        del_resp = client.delete(f"/api/tournaments/{tid}/players/{removed_pid}", headers=auth_headers)
+        assert del_resp.status_code == 200
+
+        # Finish the tournament
+        finish = client.post(f"/api/tournaments/{tid}/mex/finish", headers=auth_headers)
+        assert finish.status_code == 200
+
+        # Recalculate — all 8 players (including removed one) must get ELO rows
+        recalc = client.post(f"/api/tournaments/{tid}/elo/recalculate", headers=auth_headers)
+        assert recalc.status_code == 200
+        assert recalc.json()["players_with_elo"] == 8

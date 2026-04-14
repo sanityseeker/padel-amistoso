@@ -189,7 +189,36 @@ def _is_team_mode(tournament: object, ttype: str) -> bool:
 
 
 def _extract_player_ids(tournament: object, ttype: str) -> list[str]:
-    """Get all player IDs from a tournament."""
+    """Get all player IDs from a tournament.
+
+    Merges multiple sources so that no participant is missed:
+
+    * ``tournament.players`` — the current active roster
+    * ``tournament._removed_players`` — players removed mid-tournament
+      whose completed matches are still part of the record
+    * ``tournament.original_teams`` — Playoff team rosters
+    * Match participants — fallback that catches any edge case
+    """
+    seen: dict[str, None] = {}
+
     if hasattr(tournament, "players"):
-        return [p.id for p in tournament.players]  # type: ignore[attr-defined]
-    return []
+        for p in tournament.players:  # type: ignore[attr-defined]
+            seen.setdefault(p.id, None)
+
+    # Include removed players (Mexicano supports mid-tournament removal)
+    if hasattr(tournament, "_removed_players"):
+        for p in tournament._removed_players:  # type: ignore[attr-defined]
+            seen.setdefault(p.id, None)
+
+    # Playoff: teams stored as list[list[Player]]
+    if hasattr(tournament, "original_teams"):
+        for team in tournament.original_teams:  # type: ignore[attr-defined]
+            for p in team:
+                seen.setdefault(p.id, None)
+
+    # Always scan matches too — catches players added/moved in unexpected ways
+    for m in _extract_completed_matches(tournament, ttype):
+        for p in m.team1 + m.team2:
+            seen.setdefault(p.id, None)
+
+    return list(seen)

@@ -235,7 +235,12 @@ async def recalculate_elo(tid: str, user: User = Depends(get_current_user)) -> d
         sport = data.get("sport", "padel")
         safe_transfer_elos_to_profiles(tid, sport)
 
-    return {"ok": True, "recalculated": True}
+        # Return diagnostic counts so the admin can verify completeness
+        from .elo_store import get_tournament_elos
+
+        elos = get_tournament_elos(tid, sport)
+
+    return {"ok": True, "recalculated": True, "players_with_elo": len(elos)}
 
 
 @router.put("/{tid}/alias")
