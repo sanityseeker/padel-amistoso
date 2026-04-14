@@ -1242,42 +1242,65 @@ tr:hover { background: rgba(59,130,246,0.05); }
 .badge-lobby-closed { background: rgba(239,68,68,0.18); color: #f87171; border: 1px solid rgba(239,68,68,0.35); }
 :root[data-theme="light"] .badge-lobby-closed { background: rgba(220,38,38,0.1); color: #dc2626; border: 1px solid rgba(220,38,38,0.25); }
 
+.finished-tournaments-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.55rem;
+}
+
 .archived-lobbies-toggle-wrap {
-  margin: 0.35rem 0 0.75rem;
+  margin: 0;
   display: flex;
   justify-content: flex-start;
 }
 .archived-lobbies-toggle {
   border: 1px solid var(--border);
-  background: transparent;
+  background: var(--surface);
   color: var(--text-muted);
   border-radius: 999px;
-  padding: 0.2rem 0.55rem;
+  padding: 0.12rem;
   font-size: 0.75rem;
   line-height: 1.2;
   display: inline-flex;
   align-items: center;
-  gap: 0.38rem;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  gap: 0.2rem;
+  transition: border-color 0.15s, background 0.15s;
 }
-.archived-lobbies-toggle:hover {
-  border-color: var(--accent);
+.archived-lobbies-option {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 0.23rem 0.6rem;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.archived-lobbies-option:hover {
   color: var(--text);
 }
-.archived-lobbies-toggle.active {
+.archived-lobbies-option.active {
   background: rgba(59,130,246,0.08);
-  border-color: rgba(59,130,246,0.45);
+  border: 1px solid rgba(59,130,246,0.45);
   color: var(--text);
 }
 .archived-lobbies-count {
   min-width: 1.1rem;
-  padding: 0 0.3rem;
+  padding: 0 0.34rem;
   border-radius: 999px;
-  background: var(--surface);
+  background: transparent;
   border: 1px solid var(--border);
   font-weight: 700;
   text-align: center;
+  color: var(--text-muted);
+}
+.archived-lobbies-helper-text {
+  margin: -0.1rem 0 0.55rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
 }
 

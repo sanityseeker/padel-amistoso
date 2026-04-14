@@ -35,7 +35,7 @@ let _passphraseEmailedMsg = '';
 let _spacePollTimer = null;
 let _spacePollInFlight = false;
 let _passphraseEmailedMsgTimer = null;
-let _pathPanelOpen = _getPathPanelState();
+let _pathPanelOpen = {};
 let _pathCache = {};
 let _pathLoading = {};
 let _pathErrors = {};
@@ -475,8 +475,14 @@ function _buildPathPanel(entry) {
     const partners = Array.isArray(row.partners) ? row.partners.filter(Boolean) : [];
     const opponents = Array.isArray(row.opponents) ? row.opponents.filter(Boolean) : [];
     const playerTeam = [(_profile && _profile.name) ? _profile.name : '', ...partners].filter(Boolean);
-    const playerTeamText = playerTeam.length ? playerTeam.join(', ') : (row.played ? '—' : t('txt_player_path_sit_out'));
-    const opponentText = opponents.length ? opponents.join(', ') : (row.played ? '—' : t('txt_player_path_sit_out'));
+    const playerTeamNames = playerTeam.length ? playerTeam : [row.played ? '—' : t('txt_player_path_sit_out')];
+    const opponentNames = opponents.length ? opponents : [row.played ? '—' : t('txt_player_path_sit_out')];
+    const playerTeamNamesHtml = playerTeamNames
+      .map((name) => `<span class="entry-path-team-name">${esc(name)}</span>`)
+      .join('');
+    const opponentNamesHtml = opponentNames
+      .map((name) => `<span class="entry-path-team-name">${esc(name)}</span>`)
+      .join('');
     const isTennisRow = row.score_mode === 'tennis';
 
     // Rank trend
@@ -538,9 +544,9 @@ function _buildPathPanel(entry) {
     html += `</div>`;
 
     html += `<div class="entry-path-match">`;
-    html += `<div class="entry-path-team entry-path-team--player"><span class="entry-path-team-names">${esc(playerTeamText)}</span></div>`;
+    html += `<div class="entry-path-team entry-path-team--player"><span class="entry-path-team-names">${playerTeamNamesHtml}</span></div>`;
     html += `<div class="entry-path-score-center">${esc(row.score || '—')}</div>`;
-    html += `<div class="entry-path-team entry-path-team--opponents"><span class="entry-path-team-names">${esc(opponentText)}</span></div>`;
+    html += `<div class="entry-path-team entry-path-team--opponents"><span class="entry-path-team-names">${opponentNamesHtml}</span></div>`;
     html += `</div>`;
     html += `</div>`;
   }

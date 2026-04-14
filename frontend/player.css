@@ -382,11 +382,26 @@
 }
 
 .entry-path-team-names {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.02rem;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.entry-path-team-name {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entry-path-team-name + .entry-path-team-name::before {
+  content: ", ";
+  color: var(--text-muted);
 }
 
 .entry-path-team--opponents {
@@ -514,7 +529,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 120px;
-  margin-top: 0.15rem;
+  margin: 0.15rem auto 0;
   opacity: 0.7;
   text-align: center;
   width: 100%;
@@ -917,6 +932,34 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
 }
 
 @media (max-width: 430px) {
+  .entry-path-head-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "round rank"
+      "perf perf";
+    row-gap: 0.22rem;
+    column-gap: 0.3rem;
+    align-items: start;
+  }
+
+  .entry-path-round {
+    grid-area: round;
+  }
+
+  .entry-path-chips--rank {
+    grid-area: rank;
+    justify-content: flex-end;
+  }
+
+  .entry-path-chips--perf {
+    grid-area: perf;
+    justify-content: center;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .entry-path-chips--perf::-webkit-scrollbar { display: none; }
+
   .entry-path-match {
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     gap: 0.28rem;
@@ -933,6 +976,18 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
 
   .entry-path-team {
     font-size: 0.74rem;
+  }
+
+  .entry-path-team-names {
+    flex-direction: column;
+    align-items: inherit;
+    gap: 0.08rem;
+    white-space: normal;
+    overflow: visible;
+  }
+
+  .entry-path-team-name + .entry-path-team-name::before {
+    content: "";
   }
 }
 

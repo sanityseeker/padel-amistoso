@@ -35,6 +35,7 @@ async function loadTournaments() {
     _registrations = nonArchivedRegList;
     const el = document.getElementById('tournament-list');
     const archivedToggleEl = document.getElementById('archived-lobbies-toggle');
+    const archivedHelperEl = document.getElementById('archived-lobbies-helper');
     const finEl = document.getElementById('finished-tournament-list');
     const finCard = document.getElementById('finished-tournaments-card');
     const active = list.filter(tr => tr.phase !== 'finished');
@@ -44,6 +45,7 @@ async function loadTournaments() {
     const activeLobbies = nonArchivedRegList.filter(r => r.open);
     const finishedLobbies = nonArchivedRegList.filter(r => !r.open);
     const archivedLobbiesCount = archivedRegList.length;
+    const showArchivedToggle = isAuthenticated() && archivedLobbiesCount > 0;
     const renderTournamentCard = (tournament) => {
       const canEdit = isAdmin() || getAuthUsername() === tournament.owner || tournament.shared === true;
       const canDelete = isAdmin() || getAuthUsername() === tournament.owner;
@@ -116,10 +118,40 @@ async function loadTournaments() {
         html: `${finishedTournamentsHtml}${finishedLobbiesHtml}${archivedTabHtml}`,
       };
     };
+    const archivedToggle = showArchivedToggle ? `
+      <div class="archived-lobbies-toggle-wrap">
+        <div class="archived-lobbies-toggle" role="group" aria-label="${escAttr(t('txt_reg_show_archived'))}">
+          <button
+            type="button"
+            class="archived-lobbies-option${_showArchivedRegistrations ? ' active' : ''}"
+            onclick="_setShowArchivedRegistrations(true)"
+            aria-pressed="${_showArchivedRegistrations ? 'true' : 'false'}"
+          >
+            ${t('txt_reg_show_archived_toggle')}
+          </button>
+          <button
+            type="button"
+            class="archived-lobbies-option${!_showArchivedRegistrations ? ' active' : ''}"
+            onclick="_setShowArchivedRegistrations(false)"
+            aria-pressed="${!_showArchivedRegistrations ? 'true' : 'false'}"
+          >
+            ${t('txt_reg_hide_archived_toggle')}
+          </button>
+          <span class="archived-lobbies-count">${archivedLobbiesCount}</span>
+        </div>
+      </div>
+    ` : '';
+    if (archivedToggleEl) archivedToggleEl.innerHTML = archivedToggle;
+    if (archivedHelperEl) {
+      archivedHelperEl.innerHTML = showArchivedToggle && !_showArchivedRegistrations
+        ? `<div class="archived-lobbies-helper-text">${archivedLobbiesCount} ${t('txt_reg_show_archived').toLowerCase()} · ${t('txt_reg_show_archived_toggle')}</div>`
+        : '';
+    }
+
     if (!active.length && !activeLobbies.length) {
       el.innerHTML = `<div class="tournaments-empty-state"><div class="tournaments-empty-icon">🏆</div><div class="tournaments-empty-title">${t('txt_txt_no_tournaments_yet')}</div><div class="tournaments-empty-hint">${t('txt_txt_no_tournaments_hint')}</div><button type="button" class="btn btn-primary btn-sm" onclick="setActiveTab('create')">${t('txt_txt_create_first')}</button></div>`;
       const finishedSection = _renderFinishedSection();
-      if (finishedSection.hasContent) {
+      if (finishedSection.hasContent || showArchivedToggle) {
         finCard.style.display = '';
         finEl.innerHTML = finishedSection.html;
       } else {
@@ -127,26 +159,12 @@ async function loadTournaments() {
       }
       return;
     }
-    const archivedToggle = isAuthenticated() && archivedLobbiesCount > 0 ? `
-      <div class="archived-lobbies-toggle-wrap">
-        <button
-          type="button"
-          class="archived-lobbies-toggle${_showArchivedRegistrations ? ' active' : ''}"
-          onclick="_setShowArchivedRegistrations(${_showArchivedRegistrations ? 'false' : 'true'})"
-          aria-pressed="${_showArchivedRegistrations ? 'true' : 'false'}"
-        >
-          <span>${t('txt_reg_show_archived')}</span>
-          <span class="archived-lobbies-count">${archivedLobbiesCount}</span>
-        </button>
-      </div>
-    ` : '';
     // Open lobbies first, then active tournaments
     let html = activeLobbies.map(_renderLobbyCard).join('');
     html += active.map(renderTournamentCard).join('');
     el.innerHTML = html || `<em>${t('txt_txt_no_tournaments_yet')}</em>`;
-    if (archivedToggleEl) archivedToggleEl.innerHTML = archivedToggle;
     const finishedSection = _renderFinishedSection();
-    if (finishedSection.hasContent) {
+    if (finishedSection.hasContent || showArchivedToggle) {
       finCard.style.display = '';
       finEl.innerHTML = finishedSection.html;
     } else {
