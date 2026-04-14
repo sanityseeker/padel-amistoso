@@ -1,3 +1,9 @@
+## v1.7.1 (2026-04-15)
+
+### Fix
+
+- **elo**: allow historical re-calculation
+
 ## v1.7.0 (2026-04-15)
 
 ### Feat
