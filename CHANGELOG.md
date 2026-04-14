@@ -1,3 +1,9 @@
+## v1.6.4 (2026-04-14)
+
+### Fix
+
+- **frontend**: fix player hub history names alignment, fix admin panel
+
 ## v1.6.3 (2026-04-14)
 
 ### Fix
