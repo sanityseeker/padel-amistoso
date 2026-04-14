@@ -1,3 +1,9 @@
+## v1.7.0 (2026-04-15)
+
+### Feat
+
+- **player-hub,-tennis-tournaments**: create live ELO rating system; allow doubles in tennis
+
 ## v1.6.4 (2026-04-14)
 
 ### Fix
