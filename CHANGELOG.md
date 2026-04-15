@@ -1,3 +1,9 @@
+## v1.7.7 (2026-04-15)
+
+### Fix
+
+- **elo**: fix elo history frontend
+
 ## v1.7.6 (2026-04-15)
 
 ### Fix
