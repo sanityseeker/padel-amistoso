@@ -1,3 +1,9 @@
+## v1.7.8 (2026-04-15)
+
+### Fix
+
+- **elo,-mexicano**: fix mexicano team mode; improve player hub elo ui; frontend fixes
+
 ## v1.7.7 (2026-04-15)
 
 ### Fix
