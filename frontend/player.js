@@ -1359,7 +1359,7 @@ function _buildEloHistoryCard() {
   const hasTennis = _eloHistory.some(m => m.sport === 'tennis');
   const activeSport = (hasPadel && hasTennis) ? _eloHistorySport : (hasPadel ? 'padel' : 'tennis');
   if (hasPadel && hasTennis) {
-    html += `<div class="leaderboard-sport-toggle" style="margin:0">`;
+    html += `<div class="leaderboard-sport-toggle" style="margin:0;margin-right:auto">`;
     html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" onclick="event.stopPropagation(); _setEloHistorySport('padel')">Padel</button>`;
     html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" onclick="event.stopPropagation(); _setEloHistorySport('tennis')">Tennis</button>`;
     html += `</div>`;

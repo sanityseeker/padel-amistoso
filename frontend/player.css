@@ -1140,12 +1140,12 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
   }
 
   .player-elo-controls {
-    grid-template-columns: 1fr;
-    justify-content: stretch;
+    flex-wrap: wrap;
   }
 
   .player-elo-control-select {
-    width: 100%;
+    width: auto;
+    min-width: 64px;
   }
 
   .player-participant-sort-label,
