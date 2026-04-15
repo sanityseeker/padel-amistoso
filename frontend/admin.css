@@ -851,8 +851,16 @@ tr:hover { background: rgba(59,130,246,0.05); }
 .muted-note { color: var(--text-muted); font-size: 0.85rem; }
 .muted-note-sm { color: var(--text-muted); font-size: 0.82rem; }
 .muted-tiny { color: var(--text-muted); font-size: 0.72rem; }
+.panel-intro { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.5rem; }
 .sitout-selection-info { margin-bottom: 0.5rem; }
-.mex-next-actions-col { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.decision-actions-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.75rem;
+}
 
 .leaderboard-row-removed { opacity: 0.45; }
 .badge-removed-inline { font-size: 0.7em; vertical-align: middle; }
@@ -2393,6 +2401,10 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   .add-participant-btn { min-height: 44px; font-size: 0.9rem; }
 
   .reg-answers-grid { grid-template-columns: 1fr; }
+
+  /* Decision actions: stack on mobile */
+  .decision-actions-row { flex-direction: column; }
+  .decision-actions-row .btn { width: 100%; }
 }
 
 /* ── Conversion player selection list ── */

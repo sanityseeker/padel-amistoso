@@ -68,8 +68,10 @@ const _createTeamNames = { gp: [], mex: [], po: [] };
 
 function _entryModeIsTeam(mode) { return _entryMode[mode] === 'team'; }
 
-/** Whether team builder should be used (team mode + not converting from registration). */
+/** Whether team builder should be used (team mode + not converting from registration).
+ *  Tennis mexicano always uses individual inputs (never team builder). */
 function _useTeamBuilder(mode) {
+  if (mode === 'mex' && _currentSport === 'tennis') return false;
   return _entryModeIsTeam(mode) && !_convertFromRegistration;
 }
 
@@ -83,7 +85,8 @@ function renderParticipantFields(mode) {
   const countEl = document.getElementById(`${mode}-participant-count`);
   if (!grid) return;
   const entries = _participantEntries[mode];
-  const isTeam = _entryModeIsTeam(mode);
+  // Tennis mexicano always shows individual-style placeholders regardless of toggle
+  const isTeam = _entryModeIsTeam(mode) && !(mode === 'mex' && _currentSport === 'tennis');
   grid.innerHTML = '';
   entries.forEach((val, i) => {
     const row = document.createElement('div');
@@ -343,7 +346,9 @@ function setEntryMode(mode, entryMode) {
   }
   // Reset to empty entries when mode changes — but keep entries during convert mode
   if (prev !== entryMode && !_convertFromRegistration) {
-    _participantEntries[mode] = [..._EMPTY_ENTRIES[entryMode === 'team' ? 'team' : 'individual']];
+    // Tennis mexicano always uses individual-sized entry slots
+    const entryKey = (mode === 'mex' && _currentSport === 'tennis') ? 'individual' : (entryMode === 'team' ? 'team' : 'individual');
+    _participantEntries[mode] = [..._EMPTY_ENTRIES[entryKey]];
     // Also reset team builder state
     _createTeams[mode] = _EMPTY_TEAMS.map(t => [...t]);
     _createTeamNames[mode] = [];
@@ -354,8 +359,11 @@ function setEntryMode(mode, entryMode) {
   }
   renderParticipantFields(mode);
   if (mode === 'mex') {
+    // Partner balance is relevant when backend team_mode=false (2v2 dynamic pairing).
+    // For tennis the mapping is inverted: UI "Team" → backend team_mode=false.
+    const backendTeamMode = _currentSport === 'tennis' ? entryMode !== 'team' : entryMode === 'team';
     const pbwField = document.getElementById('mex-partner-balance-wt-field');
-    if (pbwField) pbwField.style.display = entryMode === 'team' ? 'none' : '';
+    if (pbwField) pbwField.style.display = backendTeamMode ? 'none' : '';
   }
 }
 
@@ -761,7 +769,8 @@ async function createMex() {
   const msg = document.getElementById('mex-msg');
   try {
     const names = getParticipantNames('mex');
-    const isTeam = _currentSport === 'tennis' || _entryModeIsTeam('mex');
+    // For tennis the mapping is inverted: UI "Individual" → backend team_mode=true (1v1)
+    const isTeam = _currentSport === 'tennis' ? !_entryModeIsTeam('mex') : _entryModeIsTeam('mex');
     const useBuilder = _useTeamBuilder('mex');
     if (isTeam && names.length < 2) throw new Error('Need at least 2 teams');
     if (!isTeam && names.length < 4) throw new Error('Need at least 4 players for individual Mexicano');
@@ -774,7 +783,7 @@ async function createMex() {
       court_names: getCourtNames('mex'),
       total_points_per_match: +document.getElementById('mex-pts').value,
       num_rounds: rolling ? 0 : +document.getElementById('mex-rounds').value,
-      team_mode: _currentSport === 'tennis' ? true : _entryModeIsTeam('mex'),
+      team_mode: _currentSport === 'tennis' ? !_entryModeIsTeam('mex') : _entryModeIsTeam('mex'),
       skill_gap: skillGapRaw === '' ? null : +skillGapRaw,
       win_bonus: +document.getElementById('mex-win-bonus').value,
       strength_weight: +document.getElementById('mex-strength-weight').value,

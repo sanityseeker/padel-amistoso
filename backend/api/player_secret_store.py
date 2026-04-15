@@ -103,6 +103,117 @@ def create_secrets_for_tournament(
     return secrets
 
 
+def _fold_playoff_match_stats(
+    stats: dict[str, dict],
+    playoff_matches: list,
+    total: int,
+    *,
+    create_missing: bool = True,
+) -> None:
+    """Fold completed playoff match W/L/D and points into *stats* in-place.
+
+    Args:
+        stats: Mutable per-player stats dict to update.
+        playoff_matches: Scored Match objects from the playoff bracket.
+        total: ``total_players`` value used when creating new stat entries.
+        create_missing: When ``True``, players encountered in *playoff_matches*
+            that are absent from *stats* get a fresh zeroed entry.  Set to
+            ``False`` to silently skip unknown players (used by pure-Playoff
+            where the roster is pre-populated).
+    """
+    for m in playoff_matches:
+        s1, s2 = int(m.score[0]), int(m.score[1])
+        team1_ids = [p.id for p in (m.team1 or [])]
+        team2_ids = [p.id for p in (m.team2 or [])]
+
+        for pid in team1_ids:
+            if pid not in stats:
+                if not create_missing:
+                    continue
+                stats[pid] = {
+                    "rank": None,
+                    "total_players": total,
+                    "wins": 0,
+                    "losses": 0,
+                    "draws": 0,
+                    "points_for": 0,
+                    "points_against": 0,
+                }
+            stats[pid]["points_for"] += s1
+            stats[pid]["points_against"] += s2
+
+        for pid in team2_ids:
+            if pid not in stats:
+                if not create_missing:
+                    continue
+                stats[pid] = {
+                    "rank": None,
+                    "total_players": total,
+                    "wins": 0,
+                    "losses": 0,
+                    "draws": 0,
+                    "points_for": 0,
+                    "points_against": 0,
+                }
+            stats[pid]["points_for"] += s2
+            stats[pid]["points_against"] += s1
+
+        if s1 > s2:
+            for pid in team1_ids:
+                if pid in stats:
+                    stats[pid]["wins"] += 1
+            for pid in team2_ids:
+                if pid in stats:
+                    stats[pid]["losses"] += 1
+        elif s2 > s1:
+            for pid in team2_ids:
+                if pid in stats:
+                    stats[pid]["wins"] += 1
+            for pid in team1_ids:
+                if pid in stats:
+                    stats[pid]["losses"] += 1
+        else:
+            for pid in team1_ids + team2_ids:
+                if pid in stats:
+                    stats[pid]["draws"] += 1
+
+
+def _apply_playoff_stages(
+    stats: dict[str, dict],
+    playoff_matches: list,
+    champion_ids: set[str],
+    total: int,
+    *,
+    create_missing: bool = True,
+) -> None:
+    """Compute and write ``playoff_stage`` / ``playoff_stage_rank`` into *stats*.
+
+    Args:
+        stats: Mutable per-player stats dict to update.
+        playoff_matches: Scored Match objects from the playoff bracket.
+        champion_ids: Set of player IDs that won the tournament.
+        total: ``total_players`` value used when creating new stat entries.
+        create_missing: When ``True``, players from *playoff_matches* that are
+            absent from *stats* get a fresh zeroed entry.
+    """
+    playoff_stage = _compute_playoff_stage_by_player(playoff_matches, champion_ids)
+    for pid, stage_data in playoff_stage.items():
+        if pid not in stats:
+            if not create_missing:
+                continue
+            stats[pid] = {
+                "rank": None,
+                "total_players": total,
+                "wins": 0,
+                "losses": 0,
+                "draws": 0,
+                "points_for": 0,
+                "points_against": 0,
+            }
+        stats[pid]["playoff_stage"] = stage_data["playoff_stage"]
+        stats[pid]["playoff_stage_rank"] = stage_data["playoff_stage_rank"]
+
+
 def extract_history_stats(t_data: dict) -> dict[str, dict]:
     """Build a per-player stats snapshot from a live tournament data dict.
 
@@ -116,7 +227,9 @@ def extract_history_stats(t_data: dict) -> dict[str, dict]:
     Returns:
         Mapping of ``player_id`` → dict with keys
         ``rank``, ``total_players``, ``wins``, ``losses``, ``draws``,
-        ``points_for``, ``points_against``.
+        ``points_for``, ``points_against``, and optionally
+        ``playoff_stage``, ``playoff_stage_rank`` when a playoff bracket
+        is present.
     """
     t = t_data.get("tournament")
     t_type = t_data.get("type", "")
@@ -138,6 +251,15 @@ def extract_history_stats(t_data: dict) -> dict[str, dict]:
                     "points_for": int(entry.get("total_points", 0)),
                     "points_against": 0,
                 }
+
+            # When a Mexicano tournament transitions into a playoff bracket,
+            # fold in playoff W/L/D, points, and stage information.
+            if getattr(t, "playoff_bracket", None) is not None:
+                mex_match_ids = {m.id for m in t.all_matches()}
+                playoff_matches = [m for m in _collect_all_completed_matches(t) if m.id not in mex_match_ids]
+                _fold_playoff_match_stats(stats, playoff_matches, total)
+                champion_ids = {p.id for p in (t.champion() or [])}
+                _apply_playoff_stages(stats, playoff_matches, champion_ids, total)
         elif t_type == TournamentType.GROUP_PLAYOFF:
             all_standings = t.group_standings()
             rows = [row for grp_rows in all_standings.values() for row in grp_rows]
@@ -168,68 +290,9 @@ def extract_history_stats(t_data: dict) -> dict[str, dict]:
                 m.id for grp in (getattr(t, "groups", []) or []) for m in (getattr(grp, "matches", []) or [])
             }
             playoff_matches = [m for m in _collect_all_completed_matches(t) if m.id not in group_match_ids]
-            for m in playoff_matches:
-                s1, s2 = int(m.score[0]), int(m.score[1])
-                team1_ids = [p.id for p in (m.team1 or [])]
-                team2_ids = [p.id for p in (m.team2 or [])]
-
-                for pid in team1_ids:
-                    if pid not in stats:
-                        stats[pid] = {
-                            "rank": None,
-                            "total_players": total,
-                            "wins": 0,
-                            "losses": 0,
-                            "draws": 0,
-                            "points_for": 0,
-                            "points_against": 0,
-                        }
-                    stats[pid]["points_for"] += s1
-                    stats[pid]["points_against"] += s2
-
-                for pid in team2_ids:
-                    if pid not in stats:
-                        stats[pid] = {
-                            "rank": None,
-                            "total_players": total,
-                            "wins": 0,
-                            "losses": 0,
-                            "draws": 0,
-                            "points_for": 0,
-                            "points_against": 0,
-                        }
-                    stats[pid]["points_for"] += s2
-                    stats[pid]["points_against"] += s1
-
-                if s1 > s2:
-                    for pid in team1_ids:
-                        stats[pid]["wins"] += 1
-                    for pid in team2_ids:
-                        stats[pid]["losses"] += 1
-                elif s2 > s1:
-                    for pid in team2_ids:
-                        stats[pid]["wins"] += 1
-                    for pid in team1_ids:
-                        stats[pid]["losses"] += 1
-                else:
-                    for pid in team1_ids + team2_ids:
-                        stats[pid]["draws"] += 1
-
+            _fold_playoff_match_stats(stats, playoff_matches, total)
             champion_ids = {p.id for p in (t.champion() or [])}
-            playoff_stage = _compute_playoff_stage_by_player(playoff_matches, champion_ids)
-            for pid, stage_data in playoff_stage.items():
-                if pid not in stats:
-                    stats[pid] = {
-                        "rank": None,
-                        "total_players": total,
-                        "wins": 0,
-                        "losses": 0,
-                        "draws": 0,
-                        "points_for": 0,
-                        "points_against": 0,
-                    }
-                stats[pid]["playoff_stage"] = stage_data["playoff_stage"]
-                stats[pid]["playoff_stage_rank"] = stage_data["playoff_stage_rank"]
+            _apply_playoff_stages(stats, playoff_matches, champion_ids, total)
         elif t_type == TournamentType.PLAYOFF:
             champion = t.champion()
             champion_ids = {p.id for p in (champion or [])}
@@ -247,38 +310,8 @@ def extract_history_stats(t_data: dict) -> dict[str, dict]:
                 }
 
             matches = _collect_all_completed_matches(t)
-            for m in matches:
-                s1, s2 = m.score
-                team1_ids = [p.id for p in m.team1 if p.id in stats]
-                team2_ids = [p.id for p in m.team2 if p.id in stats]
-
-                for pid in team1_ids:
-                    stats[pid]["points_for"] += s1
-                    stats[pid]["points_against"] += s2
-                for pid in team2_ids:
-                    stats[pid]["points_for"] += s2
-                    stats[pid]["points_against"] += s1
-
-                if s1 > s2:
-                    for pid in team1_ids:
-                        stats[pid]["wins"] += 1
-                    for pid in team2_ids:
-                        stats[pid]["losses"] += 1
-                elif s2 > s1:
-                    for pid in team2_ids:
-                        stats[pid]["wins"] += 1
-                    for pid in team1_ids:
-                        stats[pid]["losses"] += 1
-                else:
-                    for pid in team1_ids + team2_ids:
-                        stats[pid]["draws"] += 1
-
-            playoff_stage = _compute_playoff_stage_by_player(matches, champion_ids)
-            for pid, stage_data in playoff_stage.items():
-                if pid not in stats:
-                    continue
-                stats[pid]["playoff_stage"] = stage_data["playoff_stage"]
-                stats[pid]["playoff_stage_rank"] = stage_data["playoff_stage_rank"]
+            _fold_playoff_match_stats(stats, matches, total, create_missing=False)
+            _apply_playoff_stages(stats, matches, champion_ids, total, create_missing=False)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not extract history stats: %s", exc)
 

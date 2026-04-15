@@ -17,6 +17,10 @@ async function renderMex() {
     _mexTeamMode = status.team_mode || false;
     _mexTeamRoster = status.team_roster || {};
     _mexSport = status.sport || 'padel';
+    // Default playoff toggle to match the tournament's round format:
+    // Tennis Individual (team_mode=true) → toggle off (1-per-slot);
+    // Tennis Team (team_mode=false) → toggle on (2-per-slot).
+    _mexPlayoffTeamToggle = _mexSport === 'tennis' ? !_mexTeamMode : false;
     _mexBreakdowns = matches.breakdowns || {};
     _mexStrengthWeight = status.strength_weight || 0;
     _mexPlayerMap = {};
@@ -175,10 +179,10 @@ async function renderMex() {
 
         html += `<div id="mex-next-section">`;
         html += _renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/mex/courts`);
-        html += `<div class="mex-next-actions-col">`;
-        html += `<button type="button" class="btn btn-success btn-block" onclick="withLoading(this,proposeMexPairings)">⚡ ${t('txt_txt_propose_next_round')}</button>`;
+        html += `<div class="decision-actions-row">`;
+        html += `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,proposeMexPairings)">⚡ ${t('txt_txt_propose_next_round')}</button>`;
         if (status.current_round > 0) {
-          html += `<button type="button" class="btn btn-primary btn-block" onclick="withLoading(this,endMexicano)">🛑 ${t('txt_txt_end_mexicano')}</button>`;
+          html += `<button type="button" class="btn btn-primary btn-lg-action" onclick="withLoading(this,endMexicano)">🛑 ${t('txt_txt_end_mexicano')}</button>`;
         }
         html += `</div>`;
         html += `</div>`;
@@ -195,12 +199,13 @@ async function renderMex() {
 
       if (mexicanoEnded && !isPlayoffs && !isFinished) {
         html += `<div id="mex-playoffs-section" class="card">`;
-        html += `<h3>${t('txt_txt_post_mexicano_decision')}</h3>`;
-        html += `<p class="muted-note">${t('txt_txt_post_mexicano_instructions')}</p>`;
+        html += `<h2>${t('txt_txt_post_mexicano_decision')}</h2>`;
+        html += `<p class="panel-intro">${t('txt_txt_post_mexicano_instructions')}</p>`;
         html += _renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/mex/courts`);
-        html += `<div class="proposal-actions proposal-actions-wide">`;
-        html += `<button type="button" class="btn btn-success btn-xl-action" onclick="withLoading(this,proposeMexPlayoffs)">🏆 ${t('txt_txt_start_optional_playoffs')}</button>`;
-        html += `<button type="button" class="btn btn-muted btn-xl-action" onclick="withLoading(this,finishMexicanoAsIs)">✓ ${t('txt_txt_finish_as_is')}</button>`;
+        html += `<div class="decision-actions-row">`;
+        html += `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,proposeMexPlayoffs)">🏆 ${t('txt_txt_start_optional_playoffs')}</button>`;
+        html += `<button type="button" class="btn btn-muted btn-lg-action" onclick="withLoading(this,finishMexicanoAsIs)">✓ ${t('txt_txt_finish_as_is')}</button>`;
+        html += `<button type="button" class="btn btn-muted btn-lg-action" onclick="withLoading(this,undoEndMexicano)">← ${t('txt_txt_back_to_mexicano')}</button>`;
         html += `</div>`;
         html += `</div>`;
       }
@@ -394,7 +399,7 @@ async function nextMexRound() {
   try {
     await api(`/api/tournaments/${currentTid}/mex/next-round`, { method: 'POST' });
     renderMex();
-  } catch (e) { alert(e.message); }
+  } catch (e) { _showToast(e.message, 'error'); }
 }
 
 // ─── Pairing proposal picker ──────────────────────────────
@@ -524,7 +529,7 @@ async function proposeMexPairings(requestedCount = 3) {
     if (section) {
       section.innerHTML = _renderProposalPicker(proposals);
     }
-  } catch (e) { alert(e.message); }
+  } catch (e) { _showToast(e.message, 'error'); }
 }
 
 async function _loadMoreMexPairings(btn) {
@@ -748,7 +753,7 @@ function _selectProposal(optionId) {
 }
 
 async function _confirmMexRound() {
-  if (!_selectedOptionId) { alert(t('txt_txt_select_a_pairing_option_first')); return; }
+  if (!_selectedOptionId) { _showToast(t('txt_txt_select_a_pairing_option_first'), 'error'); return; }
   try {
     await api(`/api/tournaments/${currentTid}/mex/next-round`, {
       method: 'POST',
@@ -758,7 +763,7 @@ async function _confirmMexRound() {
     _currentPlayerStats = null;
     _partnerBalanceWeightOverride = null;
     renderMex();
-  } catch (e) { alert(e.message); }
+  } catch (e) { _showToast(e.message, 'error'); }
 }
 
 // ─── Mexicano settings editor ─────────────────────────────
@@ -836,7 +841,7 @@ async function _saveMexSettings() {
   try {
     await api(`/api/tournaments/${currentTid}/mex/settings`, { method: 'PATCH', body: JSON.stringify(body) });
     await renderMex();
-  } catch (e) { alert(e.message); }
+  } catch (e) { _showToast(e.message, 'error'); }
 }
 
 // ─── Court editor ─────────────────────────────────────────
@@ -919,7 +924,7 @@ async function _saveCourtEditor(patchUrl) {
     _courtEditorPatchUrl = '';
     if (currentType === 'mexicano') renderMex();
     else if (currentType === 'group_playoff') renderGP();
-  } catch (e) { alert(e.message); }
+  } catch (e) { _showToast(e.message, 'error'); }
 }
 
 function _cancelCourtEditor() {
@@ -1089,13 +1094,13 @@ function _manualLockMatch(idx) {
     return sel ? sel.value : '';
   });
   if (ids.some(id => !id)) {
-    alert(t('txt_txt_match_n_slots_required', { n: idx + 1 }));
+    _showToast(t('txt_txt_match_n_slots_required', { n: idx + 1 }), 'error');
     return;
   }
   // Check no duplicates within this match
   const unique = new Set(ids);
   if (unique.size < 4) {
-    alert(t('txt_txt_a_player_is_assigned_to_multiple_teams_please_fix_duplicates'));
+    _showToast(t('txt_txt_a_player_is_assigned_to_multiple_teams_please_fix_duplicates'), 'error');
     return;
   }
 
@@ -1409,7 +1414,7 @@ async function _commitManualRound() {
   }
 
   if (errors.length > 0) {
-    alert(errors.join('\n'));
+    _showToast(errors.join('; '), 'error');
     return;
   }
 
@@ -1419,7 +1424,7 @@ async function _commitManualRound() {
       body: JSON.stringify({ matches }),
     });
     renderMex();
-  } catch (e) { alert(e.message); }
+  } catch (e) { _showToast(e.message, 'error'); }
 }
 
 function _renderPlayerStats(stats) {
@@ -1491,7 +1496,7 @@ async function proposeMexPlayoffs(teamCount = null) {
     if (section) {
       section.innerHTML = _renderPlayoffEditor();
     }
-  } catch (e) { alert(e.message); }
+  } catch (e) { _showToast(e.message, 'error'); }
 }
 
 function _syncExternalsToPlayoffTeams() {
@@ -1513,7 +1518,15 @@ async function endMexicano() {
   try {
     await api(`/api/tournaments/${currentTid}/mex/end`, { method: 'POST' });
     renderMex();
-  } catch (e) { alert(e.message); }
+  } catch (e) { _showToast(e.message, 'error'); }
+}
+
+async function undoEndMexicano() {
+  if (!confirm(t('txt_txt_confirm_undo_end_mexicano'))) return;
+  try {
+    await api(`/api/tournaments/${currentTid}/mex/undo-end`, { method: 'POST' });
+    renderMex();
+  } catch (e) { _showToast(e.message, 'error'); }
 }
 
 async function finishMexicanoAsIs() {
@@ -1521,18 +1534,19 @@ async function finishMexicanoAsIs() {
   try {
     await api(`/api/tournaments/${currentTid}/mex/finish`, { method: 'POST' });
     renderMex();
-  } catch (e) { alert(e.message); }
+  } catch (e) { _showToast(e.message, 'error'); }
 }
 
 function _mexGetEffectiveTeamMode() {
-  // For tennis individual tournaments, the toggle can switch playoff to team mode.
-  // _mexTeamMode=true means 1-per-slot (individual bracket); toggle flips to 2-per-slot.
-  const isIndividualTennis = _mexSport === 'tennis' && (!_mexTeamRoster || Object.keys(_mexTeamRoster).length === 0);
-  return isIndividualTennis && _mexPlayoffTeamToggle ? false : _mexTeamMode;
+  // For tennis mexicano, the playoff toggle directly controls the bracket slot format.
+  // Toggle off (Individual) → effectiveTeamMode=true (1-per-slot);
+  // Toggle on (Team) → effectiveTeamMode=false (2-per-slot).
+  if (_mexSport === 'tennis') return !_mexPlayoffTeamToggle;
+  return _mexTeamMode;
 }
 
-function _mexIsIndividualTennis() {
-  return _mexSport === 'tennis' && (!_mexTeamRoster || Object.keys(_mexTeamRoster).length === 0);
+function _isTennisMex() {
+  return _mexSport === 'tennis';
 }
 
 function _renderPlayoffEditor() {
@@ -1542,10 +1556,10 @@ function _renderPlayoffEditor() {
   html += `<h2>${t('txt_txt_configure_mexicano_playoffs')}</h2>`;
   const _useEstNote = _playoffTeams.length > 0 && _playoffTeams[0].rankedByAvg;
   const estNote = _useEstNote ? `<span class="playoff-editor-est-note">${t('txt_txt_estimated_points_note')}</span>` : '';
-  html += `<p class="playoff-editor-intro">${effectiveTeamMode ? ts('txt_txt_participant_row_instructions', _currentSport) : ts('txt_txt_team_row_instructions', _currentSport)} ${estNote}</p>`;
+  html += `<p class="panel-intro">${effectiveTeamMode ? ts('txt_txt_participant_row_instructions', _currentSport) : ts('txt_txt_team_row_instructions', _currentSport)} ${estNote}</p>`;
 
-  // Playoff team mode toggle — shown for tennis individual tournaments
-  if (_mexIsIndividualTennis()) {
+  // Playoff team mode toggle — shown for all tennis mexicano tournaments
+  if (_isTennisMex()) {
     html += `<div style="margin-bottom:0.75rem">`;
     html += `<div class="form-group"><label>${t('txt_txt_playoff_mode')}</label>`;
     html += `<div class="score-mode-toggle" id="mex-playoff-team-toggle">`;
@@ -1586,7 +1600,9 @@ function _renderPlayoffEditor() {
     html += `</div>`;
   }
   html += `<div class="playoff-editor-external-add">`;
-  html += `<input type="text" id="mex-external-name" class="playoff-editor-external-name-input" placeholder="${effectiveTeamMode ? t('txt_txt_add_external_team') : t('txt_txt_add_external_player')}" onkeydown="if(event.key==='Enter')_mexAddExternal()">`;
+  // Tennis inverts: effectiveTM=true means 1v1 (player), effectiveTM=false means 2v2 (team).
+  const extIsTeam = _mexSport === 'tennis' ? !effectiveTeamMode : effectiveTeamMode;
+  html += `<input type="text" id="mex-external-name" class="playoff-editor-external-name-input" placeholder="${extIsTeam ? t('txt_txt_add_external_team') : t('txt_txt_add_external_player')}" onkeydown="if(event.key==='Enter')_mexAddExternal()">`;
   html += `<input type="number" id="mex-external-score" class="playoff-editor-score-input" placeholder="${t('txt_txt_score')}" value="0">`;
   html += `<button type="button" class="btn btn-sm btn-primary" onclick="_mexAddExternal()">+</button>`;
   html += `</div>`;
@@ -1678,11 +1694,11 @@ async function _startMexPlayoffs() {
     if (effectiveTeamMode) {
       // Team mode: one participant per playoff slot
       if (!left) {
-        alert(t('txt_txt_team_n_select_both_players', { n: i + 1 }));
+        _showToast(t('txt_txt_team_n_select_both_players', { n: i + 1 }), 'error');
         return;
       }
       if (used.has(left)) {
-        alert(t('txt_txt_a_player_is_assigned_to_multiple_teams_please_fix_duplicates'));
+        _showToast(t('txt_txt_a_player_is_assigned_to_multiple_teams_please_fix_duplicates'), 'error');
         return;
       }
       used.add(left);
@@ -1691,21 +1707,21 @@ async function _startMexPlayoffs() {
       // Regular mode: two players form a team
       const right = document.getElementById(`playoff-team-${i}-b`)?.value || '';
       if (!left || !right) {
-        alert(t('txt_txt_team_n_select_both_players', { n: i + 1 }));
+        _showToast(t('txt_txt_team_n_select_both_players', { n: i + 1 }), 'error');
         return;
       }
       if (left === right) {
-        alert(t('txt_txt_team_n_players_must_be_different', { n: i + 1 }));
+        _showToast(t('txt_txt_team_n_players_must_be_different', { n: i + 1 }), 'error');
         return;
       }
       if (used.has(left) || used.has(right)) {
-        alert(t('txt_txt_a_player_is_assigned_to_multiple_teams_please_fix_duplicates'));
+        _showToast(t('txt_txt_a_player_is_assigned_to_multiple_teams_please_fix_duplicates'), 'error');
         return;
       }
       used.add(left);
       used.add(right);
       allIds.push(left, right);
-      if (_mexPlayoffTeamToggle) composedTeams.push([left, right]);
+      composedTeams.push([left, right]);
     }
   }
   // Separate real player IDs from ext_ placeholder IDs
@@ -1722,6 +1738,16 @@ async function _startMexPlayoffs() {
   }
   const fmt = document.getElementById('playoff-format')?.value || 'single';
   const extra = extParticipants.length > 0 ? extParticipants : null;
+  // Determine playoff_teams to send to backend:
+  // - If 2-per-slot selectors were used (effectiveTM=false), send composed teams.
+  // - If 1-per-slot but backend tournament is team_mode=false (tennis Team 2v2),
+  //   send singleton teams so the backend doesn't auto-pair into 2v2.
+  let playoffTeamsPayload = null;
+  if (composedTeams.length > 0) {
+    playoffTeamsPayload = composedTeams;
+  } else if (effectiveTeamMode && !_mexTeamMode) {
+    playoffTeamsPayload = allIds.map(pid => [pid]);
+  }
   try {
     await api(`/api/tournaments/${currentTid}/mex/start-playoffs`, {
       method: 'POST',
@@ -1729,14 +1755,14 @@ async function _startMexPlayoffs() {
         team_player_ids: teamIds,
         double_elimination: fmt === 'double',
         extra_participants: extra,
-        playoff_teams: _mexPlayoffTeamToggle ? composedTeams : null,
+        playoff_teams: playoffTeamsPayload,
       }),
     });
     _playoffTeams = [];
     _mexExternalParticipants = [];
     _mexExtCounter = 0;
     renderMex();
-  } catch (e) { alert(e.message); }
+  } catch (e) { _showToast(e.message, 'error'); }
 }
 
 function _updateTeamScore(i) {
@@ -1816,13 +1842,13 @@ function _savePlayoffTeam(i) {
   const a = aEl?.value || '';
   const effectiveTeamMode = _mexGetEffectiveTeamMode();
   if (effectiveTeamMode) {
-    if (!a) { alert(t('txt_txt_team_n_select_both_players_before_saving', { n: i + 1 })); return; }
+    if (!a) { _showToast(t('txt_txt_team_n_select_both_players_before_saving', { n: i + 1 }), 'error'); return; }
     _savedPlayoffTeams[i] = { a };
   } else {
     const bEl = document.getElementById(`playoff-team-${i}-b`);
     const b = bEl?.value || '';
-    if (!a || !b) { alert(t('txt_txt_team_n_select_both_players_before_saving', { n: i + 1 })); return; }
-    if (a === b) { alert(t('txt_txt_team_n_players_must_be_different', { n: i + 1 })); return; }
+    if (!a || !b) { _showToast(t('txt_txt_team_n_select_both_players_before_saving', { n: i + 1 }), 'error'); return; }
+    if (a === b) { _showToast(t('txt_txt_team_n_players_must_be_different', { n: i + 1 }), 'error'); return; }
     _savedPlayoffTeams[i] = { a, b };
   }
   _refreshPlayoffOptions();
@@ -1960,7 +1986,7 @@ function _download_text_file(filename, content, mimeType) {
 function _open_printable_pdf(htmlDoc) {
   const w = window.open('', '_blank');
   if (!w) {
-    alert(t('txt_txt_popup_blocked_allow_popups_to_export_pdf'));
+    _showToast(t('txt_txt_popup_blocked_allow_popups_to_export_pdf'), 'error');
     return;
   }
   w.document.open();
@@ -2149,7 +2175,7 @@ async function exportTournamentOutcome(format) {
       _download_text_file(`${slug}-results.html`, htmlDoc, 'text/html;charset=utf-8');
     }
   } catch (e) {
-    alert(t('txt_txt_export_failed_value', { value: e.message }));
+    _showToast(t('txt_txt_export_failed_value', { value: e.message }), 'error');
   }
 }
 

@@ -444,6 +444,20 @@ async def mex_end(tid: str, user=Depends(get_current_user)) -> dict:
     return {"phase": t.phase, "mexicano_ended": t.mexicano_ended}
 
 
+@router.post("/{tid}/mex/undo-end")
+async def mex_undo_end(tid: str, user=Depends(get_current_user)) -> dict:
+    """Revert end-mexicano decision, allowing more rounds."""
+    _require_editor_access(tid, user)
+    async with get_tournament_lock(tid):
+        t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+        try:
+            t.undo_end_mexicano()
+        except RuntimeError as e:
+            raise HTTPException(400, str(e))
+        _save_tournament(tid)
+    return {"phase": t.phase, "mexicano_ended": t.mexicano_ended}
+
+
 @router.post("/{tid}/mex/finish")
 async def mex_finish(tid: str, user=Depends(get_current_user)) -> dict:
     """Finish tournament as-is without play-offs."""

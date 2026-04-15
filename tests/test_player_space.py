@@ -1570,6 +1570,129 @@ class TestHistoryStats:
         finally:
             _tournaments.pop(tid, None)
 
+    def test_dashboard_history_refreshes_stats_with_mexicano_playoff(self, client: TestClient) -> None:
+        """Mexicano → playoff tournaments should produce playoff_stage stats."""
+        from backend.models import Court, Player
+        from backend.tournaments.mexicano import MexicanoTournament
+
+        created = _create_profile(client)
+        token = created["access_token"]
+        profile_id = created["profile"]["id"]
+
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        _insert_tournament(tid, name="Mex Playoff Cup")
+
+        p1 = Player(name="Alice")
+        p2 = Player(name="Bob")
+        p3 = Player(name="Charlie")
+        p4 = Player(name="Dani")
+
+        t = MexicanoTournament(
+            players=[p1, p2, p3, p4],
+            courts=[Court(name="C1")],
+            num_rounds=1,
+        )
+        # Play one mexicano round so we can transition to playoffs.
+        t.generate_next_round()
+        for m in t.current_round_matches():
+            t.record_result(m.id, (20, 12))
+
+        t.end_mexicano()
+        t.start_playoffs(n_teams=4)
+
+        # Record all playoff matches until a champion is decided.
+        safety = 0
+        while t.champion() is None and safety < 20:
+            for pm in t.pending_playoff_matches():
+                t.record_playoff_result(pm.id, (10, 6))
+            safety += 1
+
+        assert t.champion() is not None, "Playoff should have a champion"
+
+        _tournaments[tid] = {
+            "name": "Mex Playoff Cup",
+            "type": "mexicano",
+            "tournament": t,
+            "owner": "admin",
+            "public": True,
+            "sport": "padel",
+            "assign_courts": True,
+        }
+
+        stats = extract_history_stats({"type": "mexicano", "tournament": t})
+
+        # At least the champion and finalist should have playoff_stage set.
+        champion_ids = {p.id for p in t.champion()}
+        has_stage = {pid for pid, s in stats.items() if "playoff_stage" in s}
+        assert champion_ids.issubset(has_stage), "Champion should have playoff_stage"
+        for pid in champion_ids:
+            assert stats[pid]["playoff_stage"] == "Champion"
+            assert stats[pid]["playoff_stage_rank"] == 0
+
+        # Find the tracked player (p1) and verify via API.
+        expected = stats.get(p1.id, {})
+
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_history
+                   (profile_id, entity_type, entity_id, entity_name, player_id, player_name, finished_at,
+                    rank, total_players, wins, losses, draws, points_for, points_against)
+                   VALUES (?, 'tournament', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    profile_id,
+                    tid,
+                    "Mex Playoff Cup",
+                    p1.id,
+                    p1.name,
+                    datetime.now(timezone.utc).isoformat(),
+                    None,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                ),
+            )
+
+        try:
+            res = client.get("/api/player-profile/space", headers=_headers(token))
+            assert res.status_code == 200, res.text
+            entry = next(e for e in res.json()["entries"] if e["entity_id"] == tid)
+            assert entry["playoff_stage"] == expected.get("playoff_stage")
+            assert entry["playoff_stage_rank"] == expected.get("playoff_stage_rank")
+            assert entry["wins"] == expected["wins"]
+            assert entry["losses"] == expected["losses"]
+            assert entry["points_for"] == expected["points_for"]
+            assert entry["points_against"] == expected["points_against"]
+        finally:
+            _tournaments.pop(tid, None)
+
+    def test_extract_history_stats_mexicano_without_playoffs_has_no_stage(self) -> None:
+        """A finished Mexicano without playoffs should NOT have playoff_stage."""
+        from backend.models import Court, Player
+        from backend.tournaments.mexicano import MexicanoTournament
+
+        p1 = Player(name="Alice")
+        p2 = Player(name="Bob")
+        p3 = Player(name="Charlie")
+        p4 = Player(name="Dani")
+
+        t = MexicanoTournament(
+            players=[p1, p2, p3, p4],
+            courts=[Court(name="C1")],
+            num_rounds=1,
+        )
+        t.generate_next_round()
+        for m in t.current_round_matches():
+            t.record_result(m.id, (20, 12))
+
+        t.finish_without_playoffs()
+        stats = extract_history_stats({"type": "mexicano", "tournament": t})
+
+        for pid, s in stats.items():
+            assert "playoff_stage" not in s, f"Player {pid} should not have playoff_stage without playoffs"
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Registration deletion → history snapshot
@@ -2198,6 +2321,85 @@ class TestTournamentPath:
                 assert path_row["cumulative_points"] == points[p1.id]
 
             assert data["rounds"][1]["cumulative_points"] >= data["rounds"][0]["cumulative_points"]
+        finally:
+            _tournaments.pop(tid, None)
+
+    def test_tournament_path_mexicano_includes_playoff_rows_and_elimination(self, client: TestClient) -> None:
+        """Mexicano → playoff should append playoff stage rows to the path."""
+        from backend.models import Court, Player
+        from backend.tournaments.mexicano import MexicanoTournament
+
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        passphrase = f"pp-{uuid.uuid4().hex[:12]}"
+
+        p1 = Player(name="Alice")
+        p2 = Player(name="Bob")
+        p3 = Player(name="Charlie")
+        p4 = Player(name="Dani")
+
+        _insert_tournament(tid, name="Mex Playoff Path Cup")
+        _insert_player_secret(tid, p1.id, p1.name, passphrase, uuid.uuid4().hex)
+        created = _create_profile(client, name=p1.name, participant_passphrase=passphrase)
+        token = created["access_token"]
+
+        t = MexicanoTournament(
+            players=[p1, p2, p3, p4],
+            courts=[Court(name="C1")],
+            num_rounds=1,
+        )
+        t.generate_next_round()
+        for match in t.current_round_matches():
+            t.record_result(match.id, (20, 12))
+
+        t.end_mexicano()
+        t.start_playoffs(n_teams=4)
+
+        # Record all playoff matches until a champion is decided.
+        safety = 0
+        while t.champion() is None and safety < 20:
+            for pm in t.pending_playoff_matches():
+                # Make p1 lose when encountered so we can verify elimination.
+                team1_ids = {pp.id for pp in pm.team1}
+                team2_ids = {pp.id for pp in pm.team2}
+                if p1.id in team1_ids:
+                    t.record_playoff_result(pm.id, (4, 10))
+                elif p1.id in team2_ids:
+                    t.record_playoff_result(pm.id, (10, 4))
+                else:
+                    t.record_playoff_result(pm.id, (10, 6))
+            safety += 1
+
+        _tournaments[tid] = {
+            "name": "Mex Playoff Path Cup",
+            "type": "mexicano",
+            "tournament": t,
+            "owner": "admin",
+            "public": True,
+            "sport": "padel",
+            "assign_courts": True,
+        }
+
+        try:
+            res = client.get(
+                f"/api/player-profile/tournament-path/{tid}/{p1.id}",
+                headers=_headers(token),
+            )
+            assert res.status_code == 200, res.text
+            data = res.json()
+
+            # Should have mexicano round rows AND playoff rows.
+            group_rows = [row for row in data["rounds"] if row.get("stage") == "groups"]
+            playoff_rows = [row for row in data["rounds"] if row.get("stage") == "playoff"]
+            assert group_rows, "Should have at least one mexicano round row"
+            assert playoff_rows, "Should have playoff rows after mexicano rounds"
+
+            # p1 should be eliminated in the playoff.
+            assert any(row.get("score") for row in playoff_rows)
+            assert any(row.get("eliminated") is True for row in playoff_rows)
+
+            # The eliminated row for p1 should show the losing score.
+            eliminated_row = next(row for row in playoff_rows if row.get("eliminated") is True)
+            assert eliminated_row.get("score") == "4-10"
         finally:
             _tournaments.pop(tid, None)
 

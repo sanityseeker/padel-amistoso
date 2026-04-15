@@ -844,6 +844,16 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
             raise RuntimeError("Play-offs already started")
         self._mexicano_ended = True
 
+    def undo_end_mexicano(self) -> None:
+        """Revert the end-mexicano decision, allowing more rounds."""
+        if self._phase == MexPhase.PLAYOFFS:
+            raise RuntimeError("Cannot undo: play-offs already started")
+        if self._phase == MexPhase.FINISHED:
+            raise RuntimeError("Cannot undo: tournament already finished")
+        if not self._mexicano_ended:
+            raise RuntimeError("Mexicano phase has not been ended")
+        self._mexicano_ended = False
+
     def finish_without_playoffs(self) -> None:
         """Finish tournament directly without creating a play-off phase."""
         self.end_mexicano()

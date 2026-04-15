@@ -1668,6 +1668,49 @@ class TestMexicanoEndFlow:
         assert len(champ) == 1
         assert champ[0].id == lb_leader_id
 
+    def test_undo_end_mexicano_allows_new_rounds(self):
+        """Undoing end-mexicano should let the admin generate more rounds."""
+        players = _make_players(8)
+        t = MexicanoTournament(players, _make_courts(2), total_points_per_match=32, num_rounds=0)
+        t.generate_next_round()
+        for m in t.current_round_matches():
+            t.record_result(m.id, (16, 16))
+
+        t.end_mexicano()
+        assert t.mexicano_ended is True
+
+        t.undo_end_mexicano()
+        assert t.mexicano_ended is False
+
+        # Should be able to generate rounds again
+        t.generate_next_round()
+        assert len(t.current_round_matches()) > 0
+
+    def test_undo_end_mexicano_fails_after_playoffs_started(self):
+        """Cannot undo end-mexicano once play-offs have begun."""
+        players = _make_players(8)
+        t = MexicanoTournament(players, _make_courts(2), total_points_per_match=32, num_rounds=0)
+        t.generate_next_round()
+        for m in t.current_round_matches():
+            t.record_result(m.id, (16, 16))
+
+        t.end_mexicano()
+        t.start_playoffs(n_teams=4)
+
+        with pytest.raises(RuntimeError, match="play-offs already started"):
+            t.undo_end_mexicano()
+
+    def test_undo_end_mexicano_fails_when_not_ended(self):
+        """Cannot undo if mexicano was never ended."""
+        players = _make_players(8)
+        t = MexicanoTournament(players, _make_courts(2), total_points_per_match=32, num_rounds=0)
+        t.generate_next_round()
+        for m in t.current_round_matches():
+            t.record_result(m.id, (16, 16))
+
+        with pytest.raises(RuntimeError, match="has not been ended"):
+            t.undo_end_mexicano()
+
     def test_record_playoff_result_stores_tennis_sets(self):
         players = _make_players(8)
         t = MexicanoTournament(players, _make_courts(2), total_points_per_match=32, num_rounds=0)

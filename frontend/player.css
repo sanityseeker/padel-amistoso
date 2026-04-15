@@ -94,10 +94,21 @@
 .profile-bar-name {
   font-weight: 700;
   font-size: 1.15rem;
+  word-break: break-word;
+}
+
+.profile-bar-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-wrap: wrap;
+}
+
+.profile-bar-email {
+  font-size: 0.8rem;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
@@ -557,6 +568,57 @@
   opacity: 0.7;
   text-align: center;
   width: 100%;
+}
+
+/* ELO ratings card */
+.elo-ratings-grid {
+  justify-content: center;
+}
+
+.elo-rating-cell {
+  min-width: 90px;
+  flex: 0 1 140px;
+}
+
+.elo-rating-sport-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  margin-bottom: 0.15rem;
+}
+
+/* ELO history inline (inside card) */
+.elo-history-inline-details {
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.elo-history-inline-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.6rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+  user-select: none;
+  list-style: none;
+}
+
+.elo-history-inline-summary::-webkit-details-marker { display: none; }
+
+.elo-history-inline-details[open] > .elo-history-inline-summary .player-history-chevron {
+  transform: rotate(90deg);
+}
+
+.elo-history-inline-body {
+  padding: 0 0.8rem 0.8rem;
+  border-top: 1px solid var(--border);
 }
 
 .player-participant-explorer {
@@ -1071,6 +1133,10 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
     flex-wrap: wrap;
   }
 
+  .profile-bar-name-row {
+    width: 100%;
+  }
+
   .player-profile-actions {
     width: 100%;
   }
@@ -1193,6 +1259,10 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
   }
 
   .player-history-summary {
+    min-height: 44px;
+  }
+
+  .elo-history-inline-summary {
     min-height: 44px;
   }
 }

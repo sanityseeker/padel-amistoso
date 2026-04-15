@@ -114,7 +114,7 @@ async function renderGP() {
       if (pending.length === 0) {
         html += `<div id="gp-playoffs-section">`;
         html += _renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/gp/courts`);
-        html += `<div class="gp-next-actions-row">`;
+        html += `<div class="decision-actions-row">`;
         if (groups.has_more_rounds) {
           html += `<button type="button" class="btn btn-primary btn-lg-action" onclick="withLoading(this,nextGpGroupRound)">⚡ ${t('txt_txt_generate_next_group_round')}</button>`;
         }
@@ -952,7 +952,7 @@ async function proposeGpPlayoffs() {
 function _renderGpPlayoffEditor() {
   let html = `<div class="card">`;
   html += `<h2>${t('txt_txt_configure_gp_playoffs')}</h2>`;
-  html += `<p class="gp-editor-intro">${t('txt_txt_select_advancing_players')}</p>`;
+  html += `<p class="panel-intro">${t('txt_txt_select_advancing_players')}</p>`;
 
   // Participant checkboxes grouped by group — grid layout
   const byGroup = {};
@@ -1027,7 +1027,7 @@ function _renderGpPlayoffEditor() {
 
   // Courts + action buttons
   html += _renderCourtsSection(_gpCurrentCourts, `/api/tournaments/${currentTid}/gp/courts`);
-  html += `<div class="proposal-actions proposal-actions-top">`;
+  html += `<div class="decision-actions-row">`;
   html += `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,_confirmGpPlayoffs)">✓ ${t('txt_txt_start_playoffs')}</button>`;
   html += `<button type="button" class="btn btn-muted btn-lg-action" onclick="renderGP()">✕ ${t('txt_txt_cancel')}</button>`;
   html += `</div>`;

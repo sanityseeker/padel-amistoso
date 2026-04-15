@@ -53,7 +53,7 @@ router = APIRouter(prefix="/api/player-profile", tags=["player-space"])
 
 _RATE_LIMITER = BoundedRateLimiter(max_attempts=20, window_seconds=60, max_tracked_ips=4096)
 _RECOVER_RATE_LIMITER = BoundedRateLimiter(max_attempts=3, window_seconds=900, max_tracked_ips=4096)
-_PATH_CACHE_SCHEMA_VERSION = 2
+_PATH_CACHE_SCHEMA_VERSION = 3
 _PATH_CACHE_MEM: dict[tuple[str, str, str, int | None, int], TournamentPathResponse] = {}
 
 
@@ -1468,6 +1468,19 @@ def _build_mex_path_rows(tournament: object, player_id: str) -> list[PlayerPathR
                 stage="groups",
             )
         )
+
+    # When a Mexicano tournament transitions into a playoff bracket,
+    # append the playoff rows after the Mexicano rounds.
+    if getattr(tournament, "playoff_bracket", None) is not None:
+        playoff_rows = _build_group_playoff_rows(
+            tournament=tournament,
+            player_id=player_id,
+            name_map=name_map,
+            team_roster=team_roster,
+            canonical_id=canonical_id,
+            start_round_number=len(rows),
+        )
+        rows.extend(playoff_rows)
 
     return rows
 

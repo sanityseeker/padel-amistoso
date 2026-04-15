@@ -95,15 +95,16 @@ function closeFormatInfo() {
   document.getElementById('format-info-dialog').style.display = 'none';
 }
 
-function _showToast(message) {
+function _showToast(message, type) {
   if (!message) return;
+  const isError = type === 'error';
   const toast = document.createElement('div');
   toast.textContent = message;
   toast.style.position = 'fixed';
   toast.style.top = '1rem';
   toast.style.left = '50%';
   toast.style.transform = 'translateX(-50%)';
-  toast.style.background = 'var(--green)';
+  toast.style.background = isError ? 'var(--danger, #d9534f)' : 'var(--green)';
   toast.style.color = '#fff';
   toast.style.padding = '0.7rem 1.2rem';
   toast.style.borderRadius = '8px';
@@ -111,12 +112,15 @@ function _showToast(message) {
   toast.style.fontSize = '0.9rem';
   toast.style.zIndex = '9999';
   toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+  toast.style.maxWidth = '90vw';
+  toast.style.textAlign = 'center';
   document.body.appendChild(toast);
+  const duration = isError ? 3000 : 1800;
   setTimeout(() => {
     toast.style.transition = 'opacity 0.2s ease';
     toast.style.opacity = '0';
     setTimeout(() => toast.remove(), 220);
-  }, 1800);
+  }, duration);
 }
 
 // Backward-compatible alias for any accidental lowercase call sites.
