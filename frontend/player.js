@@ -1351,18 +1351,20 @@ function _buildEloHistoryCard() {
   html += `<summary class="player-history-summary"><span class="player-history-chevron">▶</span><span class="section-heading section-heading-inline">${esc(t('txt_player_elo_history'))}</span></summary>`;
   html += `<div class="player-history-body">`;
 
+  // Controls row: sport toggle (if both) + show-last selector
+  html += `<div class="player-elo-controls">`;
+
   // Sport toggle pills (only when both sports have history)
   const hasPadel = _eloHistory.some(m => m.sport === 'padel');
   const hasTennis = _eloHistory.some(m => m.sport === 'tennis');
   const activeSport = (hasPadel && hasTennis) ? _eloHistorySport : (hasPadel ? 'padel' : 'tennis');
   if (hasPadel && hasTennis) {
-    html += `<div class="leaderboard-sport-toggle">`;
+    html += `<div class="leaderboard-sport-toggle" style="margin:0">`;
     html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" onclick="event.stopPropagation(); _setEloHistorySport('padel')">Padel</button>`;
     html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" onclick="event.stopPropagation(); _setEloHistorySport('tennis')">Tennis</button>`;
     html += `</div>`;
   }
 
-  html += `<div class="player-elo-controls">`;
   html += `<label class="player-elo-control-label">${esc(t('txt_player_elo_show_last'))}</label>`;
   html += `<select class="player-elo-control-select" onchange="_onEloHistoryLimitChange(this)">`;
   html += `<option value="5"${settings.limit === 5 ? ' selected' : ''}>5</option>`;
