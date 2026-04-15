@@ -1,3 +1,9 @@
+## v1.7.6 (2026-04-15)
+
+### Fix
+
+- **elo-history**: improve frontend
+
 ## v1.7.5 (2026-04-15)
 
 ### Fix
