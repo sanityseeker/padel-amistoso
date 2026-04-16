@@ -1,3 +1,9 @@
+## v1.8.0 (2026-04-16)
+
+### Feat
+
+- **emails;-player-hub**: remember language preferences of users to send them emails in english or spanish; improve linking players to player hub, enhance frontend
+
 ## v1.7.10 (2026-04-16)
 
 ### Fix
