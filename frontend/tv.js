@@ -1863,7 +1863,7 @@ function _buildPendingGroupCollapsibles(pendingByGroup, _tl, _hasTbd, _commentHt
     html += `<div class="round-body"><div class="court-board">`;
     for (const key of roundOrder) {
       html += `<div class="court-card">`;
-      if (key) html += `<div class="court-name">${esc(key)}</div>`;
+      if (key) html += `<div class="court-name">${esc(trl(key))}</div>`;
       for (const m of byRound[key]) {
         const tbd = _hasTbd(m);
         html += `<div class="court-match"${tbd ? ' style="opacity:0.5"' : ''}>`;
@@ -1913,7 +1913,7 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
       for (const key of _roundOrder) {
         const hasMyMatch = scoreCtx && _byRound[key].some(bm => !_hasTbd(bm) && _playerIsInMatch(bm));
         html += `<div class="court-card${hasMyMatch ? ' court-card--yours' : ''}">`;
-        if (key) html += `<div class="court-name">${esc(key)}</div>`;
+        if (key) html += `<div class="court-name">${esc(trl(key))}</div>`;
         for (const m of _byRound[key]) {
           const tbd = _hasTbd(m);
           html += `<div class="court-match"${tbd ? ' style="opacity:0.5"' : ''}>`;
@@ -1971,7 +1971,7 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
     html += `</div>`;
     html += `<div class="court-match">`;
     html += `<div class="court-match-info"><div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(t2)}</div>`;
-    if (m.round_label) html += `<div class="court-match-meta">${esc(m.round_label)}</div>`;
+    if (m.round_label) html += `<div class="court-match-meta">${esc(trl(m.round_label))}</div>`;
     html += _commentHtml(m);
     html += `</div>`;
     if (scoreCtx) html += _buildPlayerScoreForm(m, scoreCtx);
@@ -2046,7 +2046,7 @@ function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = t('txt_txt
     const openAttr = ri === 0 ? ' open' : ''; // most recent open by default
 
     html += `<details class="round-block" data-tv-key="${tvKey}-${esc(key)}"${openAttr}>`;
-    html += `<summary class="round-summary">▶ ${esc(key)} — ${rMatches.length} ${rMatches.length > 1 ? t('txt_txt_matches') : t('txt_txt_match')}</summary>`;
+    html += `<summary class="round-summary">▶ ${esc(trl(key))} — ${rMatches.length} ${rMatches.length > 1 ? t('txt_txt_matches') : t('txt_txt_match')}</summary>`;
     html += `<div class="round-body">`;
     for (const m of rMatches) {
       html += _buildHistoryMatch(m, tvSettings, isMex, scoreCtx);

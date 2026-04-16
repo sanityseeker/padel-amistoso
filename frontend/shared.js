@@ -169,6 +169,17 @@ function ts(text, sport, params = {}) {
   return t(text, params);
 }
 
+/**
+ * Translate backend round-label tokens (e.g. "Group A R1") into the
+ * current locale.
+ * @param {string} label
+ * @returns {string}
+ */
+function trl(label) {
+  if (!label) return label;
+  return label.replace(/\bGroup\b/g, t('txt_txt_group_word'));
+}
+
 /** @returns {'en'|'es'} */
 function getAppLanguage() {
   return _currentLang;
