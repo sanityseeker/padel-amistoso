@@ -1345,15 +1345,23 @@ function _buildGlobalStatsCard() {
     html += `</div>`;
   }
 
-  // ── Best results card (single card, sport sections stacked when multi-sport) ──
+  // ── Best results card (only finished tournaments) ──
+  const finishedOnly = withStats.filter(e => e.status === 'finished');
+  const finishedBySport = {};
+  for (const e of finishedOnly) {
+    const sport = e.sport || 'padel';
+    if (!finishedBySport[sport]) finishedBySport[sport] = [];
+    finishedBySport[sport].push(e);
+  }
   if (multisport) {
     let bestHtml = '';
     for (const sport of sports) {
-      const { bestGroupRank, bestGroupRankTournament, bestPlayoffStage, bestPlayoffStageTournament } = _bestAchievements(bySport[sport]);
+      if (!finishedBySport[sport]) continue;
+      const { bestGroupRank, bestGroupRankTournament, bestGroupRankDate, bestPlayoffStage, bestPlayoffStageTournament, bestPlayoffStageDate } = _bestAchievements(finishedBySport[sport]);
       if (!bestGroupRank && !bestPlayoffStage) continue;
       bestHtml += `<div class="global-stats-sport-section" data-sport="${esc(sport)}">`;
       bestHtml += `<div class="global-stats-sport-label">${esc(_sportLabel(sport))}</div>`;
-      bestHtml += _buildBestResultsListHtml(bestGroupRank, bestGroupRankTournament, bestPlayoffStage, bestPlayoffStageTournament);
+      bestHtml += _buildBestResultsListHtml(bestGroupRank, bestGroupRankTournament, bestGroupRankDate, bestPlayoffStage, bestPlayoffStageTournament, bestPlayoffStageDate);
       bestHtml += `</div>`;
     }
     if (bestHtml) {
@@ -1363,7 +1371,7 @@ function _buildGlobalStatsCard() {
       html += `</div>`;
     }
   } else {
-    html += _buildBestResultsCardForEntries(withStats, t('txt_player_career_best_results'));
+    html += _buildBestResultsCardForEntries(finishedOnly, t('txt_player_career_best_results'));
   }
 
   return html;
