@@ -1,3 +1,9 @@
+## v1.8.3 (2026-04-17)
+
+### Fix
+
+- **frontend**: fix translations
+
 ## v1.8.2 (2026-04-17)
 
 ### Fix
