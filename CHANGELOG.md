@@ -1,3 +1,9 @@
+## v1.8.1 (2026-04-16)
+
+### Fix
+
+- **player-hub**: sport selector behavior for elo when there are few matches
+
 ## v1.8.0 (2026-04-16)
 
 ### Feat
