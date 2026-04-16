@@ -1,3 +1,9 @@
+## v1.7.9 (2026-04-16)
+
+### Fix
+
+- **player-hub**: improve frontend formatting
+
 ## v1.7.8 (2026-04-15)
 
 ### Fix
