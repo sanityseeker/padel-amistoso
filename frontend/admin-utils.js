@@ -482,7 +482,7 @@ async function _fetchSchema(prefix, apiUrl, defaultFilename) {
     } else {
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
-      result.innerHTML = `<img src="${blobUrl}" class="bracket-img" alt="Schema" onclick="_openBracketLightbox('${blobUrl}')" title="Click to expand">`;
+      result.innerHTML = `<img src="${blobUrl}" class="bracket-img" alt="${t('txt_txt_schema')}" onclick="_openBracketLightbox('${blobUrl}')" title="${t('txt_txt_click_to_expand')}">`;
     }
   } catch (e) {
     result.innerHTML = '';
@@ -586,7 +586,7 @@ async function generatePoPreviewSchema() {
     const res = await fetch(url);
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Error');
     const blob = await res.blob();
-    resultEl.innerHTML = `<details class="bracket-collapse bracket-collapse-left" open><summary class="bracket-collapse-summary"><span class="bracket-chevron bracket-chevron-anim">&#9654;</span>${t('txt_txt_play_off_bracket')}</summary><img class="bracket-img" src="${URL.createObjectURL(blob)}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand"></details>`;
+    resultEl.innerHTML = `<details class="bracket-collapse bracket-collapse-left" open><summary class="bracket-collapse-summary"><span class="bracket-chevron bracket-chevron-anim">&#9654;</span>${t('txt_txt_play_off_bracket')}</summary><img class="bracket-img" src="${URL.createObjectURL(blob)}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}"></details>`;
   } catch (e) {
     resultEl.innerHTML = '';
     msgEl.textContent = e.message;
@@ -647,8 +647,8 @@ function _langToggle(parentId, playerId, currentLang, context) {
   const esStyle = btnBase + (!isEn ? activeStyle : inactiveStyle) + 'border-radius:0 4px 4px 0;';
   const handler = context === 'reg' ? '_setRegLang' : '_setSecLang';
   return `<span style="display:inline-flex;white-space:nowrap">`
-    + `<span style="${enStyle}" onclick="${handler}('${esc(parentId)}','${esc(playerId)}','en',this.parentElement)" title="English">EN</span>`
-    + `<span style="${esStyle}" onclick="${handler}('${esc(parentId)}','${esc(playerId)}','es',this.parentElement)" title="Español">ES</span>`
+    + `<span style="${enStyle}" onclick="${handler}('${esc(parentId)}','${esc(playerId)}','en',this.parentElement)" title="${t('txt_txt_english')}">EN</span>`
+    + `<span style="${esStyle}" onclick="${handler}('${esc(parentId)}','${esc(playerId)}','es',this.parentElement)" title="${t('txt_txt_spanish')}">ES</span>`
     + `</span>`;
 }
 

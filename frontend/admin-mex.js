@@ -116,7 +116,7 @@ async function renderMex() {
       html += `<button type="button" class="${_gpScoreMode['mex-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','sets')">🎾 ${t('txt_txt_sets')}</button>`;
       html += `</div></div>`;
       html += `<details id="mex-inline-bracket" class="bracket-collapse bracket-inline" open><summary class="bracket-collapse-summary"><span class="bracket-chevron bracket-chevron-anim">▶</span>${t('txt_txt_mexicano_play_offs_bracket')}</summary>`;
-      html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/mex/playoffs-schema?fmt=png&_t=${Date.now()}" alt="${t('txt_txt_mexicano_play_offs_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand" onerror="this.style.display='none'">`;
+      html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/mex/playoffs-schema?fmt=png&_t=${Date.now()}" alt="${t('txt_txt_mexicano_play_offs_bracket')}" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'">`;
       html += `</details>`;
       for (const m of _sortTbdLast(playoffsData.matches)) {
         html += matchRow(m, 'mex-playoff');
@@ -350,7 +350,8 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
       for (const m of _byRound[key]) {
         const tbd = _hasTbd(m);
         const _cmt = m.comment ? `<div class="match-comment-text match-comment-static">💬 ${esc(m.comment)}</div>` : '';
-        html += `<div class="match-card pending-match-card${tbd ? ' match-tbd-disabled' : ''}"><div class="match-teams">${esc(_tl(m.team1))} <span class="vs">vs</span> ${esc(_tl(m.team2))}</div>${_cmt}</div>`;
+        const _jumpAttr = m.id ? ` role="button" tabindex="0" style="cursor:pointer" onclick="_scrollToMatch('${m.id}')" onkeydown="if(event.key==='Enter')_scrollToMatch('${m.id}')"` : '';
+        html += `<div class="match-card pending-match-card${tbd ? ' match-tbd-disabled' : ''}"${_jumpAttr}><div class="match-teams">${esc(_tl(m.team1))} <span class="vs">vs</span> ${esc(_tl(m.team2))}</div>${_cmt}</div>`;
       }
       html += `</div>`;
     }
@@ -362,17 +363,18 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
     return `<div class="card"><h3>${esc(title)}</h3><em>${t('txt_txt_no_pending_assignments')}</em></div>`;
   }
 
-  // For each court, find the match with the lowest slot_number (the current one).
-  const currentByCourt = {};
+  // Group all pending matches by court, sorted by slot_number within each court.
+  const matchesByCourt = {};
   for (const m of matches) {
     if (!m.court) continue;
-    const s = m.slot_number ?? 0;
-    if (!(m.court in currentByCourt) || s < currentByCourt[m.court].slot_number) {
-      currentByCourt[m.court] = m;
-    }
+    if (!matchesByCourt[m.court]) matchesByCourt[m.court] = [];
+    matchesByCourt[m.court].push(m);
+  }
+  for (const arr of Object.values(matchesByCourt)) {
+    arr.sort((a, b) => (a.slot_number ?? 0) - (b.slot_number ?? 0));
   }
 
-  const courtNames = Object.keys(currentByCourt).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const courtNames = Object.keys(matchesByCourt).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   if (courtNames.length === 0) {
     return `<div class="card"><h3>${esc(title)}</h3><em>${t('txt_txt_no_pending_assignments')}</em></div>`;
   }
@@ -381,14 +383,19 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
 
   let html = `<div class="card"><h3>${esc(title)}</h3><div class="court-board">`;
   for (const courtName of courtNames) {
-    const m = currentByCourt[courtName];
-    const t1 = _teamLabel(m.team1);
-    const t2 = _teamLabel(m.team2);
-    const r = m.round_label ? `<span class="court-round">${esc(m.round_label)}</span>` : '';
+    const courtMatches = matchesByCourt[courtName];
     html += `<div class="court-column">`;
     html += `<div class="court-title">${esc(courtName)}</div>`;
-    html += `<div class="court-match-item">${esc(t1)} <span class="muted-text">vs</span> ${esc(t2)}${r}</div>`;
-    if (m.comment) html += `<div class="court-match-item court-match-item-no-top"><span class="match-comment-text match-comment-static">💬 ${esc(m.comment)}</span></div>`;
+    for (let i = 0; i < courtMatches.length; i++) {
+      const m = courtMatches[i];
+      const t1 = _teamLabel(m.team1);
+      const t2 = _teamLabel(m.team2);
+      const r = m.round_label ? `<span class="court-round">${esc(m.round_label)}</span>` : '';
+      const jumpLabel = `${t('txt_txt_go_to_match')}: ${t1} vs ${t2}`;
+      const upcomingCls = i > 0 ? ' court-match-upcoming' : '';
+      html += `<div class="court-match-item${upcomingCls}" role="button" tabindex="0" data-match-id="${m.id}" aria-label="${esc(jumpLabel)}" onclick="_scrollToMatch('${m.id}')" onkeydown="if(event.key==='Enter')_scrollToMatch('${m.id}')">${esc(t1)} <span class="muted-text">vs</span> ${esc(t2)}${r}</div>`;
+      if (m.comment) html += `<div class="court-match-item court-match-item-no-top"><span class="match-comment-text match-comment-static">💬 ${esc(m.comment)}</span></div>`;
+    }
     html += `</div>`;
   }
   html += `</div></div>`;

@@ -26,17 +26,17 @@
 </div>
 <div id="abbrev-popup" role="tooltip"></div>
 
-<div id="bracket-lightbox" role="dialog" aria-modal="true" aria-label="Bracket" onclick="_closeBracketLightbox(event)">
+<div id="bracket-lightbox" role="dialog" aria-modal="true" aria-label="Bracket" data-i18n-aria-label="txt_txt_bracket" onclick="_closeBracketLightbox(event)">
   <div class="bracket-lb-toolbar" onclick="event.stopPropagation()">
-    <button class="bracket-lb-btn" onclick="_bracketLightboxZoomOut()" aria-label="Zoom out" title="Zoom out (−)">−</button>
-    <button class="bracket-lb-btn bracket-lb-zoom-lbl" id="bracket-lb-zoom-level" onclick="_bracketLightboxZoomReset()" aria-label="Reset zoom" title="Reset zoom">100%</button>
-    <button class="bracket-lb-btn" onclick="_bracketLightboxZoomIn()" aria-label="Zoom in" title="Zoom in (+)">+</button>
-    <button class="bracket-lb-btn" onclick="_bracketLightboxOpenFull()" aria-label="Open original image" title="Open original image">↗</button>
-    <button class="bracket-lb-btn" onclick="_bracketLightboxDownload()" aria-label="Download image" title="Download image">⬇</button>
-    <button class="bracket-lb-btn bracket-lb-close-btn" onclick="_closeBracketLightbox()" aria-label="Close" title="Close (Esc)">✕</button>
+    <button class="bracket-lb-btn" onclick="_bracketLightboxZoomOut()" aria-label="Zoom out" data-i18n-aria-label="txt_txt_zoom_out" title="Zoom out" data-i18n-title="txt_txt_zoom_out">−</button>
+    <button class="bracket-lb-btn bracket-lb-zoom-lbl" id="bracket-lb-zoom-level" onclick="_bracketLightboxZoomReset()" aria-label="Reset zoom" data-i18n-aria-label="txt_txt_reset_zoom" title="Reset zoom" data-i18n-title="txt_txt_reset_zoom">100%</button>
+    <button class="bracket-lb-btn" onclick="_bracketLightboxZoomIn()" aria-label="Zoom in" data-i18n-aria-label="txt_txt_zoom_in" title="Zoom in" data-i18n-title="txt_txt_zoom_in">+</button>
+    <button class="bracket-lb-btn" onclick="_bracketLightboxOpenFull()" aria-label="Open original image" data-i18n-aria-label="txt_txt_open_original_image" title="Open original image" data-i18n-title="txt_txt_open_original_image">↗</button>
+    <button class="bracket-lb-btn" onclick="_bracketLightboxDownload()" aria-label="Download image" data-i18n-aria-label="txt_txt_download_image" title="Download image" data-i18n-title="txt_txt_download_image">⬇</button>
+    <button class="bracket-lb-btn bracket-lb-close-btn" onclick="_closeBracketLightbox()" aria-label="Close" data-i18n-aria-label="txt_txt_close" title="Close (Esc)" data-i18n-title="txt_txt_close_esc">✕</button>
   </div>
   <div class="bracket-lightbox-scroll">
-    <img id="bracket-lightbox-img" src="" alt="Bracket">
+    <img id="bracket-lightbox-img" src="" alt="Bracket" data-i18n-alt="txt_txt_bracket">
   </div>
 </div>
 

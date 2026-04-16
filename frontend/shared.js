@@ -220,6 +220,12 @@ function applyI18n(root = document) {
     if (!key) return;
     el.setAttribute('aria-label', t(key));
   });
+
+  root.querySelectorAll('[data-i18n-alt]').forEach((el) => {
+    const key = el.getAttribute('data-i18n-alt');
+    if (!key) return;
+    el.setAttribute('alt', t(key));
+  });
 }
 
 function initLanguage() {

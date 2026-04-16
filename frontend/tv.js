@@ -265,7 +265,7 @@ function _showPlayerLoginModal() {
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   overlay.innerHTML = `
     <div class="player-login-modal">
-      <button class="player-login-modal-close" onclick="document.getElementById('player-login-overlay').remove()" title="Close">✕</button>
+      <button class="player-login-modal-close" onclick="document.getElementById('player-login-overlay').remove()" title="${t('txt_txt_close')}">✕</button>
       <h3>🔑 ${t('txt_txt_player_login')}</h3>
       <div class="login-error" id="player-login-error"></div>
       <input type="text" id="player-passphrase-input" placeholder="${t('txt_txt_enter_passphrase')}" autocomplete="off" spellcheck="false">
@@ -443,7 +443,7 @@ function _copyContact(el) {
   navigator.clipboard.writeText(text).then(() => {
     el.classList.add('player-opponents-contact--copied');
     el.dataset.orig = el.textContent;
-    el.textContent = '✓ Copied';
+    el.textContent = `✓ ${t('txt_txt_copied')}`;
     setTimeout(() => {
       el.textContent = el.dataset.orig;
       el.classList.remove('player-opponents-contact--copied');
@@ -470,7 +470,7 @@ function _buildPlayerOpponentsHtml() {
     if (round) html += `<div class="player-opponents-round">${t('txt_txt_round')} ${esc(round)}</div>`;
     for (const o of list) {
       const contactHtml = o.contact
-        ? `<span class="player-opponents-contact" data-contact="${esc(o.contact)}" onclick="_copyContact(this)" title="Click to copy">${esc(o.contact)}</span>`
+        ? `<span class="player-opponents-contact" data-contact="${esc(o.contact)}" onclick="_copyContact(this)" title="${t('txt_txt_click_to_copy')}">${esc(o.contact)}</span>`
         : '';
       html += `<div class="player-opponents-row"><span class="player-opponents-name">${esc(o.name)}</span>${contactHtml}</div>`;
     }
@@ -488,7 +488,7 @@ function _buildPlayerPanel() {
     ? `<button id="push-toggle-btn" class="push-toggle-btn" onclick="_togglePush()"></button>`
     : '';
   panel.innerHTML = `
-    <button class="player-expand-close" onclick="_closePlayerPanel()" title="Close">✕</button>
+    <button class="player-expand-close" onclick="_closePlayerPanel()" title="${t('txt_txt_close')}">✕</button>
     <div class="player-expand-inner">
       <span class="player-expand-title">${t('txt_txt_upcoming_opponents')}</span>
       ${_buildPlayerOpponentsHtml()}
@@ -1830,7 +1830,7 @@ function _buildBracketSection(imgUrl) {
   html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2></summary>`;
   html += `<div class="tv-section bracket-section">`;
   html += `<div class="bracket-scroll-wrapper">`;
-  html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand" onerror="this.style.display='none'">`;
+  html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'">`;
   html += `</div>`;
   html += `<p class="bracket-tap-hint">${t('txt_txt_tap_to_expand_bracket')}</p>`;
   html += `</div></details>`;

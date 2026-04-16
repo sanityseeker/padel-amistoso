@@ -76,6 +76,22 @@ async function renderGP() {
       html += `<details id="gp-group-stage-details" class="card"><summary>${t('txt_txt_group_stage_results_format_value', { value: groupFormatLabel })}</summary>`;
     }
 
+    // Group quick-nav bar + match filter (only during active group phase)
+    if (status.phase === 'groups' && _gpGroupNames.length > 1) {
+      html += `<div class="group-nav-bar" id="gp-group-nav">`;
+      for (const gName of _gpGroupNames) {
+        const gPending = (groups.matches[gName] || []).filter(m => m.status !== 'completed').length;
+        const cls = gPending > 0 ? 'group-nav-btn has-pending' : 'group-nav-btn all-done';
+        html += `<button type="button" class="${cls}" onclick="_scrollToGroup('${escAttr(gName)}')">${t('txt_txt_group_name_value', { value: esc(gName) })}</button>`;
+      }
+      html += `<div class="match-filter-toggle" id="gp-match-filter">`;
+      html += `<button type="button" class="active" onclick="_applyMatchFilter('all')">${t('txt_txt_filter_all')}</button>`;
+      html += `<button type="button" onclick="_applyMatchFilter('pending')">${t('txt_txt_filter_pending')}</button>`;
+      html += `<button type="button" onclick="_applyMatchFilter('completed')">${t('txt_txt_filter_completed')}</button>`;
+      html += `</div>`;
+      html += `</div>`;
+    }
+
     // Group standings
     for (const [gName, rows] of Object.entries(groups.standings)) {
       html += `<div class="card" id="gp-group-card-${escAttr(gName)}"><h3 class="card-heading-row">${t('txt_txt_group_name_value', { value: esc(gName) })} <button class="format-info-btn" onclick="showAbbrevPopup(event,'standings')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h3>`;
@@ -94,10 +110,17 @@ async function renderGP() {
       // Group matches
       const gMatches = _sortTbdLast(groups.matches[gName] || []);
       if (gMatches.length > 0) {
-        html += `<h4 class="group-matches-heading">${t('txt_txt_matches')}</h4>`;
+        const gPending = gMatches.filter(m => m.status !== 'completed').length;
+        const gTotal = gMatches.length;
+        const summaryText = t('txt_txt_matches_summary', { pending: gPending, total: gTotal });
+        html += `<details class="group-matches-details" id="gp-matches-${escAttr(gName)}" open>`;
+        html += `<summary>${t('txt_txt_matches')} <span class="matches-summary-count">(${gPending} / ${gTotal})</span></summary>`;
       }
       for (const m of gMatches) {
         html += matchRow(m, 'gp-group');
+      }
+      if (gMatches.length > 0) {
+        html += `</details>`;
       }
 
       html += `</div>`;
@@ -229,7 +252,7 @@ async function renderPO() {
     html += `</div></div>`;
 
     html += `<details id="po-inline-bracket" class="bracket-collapse bracket-inline" open><summary class="bracket-collapse-summary"><span class="bracket-chevron bracket-chevron-anim">▶</span>${t('txt_txt_play_off_bracket')}</summary>`;
-    html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/po/playoffs-schema?fmt=png&_t=${Date.now()}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="Click to expand" onerror="this.style.display='none'">`;
+    html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/po/playoffs-schema?fmt=png&_t=${Date.now()}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'">`;
     html += `</details>`;
     if (playoffs.matches) {
       for (const m of _sortTbdLast(playoffs.matches)) {
@@ -271,7 +294,7 @@ function matchRow(m, ctx) {
     const w2 = sc[1] > sc[0];
     const t1Class = w1 ? ' team-winner' : (w2 ? ' team-loser' : '');
     const t2Class = w2 ? ' team-winner' : (w1 ? ' team-loser' : '');
-    let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap">`;
+    let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap" data-status="completed">`;
     html += `${roundLabel} <div class="match-teams"><span class="${t1Class}">${esc(t1)}</span> <span class="vs">vs</span> <span class="${t2Class}">${esc(t2)}</span></div> ${court}`;
     html += ` <span class="${scoreClass}" id="mscore-${m.id}">${scoreDisplay}</span>`;
     html += ` <span class="badge badge-completed">✓</span>`;
@@ -282,7 +305,7 @@ function matchRow(m, ctx) {
         html += ` <span class="badge badge-dispute badge-dispute-pending" title="${t('txt_txt_dispute_pending_tip')}">🔄 ${t('txt_txt_dispute_review_label')}</span>`;
       }
     } else if (m.scored_by && !m.score_confirmed && _scoreConfirmationMode !== 'immediate') {
-      html += ` <span class="badge badge-pending-score" title="Player-submitted, not yet confirmed">⏳</span>`;
+      html += ` <span class="badge badge-pending-score" title="${t('txt_txt_player_submitted_not_confirmed')}">⏳</span>`;
     }
     const _editSetsJson = JSON.stringify(m.sets || []);
     html += `<button type="button" class="match-edit-btn" id="medit-btn-${m.id}" data-sets='${_editSetsJson}' onclick="_toggleEditMatch('${m.id}','${ctx}',${sc[0]},${sc[1]})">${t('txt_txt_edit')}</button>`;
@@ -410,7 +433,7 @@ function matchRow(m, ctx) {
       scoreDisplay = `${sc[0]} – ${sc[1]}`;
     }
 
-    let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap">`;
+    let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap" data-status="pending">`;
     html += `${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
     html += ` <span class="${scoreClass}" id="mscore-${m.id}">${scoreDisplay}</span>`;
     if (m.disputed) {
@@ -420,7 +443,7 @@ function matchRow(m, ctx) {
         html += ` <span class="badge badge-dispute badge-dispute-pending" title="${t('txt_txt_dispute_pending_tip')}">🔄 ${t('txt_txt_dispute_review_label')}</span>`;
       }
     } else if (_scoreConfirmationMode !== 'immediate') {
-      html += ` <span class="badge badge-pending-score" title="Player-submitted, awaiting confirmation">⏳</span>`;
+      html += ` <span class="badge badge-pending-score" title="${t('txt_txt_player_submitted_awaiting_confirmation')}">⏳</span>`;
     }
     const _editSetsJson = JSON.stringify(m.sets || []);
     html += `<button type="button" class="match-edit-btn" id="medit-btn-${m.id}" data-sets='${_editSetsJson}' onclick="_toggleEditMatch('${m.id}','${ctx}',${sc[0]},${sc[1]})">${t('txt_txt_edit')}</button>`;
@@ -529,7 +552,7 @@ function matchRow(m, ctx) {
   const tbdClass = hasTbd ? ' match-tbd-disabled' : '';
   const saveBtnClass = `btn btn-success btn-sm${hasTbd ? ' btn-disabled-ish' : ''}`;
 
-  let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap${tbdClass}">${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
+  let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap${tbdClass}" data-status="pending">${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
 
   // Points / tennis-set scoring toggle for playoff/group contexts
   if (isSetScoringCtx) {
@@ -645,6 +668,8 @@ async function _rerenderCurrentViewPreserveDrafts() {
     await renderMex();
   }
   _restoreViewDrafts(drafts);
+  // Re-apply match filter if active
+  if (_gpMatchFilterState !== 'all') _applyMatchFilter(_gpMatchFilterState);
   window.scrollTo({ top: scrollY, behavior: 'instant' });
   // Reseed the version so the poll doesn't trigger a redundant re-render
   // right after an admin-initiated mutation or an already-handled poll update.
@@ -690,12 +715,30 @@ async function _surgicalScoreUpdate(matchId, ctx) {
               needsFullRender = true;
             } else {
               card.outerHTML = matchRow(updatedMatch, 'gp-group');
+              // Re-apply filter if active
+              if (_gpMatchFilterState !== 'all') _applyMatchFilter(_gpMatchFilterState);
               const total = allGroupMatches.length;
               const done = total - totalPending;
               const pct = Math.round((done / total) * 100);
               const progressEl = document.getElementById('gp-group-progress-section');
               if (progressEl) {
                 progressEl.innerHTML = `${t('txt_txt_n_match_remaining', { n: totalPending })} (${done}/${total})<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div>`;
+              }
+              // Update per-group match summary counts and nav-bar indicators
+              for (const [gn, gm] of Object.entries(groups.matches)) {
+                const gPending = gm.filter(mm => mm.status !== 'completed').length;
+                const gTotal = gm.length;
+                const detailsEl = document.getElementById('gp-matches-' + gn);
+                if (detailsEl) {
+                  const countEl = detailsEl.querySelector('.matches-summary-count');
+                  if (countEl) countEl.textContent = `(${gPending} / ${gTotal})`;
+                }
+                // Update nav button indicator
+                const navBtn = document.querySelector(`.group-nav-btn[onclick*="'${gn}'"]`);
+                if (navBtn) {
+                  navBtn.classList.toggle('has-pending', gPending > 0);
+                  navBtn.classList.toggle('all-done', gPending === 0);
+                }
               }
             }
           }
@@ -1180,6 +1223,71 @@ async function _confirmGpPlayoffs() {
 async function startPlayoffs() {
   // Direct start (backwards compat) — delegates to confirm flow
   await _confirmGpPlayoffs();
+}
+
+// ─── Group nav, match filter & court-board jump ───────────
+
+/** Module-level match filter state so it can be preserved across re-renders. */
+let _gpMatchFilterState = 'all';
+
+/** Smooth-scroll to a group card and briefly highlight it. */
+function _scrollToGroup(gName) {
+  const card = document.getElementById('gp-group-card-' + gName);
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** Apply match filter: 'all' | 'pending' | 'completed'. Toggles display on .match-card-wrap elements. */
+function _applyMatchFilter(filter) {
+  _gpMatchFilterState = filter;
+  const root = document.getElementById('view-content');
+  if (!root) return;
+
+  // Update toggle button styling
+  const toggle = document.getElementById('gp-match-filter');
+  if (toggle) {
+    for (const btn of toggle.querySelectorAll('button')) {
+      btn.classList.toggle('active', btn.textContent.trim() === _filterLabel(filter));
+    }
+  }
+
+  // Show/hide match cards based on data-status
+  for (const card of root.querySelectorAll('.match-card-wrap[data-status]')) {
+    if (filter === 'all') {
+      card.style.display = '';
+    } else {
+      card.style.display = card.dataset.status === filter ? '' : 'none';
+    }
+  }
+}
+
+/** Map filter value to the translated label for button matching. */
+function _filterLabel(filter) {
+  if (filter === 'pending') return t('txt_txt_filter_pending');
+  if (filter === 'completed') return t('txt_txt_filter_completed');
+  return t('txt_txt_filter_all');
+}
+
+/** Scroll to a match card by ID, opening its parent <details> if collapsed, and flash-highlight it. */
+function _scrollToMatch(matchId) {
+  const card = document.getElementById('mcard-' + matchId);
+  if (!card) return;
+
+  // Ensure any parent <details> is open
+  const details = card.closest('details:not([open])');
+  if (details) details.setAttribute('open', '');
+
+  // Ensure the card is visible (undo any filter hiding)
+  if (card.style.display === 'none') card.style.display = '';
+
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  // Flash highlight
+  card.classList.remove('match-highlight');
+  // Force reflow so re-adding the class restarts the animation
+  void card.offsetWidth;
+  card.classList.add('match-highlight');
+  card.addEventListener('animationend', () => card.classList.remove('match-highlight'), { once: true });
 }
 
 // ─── Render Mexicano ──────────────────────────────────────

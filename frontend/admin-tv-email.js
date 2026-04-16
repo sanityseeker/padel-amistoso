@@ -45,7 +45,7 @@ function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
   html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">🔗 ${t('txt_txt_tournament_alias')}</label>`;
   html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_tv_alias_help')}</p>`;
   html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
-  html += `<input type="text" id="tournament-alias-input" placeholder="my-tournament" value="${escAttr(currentAlias)}" 
+  html += `<input type="text" id="tournament-alias-input" placeholder="${t('txt_tv_alias_placeholder')}" value="${escAttr(currentAlias)}" 
     pattern="[a-zA-Z0-9_-]+" maxlength="64" 
     style="flex:1;min-width:200px;font-family:monospace;font-size:0.85rem">`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setTournamentAlias()" style="white-space:nowrap">${t('txt_txt_set_alias')}</button>`;
@@ -201,7 +201,7 @@ function _renderEmailControls(emailSettings) {
   html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;display:block">${t('txt_email_sender_name')}</label>`;
   html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_email_sender_name_help')}</p>`;
   html += `<input type="text" id="email-settings-sender-name" value="${escAttr(senderName)}" maxlength="100"
-    placeholder="Summer Cup" style="width:100%;font-size:0.85rem">`;
+    placeholder="${t('txt_email_sender_placeholder')}" style="width:100%;font-size:0.85rem">`;
   html += `</div>`;
 
   // Reply-To Address
@@ -209,7 +209,7 @@ function _renderEmailControls(emailSettings) {
   html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;display:block">${t('txt_email_reply_to')}</label>`;
   html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_email_reply_to_help')}</p>`;
   html += `<input type="email" id="email-settings-reply-to" value="${escAttr(replyTo)}"
-    placeholder="organizer@example.com" style="width:100%;font-size:0.85rem">`;
+    placeholder="${t('txt_email_reply_to_placeholder')}" style="width:100%;font-size:0.85rem">`;
   html += `</div>`;
 
   html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
@@ -253,7 +253,7 @@ async function _sendNextRoundEmails() {
     const data = await api(`/api/tournaments/${currentTid}/send-next-round-emails`, { method: 'POST' });
     alert(t('txt_email_notify_round_sent', { sent: data.sent, skipped: data.skipped }));
   } catch (e) {
-    alert(e.message || 'Failed to send round notifications');
+    alert(e.message || t('txt_email_round_notify_failed'));
   }
 }
 
@@ -324,7 +324,7 @@ async function _adminResolveDispute(matchId, ctx) {
     });
     await _rerenderCurrentViewPreserveDrafts();
   } catch (e) {
-    _showToast('Resolve dispute failed: ' + e.message);
+    _showToast(t('txt_txt_resolve_dispute_failed_value', { value: e.message }));
   }
 }
 

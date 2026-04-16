@@ -838,6 +838,135 @@ tr:hover { background: rgba(59,130,246,0.05); }
 }
 .notify-round-wrap { margin-top: 0.4rem; }
 
+/* ── Group quick-nav bar ── */
+.group-nav-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.6rem;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  flex-wrap: nowrap;
+}
+.group-nav-btn {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  position: relative;
+}
+.group-nav-btn:hover { background: var(--surface2); color: var(--text); }
+.group-nav-btn.has-pending::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.group-nav-btn.all-done { opacity: 0.55; }
+
+/* ── Match filter toggle ── */
+.match-filter-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 0.78rem;
+  margin-left: auto;
+}
+.match-filter-toggle button {
+  padding: 0.3rem 0.6rem;
+  border: none;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.match-filter-toggle button.active { background: var(--accent); color: #fff; }
+
+/* ── Collapsible group matches ── */
+.group-matches-details summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 1rem 0 0.4rem;
+  user-select: none;
+}
+.group-matches-details summary::-webkit-details-marker { display: none; }
+.group-matches-details summary::before {
+  content: '▶';
+  display: inline-block;
+  font-size: 0.6rem;
+  transition: transform 0.2s;
+}
+.group-matches-details[open] summary::before { transform: rotate(90deg); }
+.group-matches-details .matches-summary-count {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: 0.3rem;
+}
+
+/* ── Match highlight flash ── */
+@keyframes match-highlight-pulse {
+  0%   { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 60%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.match-highlight {
+  animation: match-highlight-pulse 0.8s ease-out;
+  border-radius: 6px;
+}
+
+/* ── Clickable court match items ── */
+.court-match-item[role="button"] {
+  cursor: pointer;
+  transition: background 0.12s;
+  border-radius: 4px;
+  padding: 0.25rem 0.35rem;
+}
+.court-match-item[role="button"]:hover {
+  background: var(--surface2);
+}
+.court-match-upcoming {
+  opacity: 0.55;
+  font-size: 0.75rem;
+  border-top: 1px dashed var(--border);
+}
+.court-match-upcoming:hover { opacity: 0.85; }
+
+/* ── Clickable pending match cards (no-courts mode) ── */
+.pending-match-card[role="button"] {
+  cursor: pointer;
+  transition: background 0.12s, box-shadow 0.12s;
+}
+.pending-match-card[role="button"]:hover {
+  background: var(--surface2);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
 .gp-external-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; }
 .gp-external-name { min-width: 140px; }
 .gp-external-add-row { display: flex; align-items: center; gap: 0.5rem; }
@@ -2361,6 +2490,9 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   .admin-dispute-custom input[type="number"] { width: 60px; min-height: 44px; font-size: 1rem; }
   .admin-dispute-resolve { width: 100%; text-align: center; }
   .score-mode-toggle button { min-height: 40px; padding: 0.4rem 0.75rem; font-size: 0.85rem; }
+  .group-nav-bar { padding: 0.35rem 0.4rem; gap: 0.25rem; }
+  .group-nav-btn { min-height: 38px; padding: 0.35rem 0.6rem; font-size: 0.82rem; }
+  .match-filter-toggle button { min-height: 38px; padding: 0.35rem 0.55rem; font-size: 0.82rem; }
   .sitout-item { padding: 0.5rem 0.6rem; font-size: 0.9rem; min-height: 44px; }
   .tab-btn { min-height: 44px; font-size: 0.9rem; padding: 0.5rem 0.75rem; }
   .proposal-card { min-width: 100%; max-width: 100%; }

@@ -11,28 +11,30 @@ async function phSearch() {
   const q = (input?.value || '').trim();
   const container = document.getElementById('ph-results');
   if (!container) return;
-  container.innerHTML = '<em>Searching…</em>';
+  container.innerHTML = `<em>${t('txt_ph_searching')}</em>`;
   try {
     const profiles = await api(`/api/admin/player-profiles?q=${encodeURIComponent(q)}`);
     _phProfiles = profiles;
     if (profiles.length === 0) {
-      container.innerHTML = `<p style="color:var(--text-muted)">No profiles found${q ? ' matching "' + esc(q) + '"' : ''}.</p>`;
+      container.innerHTML = q
+        ? `<p style="color:var(--text-muted)">${t('txt_ph_no_profiles_matching_q', { q: esc(q) })}</p>`
+        : `<p style="color:var(--text-muted)">${t('txt_hub_no_results')}.</p>`;
       return;
     }
     const _phOpen = localStorage.getItem('ph-profiles-open') === '1';
     let html = `<details class="ph-profiles-collapse" id="ph-profiles-details" style="margin-top:0.25rem"${_phOpen ? ' open' : ''}>`;
     html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:0.4rem;list-style:none;font-size:0.95rem;font-weight:700;padding:0.3rem 0">`;
     html += `<span class="tv-chevron" style="font-size:0.65em;color:var(--text-muted)">&#9658;</span>`;
-    html += `All Profiles (${profiles.length})`;
+    html += `${t('txt_ph_all_profiles_n', { n: profiles.length })}`;
     html += `</summary>`;
     html += '<div class="player-codes-table-wrap" style="margin-top:0.5rem"><table class="player-codes-table">';
     html += '<thead><tr class="player-codes-head-row">';
-    html += '<th class="player-codes-th">Name</th>';
-    html += '<th class="player-codes-th">Email</th>';
-    html += '<th class="player-codes-th-center">Padel ELO</th>';
-    html += '<th class="player-codes-th-center">Tennis ELO</th>';
-    html += '<th class="player-codes-th">Passphrase</th>';
-    html += '<th class="player-codes-th">Created</th>';
+    html += `<th class="player-codes-th">${t('txt_ph_name')}</th>`;
+    html += `<th class="player-codes-th">${t('txt_txt_email')}</th>`;
+    html += `<th class="player-codes-th-center">${t('txt_ph_padel_elo')}</th>`;
+    html += `<th class="player-codes-th-center">${t('txt_ph_tennis_elo')}</th>`;
+    html += `<th class="player-codes-th">${t('txt_txt_passphrase')}</th>`;
+    html += `<th class="player-codes-th">${t('txt_ph_created')}</th>`;
     html += '<th class="player-codes-th-center"></th>';
     html += '</tr></thead><tbody>';
     for (const p of profiles) {
@@ -43,9 +45,9 @@ async function phSearch() {
       html += `<td class="player-codes-cell">${esc(p.email || '—')}</td>`;
       html += `<td class="player-codes-cell-center">${padelElo}</td>`;
       html += `<td class="player-codes-cell-center">${tennisElo}</td>`;
-      html += `<td class="player-codes-cell"><code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(p.passphrase)}</code></td>`;
+      html += `<td class="player-codes-cell"><code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(p.passphrase)}</code></td>`;
       html += `<td class="player-codes-cell" style="font-size:0.8rem;color:var(--text-muted)">${_phFormatDate(p.created_at)}</td>`;
-      html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-primary btn-sm" onclick="phLoadProfile('${escAttr(p.id)}')">Manage</button></td>`;
+      html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-primary btn-sm" onclick="phLoadProfile('${escAttr(p.id)}')">${t('txt_ph_manage')}</button></td>`;
       html += `</tr>`;
     }
     html += '</tbody></table></div></details>';
@@ -63,7 +65,7 @@ async function phLoadProfile(profileId) {
   if (!detail) return;
   _phCurrentProfileId = profileId;
   detail.style.display = '';
-  detail.innerHTML = '<div class="card"><em>Loading profile…</em></div>';
+  detail.innerHTML = `<div class="card"><em>${t('txt_ph_loading_profile')}</em></div>`;
   try {
     const data = await api(`/api/admin/player-profiles/${profileId}`);
     _phRenderDetail(data);
@@ -81,64 +83,64 @@ function _phRenderDetail(data) {
 
   let html = '<div class="card">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem">';
-  html += `<h2 style="margin:0">🎾 ${esc(data.name || 'Unnamed Profile')}</h2>`;
-  html += `<button type="button" class="btn btn-sm" onclick="phCloseDetail()">✕ Close</button>`;
+  html += `<h2 style="margin:0">🎾 ${esc(data.name || t('txt_ph_unnamed_profile'))}</h2>`;
+  html += `<button type="button" class="btn btn-sm" onclick="phCloseDetail()">✕ ${t('txt_txt_close')}</button>`;
   html += '</div>';
 
   // Profile info
   html += '<div style="display:grid;grid-template-columns:auto 1fr;gap:0.3rem 1rem;font-size:0.88rem;margin-bottom:1rem">';
-  html += `<strong>Passphrase:</strong><span><code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(data.passphrase)}</code> <button type="button" class="btn btn-sm btn-muted" onclick="phResetPassphrase('${escAttr(data.id)}')" style="font-size:0.76rem;padding:0.15rem 0.4rem">🔄 Reset</button></span>`;
-  html += `<strong>Email:</strong><span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap"><input type="email" id="ph-email-input" value="${escAttr(data.email || '')}" style="flex:1;min-width:180px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" onclick="phUpdateEmail('${escAttr(data.id)}')" id="ph-email-save-btn">Save</button></span>`;
-  html += `<strong>Contact:</strong><span>${esc(data.contact || '—')}</span>`;
-  html += `<strong>Created:</strong><span>${_phFormatDate(data.created_at)}</span>`;
+  html += `<strong>${t('txt_txt_passphrase')}:</strong><span><code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(data.passphrase)}</code> <button type="button" class="btn btn-sm btn-muted" onclick="phResetPassphrase('${escAttr(data.id)}')" style="font-size:0.76rem;padding:0.15rem 0.4rem">🔄 ${t('txt_ph_reset')}</button></span>`;
+  html += `<strong>${t('txt_txt_email')}:</strong><span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap"><input type="email" id="ph-email-input" value="${escAttr(data.email || '')}" style="flex:1;min-width:180px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" onclick="phUpdateEmail('${escAttr(data.id)}')" id="ph-email-save-btn">${t('txt_txt_save')}</button></span>`;
+  html += `<strong>${t('txt_txt_contact')}:</strong><span>${esc(data.contact || t('txt_txt_contact_not_set'))}</span>`;
+  html += `<strong>${t('txt_ph_created')}:</strong><span>${_phFormatDate(data.created_at)}</span>`;
   html += '</div>';
 
   // ELO ratings
   html += '<div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1rem">';
   if (data.elo_padel_matches > 0) {
     html += `<div style="padding:0.5rem 0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:0.88rem">`;
-    html += `<strong>Padel ELO:</strong> ${Math.round(data.elo_padel)} <span style="color:var(--text-muted)">(${data.elo_padel_matches} matches)</span></div>`;
+    html += `<strong>${t('txt_ph_padel_elo')}:</strong> ${Math.round(data.elo_padel)} <span style="color:var(--text-muted)">(${data.elo_padel_matches} ${t('txt_txt_matches').toLowerCase()})</span></div>`;
   }
   if (data.elo_tennis_matches > 0) {
     html += `<div style="padding:0.5rem 0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:0.88rem">`;
-    html += `<strong>Tennis ELO:</strong> ${Math.round(data.elo_tennis)} <span style="color:var(--text-muted)">(${data.elo_tennis_matches} matches)</span></div>`;
+    html += `<strong>${t('txt_ph_tennis_elo')}:</strong> ${Math.round(data.elo_tennis)} <span style="color:var(--text-muted)">(${data.elo_tennis_matches} ${t('txt_txt_matches').toLowerCase()})</span></div>`;
   }
   if (data.elo_padel_matches === 0 && data.elo_tennis_matches === 0) {
-    html += '<span style="color:var(--text-muted);font-size:0.84rem">No ELO ratings yet.</span>';
+    html += `<span style="color:var(--text-muted);font-size:0.84rem">${t('txt_ph_no_elo')}</span>`;
   }
   html += '</div>';
 
   // K-factor override
   const kVal = data.k_factor_override != null ? data.k_factor_override : '';
   html += '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;font-size:0.88rem">';
-  html += `<strong>K-factor override:</strong>`;
-  html += `<input type="number" id="ph-kfactor-input" value="${escAttr(String(kVal))}" placeholder="auto" min="1" max="200" style="width:80px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">`;
-  html += `<button type="button" class="btn btn-sm" onclick="phUpdateKFactor('${escAttr(data.id)}')" id="ph-kfactor-save-btn">Save</button>`;
-  html += `<span style="color:var(--text-muted);font-size:0.8rem">Leave empty for automatic (tier-based)</span>`;
+  html += `<strong>${t('txt_ph_kfactor_override')}:</strong>`;
+  html += `<input type="number" id="ph-kfactor-input" value="${escAttr(String(kVal))}" placeholder="${t('txt_ph_auto')}" min="1" max="200" style="width:80px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">`;
+  html += `<button type="button" class="btn btn-sm" onclick="phUpdateKFactor('${escAttr(data.id)}')" id="ph-kfactor-save-btn">${t('txt_txt_save')}</button>`;
+  html += `<span style="color:var(--text-muted);font-size:0.8rem">${t('txt_ph_kfactor_auto_help')}</span>`;
   html += '</div>';
 
   // New passphrase result area
   html += '<div id="ph-passphrase-result"></div>';
 
   // Active participations
-  html += `<h3 style="margin:1rem 0 0.5rem;font-size:0.95rem">Active Participations (${active.length})</h3>`;
+  html += `<h3 style="margin:1rem 0 0.5rem;font-size:0.95rem">${t('txt_ph_active_participations_n', { n: active.length })}</h3>`;
   if (active.length === 0) {
-    html += '<p style="color:var(--text-muted);font-size:0.84rem">No active tournament links.</p>';
+    html += `<p style="color:var(--text-muted);font-size:0.84rem">${t('txt_ph_no_active_links')}</p>`;
   } else {
     html += _phParticipationTable(active, data.id, false);
   }
 
   // Finished participations
-  html += `<h3 style="margin:1rem 0 0.5rem;font-size:0.95rem">Finished Participations (${finished.length})</h3>`;
+  html += `<h3 style="margin:1rem 0 0.5rem;font-size:0.95rem">${t('txt_ph_finished_participations_n', { n: finished.length })}</h3>`;
   if (finished.length === 0) {
-    html += '<p style="color:var(--text-muted);font-size:0.84rem">No finished tournament history.</p>';
+    html += `<p style="color:var(--text-muted);font-size:0.84rem">${t('txt_ph_no_finished_history')}</p>`;
   } else {
     html += _phParticipationTable(finished, data.id, true);
   }
 
   // Link new participation
   html += '<div style="margin-top:1rem">';
-  html += `<button type="button" class="add-participant-btn" onclick="phStartLink('${escAttr(data.id)}')">＋ Link Tournament Participation</button>`;
+  html += `<button type="button" class="add-participant-btn" onclick="phStartLink('${escAttr(data.id)}')">＋ ${t('txt_ph_link_participation')}</button>`;
   html += '</div>';
   html += '<div id="ph-link-area"></div>';
 
@@ -150,12 +152,12 @@ function _phRenderDetail(data) {
 function _phParticipationTable(participations, profileId, isFinished) {
   let html = '<div class="player-codes-table-wrap"><table class="player-codes-table">';
   html += '<thead><tr class="player-codes-head-row">';
-  html += '<th class="player-codes-th">Tournament</th>';
-  html += '<th class="player-codes-th">Player Name</th>';
+  html += `<th class="player-codes-th">${t('txt_txt_tournament_name')}</th>`;
+  html += `<th class="player-codes-th">${t('txt_ph_player_name')}</th>`;
   if (isFinished) {
-    html += '<th class="player-codes-th-center">Rank</th>';
-    html += '<th class="player-codes-th-center">W / L / D</th>';
-    html += '<th class="player-codes-th-center">PF / PA</th>';
+    html += `<th class="player-codes-th-center">${t('txt_ph_rank')}</th>`;
+    html += `<th class="player-codes-th-center">${t('txt_ph_wld')}</th>`;
+    html += `<th class="player-codes-th-center">${t('txt_ph_pf_pa')}</th>`;
   }
   html += '<th class="player-codes-th-center"></th>';
   html += '</tr></thead><tbody>';
@@ -169,7 +171,7 @@ function _phParticipationTable(participations, profileId, isFinished) {
       html += `<td class="player-codes-cell-center">${p.wins}/${p.losses}/${p.draws}</td>`;
       html += `<td class="player-codes-cell-center">${p.points_for}/${p.points_against}</td>`;
     }
-    const unlinkLabel = isFinished ? '⚠️ Unlink' : 'Unlink';
+    const unlinkLabel = isFinished ? `⚠️ ${t('txt_ph_unlink')}` : t('txt_ph_unlink');
     const btnClass = isFinished ? 'btn btn-danger btn-sm' : 'btn btn-sm btn-muted';
     html += `<td class="player-codes-cell-center"><button type="button" class="${btnClass}" onclick="phUnlink('${escAttr(p.tournament_id)}','${escAttr(p.player_id)}',${isFinished})" style="font-size:0.78rem">${unlinkLabel}</button></td>`;
     html += '</tr>';
@@ -187,17 +189,17 @@ function phCloseDetail() {
 
 /** Reset a profile's passphrase */
 async function phResetPassphrase(profileId) {
-  if (!confirm('Are you sure you want to reset this player\'s passphrase? The old one will stop working immediately.')) return;
+  if (!confirm(t('txt_ph_reset_passphrase_confirm'))) return;
   try {
     const result = await api(`/api/admin/player-profiles/${profileId}/reset-passphrase`, { method: 'POST' });
     const area = document.getElementById('ph-passphrase-result');
     if (area) {
-      area.innerHTML = `<div class="alert alert-info" style="margin-bottom:0.75rem">New passphrase: <code class="player-codes-passphrase" style="font-size:1.05rem" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(result.passphrase)}</code></div>`;
+      area.innerHTML = `<div class="alert alert-info" style="margin-bottom:0.75rem">${t('txt_ph_new_passphrase')}: <code class="player-codes-passphrase" style="font-size:1.05rem" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(result.passphrase)}</code></div>`;
     }
     // Refresh the detail to show updated passphrase
     phLoadProfile(profileId);
   } catch (e) {
-    alert('Failed to reset passphrase: ' + e.message);
+    alert(t('txt_ph_failed_reset_passphrase_value', { value: e.message }));
   }
 }
 
@@ -213,11 +215,11 @@ async function phUpdateEmail(profileId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: input.value }),
     });
-    if (btn) { btn.disabled = false; btn.textContent = 'Saved ✓'; }
-    setTimeout(() => { if (btn) btn.textContent = 'Save'; }, 1500);
+    if (btn) { btn.disabled = false; btn.textContent = `${t('txt_txt_saved')} ✓`; }
+    setTimeout(() => { if (btn) btn.textContent = t('txt_txt_save'); }, 1500);
   } catch (e) {
-    if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
-    alert('Failed to update email: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = t('txt_txt_save'); }
+    alert(t('txt_ph_failed_update_email_value', { value: e.message }));
   }
 }
 
@@ -229,7 +231,7 @@ async function phUpdateKFactor(profileId) {
   const raw = input.value.trim();
   const kValue = raw === '' ? null : parseInt(raw, 10);
   if (kValue !== null && (isNaN(kValue) || kValue < 1 || kValue > 200)) {
-    alert('K-factor must be between 1 and 200, or empty for automatic.');
+    alert(t('txt_ph_kfactor_validation'));
     return;
   }
   try {
@@ -239,26 +241,26 @@ async function phUpdateKFactor(profileId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ k_factor_override: kValue }),
     });
-    if (btn) { btn.disabled = false; btn.textContent = 'Saved ✓'; }
-    setTimeout(() => { if (btn) btn.textContent = 'Save'; }, 1500);
+    if (btn) { btn.disabled = false; btn.textContent = `${t('txt_txt_saved')} ✓`; }
+    setTimeout(() => { if (btn) btn.textContent = t('txt_txt_save'); }, 1500);
   } catch (e) {
-    if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
-    alert('Failed to update K-factor: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = t('txt_txt_save'); }
+    alert(t('txt_ph_failed_update_kfactor_value', { value: e.message }));
   }
 }
 
 /** Unlink a participation */
 async function phUnlink(tid, playerId, isFinished) {
   if (isFinished) {
-    if (!confirm('⚠️ This will permanently remove the tournament stats from this player\'s hub. This cannot be undone. Continue?')) return;
+    if (!confirm(t('txt_ph_unlink_finished_confirm'))) return;
   } else {
-    if (!confirm('Unlink this active tournament participation?')) return;
+    if (!confirm(t('txt_ph_unlink_active_confirm'))) return;
   }
   try {
     await api(`/api/admin/player-profiles/link/${tid}/${playerId}`, { method: 'DELETE' });
     if (_phCurrentProfileId) phLoadProfile(_phCurrentProfileId);
   } catch (e) {
-    alert('Failed to unlink: ' + e.message);
+    alert(t('txt_ph_failed_unlink_value', { value: e.message }));
   }
 }
 
@@ -266,20 +268,20 @@ async function phUnlink(tid, playerId, isFinished) {
 async function phStartLink(profileId) {
   const area = document.getElementById('ph-link-area');
   if (!area) return;
-  area.innerHTML = '<div style="margin-top:0.75rem"><em>Loading tournaments…</em></div>';
+  area.innerHTML = `<div style="margin-top:0.75rem"><em>${t('txt_ph_loading_tournaments')}</em></div>`;
   try {
     const tournaments = await api('/api/tournaments');
     if (tournaments.length === 0) {
-      area.innerHTML = '<div style="margin-top:0.75rem"><p style="color:var(--text-muted)">No tournaments available.</p></div>';
+      area.innerHTML = `<div style="margin-top:0.75rem"><p style="color:var(--text-muted)">${t('txt_txt_no_tournaments_available')}.</p></div>`;
       return;
     }
     let html = '<div style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface)">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem"><strong style="font-size:0.88rem">Link Tournament Participation</strong>';
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem"><strong style="font-size:0.88rem">${t('txt_ph_link_participation')}</strong>`;
     html += `<button type="button" class="btn btn-sm" onclick="document.getElementById('ph-link-area').innerHTML=''">✕</button></div>`;
     html += '<div style="margin-bottom:0.5rem">';
-    html += `<label style="font-size:0.84rem;color:var(--text-muted)">Select tournament:</label>`;
+    html += `<label style="font-size:0.84rem;color:var(--text-muted)">${t('txt_ph_select_tournament')}</label>`;
     html += `<select id="ph-link-tid" style="width:100%;padding:0.35rem 0.5rem;font-size:0.88rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);margin-top:0.25rem" onchange="phLoadUnlinkedPlayers('${escAttr(profileId)}')">`;
-    html += '<option value="">— Choose —</option>';
+    html += `<option value="">${t('txt_ph_choose')}</option>`;
     for (const t of tournaments) {
       html += `<option value="${escAttr(t.id)}">${esc(t.name)} (${esc(t.phase || t.type)})</option>`;
     }
@@ -299,20 +301,20 @@ async function phLoadUnlinkedPlayers(profileId) {
   if (!select || !container) return;
   const tid = select.value;
   if (!tid) { container.innerHTML = ''; return; }
-  container.innerHTML = '<em>Loading players…</em>';
+  container.innerHTML = `<em>${t('txt_ph_loading_players')}</em>`;
   try {
     const players = await api(`/api/admin/player-profiles/unlinked/${tid}`);
     if (players.length === 0) {
-      container.innerHTML = '<p style="color:var(--text-muted);font-size:0.84rem">All players in this tournament are already linked to a profile.</p>';
+      container.innerHTML = `<p style="color:var(--text-muted);font-size:0.84rem">${t('txt_ph_all_players_already_linked')}</p>`;
       return;
     }
-    let html = '<label style="font-size:0.84rem;color:var(--text-muted)">Select player:</label>';
+    let html = `<label style="font-size:0.84rem;color:var(--text-muted)">${t('txt_ph_select_player')}</label>`;
     html += `<select id="ph-link-pid" style="width:100%;padding:0.35rem 0.5rem;font-size:0.88rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);margin:0.25rem 0 0.5rem">`;
     for (const p of players) {
       html += `<option value="${escAttr(p.player_id)}">${esc(p.player_name)} (${esc(p.player_id.slice(0, 6))}…)</option>`;
     }
     html += '</select>';
-    html += `<button type="button" class="btn btn-primary btn-sm" onclick="phSubmitLink('${escAttr(profileId)}')">Link</button>`;
+    html += `<button type="button" class="btn btn-primary btn-sm" onclick="phSubmitLink('${escAttr(profileId)}')">${t('txt_ph_link')}</button>`;
     container.innerHTML = html;
   } catch (e) {
     container.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
@@ -332,7 +334,7 @@ async function phSubmitLink(profileId) {
     document.getElementById('ph-link-area').innerHTML = '';
     phLoadProfile(profileId);
   } catch (e) {
-    alert('Failed to link: ' + e.message);
+    alert(t('txt_ph_failed_link_value', { value: e.message }));
   }
 }
 

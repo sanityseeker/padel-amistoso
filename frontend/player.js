@@ -699,8 +699,8 @@ function _buildLeaderboardPanel() {
   if (hasPadel && hasTennis) {
     const activeSport = _leaderboardSport;
     html += `<div class="leaderboard-sport-toggle">`;
-    html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" data-sport="padel" onclick="event.stopPropagation(); _setLeaderboardSport('padel')">Padel</button>`;
-    html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" data-sport="tennis" onclick="event.stopPropagation(); _setLeaderboardSport('tennis')">Tennis</button>`;
+    html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" data-sport="padel" onclick="event.stopPropagation(); _setLeaderboardSport('padel')">${esc(t('txt_player_sport_padel'))}</button>`;
+    html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" data-sport="tennis" onclick="event.stopPropagation(); _setLeaderboardSport('tennis')">${esc(t('txt_player_sport_tennis'))}</button>`;
     html += `</div>`;
   }
 
@@ -780,7 +780,7 @@ function _buildAuthPanel() {
     if (_recoverSent) {
       html += `<div class="player-recover-sent">${esc(t('txt_player_recover_sent'))}</div>`;
     } else {
-      html += `<input type="email" id="ps-recover-email" class="player-recover-input" placeholder="your@email.com" autocomplete="email">`;
+      html += `<input type="email" id="ps-recover-email" class="player-recover-input" placeholder="${esc(t('txt_txt_email_placeholder'))}" autocomplete="email">`;
       html += `<button type="button" class="btn btn-secondary btn-block" onclick="_doRecover()">${esc(t('txt_player_recover_btn'))}</button>`;
     }
     html += `</div></details>`;
@@ -810,11 +810,11 @@ function _buildAuthPanel() {
     </div>`;
     html += `<div class="form-group">
       <label>${esc(t('txt_player_email_label'))} <span class="required-mark">*</span></label>
-      <input type="email" id="ps-email" placeholder="your@email.com" autocomplete="email" required>
+      <input type="email" id="ps-email" placeholder="${esc(t('txt_txt_email_placeholder'))}" autocomplete="email" required>
     </div>`;
     html += `<div class="form-group">
       <label>${esc(t('txt_player_contact_label'))}</label>
-      <input type="text" id="ps-contact" placeholder="e.g. +34 600 000 000" autocomplete="tel">
+      <input type="text" id="ps-contact" placeholder="${esc(t('txt_txt_contact_placeholder'))}" autocomplete="tel">
     </div>`;
     if (_errorMsg) html += `<div class="error-msg">${esc(_errorMsg)}</div>`;
     html += `<button type="button" class="btn btn-primary btn-block" onclick="_doCreate()">${esc(t('txt_player_create_btn'))}</button>`;
@@ -881,7 +881,7 @@ function _buildDashboard() {
     html += `<div class="form-group"><label>${esc(t('txt_player_email_label'))}</label>`;
     html += `<input type="email" id="edit-email" value="${esc(_profile.email || '')}" autocomplete="email"></div>`;
     html += `<div class="form-group"><label>${esc(t('txt_player_contact_label'))}</label>`;
-    html += `<input type="text" id="edit-contact" value="${esc(_profile.contact || '')}" autocomplete="tel" placeholder="e.g. +34 600 000 000"></div>`;
+    html += `<input type="text" id="edit-contact" value="${esc(_profile.contact || '')}" autocomplete="tel" placeholder="${esc(t('txt_txt_contact_placeholder'))}"></div>`;
 
     if (_errorMsg) html += `<div class="error-msg">${esc(_errorMsg)}</div>`;
     html += `<div class="player-edit-actions">`;
@@ -1480,8 +1480,8 @@ function _buildEloChartCanvas() {
   if (hasPadel && hasTennis) {
     const activeSport = _eloHistorySport;
     html += `<div class="elo-sport-toggle">`;
-    html += `<button type="button" class="elo-sport-pill${activeSport === 'padel' ? ' elo-sport-pill--active' : ''}" data-sport="padel" onclick="_setEloHistorySport('padel')">Padel</button>`;
-    html += `<button type="button" class="elo-sport-pill${activeSport === 'tennis' ? ' elo-sport-pill--active' : ''}" data-sport="tennis" onclick="_setEloHistorySport('tennis')">Tennis</button>`;
+    html += `<button type="button" class="elo-sport-pill${activeSport === 'padel' ? ' elo-sport-pill--active' : ''}" data-sport="padel" onclick="_setEloHistorySport('padel')">${esc(t('txt_player_sport_padel'))}</button>`;
+    html += `<button type="button" class="elo-sport-pill${activeSport === 'tennis' ? ' elo-sport-pill--active' : ''}" data-sport="tennis" onclick="_setEloHistorySport('tennis')">${esc(t('txt_player_sport_tennis'))}</button>`;
     html += `</div>`;
   }
   html += `</div>`;
@@ -1673,8 +1673,8 @@ function _buildEloRatingsCard() {
     if (hasPadel && hasTennis) {
       const activeSport = _eloHistorySport;
       html += `<div class="elo-sport-toggle-standalone">`;
-      html += `<button type="button" class="elo-sport-pill${activeSport === 'padel' ? ' elo-sport-pill--active' : ''}" data-sport="padel" onclick="_setEloHistorySport('padel')">Padel</button>`;
-      html += `<button type="button" class="elo-sport-pill${activeSport === 'tennis' ? ' elo-sport-pill--active' : ''}" data-sport="tennis" onclick="_setEloHistorySport('tennis')">Tennis</button>`;
+      html += `<button type="button" class="elo-sport-pill${activeSport === 'padel' ? ' elo-sport-pill--active' : ''}" data-sport="padel" onclick="_setEloHistorySport('padel')">${esc(t('txt_player_sport_padel'))}</button>`;
+      html += `<button type="button" class="elo-sport-pill${activeSport === 'tennis' ? ' elo-sport-pill--active' : ''}" data-sport="tennis" onclick="_setEloHistorySport('tennis')">${esc(t('txt_player_sport_tennis'))}</button>`;
       html += `</div>`;
     }
   }
@@ -1910,7 +1910,7 @@ function _buildLinkModal() {
   html += `<div class="form-group"><label>${esc(t('txt_player_link_entity_type'))}</label>`;
   html += `<select id="link-type"><option value="tournament">${esc(t('txt_player_link_type_tournament'))}</option><option value="registration">${esc(t('txt_player_link_type_registration'))}</option></select></div>`;
   html += `<div class="form-group"><label>${esc(t('txt_player_link_entity_id'))}</label>`;
-  html += `<input type="text" id="link-entity-id" placeholder="e.g. tournament UUID, alias, or registration ID" autocomplete="off"></div>`;
+  html += `<input type="text" id="link-entity-id" placeholder="${esc(t('txt_player_link_entity_id_placeholder'))}" autocomplete="off"></div>`;
   html += `<div class="form-group"><label>${esc(t('txt_player_link_passphrase'))}</label>`;
   html += `<input type="text" id="link-passphrase" placeholder="${esc(t('txt_player_passphrase_placeholder'))}" autocomplete="off" autocapitalize="none" spellcheck="false"></div>`;
   if (_errorMsg) html += `<div class="error-msg">${esc(_errorMsg)}</div>`;

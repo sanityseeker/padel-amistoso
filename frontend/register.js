@@ -456,7 +456,7 @@ function _showForm() {
   html += `<div class="returning-player-panel reg-hidden" id="returning-player-panel">`;
   html += `<div class="form-group returning-player-input-group">`;
   html += `<label>${t('txt_reg_enter_passphrase')}</label>`;
-  html += `<input type="text" id="reg-returning-passphrase" class="returning-player-passphrase" maxlength="128" placeholder="word-word-word" autocomplete="off" spellcheck="false">`;
+  html += `<input type="text" id="reg-returning-passphrase" class="returning-player-passphrase" maxlength="128" placeholder="${esc(t('txt_player_passphrase_placeholder'))}" autocomplete="off" spellcheck="false">`;
   html += `</div>`;
   html += `<div class="error-msg" id="reg-returning-error"></div>`;
   html += `<button type="button" class="btn btn-secondary" id="reg-returning-btn" onclick="_lookupPlayer()">${t('txt_reg_lookup_btn')}</button>`;

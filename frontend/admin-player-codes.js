@@ -56,7 +56,7 @@ function _renderPlayerCodes(secrets) {
     for (const [pid, info] of entries) {
       html += `<tr class="player-codes-row" id="pc-row-${pid}">`;
       html += `<td class="player-codes-name" id="pc-name-${pid}">${esc(info.name)}</td>`;
-      html += `<td class="player-codes-cell"><code id="pc-pass-${pid}" class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(info.passphrase)}</code></td>`;
+      html += `<td class="player-codes-cell"><code id="pc-pass-${pid}" class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(info.passphrase)}</code></td>`;
       html += `<td class="player-codes-cell"><input type="text" id="pc-contact-${pid}" value="${escAttr(info.contact || '')}" data-orig="${escAttr(info.contact || '')}" placeholder="${t('txt_reg_contact_placeholder')}" class="player-codes-input" onblur="_savePlayerContact('${pid}')"></td>`;
       {
         const _isLinked = Boolean(info.profile_id);
@@ -109,7 +109,7 @@ async function _showPlayerQr(playerId, playerName) {
     const resp = await fetch(API + imgUrl, {
       headers: { 'Authorization': 'Bearer ' + getAuthToken() }
     });
-    if (!resp.ok) throw new Error('Failed to load QR code');
+    if (!resp.ok) throw new Error(t('txt_txt_failed_load_qr_code'));
     const blob = await resp.blob();
     const objectUrl = URL.createObjectURL(blob);
 
@@ -119,7 +119,7 @@ async function _showPlayerQr(playerId, playerName) {
     modal.onclick = (e) => { if (e.target === modal) { modal.remove(); URL.revokeObjectURL(objectUrl); } };
     modal.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.5rem;text-align:center;max-width:340px;width:100%">
       <h3 style="margin:0 0 0.5rem;font-size:1rem">${esc(playerName)}</h3>
-      <img src="${objectUrl}" alt="QR" style="width:100%;max-width:260px;image-rendering:pixelated;border-radius:4px;background:#fff;padding:0.5rem">
+      <img src="${objectUrl}" alt="${t('txt_txt_qr_code')}" style="width:100%;max-width:260px;image-rendering:pixelated;border-radius:4px;background:#fff;padding:0.5rem">
       <p style="margin:0.75rem 0 0;color:var(--text-muted);font-size:0.8rem">${t('txt_txt_player_codes_help')}</p>
       <button type="button" class="btn btn-primary btn-sm" style="margin-top:0.75rem" onclick="this.closest('div[style*=fixed]').remove()">✕ ${t('txt_txt_close')}</button>
     </div>`;

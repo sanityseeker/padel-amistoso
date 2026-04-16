@@ -623,7 +623,7 @@ function previewGPGroups() {
   const msg = document.getElementById('gp-msg');
   try {
     const names = getParticipantNames('gp');
-    if (names.length < 2) throw new Error(t('txt_txt_need_at_least_2_players') || 'Need at least 2 players');
+    if (names.length < 2) throw new Error(t('txt_txt_need_at_least_2_players'));
     const numGroups = Math.max(1, +document.getElementById('gp-num-groups').value || 2);
     if (numGroups <= 1) {
       _gpGroupPreview = null;
@@ -722,7 +722,7 @@ async function createGP() {
   const msg = document.getElementById('gp-msg');
   try {
     const names = getParticipantNames('gp');
-    if (names.length < 2) throw new Error('Need at least 2 players');
+    if (names.length < 2) throw new Error(t('txt_txt_need_at_least_2_players'));
     const useBuilder = _useTeamBuilder('gp');
     const body = {
       name: document.getElementById('gp-name').value,
@@ -752,7 +752,7 @@ async function createGP() {
       const previewGroups = _gpGroupPreview?.groups;
       if (previewGroups) {
         const tooSmall = previewGroups.find(g => g.players.length < 4);
-        if (tooSmall) throw new Error(`Group '${tooSmall.name}' has only ${tooSmall.players.length} player(s) — individual mode requires at least 4 per group.`);
+        if (tooSmall) throw new Error(t('txt_err_group_too_small', { n: names.length, g: body.num_groups, min: 4 * body.num_groups }));
       } else if (names.length < 4 * body.num_groups) {
         throw new Error(t('txt_err_group_too_small', { n: names.length, g: body.num_groups, min: 4 * body.num_groups }));
       }
@@ -788,8 +788,8 @@ async function createMex() {
     // For tennis the mapping is inverted: UI "Individual" → backend team_mode=true (1v1)
     const isTeam = _currentSport === 'tennis' ? !_entryModeIsTeam('mex') : _entryModeIsTeam('mex');
     const useBuilder = _useTeamBuilder('mex');
-    if (isTeam && names.length < 2) throw new Error('Need at least 2 teams');
-    if (!isTeam && names.length < 4) throw new Error('Need at least 4 players for individual Mexicano');
+    if (isTeam && names.length < 2) throw new Error(t('txt_txt_need_at_least_2_teams'));
+    if (!isTeam && names.length < 4) throw new Error(t('txt_txt_need_at_least_4_players_individual_mex'));
     const skillGapRaw = document.getElementById('mex-skill-gap').value.trim();
     const rolling = document.getElementById('mex-rounds-toggle').querySelectorAll('button')[0].classList.contains('active');
     const body = {
@@ -849,7 +849,7 @@ async function createPO() {
   try {
     const names = getParticipantNames('po');
     const useBuilder = _useTeamBuilder('po');
-    if (names.length < 2) throw new Error('Need at least 2 participants');
+    if (names.length < 2) throw new Error(t('txt_txt_need_at_least_2_participants'));
     const body = {
       name: document.getElementById('po-name').value,
       participant_names: useBuilder ? _getTeamBuilderPlayerNames('po') : getParticipantNames('po'),

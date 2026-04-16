@@ -37,14 +37,14 @@ function _renderRegEmailControls(rid, emailSettings) {
   html += `<div class="form-group">`;
   html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;display:block">${t('txt_email_sender_name')}</label>`;
   html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_email_sender_name_help')}</p>`;
-  html += `<input type="text" id="reg-email-settings-sender-name-${esc(rid)}" value="${escAttr(senderName)}" maxlength="100" placeholder="Summer Cup" style="width:100%;font-size:0.85rem">`;
+  html += `<input type="text" id="reg-email-settings-sender-name-${esc(rid)}" value="${escAttr(senderName)}" maxlength="100" placeholder="${t('txt_email_sender_placeholder')}" style="width:100%;font-size:0.85rem">`;
   html += `</div>`;
 
   // Reply-To Address
   html += `<div class="form-group">`;
   html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;display:block">${t('txt_email_reply_to')}</label>`;
   html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_email_reply_to_help')}</p>`;
-  html += `<input type="email" id="reg-email-settings-reply-to-${esc(rid)}" value="${escAttr(replyTo)}" placeholder="organizer@example.com" style="width:100%;font-size:0.85rem">`;
+  html += `<input type="email" id="reg-email-settings-reply-to-${esc(rid)}" value="${escAttr(replyTo)}" placeholder="${t('txt_email_reply_to_placeholder')}" style="width:100%;font-size:0.85rem">`;
   html += `</div>`;
 
   html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
@@ -190,7 +190,7 @@ function _renderRegDetailInline(rid) {
   html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">${t('txt_reg_registration_alias')}</label>`;
   html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_reg_alias_help')}</p>`;
   html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
-  html += `<input type="text" id="reg-alias-input-${esc(rid)}" placeholder="my-tournament" value="${esc(regAlias)}" pattern="[a-zA-Z0-9_-]+" maxlength="64" style="flex:1;min-width:180px;font-family:monospace;font-size:0.85rem">`;
+  html += `<input type="text" id="reg-alias-input-${esc(rid)}" placeholder="${t('txt_tv_alias_placeholder')}" value="${esc(regAlias)}" pattern="[a-zA-Z0-9_-]+" maxlength="64" style="flex:1;min-width:180px;font-family:monospace;font-size:0.85rem">`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_setRegAlias('${esc(rid)}'))" style="white-space:nowrap">${t('txt_txt_set_alias')}</button>`;
   if (regAlias) {
     html += `<button type="button" class="btn btn-danger btn-sm" onclick="withLoading(this,()=>_deleteRegAlias('${esc(rid)}'))" style="white-space:nowrap">${t('txt_txt_remove')}</button>`;
@@ -326,7 +326,7 @@ function _renderRegDetailInline(rid) {
       html += `<td style="padding:0.4rem 0.5rem;font-weight:600">${isDup ? '⚠ ' : ''}${esc(reg.player_name)}</td>`;
       html += `<td style="padding:0.4rem 0.5rem;font-size:0.82em;color:var(--text-muted)">${reg.email ? esc(reg.email) : '—'}</td>`;
       html += `<td style="padding:0.4rem 0.3rem;text-align:center">${_langToggle(rid, reg.player_id, reg.lang || 'en', 'reg')}</td>`;
-      html += `<td style="padding:0.4rem 0.5rem"><code style="font-size:0.9em;color:var(--accent);user-select:all;cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(reg.passphrase)}</code></td>`;
+      html += `<td style="padding:0.4rem 0.5rem"><code style="font-size:0.9em;color:var(--accent);user-select:all;cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(reg.passphrase)}</code></td>`;
       html += `<td style="padding:0.4rem 0.5rem;text-align:center;white-space:nowrap">`;
       html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem;margin-right:0.25rem" onclick="_editRegistrant('${esc(r.id)}','${esc(reg.player_id)}','${esc(reg.player_name)}','${esc(reg.email||'')}')" title="${t('txt_reg_edit_player')}">✏️</button>`;
       if (window._emailConfigured && reg.email) {
@@ -554,7 +554,7 @@ function _openTournamentFromReg(tid) {
     loadTournaments().then(() => {
       const m = _tournamentMeta[tid];
       if (m) openTournament(tid, m.type, m.name);
-      else alert('Tournament not found');
+      else alert(t('txt_txt_tournament_not_found'));
     });
   }
 }
@@ -795,7 +795,7 @@ function _addRegQuestion(containerId, noFocus = false) {
         <span class="switch-track"></span>
         <span>${t('txt_reg_q_required')}</span>
       </label>
-      <button type="button" class="reg-q-remove" onclick="_removeRegQuestion(this)" title="Remove">✕</button>
+      <button type="button" class="reg-q-remove" onclick="_removeRegQuestion(this)" title="${t('txt_txt_remove')}">✕</button>
     </div>
     <div class="reg-q-card-body">
       <input type="text" class="reg-q-label" placeholder="${t('txt_reg_question_label')}" maxlength="128">
@@ -846,7 +846,7 @@ function _addRegChoice(btn) {
   if (!list) return;
   const row = document.createElement('div');
   row.className = 'reg-q-choice-row';
-  row.innerHTML = `<input type="text" class="reg-q-choice-val" placeholder="${t('txt_reg_q_choices_placeholder')}" maxlength="128"><button type="button" class="reg-q-choice-remove" onclick="this.parentElement.remove()" title="Remove">✕</button>`;
+  row.innerHTML = `<input type="text" class="reg-q-choice-val" placeholder="${t('txt_reg_q_choices_placeholder')}" maxlength="128"><button type="button" class="reg-q-choice-remove" onclick="this.parentElement.remove()" title="${t('txt_txt_remove')}">✕</button>`;
   list.appendChild(row);
   row.querySelector('input')?.focus();
 }
@@ -1296,7 +1296,7 @@ function _populateRegQuestions(containerId, questions) {
         for (const choice of q.choices) {
           const row = document.createElement('div');
           row.className = 'reg-q-choice-row';
-          row.innerHTML = `<input type="text" class="reg-q-choice-val" placeholder="${t('txt_reg_q_choices_placeholder')}" maxlength="128"><button type="button" class="reg-q-choice-remove" onclick="this.parentElement.remove()" title="Remove">✕</button>`;
+          row.innerHTML = `<input type="text" class="reg-q-choice-val" placeholder="${t('txt_reg_q_choices_placeholder')}" maxlength="128"><button type="button" class="reg-q-choice-remove" onclick="this.parentElement.remove()" title="${t('txt_txt_remove')}">✕</button>`;
           row.querySelector('input').value = choice;
           list.appendChild(row);
         }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>404 – Page Not Found</title>
+<title data-i18n="txt_txt_404_page_title">404 – Page Not Found</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#3b82f6" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#3b82f6" media="(prefers-color-scheme: light)">
@@ -73,10 +73,10 @@
 </style>
 </head>
 <body>
-  <img id="error-img" src="/404.png" alt="404 – Page not found">
+  <img id="error-img" src="/404.png" alt="404 – Page not found" data-i18n-alt="txt_txt_404_image_alt">
   <p id="context-msg" class="context-msg" style="display:none"></p>
-  <p class="countdown">Redirecting to home in <span id="counter">5</span> seconds…</p>
-  <a id="home-link" class="home-link" href="/">Go home now</a>
+  <p class="countdown"><span data-i18n="txt_txt_redirecting_home_in">Redirecting to home in</span> <span id="counter">5</span> <span data-i18n="txt_txt_seconds_ellipsis">seconds…</span></p>
+  <a id="home-link" class="home-link" href="/" data-i18n="txt_txt_go_home_now">Go home now</a>
 
 <script>
   const params = new URLSearchParams(window.location.search);
@@ -101,6 +101,9 @@
     }
   }, 1000);
 </script>
+<script src="/i18n.js"></script>
+<script src="/shared.js"></script>
+<script>initLanguage();</script>
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');</script>
 </body>
 </html>

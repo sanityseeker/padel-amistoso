@@ -299,8 +299,8 @@ function updateAuthUI() {
   if (authStatus) {
     if (username) {
       const adminBtn = isAdmin()
-        ? `<button class="btn btn-sm" onclick="setActiveTab('players-hub')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="Players Hub">🎾</button>`
-          + `<button class="btn btn-sm" onclick="showUserMgmt()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="User management">👥</button>`
+        ? `<button class="btn btn-sm" onclick="setActiveTab('players-hub')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_nav_player_space')}">🎾</button>`
+          + `<button class="btn btn-sm" onclick="showUserMgmt()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_user_management')}">👥</button>`
         : '';
       const changePwdBtn = `<button class="btn btn-sm" onclick="showChangePasswordDialog()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_change_password')}">🔑</button>`;
       authStatus.innerHTML = `
@@ -351,7 +351,7 @@ let _allUsers = [];
 async function loadUserMgmtList() {
   const list = document.getElementById('user-mgmt-list');
   if (!list) return;
-  list.innerHTML = '<li style="opacity:.5">Loading…</li>';
+  list.innerHTML = `<li style="opacity:.5">${t('txt_txt_loading')}</li>`;
   try {
     _allUsers = await apiAuth('/api/auth/users');
     const search = document.getElementById('user-mgmt-search');
@@ -371,7 +371,7 @@ function filterUserMgmtList(query) {
   const q = query.trim().toLowerCase();
   const users = q ? _allUsers.filter(u => u.username.toLowerCase().includes(q) || u.role.toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)) : _allUsers;
   if (!users.length) {
-    list.innerHTML = '<li style="opacity:.5">No users found.</li>';
+    list.innerHTML = `<li style="opacity:.5">${t('txt_txt_no_users_found')}</li>`;
     return;
   }
   list.innerHTML = users.map(u => `
@@ -397,7 +397,7 @@ async function handleCreateUser(event) {
   const roleRadio = document.querySelector('input[name="new-user-role"]:checked');
   const role = roleRadio ? roleRadio.value : 'user';
   if (!username || !password) {
-    if (errDiv) errDiv.textContent = 'Username and password are required.';
+    if (errDiv) errDiv.textContent = t('txt_txt_username_and_password_required');
     return;
   }
   try {
@@ -455,7 +455,7 @@ async function handleInvite(event) {
   if (successDiv) successDiv.textContent = '';
 
   if (!email) {
-    if (errDiv) errDiv.textContent = 'Email address is required.';
+    if (errDiv) errDiv.textContent = t('txt_txt_email_address_required');
     return;
   }
 
@@ -469,9 +469,9 @@ async function handleInvite(event) {
     document.getElementById('invite-email').value = '';
     const userInviteRadio = document.querySelector('input[name="invite-role"][value="user"]');
     if (userInviteRadio) userInviteRadio.checked = true;
-    if (successDiv) { successDiv.textContent = `Invite sent to ${email}.`; setTimeout(() => { successDiv.textContent = ''; }, 4000); }
+    if (successDiv) { successDiv.textContent = t('txt_txt_invite_sent_to_email', { email }); setTimeout(() => { successDiv.textContent = ''; }, 4000); }
   } catch (e) {
-    if (errDiv) errDiv.textContent = e.status === 503 ? 'Email is not configured on this server.' : e.message;
+    if (errDiv) errDiv.textContent = e.status === 503 ? t('txt_txt_email_not_configured_server') : e.message;
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -524,7 +524,7 @@ async function handleForgotPassword(event) {
   if (successDiv) successDiv.textContent = '';
 
   if (!email) {
-    if (errDiv) errDiv.textContent = 'Please enter your email address.';
+    if (errDiv) errDiv.textContent = t('txt_txt_please_enter_email_address');
     return;
   }
 
@@ -536,14 +536,14 @@ async function handleForgotPassword(event) {
       body: JSON.stringify({ email }),
     });
     if (res.status === 503) {
-      if (errDiv) errDiv.textContent = 'Email is not configured on this server.';
+      if (errDiv) errDiv.textContent = t('txt_txt_email_not_configured_server');
       return;
     }
     // Always show the same message regardless of whether the email exists (anti-enumeration).
-    if (successDiv) successDiv.textContent = 'If that email is registered, a reset link has been sent.';
+    if (successDiv) successDiv.textContent = t('txt_txt_if_email_registered_reset_sent');
     if (document.getElementById('forgot-pwd-email')) document.getElementById('forgot-pwd-email').value = '';
   } catch (e) {
-    if (errDiv) errDiv.textContent = 'An error occurred. Please try again.';
+    if (errDiv) errDiv.textContent = t('txt_txt_error_occurred_try_again');
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -567,7 +567,7 @@ async function showAcceptInviteDialog(token) {
 
   if (!overlay || !dialog) return;
 
-  if (subtitle) subtitle.textContent = 'Validating your invite link…';
+  if (subtitle) subtitle.textContent = t('txt_txt_validating_invite_link');
   overlay.style.display = 'block';
   dialog.style.display = 'flex';
 
@@ -575,7 +575,7 @@ async function showAcceptInviteDialog(token) {
     const res = await fetch(`/api/auth/invite/${encodeURIComponent(token)}`);
     if (!res.ok) {
       if (subtitle) subtitle.textContent = '';
-      if (errDiv) errDiv.textContent = 'This invite link is invalid or has expired.';
+      if (errDiv) errDiv.textContent = t('txt_txt_invite_link_invalid_expired');
       document.getElementById('accept-invite-btn').disabled = true;
       return;
     }
@@ -583,7 +583,7 @@ async function showAcceptInviteDialog(token) {
     if (subtitle) subtitle.textContent = `You've been invited as ${data.role} — ${data.email}`;
     document.getElementById('accept-invite-username')?.focus();
   } catch (e) {
-    if (errDiv) errDiv.textContent = 'Could not validate invite link.';
+    if (errDiv) errDiv.textContent = t('txt_txt_could_not_validate_invite');
   }
 }
 
@@ -604,15 +604,15 @@ async function handleAcceptInvite(event) {
   if (successDiv) successDiv.textContent = '';
 
   if (!username || !password) {
-    if (errDiv) errDiv.textContent = 'Username and password are required.';
+    if (errDiv) errDiv.textContent = t('txt_txt_username_and_password_required');
     return;
   }
   if (password !== confirm) {
-    if (errDiv) errDiv.textContent = 'Passwords do not match.';
+    if (errDiv) errDiv.textContent = t('txt_txt_passwords_do_not_match');
     return;
   }
   if (password.length < 8) {
-    if (errDiv) errDiv.textContent = 'Password must be at least 8 characters.';
+    if (errDiv) errDiv.textContent = t('txt_txt_password_min_8_chars');
     return;
   }
 
@@ -625,11 +625,11 @@ async function handleAcceptInvite(event) {
     }).then(async res => {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || 'Failed to create account.');
+        throw new Error(data.detail || t('txt_txt_failed_create_account'));
       }
       return res.json();
     });
-    if (successDiv) successDiv.textContent = 'Account created! You can now log in.';
+    if (successDiv) successDiv.textContent = t('txt_txt_account_created_login_now');
     // Remove token from URL without reloading
     const url = new URL(window.location.href);
     url.searchParams.delete('invite_token');
@@ -678,15 +678,15 @@ async function handleResetPassword(event) {
   if (successDiv) successDiv.textContent = '';
 
   if (!newPwd || !confirmPwd) {
-    if (errDiv) errDiv.textContent = 'Please fill in both password fields.';
+    if (errDiv) errDiv.textContent = t('txt_txt_please_fill_both_password_fields');
     return;
   }
   if (newPwd !== confirmPwd) {
-    if (errDiv) errDiv.textContent = 'Passwords do not match.';
+    if (errDiv) errDiv.textContent = t('txt_txt_passwords_do_not_match');
     return;
   }
   if (newPwd.length < 8) {
-    if (errDiv) errDiv.textContent = 'Password must be at least 8 characters.';
+    if (errDiv) errDiv.textContent = t('txt_txt_password_min_8_chars');
     return;
   }
 
@@ -699,9 +699,9 @@ async function handleResetPassword(event) {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data.detail || 'Reset link is invalid or has expired.');
+      throw new Error(data.detail || t('txt_txt_reset_link_invalid_expired'));
     }
-    if (successDiv) successDiv.textContent = 'Password reset! You can now log in.';
+    if (successDiv) successDiv.textContent = t('txt_txt_password_reset_login_now');
     // Remove token from URL
     const url = new URL(window.location.href);
     url.searchParams.delete('reset_token');

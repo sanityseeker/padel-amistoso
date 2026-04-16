@@ -31,7 +31,7 @@
 <div class="container">
   <div class="page-header">
     <div class="page-header-title-bar">
-      <button type="button" id="lang-toggle-btn" class="compact-icon-btn" data-action="toggleLanguage" title="Language" aria-label="Switch language">🇬🇧</button>
+      <button type="button" id="lang-toggle-btn" class="compact-icon-btn" data-action="toggleLanguage" title="Language" data-i18n-title="txt_txt_language" aria-label="Language" data-i18n-aria-label="txt_txt_language">🇬🇧</button>
       <div class="page-selector" id="page-selector">
         <button type="button" class="page-selector-btn" id="page-selector-btn" data-action="togglePageSelector">
           <span class="page-selector-icon">🛠️</span>
@@ -62,7 +62,7 @@
         </div>
       </div>
       <div class="header-toggle-btns">
-        <button type="button" id="theme-toggle-btn" class="compact-icon-btn" data-action="toggleTheme" title="Toggle light / dark mode" aria-label="Toggle light or dark mode">☀️</button>
+        <button type="button" id="theme-toggle-btn" class="compact-icon-btn" data-action="toggleTheme" title="Toggle light / dark mode" data-i18n-title="txt_txt_toggle_light_dark_mode" aria-label="Toggle light / dark mode" data-i18n-aria-label="txt_txt_toggle_light_dark_mode">☀️</button>
       </div>
     </div>
     <div class="page-header-row">
@@ -82,7 +82,7 @@
     <button type="button" class="tab-btn" data-tab="create" data-i18n="txt_txt_create" role="tab" aria-selected="false">Create</button>
     <div id="tournament-chips" class="tournament-chips"></div>
     <div class="compact-controls">
-      <button type="button" id="admin-refresh-btn" class="compact-icon-btn" data-action="refreshCurrentView" title="Refresh" style="display:none">↻</button>
+      <button type="button" id="admin-refresh-btn" class="compact-icon-btn" data-action="refreshCurrentView" title="Refresh" data-i18n-title="txt_txt_refresh" style="display:none">↻</button>
     </div>
   </div>
   <div class="active-tournament-indicator" id="active-tournament-indicator" style="display:none">
@@ -111,7 +111,7 @@
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
         <h2 style="margin:0" data-i18n="txt_txt_create_tournament">Create Tournament</h2>
-        <button type="button" class="format-info-btn" id="create-format-info-btn" data-action="openFormatInfo" aria-label="About this format" data-i18n-title="txt_txt_about_this_format" title="About this format">i</button>
+        <button type="button" class="format-info-btn" id="create-format-info-btn" data-action="openFormatInfo" aria-label="About this format" data-i18n-aria-label="txt_txt_about_this_format" data-i18n-title="txt_txt_about_this_format" title="About this format">i</button>
       </div>
       <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem;flex-wrap:wrap">
         <div class="score-mode-toggle" id="sport-toggle" style="margin-bottom:0">
@@ -455,11 +455,11 @@
   <!-- ─── PLAYERS HUB ADMIN ─────────────────────────────── -->
   <div class="tab-panel" id="panel-players-hub" role="tabpanel">
     <div class="card">
-      <h2 style="margin:0 0 0.75rem">🎾 Players Hub Admin</h2>
-      <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem">Search and manage Player Hub profiles. Link or unlink tournament participations and reset credentials.</p>
+      <h2 style="margin:0 0 0.75rem" data-i18n="txt_ph_admin_title">🎾 Players Hub Admin</h2>
+      <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_ph_admin_desc">Search and manage Player Hub profiles. Link or unlink tournament participations and reset credentials.</p>
       <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
-        <input type="text" id="ph-search-input" placeholder="Search by name or email…" style="flex:1;min-width:200px;padding:0.45rem 0.65rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
-        <button type="button" class="btn btn-primary btn-sm" id="ph-search-btn" onclick="phSearch()">🔍 Search</button>
+        <input type="text" id="ph-search-input" placeholder="Search by name or email…" data-i18n-placeholder="txt_hub_search_placeholder" style="flex:1;min-width:200px;padding:0.45rem 0.65rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
+        <button type="button" class="btn btn-primary btn-sm" id="ph-search-btn" onclick="phSearch()">🔍 <span data-i18n="txt_ph_search_btn">Search</span></button>
       </div>
       <div id="ph-results"></div>
     </div>
@@ -765,22 +765,22 @@
 <!-- Format Info Modal -->
 <div id="format-info-overlay" data-action="closeFormatInfo"></div>
 <div id="format-info-dialog" role="dialog" aria-modal="true" aria-labelledby="format-info-heading">
-  <button type="button" class="format-info-close-btn" data-action="closeFormatInfo" aria-label="Close">✕</button>
+  <button type="button" class="format-info-close-btn" data-action="closeFormatInfo" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
   <div id="format-info-content"></div>
 </div>
 
 <!-- Bracket image lightbox -->
-<div id="bracket-lightbox" role="dialog" aria-modal="true" aria-label="Bracket" data-action="closeBracketLightbox">
+<div id="bracket-lightbox" role="dialog" aria-modal="true" aria-label="Bracket" data-i18n-aria-label="txt_txt_bracket" data-action="closeBracketLightbox">
   <div class="bracket-lb-toolbar" data-action="stopPropagation">
-    <button class="bracket-lb-btn" data-action="bracketLightboxZoomOut" aria-label="Zoom out" title="Zoom out (−)">−</button>
-    <button class="bracket-lb-btn bracket-lb-zoom-lbl" id="bracket-lb-zoom-level" data-action="bracketLightboxZoomReset" aria-label="Reset zoom" title="Reset zoom">100%</button>
-    <button class="bracket-lb-btn" data-action="bracketLightboxZoomIn" aria-label="Zoom in" title="Zoom in (+)">+</button>
-    <button class="bracket-lb-btn" data-action="bracketLightboxOpenFull" aria-label="Open original image" title="Open original image">↗</button>
-    <button class="bracket-lb-btn" data-action="bracketLightboxDownload" aria-label="Download image" title="Download image">⬇</button>
-    <button class="bracket-lb-btn bracket-lb-close-btn" data-action="closeBracketLightbox" aria-label="Close" title="Close (Esc)">✕</button>
+    <button class="bracket-lb-btn" data-action="bracketLightboxZoomOut" aria-label="Zoom out" data-i18n-aria-label="txt_txt_zoom_out" title="Zoom out" data-i18n-title="txt_txt_zoom_out">−</button>
+    <button class="bracket-lb-btn bracket-lb-zoom-lbl" id="bracket-lb-zoom-level" data-action="bracketLightboxZoomReset" aria-label="Reset zoom" data-i18n-aria-label="txt_txt_reset_zoom" title="Reset zoom" data-i18n-title="txt_txt_reset_zoom">100%</button>
+    <button class="bracket-lb-btn" data-action="bracketLightboxZoomIn" aria-label="Zoom in" data-i18n-aria-label="txt_txt_zoom_in" title="Zoom in" data-i18n-title="txt_txt_zoom_in">+</button>
+    <button class="bracket-lb-btn" data-action="bracketLightboxOpenFull" aria-label="Open original image" data-i18n-aria-label="txt_txt_open_original_image" title="Open original image" data-i18n-title="txt_txt_open_original_image">↗</button>
+    <button class="bracket-lb-btn" data-action="bracketLightboxDownload" aria-label="Download image" data-i18n-aria-label="txt_txt_download_image" title="Download image" data-i18n-title="txt_txt_download_image">⬇</button>
+    <button class="bracket-lb-btn bracket-lb-close-btn" data-action="closeBracketLightbox" aria-label="Close" data-i18n-aria-label="txt_txt_close" title="Close (Esc)" data-i18n-title="txt_txt_close_esc">✕</button>
   </div>
   <div class="bracket-lightbox-scroll">
-    <img id="bracket-lightbox-img" src="" alt="Bracket">
+    <img id="bracket-lightbox-img" src="" alt="Bracket" data-i18n-alt="txt_txt_bracket">
   </div>
 </div>
 
@@ -792,13 +792,13 @@
 <div id="auth-dialog" class="modal-dialog modal-sm">
   <div class="modal-header">
     <h2 class="modal-title">🔐 <span data-i18n="txt_txt_login_required">Login Required</span></h2>
-    <button type="button" class="modal-close-btn" data-action="hideLoginDialog" aria-label="Close">✕</button>
+    <button type="button" class="modal-close-btn" data-action="hideLoginDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
   </div>
   <p class="modal-subtitle" data-i18n="txt_txt_please_log_in_to_create_or_modify_tournaments">Please log in to create or modify tournaments</p>
   <form onsubmit="handleLogin(event)">
     <div class="modal-field">
       <label class="modal-label" data-i18n="txt_txt_username">Username</label>
-      <input type="text" id="auth-username" class="modal-input" placeholder="admin" autocomplete="username">
+      <input type="text" id="auth-username" class="modal-input" placeholder="admin" data-i18n-placeholder="txt_txt_admin_username_placeholder" autocomplete="username">
     </div>
     <div class="modal-field" style="margin-bottom:0.25rem">
       <label class="modal-label" data-i18n="txt_txt_password">Password</label>
@@ -822,20 +822,20 @@
   <div class="modal-dialog modal-md">
     <div class="modal-header">
       <h2 class="modal-title">👥 <span data-i18n="txt_txt_user_management">User Management</span></h2>
-      <button type="button" class="modal-close-btn" data-action="hideUserMgmt" aria-label="Close">✕</button>
+      <button type="button" class="modal-close-btn" data-action="hideUserMgmt" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
     </div>
     <div style="padding:0.5rem 0 0.25rem">
-      <input id="user-mgmt-search" type="search" class="modal-input" placeholder="Search users…" autocomplete="off" oninput="filterUserMgmtList(this.value)" style="width:100%">
+      <input id="user-mgmt-search" type="search" class="modal-input" placeholder="Search users…" data-i18n-placeholder="txt_txt_search_users" autocomplete="off" oninput="filterUserMgmtList(this.value)" style="width:100%">
     </div>
     <ul id="user-mgmt-list" class="user-mgmt-list"></ul>
     <form onsubmit="handleCreateUser(event)" class="modal-form-section">
       <div class="modal-label" style="font-weight:600;margin-bottom:0.75rem" data-i18n="txt_txt_create_user">Create User</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:0.6rem">
-        <input id="new-user-username" type="text" class="modal-input" placeholder="Username" autocomplete="off">
-        <input id="new-user-password" type="password" class="modal-input" placeholder="Password" autocomplete="new-password">
+        <input id="new-user-username" type="text" class="modal-input" placeholder="Username" data-i18n-placeholder="txt_txt_username" autocomplete="off">
+        <input id="new-user-password" type="password" class="modal-input" placeholder="Password" data-i18n-placeholder="txt_txt_password" autocomplete="new-password">
       </div>
       <div style="margin-bottom:0.6rem">
-        <input id="new-user-email" type="email" class="modal-input" style="width:100%" placeholder="Email (optional)" autocomplete="email">
+        <input id="new-user-email" type="email" class="modal-input" style="width:100%" placeholder="Email (optional)" data-i18n-placeholder="txt_txt_email_optional_placeholder" autocomplete="email">
       </div>
       <div style="margin-bottom:0.75rem">
         <div class="modal-label" data-i18n="txt_txt_role">Role</div>
@@ -853,20 +853,20 @@
       <button type="submit" id="create-user-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_create_user">Create User</button>
     </form>
     <div class="modal-form-section" id="invite-section" style="border-top:1px solid var(--border);margin-top:0.25rem">
-      <div class="modal-label" style="font-weight:600;margin-bottom:0.75rem">✉️ Invite by Email</div>
-      <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 0.75rem">Send an invite link — the recipient sets their own password. Link expires in 48 hours.</p>
+      <div class="modal-label" style="font-weight:600;margin-bottom:0.75rem">✉️ <span data-i18n="txt_txt_invite_by_email">Invite by Email</span></div>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 0.75rem" data-i18n="txt_txt_invite_help">Send an invite link — the recipient sets their own password. Link expires in 48 hours.</p>
       <form onsubmit="handleInvite(event)">
-        <input id="invite-email" type="email" class="modal-input" style="width:100%;margin-bottom:0.6rem" placeholder="Email address" autocomplete="email">
+        <input id="invite-email" type="email" class="modal-input" style="width:100%;margin-bottom:0.6rem" placeholder="Email address" data-i18n-placeholder="txt_txt_email_address" autocomplete="email">
         <div style="margin-bottom:0.75rem">
-          <div class="modal-label">Role</div>
+          <div class="modal-label" data-i18n="txt_txt_role">Role</div>
           <div class="modal-radio-group">
-            <label class="modal-radio-label"><input type="radio" name="invite-role" value="user" checked> User</label>
-            <label class="modal-radio-label"><input type="radio" name="invite-role" value="admin"> Admin</label>
+            <label class="modal-radio-label"><input type="radio" name="invite-role" value="user" checked> <span data-i18n="txt_txt_user_role">User</span></label>
+            <label class="modal-radio-label"><input type="radio" name="invite-role" value="admin"> <span data-i18n="txt_txt_admin_role">Admin</span></label>
           </div>
         </div>
         <div class="modal-success" id="invite-success"></div>
         <div class="modal-error" id="invite-error"></div>
-        <button type="submit" id="invite-btn" class="btn btn-primary" style="width:100%">Send Invite</button>
+        <button type="submit" id="invite-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_send_invite">Send Invite</button>
       </form>
     </div>
   </div>
@@ -877,7 +877,7 @@
   <div class="modal-dialog modal-sm">
     <div class="modal-header" style="margin-bottom:0.5rem">
       <h2 class="modal-title">🔑 <span data-i18n="txt_txt_change_password">Change Password</span></h2>
-      <button type="button" class="modal-close-btn" data-action="hideChangePasswordDialog" aria-label="Close">✕</button>
+      <button type="button" class="modal-close-btn" data-action="hideChangePasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
     </div>
     <p id="change-pwd-for" class="modal-subtitle" style="margin-bottom:1rem"></p>
     <form onsubmit="handleChangePassword(event)">
@@ -900,18 +900,18 @@
 <div id="forgot-pwd-overlay" class="modal-overlay" data-action="hideForgotPasswordDialog"></div>
 <div id="forgot-pwd-dialog" class="modal-dialog modal-sm">
   <div class="modal-header">
-    <h2 class="modal-title">🔑 Forgot Password</h2>
-    <button type="button" class="modal-close-btn" data-action="hideForgotPasswordDialog" aria-label="Close">✕</button>
+    <h2 class="modal-title">🔑 <span data-i18n="txt_txt_forgot_password_title">Forgot Password</span></h2>
+    <button type="button" class="modal-close-btn" data-action="hideForgotPasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
   </div>
-  <p class="modal-subtitle">Enter your email address and we'll send you a password reset link.</p>
+  <p class="modal-subtitle" data-i18n="txt_txt_forgot_password_subtitle">Enter your email address and we'll send you a password reset link.</p>
   <form onsubmit="handleForgotPassword(event)">
     <div class="modal-field" style="margin-bottom:1rem">
-      <label class="modal-label">Email</label>
-      <input type="email" id="forgot-pwd-email" class="modal-input" placeholder="you@example.com" autocomplete="email">
+      <label class="modal-label" data-i18n="txt_txt_email">Email</label>
+      <input type="email" id="forgot-pwd-email" class="modal-input" placeholder="you@example.com" data-i18n-placeholder="txt_txt_email_placeholder" autocomplete="email">
     </div>
     <div class="modal-success" id="forgot-pwd-success"></div>
     <div class="modal-error" id="forgot-pwd-error"></div>
-    <button type="submit" id="forgot-pwd-btn" class="btn btn-primary" style="width:100%">Send Reset Link</button>
+    <button type="submit" id="forgot-pwd-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_send_reset_link">Send Reset Link</button>
   </form>
 </div>
 
@@ -919,25 +919,25 @@
 <div id="accept-invite-overlay" class="modal-overlay"></div>
 <div id="accept-invite-dialog" class="modal-dialog modal-sm">
   <div class="modal-header">
-    <h2 class="modal-title">🎾 Accept Invitation</h2>
+    <h2 class="modal-title">🎾 <span data-i18n="txt_txt_accept_invitation">Accept Invitation</span></h2>
   </div>
   <p class="modal-subtitle" id="accept-invite-subtitle"></p>
   <form onsubmit="handleAcceptInvite(event)">
     <div class="modal-field">
-      <label class="modal-label">Username</label>
-      <input type="text" id="accept-invite-username" class="modal-input" placeholder="Choose a username" autocomplete="username">
+      <label class="modal-label" data-i18n="txt_txt_username">Username</label>
+      <input type="text" id="accept-invite-username" class="modal-input" placeholder="Choose a username" data-i18n-placeholder="txt_txt_choose_username" autocomplete="username">
     </div>
     <div class="modal-field">
-      <label class="modal-label">Password</label>
-      <input type="password" id="accept-invite-password" class="modal-input" placeholder="••••••••" autocomplete="new-password">
+      <label class="modal-label" data-i18n="txt_txt_password">Password</label>
+      <input type="password" id="accept-invite-password" class="modal-input" placeholder="••••••••" data-i18n-placeholder="txt_txt_password" autocomplete="new-password">
     </div>
     <div class="modal-field" style="margin-bottom:1rem">
-      <label class="modal-label">Confirm Password</label>
-      <input type="password" id="accept-invite-confirm" class="modal-input" placeholder="••••••••" autocomplete="new-password">
+      <label class="modal-label" data-i18n="txt_txt_confirm_password">Confirm Password</label>
+      <input type="password" id="accept-invite-confirm" class="modal-input" placeholder="••••••••" data-i18n-placeholder="txt_txt_confirm_password" autocomplete="new-password">
     </div>
     <div class="modal-success" id="accept-invite-success"></div>
     <div class="modal-error" id="accept-invite-error"></div>
-    <button type="submit" id="accept-invite-btn" class="btn btn-primary" style="width:100%">Create Account</button>
+    <button type="submit" id="accept-invite-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_create_account">Create Account</button>
   </form>
 </div>
 
@@ -945,21 +945,21 @@
 <div id="reset-pwd-overlay" class="modal-overlay"></div>
 <div id="reset-pwd-dialog" class="modal-dialog modal-sm">
   <div class="modal-header">
-    <h2 class="modal-title">🔑 Reset Password</h2>
+    <h2 class="modal-title">🔑 <span data-i18n="txt_txt_reset_password">Reset Password</span></h2>
   </div>
-  <p class="modal-subtitle">Choose a new password for your account.</p>
+  <p class="modal-subtitle" data-i18n="txt_txt_choose_new_password_for_account">Choose a new password for your account.</p>
   <form onsubmit="handleResetPassword(event)">
     <div class="modal-field">
-      <label class="modal-label">New Password</label>
-      <input type="password" id="reset-pwd-new" class="modal-input" placeholder="••••••••" autocomplete="new-password">
+      <label class="modal-label" data-i18n="txt_txt_new_password">New Password</label>
+      <input type="password" id="reset-pwd-new" class="modal-input" placeholder="••••••••" data-i18n-placeholder="txt_txt_new_password" autocomplete="new-password">
     </div>
     <div class="modal-field" style="margin-bottom:1rem">
-      <label class="modal-label">Confirm New Password</label>
-      <input type="password" id="reset-pwd-confirm" class="modal-input" placeholder="••••••••" autocomplete="new-password">
+      <label class="modal-label" data-i18n="txt_txt_confirm_new_password">Confirm New Password</label>
+      <input type="password" id="reset-pwd-confirm" class="modal-input" placeholder="••••••••" data-i18n-placeholder="txt_txt_confirm_new_password" autocomplete="new-password">
     </div>
     <div class="modal-success" id="reset-pwd-success"></div>
     <div class="modal-error" id="reset-pwd-error"></div>
-    <button type="submit" id="reset-pwd-btn" class="btn btn-primary" style="width:100%">Reset Password</button>
+    <button type="submit" id="reset-pwd-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_reset_password">Reset Password</button>
   </form>
 </div>
 

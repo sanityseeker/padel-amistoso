@@ -617,7 +617,7 @@ function _renderConvSettings(rid) {
     html += `<details class="advanced-section" style="margin-top:0.5rem;margin-bottom:0;border-radius:6px">`;
     html += `<summary>${t('txt_txt_advanced_settings')}</summary>`;
     html += `<div class="advanced-grid">`;
-    html += `<div class="adv-field"><label>${t('txt_txt_skill_gap_label')}</label><input id="conv-mex-skill-gap" type="number" placeholder="e.g. 50" min="0"></div>`;
+    html += `<div class="adv-field"><label>${t('txt_txt_skill_gap_label')}</label><input id="conv-mex-skill-gap" type="number" placeholder="${t('txt_txt_skill_gap_placeholder')}" min="0"></div>`;
     html += `<div class="adv-field"><label>${t('txt_txt_win_bonus_label')}</label><input id="conv-mex-win-bonus" type="number" value="0" min="0"></div>`;
     html += `<div class="adv-field"><label>${t('txt_txt_rival_strength_label')}</label><input id="conv-mex-strength-weight" type="number" value="0" min="0" max="1" step="0.05"></div>`;
     html += `<div class="adv-field"><label>${t('txt_txt_strength_min_matches_label')}</label><input id="conv-mex-strength-min-matches" type="number" value="4" min="0" step="1"></div>`;
@@ -673,7 +673,7 @@ function _renderConvCourtNames() {
   for (let i = 0; i < count; i++) {
     html += `<div class="court-row">`;
     html += `<span class="court-row-label">${i + 1}</span>`;
-    html += `<input type="text" class="conv-court-input" value="Court ${i + 1}" placeholder="Court ${i + 1}">`;
+    html += `<input type="text" class="conv-court-input" value="${t('txt_txt_court')} ${i + 1}" placeholder="${t('txt_txt_court')} ${i + 1}">`;
     html += `</div>`;
   }
   container.innerHTML = html;
@@ -800,7 +800,7 @@ async function _submitConvert(rid) {
   const msg = document.getElementById('conv-msg');
   try {
     const r = _regDetails[rid];
-    if (!r) throw new Error('Registration not found');
+    if (!r) throw new Error(t('txt_txt_registration_not_found'));
     const names = _getConvPlayerNames(rid);
 
     const body = {
@@ -863,7 +863,7 @@ async function _submitConvert(rid) {
         const previewGroups = _convGroupPreview?.groups;
         if (previewGroups) {
           const tooSmall = previewGroups.find(g => g.players.length < 4);
-          if (tooSmall) throw new Error(`Group '${tooSmall.name}' has only ${tooSmall.players.length} player(s) — individual mode requires at least 4 per group.`);
+          if (tooSmall) throw new Error(t('txt_err_group_too_small', { n: names.length, g: body.num_groups, min: 4 * body.num_groups }));
         } else if (names.length < 4 * body.num_groups) {
           throw new Error(t('txt_err_group_too_small', { n: names.length, g: body.num_groups, min: 4 * body.num_groups }));
         }
