@@ -1,3 +1,9 @@
+## v1.7.10 (2026-04-16)
+
+### Fix
+
+- **player-hub**: show best results only for finished tournaments
+
 ## v1.7.9 (2026-04-16)
 
 ### Fix
