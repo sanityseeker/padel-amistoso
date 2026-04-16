@@ -1,3 +1,9 @@
+## v1.8.2 (2026-04-17)
+
+### Fix
+
+- **admin-inteface**: improve group stage admin ux
+
 ## v1.8.1 (2026-04-16)
 
 ### Fix
