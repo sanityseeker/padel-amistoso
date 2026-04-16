@@ -53,6 +53,7 @@ def create_secrets_for_tournament(
     players: list[dict[str, str]],
     contacts: dict[str, str] | None = None,
     emails: dict[str, str] | None = None,
+    profile_ids: dict[str, str] | None = None,
 ) -> dict[str, PlayerSecret]:
     """Generate and persist secrets for every player in a tournament.
 
@@ -63,6 +64,9 @@ def create_secrets_for_tournament(
             entries default to an empty string.
         emails: Optional mapping of player_id → email address. Missing
             entries default to an empty string.
+        profile_ids: Optional mapping of player_id → profile_id from an
+            explicit hub-link selection on the creation screen.  These take
+            priority over email-based auto-link.
 
     Returns:
         Mapping of player_id → ``PlayerSecret``.
@@ -72,18 +76,48 @@ def create_secrets_for_tournament(
     name_map = {p["id"]: p["name"] for p in players}
     contact_map = contacts or {}
     email_map = emails or {}
+    explicit_profile_map = profile_ids or {}
+
+    # Build profile_id resolution: explicit hub-link selections first,
+    # then fall back to email-based auto-link for remaining players.
+    resolved_profile_ids: dict[str, str] = dict(explicit_profile_map)
+
+    # Look up Player Hub profiles by email for players without an explicit profile_id.
+    emails_to_lookup = {
+        pid: email_val
+        for pid, email_val in email_map.items()
+        if pid not in resolved_profile_ids and email_val and email_val.strip()
+    }
+    if emails_to_lookup:
+        unique_emails = {e.strip().lower() for e in emails_to_lookup.values()}
+        with get_db() as conn:
+            placeholders = ",".join("?" * len(unique_emails))
+            rows = conn.execute(
+                f"""SELECT id, LOWER(email) AS email
+                    FROM player_profiles
+                    WHERE LOWER(email) IN ({placeholders})
+                      AND email_verified_at IS NOT NULL""",
+                list(unique_emails),
+            ).fetchall()
+        profiles_by_email = {r["email"]: r["id"] for r in rows}
+        for pid, email_val in emails_to_lookup.items():
+            prof_id = profiles_by_email.get(email_val.strip().lower())
+            if prof_id:
+                resolved_profile_ids[pid] = prof_id
 
     with get_db() as conn:
         conn.executemany(
             """
-            INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, contact, email)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO player_secrets
+                (tournament_id, player_id, player_name, passphrase, token, contact, email, profile_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tournament_id, player_id) DO UPDATE SET
                 passphrase  = excluded.passphrase,
                 token       = excluded.token,
                 player_name = excluded.player_name,
                 contact     = excluded.contact,
-                email       = excluded.email
+                email       = excluded.email,
+                profile_id  = excluded.profile_id
             """,
             [
                 (
@@ -94,6 +128,7 @@ def create_secrets_for_tournament(
                     sec.token,
                     contact_map.get(pid, ""),
                     email_map.get(pid, ""),
+                    resolved_profile_ids.get(pid),
                 )
                 for pid, sec in secrets.items()
             ],
@@ -829,7 +864,7 @@ def remove_player_secret(tournament_id: str, player_id: str) -> bool:
 
 
 def get_secrets_for_tournament(tournament_id: str) -> dict[str, dict]:
-    """Return all secrets for a tournament as ``{player_id: {name, passphrase, token, contact, email, profile_id}}``.
+    """Return all secrets for a tournament as ``{player_id: {name, passphrase, token, contact, email, profile_id, lang}}``.
 
     Results are cached in memory; the cache is invalidated by any write
     operation on the same tournament's secrets.
@@ -840,7 +875,7 @@ def get_secrets_for_tournament(tournament_id: str) -> dict[str, dict]:
     try:
         with get_db() as conn:
             rows = conn.execute(
-                "SELECT player_id, player_name, passphrase, token, contact, email, profile_id"
+                "SELECT player_id, player_name, passphrase, token, contact, email, profile_id, lang"
                 " FROM player_secrets WHERE tournament_id = ? AND finished_at IS NULL",
                 (tournament_id,),
             ).fetchall()
@@ -855,6 +890,7 @@ def get_secrets_for_tournament(tournament_id: str) -> dict[str, dict]:
             "contact": row["contact"] or "",
             "email": row["email"] if "email" in row.keys() else "",
             "profile_id": row["profile_id"] if "profile_id" in row.keys() else None,
+            "lang": row["lang"] if "lang" in row.keys() else "en",
         }
         for row in rows
     }
@@ -882,6 +918,31 @@ def update_contact(tournament_id: str, player_id: str, contact: str) -> bool:
             return cur.rowcount > 0
     except sqlite3.Error as exc:
         logger.warning("Could not update contact for %s/%s: %s", tournament_id, player_id, exc)
+        return False
+    finally:
+        invalidate_secrets_cache(tournament_id)
+
+
+def update_lang(tournament_id: str, player_id: str, lang: str) -> bool:
+    """Update the email language preference for a single player.
+
+    Args:
+        tournament_id: The tournament ID.
+        player_id: The player ID.
+        lang: New language code (``"en"`` or ``"es"``).
+
+    Returns:
+        ``True`` if the row was found and updated, ``False`` otherwise.
+    """
+    try:
+        with get_db() as conn:
+            cur = conn.execute(
+                "UPDATE player_secrets SET lang = ? WHERE tournament_id = ? AND player_id = ?",
+                (lang, tournament_id, player_id),
+            )
+            return cur.rowcount > 0
+    except sqlite3.Error as exc:
+        logger.warning("Could not update lang for %s/%s: %s", tournament_id, player_id, exc)
         return False
     finally:
         invalidate_secrets_cache(tournament_id)

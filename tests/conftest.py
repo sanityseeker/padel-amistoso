@@ -114,7 +114,7 @@ def _clean_state(tmp_path):
     orig_update_email = ps_mod.update_email
     orig_get_contacts = ps_mod.get_contacts_for_tournament
 
-    def _mock_create(tournament_id, players, contacts=None, emails=None):
+    def _mock_create(tournament_id, players, contacts=None, emails=None, profile_ids=None):
         from backend.tournaments.player_secrets import generate_secrets_for_players
 
         player_ids = [p["id"] for p in players]
@@ -122,6 +122,7 @@ def _clean_state(tmp_path):
         name_map = {p["id"]: p["name"] for p in players}
         contact_map = contacts or {}
         email_map = emails or {}
+        pid_map = profile_ids or {}
         _test_secrets[tournament_id] = {
             pid: {
                 "name": name_map.get(pid, ""),
@@ -129,6 +130,7 @@ def _clean_state(tmp_path):
                 "token": sec.token,
                 "contact": contact_map.get(pid, ""),
                 "email": email_map.get(pid, ""),
+                "profile_id": pid_map.get(pid),
             }
             for pid, sec in secrets.items()
         }

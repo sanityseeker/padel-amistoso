@@ -11,6 +11,8 @@ from pydantic import AfterValidator, BaseModel, Field, field_validator, model_va
 
 from backend.models import EliminationType, ParticipationStatus, QuestionType, ScoreConfirmation, Sport, TournamentType
 
+EmailLang = Literal["en", "es"]
+
 
 def _coerce_optional_email(v: str) -> str:
     """Accept empty string (no email) or a valid, normalised email address."""
@@ -75,6 +77,7 @@ class CreateGroupPlayoffRequest(BaseModel):
     player_strengths: dict[str, float] = Field(default_factory=dict)
     player_emails: dict[str, str] = Field(default_factory=dict)
     player_contacts: dict[str, str] = Field(default_factory=dict)
+    player_profile_ids: dict[str, str] = Field(default_factory=dict)
     teams: list[list[str]] = Field(default_factory=list)
     team_names: list[str | None] = Field(default_factory=list)
 
@@ -139,6 +142,7 @@ class CreateMexicanoRequest(BaseModel):
     player_strengths: dict[str, float] = Field(default_factory=dict)
     player_emails: dict[str, str] = Field(default_factory=dict)
     player_contacts: dict[str, str] = Field(default_factory=dict)
+    player_profile_ids: dict[str, str] = Field(default_factory=dict)
     teams: list[list[str]] = Field(default_factory=list)
     team_names: list[str | None] = Field(default_factory=list)
 
@@ -191,6 +195,7 @@ class CreatePlayoffRequest(BaseModel):
     player_strengths: dict[str, float] = Field(default_factory=dict)
     player_emails: dict[str, str] = Field(default_factory=dict)
     player_contacts: dict[str, str] = Field(default_factory=dict)
+    player_profile_ids: dict[str, str] = Field(default_factory=dict)
     teams: list[list[str]] = Field(default_factory=list)
     team_names: list[str | None] = Field(default_factory=list)
 
@@ -503,6 +508,7 @@ class RegistrantIn(BaseModel):
         default=None,
         description="Optional Player Hub passphrase to link this registration to a profile.",
     )
+    lang: EmailLang = "en"
 
 
 class RegistrantOut(BaseModel):
@@ -513,6 +519,7 @@ class RegistrantOut(BaseModel):
     answers: dict[str, str] = Field(default_factory=dict)
     email: str = ""
     registered_at: str
+    lang: EmailLang = "en"
 
 
 class RegistrantAdminOut(BaseModel):
@@ -525,6 +532,7 @@ class RegistrantAdminOut(BaseModel):
     answers: dict[str, str] = Field(default_factory=dict)
     email: str = ""
     registered_at: str
+    lang: EmailLang = "en"
 
 
 class RegistrantLoginIn(BaseModel):
@@ -613,11 +621,12 @@ class RegistrationAdminOut(BaseModel):
 
 
 class RegistrantPatch(BaseModel):
-    """Admin override of a registrant's name, answers, or email."""
+    """Admin override of a registrant's name, answers, email, or email language."""
 
     player_name: str | None = Field(default=None, min_length=1, max_length=128)
     answers: dict[str, str] | None = None
     email: OptionalEmailStr | None = None
+    lang: EmailLang | None = None
 
 
 class ConvertRegistrationRequest(BaseModel):

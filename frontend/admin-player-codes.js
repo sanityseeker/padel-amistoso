@@ -48,6 +48,7 @@ function _renderPlayerCodes(secrets) {
     html += `<th class="player-codes-th">${t('txt_txt_contact')}</th>`;
     html += `<th class="player-codes-th-center">${t('txt_hub_link')}</th>`;
     if (_showEmail) html += `<th class="player-codes-th">${t('txt_email')}</th>`;
+    html += `<th class="player-codes-th-center">🌐</th>`;
     html += `<th class="player-codes-th-center">${t('txt_txt_qr_code')}</th>`;
     html += `<th class="player-codes-th-center"></th>`;
     html += `<th class="player-codes-th-center"></th>`;
@@ -56,7 +57,7 @@ function _renderPlayerCodes(secrets) {
       html += `<tr class="player-codes-row" id="pc-row-${pid}">`;
       html += `<td class="player-codes-name" id="pc-name-${pid}">${esc(info.name)}</td>`;
       html += `<td class="player-codes-cell"><code id="pc-pass-${pid}" class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(info.passphrase)}</code></td>`;
-      html += `<td class="player-codes-cell"><span class="player-codes-edit-wrap"><input type="text" id="pc-contact-${pid}" value="${escAttr(info.contact || '')}" placeholder="${t('txt_reg_contact_placeholder')}" class="player-codes-input"><button type="button" class="btn btn-sm player-codes-action-btn" onclick="_savePlayerContact('${pid}')" id="pc-contact-save-${pid}">${t('txt_txt_save_contact')}</button></span></td>`;
+      html += `<td class="player-codes-cell"><input type="text" id="pc-contact-${pid}" value="${escAttr(info.contact || '')}" data-orig="${escAttr(info.contact || '')}" placeholder="${t('txt_reg_contact_placeholder')}" class="player-codes-input" onblur="_savePlayerContact('${pid}')"></td>`;
       {
         const _isLinked = Boolean(info.profile_id);
         html += `<td class="player-codes-cell-center">`;
@@ -68,10 +69,10 @@ function _renderPlayerCodes(secrets) {
         html += `</td>`;
       }
       if (_showEmail) {
-        html += `<td class="player-codes-cell"><span class="player-codes-edit-wrap"><input type="email" id="pc-email-${pid}" value="${escAttr(info.email || '')}" placeholder="${t('txt_email_placeholder')}" class="player-codes-input player-codes-input-email"><button type="button" class="btn btn-sm player-codes-action-btn" onclick="_savePlayerEmail('${pid}')" id="pc-email-save-${pid}">${t('txt_email_save_email')}</button>`;
-        if (info.email) html += `<button type="button" class="btn btn-sm player-codes-icon-btn" onclick="_sendPlayerEmail('${pid}')" title="${t('txt_email_send')}">✉️</button>`;
+        html += `<td class="player-codes-cell"><span class="player-codes-edit-wrap"><input type="email" id="pc-email-${pid}" value="${escAttr(info.email || '')}" data-orig="${escAttr(info.email || '')}" placeholder="${t('txt_email_placeholder')}" class="player-codes-input player-codes-input-email" onblur="_savePlayerEmail('${pid}')">`;        if (info.email) html += `<button type="button" class="btn btn-sm player-codes-icon-btn" onclick="_sendPlayerEmail('${pid}')" title="${t('txt_email_send')}">✉️</button>`;
         html += `</span></td>`;
       }
+      html += `<td class="player-codes-cell-center">${_langToggle(currentTid, pid, info.lang || 'en', 'sec')}</td>`;
       html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-sm player-codes-action-btn" onclick="_showPlayerQr('${escAttr(pid)}','${escAttr(info.name)}')">📱 ${t('txt_txt_qr_code')}</button></td>`;
       html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-sm btn-muted player-codes-action-btn" onclick="_regeneratePlayerCode('${pid}')">🔄 ${t('txt_txt_regenerate')}</button></td>`;
       html += `<td class="player-codes-cell-center">${_isMex ? `<button type="button" class="btn btn-danger btn-sm player-codes-icon-btn" onclick="_removeTournamentPlayer('${pid}','${escAttr(info.name)}')" title="${t('txt_txt_remove_player')}">🗑</button>` : ''}</td>`;
@@ -339,35 +340,36 @@ async function _copyAllPlayerCodes() {
   } catch { /* ignore */ }
 }
 
-/** Save the contact string for a single player */
+/** Flash a green border on an input to confirm a save */
+function _flashSaved(input) {
+  input.classList.add('player-codes-input-saved');
+  setTimeout(() => input.classList.remove('player-codes-input-saved'), 1200);
+}
+
+/** Auto-save the contact string for a single player on blur */
 async function _savePlayerContact(playerId) {
   const input = document.getElementById(`pc-contact-${playerId}`);
-  const saveBtn = document.getElementById(`pc-contact-save-${playerId}`);
-  if (!input) return;
+  if (!input || input.value === input.dataset.orig) return;
   try {
-    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '…'; }
     await api(`/api/tournaments/${currentTid}/player-secrets/${playerId}/contact`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contact: input.value }),
     });
     if (_playerSecrets[playerId]) _playerSecrets[playerId].contact = input.value;
-    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = t('txt_txt_contact_saved'); }
-    setTimeout(() => { if (saveBtn) saveBtn.textContent = t('txt_txt_save_contact'); }, 1500);
+    input.dataset.orig = input.value;
+    _flashSaved(input);
   } catch (e) {
-    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = t('txt_txt_save_contact'); }
     alert(e.message);
   }
 }
 
-/** Save the email address for a single player */
+/** Auto-save the email address for a single player on blur */
 async function _savePlayerEmail(playerId) {
   const input = document.getElementById(`pc-email-${playerId}`);
-  const saveBtn = document.getElementById(`pc-email-save-${playerId}`);
   const badge = document.getElementById(`pc-linked-${playerId}`);
-  if (!input) return;
+  if (!input || input.value === input.dataset.orig) return;
   try {
-    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '…'; }
     const result = await api(`/api/tournaments/${currentTid}/player-secrets/${playerId}/email`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -388,13 +390,9 @@ async function _savePlayerEmail(playerId) {
       if (contactInput && result.contact != null) contactInput.value = result.contact;
     }
     if (badge) badge.hidden = !result.profile_linked;
-    if (saveBtn) {
-      saveBtn.disabled = false;
-      saveBtn.textContent = result.profile_linked ? t('txt_email_profile_linked') : t('txt_email_email_saved');
-    }
-    setTimeout(() => { if (saveBtn) saveBtn.textContent = t('txt_email_save_email'); }, 2000);
+    input.dataset.orig = input.value;
+    _flashSaved(input);
   } catch (e) {
-    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = t('txt_email_save_email'); }
     alert(e.message);
   }
 }

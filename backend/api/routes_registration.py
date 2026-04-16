@@ -586,6 +586,7 @@ async def get_registration(rid: str, user: User = Depends(get_current_user)) -> 
                 answers=_parse_answers(r.get("answers")),
                 email=r.get("email", ""),
                 registered_at=r["registered_at"],
+                lang=r.get("lang", "en"),
             )
             for r in registrants
         ],
@@ -749,12 +750,13 @@ async def admin_add_registrant(rid: str, req: RegistrantIn, user: User = Depends
 
     answers_json = json.dumps(req.answers) if req.answers else None
     email = req.email.strip()
+    lang = req.lang or "en"
     with get_db() as conn:
         conn.execute(
             """INSERT INTO registrants
-               (registration_id, player_id, player_name, passphrase, token, answers, email, registered_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now),
+               (registration_id, player_id, player_name, passphrase, token, answers, email, registered_at, lang)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now, lang),
         )
 
     # Auto-send confirmation email if the lobby has auto_send_email enabled
@@ -768,6 +770,7 @@ async def admin_add_registrant(rid: str, req: RegistrantIn, user: User = Depends
             lobby_alias=reg.get("alias"),
             lobby_id=reg_id,
             reply_to=es.reply_to,
+            lang=lang,
         )
         send_email_background(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
 
@@ -799,6 +802,9 @@ async def patch_registrant(
     if req.email is not None:
         updates.append("email = ?")
         params.append(req.email.strip())
+    if req.lang is not None:
+        updates.append("lang = ?")
+        params.append(req.lang)
 
     if updates:
         params.extend([reg_id, player_id])
@@ -977,12 +983,13 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
     elif email and not is_valid_email(email):
         raise HTTPException(400, "Invalid email address")
 
+    lang = req.lang or "en"
     with get_db() as conn:
         conn.execute(
             """INSERT INTO registrants
-               (registration_id, player_id, player_name, passphrase, token, answers, email, registered_at, profile_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now, profile_id),
+               (registration_id, player_id, player_name, passphrase, token, answers, email, registered_at, profile_id, lang)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now, profile_id, lang),
         )
 
     # Auto-send confirmation email if the lobby has auto_send_email enabled
@@ -996,6 +1003,7 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
             lobby_alias=reg.get("alias"),
             lobby_id=reg_id,
             reply_to=es.reply_to,
+            lang=lang,
         )
         send_email_background(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
 
@@ -1100,7 +1108,7 @@ async def convert_registration(
                     token = generate_token()
                 else:
                     token = reg["token"]
-                secret_rows.append((reg.get("profile_id"), pid, name, reg["passphrase"], token))
+                secret_rows.append((reg.get("profile_id"), pid, name, reg["passphrase"], token, reg.get("lang", "en")))
                 answers = _parse_answers(reg.get("answers"))
                 if answers.get("contact"):
                     contact_map[pid] = answers["contact"]
@@ -1115,7 +1123,7 @@ async def convert_registration(
                 existing_passphrases.add(passphrase)
                 token = generate_token()
                 player_entries.append((name, pid))
-                secret_rows.append((None, pid, name, passphrase, token))
+                secret_rows.append((None, pid, name, passphrase, token, "en"))
 
         tournament_name = req.name or registration["name"]
 
@@ -1218,9 +1226,11 @@ async def convert_registration(
                         None,
                     )
                     if first_sec:
-                        team_secret_rows.append((None, team_pid, team_label, first_sec[3], first_sec[4]))
+                        team_secret_rows.append((None, team_pid, team_label, first_sec[3], first_sec[4], first_sec[5]))
                     else:
-                        team_secret_rows.append((None, team_pid, team_label, generate_passphrase(), generate_token()))
+                        team_secret_rows.append(
+                            (None, team_pid, team_label, generate_passphrase(), generate_token(), "en")
+                        )
                 players = team_players
                 secret_rows = team_secret_rows
             else:
@@ -1298,18 +1308,29 @@ async def convert_registration(
         # Populate player_secrets (reuse registrant passphrases/tokens where available)
         with get_db() as conn:
             conn.executemany(
-                """INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, contact, email, profile_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, contact, email, profile_id, lang)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(tournament_id, player_id) DO UPDATE SET
                        passphrase  = excluded.passphrase,
                        token       = excluded.token,
                        player_name = excluded.player_name,
                        contact     = excluded.contact,
                        email       = excluded.email,
-                       profile_id  = excluded.profile_id""",
+                       profile_id  = excluded.profile_id,
+                       lang        = excluded.lang""",
                 [
-                    (tid, pid, name, pp, tok, contact_map.get(pid, ""), email_map.get(pid, ""), profile_id_val)
-                    for (profile_id_val, pid, name, pp, tok) in secret_rows
+                    (
+                        tid,
+                        pid,
+                        name,
+                        pp,
+                        tok,
+                        contact_map.get(pid, ""),
+                        email_map.get(pid, ""),
+                        profile_id_val,
+                        lang_val,
+                    )
+                    for (profile_id_val, pid, name, pp, tok, lang_val) in secret_rows
                 ],
             )
 
@@ -1584,6 +1605,7 @@ async def send_registrant_email(
         lobby_alias=reg.get("alias"),
         lobby_id=reg_id,
         reply_to=es.reply_to,
+        lang=row["lang"],
     )
     ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
     if not ok:
@@ -1623,6 +1645,7 @@ async def send_all_registrant_emails(rid: str, request: Request, user: User = De
             lobby_alias=reg.get("alias"),
             lobby_id=reg_id,
             reply_to=es.reply_to,
+            lang=r.get("lang", "en"),
         )
         ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
         if ok:
@@ -1669,6 +1692,7 @@ async def send_registration_message_emails(rid: str, request: Request, user: Use
             lobby_alias=reg.get("alias"),
             lobby_id=reg_id,
             reply_to=es.reply_to,
+            lang=r.get("lang", "en"),
         )
         ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
         if ok:
@@ -1714,6 +1738,7 @@ async def send_cancellation_email(
         lobby_alias=reg.get("alias"),
         lobby_id=reg_id,
         reply_to=es.reply_to,
+        lang=row["lang"],
     )
     ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
     if not ok:
@@ -1757,6 +1782,7 @@ async def send_waitlist_email(
         lobby_alias=reg.get("alias"),
         lobby_id=reg_id,
         reply_to=es.reply_to,
+        lang=row["lang"],
     )
     ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
     if not ok:

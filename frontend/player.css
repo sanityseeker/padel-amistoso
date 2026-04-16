@@ -678,6 +678,93 @@
   color: var(--sport-tennis);
 }
 
+/* ELO trend chart */
+.elo-chart-section {
+  margin-top: 1rem;
+}
+
+.elo-chart-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+  padding: 0 0.2rem;
+}
+
+.elo-chart-heading {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.elo-chart-count {
+  font-weight: 400;
+  font-size: 0.78rem;
+}
+
+/* Sport toggle pills (shared between chart + history) */
+.elo-sport-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  width: fit-content;
+}
+
+.elo-sport-pill {
+  background: transparent;
+  border: none;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+
+.elo-sport-pill:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+
+.elo-sport-pill:hover {
+  background: var(--bg);
+}
+
+.elo-sport-pill--active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.elo-sport-pill--active[data-sport="tennis"] {
+  background: var(--sport-tennis);
+}
+
+.elo-sport-toggle-standalone {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  width: fit-content;
+  margin-top: 1rem;
+  align-self: flex-start;
+}
+
+.elo-chart-container {
+  position: relative;
+  height: 200px;
+  max-height: 220px;
+  width: 100%;
+}
+
+@media (max-width: 480px) {
+  .elo-chart-container {
+    height: 160px;
+  }
+}
+
 /* ELO history inline (inside card) */
 .elo-history-inline-details {
   margin-top: 1rem;
@@ -1482,7 +1569,7 @@ h1 { font-size: 1.5rem; margin-bottom: 0.3rem; text-align: center; }
   padding: 0 0.8rem 0.8rem;
   border-top: 1px solid var(--border);
 }
-.leaderboard-sport-toggle { display: flex; gap: 0; margin: 0 0 0.5rem; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; width: fit-content; }
+.leaderboard-sport-toggle { display: flex; gap: 0; margin: 0 0 0.5rem auto; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; width: fit-content; }
 .leaderboard-pill { background: transparent; border: none; padding: 0.3rem 0.75rem; font-size: 0.8rem; cursor: pointer; color: var(--text-muted); transition: background 0.15s, color 0.15s; }
 .leaderboard-pill:not(:last-child) { border-right: 1px solid var(--border); }
 .leaderboard-pill--active { background: var(--accent); color: #fff; font-weight: 600; }

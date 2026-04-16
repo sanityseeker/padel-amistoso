@@ -671,6 +671,13 @@ tr:hover { background: rgba(59,130,246,0.05); }
   padding: 0.2rem 0.5rem;
   white-space: nowrap;
 }
+@keyframes pc-saved-flash {
+  0%   { border-color: #2a7; box-shadow: 0 0 0 2px rgba(42,170,100,0.3); }
+  100% { border-color: var(--border); box-shadow: none; }
+}
+.player-codes-input-saved {
+  animation: pc-saved-flash 1.2s ease-out;
+}
 .player-codes-icon-btn { font-size: 0.72rem; padding: 0.2rem 0.4rem; }
 .player-codes-linked-badge { font-size: 0.78rem; opacity: 0.75; cursor: default; user-select: none; }
 .player-codes-add-row { margin-top: 0.5rem; }

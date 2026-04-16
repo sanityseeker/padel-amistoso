@@ -56,6 +56,7 @@ const _participantEntries = {
 const _participantPasteMode = { gp: false, mex: false, po: false };
 const _participantEmails = { gp: {}, mex: {}, po: {} };  // name → email
 const _participantContacts = { gp: {}, mex: {}, po: {} };  // name → contact info
+const _participantProfileIds = { gp: {}, mex: {}, po: {} };  // name → profile_id (from hub link)
 
 // ─── Team Builder State (for team mode direct create) ─────
 const _EMPTY_TEAMS = [['', ''], ['', '']];
@@ -335,6 +336,15 @@ function getPlayerContacts(mode) {
   return Object.keys(contacts).length > 0 ? contacts : null;
 }
 
+/** Collect player_profile_ids dict from hub link selections (name → profile_id, only non-empty). */
+function getPlayerProfileIds(mode) {
+  const ids = {};
+  for (const [name, pid] of Object.entries(_participantProfileIds[mode])) {
+    if (name && pid) ids[name] = pid;
+  }
+  return Object.keys(ids).length > 0 ? ids : null;
+}
+
 function setEntryMode(mode, entryMode) {
   const prev = _entryMode[mode];
   _entryMode[mode] = entryMode;
@@ -371,6 +381,7 @@ function clearParticipants(mode) {
   _participantEntries[mode] = [];
   _participantEmails[mode] = {};
   _participantContacts[mode] = {};
+  _participantProfileIds[mode] = {};
   _createTeams[mode] = _EMPTY_TEAMS.map(t => [...t]);
   _createTeamNames[mode] = [];
   if (_participantPasteMode[mode]) {
@@ -429,6 +440,9 @@ function renderContactFields(mode) {
   }
   for (const k of Object.keys(_participantContacts[mode])) {
     if (!names.includes(k)) delete _participantContacts[mode][k];
+  }
+  for (const k of Object.keys(_participantProfileIds[mode])) {
+    if (!names.includes(k)) delete _participantProfileIds[mode][k];
   }
   if (!names.length) { container.innerHTML = ''; return; }
   let html = '<div class="contact-grid">';
@@ -731,6 +745,8 @@ async function createGP() {
     if (gpEmails) body.player_emails = gpEmails;
     const gpContacts = getPlayerContacts('gp');
     if (gpContacts) body.player_contacts = gpContacts;
+    const gpProfileIds = getPlayerProfileIds('gp');
+    if (gpProfileIds) body.player_profile_ids = gpProfileIds;
     // Validate group sizes in individual mode
     if (!body.team_mode) {
       const previewGroups = _gpGroupPreview?.groups;
@@ -810,6 +826,8 @@ async function createMex() {
     if (mexEmails) body.player_emails = mexEmails;
     const mexContacts = getPlayerContacts('mex');
     if (mexContacts) body.player_contacts = mexContacts;
+    const mexProfileIds = getPlayerProfileIds('mex');
+    if (mexProfileIds) body.player_profile_ids = mexProfileIds;
     if (_convertFromRegistration) {
       body.tournament_type = 'mexicano';
       const rid = _convertFromRegistration.rid;
@@ -852,6 +870,8 @@ async function createPO() {
     if (poEmails) body.player_emails = poEmails;
     const poContacts = getPlayerContacts('po');
     if (poContacts) body.player_contacts = poContacts;
+    const poProfileIds = getPlayerProfileIds('po');
+    if (poProfileIds) body.player_profile_ids = poProfileIds;
     if (_convertFromRegistration) {
       body.tournament_type = 'playoff';
       body.player_names = body.participant_names;
@@ -957,6 +977,7 @@ async function _createHubSelect(profileId) {
       const el = document.querySelector(`.create-contact-info[data-mode="${mode}"][data-key="${CSS.escape(name)}"]`);
       if (el) el.value = profile.contact;
     }
+    _participantProfileIds[mode][name] = profile.id;
     _createHubClose();
   } catch (e) {
     alert(e.message);

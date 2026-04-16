@@ -28,6 +28,7 @@ let _eloHistory = [];
 let _leaderboard = null; // { padel: [], tennis: [] } or null
 let _leaderboardSport = 'padel'; // 'padel' | 'tennis'
 let _eloHistorySport = 'padel'; // 'padel' | 'tennis'
+let _eloChart = null; // Chart.js instance for ELO trend
 let _authStep = 'passphrase'; // 'passphrase' | 'create'
 let _resolveResult = null;    // null | {type: 'profile'|'participation'|'not_found', matches: [...]}
 let _resolvedPassphrase = ''; // the passphrase that was resolved
@@ -729,6 +730,7 @@ function _render() {
   html += _buildLeaderboardPanel();
   if (_showLinkModal) html += _buildLinkModal();
   root.innerHTML = html;
+  _initEloChart();
 }
 
 function _buildHeader() {
@@ -1418,35 +1420,263 @@ function _setEloHistorySport(sport) {
   _render();
 }
 
+// ── ELO Trend Chart ──────────────────────────────────────────────────────────
+
+/** Short first-name label for a player, truncated. */
+function _shortName(name, max = 10) {
+  if (!name) return '?';
+  const first = name.split(/\s+/)[0];
+  return first.length > max ? first.slice(0, max) : first;
+}
+
+/** Compact "vs …" label for a match's opponents (team2). */
+function _compactVsLabel(match) {
+  const opps = (match.team2 || []).map(p => _shortName(p.player_name, 8));
+  if (!opps.length) return '';
+  return 'vs ' + opps.join(' & ');
+}
+
+function _getEloChartData() {
+  const hasPadel = _eloHistory.some(m => m.sport === 'padel');
+  const hasTennis = _eloHistory.some(m => m.sport === 'tennis');
+  const activeSport = (hasPadel && hasTennis) ? _eloHistorySport : (hasPadel ? 'padel' : 'tennis');
+  const filtered = _eloHistory.filter(m => m.sport === activeSport);
+  if (filtered.length < 2) return null;
+
+  // API returns DESC — reverse to chronological
+  const chronological = [...filtered].reverse();
+  const labels = [];
+  const dataPoints = [];
+
+  // Start with the elo_before of the first match
+  const firstChange = _findCurrentPlayerEloChange(chronological[0]);
+  if (firstChange) dataPoints.push(firstChange.before);
+  else return null;
+  labels.push('');
+
+  for (const match of chronological) {
+    const change = _findCurrentPlayerEloChange(match);
+    if (!change) continue;
+    labels.push(_compactVsLabel(match));
+    dataPoints.push(change.after);
+  }
+
+  if (dataPoints.length < 3) return null; // need at least start + 2 matches
+  return { labels, dataPoints, sport: activeSport, matches: chronological };
+}
+
+function _buildEloChartCanvas() {
+  if (typeof Chart === 'undefined') return ''; // CDN not loaded
+  const chartData = _getEloChartData();
+  if (!chartData) return '';
+
+  const hasPadel = _eloHistory.some(m => m.sport === 'padel');
+  const hasTennis = _eloHistory.some(m => m.sport === 'tennis');
+  const matchCount = chartData.matches.length;
+
+  let html = `<div class="elo-chart-section">`;
+  html += `<div class="elo-chart-heading-row">`;
+  html += `<div class="elo-chart-heading">${esc(t('txt_player_elo_chart'))} <span class="elo-chart-count">(${matchCount})</span></div>`;
+  if (hasPadel && hasTennis) {
+    const activeSport = _eloHistorySport;
+    html += `<div class="elo-sport-toggle">`;
+    html += `<button type="button" class="elo-sport-pill${activeSport === 'padel' ? ' elo-sport-pill--active' : ''}" data-sport="padel" onclick="_setEloHistorySport('padel')">Padel</button>`;
+    html += `<button type="button" class="elo-sport-pill${activeSport === 'tennis' ? ' elo-sport-pill--active' : ''}" data-sport="tennis" onclick="_setEloHistorySport('tennis')">Tennis</button>`;
+    html += `</div>`;
+  }
+  html += `</div>`;
+  html += `<div class="elo-chart-container"><canvas id="elo-trend-canvas"></canvas></div>`;
+  html += `</div>`;
+  return html;
+}
+
+function _initEloChart() {
+  // Destroy previous instance to prevent memory leaks
+  if (_eloChart) {
+    _eloChart.destroy();
+    _eloChart = null;
+  }
+  const canvas = document.getElementById('elo-trend-canvas');
+  if (!canvas) return;
+  if (typeof Chart === 'undefined') return; // CDN blocked — graceful fallback
+
+  try {
+    const chartData = _getEloChartData();
+    if (!chartData) return;
+    const { labels, dataPoints, sport, matches } = chartData;
+
+    const lineColor = sport === 'tennis' ? '#f59e0b' : '#3b82f6';
+    const fillColor = sport === 'tennis' ? 'rgba(245,158,11,0.08)' : 'rgba(59,130,246,0.08)';
+    const pointColor = sport === 'tennis' ? '#d97706' : '#2563eb';
+
+    // First point is baseline (hollow); rest are filled
+    const ptBg = dataPoints.map((_, i) => i === 0 ? '#fff' : pointColor);
+    const ptBorder = dataPoints.map((_, i) => i === 0 ? lineColor : lineColor);
+    const ptRadius = dataPoints.map((_, i) => i === 0 ? 4 : 3);
+    const ptBorderWidth = dataPoints.map((_, i) => i === 0 ? 2 : 1);
+
+    const minElo = Math.min(...dataPoints);
+    const maxElo = Math.max(...dataPoints);
+    const padding = Math.max(10, Math.round((maxElo - minElo) * 0.15));
+
+    _eloChart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: t('txt_player_elo_chart_label'),
+          data: dataPoints,
+          borderColor: lineColor,
+          backgroundColor: fillColor,
+          pointBackgroundColor: ptBg,
+          pointBorderColor: ptBorder,
+          pointRadius: ptRadius,
+          pointBorderWidth: ptBorderWidth,
+          pointHoverRadius: 5,
+          borderWidth: 2,
+          fill: true,
+          tension: 0.25,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title(items) {
+                const idx = items[0]?.dataIndex;
+                if (!idx || idx === 0) return t('txt_player_elo_chart_label');
+                const match = matches[idx - 1];
+                if (!match) return '';
+                const name = match.tournament_name || match.tournament_id || '';
+                return match.match_order ? `${name}  #${match.match_order}` : name;
+              },
+              afterTitle(items) {
+                const idx = items[0]?.dataIndex;
+                if (!idx || idx === 0) return '';
+                const match = matches[idx - 1];
+                if (!match) return '';
+                const lines = [];
+                // Line 1: score
+                const score = _formatEloHistoryScore(match);
+                if (score && score !== '—') lines.push(score);
+                // Line 2: partner + opponents
+                const parts = [];
+                const partner = (match.team1 || []).filter(p => p.player_id !== match.player_id).map(p => p.player_name);
+                if (partner.length) parts.push(`w ${partner.join(' & ')}`);
+                const opps = (match.team2 || []).map(p => p.player_name);
+                if (opps.length) parts.push(`vs ${opps.join(' & ')}`);
+                if (parts.length) lines.push(parts.join('  ·  '));
+                return lines.join('\n');
+              },
+              label(ctx) {
+                const elo = ctx.parsed.y;
+                const idx = ctx.dataIndex;
+                if (idx === 0) return `${elo}`;
+                const prev = dataPoints[idx - 1];
+                const delta = elo - prev;
+                const sign = delta > 0 ? '+' : '';
+                return `${elo}  (${sign}${delta})`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            display: false,
+          },
+          y: {
+            suggestedMin: minElo - padding,
+            suggestedMax: maxElo + padding,
+            ticks: {
+              color: 'var(--text-muted)',
+              stepSize: Math.max(5, Math.round((maxElo - minElo + 2 * padding) / 5)),
+              callback: (v) => Math.round(v),
+            },
+            grid: {
+              color: 'rgba(128,128,128,0.15)',
+            },
+          },
+        },
+      },
+    });
+  } catch (_) {
+    // Chart.js not available or data error — match log below remains usable
+  }
+}
+
 function _buildEloRatingsCard() {
   const hasPadelElo = Number.isFinite(_profile.elo_padel) && (_profile.elo_padel_matches || 0) > 0;
   const hasTennisElo = Number.isFinite(_profile.elo_tennis) && (_profile.elo_tennis_matches || 0) > 0;
+
+  // Derive ELO from history as fallback when profile columns are stale
+  const padelHistory = _eloHistory.filter(m => m.sport === 'padel');
+  const tennisHistory = _eloHistory.filter(m => m.sport === 'tennis');
+  const hasPadelFromHistory = !hasPadelElo && padelHistory.length > 0;
+  const hasTennisFromHistory = !hasTennisElo && tennisHistory.length > 0;
+
+  const showPadel = hasPadelElo || hasPadelFromHistory;
+  const showTennis = hasTennisElo || hasTennisFromHistory;
   const hasHistory = _eloHistory.length > 0;
-  if (!hasPadelElo && !hasTennisElo && !hasHistory) return '';
+  if (!showPadel && !showTennis && !hasHistory) return '';
+
+  // Latest ELO from history (first entry is most recent due to DESC order)
+  const padelLatest = hasPadelFromHistory ? _findCurrentPlayerEloChange(padelHistory[0]) : null;
+  const tennisLatest = hasTennisFromHistory ? _findCurrentPlayerEloChange(tennisHistory[0]) : null;
 
   let html = `<div class="card global-stats-card">`;
   html += `<div class="section-heading section-heading-card">${esc(t('txt_player_elo_ratings'))}</div>`;
 
-  if (hasPadelElo || hasTennisElo) {
+  if (showPadel || showTennis) {
     html += `<div class="global-stats-grid elo-ratings-grid">`;
-    if (hasPadelElo) {
+    if (showPadel) {
+      const eloVal = hasPadelElo ? Math.round(_profile.elo_padel) : (padelLatest ? padelLatest.after : '—');
+      const matchCount = hasPadelElo ? _profile.elo_padel_matches : padelHistory.length;
       html += `<div class="global-stats-cell elo-rating-cell" data-sport="padel">`;
       html += `<div class="elo-rating-sport-label">${esc(t('txt_player_sport_padel'))}</div>`;
-      html += `<div class="global-stats-value">${Math.round(_profile.elo_padel)}</div>`;
-      html += `<div class="global-stats-label">${_profile.elo_padel_matches} ${esc(t('txt_player_elo_matches_label'))}</div>`;
+      html += `<div class="global-stats-value">${eloVal}</div>`;
+      html += `<div class="global-stats-label">${matchCount} ${esc(t('txt_player_elo_matches_label'))}</div>`;
       html += `</div>`;
     }
-    if (hasPadelElo && hasTennisElo) {
+    if (showPadel && showTennis) {
       html += `<div class="global-stats-divider"></div>`;
     }
-    if (hasTennisElo) {
+    if (showTennis) {
+      const eloVal = hasTennisElo ? Math.round(_profile.elo_tennis) : (tennisLatest ? tennisLatest.after : '—');
+      const matchCount = hasTennisElo ? _profile.elo_tennis_matches : tennisHistory.length;
       html += `<div class="global-stats-cell elo-rating-cell" data-sport="tennis">`;
       html += `<div class="elo-rating-sport-label">${esc(t('txt_player_sport_tennis'))}</div>`;
-      html += `<div class="global-stats-value">${Math.round(_profile.elo_tennis)}</div>`;
-      html += `<div class="global-stats-label">${_profile.elo_tennis_matches} ${esc(t('txt_player_elo_matches_label'))}</div>`;
+      html += `<div class="global-stats-value">${eloVal}</div>`;
+      html += `<div class="global-stats-label">${matchCount} ${esc(t('txt_player_elo_matches_label'))}</div>`;
       html += `</div>`;
     }
     html += `</div>`;
+  }
+
+  // ELO Trend Chart (rendered above the history dropdown)
+  let chartRendered = false;
+  if (hasHistory) {
+    const chartHtml = _buildEloChartCanvas();
+    if (chartHtml) {
+      html += chartHtml;
+      chartRendered = true;
+    }
+  }
+
+  // Sport toggle fallback when chart couldn't render but both sports exist
+  if (!chartRendered && hasHistory) {
+    const hasPadel = _eloHistory.some(m => m.sport === 'padel');
+    const hasTennis = _eloHistory.some(m => m.sport === 'tennis');
+    if (hasPadel && hasTennis) {
+      const activeSport = _eloHistorySport;
+      html += `<div class="elo-sport-toggle-standalone">`;
+      html += `<button type="button" class="elo-sport-pill${activeSport === 'padel' ? ' elo-sport-pill--active' : ''}" data-sport="padel" onclick="_setEloHistorySport('padel')">Padel</button>`;
+      html += `<button type="button" class="elo-sport-pill${activeSport === 'tennis' ? ' elo-sport-pill--active' : ''}" data-sport="tennis" onclick="_setEloHistorySport('tennis')">Tennis</button>`;
+      html += `</div>`;
+    }
   }
 
   // ELO History dropdown inside the card
@@ -1460,25 +1690,16 @@ function _buildEloRatingsCard() {
 
 function _buildEloHistoryInline() {
   const settings = _getEloHistorySettings();
+  const hasPadel = _eloHistory.some(m => m.sport === 'padel');
+  const hasTennis = _eloHistory.some(m => m.sport === 'tennis');
+  const activeSport = (hasPadel && hasTennis) ? _eloHistorySport : (hasPadel ? 'padel' : 'tennis');
   const openAttr = _isEloHistoryPanelOpen() ? ' open' : '';
   let html = `<details class="elo-history-inline-details" ontoggle="_rememberEloHistoryPanelOpen(this)"${openAttr}>`;
   html += `<summary class="elo-history-inline-summary"><span class="player-history-chevron">▶</span><span>${esc(t('txt_player_elo_history'))}</span></summary>`;
   html += `<div class="elo-history-inline-body">`;
 
-  // Controls row: sport toggle (if both) + show-last selector
+  // Controls row: show-last selector
   html += `<div class="player-elo-controls">`;
-
-  // Sport toggle pills (only when both sports have history)
-  const hasPadel = _eloHistory.some(m => m.sport === 'padel');
-  const hasTennis = _eloHistory.some(m => m.sport === 'tennis');
-  const activeSport = (hasPadel && hasTennis) ? _eloHistorySport : (hasPadel ? 'padel' : 'tennis');
-  if (hasPadel && hasTennis) {
-    html += `<div class="leaderboard-sport-toggle" style="margin:0;margin-right:auto">`;
-    html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" data-sport="padel" onclick="event.stopPropagation(); _setEloHistorySport('padel')">Padel</button>`;
-    html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" data-sport="tennis" onclick="event.stopPropagation(); _setEloHistorySport('tennis')">Tennis</button>`;
-    html += `</div>`;
-  }
-
   html += `<label class="player-elo-control-label">${esc(t('txt_player_elo_show_last'))}</label>`;
   html += `<select class="player-elo-control-select" onchange="_onEloHistoryLimitChange(this)">`;
   html += `<option value="5"${settings.limit === 5 ? ' selected' : ''}>5</option>`;
@@ -1525,25 +1746,16 @@ function _buildEloHistoryInline() {
 
 function _buildEloHistoryCard() {
   const settings = _getEloHistorySettings();
+  const hasPadel = _eloHistory.some(m => m.sport === 'padel');
+  const hasTennis = _eloHistory.some(m => m.sport === 'tennis');
+  const activeSport = (hasPadel && hasTennis) ? _eloHistorySport : (hasPadel ? 'padel' : 'tennis');
   const openAttr = _isEloHistoryPanelOpen() ? ' open' : '';
   let html = `<details class="player-history-panel" ontoggle="_rememberEloHistoryPanelOpen(this)"${openAttr}>`;
   html += `<summary class="player-history-summary"><span class="player-history-chevron">▶</span><span class="section-heading section-heading-inline">${esc(t('txt_player_elo_history'))}</span></summary>`;
   html += `<div class="player-history-body">`;
 
-  // Controls row: sport toggle (if both) + show-last selector
+  // Controls row: show-last selector
   html += `<div class="player-elo-controls">`;
-
-  // Sport toggle pills (only when both sports have history)
-  const hasPadel = _eloHistory.some(m => m.sport === 'padel');
-  const hasTennis = _eloHistory.some(m => m.sport === 'tennis');
-  const activeSport = (hasPadel && hasTennis) ? _eloHistorySport : (hasPadel ? 'padel' : 'tennis');
-  if (hasPadel && hasTennis) {
-    html += `<div class="leaderboard-sport-toggle" style="margin:0;margin-right:auto">`;
-    html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" data-sport="padel" onclick="event.stopPropagation(); _setEloHistorySport('padel')">Padel</button>`;
-    html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" data-sport="tennis" onclick="event.stopPropagation(); _setEloHistorySport('tennis')">Tennis</button>`;
-    html += `</div>`;
-  }
-
   html += `<label class="player-elo-control-label">${esc(t('txt_player_elo_show_last'))}</label>`;
   html += `<select class="player-elo-control-select" onchange="_onEloHistoryLimitChange(this)">`;
   html += `<option value="5"${settings.limit === 5 ? ' selected' : ''}>5</option>`;
@@ -1830,7 +2042,7 @@ async function _doCreate() {
     return;
   }
   try {
-    const data = await _apiPost('', { participant_passphrase: participantPp, name, email, contact });
+    const data = await _apiPost('', { participant_passphrase: participantPp, name, email, contact, lang: getAppLanguage() });
     _jwt = data.access_token;
     _profile = data.profile;
     _entries = data.entries || [];

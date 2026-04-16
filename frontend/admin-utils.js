@@ -628,3 +628,42 @@ function _schemaCardHtml(prefix, placeholder, generateFn) {
 
 // ─── API helper ────────────────────────────────────────────
 // Use authenticated API wrapper from auth.js
+
+// ─── Language toggle (shared between registration & player codes) ──────────
+
+/**
+ * Render a compact EN/ES segmented toggle for email language.
+ * @param {string} parentId - registration or tournament id
+ * @param {string} playerId - player identifier
+ * @param {string} currentLang - current lang value ('en' or 'es')
+ * @param {string} context - 'reg' for registrants, 'sec' for player_secrets
+ */
+function _langToggle(parentId, playerId, currentLang, context) {
+  const isEn = currentLang === 'en';
+  const btnBase = 'display:inline-block;padding:0.08rem 0.35rem;font-size:0.7rem;font-weight:600;cursor:pointer;border:1px solid var(--border);line-height:1.3;';
+  const activeStyle = 'background:var(--accent);color:#fff;border-color:var(--accent);';
+  const inactiveStyle = 'background:var(--surface);color:var(--text-muted);';
+  const enStyle = btnBase + (isEn ? activeStyle : inactiveStyle) + 'border-radius:4px 0 0 4px;border-right:none;';
+  const esStyle = btnBase + (!isEn ? activeStyle : inactiveStyle) + 'border-radius:0 4px 4px 0;';
+  const handler = context === 'reg' ? '_setRegLang' : '_setSecLang';
+  return `<span style="display:inline-flex;white-space:nowrap">`
+    + `<span style="${enStyle}" onclick="${handler}('${esc(parentId)}','${esc(playerId)}','en',this.parentElement)" title="English">EN</span>`
+    + `<span style="${esStyle}" onclick="${handler}('${esc(parentId)}','${esc(playerId)}','es',this.parentElement)" title="Español">ES</span>`
+    + `</span>`;
+}
+
+/** Update a player_secrets lang preference (tournament context). */
+async function _setSecLang(tid, pid, lang, toggleEl) {
+  try {
+    await api(`/api/tournaments/${tid}/player-secrets/${pid}/lang`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lang }),
+    });
+    if (toggleEl) {
+      toggleEl.outerHTML = _langToggle(tid, pid, lang, 'sec');
+    }
+    // Update local cache
+    if (_playerSecrets && _playerSecrets[pid]) _playerSecrets[pid].lang = lang;
+  } catch (e) { console.error('Failed to update player lang:', e.message); }
+}

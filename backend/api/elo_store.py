@@ -282,7 +282,11 @@ def delete_tournament_elos(tournament_id: str) -> None:
 
 
 def get_profile_recent_elo_logs(profile_id: str, limit: int = 20) -> list[dict]:
-    """Return recent per-match ELO logs for a profile across linked tournaments."""
+    """Return recent per-match ELO logs for a profile across linked tournaments.
+
+    Returns up to *limit* rows **per sport** so the frontend can switch
+    between padel and tennis without a round-trip.
+    """
     with get_db() as conn:
         rows = conn.execute(
             """
@@ -295,27 +299,37 @@ def get_profile_recent_elo_logs(profile_id: str, limit: int = 20) -> list[dict]:
                   FROM player_history ph
                  WHERE ph.profile_id = ?
                    AND ph.entity_type = 'tournament'
+            ),
+            ranked AS (
+                SELECT l.tournament_id,
+                       l.sport,
+                       l.match_id,
+                       l.player_id,
+                       l.match_order,
+                       l.elo_before,
+                       l.elo_after,
+                       l.elo_delta,
+                       l.match_payload,
+                       l.updated_at,
+                       t.name AS tournament_name,
+                       t.alias AS tournament_alias,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY l.sport
+                           ORDER BY l.updated_at DESC, l.match_order DESC
+                       ) AS rn
+                  FROM player_elo_log l
+                  JOIN linked_tournament_players lp
+                    ON lp.tournament_id = l.tournament_id
+                   AND lp.player_id = l.player_id
+                  LEFT JOIN tournaments t
+                    ON t.id = l.tournament_id
             )
-            SELECT l.tournament_id,
-                   l.sport,
-                   l.match_id,
-                   l.player_id,
-                   l.match_order,
-                   l.elo_before,
-                   l.elo_after,
-                   l.elo_delta,
-                   l.match_payload,
-                   l.updated_at,
-                   t.name AS tournament_name,
-                   t.alias AS tournament_alias
-              FROM player_elo_log l
-              JOIN linked_tournament_players lp
-                ON lp.tournament_id = l.tournament_id
-               AND lp.player_id = l.player_id
-              LEFT JOIN tournaments t
-                ON t.id = l.tournament_id
-          ORDER BY l.updated_at DESC, l.match_order DESC
-             LIMIT ?
+            SELECT tournament_id, sport, match_id, player_id, match_order,
+                   elo_before, elo_after, elo_delta, match_payload,
+                   updated_at, tournament_name, tournament_alias
+              FROM ranked
+             WHERE rn <= ?
+          ORDER BY updated_at DESC, match_order DESC
             """,
             (profile_id, profile_id, limit),
         ).fetchall()
@@ -565,3 +579,29 @@ def retroactive_transfer_elo(profile_id: str, player_id: str) -> None:
             " WHERE id = ?",
             (padel_elo, tennis_elo, padel_matches, tennis_matches, profile_id),
         )
+
+
+def retroactive_transfer_all_elos(profile_id: str) -> None:
+    """Transfer ELO for every player_id linked to a profile.
+
+    Gathers all ``player_id`` values from ``player_secrets`` and
+    ``player_history`` for the given profile, then calls
+    :func:`retroactive_transfer_elo` for each one.  Safe to call multiple
+    times — idempotent.
+    """
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT player_id FROM (
+                SELECT player_id FROM player_secrets
+                 WHERE profile_id = ? AND player_id IS NOT NULL
+                UNION
+                SELECT player_id FROM player_history
+                 WHERE profile_id = ? AND entity_type = 'tournament'
+                   AND player_id IS NOT NULL
+            )
+            """,
+            (profile_id, profile_id),
+        ).fetchall()
+    for row in rows:
+        retroactive_transfer_elo(profile_id, row["player_id"])

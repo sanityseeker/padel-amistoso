@@ -1,13 +1,14 @@
 // Service worker — optimal caching for performance + freshness.
-const CACHE_NAME = 'amistoso-v24';
+const CACHE_NAME = 'amistoso-v28';
 const STATIC_ASSETS = [
   '/shared.js', '/auth.js', '/i18n.js', '/manifest.json',
   '/admin-utils.js', '/admin-tournaments.js', '/admin-create.js',
   '/admin-gp.js', '/admin-mex.js', '/admin-player-codes.js',
   '/admin-tv-email.js', '/admin-registration.js', '/admin-convert.js',
   '/admin-collaborators.js',
-  '/tv.js', '/register.js',
-  '/admin.css', '/tv.css', '/register.css',
+  '/tv.js', '/register.js', '/player.js',
+  '/admin.css', '/tv.css', '/register.css', '/player.css',
+  'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js',
 ];
 const SHELL = ['/'];
 
@@ -82,8 +83,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      icon: '/assets/icons/icon-192x192.png',
-      badge: '/assets/icons/icon-192x192.png',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
       tag,
       renotify: true,
       data: { url },

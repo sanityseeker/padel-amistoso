@@ -34,6 +34,7 @@ from ..auth.security import (
     decode_profile_email_verify_token,
 )
 from ..email import is_valid_email, render_player_space_magic_link, render_player_space_welcome, send_email_background
+from .schemas import EmailLang
 from ..models import EntityType, MatchStatus, ParticipationStatus, ScoreMode, Sport, TournamentType
 from ..tournaments.player_secrets import generate_passphrase
 from .db import get_db
@@ -45,7 +46,7 @@ from .player_secret_store import (
 )
 from .rate_limit import BoundedRateLimiter
 from .state import bump_tournament_version, get_tournament_data
-from .elo_store import get_profile_recent_elo_logs, retroactive_transfer_elo
+from .elo_store import get_profile_recent_elo_logs, retroactive_transfer_all_elos, retroactive_transfer_elo
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,7 @@ class ProfileCreateRequest(BaseModel):
     name: str = Field(default="", max_length=128)
     email: str = Field(min_length=1, max_length=256)
     contact: str = Field(default="", max_length=256)
+    lang: EmailLang = "en"
 
 
 class ProfileLoginRequest(BaseModel):
@@ -348,6 +350,8 @@ def _link_email_participations(profile_id: str, email: str) -> None:
             "UPDATE registrants SET profile_id = ? WHERE LOWER(email) = LOWER(?) AND profile_id IS NULL",
             (profile_id, email),
         )
+    # Transfer ELO from all newly-linked participations.
+    retroactive_transfer_all_elos(profile_id)
 
 
 def _send_email_verification(
@@ -356,6 +360,7 @@ def _send_email_verification(
     name: str,
     passphrase: str,
     access_token: str = "",
+    lang: EmailLang = "en",
 ) -> None:
     """Send a Player Hub welcome email that includes a one-click email verification link."""
     verify_token = create_profile_email_verify_token(profile_id, email)
@@ -366,6 +371,7 @@ def _send_email_verification(
         passphrase=passphrase,
         access_token=login_token,
         verify_token=verify_token,
+        lang=lang,
     )
     send_email_background(email, subject, html_body)
 
@@ -1817,18 +1823,22 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
     with get_db() as conn:
         conn.execute(
             """
-            INSERT INTO player_profiles (id, passphrase, name, email, email_verified_at, contact, created_at)
-            VALUES (?, ?, ?, ?, NULL, ?, ?)
+            INSERT INTO player_profiles (id, passphrase, name, email, email_verified_at, contact, lang, created_at)
+            VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
             """,
-            (profile_id, passphrase, clean_name, clean_email, clean_contact, now),
+            (profile_id, passphrase, clean_name, clean_email, clean_contact, req.lang, now),
         )
         # Auto-link the participation the player used to prove identity.
         # Always update BOTH tables: when a lobby is converted to a tournament the
         # same passphrase may exist in both registrants and player_secrets, so we
         # must link them unconditionally rather than stopping after the first hit.
+        # Propagate email and contact immediately so tournament notifications
+        # reach the player without waiting for email verification or a
+        # separate profile-update round-trip.
         conn.execute(
-            "UPDATE player_secrets SET profile_id = ? WHERE passphrase = ? AND profile_id IS NULL",
-            (profile_id, clean_passphrase),
+            "UPDATE player_secrets SET profile_id = ?, email = ?, contact = ?"
+            " WHERE passphrase = ? AND profile_id IS NULL",
+            (profile_id, clean_email, clean_contact, clean_passphrase),
         )
         conn.execute(
             "UPDATE registrants SET profile_id = ? WHERE passphrase = ? AND profile_id IS NULL",
@@ -1851,10 +1861,12 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
         name=clean_name,
         passphrase=passphrase,
         access_token=token,
+        lang=req.lang,
     )
 
     _backfill_history_for_profile(profile_id)
     _backfill_finished_secrets(profile_id)
+    retroactive_transfer_all_elos(profile_id)
     active = _build_active_entries(profile_id)
     history = _build_history_entries(profile_id)
 
@@ -1970,7 +1982,7 @@ async def recover_passphrase(req: ProfileRecoverRequest, request: Request) -> di
     with get_db() as conn:
         row = conn.execute(
             """
-                        SELECT id, passphrase, name, email
+                        SELECT id, passphrase, name, email, lang
                             FROM player_profiles
                          WHERE LOWER(email) = LOWER(?)
                              AND email_verified_at IS NOT NULL
@@ -1982,7 +1994,7 @@ async def recover_passphrase(req: ProfileRecoverRequest, request: Request) -> di
         # Short-lived token so the magic link expires quickly.
         recovery_token = create_profile_token(row["id"], expires_delta=timedelta(hours=1))
         subject, html_body = render_player_space_magic_link(
-            name=row["name"], email=row["email"], access_token=recovery_token
+            name=row["name"], email=row["email"], access_token=recovery_token, lang=row["lang"] or "en"
         )
         send_email_background(row["email"], subject, html_body)
 
@@ -2293,6 +2305,10 @@ async def link_participation(
                 top_partners=json.loads(h["top_partners"]) if h and h["top_partners"] else [],
                 top_rivals=json.loads(h["top_rivals"]) if h and h["top_rivals"] else [],
             )
+
+        # Active tournament — still transfer any existing ELO from earlier
+        # tournaments so the profile ratings stay up-to-date.
+        retroactive_transfer_elo(identity.profile_id, row["player_id"])
 
         return PlayerSpaceEntry(
             entity_type=EntityType.TOURNAMENT,

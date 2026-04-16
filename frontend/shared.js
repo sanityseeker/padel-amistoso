@@ -121,8 +121,14 @@ function _loadSavedLanguage() {
       localStorage.setItem(LANG_KEY, legacy);
       localStorage.removeItem('padel-lang');
     }
-    const value = localStorage.getItem(LANG_KEY);
-    return value === 'es' ? 'es' : 'en';
+    const saved = localStorage.getItem(LANG_KEY);
+    if (saved) return saved === 'es' ? 'es' : 'en';
+
+    // Auto-detect from browser language on first visit
+    const browserLang = (navigator.languages?.[0] || navigator.language || 'en').toLowerCase();
+    const detected = browserLang.startsWith('es') ? 'es' : 'en';
+    localStorage.setItem(LANG_KEY, detected);
+    return detected;
   } catch (_) {
     return 'en';
   }

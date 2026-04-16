@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from backend.email import (
     _esc,
+    _tx,
     is_configured,
     is_valid_email,
     render_cancellation_email,
@@ -468,6 +469,251 @@ class TestRenderWaitlistSpotEmail:
                 lobby_alias="saturday",
             )
         assert "/register/saturday" in body
+
+
+# ── Bilingual rendering tests ──────────────────────────────────────────────
+
+
+class TestBilingualRendering:
+    """Verify all render_* functions produce the correct language when lang is set."""
+
+    @pytest.mark.parametrize(
+        ("lang", "expect_en", "expect_es"),
+        [
+            ("en", True, False),
+            ("es", False, True),
+        ],
+    )
+    def test_registration_confirmation_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
+        subject, body = render_registration_confirmation(
+            lobby_name="Test Lobby",
+            player_name="Alice",
+            passphrase="green-frog",
+            token="tok123",
+            lobby_id="reg1",
+            lang=lang,
+        )
+        assert ("Registration confirmed" in subject) == expect_en
+        assert ("Registro confirmado" in subject) == expect_es
+        assert ("You're registered" in body) == expect_en
+        assert ("Estás registrado" in body) == expect_es
+
+    @pytest.mark.parametrize(
+        ("lang", "expect_en", "expect_es"),
+        [
+            ("en", True, False),
+            ("es", False, True),
+        ],
+    )
+    def test_credentials_email_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
+        subject, body = render_credentials_email(
+            lobby_name="Test Lobby",
+            player_name="Bob",
+            passphrase="blue-sky",
+            token="tok456",
+            lobby_id="reg2",
+            lang=lang,
+        )
+        assert ("Your login details" in subject) == expect_en
+        assert ("Tus datos de acceso" in subject) == expect_es
+
+    @pytest.mark.parametrize(
+        ("lang", "expect_en", "expect_es"),
+        [
+            ("en", True, False),
+            ("es", False, True),
+        ],
+    )
+    def test_tournament_started_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
+        subject, body = render_tournament_started_email(
+            tournament_name="Grand Cup",
+            player_name="Charlie",
+            passphrase="red-fox",
+            token="tok789",
+            tournament_id="t1",
+            lang=lang,
+        )
+        assert ("Tournament started" in subject) == expect_en
+        assert ("Torneo iniciado" in subject) == expect_es
+        assert ("has started" in body) == expect_en
+        assert ("ha comenzado" in body) == expect_es
+
+    @pytest.mark.parametrize(
+        ("lang", "expect_en", "expect_es"),
+        [
+            ("en", True, False),
+            ("es", False, True),
+        ],
+    )
+    def test_tournament_message_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
+        subject, body = render_tournament_message_email(
+            tournament_name="Cup 2025",
+            player_name="Dana",
+            message="Arrive early",
+            token="tok1",
+            tournament_id="t99",
+            lang=lang,
+        )
+        assert ("Message from organizer" in subject) == expect_en
+        assert ("Mensaje del organizador" in subject) == expect_es
+
+    @pytest.mark.parametrize(
+        ("lang", "expect_en", "expect_es"),
+        [
+            ("en", True, False),
+            ("es", False, True),
+        ],
+    )
+    def test_next_round_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
+        _, body = render_next_round_email(
+            tournament_name="Cup",
+            player_name="Eve",
+            round_number=2,
+            matches_info=[
+                {"teammates": "Bob", "opponents": "Charlie", "court": "3"},
+            ],
+            token="tok1",
+            tournament_id="t1",
+            lang=lang,
+        )
+        # "Court" is the English label, "Cancha" is the Spanish label
+        assert ("— Court <strong>" in body) == expect_en
+        assert ("— Cancha <strong>" in body) == expect_es
+
+    @pytest.mark.parametrize(
+        ("lang", "expect_en", "expect_es"),
+        [
+            ("en", True, False),
+            ("es", False, True),
+        ],
+    )
+    def test_next_round_sit_out_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
+        _, body = render_next_round_email(
+            tournament_name="Cup",
+            player_name="Eve",
+            round_number=2,
+            matches_info=[],
+            token="tok1",
+            tournament_id="t1",
+            lang=lang,
+        )
+        assert ("sit-out" in body.lower()) == expect_en
+        assert ("descansás" in body.lower()) == expect_es
+
+    @pytest.mark.parametrize(
+        ("lang", "expect_en", "expect_es"),
+        [
+            ("en", True, False),
+            ("es", False, True),
+        ],
+    )
+    def test_results_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
+        subject, body = render_tournament_results_email(
+            tournament_name="Grand Finale",
+            player_name="Alice",
+            rank=2,
+            total_players=8,
+            stats={"wins": 5, "losses": 2, "draws": 1},
+            leaderboard_top=[
+                {"rank": 1, "name": "Bob", "score": 42},
+                {"rank": 2, "name": "Alice", "score": 38},
+            ],
+            token="tok1",
+            tournament_id="t1",
+            lang=lang,
+        )
+        assert ("Final results" in subject) == expect_en
+        assert ("Resultados finales" in subject) == expect_es
+        assert ("Tournament complete" in body) == expect_en
+        assert ("Torneo finalizado" in body) == expect_es
+
+    @pytest.mark.parametrize(
+        ("lang", "expect_en", "expect_es"),
+        [
+            ("en", True, False),
+            ("es", False, True),
+        ],
+    )
+    def test_cancellation_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
+        subject, body = render_cancellation_email(
+            lobby_name="Friday League",
+            player_name="Alice",
+            lobby_id="reg1",
+            lang=lang,
+        )
+        assert ("Registration cancelled" in subject) == expect_en
+        assert ("Registro cancelado" in subject) == expect_es
+
+    @pytest.mark.parametrize(
+        ("lang", "expect_en", "expect_es"),
+        [
+            ("en", True, False),
+            ("es", False, True),
+        ],
+    )
+    def test_waitlist_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
+        subject, body = render_waitlist_spot_email(
+            lobby_name="Saturday Padel",
+            player_name="Charlie",
+            token="tok_wait",
+            lobby_id="reg2",
+            lang=lang,
+        )
+        assert ("A spot opened up" in subject) == expect_en
+        assert ("Se liberó un lugar" in subject) == expect_es
+
+    @pytest.mark.parametrize(
+        ("lang", "expect_en", "expect_es"),
+        [
+            ("en", True, False),
+            ("es", False, True),
+        ],
+    )
+    def test_player_hub_welcome_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
+        with patch("backend.email.SITE_URL", "https://example.com"):
+            subject, body = render_player_space_welcome(
+                name="Alice",
+                email="alice@example.com",
+                passphrase="sun-river-sky",
+                access_token="tok123",
+                lang=lang,
+            )
+        assert ("Your Player Hub passphrase" in subject) == expect_en
+        assert ("Tu contraseña de Player Hub" in subject) == expect_es
+
+    @pytest.mark.parametrize(
+        ("lang", "expect_en", "expect_es"),
+        [
+            ("en", True, False),
+            ("es", False, True),
+        ],
+    )
+    def test_player_hub_magic_link_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
+        with patch("backend.email.SITE_URL", "https://example.com"):
+            subject, body = render_player_space_magic_link(
+                name="Bob",
+                email="bob@example.com",
+                access_token="tok456",
+                lang=lang,
+            )
+        assert ("Your Player Hub login link" in subject) == expect_en
+        assert ("Tu enlace de acceso a Player Hub" in subject) == expect_es
+
+    def test_unknown_lang_defaults_to_english(self) -> None:
+        subject, _ = render_registration_confirmation(
+            lobby_name="Test",
+            player_name="Alice",
+            passphrase="pp",
+            token="tok",
+            lobby_id="r1",
+            lang="fr",
+        )
+        assert "Registration confirmed" in subject
+
+    def test_tx_helper_returns_correct_language(self) -> None:
+        assert _tx("en", "Hello", "Hola") == "Hello"
+        assert _tx("es", "Hello", "Hola") == "Hola"
+        assert _tx("fr", "Hello", "Hola") == "Hello"
 
 
 # ── Integration tests for email-related API endpoints ──────────────────────

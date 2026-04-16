@@ -152,6 +152,10 @@ async def create_group_playoff(
         contacts={p.id: req.player_contacts[p.name] for p in individual_players if p.name in req.player_contacts}
         or None,
         emails={p.id: req.player_emails[p.name] for p in individual_players if p.name in req.player_emails} or None,
+        profile_ids={
+            p.id: req.player_profile_ids[p.name] for p in individual_players if p.name in req.player_profile_ids
+        }
+        or None,
     )
     elo_init_tournament(tid, [p.id for p in individual_players], req.sport.value)
     return {"id": tid, "phase": t.phase}

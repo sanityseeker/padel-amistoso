@@ -32,8 +32,9 @@ from .player_secret_store import (
     remove_player_secret,
     update_contact,
     update_email,
+    update_lang,
 )
-from .schemas import PlayerEmailRequest
+from .schemas import EmailLang, PlayerEmailRequest
 from .state import _save_tournament, _tournaments, get_tournament_lock, rename_player_in_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["player-auth"])
@@ -382,6 +383,25 @@ async def update_player_contact(
     if not updated:
         raise HTTPException(404, "Player not found in this tournament")
     return {"player_id": player_id, "contact": req.contact}
+
+
+class _PlayerLangRequest(BaseModel):
+    lang: EmailLang
+
+
+@router.put("/{tid}/player-secrets/{player_id}/lang")
+async def update_player_lang(
+    tid: str,
+    player_id: str,
+    req: _PlayerLangRequest,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Set the email language preference for a player (organizer/admin only)."""
+    _require_editor_access(tid, user)
+    updated = update_lang(tid, player_id, req.lang)
+    if not updated:
+        raise HTTPException(404, "Player not found in this tournament")
+    return {"player_id": player_id, "lang": req.lang}
 
 
 @router.put("/{tid}/player-secrets/{player_id}/email")

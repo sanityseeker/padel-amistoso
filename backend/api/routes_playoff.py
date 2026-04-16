@@ -112,11 +112,13 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
     # Create secrets for individual players (each member gets their own passphrase)
     contact_map = {p.id: req.player_contacts[p.name] for p in all_players if p.name in req.player_contacts} or None
     email_map = {p.id: req.player_emails[p.name] for p in all_players if p.name in req.player_emails} or None
+    pid_map = {p.id: req.player_profile_ids[p.name] for p in all_players if p.name in req.player_profile_ids} or None
     create_secrets_for_tournament(
         tid,
         [{"id": p.id, "name": p.name} for p in all_players],
         contacts=contact_map,
         emails=email_map,
+        profile_ids=pid_map,
     )
     elo_init_tournament(tid, [p.id for p in all_players], req.sport.value)
     return {"id": tid, "phase": t.phase}

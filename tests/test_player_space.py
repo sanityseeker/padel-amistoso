@@ -224,6 +224,34 @@ class TestCreateProfile:
             e["entity_type"] == "tournament" and e["entity_id"] == tid and e["status"] == "finished" for e in entries
         )
 
+    def test_create_propagates_email_and_contact_to_player_secrets(self, client: TestClient) -> None:
+        """Creating a Hub profile should immediately write email and contact to linked player_secrets."""
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        pid = f"p-{uuid.uuid4().hex[:8]}"
+        pp = f"pp-{uuid.uuid4().hex[:12]}"
+        _insert_player_secret(tid, pid, "Prop Test", pp, uuid.uuid4().hex)
+
+        res = client.post(
+            "/api/player-profile",
+            json={
+                "name": "Prop Test",
+                "email": "prop@example.com",
+                "contact": "+1234567890",
+                "participant_passphrase": pp,
+            },
+        )
+        assert res.status_code == 200, res.text
+
+        with db_mod.get_db() as conn:
+            row = conn.execute(
+                "SELECT email, contact, profile_id FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
+                (tid, pid),
+            ).fetchone()
+        assert row is not None
+        assert row["email"] == "prop@example.com"
+        assert row["contact"] == "+1234567890"
+        assert row["profile_id"] is not None
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Profile creation gating

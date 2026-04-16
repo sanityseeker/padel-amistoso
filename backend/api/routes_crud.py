@@ -365,6 +365,7 @@ async def notify_tournament_players(tid: str, request: Request, user: User = Dep
             tournament_id=tid,
             tournament_alias=alias,
             reply_to=es.reply_to,
+            lang=info.get("lang", "en"),
         )
         ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
         if ok:
@@ -410,6 +411,7 @@ async def send_tournament_player_email(
         tournament_id=tid,
         tournament_alias=data.get("alias"),
         reply_to=es.reply_to,
+        lang=info.get("lang", "en"),
     )
     ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
     if not ok:
@@ -453,6 +455,7 @@ async def send_all_tournament_emails(tid: str, request: Request, user: User = De
             tournament_id=tid,
             tournament_alias=alias,
             reply_to=es.reply_to,
+            lang=info.get("lang", "en"),
         )
         ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
         if ok:
@@ -501,6 +504,7 @@ async def send_tournament_message_emails(
             tournament_id=tid,
             tournament_alias=alias,
             reply_to=es.reply_to,
+            lang=info.get("lang", "en"),
         )
         ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
         if ok:
@@ -714,6 +718,7 @@ async def send_next_round_emails(tid: str, request: Request, user: User = Depend
             tournament_id=tid,
             tournament_alias=alias,
             reply_to=es.reply_to,
+            lang=info.get("lang", "en"),
         )
         ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
         if ok:
@@ -821,6 +826,7 @@ async def send_results_emails(tid: str, request: Request, user: User = Depends(g
             tournament_id=tid,
             tournament_alias=alias,
             reply_to=es.reply_to,
+            lang=info.get("lang", "en"),
         )
         ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
         if ok:

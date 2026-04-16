@@ -9,7 +9,10 @@ import zxingcpp
 from PIL import Image
 
 from backend.api.db import get_db
-from backend.api.player_secret_store import delete_secrets_for_tournament as real_delete_secrets_for_tournament
+from backend.api.player_secret_store import (
+    create_secrets_for_tournament as real_create_secrets_for_tournament,
+    delete_secrets_for_tournament as real_delete_secrets_for_tournament,
+)
 from backend.tournaments.player_secrets import (
     PlayerSecret,
     generate_passphrase,
@@ -152,6 +155,128 @@ class TestDeleteSecretsForTournament:
                 ("profile-1", tid),
             ).fetchone()
             assert history is not None
+
+
+class TestCreateSecretsAutoLinksProfile:
+    """create_secrets_for_tournament should set profile_id when an email matches a verified profile."""
+
+    def test_auto_links_matching_verified_email(self):
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, email, email_verified_at, contact, created_at)
+                   VALUES ('prof-1', 'unique-pp-1', 'Alice Hub', 'alice@example.com', '2025-01-01T00:00:00Z', '+1111', '2025-01-01T00:00:00Z')""",
+            )
+
+        real_create_secrets_for_tournament(
+            "t-autolink",
+            players=[{"id": "p1", "name": "Alice"}, {"id": "p2", "name": "Bob"}],
+            emails={"p1": "alice@example.com"},
+        )
+
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT player_id, profile_id FROM player_secrets WHERE tournament_id = 't-autolink'"
+            ).fetchall()
+        by_id = {r["player_id"]: r["profile_id"] for r in rows}
+        assert by_id["p1"] == "prof-1"
+        assert by_id["p2"] is None
+
+    def test_does_not_link_unverified_email(self):
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, email, email_verified_at, contact, created_at)
+                   VALUES ('prof-2', 'unique-pp-2', 'Bob Hub', 'bob@example.com', NULL, '', '2025-01-01T00:00:00Z')""",
+            )
+
+        real_create_secrets_for_tournament(
+            "t-nolink",
+            players=[{"id": "p1", "name": "Bob"}],
+            emails={"p1": "bob@example.com"},
+        )
+
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT profile_id FROM player_secrets WHERE tournament_id = 't-nolink' AND player_id = 'p1'"
+            ).fetchone()
+        assert row["profile_id"] is None
+
+    def test_case_insensitive_email_matching(self):
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, email, email_verified_at, contact, created_at)
+                   VALUES ('prof-3', 'unique-pp-3', 'Charlie', 'Charlie@EXAMPLE.COM', '2025-01-01T00:00:00Z', '', '2025-01-01T00:00:00Z')""",
+            )
+
+        real_create_secrets_for_tournament(
+            "t-caselink",
+            players=[{"id": "p1", "name": "Charlie"}],
+            emails={"p1": "charlie@example.com"},
+        )
+
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT profile_id FROM player_secrets WHERE tournament_id = 't-caselink' AND player_id = 'p1'"
+            ).fetchone()
+        assert row["profile_id"] == "prof-3"
+
+    def test_no_emails_provided_skips_lookup(self):
+        real_create_secrets_for_tournament(
+            "t-noemail",
+            players=[{"id": "p1", "name": "Dana"}],
+        )
+
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT profile_id FROM player_secrets WHERE tournament_id = 't-noemail' AND player_id = 'p1'"
+            ).fetchone()
+        assert row["profile_id"] is None
+
+    def test_explicit_profile_id_sets_profile(self):
+        """An explicit profile_id from the hub-link button should be stored."""
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, email, email_verified_at, contact, created_at)
+                   VALUES ('prof-explicit', 'unique-pp-explicit', 'Eve', '', NULL, '', '2025-01-01T00:00:00Z')""",
+            )
+
+        real_create_secrets_for_tournament(
+            "t-explicit",
+            players=[{"id": "p1", "name": "Eve"}, {"id": "p2", "name": "Frank"}],
+            profile_ids={"p1": "prof-explicit"},
+        )
+
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT player_id, profile_id FROM player_secrets WHERE tournament_id = 't-explicit'"
+            ).fetchall()
+        by_id = {r["player_id"]: r["profile_id"] for r in rows}
+        assert by_id["p1"] == "prof-explicit"
+        assert by_id["p2"] is None
+
+    def test_explicit_profile_id_overrides_email_autolink(self):
+        """When both an explicit profile_id and email match exist, the explicit one wins."""
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, email, email_verified_at, contact, created_at)
+                   VALUES ('prof-email', 'unique-pp-email', 'Grace', 'grace@example.com', '2025-01-01T00:00:00Z', '', '2025-01-01T00:00:00Z')""",
+            )
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, email, email_verified_at, contact, created_at)
+                   VALUES ('prof-chosen', 'unique-pp-chosen', 'Grace Alt', '', NULL, '', '2025-01-01T00:00:00Z')""",
+            )
+
+        real_create_secrets_for_tournament(
+            "t-override",
+            players=[{"id": "p1", "name": "Grace"}],
+            emails={"p1": "grace@example.com"},
+            profile_ids={"p1": "prof-chosen"},
+        )
+
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT profile_id FROM player_secrets WHERE tournament_id = 't-override' AND player_id = 'p1'"
+            ).fetchone()
+        assert row["profile_id"] == "prof-chosen"
 
 
 # ────────────────────────────────────────────────────────────────────────────

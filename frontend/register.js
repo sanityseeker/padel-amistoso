@@ -964,6 +964,9 @@ async function _handleSubmit(e) {
     body.profile_passphrase = _linkedProfilePassphrase;
   }
 
+  // Capture current UI language so emails arrive in the player's language
+  body.lang = getAppLanguage();
+
   // Capture submitted email for post-registration profile creation
   _submittedEmail = playerEmail;
 
@@ -1154,6 +1157,7 @@ async function _createPlayerSpace() {
         name: r.player_name || '',
         email,
         contact,
+        lang: getAppLanguage(),
       }),
     });
     if (!res.ok) {

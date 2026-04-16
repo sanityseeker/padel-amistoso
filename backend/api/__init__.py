@@ -466,6 +466,12 @@ async def serve_icon_192(request: Request) -> Response:
     return _serve_png_file("icon-192.png", request)
 
 
+@app.get("/icon-192-maskable.png")
+async def serve_icon_192_maskable(request: Request) -> Response:
+    """Serve the 192×192 maskable PWA icon."""
+    return _serve_png_file("icon-192-maskable.png", request)
+
+
 @app.get("/icon-512.png")
 async def serve_icon_512(request: Request) -> Response:
     """Serve the 512×512 PWA icon."""

@@ -3,6 +3,21 @@ let _showArchivedRegistrations = false;
 let _regDetails = {};  // rid → full registration detail data
 let _regCollaborators = {};  // rid → list of co-editor usernames
 let _regEmailSettings = {};  // rid → email settings {sender_name, reply_to}
+
+/** Update a registrant's email language preference. */
+async function _setRegLang(rid, pid, lang, toggleEl) {
+  try {
+    await api(`/api/registrations/${rid}/registrant/${pid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lang }),
+    });
+    // Re-render toggle in-place
+    if (toggleEl) {
+      toggleEl.outerHTML = _langToggle(rid, pid, lang, 'reg');
+    }
+  } catch (e) { console.error('Failed to update lang:', e.message); }
+}
 let _currentRegDetail = null;  // last-opened registration (for convert flow)
 
 /** Render the per-registration email settings collapsible section. */
@@ -298,6 +313,7 @@ function _renderRegDetailInline(rid) {
     html += `<thead><tr style="border-bottom:2px solid var(--border)">`;
     html += `<th style="text-align:left;padding:0.4rem 0.5rem">${t('txt_reg_name')}</th>`;
     html += `<th style="text-align:left;padding:0.4rem 0.5rem">${t('txt_email')}</th>`;
+    html += `<th style="text-align:center;padding:0.4rem 0.5rem">🌐</th>`;
     html += `<th style="text-align:left;padding:0.4rem 0.5rem">${t('txt_txt_passphrase')}</th>`;
     html += `<th style="text-align:center;padding:0.4rem 0.5rem"></th>`;
     html += `</tr></thead><tbody>`;
@@ -309,6 +325,7 @@ function _renderRegDetailInline(rid) {
       html += `<tr style="${rowStyle}">`;
       html += `<td style="padding:0.4rem 0.5rem;font-weight:600">${isDup ? '⚠ ' : ''}${esc(reg.player_name)}</td>`;
       html += `<td style="padding:0.4rem 0.5rem;font-size:0.82em;color:var(--text-muted)">${reg.email ? esc(reg.email) : '—'}</td>`;
+      html += `<td style="padding:0.4rem 0.3rem;text-align:center">${_langToggle(rid, reg.player_id, reg.lang || 'en', 'reg')}</td>`;
       html += `<td style="padding:0.4rem 0.5rem"><code style="font-size:0.9em;color:var(--accent);user-select:all;cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">${esc(reg.passphrase)}</code></td>`;
       html += `<td style="padding:0.4rem 0.5rem;text-align:center;white-space:nowrap">`;
       html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem;margin-right:0.25rem" onclick="_editRegistrant('${esc(r.id)}','${esc(reg.player_id)}','${esc(reg.player_name)}','${esc(reg.email||'')}')" title="${t('txt_reg_edit_player')}">✏️</button>`;

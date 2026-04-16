@@ -471,6 +471,13 @@ def init_db() -> None:
             ]:
                 if col not in pp_cols:
                     conn.execute(ddl)
+        # Migrate: add lang column to registrants, player_secrets, player_profiles
+        if rnt_cols and "lang" not in rnt_cols:
+            conn.execute("ALTER TABLE registrants ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'")
+        if ps_cols and "lang" not in ps_cols:
+            conn.execute("ALTER TABLE player_secrets ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'")
+        if pp_cols and "lang" not in pp_cols:
+            conn.execute("ALTER TABLE player_profiles ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'")
 
 
 # ── Co-editor / sharing helpers ─────────────────────────────────────────────
