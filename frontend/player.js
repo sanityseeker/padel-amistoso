@@ -542,7 +542,7 @@ function _buildPathPanel(entry) {
     html += `<div class="entry-path-summary">#${firstRank}/${total} → #${lastRank}/${total} ${deltaHtml}</div>`;
   }
 
-  // ── Best rank across all played rounds ─────────────────
+  // ── Best rank across group-stage rounds ─────────────────
   const bestRank = playedWithRank.length ? Math.min(...playedWithRank.map(r => r.rank)) : null;
 
   html += `<div class="entry-path-list">`;
@@ -563,14 +563,14 @@ function _buildPathPanel(entry) {
       .join('');
     const isTennisRow = row.score_mode === 'tennis';
 
-    // Rank trend
+    // Rank trend (group stage only)
     let dotMod = '', trendArrow = '', trendClass = '';
-    if (row.played && row.rank != null && _prevRank != null) {
+    if (row.stage !== 'playoff' && row.played && row.rank != null && _prevRank != null) {
       if (row.rank < _prevRank)      { dotMod = ' entry-path-row--up';   trendArrow = '↑'; trendClass = 'up'; }
       else if (row.rank > _prevRank) { dotMod = ' entry-path-row--down'; trendArrow = '↓'; trendClass = 'down'; }
       else                           { dotMod = ' entry-path-row--same'; trendArrow = '→'; trendClass = 'same'; }
     }
-    if (row.rank != null) _prevRank = row.rank;
+    if (row.stage !== 'playoff' && row.rank != null) _prevRank = row.rank;
 
     // Points delta (or explicit backend-provided value)
     const roundPoints = row.played
@@ -578,8 +578,8 @@ function _buildPathPanel(entry) {
       : 0;
     if (row.played && !isTennisRow) _prevPoints = row.cumulative_points || 0;
 
-    // Best-rank highlight
-    const isBest = bestRank != null && row.rank === bestRank && row.played;
+    // Best-rank highlight (group stage only)
+    const isBest = row.stage !== 'playoff' && bestRank != null && row.rank === bestRank && row.played;
     let rowClass = (row.played ? 'entry-path-row' : 'entry-path-row is-sitout') + dotMod;
     if (isBest) rowClass += ' entry-path-row--best';
 
@@ -616,7 +616,9 @@ function _buildPathPanel(entry) {
     }
     html += `</div>`;
     html += `<div class="entry-path-chips entry-path-chips--rank">`;
-    html += `<span class="entry-path-chip"><strong>${esc(t('txt_player_path_rank'))}</strong> ${esc(rankText)}${rankArrowHtml}</span>`;
+    if (row.stage !== 'playoff') {
+      html += `<span class="entry-path-chip"><strong>${esc(t('txt_player_path_rank'))}</strong> ${esc(rankText)}${rankArrowHtml}</span>`;
+    }
     html += `</div>`;
     html += `</div>`;
     html += `</div>`;
@@ -649,12 +651,6 @@ function _toggleLanguage() {
 }
 
 // ── Leaderboard ───────────────────────────────────────────
-
-function _toggleLeaderboardPanel() {
-  const next = !_isLeaderboardPanelOpen();
-  _setLeaderboardPanelOpen(next);
-  _render();
-}
 
 function _setLeaderboardSport(sport) {
   _leaderboardSport = sport;
@@ -692,32 +688,28 @@ function _buildLeaderboardPanel() {
   const hasTennis = _leaderboard.tennis && _leaderboard.tennis.length > 0;
   if (!hasPadel && !hasTennis) return '';
 
-  const isOpen = _isLeaderboardPanelOpen();
-  const chevron = isOpen ? '▼' : '▶';
+  const openAttr = _isLeaderboardPanelOpen() ? ' open' : '';
 
-  let html = `<div class="card leaderboard-card">`;
-  html += `<div class="leaderboard-header" onclick="_toggleLeaderboardPanel()">`;
-  html += `<span class="leaderboard-chevron">${chevron}</span>`;
-  html += `<h3 class="leaderboard-title">${esc(t('txt_player_leaderboard_title'))}</h3>`;
-  html += `</div>`;
+  let html = `<details class="player-leaderboard-panel" ontoggle="_rememberLeaderboardPanelOpen(this)"${openAttr}>`;
+  html += `<summary class="player-leaderboard-summary"><span class="player-history-chevron">▶</span><span class="section-heading section-heading-inline">${esc(t('txt_player_leaderboard_title'))}</span></summary>`;
+  html += `<div class="player-leaderboard-body">`;
 
-  if (isOpen) {
-    // Sport toggle pills (only if both sports have data)
-    if (hasPadel && hasTennis) {
-      const activeSport = _leaderboardSport;
-      html += `<div class="leaderboard-sport-toggle">`;
-      html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" onclick="event.stopPropagation(); _setLeaderboardSport('padel')">Padel</button>`;
-      html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" onclick="event.stopPropagation(); _setLeaderboardSport('tennis')">Tennis</button>`;
-      html += `</div>`;
-    }
-
-    // Show active sport (or whichever has data)
-    const activeSport = (hasPadel && hasTennis) ? _leaderboardSport : (hasPadel ? 'padel' : 'tennis');
-    const entries = activeSport === 'tennis' ? _leaderboard.tennis : _leaderboard.padel;
-    html += _buildLeaderboardTable(entries);
+  // Sport toggle pills (only if both sports have data)
+  if (hasPadel && hasTennis) {
+    const activeSport = _leaderboardSport;
+    html += `<div class="leaderboard-sport-toggle">`;
+    html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" data-sport="padel" onclick="event.stopPropagation(); _setLeaderboardSport('padel')">Padel</button>`;
+    html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" data-sport="tennis" onclick="event.stopPropagation(); _setLeaderboardSport('tennis')">Tennis</button>`;
+    html += `</div>`;
   }
 
+  // Show active sport (or whichever has data)
+  const activeSport = (hasPadel && hasTennis) ? _leaderboardSport : (hasPadel ? 'padel' : 'tennis');
+  const entries = activeSport === 'tennis' ? _leaderboard.tennis : _leaderboard.padel;
+  html += _buildLeaderboardTable(entries);
+
   html += `</div>`;
+  html += `</details>`;
   return html;
 }
 
@@ -913,15 +905,16 @@ function _buildDashboard() {
     html += `</div>`;
   }
 
-  // Career stats card — shown only when there is finished history
-  html += _buildGlobalStatsCard();
-  html += _buildEloRatingsCard();
-
-  // Active section
-  html += `<div class="player-section-header">`;
-  html += `<div class="section-heading">${esc(t('txt_player_active'))}</div>`;
+  // ── Tournaments card (active + past) ──
+  html += `<div class="player-tournaments-card">`;
+  html += `<div class="player-tournaments-header">`;
+  html += `<span class="section-heading section-heading-inline">${esc(t('txt_player_tournaments_title'))}</span>`;
   html += `<button type="button" class="player-link-existing-btn" onclick="_openLinkModal()">+ ${esc(t('txt_player_link_btn'))}</button>`;
   html += `</div>`;
+  html += `<div class="player-tournaments-body">`;
+
+  // Active sub-section
+  html += `<div class="player-tournaments-sub-label">${esc(t('txt_player_active'))}</div>`;
   if (active.length === 0) {
     html += `<div class="empty-state">${esc(t('txt_player_no_active'))}</div>`;
   } else {
@@ -930,12 +923,11 @@ function _buildDashboard() {
     }
   }
 
-  // History (collapsed by default, persisted)
+  // Past sub-section (collapsible)
   const historyOpenAttr = _isHistoryPanelOpen() ? ' open' : '';
   html += `<details class="player-history-panel" ontoggle="_rememberHistoryPanelOpen(this)"${historyOpenAttr}>`;
-  html += `<summary class="player-history-summary"><span class="player-history-chevron">▶</span><span class="section-heading section-heading-inline">${esc(t('txt_player_finished'))}</span></summary>`;
+  html += `<summary class="player-history-summary"><span class="player-history-chevron">▶</span><span class="player-tournaments-sub-label player-tournaments-sub-label--inline">${esc(t('txt_player_finished'))}</span></summary>`;
   html += `<div class="player-history-body">`;
-
   if (history.length === 0) {
     html += `<div class="empty-state">${esc(t('txt_player_no_history'))}</div>`;
   } else {
@@ -943,9 +935,15 @@ function _buildDashboard() {
       html += _buildEntryCard(entry);
     }
   }
-
   html += `</div>`;
   html += `</details>`;
+
+  html += `</div>`;
+  html += `</div>`;
+
+  // ── Career stats & ELO ──
+  html += _buildGlobalStatsCard();
+  html += _buildEloRatingsCard();
 
   return html;
 }
@@ -954,11 +952,15 @@ function _rememberHistoryPanelOpen(detailsEl) {
   _setHistoryPanelOpen(!!detailsEl?.open);
 }
 
+function _rememberLeaderboardPanelOpen(detailsEl) {
+  _setLeaderboardPanelOpen(!!detailsEl?.open);
+}
+
 function _rememberEloHistoryPanelOpen(detailsEl) {
   _setEloHistoryPanelOpen(!!detailsEl?.open);
 }
 
-function _buildStatsCardForEntries(entries, heading) {
+function _computeStatsForEntries(entries) {
   let totalTournaments = 0, totalWins = 0, totalLosses = 0, totalDraws = 0;
   const partnerMap = {};
   const rivalMap = {};
@@ -986,8 +988,6 @@ function _buildStatsCardForEntries(entries, heading) {
   }
 
   const totalGames = totalWins + totalLosses + totalDraws;
-  if (totalTournaments === 0) return '';
-
   const winRate = totalGames > 0 ? Math.round(totalWins / totalGames * 100) : null;
 
   const toRanked = (map) => Object.entries(map)
@@ -1016,27 +1016,40 @@ function _buildStatsCardForEntries(entries, heading) {
       return a.name.localeCompare(b.name);
     });
 
+  return { totalTournaments, totalWins, totalLosses, totalDraws, totalGames, winRate, topPartners, topRivals, participantRows };
+}
+
+function _buildStatsGridHtml(stats) {
+  let html = `<div class="global-stats-grid">`;
+  html += `<div class="global-stats-cell"><div class="global-stats-value">${stats.totalTournaments}</div><div class="global-stats-label">${esc(t('txt_player_career_played'))}</div></div>`;
+  html += `<div class="global-stats-divider"></div>`;
+  html += `<div class="global-stats-cell"><div class="global-stats-value">${stats.totalWins}</div><div class="global-stats-label">${esc(t('txt_player_career_wins'))}</div></div>`;
+  html += `<div class="global-stats-cell"><div class="global-stats-value">${stats.totalLosses}</div><div class="global-stats-label">${esc(t('txt_player_career_losses'))}</div></div>`;
+  if (stats.winRate !== null) html += `<div class="global-stats-cell"><div class="global-stats-value">${stats.winRate}%</div><div class="global-stats-label">${esc(t('txt_player_career_win_rate'))}</div></div>`;
+  html += `</div>`;
+  return html;
+}
+
+function _buildSocialHtml(topPartners, topRivals) {
+  if (topPartners.length === 0 && topRivals.length === 0) return '';
   const fmt = arr => arr.map(p => `${esc(p.name)} <em>${p.win_pct}%</em>`).join(', ');
+  let html = `<div class="entry-card-social entry-card-social-spaced">`;
+  if (topPartners.length > 0) html += `<span class="entry-card-social-line">${esc(t('txt_player_best_partners'))}: ${fmt(topPartners)}</span>`;
+  if (topPartners.length > 0 && topRivals.length > 0) html += `<span class="entry-card-social-sep"> &middot; </span>`;
+  if (topRivals.length > 0)   html += `<span class="entry-card-social-line">${esc(t('txt_player_toughest_rivals'))}: ${fmt(topRivals)}</span>`;
+  html += `</div>`;
+  return html;
+}
+
+function _buildStatsCardForEntries(entries, heading) {
+  const stats = _computeStatsForEntries(entries);
+  if (stats.totalTournaments === 0) return '';
+
   let html = `<div class="card global-stats-card">`;
   html += `<div class="section-heading section-heading-card">${esc(heading)}</div>`;
-  html += `<div class="global-stats-grid">`;
-  html += `<div class="global-stats-cell"><div class="global-stats-value">${totalTournaments}</div><div class="global-stats-label">${esc(t('txt_player_career_played'))}</div></div>`;
-  html += `<div class="global-stats-divider"></div>`;
-  html += `<div class="global-stats-cell"><div class="global-stats-value">${totalWins}</div><div class="global-stats-label">${esc(t('txt_player_career_wins'))}</div></div>`;
-  html += `<div class="global-stats-cell"><div class="global-stats-value">${totalLosses}</div><div class="global-stats-label">${esc(t('txt_player_career_losses'))}</div></div>`;
-  if (winRate !== null) html += `<div class="global-stats-cell"><div class="global-stats-value">${winRate}%</div><div class="global-stats-label">${esc(t('txt_player_career_win_rate'))}</div></div>`;
-  html += `</div>`;
-
-  if (topPartners.length > 0 || topRivals.length > 0) {
-    html += `<div class="entry-card-social entry-card-social-spaced">`;
-    if (topPartners.length > 0) html += `<span>${esc(t('txt_player_best_partners'))}: ${fmt(topPartners)}</span>`;
-    if (topPartners.length > 0 && topRivals.length > 0) html += ` &middot; `;
-    if (topRivals.length > 0)   html += `<span>${esc(t('txt_player_toughest_rivals'))}: ${fmt(topRivals)}</span>`;
-    html += `</div>`;
-  }
-
-  html += _buildParticipantExplorer(participantRows);
-
+  html += _buildStatsGridHtml(stats);
+  html += _buildSocialHtml(stats.topPartners, stats.topRivals);
+  html += _buildParticipantExplorer(stats.participantRows);
   html += `</div>`;
   return html;
 }
@@ -1049,6 +1062,14 @@ function _formatRankLabel(rank) {
   return `#${rank}`;
 }
 
+function _formatRankText(rank) {
+  if (!rank) return '';
+  if (rank === 1) return t('txt_player_best_rank_1st');
+  if (rank === 2) return t('txt_player_best_rank_2nd');
+  if (rank === 3) return t('txt_player_best_rank_3rd');
+  return t('txt_player_best_rank_place', { rank });
+}
+
 function _bestAchievements(entries) {
   let bestGroupRank = null;
   let bestGroupRankTournament = null;
@@ -1057,7 +1078,9 @@ function _bestAchievements(entries) {
   let bestPlayoffStageTournament = null;
 
   for (const e of entries) {
-    if (e.rank && e.rank > 0 && (bestGroupRank === null || e.rank < bestGroupRank)) {
+    // Group/leaderboard rank only matters when the tournament had no playoffs;
+    // when playoffs exist, playoff_stage is the meaningful achievement.
+    if (e.rank && e.rank > 0 && !e.playoff_stage && (bestGroupRank === null || e.rank < bestGroupRank)) {
       bestGroupRank = e.rank;
       bestGroupRankTournament = e.entity_name || null;
     }
@@ -1078,25 +1101,42 @@ function _bestAchievements(entries) {
   };
 }
 
-function _buildBestResultsCardForEntries(entries, heading) {
-  const { bestGroupRank, bestGroupRankTournament, bestPlayoffStage, bestPlayoffStageTournament } = _bestAchievements(entries);
-  const groupRankLabel = _formatRankLabel(bestGroupRank);
-  if (!groupRankLabel && !bestPlayoffStage) return '';
-
-  let html = `<div class="card global-stats-card">`;
-  html += `<div class="section-heading section-heading-card">${esc(heading)}</div>`;
-  html += `<div class="global-stats-grid">`;
-  if (groupRankLabel) {
-    html += `<div class="global-stats-cell"><div class="global-stats-value">${groupRankLabel}</div><div class="global-stats-label">${esc(t('txt_player_career_best_group_rank'))}</div>`;
-    if (bestGroupRankTournament) html += `<div class="global-stats-tournament">${esc(bestGroupRankTournament)}</div>`;
+function _buildBestResultsListHtml(bestGroupRank, bestGroupRankTournament, bestPlayoffStage, bestPlayoffStageTournament) {
+  let html = `<div class="best-results-list">`;
+  if (bestGroupRank) {
+    const icon = _formatRankLabel(bestGroupRank);
+    const text = _formatRankText(bestGroupRank);
+    html += `<div class="best-results-row">`;
+    html += `<span class="best-results-icon">${icon}</span>`;
+    html += `<span class="best-results-detail">`;
+    html += `<span class="best-results-value">${esc(text)}</span>`;
+    if (bestGroupRankTournament) html += `<span class="best-results-tournament"> — ${esc(bestGroupRankTournament)}</span>`;
+    html += `</span>`;
+    html += `<span class="best-results-tag">${esc(t('txt_player_career_best_group_rank'))}</span>`;
     html += `</div>`;
   }
   if (bestPlayoffStage) {
-    html += `<div class="global-stats-cell"><div class="global-stats-value">${esc(bestPlayoffStage)}</div><div class="global-stats-label">${esc(t('txt_player_career_best_playoff_stage'))}</div>`;
-    if (bestPlayoffStageTournament) html += `<div class="global-stats-tournament">${esc(bestPlayoffStageTournament)}</div>`;
+    const icon = bestPlayoffStage === 'Champion' ? '🏆' : '🏅';
+    html += `<div class="best-results-row">`;
+    html += `<span class="best-results-icon">${icon}</span>`;
+    html += `<span class="best-results-detail">`;
+    html += `<span class="best-results-value">${esc(bestPlayoffStage)}</span>`;
+    if (bestPlayoffStageTournament) html += `<span class="best-results-tournament"> — ${esc(bestPlayoffStageTournament)}</span>`;
+    html += `</span>`;
+    html += `<span class="best-results-tag">${esc(t('txt_player_career_best_playoff_stage'))}</span>`;
     html += `</div>`;
   }
   html += `</div>`;
+  return html;
+}
+
+function _buildBestResultsCardForEntries(entries, heading) {
+  const { bestGroupRank, bestGroupRankTournament, bestPlayoffStage, bestPlayoffStageTournament } = _bestAchievements(entries);
+  if (!bestGroupRank && !bestPlayoffStage) return '';
+
+  let html = `<div class="card global-stats-card">`;
+  html += `<div class="section-heading section-heading-card">${esc(heading)}</div>`;
+  html += _buildBestResultsListHtml(bestGroupRank, bestGroupRankTournament, bestPlayoffStage, bestPlayoffStageTournament);
   html += `</div>`;
   return html;
 }
@@ -1191,7 +1231,7 @@ function _buildParticipantExplorer(rows) {
   html += `</div>`;
   html += `<div class="player-participant-empty${visibleRows > 0 ? ' is-hidden' : ''}">${esc(t('txt_player_participant_no_results'))}</div>`;
   html += `</div>`;
-  html += `</div>`;
+  html += `</details>`;
   return html;
 }
 
@@ -1278,21 +1318,52 @@ function _buildGlobalStatsCard() {
   }
 
   const sports = Object.keys(bySport);
+  const multisport = sports.length > 1;
   let html = '';
 
-  if (sports.length === 1) {
-    // Single sport — use generic heading
-    html += _buildStatsCardForEntries(withStats, t('txt_player_career_stats'));
-    html += _buildBestResultsCardForEntries(withStats, t('txt_player_career_best_results'));
-  } else {
-    // Multiple sports — one card per sport with sport-qualified heading
-    for (const sport of sports) {
-      const sportLabel = _sportLabel(sport);
-      const statsHeading = t('txt_player_career_stats_sport').replace('{sport}', sportLabel);
-      const bestResultsHeading = t('txt_player_career_best_results_sport').replace('{sport}', sportLabel);
-      html += _buildStatsCardForEntries(bySport[sport], statsHeading);
-      html += _buildBestResultsCardForEntries(bySport[sport], bestResultsHeading);
+  // ── Stats card (single card, sport sections stacked when multi-sport) ──
+  const allStats = _computeStatsForEntries(withStats);
+  if (allStats.totalTournaments > 0) {
+    html += `<div class="card global-stats-card">`;
+    html += `<div class="section-heading section-heading-card">${esc(t('txt_player_career_stats'))}</div>`;
+    if (multisport) {
+      for (const sport of sports) {
+        const sportStats = _computeStatsForEntries(bySport[sport]);
+        if (sportStats.totalTournaments === 0) continue;
+        html += `<div class="global-stats-sport-section" data-sport="${esc(sport)}">`;
+        html += `<div class="global-stats-sport-label">${esc(_sportLabel(sport))}</div>`;
+        html += _buildStatsGridHtml(sportStats);
+        html += _buildSocialHtml(sportStats.topPartners, sportStats.topRivals);
+        html += _buildParticipantExplorer(sportStats.participantRows);
+        html += `</div>`;
+      }
+    } else {
+      html += _buildStatsGridHtml(allStats);
+      html += _buildSocialHtml(allStats.topPartners, allStats.topRivals);
+      html += _buildParticipantExplorer(allStats.participantRows);
     }
+    html += `</div>`;
+  }
+
+  // ── Best results card (single card, sport sections stacked when multi-sport) ──
+  if (multisport) {
+    let bestHtml = '';
+    for (const sport of sports) {
+      const { bestGroupRank, bestGroupRankTournament, bestPlayoffStage, bestPlayoffStageTournament } = _bestAchievements(bySport[sport]);
+      if (!bestGroupRank && !bestPlayoffStage) continue;
+      bestHtml += `<div class="global-stats-sport-section" data-sport="${esc(sport)}">`;
+      bestHtml += `<div class="global-stats-sport-label">${esc(_sportLabel(sport))}</div>`;
+      bestHtml += _buildBestResultsListHtml(bestGroupRank, bestGroupRankTournament, bestPlayoffStage, bestPlayoffStageTournament);
+      bestHtml += `</div>`;
+    }
+    if (bestHtml) {
+      html += `<div class="card global-stats-card">`;
+      html += `<div class="section-heading section-heading-card">${esc(t('txt_player_career_best_results'))}</div>`;
+      html += bestHtml;
+      html += `</div>`;
+    }
+  } else {
+    html += _buildBestResultsCardForEntries(withStats, t('txt_player_career_best_results'));
   }
 
   return html;
@@ -1351,7 +1422,7 @@ function _buildEloRatingsCard() {
   if (hasPadelElo || hasTennisElo) {
     html += `<div class="global-stats-grid elo-ratings-grid">`;
     if (hasPadelElo) {
-      html += `<div class="global-stats-cell elo-rating-cell">`;
+      html += `<div class="global-stats-cell elo-rating-cell" data-sport="padel">`;
       html += `<div class="elo-rating-sport-label">${esc(t('txt_player_sport_padel'))}</div>`;
       html += `<div class="global-stats-value">${Math.round(_profile.elo_padel)}</div>`;
       html += `<div class="global-stats-label">${_profile.elo_padel_matches} ${esc(t('txt_player_elo_matches_label'))}</div>`;
@@ -1361,7 +1432,7 @@ function _buildEloRatingsCard() {
       html += `<div class="global-stats-divider"></div>`;
     }
     if (hasTennisElo) {
-      html += `<div class="global-stats-cell elo-rating-cell">`;
+      html += `<div class="global-stats-cell elo-rating-cell" data-sport="tennis">`;
       html += `<div class="elo-rating-sport-label">${esc(t('txt_player_sport_tennis'))}</div>`;
       html += `<div class="global-stats-value">${Math.round(_profile.elo_tennis)}</div>`;
       html += `<div class="global-stats-label">${_profile.elo_tennis_matches} ${esc(t('txt_player_elo_matches_label'))}</div>`;
@@ -1395,8 +1466,8 @@ function _buildEloHistoryInline() {
   const activeSport = (hasPadel && hasTennis) ? _eloHistorySport : (hasPadel ? 'padel' : 'tennis');
   if (hasPadel && hasTennis) {
     html += `<div class="leaderboard-sport-toggle" style="margin:0;margin-right:auto">`;
-    html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" onclick="event.stopPropagation(); _setEloHistorySport('padel')">Padel</button>`;
-    html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" onclick="event.stopPropagation(); _setEloHistorySport('tennis')">Tennis</button>`;
+    html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" data-sport="padel" onclick="event.stopPropagation(); _setEloHistorySport('padel')">Padel</button>`;
+    html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" data-sport="tennis" onclick="event.stopPropagation(); _setEloHistorySport('tennis')">Tennis</button>`;
     html += `</div>`;
   }
 
@@ -1460,8 +1531,8 @@ function _buildEloHistoryCard() {
   const activeSport = (hasPadel && hasTennis) ? _eloHistorySport : (hasPadel ? 'padel' : 'tennis');
   if (hasPadel && hasTennis) {
     html += `<div class="leaderboard-sport-toggle" style="margin:0;margin-right:auto">`;
-    html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" onclick="event.stopPropagation(); _setEloHistorySport('padel')">Padel</button>`;
-    html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" onclick="event.stopPropagation(); _setEloHistorySport('tennis')">Tennis</button>`;
+    html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" data-sport="padel" onclick="event.stopPropagation(); _setEloHistorySport('padel')">Padel</button>`;
+    html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" data-sport="tennis" onclick="event.stopPropagation(); _setEloHistorySport('tennis')">Tennis</button>`;
     html += `</div>`;
   }
 
@@ -1601,11 +1672,11 @@ function _buildPartnerRivalSection(entry) {
   const fmt = (arr) => arr.map(p => `${esc(p.name)} <em>${p.win_pct}%</em>`).join(', ');
   let html = '<div class="entry-card-social">';
   if (partners.length) {
-    html += `<span>${esc(t('txt_player_best_partners'))}: ${fmt(partners)}</span>`;
+    html += `<span class="entry-card-social-line">${esc(t('txt_player_best_partners'))}: ${fmt(partners)}</span>`;
   }
   if (rivals.length) {
-    if (partners.length) html += ' &middot; ';
-    html += `<span>${esc(t('txt_player_toughest_rivals'))}: ${fmt(rivals)}</span>`;
+    if (partners.length) html += '<span class="entry-card-social-sep"> &middot; </span>';
+    html += `<span class="entry-card-social-line">${esc(t('txt_player_toughest_rivals'))}: ${fmt(rivals)}</span>`;
   }
   html += '</div>';
   return html;
