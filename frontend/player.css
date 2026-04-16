@@ -749,7 +749,7 @@
   overflow: hidden;
   width: fit-content;
   margin-top: 1rem;
-  align-self: flex-start;
+  margin-left: auto;
 }
 
 .elo-chart-container {
