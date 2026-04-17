@@ -1,3 +1,9 @@
+## v1.8.4 (2026-04-17)
+
+### Fix
+
+- **elo;-frontend**: add scores confidence to elo; improve frontend for admin and player hub
+
 ## v1.8.3 (2026-04-17)
 
 ### Fix
