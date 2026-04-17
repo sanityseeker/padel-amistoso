@@ -300,7 +300,7 @@ function updateAuthUI() {
     if (username) {
       const adminBtn = isAdmin()
         ? `<button class="btn btn-sm" onclick="setActiveTab('players-hub')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_nav_player_space')}">🎾</button>`
-          + `<button class="btn btn-sm" onclick="showUserMgmt()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_user_management')}">👥</button>`
+          + `<button class="btn btn-sm" onclick="setActiveTab('user-mgmt')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_user_management')}">👥</button>`
         : '';
       const changePwdBtn = `<button class="btn btn-sm" onclick="showChangePasswordDialog()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_change_password')}">🔑</button>`;
       authStatus.innerHTML = `
@@ -318,28 +318,17 @@ function updateAuthUI() {
 // ── User Management (admin only) ──────────────────────────
 
 /**
- * Show the user management modal.
+ * Navigate to the user management tab and load the user list.
  */
 function showUserMgmt() {
-  const overlay = document.getElementById('user-mgmt-overlay');
-  if (overlay) {
-    overlay.style.display = 'flex';
-    const search = document.getElementById('user-mgmt-search');
-    if (search) search.value = '';
-    loadUserMgmtList();
-  }
+  setActiveTab('user-mgmt');
 }
 
 /**
- * Hide the user management modal.
+ * Navigate away from the user management tab (go home).
  */
 function hideUserMgmt() {
-  const overlay = document.getElementById('user-mgmt-overlay');
-  if (overlay) overlay.style.display = 'none';
-  const err = document.getElementById('user-mgmt-error');
-  if (err) err.textContent = '';
-  const success = document.getElementById('user-mgmt-success');
-  if (success) success.textContent = '';
+  setActiveTab('home');
 }
 
 /** Full user list, kept in memory so filtering is instant. */
@@ -351,6 +340,11 @@ let _allUsers = [];
 async function loadUserMgmtList() {
   const list = document.getElementById('user-mgmt-list');
   if (!list) return;
+  // Clear stale error/success messages from previous interactions
+  for (const id of ['user-mgmt-error', 'user-mgmt-success', 'invite-error', 'invite-success']) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '';
+  }
   list.innerHTML = `<li style="opacity:.5">${t('txt_txt_loading')}</li>`;
   try {
     _allUsers = await apiAuth('/api/auth/users');

@@ -307,6 +307,31 @@ body.login-dialog-open .container { filter: blur(3px); pointer-events: none; tra
 }
 .info-block strong { display: block; font-size: 0.86rem; color: var(--text); margin-bottom: 0.2rem; }
 .info-block p { font-size: 0.84rem; color: var(--text-muted); margin-bottom: 0; line-height: 1.5; }
+.info-formulas {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+}
+.info-formulas code {
+  display: block;
+  font-size: 0.82rem;
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.65rem;
+  color: var(--text);
+  letter-spacing: 0.02em;
+  width: fit-content;
+}
+.info-formula-legend {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-top: 0.45rem;
+  margin-bottom: 0;
+}
 .info-divider { border: none; border-top: 1px solid var(--border); margin: 0.9rem 0; }
 .github-link { color: var(--accent); text-decoration: none; }
 .github-link:hover { color: var(--accent-hover); text-decoration: underline; }

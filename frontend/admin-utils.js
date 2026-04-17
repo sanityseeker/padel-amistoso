@@ -43,6 +43,7 @@ function setActiveTab(tabName) {
     }
     if (tabName === 'home' && isAuthenticated()) { loadTournaments(); _startRegPoll(); } else { _stopRegPoll(); }
     if (tabName === 'players-hub' && isAuthenticated()) { phSearch(); }
+    if (tabName === 'user-mgmt' && isAuthenticated()) { loadUserMgmtList(); }
     _stopRegDetailPoll();
   }
 }

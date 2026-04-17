@@ -689,10 +689,10 @@ function _buildLeaderboardPanel() {
   const hasTennis = _leaderboard.tennis && _leaderboard.tennis.length > 0;
   if (!hasPadel && !hasTennis) return '';
 
-  const openAttr = _isLeaderboardPanelOpen() ? ' open' : '';
+  const openAttr = (_isLeaderboardPanelOpen() || sessionStorage.getItem(STORAGE_LEADERBOARD_PANEL_KEY) == null) ? ' open' : '';
 
   let html = `<details class="player-leaderboard-panel" ontoggle="_rememberLeaderboardPanelOpen(this)"${openAttr}>`;
-  html += `<summary class="player-leaderboard-summary"><span class="player-history-chevron">▶</span><span class="section-heading section-heading-inline">${esc(t('txt_player_leaderboard_title'))}</span></summary>`;
+  html += `<summary class="player-leaderboard-summary"><span class="player-history-chevron">▶</span><span class="section-heading section-heading-inline">${esc(t('txt_player_leaderboard_title'))}</span> <button type="button" class="format-info-btn" style="margin-left:auto" onclick="event.stopPropagation(); _showEloInfoPopup(event)" aria-label="${esc(t('txt_player_elo_info_btn'))}" title="${esc(t('txt_player_elo_info_btn'))}">i</button></summary>`;
   html += `<div class="player-leaderboard-body">`;
 
   // Sport toggle pills (only if both sports have data)
@@ -714,6 +714,25 @@ function _buildLeaderboardPanel() {
   return html;
 }
 
+function _buildLeaderboardInline() {
+  if (!_leaderboard) return '';
+  const hasPadel = _leaderboard.padel && _leaderboard.padel.length > 0;
+  const hasTennis = _leaderboard.tennis && _leaderboard.tennis.length > 0;
+  if (!hasPadel && !hasTennis) return '';
+
+  // Reuse the sport from the ELO progression toggle (no separate switch)
+  const activeSport = (hasPadel && hasTennis) ? _eloHistorySport : (hasPadel ? 'padel' : 'tennis');
+  const entries = activeSport === 'tennis' ? _leaderboard.tennis : _leaderboard.padel;
+
+  const openAttr = (_isLeaderboardPanelOpen() || sessionStorage.getItem(STORAGE_LEADERBOARD_PANEL_KEY) == null) ? ' open' : '';
+  let html = `<details class="elo-history-inline-details" ontoggle="_rememberLeaderboardPanelOpen(this)"${openAttr}>`;
+  html += `<summary class="elo-history-inline-summary"><span class="player-history-chevron">▶</span><span class="section-heading section-heading-inline">${esc(t('txt_player_leaderboard_title'))}</span></summary>`;
+  html += `<div class="elo-history-inline-body">`;
+  html += _buildLeaderboardTable(entries);
+  html += `</div></details>`;
+  return html;
+}
+
 // ── Render ────────────────────────────────────────────────
 
 function _render() {
@@ -727,7 +746,10 @@ function _render() {
   } else {
     html += _buildAuthPanel();
   }
-  html += _buildLeaderboardPanel();
+  // Standalone leaderboard only for non-logged-in users (logged-in gets it inside ELO card)
+  if (!(_jwt && _profile)) {
+    html += _buildLeaderboardPanel();
+  }
   if (_showLinkModal) html += _buildLinkModal();
   root.innerHTML = html;
   _initEloChart();
@@ -758,9 +780,7 @@ function _buildAuthPanel() {
     // ── Info panel: why Player Hub ──
     html += `<div class="hub-info-panel">`;
     html += `<div class="hub-info-item"><span class="hub-info-bullet" aria-hidden="true"></span><span>${esc(t('txt_player_hub_benefit_stats'))}</span></div>`;
-    html += `<div class="hub-info-item"><span class="hub-info-bullet" aria-hidden="true"></span><span>${esc(t('txt_player_hub_benefit_history'))}</span></div>`;
     html += `<div class="hub-info-item"><span class="hub-info-bullet" aria-hidden="true"></span><span>${esc(t('txt_player_hub_benefit_login'))}</span></div>`;
-    html += `<div class="hub-info-item"><span class="hub-info-bullet" aria-hidden="true"></span><span>${esc(t('txt_player_hub_benefit_email'))}</span></div>`;
     html += `<div class="hub-info-item"><span class="hub-info-bullet" aria-hidden="true"></span><span>${esc(t('txt_player_hub_benefit_one_phrase'))}</span></div>`;
     html += `</div>`;
 
@@ -1396,17 +1416,19 @@ function _findCurrentPlayerEloChange(match) {
   const before = Number(current.elo_before);
   const after = Number(current.elo_after);
   if (!Number.isFinite(before) || !Number.isFinite(after)) return null;
-  return { before: Math.round(before), after: Math.round(after), delta: Math.round(after - before) };
+  const rb = Math.round(before), ra = Math.round(after);
+  return { before: rb, after: ra, delta: ra - rb };
 }
 
 function _formatEloTeamSide(players, currentPid) {
   if (!Array.isArray(players) || players.length === 0) return '<span class="elo-team-player">—</span>';
   return players.map((p, idx) => {
-    const d = Math.round((p.elo_after || 0) - (p.elo_before || 0));
+    const rb = Math.round(p.elo_before || 0), ra = Math.round(p.elo_after || 0);
+    const d = ra - rb;
     const isCurrent = currentPid && p.player_id === currentPid;
     const cls = isCurrent ? (d > 0 ? 'elo-delta--gain' : d < 0 ? 'elo-delta--loss' : 'elo-delta--neutral') : 'elo-delta--dim';
     const joiner = idx < players.length - 1 ? '<span class="elo-team-join">&amp;</span>' : '';
-    return `<span class="elo-team-player">${esc(p.player_name)}<span class="elo-player-rating">${Math.round(p.elo_before)}</span><span class="elo-player-delta ${cls}">${d > 0 ? '+' : ''}${d}</span>${joiner}</span>`;
+    return `<span class="elo-team-player">${esc(p.player_name)}<span class="elo-player-rating">${rb}</span><span class="elo-player-delta ${cls}">${d > 0 ? '+' : ''}${d}</span>${joiner}</span>`;
   }).join('');
 }
 
@@ -1621,14 +1643,15 @@ function _buildEloRatingsCard() {
   const showPadel = hasPadelElo || hasPadelFromHistory;
   const showTennis = hasTennisElo || hasTennisFromHistory;
   const hasHistory = _eloHistory.length > 0;
-  if (!showPadel && !showTennis && !hasHistory) return '';
+  const hasLeaderboard = _leaderboard && ((_leaderboard.padel && _leaderboard.padel.length > 0) || (_leaderboard.tennis && _leaderboard.tennis.length > 0));
+  if (!showPadel && !showTennis && !hasHistory && !hasLeaderboard) return '';
 
   // Latest ELO from history (first entry is most recent due to DESC order)
   const padelLatest = hasPadelFromHistory ? _findCurrentPlayerEloChange(padelHistory[0]) : null;
   const tennisLatest = hasTennisFromHistory ? _findCurrentPlayerEloChange(tennisHistory[0]) : null;
 
   let html = `<div class="card global-stats-card">`;
-  html += `<div class="section-heading section-heading-card">${esc(t('txt_player_elo_ratings'))}</div>`;
+  html += `<div class="section-heading section-heading-card" style="display:flex;align-items:center;gap:0.4rem">${esc(t('txt_player_elo_ratings'))} <button type="button" class="format-info-btn" style="margin-left:auto" onclick="_showEloInfoPopup(event)" aria-label="${esc(t('txt_player_elo_info_btn'))}" title="${esc(t('txt_player_elo_info_btn'))}">i</button></div>`;
 
   if (showPadel || showTennis) {
     html += `<div class="global-stats-grid elo-ratings-grid">`;
@@ -1684,6 +1707,11 @@ function _buildEloRatingsCard() {
     html += _buildEloHistoryInline();
   }
 
+  // Leaderboard inline (reuses _eloHistorySport from chart/history toggle)
+  if (hasLeaderboard) {
+    html += _buildLeaderboardInline();
+  }
+
   html += `</div>`;
   return html;
 }
@@ -1695,7 +1723,7 @@ function _buildEloHistoryInline() {
   const activeSport = (hasPadel && hasTennis) ? _eloHistorySport : (hasPadel ? 'padel' : 'tennis');
   const openAttr = _isEloHistoryPanelOpen() ? ' open' : '';
   let html = `<details class="elo-history-inline-details" ontoggle="_rememberEloHistoryPanelOpen(this)"${openAttr}>`;
-  html += `<summary class="elo-history-inline-summary"><span class="player-history-chevron">▶</span><span>${esc(t('txt_player_elo_history'))}</span></summary>`;
+  html += `<summary class="elo-history-inline-summary"><span class="player-history-chevron">▶</span><span class="section-heading section-heading-inline">${esc(t('txt_player_elo_history'))}</span></summary>`;
   html += `<div class="elo-history-inline-body">`;
 
   // Controls row: show-last selector
@@ -1878,7 +1906,7 @@ function _buildStatsLine(entry) {
     parts.push(wl);
   }
   if (entry.elo_before != null && entry.elo_after != null) {
-    const delta = Math.round(entry.elo_after - entry.elo_before);
+    const delta = Math.round(entry.elo_after) - Math.round(entry.elo_before);
     const sign = delta >= 0 ? '+' : '';
     parts.push(`ELO ${sign}${delta}`);
   }
@@ -2151,11 +2179,86 @@ async function _doLink() {
   }
 }
 
+// ── ELO info popup ────────────────────────────────────────
+
+function _buildEloInfoHtml() {
+  let html = `<h3>${esc(t('txt_txt_info_elo_title'))}</h3>`;
+  html += `<p style="color:var(--text-muted);font-size:0.84rem">${esc(t('txt_txt_info_elo_subtitle'))}</p>`;
+
+  html += `<div class="info-block">`;
+  html += `<strong>${esc(t('txt_txt_info_elo_formula_title'))}</strong>`;
+  html += `<p>${t('txt_txt_info_elo_formula_desc')}</p>`;
+  html += `<div class="info-formulas"><code>R = 0.5 + (yours \u2212 opp) / (2 \u00d7 (yours + opp))</code><code>S = \u03b1 \u00b7 W + (1 \u2212 \u03b1) \u00b7 R</code></div>`;
+  html += `<p class="info-formula-legend">${t('txt_txt_info_elo_formula_legend')}</p>`;
+  html += `<p class="info-formula-legend">${t('txt_txt_info_elo_formula_s_note')}</p>`;
+  html += `</div>`;
+
+  html += `<div class="info-block">`;
+  html += `<strong>${esc(t('txt_txt_info_elo_update_title'))}</strong>`;
+  html += `<p>${t('txt_txt_info_elo_update_desc')}</p>`;
+  html += `<div class="info-formulas"><code>E = 1 / (1 + 10<sup>(opp_rating \u2212 your_rating) / 400</sup>)</code><code>\u0394 = K \u00d7 (S \u2212 E)</code><code>new_rating = old_rating + \u0394</code></div>`;
+  html += `<p class="info-formula-legend">${t('txt_txt_info_elo_update_legend')}</p>`;
+  html += `</div>`;
+
+  html += `<div class="info-block">`;
+  html += `<strong>${esc(t('txt_txt_info_elo_kfactor_title'))}</strong>`;
+  html += `<p>${esc(t('txt_txt_info_elo_kfactor_desc'))}</p>`;
+  html += `</div>`;
+
+  html += `<div class="info-block">`;
+  html += `<strong>${esc(t('txt_txt_info_elo_reliability_title'))}</strong>`;
+  html += `<p>${t('txt_txt_info_elo_reliability_desc')}</p>`;
+  html += `<div class="info-formulas"><code>reliability(n) = 0.3 + 0.7 \u00d7 n / 20 \u00a0 (capped at 1.0)</code><code>\u0394<sub>adj</sub> = \u0394 \u00d7 reliability(opponent_matches)</code></div>`;
+  html += `<p class="info-formula-legend">${t('txt_txt_info_elo_reliability_legend')}</p>`;
+  html += `</div>`;
+
+  html += `<div class="info-block">`;
+  html += `<strong>${esc(t('txt_txt_info_elo_doubles_title'))}</strong>`;
+  html += `<p>${t('txt_txt_info_elo_doubles_desc')}</p>`;
+  html += `</div>`;
+
+  html += `<div class="info-block">`;
+  html += `<strong>${esc(t('txt_txt_info_elo_clamp_title'))}</strong>`;
+  html += `<p>${esc(t('txt_txt_info_elo_clamp_desc'))}</p>`;
+  html += `</div>`;
+
+  return html;
+}
+
+function _showEloInfoPopup(event) {
+  event.stopPropagation();
+  // Remove existing popup if any
+  _closeEloInfoPopup();
+  const overlay = document.createElement('div');
+  overlay.id = 'elo-info-overlay';
+  overlay.addEventListener('click', () => _closeEloInfoPopup());
+  const dialog = document.createElement('div');
+  dialog.id = 'elo-info-dialog';
+  dialog.addEventListener('click', e => e.stopPropagation());
+  dialog.innerHTML = `<button type="button" class="format-info-close-btn" onclick="_closeEloInfoPopup()">\u2715</button>` + _buildEloInfoHtml();
+  document.body.appendChild(overlay);
+  document.body.appendChild(dialog);
+  // Force reflow then show
+  overlay.offsetHeight;
+  overlay.style.display = 'block';
+  dialog.style.display = 'block';
+}
+
+function _closeEloInfoPopup() {
+  const overlay = document.getElementById('elo-info-overlay');
+  const dialog = document.getElementById('elo-info-dialog');
+  if (overlay) overlay.remove();
+  if (dialog) dialog.remove();
+}
+
 // ── Keyboard support ──────────────────────────────────────
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && _showLinkModal) {
     _closeLinkModal(null);
+  }
+  if (e.key === 'Escape') {
+    _closeEloInfoPopup();
   }
   if (e.key === 'Enter') {
     if (_showLinkModal) { _doLink(); return; }

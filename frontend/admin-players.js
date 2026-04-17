@@ -69,6 +69,7 @@ async function phLoadProfile(profileId) {
   try {
     const data = await api(`/api/admin/player-profiles/${profileId}`);
     _phRenderDetail(data);
+    detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     detail.innerHTML = `<div class="card"><div class="alert alert-error">${esc(e.message)}</div></div>`;
   }
@@ -185,6 +186,8 @@ function phCloseDetail() {
   const detail = document.getElementById('ph-detail');
   if (detail) { detail.style.display = 'none'; detail.innerHTML = ''; }
   _phCurrentProfileId = null;
+  const results = document.getElementById('ph-results');
+  if (results) results.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 /** Reset a profile's passphrase */

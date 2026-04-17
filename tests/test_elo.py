@@ -8,12 +8,15 @@ from backend.models import Match, MatchStatus, Player
 from backend.tournaments.elo import (
     DEFAULT_RATING,
     MIN_DELTA_WIN,
+    RELIABILITY_BASELINE,
+    RELIABILITY_THRESHOLD,
     compute_1v1_update,
     compute_2v2_update,
     compute_blended_outcome,
     compute_expected_score,
     compute_match_elo_updates,
     get_k_factor,
+    reliability,
     tennis_sets_to_score,
 )
 
@@ -38,6 +41,34 @@ from backend.tournaments.elo import (
 )
 def test_k_factor_tiers(matches: int, expected_k: int) -> None:
     assert get_k_factor(matches) == expected_k
+
+
+# ---------------------------------------------------------------------------
+# reliability
+# ---------------------------------------------------------------------------
+
+
+class TestReliability:
+    """Tests for the opponent-reliability dampener."""
+
+    def test_zero_matches_gives_baseline(self) -> None:
+        assert reliability(0) == pytest.approx(RELIABILITY_BASELINE)
+
+    def test_at_threshold_gives_one(self) -> None:
+        assert reliability(RELIABILITY_THRESHOLD) == pytest.approx(1.0)
+
+    def test_above_threshold_gives_one(self) -> None:
+        assert reliability(RELIABILITY_THRESHOLD + 50) == pytest.approx(1.0)
+
+    def test_midpoint(self) -> None:
+        mid = RELIABILITY_THRESHOLD // 2
+        expected = RELIABILITY_BASELINE + (1.0 - RELIABILITY_BASELINE) * mid / RELIABILITY_THRESHOLD
+        assert reliability(mid) == pytest.approx(expected)
+
+    def test_monotonically_increasing(self) -> None:
+        values = [reliability(i) for i in range(RELIABILITY_THRESHOLD + 5)]
+        for a, b in zip(values, values[1:]):
+            assert b >= a
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +234,45 @@ class TestCompute1v1:
         without_override = compute_1v1_update(1000, 1000, (18, 7), 100)
         assert abs(with_override - 1000) > abs(without_override - 1000)
 
+    def test_provisional_opponent_dampens_delta(self) -> None:
+        """Delta is smaller when an established player faces a provisional opponent."""
+        # Established player (50 matches) vs established opponent → full delta
+        full = compute_1v1_update(1000, 1000, (18, 7), 50, opponent_matches_played=50)
+        # Established player (50 matches) vs provisional opponent (0 matches) → dampened
+        dampened = compute_1v1_update(1000, 1000, (18, 7), 50, opponent_matches_played=0)
+        assert abs(full - 1000) > abs(dampened - 1000)
+
+    def test_provisional_player_vs_provisional_opponent_no_dampening(self) -> None:
+        """Provisional player gets full delta even against a provisional opponent."""
+        # Both provisional — no dampening so ratings converge fast
+        prov_vs_prov = compute_1v1_update(1000, 1000, (18, 7), 0, opponent_matches_played=0)
+        no_arg = compute_1v1_update(1000, 1000, (18, 7), 0)
+        assert prov_vs_prov == pytest.approx(no_arg)
+
+    def test_provisional_player_vs_established_no_dampening(self) -> None:
+        """Provisional player gets full delta against an established opponent."""
+        prov = compute_1v1_update(1000, 1000, (18, 7), 5, opponent_matches_played=50)
+        no_arg = compute_1v1_update(1000, 1000, (18, 7), 5)
+        assert prov == pytest.approx(no_arg)
+
+    def test_established_opponent_no_dampening(self) -> None:
+        """With enough opponent matches, no dampening occurs."""
+        with_arg = compute_1v1_update(1000, 1000, (18, 7), 50, opponent_matches_played=RELIABILITY_THRESHOLD)
+        without_arg = compute_1v1_update(1000, 1000, (18, 7), 50)
+        assert with_arg == pytest.approx(without_arg)
+
+    def test_dampened_winner_still_gains(self) -> None:
+        """Even with heavy dampening, a winner always gains (MIN_DELTA_WIN)."""
+        new = compute_1v1_update(1000, 1000, (18, 7), 50, opponent_matches_played=0)
+        assert new > 1000
+        assert (new - 1000) >= MIN_DELTA_WIN
+
+    def test_dampened_loser_still_loses(self) -> None:
+        """Even with heavy dampening, a loser always loses (MIN_DELTA_WIN)."""
+        new = compute_1v1_update(1000, 1000, (7, 18), 50, opponent_matches_played=0)
+        assert new < 1000
+        assert (1000 - new) >= MIN_DELTA_WIN
+
 
 # ---------------------------------------------------------------------------
 # compute_2v2_update
@@ -248,6 +318,24 @@ class TestCompute2v2:
         close = compute_2v2_update(1000, 1000, 1000, 1000, (12, 13), 0)
         blowout = compute_2v2_update(1000, 1000, 1000, 1000, (1, 24), 0)
         assert close > blowout
+
+    def test_provisional_opponents_dampen_delta(self) -> None:
+        """Delta is smaller when an established player faces provisional opponents."""
+        full = compute_2v2_update(1000, 1000, 1000, 1000, (18, 7), 50, opponent_matches=(50, 50))
+        dampened = compute_2v2_update(1000, 1000, 1000, 1000, (18, 7), 50, opponent_matches=(0, 0))
+        assert abs(full - 1000) > abs(dampened - 1000)
+
+    def test_2v2_one_provisional_opponent_dampens(self) -> None:
+        """Even if only one opponent is provisional, dampening applies (min)."""
+        full = compute_2v2_update(1000, 1000, 1000, 1000, (18, 7), 50, opponent_matches=(50, 50))
+        one_prov = compute_2v2_update(1000, 1000, 1000, 1000, (18, 7), 50, opponent_matches=(50, 0))
+        assert abs(full - 1000) > abs(one_prov - 1000)
+
+    def test_2v2_provisional_player_no_dampening(self) -> None:
+        """Provisional player in 2v2 gets full delta regardless of opponent status."""
+        prov_vs_prov = compute_2v2_update(1000, 1000, 1000, 1000, (18, 7), 5, opponent_matches=(0, 0))
+        no_arg = compute_2v2_update(1000, 1000, 1000, 1000, (18, 7), 5)
+        assert prov_vs_prov == pytest.approx(no_arg)
 
 
 # ---------------------------------------------------------------------------

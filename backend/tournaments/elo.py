@@ -25,7 +25,7 @@ OUTCOME_BLEND_WEIGHT: float = 0.5
 score ratio.  Higher values make the outcome more binary.
 """
 
-PARTNER_CONTRIBUTION_WEIGHT: float = 0.25
+PARTNER_CONTRIBUTION_WEIGHT: float = 0.50
 """How much a partner's relative strength adjusts individual ELO deltas.
 
 A value of 0 means no partner adjustment; higher values increase the
@@ -51,6 +51,21 @@ MIN_DELTA_WIN: float = 1.0
 Ensures that winning is always rewarded and losing always costs something,
 even when the margin-based outcome is close to the expected score.
 """
+
+RELIABILITY_BASELINE: float = 0.3
+"""Minimum reliability factor for a player with zero matches.
+
+When an opponent has few matches, their rating is unreliable.  The
+reliability dampener scales the delta applied *to established players*
+so that they are shielded from large swings caused by provisional
+opponents.  Provisional players themselves always receive the full
+delta so their ratings converge quickly.  Ramps linearly from
+``RELIABILITY_BASELINE`` at 0 matches to 1.0 at
+``RELIABILITY_THRESHOLD`` matches.
+"""
+
+RELIABILITY_THRESHOLD: int = 20
+"""Number of matches at which a player's rating is fully reliable."""
 
 # ---------------------------------------------------------------------------
 # Pydantic model
@@ -78,6 +93,25 @@ def get_k_factor(matches_played: int) -> int:
         if matches_played <= threshold:
             return k
     return K_FACTOR_DEFAULT
+
+
+def reliability(matches_played: int) -> float:
+    """Return a reliability factor in [RELIABILITY_BASELINE, 1.0].
+
+    Ramps linearly from ``RELIABILITY_BASELINE`` at 0 matches to 1.0 at
+    ``RELIABILITY_THRESHOLD`` matches.  Used to dampen the ELO delta
+    applied to an opponent when the *other* player's rating is still
+    provisional.
+
+    Args:
+        matches_played: Number of completed matches.
+
+    Returns:
+        Reliability factor between ``RELIABILITY_BASELINE`` and 1.0.
+    """
+    if matches_played >= RELIABILITY_THRESHOLD:
+        return 1.0
+    return RELIABILITY_BASELINE + (1.0 - RELIABILITY_BASELINE) * matches_played / RELIABILITY_THRESHOLD
 
 
 def compute_expected_score(rating_a: float, rating_b: float) -> float:
@@ -165,6 +199,7 @@ def compute_1v1_update(
     score: tuple[int, int],
     matches_played: int,
     k_factor_override: int | None = None,
+    opponent_matches_played: int | None = None,
 ) -> float:
     """Compute the new ELO rating for a 1v1 match.
 
@@ -176,6 +211,11 @@ def compute_1v1_update(
             (before this match).
         k_factor_override: If set, use this K value instead of the
             tier-based default.
+        opponent_matches_played: Opponent's completed match count.  When
+            the opponent is provisional (few matches) **and** the player
+            is already established (≥ ``RELIABILITY_THRESHOLD`` matches),
+            the delta is dampened via the reliability factor.  Provisional
+            players always receive the full delta for fast calibration.
 
     Returns:
         Updated rating.
@@ -184,6 +224,11 @@ def compute_1v1_update(
     actual = compute_blended_outcome(score[0], score[1])
     k = k_factor_override if k_factor_override is not None else get_k_factor(matches_played)
     delta = k * (actual - expected)
+    # Dampen delta only for established players facing provisional opponents.
+    # Provisional players always get the full delta so their ratings converge
+    # quickly during calibration.
+    if opponent_matches_played is not None and matches_played >= RELIABILITY_THRESHOLD:
+        delta *= reliability(opponent_matches_played)
     return player_rating + _clamp_delta(delta, score)
 
 
@@ -212,6 +257,7 @@ def compute_2v2_update(
     score: tuple[int, int],
     matches_played: int,
     k_factor_override: int | None = None,
+    opponent_matches: tuple[int, int] | None = None,
 ) -> float:
     """Compute the new ELO rating for one player in a 2v2 match.
 
@@ -228,6 +274,12 @@ def compute_2v2_update(
         matches_played: Player's completed matches before this one.
         k_factor_override: If set, use this K value instead of the
             tier-based default.
+        opponent_matches: ``(opp1_matches, opp2_matches)`` — completed
+            match counts for each opponent.  Dampening is only applied
+            when the player is established (≥ ``RELIABILITY_THRESHOLD``
+            matches).  The *minimum* reliability of the two opponents is
+            used, shielding the player when *either* opponent is
+            provisional.
 
     Returns:
         Updated rating.
@@ -239,6 +291,10 @@ def compute_2v2_update(
     k = k_factor_override if k_factor_override is not None else get_k_factor(matches_played)
     adj = _partner_adjustment(player_rating, partner_rating)
     delta = k * adj * (actual - expected)
+    # Dampen delta only for established players facing provisional opponents
+    if opponent_matches is not None and matches_played >= RELIABILITY_THRESHOLD:
+        opp_rel = min(reliability(opponent_matches[0]), reliability(opponent_matches[1]))
+        delta *= opp_rel
     return player_rating + _clamp_delta(delta, score)
 
 
@@ -288,6 +344,10 @@ def compute_match_elo_updates(
             partner = next(p for p in match.team1 if p.id != player.id)
             elo_before = ratings.get(player.id, DEFAULT_RATING)
             count = match_counts.get(player.id, 0)
+            opp_counts = (
+                match_counts.get(match.team2[0].id, 0),
+                match_counts.get(match.team2[1].id, 0),
+            )
             elo_after = compute_2v2_update(
                 elo_before,
                 ratings.get(partner.id, DEFAULT_RATING),
@@ -296,6 +356,7 @@ def compute_match_elo_updates(
                 score,
                 count,
                 k_factor_override=overrides.get(player.id),
+                opponent_matches=opp_counts,
             )
             updates.append(
                 EloUpdate(
@@ -312,6 +373,10 @@ def compute_match_elo_updates(
             elo_before = ratings.get(player.id, DEFAULT_RATING)
             count = match_counts.get(player.id, 0)
             reversed_score = (score[1], score[0])
+            opp_counts = (
+                match_counts.get(match.team1[0].id, 0),
+                match_counts.get(match.team1[1].id, 0),
+            )
             elo_after = compute_2v2_update(
                 elo_before,
                 ratings.get(partner.id, DEFAULT_RATING),
@@ -320,6 +385,7 @@ def compute_match_elo_updates(
                 reversed_score,
                 count,
                 k_factor_override=overrides.get(player.id),
+                opponent_matches=opp_counts,
             )
             updates.append(
                 EloUpdate(
@@ -339,8 +405,17 @@ def compute_match_elo_updates(
         count1 = match_counts.get(p1.id, 0)
         count2 = match_counts.get(p2.id, 0)
 
-        new_elo1 = compute_1v1_update(elo1, elo2, score, count1, k_factor_override=overrides.get(p1.id))
-        new_elo2 = compute_1v1_update(elo2, elo1, (score[1], score[0]), count2, k_factor_override=overrides.get(p2.id))
+        new_elo1 = compute_1v1_update(
+            elo1, elo2, score, count1, k_factor_override=overrides.get(p1.id), opponent_matches_played=count2
+        )
+        new_elo2 = compute_1v1_update(
+            elo2,
+            elo1,
+            (score[1], score[0]),
+            count2,
+            k_factor_override=overrides.get(p2.id),
+            opponent_matches_played=count1,
+        )
 
         updates.append(
             EloUpdate(

@@ -218,7 +218,6 @@ document.addEventListener('click', (e) => {
     case 'bracketLightboxOpenFull': _bracketLightboxOpenFull(); break;
     case 'bracketLightboxDownload': _bracketLightboxDownload(); break;
     case 'hideLoginDialog': hideLoginDialog(); break;
-    case 'hideUserMgmt': hideUserMgmt(); break;
     case 'hideChangePasswordDialog': hideChangePasswordDialog(); break;
     case 'hideForgotPasswordDialog': hideForgotPasswordDialog(); break;
   }

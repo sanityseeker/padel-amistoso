@@ -264,7 +264,7 @@ $$S = \alpha \cdot W + (1 - \alpha) \cdot R$$
 | Symbol | Meaning |
 | --- | --- |
 | $W$ | Binary result: 1 (win), 0.5 (draw), 0 (loss) |
-| $R$ | Continuous ratio: $0.5 + (a - b) \;/\; 2(a + b)$ |
+| $R$ | Continuous ratio: $0.5 + (a - b) \;/\; (2 \cdot (a + b))$ |
 | $\alpha$ | Blend weight (default **0.5**) — higher = more binary, lower = more margin-sensitive |
 
 The expected score uses the standard ELO formula:
