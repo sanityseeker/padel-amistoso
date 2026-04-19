@@ -16,9 +16,13 @@
     try {
       if (sessionStorage.getItem('amistoso-session-active')) return;
       sessionStorage.setItem('amistoso-session-active', '1');
-      const PAGE_MAP = { tv: '/tv', register: '/register', player: '/player' };
-      const home = localStorage.getItem('amistoso-home-page');
-      const key = home || localStorage.getItem('amistoso-last-page');
+      // Never redirect when the URL carries an invite or password-reset token —
+      // those flows must stay on the admin SPA so initAuth() can handle them.
+      var qs = window.location.search;
+      if (qs.indexOf('invite_token') !== -1 || qs.indexOf('reset_token') !== -1) return;
+      var PAGE_MAP = { tv: '/tv', register: '/register', player: '/player' };
+      var home = localStorage.getItem('amistoso-home-page');
+      var key = home || localStorage.getItem('amistoso-last-page');
       if (key && PAGE_MAP[key]) window.location.replace(PAGE_MAP[key]);
     } catch (_) {}
   })();
@@ -477,51 +481,65 @@
       <ul id="user-mgmt-list" class="user-mgmt-list"></ul>
     </div>
 
-    <div class="card">
-      <h3 style="margin:0 0 0.75rem" data-i18n="txt_txt_create_user">Create User</h3>
-      <form onsubmit="handleCreateUser(event)">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:0.6rem">
-          <input id="new-user-username" type="text" placeholder="Username" data-i18n-placeholder="txt_txt_username" autocomplete="off" style="padding:0.45rem 0.65rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
-          <input id="new-user-password" type="password" placeholder="Password" data-i18n-placeholder="txt_txt_password" autocomplete="new-password" style="padding:0.45rem 0.65rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
-        </div>
-        <div style="margin-bottom:0.6rem">
-          <input id="new-user-email" type="email" style="width:100%;padding:0.45rem 0.65rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" placeholder="Email (optional)" data-i18n-placeholder="txt_txt_email_optional_placeholder" autocomplete="email">
-        </div>
-        <div style="margin-bottom:0.75rem">
-          <label style="font-weight:600;font-size:0.88rem;margin-bottom:0.35rem;display:block" data-i18n="txt_txt_role">Role</label>
-          <div style="display:flex;gap:1rem">
-            <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.88rem;cursor:pointer">
-              <input type="radio" name="new-user-role" value="user" checked> <span data-i18n="txt_txt_user_role">User</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.88rem;cursor:pointer">
-              <input type="radio" name="new-user-role" value="admin"> <span data-i18n="txt_txt_admin_role">Admin</span>
-            </label>
+    <div class="umgmt-cards-grid">
+      <div class="card">
+        <h3 class="umgmt-card-title" data-i18n="txt_txt_create_user">Create User</h3>
+        <form onsubmit="handleCreateUser(event)">
+          <div class="umgmt-form-grid umgmt-form-group">
+            <div>
+              <label for="new-user-username" data-i18n="txt_txt_username">Username</label>
+              <input id="new-user-username" type="text" placeholder="Username" data-i18n-placeholder="txt_txt_username" autocomplete="off">
+            </div>
+            <div>
+              <label for="new-user-password" data-i18n="txt_txt_password">Password</label>
+              <input id="new-user-password" type="password" placeholder="Password" data-i18n-placeholder="txt_txt_password" autocomplete="new-password">
+            </div>
           </div>
-        </div>
-        <div class="modal-success" id="user-mgmt-success"></div>
-        <div class="modal-error" id="user-mgmt-error"></div>
-        <button type="submit" id="create-user-btn" class="btn btn-primary btn-sm" data-i18n="txt_txt_create_user">Create User</button>
-      </form>
-    </div>
+          <div class="umgmt-form-group">
+            <label for="new-user-email" data-i18n="txt_txt_email_optional_placeholder">Email (optional)</label>
+            <input id="new-user-email" type="email" placeholder="Email (optional)" data-i18n-placeholder="txt_txt_email_optional_placeholder" autocomplete="email">
+          </div>
+          <div class="umgmt-msg-area">
+            <div class="modal-success" id="user-mgmt-success"></div>
+            <div class="modal-error" id="user-mgmt-error"></div>
+          </div>
+          <div class="umgmt-footer-row">
+            <div class="umgmt-role-group">
+              <label data-i18n="txt_txt_role">Role</label>
+              <div class="umgmt-role-options">
+                <label><input type="radio" name="new-user-role" value="user" checked> <span data-i18n="txt_txt_user_role">User</span></label>
+                <label><input type="radio" name="new-user-role" value="admin"> <span data-i18n="txt_txt_admin_role">Admin</span></label>
+              </div>
+            </div>
+            <button type="submit" id="create-user-btn" class="btn btn-primary btn-sm" data-i18n="txt_txt_create_user">Create User</button>
+          </div>
+        </form>
+      </div>
 
-    <div class="card" id="invite-section">
-      <h3 style="margin:0 0 0.75rem">✉️ <span data-i18n="txt_txt_invite_by_email">Invite by Email</span></h3>
-      <p style="font-size:0.84rem;color:var(--text-muted);margin:0 0 0.75rem" data-i18n="txt_txt_invite_help">Send an invite link — the recipient sets their own password. Link expires in 48 hours.</p>
-      <form onsubmit="handleInvite(event)">
-        <div style="margin-bottom:0.6rem">
-          <input id="invite-email" type="email" style="width:100%;padding:0.45rem 0.65rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" placeholder="Email address" data-i18n-placeholder="txt_txt_email_address" autocomplete="email">
-        </div>
-        <div style="margin-bottom:0.75rem">
-          <label style="font-weight:600;font-size:0.88rem;margin-bottom:0.35rem;display:block" data-i18n="txt_txt_role">Role</label>
-          <div style="display:flex;gap:1rem">
-            <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.88rem;cursor:pointer"><input type="radio" name="invite-role" value="user" checked> <span data-i18n="txt_txt_user_role">User</span></label>
-            <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.88rem;cursor:pointer"><input type="radio" name="invite-role" value="admin"> <span data-i18n="txt_txt_admin_role">Admin</span></label>
+      <div class="card" id="invite-section">
+        <h3 class="umgmt-card-title">✉️ <span data-i18n="txt_txt_invite_by_email">Invite by Email</span></h3>
+        <p class="umgmt-card-desc" data-i18n="txt_txt_invite_help">Send an invite link — the recipient sets their own password. Link expires in 48 hours.</p>
+        <form onsubmit="handleInvite(event)">
+          <div class="umgmt-form-group">
+            <label for="invite-email" data-i18n="txt_txt_email_address">Email address</label>
+            <input id="invite-email" type="email" placeholder="Email address" data-i18n-placeholder="txt_txt_email_address" autocomplete="email">
           </div>
-        </div>
-        <div class="modal-success" id="invite-success"></div>
-        <div class="modal-error" id="invite-error"></div>
-        <button type="submit" id="invite-btn" class="btn btn-primary btn-sm" data-i18n="txt_txt_send_invite">Send Invite</button>
-      </form>
+          <div class="umgmt-msg-area">
+            <div class="modal-success" id="invite-success"></div>
+            <div class="modal-error" id="invite-error"></div>
+          </div>
+          <div class="umgmt-footer-row">
+            <div class="umgmt-role-group">
+              <label data-i18n="txt_txt_role">Role</label>
+              <div class="umgmt-role-options">
+                <label><input type="radio" name="invite-role" value="user" checked> <span data-i18n="txt_txt_user_role">User</span></label>
+                <label><input type="radio" name="invite-role" value="admin"> <span data-i18n="txt_txt_admin_role">Admin</span></label>
+              </div>
+            </div>
+            <button type="submit" id="invite-btn" class="btn btn-primary btn-sm" data-i18n="txt_txt_send_invite">Send Invite</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -945,10 +963,11 @@
 </div>
 
 <!-- Accept Invite Modal -->
-<div id="accept-invite-overlay" class="modal-overlay"></div>
+<div id="accept-invite-overlay" class="modal-overlay" data-action="hideAcceptInviteDialog"></div>
 <div id="accept-invite-dialog" class="modal-dialog modal-sm">
   <div class="modal-header">
     <h2 class="modal-title">🎾 <span data-i18n="txt_txt_accept_invitation">Accept Invitation</span></h2>
+    <button type="button" class="modal-close-btn" data-action="hideAcceptInviteDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
   </div>
   <p class="modal-subtitle" id="accept-invite-subtitle"></p>
   <form onsubmit="handleAcceptInvite(event)">
@@ -971,10 +990,11 @@
 </div>
 
 <!-- Reset Password Modal -->
-<div id="reset-pwd-overlay" class="modal-overlay"></div>
+<div id="reset-pwd-overlay" class="modal-overlay" data-action="hideResetPasswordDialog"></div>
 <div id="reset-pwd-dialog" class="modal-dialog modal-sm">
   <div class="modal-header">
     <h2 class="modal-title">🔑 <span data-i18n="txt_txt_reset_password">Reset Password</span></h2>
+    <button type="button" class="modal-close-btn" data-action="hideResetPasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
   </div>
   <p class="modal-subtitle" data-i18n="txt_txt_choose_new_password_for_account">Choose a new password for your account.</p>
   <form onsubmit="handleResetPassword(event)">

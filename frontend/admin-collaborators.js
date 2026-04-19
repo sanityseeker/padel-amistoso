@@ -220,5 +220,7 @@ document.addEventListener('click', (e) => {
     case 'hideLoginDialog': hideLoginDialog(); break;
     case 'hideChangePasswordDialog': hideChangePasswordDialog(); break;
     case 'hideForgotPasswordDialog': hideForgotPasswordDialog(); break;
+    case 'hideAcceptInviteDialog': hideAcceptInviteDialog(); break;
+    case 'hideResetPasswordDialog': hideResetPasswordDialog(); break;
   }
 });

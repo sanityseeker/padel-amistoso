@@ -563,7 +563,7 @@ async function showAcceptInviteDialog(token) {
 
   if (subtitle) subtitle.textContent = t('txt_txt_validating_invite_link');
   overlay.style.display = 'block';
-  dialog.style.display = 'flex';
+  dialog.style.display = 'block';
 
   try {
     const res = await fetch(`/api/auth/invite/${encodeURIComponent(token)}`);
@@ -574,7 +574,8 @@ async function showAcceptInviteDialog(token) {
       return;
     }
     const data = await res.json();
-    if (subtitle) subtitle.textContent = `You've been invited as ${data.role} — ${data.email}`;
+    const roleLabel = data.role === 'admin' ? t('txt_txt_admin_role') : t('txt_txt_user_role');
+    if (subtitle) subtitle.textContent = t('txt_txt_invited_as_role_email', { role: roleLabel, email: data.email });
     document.getElementById('accept-invite-username')?.focus();
   } catch (e) {
     if (errDiv) errDiv.textContent = t('txt_txt_could_not_validate_invite');
@@ -623,12 +624,19 @@ async function handleAcceptInvite(event) {
       }
       return res.json();
     });
-    if (successDiv) successDiv.textContent = t('txt_txt_account_created_login_now');
     // Remove token from URL without reloading
     const url = new URL(window.location.href);
     url.searchParams.delete('invite_token');
     window.history.replaceState({}, '', url);
-    setTimeout(() => showLoginDialog(), 2000);
+    // Auto-login with the credentials just created
+    const loginResult = await login(username, password);
+    if (loginResult.success) {
+      if (successDiv) successDiv.textContent = t('txt_txt_account_created_logging_in');
+      setTimeout(() => window.location.reload(), 800);
+    } else {
+      if (successDiv) successDiv.textContent = t('txt_txt_account_created_login_now');
+      setTimeout(() => { hideAcceptInviteDialog(); showLoginDialog(); }, 2000);
+    }
   } catch (e) {
     if (errDiv) errDiv.textContent = e.message;
   } finally {
@@ -637,6 +645,20 @@ async function handleAcceptInvite(event) {
 }
 
 // ── Reset Password ────────────────────────────────────────
+
+/**
+ * Hide the accept-invite dialog.
+ */
+function hideAcceptInviteDialog() {
+  const overlay = document.getElementById('accept-invite-overlay');
+  const dialog = document.getElementById('accept-invite-dialog');
+  if (overlay) overlay.style.display = 'none';
+  if (dialog) dialog.style.display = 'none';
+  // Remove token from URL without reloading
+  const url = new URL(window.location.href);
+  url.searchParams.delete('invite_token');
+  window.history.replaceState({}, '', url);
+}
 
 /** Raw reset token from the URL (set during initAuth). */
 let _resetToken = null;
@@ -651,9 +673,23 @@ function showResetPasswordDialog(token) {
   const dialog = document.getElementById('reset-pwd-dialog');
   if (overlay && dialog) {
     overlay.style.display = 'block';
-    dialog.style.display = 'flex';
+    dialog.style.display = 'block';
     document.getElementById('reset-pwd-new')?.focus();
   }
+}
+
+/**
+ * Hide the reset-password dialog.
+ */
+function hideResetPasswordDialog() {
+  const overlay = document.getElementById('reset-pwd-overlay');
+  const dialog = document.getElementById('reset-pwd-dialog');
+  if (overlay) overlay.style.display = 'none';
+  if (dialog) dialog.style.display = 'none';
+  // Remove token from URL without reloading
+  const url = new URL(window.location.href);
+  url.searchParams.delete('reset_token');
+  window.history.replaceState({}, '', url);
 }
 
 /**
