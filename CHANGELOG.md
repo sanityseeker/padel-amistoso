@@ -1,3 +1,9 @@
+## v1.8.5 (2026-04-20)
+
+### Fix
+
+- **admin**: creating new users from email; frontend improvement
+
 ## v1.8.4 (2026-04-17)
 
 ### Fix
