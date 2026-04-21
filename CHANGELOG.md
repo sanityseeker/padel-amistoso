@@ -1,3 +1,9 @@
+## v1.9.0 (2026-04-21)
+
+### Feat
+
+- **community/clubs**: introduce communities functionality
+
 ## v1.8.5 (2026-04-20)
 
 ### Fix
