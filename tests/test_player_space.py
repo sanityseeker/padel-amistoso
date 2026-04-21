@@ -3075,7 +3075,15 @@ class TestLeaderboard:
                 (p1["profile"]["id"],),
             )
             conn.execute(
+                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches) VALUES (?, 'open', 'padel', 1200, 5)",
+                (p1["profile"]["id"],),
+            )
+            conn.execute(
                 "UPDATE player_profiles SET elo_padel = 1300, elo_padel_matches = 3 WHERE id = ?",
+                (p2["profile"]["id"],),
+            )
+            conn.execute(
+                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches) VALUES (?, 'open', 'padel', 1300, 3)",
                 (p2["profile"]["id"],),
             )
 
@@ -3103,6 +3111,10 @@ class TestLeaderboard:
         with db_mod.get_db() as conn:
             conn.execute(
                 "UPDATE player_profiles SET elo_tennis = 1100, elo_tennis_matches = 2 WHERE id = ?",
+                (p1["profile"]["id"],),
+            )
+            conn.execute(
+                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches) VALUES (?, 'open', 'tennis', 1100, 2)",
                 (p1["profile"]["id"],),
             )
 
@@ -3144,6 +3156,10 @@ class TestLeaderboard:
         with db_mod.get_db() as conn:
             conn.execute(
                 "UPDATE player_profiles SET elo_padel = 1150, elo_padel_matches = 4 WHERE id = ?",
+                (p1["profile"]["id"],),
+            )
+            conn.execute(
+                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches) VALUES (?, 'open', 'padel', 1150, 4)",
                 (p1["profile"]["id"],),
             )
 

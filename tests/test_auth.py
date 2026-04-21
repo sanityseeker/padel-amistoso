@@ -104,6 +104,7 @@ class TestAuthAPI:
         r = client.get("/api/auth/me", headers=auth_headers)
         assert r.status_code == 200
         assert r.json()["username"] == "admin"
+        assert "can_create_clubs" in r.json()
 
     def test_me_without_auth(self, client):
         r = client.get("/api/auth/me")
@@ -130,6 +131,33 @@ class TestAuthAPI:
         r = client.get("/api/auth/users", headers=auth_headers)
         assert r.status_code == 200
         assert any(u["username"] == "admin" for u in r.json())
+        assert all("can_create_clubs" in u for u in r.json())
+
+    def test_admin_can_update_user_settings(self, client, auth_headers):
+        create_res = client.post(
+            "/api/auth/users",
+            json={"username": "settings_user", "password": "pass1234"},
+            headers=auth_headers,
+        )
+        assert create_res.status_code == 201
+
+        r = client.patch(
+            "/api/auth/users/settings_user/settings",
+            json={"default_community_id": "open", "can_create_clubs": False},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["default_community_id"] == "open"
+        assert data["can_create_clubs"] is False
+
+    def test_non_admin_cannot_update_user_settings(self, client, alice_headers):
+        r = client.patch(
+            "/api/auth/users/bob/settings",
+            json={"can_create_clubs": False},
+            headers=alice_headers,
+        )
+        assert r.status_code == 403
 
     def test_delete_user(self, client, auth_headers):
         client.post(

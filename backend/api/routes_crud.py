@@ -22,7 +22,7 @@ from ..email import (
 )
 from ..models import GPPhase, MatchStatus, Sport
 from .helpers import _find_match, _require_editor_access, _require_owner_or_admin
-from .db import get_shared_tournament_ids
+from .db import get_db, get_shared_tournament_ids
 from .player_secret_store import (
     delete_secrets_for_tournament,
     extract_history_stats,
@@ -34,6 +34,7 @@ from .schemas import (
     EmailSettings,
     EmailSettingsRequest,
     SetAliasRequest,
+    SetCommunityRequest,
     SetMatchCommentRequest,
     SetPublicRequest,
     TournamentMessageRequest,
@@ -45,6 +46,30 @@ from .state import _delete_tournament, _save_tournament, _tournaments
 from .elo_integration import elo_recalculate_tournament
 from .elo_store import safe_transfer_elos_to_profiles
 from .elo_store import delete_tournament_elos
+from .routes_clubs import get_club_for_community, get_club_logo_url
+
+
+def _get_tournament_branding(
+    community_id: str,
+    cache: dict[str, dict[str, str | None]] | None = None,
+) -> dict[str, str | None]:
+    """Return community/club display metadata for a tournament."""
+    if cache is not None and community_id in cache:
+        return cache[community_id]
+
+    with get_db() as conn:
+        row = conn.execute("SELECT name FROM communities WHERE id = ?", (community_id,)).fetchone()
+
+    club = get_club_for_community(community_id)
+    branding = {
+        "community_name": (row["name"] if row is not None else None),
+        "club_name": (club.name if club is not None else None),
+        "club_logo_url": get_club_logo_url(community_id),
+    }
+    if cache is not None:
+        cache[community_id] = branding
+    return branding
+
 
 router = APIRouter(prefix="/api/tournaments", tags=["tournaments"])
 
@@ -61,6 +86,7 @@ async def list_tournaments(current_user: User | None = Depends(get_current_user_
     - **Guest (unauthenticated)**: only publicly listed tournaments (``public=True``).
     """
     out = []
+    branding_cache: dict[str, dict[str, str | None]] = {}
     shared_ids: set[str] = set()
     if current_user is not None and current_user.role != UserRole.ADMIN:
         shared_ids = set(get_shared_tournament_ids(current_user.username))
@@ -75,6 +101,8 @@ async def list_tournaments(current_user: User | None = Depends(get_current_user_
                 continue
 
         t = data.get("tournament")
+        community_id = data.get("community_id", "open")
+        branding = _get_tournament_branding(community_id, branding_cache)
         out.append(
             {
                 "id": tid,
@@ -88,9 +116,29 @@ async def list_tournaments(current_user: User | None = Depends(get_current_user_
                 "public": data.get("public", True),
                 "sport": data.get("sport", Sport.PADEL),
                 "shared": current_user is not None and tid in shared_ids,
+                "community_id": community_id,
+                "created_at": data.get("created_at", ""),
+                "season_id": data.get("season_id"),
+                "club_logo_url": branding["club_logo_url"],
+                "community_name": branding["community_name"],
+                "club_name": branding["club_name"],
             }
         )
+    # Sort by created_at descending (newest first); empty strings sort last.
+    out.sort(key=lambda x: x.get("created_at") or "", reverse=True)
     return out
+
+
+@router.patch("/{tid}/community")
+async def set_tournament_community(tid: str, req: SetCommunityRequest, user: User = Depends(get_current_user)) -> dict:
+    """Reassign a tournament to a different community."""
+    _require_owner_or_admin(tid, user)
+    async with state.get_tournament_lock(tid):
+        if tid not in _tournaments:
+            raise HTTPException(404, "Tournament not found")
+        _tournaments[tid]["community_id"] = req.community_id
+        _save_tournament(tid)
+    return {"ok": True, "community_id": req.community_id}
 
 
 @router.delete("/{tournament_id}")
@@ -291,6 +339,8 @@ async def get_tournament_meta(tid: str) -> dict:
         raise HTTPException(404, "Tournament not found")
     data = _tournaments[tid]
     t = data.get("tournament")
+    community_id = data.get("community_id", "open")
+    branding = _get_tournament_branding(community_id)
     return {
         "id": tid,
         "name": data["name"],
@@ -299,6 +349,10 @@ async def get_tournament_meta(tid: str) -> dict:
         "team_mode": t.team_mode if t else False,
         "phase": t.phase if t else GPPhase.SETUP,
         "sport": data.get("sport", Sport.PADEL),
+        "community_id": community_id,
+        "club_logo_url": branding["club_logo_url"],
+        "community_name": branding["community_name"],
+        "club_name": branding["club_name"],
     }
 
 

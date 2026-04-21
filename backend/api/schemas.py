@@ -66,6 +66,8 @@ class CreateGroupPlayoffRequest(BaseModel):
     player_names: list[str] = Field(min_length=2, max_length=256)
     team_mode: bool = False
     sport: Sport = Sport.PADEL
+    community_id: str = Field(default="open", max_length=64)
+    season_id: str | None = Field(default=None, max_length=64)
     court_names: list[str] = Field(default=["Court 1"], max_length=64)
     num_groups: int = Field(default=2, ge=1, le=32)
     group_names: list[str] = Field(default=[], max_length=32)
@@ -122,6 +124,8 @@ class CreateMexicanoRequest(BaseModel):
     court_names: list[str] = Field(default=["Court 1"], max_length=64)
     team_mode: bool = False
     sport: Sport = Sport.PADEL
+    community_id: str = Field(default="open", max_length=64)
+    season_id: str | None = Field(default=None, max_length=64)
     total_points_per_match: int = Field(default=32, ge=1)
     num_rounds: int = Field(default=8, ge=0)
     skill_gap: int | None = Field(default=None, ge=0)
@@ -189,6 +193,8 @@ class CreatePlayoffRequest(BaseModel):
     court_names: list[str] = Field(default=["Court 1"], max_length=64)
     team_mode: bool = True
     sport: Sport = Sport.PADEL
+    community_id: str = Field(default="open", max_length=64)
+    season_id: str | None = Field(default=None, max_length=64)
     double_elimination: bool = False
     public: bool = True
     assign_courts: bool = True
@@ -334,6 +340,18 @@ class SetPublicRequest(BaseModel):
     public: bool
 
 
+class SetCommunityRequest(BaseModel):
+    """Assign a tournament or registration to a community."""
+
+    community_id: str = Field(min_length=1, max_length=64)
+
+
+class SetSeasonRequest(BaseModel):
+    """Assign a tournament or registration to a season (or remove from one)."""
+
+    season_id: str | None = Field(default=None, max_length=64)
+
+
 class RecordScoreRequest(BaseModel):
     match_id: str
     score1: int = Field(ge=0)
@@ -475,6 +493,8 @@ class RegistrationCreate(BaseModel):
     sport: Sport = Sport.PADEL
     auto_send_email: bool = False
     email_requirement: EmailRequirement = "optional"
+    community_id: str = Field(default="open", min_length=1, max_length=64)
+    season_id: str | None = Field(default=None, max_length=64)
 
 
 class RegistrationUpdate(BaseModel):
@@ -593,6 +613,10 @@ class RegistrationPublicOut(BaseModel):
     email_requirement: EmailRequirement = "optional"
     registrant_count: int = 0
     registrants: list[RegistrantOut] = []
+    community_id: str = "open"
+    community_name: str | None = None
+    club_name: str | None = None
+    club_logo_url: str | None = None
 
 
 class RegistrationAdminOut(BaseModel):
@@ -742,6 +766,7 @@ class AdminPlayerProfileSummary(BaseModel):
     elo_tennis: float
     elo_tennis_matches: int
     k_factor_override: int | None = None
+    is_ghost: bool = False
 
 
 class AdminParticipationLink(BaseModel):
@@ -771,6 +796,7 @@ class AdminPlayerProfileDetail(BaseModel):
     contact: str
     passphrase: str
     created_at: str
+    is_ghost: bool = False
     elo_padel: float
     elo_padel_matches: int
     elo_tennis: float

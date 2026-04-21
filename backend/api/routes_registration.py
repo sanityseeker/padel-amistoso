@@ -61,8 +61,10 @@ from .schemas import (
     RegistrationPublicOut,
     RegistrationUpdate,
     SetAliasRequest,
+    SetCommunityRequest,
 )
 from .state import allocate_tournament_id, _tournaments
+from .routes_clubs import get_club_for_community, get_club_logo_url
 
 router = APIRouter(prefix="/api/registrations", tags=["registrations"])
 
@@ -123,6 +125,27 @@ def _email_requirement(reg: dict) -> str:
     if value in {"required", "optional", "disabled"}:
         return value
     return "optional"
+
+
+def _get_scope_branding(
+    community_id: str,
+    cache: dict[str, dict[str, str | None]] | None = None,
+) -> dict[str, str | None]:
+    """Return club/community branding metadata for a registration scope."""
+    if cache is not None and community_id in cache:
+        return cache[community_id]
+
+    with get_db() as conn:
+        row = conn.execute("SELECT name FROM communities WHERE id = ?", (community_id,)).fetchone()
+    club = get_club_for_community(community_id)
+    branding = {
+        "community_name": (row["name"] if row is not None else None),
+        "club_name": (club.name if club is not None else None),
+        "club_logo_url": get_club_logo_url(community_id),
+    }
+    if cache is not None:
+        cache[community_id] = branding
+    return branding
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -423,8 +446,8 @@ async def create_registration(
             with get_db() as conn:
                 conn.execute(
                     """INSERT INTO registrations
-                       (id, name, owner, open, join_code, questions, description, message, listed, sport, auto_send_email, email_requirement, created_at)
-                       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       (id, name, owner, open, join_code, questions, description, message, listed, sport, auto_send_email, email_requirement, community_id, created_at)
+                       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         rid,
                         req.name,
@@ -437,6 +460,7 @@ async def create_registration(
                         req.sport.value,
                         1 if req.auto_send_email else 0,
                         req.email_requirement,
+                        req.community_id,
                         now,
                     ),
                 )
@@ -489,8 +513,11 @@ async def list_registrations(
     registrant_counts = _get_registrant_counts(reg_ids)
 
     result = []
+    branding_cache: dict[str, dict[str, str | None]] = {}
     for row in rows:
         r = dict(row)
+        community_id = r.get("community_id", "open")
+        branding = _get_scope_branding(community_id, branding_cache)
         r["registrant_count"] = registrant_counts.get(r["id"], 0)
         r["open"] = bool(r.get("open", 0))
         r["listed"] = bool(r.get("listed", 0))
@@ -498,6 +525,9 @@ async def list_registrations(
         r["email_requirement"] = _email_requirement(r)
         r["converted_to_tids"] = _parse_tids(r.get("converted_to_tids"))
         r["shared"] = r["id"] in shared_ids
+        r["community_name"] = branding["community_name"]
+        r["club_name"] = branding["club_name"]
+        r["club_logo_url"] = branding["club_logo_url"]
         result.append(r)
     return result
 
@@ -518,7 +548,10 @@ async def list_public_registrations() -> list[RegistrationPublicOut]:
     linked_by_registration = _get_linked_tournaments_by_registration(tids_by_registration)
 
     result: list[RegistrationPublicOut] = []
+    branding_cache: dict[str, dict[str, str | None]] = {}
     for r in registrations:
+        community_id = r.get("community_id", "open")
+        branding = _get_scope_branding(community_id, branding_cache)
         tids = tids_by_registration[r["id"]]
         linked_tournaments = linked_by_registration[r["id"]]
         registrants = registrants_by_registration.get(r["id"], [])
@@ -541,6 +574,10 @@ async def list_public_registrations() -> list[RegistrationPublicOut]:
                 email_requirement=_email_requirement(r),
                 registrant_count=len(registrants),
                 registrants=[],
+                community_id=community_id,
+                community_name=branding["community_name"],
+                club_name=branding["club_name"],
+                club_logo_url=branding["club_logo_url"],
             )
         )
     return result
@@ -591,6 +628,18 @@ async def get_registration(rid: str, user: User = Depends(get_current_user)) -> 
             for r in registrants
         ],
     )
+
+
+@router.patch("/{rid}/community")
+async def set_registration_community(
+    rid: str, req: SetCommunityRequest, user: User = Depends(get_current_user)
+) -> dict:
+    """Reassign a registration to a different community."""
+    reg = _get_registration(rid)
+    _require_registration_editor(reg, user)
+    with get_db() as conn:
+        conn.execute("UPDATE registrations SET community_id = ? WHERE id = ?", (req.community_id, reg["id"]))
+    return {"ok": True, "community_id": req.community_id}
 
 
 @router.patch("/{rid}")
@@ -862,6 +911,8 @@ async def get_registration_secrets(rid: str, user: User = Depends(get_current_us
 async def get_registration_public(rid: str) -> RegistrationPublicOut:
     """Return public information about a registration (no secrets)."""
     reg = _get_registration(rid)
+    community_id = reg.get("community_id", "open")
+    branding = _get_scope_branding(community_id)
     reg_id = reg["id"]
     registrants = _get_registrants(reg_id)
     tids = _parse_tids(reg.get("converted_to_tids"))
@@ -884,6 +935,10 @@ async def get_registration_public(rid: str) -> RegistrationPublicOut:
         email_requirement=_email_requirement(reg),
         registrant_count=len(registrants),
         registrants=[],
+        community_id=community_id,
+        community_name=branding["community_name"],
+        club_name=branding["club_name"],
+        club_logo_url=branding["club_logo_url"],
     )
 
 
@@ -1192,6 +1247,8 @@ async def convert_registration(
                 public=req.public,
                 sport=req.sport.value,
                 assign_courts=req.assign_courts,
+                community_id=registration.get("community_id", "open"),
+                season_id=registration.get("season_id"),
             )
 
         elif req.tournament_type == TournamentType.MEXICANO:
@@ -1269,6 +1326,8 @@ async def convert_registration(
                 public=req.public,
                 sport=req.sport.value,
                 assign_courts=req.assign_courts,
+                community_id=registration.get("community_id", "open"),
+                season_id=registration.get("season_id"),
             )
 
         elif req.tournament_type == TournamentType.PLAYOFF:
@@ -1300,6 +1359,8 @@ async def convert_registration(
                 public=req.public,
                 sport=req.sport.value,
                 assign_courts=req.assign_courts,
+                community_id=registration.get("community_id", "open"),
+                season_id=registration.get("season_id"),
             )
 
         else:

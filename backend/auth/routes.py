@@ -31,7 +31,9 @@ from .schemas import (
     InviteRequest,
     LoginRequest,
     ResetPasswordRequest,
+    UpdateManagedUserSettingsRequest,
     TokenResponse,
+    UpdateUserSettingsRequest,
     UserResponse,
 )
 from .security import create_access_token
@@ -48,6 +50,16 @@ _login_rate_limiter = BoundedRateLimiter(
     window_seconds=_LOGIN_WINDOW_SECONDS,
     max_tracked_ips=_LOGIN_MAX_TRACKED_IPS,
 )
+
+
+def _validate_community_exists(community_id: str) -> None:
+    """Raise 404 if community does not exist."""
+    from ..api.db import get_db
+
+    with get_db() as conn:
+        row = conn.execute("SELECT id FROM communities WHERE id = ?", (community_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Community not found")
 
 
 def _client_ip(request: Request) -> str:
@@ -74,7 +86,28 @@ async def login(req: LoginRequest, request: Request):
 async def me(current_user: User = Depends(get_current_user)):
     """Return the currently authenticated user's info."""
     return UserResponse(
-        username=current_user.username, role=current_user.role, disabled=current_user.disabled, email=current_user.email
+        username=current_user.username,
+        role=current_user.role,
+        disabled=current_user.disabled,
+        email=current_user.email,
+        default_community_id=current_user.default_community_id,
+        can_create_clubs=current_user.can_create_clubs,
+    )
+
+
+@router.patch("/me/settings", response_model=UserResponse)
+async def update_my_settings(req: UpdateUserSettingsRequest, current_user: User = Depends(get_current_user)):
+    """Update the current user's settings (e.g. default community)."""
+    _validate_community_exists(req.default_community_id)
+    user_store.set_default_community(current_user.username, req.default_community_id)
+    updated = user_store.get(current_user.username)
+    return UserResponse(
+        username=updated.username,
+        role=updated.role,
+        disabled=updated.disabled,
+        email=updated.email,
+        default_community_id=updated.default_community_id,
+        can_create_clubs=updated.can_create_clubs,
     )
 
 
@@ -102,7 +135,14 @@ async def search_users(q: str = "", current_user: User = Depends(get_current_use
 async def list_users(_admin: User = Depends(require_admin)):
     """List all users (admin only)."""
     return [
-        UserResponse(username=u.username, role=u.role, disabled=u.disabled, email=u.email)
+        UserResponse(
+            username=u.username,
+            role=u.role,
+            disabled=u.disabled,
+            email=u.email,
+            default_community_id=u.default_community_id,
+            can_create_clubs=u.can_create_clubs,
+        )
         for u in user_store.list_users()
     ]
 
@@ -111,11 +151,54 @@ async def list_users(_admin: User = Depends(require_admin)):
 async def create_user(req: CreateUserRequest, _admin: User = Depends(require_admin)):
     """Create a new user (admin only). Defaults to regular USER role."""
     role = UserRole(req.role) if req.role else UserRole.USER
+    _validate_community_exists(req.default_community_id)
     try:
-        user = user_store.create_user(req.username, req.password, role=role, email=req.email)
+        user = user_store.create_user(
+            req.username,
+            req.password,
+            role=role,
+            email=str(req.email) if req.email is not None else None,
+            default_community_id=req.default_community_id,
+            can_create_clubs=req.can_create_clubs,
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-    return UserResponse(username=user.username, role=user.role, disabled=user.disabled, email=user.email)
+    return UserResponse(
+        username=user.username,
+        role=user.role,
+        disabled=user.disabled,
+        email=user.email,
+        default_community_id=user.default_community_id,
+        can_create_clubs=user.can_create_clubs,
+    )
+
+
+@router.patch("/users/{username}/settings", response_model=UserResponse)
+async def update_user_settings(
+    username: str,
+    req: UpdateManagedUserSettingsRequest,
+    _admin: User = Depends(require_admin),
+):
+    """Update admin-managed settings for a user (community and club creation permission)."""
+    user = user_store.get(username)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"User '{username}' not found")
+
+    if req.default_community_id is not None:
+        _validate_community_exists(req.default_community_id)
+        user_store.set_default_community(username, req.default_community_id)
+    if req.can_create_clubs is not None:
+        user_store.set_can_create_clubs(username, req.can_create_clubs)
+
+    updated = user_store.get(username)
+    return UserResponse(
+        username=updated.username,
+        role=updated.role,
+        disabled=updated.disabled,
+        email=updated.email,
+        default_community_id=updated.default_community_id,
+        can_create_clubs=updated.can_create_clubs,
+    )
 
 
 @router.delete("/users/{username}", status_code=status.HTTP_204_NO_CONTENT)
@@ -187,7 +270,14 @@ async def accept_invite(token: str, req: AcceptInviteRequest):
         user = user_store.create_user(req.username, req.password, role=role, email=data["email"])
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-    return UserResponse(username=user.username, role=user.role, disabled=user.disabled, email=user.email)
+    return UserResponse(
+        username=user.username,
+        role=user.role,
+        disabled=user.disabled,
+        email=user.email,
+        default_community_id=user.default_community_id,
+        can_create_clubs=user.can_create_clubs,
+    )
 
 
 # ── Password-reset flow ────────────────────────────────────────

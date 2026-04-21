@@ -756,6 +756,7 @@ async function _submitCreateRegistration() {
   body.email_requirement = document.getElementById('reg-new-emailreq')?.value || 'optional';
 
   body.sport = _currentSport || 'padel';
+  body.community_id = (typeof _getSelectedCommunityId === 'function') ? _getSelectedCommunityId() : 'open';
 
   await api('/api/registrations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   await loadRegistrations();

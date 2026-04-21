@@ -60,8 +60,12 @@ function _renderPlayerCodes(secrets) {
       html += `<td class="player-codes-cell"><input type="text" id="pc-contact-${pid}" value="${escAttr(info.contact || '')}" data-orig="${escAttr(info.contact || '')}" placeholder="${t('txt_reg_contact_placeholder')}" class="player-codes-input" onblur="_savePlayerContact('${pid}')"></td>`;
       {
         const _isLinked = Boolean(info.profile_id);
+        const _isGhost  = _isLinked && String(info.profile_id).startsWith('ghost_');
         html += `<td class="player-codes-cell-center">`;
-        if (_isLinked) {
+        if (_isGhost) {
+          // Ghost profile: ELO tracked internally, no Player Hub account
+          html += `<span class="pc-hub-badge pc-hub-badge--ghost" title="${t('txt_pc_past_participant_tooltip')}" style="opacity:0.75;cursor:default">👻</span>`;
+        } else if (_isLinked) {
           html += `<span class="pc-hub-badge pc-hub-badge--active" title="${t('txt_hub_linked')}" onclick="_hubUnlink('${pid}')" style="cursor:pointer">🔗</span>`;
         } else {
           html += `<button type="button" class="btn btn-sm btn-muted player-codes-icon-btn" onclick="_hubOpenSearch('${pid}')" title="${t('txt_hub_link')}">🔗</button>`;
@@ -251,21 +255,88 @@ function _addTournamentPlayer() {
   newRow.style.borderBottom = '1px solid var(--border)';
   newRow.innerHTML = `<td style="padding:0.4rem 0.6rem" colspan="6">
     <span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">
-      <input type="text" id="pc-new-name" placeholder="${escAttr(t('txt_txt_add_player_prompt'))}" style="flex:1;min-width:150px;font-size:0.88rem;padding:0.3rem 0.5rem;border:2px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--text)" maxlength="128">
+      <input type="text" id="pc-new-name" list="pc-new-suggestions" autocomplete="off"
+        placeholder="${escAttr(t('txt_txt_add_player_prompt'))}"
+        style="flex:1;min-width:150px;font-size:0.88rem;padding:0.3rem 0.5rem;border:2px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--text)"
+        maxlength="128">
+      <datalist id="pc-new-suggestions"></datalist>
       ${groupSelectHtml}
       <button type="button" class="btn btn-primary btn-sm" style="font-size:0.78rem;padding:0.25rem 0.6rem;white-space:nowrap" onclick="_submitNewPlayer()">✓</button>
-      <button type="button" class="btn btn-sm" style="font-size:0.78rem;padding:0.25rem 0.5rem" onclick="document.getElementById('pc-new-row')?.remove()">✕</button>
+      <button type="button" class="btn btn-sm" style="font-size:0.78rem;padding:0.25rem 0.5rem" onclick="_pcNewPlayerPastId=null;document.getElementById('pc-new-row')?.remove()">✕</button>
     </span></td>`;
   tbody.appendChild(newRow);
 
   const input = document.getElementById('pc-new-name');
   if (input) {
+    _pcNewPlayerPastId = null;
     input.focus();
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter') _submitNewPlayer();
-      else if (e.key === 'Escape') newRow.remove();
+      else if (e.key === 'Escape') { _pcNewPlayerPastId = null; newRow.remove(); }
+    });
+    // Debounced search: query both Player Hub profiles and past participants
+    input.addEventListener('input', () => {
+      _pcNewPlayerPastId = null; // clear selection on any free typing
+      clearTimeout(_pcNewPlayerSearchTimer);
+      _pcNewPlayerSearchTimer = setTimeout(() => _pcNewPlayerDoSearch(input.value), 320);
+    });
+    // Detect when the user picks a suggestion from the datalist
+    input.addEventListener('change', () => {
+      const dl = document.getElementById('pc-new-suggestions');
+      if (!dl) return;
+      const val = input.value;
+      const opt = Array.from(dl.options).find(o => o.value === val);
+      if (!opt) { _pcNewPlayerPastId = null; return; }
+      if (opt.dataset.type === 'past') {
+        _pcNewPlayerPastId = opt.dataset.pastPlayerId;
+        // Restore the clean display name (strip the suffix that was added for disambiguation)
+        if (opt.dataset.name) input.value = opt.dataset.name;
+      } else {
+        _pcNewPlayerPastId = null;
+      }
     });
   }
+}
+
+/**
+ * Populate the datalist for the new-player input row.
+ *
+ * Queries both Player Hub profiles and past tournament participants (no profile)
+ * in parallel, then fills #pc-new-suggestions with labelled options.
+ * Past-participant options carry a "(past participant)" suffix for disambiguation
+ * and store the original name and player_id in dataset attributes.
+ */
+async function _pcNewPlayerDoSearch(q) {
+  const dl = document.getElementById('pc-new-suggestions');
+  if (!dl) return;
+  const trimmed = q ? q.trim() : '';
+  if (trimmed.length < 2) { dl.innerHTML = ''; return; }
+
+  try {
+    const [profiles, past] = await Promise.allSettled([
+      apiAuth(`/api/admin/player-profiles?q=${encodeURIComponent(trimmed)}`),
+      apiAuth(`/api/admin/player-profiles/past-participants?q=${encodeURIComponent(trimmed)}`),
+    ]);
+
+    const opts = [];
+    const profileList = profiles.status === 'fulfilled' && Array.isArray(profiles.value) ? profiles.value : [];
+    const pastList    = past.status === 'fulfilled'    && Array.isArray(past.value)    ? past.value    : [];
+
+    for (const p of profileList) {
+      if (!p.is_ghost) {
+        opts.push(`<option value="${escAttr(p.name)}" data-type="hub" data-id="${escAttr(p.id)}"></option>`);
+      }
+    }
+    const suffix = ` (${t('txt_pc_past_participant')})`;
+    for (const p of pastList) {
+      // Add suffix so the datalist shows it as a distinct entry even if name matches a Hub profile
+      const displayVal = escAttr(p.name + suffix);
+      opts.push(
+        `<option value="${displayVal}" data-type="past" data-past-player-id="${escAttr(p.player_id)}" data-name="${escAttr(p.name)}" title="${escAttr(t('txt_pc_past_participant_tooltip'))}"></option>`
+      );
+    }
+    dl.innerHTML = opts.join('');
+  } catch (_) { /* search is best-effort */ }
 }
 
 /** Submit the inline new-player row */
@@ -285,6 +356,9 @@ async function _submitNewPlayer() {
       const groupSelect = document.getElementById('pc-new-group');
       if (groupSelect) body.group_name = groupSelect.value;
     }
+    if (_pcNewPlayerPastId) body.past_player_id = _pcNewPlayerPastId;
+    _pcNewPlayerPastId = null;
+
     await api(`/api/tournaments/${currentTid}/players`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -448,6 +522,12 @@ async function _sendTournamentMessageEmails() {
 
 let _hubSearchTimer = null;
 let _hubCurrentPlayerId = null;
+
+// ─── New-player row: past-participant lookup ──────────────────────────────
+
+let _pcNewPlayerSearchTimer = null;
+/** player_id of a past participant selected from the suggestion list */
+let _pcNewPlayerPastId = null;
 
 function _hubEnsureModal() {
   if (document.getElementById('pc-hub-modal')) return;

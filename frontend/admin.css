@@ -535,6 +535,34 @@ tr:hover { background: rgba(59,130,246,0.05); }
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
   padding: 1rem; margin-bottom: 1rem;
 }
+/* Collapsible card via <details class="card"> */
+details.card > summary { list-style: none; cursor: pointer; }
+details.card > summary::-webkit-details-marker { display: none; }
+details.card > summary::marker { display: none; }
+details.card[open] > summary .player-codes-chevron { transform: rotate(90deg); }
+
+/* Communities panel: keep default community selector + action balanced */
+.comm-default-form-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.comm-default-select {
+  flex: 1 1 340px;
+  width: auto;
+  min-width: 220px;
+}
+.comm-default-save-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.86rem;
+}
+.comm-default-msg {
+  display: block;
+  margin-top: 0.45rem;
+  font-size: 0.84rem;
+}
 .bracket-img {
   max-width: 100%;
   width: 100%;
@@ -664,8 +692,35 @@ tr:hover { background: rgba(59,130,246,0.05); }
   text-align: center;
   padding: 1rem 0;
 }
-.player-codes-table-wrap { overflow-x: auto; }
+.player-codes-table-wrap {
+  overflow-x: auto;
+  position: relative;
+}
+.player-codes-table-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 2.5rem;
+  height: 100%;
+  background: linear-gradient(to right, transparent, var(--surface));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.player-codes-table-wrap.is-scrollable::after { opacity: 1; }
 .player-codes-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+
+/* Shared select style used in admin management tables (clubs, communities) */
+.admin-sel {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  max-width: 100%;
+}
 .player-codes-head-row { border-bottom: 2px solid var(--border); }
 .player-codes-th { text-align: left; padding: 0.4rem 0.6rem; }
 .player-codes-th-center { text-align: center; padding: 0.4rem 0.6rem; }
@@ -736,6 +791,19 @@ tr:hover { background: rgba(59,130,246,0.05); }
   .pc-hub-modal-box { max-width: 420px; padding: 1.2rem; font-size: 0.92rem; }
   .pc-hub-results { max-height: 320px; }
 }
+
+@media (max-width: 480px) {
+  .comm-default-form-row {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+  .comm-default-select {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+  }
+}
+
 @media (min-width: 1024px) {
   .pc-hub-modal-box { max-width: 500px; padding: 1.4rem; font-size: 0.95rem; }
   .pc-hub-results { max-height: 400px; }
@@ -771,6 +839,219 @@ tr:hover { background: rgba(59,130,246,0.05); }
 .pc-hub-result-item:hover { background: var(--hover, rgba(0,0,0,0.05)); }
 .pc-hub-result-name { font-weight: 600; font-size: 0.84rem; }
 .pc-hub-result-email { font-size: 0.76rem; color: var(--text-muted); }
+
+.create-club-picker-modal-box {
+  max-width: 540px;
+}
+.create-club-picker-modal-box .player-codes-input {
+  flex: none;
+  width: 100%;
+  margin-bottom: 0.5rem;
+}
+.create-club-picker-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  margin-top: 0.4rem;
+  border-top: 1px solid var(--border);
+}
+.create-club-picker-count {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.create-club-picker-results {
+  max-height: 340px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.create-club-picker-results--individual {
+  max-height: 340px;
+}
+.cpk-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.2rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+.cpk-row:last-child { border-bottom: none; }
+.cpk-row--added { opacity: 0.6; }
+.cpk-row-name {
+  font-weight: 600;
+  font-size: 0.84rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.cpk-row-elo {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+.create-club-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.2rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.create-club-picker-row input[type="checkbox"] {
+  flex-shrink: 0;
+}
+.create-club-picker-row:last-child {
+  border-bottom: none;
+}
+.create-club-picker-row.is-added {
+  opacity: 0.7;
+}
+.create-club-picker-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 0.84rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.create-club-picker-elo {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 2.5rem;
+  text-align: right;
+}
+.create-club-picker-added {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.create-club-picker-empty {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  padding: 0.4rem 0.2rem;
+}
+
+/* Team mode picker */
+.create-club-picker-modal-box.is-team-mode {
+  max-width: 700px;
+}
+.create-club-picker-results--team {
+  overflow: hidden !important;
+  max-height: 380px;
+}
+.ccpicker-team-layout {
+  display: flex;
+  gap: 0;
+  height: 380px;
+}
+.ccpicker-team-players {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding-right: 0.6rem;
+  border-right: 1px solid var(--border);
+}
+.ccpicker-team-panel {
+  width: 175px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding-left: 0.6rem;
+  overflow: hidden;
+}
+.ccpicker-panel-header {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding-bottom: 0.3rem;
+  margin-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border);
+}
+.ccpicker-add-btn {
+  flex-shrink: 0;
+}
+.ccpicker-team-card {
+  margin-bottom: 0.65rem;
+}
+.ccpicker-team-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 0.15rem;
+}
+.ccpicker-team-slot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  padding: 0.08rem 0;
+}
+.ccpicker-team-slot--filled { font-weight: 600; }
+.ccpicker-team-slot--empty { color: var(--text-muted); font-style: italic; }
+.ccpicker-remove-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 0 0.1rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.ccpicker-remove-btn:hover { color: var(--red, #dc3545); }
+.ccpicker-team-empty {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-style: italic;
+  padding: 0.3rem 0;
+}
+.ccpicker-confirm-row {
+  flex-shrink: 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+.ccpicker-team-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+@media (max-width: 560px) {
+  .ccpicker-team-layout { flex-direction: column; height: auto; max-height: 500px; }
+  .ccpicker-team-players { border-right: none; border-bottom: 1px solid var(--border); padding-right: 0; padding-bottom: 0.5rem; max-height: 220px; }
+  .ccpicker-team-panel { width: 100%; padding-left: 0; padding-top: 0.5rem; max-height: 200px; }
+}
+
+.clubs-attach-created-mobile {
+  display: none;
+  margin-top: 0.15rem;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+@media (max-width: 640px) {
+  .clubs-attach-created-col {
+    display: none;
+  }
+
+  .clubs-attach-created-mobile {
+    display: block;
+  }
+}
 
 .player-codes-organizer {
   margin-top: 0.75rem;
@@ -1952,8 +2233,185 @@ tr:hover { background: rgba(59,130,246,0.05); }
 }
 .score-mode-toggle button.active { background: var(--accent); color: #fff; }
 
+/* ── Create panel meta controls (Sport / Mode) ── */
+.create-meta-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+.create-meta-card {
+  flex: 1;
+  min-width: 240px;
+}
+.create-meta-toggle {
+  font-size: 0.82rem;
+  border-radius: 8px;
+  margin-right: 0;
+}
+.create-meta-toggle button {
+  padding: 0.3rem 0.7rem;
+  font-weight: 600;
+}
+.create-sport-card #sport-toggle button.active[data-sport="padel"] {
+  background: var(--accent);
+  color: #fff;
+}
+.create-sport-card #sport-toggle button.active[data-sport="tennis"] {
+  background: var(--sport-tennis, #10b981);
+  color: #fff;
+}
+.create-entry-card .entry-mode-toggle button.active[data-mode="individual"] {
+  background: #f59e0b;
+  color: #fff;
+}
+.create-entry-card .entry-mode-toggle button.active[data-mode="team"] {
+  background: var(--accent);
+  color: #fff;
+}
+
 #mex-rounds-toggle { font-size: 0.9rem; }
 #mex-rounds-toggle button { padding: 0.45rem 1rem; }
+
+/* ── Clubs sport toggle (global padel/tennis switch) ── */
+.clubs-sport-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  width: fit-content;
+}
+.clubs-sport-pill {
+  background: transparent;
+  border: none;
+  padding: 0.45rem 1.25rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.clubs-sport-pill:not(:last-child) { border-right: 1px solid var(--border); }
+.clubs-sport-pill:hover { background: var(--bg); }
+.clubs-sport-pill--active { background: var(--accent); color: #fff; font-weight: 600; }
+.clubs-sport-pill--active[data-sport="tennis"] { background: var(--sport-tennis, #10b981); }
+.clubs-sport-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+.clubs-sport-bar-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ── Clubs sticky header wrapper (sport bar + jump nav) ── */
+.clubs-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+/* ── Clubs jump-to nav ── */
+.clubs-jump-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.clubs-jump-link {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  text-decoration: none;
+  background: transparent;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.clubs-jump-link:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ── Clubs card badge ── */
+.clubs-card-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 20px;
+  background: var(--bg);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+.clubs-card-badge--active {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* ── Clubs sortable table headers ── */
+.clubs-sortable-th {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.clubs-sortable-th:hover { background: var(--bg); }
+.clubs-sort-icon { font-size: 0.72rem; margin-left: 0.2rem; }
+.clubs-sort-icon--neutral { color: var(--text-muted); opacity: 0.5; }
+.clubs-sort-icon--active { color: var(--accent); }
+
+/* ── Clubs no-email warning ── */
+.clubs-no-email-warning {
+  font-size: 0.82rem;
+  color: var(--warning, #d97706);
+  background: color-mix(in srgb, var(--warning, #d97706) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning, #d97706) 30%, transparent);
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  margin: 0;
+}
+
+/* ── Clubs season badge (in tournament rows) ── */
+.clubs-season-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 20px;
+  background: var(--bg);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
+.clubs-season-badge--active {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
 
 /* ── Pill switch toggle ── */
 .switch-label {
@@ -3207,12 +3665,127 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
 .user-mgmt-list {
   list-style: none;
   margin: 0 0 1.25rem;
-  padding: 0.5rem 0.75rem;
+  padding: 0.25rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   min-height: 3rem;
-  max-height: 260px;
+  max-height: 300px;
   overflow-y: auto;
+  /* Shared column grid — rows use subgrid to inherit these tracks */
+  display: grid;
+  grid-template-columns: minmax(150px, 2fr) minmax(140px, 1.6fr) max-content max-content max-content;
+  column-gap: 0.6rem;
+}
+
+/* ── User Management row grid ── */
+.umgmt-row {
+  /* Span all parent columns so the row forms a full-width band */
+  grid-column: 1 / -1;
+  /* Inherit the parent's column tracks for perfect cross-row alignment */
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.umgmt-row:last-child { border-bottom: none; }
+.umgmt-row--empty { display: block; opacity: 0.55; padding: 0.75rem 0; border-bottom: none; }
+.umgmt-col-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.umgmt-username {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.umgmt-role-badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.umgmt-role-badge--admin {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: var(--accent);
+}
+.umgmt-email {
+  font-size: 0.77rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.umgmt-community-select {
+  width: 100%;
+  padding: 0.22rem 0.4rem;
+  font-size: 0.82rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+.umgmt-col-clubs {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+.umgmt-col-clubs input[type="checkbox"] {
+  width: auto;
+  min-height: auto;
+  accent-color: var(--accent);
+}
+.umgmt-col-save {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.umgmt-save-msg {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.umgmt-col-actions {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+.umgmt-self-badge {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .user-mgmt-list {
+    grid-template-columns: 1fr 1fr;
+  }
+  .umgmt-row {
+    grid-template-columns: 1fr 1fr;
+    row-gap: 0.3rem;
+  }
+  .umgmt-col-identity { grid-column: 1 / -1; }
+  .umgmt-col-community { grid-column: 1 / -1; }
+  .umgmt-col-clubs { grid-column: 1; }
+  .umgmt-col-save { grid-column: 2; justify-content: flex-end; }
+  .umgmt-col-actions { grid-column: 1 / -1; justify-content: flex-start; }
 }
 
 /* ── Skeleton loading shimmer ── */

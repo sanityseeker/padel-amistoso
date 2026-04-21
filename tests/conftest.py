@@ -52,6 +52,7 @@ def _clean_state(tmp_path):
     # Clear co-editor in-memory caches so stale entries don't leak between tests.
     db_mod._co_editor_cache.clear()
     db_mod._reg_co_editor_cache.clear()
+    db_mod._club_co_editor_cache.clear()
     # Clear player secrets caches.
     ps_mod._secrets_cache.clear()
     ps_mod._contacts_cache.clear()
@@ -273,6 +274,7 @@ def _clean_state(tmp_path):
     # Clear co-editor in-memory caches so stale entries don't leak between tests.
     db_mod._co_editor_cache.clear()
     db_mod._reg_co_editor_cache.clear()
+    db_mod._club_co_editor_cache.clear()
     # Clear player secrets caches.
     ps_mod._secrets_cache.clear()
     ps_mod._contacts_cache.clear()

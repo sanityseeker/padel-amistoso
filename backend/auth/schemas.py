@@ -21,12 +21,20 @@ class CreateUserRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     role: str | None = Field(default=None, description="'admin' or 'user' (default: 'user')")
     email: EmailStr | None = None
+    default_community_id: str = Field(default="open", min_length=1, max_length=64)
+    can_create_clubs: bool = True
 
 
 class ChangePasswordRequest(BaseModel):
     """Payload for changing a user's password."""
 
     new_password: str = Field(min_length=8, max_length=128)
+
+
+class UpdateUserSettingsRequest(BaseModel):
+    """Payload for updating the current user's settings."""
+
+    default_community_id: str = Field(min_length=1, max_length=64)
 
 
 class TokenResponse(BaseModel):
@@ -45,6 +53,15 @@ class UserResponse(BaseModel):
     role: str
     disabled: bool
     email: str | None = None
+    default_community_id: str = "open"
+    can_create_clubs: bool = True
+
+
+class UpdateManagedUserSettingsRequest(BaseModel):
+    """Payload for updating admin-managed user settings."""
+
+    default_community_id: str | None = Field(default=None, min_length=1, max_length=64)
+    can_create_clubs: bool | None = None
 
 
 class InviteRequest(BaseModel):

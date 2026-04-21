@@ -45,8 +45,14 @@ class UserStore:
                 cols = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
                 if "email" not in cols:
                     conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+                if "default_community_id" not in cols:
+                    conn.execute("ALTER TABLE users ADD COLUMN default_community_id TEXT NOT NULL DEFAULT 'open'")
+                if "can_create_clubs" not in cols:
+                    conn.execute("ALTER TABLE users ADD COLUMN can_create_clubs INTEGER NOT NULL DEFAULT 1")
 
-                rows = conn.execute("SELECT username, password_hash, role, disabled, email FROM users").fetchall()
+                rows = conn.execute(
+                    "SELECT username, password_hash, role, disabled, email, default_community_id, can_create_clubs FROM users"
+                ).fetchall()
             for row in rows:
                 user = User(
                     username=row["username"],
@@ -54,6 +60,8 @@ class UserStore:
                     role=UserRole(row["role"]),
                     disabled=bool(row["disabled"]),
                     email=row["email"],
+                    default_community_id=row["default_community_id"] or "open",
+                    can_create_clubs=bool(row["can_create_clubs"]),
                 )
                 self._users[user.username] = user
             logger.info("Loaded %d user(s) from SQLite", len(self._users))
@@ -65,8 +73,18 @@ class UserStore:
         try:
             with get_db() as conn:
                 conn.execute(
-                    "INSERT OR REPLACE INTO users (username, password_hash, role, disabled, email) VALUES (?, ?, ?, ?, ?)",
-                    (user.username, user.password_hash, user.role.value, int(user.disabled), user.email),
+                    "INSERT OR REPLACE INTO users "
+                    "(username, password_hash, role, disabled, email, default_community_id, can_create_clubs) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        user.username,
+                        user.password_hash,
+                        user.role.value,
+                        int(user.disabled),
+                        user.email,
+                        user.default_community_id,
+                        int(user.can_create_clubs),
+                    ),
                 )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not save user %s: %s", user.username, exc)
@@ -124,12 +142,25 @@ class UserStore:
         return sorted(self._users.values(), key=lambda u: u.username)
 
     def create_user(
-        self, username: str, password: str, role: UserRole = UserRole.USER, email: str | None = None
+        self,
+        username: str,
+        password: str,
+        role: UserRole = UserRole.USER,
+        email: str | None = None,
+        default_community_id: str = "open",
+        can_create_clubs: bool = True,
     ) -> User:
         """Create a new user with the given role. Raises ``ValueError`` if username is taken."""
         if username in self._users:
             raise ValueError(f"User '{username}' already exists")
-        user = User(username=username, password_hash=hash_password(password), role=role, email=email)
+        user = User(
+            username=username,
+            password_hash=hash_password(password),
+            role=role,
+            email=email,
+            default_community_id=default_community_id,
+            can_create_clubs=can_create_clubs,
+        )
         self._users[username] = user
         self._save_user(user)
         return user
@@ -164,6 +195,22 @@ class UserStore:
         if user is None:
             raise KeyError(f"User '{username}' not found")
         user.email = email
+        self._save_user(user)
+
+    def set_default_community(self, username: str, community_id: str) -> None:
+        """Set the default community for a user. Raises ``KeyError`` if not found."""
+        user = self._users.get(username)
+        if user is None:
+            raise KeyError(f"User '{username}' not found")
+        user.default_community_id = community_id
+        self._save_user(user)
+
+    def set_can_create_clubs(self, username: str, can_create_clubs: bool) -> None:
+        """Set whether a user can create clubs. Raises ``KeyError`` if not found."""
+        user = self._users.get(username)
+        if user is None:
+            raise KeyError(f"User '{username}' not found")
+        user.can_create_clubs = can_create_clubs
         self._save_user(user)
 
     def find_by_email(self, email: str) -> User | None:

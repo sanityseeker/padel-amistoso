@@ -86,6 +86,11 @@ const tvState = {
   mexSortCol: null,         // null = server default order
   mexSortDir: 'desc',       // 'asc' | 'desc'
   _pendingReload: false,    // true when SSE detected a change while tab was hidden
+  clubLogoUrl: null,        // club logo URL for the current tournament (or null)
+  clubLogoVersion: 0,       // cache-bust token updated when logo source context changes
+  clubLogoKey: '',          // branding key to detect logo context changes
+  communityName: null,
+  clubName: null,
 };
 
 // ── In-flight guards for version polling ──────────────────
@@ -102,6 +107,16 @@ let _pickerVersionStream = null;
 
 function _tvLabel() {
   return tvState.tournamentSport === 'tennis' ? t('txt_txt_tennis_tv') : t('txt_txt_padel_tv');
+}
+
+function _tvLogoSrc(url) {
+  if (!url) return '';
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}v=${tvState.clubLogoVersion || 0}`;
+}
+
+function _tvIdentityLabel() {
+  return tvState.clubName || tvState.communityName || '';
 }
 
 /** Returns true if a player score entry form is currently open */
@@ -1359,6 +1374,14 @@ async function loadTV() {
     tvState.tournamentName = meta.name;
     tvState.tournamentSport = meta.sport || 'padel';
     tvState.tournamentAlias = meta.alias || null;
+    tvState.communityName = meta.community_name || null;
+    tvState.clubName = meta.club_name || null;
+    tvState.clubLogoUrl = meta.club_logo_url || null;
+    const nextLogoKey = `${meta.community_id || ''}:${tvState.clubName || ''}:${tvState.clubLogoUrl || ''}`;
+    if (tvState.clubLogoKey !== nextLogoKey) {
+      tvState.clubLogoKey = nextLogoKey;
+      tvState.clubLogoVersion = Date.now();
+    }
     document.title = `${_tvLabel()} | ${meta.name}`;
 
     // Load TV settings and tournament data in parallel
@@ -1791,6 +1814,13 @@ function _buildHeader(name, phase, champion) {
   const phaseLabel = _phaseLabel(phase);
   const langToggle = _languageToggleMeta();
   const _slug = tvState.tournamentAlias || TID || '';
+  const identityLabel = _tvIdentityLabel();
+  const logoHtml = tvState.clubLogoUrl
+    ? `<img src="${escAttr(_tvLogoSrc(tvState.clubLogoUrl))}" alt="" style="height:28px;width:28px;object-fit:cover;border-radius:4px;margin-right:0.4rem;vertical-align:middle;flex-shrink:0">`
+    : '';
+  const brandingHtml = identityLabel
+    ? `<div style="display:flex;justify-content:center;margin-top:0.1rem;color:var(--text-muted);font-size:0.82rem">${esc(identityLabel)}</div>`
+    : '';
   return `
     <div class="tv-header" id="tv-header-main">
       <div class="tv-header-title-row">
@@ -1801,8 +1831,9 @@ function _buildHeader(name, phase, champion) {
         </div>
       </div>
       <div class="tv-title-center">
-        <h1 class="tv-tournament-name">${esc(name)}</h1>
+        <h1 class="tv-tournament-name" style="display:flex;align-items:center;justify-content:center;gap:0">${logoHtml}${esc(name)}</h1>
       </div>
+      ${brandingHtml}
       <div style="display:flex;justify-content:center;gap:0.5rem;flex-wrap:wrap;margin-top:0.15rem">
         ${phaseLabel && phase !== 'finished' ? `<span class="tv-badge tv-badge-phase">${esc(phaseLabel)}</span>` : ''}
         ${champion || phase === 'finished' ? `<span class="tv-badge tv-badge-champion">🏆 ${t('txt_txt_finished')}</span>` : ''}
@@ -2173,8 +2204,15 @@ function _renderPickerHtml(tournaments) {
       const isTennis = tournament.sport === 'tennis';
       const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
       const pickerSlug = tournament.alias || tournament.id;
+      const brandingLabel = tournament.club_name || tournament.community_name || '';
+      const logoImg = tournament.club_logo_url
+        ? `<img src="${escAttr(tournament.club_logo_url)}" alt="" style="height:18px;width:18px;object-fit:cover;border-radius:3px;margin-right:0.35rem;vertical-align:middle;flex-shrink:0">`
+        : '';
       html += `<a class="tv-picker-item" href="/tv/${encodeURIComponent(pickerSlug)}">`;
-      html += `${esc(tournament.name)}<span class="picker-badge picker-badge-sport">${esc(sportLabel)}</span><span class="picker-badge picker-badge-type">${esc(modeLabel)}</span><span class="picker-badge picker-badge-phase">${esc(phaseLabel)}</span>${aliasTag}`;
+      html += `${logoImg}${esc(tournament.name)}<span class="picker-badge picker-badge-sport">${esc(sportLabel)}</span><span class="picker-badge picker-badge-type">${esc(modeLabel)}</span><span class="picker-badge picker-badge-phase">${esc(phaseLabel)}</span>${aliasTag}`;
+      if (brandingLabel) {
+        html += `<span style="display:block;margin-top:0.2rem;color:var(--text-muted);font-size:0.78rem">${esc(brandingLabel)}</span>`;
+      }
       html += `</a>`;
     }
     html += `</ul>`;

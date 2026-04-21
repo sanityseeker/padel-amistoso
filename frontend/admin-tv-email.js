@@ -10,6 +10,7 @@ function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
   if (!currentTid) return '';
   const s = tvSettings || {};
   const def = (k, d) => (s[k] !== undefined ? s[k] : d);
+  const currentTournament = _tournamentMeta[currentTid] || {};
 
   const chkRow = (key, label, defaultVal, opts = {}) => {
     const disabled = opts.disabled || false;
@@ -31,7 +32,11 @@ function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
   };
 
   // Get current tournament alias
-  const currentAlias = _tournamentMeta[currentTid]?.alias || '';
+  const currentAlias = currentTournament.alias || '';
+  const currentCommunityId = currentTournament.community_id || 'open';
+  const communityOptions = (_adminCommunities || []).map(c =>
+    `<option value="${esc(c.id)}" ${c.id === currentCommunityId ? 'selected' : ''}>${c.is_builtin ? t('txt_comm_global_default') : esc(c.name)}</option>`
+  ).join('');
   
   let html = `<details class="card" id="tv-controls-panel">`;
   html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
@@ -62,6 +67,25 @@ function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
   html += ` <button type="button" onclick="navigator.clipboard.writeText(window.location.origin+'/tv/${escAttr(_tvSlug)}');alert('${escAttr(t('txt_txt_url_copied'))}')"
       style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:3px;padding:0.1rem 0.4rem;cursor:pointer;font-size:0.75rem;margin-left:0.3rem">📋 ${t('txt_txt_copy')}</button>`;
   html += `</div>`;
+  html += `</div>`;
+
+  // Club / community attachment section
+  html += `<div style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)">`;
+  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">🏷️ ${t('txt_tv_attach_scope')}</label>`;
+  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_tv_attach_club_community_help')}</p>`;
+  if (communityOptions) {
+    html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
+    html += `<select id="tournament-community-select" style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem;min-width:220px">${communityOptions}</select>`;
+    html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setTournamentCommunity()">${t('txt_tv_attach_now')}</button>`;
+    html += `<span id="tournament-community-msg" style="font-size:0.78rem"></span>`;
+    html += `</div>`;
+  } else {
+    html += `<p style="color:var(--text-muted);font-size:0.78rem;margin:0">${t('txt_comm_no_communities')}</p>`;
+  }
+  const currentCommunityLabel = currentTournament.community_name || currentCommunityId;
+  const currentClubLabel = currentTournament.club_name || '';
+  const currentScopeLabel = currentClubLabel || currentCommunityLabel;
+  html += `<div style="margin-top:0.4rem;font-size:0.78rem;color:var(--text-muted)">${t('txt_tv_current_scope')}: ${esc(currentScopeLabel)}</div>`;
   html += `</div>`;
   
   // Banner Section
@@ -458,6 +482,32 @@ async function _deleteTournamentAlias() {
     alert(t('txt_txt_alias_removed_successfully'));
   } catch (e) {
     alert(t('txt_txt_failed_to_remove_alias_value', { value: e.message }));
+  }
+}
+
+/** Attach the current tournament to a community (and its linked club branding). */
+async function _setTournamentCommunity() {
+  if (!currentTid) return;
+  const sel = document.getElementById('tournament-community-select');
+  const msgEl = document.getElementById('tournament-community-msg');
+  if (!sel) return;
+  try {
+    await api(`/api/tournaments/${currentTid}/community`, {
+      method: 'PATCH',
+      body: JSON.stringify({ community_id: sel.value }),
+    });
+    await loadTournaments();
+    await _rerenderCurrentViewPreserveDrafts();
+    if (msgEl) {
+      msgEl.style.color = 'var(--green)';
+      msgEl.textContent = `✓ ${t('txt_tv_attach_updated')}`;
+      setTimeout(() => { msgEl.textContent = ''; }, 2200);
+    }
+  } catch (e) {
+    if (msgEl) {
+      msgEl.style.color = 'var(--red)';
+      msgEl.textContent = e.message;
+    }
   }
 }
 

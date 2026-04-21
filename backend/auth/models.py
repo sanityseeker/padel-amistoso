@@ -26,3 +26,5 @@ class User(BaseModel):
     role: UserRole = UserRole.USER
     disabled: bool = False
     email: str | None = None
+    default_community_id: str = "open"
+    can_create_clubs: bool = True

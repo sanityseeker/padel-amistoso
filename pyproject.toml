@@ -18,6 +18,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "aiosmtplib>=3.0",
     "pywebpush>=2.3.0",
+    "python-multipart>=0.0.26",
 ]
 
 [dependency-groups]

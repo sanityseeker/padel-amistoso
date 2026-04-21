@@ -563,3 +563,115 @@ class TestKFactorOverride:
             f"/api/admin/player-profiles/{pid}/k-factor", headers=auth_headers, json={"k_factor_override": 0}
         )
         assert resp.status_code == 422
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Past participants search
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestPastParticipants:
+    def test_returns_unlinked_player_secrets(self, client: TestClient, auth_headers: dict) -> None:
+        _insert_tournament("t-past-1", "Past Tourney")
+        _insert_player_secret("t-past-1", "pp-pid-1", "Ghostie García")
+
+        resp = client.get("/api/admin/player-profiles/past-participants?q=Ghostie", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert any(p["name"] == "Ghostie García" and p["player_id"] == "pp-pid-1" for p in data)
+
+    def test_excludes_linked_players(self, client: TestClient, auth_headers: dict) -> None:
+        pid = _insert_profile(name="Linked Player")
+        _insert_tournament("t-past-2", "Linked Tourney")
+        _insert_player_secret("t-past-2", "pp-pid-linked", "Linked Player", profile_id=pid)
+
+        resp = client.get("/api/admin/player-profiles/past-participants?q=Linked", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert not any(p["player_id"] == "pp-pid-linked" for p in data)
+
+    def test_requires_admin(self, client: TestClient, alice_headers: dict) -> None:
+        resp = client.get("/api/admin/player-profiles/past-participants", headers=alice_headers)
+        assert resp.status_code == 403
+
+    def test_name_filter_is_case_insensitive(self, client: TestClient, auth_headers: dict) -> None:
+        _insert_tournament("t-past-3", "Filter Tourney")
+        _insert_player_secret("t-past-3", "pp-pid-2", "FilteredName")
+
+        resp = client.get("/api/admin/player-profiles/past-participants?q=filteredname", headers=auth_headers)
+        assert resp.status_code == 200
+        assert any(p["player_id"] == "pp-pid-2" for p in resp.json())
+
+    def test_empty_query_returns_recent_participants(self, client: TestClient, auth_headers: dict) -> None:
+        _insert_tournament("t-past-4", "Nofilter Tourney")
+        _insert_player_secret("t-past-4", "pp-pid-3", "SomePlayerNF")
+
+        resp = client.get("/api/admin/player-profiles/past-participants", headers=auth_headers)
+        assert resp.status_code == 200
+        assert isinstance(resp.json(), list)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Ghost profile creation
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestGhostProfileCreation:
+    def test_creates_ghost_profile_with_is_ghost_flag(self, auth_headers: dict) -> None:
+        from backend.api.routes_player_auth import _get_or_create_ghost_profile
+
+        _insert_tournament("t-ghost-1", "Ghost Tourney")
+        _insert_player_secret("t-ghost-1", "ghost-pid-1", "Ghost Player")
+
+        ghost_id = _get_or_create_ghost_profile("ghost-pid-1", "Ghost Player")
+
+        assert ghost_id == "ghost_ghost-pid-1"
+        with db_mod.get_db() as conn:
+            row = conn.execute("SELECT name, is_ghost, email FROM player_profiles WHERE id = ?", (ghost_id,)).fetchone()
+        assert row is not None
+        assert row["name"] == "Ghost Player"
+        assert row["is_ghost"] == 1
+        assert row["email"] == ""
+
+    def test_ghost_profile_creation_is_idempotent(self, auth_headers: dict) -> None:
+        from backend.api.routes_player_auth import _get_or_create_ghost_profile
+
+        _insert_tournament("t-ghost-2", "Ghost Tourney 2")
+        _insert_player_secret("t-ghost-2", "ghost-pid-2", "Repeated Player")
+
+        id1 = _get_or_create_ghost_profile("ghost-pid-2", "Repeated Player")
+        id2 = _get_or_create_ghost_profile("ghost-pid-2", "Repeated Player")
+
+        assert id1 == id2
+
+        with db_mod.get_db() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM player_profiles WHERE id = ?", (id1,)).fetchone()[0]
+        assert count == 1
+
+    def test_ghost_profile_links_prior_player_secrets(self, auth_headers: dict) -> None:
+        from backend.api.routes_player_auth import _get_or_create_ghost_profile
+
+        _insert_tournament("t-ghost-3", "Ghost Tourney 3")
+        _insert_player_secret("t-ghost-3", "ghost-pid-3", "Link Test Player")
+
+        ghost_id = _get_or_create_ghost_profile("ghost-pid-3", "Link Test Player")
+
+        with db_mod.get_db() as conn:
+            row = conn.execute("SELECT profile_id FROM player_secrets WHERE player_id = ?", ("ghost-pid-3",)).fetchone()
+        assert row is not None
+        assert row["profile_id"] == ghost_id
+
+    def test_is_ghost_flag_visible_in_admin_list(self, client: TestClient, auth_headers: dict) -> None:
+        from backend.api.routes_player_auth import _get_or_create_ghost_profile
+
+        _insert_tournament("t-ghost-4", "Ghost Tourney 4")
+        _insert_player_secret("t-ghost-4", "ghost-pid-4", "Admin List Ghost")
+
+        ghost_id = _get_or_create_ghost_profile("ghost-pid-4", "Admin List Ghost")
+
+        resp = client.get("/api/admin/player-profiles?q=Admin List Ghost", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        ghost_entry = next((p for p in data if p["id"] == ghost_id), None)
+        assert ghost_entry is not None
+        assert ghost_entry["is_ghost"] is True

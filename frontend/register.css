@@ -205,6 +205,7 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 }
 .returning-player-input-group { margin-bottom: 0.75rem; }
 .returning-player-passphrase { font-family: monospace; }
+.returning-player-panel .btn-secondary { width: 100%; text-align: center; margin-top: 0.25rem; }
 
 /* Manage registration panel (returning player self-service) */
 .manage-reg { margin-top: 1.25rem; border: 1px solid var(--border); border-radius: 10px; text-align: left; }
@@ -248,14 +249,15 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 .reg-player-space-prompt a { color: var(--accent); font-weight: 600; text-decoration: underline; }
 
 /* Player Hub prefill link (subtle inline, below name field) */
-.reg-ps-prefill { margin: -0.5rem 0 0.75rem; }
+.reg-ps-prefill { margin: 0.3rem 0 1rem; }
 .reg-ps-prefill-link { background: none; border: none; padding: 0; font-size: 0.78rem; color: var(--accent); cursor: pointer; font-family: inherit; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; gap: 0.25rem; }
 .reg-ps-prefill-link:hover { text-decoration: underline; }
-.reg-ps-prefill-panel { margin-top: 0.6rem; padding: 0.65rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
-.reg-ps-prefill-panel .form-group { margin-bottom: 0.5rem; }
+.reg-ps-prefill-panel { margin-top: 0.65rem; padding: 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+.reg-ps-prefill-panel .form-group { margin-bottom: 0.65rem; }
 .reg-ps-prefill-panel .form-group label { font-size: 0.82rem; }
 .reg-ps-prefill-panel .form-group input { font-family: monospace; }
-.reg-ps-login-error { color: var(--red); font-size: 0.8rem; margin-bottom: 0.5rem; min-height: 0; }
+.reg-ps-login-error { color: var(--red); font-size: 0.8rem; margin-bottom: 0.4rem; min-height: 0; }
+.reg-ps-prefill-panel .btn-secondary { width: 100%; text-align: center; }
 
 /* Player Hub logged-in state */
 .reg-ps-logged-notice { font-size: 0.82rem; color: var(--accent); margin: 0 0 0.75rem; padding: 0.5rem 0.75rem; background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }

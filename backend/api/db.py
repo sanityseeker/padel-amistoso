@@ -43,6 +43,13 @@ SQLITE_SYNCHRONOUS = os.environ.get("PADEL_SQLITE_SYNCHRONOUS", "NORMAL").upper(
 _VALID_SYNCHRONOUS_LEVELS = {"OFF", "NORMAL", "FULL", "EXTRA"}
 
 _DDL = """
+CREATE TABLE IF NOT EXISTS communities (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    created_by  TEXT,
+    created_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS tournaments (
     id               TEXT    PRIMARY KEY,
     name             TEXT    NOT NULL,
@@ -53,7 +60,10 @@ CREATE TABLE IF NOT EXISTS tournaments (
     tv_settings      TEXT,
     tournament_blob  BLOB    NOT NULL,
     version          INTEGER NOT NULL DEFAULT 0,
-    sport            TEXT    NOT NULL DEFAULT 'padel'
+    sport            TEXT    NOT NULL DEFAULT 'padel',
+    community_id     TEXT    NOT NULL DEFAULT 'open' REFERENCES communities(id),
+    created_at       TEXT    NOT NULL DEFAULT '',
+    season_id        TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tournaments_alias
@@ -65,11 +75,12 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 
 CREATE TABLE IF NOT EXISTS users (
-    username      TEXT    PRIMARY KEY,
-    password_hash TEXT    NOT NULL,
-    role          TEXT    NOT NULL DEFAULT 'user',
-    disabled      INTEGER NOT NULL DEFAULT 0,
-    email         TEXT
+    username             TEXT    PRIMARY KEY,
+    password_hash        TEXT    NOT NULL,
+    role                 TEXT    NOT NULL DEFAULT 'user',
+    disabled             INTEGER NOT NULL DEFAULT 0,
+    email                TEXT,
+    default_community_id TEXT    NOT NULL DEFAULT 'open'
 );
 
 CREATE TABLE IF NOT EXISTS pending_auth_tokens (
@@ -130,6 +141,7 @@ CREATE TABLE IF NOT EXISTS registrations (
     sport             TEXT    NOT NULL DEFAULT 'padel',
     auto_send_email   INTEGER NOT NULL DEFAULT 0,
     email_requirement TEXT    NOT NULL DEFAULT 'optional',
+    community_id      TEXT    NOT NULL DEFAULT 'open' REFERENCES communities(id),
     created_at        TEXT    NOT NULL
 );
 
@@ -266,6 +278,83 @@ CREATE INDEX IF NOT EXISTS idx_player_elo_log_player
 
 CREATE INDEX IF NOT EXISTS idx_player_elo_log_tournament
     ON player_elo_log (tournament_id, sport, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS profile_community_elo (
+    profile_id    TEXT NOT NULL,
+    community_id  TEXT NOT NULL DEFAULT 'open',
+    sport         TEXT NOT NULL DEFAULT 'padel',
+    elo           REAL NOT NULL DEFAULT 1000,
+    matches       INTEGER NOT NULL DEFAULT 0,
+    tier_id       TEXT,
+    PRIMARY KEY (profile_id, community_id, sport)
+);
+
+CREATE INDEX IF NOT EXISTS idx_profile_community_elo_community
+    ON profile_community_elo (community_id, sport);
+
+CREATE TABLE IF NOT EXISTS clubs (
+    id             TEXT PRIMARY KEY,
+    community_id   TEXT NOT NULL REFERENCES communities(id),
+    name           TEXT NOT NULL,
+    logo_path      TEXT,
+    email_settings TEXT,
+    created_by     TEXT NOT NULL,
+    created_at     TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_clubs_community_id
+    ON clubs (community_id);
+
+CREATE TABLE IF NOT EXISTS profile_club_elo (
+    profile_id  TEXT    NOT NULL,
+    club_id     TEXT    NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+    sport       TEXT    NOT NULL DEFAULT 'padel',
+    elo         REAL    NOT NULL DEFAULT 1000,
+    matches     INTEGER NOT NULL DEFAULT 0,
+    tier_id     TEXT,
+    PRIMARY KEY (profile_id, club_id, sport)
+);
+
+CREATE INDEX IF NOT EXISTS idx_profile_club_elo_club
+    ON profile_club_elo (club_id, sport);
+
+CREATE INDEX IF NOT EXISTS idx_profile_club_elo_profile
+    ON profile_club_elo (profile_id, sport);
+
+CREATE TABLE IF NOT EXISTS club_shares (
+    club_id  TEXT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+    username TEXT NOT NULL,
+    PRIMARY KEY (club_id, username)
+);
+
+CREATE INDEX IF NOT EXISTS idx_club_shares_club
+    ON club_shares (club_id);
+
+CREATE INDEX IF NOT EXISTS idx_club_shares_username
+    ON club_shares (username);
+
+CREATE TABLE IF NOT EXISTS club_tiers (
+    id       TEXT PRIMARY KEY,
+    club_id  TEXT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+    name     TEXT NOT NULL,
+    sport    TEXT NOT NULL DEFAULT 'padel',
+    base_elo REAL NOT NULL DEFAULT 1000,
+    position INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_club_tiers_club
+    ON club_tiers (club_id);
+
+CREATE TABLE IF NOT EXISTS seasons (
+    id           TEXT PRIMARY KEY,
+    club_id      TEXT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+    name         TEXT NOT NULL,
+    active       INTEGER NOT NULL DEFAULT 1,
+    created_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_seasons_club
+    ON seasons (club_id);
 """
 
 
@@ -478,6 +567,157 @@ def init_db() -> None:
             conn.execute("ALTER TABLE player_secrets ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'")
         if pp_cols and "lang" not in pp_cols:
             conn.execute("ALTER TABLE player_profiles ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'")
+        # Migrate: seed the default 'open' community and add community_id to tournaments
+        existing_tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if "communities" in existing_tables:
+            open_row = conn.execute("SELECT 1 FROM communities WHERE id = 'open'").fetchone()
+            if open_row is None:
+                conn.execute(
+                    "INSERT INTO communities (id, name, created_by, created_at) VALUES (?, ?, NULL, datetime('now'))",
+                    ("open", "Open"),
+                )
+        if "community_id" not in cols:
+            conn.execute("ALTER TABLE tournaments ADD COLUMN community_id TEXT NOT NULL DEFAULT 'open'")
+        # Ensure index exists (safe to run always; handled here because CREATE INDEX in _DDL
+        # would fail on old DBs where the column was added via migration rather than DDL)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tournaments_community ON tournaments (community_id)")
+        # Migrate: add community_id to registrations if missing
+        reg_cols = {r[1] for r in conn.execute("PRAGMA table_info(registrations)").fetchall()}
+        if reg_cols and "community_id" not in reg_cols:
+            conn.execute("ALTER TABLE registrations ADD COLUMN community_id TEXT NOT NULL DEFAULT 'open'")
+        # Migrate: add default_community_id to users if missing
+        user_cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if user_cols and "default_community_id" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN default_community_id TEXT NOT NULL DEFAULT 'open'")
+        # Migrate: seed profile_community_elo from flat player_profiles ELO columns
+        if "profile_community_elo" in existing_tables and pp_cols:
+            pce_count = conn.execute("SELECT COUNT(*) FROM profile_community_elo").fetchone()[0]
+            if pce_count == 0:
+                conn.execute(
+                    "INSERT OR IGNORE INTO profile_community_elo (profile_id, community_id, sport, elo, matches)"
+                    " SELECT id, 'open', 'padel', elo_padel, elo_padel_matches"
+                    " FROM player_profiles WHERE elo_padel_matches > 0"
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO profile_community_elo (profile_id, community_id, sport, elo, matches)"
+                    " SELECT id, 'open', 'tennis', elo_tennis, elo_tennis_matches"
+                    " FROM player_profiles WHERE elo_tennis_matches > 0"
+                )
+        # Migrate: add created_at and season_id to tournaments if missing
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(tournaments)").fetchall()}
+        if "created_at" not in cols:
+            conn.execute("ALTER TABLE tournaments ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
+            conn.execute("UPDATE tournaments SET created_at = datetime('now') WHERE created_at = ''")
+        if "season_id" not in cols:
+            conn.execute("ALTER TABLE tournaments ADD COLUMN season_id TEXT")
+        # Migrate: add season_id to registrations if missing
+        reg_cols = {r[1] for r in conn.execute("PRAGMA table_info(registrations)").fetchall()}
+        if reg_cols and "season_id" not in reg_cols:
+            conn.execute("ALTER TABLE registrations ADD COLUMN season_id TEXT")
+        # Migrate: add tier_id to profile_community_elo if missing
+        pce_cols = {r[1] for r in conn.execute("PRAGMA table_info(profile_community_elo)").fetchall()}
+        if pce_cols and "tier_id" not in pce_cols:
+            conn.execute("ALTER TABLE profile_community_elo ADD COLUMN tier_id TEXT")
+        # Migrate: add sport + base_elo to club_tiers (replaces base_elo_padel/base_elo_tennis)
+        ct_cols = {r[1] for r in conn.execute("PRAGMA table_info(club_tiers)").fetchall()}
+        if ct_cols and "sport" not in ct_cols:
+            conn.execute("ALTER TABLE club_tiers ADD COLUMN sport TEXT NOT NULL DEFAULT 'padel'")
+        if ct_cols and "base_elo" not in ct_cols:
+            # Seed from base_elo_padel if it existed, otherwise default 1000
+            if "base_elo_padel" in ct_cols:
+                conn.execute("ALTER TABLE club_tiers ADD COLUMN base_elo REAL NOT NULL DEFAULT 1000")
+                conn.execute("UPDATE club_tiers SET base_elo = base_elo_padel")
+            else:
+                conn.execute("ALTER TABLE club_tiers ADD COLUMN base_elo REAL NOT NULL DEFAULT 1000")
+        # Migrate: add email_settings column to clubs if missing
+        club_cols = {r[1] for r in conn.execute("PRAGMA table_info(clubs)").fetchall()}
+        if club_cols and "email_settings" not in club_cols:
+            conn.execute("ALTER TABLE clubs ADD COLUMN email_settings TEXT")
+        # Migrate: add is_ghost column to player_profiles if missing
+        pp_cols2 = {r[1] for r in conn.execute("PRAGMA table_info(player_profiles)").fetchall()}
+        if pp_cols2 and "is_ghost" not in pp_cols2:
+            conn.execute("ALTER TABLE player_profiles ADD COLUMN is_ghost INTEGER NOT NULL DEFAULT 0")
+        # Migrate: create club_shares table if missing
+        all_tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if "club_shares" not in all_tables:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS club_shares (
+                    club_id  TEXT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+                    username TEXT NOT NULL,
+                    PRIMARY KEY (club_id, username)
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_club_shares_club ON club_shares (club_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_club_shares_username ON club_shares (username)")
+        # Migrate: rebuild clubs table to remove UNIQUE constraint on community_id (multi-club support)
+        club_indexes = conn.execute("PRAGMA index_list('clubs')").fetchall()
+        has_unique_community_id = any(
+            bool(idx[2])  # column 2 = unique flag
+            and any(
+                info[2] == "community_id"  # column 2 = column name
+                for info in conn.execute(f"PRAGMA index_info('{idx[1]}')").fetchall()
+            )
+            for idx in club_indexes
+        )
+        if has_unique_community_id:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("DROP TABLE IF EXISTS clubs_migration_new")
+            conn.execute(
+                """
+                CREATE TABLE clubs_migration_new (
+                    id             TEXT PRIMARY KEY,
+                    community_id   TEXT NOT NULL REFERENCES communities(id),
+                    name           TEXT NOT NULL,
+                    logo_path      TEXT,
+                    email_settings TEXT,
+                    created_by     TEXT NOT NULL,
+                    created_at     TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO clubs_migration_new
+                SELECT id, community_id, name, logo_path, email_settings, created_by,
+                       COALESCE(created_at, datetime('now')) AS created_at
+                FROM clubs
+                """
+            )
+            conn.execute("DROP TABLE clubs")
+            conn.execute("ALTER TABLE clubs_migration_new RENAME TO clubs")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_clubs_community_id ON clubs (community_id)")
+            conn.execute("PRAGMA foreign_keys = ON")
+        # Migrate: create profile_club_elo table if missing
+        all_tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if "profile_club_elo" not in all_tables:
+            conn.execute(
+                """
+                CREATE TABLE profile_club_elo (
+                    profile_id  TEXT    NOT NULL,
+                    club_id     TEXT    NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+                    sport       TEXT    NOT NULL DEFAULT 'padel',
+                    elo         REAL    NOT NULL DEFAULT 1000,
+                    matches     INTEGER NOT NULL DEFAULT 0,
+                    tier_id     TEXT,
+                    PRIMARY KEY (profile_id, club_id, sport)
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_profile_club_elo_club ON profile_club_elo (club_id, sport)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_profile_club_elo_profile ON profile_club_elo (profile_id, sport)"
+            )
+            # Backfill existing club data: copy community ELO into club-local ELO for each existing club
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO profile_club_elo (profile_id, club_id, sport, elo, matches, tier_id)
+                SELECT pce.profile_id, cl.id, pce.sport, pce.elo, pce.matches, pce.tier_id
+                FROM profile_community_elo pce
+                JOIN clubs cl ON cl.community_id = pce.community_id
+                """
+            )
 
 
 # ── Co-editor / sharing helpers ─────────────────────────────────────────────
@@ -609,6 +849,71 @@ def remove_registration_co_editor(registration_id: str, username: str) -> None:
             (registration_id, username),
         )
     invalidate_reg_co_editor_cache(registration_id)
+
+
+# ── Club co-editor / sharing helpers ─────────────────────────────────────────
+
+_club_co_editor_cache: dict[str, list[str]] = {}
+
+
+def get_club_co_editors(club_id: str) -> list[str]:
+    """Return a list of usernames that have co-editor access to *club_id*.
+
+    Results are cached in memory; the cache is invalidated by
+    ``add_club_co_editor`` / ``remove_club_co_editor``.
+    """
+    cached = _club_co_editor_cache.get(club_id)
+    if cached is not None:
+        return cached
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT username FROM club_shares WHERE club_id = ? ORDER BY username",
+            (club_id,),
+        ).fetchall()
+    result = [row["username"] for row in rows]
+    _club_co_editor_cache[club_id] = result
+    return result
+
+
+def invalidate_club_co_editor_cache(club_id: str) -> None:
+    """Drop the cached co-editor list for *club_id*."""
+    _club_co_editor_cache.pop(club_id, None)
+
+
+def get_shared_club_ids(username: str) -> list[str]:
+    """Return club IDs where *username* has been granted co-editor access."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT club_id FROM club_shares WHERE username = ?",
+            (username,),
+        ).fetchall()
+    return [row["club_id"] for row in rows]
+
+
+def add_club_co_editor(club_id: str, username: str) -> None:
+    """Grant *username* co-editor access to *club_id* (idempotent).
+
+    Invalidates the in-memory cache for this club.
+    """
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO club_shares (club_id, username) VALUES (?, ?)",
+            (club_id, username),
+        )
+    invalidate_club_co_editor_cache(club_id)
+
+
+def remove_club_co_editor(club_id: str, username: str) -> None:
+    """Revoke co-editor access for *username* on *club_id*.
+
+    Invalidates the in-memory cache for this club.
+    """
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM club_shares WHERE club_id = ? AND username = ?",
+            (club_id, username),
+        )
+    invalidate_club_co_editor_cache(club_id)
 
 
 @contextmanager

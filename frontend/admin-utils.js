@@ -44,6 +44,8 @@ function setActiveTab(tabName) {
     if (tabName === 'home' && isAuthenticated()) { loadTournaments(); _startRegPoll(); } else { _stopRegPoll(); }
     if (tabName === 'players-hub' && isAuthenticated()) { phSearch(); }
     if (tabName === 'user-mgmt' && isAuthenticated()) { loadUserMgmtList(); }
+    if (tabName === 'communities' && isAuthenticated()) { loadCommunitiesPanel(); }
+    if (tabName === 'clubs' && isAuthenticated()) { loadClubsPanel(); }
     _stopRegDetailPoll();
   }
 }
@@ -75,6 +77,10 @@ function setCreateMode(mode) {
   document.getElementById('create-panel-mex')?.classList.toggle('active', isMex);
   document.getElementById('create-panel-po')?.classList.toggle('active', isPo);
   document.getElementById('create-panel-lobby')?.classList.toggle('active', isLobby);
+  document.getElementById('entry-toggle-gp-wrap')?.classList.toggle('hidden', !isGp);
+  document.getElementById('entry-toggle-mex-wrap')?.classList.toggle('hidden', !isMex);
+  document.getElementById('entry-toggle-po-wrap')?.classList.toggle('hidden', !isPo);
+  if (typeof syncCreateEntryCardVisibility === 'function') syncCreateEntryCardVisibility();
   if (isLobby) showCreateRegistration();
 }
 
@@ -322,12 +328,18 @@ function toggleTheme() {
 function setLanguage(lang) {
   setAppLanguage(lang);
   _refreshLanguageToggleButton();
+  if (typeof rerenderClubsPanelOnLanguageChange === 'function') {
+    rerenderClubsPanelOnLanguageChange();
+  }
   _applySportToCreatePanel();
   updateActiveTournamentUI();
   updateAuthUI();
   renderParticipantFields('gp');
   renderParticipantFields('mex');
   renderParticipantFields('po');
+  if (typeof _loadCommunities === 'function') _loadCommunities().then(() => {
+    if (typeof _loadClubs === 'function') _loadClubs();
+  });
   if (_currentCreateMode === 'lobby') showCreateRegistration();
   refreshCourtDefaults('gp');
   refreshCourtDefaults('mex');

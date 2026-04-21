@@ -753,3 +753,67 @@ def _footer(reply_to: str = "", lang: str = "en") -> str:
 
 def _esc(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def render_club_lobby_invite_email(
+    *,
+    club_name: str,
+    lobby_name: str,
+    player_name: str,
+    registration_alias: str | None = None,
+    registration_id: str = "",
+    reply_to: str = "",
+    sender_name: str = "",
+    lang: str = "en",
+) -> tuple[str, str]:
+    """Return ``(subject, html_body)`` for a club lobby invitation email."""
+    base = _site_url()
+    reg_path = f"/register/{registration_alias}" if registration_alias else f"/register/{registration_id}"
+    reg_url = f"{base}{reg_path}" if base else ""
+
+    subject = _tx(
+        lang,
+        f"You're invited to {lobby_name}",
+        f"Estás invitado a {lobby_name}",
+    )
+    body = f"""\
+<div style="{_BASE_STYLE}">
+  <h2 style="margin-top:0">{_tx(lang, f"Invitation to {_esc(lobby_name)}", f"Invitación a {_esc(lobby_name)}")}</h2>
+  <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>,", f"Hola <strong>{_esc(player_name)}</strong>,")}</p>
+  <p>{
+        _tx(
+            lang,
+            f"<strong>{_esc(club_name)}</strong> is organising <strong>{_esc(lobby_name)}</strong> and you're invited to join.",
+            f"<strong>{_esc(club_name)}</strong> está organizando <strong>{_esc(lobby_name)}</strong> y estás invitado a participar.",
+        )
+    }</p>
+  {
+        f'<p style="text-align:center"><a href="{_esc(reg_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Register now", "Registrarse ahora")}</a></p>'
+        if reg_url
+        else ""
+    }
+  <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
+  {_footer(reply_to, lang)}
+</div>"""
+    return subject, body
+
+
+def render_club_announcement_email(
+    *,
+    club_name: str,
+    player_name: str,
+    subject: str,
+    message: str,
+    reply_to: str = "",
+    sender_name: str = "",
+) -> tuple[str, str]:
+    """Return ``(subject, html_body)`` for a free-form club announcement email."""
+    body = f"""\
+<div style="{_BASE_STYLE}">
+  <h2 style="margin-top:0">{_esc(club_name)}</h2>
+  <p>Hi <strong>{_esc(player_name)}</strong>,</p>
+  <div style="margin:12px 0;padding:12px 14px;border-radius:8px;background:#f8fafc;border:1px solid #e5e7eb;white-space:pre-wrap">{_esc(message)}</div>
+  <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
+  {_footer(reply_to)}
+</div>"""
+    return subject, body

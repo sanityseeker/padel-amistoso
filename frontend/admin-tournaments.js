@@ -23,10 +23,12 @@ function _phaseLabel(phase) {
 async function loadTournaments() {
   try {
     const registrationsPath = '/api/registrations?include_archived=1';
-    const [list, regList] = await Promise.all([
+    const [list, regList, commList] = await Promise.all([
       api('/api/tournaments'),
       isAuthenticated() ? api(registrationsPath).catch(() => []) : Promise.resolve([]),
+      isAuthenticated() ? api('/api/communities').catch(() => []) : Promise.resolve([]),
     ]);
+    _adminCommunities = commList;
     const nonArchivedRegList = regList.filter(r => !r.archived);
     const archivedRegList = regList.filter(r => r.archived);
     const visibleArchivedRegList = _showArchivedRegistrations ? archivedRegList : [];
@@ -59,6 +61,13 @@ async function loadTournaments() {
       const isTennis = tournament.sport === 'tennis';
       const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
       const sharedBadge = tournament.shared ? `<span class="badge badge-shared">${t('txt_badge_shared')}</span>` : '';
+      const communityData = _adminCommunities.find(c => c.id === tournament.community_id);
+      const identityLabel = tournament.club_name
+        || tournament.community_name
+        || ((communityData && !communityData.is_builtin) ? communityData.name : '');
+      const identityBadge = identityLabel
+        ? `<span class="badge" style="background:var(--bg-alt,#eee);color:var(--text-muted);font-size:0.72rem;border:1px solid var(--border);font-weight:500">${esc(identityLabel)}</span>`
+        : '';
       return `
       <div class="match-card tournament-list-card${tournament.id === currentTid ? ' active-tournament' : ''}">
         <div class="match-teams">
@@ -67,6 +76,7 @@ async function loadTournaments() {
           <span class="badge badge-type">${tournament.has_team_roster ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode')}</span>
           <span class="badge badge-phase">${_phaseLabel(tournament.phase)}</span>
           ${sharedBadge}
+          ${identityBadge}
         </div>
         <div class="tournament-actions">${actionBtns}</div>
       </div>
@@ -79,6 +89,13 @@ async function loadTournaments() {
       const count = r.registrant_count || 0;
       const isTennis = (r.sport || 'padel') === 'tennis';
       const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
+      const regCommunity = _adminCommunities.find(c => c.id === (r.community_id || 'open'));
+      const identityLabel = r.club_name
+        || r.community_name
+        || ((regCommunity && !regCommunity.is_builtin) ? regCommunity.name : '');
+      const identityBadge = identityLabel
+        ? `<span class="badge" style="background:var(--bg-alt,#eee);color:var(--text-muted);font-size:0.72rem;border:1px solid var(--border);font-weight:500">${esc(identityLabel)}</span>`
+        : '';
       const phaseBadge = isOpen
         ? `<span class="badge badge-lobby-open">${t('txt_reg_registration_open')}</span>`
         : `<span class="badge badge-lobby-closed">${r.archived ? t('txt_reg_registration_archived') : t('txt_reg_registration_closed')}</span>`;
@@ -94,6 +111,7 @@ async function loadTournaments() {
         <div class="match-teams">
           <a class="tournament-name-link" href="#" onclick="openRegistration('${escAttr(rid)}','${escAttr(r.name)}');return false">${esc(r.name)}</a>
           <span class="badge badge-sport">${esc(sportLabel)}</span>
+          ${identityBadge}
           ${phaseBadge} ${countLabel}
         </div>
         <div class="tournament-actions">
@@ -189,6 +207,7 @@ async function togglePublic(id, currentlyPublic) {
 let currentTid = null, currentType = null;
 let currentTournamentName = null;
 let _tournamentMeta = {};
+let _adminCommunities = [];  // cached communities list for badge display in tournament cards
 let _openTournaments = [];  // [{id, type, name}] for quick-switch chips
 let _totalPts = 0;  // set per Mexicano tournament for auto-fill
 let _gpScoreMode = { 'gp-group': 'points', 'gp-playoff': 'points', 'mex-playoff': 'points', 'po-playoff': 'points' };

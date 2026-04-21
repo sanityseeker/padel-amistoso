@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import io
 import time
+import uuid
 from collections import OrderedDict, defaultdict
+from datetime import datetime, timezone
 
 import segno
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -21,6 +23,8 @@ from ..auth.models import User
 from ..auth.security import create_player_token
 from ..models import GPPhase, Player, TournamentType
 from ..tournaments.player_secrets import generate_passphrase, generate_token
+from .db import get_db
+from .elo_store import retroactive_transfer_elo
 from .helpers import _require_editor_access
 from .player_secret_store import (
     add_player_secret,
@@ -125,6 +129,14 @@ class AddPlayerRequest(BaseModel):
     group_name: str | None = Field(
         default=None, max_length=64, description="Target group name (required for group-playoff tournaments)"
     )
+    past_player_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "player_id of a previous tournament participant (no Player Hub profile). "
+            "When provided, a ghost profile is created/reused to track ELO continuity."
+        ),
+    )
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -180,6 +192,60 @@ async def player_auth(tid: str, req: PlayerAuthRequest, request: Request) -> Pla
 # ────────────────────────────────────────────────────────────────────────────
 # Player roster management
 # ────────────────────────────────────────────────────────────────────────────
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Ghost profile helper
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _get_or_create_ghost_profile(past_player_id: str, name: str) -> str:
+    """Return (or create) a ghost player_profiles row for an unregistered player.
+
+    Ghost profiles are purely internal tracking identities — no email, no
+    login credentials — used so ELO can be accumulated across tournaments for
+    players who have never signed up for a Player Hub account.
+
+    The profile ID is deterministic (``ghost_<past_player_id>``) so this
+    function is idempotent: calling it twice for the same player is safe.
+
+    After creation, :func:`~backend.api.elo_store.retroactive_transfer_elo`
+    is called so any ELO from previous tournaments is immediately reflected.
+
+    Args:
+        past_player_id: The ``player_id`` from a previous tournament's
+            ``player_secrets`` row.
+        name: The display name to use for the ghost profile.
+
+    Returns:
+        The ghost profile's ``id`` string.
+    """
+    ghost_id = f"ghost_{past_player_id}"
+    passphrase = uuid.uuid4().hex  # unpredictable — ghost profiles cannot log in
+    created_at = datetime.now(timezone.utc).isoformat()
+
+    with get_db() as conn:
+        existing = conn.execute("SELECT id FROM player_profiles WHERE id = ?", (ghost_id,)).fetchone()
+        if existing is None:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost)
+                   VALUES (?, ?, ?, '', '', ?, 1)""",
+                (ghost_id, passphrase, name, created_at),
+            )
+            # Link the previous player_secrets row to this ghost profile
+            conn.execute(
+                "UPDATE player_secrets SET profile_id = ? WHERE player_id = ? AND profile_id IS NULL",
+                (ghost_id, past_player_id),
+            )
+            # Link any finished history rows too
+            conn.execute(
+                "UPDATE player_history SET profile_id = ? WHERE player_id = ? AND profile_id IS NULL",
+                (ghost_id, past_player_id),
+            )
+
+    # Backfill ELO from all prior tournaments (idempotent)
+    retroactive_transfer_elo(ghost_id, past_player_id)
+    return ghost_id
 
 
 @router.post("/{tid}/players")
@@ -242,6 +308,25 @@ async def add_player_to_tournament(
         passphrase = generate_passphrase()
         token = generate_token()
         add_player_secret(tid, pid, name, passphrase, token)
+
+        if req.past_player_id:
+            ghost_profile_id = _get_or_create_ghost_profile(req.past_player_id, name)
+            community_id = data.get("community_id", "open")
+            with get_db() as conn:
+                conn.execute(
+                    "UPDATE player_secrets SET profile_id = ? WHERE tournament_id = ? AND player_id = ?",
+                    (ghost_profile_id, tid, pid),
+                )
+                for sport in ("padel", "tennis"):
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO profile_community_elo
+                            (profile_id, community_id, sport, elo, matches)
+                        VALUES (?, ?, ?, 1000, 0)
+                        """,
+                        (ghost_profile_id, community_id, sport),
+                    )
+
         _save_tournament(tid)
 
     return {

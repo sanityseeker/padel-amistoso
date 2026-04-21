@@ -20,6 +20,7 @@ const STORAGE_PATH_PANEL_KEY = 'padel-player-path-panel-open';
 const STORAGE_ELO_HISTORY_KEY = 'padel-player-elo-history-settings';
 const STORAGE_ELO_HISTORY_PANEL_KEY = 'padel-player-elo-history-panel-open';
 const STORAGE_LEADERBOARD_PANEL_KEY = 'padel-player-leaderboard-panel-open';
+const STORAGE_COMMUNITY_KEY = 'padel-player-community';
 
 let _jwt = null;
 let _profile = null;
@@ -29,6 +30,10 @@ let _leaderboard = null; // { padel: [], tennis: [] } or null
 let _leaderboardSport = 'padel'; // 'padel' | 'tennis'
 let _eloHistorySport = 'padel'; // 'padel' | 'tennis'
 let _eloChart = null; // Chart.js instance for ELO trend
+let _communities = []; // [{id, name, is_builtin}] — all communities from the server
+let _playerCommunities = []; // [{id, name}] — non-builtin communities this profile has played in
+let _selectedCommunityId = null; // null = all communities (no filter)
+try { _selectedCommunityId = localStorage.getItem(STORAGE_COMMUNITY_KEY) || null; } catch (_) {}
 let _authStep = 'passphrase'; // 'passphrase' | 'create'
 let _resolveResult = null;    // null | {type: 'profile'|'participation'|'not_found', matches: [...]}
 let _resolvedPassphrase = ''; // the passphrase that was resolved
@@ -213,8 +218,8 @@ function _prunePathState() {
 // ── Init ─────────────────────────────────────────────────
 
 function _init() {
-  // Fetch leaderboard (public, no auth) — fire-and-forget, re-renders when ready
-  _fetchLeaderboard().then(() => _render()).catch(() => {});
+  // Fetch communities and leaderboard (public, no auth) — fire-and-forget, re-renders when ready
+  _fetchCommunities().then(() => _fetchLeaderboard()).then(() => _render()).catch(() => {});
 
   // Check for JWT autologin and/or email verification via URL fragment.
   // Used by email links like #token=<jwt> and #verify_token=<jwt>.
@@ -385,9 +390,12 @@ async function _apiDelete(path, body, auth) {
 
 async function _fetchSpace() {
   const settings = _getEloHistorySettings();
-  const data = await _apiGet(`/space?elo_history_limit=${settings.limit}`, _jwt);
+  let url = `/space?elo_history_limit=${settings.limit}`;
+  if (_selectedCommunityId) url += `&community_id=${encodeURIComponent(_selectedCommunityId)}`;
+  const data = await _apiGet(url, _jwt);
   _jwt = data.access_token;
   _profile = data.profile;
+  _playerCommunities = data.player_communities || [];
   _entries = data.entries || [];
   _eloHistory = data.elo_history || [];
   _prunePathState();
@@ -396,7 +404,9 @@ async function _fetchSpace() {
 
 async function _fetchLeaderboard() {
   try {
-    const res = await fetch(`${API}/leaderboard`);
+    let url = `${API}/leaderboard`;
+    if (_selectedCommunityId) url += `?community_id=${encodeURIComponent(_selectedCommunityId)}`;
+    const res = await fetch(url);
     if (!res.ok) return;
     _leaderboard = await res.json();
   } catch (_) {
@@ -415,6 +425,7 @@ function _clearSession() {
   _stopSpacePolling();
   _jwt = null;
   _profile = null;
+  _playerCommunities = [];
   _entries = [];
   _eloHistory = [];
   _pathPanelOpen = {};
@@ -651,6 +662,54 @@ function _toggleLanguage() {
   _render();
 }
 
+// ── Communities ───────────────────────────────────────────
+
+async function _fetchCommunities() {
+  try {
+    const res = await fetch('/api/communities');
+    if (!res.ok) return;
+    _communities = await res.json();
+  } catch (_) {
+    // Silently ignore — community list is non-critical
+  }
+}
+
+function _setSelectedCommunity(communityId) {
+  _selectedCommunityId = communityId || null;
+  try { localStorage.setItem(STORAGE_COMMUNITY_KEY, _selectedCommunityId || ''); } catch (_) {}
+  // Re-fetch community-scoped data then re-render
+  Promise.all([
+    _fetchLeaderboard(),
+    _jwt ? _fetchSpace() : Promise.resolve(),
+  ]).then(() => _render()).catch(() => _render());
+}
+
+function _buildCommunitySelect(eleId) {
+  // Only show the selector when there are specialized communities beyond the built-in global.
+  const allSpecialized = (_communities || []).filter(c => !c.is_builtin && c.id !== 'open');
+  // When the logged-in user has communities, restrict choices to those they've participated in.
+  const specialized = (_profile && _playerCommunities.length > 0)
+    ? allSpecialized.filter(c => _playerCommunities.some(pc => pc.id === c.id))
+    : allSpecialized;
+  if (specialized.length === 0 && allSpecialized.length === 0) {
+    // Step 7: show a hint for logged-in players so they know communities can be created.
+    if (_profile) {
+      const hint = t('txt_player_community_hint');
+      return hint ? `<p class="leaderboard-community-hint" style="font-size:0.8rem;color:var(--text-muted);margin:0.25rem 0 0.5rem">${esc(hint)}</p>` : '';
+    }
+    return '';
+  }
+  if (specialized.length === 0) return ''; // user logged in but no matching orgs yet
+  let html = `<select id="${esc(eleId)}" class="leaderboard-community-select" onchange="_setSelectedCommunity(this.value)" aria-label="Community">`;
+  html += `<option value=""${!_selectedCommunityId ? ' selected' : ''}>${esc(t('txt_player_community_all') || 'Global')}</option>`;
+  for (const c of specialized) {
+    const sel = _selectedCommunityId === c.id ? ' selected' : '';
+    html += `<option value="${esc(c.id)}"${sel}>${esc(c.name)}</option>`;
+  }
+  html += `</select>`;
+  return html;
+}
+
 // ── Leaderboard ───────────────────────────────────────────
 
 function _setLeaderboardSport(sport) {
@@ -695,13 +754,17 @@ function _buildLeaderboardPanel() {
   html += `<summary class="player-leaderboard-summary"><span class="player-history-chevron">▶</span><span class="section-heading section-heading-inline">${esc(t('txt_player_leaderboard_title'))}</span> <button type="button" class="format-info-btn" style="margin-left:auto" onclick="event.stopPropagation(); _showEloInfoPopup(event)" aria-label="${esc(t('txt_player_elo_info_btn'))}" title="${esc(t('txt_player_elo_info_btn'))}">i</button></summary>`;
   html += `<div class="player-leaderboard-body">`;
 
-  // Sport toggle pills (only if both sports have data)
-  if (hasPadel && hasTennis) {
+  // Controls row: community selector + sport toggle pills — same flex row
+  const communitySelectHtml = _buildCommunitySelect('leaderboard-community');
+  const sportToggleHtml = (hasPadel && hasTennis) ? (() => {
     const activeSport = _leaderboardSport;
-    html += `<div class="leaderboard-sport-toggle">`;
-    html += `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" data-sport="padel" onclick="event.stopPropagation(); _setLeaderboardSport('padel')">${esc(t('txt_player_sport_padel'))}</button>`;
-    html += `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" data-sport="tennis" onclick="event.stopPropagation(); _setLeaderboardSport('tennis')">${esc(t('txt_player_sport_tennis'))}</button>`;
-    html += `</div>`;
+    return `<div class="leaderboard-sport-toggle">`
+      + `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" data-sport="padel" onclick="event.stopPropagation(); _setLeaderboardSport('padel')">${esc(t('txt_player_sport_padel'))}</button>`
+      + `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" data-sport="tennis" onclick="event.stopPropagation(); _setLeaderboardSport('tennis')">${esc(t('txt_player_sport_tennis'))}</button>`
+      + `</div>`;
+  })() : '';
+  if (communitySelectHtml || sportToggleHtml) {
+    html += `<div class="leaderboard-controls-row">${communitySelectHtml}${sportToggleHtml}</div>`;
   }
 
   // Show active sport (or whichever has data)
@@ -876,6 +939,15 @@ function _buildDashboard() {
     }
   }
   html += `</div>`;
+  // Community membership tags
+  if (_playerCommunities.length > 0) {
+    html += `<div class="profile-communities">`;
+    html += `<span class="profile-communities-label">${esc(t('txt_player_communities_label') || 'Communities')}:</span>`;
+    for (const c of _playerCommunities) {
+      html += `<span class="profile-community-tag">${esc(c.name)}</span>`;
+    }
+    html += `</div>`;
+  }
   html += `<div class="player-profile-actions">`;
   html += `<button type="button" class="btn btn-sm btn-secondary" onclick="_toggleEditProfile()">${esc(t('txt_player_edit_btn'))}</button>`;
   html += `<button type="button" class="btn btn-sm btn-danger-outline player-logout-btn" onclick="_doLogout()">${esc(t('txt_player_logout_btn'))}</button>`;

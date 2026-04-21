@@ -50,7 +50,7 @@ async def list_profiles(
     Args:
         q: Optional search string matched against name and email (case-insensitive).
     """
-    elo_cols = ", elo_padel, elo_padel_matches, elo_tennis, elo_tennis_matches, k_factor_override"
+    elo_cols = ", elo_padel, elo_padel_matches, elo_tennis, elo_tennis_matches, k_factor_override, is_ghost"
     with get_db() as conn:
         if q.strip():
             pattern = f"%{q.strip()}%"
@@ -76,7 +76,78 @@ async def list_profiles(
             elo_tennis=r["elo_tennis"],
             elo_tennis_matches=r["elo_tennis_matches"],
             k_factor_override=r["k_factor_override"],
+            is_ghost=bool(r["is_ghost"]),
         )
+        for r in rows
+    ]
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Past participants (players without a profile)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/past-participants")
+async def search_past_participants(
+    q: str = "",
+    _admin: User = Depends(require_admin),
+) -> list[dict]:
+    """Search across all historical tournament players who have no Player Hub profile.
+
+    Returns distinct player entries (by player_id) from ``player_secrets`` and
+    ``player_history``, optionally filtered by name.  Ghost profiles are excluded
+    because those players already have a tracking identity.
+
+    Args:
+        q: Name substring to match (case-insensitive). Empty returns up to 50 recents.
+
+    Returns:
+        List of ``{player_id, name, last_tournament_id, last_tournament_name, last_seen_at}``.
+    """
+    pattern = f"%{q.strip()}%" if q.strip() else "%"
+    with get_db() as conn:
+        # Combine active participations (player_secrets) with finished ones (player_history).
+        # We want the most-recently-seen entry per player_id to avoid duplicates.
+        rows = conn.execute(
+            """
+            SELECT player_id, player_name AS name,
+                   tournament_id AS last_tournament_id,
+                   COALESCE(tournament_name, '') AS last_tournament_name,
+                   updated_at AS last_seen_at
+            FROM (
+                SELECT ps.player_id, ps.player_name, ps.tournament_id,
+                       COALESCE(t.name, '') AS tournament_name,
+                       COALESCE(ps.finished_at, datetime('now')) AS updated_at
+                FROM player_secrets ps
+                LEFT JOIN tournaments t ON t.id = ps.tournament_id
+                WHERE ps.profile_id IS NULL
+                  AND ps.player_name LIKE ?
+                UNION ALL
+                SELECT ph.player_id, ph.player_name, ph.entity_id AS tournament_id,
+                       ph.entity_name AS tournament_name,
+                       ph.finished_at AS updated_at
+                FROM player_history ph
+                WHERE ph.profile_id IS NULL
+                  AND ph.entity_type = 'tournament'
+                  AND ph.player_name LIKE ?
+            ) combined
+            -- Keep only the latest entry per player_id
+            GROUP BY player_id
+            HAVING updated_at = MAX(updated_at)
+            ORDER BY updated_at DESC
+            LIMIT 50
+            """,
+            (pattern, pattern),
+        ).fetchall()
+
+    return [
+        {
+            "player_id": r["player_id"],
+            "name": r["name"],
+            "last_tournament_id": r["last_tournament_id"],
+            "last_tournament_name": r["last_tournament_name"],
+            "last_seen_at": r["last_seen_at"],
+        }
         for r in rows
     ]
 
@@ -96,7 +167,7 @@ async def get_profile_detail(
         profile = conn.execute(
             "SELECT id, name, email, contact, passphrase, created_at,"
             " elo_padel, elo_padel_matches, elo_tennis, elo_tennis_matches,"
-            " k_factor_override"
+            " k_factor_override, is_ghost"
             " FROM player_profiles WHERE id = ?",
             (profile_id,),
         ).fetchone()
@@ -117,6 +188,7 @@ async def get_profile_detail(
         elo_tennis=profile["elo_tennis"],
         elo_tennis_matches=profile["elo_tennis_matches"],
         k_factor_override=profile["k_factor_override"],
+        is_ghost=bool(profile["is_ghost"]),
         participations=participations,
     )
 

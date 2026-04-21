@@ -139,6 +139,21 @@
 
 .profile-bar-meta { font-size: 0.8rem; color: var(--text-muted); }
 
+/* Communities the player has participated in — shown below the name row */
+.profile-communities { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
+.profile-communities-label { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; }
+.profile-community-tag {
+  display: inline-block;
+  font-size: 0.73rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  white-space: nowrap;
+}
+
 .profile-email-row {
   display: flex;
   align-items: center;
@@ -1565,7 +1580,10 @@ h1 { font-size: 1.5rem; margin-bottom: 0.3rem; text-align: center; }
   padding: 0 0.8rem 0.8rem;
   border-top: 1px solid var(--border);
 }
-.leaderboard-sport-toggle { display: flex; gap: 0; margin: 0 0 0.5rem auto; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; width: fit-content; }
+.leaderboard-sport-toggle { display: flex; gap: 0; margin: 0 0 0 auto; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; width: fit-content; }
+.leaderboard-community-select { display: block; margin: 0; padding: 0.3rem 0.5rem; font-size: 0.82rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); max-width: 220px; cursor: pointer; }
+/* Controls row: community selector + sport toggle on the same line */
+.leaderboard-controls-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
 .leaderboard-pill { background: transparent; border: none; padding: 0.3rem 0.75rem; font-size: 0.8rem; cursor: pointer; color: var(--text-muted); transition: background 0.15s, color 0.15s; }
 .leaderboard-pill:not(:last-child) { border-right: 1px solid var(--border); }
 .leaderboard-pill--active { background: var(--accent); color: #fff; font-weight: 600; }

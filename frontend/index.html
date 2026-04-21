@@ -117,12 +117,6 @@
         <h2 style="margin:0" data-i18n="txt_txt_create_tournament">Create Tournament</h2>
         <button type="button" class="format-info-btn" id="create-format-info-btn" data-action="openFormatInfo" aria-label="About this format" data-i18n-aria-label="txt_txt_about_this_format" data-i18n-title="txt_txt_about_this_format" title="About this format">i</button>
       </div>
-      <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem;flex-wrap:wrap">
-        <div class="score-mode-toggle" id="sport-toggle" style="margin-bottom:0">
-          <button type="button" data-sport="padel" class="active" data-action="setSport"><span data-i18n="txt_txt_sport_padel">Padel</span></button>
-          <button type="button" data-sport="tennis" data-action="setSport"><span data-i18n="txt_txt_sport_tennis">Tennis</span></button>
-        </div>
-      </div>
       <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.85rem;flex-wrap:wrap">
         <div class="subtabs" role="tablist" aria-label="Create tournament type" data-i18n-aria-label="txt_txt_create_tournament_type" style="margin-bottom:0">
           <button type="button" class="subtab-btn active" id="create-tab-gp" data-action="setCreateMode" data-tab="gp" data-i18n="txt_txt_group_play_off">Group + Play‑off</button>
@@ -134,17 +128,52 @@
           <button type="button" class="subtab-btn" id="create-tab-lobby" data-action="setCreateMode" data-tab="lobby" data-i18n="txt_reg_lobby">Lobby</button>
         </div>
       </div>
+      <div class="create-meta-row" style="margin-bottom:0.85rem">
+        <div class="field-section create-meta-card create-sport-card" style="margin-bottom:0">
+          <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_txt_sport">Sport</div>
+          <div class="score-mode-toggle create-meta-toggle" id="sport-toggle" style="margin-bottom:0">
+            <button type="button" data-sport="padel" class="active" data-action="setSport"><span data-i18n="txt_txt_sport_padel">Padel</span></button>
+            <button type="button" data-sport="tennis" data-action="setSport"><span data-i18n="txt_txt_sport_tennis">Tennis</span></button>
+          </div>
+        </div>
+        <div class="field-section create-meta-card create-entry-card" id="create-entry-card" style="margin-bottom:0">
+          <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_txt_mode">Mode</div>
+          <div id="entry-toggle-gp-wrap">
+            <div class="score-mode-toggle entry-mode-toggle create-meta-toggle" id="gp-entry-mode-toggle">
+              <button type="button" data-mode="individual" data-action="setEntryMode" data-entry-ctx="gp" data-entry-mode="individual" data-i18n="txt_txt_individual_mode">Individual</button>
+              <button type="button" data-mode="team" class="active" data-action="setEntryMode" data-entry-ctx="gp" data-entry-mode="team" data-i18n="txt_txt_team_mode_short">Team</button>
+            </div>
+          </div>
+          <div id="entry-toggle-mex-wrap" class="hidden">
+            <div class="score-mode-toggle entry-mode-toggle create-meta-toggle" id="mex-entry-mode-toggle">
+              <button type="button" data-mode="individual" class="active" data-action="setEntryMode" data-entry-ctx="mex" data-entry-mode="individual" data-i18n="txt_txt_individual_mode">Individual</button>
+              <button type="button" data-mode="team" data-action="setEntryMode" data-entry-ctx="mex" data-entry-mode="team" data-i18n="txt_txt_team_mode_short">Team</button>
+            </div>
+          </div>
+          <div id="entry-toggle-po-wrap" class="hidden">
+            <div class="score-mode-toggle entry-mode-toggle create-meta-toggle" id="po-entry-mode-toggle" style="display:none">
+              <button type="button" data-mode="individual" data-action="setEntryMode" data-entry-ctx="po" data-entry-mode="individual" data-i18n="txt_txt_individual_mode">Individual</button>
+              <button type="button" data-mode="team" class="active" data-action="setEntryMode" data-entry-ctx="po" data-entry-mode="team" data-i18n="txt_txt_team_mode_short">Team</button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div class="subtab-panel active" id="create-panel-gp">
         <div class="field-section" style="margin-bottom:0.75rem">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
-            <input id="gp-name" value="Tournament Cup 2026" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
-            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.3rem;flex-shrink:0">
-              <div class="score-mode-toggle entry-mode-toggle" id="gp-entry-mode-toggle">
-                <button type="button" data-mode="individual" data-action="setEntryMode" data-entry-ctx="gp" data-entry-mode="individual" data-i18n="txt_txt_individual_mode">Individual</button>
-                <button type="button" data-mode="team" class="active" data-action="setEntryMode" data-entry-ctx="gp" data-entry-mode="team" data-i18n="txt_txt_team_mode_short">Team</button>
-              </div>
-            </div>
+          <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_txt_title">Title</div>
+          <input id="gp-name" value="Tournament Cup 2026" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
+        </div>
+        <div class="create-meta-row" style="margin-bottom:0.85rem">
+          <div class="field-section create-meta-card" style="margin-bottom:0">
+            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_comm_col_community">Community</div>
+            <select id="create-community-gp" class="tournament-name-input create-community-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Community" data-i18n-aria-label="txt_comm_col_community" title="Community" data-i18n-title="txt_comm_col_community">
+              <option value="open" data-i18n="txt_comm_global_default">Global (default)</option>
+            </select>
+          </div>
+          <div class="field-section create-meta-card create-club-wrapper" style="margin-bottom:0;display:none">
+            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_create_club">Club</div>
+            <select id="create-club-gp" class="tournament-name-input create-club-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Club" data-i18n-aria-label="txt_create_club" title="Club" data-i18n-title="txt_create_club"></select>
           </div>
         </div>
         <div class="field-section">
@@ -155,6 +184,7 @@
             </div>
             <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
               <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="gp" data-i18n="txt_txt_clear_all">Clear all</button>
+              <button type="button" class="paste-list-btn" onclick="addPlayersFromClub('gp')" data-i18n="txt_create_add_from_club">Add from club</button>
               <button type="button" class="paste-list-btn" id="gp-paste-toggle" data-action="togglePasteMode" data-ctx="gp">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
@@ -214,14 +244,19 @@
 
       <div class="subtab-panel" id="create-panel-mex">
         <div class="field-section" style="margin-bottom:0.75rem">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
-            <input id="mex-name" value="Mexicano Night" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
-            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.3rem;flex-shrink:0">
-              <div class="score-mode-toggle entry-mode-toggle" id="mex-entry-mode-toggle">
-                <button type="button" data-mode="individual" class="active" data-action="setEntryMode" data-entry-ctx="mex" data-entry-mode="individual" data-i18n="txt_txt_individual_mode">Individual</button>
-                <button type="button" data-mode="team" data-action="setEntryMode" data-entry-ctx="mex" data-entry-mode="team" data-i18n="txt_txt_team_mode_short">Team</button>
-              </div>
-            </div>
+          <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_txt_title">Title</div>
+          <input id="mex-name" value="Mexicano Night" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
+        </div>
+        <div class="create-meta-row" style="margin-bottom:0.85rem">
+          <div class="field-section create-meta-card" style="margin-bottom:0">
+            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_comm_col_community">Community</div>
+            <select id="create-community-mex" class="tournament-name-input create-community-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Community" data-i18n-aria-label="txt_comm_col_community" title="Community" data-i18n-title="txt_comm_col_community">
+              <option value="open" data-i18n="txt_comm_global_default">Global (default)</option>
+            </select>
+          </div>
+          <div class="field-section create-meta-card create-club-wrapper" style="margin-bottom:0;display:none">
+            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_create_club">Club</div>
+            <select id="create-club-mex" class="tournament-name-input create-club-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Club" data-i18n-aria-label="txt_create_club" title="Club" data-i18n-title="txt_create_club"></select>
           </div>
         </div>
         <div class="field-section">
@@ -232,6 +267,7 @@
             </div>
             <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
               <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="mex" data-i18n="txt_txt_clear_all">Clear all</button>
+              <button type="button" class="paste-list-btn" onclick="addPlayersFromClub('mex')" data-i18n="txt_create_add_from_club">Add from club</button>
               <button type="button" class="paste-list-btn" id="mex-paste-toggle" data-action="togglePasteMode" data-ctx="mex">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
@@ -373,14 +409,19 @@
       <!-- ─── CREATE PLAY-OFFS ONLY ──────────────────────── -->
       <div class="subtab-panel" id="create-panel-po">
         <div class="field-section" style="margin-bottom:0.75rem">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
-            <input id="po-name" value="Play-offs 2026" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
-            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.3rem;flex-shrink:0">
-              <div class="score-mode-toggle entry-mode-toggle" id="po-entry-mode-toggle" style="display:none">
-                <button type="button" data-mode="individual" data-action="setEntryMode" data-entry-ctx="po" data-entry-mode="individual" data-i18n="txt_txt_individual_mode">Individual</button>
-                <button type="button" data-mode="team" class="active" data-action="setEntryMode" data-entry-ctx="po" data-entry-mode="team" data-i18n="txt_txt_team_mode_short">Team</button>
-              </div>
-            </div>
+          <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_txt_title">Title</div>
+          <input id="po-name" value="Play-offs 2026" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
+        </div>
+        <div class="create-meta-row" style="margin-bottom:0.85rem">
+          <div class="field-section create-meta-card" style="margin-bottom:0">
+            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_comm_col_community">Community</div>
+            <select id="create-community-po" class="tournament-name-input create-community-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Community" data-i18n-aria-label="txt_comm_col_community" title="Community" data-i18n-title="txt_comm_col_community">
+              <option value="open" data-i18n="txt_comm_global_default">Global (default)</option>
+            </select>
+          </div>
+          <div class="field-section create-meta-card create-club-wrapper" style="margin-bottom:0;display:none">
+            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_create_club">Club</div>
+            <select id="create-club-po" class="tournament-name-input create-club-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Club" data-i18n-aria-label="txt_create_club" title="Club" data-i18n-title="txt_create_club"></select>
           </div>
         </div>
         <div class="field-section">
@@ -391,6 +432,7 @@
             </div>
             <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
               <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="po" data-i18n="txt_txt_clear_all">Clear all</button>
+              <button type="button" class="paste-list-btn" onclick="addPlayersFromClub('po')" data-i18n="txt_create_add_from_club">Add from club</button>
               <button type="button" class="paste-list-btn" id="po-paste-toggle" data-action="togglePasteMode" data-ctx="po">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
@@ -475,8 +517,13 @@
     <div class="card">
       <h2 style="margin:0 0 0.75rem" data-i18n="txt_txt_user_management">👥 User Management</h2>
       <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_txt_user_mgmt_desc">Search, create, and manage admin and organizer accounts. Invite new users by email or reset credentials.</p>
-      <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap">
         <input type="search" id="user-mgmt-search" placeholder="Search users…" data-i18n-placeholder="txt_txt_search_users" autocomplete="off" oninput="filterUserMgmtList(this.value)" style="flex:1;min-width:200px;padding:0.45rem 0.65rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
+      </div>
+      <div class="subtabs" style="margin-bottom:0.75rem" role="tablist">
+        <button type="button" class="subtab-btn active" id="umgmt-tab-all" onclick="setUserMgmtRoleFilter('all')" data-i18n="txt_txt_all_users">All</button>
+        <button type="button" class="subtab-btn" id="umgmt-tab-admin" onclick="setUserMgmtRoleFilter('admin')" data-i18n="txt_txt_admins_tab">Admins</button>
+        <button type="button" class="subtab-btn" id="umgmt-tab-user" onclick="setUserMgmtRoleFilter('user')" data-i18n="txt_txt_users_tab">Users</button>
       </div>
       <ul id="user-mgmt-list" class="user-mgmt-list"></ul>
     </div>
@@ -498,6 +545,20 @@
           <div class="umgmt-form-group">
             <label for="new-user-email" data-i18n="txt_txt_email_optional_placeholder">Email (optional)</label>
             <input id="new-user-email" type="email" placeholder="Email (optional)" data-i18n-placeholder="txt_txt_email_optional_placeholder" autocomplete="email">
+          </div>
+          <div class="umgmt-form-grid umgmt-form-group">
+            <div>
+              <label for="new-user-default-community" data-i18n="txt_txt_default_community">Default Community</label>
+              <select id="new-user-default-community">
+                <option value="open" data-i18n="txt_comm_global_default">Global</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:flex-end">
+              <label style="display:flex;align-items:center;gap:0.4rem;margin:0.15rem 0">
+                <input id="new-user-can-create-clubs" type="checkbox" checked>
+                <span data-i18n="txt_txt_allow_club_creation">Allow club creation</span>
+              </label>
+            </div>
           </div>
           <div class="umgmt-msg-area">
             <div class="modal-success" id="user-mgmt-success"></div>
@@ -541,6 +602,58 @@
         </form>
       </div>
     </div>
+  </div>
+
+  <!-- ─── COMMUNITIES ──────────────────────────────────── -->
+  <div class="tab-panel" id="panel-communities" role="tabpanel">
+    <!-- My default community -->
+    <div class="card" id="comm-my-default-card">
+      <h2 style="margin:0 0 0.5rem">⭐ <span data-i18n="txt_comm_default_title">My Default Community</span></h2>
+      <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_default_help">The community pre-selected when you create a new tournament or lobby.</p>
+      <div class="comm-default-form-row">
+        <select id="comm-my-default-select" class="comm-default-select">
+          <option value="open">Open</option>
+        </select>
+        <button type="button" class="btn btn-primary comm-default-save-btn" onclick="commSaveMyDefault()" data-i18n="txt_txt_save">Save</button>
+      </div>
+      <span id="comm-my-default-msg" class="comm-default-msg"></span>
+    </div>
+
+    <!-- Community list management -->
+    <div class="card">
+      <h2 style="margin:0 0 0.5rem">🏘️ <span data-i18n="txt_comm_title">Communities</span></h2>
+      <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_help">Create and manage communities to scope ELO ratings and group tournaments by club or league.</p>
+      <div id="comm-list"></div>
+      <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap">
+        <input type="text" id="comm-new-name" data-i18n-placeholder="txt_comm_new_name_placeholder" placeholder="New community name…" style="flex:1;min-width:160px;padding:0.4rem 0.6rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
+        <button type="button" class="btn btn-success btn-sm" onclick="commCreate()" data-i18n="txt_comm_add">+ Add</button>
+      </div>
+      <div id="comm-msg" style="margin-top:0.5rem;font-size:0.84rem"></div>
+    </div>
+
+    <!-- Tournament assignment -->
+    <div class="card">
+      <h2 style="margin:0 0 0.5rem">🏆 <span data-i18n="txt_comm_tournament_title">Tournament Community Assignment</span></h2>
+      <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_tournament_help">Reassign tournaments to different communities. Changes take effect immediately.</p>
+      <div id="comm-tournament-list"><div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
+    </div>
+
+    <!-- Registration assignment -->
+    <div class="card">
+      <h2 style="margin:0 0 0.5rem">📋 <span data-i18n="txt_comm_lobby_title">Lobby Community Assignment</span></h2>
+      <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_lobby_help">Reassign registration lobbies to different communities.</p>
+      <div id="comm-registration-list"><div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
+    </div>
+  </div>
+
+  <!-- ─── CLUBS ─────────────────────────────────────────── -->
+  <div class="tab-panel" id="panel-clubs" role="tabpanel">
+    <div class="card" id="clubs-overview-card">
+      <h2 style="margin:0 0 0.5rem">🏟️ <span data-i18n="txt_clubs_title">Clubs</span></h2>
+      <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_clubs_panel_help">Upgrade a community to a club to add branding, player tiers, and seasons.</p>
+      <div id="clubs-overview"><div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
+    </div>
+    <div id="clubs-detail" style="display:none"></div>
   </div>
 
   <!-- ─── INFO ──────────────────────────────────────────── -->
@@ -1027,6 +1140,8 @@
 <script src="/admin-convert.js"></script>
 <script src="/admin-collaborators.js"></script>
 <script src="/admin-players.js"></script>
+<script src="/admin-communities.js"></script>
+<script src="/admin-clubs.js"></script>
 
 </body>
 </html>

@@ -61,6 +61,11 @@ let _linkedProfilePassphrase = null; // set when Player Hub session is active
 let _submittedEmail = ''; // email entered in the form, captured on submit
 let _skipProfileAutoLoginOnce = false;
 
+function _registrationIdentityLabel(data) {
+  if (!data) return '';
+  return data.club_name || data.community_name || '';
+}
+
 function _redirectToNotFoundPage(message, redirectTo = '/register') {
   const params = new URLSearchParams();
   if (message) params.set('m', message);
@@ -243,13 +248,20 @@ function _renderDirectory(lobbies) {
       const countText = `${count} ${t(count === 1 ? 'txt_reg_player_singular' : 'txt_reg_players_plural')}`;
       const isTennis = lobby.sport === 'tennis';
       const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
+      const identityLabel = _registrationIdentityLabel(lobby);
 
       html += `<a class="tv-picker-item" href="${esc(url)}">`;
+      if (lobby.club_logo_url) {
+        html += `<img src="${lobby.club_logo_url}" alt="" style="height:18px;width:18px;object-fit:cover;border-radius:3px;margin-right:0.35rem;vertical-align:middle;flex-shrink:0">`;
+      }
       html += esc(lobby.name);
       html += `<span class="picker-badge picker-badge-sport">${esc(sportLabel)}</span>`;
       html += `<span class="picker-badge picker-badge-phase">${countText}</span>`;
       if (lobby.join_code_required) {
         html += `<span class="picker-badge picker-badge-type">${t('txt_reg_join_code_badge')}</span>`;
+      }
+      if (identityLabel) {
+        html += `<span style="display:block;margin-top:0.2rem;color:var(--text-muted);font-size:0.78rem">${esc(identityLabel)}</span>`;
       }
       html += `</a>`;
     }
@@ -360,9 +372,20 @@ function _showError(msg) {
 function _showClosed(converted) {
   _hideAll();
   const el = document.getElementById('state-closed');
-  let html = `<h2>${esc(_regData.name)}</h2>`;
+  const identityLabel = _registrationIdentityLabel(_regData);
+  let html = '';
+  if (_regData.club_logo_url) {
+    html += `<div style="display:flex;align-items:center;justify-content:center;gap:0.4rem;margin-bottom:0.2rem">`;
+    html += `<img src="${_regData.club_logo_url}" alt="" style="height:24px;width:24px;object-fit:cover;border-radius:4px;flex-shrink:0">`;
+    html += `<h2 style="margin:0">${esc(_regData.name)}</h2></div>`;
+  } else {
+    html += `<h2>${esc(_regData.name)}</h2>`;
+  }
   if (_regData.description) {
     html += `<div class="reg-description">${_renderMarkdown(_regData.description)}</div>`;
+  }
+  if (identityLabel) {
+    html += `<p class="subtitle subtitle-strong">${esc(identityLabel)}</p>`;
   }
   html += _renderMessage();
   html += _renderPlayerList();
@@ -437,8 +460,19 @@ function _renderLinkedTournaments() {
 function _showForm() {
   _hideAll();
   const el = document.getElementById('state-form');
-  let html = `<h1>${esc(_regData.name)}</h1>`;
+  const identityLabel = _registrationIdentityLabel(_regData);
+  let html = '';
+  if (_regData.club_logo_url) {
+    html += `<div style="display:flex;align-items:center;justify-content:center;gap:0.4rem;margin-bottom:0.2rem">`;
+    html += `<img src="${_regData.club_logo_url}" alt="" style="height:28px;width:28px;object-fit:cover;border-radius:4px;flex-shrink:0">`;
+    html += `<h1 style="margin:0">${esc(_regData.name)}</h1></div>`;
+  } else {
+    html += `<h1>${esc(_regData.name)}</h1>`;
+  }
   html += `<p class="subtitle"><span class="badge badge-count">${_regData.registrant_count} ${t(_regData.registrant_count === 1 ? 'txt_reg_player_singular' : 'txt_reg_players_plural')}</span></p>`;
+  if (identityLabel) {
+    html += `<p class="subtitle subtitle-strong">${esc(identityLabel)}</p>`;
+  }
 
   if (_regData.description) {
     html += `<div class="reg-description">${_renderMarkdown(_regData.description)}</div>`;
@@ -510,7 +544,7 @@ function _showForm() {
     html += `<div class="reg-ps-login-error" id="reg-ps-login-error"></div>`;
     html += `<button type="button" class="btn btn-secondary" id="reg-ps-login-btn" onclick="_loginPlayerSpace()">${t('txt_player_login_btn')}</button>`;
     html += `</div>`;
-    html += `</details>`;
+    html += `</div>`;
   }
 
   const emailMode = _regData?.email_requirement || 'optional';
@@ -852,6 +886,7 @@ function _showSuccess() {
   _hideAll();
   const el = document.getElementById('state-success');
   const r = _lastResult;
+  const identityLabel = _registrationIdentityLabel(_regData);
 
   // Store token early so _buildTournamentUrl can embed it in linked tournament links
   if (_rid && r.token) {
@@ -859,6 +894,9 @@ function _showSuccess() {
   }
 
   let html = `<h2>✅ ${t('txt_reg_registered', { name: r.player_name })}</h2>`;
+  if (identityLabel) {
+    html += `<p class="subtitle subtitle-strong">${esc(identityLabel)}</p>`;
+  }
   html += `<div class="passphrase-label">${t('txt_reg_your_passphrase')}</div>`;
   html += `<div class="passphrase-box">${esc(r.passphrase)}</div>`;
   html += `<p class="keep-note">${t('txt_reg_keep_code')}</p>`;

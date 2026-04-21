@@ -1,0 +1,1209 @@
+"""Tests for the Club management routes (CRUD, logo, tiers, player ELO)."""
+
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+
+from backend.api import app
+from backend.api.routes_clubs import _MAX_LOGO_BYTES
+from backend.api.db import get_db
+
+
+@pytest.fixture()
+def client():
+    return TestClient(app)
+
+
+def _create_community(client: TestClient, auth_headers: dict, name: str = "Test Club") -> dict:
+    """Helper: create a community and return the response dict."""
+    res = client.post("/api/communities", json={"name": name}, headers=auth_headers)
+    assert res.status_code == 201
+    return res.json()
+
+
+def _create_club(client: TestClient, auth_headers: dict, community_id: str, name: str = "My Club") -> dict:
+    """Helper: create a club wrapping a community and return the response dict."""
+    res = client.post(
+        "/api/clubs",
+        json={"community_id": community_id, "name": name},
+        headers=auth_headers,
+    )
+    assert res.status_code == 201
+    return res.json()
+
+
+# ---------------------------------------------------------------------------
+# Club CRUD
+# ---------------------------------------------------------------------------
+
+
+class TestClubCRUD:
+    """Test club list / create / update / delete endpoints."""
+
+    def test_create_club(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        assert club["name"] == "My Club"
+        assert club["community_id"] == comm["id"]
+        assert club["id"].startswith("cl_")
+
+    def test_create_club_does_not_sync_community_name(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers, name="Community Name Stays")
+        _create_club(client, auth_headers, comm["id"], name="Club Has Own Name")
+        res = client.get(f"/api/communities/{comm['id']}", headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json()["name"] == "Community Name Stays"
+
+    def test_list_clubs(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        _create_club(client, auth_headers, comm["id"])
+        res = client.get("/api/clubs", headers=auth_headers)
+        assert res.status_code == 200
+        clubs = res.json()
+        assert len(clubs) >= 1
+        assert any(c["community_id"] == comm["id"] for c in clubs)
+
+    def test_get_club(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.get(f"/api/clubs/{club['id']}", headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json()["name"] == "My Club"
+
+    def test_rename_club(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.patch(
+            f"/api/clubs/{club['id']}",
+            json={"name": "Renamed Club"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["name"] == "Renamed Club"
+
+    def test_rename_club_does_not_sync_community_name(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers, name="Community Name Stays")
+        club = _create_club(client, auth_headers, comm["id"], name="Original Club")
+        res = client.patch(
+            f"/api/clubs/{club['id']}",
+            json={"name": "Renamed Club"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        community_res = client.get(f"/api/communities/{comm['id']}", headers=auth_headers)
+        assert community_res.status_code == 200
+        assert community_res.json()["name"] == "Community Name Stays"  # unchanged
+
+    def test_delete_club(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.delete(f"/api/clubs/{club['id']}", headers=auth_headers)
+        assert res.status_code == 200
+
+        # Verify gone
+        res = client.get(f"/api/clubs/{club['id']}", headers=auth_headers)
+        assert res.status_code == 404
+
+    def test_create_club_requires_auth(self, client) -> None:
+        res = client.post("/api/clubs", json={"community_id": "open", "name": "X"})
+        assert res.status_code in (401, 403)
+
+    def test_multiple_clubs_per_community_allowed(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club1 = _create_club(client, auth_headers, comm["id"], name="First Club")
+        res = client.post(
+            "/api/clubs",
+            json={"community_id": comm["id"], "name": "Second Club"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 201
+        assert res.json()["id"] != club1["id"]
+        assert res.json()["community_id"] == comm["id"]
+
+    def test_get_nonexistent_club_404(self, client, auth_headers) -> None:
+        res = client.get("/api/clubs/club_nonexist", headers=auth_headers)
+        assert res.status_code == 404
+
+    def test_any_authenticated_user_can_create_club(self, client, auth_headers, alice_headers) -> None:
+        """Any authenticated user can create a club in any non-open community."""
+        comm = _create_community(client, auth_headers)
+        res = client.post(
+            "/api/clubs",
+            json={"community_id": comm["id"], "name": "Alice Club"},
+            headers=alice_headers,
+        )
+        assert res.status_code == 201
+
+    def test_user_cannot_create_club_when_permission_disabled(self, client, auth_headers, alice_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        settings_res = client.patch(
+            "/api/auth/users/alice/settings",
+            json={"can_create_clubs": False},
+            headers=auth_headers,
+        )
+        assert settings_res.status_code == 200
+
+        res = client.post(
+            "/api/clubs",
+            json={"community_id": comm["id"], "name": "Blocked Club"},
+            headers=alice_headers,
+        )
+        assert res.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Tiers
+# ---------------------------------------------------------------------------
+
+
+class TestClubTiers:
+    """Test tier CRUD for a club."""
+
+    def _setup(self, client, auth_headers):
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        return club
+
+    def test_create_tier(self, client, auth_headers) -> None:
+        club = self._setup(client, auth_headers)
+        res = client.post(
+            f"/api/clubs/{club['id']}/tiers",
+            json={"name": "Gold", "sport": "padel", "base_elo": 1500, "position": 1},
+            headers=auth_headers,
+        )
+        assert res.status_code == 201
+        data = res.json()
+        assert data["name"] == "Gold"
+        assert data["sport"] == "padel"
+        assert data["base_elo"] == 1500
+        assert data["position"] == 1
+
+    def test_list_tiers(self, client, auth_headers) -> None:
+        club = self._setup(client, auth_headers)
+        client.post(
+            f"/api/clubs/{club['id']}/tiers",
+            json={"name": "Gold", "sport": "padel", "base_elo": 1500, "position": 1},
+            headers=auth_headers,
+        )
+        client.post(
+            f"/api/clubs/{club['id']}/tiers",
+            json={"name": "Silver", "sport": "tennis", "base_elo": 1200, "position": 2},
+            headers=auth_headers,
+        )
+        res = client.get(f"/api/clubs/{club['id']}/tiers", headers=auth_headers)
+        assert res.status_code == 200
+        tiers = res.json()
+        assert len(tiers) == 2
+
+    def test_update_tier(self, client, auth_headers) -> None:
+        club = self._setup(client, auth_headers)
+        tier_res = client.post(
+            f"/api/clubs/{club['id']}/tiers",
+            json={"name": "Gold", "sport": "padel", "base_elo": 1500, "position": 1},
+            headers=auth_headers,
+        )
+        tier = tier_res.json()
+        res = client.patch(
+            f"/api/clubs/{club['id']}/tiers/{tier['id']}",
+            json={"name": "Platinum", "base_elo": 1600},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["name"] == "Platinum"
+        assert res.json()["base_elo"] == 1600
+
+    def test_delete_tier(self, client, auth_headers) -> None:
+        club = self._setup(client, auth_headers)
+        tier_res = client.post(
+            f"/api/clubs/{club['id']}/tiers",
+            json={"name": "Gold", "sport": "padel", "base_elo": 1500, "position": 1},
+            headers=auth_headers,
+        )
+        tier = tier_res.json()
+        res = client.delete(
+            f"/api/clubs/{club['id']}/tiers/{tier['id']}",
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        # Verify gone
+        tiers = client.get(f"/api/clubs/{club['id']}/tiers", headers=auth_headers).json()
+        assert len(tiers) == 0
+
+
+# ---------------------------------------------------------------------------
+# Player ELO management
+# ---------------------------------------------------------------------------
+
+
+class TestClubPlayerELO:
+    """Test player ELO and tier assignment within a club."""
+
+    def _setup_with_profile(self, client, auth_headers):
+        """Create club + a player profile added to the club via API."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO player_profiles (id, name, email, passphrase, created_at) VALUES (?, ?, ?, ?, ?)",
+                ("prof_test1", "Test Player", "test@example.com", "testphrase123", "2024-01-01T00:00:00+00:00"),
+            )
+        # Add via API so that profile_club_elo rows are created
+        client.post(
+            f"/api/clubs/{club['id']}/players",
+            json={"profile_id": "prof_test1"},
+            headers=auth_headers,
+        )
+        # Set an initial padel ELO so tests that depend on a specific value are stable
+        client.patch(
+            f"/api/clubs/{club['id']}/players/prof_test1/elo",
+            json={"sport": "padel", "elo": 1200.0},
+            headers=auth_headers,
+        )
+        return club, comm
+
+    def test_list_players(self, client, auth_headers) -> None:
+        club, comm = self._setup_with_profile(client, auth_headers)
+        res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        assert res.status_code == 200
+        players = res.json()
+        assert len(players) >= 1
+        found = [p for p in players if p["profile_id"] == "prof_test1"]
+        assert len(found) == 1
+        assert found[0]["name"] == "Test Player"
+
+    def test_update_player_elo(self, client, auth_headers) -> None:
+        club, comm = self._setup_with_profile(client, auth_headers)
+        res = client.patch(
+            f"/api/clubs/{club['id']}/players/prof_test1/elo",
+            json={"sport": "padel", "elo": 1400.0},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        # Verify ELO changed in the club-local table
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT elo FROM profile_club_elo WHERE profile_id = ? AND club_id = ? AND sport = ?",
+                ("prof_test1", club["id"], "padel"),
+            ).fetchone()
+        assert row["elo"] == 1400.0
+
+    def test_assign_player_tier(self, client, auth_headers) -> None:
+        club, comm = self._setup_with_profile(client, auth_headers)
+        # Also create a tennis ELO row
+        client.patch(
+            f"/api/clubs/{club['id']}/players/prof_test1/elo",
+            json={"elo": 1100, "sport": "tennis"},
+            headers=auth_headers,
+        )
+        # Create a tier first
+        tier = client.post(
+            f"/api/clubs/{club['id']}/tiers",
+            json={"name": "Gold", "sport": "padel", "base_elo": 1500, "position": 1},
+            headers=auth_headers,
+        ).json()
+        # Assign tier to padel only
+        res = client.patch(
+            f"/api/clubs/{club['id']}/players/prof_test1/tier",
+            json={"sport": "padel", "tier_id": tier["id"]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        # Verify only padel row gets the tier; tennis row is unaffected
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT sport, tier_id FROM profile_club_elo WHERE profile_id = ? AND club_id = ? ORDER BY sport",
+                ("prof_test1", club["id"]),
+            ).fetchall()
+        by_sport = {r["sport"]: r["tier_id"] for r in rows}
+        assert by_sport["padel"] == tier["id"]
+        assert by_sport["tennis"] is None  # tennis tier untouched
+
+    def test_assign_player_tier_apply_base_elo_per_sport(self, client, auth_headers) -> None:
+        """When apply_base_elo is True, the padel sport row gets the tier's base ELO; tennis is unaffected."""
+        club, comm = self._setup_with_profile(client, auth_headers)
+        # Create tennis ELO row too
+        client.patch(
+            f"/api/clubs/{club['id']}/players/prof_test1/elo",
+            json={"elo": 1100, "sport": "tennis"},
+            headers=auth_headers,
+        )
+        # Create a padel-only tier
+        tier = client.post(
+            f"/api/clubs/{club['id']}/tiers",
+            json={"name": "Gold", "sport": "padel", "base_elo": 1500, "position": 1},
+            headers=auth_headers,
+        ).json()
+        assert tier["sport"] == "padel"
+        # Assign padel tier with apply_base_elo=True
+        res = client.patch(
+            f"/api/clubs/{club['id']}/players/prof_test1/tier",
+            json={"sport": "padel", "tier_id": tier["id"], "apply_base_elo": True},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["applied_base_elo"] is True
+        assert res.json()["sport"] == "padel"
+        # Verify padel ELO was reset; tennis ELO unchanged
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT sport, elo, tier_id FROM profile_club_elo WHERE profile_id = ? AND club_id = ? ORDER BY sport",
+                ("prof_test1", club["id"]),
+            ).fetchall()
+        by_sport = {r["sport"]: dict(r) for r in rows}
+        assert by_sport["padel"]["elo"] == 1500
+        assert by_sport["padel"]["tier_id"] == tier["id"]
+        assert by_sport["tennis"]["elo"] == 1100  # unchanged
+        assert by_sport["tennis"]["tier_id"] is None  # not touched
+
+    def test_remove_player_tier(self, client, auth_headers) -> None:
+        club, comm = self._setup_with_profile(client, auth_headers)
+        tier = client.post(
+            f"/api/clubs/{club['id']}/tiers",
+            json={"name": "Gold", "sport": "padel", "base_elo": 1500, "position": 1},
+            headers=auth_headers,
+        ).json()
+        # Assign then remove
+        client.patch(
+            f"/api/clubs/{club['id']}/players/prof_test1/tier",
+            json={"sport": "padel", "tier_id": tier["id"]},
+            headers=auth_headers,
+        )
+        res = client.patch(
+            f"/api/clubs/{club['id']}/players/prof_test1/tier",
+            json={"sport": "padel", "tier_id": None},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT tier_id FROM profile_club_elo WHERE profile_id = ? AND club_id = ? AND sport = ?",
+                ("prof_test1", club["id"], "padel"),
+            ).fetchone()
+        assert row["tier_id"] is None
+
+    def test_assign_player_tier_wrong_sport_rejected(self, client, auth_headers) -> None:
+        """Assigning a padel tier to the tennis sport slot must return 422."""
+        club, comm = self._setup_with_profile(client, auth_headers)
+        tier = client.post(
+            f"/api/clubs/{club['id']}/tiers",
+            json={"name": "Gold", "sport": "padel", "base_elo": 1500, "position": 1},
+            headers=auth_headers,
+        ).json()
+        res = client.patch(
+            f"/api/clubs/{club['id']}/players/prof_test1/tier",
+            json={"sport": "tennis", "tier_id": tier["id"]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Club logo
+# ---------------------------------------------------------------------------
+
+
+class TestClubLogo:
+    """Basic tests for club logo upload / delete / serve."""
+
+    @staticmethod
+    def _make_png(width: int = 64, height: int = 64) -> bytes:
+        """Create a minimal valid PNG image using Pillow."""
+        import io
+
+        from PIL import Image
+
+        img = Image.new("RGB", (width, height), color=(255, 0, 0))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+
+    def test_upload_logo(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        png = self._make_png()
+        res = client.put(
+            f"/api/clubs/{club['id']}/logo",
+            files={"file": ("logo.png", png, "image/png")},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["ok"] is True
+
+    def test_upload_logo_over_max_size_rejected(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        too_large = b"x" * (_MAX_LOGO_BYTES + 1)
+        res = client.put(
+            f"/api/clubs/{club['id']}/logo",
+            files={"file": ("logo.png", too_large, "image/png")},
+            headers=auth_headers,
+        )
+        assert res.status_code == 400
+        assert "5 MB" in res.json()["detail"]
+
+    def test_upload_logo_resizes_large_image(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        # Upload a 512×512 image — should be resized to 256×256
+        big_png = self._make_png(512, 512)
+        res = client.put(
+            f"/api/clubs/{club['id']}/logo",
+            files={"file": ("logo.png", big_png, "image/png")},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        # Serve and check it was saved as PNG
+        serve = client.get(f"/api/clubs/{club['id']}/logo")
+        assert serve.status_code == 200
+        assert serve.headers["content-type"] == "image/png"
+
+    def test_upload_jpeg_converted_to_png(self, client, auth_headers) -> None:
+        import io
+
+        from PIL import Image
+
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        img = Image.new("RGB", (100, 100), color=(0, 128, 0))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG")
+        jpeg_data = buf.getvalue()
+        res = client.put(
+            f"/api/clubs/{club['id']}/logo",
+            files={"file": ("logo.jpg", jpeg_data, "image/jpeg")},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+
+    def test_serve_logo_after_upload(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        png = self._make_png()
+        client.put(
+            f"/api/clubs/{club['id']}/logo",
+            files={"file": ("logo.png", png, "image/png")},
+            headers=auth_headers,
+        )
+        res = client.get(f"/api/clubs/{club['id']}/logo")
+        assert res.status_code == 200
+
+    def test_delete_logo(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        png = self._make_png()
+        client.put(
+            f"/api/clubs/{club['id']}/logo",
+            files={"file": ("logo.png", png, "image/png")},
+            headers=auth_headers,
+        )
+        res = client.delete(f"/api/clubs/{club['id']}/logo", headers=auth_headers)
+        assert res.status_code == 200
+
+    def test_get_logo_no_upload_404(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.get(f"/api/clubs/{club['id']}/logo")
+        assert res.status_code == 404
+
+    def test_by_community_returns_club_info(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.get(f"/api/clubs/by-community/{comm['id']}")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["id"] == club["id"]
+        assert data["has_logo"] is False
+        assert data["logo_url"] is None
+
+    def test_by_community_with_logo(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        png = self._make_png()
+        client.put(
+            f"/api/clubs/{club['id']}/logo",
+            files={"file": ("logo.png", png, "image/png")},
+            headers=auth_headers,
+        )
+        res = client.get(f"/api/clubs/by-community/{comm['id']}")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["has_logo"] is True
+        assert data["logo_url"] == f"/api/clubs/{club['id']}/logo"
+
+    def test_by_community_no_club_404(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        res = client.get(f"/api/clubs/by-community/{comm['id']}")
+        assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Delete club cascading
+# ---------------------------------------------------------------------------
+
+
+class TestClubDeleteCascade:
+    """Verify deleting a club removes tiers and seasons."""
+
+    def test_delete_club_removes_tiers(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        client.post(
+            f"/api/clubs/{club['id']}/tiers",
+            json={"name": "Gold", "base_elo_padel": 1500, "base_elo_tennis": 1400, "position": 1},
+            headers=auth_headers,
+        )
+        client.delete(f"/api/clubs/{club['id']}", headers=auth_headers)
+        with get_db() as conn:
+            tiers = conn.execute("SELECT * FROM club_tiers WHERE club_id = ?", (club["id"],)).fetchall()
+        assert len(tiers) == 0
+
+    def test_delete_club_removes_seasons(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        client.post(
+            f"/api/clubs/{club['id']}/seasons",
+            json={"name": "Season 1"},
+            headers=auth_headers,
+        )
+        client.delete(f"/api/clubs/{club['id']}", headers=auth_headers)
+        with get_db() as conn:
+            seasons = conn.execute("SELECT * FROM seasons WHERE club_id = ?", (club["id"],)).fetchall()
+        assert len(seasons) == 0
+
+
+# ---------------------------------------------------------------------------
+# Club scoping (Block B)
+# ---------------------------------------------------------------------------
+
+
+class TestClubScoping:
+    """Verify list_clubs returns only owned + shared clubs for non-admins."""
+
+    def test_owner_sees_own_club(self, client, auth_headers, alice_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, alice_headers, comm["id"])
+        res = client.get("/api/clubs", headers=alice_headers)
+        assert res.status_code == 200
+        ids = [c["id"] for c in res.json()]
+        assert club["id"] in ids
+
+    def test_other_user_cannot_see_club(self, client, auth_headers, alice_headers, bob_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        _create_club(client, alice_headers, comm["id"])
+        res = client.get("/api/clubs", headers=bob_headers)
+        assert res.status_code == 200
+        assert res.json() == []
+
+    def test_shared_club_visible_to_co_editor(self, client, auth_headers, alice_headers, bob_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, alice_headers, comm["id"])
+        # Alice shares the club with bob
+        res = client.post(
+            f"/api/clubs/{club['id']}/collaborators",
+            json={"username": "bob"},
+            headers=alice_headers,
+        )
+        assert res.status_code == 201
+        # Bob can now see it in his list
+        res = client.get("/api/clubs", headers=bob_headers)
+        assert res.status_code == 200
+        found = [c for c in res.json() if c["id"] == club["id"]]
+        assert len(found) == 1
+        assert found[0]["shared"] is True
+
+    def test_admin_sees_all_clubs(self, client, auth_headers, alice_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, alice_headers, comm["id"])
+        res = client.get("/api/clubs", headers=auth_headers)
+        assert res.status_code == 200
+        ids = [c["id"] for c in res.json()]
+        assert club["id"] in ids
+
+
+# ---------------------------------------------------------------------------
+# Club Collaborators (Block A)
+# ---------------------------------------------------------------------------
+
+
+class TestClubCollaborators:
+    """Tests for co-editor (collaborator) CRUD on clubs."""
+
+    def test_list_collaborators_empty(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.get(f"/api/clubs/{club['id']}/collaborators", headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json()["collaborators"] == []
+
+    def test_add_and_list_collaborator(self, client, auth_headers, alice_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.post(
+            f"/api/clubs/{club['id']}/collaborators",
+            json={"username": "alice"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 201
+        res = client.get(f"/api/clubs/{club['id']}/collaborators", headers=auth_headers)
+        assert "alice" in res.json()["collaborators"]
+
+    def test_add_duplicate_collaborator_is_idempotent(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        client.post(f"/api/clubs/{club['id']}/collaborators", json={"username": "alice"}, headers=auth_headers)
+        res = client.post(f"/api/clubs/{club['id']}/collaborators", json={"username": "alice"}, headers=auth_headers)
+        assert res.status_code == 201
+        collabs = client.get(f"/api/clubs/{club['id']}/collaborators", headers=auth_headers).json()["collaborators"]
+        assert collabs.count("alice") == 1
+
+    def test_remove_collaborator(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        client.post(f"/api/clubs/{club['id']}/collaborators", json={"username": "alice"}, headers=auth_headers)
+        res = client.delete(f"/api/clubs/{club['id']}/collaborators/alice", headers=auth_headers)
+        assert res.status_code == 200
+        collabs = client.get(f"/api/clubs/{club['id']}/collaborators", headers=auth_headers).json()["collaborators"]
+        assert "alice" not in collabs
+
+    def test_editor_can_update_club_but_not_delete(self, client, auth_headers, alice_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        client.post(f"/api/clubs/{club['id']}/collaborators", json={"username": "alice"}, headers=auth_headers)
+        # alice can update club name
+        res = client.patch(f"/api/clubs/{club['id']}", json={"name": "Updated"}, headers=alice_headers)
+        assert res.status_code == 200
+        # alice cannot delete the club
+        res = client.delete(f"/api/clubs/{club['id']}", headers=alice_headers)
+        assert res.status_code == 403
+
+    def test_non_owner_cannot_add_collaborators(self, client, auth_headers, alice_headers, bob_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, alice_headers, comm["id"])
+        # bob is not even a co-editor — should get 403
+        res = client.post(
+            f"/api/clubs/{club['id']}/collaborators",
+            json={"username": "bob"},
+            headers=bob_headers,
+        )
+        assert res.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Add/Remove player explicitly (Block C)
+# ---------------------------------------------------------------------------
+
+
+class TestClubAddRemovePlayer:
+    """Tests for explicit add/remove of players from a club community."""
+
+    def _make_profile(self, conn, profile_id: str = "prof_new") -> None:
+        conn.execute(
+            "INSERT INTO player_profiles (id, name, email, passphrase, created_at) VALUES (?, ?, ?, ?, ?)",
+            (profile_id, "New Player", "new@example.com", f"phrase-{profile_id}", "2024-01-01T00:00:00+00:00"),
+        )
+
+    def test_add_player_creates_elo_row(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            self._make_profile(conn)
+        res = client.post(
+            f"/api/clubs/{club['id']}/players",
+            json={"profile_id": "prof_new"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 201
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT sport FROM profile_club_elo WHERE profile_id = 'prof_new' AND club_id = ?",
+                (club["id"],),
+            ).fetchall()
+        sports = {r["sport"] for r in rows}
+        assert sports == {"padel", "tennis"}
+
+    def test_add_player_appears_in_list(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            self._make_profile(conn)
+        client.post(f"/api/clubs/{club['id']}/players", json={"profile_id": "prof_new"}, headers=auth_headers)
+        res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        assert res.status_code == 200
+        ids = [p["profile_id"] for p in res.json()]
+        assert "prof_new" in ids
+
+    def test_player_list_includes_email_field(self, client, auth_headers) -> None:
+        """Club player list includes profile email for invitation UX."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            self._make_profile(conn)
+        client.post(f"/api/clubs/{club['id']}/players", json={"profile_id": "prof_new"}, headers=auth_headers)
+        res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        assert res.status_code == 200
+        row = next((p for p in res.json() if p["profile_id"] == "prof_new"), None)
+        assert row is not None
+        assert row["email"] == "new@example.com"
+
+    def test_player_list_includes_hub_status_marker(self, client, auth_headers) -> None:
+        """Club player list marks whether a player has a real Player Hub profile."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            self._make_profile(conn)
+        client.post(f"/api/clubs/{club['id']}/players", json={"profile_id": "prof_new"}, headers=auth_headers)
+        res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        assert res.status_code == 200
+        row = next((p for p in res.json() if p["profile_id"] == "prof_new"), None)
+        assert row is not None
+        assert row["has_hub_profile"] is True
+
+    def test_list_players_auto_syncs_profile_from_community_elo(self, client, auth_headers) -> None:
+        """Club player list auto-populates members from profile_community_elo."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+
+        with get_db() as conn:
+            self._make_profile(conn, profile_id="prof_auto")
+            conn.execute(
+                """
+                INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("prof_auto", comm["id"], "padel", 1234.0, 7),
+            )
+
+        res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        assert res.status_code == 200
+        row = next((p for p in res.json() if p["profile_id"] == "prof_auto"), None)
+        assert row is not None
+        assert row["name"] == "New Player"
+        assert row["elo_padel"] == 1234.0
+        assert row["matches_padel"] == 7
+
+    def test_list_players_auto_syncs_unlinked_past_participant_as_ghost(self, client, auth_headers) -> None:
+        """Unlinked tournament participants in the club community appear as ghost club players."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+
+        with get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO tournaments (id, name, type, owner, tournament_blob, sport, community_id)
+                VALUES (?, ?, 'mexicano', 'admin', X'80', 'padel', ?)
+                """,
+                ("t_auto_ghost", "Auto Ghost", comm["id"]),
+            )
+            conn.execute(
+                """
+                INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, email, contact)
+                VALUES (?, ?, ?, ?, ?, '', '')
+                """,
+                ("t_auto_ghost", "legacy_1", "Legacy Player", "legacy-pass", "legacy-token"),
+            )
+
+        res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        assert res.status_code == 200
+        row = next((p for p in res.json() if p["profile_id"] == "ghost_legacy_1"), None)
+        assert row is not None
+        assert row["name"] == "Legacy Player"
+        assert row["has_hub_profile"] is False
+
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT sport FROM profile_club_elo WHERE profile_id = ? AND club_id = ?",
+                ("ghost_legacy_1", club["id"]),
+            ).fetchall()
+        assert {r["sport"] for r in rows} == {"padel", "tennis"}
+
+    def test_search_candidates_returns_club_past_participants_only(self, client, auth_headers) -> None:
+        """Club candidate search includes only past participants from that club's community."""
+        comm_a = _create_community(client, auth_headers, name="Club A")
+        comm_b = _create_community(client, auth_headers, name="Club B")
+        club_a = _create_club(client, auth_headers, comm_a["id"], name="Club A")
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO tournaments (id, name, type, owner, tournament_blob, sport, community_id) VALUES (?, ?, 'mexicano', 'admin', X'80', 'padel', ?)",
+                ("t_club_a", "A Tourney", comm_a["id"]),
+            )
+            conn.execute(
+                "INSERT INTO tournaments (id, name, type, owner, tournament_blob, sport, community_id) VALUES (?, ?, 'mexicano', 'admin', X'80', 'padel', ?)",
+                ("t_club_b", "B Tourney", comm_b["id"]),
+            )
+            conn.execute(
+                "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, email, contact) VALUES (?, ?, ?, ?, ?, '', '')",
+                ("t_club_a", "past_a_1", "Past A Player", "pp-a-1", "tok-a-1"),
+            )
+            conn.execute(
+                "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, email, contact) VALUES (?, ?, ?, ?, ?, '', '')",
+                ("t_club_b", "past_b_1", "Past B Player", "pp-b-1", "tok-b-1"),
+            )
+
+        res = client.get(
+            f"/api/clubs/{club_a['id']}/players/candidates?q=Past",
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        rows = res.json()
+        ids = {r.get("past_player_id") for r in rows if r.get("past_player_id")}
+        assert "past_a_1" in ids
+        assert "past_b_1" not in ids
+
+    def test_add_past_participant_creates_ghost_profile_membership(self, client, auth_headers) -> None:
+        """Adding by past_player_id creates a ghost profile and stores it in club players."""
+        comm = _create_community(client, auth_headers, name="Club Ghost")
+        club = _create_club(client, auth_headers, comm["id"], name="Club Ghost")
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO tournaments (id, name, type, owner, tournament_blob, sport, community_id) VALUES (?, ?, 'mexicano', 'admin', X'80', 'padel', ?)",
+                ("t_ghost_seed", "Ghost Seed", comm["id"]),
+            )
+            conn.execute(
+                "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, email, contact) VALUES (?, ?, ?, ?, ?, '', '')",
+                ("t_ghost_seed", "past_ghost_1", "Ghost Club Player", "pp-g-1", "tok-g-1"),
+            )
+
+        add_res = client.post(
+            f"/api/clubs/{club['id']}/players",
+            json={"past_player_id": "past_ghost_1"},
+            headers=auth_headers,
+        )
+        assert add_res.status_code == 201
+        added = add_res.json()
+        assert added["profile_id"] == "ghost_past_ghost_1"
+        assert added["has_hub_profile"] is False
+
+        with get_db() as conn:
+            profile = conn.execute(
+                "SELECT is_ghost FROM player_profiles WHERE id = ?",
+                ("ghost_past_ghost_1",),
+            ).fetchone()
+            rows = conn.execute(
+                "SELECT sport FROM profile_club_elo WHERE profile_id = ? AND club_id = ?",
+                ("ghost_past_ghost_1", club["id"]),
+            ).fetchall()
+        assert profile is not None
+        assert profile["is_ghost"] == 1
+        assert {r["sport"] for r in rows} == {"padel", "tennis"}
+
+        list_res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        assert list_res.status_code == 200
+        row = next((p for p in list_res.json() if p["profile_id"] == "ghost_past_ghost_1"), None)
+        assert row is not None
+        assert row["has_hub_profile"] is False
+
+
+class TestClubPlayerManagement:
+    """Tests for adding, removing and listing players in a club."""
+
+    def _make_profile(self, conn, profile_id: str = "prof_new") -> None:
+        conn.execute(
+            "INSERT INTO player_profiles (id, name, email, passphrase, created_at) VALUES (?, ?, ?, ?, ?)",
+            (profile_id, "New Player", "new@example.com", "phrase", "2024-01-01T00:00:00+00:00"),
+        )
+
+    def test_add_nonexistent_player_returns_404(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.post(
+            f"/api/clubs/{club['id']}/players",
+            json={"profile_id": "does_not_exist"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 404
+
+    def test_remove_player_deletes_elo_rows(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            self._make_profile(conn)
+        client.post(f"/api/clubs/{club['id']}/players", json={"profile_id": "prof_new"}, headers=auth_headers)
+        res = client.delete(f"/api/clubs/{club['id']}/players/prof_new", headers=auth_headers)
+        assert res.status_code == 200
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT 1 FROM profile_club_elo WHERE profile_id = 'prof_new' AND club_id = ?",
+                (club["id"],),
+            ).fetchall()
+        assert rows == []
+
+    def test_zero_match_players_appear_in_list(self, client, auth_headers) -> None:
+        """Players with 0 matches must be visible in the club player list."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            self._make_profile(conn)
+        client.post(f"/api/clubs/{club['id']}/players", json={"profile_id": "prof_new"}, headers=auth_headers)
+        res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        assert res.status_code == 200
+        ids = [p["profile_id"] for p in res.json()]
+        assert "prof_new" in ids
+
+
+class TestClubMessaging:
+    """Tests for lobby invite and announcement messaging routes."""
+
+    def _seed_profile(self, conn, profile_id: str, name: str, email: str | None) -> None:
+        conn.execute(
+            "INSERT INTO player_profiles (id, name, email, passphrase, created_at) VALUES (?, ?, ?, ?, ?)",
+            (profile_id, name, email, f"phrase-{profile_id}", "2024-01-01T00:00:00+00:00"),
+        )
+
+    def _seed_club_membership(self, conn, profile_id: str, club_id: str) -> None:
+        conn.execute(
+            "INSERT INTO profile_club_elo (profile_id, club_id, sport, elo, matches) VALUES (?, ?, ?, ?, ?)",
+            (profile_id, club_id, "padel", 1000.0, 0),
+        )
+
+    def _create_registration(self, client, headers: dict, community_id: str) -> dict:
+        res = client.post(
+            "/api/registrations",
+            json={"name": "Summer League", "sport": "padel", "community_id": community_id},
+            headers=headers,
+        )
+        assert res.status_code == 200
+        return res.json()
+
+    # ── Lobby invite ────────────────────────────────────────────────────────
+
+    def test_lobby_invite_sends_emails_and_reports_result(
+        self, client, auth_headers, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        reg = self._create_registration(client, auth_headers, comm["id"])
+
+        sent_to: list[str] = []
+
+        def _capture(to_addr: str, *_args, **_kwargs) -> None:
+            sent_to.append(to_addr)
+
+        monkeypatch.setattr("backend.api.routes_clubs.send_email_background", _capture)
+
+        with get_db() as conn:
+            self._seed_profile(conn, "msg_ok", "Player OK", "ok@example.com")
+            self._seed_profile(conn, "msg_no_email", "No Email", "invalid-email")
+            self._seed_profile(conn, "msg_outside", "Outside", "outside@example.com")
+            self._seed_club_membership(conn, "msg_ok", club["id"])
+            self._seed_club_membership(conn, "msg_no_email", club["id"])
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/invite-lobby",
+            json={"profile_ids": ["msg_ok", "msg_no_email", "msg_outside"], "registration_id": reg["id"]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["requested"] == 3
+        assert data["sent"] == 1
+        assert len(data["failed"]) == 2
+        reasons = {f["profile_id"]: f["reason"] for f in data["failed"]}
+        assert "email" in reasons["msg_no_email"].lower()
+        assert reasons["msg_outside"] == "Player not found in this club"
+        assert sent_to == ["ok@example.com"]
+
+    def test_lobby_invite_rejects_wrong_community(self, client, auth_headers, monkeypatch: pytest.MonkeyPatch) -> None:
+        comm1 = _create_community(client, auth_headers, name="Community 1")
+        comm2 = _create_community(client, auth_headers, name="Community 2")
+        club = _create_club(client, auth_headers, comm1["id"])
+        reg_other = self._create_registration(client, auth_headers, comm2["id"])
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/invite-lobby",
+            json={"profile_ids": ["some_profile"], "registration_id": reg_other["id"]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 422
+
+    def test_lobby_invite_missing_registration_returns_404(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/invite-lobby",
+            json={"profile_ids": ["some_profile"], "registration_id": "reg_doesnotexist"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 404
+
+    # ── Announcement ────────────────────────────────────────────────────────
+
+    def test_announce_sends_emails_and_reports_result(
+        self, client, auth_headers, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+
+        sent_calls: list[tuple[str, str]] = []  # (to, subject)
+
+        def _capture(to_addr: str, subject: str, *_args, **_kwargs) -> None:
+            sent_calls.append((to_addr, subject))
+
+        monkeypatch.setattr("backend.api.routes_clubs.send_email_background", _capture)
+
+        with get_db() as conn:
+            self._seed_profile(conn, "ann_ok", "Anna", "anna@example.com")
+            self._seed_profile(conn, "ann_no_email", "Bob", "")
+            self._seed_club_membership(conn, "ann_ok", club["id"])
+            self._seed_club_membership(conn, "ann_no_email", club["id"])
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/announce",
+            json={"profile_ids": ["ann_ok", "ann_no_email"], "subject": "Club news", "message": "See you Friday!"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["sent"] == 1
+        assert len(data["failed"]) == 1
+        assert sent_calls == [("anna@example.com", "Club news")]
+
+    def test_announce_non_editor_forbidden(self, client, auth_headers, bob_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/announce",
+            json={"profile_ids": ["some_profile"], "subject": "Hi", "message": "Hello"},
+            headers=bob_headers,
+        )
+        assert res.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Email settings (Block E)
+# ---------------------------------------------------------------------------
+
+
+class TestClubEmailSettings:
+    """Tests for GET/PATCH of club email settings."""
+
+    def test_save_email_settings(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.patch(
+            f"/api/clubs/{club['id']}/email-settings",
+            json={"reply_to": "club@example.com", "sender_name": "My Club"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["reply_to"] == "club@example.com"
+
+    def test_email_settings_persisted_in_club_detail(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        client.patch(
+            f"/api/clubs/{club['id']}/email-settings",
+            json={"reply_to": "club@example.com", "sender_name": "My Club"},
+            headers=auth_headers,
+        )
+        res = client.get(f"/api/clubs/{club['id']}", headers=auth_headers)
+        assert res.status_code == 200
+        settings = res.json()["email_settings"]
+        assert settings["reply_to"] == "club@example.com"
+        assert settings["sender_name"] == "My Club"
+
+    def test_editor_can_save_email_settings(self, client, auth_headers, alice_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        client.post(f"/api/clubs/{club['id']}/collaborators", json={"username": "alice"}, headers=auth_headers)
+        res = client.patch(
+            f"/api/clubs/{club['id']}/email-settings",
+            json={"reply_to": "alice@example.com", "sender_name": "Alice"},
+            headers=alice_headers,
+        )
+        assert res.status_code == 200
+
+    def test_non_editor_cannot_save_email_settings(self, client, auth_headers, bob_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.patch(
+            f"/api/clubs/{club['id']}/email-settings",
+            json={"reply_to": "bob@example.com", "sender_name": "Bob"},
+            headers=bob_headers,
+        )
+        assert res.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Multi-club community (new model)
+# ---------------------------------------------------------------------------
+
+
+class TestMultiClubCommunity:
+    """Verify that multiple clubs can exist in one community with independent ELO."""
+
+    def test_two_clubs_in_same_community(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers, name="City")
+        club1 = _create_club(client, auth_headers, comm["id"], name="North Club")
+        club2 = _create_club(client, auth_headers, comm["id"], name="South Club")
+        assert club1["id"] != club2["id"]
+        assert club1["community_id"] == comm["id"]
+        assert club2["community_id"] == comm["id"]
+
+    def test_list_clubs_shows_all_clubs_in_community(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers, name="City")
+        _create_club(client, auth_headers, comm["id"], name="Club 1")
+        _create_club(client, auth_headers, comm["id"], name="Club 2")
+        res = client.get("/api/clubs", headers=auth_headers)
+        assert res.status_code == 200
+        clubs = [c for c in res.json() if c["community_id"] == comm["id"]]
+        assert len(clubs) == 2
+
+    def test_player_elo_independent_per_club(self, client, auth_headers) -> None:
+        """Same player in two clubs has independent ELO in each club."""
+        comm = _create_community(client, auth_headers, name="City")
+        club1 = _create_club(client, auth_headers, comm["id"], name="Club 1")
+        club2 = _create_club(client, auth_headers, comm["id"], name="Club 2")
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO player_profiles (id, name, email, passphrase, created_at) VALUES (?, ?, ?, ?, ?)",
+                ("prof_multi", "Multi Player", "multi@example.com", "multiphrase", "2024-01-01T00:00:00+00:00"),
+            )
+        client.post(f"/api/clubs/{club1['id']}/players", json={"profile_id": "prof_multi"}, headers=auth_headers)
+        client.post(f"/api/clubs/{club2['id']}/players", json={"profile_id": "prof_multi"}, headers=auth_headers)
+        # Set different ELOs in each club
+        client.patch(
+            f"/api/clubs/{club1['id']}/players/prof_multi/elo",
+            json={"sport": "padel", "elo": 1300.0},
+            headers=auth_headers,
+        )
+        client.patch(
+            f"/api/clubs/{club2['id']}/players/prof_multi/elo",
+            json={"sport": "padel", "elo": 1700.0},
+            headers=auth_headers,
+        )
+        players1 = client.get(f"/api/clubs/{club1['id']}/players", headers=auth_headers).json()
+        players2 = client.get(f"/api/clubs/{club2['id']}/players", headers=auth_headers).json()
+        p1 = next(p for p in players1 if p["profile_id"] == "prof_multi")
+        p2 = next(p for p in players2 if p["profile_id"] == "prof_multi")
+        assert p1["elo_padel"] == 1300.0
+        assert p2["elo_padel"] == 1700.0
+
+    def test_removing_from_one_club_does_not_affect_other(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers, name="City")
+        club1 = _create_club(client, auth_headers, comm["id"], name="Club 1")
+        club2 = _create_club(client, auth_headers, comm["id"], name="Club 2")
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO player_profiles (id, name, email, passphrase, created_at) VALUES (?, ?, ?, ?, ?)",
+                ("prof_two", "Two Club Player", "two@example.com", "twophrase", "2024-01-01T00:00:00+00:00"),
+            )
+        client.post(f"/api/clubs/{club1['id']}/players", json={"profile_id": "prof_two"}, headers=auth_headers)
+        client.post(f"/api/clubs/{club2['id']}/players", json={"profile_id": "prof_two"}, headers=auth_headers)
+        # Remove from club1 only
+        client.delete(f"/api/clubs/{club1['id']}/players/prof_two", headers=auth_headers)
+        # Player should still be in club2
+        players2 = client.get(f"/api/clubs/{club2['id']}/players", headers=auth_headers).json()
+        assert any(p["profile_id"] == "prof_two" for p in players2)
+        # And absent from club1
+        players1 = client.get(f"/api/clubs/{club1['id']}/players", headers=auth_headers).json()
+        assert not any(p["profile_id"] == "prof_two" for p in players1)
+
+    def test_club_names_independent_from_community(self, client, auth_headers) -> None:
+        """Club names do not overwrite the parent community name."""
+        comm = _create_community(client, auth_headers, name="City Community")
+        _create_club(client, auth_headers, comm["id"], name="Club Alpha")
+        res = client.get(f"/api/communities/{comm['id']}", headers=auth_headers)
+        assert res.json()["name"] == "City Community"

@@ -7,6 +7,8 @@
 const AUTH_TOKEN_KEY = 'padel-auth-token';
 const AUTH_USERNAME_KEY = 'padel-auth-username';
 const AUTH_ROLE_KEY = 'padel-auth-role';
+const AUTH_DEFAULT_COMMUNITY_KEY = 'padel-auth-default-community';
+const AUTH_CAN_CREATE_CLUBS_KEY = 'padel-auth-can-create-clubs';
 
 function _persistAuthValue(key, value) {
   try {
@@ -107,6 +109,24 @@ function clearAuth() {
   _removeAuthValue(AUTH_TOKEN_KEY);
   _removeAuthValue(AUTH_USERNAME_KEY);
   _removeAuthValue(AUTH_ROLE_KEY);
+  _removeAuthValue(AUTH_DEFAULT_COMMUNITY_KEY);
+  _removeAuthValue(AUTH_CAN_CREATE_CLUBS_KEY);
+}
+
+/**
+ * Get the current user's default community ID.
+ * @returns {string}
+ */
+function getAuthDefaultCommunity() {
+  return _readAuthValue(AUTH_DEFAULT_COMMUNITY_KEY) || 'open';
+}
+
+/**
+ * Return whether current user can create clubs.
+ * @returns {boolean}
+ */
+function canCreateClubs() {
+  return (_readAuthValue(AUTH_CAN_CREATE_CLUBS_KEY) || '1') === '1';
 }
 
 // ── Login / Logout ────────────────────────────────────────
@@ -132,6 +152,19 @@ async function login(username, password) {
 
     const data = await res.json();
     _saveAuthToken(data.access_token, data.username, data.role);
+    // Fetch full user profile to cache default_community_id
+    try {
+      const meRes = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+      if (meRes.ok) {
+        const me = await meRes.json();
+        if (me.default_community_id) {
+          _persistAuthValue(AUTH_DEFAULT_COMMUNITY_KEY, me.default_community_id);
+        }
+        _persistAuthValue(AUTH_CAN_CREATE_CLUBS_KEY, me.can_create_clubs ? '1' : '0');
+      }
+    } catch (_) {}
     return { success: true, username: data.username };
   } catch (e) {
     return { success: false, error: e.message || t('txt_txt_network_error') };
@@ -301,10 +334,12 @@ function updateAuthUI() {
       const adminBtn = isAdmin()
         ? `<button class="btn btn-sm" onclick="setActiveTab('players-hub')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_nav_player_space')}">🎾</button>`
           + `<button class="btn btn-sm" onclick="setActiveTab('user-mgmt')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_user_management')}">👥</button>`
+          + `<button class="btn btn-sm" onclick="setActiveTab('communities')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="Communities">🏘️</button>`
         : '';
+      const clubsBtn = `<button class="btn btn-sm" onclick="setActiveTab('clubs')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_clubs_title')}">🏟️</button>`;
       const changePwdBtn = `<button class="btn btn-sm" onclick="showChangePasswordDialog()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_change_password')}">🔑</button>`;
       authStatus.innerHTML = `
-        ${adminBtn}${changePwdBtn}<strong style="margin-right:0.5rem">${esc(username)}</strong>
+        ${adminBtn}${clubsBtn}${changePwdBtn}<strong style="margin-right:0.5rem">${esc(username)}</strong>
         <button class="btn btn-sm" onclick="logout()" style="padding:0.3rem 0.6rem">${t('txt_txt_logout')}</button>
       `;
     } else {
@@ -333,6 +368,29 @@ function hideUserMgmt() {
 
 /** Full user list, kept in memory so filtering is instant. */
 let _allUsers = [];
+/** Community list for user settings assignment. */
+let _allUserMgmtCommunities = [];
+
+function _userSettingsRowId(username) {
+  return `user-settings-${username.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+}
+
+function _communityOptions(selectedId) {
+  return _allUserMgmtCommunities.map(c => {
+    const label = c.is_builtin ? t('txt_comm_global_default') : c.name;
+    const selected = c.id === selectedId ? ' selected' : '';
+    return `<option value="${escAttr(c.id)}"${selected}>${esc(label)}</option>`;
+  }).join('');
+}
+
+function _populateCreateUserCommunitySelect() {
+  const select = document.getElementById('new-user-default-community');
+  if (!select) return;
+  select.innerHTML = _communityOptions('open');
+  if ([...select.options].some(o => o.value === 'open')) {
+    select.value = 'open';
+  }
+}
 
 /**
  * Fetch and render the user list in the management modal.
@@ -347,7 +405,13 @@ async function loadUserMgmtList() {
   }
   list.innerHTML = `<li style="opacity:.5">${t('txt_txt_loading')}</li>`;
   try {
-    _allUsers = await apiAuth('/api/auth/users');
+    const [users, communities] = await Promise.all([
+      apiAuth('/api/auth/users'),
+      apiAuth('/api/communities').catch(() => []),
+    ]);
+    _allUsers = users;
+    _allUserMgmtCommunities = communities;
+    _populateCreateUserCommunitySelect();
     const search = document.getElementById('user-mgmt-search');
     filterUserMgmtList(search ? search.value : '');
   } catch (e) {
@@ -355,27 +419,105 @@ async function loadUserMgmtList() {
   }
 }
 
+let _userMgmtRoleFilter = 'all';
+
 /**
- * Re-render the user list filtered by the given query.
+ * Set the active role filter tab and re-render the user list.
+ * @param {string} role - 'all' | 'admin' | 'user'
+ */
+function setUserMgmtRoleFilter(role) {
+  _userMgmtRoleFilter = role;
+  ['all', 'admin', 'user'].forEach(r => {
+    document.getElementById(`umgmt-tab-${r}`)?.classList.toggle('active', r === role);
+  });
+  const search = document.getElementById('user-mgmt-search');
+  filterUserMgmtList(search ? search.value : '');
+}
+
+/**
+ * Re-render the user list filtered by the given query and the active role tab.
  * @param {string} query
  */
 function filterUserMgmtList(query) {
   const list = document.getElementById('user-mgmt-list');
   if (!list) return;
   const q = query.trim().toLowerCase();
-  const users = q ? _allUsers.filter(u => u.username.toLowerCase().includes(q) || u.role.toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)) : _allUsers;
+  const self = getAuthUsername();
+  let users = [..._allUsers];
+  if (q) users = users.filter(u => u.username.toLowerCase().includes(q) || u.role.toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q));
+  if (_userMgmtRoleFilter !== 'all') {
+    users = users.filter(u => u.role === _userMgmtRoleFilter);
+  }
   if (!users.length) {
-    list.innerHTML = `<li style="opacity:.5">${t('txt_txt_no_users_found')}</li>`;
+    list.innerHTML = `<li class="umgmt-row umgmt-row--empty"><span>${t('txt_txt_no_users_found')}</span></li>`;
     return;
   }
   list.innerHTML = users.map(u => `
-    <li style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0">
-      <span style="flex:1"><strong>${esc(u.username)}</strong>
-        <span style="font-size:0.8em;opacity:.7;margin-left:0.4rem">${esc(u.role)}</span>
-        ${u.email ? `<span style="font-size:0.78em;color:var(--text-muted);margin-left:0.4rem">${esc(u.email)}</span>` : ''}
-      </span>
-      ${u.username !== getAuthUsername() ? `<button class="btn btn-sm" onclick="showChangePasswordDialog('${esc(u.username)}')" style="padding:0.2rem 0.55rem" title="${t('txt_txt_change_password')}">🔑</button><button class="btn btn-sm btn-danger" onclick="deleteUserWithConfirm('${esc(u.username)}')" style="padding:0.2rem 0.55rem">🗑</button>` : `<span style="font-size:0.7rem;color:var(--text-muted);padding:0.15rem 0.45rem;border:1px solid var(--border);border-radius:4px;white-space:nowrap" title="${t('txt_txt_protected')}">🔒</span>`}
+    <li class="umgmt-row">
+      <div class="umgmt-col-identity">
+        <span class="umgmt-username">
+          <strong>${esc(u.username)}</strong>
+          <span class="umgmt-role-badge umgmt-role-badge--${esc(u.role)}">${esc(u.role)}</span>
+        </span>
+        ${u.email ? `<span class="umgmt-email">${esc(u.email)}</span>` : ''}
+      </div>
+      <div class="umgmt-col-community">
+        ${u.username !== 'admin'
+          ? `<select id="${_userSettingsRowId(u.username)}-community" class="umgmt-community-select">
+          ${_communityOptions(u.default_community_id || 'open')}
+        </select>`
+          : ''}
+      </div>
+      ${u.username !== 'admin' && u.role !== 'admin'
+          ? `<label class="umgmt-col-clubs">
+        <input id="${_userSettingsRowId(u.username)}-can-create-clubs" type="checkbox" ${u.can_create_clubs ? 'checked' : ''}>
+        <span>${t('txt_txt_allow_club_creation')}</span>
+      </label>`
+          : `<div class="umgmt-col-clubs"></div>`}
+      <div class="umgmt-col-save">
+        ${u.username !== 'admin'
+          ? `<button class="btn btn-sm" onclick="saveUserSettings('${esc(u.username)}')">${t('txt_txt_save')}</button>
+        <span id="${_userSettingsRowId(u.username)}-msg" class="umgmt-save-msg"></span>`
+          : ''}
+      </div>
+      <div class="umgmt-col-actions">
+        ${u.username !== self
+          ? `<button class="btn btn-sm" onclick="showChangePasswordDialog('${esc(u.username)}')" title="${t('txt_txt_change_password')}">🔑</button><button class="btn btn-sm btn-danger" onclick="deleteUserWithConfirm('${esc(u.username)}')">🗑</button>`
+          : `<span class="umgmt-self-badge" title="${t('txt_txt_protected')}">🔒</span>`}
+      </div>
     </li>`).join('');
+}
+
+/**
+ * Save admin-managed settings for one user.
+ * @param {string} username
+ */
+async function saveUserSettings(username) {
+  const rowId = _userSettingsRowId(username);
+  const communitySel = document.getElementById(`${rowId}-community`);
+  const canCreateClubsEl = document.getElementById(`${rowId}-can-create-clubs`);
+  const msgEl = document.getElementById(`${rowId}-msg`);
+  if (!communitySel || !msgEl) return;
+  msgEl.style.color = 'var(--text-muted)';
+  msgEl.textContent = '...';
+  const user = _allUsers.find(u => u.username === username);
+  const payload = { default_community_id: communitySel.value };
+  if (canCreateClubsEl) payload.can_create_clubs = canCreateClubsEl.checked;
+  try {
+    const updated = await apiAuth(`/api/auth/users/${encodeURIComponent(username)}/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const ix = _allUsers.findIndex(u => u.username === username);
+    if (ix >= 0) _allUsers[ix] = updated;
+    msgEl.style.color = 'var(--green)';
+    msgEl.textContent = `✓ ${t('txt_txt_saved')}`;
+    setTimeout(() => { if (msgEl) msgEl.textContent = ''; }, 1800);
+  } catch (e) {
+    msgEl.style.color = 'var(--red)';
+    msgEl.textContent = e.message;
+  }
 }
 
 /**
@@ -388,6 +530,8 @@ async function handleCreateUser(event) {
   const username = document.getElementById('new-user-username').value.trim();
   const password = document.getElementById('new-user-password').value;
   const email = document.getElementById('new-user-email')?.value.trim() || '';
+  const defaultCommunity = document.getElementById('new-user-default-community')?.value || 'open';
+  const canCreateClubs = !!document.getElementById('new-user-can-create-clubs')?.checked;
   const roleRadio = document.querySelector('input[name="new-user-role"]:checked');
   const role = roleRadio ? roleRadio.value : 'user';
   if (!username || !password) {
@@ -398,13 +542,24 @@ async function handleCreateUser(event) {
     await apiAuth('/api/auth/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, role, email: email || null }),
+      body: JSON.stringify({
+        username,
+        password,
+        role,
+        email: email || null,
+        default_community_id: defaultCommunity,
+        can_create_clubs: canCreateClubs,
+      }),
     });
     if (errDiv) errDiv.textContent = '';
     document.getElementById('new-user-username').value = '';
     document.getElementById('new-user-password').value = '';
     const emailInput = document.getElementById('new-user-email');
     if (emailInput) emailInput.value = '';
+    const defaultCommunitySelect = document.getElementById('new-user-default-community');
+    if (defaultCommunitySelect) defaultCommunitySelect.value = 'open';
+    const canCreateClubsInput = document.getElementById('new-user-can-create-clubs');
+    if (canCreateClubsInput) canCreateClubsInput.checked = true;
     const userRadio = document.querySelector('input[name="new-user-role"][value="user"]');
     if (userRadio) userRadio.checked = true;
     const successDiv = document.getElementById('user-mgmt-success');

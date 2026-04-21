@@ -92,8 +92,12 @@ def _store_tournament(
     public: bool,
     sport: str,
     assign_courts: bool,
+    community_id: str = "open",
+    season_id: str | None = None,
 ) -> None:
     """Insert a tournament into the in-memory store and persist to DB."""
+    from datetime import datetime, timezone  # noqa: PLC0415
+
     _tournaments[tid] = {
         "name": name,
         "type": tournament_type,
@@ -102,6 +106,9 @@ def _store_tournament(
         "public": public,
         "sport": sport,
         "assign_courts": assign_courts,
+        "community_id": community_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "season_id": season_id,
     }
     _save_tournament(tid)
 
