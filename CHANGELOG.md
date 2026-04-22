@@ -1,3 +1,9 @@
+## v1.9.1 (2026-04-22)
+
+### Fix
+
+- **profiles**: fixes for ghost profiles; frontend
+
 ## v1.9.0 (2026-04-21)
 
 ### Feat
