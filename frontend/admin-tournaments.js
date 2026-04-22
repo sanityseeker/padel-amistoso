@@ -23,12 +23,14 @@ function _phaseLabel(phase) {
 async function loadTournaments() {
   try {
     const registrationsPath = '/api/registrations?include_archived=1';
-    const [list, regList, commList] = await Promise.all([
+    const [list, regList, commList, clubsList] = await Promise.all([
       api('/api/tournaments'),
       isAuthenticated() ? api(registrationsPath).catch(() => []) : Promise.resolve([]),
       isAuthenticated() ? api('/api/communities').catch(() => []) : Promise.resolve([]),
+      isAuthenticated() ? api('/api/clubs').catch(() => []) : Promise.resolve([]),
     ]);
     _adminCommunities = commList;
+    _adminClubs = clubsList;
     const nonArchivedRegList = regList.filter(r => !r.archived);
     const archivedRegList = regList.filter(r => r.archived);
     const visibleArchivedRegList = _showArchivedRegistrations ? archivedRegList : [];
@@ -208,6 +210,7 @@ let currentTid = null, currentType = null;
 let currentTournamentName = null;
 let _tournamentMeta = {};
 let _adminCommunities = [];  // cached communities list for badge display in tournament cards
+let _adminClubs = [];         // cached clubs list for club-attachment control in TV panel
 let _openTournaments = [];  // [{id, type, name}] for quick-switch chips
 let _totalPts = 0;  // set per Mexicano tournament for auto-fill
 let _gpScoreMode = { 'gp-group': 'points', 'gp-playoff': 'points', 'mex-playoff': 'points', 'po-playoff': 'points' };

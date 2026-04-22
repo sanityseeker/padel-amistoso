@@ -1902,6 +1902,24 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
     if participant_row is None:
         raise HTTPException(401, "Passphrase not recognised — join a tournament or registration lobby first")
 
+    # Guard: if this participation passphrase is already linked to a real (non-ghost)
+    # Hub profile, prevent creating a duplicate.  Instruct the player to log in
+    # with their existing profile passphrase or recover it by email instead.
+    with get_db() as conn:
+        linked_row = conn.execute(
+            """SELECT pp.id FROM player_secrets ps
+               JOIN player_profiles pp ON pp.id = ps.profile_id
+               WHERE ps.passphrase = ? AND ps.profile_id IS NOT NULL AND pp.is_ghost = 0
+               LIMIT 1""",
+            (clean_passphrase,),
+        ).fetchone()
+    if linked_row:
+        raise HTTPException(
+            409,
+            "This participation is already linked to a Player Hub profile. "
+            "Log in with your profile passphrase, or recover it via the email recovery option.",
+        )
+
     clean_email = req.email.strip()
     if not is_valid_email(clean_email):
         raise HTTPException(422, "A valid email address is required")

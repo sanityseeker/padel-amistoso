@@ -4076,6 +4076,9 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   grid-template-columns: 1fr 1fr;
   gap: 0.6rem;
 }
+.umgmt-form-grid--community {
+  grid-template-columns: 1fr auto;
+}
 .umgmt-form-group {
   margin-bottom: 0.6rem;
 }
@@ -4156,7 +4159,8 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   .umgmt-cards-grid {
     grid-template-columns: 1fr;
   }
-  .umgmt-form-grid {
+  .umgmt-form-grid,
+  .umgmt-form-grid--community {
     grid-template-columns: 1fr;
   }
   .umgmt-role-options label {

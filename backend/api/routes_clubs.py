@@ -11,7 +11,7 @@ from __future__ import annotations
 import io
 import json
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -20,12 +20,14 @@ from pydantic import BaseModel, Field
 
 from ..auth.deps import get_current_user
 from ..auth.models import User, UserRole
+from ..auth.security import create_profile_email_verify_token, create_profile_token
 from ..auth.store import user_store
 from ..config import DATA_DIR
 from ..email import (
     is_valid_email,
     render_club_announcement_email,
     render_club_lobby_invite_email,
+    render_player_space_welcome,
     send_email_background,
 )
 from .db import (
@@ -35,8 +37,10 @@ from .db import (
     get_shared_club_ids,
     remove_club_co_editor,
 )
+from .elo_store import consolidate_ghost_elos, retroactive_transfer_elo
 from .routes_communities import DEFAULT_COMMUNITY_ID
-from .schemas import AddCollaboratorRequest, CollaboratorListResponse
+from .schemas import AddCollaboratorRequest, CollaboratorListResponse, EmailLang
+from ..tournaments.player_secrets import generate_passphrase
 
 router = APIRouter(prefix="/api/clubs", tags=["clubs"])
 
@@ -286,12 +290,26 @@ def _find_community_participant(conn, community_id: str, past_player_id: str) ->
     return dict(row) if row is not None else None
 
 
-def _upsert_default_club_player_rows(conn, profile_id: str, club_id: str, community_id: str) -> None:
+def _upsert_default_club_player_rows(
+    conn,
+    profile_id: str,
+    club_id: str,
+    community_id: str,
+    *,
+    is_ghost_insert: bool = False,
+) -> None:
     """Ensure both sport rows exist in ``profile_club_elo`` for a profile + club.
 
     New rows inherit values from ``profile_community_elo`` when available,
     otherwise they default to 1000 ELO and 0 matches.
+
+    Args:
+        is_ghost_insert: When True the newly inserted row is created with
+            ``hidden = 1`` so ghost profiles are hidden from the main roster
+            by default.  The ``hidden`` flag is never touched on conflict
+            (an organiser who explicitly un-hid a row keeps it visible).
     """
+    hidden_on_insert = 1 if is_ghost_insert else 0
     for sport in ("padel", "tennis"):
         community_row = conn.execute(
             """
@@ -305,16 +323,23 @@ def _upsert_default_club_player_rows(conn, profile_id: str, club_id: str, commun
         matches = int(community_row["matches"]) if community_row is not None else 0
         conn.execute(
             """
-            INSERT OR IGNORE INTO profile_club_elo
-                (profile_id, club_id, sport, elo, matches)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (profile_id, club_id, sport) DO UPDATE SET
+                elo = CASE WHEN matches = 0 AND excluded.matches > 0 THEN excluded.elo ELSE elo END,
+                matches = CASE WHEN matches = 0 AND excluded.matches > 0 THEN excluded.matches ELSE matches END
             """,
-            (profile_id, club_id, sport, elo, matches),
+            (profile_id, club_id, sport, elo, matches, hidden_on_insert),
         )
 
 
-def _sync_club_players_from_community(conn, club_id: str, community_id: str) -> None:
-    """Backfill club player rows from community-linked and past tournament players."""
+def _sync_club_players_from_community(conn, club_id: str, community_id: str) -> list[tuple[str, str]]:
+    """Backfill club player rows from community-linked and past tournament players.
+
+    Returns:
+        List of ``(profile_id, player_id)`` tuples for ghost profiles that need
+        a retroactive ELO transfer (either newly created or missing community ELO).
+    """
     # 1) Existing hub profiles known in this community.
     community_profiles = conn.execute(
         """
@@ -375,21 +400,45 @@ def _sync_club_players_from_community(conn, club_id: str, community_id: str) -> 
         """,
         (community_id, community_id),
     ).fetchall()
+
+    needs_elo_transfer: list[tuple[str, str]] = []
     for row in unlinked_player_ids:
-        profile = _get_or_create_ghost_profile_for_club_participant(conn, community_id, row["player_id"])
+        player_id = row["player_id"]
+        ghost_id = f"ghost_{player_id}"
+        profile, newly_created = _get_or_create_ghost_profile_for_club_participant(conn, community_id, player_id)
         if profile is None:
             continue
-        _upsert_default_club_player_rows(conn, profile["id"], club_id, community_id)
+        _upsert_default_club_player_rows(conn, profile["id"], club_id, community_id, is_ghost_insert=True)
+        if newly_created:
+            needs_elo_transfer.append((ghost_id, player_id))
+        else:
+            # For existing ghost profiles, check if community ELO is still missing/default.
+            elo_row = conn.execute(
+                "SELECT matches FROM profile_community_elo WHERE profile_id = ? AND community_id = ? AND sport = 'padel'",
+                (ghost_id, community_id),
+            ).fetchone()
+            if elo_row is None or elo_row["matches"] == 0:
+                needs_elo_transfer.append((ghost_id, player_id))
+
+    return needs_elo_transfer
 
 
-def _get_or_create_ghost_profile_for_club_participant(conn, community_id: str, past_player_id: str) -> dict | None:
-    """Get/create a ghost profile for a prior participant in this community."""
+def _get_or_create_ghost_profile_for_club_participant(
+    conn, community_id: str, past_player_id: str
+) -> tuple[dict | None, bool]:
+    """Get/create a ghost profile for a prior participant in this community.
+
+    Returns:
+        A tuple of (profile_dict_or_None, newly_created).  ``newly_created`` is
+        True when the profile row was inserted during this call (first time seen).
+    """
     participant = _find_community_participant(conn, community_id, past_player_id)
     if participant is None:
-        return None
+        return None, False
 
     ghost_id = f"ghost_{past_player_id}"
     profile = conn.execute("SELECT * FROM player_profiles WHERE id = ?", (ghost_id,)).fetchone()
+    newly_created = profile is None
     if profile is None:
         now = datetime.now(timezone.utc).isoformat()
         conn.execute(
@@ -422,7 +471,7 @@ def _get_or_create_ghost_profile_for_club_participant(conn, community_id: str, p
         """,
         (ghost_id, past_player_id, community_id),
     )
-    return dict(profile) if profile is not None else None
+    return dict(profile) if profile is not None else None, newly_created
 
 
 def _club_invite_settings(club: dict) -> tuple[str, str]:
@@ -442,10 +491,10 @@ def _load_registration(registration_id: str) -> dict | None:
 
 
 def _player_in_club(profile_id: str, club_id: str) -> bool:
-    """Return whether a profile has ELO rows in the given club."""
+    """Return whether a profile is visible (not hidden) in the given club."""
     with get_db() as conn:
         row = conn.execute(
-            "SELECT 1 FROM profile_club_elo WHERE profile_id = ? AND club_id = ? LIMIT 1",
+            "SELECT 1 FROM profile_club_elo WHERE profile_id = ? AND club_id = ? AND hidden = 0 LIMIT 1",
             (profile_id, club_id),
         ).fetchone()
     return row is not None
@@ -803,7 +852,18 @@ async def list_club_players(club_id: str, user: User = Depends(get_current_user)
     """List all players in the club with their club-local ELO and tier info."""
     club = _get_club(club_id)
     with get_db() as conn:
-        _sync_club_players_from_community(conn, club_id, club["community_id"])
+        needs_elo_transfer = _sync_club_players_from_community(conn, club_id, club["community_id"])
+
+    # Call retroactive ELO transfer for ghost profiles outside the transaction
+    # to avoid nested DB connections.  After transfer, re-sync club ELO rows.
+    if needs_elo_transfer:
+        for profile_id, player_id in needs_elo_transfer:
+            retroactive_transfer_elo(profile_id, player_id)
+        with get_db() as conn:
+            for profile_id, _ in needs_elo_transfer:
+                _upsert_default_club_player_rows(conn, profile_id, club_id, club["community_id"], is_ghost_insert=True)
+
+    with get_db() as conn:
         rows = conn.execute(
             """SELECT pce.profile_id, pce.sport, pce.elo, pce.matches, pce.tier_id,
                       pp.name AS player_name, pp.email AS player_email, pp.is_ghost AS player_is_ghost,
@@ -811,7 +871,7 @@ async def list_club_players(club_id: str, user: User = Depends(get_current_user)
                FROM profile_club_elo pce
                JOIN player_profiles pp ON pp.id = pce.profile_id
                LEFT JOIN club_tiers ct ON ct.id = pce.tier_id
-               WHERE pce.club_id = ?
+               WHERE pce.club_id = ? AND pce.hidden = 0 AND pp.is_ghost = 0
                ORDER BY pp.name""",
             (club_id,),
         ).fetchall()
@@ -854,6 +914,7 @@ async def add_player_to_club(club_id: str, req: ClubPlayerAdd, user: User = Depe
     if bool(req.profile_id) == bool(req.past_player_id):
         raise HTTPException(422, "Provide exactly one of profile_id or past_player_id")
 
+    ghost_player_id: str | None = None
     with get_db() as conn:
         profile = None
         profile_id = ""
@@ -864,11 +925,15 @@ async def add_player_to_club(club_id: str, req: ClubPlayerAdd, user: User = Depe
             profile_id = req.profile_id
         else:
             assert req.past_player_id is not None
-            profile_dict = _get_or_create_ghost_profile_for_club_participant(conn, community_id, req.past_player_id)
+            profile_dict, newly_created = _get_or_create_ghost_profile_for_club_participant(
+                conn, community_id, req.past_player_id
+            )
             if profile_dict is None:
                 raise HTTPException(404, "Past participant not found in this club community")
             profile = profile_dict
             profile_id = profile_dict["id"]
+            if newly_created:
+                ghost_player_id = req.past_player_id
 
         for sport in ("padel", "tennis"):
             conn.execute(
@@ -879,6 +944,20 @@ async def add_player_to_club(club_id: str, req: ClubPlayerAdd, user: User = Depe
                 """,
                 (profile_id, club_id, sport),
             )
+        # Ensure the row is visible in the main roster (un-hide if it was a
+        # ghost that had been auto-synced with hidden=1).
+        conn.execute(
+            "UPDATE profile_club_elo SET hidden = 0 WHERE profile_id = ? AND club_id = ?",
+            (profile_id, club_id),
+        )
+
+    # Transfer retroactive ELO outside the transaction for newly-created ghost profiles.
+    if ghost_player_id is not None:
+        retroactive_transfer_elo(profile_id, ghost_player_id)
+        with get_db() as conn:
+            _upsert_default_club_player_rows(conn, profile_id, club_id, community_id)
+
+    with get_db() as conn:
         rows = conn.execute(
             """
             SELECT pce.profile_id, pce.sport, pce.elo, pce.matches, pce.tier_id,
@@ -997,18 +1076,402 @@ async def search_club_player_candidates(
     return results
 
 
+class GhostDuplicateGroup(BaseModel):
+    """A group of ghost profiles in the club that share the same name."""
+
+    name: str
+    profiles: list[ClubPlayerOut]
+
+
+class ClubGhostConsolidateRequest(BaseModel):
+    """Request body for consolidating ghost profiles within a club."""
+
+    source_ids: list[str] = Field(min_length=2)
+    name: str | None = Field(default=None, max_length=128)
+
+
+@router.get("/{club_id}/players/possible-members", response_model=list[ClubPlayerOut])
+async def list_possible_members(
+    club_id: str,
+    user: User = Depends(get_current_user),
+) -> list[ClubPlayerOut]:
+    """Return ghost profiles linked to the club — past participants not yet on the roster.
+
+    These are players who participated in community tournaments under this club
+    and were auto-synced as ghost profiles.  They are hidden from the main
+    roster by default until explicitly added or converted.
+
+    Returns:
+        Flat list of ghost profiles ordered by name.
+    """
+    club = _get_club(club_id)
+    _require_club_editor(club, user)
+
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT pce.profile_id, pce.sport, pce.elo, pce.matches, pce.tier_id,
+                   pp.name AS player_name, pp.email AS player_email,
+                   ct.name AS tier_name
+              FROM profile_club_elo pce
+              JOIN player_profiles pp ON pp.id = pce.profile_id
+              LEFT JOIN club_tiers ct ON ct.id = pce.tier_id
+             WHERE pce.club_id = ? AND pp.is_ghost = 1 AND pce.hidden = 1
+             ORDER BY LOWER(pp.name), pp.name
+            """,
+            (club_id,),
+        ).fetchall()
+
+    players: dict[str, ClubPlayerOut] = {}
+    for r in rows:
+        pid = r["profile_id"]
+        if pid not in players:
+            players[pid] = ClubPlayerOut(
+                profile_id=pid,
+                name=r["player_name"],
+                email=r["player_email"],
+                has_hub_profile=False,
+            )
+        p = players[pid]
+        if r["sport"] == "padel":
+            p.elo_padel = round(r["elo"], 1)
+            p.matches_padel = r["matches"]
+            p.tier_id_padel = r["tier_id"]
+            p.tier_name_padel = r["tier_name"]
+        elif r["sport"] == "tennis":
+            p.elo_tennis = round(r["elo"], 1)
+            p.matches_tennis = r["matches"]
+            p.tier_id_tennis = r["tier_id"]
+            p.tier_name_tennis = r["tier_name"]
+
+    return list(players.values())
+
+
+@router.get("/{club_id}/players/ghost-duplicates", response_model=list[GhostDuplicateGroup])
+async def list_ghost_duplicates(
+    club_id: str,
+    user: User = Depends(get_current_user),
+) -> list[GhostDuplicateGroup]:
+    """Return groups of ghost profiles in the club that share the same name.
+
+    All ghost profiles linked to this club are considered, regardless of their
+    ``hidden`` status.  Each group in the result has ≥ 2 members and represents
+    a likely-duplicate set for the same real-world player.
+
+    Returns:
+        List of groups, each with a ``name`` and the ``profiles`` that
+        share it.  Empty when no duplicates exist.
+    """
+    club = _get_club(club_id)
+    _require_club_editor(club, user)
+
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT pce.profile_id, pce.sport, pce.elo, pce.matches, pce.tier_id,
+                   pp.name AS player_name, pp.email AS player_email,
+                   ct.name AS tier_name
+              FROM profile_club_elo pce
+              JOIN player_profiles pp ON pp.id = pce.profile_id
+              LEFT JOIN club_tiers ct ON ct.id = pce.tier_id
+             WHERE pce.club_id = ? AND pp.is_ghost = 1
+             ORDER BY LOWER(pp.name), pp.name
+            """,
+            (club_id,),
+        ).fetchall()
+
+    players: dict[str, ClubPlayerOut] = {}
+    for r in rows:
+        pid = r["profile_id"]
+        if pid not in players:
+            players[pid] = ClubPlayerOut(
+                profile_id=pid,
+                name=r["player_name"],
+                email=r["player_email"],
+                has_hub_profile=False,
+            )
+        p = players[pid]
+        if r["sport"] == "padel":
+            p.elo_padel = round(r["elo"], 1)
+            p.matches_padel = r["matches"]
+            p.tier_id_padel = r["tier_id"]
+            p.tier_name_padel = r["tier_name"]
+        elif r["sport"] == "tennis":
+            p.elo_tennis = round(r["elo"], 1)
+            p.matches_tennis = r["matches"]
+            p.tier_id_tennis = r["tier_id"]
+            p.tier_name_tennis = r["tier_name"]
+
+    name_groups: dict[str, list[ClubPlayerOut]] = {}
+    for p in players.values():
+        key = p.name.lower().strip()
+        name_groups.setdefault(key, []).append(p)
+
+    return [
+        GhostDuplicateGroup(name=group[0].name, profiles=group) for group in name_groups.values() if len(group) >= 2
+    ]
+
+
+@router.post("/{club_id}/players/consolidate-ghosts", response_model=ClubPlayerOut)
+async def consolidate_club_ghost_profiles(
+    club_id: str,
+    req: ClubGhostConsolidateRequest,
+    user: User = Depends(get_current_user),
+) -> ClubPlayerOut:
+    """Merge multiple ghost profiles into a single canonical profile within a club.
+
+    The first id in ``source_ids`` becomes the primary.  All participations,
+    history rows, and ELO data from secondary profiles are reassigned to the
+    primary, secondary profiles are deleted, and ELO is recalculated
+    chronologically so the merged profile reflects the correct current rating.
+
+    All profiles must be ghost profiles (``is_ghost = 1``).  After
+    consolidation the merged profile remains visible in the club.
+
+    Args:
+        req: ``source_ids`` (≥ 2 distinct ghost profile ids) and an optional
+            ``name`` to assign to the surviving profile.
+
+    Returns:
+        The updated primary profile as it appears in the club player list.
+
+    Raises:
+        HTTPException 404: One or more profiles not found.
+        HTTPException 422: Fewer than 2 distinct ids, or any profile is not
+            a ghost.
+    """
+    club = _get_club(club_id)
+    _require_club_editor(club, user)
+
+    unique_ids: list[str] = list(dict.fromkeys(req.source_ids))
+    if len(unique_ids) < 2:
+        raise HTTPException(422, "At least 2 distinct profile IDs are required")
+
+    primary_id = unique_ids[0]
+    secondary_ids = unique_ids[1:]
+
+    with get_db() as conn:
+        placeholders = ",".join("?" for _ in unique_ids)
+        profiles = conn.execute(
+            f"SELECT id, is_ghost FROM player_profiles WHERE id IN ({placeholders})",
+            unique_ids,
+        ).fetchall()
+
+        found_ids = {r["id"] for r in profiles}
+        missing = set(unique_ids) - found_ids
+        if missing:
+            raise HTTPException(404, f"Profiles not found: {', '.join(sorted(missing))}")
+
+        non_ghost = [r["id"] for r in profiles if not r["is_ghost"]]
+        if non_ghost:
+            raise HTTPException(
+                422,
+                f"Only ghost profiles can be consolidated. Non-ghost profiles: {', '.join(sorted(non_ghost))}",
+            )
+
+        if req.name:
+            conn.execute(
+                "UPDATE player_profiles SET name = ? WHERE id = ?",
+                (req.name.strip(), primary_id),
+            )
+
+        for secondary_id in secondary_ids:
+            conn.execute(
+                "UPDATE player_secrets SET profile_id = ? WHERE profile_id = ?",
+                (primary_id, secondary_id),
+            )
+            conn.execute(
+                """DELETE FROM player_history
+                   WHERE profile_id = ?
+                     AND entity_type = 'tournament'
+                     AND entity_id IN (
+                         SELECT entity_id FROM player_history
+                          WHERE profile_id = ? AND entity_type = 'tournament'
+                     )""",
+                (secondary_id, primary_id),
+            )
+            conn.execute(
+                "UPDATE player_history SET profile_id = ? WHERE profile_id = ?",
+                (primary_id, secondary_id),
+            )
+            conn.execute("DELETE FROM profile_community_elo WHERE profile_id = ?", (secondary_id,))
+            conn.execute("DELETE FROM profile_club_elo WHERE profile_id = ?", (secondary_id,))
+            conn.execute("DELETE FROM player_profiles WHERE id = ?", (secondary_id,))
+
+        all_player_ids = [
+            r["player_id"]
+            for r in conn.execute(
+                """
+                SELECT DISTINCT player_id FROM (
+                    SELECT player_id FROM player_secrets
+                     WHERE profile_id = ? AND player_id IS NOT NULL
+                    UNION
+                    SELECT player_id FROM player_history
+                     WHERE profile_id = ? AND entity_type = 'tournament'
+                       AND player_id IS NOT NULL
+                )
+                """,
+                (primary_id, primary_id),
+            ).fetchall()
+        ]
+
+    consolidate_ghost_elos(primary_id, all_player_ids)
+
+    with get_db() as conn:
+        _upsert_default_club_player_rows(conn, primary_id, club_id, club["community_id"])
+
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT pce.profile_id, pce.sport, pce.elo, pce.matches, pce.tier_id,
+                      pp.name AS player_name, pp.email AS player_email,
+                      ct.name AS tier_name
+               FROM profile_club_elo pce
+               JOIN player_profiles pp ON pp.id = pce.profile_id
+               LEFT JOIN club_tiers ct ON ct.id = pce.tier_id
+               WHERE pce.club_id = ? AND pce.profile_id = ? AND pce.hidden = 0""",
+            (club_id, primary_id),
+        ).fetchall()
+        profile_name_row = conn.execute("SELECT name FROM player_profiles WHERE id = ?", (primary_id,)).fetchone()
+
+    player = ClubPlayerOut(
+        profile_id=primary_id,
+        name=profile_name_row["name"] if profile_name_row else primary_id,
+        has_hub_profile=False,
+    )
+    for r in rows:
+        if r["sport"] == "padel":
+            player.elo_padel = round(r["elo"], 1)
+            player.matches_padel = r["matches"]
+            player.tier_id_padel = r["tier_id"]
+            player.tier_name_padel = r["tier_name"]
+        elif r["sport"] == "tennis":
+            player.elo_tennis = round(r["elo"], 1)
+            player.matches_tennis = r["matches"]
+            player.tier_id_tennis = r["tier_id"]
+            player.tier_name_tennis = r["tier_name"]
+    return player
+
+
+class ClubConvertGhostRequest(BaseModel):
+    """Request body for converting a ghost profile into a real Player Hub profile."""
+
+    name: str | None = Field(default=None, max_length=128)
+    email: str | None = Field(default=None, max_length=256)
+    lang: EmailLang = "en"
+
+
+class ClubConvertResult(BaseModel):
+    """Result of converting a ghost profile within a club."""
+
+    profile_id: str
+    name: str
+    passphrase: str
+    email: str = ""
+    is_ghost: bool = False
+
+
+@router.post("/{club_id}/players/{profile_id}/convert-ghost", response_model=ClubConvertResult)
+async def club_convert_ghost_to_hub_profile(
+    club_id: str,
+    profile_id: str,
+    req: ClubConvertGhostRequest,
+    user: User = Depends(get_current_user),
+) -> ClubConvertResult:
+    """Convert a ghost profile into a real Player Hub profile within a club context.
+
+    Generates a unique 3-word passphrase and sets ``is_ghost = 0``.  All
+    existing participations, ELO data, and history rows are retained.
+    If ``email`` is supplied, a welcome email with the new passphrase is
+    sent to the player immediately.
+
+    Args:
+        club_id: Club the organizer manages.
+        profile_id: ID of the ghost profile to convert.
+        req: Optional ``name`` override, optional ``email``, and ``lang``.
+
+    Returns:
+        The new profile id, name, and passphrase.
+
+    Raises:
+        HTTPException 404: Profile not found.
+        HTTPException 422: Profile is not a ghost.
+    """
+    club = _get_club(club_id)
+    _require_club_editor(club, user)
+
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id, name, email, is_ghost FROM player_profiles WHERE id = ?",
+            (profile_id,),
+        ).fetchone()
+
+    if row is None:
+        raise HTTPException(404, "Profile not found")
+    if not row["is_ghost"]:
+        raise HTTPException(422, "Profile is already a real Hub profile, not a ghost")
+
+    new_passphrase = generate_passphrase()
+    with get_db() as conn:
+        while conn.execute(
+            "SELECT 1 FROM player_profiles WHERE passphrase = ? AND id != ?",
+            (new_passphrase, profile_id),
+        ).fetchone():
+            new_passphrase = generate_passphrase()
+
+    clean_name = req.name.strip() if req.name else row["name"]
+    clean_email = req.email.strip() if req.email else (row["email"] or "")
+
+    if clean_email and not is_valid_email(clean_email):
+        raise HTTPException(422, "Invalid email address")
+
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE player_profiles SET is_ghost = 0, passphrase = ?, name = ?, email = ? WHERE id = ?",
+            (new_passphrase, clean_name, clean_email, profile_id),
+        )
+        # Un-hide the profile in all clubs so it appears in the main roster.
+        conn.execute(
+            "UPDATE profile_club_elo SET hidden = 0 WHERE profile_id = ?",
+            (profile_id,),
+        )
+
+    if clean_email:
+        token = create_profile_token(profile_id, expires_delta=timedelta(days=30))
+        verify_token = create_profile_email_verify_token(profile_id, clean_email)
+        subject, html_body = render_player_space_welcome(
+            name=clean_name,
+            email=clean_email,
+            passphrase=new_passphrase,
+            access_token=token,
+            verify_token=verify_token,
+            lang=req.lang,
+        )
+        send_email_background(clean_email, subject, html_body)
+
+    return ClubConvertResult(
+        profile_id=profile_id,
+        name=clean_name,
+        passphrase=new_passphrase,
+        email=clean_email,
+        is_ghost=False,
+    )
+
+
 @router.delete("/{club_id}/players/{profile_id}")
 async def remove_player_from_club(club_id: str, profile_id: str, user: User = Depends(get_current_user)) -> dict:
-    """Remove a player from the club's player list.
+    """Hide a player from the club's player list.
 
-    Deletes the ``profile_club_elo`` rows for this player in this club.
-    Community ELO history and match records are not affected.
+    Sets ``hidden = 1`` on the ``profile_club_elo`` rows for this player so
+    they are excluded from the list and leaderboard.  The player is never
+    re-added by the community auto-sync because ``INSERT OR UPDATE`` respects
+    the existing hidden row.  Community ELO history and match records are not
+    affected.
     """
     club = _get_club(club_id)
     _require_club_editor(club, user)
     with get_db() as conn:
         conn.execute(
-            "DELETE FROM profile_club_elo WHERE profile_id = ? AND club_id = ?",
+            "UPDATE profile_club_elo SET hidden = 1 WHERE profile_id = ? AND club_id = ?",
             (profile_id, club_id),
         )
     return {"ok": True}

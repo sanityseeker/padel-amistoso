@@ -805,6 +805,12 @@ class AdminPlayerProfileDetail(BaseModel):
     participations: list[AdminParticipationLink]
 
 
+class AdminNameUpdate(BaseModel):
+    """Request body for renaming a player profile."""
+
+    name: str = Field(min_length=1, max_length=128)
+
+
 class AdminEmailUpdate(BaseModel):
     """Request body for updating a profile's email."""
 

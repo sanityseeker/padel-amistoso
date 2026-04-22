@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+
+import secrets as _secrets
+from datetime import datetime, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -783,7 +787,7 @@ class TestClubAddRemovePlayer:
         assert row["matches_padel"] == 7
 
     def test_list_players_auto_syncs_unlinked_past_participant_as_ghost(self, client, auth_headers) -> None:
-        """Unlinked tournament participants in the club community appear as ghost club players."""
+        """Unlinked tournament participants are hidden from main roster and appear in possible-members."""
         comm = _create_community(client, auth_headers)
         club = _create_club(client, auth_headers, comm["id"])
 
@@ -803,13 +807,20 @@ class TestClubAddRemovePlayer:
                 ("t_auto_ghost", "legacy_1", "Legacy Player", "legacy-pass", "legacy-token"),
             )
 
+        # Ghost profiles must NOT appear in the main club roster (opt-in roster architecture)
         res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
         assert res.status_code == 200
-        row = next((p for p in res.json() if p["profile_id"] == "ghost_legacy_1"), None)
+        assert not any(p["profile_id"] == "ghost_legacy_1" for p in res.json())
+
+        # Ghost profiles appear in the possible-members endpoint instead
+        pm_res = client.get(f"/api/clubs/{club['id']}/players/possible-members", headers=auth_headers)
+        assert pm_res.status_code == 200
+        row = next((p for p in pm_res.json() if p["profile_id"] == "ghost_legacy_1"), None)
         assert row is not None
         assert row["name"] == "Legacy Player"
         assert row["has_hub_profile"] is False
 
+        # profile_club_elo rows exist for both sports
         with get_db() as conn:
             rows = conn.execute(
                 "SELECT sport FROM profile_club_elo WHERE profile_id = ? AND club_id = ?",
@@ -851,50 +862,6 @@ class TestClubAddRemovePlayer:
         assert "past_a_1" in ids
         assert "past_b_1" not in ids
 
-    def test_add_past_participant_creates_ghost_profile_membership(self, client, auth_headers) -> None:
-        """Adding by past_player_id creates a ghost profile and stores it in club players."""
-        comm = _create_community(client, auth_headers, name="Club Ghost")
-        club = _create_club(client, auth_headers, comm["id"], name="Club Ghost")
-
-        with get_db() as conn:
-            conn.execute(
-                "INSERT INTO tournaments (id, name, type, owner, tournament_blob, sport, community_id) VALUES (?, ?, 'mexicano', 'admin', X'80', 'padel', ?)",
-                ("t_ghost_seed", "Ghost Seed", comm["id"]),
-            )
-            conn.execute(
-                "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, email, contact) VALUES (?, ?, ?, ?, ?, '', '')",
-                ("t_ghost_seed", "past_ghost_1", "Ghost Club Player", "pp-g-1", "tok-g-1"),
-            )
-
-        add_res = client.post(
-            f"/api/clubs/{club['id']}/players",
-            json={"past_player_id": "past_ghost_1"},
-            headers=auth_headers,
-        )
-        assert add_res.status_code == 201
-        added = add_res.json()
-        assert added["profile_id"] == "ghost_past_ghost_1"
-        assert added["has_hub_profile"] is False
-
-        with get_db() as conn:
-            profile = conn.execute(
-                "SELECT is_ghost FROM player_profiles WHERE id = ?",
-                ("ghost_past_ghost_1",),
-            ).fetchone()
-            rows = conn.execute(
-                "SELECT sport FROM profile_club_elo WHERE profile_id = ? AND club_id = ?",
-                ("ghost_past_ghost_1", club["id"]),
-            ).fetchall()
-        assert profile is not None
-        assert profile["is_ghost"] == 1
-        assert {r["sport"] for r in rows} == {"padel", "tennis"}
-
-        list_res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
-        assert list_res.status_code == 200
-        row = next((p for p in list_res.json() if p["profile_id"] == "ghost_past_ghost_1"), None)
-        assert row is not None
-        assert row["has_hub_profile"] is False
-
 
 class TestClubPlayerManagement:
     """Tests for adding, removing and listing players in a club."""
@@ -915,7 +882,8 @@ class TestClubPlayerManagement:
         )
         assert res.status_code == 404
 
-    def test_remove_player_deletes_elo_rows(self, client, auth_headers) -> None:
+    def test_remove_player_hides_elo_rows(self, client, auth_headers) -> None:
+        """Removing a player sets hidden=1; rows still exist but are not returned by list."""
         comm = _create_community(client, auth_headers)
         club = _create_club(client, auth_headers, comm["id"])
         with get_db() as conn:
@@ -923,12 +891,18 @@ class TestClubPlayerManagement:
         client.post(f"/api/clubs/{club['id']}/players", json={"profile_id": "prof_new"}, headers=auth_headers)
         res = client.delete(f"/api/clubs/{club['id']}/players/prof_new", headers=auth_headers)
         assert res.status_code == 200
+        # Rows must exist but be hidden=1
         with get_db() as conn:
             rows = conn.execute(
-                "SELECT 1 FROM profile_club_elo WHERE profile_id = 'prof_new' AND club_id = ?",
+                "SELECT hidden FROM profile_club_elo WHERE profile_id = 'prof_new' AND club_id = ?",
                 (club["id"],),
             ).fetchall()
-        assert rows == []
+        assert len(rows) > 0
+        assert all(r["hidden"] == 1 for r in rows)
+        # Player must not appear in the list endpoint anymore
+        list_res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        assert list_res.status_code == 200
+        assert all(p["profile_id"] != "prof_new" for p in list_res.json())
 
     def test_zero_match_players_appear_in_list(self, client, auth_headers) -> None:
         """Players with 0 matches must be visible in the club player list."""
@@ -1207,3 +1181,357 @@ class TestMultiClubCommunity:
         _create_club(client, auth_headers, comm["id"], name="Club Alpha")
         res = client.get(f"/api/communities/{comm['id']}", headers=auth_headers)
         assert res.json()["name"] == "City Community"
+
+
+# ---------------------------------------------------------------------------
+# Club ghost profile deduplication
+# ---------------------------------------------------------------------------
+
+
+def _insert_club_ghost(conn, club_id: str, name: str, player_id_suffix: str) -> str:
+    """Insert a ghost player_profiles row, link it to the club, and return the profile id."""
+    ghost_id = f"ghost_club_{player_id_suffix}"
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT OR IGNORE INTO player_profiles
+           (id, passphrase, name, email, contact, created_at, is_ghost)
+           VALUES (?, ?, ?, '', '', ?, 1)""",
+        (ghost_id, _secrets.token_hex(16), name, now),
+    )
+    for sport in ("padel", "tennis"):
+        conn.execute(
+            """INSERT OR IGNORE INTO profile_club_elo
+               (profile_id, club_id, sport, elo, matches, hidden)
+               VALUES (?, ?, ?, 1000.0, 0, 0)""",
+            (ghost_id, club_id, sport),
+        )
+    return ghost_id
+
+
+class TestClubGhostConsolidation:
+    """Tests for ghost-duplicates detection and consolidate-ghosts endpoints."""
+
+    def test_ghost_duplicates_returns_same_name_groups(self, client, auth_headers) -> None:
+        """Endpoint returns groups with ≥ 2 ghost profiles sharing the same name."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            _insert_club_ghost(conn, club["id"], "Maria Garcia", "mg1")
+            _insert_club_ghost(conn, club["id"], "maria garcia", "mg2")
+
+        res = client.get(f"/api/clubs/{club['id']}/players/ghost-duplicates", headers=auth_headers)
+        assert res.status_code == 200
+        groups = res.json()
+        assert len(groups) == 1
+        assert len(groups[0]["profiles"]) == 2
+
+    def test_ghost_duplicates_ignores_hub_profiles(self, client, auth_headers) -> None:
+        """Non-ghost profiles (has_hub_profile) must not appear in duplicate groups."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        now = datetime.now(timezone.utc).isoformat()
+        with get_db() as conn:
+            # Insert a real (non-ghost) profile with same name
+            conn.execute(
+                """INSERT OR IGNORE INTO player_profiles
+                   (id, passphrase, name, email, contact, created_at, is_ghost)
+                   VALUES (?, ?, ?, '', '', ?, 0)""",
+                ("real_mg1", _secrets.token_hex(16), "Maria Garcia", now),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden) VALUES (?, ?, 'padel', 1000.0, 0, 0)",
+                ("real_mg1", club["id"]),
+            )
+            _insert_club_ghost(conn, club["id"], "Maria Garcia", "mg_real_dup")
+
+        res = client.get(f"/api/clubs/{club['id']}/players/ghost-duplicates", headers=auth_headers)
+        assert res.status_code == 200
+        # Only ghosts counted — should be 0 groups (only 1 ghost of that name)
+        assert len(res.json()) == 0
+
+    def test_ghost_duplicates_includes_hidden(self, client, auth_headers) -> None:
+        """Hidden ghost profiles still appear in duplicate groups so they can be merged."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            _insert_club_ghost(conn, club["id"], "Luis Perez", "lp1")
+            _insert_club_ghost(conn, club["id"], "Luis Perez", "lp2")
+            # Hide second profile (still counts for deduplication)
+            conn.execute(
+                "UPDATE profile_club_elo SET hidden = 1 WHERE profile_id = 'ghost_club_lp2'",
+            )
+
+        res = client.get(f"/api/clubs/{club['id']}/players/ghost-duplicates", headers=auth_headers)
+        assert res.status_code == 200
+        # Both ghosts (including hidden) → 1 duplicate group to merge
+        assert len(res.json()) == 1
+
+    def test_ghost_duplicates_empty_when_none(self, client, auth_headers) -> None:
+        """Returns empty list when no duplicate ghost profiles exist."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.get(f"/api/clubs/{club['id']}/players/ghost-duplicates", headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json() == []
+
+    def test_consolidate_merges_ghosts_in_club(self, client, auth_headers) -> None:
+        """POST consolidate-ghosts merges two ghost profiles into one."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            gid1 = _insert_club_ghost(conn, club["id"], "Pedro Santos", "ps1")
+            gid2 = _insert_club_ghost(conn, club["id"], "Pedro Santos", "ps2")
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/consolidate-ghosts",
+            json={"source_ids": [gid1, gid2]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["profile_id"] == gid1
+
+        # Secondary profile must be deleted
+        with get_db() as conn:
+            row = conn.execute("SELECT id FROM player_profiles WHERE id = ?", (gid2,)).fetchone()
+        assert row is None
+
+    def test_consolidate_renames_primary_when_name_given(self, client, auth_headers) -> None:
+        """Providing a name updates the surviving profile's display name."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            gid1 = _insert_club_ghost(conn, club["id"], "Anna Old", "ao1")
+            gid2 = _insert_club_ghost(conn, club["id"], "Anna Old", "ao2")
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/consolidate-ghosts",
+            json={"source_ids": [gid1, gid2], "name": "Anna New"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["name"] == "Anna New"
+
+    def test_consolidate_rejects_non_ghost_profiles(self, client, auth_headers) -> None:
+        """Consolidation of a non-ghost profile must return 422."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        now = datetime.now(timezone.utc).isoformat()
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost) VALUES (?, ?, ?, '', '', ?, 0)",
+                ("real_pr1", _secrets.token_hex(16), "Real Player", now),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden) VALUES (?, ?, 'padel', 1000.0, 0, 0)",
+                ("real_pr1", club["id"]),
+            )
+            gid = _insert_club_ghost(conn, club["id"], "Real Player", "rp_dup")
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/consolidate-ghosts",
+            json={"source_ids": ["real_pr1", gid]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 422
+
+    def test_consolidate_requires_two_distinct_ids(self, client, auth_headers) -> None:
+        """Passing fewer than 2 distinct IDs returns 422."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            gid = _insert_club_ghost(conn, club["id"], "Solo Ghost", "sg1")
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/consolidate-ghosts",
+            json={"source_ids": [gid, gid]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 422
+
+    def test_consolidate_404_for_missing_profile(self, client, auth_headers) -> None:
+        """Returns 404 when a given profile id does not exist."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            gid = _insert_club_ghost(conn, club["id"], "Ghost Only", "go1")
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/consolidate-ghosts",
+            json={"source_ids": [gid, "ghost_nonexistent_xyz"]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 404
+
+
+class TestClubConvertGhost:
+    """Tests for the club-scoped ghost-to-Hub-profile convert endpoint."""
+
+    def test_convert_generates_passphrase_and_clears_ghost_flag(self, client, auth_headers) -> None:
+        """Converted profile gets a 3-word passphrase and is_ghost=False in DB."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            gid = _insert_club_ghost(conn, club["id"], "Convert Club", "cc1")
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/{gid}/convert-ghost",
+            json={},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["profile_id"] == gid
+        assert data["is_ghost"] is False
+        assert data["passphrase"].count("-") >= 2, "Expected 3-word passphrase (hyphen-separated)"
+
+    def test_convert_renames_profile_when_name_given(self, client, auth_headers) -> None:
+        """Optional name parameter is reflected in the result."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            gid = _insert_club_ghost(conn, club["id"], "Old Club Name", "cc2")
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/{gid}/convert-ghost",
+            json={"name": "New Club Name"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["name"] == "New Club Name"
+
+    def test_convert_sets_email(self, client, auth_headers) -> None:
+        """Email provided on conversion is persisted."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            gid = _insert_club_ghost(conn, club["id"], "Email Club Ghost", "cc3")
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/{gid}/convert-ghost",
+            json={"email": "club@example.com"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["email"] == "club@example.com"
+
+    def test_convert_rejects_non_ghost(self, client, auth_headers) -> None:
+        """Attempting to convert a real profile returns 422."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        now = datetime.now(timezone.utc).isoformat()
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost)"
+                " VALUES (?, ?, ?, '', '', ?, 0)",
+                ("real-club-cv1", _secrets.token_hex(16), "Real Player", now),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden)"
+                " VALUES (?, ?, 'padel', 1000.0, 0, 0)",
+                ("real-club-cv1", club["id"]),
+            )
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/real-club-cv1/convert-ghost",
+            json={},
+            headers=auth_headers,
+        )
+        assert res.status_code == 422
+
+    def test_convert_404_missing(self, client, auth_headers) -> None:
+        """Returns 404 for a non-existent profile id."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/ghost_nonexistent_abc/convert-ghost",
+            json={},
+            headers=auth_headers,
+        )
+        assert res.status_code == 404
+
+
+class TestClubPossibleMembers:
+    """Tests for GET /{club_id}/players/possible-members."""
+
+    def test_excludes_real_hub_profiles(self, client, auth_headers) -> None:
+        """Real Hub profiles must not appear in possible-members."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        now = datetime.now(timezone.utc).isoformat()
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost)"
+                " VALUES (?, ?, ?, '', '', ?, 0)",
+                ("real-pm-test1", _secrets.token_hex(16), "Hub Player", now),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden)"
+                " VALUES (?, ?, 'padel', 1000.0, 0, 0)",
+                ("real-pm-test1", club["id"]),
+            )
+
+        res = client.get(f"/api/clubs/{club['id']}/players/possible-members", headers=auth_headers)
+        assert res.status_code == 200
+        ids = [p["profile_id"] for p in res.json()]
+        assert "real-pm-test1" not in ids
+
+    def test_includes_hidden_ghost_profiles(self, client, auth_headers) -> None:
+        """Possible-members shows hidden=1 ghost profiles so they can be actioned."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            _insert_club_ghost(conn, club["id"], "Hidden Ghost", "hg1")
+            conn.execute("UPDATE profile_club_elo SET hidden = 1 WHERE profile_id = 'ghost_club_hg1'")
+
+        res = client.get(f"/api/clubs/{club['id']}/players/possible-members", headers=auth_headers)
+        assert res.status_code == 200
+        ids = [p["profile_id"] for p in res.json()]
+        assert "ghost_club_hg1" in ids
+
+    def test_ghost_absent_from_main_roster(self, client, auth_headers) -> None:
+        """Ghost profiles must not appear in the main GET /players list."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            gid = _insert_club_ghost(conn, club["id"], "Roster Ghost", "rg1")
+
+        roster = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        assert roster.status_code == 200
+        assert not any(p["profile_id"] == gid for p in roster.json())
+
+    def test_empty_when_no_ghost_profiles(self, client, auth_headers) -> None:
+        """Returns an empty list when there are no ghost profiles for the club."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+
+        res = client.get(f"/api/clubs/{club['id']}/players/possible-members", headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json() == []
+
+    def test_add_to_roster_moves_ghost_to_main_list(self, client, auth_headers) -> None:
+        """POSTing profile_id un-hides the ghost so it shows up in main list.
+
+        Note: ghost profiles never appear in the main list (is_ghost=0 filter),
+        so the expected final state is: no longer in possible-members,
+        but the profile_club_elo row has hidden=0.
+        """
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            gid = _insert_club_ghost(conn, club["id"], "Add To Roster", "atr1")
+
+        add_res = client.post(
+            f"/api/clubs/{club['id']}/players",
+            json={"profile_id": gid},
+            headers=auth_headers,
+        )
+        assert add_res.status_code == 201
+
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT hidden FROM profile_club_elo WHERE profile_id = ? AND club_id = ? AND sport = 'padel'",
+                (gid, club["id"]),
+            ).fetchone()
+        assert row is not None
+        assert row["hidden"] == 0

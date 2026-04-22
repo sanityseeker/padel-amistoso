@@ -755,3 +755,104 @@ def retroactive_transfer_all_elos(profile_id: str) -> None:
         ).fetchall()
     for row in rows:
         retroactive_transfer_elo(profile_id, row["player_id"])
+
+
+def consolidate_ghost_elos(primary_profile_id: str, player_ids: list[str]) -> None:
+    """Recalculate ELO for a merged ghost profile from multiple player_ids.
+
+    Processes ``player_elo`` rows for ALL provided player_ids in global
+    chronological order so the most-recent tournament's ELO is correctly
+    reflected in the merged profile.  Used after merging several ghost
+    profiles into a single canonical one.
+
+    Updates:
+    - ``player_history`` ELO snapshots for the primary profile
+    - ``profile_community_elo`` per community the player participated in
+    - Flat ``elo_padel`` / ``elo_tennis`` columns on ``player_profiles``
+
+    Args:
+        primary_profile_id: The id of the surviving ghost profile.
+        player_ids: All player_ids (from every merged ghost) whose
+            ``player_elo`` rows now belong to the primary profile.
+    """
+    if not player_ids:
+        return
+
+    placeholders = ",".join("?" for _ in player_ids)
+    with get_db() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT pe.tournament_id, pe.sport, pe.elo_before, pe.elo_after, pe.matches_played,
+                   COALESCE(t.community_id, '{DEFAULT_COMMUNITY_ID}') AS community_id
+              FROM player_elo pe
+              LEFT JOIN tournaments t ON t.id = pe.tournament_id
+             WHERE pe.player_id IN ({placeholders})
+             ORDER BY pe.updated_at ASC
+            """,
+            player_ids,
+        ).fetchall()
+
+    if not rows:
+        return
+
+    community_elos: dict[str, dict[str, float]] = {}
+    community_counts: dict[str, dict[str, int]] = {}
+    global_elos: dict[str, float] = {}
+    global_counts: dict[str, int] = {}
+    history_updates: list[tuple] = []
+
+    for row in rows:
+        cid = row["community_id"]
+        sport = row["sport"]
+        community_elos.setdefault(cid, {})[sport] = row["elo_after"]
+        community_counts.setdefault(cid, {})[sport] = row["matches_played"]
+        global_elos[sport] = row["elo_after"]
+        global_counts[sport] = row["matches_played"]
+        history_updates.append((row["elo_before"], row["elo_after"], primary_profile_id, row["tournament_id"]))
+
+    with get_db() as conn:
+        for elo_before, elo_after, profile_id, tournament_id in history_updates:
+            conn.execute(
+                "UPDATE player_history SET elo_before = ?, elo_after = ?"
+                " WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
+                (elo_before, elo_after, profile_id, tournament_id),
+            )
+
+        for cid, sport_elos in community_elos.items():
+            for sport, elo in sport_elos.items():
+                matches = community_counts.get(cid, {}).get(sport, 0)
+                conn.execute(
+                    """INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)
+                       VALUES (?, ?, ?, ?, ?)
+                       ON CONFLICT (profile_id, community_id, sport) DO UPDATE SET
+                         elo = excluded.elo, matches = excluded.matches""",
+                    (primary_profile_id, cid, sport, elo, matches),
+                )
+
+        for sport, elo in global_elos.items():
+            matches = global_counts.get(sport, 0)
+            conn.execute(
+                """INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT (profile_id, community_id, sport) DO UPDATE SET
+                     elo = excluded.elo, matches = excluded.matches""",
+                (primary_profile_id, DEFAULT_COMMUNITY_ID, sport, elo, matches),
+            )
+
+        padel_elo = DEFAULT_RATING
+        tennis_elo = DEFAULT_RATING
+        padel_matches = 0
+        tennis_matches = 0
+        for cid in community_elos:
+            if Sport.PADEL in community_elos[cid]:
+                padel_elo = community_elos[cid][Sport.PADEL]
+                padel_matches = community_counts.get(cid, {}).get(Sport.PADEL, 0)
+            if Sport.TENNIS in community_elos[cid]:
+                tennis_elo = community_elos[cid][Sport.TENNIS]
+                tennis_matches = community_counts.get(cid, {}).get(Sport.TENNIS, 0)
+        conn.execute(
+            "UPDATE player_profiles"
+            " SET elo_padel = ?, elo_tennis = ?, elo_padel_matches = ?, elo_tennis_matches = ?"
+            " WHERE id = ?",
+            (padel_elo, tennis_elo, padel_matches, tennis_matches, primary_profile_id),
+        )

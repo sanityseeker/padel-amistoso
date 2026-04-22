@@ -73,6 +73,21 @@ function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
   html += `<div style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)">`;
   html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">🏷️ ${t('txt_tv_attach_scope')}</label>`;
   html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_tv_attach_club_community_help')}</p>`;
+  // Club row — shown only when the admin has clubs
+  const adminClubsLocal = _adminClubs || [];
+  if (adminClubsLocal.length) {
+    const currentClubId = (adminClubsLocal.find(c => c.community_id === currentCommunityId) || {}).id || '';
+    const clubOptions = adminClubsLocal.map(c =>
+      `<option value="${esc(c.id)}" ${c.id === currentClubId ? 'selected' : ''}>${esc(c.name)}</option>`
+    ).join('');
+    html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.35rem">`;
+    html += `<span style="font-size:0.82rem;color:var(--text-muted);white-space:nowrap">${t('txt_tv_attach_club')}</span>`;
+    html += `<select id="tournament-club-select" style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem;min-width:180px">${clubOptions}</select>`;
+    html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setTournamentClub()">${t('txt_tv_attach_now')}</button>`;
+    html += `<span id="tournament-club-msg" style="font-size:0.78rem"></span>`;
+    html += `</div>`;
+  }
+  // Community row — always shown as the advanced / fallback option
   if (communityOptions) {
     html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
     html += `<select id="tournament-community-select" style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem;min-width:220px">${communityOptions}</select>`;
@@ -495,6 +510,33 @@ async function _setTournamentCommunity() {
     await api(`/api/tournaments/${currentTid}/community`, {
       method: 'PATCH',
       body: JSON.stringify({ community_id: sel.value }),
+    });
+    await loadTournaments();
+    await _rerenderCurrentViewPreserveDrafts();
+    if (msgEl) {
+      msgEl.style.color = 'var(--green)';
+      msgEl.textContent = `✓ ${t('txt_tv_attach_updated')}`;
+      setTimeout(() => { msgEl.textContent = ''; }, 2200);
+    }
+  } catch (e) {
+    if (msgEl) {
+      msgEl.style.color = 'var(--red)';
+      msgEl.textContent = e.message;
+    }
+  }
+}
+
+async function _setTournamentClub() {
+  if (!currentTid) return;
+  const sel = document.getElementById('tournament-club-select');
+  const msgEl = document.getElementById('tournament-club-msg');
+  if (!sel) return;
+  const club = (_adminClubs || []).find(c => c.id === sel.value);
+  if (!club) return;
+  try {
+    await api(`/api/tournaments/${currentTid}/community`, {
+      method: 'PATCH',
+      body: JSON.stringify({ community_id: club.community_id }),
     });
     await loadTournaments();
     await _rerenderCurrentViewPreserveDrafts();

@@ -4,6 +4,8 @@
 
 let _phProfiles = [];
 let _phCurrentProfileId = null;
+let _phSelectedGhosts = new Set();
+let _phSelectedHub = null;
 
 /** Search profiles by name or email */
 async function phSearch() {
@@ -11,6 +13,8 @@ async function phSearch() {
   const q = (input?.value || '').trim();
   const container = document.getElementById('ph-results');
   if (!container) return;
+  _phSelectedGhosts = new Set();
+  _phSelectedHub = null;
   container.innerHTML = `<em>${t('txt_ph_searching')}</em>`;
   try {
     const profiles = await api(`/api/admin/player-profiles?q=${encodeURIComponent(q)}`);
@@ -21,41 +25,293 @@ async function phSearch() {
         : `<p style="color:var(--text-muted)">${t('txt_hub_no_results')}.</p>`;
       return;
     }
-    const _phOpen = localStorage.getItem('ph-profiles-open') === '1';
-    let html = `<details class="ph-profiles-collapse" id="ph-profiles-details" style="margin-top:0.25rem"${_phOpen ? ' open' : ''}>`;
-    html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:0.4rem;list-style:none;font-size:0.95rem;font-weight:700;padding:0.3rem 0">`;
-    html += `<span class="tv-chevron" style="font-size:0.65em;color:var(--text-muted)">&#9658;</span>`;
-    html += `${t('txt_ph_all_profiles_n', { n: profiles.length })}`;
-    html += `</summary>`;
-    html += '<div class="player-codes-table-wrap" style="margin-top:0.5rem"><table class="player-codes-table">';
-    html += '<thead><tr class="player-codes-head-row">';
-    html += `<th class="player-codes-th">${t('txt_ph_name')}</th>`;
-    html += `<th class="player-codes-th">${t('txt_txt_email')}</th>`;
-    html += `<th class="player-codes-th-center">${t('txt_ph_padel_elo')}</th>`;
-    html += `<th class="player-codes-th-center">${t('txt_ph_tennis_elo')}</th>`;
-    html += `<th class="player-codes-th">${t('txt_txt_passphrase')}</th>`;
-    html += `<th class="player-codes-th">${t('txt_ph_created')}</th>`;
-    html += '<th class="player-codes-th-center"></th>';
-    html += '</tr></thead><tbody>';
-    for (const p of profiles) {
-      const padelElo = p.elo_padel_matches > 0 ? `${Math.round(p.elo_padel)} <span style="font-size:0.75rem;color:var(--text-muted)">(${p.elo_padel_matches})</span>` : '<span style="color:var(--text-muted)">—</span>';
-      const tennisElo = p.elo_tennis_matches > 0 ? `${Math.round(p.elo_tennis)} <span style="font-size:0.75rem;color:var(--text-muted)">(${p.elo_tennis_matches})</span>` : '<span style="color:var(--text-muted)">—</span>';
-      html += `<tr class="player-codes-row">`;
-      html += `<td class="player-codes-name">${esc(p.name || '—')}</td>`;
-      html += `<td class="player-codes-cell">${esc(p.email || '—')}</td>`;
-      html += `<td class="player-codes-cell-center">${padelElo}</td>`;
-      html += `<td class="player-codes-cell-center">${tennisElo}</td>`;
-      html += `<td class="player-codes-cell"><code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(p.passphrase)}</code></td>`;
-      html += `<td class="player-codes-cell" style="font-size:0.8rem;color:var(--text-muted)">${_phFormatDate(p.created_at)}</td>`;
-      html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-primary btn-sm" onclick="phLoadProfile('${escAttr(p.id)}')">${t('txt_ph_manage')}</button></td>`;
-      html += `</tr>`;
-    }
-    html += '</tbody></table></div></details>';
-    container.innerHTML = html;
-    const _phDetails = document.getElementById('ph-profiles-details');
-    if (_phDetails) _phDetails.addEventListener('toggle', () => localStorage.setItem('ph-profiles-open', _phDetails.open ? '1' : '0'));
+    _phRenderProfileList(container);
   } catch (e) {
     container.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+  }
+}
+
+/** Toggle ghost profile visibility and re-render from cached data */
+function _phToggleShowGhosts() {
+  const current = localStorage.getItem('ph-show-ghosts') !== '0';
+  localStorage.setItem('ph-show-ghosts', current ? '0' : '1');
+  _phSelectedGhosts = new Set();
+  _phSelectedHub = null;
+  const container = document.getElementById('ph-results');
+  if (container && _phProfiles.length > 0) _phRenderProfileList(container);
+}
+
+/** Render (or re-render) the profiles list into container from _phProfiles */
+function _phRenderProfileList(container) {
+  const showGhosts = localStorage.getItem('ph-show-ghosts') !== '0';
+  const profiles = _phProfiles;
+  const ghostCount = profiles.filter(p => p.is_ghost).length;
+  const visible = showGhosts ? profiles : profiles.filter(p => !p.is_ghost);
+  const _phOpen = localStorage.getItem('ph-profiles-open') === '1';
+
+  let html = `<details class="ph-profiles-collapse" id="ph-profiles-details" style="margin-top:0.25rem"${_phOpen ? ' open' : ''}>`;
+  html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:0.4rem;list-style:none;font-size:0.95rem;font-weight:700;padding:0.3rem 0">`;
+  html += `<span class="tv-chevron" style="font-size:0.65em;color:var(--text-muted)">&#9658;</span>`;
+  html += `${t('txt_ph_all_profiles_n', { n: profiles.length })}`;
+  if (ghostCount > 0) {
+    html += ` <span style="font-size:0.78rem;font-weight:400;color:var(--text-muted)">(${ghostCount} ${t('txt_ph_ghost_badge')})</span>`;
+    const toggleLabel = showGhosts ? t('txt_ph_hide_ghosts') : t('txt_ph_show_ghosts');
+    html += ` <button type="button" onclick="event.preventDefault();event.stopPropagation();_phToggleShowGhosts()"
+      style="font-size:0.72rem;padding:0.1rem 0.45rem;background:var(--surface-hover);border:1px solid var(--border);border-radius:3px;cursor:pointer;color:var(--text-muted);line-height:1.4"
+      aria-label="${escAttr(toggleLabel)}">${escAttr(toggleLabel)}</button>`;
+  }
+  html += `</summary>`;
+  html += '<div class="player-codes-table-wrap" style="margin-top:0.5rem"><table class="player-codes-table">';
+  html += '<thead><tr class="player-codes-head-row">';
+  html += `<th class="player-codes-th-center" style="width:2rem"></th>`;
+  html += `<th class="player-codes-th">${t('txt_ph_name')}</th>`;
+  html += `<th class="player-codes-th">${t('txt_txt_email')}</th>`;
+  html += `<th class="player-codes-th-center">${t('txt_ph_padel_elo')}</th>`;
+  html += `<th class="player-codes-th-center">${t('txt_ph_tennis_elo')}</th>`;
+  html += `<th class="player-codes-th">${t('txt_txt_passphrase')}</th>`;
+  html += `<th class="player-codes-th">${t('txt_ph_created')}</th>`;
+  html += '<th class="player-codes-th-center"></th>';
+  html += '</tr></thead><tbody>';
+  for (const p of visible) {
+    const padelElo = p.elo_padel_matches > 0 ? `${Math.round(p.elo_padel)} <span style="font-size:0.75rem;color:var(--text-muted)">(${p.elo_padel_matches})</span>` : '<span style="color:var(--text-muted)">—</span>';
+    const tennisElo = p.elo_tennis_matches > 0 ? `${Math.round(p.elo_tennis)} <span style="font-size:0.75rem;color:var(--text-muted)">(${p.elo_tennis_matches})</span>` : '<span style="color:var(--text-muted)">—</span>';
+    const ghostBadge = p.is_ghost
+      ? ` <span style="font-size:0.7rem;background:var(--surface-hover);color:var(--text-muted);border:1px solid var(--border);border-radius:3px;padding:0 0.3em;vertical-align:middle">${t('txt_ph_ghost_badge')}</span>`
+      : '';
+    let checkCell;
+    if (p.is_ghost) {
+      checkCell = `<input type="checkbox" class="ph-ghost-check" data-profile-id="${escAttr(p.id)}" aria-label="${t('txt_ph_select_for_merge')}" onchange="_phToggleGhostSelect('${escAttr(p.id)}', this.checked)" style="cursor:pointer">`;
+    } else {
+      checkCell = `<input type="checkbox" class="ph-hub-check" data-profile-id="${escAttr(p.id)}" aria-label="${t('txt_ph_select_as_hub_target')}" onchange="_phToggleHubSelect('${escAttr(p.id)}', this.checked)" style="cursor:pointer">`;
+    }
+    html += `<tr class="player-codes-row">`;
+    html += `<td class="player-codes-cell-center">${checkCell}</td>`;
+    html += `<td class="player-codes-name">${esc(p.name || '—')}${ghostBadge}</td>`;
+    html += `<td class="player-codes-cell">${esc(p.email || '—')}</td>`;
+    html += `<td class="player-codes-cell-center">${padelElo}</td>`;
+    html += `<td class="player-codes-cell-center">${tennisElo}</td>`;
+    const passCell = p.is_ghost
+      ? `<span style="color:var(--text-muted)" title="${t('txt_ph_ghost_no_passphrase')}">—</span>`
+      : `<code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(p.passphrase)}</code>`;
+    html += `<td class="player-codes-cell">${passCell}</td>`;
+    html += `<td class="player-codes-cell" style="font-size:0.8rem;color:var(--text-muted)">${_phFormatDate(p.created_at)}</td>`;
+    html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-primary btn-sm" onclick="phLoadProfile('${escAttr(p.id)}')">${t('txt_ph_manage')}</button>${p.is_ghost ? ` <button type="button" class="btn btn-sm btn-success" onclick="phShowConvertForm('${escAttr(p.id)}')" title="${t('txt_ph_convert_ghost_hint')}">${t('txt_ph_convert_ghost')}</button>` : ''}</td>`;
+    html += `</tr>`;
+  }
+  html += '</tbody></table></div></details>';
+  html += '<div id="ph-merge-bar"></div>';
+  container.innerHTML = html;
+  const _phDetails = document.getElementById('ph-profiles-details');
+  if (_phDetails) _phDetails.addEventListener('toggle', () => localStorage.setItem('ph-profiles-open', _phDetails.open ? '1' : '0'));
+  _phUpdateMergeBar();
+}
+
+/** Toggle a ghost profile's selection for consolidation */
+function _phToggleGhostSelect(profileId, checked) {
+  if (checked) {
+    _phSelectedGhosts.add(profileId);
+  } else {
+    _phSelectedGhosts.delete(profileId);
+  }
+  _phUpdateMergeBar();
+}
+
+/** Toggle a hub (non-ghost) profile as the merge target — only one allowed at a time */
+function _phToggleHubSelect(profileId, checked) {
+  if (checked) {
+    // Uncheck any previously selected hub checkbox
+    document.querySelectorAll('#ph-results .ph-hub-check').forEach(cb => {
+      if (cb.dataset.profileId !== profileId) cb.checked = false;
+    });
+    _phSelectedHub = profileId;
+  } else {
+    if (_phSelectedHub === profileId) _phSelectedHub = null;
+  }
+  _phUpdateMergeBar();
+}
+
+/** Update the action bar based on current ghost/hub selection */
+function _phUpdateMergeBar() {
+  const bar = document.getElementById('ph-merge-bar');
+  if (!bar) return;
+  const ghostCount = _phSelectedGhosts.size;
+
+  if (_phSelectedHub) {
+    const hubProfile = _phProfiles.find(p => p.id === _phSelectedHub);
+    const hubName = esc(hubProfile?.name || _phSelectedHub);
+    if (ghostCount === 0) {
+      bar.innerHTML = `
+        <div style="margin-top:0.75rem;padding:0.65rem 0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
+          <span style="font-size:0.85rem;color:var(--text-muted)">${t('txt_ph_hub_selected_hint', { hub: hubName })}</span>
+          <button type="button" class="btn btn-sm btn-muted" onclick="phClearGhostSelection()">${t('txt_txt_clear')}</button>
+        </div>`;
+    } else {
+      bar.innerHTML = `
+        <div style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
+          <span style="font-size:0.88rem">${t('txt_ph_merge_into_hub_info', { n: ghostCount, hub: hubName })}</span>
+          <button type="button" class="btn btn-primary btn-sm" onclick="phConsolidateGhosts(true)">${t('txt_ph_merge_into_hub')}</button>
+          <button type="button" class="btn btn-sm btn-muted" onclick="phClearGhostSelection()">${t('txt_txt_clear')}</button>
+        </div>`;
+    }
+    return;
+  }
+
+  if (ghostCount < 2) {
+    bar.innerHTML = '';
+    return;
+  }
+
+  const selectedNames = [..._phSelectedGhosts]
+    .map(id => _phProfiles.find(p => p.id === id)?.name || id)
+    .filter(Boolean);
+  const suggestedName = selectedNames[0] || '';
+  bar.innerHTML = `
+    <div style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
+      <span style="font-size:0.88rem">${t('txt_ph_ghosts_selected', { n: ghostCount })}</span>
+      <input type="text" id="ph-merge-name-input" value="${escAttr(suggestedName)}"
+        placeholder="${t('txt_ph_consolidate_name_placeholder')}"
+        style="flex:1;min-width:160px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"
+        aria-label="${t('txt_ph_consolidate_name_label')}">
+      <button type="button" class="btn btn-primary btn-sm" onclick="phConsolidateGhosts(false)">${t('txt_ph_consolidate_ghosts')}</button>
+      <button type="button" class="btn btn-sm btn-muted" onclick="phClearGhostSelection()">${t('txt_txt_clear')}</button>
+    </div>`;
+}
+
+/** Clear the ghost/hub selection and hide the action bar */
+function phClearGhostSelection() {
+  _phSelectedGhosts = new Set();
+  _phSelectedHub = null;
+  document.querySelectorAll('#ph-results input[type=checkbox]').forEach(cb => { cb.checked = false; });
+  _phUpdateMergeBar();
+}
+
+/**
+ * Consolidate ghost profiles — either ghost-only or merge into a Hub profile.
+ * @param {boolean} mergeIntoHub - When true, merges selected ghosts into _phSelectedHub.
+ */
+async function phConsolidateGhosts(mergeIntoHub = false) {
+  const bar = document.getElementById('ph-merge-bar');
+
+  if (mergeIntoHub) {
+    if (!_phSelectedHub || _phSelectedGhosts.size < 1) return;
+    const hubProfile = _phProfiles.find(p => p.id === _phSelectedHub);
+    const ghostNames = [..._phSelectedGhosts]
+      .map(id => _phProfiles.find(p => p.id === id)?.name || id)
+      .join(', ');
+    if (!confirm(t('txt_ph_merge_into_hub_confirm', { hub: hubProfile?.name || _phSelectedHub, names: ghostNames }))) return;
+    if (bar) bar.innerHTML = `<div style="margin-top:0.75rem;font-size:0.88rem;color:var(--text-muted)"><em>${t('txt_ph_merging')}</em></div>`;
+    const ids = [_phSelectedHub, ..._phSelectedGhosts];
+    try {
+      const result = await api('/api/admin/player-profiles/consolidate-ghosts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_ids: ids, name: null }),
+      });
+      _phSelectedGhosts = new Set();
+      _phSelectedHub = null;
+      await phSearch();
+      const successBar = document.getElementById('ph-merge-bar');
+      if (successBar) {
+        successBar.innerHTML = `<div class="alert alert-info" style="margin-top:0.5rem">${t('txt_ph_merge_into_hub_ok', { name: esc(result.name) })}</div>`;
+        setTimeout(() => { const b = document.getElementById('ph-merge-bar'); if (b) b.innerHTML = ''; }, 4000);
+      }
+    } catch (e) {
+      if (bar) bar.innerHTML = `<div class="alert alert-error" style="margin-top:0.5rem">${esc(e.message)}</div>`;
+    }
+    return;
+  }
+
+  const nameInput = document.getElementById('ph-merge-name-input');
+  const name = nameInput?.value?.trim() || null;
+  const ids = [..._phSelectedGhosts];
+  if (ids.length < 2) return;
+
+  const selectedNames = ids
+    .map(id => _phProfiles.find(p => p.id === id)?.name || id)
+    .join(', ');
+  if (!confirm(t('txt_ph_consolidate_confirm', { names: selectedNames }))) return;
+
+  if (bar) bar.innerHTML = `<div style="margin-top:0.75rem;font-size:0.88rem;color:var(--text-muted)"><em>${t('txt_ph_consolidating')}</em></div>`;
+
+  try {
+    const result = await api('/api/admin/player-profiles/consolidate-ghosts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_ids: ids, name }),
+    });
+    _phSelectedGhosts = new Set();
+    await phSearch();
+    const successBar = document.getElementById('ph-merge-bar');
+    if (successBar) {
+      successBar.innerHTML = `<div class="alert alert-info" style="margin-top:0.5rem">${t('txt_ph_consolidate_ok', { name: esc(result.name) })}</div>`;
+      setTimeout(() => { if (successBar) successBar.innerHTML = ''; }, 4000);
+    }
+  } catch (e) {
+    if (bar) bar.innerHTML = `<div class="alert alert-error" style="margin-top:0.5rem">${esc(e.message)}</div>`;
+  }
+}
+
+/** Show inline convert-ghost form for a single ghost profile */
+function phShowConvertForm(profileId) {
+  const profile = _phProfiles.find(p => p.id === profileId);
+  const bar = document.getElementById('ph-merge-bar');
+  if (!bar) return;
+  const suggestedName = profile?.name || '';
+  bar.innerHTML = `
+    <div style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface)" id="ph-convert-form">
+      <p style="margin:0 0 0.5rem;font-size:0.88rem;font-weight:600">${t('txt_ph_convert_ghost_title')}</p>
+      <p style="margin:0 0 0.65rem;font-size:0.82rem;color:var(--text-muted)">${t('txt_ph_convert_ghost_help')}</p>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end">
+        <label style="font-size:0.84rem;display:flex;flex-direction:column;gap:0.2rem;flex:1;min-width:140px">
+          ${t('txt_txt_name')}
+          <input type="text" id="ph-convert-name" value="${escAttr(suggestedName)}"
+            style="padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"
+            aria-label="${t('txt_txt_name')}">
+        </label>
+        <label style="font-size:0.84rem;display:flex;flex-direction:column;gap:0.2rem;flex:2;min-width:180px">
+          ${t('txt_txt_email')} <span style="font-weight:400;color:var(--text-muted)">(${t('txt_txt_optional')})</span>
+          <input type="email" id="ph-convert-email" placeholder="${t('txt_ph_convert_email_placeholder')}"
+            style="padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"
+            aria-label="${t('txt_txt_email')}">
+        </label>
+        <button type="button" class="btn btn-success btn-sm" onclick="phConvertGhost('${escAttr(profileId)}')">${t('txt_ph_convert_confirm')}</button>
+        <button type="button" class="btn btn-sm btn-muted" onclick="document.getElementById('ph-merge-bar').innerHTML=''">${t('txt_txt_cancel')}</button>
+      </div>
+      <div id="ph-convert-msg" style="margin-top:0.5rem;font-size:0.82rem"></div>
+    </div>`;
+}
+
+/** Execute the ghost-to-Hub-profile conversion */
+async function phConvertGhost(profileId) {
+  const nameInput = document.getElementById('ph-convert-name');
+  const emailInput = document.getElementById('ph-convert-email');
+  const msgEl = document.getElementById('ph-convert-msg');
+  const name = nameInput?.value?.trim() || null;
+  const email = emailInput?.value?.trim() || null;
+
+  if (msgEl) msgEl.innerHTML = `<em>${t('txt_ph_converting')}</em>`;
+
+  try {
+    const result = await api(`/api/admin/player-profiles/${encodeURIComponent(profileId)}/convert-ghost`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email }),
+    });
+    // Reload list and show the new passphrase
+    await phSearch();
+    const bar = document.getElementById('ph-merge-bar');
+    if (bar) {
+      bar.innerHTML = `
+        <div class="alert alert-info" style="margin-top:0.5rem">
+          <strong>${t('txt_ph_convert_ok', { name: esc(result.name) })}</strong><br>
+          <span style="font-size:0.84rem">${t('txt_ph_convert_passphrase_label')}: </span>
+          <code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(result.passphrase)}</code>
+          ${result.email ? `<br><span style="font-size:0.8rem;color:var(--text-muted)">${t('txt_ph_convert_email_sent', { email: esc(result.email) })}</span>` : ''}
+        </div>`;
+      setTimeout(() => { const b = document.getElementById('ph-merge-bar'); if (b) b.innerHTML = ''; }, 12000);
+    }
+  } catch (e) {
+    if (msgEl) msgEl.innerHTML = `<span style="color:var(--error)">${esc(e.message)}</span>`;
   }
 }
 
@@ -90,7 +346,11 @@ function _phRenderDetail(data) {
 
   // Profile info
   html += '<div style="display:grid;grid-template-columns:auto 1fr;gap:0.3rem 1rem;font-size:0.88rem;margin-bottom:1rem">';
-  html += `<strong>${t('txt_txt_passphrase')}:</strong><span><code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(data.passphrase)}</code> <button type="button" class="btn btn-sm btn-muted" onclick="phResetPassphrase('${escAttr(data.id)}')" style="font-size:0.76rem;padding:0.15rem 0.4rem">🔄 ${t('txt_ph_reset')}</button></span>`;
+  const passDisplay = data.is_ghost
+    ? `<span style="color:var(--text-muted)" title="${t('txt_ph_ghost_no_passphrase')}">—</span>`
+    : `<code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(data.passphrase)}</code> <button type="button" class="btn btn-sm btn-muted" onclick="phResetPassphrase('${escAttr(data.id)}')" style="font-size:0.76rem;padding:0.15rem 0.4rem">🔄 ${t('txt_ph_reset')}</button>`;
+  html += `<strong>${t('txt_txt_passphrase')}:</strong><span>${passDisplay}</span>`;
+  html += `<strong>${t('txt_ph_name')}:</strong><span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap"><input type="text" id="ph-name-input" value="${escAttr(data.name || '')}" style="flex:1;min-width:180px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" onclick="phUpdateName('${escAttr(data.id)}')" id="ph-name-save-btn">${t('txt_txt_save')}</button></span>`;
   html += `<strong>${t('txt_txt_email')}:</strong><span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap"><input type="email" id="ph-email-input" value="${escAttr(data.email || '')}" style="flex:1;min-width:180px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" onclick="phUpdateEmail('${escAttr(data.id)}')" id="ph-email-save-btn">${t('txt_txt_save')}</button></span>`;
   html += `<strong>${t('txt_txt_contact')}:</strong><span>${esc(data.contact || t('txt_txt_contact_not_set'))}</span>`;
   html += `<strong>${t('txt_ph_created')}:</strong><span>${_phFormatDate(data.created_at)}</span>`;
@@ -203,6 +463,30 @@ async function phResetPassphrase(profileId) {
     phLoadProfile(profileId);
   } catch (e) {
     alert(t('txt_ph_failed_reset_passphrase_value', { value: e.message }));
+  }
+}
+
+/** Rename a profile */
+async function phUpdateName(profileId) {
+  const input = document.getElementById('ph-name-input');
+  const btn = document.getElementById('ph-name-save-btn');
+  if (!input) return;
+  const newName = input.value.trim();
+  if (!newName) { alert(t('txt_ph_name_empty')); return; }
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    await api(`/api/admin/player-profiles/${profileId}/name`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName }),
+    });
+    if (btn) { btn.disabled = false; btn.textContent = `${t('txt_txt_saved')} ✓`; }
+    setTimeout(() => { if (btn) btn.textContent = t('txt_txt_save'); }, 1500);
+    // Refresh list so the updated name shows there too
+    phSearch();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = t('txt_txt_save'); }
+    alert(t('txt_ph_failed_update_name_value', { value: e.message }));
   }
 }
 

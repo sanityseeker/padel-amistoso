@@ -579,7 +579,9 @@ async function deleteUserWithConfirm(username) {
   const errDiv = document.getElementById('user-mgmt-error');
   try {
     await apiAuth(`/api/auth/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
-    await loadUserMgmtList();
+    _allUsers = _allUsers.filter(u => u.username !== username);
+    const search = document.getElementById('user-mgmt-search');
+    filterUserMgmtList(search ? search.value : '');
   } catch (e) {
     if (errDiv) errDiv.textContent = e.message;
   }

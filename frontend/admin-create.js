@@ -1496,6 +1496,7 @@ async function _createHubDoSearch() {
     }
     let html = '';
     for (const p of profiles) {
+      if (p.is_ghost) continue;
       html += `<div class="pc-hub-result-item" onclick="_createHubSelect('${escAttr(p.id)}')">`;
       html += `<span class="pc-hub-result-name">${esc(p.name || '—')}</span>`;
       if (p.email) html += `<span class="pc-hub-result-email">${esc(p.email)}</span>`;

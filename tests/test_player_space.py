@@ -326,6 +326,29 @@ class TestCreateProfileGating:
             ).fetchone()
         assert row["profile_id"] == profile_id
 
+    def test_create_returns_409_when_passphrase_already_linked_to_hub_profile(self, client: TestClient) -> None:
+        """If the participant passphrase is linked to a real (non-ghost) profile,
+        creating a new profile must return 409 with a helpful message."""
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        pid = f"p-{uuid.uuid4().hex[:8]}"
+        pp = f"pp-{uuid.uuid4().hex[:12]}"
+        _insert_player_secret(tid, pid, "Existing Owner", pp, uuid.uuid4().hex)
+
+        # Create the first profile — this links the player_secret
+        first = client.post(
+            "/api/player-profile",
+            json={"name": "Existing Owner", "email": "existing@example.com", "participant_passphrase": pp},
+        )
+        assert first.status_code == 200
+
+        # Attempting to create a second profile with the same participation passphrase
+        # must be rejected with 409.
+        second = client.post(
+            "/api/player-profile",
+            json={"name": "Duplicate", "email": "dup@example.com", "participant_passphrase": pp},
+        )
+        assert second.status_code == 409
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Profile login

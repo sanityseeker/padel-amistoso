@@ -675,3 +675,380 @@ class TestGhostProfileCreation:
         ghost_entry = next((p for p in data if p["id"] == ghost_id), None)
         assert ghost_entry is not None
         assert ghost_entry["is_ghost"] is True
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Ghost profile consolidation
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _insert_ghost_profile(player_id: str, name: str) -> str:
+    """Insert a ghost player_profiles row and return its id."""
+    import secrets as _secrets
+
+    ghost_id = f"ghost_{player_id}"
+    now = datetime.now(timezone.utc).isoformat()
+    with db_mod.get_db() as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO player_profiles
+               (id, passphrase, name, email, contact, created_at, is_ghost)
+               VALUES (?, ?, ?, '', '', ?, 1)""",
+            (ghost_id, _secrets.token_hex(16), name, now),
+        )
+    return ghost_id
+
+
+def _insert_player_elo(tournament_id: str, player_id: str, elo_after: float, matches: int = 1) -> None:
+    """Insert a player_elo row representing a finished tournament result."""
+    now = datetime.now(timezone.utc).isoformat()
+    with db_mod.get_db() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO player_elo
+               (tournament_id, player_id, sport, elo_before, elo_after, matches_played, updated_at)
+               VALUES (?, ?, 'padel', 1000.0, ?, ?, ?)""",
+            (tournament_id, player_id, elo_after, matches, now),
+        )
+
+
+class TestGhostProfileConsolidation:
+    """Consolidating ghost profiles merges stats and ELO correctly."""
+
+    def test_consolidate_merges_two_ghosts(self, client: TestClient, auth_headers: dict) -> None:
+        pid1 = "cg-pid-1"
+        pid2 = "cg-pid-2"
+        ghost1 = _insert_ghost_profile(pid1, "Ros A")
+        ghost2 = _insert_ghost_profile(pid2, "Ros B")
+
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            headers=auth_headers,
+            json={"source_ids": [ghost1, ghost2], "name": "Ros"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == ghost1
+        assert data["name"] == "Ros"
+        assert data["is_ghost"] is True
+
+        # Secondary profile is deleted
+        with db_mod.get_db() as conn:
+            row = conn.execute("SELECT id FROM player_profiles WHERE id = ?", (ghost2,)).fetchone()
+        assert row is None
+
+    def test_consolidate_reassigns_history_to_primary(self, client: TestClient, auth_headers: dict) -> None:
+        pid1 = "cg-pid-h1"
+        pid2 = "cg-pid-h2"
+        ghost1 = _insert_ghost_profile(pid1, "Hist A")
+        ghost2 = _insert_ghost_profile(pid2, "Hist B")
+        _insert_tournament("cg-t-h1", "Hist T1")
+        _insert_tournament("cg-t-h2", "Hist T2")
+        _insert_history(ghost1, "cg-t-h1", pid1, player_name="Hist A", wins=3)
+        _insert_history(ghost2, "cg-t-h2", pid2, player_name="Hist B", wins=2)
+
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            headers=auth_headers,
+            json={"source_ids": [ghost1, ghost2]},
+        )
+        assert resp.status_code == 200
+
+        with db_mod.get_db() as conn:
+            rows = conn.execute("SELECT entity_id FROM player_history WHERE profile_id = ?", (ghost1,)).fetchall()
+            history_tids = {r["entity_id"] for r in rows}
+
+        # Both tournament history rows should now belong to ghost1
+        assert "cg-t-h1" in history_tids
+        assert "cg-t-h2" in history_tids
+
+    def test_consolidate_recalculates_elo(self, client: TestClient, auth_headers: dict) -> None:
+        pid1 = "cg-pid-e1"
+        pid2 = "cg-pid-e2"
+        ghost1 = _insert_ghost_profile(pid1, "Elo A")
+        ghost2 = _insert_ghost_profile(pid2, "Elo B")
+        _insert_tournament("cg-t-e1", "Elo T1")
+        _insert_tournament("cg-t-e2", "Elo T2")
+        _insert_player_elo("cg-t-e1", pid1, elo_after=1080.0, matches=5)
+        _insert_player_elo("cg-t-e2", pid2, elo_after=1120.0, matches=8)
+        # Link both player_ids to their respective ghost profiles via player_history
+        _insert_history(ghost1, "cg-t-e1", pid1, wins=3)
+        _insert_history(ghost2, "cg-t-e2", pid2, wins=5)
+
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            headers=auth_headers,
+            json={"source_ids": [ghost1, ghost2]},
+        )
+        assert resp.status_code == 200
+
+        # ELO should now reflect the most recent tournament (1120, 8 matches)
+        data = resp.json()
+        assert data["elo_padel_matches"] == 8
+        assert abs(data["elo_padel"] - 1120.0) < 0.01
+
+    def test_consolidate_requires_auth(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            json={"source_ids": ["a", "b"]},
+        )
+        assert resp.status_code == 401
+
+    def test_consolidate_requires_admin(self, client: TestClient, alice_headers: dict) -> None:
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            headers=alice_headers,
+            json={"source_ids": ["a", "b"]},
+        )
+        assert resp.status_code == 403
+
+    def test_consolidate_rejects_multiple_non_ghost(self, client: TestClient, auth_headers: dict) -> None:
+        """Two non-ghost (Hub) profiles in the list must be rejected."""
+        pid1 = "cg-pid-ng1"
+        ghost1 = _insert_ghost_profile(pid1, "Ghost")
+        regular1 = _insert_profile(name="Hub Player 1")
+        regular2 = _insert_profile(name="Hub Player 2")
+
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            headers=auth_headers,
+            json={"source_ids": [ghost1, regular1, regular2]},
+        )
+        assert resp.status_code == 422
+        assert "non-ghost" in resp.json()["detail"].lower()
+
+    def test_consolidate_rejects_all_non_ghost(self, client: TestClient, auth_headers: dict) -> None:
+        """A list with no ghost profiles at all must be rejected."""
+        regular1 = _insert_profile(name="Hub Player A")
+        regular2 = _insert_profile(name="Hub Player B")
+
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            headers=auth_headers,
+            json={"source_ids": [regular1, regular2]},
+        )
+        assert resp.status_code == 422
+        assert "ghost" in resp.json()["detail"].lower()
+
+    def test_consolidate_rejects_single_id(self, client: TestClient, auth_headers: dict) -> None:
+        pid1 = "cg-pid-s1"
+        ghost1 = _insert_ghost_profile(pid1, "Solo Ghost")
+
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            headers=auth_headers,
+            json={"source_ids": [ghost1]},
+        )
+        assert resp.status_code == 422
+
+    def test_consolidate_404_for_missing_profile(self, client: TestClient, auth_headers: dict) -> None:
+        pid1 = "cg-pid-m1"
+        ghost1 = _insert_ghost_profile(pid1, "Existing Ghost")
+
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            headers=auth_headers,
+            json={"source_ids": [ghost1, "nonexistent-ghost-id"]},
+        )
+        assert resp.status_code == 404
+
+    def test_consolidate_optional_name_preserved_when_omitted(self, client: TestClient, auth_headers: dict) -> None:
+        pid1 = "cg-pid-n1"
+        pid2 = "cg-pid-n2"
+        ghost1 = _insert_ghost_profile(pid1, "Original Name")
+        ghost2 = _insert_ghost_profile(pid2, "Other Ghost")
+
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            headers=auth_headers,
+            json={"source_ids": [ghost1, ghost2]},
+        )
+        assert resp.status_code == 200
+        # When no name provided, primary retains its original name
+        assert resp.json()["name"] == "Original Name"
+
+    def test_consolidate_deduplicated_ids(self, client: TestClient, auth_headers: dict) -> None:
+        """Passing the same id twice should be treated as a single-id request."""
+        pid1 = "cg-pid-d1"
+        ghost1 = _insert_ghost_profile(pid1, "Dup Ghost")
+
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            headers=auth_headers,
+            json={"source_ids": [ghost1, ghost1]},
+        )
+        assert resp.status_code == 422
+
+    def test_consolidate_ghost_into_hub_profile(self, client: TestClient, auth_headers: dict) -> None:
+        """A non-ghost Hub profile can be used as the merge target; ghosts are absorbed into it."""
+        from backend.api.db import get_db
+
+        pid_ghost = "cg-hub-g1"
+        hub_id = _insert_profile(name="Hub Player")
+        ghost_id = _insert_ghost_profile(pid_ghost, "Ghost Player")
+
+        # Link the ghost to a player_secret so history is reassignable
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO player_secrets (player_id, tournament_id, player_name, passphrase)"
+                " VALUES (?, 'x', 'Ghost Player', 'x')",
+                (pid_ghost,),
+            )
+            conn.execute(
+                "UPDATE player_secrets SET profile_id = ? WHERE player_id = ?",
+                (ghost_id, pid_ghost),
+            )
+
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            headers=auth_headers,
+            json={"source_ids": [hub_id, ghost_id]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == hub_id
+        assert data["is_ghost"] is False, "Hub profile must remain non-ghost after merge"
+
+        # Ghost profile should be deleted
+        get_resp = client.get(f"/api/admin/player-profiles/{ghost_id}", headers=auth_headers)
+        assert get_resp.status_code == 404
+
+    def test_consolidate_ghost_into_hub_forces_hub_as_primary(self, client: TestClient, auth_headers: dict) -> None:
+        """Even if hub profile is not listed first, it becomes the primary."""
+        from backend.api.db import get_db
+
+        pid_ghost = "cg-hub-g2"
+        hub_id = _insert_profile(name="Hub Primary")
+        ghost_id = _insert_ghost_profile(pid_ghost, "Ghost Secondary")
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO player_secrets (player_id, tournament_id, player_name, passphrase)"
+                " VALUES (?, 'y', 'Ghost Secondary', 'y')",
+                (pid_ghost,),
+            )
+            conn.execute(
+                "UPDATE player_secrets SET profile_id = ? WHERE player_id = ?",
+                (ghost_id, pid_ghost),
+            )
+
+        # Ghost listed first, hub second — hub should still become primary
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            headers=auth_headers,
+            json={"source_ids": [ghost_id, hub_id]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == hub_id
+        assert data["is_ghost"] is False
+
+
+# ---------------------------------------------------------------------------
+# Ghost → Hub profile conversion
+# ---------------------------------------------------------------------------
+
+
+class TestGhostConvert:
+    """Converting a ghost profile into a real Player Hub profile."""
+
+    def test_convert_generates_passphrase_and_clears_ghost_flag(self, client: TestClient, auth_headers: dict) -> None:
+        """Converted profile has is_ghost=False and a usable 3-word passphrase."""
+        pid = "cv-pid-1"
+        ghost_id = _insert_ghost_profile(pid, "Convert Me")
+
+        resp = client.post(
+            f"/api/admin/player-profiles/{ghost_id}/convert-ghost",
+            headers=auth_headers,
+            json={},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["is_ghost"] is False
+        assert data["id"] == ghost_id
+        phrase = data.get("passphrase", "")
+        # 3-word passphrases are hyphen-separated words; the old hex token has no hyphens
+        assert phrase.count("-") >= 2, f"Expected 3-word passphrase (hyphen-separated), got: {phrase!r}"
+
+    def test_convert_renames_profile_when_name_given(self, client: TestClient, auth_headers: dict) -> None:
+        """Optional name parameter updates the profile name on conversion."""
+        pid = "cv-pid-2"
+        ghost_id = _insert_ghost_profile(pid, "Old Name")
+
+        resp = client.post(
+            f"/api/admin/player-profiles/{ghost_id}/convert-ghost",
+            headers=auth_headers,
+            json={"name": "New Name"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "New Name"
+
+    def test_convert_sets_email_when_provided(self, client: TestClient, auth_headers: dict) -> None:
+        """Email provided during conversion is persisted on the profile."""
+        pid = "cv-pid-3"
+        ghost_id = _insert_ghost_profile(pid, "Email Ghost")
+
+        resp = client.post(
+            f"/api/admin/player-profiles/{ghost_id}/convert-ghost",
+            headers=auth_headers,
+            json={"email": "player@example.com"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["email"] == "player@example.com"
+
+    def test_convert_rejects_non_ghost_profile(self, client: TestClient, auth_headers: dict) -> None:
+        """Attempting to convert a real profile returns 422."""
+        import secrets as _secrets
+
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost)"
+                " VALUES (?, ?, ?, '', '', ?, 0)",
+                ("cv-real-1", _secrets.token_hex(8), "Real Player", now),
+            )
+
+        resp = client.post(
+            "/api/admin/player-profiles/cv-real-1/convert-ghost",
+            headers=auth_headers,
+            json={},
+        )
+        assert resp.status_code == 422
+
+    def test_convert_404_for_missing_profile(self, client: TestClient, auth_headers: dict) -> None:
+        """Returns 404 when the profile does not exist."""
+        resp = client.post(
+            "/api/admin/player-profiles/ghost_does_not_exist_xyz/convert-ghost",
+            headers=auth_headers,
+            json={},
+        )
+        assert resp.status_code == 404
+
+    def test_convert_rejects_invalid_email(self, client: TestClient, auth_headers: dict) -> None:
+        """Invalid email address returns 422."""
+        pid = "cv-pid-4"
+        ghost_id = _insert_ghost_profile(pid, "Bad Email Ghost")
+
+        resp = client.post(
+            f"/api/admin/player-profiles/{ghost_id}/convert-ghost",
+            headers=auth_headers,
+            json={"email": "not-an-email"},
+        )
+        assert resp.status_code == 422
+
+    def test_convert_passphrase_is_unique(self, client: TestClient, auth_headers: dict) -> None:
+        """Two separately converted ghosts each receive distinct passphrases."""
+        ghost_a = _insert_ghost_profile("cv-ua-1", "Ghost A")
+        ghost_b = _insert_ghost_profile("cv-ub-1", "Ghost B")
+
+        resp_a = client.post(
+            f"/api/admin/player-profiles/{ghost_a}/convert-ghost",
+            headers=auth_headers,
+            json={},
+        )
+        resp_b = client.post(
+            f"/api/admin/player-profiles/{ghost_b}/convert-ghost",
+            headers=auth_headers,
+            json={},
+        )
+        assert resp_a.status_code == 200
+        assert resp_b.status_code == 200
+        assert resp_a.json()["passphrase"] != resp_b.json()["passphrase"]

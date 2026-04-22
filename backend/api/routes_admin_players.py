@@ -11,28 +11,51 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
+from datetime import timedelta
 
 from ..auth.deps import require_admin
 from ..auth.models import User
+from ..auth.security import create_profile_email_verify_token, create_profile_token
+from ..email import is_valid_email, render_player_space_welcome, send_email_background
 from ..models import ParticipationStatus, Sport
 from ..tournaments.player_secrets import generate_passphrase
 from .db import get_db
-from .elo_store import retroactive_transfer_elo
+from .elo_store import consolidate_ghost_elos, retroactive_transfer_elo
 from .player_secret_store import invalidate_secrets_cache
 from .state import rename_player_in_tournament
 from .schemas import (
     AdminEmailUpdate,
     AdminKFactorUpdate,
+    AdminNameUpdate,
     AdminParticipationLink,
     AdminPlayerProfileDetail,
     AdminPlayerProfileSummary,
+    EmailLang,
 )
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin/player-profiles", tags=["admin-players"])
+
+
+class GhostConsolidateRequest(BaseModel):
+    """Request body for consolidating multiple ghost profiles into one."""
+
+    source_ids: Annotated[list[str], Field(min_length=2)]
+    name: str | None = Field(default=None, max_length=128)
+
+
+class GhostConvertRequest(BaseModel):
+    """Request body for converting a ghost profile into a real Player Hub profile."""
+
+    name: str | None = Field(default=None, max_length=128)
+    email: str | None = Field(default=None, max_length=256)
+    lang: EmailLang = "en"
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -150,6 +173,243 @@ async def search_past_participants(
         }
         for r in rows
     ]
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Ghost profile consolidation
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@router.post("/consolidate-ghosts", response_model=AdminPlayerProfileSummary)
+async def consolidate_ghost_profiles(
+    req: GhostConsolidateRequest,
+    _admin: User = Depends(require_admin),
+) -> AdminPlayerProfileSummary:
+    """Merge multiple ghost profiles into a single canonical ghost profile.
+
+    The first id in ``source_ids`` becomes the primary profile.  All
+    participations, history rows, and ELO data from the remaining (secondary)
+    profiles are reassigned to the primary.  Secondary profiles are deleted.
+    ELO is recalculated chronologically across all combined player_ids so
+    the merged profile reflects the correct current rating.
+
+    Args:
+        req: Contains ``source_ids`` (≥ 2 ghost profile ids) and an optional
+            ``name`` to assign to the surviving profile.
+
+    Returns:
+        The updated primary profile summary.
+
+    Raises:
+        HTTPException 404: One or more profiles not found.
+        HTTPException 422: Less than 2 distinct ids provided, or any profile
+            is not a ghost.
+    """
+    unique_ids: list[str] = list(dict.fromkeys(req.source_ids))
+    if len(unique_ids) < 2:
+        raise HTTPException(422, "At least 2 distinct profile IDs are required")
+
+    primary_id = unique_ids[0]
+    secondary_ids = unique_ids[1:]
+
+    with get_db() as conn:
+        placeholders = ",".join("?" for _ in unique_ids)
+        profiles = conn.execute(
+            f"SELECT id, is_ghost FROM player_profiles WHERE id IN ({placeholders})",
+            unique_ids,
+        ).fetchall()
+
+        found_ids = {r["id"] for r in profiles}
+        missing = set(unique_ids) - found_ids
+        if missing:
+            raise HTTPException(404, f"Profiles not found: {', '.join(sorted(missing))}")
+
+        non_ghost = [r["id"] for r in profiles if not r["is_ghost"]]
+        if len(non_ghost) > 1:
+            raise HTTPException(
+                422,
+                f"At most one non-ghost (Hub) profile may be included as the merge target. "
+                f"Non-ghost profiles found: {', '.join(sorted(non_ghost))}",
+            )
+        ghost_only = [r["id"] for r in profiles if r["is_ghost"]]
+        if not ghost_only:
+            raise HTTPException(422, "At least one ghost profile must be included in the merge")
+
+        # If a hub (non-ghost) profile is present it becomes the primary target.
+        if non_ghost and primary_id != non_ghost[0]:
+            primary_id = non_ghost[0]
+            secondary_ids = [i for i in unique_ids if i != primary_id]
+
+        if req.name:
+            conn.execute(
+                "UPDATE player_profiles SET name = ? WHERE id = ?",
+                (req.name.strip(), primary_id),
+            )
+
+        for secondary_id in secondary_ids:
+            conn.execute(
+                "UPDATE player_secrets SET profile_id = ? WHERE profile_id = ?",
+                (primary_id, secondary_id),
+            )
+            # Remove history rows that would conflict with existing primary rows, then
+            # reassign the rest.
+            conn.execute(
+                """DELETE FROM player_history
+                   WHERE profile_id = ?
+                     AND entity_type = 'tournament'
+                     AND entity_id IN (
+                         SELECT entity_id FROM player_history
+                          WHERE profile_id = ? AND entity_type = 'tournament'
+                     )""",
+                (secondary_id, primary_id),
+            )
+            conn.execute(
+                "UPDATE player_history SET profile_id = ? WHERE profile_id = ?",
+                (primary_id, secondary_id),
+            )
+            # Community and club ELO will be fully recomputed below.
+            conn.execute("DELETE FROM profile_community_elo WHERE profile_id = ?", (secondary_id,))
+            conn.execute("DELETE FROM profile_club_elo WHERE profile_id = ?", (secondary_id,))
+            conn.execute("DELETE FROM player_profiles WHERE id = ?", (secondary_id,))
+
+        all_player_ids = [
+            r["player_id"]
+            for r in conn.execute(
+                """
+                SELECT DISTINCT player_id FROM (
+                    SELECT player_id FROM player_secrets
+                     WHERE profile_id = ? AND player_id IS NOT NULL
+                    UNION
+                    SELECT player_id FROM player_history
+                     WHERE profile_id = ? AND entity_type = 'tournament'
+                       AND player_id IS NOT NULL
+                )
+                """,
+                (primary_id, primary_id),
+            ).fetchall()
+        ]
+
+    consolidate_ghost_elos(primary_id, all_player_ids)
+
+    with get_db() as conn:
+        elo_cols = ", elo_padel, elo_padel_matches, elo_tennis, elo_tennis_matches, k_factor_override, is_ghost"
+        row = conn.execute(
+            f"SELECT id, name, email, passphrase, created_at{elo_cols} FROM player_profiles WHERE id = ?",
+            (primary_id,),
+        ).fetchone()
+
+    return AdminPlayerProfileSummary(
+        id=row["id"],
+        name=row["name"],
+        email=row["email"],
+        passphrase=row["passphrase"],
+        created_at=row["created_at"],
+        elo_padel=row["elo_padel"],
+        elo_padel_matches=row["elo_padel_matches"],
+        elo_tennis=row["elo_tennis"],
+        elo_tennis_matches=row["elo_tennis_matches"],
+        k_factor_override=row["k_factor_override"],
+        is_ghost=bool(row["is_ghost"]),
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Ghost → Hub profile conversion
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@router.post("/{profile_id}/convert-ghost", response_model=AdminPlayerProfileSummary)
+async def convert_ghost_to_hub_profile(
+    profile_id: str,
+    req: GhostConvertRequest,
+    _admin: User = Depends(require_admin),
+) -> AdminPlayerProfileSummary:
+    """Convert a ghost profile into a real Player Hub profile.
+
+    Generates a unique 3-word passphrase and sets ``is_ghost = 0``.  All
+    existing participations, ELO data, and history rows are retained
+    unchanged.  If an email address is supplied, a welcome email with the new
+    passphrase is sent to the player immediately.
+
+    Args:
+        profile_id: ID of the ghost profile to convert.
+        req: Optional ``name`` override, optional ``email``, and ``lang``.
+
+    Returns:
+        The updated profile summary, including the new 3-word passphrase.
+
+    Raises:
+        HTTPException 404: Profile not found.
+        HTTPException 422: Profile is not a ghost.
+    """
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id, name, email, passphrase, created_at, is_ghost,"
+            " elo_padel, elo_padel_matches, elo_tennis, elo_tennis_matches, k_factor_override"
+            " FROM player_profiles WHERE id = ?",
+            (profile_id,),
+        ).fetchone()
+
+    if row is None:
+        raise HTTPException(404, "Profile not found")
+    if not row["is_ghost"]:
+        raise HTTPException(422, "Profile is already a real Hub profile, not a ghost")
+
+    # Generate a unique 3-word passphrase to replace the unusable hex token.
+    new_passphrase = generate_passphrase()
+    with get_db() as conn:
+        while conn.execute(
+            "SELECT 1 FROM player_profiles WHERE passphrase = ? AND id != ?",
+            (new_passphrase, profile_id),
+        ).fetchone():
+            new_passphrase = generate_passphrase()
+
+    clean_name = req.name.strip() if req.name else row["name"]
+    clean_email = req.email.strip() if req.email else (row["email"] or "")
+
+    if clean_email and not is_valid_email(clean_email):
+        raise HTTPException(422, "Invalid email address")
+
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE player_profiles SET is_ghost = 0, passphrase = ?, name = ?, email = ? WHERE id = ?",
+            (new_passphrase, clean_name, clean_email, profile_id),
+        )
+
+    if clean_email:
+        token = create_profile_token(profile_id, expires_delta=timedelta(days=30))
+        verify_token = create_profile_email_verify_token(profile_id, clean_email)
+        subject, html_body = render_player_space_welcome(
+            name=clean_name,
+            email=clean_email,
+            passphrase=new_passphrase,
+            access_token=token,
+            verify_token=verify_token,
+            lang=req.lang,
+        )
+        send_email_background(clean_email, subject, html_body)
+
+    with get_db() as conn:
+        updated = conn.execute(
+            "SELECT id, name, email, passphrase, created_at, is_ghost,"
+            " elo_padel, elo_padel_matches, elo_tennis, elo_tennis_matches, k_factor_override"
+            " FROM player_profiles WHERE id = ?",
+            (profile_id,),
+        ).fetchone()
+
+    return AdminPlayerProfileSummary(
+        id=updated["id"],
+        name=updated["name"],
+        email=updated["email"] or "",
+        passphrase=updated["passphrase"],
+        created_at=updated["created_at"],
+        elo_padel=updated["elo_padel"] or 0.0,
+        elo_padel_matches=updated["elo_padel_matches"] or 0,
+        elo_tennis=updated["elo_tennis"] or 0.0,
+        elo_tennis_matches=updated["elo_tennis_matches"] or 0,
+        k_factor_override=updated["k_factor_override"],
+        is_ghost=False,
+    )
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -547,6 +807,61 @@ async def admin_reset_passphrase(
         )
 
     return {"ok": True, "passphrase": new_passphrase}
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Rename profile
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@router.put("/{profile_id}/name")
+async def admin_update_name(
+    profile_id: str,
+    req: AdminNameUpdate,
+    _admin: User = Depends(require_admin),
+) -> dict:
+    """Rename a Player Hub profile and propagate to all active linked participations.
+
+    Updates ``player_profiles.name`` and ``player_secrets.player_name`` for
+    every active (not-yet-finished) participation linked to this profile, and
+    also renames the player in each live tournament's in-memory state.
+
+    Args:
+        profile_id: ID of the profile to rename.
+        req: Contains the new ``name``.
+
+    Returns:
+        ``{"ok": True, "name": new_name}``.
+
+    Raises:
+        HTTPException 404: Profile not found.
+    """
+    new_name = req.name.strip()
+
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE player_profiles SET name = ? WHERE id = ?",
+            (new_name, profile_id),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Profile not found")
+
+        active_rows = conn.execute(
+            "SELECT tournament_id, player_id FROM player_secrets WHERE profile_id = ? AND finished_at IS NULL",
+            (profile_id,),
+        ).fetchall()
+
+        if active_rows:
+            conn.execute(
+                "UPDATE player_secrets SET player_name = ? WHERE profile_id = ? AND finished_at IS NULL",
+                (new_name, profile_id),
+            )
+
+    for row in active_rows:
+        rename_player_in_tournament(row["tournament_id"], row["player_id"], new_name)
+        invalidate_secrets_cache(row["tournament_id"])
+
+    return {"ok": True, "name": new_name}
 
 
 # ────────────────────────────────────────────────────────────────────────────

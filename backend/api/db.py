@@ -312,6 +312,7 @@ CREATE TABLE IF NOT EXISTS profile_club_elo (
     elo         REAL    NOT NULL DEFAULT 1000,
     matches     INTEGER NOT NULL DEFAULT 0,
     tier_id     TEXT,
+    hidden      INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (profile_id, club_id, sport)
 );
 
@@ -701,6 +702,7 @@ def init_db() -> None:
                     elo         REAL    NOT NULL DEFAULT 1000,
                     matches     INTEGER NOT NULL DEFAULT 0,
                     tier_id     TEXT,
+                    hidden      INTEGER NOT NULL DEFAULT 0,
                     PRIMARY KEY (profile_id, club_id, sport)
                 )
                 """
@@ -709,6 +711,13 @@ def init_db() -> None:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_profile_club_elo_profile ON profile_club_elo (profile_id, sport)"
             )
+
+        # Migrate: add hidden column to profile_club_elo if missing
+        club_elo_cols = {r[1] for r in conn.execute("PRAGMA table_info(profile_club_elo)").fetchall()}
+        if "hidden" not in club_elo_cols:
+            conn.execute("ALTER TABLE profile_club_elo ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
+
+        if "profile_club_elo" not in all_tables:
             # Backfill existing club data: copy community ELO into club-local ELO for each existing club
             conn.execute(
                 """
