@@ -1,3 +1,9 @@
+## v1.9.2 (2026-04-22)
+
+### Fix
+
+- **clubs**: fix communities/clubs distinction; fix players management and conversion from ghost entities to permanent
+
 ## v1.9.1 (2026-04-22)
 
 ### Fix
