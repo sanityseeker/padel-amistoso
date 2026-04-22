@@ -1121,20 +1121,7 @@ function _buildDashboard() {
   html += `</div>`;
   html += `</div>`;
 
-  // Global stats scope card (Global / Community / Club)
-  html += _buildStatsScopeCard();
-
-  // Compact passphrase strip (always visible)
-  html += `<div class="passphrase-strip">`;
-  html += `<span class="passphrase-strip-label">${esc(t('txt_player_your_passphrase'))}</span>`;
-  html += `<span id="ps-phrase-text" class="passphrase-strip-text${_showPassphrase ? '' : ' passphrase-hidden'}">${esc(_profile.passphrase || '***')}</span>`;
-  html += `<button type="button" class="btn btn-sm btn-secondary" onclick="_togglePassphrase()">${esc(_showPassphrase ? t('txt_player_hide_passphrase') : t('txt_player_reveal_passphrase'))}</button>`;
-  if (_passphraseEmailedMsg) {
-    html += `<div class="success-msg passphrase-strip-success">${esc(_passphraseEmailedMsg)}</div>`;
-  }
-  html += `</div>`;
-
-  // Edit profile inline
+  // Edit profile inline (right below profile bar so it's visible without scrolling)
   if (_editMode) {
     html += `<div class="card" id="edit-profile-panel">`;
     html += `<div class="form-group"><label>${esc(t('txt_player_name_label'))}</label>`;
@@ -1150,6 +1137,19 @@ function _buildDashboard() {
     html += `<button type="button" class="btn btn-secondary btn-sm" onclick="_toggleEditProfile()">✕</button>`;
     html += `</div></div>`;
   }
+
+  // Global stats scope card (Global / Community / Club)
+  html += _buildStatsScopeCard();
+
+  // Compact passphrase strip (always visible)
+  html += `<div class="passphrase-strip">`;
+  html += `<span class="passphrase-strip-label">${esc(t('txt_player_your_passphrase'))}</span>`;
+  html += `<span id="ps-phrase-text" class="passphrase-strip-text${_showPassphrase ? '' : ' passphrase-hidden'}">${esc(_profile.passphrase || '***')}</span>`;
+  html += `<button type="button" class="btn btn-sm btn-secondary" onclick="_togglePassphrase()">${esc(_showPassphrase ? t('txt_player_hide_passphrase') : t('txt_player_reveal_passphrase'))}</button>`;
+  if (_passphraseEmailedMsg) {
+    html += `<div class="success-msg passphrase-strip-success">${esc(_passphraseEmailedMsg)}</div>`;
+  }
+  html += `</div>`;
 
   // Post-create success notice (passphrase already shown in strip above)
   if (_successMsg && !_editMode) {
@@ -2389,6 +2389,10 @@ function _toggleEditProfile() {
   _errorMsg = '';
   _successMsg = '';
   _render();
+  if (_editMode) {
+    const panel = document.getElementById('edit-profile-panel');
+    if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
 }
 
 function _togglePassphrase() {
