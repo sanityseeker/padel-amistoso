@@ -198,6 +198,7 @@ document.addEventListener('click', (e) => {
     case 'toggleTheme': toggleTheme(); break;
     case 'refreshCurrentView': _refreshCurrentView(); break;
     case 'openFormatInfo': openFormatInfo(); break;
+    case 'openContextInfo': openContextInfo(el.dataset.context); break;
     case 'setSport': setSport(el.dataset.sport); break;
     case 'setCreateMode': setCreateMode(el.dataset.tab); break;
     case 'setEntryMode': setEntryMode(el.dataset.entryCtx, el.dataset.entryMode); break;

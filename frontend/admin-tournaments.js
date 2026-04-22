@@ -20,6 +20,75 @@ function _phaseLabel(phase) {
   return map[phase] || phase;
 }
 
+let _homeTournamentFilter = 'all'; // all | tournaments | lobbies | finished | mine
+let _homeTournamentSearch = '';
+const _HOME_TOURN_FILTER_KEY = 'amistoso-home-tournament-filter';
+const _HOME_TOURN_SEARCH_KEY = 'amistoso-home-tournament-search';
+const _HOME_TOURN_FILTERS = new Set(['all', 'tournaments', 'lobbies', 'finished', 'mine']);
+try {
+  const saved = localStorage.getItem(_HOME_TOURN_FILTER_KEY);
+  if (saved && _HOME_TOURN_FILTERS.has(saved)) _homeTournamentFilter = saved;
+} catch (_) {}
+try { _homeTournamentSearch = localStorage.getItem(_HOME_TOURN_SEARCH_KEY) || ''; } catch (_) {}
+
+function _persistHomeTournamentFilter() {
+  try { localStorage.setItem(_HOME_TOURN_FILTER_KEY, _homeTournamentFilter); } catch (_) {}
+}
+
+function _persistHomeTournamentSearch() {
+  try { localStorage.setItem(_HOME_TOURN_SEARCH_KEY, _homeTournamentSearch); } catch (_) {}
+}
+
+function _renderHomeTournamentToolbar() {
+  const toolbar = document.getElementById('home-tournament-toolbar');
+  if (!toolbar) return;
+  const mineBtn = isAuthenticated()
+    ? `<button type="button" class="home-filter-chip${_homeTournamentFilter === 'mine' ? ' active' : ''}" onclick="_setHomeTournamentFilter('mine')">${t('txt_txt_mine')}</button>`
+    : '';
+  toolbar.innerHTML = `
+    <div class="home-search-row">
+      <input
+        id="home-tournament-search"
+        class="home-search-input"
+        type="search"
+        value="${escAttr(_homeTournamentSearch)}"
+        placeholder="${escAttr(t('txt_txt_search_tournaments_placeholder'))}"
+        onkeydown="if(event.key==='Enter')_submitHomeTournamentSearch()"
+      >
+      <button type="button" class="btn btn-sm" onclick="_submitHomeTournamentSearch()">${t('txt_txt_go')}</button>
+      <button type="button" class="btn btn-sm btn-muted" onclick="_clearHomeTournamentSearch()">${t('txt_txt_clear')}</button>
+    </div>
+    <div class="home-filter-row" role="tablist" aria-label="Home tournament filters">
+      <button type="button" class="home-filter-chip${_homeTournamentFilter === 'all' ? ' active' : ''}" onclick="_setHomeTournamentFilter('all')">${t('txt_txt_filter_all')}</button>
+      <button type="button" class="home-filter-chip${_homeTournamentFilter === 'tournaments' ? ' active' : ''}" onclick="_setHomeTournamentFilter('tournaments')">${t('txt_txt_tournaments')}</button>
+      <button type="button" class="home-filter-chip${_homeTournamentFilter === 'lobbies' ? ' active' : ''}" onclick="_setHomeTournamentFilter('lobbies')">${t('txt_reg_lobby')}</button>
+      <button type="button" class="home-filter-chip${_homeTournamentFilter === 'finished' ? ' active' : ''}" onclick="_setHomeTournamentFilter('finished')">${t('txt_txt_finished')}</button>
+      ${mineBtn}
+    </div>
+  `;
+}
+
+function _setHomeTournamentFilter(filter) {
+  _homeTournamentFilter = filter;
+  _persistHomeTournamentFilter();
+  loadTournaments();
+}
+
+function _submitHomeTournamentSearch() {
+  const input = document.getElementById('home-tournament-search');
+  _homeTournamentSearch = (input?.value || '').trim();
+  _persistHomeTournamentSearch();
+  loadTournaments();
+}
+
+function _clearHomeTournamentSearch() {
+  _homeTournamentSearch = '';
+  _persistHomeTournamentSearch();
+  const input = document.getElementById('home-tournament-search');
+  if (input) input.value = '';
+  loadTournaments();
+}
+
 async function loadTournaments() {
   try {
     const registrationsPath = '/api/registrations?include_archived=1';
@@ -33,20 +102,69 @@ async function loadTournaments() {
     _adminClubs = clubsList;
     const nonArchivedRegList = regList.filter(r => !r.archived);
     const archivedRegList = regList.filter(r => r.archived);
-    const visibleArchivedRegList = _showArchivedRegistrations ? archivedRegList : [];
+    let visibleArchivedRegList = _showArchivedRegistrations ? archivedRegList : [];
     _tournamentMeta = {};
     for (const tournament of list) _tournamentMeta[tournament.id] = tournament;
     _registrations = nonArchivedRegList;
     const el = document.getElementById('tournament-list');
     const archivedToggleEl = document.getElementById('archived-lobbies-toggle');
-    const finEl = document.getElementById('finished-tournament-list');
-    const finCard = document.getElementById('finished-tournaments-card');
-    const active = list.filter(tr => tr.phase !== 'finished');
-    const finished = list.filter(tr => tr.phase === 'finished');
+    let active = list.filter(tr => tr.phase !== 'finished');
+    let finished = list.filter(tr => tr.phase === 'finished');
     // Active section: open lobbies only.
     // Finished section: all non-archived closed lobbies (converted or not).
-    const activeLobbies = nonArchivedRegList.filter(r => r.open);
-    const finishedLobbies = nonArchivedRegList.filter(r => !r.open);
+    let activeLobbies = nonArchivedRegList.filter(r => r.open);
+    let finishedLobbies = nonArchivedRegList.filter(r => !r.open);
+
+    const searchNeedle = (_homeTournamentSearch || '').trim().toLowerCase();
+    const ownsTournament = (tournament) => {
+      const username = getAuthUsername();
+      if (!username) return false;
+      return tournament.owner === username || tournament.shared === true;
+    };
+    const ownsLobby = (registration) => {
+      const username = getAuthUsername();
+      if (!username) return false;
+      return registration.owner === username || registration.shared === true;
+    };
+    const matchesSearch = (item) => {
+      if (!searchNeedle) return true;
+      const hay = [
+        item.name,
+        item.club_name,
+        item.community_name,
+        item.owner,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(searchNeedle);
+    };
+
+    active = active.filter(matchesSearch);
+    finished = finished.filter(matchesSearch);
+    activeLobbies = activeLobbies.filter(matchesSearch);
+    finishedLobbies = finishedLobbies.filter(matchesSearch);
+    visibleArchivedRegList = visibleArchivedRegList.filter(matchesSearch);
+
+    if (_homeTournamentFilter === 'tournaments') {
+      activeLobbies = [];
+      finishedLobbies = [];
+      visibleArchivedRegList = [];
+    } else if (_homeTournamentFilter === 'lobbies') {
+      active = [];
+      finished = [];
+    } else if (_homeTournamentFilter === 'finished') {
+      active = [];
+      activeLobbies = [];
+    } else if (_homeTournamentFilter === 'mine') {
+      active = active.filter(ownsTournament);
+      finished = finished.filter(ownsTournament);
+      activeLobbies = activeLobbies.filter(ownsLobby);
+      finishedLobbies = finishedLobbies.filter(ownsLobby);
+      visibleArchivedRegList = visibleArchivedRegList.filter(ownsLobby);
+    }
+
+    _renderHomeTournamentToolbar();
     const archivedLobbiesCount = archivedRegList.length;
     const showArchivedToggle = isAuthenticated() && archivedLobbiesCount > 0;
     const renderTournamentCard = (tournament) => {
@@ -153,28 +271,30 @@ async function loadTournaments() {
     ` : '';
     if (archivedToggleEl) archivedToggleEl.innerHTML = archivedToggle;
 
-    if (!active.length && !activeLobbies.length) {
-      el.innerHTML = `<div class="tournaments-empty-state"><div class="tournaments-empty-icon">🏆</div><div class="tournaments-empty-title">${t('txt_txt_no_tournaments_yet')}</div><div class="tournaments-empty-hint">${t('txt_txt_no_tournaments_hint')}</div><button type="button" class="btn btn-primary btn-sm" onclick="setActiveTab('create')">${t('txt_txt_create_first')}</button></div>`;
-      const finishedSection = _renderFinishedSection();
-      if (finishedSection.hasContent || showArchivedToggle) {
-        finCard.style.display = '';
-        finEl.innerHTML = finishedSection.html;
-      } else {
-        finCard.style.display = 'none';
-      }
+    const finishedSection = _renderFinishedSection();
+    const hasAnyItems = active.length || activeLobbies.length || finishedSection.hasContent;
+
+    if (!hasAnyItems) {
+      const hasFilter = Boolean((_homeTournamentSearch || '').trim()) || _homeTournamentFilter !== 'all';
+      const emptyTitle = hasFilter ? t('txt_txt_no_home_items_match') : t('txt_txt_no_tournaments_yet');
+      const emptyHint = hasFilter ? t('txt_txt_try_adjusting_filters') : t('txt_txt_no_tournaments_hint');
+      const actionBtn = hasFilter
+        ? `<button type="button" class="btn btn-primary btn-sm" onclick="_setHomeTournamentFilter('all');_clearHomeTournamentSearch()">${t('txt_txt_clear')}</button>`
+        : `<button type="button" class="btn btn-primary btn-sm" onclick="setActiveTab('create')">${t('txt_txt_create_first')}</button>`;
+      el.innerHTML = `<div class="tournaments-empty-state"><div class="tournaments-empty-icon">🏆</div><div class="tournaments-empty-title">${emptyTitle}</div><div class="tournaments-empty-hint">${emptyHint}</div>${actionBtn}</div>`;
       return;
     }
-    // Open lobbies first, then active tournaments
+
+    // Open lobbies first, then active tournaments, then finished section with a divider
     let html = activeLobbies.map(_renderLobbyCard).join('');
     html += active.map(renderTournamentCard).join('');
-    el.innerHTML = html || `<em>${t('txt_txt_no_tournaments_yet')}</em>`;
-    const finishedSection = _renderFinishedSection();
-    if (finishedSection.hasContent || showArchivedToggle) {
-      finCard.style.display = '';
-      finEl.innerHTML = finishedSection.html;
-    } else {
-      finCard.style.display = 'none';
+    if (finishedSection.hasContent) {
+      if (active.length || activeLobbies.length) {
+        html += `<div class="finished-section-divider"><span>${t('txt_txt_finished')}</span></div>`;
+      }
+      html += finishedSection.html;
     }
+    el.innerHTML = html;
   } catch (e) { console.error(e); }
 }
 

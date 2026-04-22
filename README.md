@@ -193,6 +193,25 @@ You can also add **co-editors** (collaborators) to a registration lobby so multi
 
 Tip for organizers: encourage players to link registrations to their **Player Hub** profile passphrase (or use matching email) so events appear automatically in their `/player` dashboard.
 
+### Communities and clubs
+
+The app separates organizational scope into two layers:
+
+- **Community**: the base scope used by tournaments and registration lobbies.
+- **Club**: an optional layer on top of a community that adds branding, roster tools, tiers, seasons, and club-level collaboration workflows.
+
+Recommended setup:
+
+1. Create communities for each venue/league/event family.
+2. Set your default community so new events are pre-assigned correctly.
+3. Upgrade active communities to clubs when you need logo identity and long-term progression.
+4. Organize events into club seasons to keep standings meaningful over time.
+
+Operational notes:
+
+- Community reassignment for tournaments and lobbies is immediate and intended for cleanup/migration.
+- Clubs are the right place for recurring organizer teams, player tier ladders, and club-specific communications.
+
 ### Player codes
 
 Every player automatically gets a unique **passphrase** (e.g. `brave-little-tiger`) and a **QR code**. Open the 🔑 Player Codes panel to view, copy, print, or regenerate credentials for individual players.

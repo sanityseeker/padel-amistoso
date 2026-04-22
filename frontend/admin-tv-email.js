@@ -73,13 +73,15 @@ function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
   html += `<div style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)">`;
   html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">🏷️ ${t('txt_tv_attach_scope')}</label>`;
   html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_tv_attach_club_community_help')}</p>`;
-  // Club row — shown only when the admin has clubs
-  const adminClubsLocal = _adminClubs || [];
+  // Club row — shown only when the admin has clubs in the current community
+  const adminClubsLocal = (_adminClubs || []).filter(c => c.community_id === currentCommunityId);
   if (adminClubsLocal.length) {
-    const currentClubId = (adminClubsLocal.find(c => c.community_id === currentCommunityId) || {}).id || '';
-    const clubOptions = adminClubsLocal.map(c =>
-      `<option value="${esc(c.id)}" ${c.id === currentClubId ? 'selected' : ''}>${esc(c.name)}</option>`
-    ).join('');
+    const currentClubId = currentTournament.club_id || '';
+    const noneLabel = t('txt_txt_none_selected') || 'none';
+    const clubOptions = `<option value="" ${!currentClubId ? 'selected' : ''}>— ${esc(noneLabel)} —</option>`
+      + adminClubsLocal.map(c =>
+        `<option value="${esc(c.id)}" ${c.id === currentClubId ? 'selected' : ''}>${esc(c.name)}</option>`
+      ).join('');
     html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.35rem">`;
     html += `<span style="font-size:0.82rem;color:var(--text-muted);white-space:nowrap">${t('txt_tv_attach_club')}</span>`;
     html += `<select id="tournament-club-select" style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem;min-width:180px">${clubOptions}</select>`;
@@ -531,12 +533,11 @@ async function _setTournamentClub() {
   const sel = document.getElementById('tournament-club-select');
   const msgEl = document.getElementById('tournament-club-msg');
   if (!sel) return;
-  const club = (_adminClubs || []).find(c => c.id === sel.value);
-  if (!club) return;
+  const newClubId = sel.value || null;
   try {
-    await api(`/api/tournaments/${currentTid}/community`, {
+    await api(`/api/tournaments/${currentTid}/club`, {
       method: 'PATCH',
-      body: JSON.stringify({ community_id: club.community_id }),
+      body: JSON.stringify({ club_id: newClubId }),
     });
     await loadTournaments();
     await _rerenderCurrentViewPreserveDrafts();

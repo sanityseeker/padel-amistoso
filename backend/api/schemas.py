@@ -68,6 +68,7 @@ class CreateGroupPlayoffRequest(BaseModel):
     sport: Sport = Sport.PADEL
     community_id: str = Field(default="open", max_length=64)
     season_id: str | None = Field(default=None, max_length=64)
+    club_id: str | None = Field(default=None, max_length=64)
     court_names: list[str] = Field(default=["Court 1"], max_length=64)
     num_groups: int = Field(default=2, ge=1, le=32)
     group_names: list[str] = Field(default=[], max_length=32)
@@ -126,6 +127,7 @@ class CreateMexicanoRequest(BaseModel):
     sport: Sport = Sport.PADEL
     community_id: str = Field(default="open", max_length=64)
     season_id: str | None = Field(default=None, max_length=64)
+    club_id: str | None = Field(default=None, max_length=64)
     total_points_per_match: int = Field(default=32, ge=1)
     num_rounds: int = Field(default=8, ge=0)
     skill_gap: int | None = Field(default=None, ge=0)
@@ -195,6 +197,7 @@ class CreatePlayoffRequest(BaseModel):
     sport: Sport = Sport.PADEL
     community_id: str = Field(default="open", max_length=64)
     season_id: str | None = Field(default=None, max_length=64)
+    club_id: str | None = Field(default=None, max_length=64)
     double_elimination: bool = False
     public: bool = True
     assign_courts: bool = True

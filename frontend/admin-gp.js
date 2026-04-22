@@ -25,11 +25,22 @@ async function renderGP() {
     _gpTeamMode = status.team_mode || false;
 
     const hasCourts = status.assign_courts !== false;
+    const allGroupMatches = Object.values(groups.matches).flat();
+    const allPlayoffMatches = playoffs?.matches || [];
+    const phaseMatches = status.phase === 'groups' ? allGroupMatches : allPlayoffMatches;
+    const gpOpsStats = _buildGpOpsStats({
+      phase: status.phase,
+      hasCourts,
+      hasMoreGroupRounds: Boolean(groups.has_more_rounds),
+      matches: phaseMatches,
+    });
     let html = '';
     html += _renderTvControls(tvSettings, hasCourts);
     html += _renderEmailControls(emailSettings);
     html += _renderPlayerCodes(playerSecrets);
     html += _renderCollaboratorsSection(collabData?.collaborators || []);
+    html += _renderGpOpsHeader(gpOpsStats);
+    html += _renderGpReviewQueueCard(phaseMatches);
     if (status.phase === 'playoffs') {
       html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${t('txt_txt_play_offs')}</span></div>`;
     }
@@ -132,7 +143,6 @@ async function renderGP() {
 
     // Next round / Start playoffs controls
     if (status.phase === 'groups') {
-      const allGroupMatches = Object.values(groups.matches).flat();
       const pending = allGroupMatches.filter(m => m.status !== 'completed');
       if (pending.length === 0) {
         html += `<div id="gp-playoffs-section">`;
@@ -182,10 +192,183 @@ async function renderGP() {
 
     if (currentTid !== _renderTid) return;
     el.innerHTML = html;
+    _gpApplyReviewQueueFilter();
   } catch (e) {
     if (currentTid !== _renderTid) return;
     if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
     el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+  }
+}
+
+function _buildGpOpsStats({ phase, hasCourts, hasMoreGroupRounds, matches }) {
+  const unresolved = (matches || []).filter(m => m.status !== 'completed');
+  const disputes = unresolved.filter(m => m.disputed);
+  const escalated = disputes.filter(m => m.dispute_escalated);
+  const pendingConfirmation = unresolved.filter(m => m.score && m.scored_by && !m.score_confirmed && !m.disputed);
+  const unassignedCourts = hasCourts
+    ? unresolved.filter(m => !String(m.court || '').trim()).length
+    : 0;
+
+  let nextAction = 'none';
+  if (disputes.length > 0 || pendingConfirmation.length > 0) {
+    nextAction = 'review';
+  } else if (unresolved.length > 0) {
+    nextAction = 'record';
+  } else if (phase === 'groups' && hasMoreGroupRounds) {
+    nextAction = 'next-round';
+  } else if (phase === 'groups') {
+    nextAction = 'start-playoffs';
+  } else if (phase === 'playoffs') {
+    nextAction = 'finish-playoffs';
+  }
+
+  return {
+    unresolvedCount: unresolved.length,
+    disputesCount: disputes.length,
+    escalatedCount: escalated.length,
+    pendingConfirmationCount: pendingConfirmation.length,
+    unassignedCourtsCount: unassignedCourts,
+    nextAction,
+  };
+}
+
+function _renderGpOpsHeader(stats) {
+  const actionLabelMap = {
+    review: t('txt_txt_next_action_review_queue'),
+    record: t('txt_txt_next_action_record_scores'),
+    'next-round': t('txt_txt_next_action_generate_round'),
+    'start-playoffs': t('txt_txt_next_action_start_playoffs'),
+    'finish-playoffs': t('txt_txt_next_action_complete_playoffs'),
+    none: '—',
+  };
+  const actionLabel = actionLabelMap[stats.nextAction] || actionLabelMap.none;
+  return `
+    <div class="card gp-ops-header" id="gp-ops-header">
+      <div class="gp-ops-header-top">
+        <h3>${t('txt_txt_ops_overview')}</h3>
+        <div class="gp-ops-next-action">
+          <span>${t('txt_txt_next_action')}:</span>
+          <button type="button" class="btn btn-sm" ${stats.nextAction === 'none' ? 'disabled' : ''} onclick="_gpFocusNextAction('${stats.nextAction}')">${esc(actionLabel)}</button>
+        </div>
+      </div>
+      <div class="gp-ops-stats-grid">
+        <div class="gp-ops-stat-pill"><span>${t('txt_txt_pending_matches')}</span><strong>${stats.unresolvedCount}</strong></div>
+        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_pending_confirmation')}</span><strong>${stats.pendingConfirmationCount}</strong></div>` : ''}
+        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_disputes')}</span><strong>${stats.disputesCount}</strong></div>` : ''}
+        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_escalated')}</span><strong>${stats.escalatedCount}</strong></div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function _gpGetReviewItemKind(match) {
+  if (!match || match.status === 'completed') return null;
+  if (match.disputed) return 'disputes';
+  if (_scoreConfirmationMode !== 'immediate' && match.score && match.scored_by && !match.score_confirmed) return 'pending';
+  return null;
+}
+
+function _gpMatchScorePreview(match) {
+  if (!match.score && (!match.sets || match.sets.length === 0)) return '—';
+  if (match.sets && match.sets.length > 0) return match.sets.map(s => `${s[0]}-${s[1]}`).join(' / ');
+  return `${match.score[0]}-${match.score[1]}`;
+}
+
+function _renderGpReviewQueueCard(matches) {
+  const reviewItems = (matches || []).filter(m => _gpGetReviewItemKind(m));
+  if (!reviewItems.length) return '';
+
+  const disputesCount = reviewItems.filter(m => _gpGetReviewItemKind(m) === 'disputes').length;
+  const pendingCount = reviewItems.length - disputesCount;
+  let html = `<div class="card gp-review-queue-card" id="gp-review-queue-card">`;
+  html += `<div class="gp-review-queue-head">`;
+  html += `<h3>${t('txt_txt_review_queue')}</h3>`;
+  html += `<div class="gp-review-filter" id="gp-review-filter">`;
+  html += `<button type="button" class="active" onclick="_gpSetReviewQueueFilter('all')">${t('txt_txt_filter_all')} (${reviewItems.length})</button>`;
+  if (_scoreConfirmationMode !== 'immediate') html += `<button type="button" onclick="_gpSetReviewQueueFilter('disputes')">${t('txt_txt_disputes')} (${disputesCount})</button>`;
+  if (_scoreConfirmationMode !== 'immediate') html += `<button type="button" onclick="_gpSetReviewQueueFilter('pending')">${t('txt_txt_pending_confirmation')} (${pendingCount})</button>`;
+  html += `</div></div>`;
+  html += `<div class="gp-review-items" id="gp-review-items">`;
+  for (const m of reviewItems) {
+    const kind = _gpGetReviewItemKind(m);
+    const kindLabel = kind === 'disputes' ? t('txt_txt_disputes') : t('txt_txt_pending_confirmation');
+    const roundLabel = m.round_label ? esc(m.round_label) : t('txt_txt_match');
+    const courtLabel = m.court ? esc(m.court) : t('txt_txt_no_courts');
+    const scorePreview = esc(_gpMatchScorePreview(m));
+    const teams = `${(m.team1 || []).join(' & ') || 'TBD'} vs ${(m.team2 || []).join(' & ') || 'TBD'}`;
+    html += `<div class="gp-review-row" data-kind="${kind}">`;
+    html += `<div class="gp-review-row-main">`;
+    html += `<div class="gp-review-row-meta"><span class="badge badge-scheduled">${esc(kindLabel)}</span><span>${roundLabel}</span><span>${courtLabel}</span><span>${scorePreview}</span></div>`;
+    html += `<div class="gp-review-row-teams">${esc(teams)}</div>`;
+    html += `</div>`;
+    html += `<button type="button" class="btn btn-sm" onclick="_goToMatchFromQueue('${m.id}')">${t('txt_txt_go_to_match')}</button>`;
+    html += `</div>`;
+  }
+  html += `</div>`;
+  html += `<div class="gp-review-empty hidden" id="gp-review-empty">${t('txt_txt_no_review_items')}</div>`;
+  html += `</div>`;
+  return html;
+}
+
+function _gpSetReviewQueueFilter(filter) {
+  _gpReviewQueueFilterState = filter;
+  _gpApplyReviewQueueFilter();
+}
+
+function _gpApplyReviewQueueFilter() {
+  const root = document.getElementById('gp-review-queue-card');
+  if (!root) return;
+  const rows = [...root.querySelectorAll('.gp-review-row')];
+  const filter = _gpReviewQueueFilterState;
+
+  rows.forEach(row => {
+    const show = filter === 'all' || row.dataset.kind === filter;
+    row.classList.toggle('hidden', !show);
+  });
+
+  const visibleRows = rows.filter(row => !row.classList.contains('hidden')).length;
+  const empty = root.querySelector('#gp-review-empty');
+  if (empty) empty.classList.toggle('hidden', visibleRows > 0);
+
+  const filterWrap = root.querySelector('#gp-review-filter');
+  if (filterWrap) {
+    const labels = {
+      all: t('txt_txt_filter_all'),
+      disputes: t('txt_txt_disputes'),
+      pending: t('txt_txt_pending_confirmation'),
+    };
+    filterWrap.querySelectorAll('button').forEach(btn => {
+      const isActive = btn.textContent.trim().startsWith(labels[filter]);
+      btn.classList.toggle('active', isActive);
+    });
+  }
+}
+
+function _goToMatchFromQueue(matchId) {
+  if (_gpMatchFilterState !== 'all') _applyMatchFilter('all');
+  _scrollToMatch(matchId);
+}
+
+function _gpFocusNextAction(action) {
+  if (action === 'review') {
+    document.getElementById('gp-review-queue-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  if (action === 'record') {
+    if (_gpMatchFilterState !== 'pending') _applyMatchFilter('pending');
+    const firstPending = document.querySelector('.match-card-wrap[data-status="pending"]');
+    if (firstPending?.id?.startsWith('mcard-')) {
+      _scrollToMatch(firstPending.id.slice(6));
+    }
+    return;
+  }
+  if (action === 'next-round' || action === 'start-playoffs') {
+    const target = document.getElementById('gp-playoffs-section') || document.getElementById('gp-group-progress-section');
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  if (action === 'finish-playoffs') {
+    document.getElementById('gp-playoff-schema')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
 
@@ -209,13 +392,22 @@ async function renderPO() {
     }
     _scoreConfirmationMode = tvSettings.score_confirmation || 'immediate';
     _poCurrentPhase = status.phase;
+    const poMatches = playoffs.matches || [];
 
     const hasCourts = status.assign_courts !== false;
+    const poOpsStats = _buildGpOpsStats({
+      phase: status.phase,
+      hasCourts,
+      hasMoreGroupRounds: false,
+      matches: poMatches,
+    });
     let html = '';
     html += _renderTvControls(tvSettings, hasCourts);
     html += _renderEmailControls(emailSettings);
     html += _renderPlayerCodes(playerSecrets);
     html += _renderCollaboratorsSection(collabData?.collaborators || []);
+    html += _renderPoOpsHeader(poOpsStats);
+    html += _renderPoReviewQueueCard(poMatches);
 
     if (status.champion) {
       html += `<div class="alert alert-success">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
@@ -263,10 +455,125 @@ async function renderPO() {
 
     if (currentTid !== _renderTid) return;
     el.innerHTML = html;
+    _poApplyReviewQueueFilter();
   } catch (e) {
     if (currentTid !== _renderTid) return;
     if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
     el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+  }
+}
+
+function _renderPoOpsHeader(stats) {
+  const actionLabelMap = {
+    review: t('txt_txt_next_action_review_queue'),
+    record: t('txt_txt_next_action_record_scores'),
+    'finish-playoffs': t('txt_txt_next_action_complete_playoffs'),
+    none: '—',
+  };
+  const actionLabel = actionLabelMap[stats.nextAction] || actionLabelMap.none;
+  return `
+    <div class="card gp-ops-header" id="po-ops-header">
+      <div class="gp-ops-header-top">
+        <h3>${t('txt_txt_ops_overview')}</h3>
+        <div class="gp-ops-next-action">
+          <span>${t('txt_txt_next_action')}:</span>
+          <button type="button" class="btn btn-sm" ${stats.nextAction === 'none' ? 'disabled' : ''} onclick="_poFocusNextAction('${stats.nextAction}')">${esc(actionLabel)}</button>
+        </div>
+      </div>
+      <div class="gp-ops-stats-grid">
+        <div class="gp-ops-stat-pill"><span>${t('txt_txt_pending_matches')}</span><strong>${stats.unresolvedCount}</strong></div>
+        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_pending_confirmation')}</span><strong>${stats.pendingConfirmationCount}</strong></div>` : ''}
+        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_disputes')}</span><strong>${stats.disputesCount}</strong></div>` : ''}
+        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_escalated')}</span><strong>${stats.escalatedCount}</strong></div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function _renderPoReviewQueueCard(matches) {
+  const reviewItems = (matches || []).filter(m => _gpGetReviewItemKind(m));
+  if (!reviewItems.length) return '';
+
+  const disputesCount = reviewItems.filter(m => _gpGetReviewItemKind(m) === 'disputes').length;
+  const pendingCount = reviewItems.length - disputesCount;
+  let html = `<div class="card gp-review-queue-card" id="po-review-queue-card">`;
+  html += `<div class="gp-review-queue-head">`;
+  html += `<h3>${t('txt_txt_review_queue')}</h3>`;
+  html += `<div class="gp-review-filter" id="po-review-filter">`;
+  html += `<button type="button" class="active" onclick="_poSetReviewQueueFilter('all')">${t('txt_txt_filter_all')} (${reviewItems.length})</button>`;
+  if (_scoreConfirmationMode !== 'immediate') html += `<button type="button" onclick="_poSetReviewQueueFilter('disputes')">${t('txt_txt_disputes')} (${disputesCount})</button>`;
+  if (_scoreConfirmationMode !== 'immediate') html += `<button type="button" onclick="_poSetReviewQueueFilter('pending')">${t('txt_txt_pending_confirmation')} (${pendingCount})</button>`;
+  html += `</div></div>`;
+  html += `<div class="gp-review-items" id="po-review-items">`;
+  for (const m of reviewItems) {
+    const kind = _gpGetReviewItemKind(m);
+    const kindLabel = kind === 'disputes' ? t('txt_txt_disputes') : t('txt_txt_pending_confirmation');
+    const roundLabel = m.round_label ? esc(m.round_label) : t('txt_txt_match');
+    const courtLabel = m.court ? esc(m.court) : t('txt_txt_no_courts');
+    const scorePreview = esc(_gpMatchScorePreview(m));
+    const teams = `${(m.team1 || []).join(' & ') || 'TBD'} vs ${(m.team2 || []).join(' & ') || 'TBD'}`;
+    html += `<div class="gp-review-row" data-kind="${kind}">`;
+    html += `<div class="gp-review-row-main">`;
+    html += `<div class="gp-review-row-meta"><span class="badge badge-scheduled">${esc(kindLabel)}</span><span>${roundLabel}</span><span>${courtLabel}</span><span>${scorePreview}</span></div>`;
+    html += `<div class="gp-review-row-teams">${esc(teams)}</div>`;
+    html += `</div>`;
+    html += `<button type="button" class="btn btn-sm" onclick="_goToMatchFromQueue('${m.id}')">${t('txt_txt_go_to_match')}</button>`;
+    html += `</div>`;
+  }
+  html += `</div>`;
+  html += `<div class="gp-review-empty hidden" id="po-review-empty">${t('txt_txt_no_review_items')}</div>`;
+  html += `</div>`;
+  return html;
+}
+
+function _poSetReviewQueueFilter(filter) {
+  _poReviewQueueFilterState = filter;
+  _poApplyReviewQueueFilter();
+}
+
+function _poApplyReviewQueueFilter() {
+  const root = document.getElementById('po-review-queue-card');
+  if (!root) return;
+  const rows = [...root.querySelectorAll('.gp-review-row')];
+  const filter = _poReviewQueueFilterState;
+
+  rows.forEach(row => {
+    const show = filter === 'all' || row.dataset.kind === filter;
+    row.classList.toggle('hidden', !show);
+  });
+
+  const visibleRows = rows.filter(row => !row.classList.contains('hidden')).length;
+  const empty = root.querySelector('#po-review-empty');
+  if (empty) empty.classList.toggle('hidden', visibleRows > 0);
+
+  const filterWrap = root.querySelector('#po-review-filter');
+  if (filterWrap) {
+    const labels = {
+      all: t('txt_txt_filter_all'),
+      disputes: t('txt_txt_disputes'),
+      pending: t('txt_txt_pending_confirmation'),
+    };
+    filterWrap.querySelectorAll('button').forEach(btn => {
+      const isActive = btn.textContent.trim().startsWith(labels[filter]);
+      btn.classList.toggle('active', isActive);
+    });
+  }
+}
+
+function _poFocusNextAction(action) {
+  if (action === 'review') {
+    document.getElementById('po-review-queue-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  if (action === 'record') {
+    const firstPending = document.querySelector('.match-card-wrap[data-status="pending"]');
+    if (firstPending?.id?.startsWith('mcard-')) {
+      _scrollToMatch(firstPending.id.slice(6));
+    }
+    return;
+  }
+  if (action === 'finish-playoffs') {
+    document.getElementById('po-playoff-schema')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
 
@@ -1229,6 +1536,8 @@ async function startPlayoffs() {
 
 /** Module-level match filter state so it can be preserved across re-renders. */
 let _gpMatchFilterState = 'all';
+let _gpReviewQueueFilterState = 'all';
+let _poReviewQueueFilterState = 'all';
 
 /** Smooth-scroll to a group card and briefly highlight it. */
 function _scrollToGroup(gName) {

@@ -31,9 +31,15 @@ let _clubsAttachSearch = '';
 let _clubsPlayerFilter = '';
 let _clubsEloDebounceTimers = {}; // keyed by `${profileId}-${sport}`
 let _clubsLeaderboardSort = { col: 'elo', dir: 'desc' };
+let _clubsRosterNoticeText = '';
+let _clubsRosterNoticeError = false;
+let _clubsRosterNoticeTimer = null;
 const _CLUBS_SPORT_KEY = 'amistoso-clubs-sport';
+const _CLUBS_GHOST_SEARCH_KEY = 'amistoso-clubs-ghost-search';
 let _clubsSport = 'padel';
 try { _clubsSport = localStorage.getItem(_CLUBS_SPORT_KEY) || 'padel'; } catch (_) {}
+let _clubsGhostSearch = '';
+try { _clubsGhostSearch = localStorage.getItem(_CLUBS_GHOST_SEARCH_KEY) || ''; } catch (_) {}
 // ─── Entry point ─────────────────────────────────────────
 
 /**
@@ -840,9 +846,21 @@ function _clubsRenderSeasonAssignment() {
   if (matchingT.length) {
     html += `<div class="player-codes-table-wrap" style="margin-bottom:0.75rem"><table class="player-codes-table">
       <tbody>
-        ${matchingT.map(t_ => `
+        ${matchingT.map(t_ => {
+          const inThisClub = t_.club_id === _activeClubId;
+          const otherClubLabel = (t_.club_id && !inThisClub) ? (t_.club_name || t_.club_id) : '';
+          const clubBtnLabel = inThisClub ? t('txt_clubs_remove_from_club') : t('txt_clubs_attach_to_club');
+          const clubBtnClass = inThisClub ? 'btn btn-sm btn-muted' : 'btn btn-sm btn-primary';
+          const otherTag = otherClubLabel
+            ? `<span class="muted-note" style="margin-left:0.4rem;font-size:0.78rem">${t('txt_clubs_currently_in_club')}: ${esc(otherClubLabel)}</span>`
+            : '';
+          return `
           <tr class="player-codes-row">
-            <td class="player-codes-name">${esc(t_.name)}</td>
+            <td class="player-codes-name">${esc(t_.name)}${otherTag}</td>
+            <td class="player-codes-cell" style="white-space:nowrap">
+              <button type="button" class="${clubBtnClass}" onclick="clubsToggleTournamentClub('${esc(t_.id)}', this)">${clubBtnLabel}</button>
+              <span id="clubs-tclub-msg-${esc(t_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
+            </td>
             <td class="player-codes-cell">
               <select id="clubs-tsn-sel-${esc(t_.id)}" class="admin-sel" onchange="clubsAssignTournamentSeason('${esc(t_.id)}')">
                 <option value="">— ${t('txt_txt_none_selected')} —</option>
@@ -851,7 +869,8 @@ function _clubsRenderSeasonAssignment() {
               <span id="clubs-tsn-msg-${esc(t_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
             </td>
           </tr>
-        `).join('')}
+        `;
+        }).join('')}
       </tbody>
     </table></div>`;
   } else {
@@ -899,12 +918,28 @@ async function clubsAttachTournamentToClub(tid, btn) {
   if (btn) btn.disabled = true;
   _clubsMsg(msgEl, '...', false);
   try {
-    await apiAuth(`/api/tournaments/${encodeURIComponent(tid)}/community`, {
-      method: 'PATCH',
-      body: JSON.stringify({ community_id: club.community_id }),
-    });
     const t_ = _clubsTournaments.find(t => t.id === tid);
-    if (t_) t_.community_id = club.community_id;
+    const needsCommunityMove = !t_ || (t_.community_id || 'open') !== club.community_id;
+    if (needsCommunityMove) {
+      const res = await apiAuth(`/api/tournaments/${encodeURIComponent(tid)}/community`, {
+        method: 'PATCH',
+        body: JSON.stringify({ community_id: club.community_id }),
+      });
+      if (t_) {
+        t_.community_id = res?.community_id ?? club.community_id;
+        if (res && 'club_id' in res) t_.club_id = res.club_id;
+        if (res && 'season_id' in res) t_.season_id = res.season_id;
+      }
+    }
+    const clubRes = await apiAuth(`/api/tournaments/${encodeURIComponent(tid)}/club`, {
+      method: 'PATCH',
+      body: JSON.stringify({ club_id: _activeClubId }),
+    });
+    if (t_) {
+      t_.club_id = clubRes?.club_id ?? _activeClubId;
+      if (clubRes && 'season_id' in clubRes) t_.season_id = clubRes.season_id;
+      t_.club_name = club.name;
+    }
     _clubsMsg(msgEl, '✓', false);
     _clubsRenderSeasonAssignment();
     if (typeof loadTournaments === 'function') {
@@ -920,6 +955,40 @@ async function clubsAttachTournamentToClub(tid, btn) {
 function clubsSetAttachTournamentSearch(query) {
   _clubsAttachSearch = query || '';
   _clubsRenderSeasonAssignment();
+}
+
+async function clubsToggleTournamentClub(tid, btn) {
+  if (!_activeClubId) return;
+  const msgEl = document.getElementById(`clubs-tclub-msg-${tid}`);
+  const t_ = _clubsTournaments.find(t => t.id === tid);
+  if (!t_) return;
+  const attaching = t_.club_id !== _activeClubId;
+  const targetClubId = attaching ? _activeClubId : null;
+  if (btn) btn.disabled = true;
+  _clubsMsg(msgEl, '...', false);
+  try {
+    const res = await apiAuth(`/api/tournaments/${encodeURIComponent(tid)}/club`, {
+      method: 'PATCH',
+      body: JSON.stringify({ club_id: targetClubId }),
+    });
+    t_.club_id = res?.club_id ?? targetClubId;
+    if (res && 'season_id' in res) t_.season_id = res.season_id;
+    if (attaching) {
+      const club = _clubsList.find(c => c.id === _activeClubId);
+      t_.club_name = club ? club.name : t_.club_name;
+    } else {
+      t_.club_name = null;
+    }
+    _clubsMsg(msgEl, '✓', false);
+    _clubsRenderSeasonAssignment();
+    if (typeof loadTournaments === 'function') {
+      loadTournaments().catch(() => {});
+    }
+  } catch (e) {
+    _clubsMsg(msgEl, e.message, true);
+  } finally {
+    if (btn && btn.isConnected) btn.disabled = false;
+  }
 }
 
 function _clubsFormatDate(value) {
@@ -972,13 +1041,33 @@ function clubsSetPlayerFilter(value) {
   _clubsRenderPlayers();
 }
 
+function _clubsIsHiddenInCurrentSport(player) {
+  return _clubsSport === 'padel' ? !!player.hidden_padel : !!player.hidden_tennis;
+}
+
+function _clubsGetFilteredPlayers() {
+  const filterQ = _clubsPlayerFilter;
+  if (!filterQ) return _clubPlayers;
+  return _clubPlayers.filter(p =>
+    (p.name || '').toLowerCase().includes(filterQ)
+    || (p.email || '').toLowerCase().includes(filterQ)
+  );
+}
+
 function _clubsRenderPlayers() {
   const container = document.getElementById('clubs-players-list');
   if (!container) return;
 
   const visiblePlayerIds = new Set(_clubPlayers.map(p => p.profile_id));
+  const selectableInSportIds = new Set(
+    _clubPlayers
+      .filter(p => !_clubsIsHiddenInCurrentSport(p))
+      .map(p => p.profile_id)
+  );
   _clubsInviteSelectedIds = new Set(
-    Array.from(_clubsInviteSelectedIds).filter(profileId => visiblePlayerIds.has(profileId))
+    Array.from(_clubsInviteSelectedIds).filter(
+      profileId => visiblePlayerIds.has(profileId) && selectableInSportIds.has(profileId)
+    )
   );
 
   const sport = _clubsSport;
@@ -995,14 +1084,13 @@ function _clubsRenderPlayers() {
     p => _clubsInviteSelectedIds.has(p.profile_id) && p.email
   ).length;
 
-  // Filtered players for the table
-  const filterQ = _clubsPlayerFilter;
-  const filteredPlayers = filterQ
-    ? _clubPlayers.filter(p =>
-        (p.name || '').toLowerCase().includes(filterQ) ||
-        (p.email || '').toLowerCase().includes(filterQ)
-      )
-    : _clubPlayers;
+  // Filtered players for the table (applied to both visible and hidden-from-sport sections)
+  const filteredPlayers = _clubsGetFilteredPlayers();
+
+  const visibleForSport = filteredPlayers.filter(p => sport === 'padel' ? !p.hidden_padel : !p.hidden_tennis);
+  const hiddenFromSport = filteredPlayers.filter(p => sport === 'padel' ? p.hidden_padel : p.hidden_tennis);
+  const selectedVisibleCount = visibleForSport.filter(p => _clubsInviteSelectedIds.has(p.profile_id)).length;
+  const allVisibleSelected = visibleForSport.length > 0 && selectedVisibleCount === visibleForSport.length;
 
   // Add player form
   let html = `
@@ -1016,14 +1104,20 @@ function _clubsRenderPlayers() {
         <span id="clubs-add-player-msg" style="font-size:0.84rem"></span>
       </div>
     </div>
-    <div style="display:flex;gap:0.45rem;margin-bottom:0.75rem;flex-wrap:wrap;align-items:center">
-      <input type="search" id="clubs-player-filter-input" value="${esc(_clubsPlayerFilter)}" placeholder="${t('txt_clubs_player_filter_placeholder')}"
-        style="flex:1;min-width:180px;padding:0.3rem 0.5rem;font-size:0.88rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)"
-        oninput="clubsSetPlayerFilter(this.value)">
-      <button class="btn btn-sm" type="button" onclick="clubsSelectPlayersWithEmail()">${t('txt_clubs_select_with_email')}</button>
-      <button class="btn btn-sm" type="button" onclick="clubsClearPlayerSelection()">${t('txt_clubs_clear_selection')}</button>
-      <span class="muted-note" style="margin-left:auto">${t('txt_clubs_selection_status').replace('{selected}', String(selectedCount)).replace('{emailable}', String(selectedWithEmailCount))}</span>
+    <div class="clubs-players-toolbar">
+      <div class="clubs-players-filter-wrap">
+        <input type="search" id="clubs-player-filter-input" value="${esc(_clubsPlayerFilter)}" placeholder="${t('txt_clubs_player_filter_placeholder')}"
+          style="flex:1;min-width:180px;padding:0.3rem 0.5rem;font-size:0.88rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)"
+          oninput="clubsSetPlayerFilter(this.value)">
+        ${_clubsPlayerFilter ? `<button class="btn btn-sm btn-muted" type="button" onclick="clubsSetPlayerFilter('')">${t('txt_txt_clear')}</button>` : ''}
+      </div>
+      <div class="clubs-players-actions">
+        <button class="btn btn-sm" type="button" onclick="clubsSelectPlayersWithEmail()">${t('txt_clubs_select_with_email')}</button>
+        <button class="btn btn-sm btn-muted" type="button" onclick="clubsClearPlayerSelection()">${t('txt_clubs_clear_selection')}</button>
+      </div>
+      <span class="muted-note clubs-players-selection-status">${t('txt_clubs_selection_status').replace('{selected}', String(selectedCount)).replace('{emailable}', String(selectedWithEmailCount))}</span>
     </div>
+    ${_clubsRosterNoticeText ? `<div class="alert ${_clubsRosterNoticeError ? 'alert-error' : 'alert-success'} clubs-roster-notice" role="status" aria-live="polite">${esc(_clubsRosterNoticeText)}</div>` : ''}
     ${_clubsRenderMessagingPanel(selectedWithEmailCount)}`;
 
   if (!_clubPlayers.length) {
@@ -1037,7 +1131,7 @@ function _clubsRenderPlayers() {
         <thead>
           <tr class="player-codes-head-row">
             <th class="player-codes-th-center" style="width:34px">
-              <input type="checkbox" id="clubs-players-select-all" onchange="clubsToggleAllPlayersSelection(this.checked)" ${selectedCount > 0 && selectedCount === _clubPlayers.length ? 'checked' : ''}>
+              <input type="checkbox" id="clubs-players-select-all" onchange="clubsToggleAllPlayersSelection(this.checked)" ${allVisibleSelected ? 'checked' : ''}>
             </th>
             <th class="player-codes-th">${t('txt_player_leaderboard_name')}</th>
             <th class="player-codes-th">${t('txt_clubs_hub_status')}</th>
@@ -1049,12 +1143,14 @@ function _clubsRenderPlayers() {
           </tr>
         </thead>
         <tbody>
-          ${filteredPlayers.map(p => {
+          ${visibleForSport.map(p => {
             const eloVal = sport === 'padel' ? p.elo_padel : p.elo_tennis;
             const matchCount = sport === 'padel' ? p.matches_padel : p.matches_tennis;
             const noGames = matchCount === 0;
             const hasEmail = Boolean(p.email);
             const hasHub = p.has_hub_profile !== false;
+            const hideTip = t('txt_clubs_hide_from_sport').replace('{sport}', sportLabel);
+            const removeTip = t('txt_clubs_remove_all_sports');
             return `
             <tr class="player-codes-row">
               <td class="player-codes-cell-center">
@@ -1087,13 +1183,58 @@ function _clubsRenderPlayers() {
                 <span id="clubs-ptier-${sport}-msg-${esc(p.profile_id)}" style="font-size:0.78rem;margin-left:0.15rem"></span>
               </td>
               <td class="player-codes-cell-center" style="white-space:nowrap">
-                <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsRemovePlayer('${esc(p.profile_id)}', '${esc(p.name)}')" title="${t('txt_txt_remove')}" aria-label="${t('txt_txt_remove')} ${esc(p.name)}">&#x2715;</button>
+                <button class="btn btn-sm player-codes-icon-btn" onclick="clubsTogglePlayerSport('${esc(p.profile_id)}', '${sport}', false)" title="${esc(hideTip)}" aria-label="${esc(hideTip)} ${esc(p.name)}" style="color:var(--text-muted)">&#x2296;</button>
+                <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsRemovePlayer('${esc(p.profile_id)}', '${esc(p.name)}')" title="${esc(removeTip)}" aria-label="${esc(removeTip)} ${esc(p.name)}">&#x2715;</button>
               </td>
             </tr>`;
           }).join('')}
         </tbody>
       </table>
     </div>`;
+
+    if (!visibleForSport.length && hiddenFromSport.length) {
+      html += `<p class="muted-note" style="margin-top:0.5rem">${t('txt_txt_no_results')}</p>`;
+    }
+
+    if (hiddenFromSport.length) {
+      html += `
+    <details style="margin-top:0.75rem;border:1px solid var(--border);border-radius:6px;padding:0 0.75rem">
+      <summary style="cursor:pointer;user-select:none;padding:0.5rem 0;font-size:0.85rem;font-weight:600;list-style:none;display:flex;align-items:center;gap:0.4rem">
+        <span class="tv-chevron" style="font-size:0.65em;color:var(--text-muted)">&#9658;</span>
+        ${t('txt_clubs_hidden_from_sport_title').replace('{sport}', sportLabel).replace('{n}', String(hiddenFromSport.length))}
+      </summary>
+      <div style="padding:0.4rem 0 0.75rem">
+        <div class="player-codes-table-wrap">
+          <table class="player-codes-table">
+            <thead><tr class="player-codes-head-row">
+              <th class="player-codes-th">${t('txt_player_leaderboard_name')}</th>
+              <th class="player-codes-th-center">${sportLabel} ELO</th>
+              <th class="player-codes-th-center">${t('txt_clubs_player_matches')}</th>
+              <th class="player-codes-th"></th>
+            </tr></thead>
+            <tbody>
+              ${hiddenFromSport.map(p => {
+                const eloVal = sport === 'padel' ? p.elo_padel : p.elo_tennis;
+                const matchCount = sport === 'padel' ? p.matches_padel : p.matches_tennis;
+                const restoreTip = t('txt_clubs_restore_for_sport').replace('{sport}', sportLabel);
+                const removeTip = t('txt_clubs_remove_all_sports');
+                return `
+              <tr class="player-codes-row" style="opacity:0.65">
+                <td class="player-codes-name">${esc(p.name)}</td>
+                <td class="player-codes-cell-center"><span class="muted-tiny">${eloVal != null ? Math.round(eloVal) : '—'}</span></td>
+                <td class="player-codes-cell-center"><span class="muted-tiny">${matchCount != null ? matchCount : '—'}</span></td>
+                <td class="player-codes-cell-center" style="white-space:nowrap">
+                  <button class="btn btn-sm btn-success player-codes-icon-btn" onclick="clubsTogglePlayerSport('${esc(p.profile_id)}', '${sport}', true)" title="${esc(restoreTip)}" aria-label="${esc(restoreTip)} ${esc(p.name)}">&#x2295;</button>
+                  <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsRemovePlayer('${esc(p.profile_id)}', '${esc(p.name)}')" title="${esc(removeTip)}" aria-label="${esc(removeTip)} ${esc(p.name)}">&#x2715;</button>
+                </td>
+              </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>`;
+    }
   }
 
   // Capture messaging form values before re-rendering
@@ -1236,25 +1377,113 @@ async function clubsAddGhostToRoster(profileId) {
 let _clubsGhostGroups = [];
 let _clubsGhostMergeOpen = false;
 let _clubsPossibleMembersOpen = false;
+let _clubsSelectedGhostProfiles = new Set();
+let _clubsPossibleGhostMembers = [];
 
-async function _clubsRenderPossibleMembers() {
+
+function clubsSetGhostSearch(value) {
+  _clubsGhostSearch = String(value || '');
+  try { localStorage.setItem(_CLUBS_GHOST_SEARCH_KEY, _clubsGhostSearch); } catch (_) {}
+  _clubsRenderPossibleMembers(false);
+}
+
+
+function clubsToggleGhostMergeSelect(profileId, checked) {
+  if (checked) {
+    _clubsSelectedGhostProfiles.add(profileId);
+  } else {
+    _clubsSelectedGhostProfiles.delete(profileId);
+  }
+  _clubsRenderPossibleMembers(false);
+}
+
+
+function clubsClearGhostMergeSelection() {
+  _clubsSelectedGhostProfiles = new Set();
+  _clubsRenderPossibleMembers(false);
+}
+
+
+async function clubsConsolidateSelectedGhosts() {
+  if (!_activeClubId || _clubsSelectedGhostProfiles.size < 2) return;
+
+  const sourceIds = [..._clubsSelectedGhostProfiles];
+  const selectedNames = sourceIds
+    .map(id => {
+      const groupProfile = _clubsGhostGroups.flatMap(g => g.profiles).find(p => p.profile_id === id);
+      const rosterProfile = _clubPlayers.find(p => p.profile_id === id);
+      return groupProfile?.name || rosterProfile?.name || id;
+    })
+    .join(', ');
+
+  if (!confirm(t('txt_ph_consolidate_confirm', { names: selectedNames }))) return;
+
+  const msgEl = document.getElementById('clubs-ghost-manual-msg');
+  const nameInput = document.getElementById('clubs-ghost-manual-name');
+  const name = nameInput?.value?.trim() || null;
+  if (msgEl) msgEl.innerHTML = `<em>${t('txt_ph_consolidating')}</em>`;
+
+  try {
+    const result = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players/consolidate-ghosts`, {
+      method: 'POST',
+      body: JSON.stringify({ source_ids: sourceIds, name }),
+    });
+    _clubsSelectedGhostProfiles = new Set();
+
+    const players = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players`).catch(() => []);
+    _clubPlayers = players;
+    _clubsRenderPlayers();
+
+    const area = document.getElementById('clubs-ghost-duplicates');
+    if (area) {
+      const banner = document.createElement('div');
+      banner.className = 'alert alert-info';
+      banner.style.marginTop = '0.5rem';
+      banner.textContent = t('txt_ph_consolidate_ok', { name: esc(result.name || name || '') });
+      area.prepend(banner);
+      setTimeout(() => banner.remove(), 4000);
+    }
+  } catch (e) {
+    if (msgEl) msgEl.innerHTML = `<span style="color:var(--error)">${esc(e.message)}</span>`;
+  }
+}
+
+async function _clubsRenderPossibleMembers(forceReload = true) {
   const container = document.getElementById('clubs-ghost-duplicates');
   if (!container || !_activeClubId) return;
 
-  let members = [];
-  let groups = [];
-  try {
-    [members, groups] = await Promise.all([
-      apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players/possible-members`),
-      apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players/ghost-duplicates`),
-    ]);
-  } catch (_) {}
-  _clubsGhostGroups = groups;
+  let members = _clubsPossibleGhostMembers;
+  let groups = _clubsGhostGroups;
+  if (forceReload) {
+    members = [];
+    groups = [];
+    try {
+      [members, groups] = await Promise.all([
+        apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players/possible-members`),
+        apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players/ghost-duplicates`),
+      ]);
+    } catch (_) {}
+    _clubsPossibleGhostMembers = members;
+    _clubsGhostGroups = groups;
+  }
+
+  const validMemberIds = new Set(members.map(m => m.profile_id));
+  _clubsSelectedGhostProfiles = new Set(
+    [..._clubsSelectedGhostProfiles].filter(profileId => validMemberIds.has(profileId)),
+  );
 
   if (!members.length) {
     container.innerHTML = '';
     return;
   }
+
+  const ghostFilter = _clubsGhostSearch.trim().toLowerCase();
+  const filteredMembers = ghostFilter
+    ? members.filter(p =>
+      (p.name || '').toLowerCase().includes(ghostFilter) ||
+      String(p.profile_id || '').toLowerCase().includes(ghostFilter)
+    )
+    : members;
 
   const sport = _clubsSport;
   let html = `
@@ -1266,9 +1495,19 @@ async function _clubsRenderPossibleMembers() {
         <span style="font-size:0.76rem;font-weight:400;color:var(--text-muted)">${t('txt_clubs_possible_members_hint')}</span>
       </summary>
       <div style="padding:0.5rem 0 0.75rem">
+        <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.5rem">
+          <input type="text" id="clubs-ghost-search-input" value="${escAttr(_clubsGhostSearch)}"
+            oninput="clubsSetGhostSearch(this.value)"
+            placeholder="${t('txt_clubs_possible_members_search_placeholder')}"
+            style="flex:1;min-width:200px;padding:0.35rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)"
+            aria-label="${t('txt_clubs_possible_members_search_placeholder')}">
+          ${ghostFilter ? `<button type="button" class="btn btn-sm btn-muted" onclick="clubsSetGhostSearch('')">${t('txt_txt_clear')}</button>` : ''}
+          <span style="font-size:0.76rem;color:var(--text-muted)">${filteredMembers.length}/${members.length}</span>
+        </div>
         <div class="player-codes-table-wrap">
           <table class="player-codes-table">
             <thead><tr class="player-codes-head-row">
+              <th class="player-codes-th-center" style="width:2rem"></th>
               <th class="player-codes-th">${t('txt_player_leaderboard_name')}</th>
               <th class="player-codes-th-center">${sport === 'padel' ? t('txt_ph_padel_elo') : t('txt_ph_tennis_elo')}</th>
               <th class="player-codes-th-center">${t('txt_clubs_player_matches')}</th>
@@ -1276,11 +1515,18 @@ async function _clubsRenderPossibleMembers() {
             </tr></thead>
             <tbody>`;
 
-  for (const p of members) {
+  for (const p of filteredMembers) {
     const elo = sport === 'padel' ? p.elo_padel : p.elo_tennis;
     const matches = sport === 'padel' ? p.matches_padel : p.matches_tennis;
+    const isSelected = _clubsSelectedGhostProfiles.has(p.profile_id);
     html += `
       <tr class="player-codes-row">
+        <td class="player-codes-cell-center">
+          <input type="checkbox" ${isSelected ? 'checked' : ''}
+            onchange="clubsToggleGhostMergeSelect('${escAttr(p.profile_id)}', this.checked)"
+            aria-label="${t('txt_ph_select_for_merge')} ${escAttr(p.name)}"
+            style="cursor:pointer">
+        </td>
         <td class="player-codes-name">${esc(p.name)}</td>
         <td class="player-codes-cell-center">${elo != null ? Math.round(elo) : '—'}</td>
         <td class="player-codes-cell-center">${matches != null ? matches : '—'}</td>
@@ -1294,6 +1540,28 @@ async function _clubsRenderPossibleMembers() {
   }
 
   html += `</tbody></table></div>`;
+
+  if (!filteredMembers.length) {
+    html += `<p class="muted-note" style="margin-top:0.5rem">${t('txt_txt_no_results')}</p>`;
+  }
+
+  if (_clubsSelectedGhostProfiles.size >= 2) {
+    const selectedNames = [..._clubsSelectedGhostProfiles]
+      .map(id => members.find(p => p.profile_id === id)?.name || id)
+      .filter(Boolean);
+    const suggestedName = selectedNames[0] || '';
+    html += `
+      <div style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
+        <span style="font-size:0.88rem">${t('txt_ph_ghosts_selected', { n: _clubsSelectedGhostProfiles.size })}</span>
+        <input type="text" id="clubs-ghost-manual-name" value="${escAttr(suggestedName)}"
+          placeholder="${t('txt_ph_consolidate_name_placeholder')}"
+          style="flex:1;min-width:160px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"
+          aria-label="${t('txt_ph_consolidate_name_label')}">
+        <button type="button" class="btn btn-primary btn-sm" onclick="clubsConsolidateSelectedGhosts()">${t('txt_ph_consolidate_ghosts')}</button>
+        <button type="button" class="btn btn-sm btn-muted" onclick="clubsClearGhostMergeSelection()">${t('txt_txt_clear')}</button>
+      </div>
+      <div id="clubs-ghost-manual-msg" style="margin-top:0.35rem;font-size:0.82rem"></div>`;
+  }
 
   // Duplicate-group merge section (if any)
   if (_clubsGhostGroups.length) {
@@ -1404,7 +1672,7 @@ function _clubsRenderLeaderboard() {
 
   const sport = _clubsSport;
   const ranked = [..._clubPlayers]
-    .filter(p => (sport === 'padel' ? p.elo_padel : p.elo_tennis) != null);
+    .filter(p => sport === 'padel' ? (!p.hidden_padel && p.elo_padel != null) : (!p.hidden_tennis && p.elo_tennis != null));
 
   if (!ranked.length) {
     container.innerHTML = `<p class="muted-note">${t('txt_clubs_leaderboard_no_players')}</p>`;
@@ -1474,16 +1742,21 @@ function clubsTogglePlayerSelection(profileId, selected) {
 }
 
 function clubsToggleAllPlayersSelection(selected) {
+  const filteredPlayers = _clubsGetFilteredPlayers();
+  const visibleForSport = filteredPlayers.filter(p => !_clubsIsHiddenInCurrentSport(p));
+  const visibleForSportIds = new Set(visibleForSport.map(p => p.profile_id));
   if (selected) {
-    _clubPlayers.forEach(p => _clubsInviteSelectedIds.add(p.profile_id));
+    visibleForSport.forEach(p => _clubsInviteSelectedIds.add(p.profile_id));
   } else {
-    _clubPlayers.forEach(p => _clubsInviteSelectedIds.delete(p.profile_id));
+    visibleForSportIds.forEach(profileId => _clubsInviteSelectedIds.delete(profileId));
   }
   _clubsRenderPlayers();
 }
 
 function clubsSelectPlayersWithEmail() {
-  _clubPlayers.forEach(p => {
+  const filteredPlayers = _clubsGetFilteredPlayers();
+  const visibleForSport = filteredPlayers.filter(p => !_clubsIsHiddenInCurrentSport(p));
+  visibleForSport.forEach(p => {
     if (p.email) {
       _clubsInviteSelectedIds.add(p.profile_id);
     }
@@ -1614,9 +1887,36 @@ async function clubsRemovePlayer(profileId, name) {
   try {
     await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players/${encodeURIComponent(profileId)}`, { method: 'DELETE' });
     _clubPlayers = _clubPlayers.filter(p => p.profile_id !== profileId);
+    _clubsSetRosterNotice(t('txt_clubs_player_removed_ok').replace('{name}', name), false);
     _clubsRenderPlayers();
   } catch (e) {
     const msgEl = document.getElementById('clubs-add-player-msg');
+    _clubsSetRosterNotice(e.message, true);
+    _clubsMsg(msgEl, e.message, true);
+  }
+}
+
+async function clubsTogglePlayerSport(profileId, sport, makeVisible) {
+  try {
+    await apiAuth(
+      `/api/clubs/${encodeURIComponent(_activeClubId)}/players/${encodeURIComponent(profileId)}/sport-visibility`,
+      { method: 'PATCH', body: JSON.stringify({ sport, hidden: !makeVisible }) },
+    );
+    const player = _clubPlayers.find(p => p.profile_id === profileId);
+    const playerName = player?.name || profileId;
+    const sportLabel = sport === 'padel' ? t('txt_txt_sport_padel') : t('txt_txt_sport_tennis');
+    if (player) {
+      if (sport === 'padel') player.hidden_padel = !makeVisible;
+      else player.hidden_tennis = !makeVisible;
+    }
+    const msg = makeVisible
+      ? t('txt_clubs_player_restored_ok').replace('{name}', playerName).replace('{sport}', sportLabel)
+      : t('txt_clubs_player_hidden_ok').replace('{name}', playerName).replace('{sport}', sportLabel);
+    _clubsSetRosterNotice(msg, false);
+    _clubsRenderPlayers();
+  } catch (e) {
+    const msgEl = document.getElementById('clubs-add-player-msg');
+    _clubsSetRosterNotice(e.message, true);
     _clubsMsg(msgEl, e.message, true);
   }
 }
@@ -1900,6 +2200,19 @@ function _clubsMsg(el, text, isError) {
   el.style.fontSize = isError ? '0.78rem' : '0.72rem';
   el.textContent = text;
   if (!isError) setTimeout(() => { if (el) el.textContent = ''; }, 1800);
+}
+
+function _clubsSetRosterNotice(text, isError = false) {
+  _clubsRosterNoticeText = text || '';
+  _clubsRosterNoticeError = !!isError;
+  clearTimeout(_clubsRosterNoticeTimer);
+  if (!_clubsRosterNoticeText) return;
+  _clubsRosterNoticeTimer = setTimeout(() => {
+    _clubsRosterNoticeText = '';
+    _clubsRosterNoticeError = false;
+    const panel = document.getElementById('clubs-players-list');
+    if (panel) _clubsRenderPlayers();
+  }, 2500);
 }
 
 function _clubsMarkScrollableTables(containerEl) {

@@ -97,16 +97,11 @@
   <div class="tab-panel active" id="panel-home" role="tabpanel">
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
-        <h2 style="margin:0" data-i18n="txt_txt_active_tournaments">Active Tournaments</h2>
-      </div>
-      <div id="tournament-list"><div class="skeleton-loader"><div class="skeleton-line skeleton-line-lg"></div><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
-    </div>
-    <div class="card" id="finished-tournaments-card" style="display:none">
-      <div class="finished-tournaments-head">
-        <h2 style="margin:0" data-i18n="txt_txt_finished_tournaments">Finished tournaments</h2>
+        <h2 style="margin:0" data-i18n="txt_txt_tournaments">Tournaments</h2>
         <div id="archived-lobbies-toggle"></div>
       </div>
-      <div id="finished-tournament-list"></div>
+      <div id="home-tournament-toolbar" class="home-tournament-toolbar"></div>
+      <div id="tournament-list"><div class="skeleton-loader"><div class="skeleton-line skeleton-line-lg"></div><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
     </div>
   </div>
 
@@ -606,54 +601,64 @@
 
   <!-- ─── COMMUNITIES ──────────────────────────────────── -->
   <div class="tab-panel" id="panel-communities" role="tabpanel">
-    <!-- My default community -->
-    <div class="card" id="comm-my-default-card">
-      <h2 style="margin:0 0 0.5rem">⭐ <span data-i18n="txt_comm_default_title">My Default Community</span></h2>
-      <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_default_help">The community pre-selected when you create a new tournament or lobby.</p>
-      <div class="comm-default-form-row">
-        <select id="comm-my-default-select" class="comm-default-select">
-          <option value="open">Open</option>
-        </select>
-        <button type="button" class="btn btn-primary comm-default-save-btn" onclick="commSaveMyDefault()" data-i18n="txt_txt_save">Save</button>
+      <div>
+        <!-- My default community -->
+        <div class="card" id="comm-my-default-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;gap:0.5rem">
+            <h2 style="margin:0">⭐ <span data-i18n="txt_comm_default_title">My Default Community</span></h2>
+            <button type="button" class="format-info-btn" data-action="openContextInfo" data-context="communities" aria-label="About communities" data-i18n-aria-label="txt_comm_info_panel_title" data-i18n-title="txt_comm_info_panel_title" title="About communities">i</button>
+          </div>
+          <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_default_help">The community pre-selected when you create a new tournament or lobby.</p>
+          <div class="comm-default-form-row">
+            <select id="comm-my-default-select" class="comm-default-select">
+              <option value="open">Open</option>
+            </select>
+            <button type="button" class="btn btn-primary comm-default-save-btn" onclick="commSaveMyDefault()" data-i18n="txt_txt_save">Save</button>
+          </div>
+          <span id="comm-my-default-msg" class="comm-default-msg"></span>
+        </div>
+
+        <!-- Community list management -->
+        <div class="card">
+          <h2 style="margin:0 0 0.5rem">🏘️ <span data-i18n="txt_comm_title">Communities</span></h2>
+          <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_help">Create and manage communities to scope ELO ratings and group tournaments by club or league.</p>
+          <div id="comm-list"></div>
+          <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap">
+            <input type="text" id="comm-new-name" data-i18n-placeholder="txt_comm_new_name_placeholder" placeholder="New community name…" style="flex:1;min-width:160px;padding:0.4rem 0.6rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
+            <button type="button" class="btn btn-success btn-sm" onclick="commCreate()" data-i18n="txt_comm_add">+ Add</button>
+          </div>
+          <div id="comm-msg" style="margin-top:0.5rem;font-size:0.84rem"></div>
+        </div>
+
+        <!-- Tournament assignment -->
+        <div class="card">
+          <h2 style="margin:0 0 0.5rem">🏆 <span data-i18n="txt_comm_tournament_title">Tournament Community Assignment</span></h2>
+          <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_tournament_help">Reassign tournaments to different communities. Changes take effect immediately.</p>
+          <div id="comm-tournament-list"><div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
+        </div>
+
+        <!-- Registration assignment -->
+        <div class="card">
+          <h2 style="margin:0 0 0.5rem">📋 <span data-i18n="txt_comm_lobby_title">Lobby Community Assignment</span></h2>
+          <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_lobby_help">Reassign registration lobbies to different communities.</p>
+          <div id="comm-registration-list"><div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
+        </div>
       </div>
-      <span id="comm-my-default-msg" class="comm-default-msg"></span>
-    </div>
-
-    <!-- Community list management -->
-    <div class="card">
-      <h2 style="margin:0 0 0.5rem">🏘️ <span data-i18n="txt_comm_title">Communities</span></h2>
-      <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_help">Create and manage communities to scope ELO ratings and group tournaments by club or league.</p>
-      <div id="comm-list"></div>
-      <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap">
-        <input type="text" id="comm-new-name" data-i18n-placeholder="txt_comm_new_name_placeholder" placeholder="New community name…" style="flex:1;min-width:160px;padding:0.4rem 0.6rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
-        <button type="button" class="btn btn-success btn-sm" onclick="commCreate()" data-i18n="txt_comm_add">+ Add</button>
-      </div>
-      <div id="comm-msg" style="margin-top:0.5rem;font-size:0.84rem"></div>
-    </div>
-
-    <!-- Tournament assignment -->
-    <div class="card">
-      <h2 style="margin:0 0 0.5rem">🏆 <span data-i18n="txt_comm_tournament_title">Tournament Community Assignment</span></h2>
-      <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_tournament_help">Reassign tournaments to different communities. Changes take effect immediately.</p>
-      <div id="comm-tournament-list"><div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
-    </div>
-
-    <!-- Registration assignment -->
-    <div class="card">
-      <h2 style="margin:0 0 0.5rem">📋 <span data-i18n="txt_comm_lobby_title">Lobby Community Assignment</span></h2>
-      <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_lobby_help">Reassign registration lobbies to different communities.</p>
-      <div id="comm-registration-list"><div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
-    </div>
   </div>
 
   <!-- ─── CLUBS ─────────────────────────────────────────── -->
   <div class="tab-panel" id="panel-clubs" role="tabpanel">
-    <div class="card" id="clubs-overview-card">
-      <h2 style="margin:0 0 0.5rem">🏟️ <span data-i18n="txt_clubs_title">Clubs</span></h2>
-      <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_clubs_panel_help">Upgrade a community to a club to add branding, player tiers, and seasons.</p>
-      <div id="clubs-overview"><div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
-    </div>
-    <div id="clubs-detail" style="display:none"></div>
+      <div>
+        <div class="card" id="clubs-overview-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;gap:0.5rem">
+            <h2 style="margin:0">🏟️ <span data-i18n="txt_clubs_title">Clubs</span></h2>
+            <button type="button" class="format-info-btn" data-action="openContextInfo" data-context="clubs" aria-label="About clubs" data-i18n-aria-label="txt_clubs_info_panel_title" data-i18n-title="txt_clubs_info_panel_title" title="About clubs">i</button>
+          </div>
+          <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_clubs_panel_help">Upgrade a community to a club to add branding, player tiers, and seasons.</p>
+          <div id="clubs-overview"><div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
+        </div>
+        <div id="clubs-detail" style="display:none"></div>
+      </div>
   </div>
 
   <!-- ─── INFO ──────────────────────────────────────────── -->
@@ -668,6 +673,7 @@
         <li><a href="#info-player-flow" class="github-link" data-i18n="txt_txt_info_toc_player_flow">Player flow</a></li>
         <li><a href="#info-admin-flow" class="github-link" data-i18n="txt_txt_info_toc_admin_flow">Admin flow</a></li>
         <li><a href="#info-main-features" class="github-link" data-i18n="txt_txt_info_toc_main_features">Main features</a></li>
+        <li><a href="#info-communities-clubs" class="github-link" data-i18n="txt_txt_info_toc_communities_clubs">Communities &amp; clubs</a></li>
         <li><a href="#info-formats" class="github-link" data-i18n="txt_txt_info_toc_formats">Tournament formats</a></li>
         <li><a href="#info-elo" class="github-link" data-i18n="txt_txt_info_toc_elo">ELO rating system</a></li>
         <li><a href="#info-po-transition" class="github-link" data-i18n="txt_txt_info_toc_po_transition">Starting play-offs</a></li>
@@ -764,6 +770,39 @@
       <div class="info-block">
         <strong data-i18n="txt_txt_info_main_features_tv_title">Public TV View</strong>
         <p data-i18n="txt_txt_info_main_features_tv_desc">Shareable live display for standings, results, bracket, and selected sections with configurable refresh behavior.</p>
+      </div>
+    </div>
+
+    <div class="card" id="info-communities-clubs">
+      <h2 data-i18n="txt_txt_info_comm_clubs_title">Communities and clubs</h2>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_info_comm_clubs_subtitle">Use communities as your base scope, then layer clubs when you need branding, season tracking, and richer club operations.</p>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_comm_clubs_scope_title">Communities define operational scope</strong>
+        <p data-i18n="txt_txt_info_comm_clubs_scope_desc">A community is where tournaments and registration lobbies live. It controls default assignment, keeps operations separated by league or venue, and defines the scope where ELO and rankings are computed (global, community, or club context).</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_comm_clubs_club_title">Clubs add identity and progression</strong>
+        <p data-i18n="txt_txt_info_comm_clubs_club_desc">A club sits on top of one community and adds logo branding, player tiers, season tracking, leaderboard views, tournament assignment tools, and co-editor workflows for recurring organizer teams.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_comm_clubs_when_title">When to stay at community level</strong>
+        <p data-i18n="txt_txt_info_comm_clubs_when_desc">Use only communities when you run occasional events, temporary series, or lightweight sign-up flows. You still get full tournament operations, registration conversion, and TV/public sharing without maintaining club roster structures.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_comm_clubs_upgrade_title">When to upgrade to a club</strong>
+        <p data-i18n="txt_txt_info_comm_clubs_upgrade_desc">Create a club when the same organizer team runs recurring events and needs persistent identity, player roster governance, collaborator workflows, and season continuity. Clubs are also the right place for tier-based progression and club-specific leaderboards.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_comm_clubs_scope_change_title">Scope changes and data integrity</strong>
+        <p data-i18n="txt_txt_info_comm_clubs_scope_change_desc">You can reassign tournaments and lobbies to another community for cleanup or migration. If the new community is incompatible with the current club or season, those assignments are automatically cleared to keep scope relationships valid.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_comm_clubs_practice_title">Recommended setup pattern</strong>
+        <p data-i18n="txt_txt_info_comm_clubs_practice_desc">Create communities first (for structure), promote active ones to clubs, assign events to the right season, and keep default community + roster data up to date as your event calendar grows.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_comm_clubs_ops_title">Operational checklist</strong>
+        <p data-i18n="txt_txt_info_comm_clubs_ops_desc">Set a default community for admins, keep tournament-to-club assignment aligned before opening registrations, review season assignment before each event starts, and use club branding only where long-term identity matters.</p>
       </div>
     </div>
 

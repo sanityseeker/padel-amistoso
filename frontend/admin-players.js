@@ -341,7 +341,10 @@ function _phRenderDetail(data) {
   let html = '<div class="card">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem">';
   html += `<h2 style="margin:0">🎾 ${esc(data.name || t('txt_ph_unnamed_profile'))}</h2>`;
+  html += '<div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap">';
+  html += `<button type="button" class="btn btn-danger btn-sm" onclick="phDeleteProfile('${escAttr(data.id)}')">${t('txt_ph_delete_profile')}</button>`;
   html += `<button type="button" class="btn btn-sm" onclick="phCloseDetail()">✕ ${t('txt_txt_close')}</button>`;
+  html += '</div>';
   html += '</div>';
 
   // Profile info
@@ -382,6 +385,7 @@ function _phRenderDetail(data) {
 
   // New passphrase result area
   html += '<div id="ph-passphrase-result"></div>';
+  html += '<div id="ph-inline-msg"></div>';
 
   // Active participations
   html += `<h3 style="margin:1rem 0 0.5rem;font-size:0.95rem">${t('txt_ph_active_participations_n', { n: active.length })}</h3>`;
@@ -450,6 +454,21 @@ function phCloseDetail() {
   if (results) results.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+/** Show a non-blocking notice inside the profile detail panel */
+function phShowInlineNotice(message, isError = false) {
+  const area = document.getElementById('ph-inline-msg') || document.getElementById('ph-passphrase-result');
+  if (!area) return;
+  area.innerHTML = `<div class="alert ${isError ? 'alert-error' : 'alert-info'}" style="margin-bottom:0.75rem">${esc(message)}</div>`;
+}
+
+/** Show a non-blocking notice above the profile search results */
+function phShowResultsNotice(message, isError = false) {
+  const container = document.getElementById('ph-results');
+  if (!container) return;
+  const className = isError ? 'alert alert-error' : 'alert alert-info';
+  container.insertAdjacentHTML('afterbegin', `<div class="${className}" style="margin-bottom:0.75rem">${esc(message)}</div>`);
+}
+
 /** Reset a profile's passphrase */
 async function phResetPassphrase(profileId) {
   if (!confirm(t('txt_ph_reset_passphrase_confirm'))) return;
@@ -462,7 +481,7 @@ async function phResetPassphrase(profileId) {
     // Refresh the detail to show updated passphrase
     phLoadProfile(profileId);
   } catch (e) {
-    alert(t('txt_ph_failed_reset_passphrase_value', { value: e.message }));
+    phShowInlineNotice(t('txt_ph_failed_reset_passphrase_value', { value: e.message }), true);
   }
 }
 
@@ -472,7 +491,11 @@ async function phUpdateName(profileId) {
   const btn = document.getElementById('ph-name-save-btn');
   if (!input) return;
   const newName = input.value.trim();
-  if (!newName) { alert(t('txt_ph_name_empty')); return; }
+  if (!newName) {
+    phShowInlineNotice(t('txt_ph_name_empty'), true);
+    input.focus();
+    return;
+  }
   try {
     if (btn) { btn.disabled = true; btn.textContent = '…'; }
     await api(`/api/admin/player-profiles/${profileId}/name`, {
@@ -486,7 +509,7 @@ async function phUpdateName(profileId) {
     phSearch();
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = t('txt_txt_save'); }
-    alert(t('txt_ph_failed_update_name_value', { value: e.message }));
+    phShowInlineNotice(t('txt_ph_failed_update_name_value', { value: e.message }), true);
   }
 }
 
@@ -506,7 +529,7 @@ async function phUpdateEmail(profileId) {
     setTimeout(() => { if (btn) btn.textContent = t('txt_txt_save'); }, 1500);
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = t('txt_txt_save'); }
-    alert(t('txt_ph_failed_update_email_value', { value: e.message }));
+    phShowInlineNotice(t('txt_ph_failed_update_email_value', { value: e.message }), true);
   }
 }
 
@@ -518,7 +541,8 @@ async function phUpdateKFactor(profileId) {
   const raw = input.value.trim();
   const kValue = raw === '' ? null : parseInt(raw, 10);
   if (kValue !== null && (isNaN(kValue) || kValue < 1 || kValue > 200)) {
-    alert(t('txt_ph_kfactor_validation'));
+    phShowInlineNotice(t('txt_ph_kfactor_validation'), true);
+    input.focus();
     return;
   }
   try {
@@ -532,7 +556,20 @@ async function phUpdateKFactor(profileId) {
     setTimeout(() => { if (btn) btn.textContent = t('txt_txt_save'); }, 1500);
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = t('txt_txt_save'); }
-    alert(t('txt_ph_failed_update_kfactor_value', { value: e.message }));
+    phShowInlineNotice(t('txt_ph_failed_update_kfactor_value', { value: e.message }), true);
+  }
+}
+
+/** Permanently delete a profile from the database */
+async function phDeleteProfile(profileId) {
+  if (!confirm(t('txt_ph_delete_profile_confirm'))) return;
+  try {
+    await api(`/api/admin/player-profiles/${profileId}`, { method: 'DELETE' });
+    phCloseDetail();
+    await phSearch();
+    phShowResultsNotice(t('txt_ph_delete_profile_ok'));
+  } catch (e) {
+    phShowInlineNotice(t('txt_ph_failed_delete_profile_value', { value: e.message }), true);
   }
 }
 
@@ -547,7 +584,7 @@ async function phUnlink(tid, playerId, isFinished) {
     await api(`/api/admin/player-profiles/link/${tid}/${playerId}`, { method: 'DELETE' });
     if (_phCurrentProfileId) phLoadProfile(_phCurrentProfileId);
   } catch (e) {
-    alert(t('txt_ph_failed_unlink_value', { value: e.message }));
+    phShowInlineNotice(t('txt_ph_failed_unlink_value', { value: e.message }), true);
   }
 }
 
@@ -621,7 +658,7 @@ async function phSubmitLink(profileId) {
     document.getElementById('ph-link-area').innerHTML = '';
     phLoadProfile(profileId);
   } catch (e) {
-    alert(t('txt_ph_failed_link_value', { value: e.message }));
+    phShowInlineNotice(t('txt_ph_failed_link_value', { value: e.message }), true);
   }
 }
 

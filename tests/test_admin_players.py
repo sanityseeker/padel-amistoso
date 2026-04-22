@@ -67,6 +67,23 @@ def _insert_tournament(tid: str, name: str = "Test Tournament") -> None:
         )
 
 
+def _insert_club(cid: str = "c-test", club_id: str = "club-test") -> str:
+    """Insert a minimal community and club row and return the club ID."""
+    now = datetime.now(timezone.utc).isoformat()
+    with db_mod.get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO communities (id, name, created_by, created_at) VALUES (?, ?, ?, ?)",
+            (cid, "Test Community", "admin", now),
+        )
+        conn.execute(
+            """INSERT OR IGNORE INTO clubs
+               (id, community_id, name, logo_path, email_settings, created_by, created_at)
+               VALUES (?, ?, ?, NULL, NULL, ?, ?)""",
+            (club_id, cid, "Test Club", "admin", now),
+        )
+    return club_id
+
+
 def _insert_player_secret(
     tournament_id: str,
     player_id: str,
@@ -180,6 +197,10 @@ class TestAuthGuards:
 
     def test_update_email_requires_admin(self, client: TestClient, alice_headers: dict) -> None:
         resp = client.put("/api/admin/player-profiles/fake/email", headers=alice_headers, json={"email": ""})
+        assert resp.status_code == 403
+
+    def test_delete_profile_requires_admin(self, client: TestClient, alice_headers: dict) -> None:
+        resp = client.delete("/api/admin/player-profiles/fake", headers=alice_headers)
         assert resp.status_code == 403
 
 
@@ -389,6 +410,65 @@ class TestUnlinkParticipation:
 
     def test_unlink_not_found(self, client: TestClient, auth_headers: dict) -> None:
         resp = client.delete("/api/admin/player-profiles/link/t999/p999", headers=auth_headers)
+        assert resp.status_code == 404
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Delete profile
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestDeleteProfile:
+    def test_delete_profile_removes_profile_bound_data(self, client: TestClient, auth_headers: dict) -> None:
+        pid = _insert_profile(name="Delete Me", email="deleteme@example.com")
+        _insert_tournament("t1")
+        _insert_player_secret("t1", "p1", "Delete Me", profile_id=pid)
+        _insert_history(pid, "t1", "p1", player_name="Delete Me", tournament_name="T1")
+
+        club_id = _insert_club()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches) VALUES (?, 'open', 'padel', 1100, 4)",
+                (pid,),
+            )
+            conn.execute(
+                "INSERT INTO profile_club_elo (profile_id, club_id, sport, elo, matches) VALUES (?, ?, 'padel', 1090, 3)",
+                (pid, club_id),
+            )
+            conn.execute(
+                """INSERT INTO player_tournament_path_cache
+                   (profile_id, entity_id, player_id, tournament_version, payload)
+                   VALUES (?, 't1', 'p1', 1, '{}')""",
+                (pid,),
+            )
+
+        resp = client.delete(f"/api/admin/player-profiles/{pid}", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+        with db_mod.get_db() as conn:
+            profile = conn.execute("SELECT 1 FROM player_profiles WHERE id = ?", (pid,)).fetchone()
+            history = conn.execute("SELECT 1 FROM player_history WHERE profile_id = ?", (pid,)).fetchone()
+            community_elo = conn.execute("SELECT 1 FROM profile_community_elo WHERE profile_id = ?", (pid,)).fetchone()
+            club_elo = conn.execute("SELECT 1 FROM profile_club_elo WHERE profile_id = ?", (pid,)).fetchone()
+            path_cache = conn.execute(
+                "SELECT 1 FROM player_tournament_path_cache WHERE profile_id = ?",
+                (pid,),
+            ).fetchone()
+            secret = conn.execute(
+                "SELECT profile_id FROM player_secrets WHERE tournament_id = 't1' AND player_id = 'p1'",
+            ).fetchone()
+
+        assert profile is None
+        assert history is None
+        assert community_elo is None
+        assert club_elo is None
+        assert path_cache is None
+        assert secret is not None
+        assert secret["profile_id"] is None
+
+    def test_delete_profile_not_found(self, client: TestClient, auth_headers: dict) -> None:
+        resp = client.delete("/api/admin/player-profiles/non-existent-profile", headers=auth_headers)
         assert resp.status_code == 404
 
 

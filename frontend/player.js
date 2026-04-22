@@ -32,8 +32,23 @@ let _eloHistorySport = 'padel'; // 'padel' | 'tennis'
 let _eloChart = null; // Chart.js instance for ELO trend
 let _communities = []; // [{id, name, is_builtin}] — all communities from the server
 let _playerCommunities = []; // [{id, name}] — non-builtin communities this profile has played in
-let _selectedCommunityId = null; // null = all communities (no filter)
-try { _selectedCommunityId = localStorage.getItem(STORAGE_COMMUNITY_KEY) || null; } catch (_) {}
+let _playerClubs = []; // [{id, name, community_id, elo_padel, elo_tennis, matches_padel, matches_tennis}]
+let _selectedStatsScope = ''; // '' | community:<id> | club:<club_id>
+try {
+  const savedScope = localStorage.getItem(STORAGE_COMMUNITY_KEY) || '';
+  if (!savedScope) {
+    _selectedStatsScope = '';
+  } else if (savedScope.startsWith('community:')) {
+    _selectedStatsScope = savedScope;
+  } else if (savedScope.startsWith('club:')) {
+    const clubId = savedScope.split(':')[1] || '';
+    _selectedStatsScope = clubId ? `club:${clubId}` : '';
+  } else {
+    _selectedStatsScope = `community:${savedScope}`; // backward compatibility
+  }
+} catch (_) {}
+let _selectedCommunityId = null; // null = global, otherwise community filter sent to API
+let _selectedClubId = null; // null = no club filter
 let _authStep = 'passphrase'; // 'passphrase' | 'create'
 let _resolveResult = null;    // null | {type: 'profile'|'participation'|'not_found', matches: [...]}
 let _resolvedPassphrase = ''; // the passphrase that was resolved
@@ -54,6 +69,9 @@ let _pathLoading = {};
 let _pathErrors = {};
 const SPACE_POLL_MS = 30000;
 const PASSPHRASE_EMAILED_MSG_MS = 10000;
+
+_selectedCommunityId = _scopeToCommunityId(_selectedStatsScope);
+_selectedClubId = _scopeToClubId(_selectedStatsScope);
 
 function _clearPassphraseEmailedMsgTimer() {
   if (_passphraseEmailedMsgTimer) {
@@ -389,13 +407,17 @@ async function _apiDelete(path, body, auth) {
 }
 
 async function _fetchSpace() {
+  _selectedCommunityId = _scopeToCommunityId(_selectedStatsScope);
+  _selectedClubId = _scopeToClubId(_selectedStatsScope);
   const settings = _getEloHistorySettings();
   let url = `/space?elo_history_limit=${settings.limit}`;
   if (_selectedCommunityId) url += `&community_id=${encodeURIComponent(_selectedCommunityId)}`;
+  if (_selectedClubId) url += `&club_id=${encodeURIComponent(_selectedClubId)}`;
   const data = await _apiGet(url, _jwt);
   _jwt = data.access_token;
   _profile = data.profile;
   _playerCommunities = data.player_communities || [];
+  _playerClubs = data.player_clubs || [];
   _entries = data.entries || [];
   _eloHistory = data.elo_history || [];
   _prunePathState();
@@ -404,8 +426,14 @@ async function _fetchSpace() {
 
 async function _fetchLeaderboard() {
   try {
+    _selectedCommunityId = _scopeToCommunityId(_selectedStatsScope);
+    _selectedClubId = _scopeToClubId(_selectedStatsScope);
     let url = `${API}/leaderboard`;
-    if (_selectedCommunityId) url += `?community_id=${encodeURIComponent(_selectedCommunityId)}`;
+    const params = new URLSearchParams();
+    if (_selectedCommunityId) params.set('community_id', _selectedCommunityId);
+    if (_selectedClubId) params.set('club_id', _selectedClubId);
+    const qs = params.toString();
+    if (qs) url += `?${qs}`;
     const res = await fetch(url);
     if (!res.ok) return;
     _leaderboard = await res.json();
@@ -426,6 +454,7 @@ function _clearSession() {
   _jwt = null;
   _profile = null;
   _playerCommunities = [];
+  _playerClubs = [];
   _entries = [];
   _eloHistory = [];
   _pathPanelOpen = {};
@@ -664,6 +693,138 @@ function _toggleLanguage() {
 
 // ── Communities ───────────────────────────────────────────
 
+function _scopeToClubId(scopeValue) {
+  if (!scopeValue || !scopeValue.startsWith('club:')) return null;
+  const parts = scopeValue.split(':');
+  return (parts[1] || null);
+}
+
+function _scopeToCommunityId(scopeValue) {
+  if (!scopeValue) return null;
+  if (scopeValue.startsWith('community:')) return scopeValue.slice('community:'.length) || null;
+  if (scopeValue.startsWith('club:')) {
+    const clubId = _scopeToClubId(scopeValue);
+    if (!clubId) return null;
+    const club = (_playerClubs || []).find(c => c.id === clubId);
+    if (club?.community_id) return club.community_id;
+    // Backward compatibility for old storage format: club:<club_id>:<community_id>
+    const parts = scopeValue.split(':');
+    return parts.length >= 3 ? (parts[2] || null) : null;
+  }
+  return null;
+}
+
+function _setSelectedStatsScope(scopeValue) {
+  _selectedStatsScope = scopeValue || '';
+  _selectedCommunityId = _scopeToCommunityId(_selectedStatsScope);
+  _selectedClubId = _scopeToClubId(_selectedStatsScope);
+  try { localStorage.setItem(STORAGE_COMMUNITY_KEY, _selectedStatsScope || ''); } catch (_) {}
+  // Re-fetch scope-aware data then re-render.
+  Promise.all([
+    _fetchLeaderboard(),
+    _jwt ? _fetchSpace() : Promise.resolve(),
+  ]).then(() => _render()).catch(() => _render());
+}
+
+function _setSelectedCommunity(communityId) {
+  _setSelectedStatsScope(communityId ? `community:${communityId}` : '');
+}
+
+function _getActiveScopeLabel() {
+  // Returns the human label of the current scope, or null when 'Global'.
+  if (!_selectedStatsScope) return null;
+  if (_selectedClubId) {
+    const club = _playerClubs.find(c => c.id === _selectedClubId);
+    return club ? club.name : null;
+  }
+  if (_selectedCommunityId) {
+    const community = _playerCommunities.find(c => c.id === _selectedCommunityId);
+    return community ? community.name : null;
+  }
+  return null;
+}
+
+function _buildScopeBadge() {
+  // Inline badge that surfaces the active scope inside scoped section headings.
+  const label = _getActiveScopeLabel();
+  if (!label) return '';
+  return `<span class="scope-badge" title="${esc(t('txt_player_scope_title') || 'Stats')}">${esc(label)}</span>`;
+}
+
+function _formatScopeMiniStat(sportCode, eloValue, matchCount) {
+  const matches = Number(matchCount) || 0;
+  if (matches <= 0 || !Number.isFinite(eloValue)) return '';
+  return `${sportCode}${Math.round(eloValue)}·${matches}`;
+}
+
+function _buildStatsScopeCard() {
+  if (!_profile) return '';
+  const hasCommunities = _playerCommunities.length > 0;
+  const hasClubs = _playerClubs.length > 0;
+  if (!hasCommunities && !hasClubs) return '';
+
+  // Sentinel sits just above the sticky card; an IntersectionObserver toggles `is-stuck`
+  // when it scrolls out of view so the card collapses to its compact form.
+  let html = `<div class="player-scope-sentinel" aria-hidden="true"></div>`;
+  html += `<div class="player-scope-card" data-scope-card>`;
+  html += `<div class="player-scope-head">`;
+  html += `<span class="player-scope-title">${esc(t('txt_player_scope_title') || 'Stats')}</span>`;
+  html += `<select class="player-scope-select" onchange="_setSelectedStatsScope(this.value)" aria-label="Stats scope">`;
+  html += `<option value=""${!_selectedStatsScope ? ' selected' : ''}>${esc(t('txt_player_community_all') || 'Global')}</option>`;
+
+  if (hasCommunities) {
+    html += `<optgroup label="${esc(t('txt_player_communities_label') || 'Communities')}">`;
+    for (const c of _playerCommunities) {
+      const value = `community:${c.id}`;
+      const sel = _selectedStatsScope === value ? ' selected' : '';
+      html += `<option value="${esc(value)}"${sel}>${esc(c.name)}</option>`;
+    }
+    html += `</optgroup>`;
+  }
+
+  if (hasClubs) {
+    html += `<optgroup label="${esc(t('txt_player_clubs_label') || 'Clubs')}">`;
+    for (const club of _playerClubs) {
+      const value = `club:${club.id}`;
+      const sel = _selectedStatsScope === value ? ' selected' : '';
+      html += `<option value="${esc(value)}"${sel}>${esc(club.name)}</option>`;
+    }
+    html += `</optgroup>`;
+  }
+
+  html += `</select>`;
+  html += `</div>`;
+
+  if (hasCommunities) {
+    html += `<div class="player-scope-communities">`;
+    for (const c of _playerCommunities) {
+      const scopeValue = `community:${c.id}`;
+      const isActive = scopeValue === _selectedStatsScope;
+      html += `<button type="button" class="player-scope-community-tag${isActive ? ' is-active' : ''}" onclick="_setSelectedStatsScope('${esc(scopeValue)}')">${esc(c.name)}</button>`;
+    }
+    html += `</div>`;
+  }
+
+  if (hasClubs) {
+    html += `<div class="player-scope-clubs">`;
+    for (const club of _playerClubs) {
+      const padelStat = _formatScopeMiniStat('P', club.elo_padel, club.matches_padel);
+      const tennisStat = _formatScopeMiniStat('T', club.elo_tennis, club.matches_tennis);
+      const stats = [padelStat, tennisStat].filter(Boolean).join(' · ');
+      const scopeValue = `club:${club.id}`;
+      const isActive = scopeValue === _selectedStatsScope;
+      html += `<button type="button" class="player-scope-club-tag${isActive ? ' is-active' : ''}" onclick="_setSelectedStatsScope('${esc(scopeValue)}')">`;
+      html += `<span class="player-scope-club-name">${esc(club.name)}</span>`;
+      if (stats) html += `<span class="player-scope-club-stats">${esc(stats)}</span>`;
+      html += `</button>`;
+    }
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
 async function _fetchCommunities() {
   try {
     const res = await fetch('/api/communities');
@@ -672,16 +833,6 @@ async function _fetchCommunities() {
   } catch (_) {
     // Silently ignore — community list is non-critical
   }
-}
-
-function _setSelectedCommunity(communityId) {
-  _selectedCommunityId = communityId || null;
-  try { localStorage.setItem(STORAGE_COMMUNITY_KEY, _selectedCommunityId || ''); } catch (_) {}
-  // Re-fetch community-scoped data then re-render
-  Promise.all([
-    _fetchLeaderboard(),
-    _jwt ? _fetchSpace() : Promise.resolve(),
-  ]).then(() => _render()).catch(() => _render());
 }
 
 function _buildCommunitySelect(eleId) {
@@ -746,7 +897,13 @@ function _buildLeaderboardPanel() {
   if (!_leaderboard) return '';
   const hasPadel = _leaderboard.padel && _leaderboard.padel.length > 0;
   const hasTennis = _leaderboard.tennis && _leaderboard.tennis.length > 0;
-  if (!hasPadel && !hasTennis) return '';
+
+  // Only hide the entire panel if there are neither players nor any community
+  // filters to interact with — otherwise keep it visible with empty results so
+  // unlogged users can switch between communities even when one has no players.
+  const allSpecialized = (_communities || []).filter(c => !c.is_builtin && c.id !== 'open');
+  const hasCommunityFilter = allSpecialized.length > 0;
+  if (!hasPadel && !hasTennis && !hasCommunityFilter) return '';
 
   const openAttr = (_isLeaderboardPanelOpen() || sessionStorage.getItem(STORAGE_LEADERBOARD_PANEL_KEY) == null) ? ' open' : '';
 
@@ -754,22 +911,20 @@ function _buildLeaderboardPanel() {
   html += `<summary class="player-leaderboard-summary"><span class="player-history-chevron">▶</span><span class="section-heading section-heading-inline">${esc(t('txt_player_leaderboard_title'))}</span> <button type="button" class="format-info-btn" style="margin-left:auto" onclick="event.stopPropagation(); _showEloInfoPopup(event)" aria-label="${esc(t('txt_player_elo_info_btn'))}" title="${esc(t('txt_player_elo_info_btn'))}">i</button></summary>`;
   html += `<div class="player-leaderboard-body">`;
 
-  // Controls row: community selector + sport toggle pills — same flex row
+  // Controls row: community selector + sport toggle pills — same flex row.
+  // Always render the sport toggle so users can switch sports even when the
+  // current selection has no players (and we just show empty results).
   const communitySelectHtml = _buildCommunitySelect('leaderboard-community');
-  const sportToggleHtml = (hasPadel && hasTennis) ? (() => {
-    const activeSport = _leaderboardSport;
-    return `<div class="leaderboard-sport-toggle">`
-      + `<button type="button" class="leaderboard-pill${activeSport === 'padel' ? ' leaderboard-pill--active' : ''}" data-sport="padel" onclick="event.stopPropagation(); _setLeaderboardSport('padel')">${esc(t('txt_player_sport_padel'))}</button>`
-      + `<button type="button" class="leaderboard-pill${activeSport === 'tennis' ? ' leaderboard-pill--active' : ''}" data-sport="tennis" onclick="event.stopPropagation(); _setLeaderboardSport('tennis')">${esc(t('txt_player_sport_tennis'))}</button>`
-      + `</div>`;
-  })() : '';
+  const activeSportPill = _leaderboardSport;
+  const sportToggleHtml = `<div class="leaderboard-sport-toggle">`
+    + `<button type="button" class="leaderboard-pill${activeSportPill === 'padel' ? ' leaderboard-pill--active' : ''}" data-sport="padel" onclick="event.stopPropagation(); _setLeaderboardSport('padel')">${esc(t('txt_player_sport_padel'))}</button>`
+    + `<button type="button" class="leaderboard-pill${activeSportPill === 'tennis' ? ' leaderboard-pill--active' : ''}" data-sport="tennis" onclick="event.stopPropagation(); _setLeaderboardSport('tennis')">${esc(t('txt_player_sport_tennis'))}</button>`
+    + `</div>`;
   if (communitySelectHtml || sportToggleHtml) {
     html += `<div class="leaderboard-controls-row">${communitySelectHtml}${sportToggleHtml}</div>`;
   }
 
-  // Show active sport (or whichever has data)
-  const activeSport = (hasPadel && hasTennis) ? _leaderboardSport : (hasPadel ? 'padel' : 'tennis');
-  const entries = activeSport === 'tennis' ? _leaderboard.tennis : _leaderboard.padel;
+  const entries = _leaderboardSport === 'tennis' ? (_leaderboard.tennis || []) : (_leaderboard.padel || []);
   html += _buildLeaderboardTable(entries);
 
   html += `</div>`;
@@ -798,6 +953,25 @@ function _buildLeaderboardInline() {
 
 // ── Render ────────────────────────────────────────────────
 
+let _scopeStickyObserver = null;
+function _initScopeStickyObserver() {
+  // Disconnect any previous observer (the DOM is fully replaced on each render).
+  if (_scopeStickyObserver) {
+    _scopeStickyObserver.disconnect();
+    _scopeStickyObserver = null;
+  }
+  if (typeof IntersectionObserver !== 'function') return;
+  const sentinel = document.querySelector('.player-scope-sentinel');
+  const card = document.querySelector('[data-scope-card]');
+  if (!sentinel || !card) return;
+  _scopeStickyObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      card.classList.toggle('is-stuck', !entry.isIntersecting);
+    }
+  }, { threshold: 0, rootMargin: '0px 0px -100% 0px' });
+  _scopeStickyObserver.observe(sentinel);
+}
+
 function _render() {
   const root = document.getElementById('player-root');
   if (!root) return;
@@ -816,6 +990,7 @@ function _render() {
   if (_showLinkModal) html += _buildLinkModal();
   root.innerHTML = html;
   _initEloChart();
+  _initScopeStickyObserver();
 }
 
 function _buildHeader() {
@@ -939,21 +1114,15 @@ function _buildDashboard() {
     }
   }
   html += `</div>`;
-  // Community membership tags
-  if (_playerCommunities.length > 0) {
-    html += `<div class="profile-communities">`;
-    html += `<span class="profile-communities-label">${esc(t('txt_player_communities_label') || 'Communities')}:</span>`;
-    for (const c of _playerCommunities) {
-      html += `<span class="profile-community-tag">${esc(c.name)}</span>`;
-    }
-    html += `</div>`;
-  }
   html += `<div class="player-profile-actions">`;
   html += `<button type="button" class="btn btn-sm btn-secondary" onclick="_toggleEditProfile()">${esc(t('txt_player_edit_btn'))}</button>`;
   html += `<button type="button" class="btn btn-sm btn-danger-outline player-logout-btn" onclick="_doLogout()">${esc(t('txt_player_logout_btn'))}</button>`;
   html += `</div>`;
   html += `</div>`;
   html += `</div>`;
+
+  // Global stats scope card (Global / Community / Club)
+  html += _buildStatsScopeCard();
 
   // Compact passphrase strip (always visible)
   html += `<div class="passphrase-strip">`;
@@ -1397,6 +1566,13 @@ function _sortParticipantRows(selectEl) {
 
 function _buildGlobalStatsCard() {
   const withStats = _entries.filter(e => {
+    // Active entries are always shown in the tournaments card so the player
+    // can navigate them, but they should only contribute to the stats card
+    // when they actually belong to the currently selected scope. Without
+    // this guard, in-progress matches from other clubs/communities would
+    // leak into the totals as soon as a round is completed.
+    if (_selectedClubId && e.club_id !== _selectedClubId) return false;
+    if (!_selectedClubId && _selectedCommunityId && e.community_id !== _selectedCommunityId) return false;
     if (e.status === 'finished') return true;
     // Include active entries that have live stats from round completions
     return (e.wins || 0) + (e.losses || 0) + (e.draws || 0) > 0;
@@ -1419,7 +1595,7 @@ function _buildGlobalStatsCard() {
   const allStats = _computeStatsForEntries(withStats);
   if (allStats.totalTournaments > 0) {
     html += `<div class="card global-stats-card">`;
-    html += `<div class="section-heading section-heading-card">${esc(t('txt_player_career_stats'))}</div>`;
+    html += `<div class="section-heading section-heading-card">${esc(t('txt_player_career_stats'))}${_buildScopeBadge()}</div>`;
     if (multisport) {
       for (const sport of sports) {
         const sportStats = _computeStatsForEntries(bySport[sport]);
@@ -1460,7 +1636,7 @@ function _buildGlobalStatsCard() {
     }
     if (bestHtml) {
       html += `<div class="card global-stats-card">`;
-      html += `<div class="section-heading section-heading-card">${esc(t('txt_player_career_best_results'))}</div>`;
+      html += `<div class="section-heading section-heading-card">${esc(t('txt_player_career_best_results'))}${_buildScopeBadge()}</div>`;
       html += bestHtml;
       html += `</div>`;
     }
@@ -1507,6 +1683,28 @@ function _formatEloTeamSide(players, currentPid) {
 function _formatEloTeamVsLine(team1, team2, currentPid, scoreStr) {
   const mid = scoreStr ? `<span class="elo-score-sep">${esc(scoreStr)}</span>` : `<span class="elo-vs-sep">vs</span>`;
   return `<span class="elo-team elo-team--a">${_formatEloTeamSide(team1, currentPid)}</span>${mid}<span class="elo-team elo-team--b">${_formatEloTeamSide(team2, currentPid)}</span>`;
+}
+
+function _formatManualAdjustmentRow(match) {
+  const change = match.elo_delta ? match.elo_delta : (match.elo_after - match.elo_before);
+  const changeClass = change > 0 ? 'elo-transition--gain' : change < 0 ? 'elo-transition--loss' : 'elo-transition--neutral';
+  const changeText = `${Math.round(match.elo_before)} → ${Math.round(match.elo_after)}`;
+  const deltaText = `${change > 0 ? '+' : ''}${Math.round(change)}`;
+  const tooltip = match.adjustment_reason ? `title="${esc(match.adjustment_reason)}"` : '';
+  const adminInfo = match.adjusted_by
+    ? `<span class="elo-manual-admin">${esc(t('txt_player_elo_adjusted_by'))} ${esc(match.adjusted_by)}</span>`
+    : '';
+  const reasonRow = match.adjustment_reason
+    ? `<div class="elo-manual-reason">${esc(match.adjustment_reason)}</div>`
+    : '';
+
+  let html = `<div class="elo-log-main">`;
+  html += `<span class="elo-manual-badge" ${tooltip}>⚙ ${esc(t('txt_player_elo_manual_adjustment'))}</span>`;
+  if (adminInfo) html += adminInfo;
+  html += `<span class="elo-transition ${changeClass}">${esc(changeText)} <span class="elo-manual-delta">(${esc(deltaText)})</span></span>`;
+  html += `</div>`;
+  html += reasonRow;
+  return html;
 }
 
 function _setEloHistorySport(sport) {
@@ -1723,7 +1921,7 @@ function _buildEloRatingsCard() {
   const tennisLatest = hasTennisFromHistory ? _findCurrentPlayerEloChange(tennisHistory[0]) : null;
 
   let html = `<div class="card global-stats-card">`;
-  html += `<div class="section-heading section-heading-card" style="display:flex;align-items:center;gap:0.4rem">${esc(t('txt_player_elo_ratings'))} <button type="button" class="format-info-btn" style="margin-left:auto" onclick="_showEloInfoPopup(event)" aria-label="${esc(t('txt_player_elo_info_btn'))}" title="${esc(t('txt_player_elo_info_btn'))}">i</button></div>`;
+  html += `<div class="section-heading section-heading-card" style="display:flex;align-items:center;gap:0.4rem">${esc(t('txt_player_elo_ratings'))}${_buildScopeBadge()} <button type="button" class="format-info-btn" style="margin-left:auto" onclick="_showEloInfoPopup(event)" aria-label="${esc(t('txt_player_elo_info_btn'))}" title="${esc(t('txt_player_elo_info_btn'))}">i</button></div>`;
 
   if (showPadel || showTennis) {
     html += `<div class="global-stats-grid elo-ratings-grid">`;
@@ -1819,24 +2017,34 @@ function _buildEloHistoryInline() {
 
   html += `<div class="elo-log">`;
   for (const match of filtered) {
-    const url = _entityUrl({ entity_type: 'tournament', entity_id: match.tournament_id, alias: match.tournament_alias });
     const when = match.updated_at
       ? new Date(match.updated_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
       : '';
-    const change = _findCurrentPlayerEloChange(match);
-    const changeClass = change
-      ? (change.delta > 0 ? 'elo-transition--gain' : change.delta < 0 ? 'elo-transition--loss' : 'elo-transition--neutral')
-      : 'elo-transition--neutral';
-    const changeText = change ? `${change.before} -> ${change.after}` : '->';
-    html += `<div class="elo-log-row">`;
-    html += `<div class="elo-log-main">`;
-    html += `<a href="${esc(url)}" class="elo-log-name">${esc(match.tournament_name || match.tournament_id)}</a>`;
-    if (match.match_order) html += `<span class="elo-log-dim">#${match.match_order}</span>`;
-    if (when) html += `<span class="elo-log-dim">${esc(when)}</span>`;
-    html += `<span class="elo-transition ${changeClass}">${esc(changeText)}</span>`;
-    html += `</div>`;
-    html += `<div class="elo-log-teams">${_formatEloTeamVsLine(match.team1, match.team2, match.player_id, _formatEloHistoryScore(match))}</div>`;
-    html += `</div>`;
+    
+    // Render manual adjustments differently from match-based changes
+    if (match.is_manual) {
+      html += `<div class="elo-log-row elo-log-row--manual">`;
+      html += _formatManualAdjustmentRow(match);
+      if (when) html += `<span class="elo-log-dim">${esc(when)}</span>`;
+      html += `</div>`;
+    } else {
+      // Standard match-based ELO change rendering
+      const url = _entityUrl({ entity_type: 'tournament', entity_id: match.tournament_id, alias: match.tournament_alias });
+      const change = _findCurrentPlayerEloChange(match);
+      const changeClass = change
+        ? (change.delta > 0 ? 'elo-transition--gain' : change.delta < 0 ? 'elo-transition--loss' : 'elo-transition--neutral')
+        : 'elo-transition--neutral';
+      const changeText = change ? `${change.before} -> ${change.after}` : '->';
+      html += `<div class="elo-log-row">`;
+      html += `<div class="elo-log-main">`;
+      html += `<a href="${esc(url)}" class="elo-log-name">${esc(match.tournament_name || match.tournament_id)}</a>`;
+      if (match.match_order) html += `<span class="elo-log-dim">#${match.match_order}</span>`;
+      if (when) html += `<span class="elo-log-dim">${esc(when)}</span>`;
+      html += `<span class="elo-transition ${changeClass}">${esc(changeText)}</span>`;
+      html += `</div>`;
+      html += `<div class="elo-log-teams">${_formatEloTeamVsLine(match.team1, match.team2, match.player_id, _formatEloHistoryScore(match))}</div>`;
+      html += `</div>`;
+    }
   }
   html += `</div>`;
 
@@ -1875,24 +2083,34 @@ function _buildEloHistoryCard() {
 
   html += `<div class="elo-log">`;
   for (const match of filtered) {
-    const url = _entityUrl({ entity_type: 'tournament', entity_id: match.tournament_id, alias: match.tournament_alias });
     const when = match.updated_at
       ? new Date(match.updated_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
       : '';
-    const change = _findCurrentPlayerEloChange(match);
-    const changeClass = change
-      ? (change.delta > 0 ? 'elo-transition--gain' : change.delta < 0 ? 'elo-transition--loss' : 'elo-transition--neutral')
-      : 'elo-transition--neutral';
-    const changeText = change ? `${change.before} -> ${change.after}` : '->';
-    html += `<div class="elo-log-row">`;
-    html += `<div class="elo-log-main">`;
-    html += `<a href="${esc(url)}" class="elo-log-name">${esc(match.tournament_name || match.tournament_id)}</a>`;
-    if (match.match_order) html += `<span class="elo-log-dim">#${match.match_order}</span>`;
-    if (when) html += `<span class="elo-log-dim">${esc(when)}</span>`;
-    html += `<span class="elo-transition ${changeClass}">${esc(changeText)}</span>`;
-    html += `</div>`;
-    html += `<div class="elo-log-teams">${_formatEloTeamVsLine(match.team1, match.team2, match.player_id, _formatEloHistoryScore(match))}</div>`;
-    html += `</div>`;
+    
+    // Render manual adjustments differently from match-based changes
+    if (match.is_manual) {
+      html += `<div class="elo-log-row elo-log-row--manual">`;
+      html += _formatManualAdjustmentRow(match);
+      if (when) html += `<span class="elo-log-dim">${esc(when)}</span>`;
+      html += `</div>`;
+    } else {
+      // Standard match-based ELO change rendering
+      const url = _entityUrl({ entity_type: 'tournament', entity_id: match.tournament_id, alias: match.tournament_alias });
+      const change = _findCurrentPlayerEloChange(match);
+      const changeClass = change
+        ? (change.delta > 0 ? 'elo-transition--gain' : change.delta < 0 ? 'elo-transition--loss' : 'elo-transition--neutral')
+        : 'elo-transition--neutral';
+      const changeText = change ? `${change.before} -> ${change.after}` : '->';
+      html += `<div class="elo-log-row">`;
+      html += `<div class="elo-log-main">`;
+      html += `<a href="${esc(url)}" class="elo-log-name">${esc(match.tournament_name || match.tournament_id)}</a>`;
+      if (match.match_order) html += `<span class="elo-log-dim">#${match.match_order}</span>`;
+      if (when) html += `<span class="elo-log-dim">${esc(when)}</span>`;
+      html += `<span class="elo-transition ${changeClass}">${esc(changeText)}</span>`;
+      html += `</div>`;
+      html += `<div class="elo-log-teams">${_formatEloTeamVsLine(match.team1, match.team2, match.player_id, _formatEloHistoryScore(match))}</div>`;
+      html += `</div>`;
+    }
   }
   html += `</div>`;
 

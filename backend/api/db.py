@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS tournaments (
     sport            TEXT    NOT NULL DEFAULT 'padel',
     community_id     TEXT    NOT NULL DEFAULT 'open' REFERENCES communities(id),
     created_at       TEXT    NOT NULL DEFAULT '',
-    season_id        TEXT
+    season_id        TEXT,
+    club_id          TEXT    REFERENCES clubs(id) ON DELETE SET NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tournaments_alias
@@ -142,6 +143,7 @@ CREATE TABLE IF NOT EXISTS registrations (
     auto_send_email   INTEGER NOT NULL DEFAULT 0,
     email_requirement TEXT    NOT NULL DEFAULT 'optional',
     community_id      TEXT    NOT NULL DEFAULT 'open' REFERENCES communities(id),
+    club_id           TEXT    REFERENCES clubs(id) ON DELETE SET NULL,
     created_at        TEXT    NOT NULL
 );
 
@@ -611,10 +613,41 @@ def init_db() -> None:
             conn.execute("UPDATE tournaments SET created_at = datetime('now') WHERE created_at = ''")
         if "season_id" not in cols:
             conn.execute("ALTER TABLE tournaments ADD COLUMN season_id TEXT")
+        # Migrate: add club_id to tournaments (denormalized from seasons.club_id so a
+        # tournament can belong to a club without being attached to a specific season).
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(tournaments)").fetchall()}
+        if "club_id" not in cols:
+            conn.execute("ALTER TABLE tournaments ADD COLUMN club_id TEXT REFERENCES clubs(id) ON DELETE SET NULL")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tournaments_club ON tournaments (club_id)")
         # Migrate: add season_id to registrations if missing
         reg_cols = {r[1] for r in conn.execute("PRAGMA table_info(registrations)").fetchall()}
         if reg_cols and "season_id" not in reg_cols:
             conn.execute("ALTER TABLE registrations ADD COLUMN season_id TEXT")
+        # Migrate: add club_id to registrations (same rationale as tournaments).
+        reg_cols = {r[1] for r in conn.execute("PRAGMA table_info(registrations)").fetchall()}
+        if reg_cols and "club_id" not in reg_cols:
+            conn.execute("ALTER TABLE registrations ADD COLUMN club_id TEXT REFERENCES clubs(id) ON DELETE SET NULL")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_registrations_club ON registrations (club_id)")
+        # Backfill: derive club_id from season_id where it is set but club_id is not.
+        # Safe to re-run; only updates rows that need it.
+        conn.execute(
+            """
+            UPDATE tournaments
+               SET club_id = (
+                   SELECT s.club_id FROM seasons s WHERE s.id = tournaments.season_id
+               )
+             WHERE club_id IS NULL AND season_id IS NOT NULL
+            """
+        )
+        conn.execute(
+            """
+            UPDATE registrations
+               SET club_id = (
+                   SELECT s.club_id FROM seasons s WHERE s.id = registrations.season_id
+               )
+             WHERE club_id IS NULL AND season_id IS NOT NULL
+            """
+        )
         # Migrate: add tier_id to profile_community_elo if missing
         pce_cols = {r[1] for r in conn.execute("PRAGMA table_info(profile_community_elo)").fetchall()}
         if pce_cols and "tier_id" not in pce_cols:
@@ -716,6 +749,15 @@ def init_db() -> None:
         club_elo_cols = {r[1] for r in conn.execute("PRAGMA table_info(profile_club_elo)").fetchall()}
         if "hidden" not in club_elo_cols:
             conn.execute("ALTER TABLE profile_club_elo ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
+
+        # Migrate: add manual adjustment tracking columns to player_elo_log if missing
+        elo_log_cols = {r[1] for r in conn.execute("PRAGMA table_info(player_elo_log)").fetchall()}
+        if "is_manual" not in elo_log_cols:
+            conn.execute("ALTER TABLE player_elo_log ADD COLUMN is_manual INTEGER NOT NULL DEFAULT 0")
+        if "adjustment_reason" not in elo_log_cols:
+            conn.execute("ALTER TABLE player_elo_log ADD COLUMN adjustment_reason TEXT")
+        if "adjusted_by" not in elo_log_cols:
+            conn.execute("ALTER TABLE player_elo_log ADD COLUMN adjusted_by TEXT")
 
         if "profile_club_elo" not in all_tables:
             # Backfill existing club data: copy community ELO into club-local ELO for each existing club

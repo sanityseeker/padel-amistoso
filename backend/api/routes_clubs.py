@@ -13,7 +13,7 @@ import json
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from PIL import Image
 from pydantic import BaseModel, Field
@@ -165,6 +165,15 @@ class ClubPlayerOut(BaseModel):
     tier_name_padel: str | None = None
     tier_id_tennis: str | None = None
     tier_name_tennis: str | None = None
+    hidden_padel: bool = False
+    hidden_tennis: bool = False
+
+
+class SportVisibilityUpdate(BaseModel):
+    """Request body for per-sport visibility of a player in a club."""
+
+    sport: str = Field(pattern=r"^(padel|tennis)$")
+    hidden: bool
 
 
 class BulkOperationFailure(BaseModel):
@@ -526,9 +535,37 @@ def get_club_for_community(community_id: str) -> ClubOut | None:
     return _build_club_out(dict(row))
 
 
-def get_club_logo_url(community_id: str) -> str | None:
-    """Return the logo URL for the club associated with a community, or None."""
-    club = get_club_for_community(community_id)
+def get_club_by_id(club_id: str) -> ClubOut | None:
+    """Return a club by id, or None if it does not exist."""
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM clubs WHERE id = ?", (club_id,)).fetchone()
+    if row is None:
+        return None
+    return _build_club_out(dict(row))
+
+
+def resolve_club_for_scope(community_id: str, club_id: str | None) -> ClubOut | None:
+    """Return the club for a tournament/registration scope.
+
+    Prefers an explicit ``club_id`` when set and valid for the given
+    ``community_id``; falls back to the first club in the community for
+    legacy rows that have no ``club_id``.  An explicit ``club_id`` that
+    points to a different community is ignored (treated as legacy data).
+    """
+    if club_id:
+        club = get_club_by_id(club_id)
+        if club is not None and club.community_id == community_id:
+            return club
+    return get_club_for_community(community_id)
+
+
+def get_club_logo_url(community_id: str, club_id: str | None = None) -> str | None:
+    """Return the logo URL for the scope's club, or None.
+
+    If ``club_id`` is provided and resolves to a club with a logo, that club
+    is used; otherwise falls back to the first club in the community.
+    """
+    club = resolve_club_for_scope(community_id, club_id)
     if club is None or not club.has_logo:
         return None
     return f"/api/clubs/{club.id}/logo"
@@ -681,14 +718,25 @@ async def delete_club(club_id: str, user: User = Depends(get_current_user)) -> d
     logo_path = _LOGOS_DIR / f"{club_id}.png"
     if logo_path.exists():
         logo_path.unlink(missing_ok=True)
-    # Sync in-memory tournament state
+    # Sync in-memory tournament state: drop the deleted club_id, and resync
+    # any season_id that the FK cascade nullified in the DB.
     from .state import _tournaments  # noqa: PLC0415
 
-    for data in _tournaments.values():
-        if data.get("season_id"):
-            # We can't check if the season belonged to this club without a DB query,
-            # but the DB already nullified it — just clear any matching in-memory refs.
-            pass
+    affected_tids = [tid for tid, data in _tournaments.items() if data.get("club_id") == club_id]
+    season_tids = [tid for tid, data in _tournaments.items() if data.get("season_id")]
+    if season_tids:
+        with get_db() as conn:
+            placeholders = ",".join("?" * len(season_tids))
+            rows = conn.execute(
+                f"SELECT id, season_id FROM tournaments WHERE id IN ({placeholders})",
+                season_tids,
+            ).fetchall()
+            db_season_by_tid = {r["id"]: r["season_id"] for r in rows}
+        for tid in season_tids:
+            if _tournaments[tid].get("season_id") != db_season_by_tid.get(tid):
+                _tournaments[tid]["season_id"] = db_season_by_tid.get(tid)
+    for tid in affected_tids:
+        _tournaments[tid]["club_id"] = None
     return {"ok": True}
 
 
@@ -848,8 +896,17 @@ async def delete_tier(club_id: str, tier_id: str, user: User = Depends(get_curre
 
 
 @router.get("/{club_id}/players", response_model=list[ClubPlayerOut])
-async def list_club_players(club_id: str, user: User = Depends(get_current_user)) -> list[ClubPlayerOut]:
-    """List all players in the club with their club-local ELO and tier info."""
+async def list_club_players(
+    club_id: str,
+    sport: str = Query(default="", pattern=r"^(|padel|tennis)$"),
+    user: User = Depends(get_current_user),
+) -> list[ClubPlayerOut]:
+    """List club players with their club-local ELO and tier info.
+
+    When ``sport`` is provided, only players visible for that sport are
+    returned. This is used by tournament creation so hidden padel/tennis club
+    players are not proposed for the wrong sport.
+    """
     club = _get_club(club_id)
     with get_db() as conn:
         needs_elo_transfer = _sync_club_players_from_community(conn, club_id, club["community_id"])
@@ -865,17 +922,99 @@ async def list_club_players(club_id: str, user: User = Depends(get_current_user)
 
     with get_db() as conn:
         rows = conn.execute(
-            """SELECT pce.profile_id, pce.sport, pce.elo, pce.matches, pce.tier_id,
+            """SELECT pce.profile_id, pce.sport, pce.elo, pce.matches, pce.tier_id, pce.hidden,
                       pp.name AS player_name, pp.email AS player_email, pp.is_ghost AS player_is_ghost,
                       ct.name AS tier_name
                FROM profile_club_elo pce
                JOIN player_profiles pp ON pp.id = pce.profile_id
                LEFT JOIN club_tiers ct ON ct.id = pce.tier_id
-               WHERE pce.club_id = ? AND pce.hidden = 0 AND pp.is_ghost = 0
+               WHERE pce.club_id = ? AND pp.is_ghost = 0
+                 AND EXISTS (
+                     SELECT 1 FROM profile_club_elo sub
+                     WHERE sub.profile_id = pce.profile_id AND sub.club_id = ? AND sub.hidden = 0
+                 )
                ORDER BY pp.name""",
-            (club_id,),
+            (club_id, club_id),
         ).fetchall()
-    # Pivot: group by profile_id, combine padel + tennis rows
+        # Live-derive matches and latest ELO from player_elo_log scoped to this
+        # club's tournaments. profile_club_elo.matches/elo are stale snapshots
+        # that are only seeded on insert and never incremented per match, so
+        # the leaderboard would otherwise lag behind actual play.
+        live_rows = conn.execute(
+            """
+            WITH linked_tournament_players AS (
+                SELECT ps.profile_id AS profile_id,
+                       ps.tournament_id AS tournament_id,
+                       ps.player_id AS player_id
+                  FROM player_secrets ps
+                 WHERE ps.profile_id IN (
+                     SELECT profile_id FROM profile_club_elo WHERE club_id = ?
+                 )
+                UNION
+                SELECT ph.profile_id AS profile_id,
+                       ph.entity_id AS tournament_id,
+                       ph.player_id AS player_id
+                  FROM player_history ph
+                 WHERE ph.entity_type = 'tournament'
+                   AND ph.profile_id IN (
+                       SELECT profile_id FROM profile_club_elo WHERE club_id = ?
+                   )
+            ),
+            scoped AS (
+                SELECT lp.profile_id  AS profile_id,
+                       l.sport        AS sport,
+                       l.elo_after    AS elo_after,
+                       l.is_manual    AS is_manual,
+                       l.updated_at   AS updated_at,
+                       l.match_order  AS match_order
+                  FROM player_elo_log l
+                  JOIN linked_tournament_players lp
+                    ON lp.tournament_id = l.tournament_id
+                   AND lp.player_id = l.player_id
+                  JOIN tournaments t
+                    ON t.id = l.tournament_id
+                 WHERE t.club_id = ?
+            ),
+            matches_agg AS (
+                SELECT s.profile_id,
+                       s.sport,
+                       SUM(CASE WHEN s.is_manual = 0 THEN 1 ELSE 0 END) AS matches
+                  FROM scoped s
+              GROUP BY s.profile_id, s.sport
+            ),
+            latest AS (
+                SELECT s.profile_id,
+                       s.sport,
+                       s.elo_after,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY s.profile_id, s.sport
+                           ORDER BY s.updated_at DESC, s.match_order DESC
+                       ) AS rn
+                  FROM scoped s
+            )
+            SELECT m.profile_id  AS profile_id,
+                   m.sport       AS sport,
+                   m.matches     AS matches,
+                   lt.elo_after  AS elo
+              FROM matches_agg m
+         LEFT JOIN latest lt
+                ON lt.profile_id = m.profile_id
+               AND lt.sport = m.sport
+               AND lt.rn = 1
+            """,
+            (club_id, club_id, club_id),
+        ).fetchall()
+
+    live_by_key: dict[tuple[str, str], dict[str, float | int | None]] = {
+        (r["profile_id"], r["sport"]): {
+            "matches": int(r["matches"] or 0),
+            "elo": r["elo"],
+        }
+        for r in live_rows
+    }
+
+    # Pivot: group by profile_id, combine padel + tennis rows.
+    # Rows include hidden sport rows so that hidden_padel / hidden_tennis flags are populated.
     players: dict[str, ClubPlayerOut] = {}
     for r in rows:
         pid = r["profile_id"]
@@ -887,17 +1026,31 @@ async def list_club_players(club_id: str, user: User = Depends(get_current_user)
                 has_hub_profile=not bool(r["player_is_ghost"]),
             )
         p = players[pid]
+        live = live_by_key.get((pid, r["sport"]), {})
+        live_matches = int(live.get("matches") or 0)
+        live_elo = live.get("elo")
+        # Prefer live ELO from match logs; fall back to the snapshot (which
+        # captures tier base ELO and admin-set manual overrides) when the
+        # player has no logged matches in this club yet.
+        effective_elo = live_elo if live_elo is not None else r["elo"]
         if r["sport"] == "padel":
-            p.elo_padel = round(r["elo"], 1)
-            p.matches_padel = r["matches"]
+            p.elo_padel = round(effective_elo, 1) if effective_elo is not None else None
+            p.matches_padel = live_matches
             p.tier_id_padel = r["tier_id"]
             p.tier_name_padel = r["tier_name"]
+            p.hidden_padel = bool(r["hidden"])
         elif r["sport"] == "tennis":
-            p.elo_tennis = round(r["elo"], 1)
-            p.matches_tennis = r["matches"]
+            p.elo_tennis = round(effective_elo, 1) if effective_elo is not None else None
+            p.matches_tennis = live_matches
             p.tier_id_tennis = r["tier_id"]
             p.tier_name_tennis = r["tier_name"]
-    return list(players.values())
+            p.hidden_tennis = bool(r["hidden"])
+    player_list = list(players.values())
+    if sport == "padel":
+        return [player for player in player_list if not player.hidden_padel]
+    if sport == "tennis":
+        return [player for player in player_list if not player.hidden_tennis]
+    return player_list
 
 
 @router.post("/{club_id}/players", response_model=ClubPlayerOut, status_code=201)
@@ -1020,10 +1173,15 @@ async def search_club_player_candidates(
             FROM player_profiles
             WHERE is_ghost = 0
               AND (name LIKE ? OR email LIKE ?)
+              AND EXISTS (
+                  SELECT 1 FROM profile_community_elo pce
+                  WHERE pce.profile_id = player_profiles.id
+                    AND pce.community_id = ?
+              )
             ORDER BY name
             LIMIT 15
             """,
-            (pattern, pattern),
+            (pattern, pattern, community_id),
         ).fetchall()
 
         past_rows = conn.execute(
@@ -1455,6 +1613,29 @@ async def club_convert_ghost_to_hub_profile(
         email=clean_email,
         is_ghost=False,
     )
+
+
+@router.patch("/{club_id}/players/{profile_id}/sport-visibility")
+async def update_player_sport_visibility(
+    club_id: str,
+    profile_id: str,
+    req: SportVisibilityUpdate,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Toggle a player's visibility for a specific sport within the club.
+
+    When hidden, the player is excluded from that sport's leaderboard and
+    ratings.  Their match history and ELO are preserved.  Players removed
+    from all sports entirely (via DELETE) must be re-added explicitly.
+    """
+    club = _get_club(club_id)
+    _require_club_editor(club, user)
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE profile_club_elo SET hidden = ? WHERE profile_id = ? AND club_id = ? AND sport = ?",
+            (1 if req.hidden else 0, profile_id, club_id, req.sport),
+        )
+    return {"ok": True}
 
 
 @router.delete("/{club_id}/players/{profile_id}")

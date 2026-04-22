@@ -575,6 +575,67 @@ class TestClubDeleteCascade:
             seasons = conn.execute("SELECT * FROM seasons WHERE club_id = ?", (club["id"],)).fetchall()
         assert len(seasons) == 0
 
+    def test_delete_club_clears_in_memory_tournament_refs(self, client, auth_headers) -> None:
+        """Deleting a club must clear stale ``club_id``/``season_id`` from the
+        in-memory tournaments cache (FK cascades NULL the DB rows; in-memory
+        state must follow)."""
+        from backend.api.state import _tournaments
+
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        season = client.post(
+            f"/api/clubs/{club['id']}/seasons",
+            json={"name": "S1"},
+            headers=auth_headers,
+        ).json()
+        body = {
+            "name": "Mem Sync",
+            "player_names": ["A", "B", "C", "D"],
+            "team_mode": False,
+            "court_names": ["C1"],
+            "num_groups": 1,
+            "top_per_group": 1,
+            "double_elimination": False,
+        }
+        tid = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers).json()["id"]
+        client.patch(
+            f"/api/tournaments/{tid}/community",
+            json={"community_id": comm["id"]},
+            headers=auth_headers,
+        )
+        client.patch(
+            f"/api/tournaments/{tid}/season",
+            json={"season_id": season["id"]},
+            headers=auth_headers,
+        )
+        assert _tournaments[tid]["club_id"] == club["id"]
+        assert _tournaments[tid]["season_id"] == season["id"]
+
+        res = client.delete(f"/api/clubs/{club['id']}", headers=auth_headers)
+        assert res.status_code == 200
+        assert _tournaments[tid]["club_id"] is None
+        assert _tournaments[tid]["season_id"] is None
+
+    def test_resolve_club_for_scope_ignores_cross_community_club_id(self, client, auth_headers) -> None:
+        """An explicit ``club_id`` pointing to a different community is ignored
+        and the function falls back to the first club in the requested community."""
+        from backend.api.routes_clubs import resolve_club_for_scope
+
+        comm_a = _create_community(client, auth_headers, name="Comm A Resolve")
+        comm_b = _create_community(client, auth_headers, name="Comm B Resolve")
+        club_a = _create_club(client, auth_headers, comm_a["id"], name="Club A Resolve")
+        club_b = _create_club(client, auth_headers, comm_b["id"], name="Club B Resolve")
+
+        # Explicit club_a but request community_b → must fall back to club_b.
+        resolved = resolve_club_for_scope(comm_b["id"], club_a["id"])
+        assert resolved is not None
+        assert resolved.id == club_b["id"]
+
+        # Same community → explicit club is honored.
+        resolved_same = resolve_club_for_scope(comm_a["id"], club_a["id"])
+        assert resolved_same is not None
+        assert resolved_same.id == club_a["id"]
+
 
 # ---------------------------------------------------------------------------
 # Club scoping (Block B)
@@ -783,8 +844,66 @@ class TestClubAddRemovePlayer:
         row = next((p for p in res.json() if p["profile_id"] == "prof_auto"), None)
         assert row is not None
         assert row["name"] == "New Player"
+        # Snapshot ELO from community is preserved as fallback when the player
+        # has no logged matches in this club yet.
         assert row["elo_padel"] == 1234.0
-        assert row["matches_padel"] == 7
+        # Matches are derived live from player_elo_log scoped to this club's
+        # tournaments, so community-wide matches do not leak in.
+        assert row["matches_padel"] == 0
+
+    def test_list_players_reflects_club_tournament_matches(self, client, auth_headers) -> None:
+        """Club leaderboard reflects matches and ELO from this club's tournaments live."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            self._make_profile(conn, profile_id="prof_live")
+            # Add the profile to the club (creates profile_club_elo rows).
+        client.post(
+            f"/api/clubs/{club['id']}/players",
+            json={"profile_id": "prof_live"},
+            headers=auth_headers,
+        )
+
+        # Simulate a club-scoped tournament with this profile playing 3 padel matches.
+        now = datetime.now(timezone.utc).isoformat()
+        with get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO tournaments (id, name, type, owner, tournament_blob,
+                                         sport, community_id, club_id)
+                VALUES (?, ?, 'mexicano', 'admin', X'80', 'padel', ?, ?)
+                """,
+                ("t_live_club", "Club Tournament", comm["id"], club["id"]),
+            )
+            conn.execute(
+                """
+                INSERT INTO player_secrets
+                    (tournament_id, player_id, player_name, passphrase, token,
+                     email, contact, profile_id)
+                VALUES (?, ?, ?, ?, ?, '', '', ?)
+                """,
+                ("t_live_club", "p_live", "Live Player", "live-pass", "tok-live", "prof_live"),
+            )
+            for idx in range(3):
+                elo_after = 1180.0 if idx == 2 else 1100.0 + idx
+                conn.execute(
+                    """
+                    INSERT INTO player_elo_log
+                        (tournament_id, sport, match_id, player_id, match_order,
+                         elo_before, elo_after, elo_delta, match_payload, updated_at)
+                    VALUES (?, 'padel', ?, ?, ?, 1000.0, ?, ?, '{}', ?)
+                    """,
+                    ("t_live_club", f"m-{idx}", "p_live", idx + 1, elo_after, elo_after - 1000.0, now),
+                )
+
+        res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        assert res.status_code == 200
+        row = next((p for p in res.json() if p["profile_id"] == "prof_live"), None)
+        assert row is not None
+        assert row["matches_padel"] == 3
+        assert row["elo_padel"] == 1180.0
+        # No tennis matches recorded -> default snapshot is preserved.
+        assert row["matches_tennis"] == 0
 
     def test_list_players_auto_syncs_unlinked_past_participant_as_ghost(self, client, auth_headers) -> None:
         """Unlinked tournament participants are hidden from main roster and appear in possible-members."""
@@ -862,6 +981,44 @@ class TestClubAddRemovePlayer:
         assert "past_a_1" in ids
         assert "past_b_1" not in ids
 
+    def test_search_candidates_excludes_hub_profiles_outside_club_community(self, client, auth_headers) -> None:
+        """Hub profile candidates are scoped to the club's community via profile_community_elo."""
+        comm_a = _create_community(client, auth_headers, name="Cand Comm A")
+        comm_b = _create_community(client, auth_headers, name="Cand Comm B")
+        club_a = _create_club(client, auth_headers, comm_a["id"], name="Cand Club A")
+
+        with get_db() as conn:
+            # Two hub profiles with the same searchable substring.
+            for pid, name in (("prof_in_a", "Searchable In A"), ("prof_in_b", "Searchable In B")):
+                conn.execute(
+                    """
+                    INSERT INTO player_profiles
+                        (id, passphrase, name, email, is_ghost, created_at)
+                    VALUES (?, ?, ?, '', 0, datetime('now'))
+                    """,
+                    (pid, f"pp-{pid}", name),
+                )
+            # Profile A has a community_elo row in club A's community; B does not.
+            conn.execute(
+                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)"
+                " VALUES (?, ?, 'padel', 1000, 0)",
+                ("prof_in_a", comm_a["id"]),
+            )
+            conn.execute(
+                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)"
+                " VALUES (?, ?, 'padel', 1000, 0)",
+                ("prof_in_b", comm_b["id"]),
+            )
+
+        res = client.get(
+            f"/api/clubs/{club_a['id']}/players/candidates?q=Searchable",
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        ids = {r.get("profile_id") for r in res.json() if r.get("profile_id")}
+        assert "prof_in_a" in ids
+        assert "prof_in_b" not in ids
+
 
 class TestClubPlayerManagement:
     """Tests for adding, removing and listing players in a club."""
@@ -915,6 +1072,157 @@ class TestClubPlayerManagement:
         assert res.status_code == 200
         ids = [p["profile_id"] for p in res.json()]
         assert "prof_new" in ids
+
+    def test_hide_from_single_sport_keeps_player_in_list_with_flag(self, client, auth_headers) -> None:
+        """Hiding from padel only keeps the player in list but marks hidden_padel=True."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            self._make_profile(conn)
+        client.post(f"/api/clubs/{club['id']}/players", json={"profile_id": "prof_new"}, headers=auth_headers)
+
+        res = client.patch(
+            f"/api/clubs/{club['id']}/players/prof_new/sport-visibility",
+            json={"sport": "padel", "hidden": True},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+
+        list_res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        assert list_res.status_code == 200
+        row = next((p for p in list_res.json() if p["profile_id"] == "prof_new"), None)
+        assert row is not None, "player should still appear in list (tennis row is visible)"
+        assert row["hidden_padel"] is True
+        assert row["hidden_tennis"] is False
+
+    def test_hide_from_padel_excludes_db_row(self, client, auth_headers) -> None:
+        """Hiding from padel sets the padel DB row to hidden=1, tennis row stays hidden=0."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            self._make_profile(conn)
+        client.post(f"/api/clubs/{club['id']}/players", json={"profile_id": "prof_new"}, headers=auth_headers)
+        client.patch(
+            f"/api/clubs/{club['id']}/players/prof_new/sport-visibility",
+            json={"sport": "padel", "hidden": True},
+            headers=auth_headers,
+        )
+        with get_db() as conn:
+            rows = {
+                r["sport"]: r["hidden"]
+                for r in conn.execute(
+                    "SELECT sport, hidden FROM profile_club_elo WHERE profile_id = 'prof_new' AND club_id = ?",
+                    (club["id"],),
+                ).fetchall()
+            }
+        assert rows["padel"] == 1
+        assert rows["tennis"] == 0
+
+    def test_restore_sport_visibility(self, client, auth_headers) -> None:
+        """Restoring padel visibility clears the hidden flag and player returns to visible list."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            self._make_profile(conn)
+        client.post(f"/api/clubs/{club['id']}/players", json={"profile_id": "prof_new"}, headers=auth_headers)
+        client.patch(
+            f"/api/clubs/{club['id']}/players/prof_new/sport-visibility",
+            json={"sport": "padel", "hidden": True},
+            headers=auth_headers,
+        )
+        res = client.patch(
+            f"/api/clubs/{club['id']}/players/prof_new/sport-visibility",
+            json={"sport": "padel", "hidden": False},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+
+        list_res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        row = next((p for p in list_res.json() if p["profile_id"] == "prof_new"), None)
+        assert row is not None
+        assert row["hidden_padel"] is False
+
+    def test_hide_both_sports_removes_player_from_list(self, client, auth_headers) -> None:
+        """Hiding a player from both sports removes them from the list entirely."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            self._make_profile(conn)
+        client.post(f"/api/clubs/{club['id']}/players", json={"profile_id": "prof_new"}, headers=auth_headers)
+        client.patch(
+            f"/api/clubs/{club['id']}/players/prof_new/sport-visibility",
+            json={"sport": "padel", "hidden": True},
+            headers=auth_headers,
+        )
+        client.patch(
+            f"/api/clubs/{club['id']}/players/prof_new/sport-visibility",
+            json={"sport": "tennis", "hidden": True},
+            headers=auth_headers,
+        )
+        list_res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        assert list_res.status_code == 200
+        assert all(p["profile_id"] != "prof_new" for p in list_res.json())
+
+    def test_player_hidden_from_sport_has_elo_value_preserved(self, client, auth_headers) -> None:
+        """ELO value is returned even for hidden sport rows so admin can see it in the management table."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            self._make_profile(conn)
+            conn.execute(
+                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches) VALUES (?, ?, ?, ?, ?)",
+                ("prof_new", comm["id"], "padel", 1250.0, 5),
+            )
+        client.post(f"/api/clubs/{club['id']}/players", json={"profile_id": "prof_new"}, headers=auth_headers)
+        client.patch(
+            f"/api/clubs/{club['id']}/players/prof_new/sport-visibility",
+            json={"sport": "padel", "hidden": True},
+            headers=auth_headers,
+        )
+        list_res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
+        row = next((p for p in list_res.json() if p["profile_id"] == "prof_new"), None)
+        assert row is not None
+        assert row["elo_padel"] is not None
+        assert row["hidden_padel"] is True
+
+    def test_list_players_sport_filter_excludes_hidden_players_for_that_sport(self, client, auth_headers) -> None:
+        """Tournament creation can request only players visible for a given sport."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            self._make_profile(conn)
+        client.post(f"/api/clubs/{club['id']}/players", json={"profile_id": "prof_new"}, headers=auth_headers)
+        client.patch(
+            f"/api/clubs/{club['id']}/players/prof_new/sport-visibility",
+            json={"sport": "padel", "hidden": True},
+            headers=auth_headers,
+        )
+
+        padel_res = client.get(f"/api/clubs/{club['id']}/players?sport=padel", headers=auth_headers)
+        tennis_res = client.get(f"/api/clubs/{club['id']}/players?sport=tennis", headers=auth_headers)
+
+        assert padel_res.status_code == 200
+        assert tennis_res.status_code == 200
+        assert all(p["profile_id"] != "prof_new" for p in padel_res.json())
+        assert any(p["profile_id"] == "prof_new" for p in tennis_res.json())
+
+    def test_list_players_sport_filter_keeps_matching_sport_elo(self, client, auth_headers) -> None:
+        """Sport-filtered club list still returns the requested sport ELO for import into tournament creation."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            self._make_profile(conn)
+            conn.execute(
+                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches) VALUES (?, ?, ?, ?, ?)",
+                ("prof_new", comm["id"], "tennis", 1380.0, 9),
+            )
+        client.post(f"/api/clubs/{club['id']}/players", json={"profile_id": "prof_new"}, headers=auth_headers)
+
+        res = client.get(f"/api/clubs/{club['id']}/players?sport=tennis", headers=auth_headers)
+        assert res.status_code == 200
+        row = next((p for p in res.json() if p["profile_id"] == "prof_new"), None)
+        assert row is not None
+        assert row["elo_tennis"] == 1380.0
 
 
 class TestClubMessaging:
@@ -1292,6 +1600,28 @@ class TestClubGhostConsolidation:
         assert data["profile_id"] == gid1
 
         # Secondary profile must be deleted
+        with get_db() as conn:
+            row = conn.execute("SELECT id FROM player_profiles WHERE id = ?", (gid2,)).fetchone()
+        assert row is None
+
+    def test_consolidate_allows_different_name_variants(self, client, auth_headers) -> None:
+        """Consolidation works even when ghost profile names are not an exact match."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            gid1 = _insert_club_ghost(conn, club["id"], "Maria", "mv1")
+            gid2 = _insert_club_ghost(conn, club["id"], "Maria Garcia", "mv2")
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/consolidate-ghosts",
+            json={"source_ids": [gid1, gid2], "name": "Maria Garcia"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["profile_id"] == gid1
+        assert data["name"] == "Maria Garcia"
+
         with get_db() as conn:
             row = conn.execute("SELECT id FROM player_profiles WHERE id = ?", (gid2,)).fetchone()
         assert row is None

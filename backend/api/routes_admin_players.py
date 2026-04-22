@@ -773,6 +773,45 @@ async def admin_unlink_participation(
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# Permanently delete a profile
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@router.delete("/{profile_id}")
+async def admin_delete_profile(
+    profile_id: str,
+    _admin: User = Depends(require_admin),
+) -> dict:
+    """Permanently delete a Player Hub profile and all profile-bound records.
+
+    This removes the profile row and all derived profile data (history, ELO,
+    and cached path data). Active tournament participations are preserved by
+    unlinking them (``profile_id = NULL``) so tournaments remain intact.
+    """
+    with get_db() as conn:
+        existing = conn.execute("SELECT id FROM player_profiles WHERE id = ?", (profile_id,)).fetchone()
+        if existing is None:
+            raise HTTPException(404, "Profile not found")
+
+        active_rows = conn.execute(
+            "SELECT DISTINCT tournament_id FROM player_secrets WHERE profile_id = ?",
+            (profile_id,),
+        ).fetchall()
+
+        conn.execute("UPDATE player_secrets SET profile_id = NULL WHERE profile_id = ?", (profile_id,))
+        conn.execute("DELETE FROM player_history WHERE profile_id = ?", (profile_id,))
+        conn.execute("DELETE FROM profile_community_elo WHERE profile_id = ?", (profile_id,))
+        conn.execute("DELETE FROM profile_club_elo WHERE profile_id = ?", (profile_id,))
+        conn.execute("DELETE FROM player_tournament_path_cache WHERE profile_id = ?", (profile_id,))
+        conn.execute("DELETE FROM player_profiles WHERE id = ?", (profile_id,))
+
+    for row in active_rows:
+        invalidate_secrets_cache(row["tournament_id"])
+
+    return {"ok": True}
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # Reset profile passphrase
 # ────────────────────────────────────────────────────────────────────────────
 

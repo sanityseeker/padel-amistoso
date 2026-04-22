@@ -90,6 +90,12 @@ class SetSeasonRequest(BaseModel):
     season_id: str | None = Field(default=None, max_length=64)
 
 
+class SetClubRequest(BaseModel):
+    """Assign a tournament or registration to a club directly (or remove)."""
+
+    club_id: str | None = Field(default=None, max_length=64)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -217,12 +223,16 @@ async def set_tournament_season(tid: str, req: SetSeasonRequest, user: User = De
                     400,
                     f"Tournament belongs to community '{tournament_community}' but the season belongs to community '{club['community_id']}'",
                 )
+            new_club_id = season["club_id"]
+        else:
+            new_club_id = _tournaments[tid].get("club_id")
 
         _tournaments[tid]["season_id"] = req.season_id
+        _tournaments[tid]["club_id"] = new_club_id
         from .state import _save_tournament  # noqa: PLC0415
 
         _save_tournament(tid)
-    return {"ok": True, "season_id": req.season_id}
+    return {"ok": True, "season_id": req.season_id, "club_id": new_club_id}
 
 
 @router.patch("/api/registrations/{rid}/season")
@@ -242,10 +252,92 @@ async def set_registration_season(rid: str, req: SetSeasonRequest, user: User = 
                 400,
                 f"Registration belongs to community '{reg_community}' but the season belongs to community '{club['community_id']}'",
             )
+        new_club_id = season["club_id"]
+    else:
+        new_club_id = registration.get("club_id")
 
     with get_db() as conn:
-        conn.execute("UPDATE registrations SET season_id = ? WHERE id = ?", (req.season_id, registration["id"]))
-    return {"ok": True, "season_id": req.season_id}
+        conn.execute(
+            "UPDATE registrations SET season_id = ?, club_id = ? WHERE id = ?",
+            (req.season_id, new_club_id, registration["id"]),
+        )
+    return {"ok": True, "season_id": req.season_id, "club_id": new_club_id}
+
+
+# ---------------------------------------------------------------------------
+# Direct club assignment (independent from seasons)
+# ---------------------------------------------------------------------------
+
+
+@router.patch("/api/tournaments/{tid}/club")
+async def set_tournament_club(tid: str, req: SetClubRequest, user: User = Depends(get_current_user)) -> dict:
+    """Assign a tournament directly to a club (or remove from one).
+
+    Tournaments belong to a club first; seasons are an optional sub-grouping.
+    Validates that the tournament's community matches the club's community.
+    Clears ``season_id`` if it pointed to a different club.
+    """
+    from .helpers import _require_editor_access  # noqa: PLC0415
+    from . import state  # noqa: PLC0415
+
+    _require_editor_access(tid, user)
+    async with state.get_tournament_lock(tid):
+        if tid not in _tournaments:
+            raise HTTPException(404, "Tournament not found")
+
+        if req.club_id is not None:
+            club = _get_club(req.club_id)
+            tournament_community = _tournaments[tid].get("community_id", "open")
+            if club["community_id"] != tournament_community:
+                raise HTTPException(
+                    400,
+                    f"Tournament belongs to community '{tournament_community}' but the club belongs to community '{club['community_id']}'",
+                )
+
+        # Clear season_id if it no longer matches the new club
+        existing_season_id = _tournaments[tid].get("season_id")
+        if existing_season_id:
+            season = _get_season(existing_season_id)
+            if season["club_id"] != req.club_id:
+                _tournaments[tid]["season_id"] = None
+
+        _tournaments[tid]["club_id"] = req.club_id
+        from .state import _save_tournament  # noqa: PLC0415
+
+        _save_tournament(tid)
+    return {"ok": True, "club_id": req.club_id, "season_id": _tournaments[tid].get("season_id")}
+
+
+@router.patch("/api/registrations/{rid}/club")
+async def set_registration_club(rid: str, req: SetClubRequest, user: User = Depends(get_current_user)) -> dict:
+    """Assign a registration directly to a club (or remove from one)."""
+    from .routes_registration import _get_registration, _require_registration_editor  # noqa: PLC0415
+
+    registration = _get_registration(rid)
+    _require_registration_editor(registration, user)
+
+    if req.club_id is not None:
+        club = _get_club(req.club_id)
+        reg_community = registration.get("community_id", "open")
+        if club["community_id"] != reg_community:
+            raise HTTPException(
+                400,
+                f"Registration belongs to community '{reg_community}' but the club belongs to community '{club['community_id']}'",
+            )
+
+    # Clear season_id if no longer matches
+    new_season_id = registration.get("season_id")
+    if new_season_id:
+        season = _get_season(new_season_id)
+        if season["club_id"] != req.club_id:
+            new_season_id = None
+
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE registrations SET club_id = ?, season_id = ? WHERE id = ?",
+            (req.club_id, new_season_id, registration["id"]),
+        )
+    return {"ok": True, "club_id": req.club_id, "season_id": new_season_id}
 
 
 # ---------------------------------------------------------------------------
@@ -333,19 +425,30 @@ def _aggregate_standings(
     history_rows: list,
     profile_for_player: dict[str, str],
 ) -> list[SeasonStandingEntry]:
-    """Aggregate ELO and history rows for a single sport into sorted standings."""
+    """Aggregate ELO and history rows for a single sport into sorted standings.
+
+    ``elo_rows`` must already be ordered chronologically (oldest first).
+    Profiles linked to multiple ``player_id``s have their ``elo_start`` and
+    ``elo_end`` resolved by global temporal ordering across all of their ids,
+    not by dict iteration order.
+    """
+    # Per player_id state, plus the chronological ordinal of the first/last
+    # event so we can merge multiple player_ids into one profile correctly.
     player_elo_data: dict[str, dict] = {}
-    for r in elo_rows:
+    for ordinal, r in enumerate(elo_rows):
         pid = r["player_id"]
         if pid not in player_elo_data:
             player_elo_data[pid] = {
                 "elo_start": r["elo_before"],
                 "elo_end": r["elo_after"],
+                "start_ord": ordinal,
+                "end_ord": ordinal,
                 "total_delta": 0.0,
                 "matches": 0,
             }
         entry = player_elo_data[pid]
         entry["elo_end"] = r["elo_after"]
+        entry["end_ord"] = ordinal
         entry["total_delta"] += r["elo_delta"]
         entry["matches"] += 1
 
@@ -390,15 +493,22 @@ def _aggregate_standings(
                 "tournament_ids": set(),
             }
         entry = profile_data[pid]
-        if entry.get("elo_start") is None:
+        if "_start_ord" not in entry:
+            entry["_start_ord"] = elo_info["start_ord"]
             entry["elo_start"] = elo_info["elo_start"]
+            entry["_end_ord"] = elo_info["end_ord"]
             entry["elo_end"] = elo_info["elo_end"]
             entry["elo_change"] = round(elo_info["total_delta"], 1)
             entry["matches_played"] = elo_info["matches"]
         else:
+            if elo_info["start_ord"] < entry["_start_ord"]:
+                entry["_start_ord"] = elo_info["start_ord"]
+                entry["elo_start"] = elo_info["elo_start"]
+            if elo_info["end_ord"] > entry["_end_ord"]:
+                entry["_end_ord"] = elo_info["end_ord"]
+                entry["elo_end"] = elo_info["elo_end"]
             entry["matches_played"] = entry.get("matches_played", 0) + elo_info["matches"]
             entry["elo_change"] = round(entry.get("elo_change", 0) + elo_info["total_delta"], 1)
-            entry["elo_end"] = elo_info["elo_end"]
 
     result: list[SeasonStandingEntry] = []
     for pid, data in profile_data.items():

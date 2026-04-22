@@ -46,28 +46,34 @@ from .state import _delete_tournament, _save_tournament, _tournaments
 from .elo_integration import elo_recalculate_tournament
 from .elo_store import safe_transfer_elos_to_profiles
 from .elo_store import delete_tournament_elos
-from .routes_clubs import get_club_for_community, get_club_logo_url
+from .routes_clubs import resolve_club_for_scope
 
 
 def _get_tournament_branding(
     community_id: str,
-    cache: dict[str, dict[str, str | None]] | None = None,
+    club_id: str | None = None,
+    cache: dict[tuple[str, str | None], dict[str, str | None]] | None = None,
 ) -> dict[str, str | None]:
-    """Return community/club display metadata for a tournament."""
-    if cache is not None and community_id in cache:
-        return cache[community_id]
+    """Return community/club display metadata for a tournament.
+
+    When ``club_id`` is provided it is used directly; otherwise the first club
+    in the community (by creation date) is used as a legacy fallback.
+    """
+    cache_key = (community_id, club_id)
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
 
     with get_db() as conn:
         row = conn.execute("SELECT name FROM communities WHERE id = ?", (community_id,)).fetchone()
 
-    club = get_club_for_community(community_id)
+    club = resolve_club_for_scope(community_id, club_id)
     branding = {
         "community_name": (row["name"] if row is not None else None),
         "club_name": (club.name if club is not None else None),
-        "club_logo_url": get_club_logo_url(community_id),
+        "club_logo_url": (f"/api/clubs/{club.id}/logo" if club is not None and club.has_logo else None),
     }
     if cache is not None:
-        cache[community_id] = branding
+        cache[cache_key] = branding
     return branding
 
 
@@ -86,7 +92,7 @@ async def list_tournaments(current_user: User | None = Depends(get_current_user_
     - **Guest (unauthenticated)**: only publicly listed tournaments (``public=True``).
     """
     out = []
-    branding_cache: dict[str, dict[str, str | None]] = {}
+    branding_cache: dict[tuple[str, str | None], dict[str, str | None]] = {}
     shared_ids: set[str] = set()
     if current_user is not None and current_user.role != UserRole.ADMIN:
         shared_ids = set(get_shared_tournament_ids(current_user.username))
@@ -102,7 +108,8 @@ async def list_tournaments(current_user: User | None = Depends(get_current_user_
 
         t = data.get("tournament")
         community_id = data.get("community_id", "open")
-        branding = _get_tournament_branding(community_id, branding_cache)
+        club_id = data.get("club_id")
+        branding = _get_tournament_branding(community_id, club_id, branding_cache)
         out.append(
             {
                 "id": tid,
@@ -119,6 +126,7 @@ async def list_tournaments(current_user: User | None = Depends(get_current_user_
                 "community_id": community_id,
                 "created_at": data.get("created_at", ""),
                 "season_id": data.get("season_id"),
+                "club_id": club_id,
                 "club_logo_url": branding["club_logo_url"],
                 "community_name": branding["community_name"],
                 "club_name": branding["club_name"],
@@ -131,14 +139,46 @@ async def list_tournaments(current_user: User | None = Depends(get_current_user_
 
 @router.patch("/{tid}/community")
 async def set_tournament_community(tid: str, req: SetCommunityRequest, user: User = Depends(get_current_user)) -> dict:
-    """Reassign a tournament to a different community."""
+    """Reassign a tournament to a different community.
+
+    Auto-clears ``club_id`` and ``season_id`` when they belong to a different
+    community (clubs and seasons are community-scoped). Returns the resulting
+    scope so the caller can reflect any cleared fields in the UI.
+    """
     _require_owner_or_admin(tid, user)
     async with state.get_tournament_lock(tid):
         if tid not in _tournaments:
             raise HTTPException(404, "Tournament not found")
-        _tournaments[tid]["community_id"] = req.community_id
+        new_community_id = req.community_id
+        existing_club_id = _tournaments[tid].get("club_id")
+        existing_season_id = _tournaments[tid].get("season_id")
+
+        # Validate referenced club / season still belong to the new community.
+        with get_db() as conn:
+            if existing_club_id:
+                club_row = conn.execute("SELECT community_id FROM clubs WHERE id = ?", (existing_club_id,)).fetchone()
+                if club_row is None or club_row["community_id"] != new_community_id:
+                    existing_club_id = None
+            if existing_season_id:
+                season_row = conn.execute(
+                    "SELECT c.community_id AS community_id"
+                    " FROM seasons s JOIN clubs c ON c.id = s.club_id"
+                    " WHERE s.id = ?",
+                    (existing_season_id,),
+                ).fetchone()
+                if season_row is None or season_row["community_id"] != new_community_id:
+                    existing_season_id = None
+
+        _tournaments[tid]["community_id"] = new_community_id
+        _tournaments[tid]["club_id"] = existing_club_id
+        _tournaments[tid]["season_id"] = existing_season_id
         _save_tournament(tid)
-    return {"ok": True, "community_id": req.community_id}
+    return {
+        "ok": True,
+        "community_id": new_community_id,
+        "club_id": existing_club_id,
+        "season_id": existing_season_id,
+    }
 
 
 @router.delete("/{tournament_id}")
@@ -340,7 +380,8 @@ async def get_tournament_meta(tid: str) -> dict:
     data = _tournaments[tid]
     t = data.get("tournament")
     community_id = data.get("community_id", "open")
-    branding = _get_tournament_branding(community_id)
+    club_id = data.get("club_id")
+    branding = _get_tournament_branding(community_id, club_id)
     return {
         "id": tid,
         "name": data["name"],

@@ -110,6 +110,7 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
         assign_courts=req.assign_courts,
         community_id=req.community_id,
         season_id=req.season_id,
+        club_id=req.club_id,
     )
     # Create secrets for individual players (each member gets their own passphrase)
     contact_map = {p.id: req.player_contacts[p.name] for p in all_players if p.name in req.player_contacts} or None

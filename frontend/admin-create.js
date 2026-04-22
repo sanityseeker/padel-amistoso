@@ -71,6 +71,12 @@ function _getClubSelects() {
   return Array.from(document.querySelectorAll('.create-club-select'));
 }
 
+function _getSelectedClubId() {
+  const el = _getClubSelects()[0];
+  const v = el ? el.value : '';
+  return v || null;
+}
+
 async function _loadClubs() {
   const clubSelects = _getClubSelects();
   if (!clubSelects.length) return;
@@ -845,7 +851,9 @@ async function addPlayersFromClub(mode) {
       return;
     }
 
-    const players = await api(`/api/clubs/${encodeURIComponent(clubId)}/players`);
+    const players = await api(
+      `/api/clubs/${encodeURIComponent(clubId)}/players?sport=${encodeURIComponent(_currentSport)}`
+    );
     if (!Array.isArray(players) || players.length === 0) {
       _setCreateMessage(mode, t('txt_create_club_has_no_players'));
       return;
@@ -1278,6 +1286,7 @@ async function createGP() {
       public: document.getElementById('gp-public').checked,
       sport: _currentSport,
       community_id: _getSelectedCommunityId(),
+      club_id: _getSelectedClubId(),
     };
     if (useBuilder) {
       body.teams = _getTeamBuilderTeams('gp');
@@ -1360,6 +1369,7 @@ async function createMex() {
       public: document.getElementById('mex-public').checked,
       sport: _currentSport,
       community_id: _getSelectedCommunityId(),
+      club_id: _getSelectedClubId(),
     };
     if (useBuilder) {
       body.teams = _getTeamBuilderTeams('mex');
@@ -1405,6 +1415,7 @@ async function createPO() {
       public: document.getElementById('po-public').checked,
       sport: _currentSport,
       community_id: _getSelectedCommunityId(),
+      club_id: _getSelectedClubId(),
     };
     if (useBuilder) {
       body.teams = _getTeamBuilderTeams('po');

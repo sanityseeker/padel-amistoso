@@ -47,6 +47,7 @@ from .player_secret_store import (
 from .rate_limit import BoundedRateLimiter
 from .state import bump_tournament_version, get_tournament_data
 from .elo_store import (
+    DEFAULT_RATING,
     get_profile_elo,
     get_profile_recent_elo_logs,
     retroactive_transfer_all_elos,
@@ -190,6 +191,10 @@ class PlayerSpaceEntry(BaseModel):
     all_rivals: list[dict] = Field(default_factory=list)
     elo_before: float | None = None
     elo_after: float | None = None
+    community_id: str | None = None
+    """Community the underlying tournament/registration belongs to (None when unknown)."""
+    club_id: str | None = None
+    """Club the underlying tournament belongs to via its season (None for registrations or unaffiliated tournaments)."""
 
 
 class EloHistoryParticipant(BaseModel):
@@ -219,6 +224,12 @@ class EloHistoryMatch(BaseModel):
     sets: list[list[int]] = Field(default_factory=list)
     team1: list[EloHistoryParticipant] = Field(default_factory=list)
     team2: list[EloHistoryParticipant] = Field(default_factory=list)
+    is_manual: bool = False
+    """True if this is a manual admin adjustment, not a match-based ELO change."""
+    adjustment_reason: str | None = None
+    """Optional reason for manual adjustment."""
+    adjusted_by: str | None = None
+    """Username of the admin who made the manual adjustment."""
 
 
 class PlayerSpaceResponse(BaseModel):
@@ -230,6 +241,8 @@ class PlayerSpaceResponse(BaseModel):
     elo_history: list[EloHistoryMatch] = Field(default_factory=list)
     player_communities: list[dict] = Field(default_factory=list)
     """Non-builtin communities the player has participated in (id + name, matches > 0)."""
+    player_clubs: list[PlayerClubSummary] = Field(default_factory=list)
+    """Clubs where this profile has rated matches (with per-sport ELO + matches)."""
 
 
 class PlayerPathRound(BaseModel):
@@ -263,6 +276,19 @@ class TournamentPathResponse(BaseModel):
     available: bool
     reason: str | None = None
     rounds: list[PlayerPathRound] = Field(default_factory=list)
+
+
+class PlayerClubSummary(BaseModel):
+    """Club-level ELO summary for one profile."""
+
+    id: str
+    name: str
+    community_id: str
+    community_name: str | None = None
+    elo_padel: float | None = None
+    elo_tennis: float | None = None
+    matches_padel: int = 0
+    matches_tennis: int = 0
 
 
 class LeaderboardEntry(BaseModel):
@@ -395,6 +421,8 @@ def _build_active_entries(profile_id: str) -> list[PlayerSpaceEntry]:
             SELECT ps.player_id, ps.player_name, ps.token,
                    t.id AS tid, t.name AS tname, t.alias AS talias,
                  t.sport, t.type AS ttype,
+                 t.community_id AS tcommunity_id,
+                 t.club_id AS tclub_id,
                  pe.elo_before AS elo_before,
                  pe.elo_after AS elo_after
             FROM player_secrets ps
@@ -451,6 +479,8 @@ def _build_active_entries(profile_id: str) -> list[PlayerSpaceEntry]:
                     points_against=ls.get("points_against", 0),
                     elo_before=row["elo_before"],
                     elo_after=row["elo_after"],
+                    community_id=row["tcommunity_id"],
+                    club_id=row["tclub_id"],
                 )
             )
 
@@ -459,7 +489,7 @@ def _build_active_entries(profile_id: str) -> list[PlayerSpaceEntry]:
             """
             SELECT rn.player_id, rn.player_name, rn.token,
                    r.id AS rid, r.name AS rname, r.alias AS ralias,
-                   r.sport
+                   r.sport, r.community_id AS rcommunity_id
             FROM registrants rn
             JOIN registrations r ON r.id = rn.registration_id
             WHERE rn.profile_id = ?
@@ -484,6 +514,7 @@ def _build_active_entries(profile_id: str) -> list[PlayerSpaceEntry]:
                     tournament_type=None,
                     entity_deleted=False,
                     finished_at=None,
+                    community_id=row["rcommunity_id"],
                 )
             )
 
@@ -672,7 +703,10 @@ def _build_history_entries(profile_id: str) -> list[PlayerSpaceEntry]:
         if t_ids:
             placeholders = ",".join("?" * len(t_ids))
             t_rows = conn.execute(
-                f"SELECT id, name, alias, sport, type FROM tournaments WHERE id IN ({placeholders})",
+                f"""SELECT t.id, t.name, t.alias, t.sport, t.type,
+                           t.community_id, t.club_id
+                      FROM tournaments t
+                     WHERE t.id IN ({placeholders})""",
                 t_ids,
             ).fetchall()
             t_meta = {r["id"]: dict(r) for r in t_rows}
@@ -680,7 +714,7 @@ def _build_history_entries(profile_id: str) -> list[PlayerSpaceEntry]:
         if r_ids:
             placeholders = ",".join("?" * len(r_ids))
             r_rows = conn.execute(
-                f"SELECT id, name, alias, sport FROM registrations WHERE id IN ({placeholders})",
+                f"SELECT id, name, alias, sport, community_id, club_id FROM registrations WHERE id IN ({placeholders})",
                 r_ids,
             ).fetchall()
             r_meta = {r["id"]: dict(r) for r in r_rows}
@@ -730,6 +764,8 @@ def _build_history_entries(profile_id: str) -> list[PlayerSpaceEntry]:
                     all_rivals=all_rivals,
                     elo_before=row["elo_before"],
                     elo_after=row["elo_after"],
+                    community_id=meta.get("community_id"),
+                    club_id=meta.get("club_id"),
                 )
             )
         else:
@@ -755,6 +791,8 @@ def _build_history_entries(profile_id: str) -> list[PlayerSpaceEntry]:
                     draws=row["draws"] or 0,
                     points_for=row["points_for"] or 0,
                     points_against=row["points_against"] or 0,
+                    community_id=meta.get("community_id"),
+                    club_id=meta.get("club_id"),
                 )
             )
 
@@ -774,13 +812,51 @@ def _deduplicate_entries(entries: list[PlayerSpaceEntry]) -> list[PlayerSpaceEnt
     return deduplicated
 
 
+def _filter_entries_by_scope(
+    entries: list[PlayerSpaceEntry],
+    *,
+    community_id: str | None,
+    club_id: str | None,
+) -> list[PlayerSpaceEntry]:
+    """Restrict entries to those matching the active stats scope.
+
+    Active entries (in-progress tournaments and open registrations) are
+    always preserved so the "what's going on now" list never disappears
+    when a user picks a club — many active events have no season/club link
+    yet, but the player still wants to see them.
+
+    Finished entries are filtered:
+    - ``club_id`` keeps only tournament entries whose season belongs to that
+      club (registrations have no club affiliation and are dropped).
+    - ``community_id`` keeps only entries belonging to that community.
+    - Neither set returns the list unchanged.
+    """
+    if not club_id and not community_id:
+        return entries
+
+    def _keep(entry: PlayerSpaceEntry) -> bool:
+        if entry.status == ParticipationStatus.ACTIVE:
+            return True
+        if club_id:
+            return entry.club_id == club_id
+        return entry.community_id == community_id
+
+    return [e for e in entries if _keep(e)]
+
+
 def _build_elo_history(
     profile_id: str,
     limit: int = 5,
     community_id: str | None = None,
+    club_id: str | None = None,
 ) -> list[EloHistoryMatch]:
     """Return the latest per-match ELO events for a profile across tournaments."""
-    rows = get_profile_recent_elo_logs(profile_id, limit=limit, community_id=community_id)
+    rows = get_profile_recent_elo_logs(
+        profile_id,
+        limit=limit,
+        community_id=community_id,
+        club_id=club_id,
+    )
     events: list[EloHistoryMatch] = []
 
     for row in rows:
@@ -840,9 +916,72 @@ def _build_elo_history(
                 sets=sets_pairs,
                 team1=team1_parts,
                 team2=team2_parts,
+                is_manual=bool(row.get("is_manual") or False),
+                adjustment_reason=row.get("adjustment_reason"),
+                adjusted_by=row.get("adjusted_by"),
             )
         )
     return events
+
+
+def log_manual_elo_adjustment(
+    player_id: str,
+    profile_id: str,
+    sport: str,
+    elo_before: float,
+    elo_after: float,
+    adjustment_reason: str | None = None,
+    adjusted_by: str | None = None,
+    club_id: str | None = None,
+) -> None:
+    """Log a manual ELO adjustment for a player profile.
+
+    This creates a special entry in player_elo_log with is_manual=1 to track
+    admin-initiated ELO changes separately from match-based changes.
+
+    Args:
+        player_id: The tournament player ID.
+        profile_id: The player profile ID.
+        sport: The sport ('padel' or 'tennis').
+        elo_before: ELO rating before the adjustment.
+        elo_after: ELO rating after the adjustment.
+        adjustment_reason: Optional description of why the adjustment was made.
+        adjusted_by: Username of the admin who made the adjustment.
+        club_id: Optional club ID if this is a club-scoped adjustment.
+    """
+    from uuid import uuid4
+    from datetime import datetime, timezone
+
+    tournament_id = club_id or "manual-adjustments"
+    match_id = f"MANUAL-{uuid4().hex[:12]}"
+    elo_delta = elo_after - elo_before
+    updated_at = datetime.now(timezone.utc).isoformat()
+
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO player_elo_log (
+                tournament_id, sport, match_id, player_id, match_order,
+                elo_before, elo_after, elo_delta, match_payload,
+                updated_at, is_manual, adjustment_reason, adjusted_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                tournament_id,
+                sport,
+                match_id,
+                player_id,
+                0,  # match_order
+                elo_before,
+                elo_after,
+                elo_delta,
+                "{}",  # match_payload (empty for manual adjustments)
+                updated_at,
+                1,  # is_manual
+                adjustment_reason,
+                adjusted_by,
+            ),
+        )
 
 
 def _side_score(match: object, is_team1: bool) -> int:
@@ -1723,24 +1862,121 @@ def _backfill_finished_secrets(profile_id: str) -> None:
 
 
 @router.get("/leaderboard", response_model=LeaderboardResponse)
-async def get_leaderboard(community_id: str = Query(default="")) -> LeaderboardResponse:
+async def get_leaderboard(
+    community_id: str | None = Query(default=None, max_length=64),
+    club_id: str | None = Query(default=None, max_length=64),
+) -> LeaderboardResponse:
     """Public ELO leaderboard — no authentication required.
 
     Returns rated players for each sport, sorted by ELO descending.
     Includes both Player Hub members and unlinked tournament participants.
-    Scoped to a community (defaults to 'open').
+    Scoped to a club, a community, or all communities (when no scope is
+    provided — the global aggregate view).  ``community_id`` accepts both
+    ``None`` and the empty string for the all-communities view.
     """
-    padel = _leaderboard_for_sport("padel", community_id)
-    tennis = _leaderboard_for_sport("tennis", community_id)
+    scope_community = community_id or ""
+    padel = _leaderboard_for_sport("padel", scope_community, club_id=club_id)
+    tennis = _leaderboard_for_sport("tennis", scope_community, club_id=club_id)
     return LeaderboardResponse(padel=padel, tennis=tennis)
 
 
-def _leaderboard_for_sport(sport: str, community_id: str = "open") -> list[LeaderboardEntry]:
+def _leaderboard_for_sport(sport: str, community_id: str = "", club_id: str | None = None) -> list[LeaderboardEntry]:
     """Build a ranked leaderboard for a single sport within a community.
 
-    Combines community-scoped profile ELOs with unlinked tournament participant ELOs.
-    When *community_id* is an empty string, all communities are aggregated.
+    For club-scoped leaderboards, derives matches and latest ELO live from
+    ``player_elo_log`` joined to ``tournaments`` filtered by ``club_id`` so
+    rankings stay consistent with the club admin roster and with the player
+    hub stats card (which all live-derive). Snapshot ``profile_club_elo.elo``
+    is used as the ELO fallback when the player has no logged matches yet
+    (for example after a manual admin override or tier seeding); such players
+    are still excluded from the public leaderboard because matches = 0.
+
+    Otherwise combines community-scoped profile ELOs with unlinked tournament
+    participant ELOs. When *community_id* is an empty string, all communities
+    are aggregated.
     """
+    if club_id:
+        with get_db() as conn:
+            rows = conn.execute(
+                """
+                WITH linked_tournament_players AS (
+                    SELECT ps.profile_id    AS profile_id,
+                           ps.tournament_id AS tournament_id,
+                           ps.player_id     AS player_id
+                      FROM player_secrets ps
+                     WHERE ps.profile_id IN (
+                         SELECT profile_id FROM profile_club_elo WHERE club_id = ?
+                     )
+                    UNION
+                    SELECT ph.profile_id    AS profile_id,
+                           ph.entity_id     AS tournament_id,
+                           ph.player_id     AS player_id
+                      FROM player_history ph
+                     WHERE ph.entity_type = 'tournament'
+                       AND ph.profile_id IN (
+                           SELECT profile_id FROM profile_club_elo WHERE club_id = ?
+                       )
+                ),
+                scoped AS (
+                    SELECT lp.profile_id AS profile_id,
+                           l.elo_after   AS elo_after,
+                           l.is_manual   AS is_manual,
+                           l.updated_at  AS updated_at,
+                           l.match_order AS match_order
+                      FROM player_elo_log l
+                      JOIN linked_tournament_players lp
+                        ON lp.tournament_id = l.tournament_id
+                       AND lp.player_id = l.player_id
+                      JOIN tournaments t
+                        ON t.id = l.tournament_id
+                     WHERE t.club_id = ?
+                       AND l.sport = ?
+                ),
+                matches_agg AS (
+                    SELECT s.profile_id,
+                           SUM(CASE WHEN s.is_manual = 0 THEN 1 ELSE 0 END) AS matches
+                      FROM scoped s
+                  GROUP BY s.profile_id
+                ),
+                latest AS (
+                    SELECT s.profile_id,
+                           s.elo_after,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY s.profile_id
+                               ORDER BY s.updated_at DESC, s.match_order DESC
+                           ) AS rn
+                      FROM scoped s
+                )
+                SELECT pp.name      AS name,
+                       pp.is_ghost  AS is_ghost,
+                       ct.name      AS tier_name,
+                       COALESCE(m.matches, 0) AS matches,
+                       COALESCE(lt.elo_after, pce.elo) AS elo
+                  FROM profile_club_elo pce
+                  JOIN player_profiles pp ON pp.id = pce.profile_id
+             LEFT JOIN club_tiers ct ON ct.id = pce.tier_id
+             LEFT JOIN matches_agg m ON m.profile_id = pce.profile_id
+             LEFT JOIN latest lt ON lt.profile_id = pce.profile_id AND lt.rn = 1
+                 WHERE pce.club_id = ?
+                   AND pce.sport = ?
+                   AND pce.hidden = 0
+                   AND COALESCE(m.matches, 0) > 0
+              ORDER BY elo DESC
+                """,
+                (club_id, club_id, club_id, sport, club_id, sport),
+            ).fetchall()
+        return [
+            LeaderboardEntry(
+                rank=i + 1,
+                name=row["name"],
+                elo=row["elo"],
+                matches=row["matches"],
+                has_profile=not bool(row["is_ghost"]),
+                tier_name=row["tier_name"],
+            )
+            for i, row in enumerate(rows)
+        ]
+
     all_communities = community_id == ""
     with get_db() as conn:
         # 1) Players with Hub profiles — read from profile_community_elo
@@ -1749,7 +1985,7 @@ def _leaderboard_for_sport(sport: str, community_id: str = "open") -> list[Leade
             # cumulative ELO and total match count across all communities.
             # Fall back to MAX(elo)/MAX(matches) for players who pre-date mirroring.
             profile_rows = conn.execute(
-                "SELECT pp.name,"
+                "SELECT pp.name, pp.is_ghost,"
                 "       COALESCE(MAX(CASE WHEN pce.community_id = 'open' THEN pce.elo END), MAX(pce.elo)) AS elo,"
                 "       COALESCE(MAX(CASE WHEN pce.community_id = 'open' THEN pce.matches END), MAX(pce.matches)) AS matches,"
                 "       NULL AS tier_name"
@@ -1761,7 +1997,7 @@ def _leaderboard_for_sport(sport: str, community_id: str = "open") -> list[Leade
             ).fetchall()
         else:
             profile_rows = conn.execute(
-                "SELECT pp.name, pce.elo, pce.matches, ct.name AS tier_name"
+                "SELECT pp.name, pp.is_ghost, pce.elo, pce.matches, ct.name AS tier_name"
                 " FROM profile_community_elo pce"
                 " JOIN player_profiles pp ON pp.id = pce.profile_id"
                 " LEFT JOIN club_tiers ct ON ct.id = pce.tier_id"
@@ -1792,21 +2028,29 @@ def _leaderboard_for_sport(sport: str, community_id: str = "open") -> list[Leade
                 (sport, sport),
             ).fetchall()
         else:
+            # Deterministic per-community: pick the elo_after from the
+            # tournament with the most matches for that name in this community.
             unlinked_rows = conn.execute(
                 "SELECT ps.player_name AS name,"
-                "       pe.elo_after AS elo,"
-                "       SUM(pe.matches_played) AS matches"
+                "       MAX(pe.elo_after) FILTER (WHERE pe.matches_played = sub.max_matches) AS elo,"
+                "       sub.max_matches AS matches"
                 " FROM player_elo pe"
                 " JOIN player_secrets ps ON ps.tournament_id = pe.tournament_id"
                 "   AND ps.player_id = pe.player_id"
                 " JOIN tournaments t ON t.id = pe.tournament_id"
-                " WHERE pe.sport = ?"
-                "   AND pe.matches_played > 0"
-                "   AND ps.profile_id IS NULL"
-                "   AND t.community_id = ?"
+                " JOIN (SELECT ps2.player_name, MAX(pe2.matches_played) AS max_matches"
+                "       FROM player_elo pe2"
+                "       JOIN player_secrets ps2 ON ps2.tournament_id = pe2.tournament_id"
+                "         AND ps2.player_id = pe2.player_id"
+                "       JOIN tournaments t2 ON t2.id = pe2.tournament_id"
+                "       WHERE pe2.sport = ? AND pe2.matches_played > 0"
+                "         AND ps2.profile_id IS NULL AND t2.community_id = ?"
+                "       GROUP BY ps2.player_name) sub ON sub.player_name = ps.player_name"
+                " WHERE pe.sport = ? AND pe.matches_played > 0"
+                "   AND ps.profile_id IS NULL AND t.community_id = ?"
                 " GROUP BY ps.player_name"
-                " HAVING matches > 0",
-                (sport, community_id),
+                " HAVING sub.max_matches > 0",
+                (sport, community_id, sport, community_id),
             ).fetchall()
 
     # Merge both lists
@@ -1817,7 +2061,7 @@ def _leaderboard_for_sport(sport: str, community_id: str = "open") -> list[Leade
                 "name": r["name"],
                 "elo": r["elo"],
                 "matches": r["matches"],
-                "has_profile": True,
+                "has_profile": not bool(r["is_ghost"]),
                 "tier_name": r["tier_name"],
             }
         )
@@ -1868,6 +2112,227 @@ def _get_player_communities(profile_id: str) -> list[dict]:
             (profile_id,),
         ).fetchall()
     return [{"id": r["id"], "name": r["name"]} for r in rows]
+
+
+def _get_player_clubs(profile_id: str) -> list[PlayerClubSummary]:
+    """Return clubs where the profile is a visible member.
+
+    Membership is taken from ``profile_club_elo`` (visible / non-hidden rows).
+    Per-sport ELO and match counts are derived live from ``player_elo_log``
+    joined to ``tournaments`` filtered by ``tournaments.club_id`` so they
+    reflect actual play in each club. Sports whose ``profile_club_elo`` row
+    is hidden are masked back to defaults.
+    """
+    with get_db() as conn:
+        member_rows = conn.execute(
+            """
+            SELECT cl.id          AS id,
+                   cl.name        AS name,
+                   cl.community_id AS community_id,
+                   c.name         AS community_name,
+                   MAX(CASE WHEN pce.sport = 'padel'  AND pce.hidden = 0 THEN 1 ELSE 0 END) AS padel_visible,
+                   MAX(CASE WHEN pce.sport = 'tennis' AND pce.hidden = 0 THEN 1 ELSE 0 END) AS tennis_visible
+              FROM profile_club_elo pce
+              JOIN clubs cl ON cl.id = pce.club_id
+         LEFT JOIN communities c ON c.id = cl.community_id
+             WHERE pce.profile_id = ?
+          GROUP BY cl.id, cl.name, cl.community_id, c.name
+            HAVING MAX(CASE WHEN pce.hidden = 0 THEN 1 ELSE 0 END) = 1
+          ORDER BY cl.name
+            """,
+            (profile_id,),
+        ).fetchall()
+
+        if not member_rows:
+            return []
+
+        agg_rows = conn.execute(
+            """
+            WITH linked_tournament_players AS (
+                SELECT ps.tournament_id AS tournament_id, ps.player_id AS player_id
+                  FROM player_secrets ps
+                 WHERE ps.profile_id = ?
+                UNION
+                SELECT ph.entity_id AS tournament_id, ph.player_id AS player_id
+                  FROM player_history ph
+                 WHERE ph.profile_id = ?
+                   AND ph.entity_type = 'tournament'
+            ),
+            scoped AS (
+                SELECT t.club_id      AS club_id,
+                       l.sport        AS sport,
+                       l.elo_after    AS elo_after,
+                       l.is_manual    AS is_manual,
+                       l.updated_at   AS updated_at,
+                       l.match_order  AS match_order
+                  FROM player_elo_log l
+                  JOIN linked_tournament_players lp
+                    ON lp.tournament_id = l.tournament_id
+                   AND lp.player_id = l.player_id
+                  JOIN tournaments t
+                    ON t.id = l.tournament_id
+                 WHERE t.club_id IS NOT NULL
+            ),
+            latest AS (
+                SELECT s.club_id,
+                       s.sport,
+                       s.elo_after,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY s.club_id, s.sport
+                           ORDER BY s.updated_at DESC, s.match_order DESC
+                       ) AS rn
+                  FROM scoped s
+            )
+            SELECT s.club_id AS club_id,
+                   SUM(CASE WHEN s.sport = 'padel'  AND s.is_manual = 0 THEN 1 ELSE 0 END) AS matches_padel,
+                   SUM(CASE WHEN s.sport = 'tennis' AND s.is_manual = 0 THEN 1 ELSE 0 END) AS matches_tennis,
+                   MAX(CASE WHEN s.sport = 'padel'  AND lt.rn = 1 THEN lt.elo_after END) AS elo_padel,
+                   MAX(CASE WHEN s.sport = 'tennis' AND lt.rn = 1 THEN lt.elo_after END) AS elo_tennis
+              FROM scoped s
+         LEFT JOIN latest lt
+                ON lt.club_id = s.club_id
+               AND lt.sport = s.sport
+          GROUP BY s.club_id
+            """,
+            (profile_id, profile_id),
+        ).fetchall()
+
+    agg_by_club: dict[str, dict[str, float | int | None]] = {
+        row["club_id"]: {
+            "matches_padel": int(row["matches_padel"] or 0),
+            "matches_tennis": int(row["matches_tennis"] or 0),
+            "elo_padel": row["elo_padel"],
+            "elo_tennis": row["elo_tennis"],
+        }
+        for row in agg_rows
+    }
+
+    clubs: list[PlayerClubSummary] = []
+    for row in member_rows:
+        agg = agg_by_club.get(row["id"], {})
+        padel_visible = bool(row["padel_visible"])
+        tennis_visible = bool(row["tennis_visible"])
+
+        matches_padel = int(agg.get("matches_padel") or 0) if padel_visible else 0
+        matches_tennis = int(agg.get("matches_tennis") or 0) if tennis_visible else 0
+        elo_padel_raw = agg.get("elo_padel") if padel_visible else None
+        elo_tennis_raw = agg.get("elo_tennis") if tennis_visible else None
+
+        clubs.append(
+            PlayerClubSummary(
+                id=row["id"],
+                name=row["name"],
+                community_id=row["community_id"],
+                community_name=row["community_name"],
+                elo_padel=round(elo_padel_raw, 1) if elo_padel_raw is not None else None,
+                elo_tennis=round(elo_tennis_raw, 1) if elo_tennis_raw is not None else None,
+                matches_padel=matches_padel,
+                matches_tennis=matches_tennis,
+            )
+        )
+    return clubs
+
+
+def _get_club_community_id(club_id: str) -> str | None:
+    """Return the community_id for a club, or None if the club doesn't exist."""
+    with get_db() as conn:
+        row = conn.execute("SELECT community_id FROM clubs WHERE id = ?", (club_id,)).fetchone()
+    if row is None:
+        return None
+    return row["community_id"]
+
+
+def _get_profile_club_elo(profile_id: str, club_id: str) -> dict[str, float | int]:
+    """Return profile ELO values scoped to one club, derived per match.
+
+    The match count is the number of non-manual ``player_elo_log`` rows for
+    tournaments belonging to this club where the profile was a participant.
+    The ELO value is the latest ``elo_after`` from any log row in scope
+    (manual adjustments are honoured for the rating, but do not inflate the
+    match count). Hidden sport rows in ``profile_club_elo`` cause the
+    corresponding sport to be reported with defaults so the UI hides it.
+    """
+    with get_db() as conn:
+        hidden_rows = conn.execute(
+            """
+            SELECT sport
+              FROM profile_club_elo
+             WHERE profile_id = ?
+               AND club_id = ?
+               AND hidden = 1
+            """,
+            (profile_id, club_id),
+        ).fetchall()
+        hidden_sports = {r["sport"] for r in hidden_rows}
+
+        rows = conn.execute(
+            """
+            WITH linked_tournament_players AS (
+                SELECT ps.tournament_id AS tournament_id, ps.player_id AS player_id
+                  FROM player_secrets ps
+                 WHERE ps.profile_id = ?
+                UNION
+                SELECT ph.entity_id AS tournament_id, ph.player_id AS player_id
+                  FROM player_history ph
+                 WHERE ph.profile_id = ?
+                   AND ph.entity_type = 'tournament'
+                UNION
+                SELECT DISTINCT l.tournament_id, l.player_id
+                  FROM player_elo_log l
+                 WHERE l.is_manual = 1
+                   AND l.player_id IN (
+                       SELECT ps.player_id FROM player_secrets ps WHERE ps.profile_id = ?
+                       UNION
+                       SELECT ph.player_id FROM player_history ph WHERE ph.profile_id = ?
+                   )
+            ),
+            scoped AS (
+                SELECT l.sport,
+                       l.elo_after,
+                       l.is_manual,
+                       l.updated_at,
+                       l.match_order
+                  FROM player_elo_log l
+                  JOIN linked_tournament_players lp
+                    ON lp.tournament_id = l.tournament_id
+                   AND lp.player_id = l.player_id
+                  LEFT JOIN tournaments t
+                    ON t.id = l.tournament_id
+                 WHERE t.club_id = ?
+                    OR (l.is_manual = 1 AND l.tournament_id = ?)
+            )
+            SELECT s.sport AS sport,
+                   SUM(CASE WHEN s.is_manual = 0 THEN 1 ELSE 0 END) AS matches,
+                   (SELECT s2.elo_after
+                      FROM scoped s2
+                     WHERE s2.sport = s.sport
+                  ORDER BY s2.updated_at DESC, s2.match_order DESC
+                     LIMIT 1) AS elo
+              FROM scoped s
+          GROUP BY s.sport
+            """,
+            (profile_id, profile_id, profile_id, profile_id, club_id, club_id),
+        ).fetchall()
+
+    result: dict[str, float | int] = {
+        "elo_padel": DEFAULT_RATING,
+        "elo_tennis": DEFAULT_RATING,
+        "elo_padel_matches": 0,
+        "elo_tennis_matches": 0,
+    }
+    for row in rows:
+        sport = row["sport"]
+        if sport in hidden_sports:
+            continue
+        matches = int(row["matches"] or 0)
+        elo = row["elo"] if row["elo"] is not None else DEFAULT_RATING
+        if sport == Sport.PADEL:
+            result["elo_padel"] = elo
+            result["elo_padel_matches"] = matches
+        elif sport == Sport.TENNIS:
+            result["elo_tennis"] = elo
+            result["elo_tennis_matches"] = matches
+    return result
 
 
 @router.post("/resolve", response_model=PassphraseResolveResponse)
@@ -1990,6 +2455,7 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
         entries=_deduplicate_entries(active + history),
         elo_history=_build_elo_history(profile_id),
         player_communities=_get_player_communities(profile_id),
+        player_clubs=_get_player_clubs(profile_id),
     )
 
 
@@ -2121,6 +2587,7 @@ async def get_player_space(
     identity: ProfileIdentity | None = Depends(get_current_profile),
     elo_history_limit: int = Query(default=5, ge=5, le=50),
     community_id: str | None = Query(default=None, max_length=64),
+    club_id: str | None = Query(default=None, max_length=64),
 ) -> PlayerSpaceResponse:
     """Return the full Player Hub dashboard for the authenticated profile.
 
@@ -2137,12 +2604,22 @@ async def get_player_space(
 
     active = _build_active_entries(identity.profile_id)
     history = _build_history_entries(identity.profile_id)
+    all_entries = _deduplicate_entries(active + history)
+    scoped_entries = _filter_entries_by_scope(all_entries, community_id=community_id, club_id=club_id)
 
     # De-duplicate: a registration that was converted to a tournament should
     # not appear twice if both still have a valid profile_id row.
     token = create_profile_token(identity.profile_id)
     profile_out = _row_to_profile_out(profile)
-    if community_id is not None:
+    if club_id is not None:
+        club_elo = _get_profile_club_elo(identity.profile_id, club_id)
+        profile_out.elo_padel = club_elo.get("elo_padel")
+        profile_out.elo_tennis = club_elo.get("elo_tennis")
+        profile_out.elo_padel_matches = int(club_elo.get("elo_padel_matches") or 0)
+        profile_out.elo_tennis_matches = int(club_elo.get("elo_tennis_matches") or 0)
+        if community_id is None:
+            community_id = _get_club_community_id(club_id)
+    elif community_id is not None:
         community_elo = get_profile_elo(identity.profile_id, community_id=community_id)
         profile_out.elo_padel = community_elo.get("elo_padel")
         profile_out.elo_tennis = community_elo.get("elo_tennis")
@@ -2151,13 +2628,15 @@ async def get_player_space(
     return PlayerSpaceResponse(
         profile=profile_out,
         access_token=token,
-        entries=_deduplicate_entries(active + history),
+        entries=scoped_entries,
         elo_history=_build_elo_history(
             identity.profile_id,
             limit=elo_history_limit,
             community_id=community_id,
+            club_id=club_id,
         ),
         player_communities=_get_player_communities(identity.profile_id),
+        player_clubs=_get_player_clubs(identity.profile_id),
     )
 
 

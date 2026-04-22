@@ -208,6 +208,17 @@ async def delete_community(community_id: str, user: User = Depends(get_current_u
             raise HTTPException(404, "Community not found")
         if row["created_by"] != user.username and user.role != "admin":
             raise HTTPException(403, "Only the community creator or an admin may delete it")
+        # Block deletion when clubs still reference the community — clubs are
+        # community-scoped via a non-cascading FK, so deleting would either
+        # raise IntegrityError or orphan the clubs.
+        clubs_count = conn.execute(
+            "SELECT COUNT(*) AS n FROM clubs WHERE community_id = ?", (community_id,)
+        ).fetchone()["n"]
+        if clubs_count:
+            raise HTTPException(
+                409,
+                f"Community has {clubs_count} attached club(s); delete or move them first",
+            )
         # Reassign tournaments and registrations to Open
         conn.execute(
             "UPDATE tournaments SET community_id = ? WHERE community_id = ?",

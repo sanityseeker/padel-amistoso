@@ -1187,6 +1187,10 @@ def lookup_by_token(token: str) -> dict | None:
 def lookup_profile_by_passphrase(passphrase: str) -> dict | None:
     """Look up a Player Hub profile by its global passphrase.
 
+    Also handles the case where a player uses their tournament passphrase
+    (from ``player_secrets``) to log in, provided that ``player_secrets``
+    row is linked to a non-ghost profile.
+
     Returns ``{"id": ..., "name": ..., "email": ..., "created_at": ...}`` or ``None``.
     """
     try:
@@ -1199,12 +1203,27 @@ def lookup_profile_by_passphrase(passphrase: str) -> dict | None:
                 """,
                 (passphrase,),
             ).fetchone()
+            if row is not None:
+                return dict(row)
+
+            # Fallback: tournament passphrase linked to a real (non-ghost) profile.
+            secret_row = conn.execute(
+                """
+                SELECT pp.id, pp.passphrase, pp.name, pp.email,
+                       pp.email_verified_at, pp.contact, pp.created_at
+                  FROM player_secrets ps
+                  JOIN player_profiles pp ON pp.id = ps.profile_id
+                 WHERE ps.passphrase = ? AND pp.is_ghost = 0
+                 LIMIT 1
+                """,
+                (passphrase,),
+            ).fetchone()
+            if secret_row is not None:
+                return dict(secret_row)
     except sqlite3.Error as exc:
         logger.warning("Profile passphrase lookup failed: %s", exc)
         return None
-    if row is None:
-        return None
-    return dict(row)
+    return None
 
 
 def resolve_passphrase(passphrase: str) -> dict:

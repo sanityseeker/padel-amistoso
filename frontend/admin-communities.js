@@ -294,13 +294,17 @@ async function commAssignTournament(tid) {
   const msgEl = document.getElementById(`comm-t-msg-${tid}`);
   if (!sel) return;
   try {
-    await apiAuth(`/api/tournaments/${encodeURIComponent(tid)}/community`, {
+    const res = await apiAuth(`/api/tournaments/${encodeURIComponent(tid)}/community`, {
       method: 'PATCH',
       body: JSON.stringify({ community_id: sel.value }),
     });
     // Update local state
     const t = _allTournaments.find(t => t.id === tid);
-    if (t) t.community_id = sel.value;
+    if (t) {
+      t.community_id = res?.community_id ?? sel.value;
+      if (res && 'club_id' in res) t.club_id = res.club_id;
+      if (res && 'season_id' in res) t.season_id = res.season_id;
+    }
     if (msgEl) { msgEl.style.color = 'var(--green)'; msgEl.textContent = '✓'; setTimeout(() => { msgEl.textContent = ''; }, 2000); }
   } catch (e) {
     if (msgEl) { msgEl.style.color = 'var(--red)'; msgEl.textContent = e.message; }
@@ -351,13 +355,17 @@ async function commAssignRegistration(rid) {
   const msgEl = document.getElementById(`comm-r-msg-${rid}`);
   if (!sel) return;
   try {
-    await apiAuth(`/api/registrations/${encodeURIComponent(rid)}/community`, {
+    const res = await apiAuth(`/api/registrations/${encodeURIComponent(rid)}/community`, {
       method: 'PATCH',
       body: JSON.stringify({ community_id: sel.value }),
     });
     // Update local state
     const r = _allRegistrations.find(r => r.id === rid);
-    if (r) r.community_id = sel.value;
+    if (r) {
+      r.community_id = res?.community_id ?? sel.value;
+      if (res && 'club_id' in res) r.club_id = res.club_id;
+      if (res && 'season_id' in res) r.season_id = res.season_id;
+    }
     if (msgEl) { msgEl.style.color = 'var(--green)'; msgEl.textContent = '✓'; setTimeout(() => { msgEl.textContent = ''; }, 2000); }
   } catch (e) {
     if (msgEl) { msgEl.style.color = 'var(--red)'; msgEl.textContent = e.message; }

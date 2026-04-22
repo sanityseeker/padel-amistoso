@@ -66,11 +66,16 @@ async def _lifespan(_app: FastAPI):
     from .push import init_push  # noqa: PLC0415
 
     init_push()
+    from .backup import start_backup_scheduler  # noqa: PLC0415
+
+    start_backup_scheduler()
     yield
     # ── Shutdown cleanup ──
+    from .backup import shutdown_backup_scheduler  # noqa: PLC0415
     from .push import shutdown_push  # noqa: PLC0415
     from .sse import shutdown as shutdown_sse  # noqa: PLC0415
 
+    shutdown_backup_scheduler()
     shutdown_sse()
     shutdown_push()
 

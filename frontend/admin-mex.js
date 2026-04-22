@@ -53,11 +53,6 @@ async function renderMex() {
     _mexCurrentPhase = status.phase;
 
     const hasCourts = status.assign_courts !== false;
-    let html = '';
-    html += _renderTvControls(tvSettings, hasCourts, true);
-    html += _renderEmailControls(emailSettings);
-    html += _renderPlayerCodes(playerSecrets);
-    html += _renderCollaboratorsSection(collabData?.collaborators || []);
 
     // Phase-aware header
     const isPlayoffs = status.phase === 'playoffs';
@@ -66,6 +61,24 @@ async function renderMex() {
     const mexicanoEnded = Boolean(status.mexicano_ended);
     const mexRoundsDone = !isRolling && status.current_round >= status.num_rounds && matches.pending.length === 0;
     const hasPlayoffBracket = (playoffsData.matches || []).length > 0;
+
+    const playoffMatches = playoffsData.matches || [];
+    const activeMatches = (isPlayoffs || hasPlayoffBracket)
+      ? playoffMatches
+      : (matches.all_matches || matches.current_matches || []);
+    const mexOpsStats = _buildMexOpsStats({
+      status,
+      hasPlayoffBracket,
+      hasCourts,
+      matches: activeMatches,
+    });
+    let html = '';
+    html += _renderTvControls(tvSettings, hasCourts, true);
+    html += _renderEmailControls(emailSettings);
+    html += _renderPlayerCodes(playerSecrets);
+    html += _renderCollaboratorsSection(collabData?.collaborators || []);
+    html += _renderMexOpsHeader(mexOpsStats);
+    html += _renderMexReviewQueueCard(activeMatches);
 
     if (isPlayoffs) {
       html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${t('txt_txt_play_offs')}</span></div>`;
@@ -242,10 +255,173 @@ async function renderMex() {
     if (currentTid !== _renderTid) return;
     el.innerHTML = html;
     _renderMexLeaderboard();
+    _mexApplyReviewQueueFilter();
   } catch (e) {
     if (currentTid !== _renderTid) return;
     if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
     el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
+  }
+}
+
+let _mexReviewQueueFilterState = 'all';
+let _courtBoardCompact = localStorage.getItem('courtBoardCompact') === '1';
+
+function _buildMexOpsStats({ status, hasPlayoffBracket, hasCourts, matches }) {
+  const unresolved = (matches || []).filter(m => m.status !== 'completed');
+  const disputes = unresolved.filter(m => m.disputed);
+  const escalated = disputes.filter(m => m.dispute_escalated);
+  const pendingConfirmation = unresolved.filter(m => m.score && m.scored_by && !m.score_confirmed && !m.disputed);
+  const unassignedCourtsCount = hasCourts
+    ? unresolved.filter(m => !String(m.court || '').trim()).length
+    : 0;
+
+  let nextAction = 'none';
+  if (disputes.length > 0 || pendingConfirmation.length > 0) {
+    nextAction = 'review';
+  } else if (unresolved.length > 0) {
+    nextAction = 'record';
+  } else if (status.phase === 'playoffs') {
+    nextAction = 'finish-playoffs';
+  } else if (status.phase !== 'finished' && !status.mexicano_ended && (status.rolling || status.current_round < status.num_rounds)) {
+    nextAction = 'next-round';
+  } else if (status.phase !== 'finished' && !status.mexicano_ended) {
+    nextAction = 'end-mexicano';
+  } else if (status.phase !== 'finished' && status.mexicano_ended && !hasPlayoffBracket) {
+    nextAction = 'start-playoffs';
+  }
+
+  return {
+    unresolvedCount: unresolved.length,
+    pendingConfirmationCount: pendingConfirmation.length,
+    disputesCount: disputes.length,
+    escalatedCount: escalated.length,
+    unassignedCourtsCount,
+    nextAction,
+  };
+}
+
+function _renderMexOpsHeader(stats) {
+  const actionLabelMap = {
+    review: t('txt_txt_next_action_review_queue'),
+    record: t('txt_txt_next_action_record_scores'),
+    'next-round': t('txt_txt_propose_next_round'),
+    'end-mexicano': t('txt_txt_end_mexicano'),
+    'start-playoffs': t('txt_txt_start_optional_playoffs'),
+    'finish-playoffs': t('txt_txt_next_action_complete_playoffs'),
+    none: '—',
+  };
+  const actionLabel = actionLabelMap[stats.nextAction] || actionLabelMap.none;
+  return `
+    <div class="card gp-ops-header" id="mex-ops-header">
+      <div class="gp-ops-header-top">
+        <h3>${t('txt_txt_ops_overview')}</h3>
+        <div class="gp-ops-next-action">
+          <span>${t('txt_txt_next_action')}:</span>
+          <button type="button" class="btn btn-sm" ${stats.nextAction === 'none' ? 'disabled' : ''} onclick="_mexFocusNextAction('${stats.nextAction}')">${esc(actionLabel)}</button>
+        </div>
+      </div>
+      <div class="gp-ops-stats-grid">
+        <div class="gp-ops-stat-pill"><span>${t('txt_txt_pending_matches')}</span><strong>${stats.unresolvedCount}</strong></div>
+        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_pending_confirmation')}</span><strong>${stats.pendingConfirmationCount}</strong></div>` : ''}
+        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_disputes')}</span><strong>${stats.disputesCount}</strong></div>` : ''}
+        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_escalated')}</span><strong>${stats.escalatedCount}</strong></div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function _renderMexReviewQueueCard(matches) {
+  const reviewItems = (matches || []).filter(m => _gpGetReviewItemKind(m));
+  if (!reviewItems.length) return '';
+
+  const disputesCount = reviewItems.filter(m => _gpGetReviewItemKind(m) === 'disputes').length;
+  const pendingCount = reviewItems.length - disputesCount;
+  let html = `<div class="card gp-review-queue-card" id="mex-review-queue-card">`;
+  html += `<div class="gp-review-queue-head">`;
+  html += `<h3>${t('txt_txt_review_queue')}</h3>`;
+  html += `<div class="gp-review-filter" id="mex-review-filter">`;
+  html += `<button type="button" class="active" onclick="_mexSetReviewQueueFilter('all')">${t('txt_txt_filter_all')} (${reviewItems.length})</button>`;
+  if (_scoreConfirmationMode !== 'immediate') html += `<button type="button" onclick="_mexSetReviewQueueFilter('disputes')">${t('txt_txt_disputes')} (${disputesCount})</button>`;
+  if (_scoreConfirmationMode !== 'immediate') html += `<button type="button" onclick="_mexSetReviewQueueFilter('pending')">${t('txt_txt_pending_confirmation')} (${pendingCount})</button>`;
+  html += `</div></div>`;
+  html += `<div class="gp-review-items" id="mex-review-items">`;
+  for (const m of reviewItems) {
+    const kind = _gpGetReviewItemKind(m);
+    const kindLabel = kind === 'disputes' ? t('txt_txt_disputes') : t('txt_txt_pending_confirmation');
+    const roundLabel = m.round_label ? esc(m.round_label) : t('txt_txt_match');
+    const courtLabel = m.court ? esc(m.court) : t('txt_txt_no_courts');
+    const scorePreview = esc(_gpMatchScorePreview(m));
+    const teams = `${(m.team1 || []).join(' & ') || 'TBD'} vs ${(m.team2 || []).join(' & ') || 'TBD'}`;
+    html += `<div class="gp-review-row" data-kind="${kind}">`;
+    html += `<div class="gp-review-row-main">`;
+    html += `<div class="gp-review-row-meta"><span class="badge badge-scheduled">${esc(kindLabel)}</span><span>${roundLabel}</span><span>${courtLabel}</span><span>${scorePreview}</span></div>`;
+    html += `<div class="gp-review-row-teams">${esc(teams)}</div>`;
+    html += `</div>`;
+    html += `<button type="button" class="btn btn-sm" onclick="_goToMatchFromQueue('${m.id}')">${t('txt_txt_go_to_match')}</button>`;
+    html += `</div>`;
+  }
+  html += `</div>`;
+  html += `<div class="gp-review-empty hidden" id="mex-review-empty">${t('txt_txt_no_review_items')}</div>`;
+  html += `</div>`;
+  return html;
+}
+
+function _mexSetReviewQueueFilter(filter) {
+  _mexReviewQueueFilterState = filter;
+  _mexApplyReviewQueueFilter();
+}
+
+function _mexApplyReviewQueueFilter() {
+  const root = document.getElementById('mex-review-queue-card');
+  if (!root) return;
+  const rows = [...root.querySelectorAll('.gp-review-row')];
+  const filter = _mexReviewQueueFilterState;
+
+  rows.forEach(row => {
+    const show = filter === 'all' || row.dataset.kind === filter;
+    row.classList.toggle('hidden', !show);
+  });
+
+  const visibleRows = rows.filter(row => !row.classList.contains('hidden')).length;
+  const empty = root.querySelector('#mex-review-empty');
+  if (empty) empty.classList.toggle('hidden', visibleRows > 0);
+
+  const filterWrap = root.querySelector('#mex-review-filter');
+  if (filterWrap) {
+    const labels = {
+      all: t('txt_txt_filter_all'),
+      disputes: t('txt_txt_disputes'),
+      pending: t('txt_txt_pending_confirmation'),
+    };
+    filterWrap.querySelectorAll('button').forEach(btn => {
+      const isActive = btn.textContent.trim().startsWith(labels[filter]);
+      btn.classList.toggle('active', isActive);
+    });
+  }
+}
+
+function _mexFocusNextAction(action) {
+  if (action === 'review') {
+    document.getElementById('mex-review-queue-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  if (action === 'record') {
+    const firstPending = document.querySelector('.match-card-wrap[data-status="pending"]');
+    if (firstPending?.id?.startsWith('mcard-')) {
+      _scrollToMatch(firstPending.id.slice(6));
+    }
+    return;
+  }
+  if (action === 'next-round' || action === 'end-mexicano') {
+    document.getElementById('mex-next-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  if (action === 'start-playoffs') {
+    document.getElementById('mex-playoffs-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  if (action === 'finish-playoffs') {
+    document.getElementById('mex-playoff-schema')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
 
@@ -380,8 +556,10 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
   }
 
   const _teamLabel = (team) => (team && team.length > 0) ? team.join(' & ') : 'TBD';
+  const compactCls = _courtBoardCompact ? ' court-board-compact' : '';
+  const compactBtnLabel = _courtBoardCompact ? t('txt_txt_court_board_expand') : t('txt_txt_court_board_compact');
 
-  let html = `<div class="card"><h3>${esc(title)}</h3><div class="court-board">`;
+  let html = `<div class="card"><div class="court-board-header"><h3>${esc(title)}</h3><button type="button" class="btn btn-sm btn-outline" onclick="_toggleCourtBoardCompact()" aria-pressed="${_courtBoardCompact}">${esc(compactBtnLabel)}</button></div><div class="court-board${compactCls}">`;
   for (const courtName of courtNames) {
     const courtMatches = matchesByCourt[courtName];
     html += `<div class="court-column">`;
@@ -394,12 +572,20 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
       const jumpLabel = `${t('txt_txt_go_to_match')}: ${t1} vs ${t2}`;
       const upcomingCls = i > 0 ? ' court-match-upcoming' : '';
       html += `<div class="court-match-item${upcomingCls}" role="button" tabindex="0" data-match-id="${m.id}" aria-label="${esc(jumpLabel)}" onclick="_scrollToMatch('${m.id}')" onkeydown="if(event.key==='Enter')_scrollToMatch('${m.id}')">${esc(t1)} <span class="muted-text">vs</span> ${esc(t2)}${r}</div>`;
-      if (m.comment) html += `<div class="court-match-item court-match-item-no-top"><span class="match-comment-text match-comment-static">💬 ${esc(m.comment)}</span></div>`;
+      if (m.comment && !_courtBoardCompact) html += `<div class="court-match-item court-match-item-no-top"><span class="match-comment-text match-comment-static">💬 ${esc(m.comment)}</span></div>`;
     }
     html += `</div>`;
   }
   html += `</div></div>`;
   return html;
+}
+
+function _toggleCourtBoardCompact() {
+  _courtBoardCompact = !_courtBoardCompact;
+  localStorage.setItem('courtBoardCompact', _courtBoardCompact ? '1' : '0');
+  if (currentType === 'group_playoff') renderGP();
+  else if (currentType === 'playoff') renderPO();
+  else renderMex();
 }
 
 async function nextMexRound() {

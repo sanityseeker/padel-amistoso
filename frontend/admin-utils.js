@@ -102,6 +102,40 @@ function closeFormatInfo() {
   document.getElementById('format-info-dialog').style.display = 'none';
 }
 
+// ─── Context info modal (Communities / Clubs) ─────────────
+function _commInfoHtml() {
+  return `
+    <h3 id="format-info-heading">${esc(t('txt_comm_info_panel_title'))}</h3>
+    <p>${esc(t('txt_comm_info_panel_subtitle'))}</p>
+    <h4>${esc(t('txt_comm_info_tip_scope_title'))}</h4>
+    <p>${esc(t('txt_comm_info_tip_scope_desc'))}</p>
+    <h4>${esc(t('txt_comm_info_tip_defaults_title'))}</h4>
+    <p>${esc(t('txt_comm_info_tip_defaults_desc'))}</p>
+    <h4>${esc(t('txt_comm_info_tip_reassign_title'))}</h4>
+    <p>${esc(t('txt_comm_info_tip_reassign_desc'))}</p>
+  `;
+}
+
+function _clubsInfoHtml() {
+  return `
+    <h3 id="format-info-heading">${esc(t('txt_clubs_info_panel_title'))}</h3>
+    <p>${esc(t('txt_clubs_info_panel_subtitle'))}</p>
+    <h4>${esc(t('txt_clubs_info_tip_upgrade_title'))}</h4>
+    <p>${esc(t('txt_clubs_info_tip_upgrade_desc'))}</p>
+    <h4>${esc(t('txt_clubs_info_tip_seasons_title'))}</h4>
+    <p>${esc(t('txt_clubs_info_tip_seasons_desc'))}</p>
+    <h4>${esc(t('txt_clubs_info_tip_roster_title'))}</h4>
+    <p>${esc(t('txt_clubs_info_tip_roster_desc'))}</p>
+  `;
+}
+
+function openContextInfo(scope) {
+  const html = scope === 'clubs' ? _clubsInfoHtml() : _commInfoHtml();
+  document.getElementById('format-info-content').innerHTML = html;
+  document.getElementById('format-info-overlay').style.display = 'block';
+  document.getElementById('format-info-dialog').style.display = 'block';
+}
+
 function _showToast(message, type) {
   if (!message) return;
   const isError = type === 'error';

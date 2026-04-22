@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 import backend.api.db as db_mod
 from backend.api import app
+from backend.api.elo_store import DEFAULT_RATING
 from backend.api.player_secret_store import (
     delete_secrets_for_tournament as _real_delete_secrets,
     extract_history_stats,
@@ -105,6 +106,28 @@ def _insert_registration(rid: str, name: str = "Test Lobby", alias: str | None =
                (id, name, owner, open, sport, converted_to_tids, created_at, alias)
                VALUES (?, ?, 'admin', 1, 'padel', '[]', ?, ?)""",
             (rid, name, now, alias),
+        )
+
+
+def _insert_community(community_id: str, name: str) -> None:
+    """Insert a community row for tests."""
+    with db_mod.get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO communities (id, name, created_by, created_at) VALUES (?, ?, 'admin', datetime('now'))",
+            (community_id, name),
+        )
+
+
+def _insert_club(club_id: str, community_id: str, name: str) -> None:
+    """Insert a club row for tests."""
+    with db_mod.get_db() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO clubs
+                (id, community_id, name, logo_path, email_settings, created_by, created_at)
+            VALUES (?, ?, ?, NULL, NULL, 'admin', datetime('now'))
+            """,
+            (club_id, community_id, name),
         )
 
 
@@ -386,6 +409,47 @@ class TestProfileLogin:
         # Pydantic accepts a string of spaces (length >= 1); the route returns 401
         # because no profile has "   " as its passphrase.
         res = client.post("/api/player-profile/login", json={"passphrase": "   "})
+        assert res.status_code == 401
+
+    def test_login_with_tournament_passphrase_resolves_linked_profile(self, client: TestClient) -> None:
+        """A player whose ghost entity was linked to a real Hub profile should be able
+        to log into the Hub using their tournament passphrase (not the Hub passphrase)."""
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, created_at)
+                   VALUES ('hub-prof-link', 'hub-real-passphrase', 'Linked Player', datetime('now'))""",
+            )
+            # Tournament secret whose passphrase differs from the Hub passphrase
+            conn.execute(
+                """INSERT INTO player_secrets
+                   (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                   VALUES ('t-link-login', 'pid-link-login', 'Linked Player',
+                           'tournament-passphrase-xyz', 'tok-link-login', 'hub-prof-link')""",
+            )
+
+        # Should log in with the tournament passphrase and get the real Hub profile back
+        res = client.post("/api/player-profile/login", json={"passphrase": "tournament-passphrase-xyz"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["profile"]["id"] == "hub-prof-link"
+        assert data["profile"]["name"] == "Linked Player"
+        assert isinstance(data["access_token"], str)
+
+    def test_login_with_ghost_tournament_passphrase_rejected(self, client: TestClient) -> None:
+        """Tournament passphrase linked to a ghost (is_ghost=1) profile must not grant Hub login."""
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, created_at, is_ghost)
+                   VALUES ('ghost-hub-prof', 'ghost-hub-pp', 'Ghost Player', datetime('now'), 1)""",
+            )
+            conn.execute(
+                """INSERT INTO player_secrets
+                   (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                   VALUES ('t-ghost-login', 'pid-ghost-login', 'Ghost Player',
+                           'ghost-tournament-passphrase', 'tok-ghost-login', 'ghost-hub-prof')""",
+            )
+
+        res = client.post("/api/player-profile/login", json={"passphrase": "ghost-tournament-passphrase"})
         assert res.status_code == 401
 
 
@@ -708,6 +772,117 @@ class TestGetPlayerSpace:
         assert len(entries) == 1
         assert entries[0]["status"] == "finished"
         assert entries[0]["auto_login_token"] is None
+
+    def test_dashboard_space_club_scope_uses_club_specific_elo(self, client: TestClient) -> None:
+        created = _create_profile(client, name="Club Scoped", email="club-scoped@example.com")
+        profile_id = created["profile"]["id"]
+
+        community_id = f"c-space-{uuid.uuid4().hex[:8]}"
+        club_id = f"club-space-{uuid.uuid4().hex[:8]}"
+        _insert_community(community_id, "Scoped Community")
+        _insert_club(club_id, community_id, "Scoped Club")
+
+        tid = str(uuid.uuid4())
+        pid = str(uuid.uuid4())
+        _insert_tournament(tid, "Club-Scoped Tournament")
+        _insert_player_secret(tid, pid, "ClubScopedPlayer", "club-scoped-pass", "tok-club-scoped", profile_id)
+
+        now = datetime.now(timezone.utc)
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "UPDATE player_profiles SET elo_padel = 1600, elo_tennis = 1500, elo_padel_matches = 20, elo_tennis_matches = 15 WHERE id = ?",
+                (profile_id,),
+            )
+            conn.execute(
+                "UPDATE tournaments SET community_id = ?, club_id = ? WHERE id = ?",
+                (community_id, club_id, tid),
+            )
+            for idx in range(7):
+                elo_after = 1111.0 if idx == 6 else 1050.0 + idx
+                conn.execute(
+                    """
+                    INSERT INTO player_elo_log
+                        (tournament_id, sport, match_id, player_id, match_order,
+                         elo_before, elo_after, elo_delta, match_payload, updated_at)
+                    VALUES (?, 'padel', ?, ?, ?, ?, ?, ?, '{}', ?)
+                    """,
+                    (tid, f"mp-{idx}", pid, idx + 1, 1000.0, elo_after, elo_after - 1000.0, now.isoformat()),
+                )
+            for idx in range(4):
+                elo_after = 1222.0 if idx == 3 else 1100.0 + idx
+                conn.execute(
+                    """
+                    INSERT INTO player_elo_log
+                        (tournament_id, sport, match_id, player_id, match_order,
+                         elo_before, elo_after, elo_delta, match_payload, updated_at)
+                    VALUES (?, 'tennis', ?, ?, ?, ?, ?, ?, '{}', ?)
+                    """,
+                    (tid, f"mt-{idx}", pid, idx + 1, 1000.0, elo_after, elo_after - 1000.0, now.isoformat()),
+                )
+
+        res = client.get(f"/api/player-profile/space?club_id={club_id}", headers=_headers(created["access_token"]))
+        assert res.status_code == 200
+        profile = res.json()["profile"]
+        assert profile["elo_padel"] == 1111
+        assert profile["elo_tennis"] == 1222
+        assert profile["elo_padel_matches"] == 7
+        assert profile["elo_tennis_matches"] == 4
+
+    def test_dashboard_space_club_scope_defaults_hidden_sport_to_base_rating(self, client: TestClient) -> None:
+        created = _create_profile(client, name="Club Hidden", email="club-hidden@example.com")
+        profile_id = created["profile"]["id"]
+
+        community_id = f"c-space-hidden-{uuid.uuid4().hex[:8]}"
+        club_id = f"club-space-hidden-{uuid.uuid4().hex[:8]}"
+        _insert_community(community_id, "Scoped Community Hidden")
+        _insert_club(club_id, community_id, "Scoped Club Hidden")
+
+        tid = str(uuid.uuid4())
+        pid = str(uuid.uuid4())
+        _insert_tournament(tid, "Club Hidden Tournament")
+        _insert_player_secret(tid, pid, "ClubHiddenPlayer", "club-hidden-pass", "tok-club-hidden", profile_id)
+
+        now = datetime.now(timezone.utc)
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "UPDATE tournaments SET community_id = ?, club_id = ? WHERE id = ?",
+                (community_id, club_id, tid),
+            )
+            for idx in range(5):
+                elo_after = 1180.0 if idx == 4 else 1050.0 + idx
+                conn.execute(
+                    """
+                    INSERT INTO player_elo_log
+                        (tournament_id, sport, match_id, player_id, match_order,
+                         elo_before, elo_after, elo_delta, match_payload, updated_at)
+                    VALUES (?, 'padel', ?, ?, ?, ?, ?, ?, '{}', ?)
+                    """,
+                    (tid, f"mp-{idx}", pid, idx + 1, 1000.0, elo_after, elo_after - 1000.0, now.isoformat()),
+                )
+            for idx in range(8):
+                elo_after = 1410.0 if idx == 7 else 1100.0 + idx
+                conn.execute(
+                    """
+                    INSERT INTO player_elo_log
+                        (tournament_id, sport, match_id, player_id, match_order,
+                         elo_before, elo_after, elo_delta, match_payload, updated_at)
+                    VALUES (?, 'tennis', ?, ?, ?, ?, ?, ?, '{}', ?)
+                    """,
+                    (tid, f"mt-{idx}", pid, idx + 1, 1000.0, elo_after, elo_after - 1000.0, now.isoformat()),
+                )
+            # Hide the tennis sport for this club so it falls back to defaults.
+            conn.execute(
+                "INSERT OR REPLACE INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden) VALUES (?, ?, 'tennis', 1410, 8, 1)",
+                (profile_id, club_id),
+            )
+
+        res = client.get(f"/api/player-profile/space?club_id={club_id}", headers=_headers(created["access_token"]))
+        assert res.status_code == 200
+        profile = res.json()["profile"]
+        assert profile["elo_padel"] == 1180
+        assert profile["elo_padel_matches"] == 5
+        assert profile["elo_tennis"] == DEFAULT_RATING
+        assert profile["elo_tennis_matches"] == 0
 
     def test_dashboard_response_includes_fresh_token(self, client: TestClient) -> None:
         created = _create_profile(client)
@@ -3174,6 +3349,49 @@ class TestLeaderboard:
         assert entry["elo"] == 1050
         assert entry["matches"] == 3
 
+    def test_leaderboard_community_unlinked_picks_highest_matches_row(self, client: TestClient) -> None:
+        """Unlinked players that share a name across tournaments in the same community
+        must return the elo from the row with the highest matches_played (deterministic)."""
+        community_id = f"c-lb-det-{uuid.uuid4().hex[:8]}"
+        _insert_community(community_id, "Det Community")
+
+        tid_old = f"t-lb-det-old-{uuid.uuid4().hex[:8]}"
+        tid_new = f"t-lb-det-new-{uuid.uuid4().hex[:8]}"
+        with db_mod.get_db() as conn:
+            for tid in (tid_old, tid_new):
+                conn.execute(
+                    "INSERT OR IGNORE INTO tournaments"
+                    " (id, name, type, owner, public, tournament_blob, version, sport, community_id)"
+                    " VALUES (?, ?, 'group_playoff', 'admin', 1, X'', 0, 'padel', ?)",
+                    (tid, "Det Cup", community_id),
+                )
+
+        # Same player_name in both tournaments, different player_ids/elos/matches.
+        _insert_player_secret(tid_old, "p-det-old", "Shared Name", "pp-det-old", uuid.uuid4().hex)
+        _insert_player_secret(tid_new, "p-det-new", "Shared Name", "pp-det-new", uuid.uuid4().hex)
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            # Old tournament: high elo but only 2 matches.
+            conn.execute(
+                "INSERT INTO player_elo (tournament_id, player_id, sport, elo_before, elo_after, matches_played, updated_at)"
+                " VALUES (?, ?, 'padel', 1000, 1300, 2, ?)",
+                (tid_old, "p-det-old", now),
+            )
+            # New tournament: lower elo but more matches — must win.
+            conn.execute(
+                "INSERT INTO player_elo (tournament_id, player_id, sport, elo_before, elo_after, matches_played, updated_at)"
+                " VALUES (?, ?, 'padel', 1000, 1100, 7, ?)",
+                (tid_new, "p-det-new", now),
+            )
+
+        res = client.get(f"/api/player-profile/leaderboard?community_id={community_id}")
+        assert res.status_code == 200
+        padel = res.json()["padel"]
+        entry = next((e for e in padel if e["name"] == "Shared Name"), None)
+        assert entry is not None
+        assert entry["elo"] == 1100
+        assert entry["matches"] == 7
+
     def test_leaderboard_profile_players_have_has_profile_true(self, client: TestClient) -> None:
         p1 = _create_profile(client, name="Profiled Player", email="profiled-lb@example.com")
         with db_mod.get_db() as conn:
@@ -3191,3 +3409,286 @@ class TestLeaderboard:
         entry = next((e for e in res.json()["padel"] if e["name"] == "Profiled Player"), None)
         assert entry is not None
         assert entry["has_profile"] is True
+
+    def test_leaderboard_club_scope_live_derives_from_match_logs(self, client: TestClient) -> None:
+        p1 = _create_profile(client, name="Club Alice", email="club-alice@example.com")
+        p2 = _create_profile(client, name="Club Bob", email="club-bob@example.com")
+
+        community_id = f"c-lb-{uuid.uuid4().hex[:8]}"
+        club_id = f"club-lb-{uuid.uuid4().hex[:8]}"
+        other_club_id = f"club-lb-other-{uuid.uuid4().hex[:8]}"
+        _insert_community(community_id, "Leaderboard Community")
+        _insert_club(club_id, community_id, "Leaderboard Club")
+        _insert_club(other_club_id, community_id, "Other Leaderboard Club")
+
+        # Tournaments scoped to each club so player_elo_log rows can be
+        # attributed to the correct club via tournaments.club_id.
+        tid_main = str(uuid.uuid4())
+        tid_other = str(uuid.uuid4())
+        _insert_tournament(tid_main, "Main Club Tournament")
+        _insert_tournament(tid_other, "Other Club Tournament")
+
+        pid_alice_main = str(uuid.uuid4())
+        pid_bob_main = str(uuid.uuid4())
+        pid_alice_other = str(uuid.uuid4())
+        _insert_player_secret(tid_main, pid_alice_main, "Club Alice", "alice-main-pass", "tok-am", p1["profile"]["id"])
+        _insert_player_secret(tid_main, pid_bob_main, "Club Bob", "bob-main-pass", "tok-bm", p2["profile"]["id"])
+        _insert_player_secret(
+            tid_other, pid_alice_other, "Club Alice", "alice-other-pass", "tok-ao", p1["profile"]["id"]
+        )
+
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "UPDATE tournaments SET community_id = ?, club_id = ? WHERE id = ?",
+                (community_id, club_id, tid_main),
+            )
+            conn.execute(
+                "UPDATE tournaments SET community_id = ?, club_id = ? WHERE id = ?",
+                (community_id, other_club_id, tid_other),
+            )
+            # Snapshot rows still required so the player is a club member.
+            conn.execute(
+                "INSERT OR REPLACE INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden) VALUES (?, ?, 'padel', 1000, 0, 0)",
+                (p1["profile"]["id"], club_id),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden) VALUES (?, ?, 'padel', 1000, 0, 0)",
+                (p2["profile"]["id"], club_id),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden) VALUES (?, ?, 'padel', 1000, 0, 0)",
+                (p1["profile"]["id"], other_club_id),
+            )
+
+            # Alice: 3 matches in main club, latest elo 1120.
+            for idx, elo in enumerate([1080.0, 1100.0, 1120.0]):
+                conn.execute(
+                    """
+                    INSERT INTO player_elo_log
+                        (tournament_id, sport, match_id, player_id, match_order,
+                         elo_before, elo_after, elo_delta, match_payload, updated_at)
+                    VALUES (?, 'padel', ?, ?, ?, 1000.0, ?, ?, '{}', ?)
+                    """,
+                    (tid_main, f"a-{idx}", pid_alice_main, idx + 1, elo, elo - 1000.0, now),
+                )
+            # Bob: 2 matches in main club, latest elo 1240.
+            for idx, elo in enumerate([1200.0, 1240.0]):
+                conn.execute(
+                    """
+                    INSERT INTO player_elo_log
+                        (tournament_id, sport, match_id, player_id, match_order,
+                         elo_before, elo_after, elo_delta, match_payload, updated_at)
+                    VALUES (?, 'padel', ?, ?, ?, 1000.0, ?, ?, '{}', ?)
+                    """,
+                    (tid_main, f"b-{idx}", pid_bob_main, idx + 1, elo, elo - 1000.0, now),
+                )
+            # Alice: 9 matches in other club, latest 1900 — must NOT pollute main club.
+            for idx in range(9):
+                elo = 1900.0 if idx == 8 else 1500.0 + idx * 50
+                conn.execute(
+                    """
+                    INSERT INTO player_elo_log
+                        (tournament_id, sport, match_id, player_id, match_order,
+                         elo_before, elo_after, elo_delta, match_payload, updated_at)
+                    VALUES (?, 'padel', ?, ?, ?, 1000.0, ?, ?, '{}', ?)
+                    """,
+                    (tid_other, f"ao-{idx}", pid_alice_other, idx + 1, elo, elo - 1000.0, now),
+                )
+
+        res = client.get(f"/api/player-profile/leaderboard?club_id={club_id}")
+        assert res.status_code == 200
+        padel = res.json()["padel"]
+        names = [entry["name"] for entry in padel]
+        assert names == ["Club Bob", "Club Alice"]
+        assert padel[0]["elo"] == 1240
+        assert padel[0]["matches"] == 2
+        assert padel[1]["elo"] == 1120
+        assert padel[1]["matches"] == 3
+
+    def test_leaderboard_club_scope_excludes_hidden_rows_and_keeps_tier(self, client: TestClient) -> None:
+        visible = _create_profile(client, name="Visible Tier", email="visible-tier@example.com")
+        hidden = _create_profile(client, name="Hidden Tier", email="hidden-tier@example.com")
+
+        community_id = f"c-lb-tier-{uuid.uuid4().hex[:8]}"
+        club_id = f"club-lb-tier-{uuid.uuid4().hex[:8]}"
+        tier_id = f"tier-{uuid.uuid4().hex[:8]}"
+        _insert_community(community_id, "Tier Community")
+        _insert_club(club_id, community_id, "Tier Club")
+
+        tid_tier = str(uuid.uuid4())
+        _insert_tournament(tid_tier, "Tier Tournament")
+        pid_visible = str(uuid.uuid4())
+        pid_hidden = str(uuid.uuid4())
+        _insert_player_secret(tid_tier, pid_visible, "Visible Tier", "vis-pass", "tok-vis", visible["profile"]["id"])
+        _insert_player_secret(tid_tier, pid_hidden, "Hidden Tier", "hid-pass", "tok-hid", hidden["profile"]["id"])
+
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "UPDATE tournaments SET community_id = ?, club_id = ? WHERE id = ?",
+                (community_id, club_id, tid_tier),
+            )
+            conn.execute(
+                "INSERT INTO club_tiers (id, club_id, name, sport, base_elo, position) VALUES (?, ?, 'Gold', 'padel', 1000, 1)",
+                (tier_id, club_id),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO profile_club_elo (profile_id, club_id, sport, elo, matches, tier_id, hidden) VALUES (?, ?, 'padel', 1000, 0, ?, 0)",
+                (visible["profile"]["id"], club_id, tier_id),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden) VALUES (?, ?, 'padel', 1000, 0, 1)",
+                (hidden["profile"]["id"], club_id),
+            )
+            for idx, elo in enumerate([1100.0, 1130.0, 1160.0, 1190.0]):
+                conn.execute(
+                    """
+                    INSERT INTO player_elo_log
+                        (tournament_id, sport, match_id, player_id, match_order,
+                         elo_before, elo_after, elo_delta, match_payload, updated_at)
+                    VALUES (?, 'padel', ?, ?, ?, 1000.0, ?, ?, '{}', ?)
+                    """,
+                    (tid_tier, f"v-{idx}", pid_visible, idx + 1, elo, elo - 1000.0, now),
+                )
+            for idx, elo in enumerate([1200.0, 1250.0, 1300.0, 1350.0, 1380.0, 1400.0]):
+                conn.execute(
+                    """
+                    INSERT INTO player_elo_log
+                        (tournament_id, sport, match_id, player_id, match_order,
+                         elo_before, elo_after, elo_delta, match_payload, updated_at)
+                    VALUES (?, 'padel', ?, ?, ?, 1000.0, ?, ?, '{}', ?)
+                    """,
+                    (tid_tier, f"h-{idx}", pid_hidden, idx + 1, elo, elo - 1000.0, now),
+                )
+
+        res = client.get(f"/api/player-profile/leaderboard?club_id={club_id}")
+        assert res.status_code == 200
+        padel = res.json()["padel"]
+        assert [entry["name"] for entry in padel] == ["Visible Tier"]
+        assert padel[0]["tier_name"] == "Gold"
+        assert padel[0]["matches"] == 4
+        assert padel[0]["elo"] == 1190
+
+    def test_manual_elo_adjustment_appears_in_history(self, client: TestClient) -> None:
+        """Verify that manual ELO adjustments appear in history with is_manual=True."""
+        profile = _create_profile(client, name="Admin Test", email="admin-test@example.com")
+        profile_id = profile["profile"]["id"]
+        tid = f"t-manual-{uuid.uuid4().hex[:8]}"
+        pid = f"admin-pid-{uuid.uuid4().hex[:8]}"
+
+        # Link the pid to the profile via player_secrets
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                VALUES (?, ?, 'Admin Test', ?, ?, ?)
+                """,
+                (tid, pid, f"pp-{uuid.uuid4().hex[:8]}", f"tok-{uuid.uuid4().hex[:12]}", profile_id),
+            )
+
+        # Insert a manual ELO adjustment
+        from backend.api.routes_player_space import log_manual_elo_adjustment
+
+        log_manual_elo_adjustment(
+            player_id=pid,
+            profile_id=profile_id,
+            sport="padel",
+            elo_before=1000.0,
+            elo_after=1050.0,
+            adjustment_reason="Rating correction after tournament dispute",
+            adjusted_by="admin-user",
+            club_id=tid,  # use tid as the tournament_id for the log entry
+        )
+
+        # Fetch the ELO history
+        jwt_header = {"Authorization": f"Bearer {profile['access_token']}"}
+        res = client.get("/api/player-profile/space?elo_history_limit=10", headers=jwt_header)
+        assert res.status_code == 200
+        history = res.json()["elo_history"]
+
+        # Find the manual adjustment entry
+        manual_entry = next((e for e in history if e.get("is_manual")), None)
+        assert manual_entry is not None, "Manual adjustment not found in history"
+        assert manual_entry["is_manual"] is True
+        assert manual_entry["elo_before"] == 1000.0
+        assert manual_entry["elo_after"] == 1050.0
+        assert manual_entry["adjustment_reason"] == "Rating correction after tournament dispute"
+        assert manual_entry["adjusted_by"] == "admin-user"
+        assert manual_entry["match_id"].startswith("MANUAL-")
+
+    def test_manual_elo_adjustment_delta_calculated_correctly(self, client: TestClient) -> None:
+        """Verify that elo_delta is correctly calculated for manual adjustments."""
+        profile = _create_profile(client, name="Delta Test", email="delta-test@example.com")
+        profile_id = profile["profile"]["id"]
+        tid = f"t-delta-{uuid.uuid4().hex[:8]}"
+        pid = f"delta-pid-{uuid.uuid4().hex[:8]}"
+
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                VALUES (?, ?, 'Delta Test', ?, ?, ?)
+                """,
+                (tid, pid, f"pp-{uuid.uuid4().hex[:8]}", f"tok-{uuid.uuid4().hex[:12]}", profile_id),
+            )
+
+        from backend.api.routes_player_space import log_manual_elo_adjustment
+
+        # Negative delta (decrease)
+        log_manual_elo_adjustment(
+            player_id=pid,
+            profile_id=profile_id,
+            sport="tennis",
+            elo_before=1200.0,
+            elo_after=1150.0,
+            adjustment_reason="Sanity check correction",
+            adjusted_by="admin-verify",
+            club_id=tid,
+        )
+
+        jwt_header = {"Authorization": f"Bearer {profile['access_token']}"}
+        res = client.get("/api/player-profile/space?elo_history_limit=10", headers=jwt_header)
+        assert res.status_code == 200
+        history = res.json()["elo_history"]
+
+        manual_entry = next((e for e in history if e.get("is_manual") and e["sport"] == "tennis"), None)
+        assert manual_entry is not None
+        assert manual_entry["elo_delta"] == -50.0  # 1150 - 1200
+
+    def test_manual_elo_adjustment_without_reason(self, client: TestClient) -> None:
+        """Verify that manual adjustments work even without a reason provided."""
+        profile = _create_profile(client, name="No Reason Test", email="no-reason@example.com")
+        profile_id = profile["profile"]["id"]
+        tid = f"t-noreason-{uuid.uuid4().hex[:8]}"
+        pid = f"no-reason-pid-{uuid.uuid4().hex[:8]}"
+
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                VALUES (?, ?, 'No Reason Test', ?, ?, ?)
+                """,
+                (tid, pid, f"pp-{uuid.uuid4().hex[:8]}", f"tok-{uuid.uuid4().hex[:12]}", profile_id),
+            )
+
+        from backend.api.routes_player_space import log_manual_elo_adjustment
+
+        log_manual_elo_adjustment(
+            player_id=pid,
+            profile_id=profile_id,
+            sport="padel",
+            elo_before=1100.0,
+            elo_after=1120.0,
+            club_id=tid,
+        )
+
+        jwt_header = {"Authorization": f"Bearer {profile['access_token']}"}
+        res = client.get("/api/player-profile/space?elo_history_limit=10", headers=jwt_header)
+        assert res.status_code == 200
+        history = res.json()["elo_history"]
+
+        manual_entry = next((e for e in history if e.get("is_manual")), None)
+        assert manual_entry is not None
+        assert manual_entry["adjustment_reason"] is None
+        assert manual_entry["adjusted_by"] is None

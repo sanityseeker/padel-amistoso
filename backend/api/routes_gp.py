@@ -146,6 +146,7 @@ async def create_group_playoff(
         assign_courts=req.assign_courts,
         community_id=req.community_id,
         season_id=req.season_id,
+        club_id=req.club_id,
     )
     # Create secrets for individual players (each member gets their own passphrase)
     create_secrets_for_tournament(

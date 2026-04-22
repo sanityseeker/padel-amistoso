@@ -101,6 +101,22 @@ class TestCommunityCRUD:
         res = client.delete("/api/communities/open", headers=auth_headers)
         assert res.status_code == 403
 
+    def test_delete_community_with_attached_clubs_blocked(self, client, auth_headers) -> None:
+        """Deleting a community that still has clubs must return 409, not 500."""
+        cid = client.post("/api/communities", json={"name": "WithClubs"}, headers=auth_headers).json()["id"]
+        club = client.post(
+            "/api/clubs",
+            json={"community_id": cid, "name": "Stuck Club"},
+            headers=auth_headers,
+        ).json()
+        res = client.delete(f"/api/communities/{cid}", headers=auth_headers)
+        assert res.status_code == 409
+        assert "club" in res.json()["detail"].lower()
+        # After removing the club, deletion should succeed.
+        client.delete(f"/api/clubs/{club['id']}", headers=auth_headers)
+        res2 = client.delete(f"/api/communities/{cid}", headers=auth_headers)
+        assert res2.status_code == 200
+
     def test_get_community_by_id(self, client, auth_headers) -> None:
         create_res = client.post(
             "/api/communities",
@@ -519,6 +535,117 @@ class TestTournamentCommunityAssignment:
         tid = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers).json()["id"]
         res = client.patch(f"/api/tournaments/{tid}/community", json={"community_id": "open"})
         assert res.status_code in (401, 403)
+
+    def test_patch_tournament_community_auto_clears_mismatched_club_and_season(
+        self, client, auth_headers, _tournament
+    ) -> None:
+        """Moving a tournament to a different community auto-clears club_id/season_id
+        when they belonged to the previous community."""
+        # Build a (community A) → club → season chain and assign the tournament to it.
+        comm_a = client.post("/api/communities", json={"name": "Comm A"}, headers=auth_headers).json()
+        club_a = client.post(
+            "/api/clubs", json={"community_id": comm_a["id"], "name": "Club A"}, headers=auth_headers
+        ).json()
+        season_a = client.post(
+            f"/api/clubs/{club_a['id']}/seasons", json={"name": "Season A"}, headers=auth_headers
+        ).json()
+
+        client.patch(
+            f"/api/tournaments/{_tournament}/community",
+            json={"community_id": comm_a["id"]},
+            headers=auth_headers,
+        )
+        client.patch(
+            f"/api/tournaments/{_tournament}/season",
+            json={"season_id": season_a["id"]},
+            headers=auth_headers,
+        )
+
+        # Now move the tournament to a different community.
+        comm_b = client.post("/api/communities", json={"name": "Comm B"}, headers=auth_headers).json()
+        res = client.patch(
+            f"/api/tournaments/{_tournament}/community",
+            json={"community_id": comm_b["id"]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["community_id"] == comm_b["id"]
+        assert body["club_id"] is None
+        assert body["season_id"] is None
+
+    def test_patch_tournament_community_preserves_matching_club_and_season(
+        self, client, auth_headers, _tournament
+    ) -> None:
+        """Moving a tournament to a community that already owns the current club/season
+        preserves club_id/season_id (no spurious clearing)."""
+        comm_a = client.post("/api/communities", json={"name": "Comm Keep"}, headers=auth_headers).json()
+        club_a = client.post(
+            "/api/clubs", json={"community_id": comm_a["id"], "name": "Club Keep"}, headers=auth_headers
+        ).json()
+        season_a = client.post(
+            f"/api/clubs/{club_a['id']}/seasons", json={"name": "Season Keep"}, headers=auth_headers
+        ).json()
+
+        client.patch(
+            f"/api/tournaments/{_tournament}/community",
+            json={"community_id": comm_a["id"]},
+            headers=auth_headers,
+        )
+        client.patch(
+            f"/api/tournaments/{_tournament}/season",
+            json={"season_id": season_a["id"]},
+            headers=auth_headers,
+        )
+
+        # Re-patch to the same community — must keep both ids.
+        res = client.patch(
+            f"/api/tournaments/{_tournament}/community",
+            json={"community_id": comm_a["id"]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["community_id"] == comm_a["id"]
+        assert body["club_id"] == club_a["id"]
+        assert body["season_id"] == season_a["id"]
+
+    def test_tournament_meta_branding_uses_explicit_club_id_over_first_in_community(
+        self, client, auth_headers, _tournament
+    ) -> None:
+        """When a tournament has an explicit club_id, branding must use that club's
+        name, not the first (oldest) club in the community."""
+        comm = client.post("/api/communities", json={"name": "Multi Club"}, headers=auth_headers).json()
+        # First club in community (oldest by creation date) — would be the legacy default.
+        first_club = client.post(
+            "/api/clubs", json={"community_id": comm["id"], "name": "First Club"}, headers=auth_headers
+        ).json()
+        assert first_club["id"]
+        second_club = client.post(
+            "/api/clubs", json={"community_id": comm["id"], "name": "Second Club"}, headers=auth_headers
+        ).json()
+
+        # Move tournament into the multi-club community, then assign the second club explicitly.
+        client.patch(
+            f"/api/tournaments/{_tournament}/community",
+            json={"community_id": comm["id"]},
+            headers=auth_headers,
+        )
+        res = client.patch(
+            f"/api/tournaments/{_tournament}/club",
+            json={"club_id": second_club["id"]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+
+        meta = client.get(f"/api/tournaments/{_tournament}/meta").json()
+        assert meta["club_name"] == "Second Club"
+
+        # Listing should reflect the same explicit-club branding.
+        listing = client.get("/api/tournaments", headers=auth_headers).json()
+        t_row = next(t for t in listing if t["id"] == _tournament)
+        assert t_row["club_name"] == "Second Club"
+        assert t_row["club_id"] == second_club["id"]
 
 
 # ---------------------------------------------------------------------------

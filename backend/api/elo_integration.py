@@ -11,7 +11,7 @@ import logging
 from typing import Any
 
 from backend.models import Match, MatchStatus, TournamentType
-from backend.tournaments.elo import compute_match_elo_updates
+from backend.tournaments.elo import compute_match_elo_updates, get_k_factor
 
 from .elo_store import (
     bulk_transfer_elos_to_profiles,
@@ -29,6 +29,8 @@ from .elo_store import (
 from .state import _tournaments
 
 logger = logging.getLogger(__name__)
+
+_MEX_ELO_POINTS_BASELINE = 32
 
 
 def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
@@ -48,6 +50,7 @@ def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
         ratings = get_tournament_elos(tid, sport)
         counts = get_tournament_match_counts(tid, sport)
         k_overrides = get_k_factor_overrides(tid)
+        mex_k_multiplier = _mexicano_k_multiplier(data)
 
         # If this player already has a match counted, it's a re-recording -> recalculate
         all_player_ids = [p.id for p in match.team1 + match.team2]
@@ -57,7 +60,8 @@ def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
             elo_recalculate_tournament(tid)
             return
 
-        updates = compute_match_elo_updates(match, ratings, counts, team_mode, k_overrides)
+        effective_k_overrides = _build_effective_k_overrides(match, counts, k_overrides, mex_k_multiplier)
+        updates = compute_match_elo_updates(match, ratings, counts, team_mode, effective_k_overrides)
         upsert_tournament_elo(tid, updates, sport)
         upsert_tournament_elo_log(
             tid,
@@ -83,6 +87,7 @@ def elo_recalculate_tournament(tournament_id: str) -> None:
     tournament = data["tournament"]
     sport = data.get("sport", "padel")
     ttype = data.get("type", "")
+    mex_k_multiplier = _mexicano_k_multiplier(data)
 
     all_matches = _extract_completed_matches(tournament, ttype)
     if not all_matches:
@@ -114,7 +119,8 @@ def elo_recalculate_tournament(tournament_id: str) -> None:
         for idx, match in enumerate(all_matches, start=1):
             ratings = get_tournament_elos(tournament_id, sport)
             counts = get_tournament_match_counts(tournament_id, sport)
-            updates = compute_match_elo_updates(match, ratings, counts, team_mode, k_overrides)
+            effective_k_overrides = _build_effective_k_overrides(match, counts, k_overrides, mex_k_multiplier)
+            updates = compute_match_elo_updates(match, ratings, counts, team_mode, effective_k_overrides)
             upsert_tournament_elo(tournament_id, updates, sport)
             upsert_tournament_elo_log(tournament_id, match, updates, sport, match_order=idx)
         sync_live_elos_to_profiles(tournament_id, sport)
@@ -222,3 +228,38 @@ def _extract_player_ids(tournament: object, ttype: str) -> list[str]:
             seen.setdefault(p.id, None)
 
     return list(seen)
+
+
+def _mexicano_k_multiplier(data: dict[str, Any]) -> float:
+    """Return a Mexicano-only K multiplier based on match length.
+
+    Smaller Mexicano matches (fewer total points) should move ELO less.
+    Uses ``total_points_per_match / 32`` capped to ``[0, 1]``.
+    """
+    if data.get("type") != TournamentType.MEXICANO:
+        return 1.0
+
+    tournament = data.get("tournament")
+    total_points = getattr(tournament, "total_points_per_match", _MEX_ELO_POINTS_BASELINE)
+    if not isinstance(total_points, int) or total_points <= 0:
+        return 1.0
+
+    return min(1.0, max(0.0, total_points / _MEX_ELO_POINTS_BASELINE))
+
+
+def _build_effective_k_overrides(
+    match: Match,
+    match_counts: dict[str, int],
+    k_overrides: dict[str, int],
+    multiplier: float,
+) -> dict[str, int]:
+    """Build per-player K overrides with optional multiplier scaling."""
+    if multiplier >= 1.0:
+        return k_overrides
+
+    effective: dict[str, int] = {}
+    for player in match.team1 + match.team2:
+        count = match_counts.get(player.id, 0)
+        base_k = k_overrides.get(player.id, get_k_factor(count))
+        effective[player.id] = max(1, int(round(base_k * multiplier)))
+    return effective

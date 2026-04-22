@@ -215,8 +215,8 @@ def _save_tournament(tid: str) -> bool:
             conn.execute(
                 """
                 INSERT INTO tournaments
-                    (id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport, assign_courts, email_settings, community_id, created_at, season_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport, assign_courts, email_settings, community_id, created_at, season_id, club_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name            = excluded.name,
                     public          = excluded.public,
@@ -229,7 +229,8 @@ def _save_tournament(tid: str) -> bool:
                     email_settings  = excluded.email_settings,
                     community_id    = excluded.community_id,
                     created_at      = excluded.created_at,
-                    season_id       = excluded.season_id
+                    season_id       = excluded.season_id,
+                    club_id         = excluded.club_id
                 """,
                 (
                     tid,
@@ -247,6 +248,7 @@ def _save_tournament(tid: str) -> bool:
                     data.get("community_id", "open"),
                     data.get("created_at") or datetime.now(timezone.utc).isoformat(),
                     data.get("season_id"),
+                    data.get("club_id"),
                 ),
             )
     except (sqlite3.Error, pickle.PicklingError, OSError) as exc:
@@ -317,7 +319,7 @@ def get_tournament_data(tid: str) -> dict | None:
         with get_db() as conn:
             row = conn.execute(
                 """SELECT id, name, type, owner, public, alias, tv_settings,
-                          tournament_blob, version, sport, community_id, created_at, season_id
+                          tournament_blob, version, sport, community_id, created_at, season_id, club_id
                    FROM tournaments WHERE id = ?""",
                 (tid,),
             ).fetchone()
@@ -336,6 +338,7 @@ def get_tournament_data(tid: str) -> dict | None:
             "community_id": row["community_id"] if "community_id" in row.keys() else "open",
             "created_at": row["created_at"] if "created_at" in row.keys() else "",
             "season_id": row["season_id"] if "season_id" in row.keys() else None,
+            "club_id": row["club_id"] if "club_id" in row.keys() else None,
         }
     except (sqlite3.Error, pickle.UnpicklingError) as exc:
         logger.warning("Could not load tournament %s for backfill: %s", tid, exc)
@@ -456,7 +459,7 @@ def _load_state() -> None:
     try:
         with get_db() as conn:
             rows = conn.execute(
-                "SELECT id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport, assign_courts, email_settings, community_id, created_at, season_id FROM tournaments"
+                "SELECT id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport, assign_courts, email_settings, community_id, created_at, season_id, club_id FROM tournaments"
             ).fetchall()
     except sqlite3.Error as exc:  # noqa: BLE001
         logger.warning("Could not load state (starting fresh): %s", exc)
@@ -486,6 +489,7 @@ def _load_state() -> None:
             "community_id": row["community_id"] if "community_id" in row.keys() else "open",
             "created_at": row["created_at"] if "created_at" in row.keys() else "",
             "season_id": row["season_id"] if "season_id" in row.keys() else None,
+            "club_id": row["club_id"] if "club_id" in row.keys() else None,
         }
         _tournament_versions[tid] = row["version"]
 

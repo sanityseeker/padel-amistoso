@@ -582,12 +582,13 @@ async function _hubDoSearch() {
   results.innerHTML = '<em style="font-size:0.8rem;color:var(--text-muted)">…</em>';
   try {
     const profiles = await api(`/api/admin/player-profiles?q=${encodeURIComponent(q)}`);
-    if (profiles.length === 0) {
+    const realProfiles = profiles.filter(p => !p.is_ghost);
+    if (realProfiles.length === 0) {
       results.innerHTML = `<div style="font-size:0.8rem;color:var(--text-muted);padding:0.3rem 0">${t('txt_hub_no_results')}</div>`;
       return;
     }
     let html = '';
-    for (const p of profiles) {
+    for (const p of realProfiles) {
       html += `<div class="pc-hub-result-item" onclick="_hubLinkProfile('${escAttr(p.id)}')">`;
       html += `<span class="pc-hub-result-name">${esc(p.name || '—')}</span>`;
       if (p.email) html += `<span class="pc-hub-result-email">${esc(p.email)}</span>`;

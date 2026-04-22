@@ -26,6 +26,25 @@ class TestMexicanoEloIntegration:
         assert r.status_code == 200
         return r.json()["id"]
 
+    def _play_first_match_and_get_deltas(self, client, auth_headers, body: dict) -> list[float]:
+        r = client.post("/api/tournaments/mexicano", json=body, headers=auth_headers)
+        assert r.status_code == 200
+        tid = r.json()["id"]
+
+        client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
+        matches = client.get(f"/api/tournaments/{tid}/mex/matches").json()
+        match = matches["current_matches"][0]
+
+        client.post(
+            f"/api/tournaments/{tid}/mex/record",
+            json={"match_id": match["id"], "score1": 20, "score2": 12},
+            headers=auth_headers,
+        )
+
+        elos = get_tournament_elos(tid, "padel")
+        played_ids = [*match["team1_ids"], *match["team2_ids"]]
+        return [abs(elos[pid] - DEFAULT_RATING) for pid in played_ids]
+
     def test_elo_initialized_on_creation(self, client, auth_headers):
         tid = self._create(client, auth_headers)
         elos = get_tournament_elos(tid, "padel")
@@ -94,6 +113,27 @@ class TestMexicanoEloIntegration:
         # After a full tournament, ELOs should have diverged
         unique_elos = set(round(v, 1) for v in elos.values())
         assert len(unique_elos) > 1, "ELOs should diverge after multiple rounds"
+
+    def test_smaller_mexicano_matches_reduce_elo_changes(self, client, auth_headers):
+        """Mexicano with fewer points per match should produce smaller ELO swings."""
+        base_body = {
+            "name": "ELO Mex Scale",
+            "player_names": ["Alice", "Bob", "Carol", "Dave"],
+            "court_names": ["Court 1"],
+            "num_rounds": 1,
+        }
+        full_deltas = self._play_first_match_and_get_deltas(
+            client,
+            auth_headers,
+            {**base_body, "total_points_per_match": 32},
+        )
+        small_deltas = self._play_first_match_and_get_deltas(
+            client,
+            auth_headers,
+            {**base_body, "total_points_per_match": 16},
+        )
+
+        assert max(small_deltas) < max(full_deltas)
 
 
 class TestGroupPlayoffEloIntegration:

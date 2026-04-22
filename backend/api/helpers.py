@@ -94,9 +94,20 @@ def _store_tournament(
     assign_courts: bool,
     community_id: str = "open",
     season_id: str | None = None,
+    club_id: str | None = None,
 ) -> None:
     """Insert a tournament into the in-memory store and persist to DB."""
     from datetime import datetime, timezone  # noqa: PLC0415
+
+    # If the caller supplied a season but not a club, derive club_id from the
+    # season so the two stay consistent without requiring callers to pass both.
+    if season_id and not club_id:
+        from .db import get_db  # noqa: PLC0415
+
+        with get_db() as conn:
+            row = conn.execute("SELECT club_id FROM seasons WHERE id = ?", (season_id,)).fetchone()
+        if row is not None:
+            club_id = row["club_id"]
 
     _tournaments[tid] = {
         "name": name,
@@ -109,6 +120,7 @@ def _store_tournament(
         "community_id": community_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "season_id": season_id,
+        "club_id": club_id,
     }
     _save_tournament(tid)
 
