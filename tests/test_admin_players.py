@@ -860,9 +860,13 @@ class TestGhostProfileConsolidation:
         )
         assert resp.status_code == 200
 
-        # ELO should now reflect the most recent tournament (1120, 8 matches)
+        # ELO should now reflect the most recent tournament (1120), and matches
+        # should be the SUM across all merged ghosts (5 + 8 = 13). Before the
+        # fix, matches were overwritten with the last tournament's count (8),
+        # which understated the player's true match count in community/global
+        # leaderboards and the admin panel.
         data = resp.json()
-        assert data["elo_padel_matches"] == 8
+        assert data["elo_padel_matches"] == 13
         assert abs(data["elo_padel"] - 1120.0) < 0.01
 
     def test_consolidate_requires_auth(self, client: TestClient) -> None:

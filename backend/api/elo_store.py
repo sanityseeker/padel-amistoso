@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import json
+from collections import defaultdict
 from datetime import datetime, timezone
 
 from backend.models import Sport
@@ -858,18 +859,23 @@ def consolidate_ghost_elos(primary_profile_id: str, player_ids: list[str]) -> No
         return
 
     community_elos: dict[str, dict[str, float]] = {}
-    community_counts: dict[str, dict[str, int]] = {}
+    community_counts: dict[str, defaultdict[str, int]] = {}
     global_elos: dict[str, float] = {}
-    global_counts: dict[str, int] = {}
+    global_counts: defaultdict[str, int] = defaultdict(int)
     history_updates: list[tuple] = []
 
     for row in rows:
         cid = row["community_id"]
         sport = row["sport"]
+        # Latest-wins for ELO (rows are ordered by updated_at ASC).
         community_elos.setdefault(cid, {})[sport] = row["elo_after"]
-        community_counts.setdefault(cid, {})[sport] = row["matches_played"]
         global_elos[sport] = row["elo_after"]
-        global_counts[sport] = row["matches_played"]
+        # Each merged ghost player_id was an independent profile, so its
+        # tournament-local matches_played count must be SUMMED across all
+        # tournaments to get the true total. Overwriting (the previous bug)
+        # left only the last tournament's count, e.g. 7 instead of 10+7=17.
+        community_counts.setdefault(cid, defaultdict(int))[sport] += row["matches_played"]
+        global_counts[sport] += row["matches_played"]
         history_updates.append((row["elo_before"], row["elo_after"], primary_profile_id, row["tournament_id"]))
 
     with get_db() as conn:
