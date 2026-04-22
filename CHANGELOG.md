@@ -1,3 +1,9 @@
+## v1.9.4 (2026-04-22)
+
+### Fix
+
+- **player-hub**: fix number of matches when recalculating elo
+
 ## v1.9.3 (2026-04-22)
 
 ### Fix
