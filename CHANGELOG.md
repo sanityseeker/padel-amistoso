@@ -1,3 +1,9 @@
+## v1.9.5 (2026-04-22)
+
+### Fix
+
+- **group-stage**: return sticky admin management bar
+
 ## v1.9.4 (2026-04-22)
 
 ### Fix
