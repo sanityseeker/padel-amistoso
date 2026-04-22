@@ -1266,9 +1266,8 @@ details.card[open] > summary .player-codes-chevron { transform: rotate(90deg); }
 
 /* ── GP ops overview ── */
 .gp-ops-header {
-  position: sticky;
-  top: 0.4rem;
-  z-index: 20;
+  /* Not sticky: the group quick-nav bar is the only pinned element so it
+     stays visible while scrolling through groups. */
 }
 .gp-ops-header-top {
   display: flex;
@@ -3301,7 +3300,6 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   .gp-review-row { flex-direction: column; align-items: stretch; }
   .gp-review-row-teams { white-space: normal; overflow: visible; text-overflow: clip; }
   .gp-review-row .btn { width: 100%; }
-  .gp-ops-header { top: 0.25rem; }
   .sitout-item { padding: 0.5rem 0.6rem; font-size: 0.9rem; min-height: 44px; }
   .tab-btn { min-height: 44px; font-size: 0.9rem; padding: 0.5rem 0.75rem; }
   .proposal-card { min-width: 100%; max-width: 100%; }
