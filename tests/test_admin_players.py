@@ -43,6 +43,7 @@ def _insert_profile(
     email: str = "test@example.com",
     contact: str = "",
     passphrase: str | None = None,
+    is_ghost: bool = False,
 ) -> str:
     """Insert a player_profiles row and return the profile ID."""
     profile_id = str(uuid.uuid4())
@@ -50,8 +51,9 @@ def _insert_profile(
     now = datetime.now(timezone.utc).isoformat()
     with db_mod.get_db() as conn:
         conn.execute(
-            "INSERT INTO player_profiles (id, passphrase, name, email, contact, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (profile_id, passphrase, name, email, contact, now),
+            "INSERT INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (profile_id, passphrase, name, email, contact, now, 1 if is_ghost else 0),
         )
     return profile_id
 
@@ -470,6 +472,44 @@ class TestDeleteProfile:
     def test_delete_profile_not_found(self, client: TestClient, auth_headers: dict) -> None:
         resp = client.delete("/api/admin/player-profiles/non-existent-profile", headers=auth_headers)
         assert resp.status_code == 404
+
+    def test_delete_ghost_profile_purges_secrets_and_elo_log(self, client: TestClient, auth_headers: dict) -> None:
+        """Deleting a ghost must remove its participations entirely so the
+        player no longer reappears as a 'past participant'."""
+        ghost_id = _insert_profile(name="1", email="", is_ghost=True)
+        _insert_tournament("t-ghost")
+        _insert_player_secret("t-ghost", "p-ghost-1", "1", profile_id=ghost_id, tournament_name="Test")
+        _insert_history(ghost_id, "t-ghost", "p-ghost-1", player_name="1", tournament_name="Test")
+
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_elo_log
+                   (tournament_id, sport, match_id, player_id, match_order,
+                    elo_before, elo_after, elo_delta, match_payload, updated_at)
+                   VALUES ('t-ghost', 'padel', 'm1', 'p-ghost-1', 0,
+                           1000, 1010, 10, '{}', ?)""",
+                (now,),
+            )
+
+        resp = client.delete(f"/api/admin/player-profiles/{ghost_id}", headers=auth_headers)
+        assert resp.status_code == 200
+
+        with db_mod.get_db() as conn:
+            secret = conn.execute(
+                "SELECT 1 FROM player_secrets WHERE tournament_id = 't-ghost' AND player_id = 'p-ghost-1'"
+            ).fetchone()
+            elo_log = conn.execute(
+                "SELECT 1 FROM player_elo_log WHERE tournament_id = 't-ghost' AND player_id = 'p-ghost-1'"
+            ).fetchone()
+
+        assert secret is None, "ghost participation should be fully purged, not unlinked"
+        assert elo_log is None, "ghost ELO log entries should be purged"
+
+        # And the past-participants endpoint must no longer surface this player.
+        resp = client.get("/api/admin/player-profiles/past-participants?q=1", headers=auth_headers)
+        assert resp.status_code == 200
+        assert all(p["player_id"] != "p-ghost-1" for p in resp.json())
 
 
 # ────────────────────────────────────────────────────────────────────────────

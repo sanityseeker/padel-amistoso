@@ -343,26 +343,18 @@ def _upsert_default_club_player_rows(
 
 
 def _sync_club_players_from_community(conn, club_id: str, community_id: str) -> list[tuple[str, str]]:
-    """Backfill club player rows from community-linked and past tournament players.
+    """Backfill club player rows from participants in this club's tournaments.
+
+    Automatic addition is scoped to tournaments where ``t.club_id = club_id``
+    (i.e. actual club events), not the broader community.  Hub-profile
+    discovery / search across the whole community is handled separately by
+    ``search_club_player_candidates``.
 
     Returns:
         List of ``(profile_id, player_id)`` tuples for ghost profiles that need
         a retroactive ELO transfer (either newly created or missing community ELO).
     """
-    # 1) Existing hub profiles known in this community.
-    community_profiles = conn.execute(
-        """
-        SELECT DISTINCT pce.profile_id
-        FROM profile_community_elo pce
-        JOIN player_profiles pp ON pp.id = pce.profile_id
-        WHERE pce.community_id = ?
-        """,
-        (community_id,),
-    ).fetchall()
-    for row in community_profiles:
-        _upsert_default_club_player_rows(conn, row["profile_id"], club_id, community_id)
-
-    # 2) Profiles already linked through tournament participation in this community.
+    # 1) Profiles already linked through tournament participation in this club.
     linked_profile_rows = conn.execute(
         """
         SELECT DISTINCT profile_id
@@ -370,7 +362,7 @@ def _sync_club_players_from_community(conn, club_id: str, community_id: str) -> 
             SELECT ps.profile_id AS profile_id
             FROM player_secrets ps
             JOIN tournaments t ON t.id = ps.tournament_id
-            WHERE t.community_id = ?
+            WHERE t.club_id = ?
               AND ps.profile_id IS NOT NULL
               AND ps.profile_id != ''
             UNION
@@ -378,17 +370,18 @@ def _sync_club_players_from_community(conn, club_id: str, community_id: str) -> 
             FROM player_history ph
             JOIN tournaments t ON t.id = ph.entity_id
             WHERE ph.entity_type = 'tournament'
-              AND t.community_id = ?
+              AND t.club_id = ?
               AND ph.profile_id IS NOT NULL
               AND ph.profile_id != ''
         ) u
         """,
-        (community_id, community_id),
+        (club_id, club_id),
     ).fetchall()
     for row in linked_profile_rows:
         _upsert_default_club_player_rows(conn, row["profile_id"], club_id, community_id)
 
-    # 3) Unlinked historical participants become ghost profiles and are added too.
+    # 2) Unlinked historical participants in this club's tournaments become
+    # ghost profiles and are added (hidden by default).
     unlinked_player_ids = conn.execute(
         """
         SELECT DISTINCT player_id
@@ -396,18 +389,18 @@ def _sync_club_players_from_community(conn, club_id: str, community_id: str) -> 
             SELECT ps.player_id AS player_id
             FROM player_secrets ps
             JOIN tournaments t ON t.id = ps.tournament_id
-            WHERE t.community_id = ?
+            WHERE t.club_id = ?
               AND (ps.profile_id IS NULL OR ps.profile_id = '')
             UNION
             SELECT ph.player_id AS player_id
             FROM player_history ph
             JOIN tournaments t ON t.id = ph.entity_id
             WHERE ph.entity_type = 'tournament'
-              AND t.community_id = ?
+              AND t.club_id = ?
               AND (ph.profile_id IS NULL OR ph.profile_id = '')
         ) u
         """,
-        (community_id, community_id),
+        (club_id, club_id),
     ).fetchall()
 
     needs_elo_transfer: list[tuple[str, str]] = []
@@ -1097,6 +1090,10 @@ async def add_player_to_club(club_id: str, req: ClubPlayerAdd, user: User = Depe
                 """,
                 (profile_id, club_id, sport),
             )
+        # Seed ELO/matches from this community's snapshot (no-op when the row
+        # already has matches recorded).  This applies to both hub profiles
+        # and ghosts so explicit add mirrors the auto-sync seeding.
+        _upsert_default_club_player_rows(conn, profile_id, club_id, community_id)
         # Ensure the row is visible in the main roster (un-hide if it was a
         # ghost that had been auto-synced with hidden=1).
         conn.execute(

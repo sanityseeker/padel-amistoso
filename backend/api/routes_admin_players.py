@@ -785,20 +785,52 @@ async def admin_delete_profile(
     """Permanently delete a Player Hub profile and all profile-bound records.
 
     This removes the profile row and all derived profile data (history, ELO,
-    and cached path data). Active tournament participations are preserved by
-    unlinking them (``profile_id = NULL``) so tournaments remain intact.
+    and cached path data).
+
+    For **real (non-ghost) profiles** active tournament participations are
+    preserved by unlinking them (``profile_id = NULL``) so tournaments remain
+    intact and the player can later be re-linked.
+
+    For **ghost profiles** (which have no real owner) all linked
+    ``player_secrets`` rows and their per-tournament ELO log entries are also
+    purged. Without this, orphaned secrets keep the deleted players surfacing
+    in the "past participants" suggestions and ELO history forever.
     """
     with get_db() as conn:
-        existing = conn.execute("SELECT id FROM player_profiles WHERE id = ?", (profile_id,)).fetchone()
+        existing = conn.execute("SELECT id, is_ghost FROM player_profiles WHERE id = ?", (profile_id,)).fetchone()
         if existing is None:
             raise HTTPException(404, "Profile not found")
+        is_ghost = bool(existing["is_ghost"])
 
+        # Tournaments whose secret cache must be invalidated regardless of branch.
         active_rows = conn.execute(
             "SELECT DISTINCT tournament_id FROM player_secrets WHERE profile_id = ?",
             (profile_id,),
         ).fetchall()
 
-        conn.execute("UPDATE player_secrets SET profile_id = NULL WHERE profile_id = ?", (profile_id,))
+        if is_ghost:
+            # Collect every (tournament_id, player_id) the ghost ever participated as,
+            # from both active and finished participations, plus any history rows.
+            participation_rows = conn.execute(
+                """
+                SELECT tournament_id, player_id FROM player_secrets WHERE profile_id = ?
+                UNION
+                SELECT entity_id AS tournament_id, player_id FROM player_history
+                 WHERE profile_id = ? AND entity_type = 'tournament'
+                """,
+                (profile_id, profile_id),
+            ).fetchall()
+
+            for row in participation_rows:
+                conn.execute(
+                    "DELETE FROM player_elo_log WHERE tournament_id = ? AND player_id = ?",
+                    (row["tournament_id"], row["player_id"]),
+                )
+
+            conn.execute("DELETE FROM player_secrets WHERE profile_id = ?", (profile_id,))
+        else:
+            conn.execute("UPDATE player_secrets SET profile_id = NULL WHERE profile_id = ?", (profile_id,))
+
         conn.execute("DELETE FROM player_history WHERE profile_id = ?", (profile_id,))
         conn.execute("DELETE FROM profile_community_elo WHERE profile_id = ?", (profile_id,))
         conn.execute("DELETE FROM profile_club_elo WHERE profile_id = ?", (profile_id,))

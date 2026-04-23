@@ -824,8 +824,13 @@ class TestClubAddRemovePlayer:
         assert row is not None
         assert row["has_hub_profile"] is True
 
-    def test_list_players_auto_syncs_profile_from_community_elo(self, client, auth_headers) -> None:
-        """Club player list auto-populates members from profile_community_elo."""
+    def test_list_players_does_not_auto_sync_from_community_elo(self, client, auth_headers) -> None:
+        """Hub profiles in the community are NOT auto-added to the club roster.
+
+        Automatic addition is scoped to participation in this club's events
+        only.  Cross-community hub profiles are surfaced via the
+        ``/players/candidates`` search instead.
+        """
         comm = _create_community(client, auth_headers)
         club = _create_club(client, auth_headers, comm["id"])
 
@@ -841,15 +846,7 @@ class TestClubAddRemovePlayer:
 
         res = client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers)
         assert res.status_code == 200
-        row = next((p for p in res.json() if p["profile_id"] == "prof_auto"), None)
-        assert row is not None
-        assert row["name"] == "New Player"
-        # Snapshot ELO from community is preserved as fallback when the player
-        # has no logged matches in this club yet.
-        assert row["elo_padel"] == 1234.0
-        # Matches are derived live from player_elo_log scoped to this club's
-        # tournaments, so community-wide matches do not leak in.
-        assert row["matches_padel"] == 0
+        assert not any(p["profile_id"] == "prof_auto" for p in res.json())
 
     def test_list_players_reflects_club_tournament_matches(self, client, auth_headers) -> None:
         """Club leaderboard reflects matches and ELO from this club's tournaments live."""
@@ -913,10 +910,10 @@ class TestClubAddRemovePlayer:
         with get_db() as conn:
             conn.execute(
                 """
-                INSERT INTO tournaments (id, name, type, owner, tournament_blob, sport, community_id)
-                VALUES (?, ?, 'mexicano', 'admin', X'80', 'padel', ?)
+                INSERT INTO tournaments (id, name, type, owner, tournament_blob, sport, community_id, club_id)
+                VALUES (?, ?, 'mexicano', 'admin', X'80', 'padel', ?, ?)
                 """,
-                ("t_auto_ghost", "Auto Ghost", comm["id"]),
+                ("t_auto_ghost", "Auto Ghost", comm["id"], club["id"]),
             )
             conn.execute(
                 """
