@@ -102,7 +102,7 @@ async function loadTournaments() {
     _adminClubs = clubsList;
     const nonArchivedRegList = regList.filter(r => !r.archived);
     const archivedRegList = regList.filter(r => r.archived);
-    const visibleArchivedRegList = archivedRegList;
+    let visibleArchivedRegList = archivedRegList;
     _tournamentMeta = {};
     for (const tournament of list) _tournamentMeta[tournament.id] = tournament;
     _registrations = nonArchivedRegList;
