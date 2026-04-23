@@ -102,12 +102,11 @@ async function loadTournaments() {
     _adminClubs = clubsList;
     const nonArchivedRegList = regList.filter(r => !r.archived);
     const archivedRegList = regList.filter(r => r.archived);
-    let visibleArchivedRegList = _showArchivedRegistrations ? archivedRegList : [];
+    const visibleArchivedRegList = archivedRegList;
     _tournamentMeta = {};
     for (const tournament of list) _tournamentMeta[tournament.id] = tournament;
     _registrations = nonArchivedRegList;
     const el = document.getElementById('tournament-list');
-    const archivedToggleEl = document.getElementById('archived-lobbies-toggle');
     let active = list.filter(tr => tr.phase !== 'finished');
     let finished = list.filter(tr => tr.phase === 'finished');
     // Active section: open lobbies only.
@@ -255,22 +254,6 @@ async function loadTournaments() {
         html: `${finishedTournamentsHtml}${finishedLobbiesHtml}${archivedTabHtml}`,
       };
     };
-    const archivedToggle = showArchivedToggle ? `
-      <div class="archived-lobbies-toggle-wrap">
-        <button
-          type="button"
-          class="archived-lobbies-toggle${_showArchivedRegistrations ? ' pressed' : ''}"
-          onclick="_setShowArchivedRegistrations(${_showArchivedRegistrations ? 'false' : 'true'})"
-          aria-pressed="${_showArchivedRegistrations ? 'true' : 'false'}"
-        >
-          <span class="archived-lobbies-toggle-state">${_showArchivedRegistrations ? '✓' : '○'}</span>
-          <span class="archived-lobbies-toggle-label">${t('txt_reg_show_archived')}</span>
-          <span class="archived-lobbies-count">${archivedLobbiesCount}</span>
-        </button>
-      </div>
-    ` : '';
-    if (archivedToggleEl) archivedToggleEl.innerHTML = archivedToggle;
-
     const finishedSection = _renderFinishedSection();
     const hasAnyItems = active.length || activeLobbies.length || finishedSection.hasContent;
 
@@ -288,12 +271,7 @@ async function loadTournaments() {
     // Open lobbies first, then active tournaments, then finished section with a divider
     let html = activeLobbies.map(_renderLobbyCard).join('');
     html += active.map(renderTournamentCard).join('');
-    if (finishedSection.hasContent) {
-      if (active.length || activeLobbies.length) {
-        html += `<div class="finished-section-divider"><span>${t('txt_txt_finished')}</span></div>`;
-      }
-      html += finishedSection.html;
-    }
+    html += finishedSection.html;
     el.innerHTML = html;
   } catch (e) { console.error(e); }
 }

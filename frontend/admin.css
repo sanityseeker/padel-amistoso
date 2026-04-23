@@ -637,9 +637,24 @@ details.card[open] > summary .player-codes-chevron { transform: rotate(90deg); }
 .archived-lobbies-summary {
   cursor: pointer;
   user-select: none;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 600;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  list-style: none;
+  padding: 0.15rem 0;
 }
+.archived-lobbies-summary::-webkit-details-marker { display: none; }
+.archived-lobbies-summary::before {
+  content: '▶';
+  font-size: 0.62rem;
+  transition: transform 0.15s;
+  display: inline-block;
+}
+details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
+.archived-lobbies-summary:hover { color: var(--text); }
 .archived-lobbies-body { margin-top: 0.5rem; }
 
 .tournaments-empty-state { text-align: center; padding: 2rem 1rem; color: var(--text-muted); }
@@ -1913,65 +1928,6 @@ details.card[open] > summary .player-codes-chevron { transform: rotate(90deg); }
 :root[data-theme="light"] .badge-lobby-open { background: rgba(22,163,74,0.12); color: #15803d; border: 1px solid rgba(22,163,74,0.3); }
 .badge-lobby-closed { background: rgba(239,68,68,0.18); color: #f87171; border: 1px solid rgba(239,68,68,0.35); }
 :root[data-theme="light"] .badge-lobby-closed { background: rgba(220,38,38,0.1); color: #dc2626; border: 1px solid rgba(220,38,38,0.25); }
-
-.finished-section-divider {
-  display: block;
-  margin: 2rem 0 0.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.archived-lobbies-toggle-wrap {
-  margin: 0.1rem 0 0.2rem;
-  display: flex;
-  justify-content: flex-start;
-}
-.archived-lobbies-toggle {
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  color: var(--text-muted);
-  border-radius: 999px;
-  padding: 0.3rem 0.65rem;
-  font-size: 0.77rem;
-  line-height: 1.2;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.44rem;
-  cursor: pointer;
-  transition: border-color 0.16s, background 0.16s, color 0.16s, box-shadow 0.16s;
-}
-.archived-lobbies-toggle:hover {
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
-  color: var(--text);
-}
-.archived-lobbies-toggle.pressed {
-  border-color: color-mix(in srgb, var(--accent) 62%, var(--border));
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
-}
-.archived-lobbies-toggle-state {
-  font-size: 0.84rem;
-  line-height: 1;
-}
-.archived-lobbies-toggle-label {
-  font-weight: 600;
-}
-.archived-lobbies-count {
-  min-width: 1.1rem;
-  padding: 0 0.38rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-  font-weight: 700;
-  text-align: center;
-  color: inherit;
-}
 
 .alert { padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
 .alert-info { background: rgba(59,130,246,0.15); border: 1px solid var(--accent); }
