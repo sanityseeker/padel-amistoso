@@ -1,3 +1,9 @@
+## v1.9.6 (2026-04-23)
+
+### Fix
+
+- **players**: allow deleting ghost profiles; scope club players to past participants
+
 ## v1.9.5 (2026-04-22)
 
 ### Fix
