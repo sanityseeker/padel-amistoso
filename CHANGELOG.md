@@ -1,3 +1,9 @@
+## v1.9.8 (2026-04-23)
+
+### Fix
+
+- **admin**: hotfix admin interface
+
 ## v1.9.7 (2026-04-23)
 
 ### Fix
