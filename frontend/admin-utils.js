@@ -525,7 +525,16 @@ async function _fetchSchema(prefix, apiUrl, defaultFilename) {
       a.click();
       result.innerHTML = `<em>${t('txt_txt_pdf_downloaded')}</em>`;
     } else if (fmt === 'svg') {
+      // Inline the SVG, then strip its hardcoded width/height attributes and
+      // tag it with .bracket-svg so the CSS fit-to-screen rules apply (the
+      // backend emits explicit pixel dimensions that would otherwise overflow).
       result.innerHTML = await res.text();
+      const svgEl = result.querySelector('svg');
+      if (svgEl) {
+        svgEl.removeAttribute('width');
+        svgEl.removeAttribute('height');
+        svgEl.classList.add('bracket-svg');
+      }
     } else {
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);

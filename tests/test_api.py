@@ -232,6 +232,65 @@ class TestGroupPlayoffAPI:
         r = client.delete("/api/tournaments/fake", headers=auth_headers)
         assert r.status_code == 404
 
+    def test_ghost_profiles_listing_and_purge(self, client, auth_headers):
+        """Deleting with ?purge_ghosts=true removes ghost profiles linked to the tournament."""
+        import uuid
+        from datetime import datetime, timezone
+
+        import backend.api.db as db_mod
+
+        tid = self._create(client, auth_headers)
+
+        ghost_id = str(uuid.uuid4())
+        real_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "INSERT INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost)"
+                " VALUES (?, ?, ?, '', '', ?, 1)",
+                (ghost_id, f"pp-{uuid.uuid4().hex[:12]}", "Ghosty McGhost", now),
+            )
+            conn.execute(
+                "INSERT INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost)"
+                " VALUES (?, ?, ?, '', '', ?, 0)",
+                (real_id, f"pp-{uuid.uuid4().hex[:12]}", "Real Player", now),
+            )
+            for pid, pname, profile_id in (
+                ("p-ghost", "Ghosty McGhost", ghost_id),
+                ("p-real", "Real Player", real_id),
+            ):
+                conn.execute(
+                    """INSERT INTO player_secrets
+                       (tournament_id, player_id, player_name, passphrase, token, contact, email, profile_id)
+                       VALUES (?, ?, ?, ?, ?, '', '', ?)""",
+                    (tid, pid, pname, f"ps-{uuid.uuid4().hex[:8]}", uuid.uuid4().hex, profile_id),
+                )
+
+        # Listing endpoint reports only the ghost.
+        r = client.get(f"/api/tournaments/{tid}/ghost-profiles", headers=auth_headers)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["count"] == 1
+        assert body["profiles"][0]["id"] == ghost_id
+        assert body["profiles"][0]["name"] == "Ghosty McGhost"
+
+        # Without purge_ghosts the ghost profile row survives.
+        # Re-create a separate tournament to test the default branch.
+        tid2 = self._create(client, auth_headers)
+        r = client.delete(f"/api/tournaments/{tid2}", headers=auth_headers)
+        assert r.status_code == 200
+        assert r.json()["ghosts_purged"] == 0
+        with db_mod.get_db() as conn:
+            assert conn.execute("SELECT 1 FROM player_profiles WHERE id = ?", (ghost_id,)).fetchone() is not None
+
+        # With purge_ghosts the ghost is gone, the real profile remains.
+        r = client.delete(f"/api/tournaments/{tid}?purge_ghosts=true", headers=auth_headers)
+        assert r.status_code == 200
+        assert r.json()["ghosts_purged"] == 1
+        with db_mod.get_db() as conn:
+            assert conn.execute("SELECT 1 FROM player_profiles WHERE id = ?", (ghost_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM player_profiles WHERE id = ?", (real_id,)).fetchone() is not None
+
 
 # ── Mexicano API ──────────────────────────────────────────
 

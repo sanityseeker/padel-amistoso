@@ -12,6 +12,8 @@ from backend.api.db import get_db
 from backend.api.player_secret_store import (
     create_secrets_for_tournament as real_create_secrets_for_tournament,
     delete_secrets_for_tournament as real_delete_secrets_for_tournament,
+    get_secrets_for_tournament as real_get_secrets_for_tournament,
+    invalidate_secrets_cache,
 )
 from backend.tournaments.player_secrets import (
     PlayerSecret,
@@ -155,6 +157,36 @@ class TestDeleteSecretsForTournament:
                 ("profile-1", tid),
             ).fetchone()
             assert history is not None
+
+    def test_get_secrets_returns_finished_rows(self):
+        """Organizer endpoints (admin codes panel, bulk emails) must keep
+        listing player secrets after the tournament finishes — finished rows
+        are intentionally preserved by ``delete_secrets_for_tournament``."""
+        tid = "t-finished-still-visible"
+        with get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (tid, "p-a", "Alice", "pp-a", "tok-a", None),
+            )
+            conn.execute(
+                """
+                INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (tid, "p-b", "Bob", "pp-b", "tok-b", None),
+            )
+        invalidate_secrets_cache(tid)
+
+        real_delete_secrets_for_tournament(tid, entity_name="Done Cup")
+        invalidate_secrets_cache(tid)
+
+        secrets = real_get_secrets_for_tournament(tid)
+        assert set(secrets.keys()) == {"p-a", "p-b"}
+        assert secrets["p-a"]["passphrase"] == "pp-a"
+        assert secrets["p-b"]["name"] == "Bob"
 
 
 class TestCreateSecretsAutoLinksProfile:

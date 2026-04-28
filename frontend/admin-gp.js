@@ -35,16 +35,9 @@ async function renderGP() {
       matches: phaseMatches,
     });
     let html = '';
-    html += _renderTvControls(tvSettings, hasCourts);
-    html += _renderEmailControls(emailSettings);
-    html += _renderPlayerCodes(playerSecrets);
-    html += _renderCollaboratorsSection(collabData?.collaborators || []);
     html += _renderGpOpsHeader(gpOpsStats);
-    html += _renderGpReviewQueueCard(phaseMatches);
-    if (status.phase === 'playoffs') {
-      html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${t('txt_txt_play_offs')}</span></div>`;
-    }
-
+    // Pending court assignments are the most important admin focus, so they
+    // appear immediately under the status bar.
     const groupPending = _sortTbdLast(Object.values(groups.matches)
       .flat()
       .filter(m => m.status !== 'completed'));
@@ -55,18 +48,12 @@ async function renderGP() {
       status.phase === 'groups' ? t('txt_txt_court_assignments_group_stage') : t('txt_txt_court_assignments_play_offs'),
       status.assign_courts !== false,
     );
-
-    const groupFormatLabel = _gpScoreMode['gp-group'] === 'sets' ? `🎾 ${t('txt_txt_sets')}` : t('txt_txt_points_label');
-    if (status.phase === 'groups') {
-      html += `<div class="card">`;
-      html += `<h3>${t('txt_txt_group_stage_input_format')}</h3>`;
-      html += `<div class="score-mode-toggle">`;
-      html += `<button type="button" class="${_gpScoreMode['gp-group'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('gp-group','points')">${t('txt_txt_points_label')}</button>`;
-      html += `<button type="button" class="${_gpScoreMode['gp-group'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('gp-group','sets')">🎾 ${t('txt_txt_sets')}</button>`;
-      html += `</div>`;
-      html += `</div>`;
+    html += _renderGpReviewQueueCard(phaseMatches);
+    if (status.phase === 'playoffs') {
+      html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${t('txt_txt_play_offs')}</span></div>`;
     }
 
+    const groupFormatLabel = _gpScoreMode['gp-group'] === 'sets' ? `🎾 ${t('txt_txt_sets')}` : t('txt_txt_points_label');
     if (status.champion) {
       html += `<div class="alert alert-success">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
     }
@@ -154,14 +141,6 @@ async function renderGP() {
         html += `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,proposeGpPlayoffs)">🏆 ${t('txt_txt_start_playoffs')} →</button>`;
         html += `</div>`;
         html += `</div>`;
-      } else {
-        const total = allGroupMatches.length;
-        const done = total - pending.length;
-        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-        html += `<div id="gp-group-progress-section" class="alert alert-info">${t('txt_txt_n_match_remaining', { n: pending.length })} (${done}/${total})<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div></div>`;
-        if (window._emailConfigured) {
-          html += `<div class="notify-round-wrap"><button type="button" class="btn btn-sm" onclick="withLoading(this,_sendNextRoundEmails)">📧 ${t('txt_email_notify_round')}</button></div>`;
-        }
       }
     }
 
@@ -172,16 +151,7 @@ async function renderGP() {
       html += `<div class="card">`;
       html += `<div class="playoff-header-row">`;
       html += `<h2 class="playoff-header-title">${t('txt_txt_play_offs')}</h2>`;
-      if (window._emailConfigured) {
-        html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,_sendNextRoundEmails)">📧 ${t('txt_email_notify_round')}</button>`;
-      }
       html += `</div>`;
-      html += `<div class="score-format-row">`;
-      html += `<span class="score-format-label">${t('txt_txt_score_format')}:</span>`;
-      html += `<div class="score-mode-toggle">`;
-      html += `<button type="button" class="${_gpScoreMode['gp-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('gp-playoff','points')">${t('txt_txt_points_label')}</button>`;
-      html += `<button type="button" class="${_gpScoreMode['gp-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('gp-playoff','sets')">🎾 ${t('txt_txt_sets')}</button>`;
-      html += `</div></div>`;
       if (playoffs && playoffs.matches) {
         for (const m of _sortTbdLast(playoffs.matches)) {
           html += matchRow(m, 'gp-playoff');
@@ -189,6 +159,24 @@ async function renderGP() {
       }
       html += `</div>`;
     }
+
+    // Unified Settings card at the bottom of the page.
+    const scoringStages = [];
+    if (status.phase === 'groups') {
+      scoringStages.push({ key: 'gp-group', label: t('txt_txt_group_stage') });
+    }
+    if (status.phase === 'playoffs' || status.phase === 'finished') {
+      scoringStages.push({ key: 'gp-playoff', label: t('txt_txt_play_offs') });
+    }
+    html += _renderSettingsCard({
+      tvSettings,
+      emailSettings,
+      hasCourts,
+      isMexicano: false,
+      scoringStages,
+      playerSecrets,
+      collaborators: collabData?.collaborators || [],
+    });
 
     if (currentTid !== _renderTid) return;
     el.innerHTML = html;
@@ -243,12 +231,13 @@ function _renderGpOpsHeader(stats) {
   };
   const actionLabel = actionLabelMap[stats.nextAction] || actionLabelMap.none;
   return `
-    <div class="card gp-ops-header" id="gp-ops-header">
+    <div class="card gp-ops-header tournament-status-bar" id="gp-ops-header">
       <div class="gp-ops-header-top">
-        <h3>${t('txt_txt_ops_overview')}</h3>
+        <h3>${t('txt_admin_status_phase')}</h3>
         <div class="gp-ops-next-action">
           <span>${t('txt_txt_next_action')}:</span>
           <button type="button" class="btn btn-sm" ${stats.nextAction === 'none' ? 'disabled' : ''} onclick="_gpFocusNextAction('${stats.nextAction}')">${esc(actionLabel)}</button>
+          <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">⚙ ${t('txt_admin_status_jump_settings')}</button>
         </div>
       </div>
       <div class="gp-ops-stats-grid">
@@ -402,11 +391,9 @@ async function renderPO() {
       matches: poMatches,
     });
     let html = '';
-    html += _renderTvControls(tvSettings, hasCourts);
-    html += _renderEmailControls(emailSettings);
-    html += _renderPlayerCodes(playerSecrets);
-    html += _renderCollaboratorsSection(collabData?.collaborators || []);
     html += _renderPoOpsHeader(poOpsStats);
+    const pending = _sortTbdLast((playoffs.pending || []).filter(m => m.status !== 'completed'));
+    html += _renderCourtAssignmentsCard(pending, t('txt_txt_court_assignments_play_offs'), status.assign_courts !== false);
     html += _renderPoReviewQueueCard(poMatches);
 
     if (status.champion) {
@@ -424,27 +411,16 @@ async function renderPO() {
       html += `</div>`;
     }
 
-    const pending = _sortTbdLast((playoffs.pending || []).filter(m => m.status !== 'completed'));
-    html += _renderCourtAssignmentsCard(pending, t('txt_txt_court_assignments_play_offs'), status.assign_courts !== false);
-
     html += _schemaCardHtml('po-playoff-schema', t('txt_txt_play_off_bracket'), 'generatePoPlayoffSchema');
 
     html += `<div class="card">`;
     html += `<div class="playoff-header-row">`;
     html += `<h2 class="playoff-header-title">${t('txt_txt_play_offs')}</h2>`;
-    if (window._emailConfigured) {
-      html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,_sendNextRoundEmails)">📧 ${t('txt_email_notify_round')}</button>`;
-    }
     html += `</div>`;
-    html += `<div class="score-format-row">`;
-    html += `<span class="score-format-label">${t('txt_txt_score_format')}:</span>`;
-    html += `<div class="score-mode-toggle">`;
-    html += `<button type="button" class="${_gpScoreMode['po-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('po-playoff','points')">${t('txt_txt_points_label')}</button>`;
-    html += `<button type="button" class="${_gpScoreMode['po-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('po-playoff','sets')">🎾 ${t('txt_txt_sets')}</button>`;
-    html += `</div></div>`;
 
+    const _schFmt = (tvSettings && tvSettings.schema_format) || 'svg';
     html += `<details id="po-inline-bracket" class="bracket-collapse bracket-inline" open><summary class="bracket-collapse-summary"><span class="bracket-chevron bracket-chevron-anim">▶</span>${t('txt_txt_play_off_bracket')}</summary>`;
-    html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/po/playoffs-schema?fmt=png&_t=${Date.now()}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'">`;
+    html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/po/playoffs-schema?fmt=${_schFmt}&_t=${Date.now()}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'">`;
     html += `</details>`;
     if (playoffs.matches) {
       for (const m of _sortTbdLast(playoffs.matches)) {
@@ -452,6 +428,16 @@ async function renderPO() {
       }
     }
     html += `</div>`;
+
+    html += _renderSettingsCard({
+      tvSettings,
+      emailSettings,
+      hasCourts,
+      isMexicano: false,
+      scoringStages: [{ key: 'po-playoff', label: t('txt_txt_play_offs') }],
+      playerSecrets,
+      collaborators: collabData?.collaborators || [],
+    });
 
     if (currentTid !== _renderTid) return;
     el.innerHTML = html;
@@ -472,12 +458,13 @@ function _renderPoOpsHeader(stats) {
   };
   const actionLabel = actionLabelMap[stats.nextAction] || actionLabelMap.none;
   return `
-    <div class="card gp-ops-header" id="po-ops-header">
+    <div class="card gp-ops-header tournament-status-bar" id="po-ops-header">
       <div class="gp-ops-header-top">
-        <h3>${t('txt_txt_ops_overview')}</h3>
+        <h3>${t('txt_admin_status_phase')}</h3>
         <div class="gp-ops-next-action">
           <span>${t('txt_txt_next_action')}:</span>
           <button type="button" class="btn btn-sm" ${stats.nextAction === 'none' ? 'disabled' : ''} onclick="_poFocusNextAction('${stats.nextAction}')">${esc(actionLabel)}</button>
+          <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">⚙ ${t('txt_admin_status_jump_settings')}</button>
         </div>
       </div>
       <div class="gp-ops-stats-grid">
@@ -1024,13 +1011,6 @@ async function _surgicalScoreUpdate(matchId, ctx) {
               card.outerHTML = matchRow(updatedMatch, 'gp-group');
               // Re-apply filter if active
               if (_gpMatchFilterState !== 'all') _applyMatchFilter(_gpMatchFilterState);
-              const total = allGroupMatches.length;
-              const done = total - totalPending;
-              const pct = Math.round((done / total) * 100);
-              const progressEl = document.getElementById('gp-group-progress-section');
-              if (progressEl) {
-                progressEl.innerHTML = `${t('txt_txt_n_match_remaining', { n: totalPending })} (${done}/${total})<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div>`;
-              }
               // Update per-group match summary counts and nav-bar indicators
               for (const [gn, gm] of Object.entries(groups.matches)) {
                 const gPending = gm.filter(mm => mm.status !== 'completed').length;
@@ -1100,13 +1080,6 @@ async function _surgicalScoreUpdate(matchId, ctx) {
               card.outerHTML = matchRow(updatedMatch, 'mex');
               window._mexStatusLeaderboard = status.leaderboard || [];
               _renderMexLeaderboard();
-              const totalMex = matches.current_matches.length;
-              const doneMex = totalMex - pending;
-              const pctMex = totalMex > 0 ? Math.round((doneMex / totalMex) * 100) : 0;
-              const progressEl = document.getElementById('mex-round-progress');
-              if (progressEl) {
-                progressEl.innerHTML = `${t('txt_txt_n_match_remaining', { n: pending })} (${doneMex}/${totalMex})<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pctMex}%"></div></div>`;
-              }
             }
           }
         }

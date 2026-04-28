@@ -1,5 +1,24 @@
 let _playerSecrets = {};
 
+/**
+ * Render the Hub link/unlink cell for a player row.
+ * Three states collapse to two actions:
+ *   - linked to a real Hub profile  -> grey "Unlink" button
+ *   - linked to a ghost profile     -> blue  "Link" button (opens search; tooltip explains ghost status)
+ *   - not linked                    -> blue  "Link" button
+ * The same helper is used by the initial render and by the in-place DOM updates
+ * after _hubLinkProfile / _hubUnlink so the markup stays consistent.
+ */
+function _renderHubLinkCellInner(pid, info) {
+  const _isLinked = Boolean(info && info.profile_id);
+  const _isGhost  = _isLinked && String(info.profile_id).startsWith('ghost_');
+  if (_isLinked && !_isGhost) {
+    return `<button type="button" class="btn btn-sm btn-muted player-codes-action-btn pc-hub-link-btn" onclick="_hubUnlink('${escAttr(pid)}')" title="${escAttr(t('txt_hub_linked'))}">${esc(t('txt_hub_unlink_btn'))}</button>`;
+  }
+  const _title = _isGhost ? t('txt_pc_past_participant_tooltip') : t('txt_hub_link_help');
+  return `<button type="button" class="btn btn-sm btn-primary player-codes-action-btn pc-hub-link-btn" onclick="_hubOpenSearch('${escAttr(pid)}')" title="${escAttr(_title)}">${esc(t('txt_hub_link_btn'))}</button>`;
+}
+
 /** Fetch player secrets from the API and cache them */
 async function _loadPlayerSecrets() {
   if (!currentTid) return {};
@@ -11,31 +30,28 @@ async function _loadPlayerSecrets() {
 }
 
 /**
- * Render the collapsible Player Codes panel for the admin view.
- * secrets is { player_id: { name, passphrase, token } }
+ * Body-only player-codes panel for the unified Settings card.
+ * Returns the inner table + per-row controls without the outer
+ * `<details class="card">` wrapper. The bulk "Send all" action and the
+ * organizer-message composer are intentionally omitted — they live in the
+ * Communications sub-tab to avoid duplicated DOM ids.
  */
-function _renderPlayerCodes(secrets) {
+function _renderPlayerCodesBody(secrets) {
   if (!currentTid) return '';
   const entries = Object.entries(secrets || {});
   const _showEmail = window._emailConfigured;
-
-  let html = `<details class="card" id="player-codes-panel">`;
-  html += `<summary class="player-codes-summary">`;
-  html += `<span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> 🔑 ${t('txt_txt_player_codes')}</span>`;
   const _isMex = currentType === 'mexicano';
   const _isGP = currentType === 'group_playoff';
-  if (entries.length > 0) {
-    html += `<span class="player-codes-actions">`;
-    html += `<button type="button" class="btn btn-sm player-codes-btn" onclick="event.preventDefault();_copyAllPlayerCodes()">📋 ${t('txt_txt_copy_all_codes')}</button>`;
-    html += `<button type="button" class="btn btn-sm player-codes-btn" onclick="event.preventDefault();_printPlayerCodes()">🖨 ${t('txt_txt_print_all_codes')}</button>`;
-    if (_showEmail) {
-      html += `<button type="button" class="btn btn-sm player-codes-btn" onclick="event.preventDefault();_sendAllTournamentEmails()">📧 ${t('txt_email_send_all')}</button>`;
-    }
-    html += `</span>`;
-  }
-  html += `</summary>`;
-  html += `<div class="player-codes-body">`;
+
+  let html = `<div class="player-codes-body">`;
   html += `<p class="player-codes-help">${t('txt_txt_player_codes_help')}</p>`;
+
+  if (entries.length > 0) {
+    html += `<div class="settings-inline-row" style="margin-bottom:0.5rem">`;
+    html += `<button type="button" class="btn btn-sm player-codes-btn" onclick="_copyAllPlayerCodes()">📋 ${t('txt_txt_copy_all_codes')}</button>`;
+    html += `<button type="button" class="btn btn-sm player-codes-btn" onclick="_printPlayerCodes()">🖨 ${t('txt_txt_print_all_codes')}</button>`;
+    html += `</div>`;
+  }
 
   if (entries.length === 0) {
     html += `<p class="player-codes-empty">${t('txt_txt_no_player_codes')}</p>`;
@@ -58,22 +74,10 @@ function _renderPlayerCodes(secrets) {
       html += `<td class="player-codes-name" id="pc-name-${pid}">${esc(info.name)}</td>`;
       html += `<td class="player-codes-cell"><code id="pc-pass-${pid}" class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(info.passphrase)}</code></td>`;
       html += `<td class="player-codes-cell"><input type="text" id="pc-contact-${pid}" value="${escAttr(info.contact || '')}" data-orig="${escAttr(info.contact || '')}" placeholder="${t('txt_reg_contact_placeholder')}" class="player-codes-input" onblur="_savePlayerContact('${pid}')"></td>`;
-      {
-        const _isLinked = Boolean(info.profile_id);
-        const _isGhost  = _isLinked && String(info.profile_id).startsWith('ghost_');
-        html += `<td class="player-codes-cell-center">`;
-        if (_isGhost) {
-          // Ghost profile: ELO tracked internally, no Player Hub account
-          html += `<span class="pc-hub-badge pc-hub-badge--ghost" title="${t('txt_pc_past_participant_tooltip')}" style="opacity:0.75;cursor:default">👻</span>`;
-        } else if (_isLinked) {
-          html += `<span class="pc-hub-badge pc-hub-badge--active" title="${t('txt_hub_linked')}" onclick="_hubUnlink('${pid}')" style="cursor:pointer">🔗</span>`;
-        } else {
-          html += `<button type="button" class="btn btn-sm btn-muted player-codes-icon-btn" onclick="_hubOpenSearch('${pid}')" title="${t('txt_hub_link')}">🔗</button>`;
-        }
-        html += `</td>`;
-      }
+      html += `<td class="player-codes-cell-center">${_renderHubLinkCellInner(pid, info)}</td>`;
       if (_showEmail) {
-        html += `<td class="player-codes-cell"><span class="player-codes-edit-wrap"><input type="email" id="pc-email-${pid}" value="${escAttr(info.email || '')}" data-orig="${escAttr(info.email || '')}" placeholder="${t('txt_email_placeholder')}" class="player-codes-input player-codes-input-email" onblur="_savePlayerEmail('${pid}')">`;        if (info.email) html += `<button type="button" class="btn btn-sm player-codes-icon-btn" onclick="_sendPlayerEmail('${pid}')" title="${t('txt_email_send')}">✉️</button>`;
+        html += `<td class="player-codes-cell"><span class="player-codes-edit-wrap"><input type="email" id="pc-email-${pid}" value="${escAttr(info.email || '')}" data-orig="${escAttr(info.email || '')}" placeholder="${t('txt_email_placeholder')}" class="player-codes-input player-codes-input-email" onblur="_savePlayerEmail('${pid}')">`;
+        if (info.email) html += `<button type="button" class="btn btn-sm player-codes-icon-btn" onclick="_sendPlayerEmail('${pid}')" title="${t('txt_email_send')}">✉️</button>`;
         html += `</span></td>`;
       }
       html += `<td class="player-codes-cell-center">${_langToggle(currentTid, pid, info.lang || 'en', 'sec')}</td>`;
@@ -90,18 +94,7 @@ function _renderPlayerCodes(secrets) {
     html += `<div class="player-codes-add-row"><button type="button" class="add-participant-btn" onclick="_addTournamentPlayer()">＋ ${t('txt_txt_add_player')}</button></div>`;
   }
 
-  // Organizer message section (email only)
-  if (_showEmail && entries.length > 0) {
-    html += `<details class="player-codes-organizer">`;
-    html += `<summary class="player-codes-organizer-summary"><span class="tv-chevron player-codes-organizer-chevron">▸</span> 📧 ${t('txt_email_organizer_message')}</summary>`;
-    html += `<div class="player-codes-organizer-body">`;
-    html += `<textarea id="pc-organizer-message" class="reg-desc-textarea player-codes-organizer-textarea" rows="3" placeholder="${t('txt_email_message_placeholder')}" oninput="_autoResizeTextarea(this)"></textarea>`;
-    html += `<div class="player-codes-organizer-actions">`;
-    html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendTournamentMessageEmails())">📧 ${t('txt_email_send_message')}</button>`;
-    html += `</div></div></details>`;
-  }
-
-  html += `</div></details>`;
+  html += `</div>`;
   return html;
 }
 
@@ -528,6 +521,27 @@ let _hubCurrentPlayerId = null;
 let _pcNewPlayerSearchTimer = null;
 /** player_id of a past participant selected from the suggestion list */
 let _pcNewPlayerPastId = null;
+let _hubSearchScope = 'club'; // 'club' | 'community' | 'all'
+
+/** Resolve the default search scope for the current tournament. */
+function _hubResolveDefaultScope() {
+  const meta = (typeof _tournamentMeta !== 'undefined' && _tournamentMeta[currentTid]) || {};
+  if (meta.club_id) return 'club';
+  if (meta.community_id && meta.community_id !== 'open') return 'community';
+  return 'all';
+}
+
+/** Switch scope from the modal radio chips and re-run the search. */
+function _hubSetScope(scope) {
+  _hubSearchScope = scope;
+  const buttons = document.querySelectorAll('#pc-hub-modal .pc-hub-scope-btn');
+  buttons.forEach(b => {
+    const active = b.dataset.scope === scope;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  _hubDoSearch();
+}
 
 function _hubEnsureModal() {
   if (document.getElementById('pc-hub-modal')) return;
@@ -539,6 +553,7 @@ function _hubEnsureModal() {
     + `<span class="pc-hub-modal-title">🔗 ${t('txt_hub_link')}</span>`
     + `<button type="button" class="pc-hub-close-btn" onclick="_hubCloseModal()">✕</button>`
     + `</div>`
+    + `<div id="pc-hub-modal-scope" class="pc-hub-scope-row" role="group" aria-label="${escAttr(t('txt_hub_scope_label'))}"></div>`
     + `<input type="text" id="pc-hub-modal-q" class="player-codes-input" placeholder="${t('txt_hub_search_placeholder')}" oninput="_hubDebouncedSearch()">`
     + `<div id="pc-hub-modal-results" class="pc-hub-results"></div>`
     + `</div>`;
@@ -546,10 +561,37 @@ function _hubEnsureModal() {
   document.body.appendChild(overlay);
 }
 
+/** Render the scope toggle chips inside the modal based on tournament context. */
+function _hubRenderScopeChips() {
+  const host = document.getElementById('pc-hub-modal-scope');
+  if (!host) return;
+  const meta = (typeof _tournamentMeta !== 'undefined' && _tournamentMeta[currentTid]) || {};
+  const club = meta.club_id ? (_adminClubs || []).find(c => c.id === meta.club_id) : null;
+  const communityId = meta.community_id;
+  const community = (communityId && communityId !== 'open')
+    ? (_adminCommunities || []).find(c => c.id === communityId)
+    : null;
+  const chips = [];
+  if (club) {
+    chips.push({ scope: 'club', label: t('txt_hub_scope_club', { name: club.name }) });
+  }
+  if (community) {
+    chips.push({ scope: 'community', label: t('txt_hub_scope_community', { name: community.name }) });
+  }
+  chips.push({ scope: 'all', label: t('txt_hub_scope_all') });
+  host.innerHTML = chips.map(c =>
+    `<button type="button" class="pc-hub-scope-btn${c.scope === _hubSearchScope ? ' active' : ''}"`
+    + ` data-scope="${escAttr(c.scope)}" aria-pressed="${c.scope === _hubSearchScope ? 'true' : 'false'}"`
+    + ` onclick="_hubSetScope('${escAttr(c.scope)}')">${esc(c.label)}</button>`
+  ).join('');
+}
+
 /** Open the hub profile search modal for a player */
 function _hubOpenSearch(playerId) {
   _hubCurrentPlayerId = playerId;
+  _hubSearchScope = _hubResolveDefaultScope();
   _hubEnsureModal();
+  _hubRenderScopeChips();
   const modal = document.getElementById('pc-hub-modal');
   const input = document.getElementById('pc-hub-modal-q');
   const results = document.getElementById('pc-hub-modal-results');
@@ -580,11 +622,19 @@ async function _hubDoSearch() {
   if (!input || !results) return;
   const q = input.value.trim();
   results.innerHTML = '<em style="font-size:0.8rem;color:var(--text-muted)">…</em>';
+  const params = new URLSearchParams({ q });
+  const meta = (typeof _tournamentMeta !== 'undefined' && _tournamentMeta[currentTid]) || {};
+  if (_hubSearchScope === 'club' && meta.club_id) {
+    params.set('club_id', meta.club_id);
+  } else if (_hubSearchScope === 'community' && meta.community_id && meta.community_id !== 'open') {
+    params.set('community_id', meta.community_id);
+  }
   try {
-    const profiles = await api(`/api/admin/player-profiles?q=${encodeURIComponent(q)}`);
+    const profiles = await api(`/api/admin/player-profiles?${params.toString()}`);
     const realProfiles = profiles.filter(p => !p.is_ghost);
     if (realProfiles.length === 0) {
-      results.innerHTML = `<div style="font-size:0.8rem;color:var(--text-muted);padding:0.3rem 0">${t('txt_hub_no_results')}</div>`;
+      const noResultsKey = _hubSearchScope === 'all' ? 'txt_hub_no_results' : 'txt_hub_no_results_scoped';
+      results.innerHTML = `<div style="font-size:0.8rem;color:var(--text-muted);padding:0.3rem 0">${esc(t(noResultsKey))}</div>`;
       return;
     }
     let html = '';
@@ -607,11 +657,11 @@ async function _hubLinkProfile(profileId) {
     const res = await api(`/api/admin/player-profiles/${profileId}/link/${currentTid}/${playerId}`, { method: 'POST' });
     if (_playerSecrets[playerId]) _playerSecrets[playerId].profile_id = profileId;
     _hubCloseModal();
-    // Update the cell to show active badge
+    // Update the cell to show the Unlink button (re-uses the shared renderer)
     const row = document.getElementById(`pc-row-${playerId}`);
     const cell = row?.querySelector('.player-codes-cell-center');
     if (cell) {
-      cell.innerHTML = `<span class="pc-hub-badge pc-hub-badge--active" title="${t('txt_hub_linked')}" onclick="_hubUnlink('${playerId}')" style="cursor:pointer">🔗</span>`;
+      cell.innerHTML = _renderHubLinkCellInner(playerId, _playerSecrets[playerId] || { profile_id: profileId });
     }
     // Populate name/contact/email from hub profile if returned
     if (res.populated) {
@@ -641,11 +691,12 @@ async function _hubUnlink(playerId) {
   try {
     await api(`/api/admin/player-profiles/link/${currentTid}/${playerId}`, { method: 'DELETE' });
     if (_playerSecrets[playerId]) _playerSecrets[playerId].profile_id = null;
-    // Update the cell to show link button
+    // Update the cell to show the Link button (re-uses the shared renderer)
     const row = document.getElementById(`pc-row-${playerId}`);
-    const cell = row?.querySelector('.pc-hub-badge')?.closest('td');
+    const cell = row?.querySelector('.pc-hub-link-btn')?.closest('td')
+              || row?.querySelector('.pc-hub-badge')?.closest('td');
     if (cell) {
-      cell.innerHTML = `<button type="button" class="btn btn-sm btn-muted player-codes-icon-btn" onclick="_hubOpenSearch('${playerId}')" title="${t('txt_hub_link')}">🔗</button>`;
+      cell.innerHTML = _renderHubLinkCellInner(playerId, _playerSecrets[playerId] || { profile_id: null });
     }
   } catch (e) {
     alert(e.message);

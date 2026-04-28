@@ -66,26 +66,44 @@ class GhostConvertRequest(BaseModel):
 @router.get("", response_model=list[AdminPlayerProfileSummary])
 async def list_profiles(
     q: str = "",
+    club_id: str | None = None,
+    community_id: str | None = None,
     _admin: User = Depends(require_admin),
 ) -> list[AdminPlayerProfileSummary]:
-    """Return all player profiles, optionally filtered by name or email.
+    """Return all player profiles, optionally filtered by name/email and by scope.
 
     Args:
         q: Optional search string matched against name and email (case-insensitive).
+        club_id: Restrict results to profiles that are members of this club
+            (i.e. have a non-hidden ``profile_club_elo`` row for it).
+        community_id: Restrict results to profiles that have ever played in
+            this community (i.e. have a ``profile_community_elo`` row for it).
+            Ignored when ``club_id`` is provided, since clubs are already
+            community-scoped.
     """
     elo_cols = ", elo_padel, elo_padel_matches, elo_tennis, elo_tennis_matches, k_factor_override, is_ghost"
+    where_clauses: list[str] = []
+    params: list[str] = []
+    if q.strip():
+        pattern = f"%{q.strip()}%"
+        where_clauses.append("(p.name LIKE ? OR p.email LIKE ?)")
+        params.extend([pattern, pattern])
+    join_clause = ""
+    if club_id:
+        join_clause = " INNER JOIN profile_club_elo pce ON pce.profile_id = p.id AND pce.club_id = ? AND pce.hidden = 0"
+        params.insert(0, club_id)
+    elif community_id:
+        join_clause = " INNER JOIN profile_community_elo pcoe ON pcoe.profile_id = p.id AND pcoe.community_id = ?"
+        params.insert(0, community_id)
+    sql = (
+        f"SELECT DISTINCT p.id, p.name, p.email, p.passphrase, p.created_at{elo_cols}"
+        f" FROM player_profiles p{join_clause}"
+    )
+    if where_clauses:
+        sql += " WHERE " + " AND ".join(where_clauses)
+    sql += " ORDER BY p.created_at DESC"
     with get_db() as conn:
-        if q.strip():
-            pattern = f"%{q.strip()}%"
-            rows = conn.execute(
-                f"SELECT id, name, email, passphrase, created_at{elo_cols} FROM player_profiles"
-                " WHERE name LIKE ? OR email LIKE ? ORDER BY created_at DESC",
-                (pattern, pattern),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                f"SELECT id, name, email, passphrase, created_at{elo_cols} FROM player_profiles ORDER BY created_at DESC"
-            ).fetchall()
+        rows = conn.execute(sql, params).fetchall()
 
     return [
         AdminPlayerProfileSummary(
@@ -808,39 +826,63 @@ async def admin_delete_profile(
             (profile_id,),
         ).fetchall()
 
-        if is_ghost:
-            # Collect every (tournament_id, player_id) the ghost ever participated as,
-            # from both active and finished participations, plus any history rows.
-            participation_rows = conn.execute(
-                """
-                SELECT tournament_id, player_id FROM player_secrets WHERE profile_id = ?
-                UNION
-                SELECT entity_id AS tournament_id, player_id FROM player_history
-                 WHERE profile_id = ? AND entity_type = 'tournament'
-                """,
-                (profile_id, profile_id),
-            ).fetchall()
-
-            for row in participation_rows:
-                conn.execute(
-                    "DELETE FROM player_elo_log WHERE tournament_id = ? AND player_id = ?",
-                    (row["tournament_id"], row["player_id"]),
-                )
-
-            conn.execute("DELETE FROM player_secrets WHERE profile_id = ?", (profile_id,))
-        else:
-            conn.execute("UPDATE player_secrets SET profile_id = NULL WHERE profile_id = ?", (profile_id,))
-
-        conn.execute("DELETE FROM player_history WHERE profile_id = ?", (profile_id,))
-        conn.execute("DELETE FROM profile_community_elo WHERE profile_id = ?", (profile_id,))
-        conn.execute("DELETE FROM profile_club_elo WHERE profile_id = ?", (profile_id,))
-        conn.execute("DELETE FROM player_tournament_path_cache WHERE profile_id = ?", (profile_id,))
-        conn.execute("DELETE FROM player_profiles WHERE id = ?", (profile_id,))
+        _purge_profile_record(conn, profile_id, is_ghost=is_ghost)
 
     for row in active_rows:
         invalidate_secrets_cache(row["tournament_id"])
 
     return {"ok": True}
+
+
+def _purge_profile_record(conn, profile_id: str, *, is_ghost: bool) -> None:
+    """Delete a player profile and its derived rows.
+
+    Ghost profiles are fully removed (player_secrets + per-tournament
+    ``player_elo_log`` rows for each participation). Real profiles are
+    detached (``player_secrets.profile_id = NULL``) so existing
+    tournaments keep their participation history intact.
+    """
+    if is_ghost:
+        participation_rows = conn.execute(
+            """
+            SELECT tournament_id, player_id FROM player_secrets WHERE profile_id = ?
+            UNION
+            SELECT entity_id AS tournament_id, player_id FROM player_history
+             WHERE profile_id = ? AND entity_type = 'tournament'
+            """,
+            (profile_id, profile_id),
+        ).fetchall()
+
+        for row in participation_rows:
+            conn.execute(
+                "DELETE FROM player_elo_log WHERE tournament_id = ? AND player_id = ?",
+                (row["tournament_id"], row["player_id"]),
+            )
+
+        conn.execute("DELETE FROM player_secrets WHERE profile_id = ?", (profile_id,))
+    else:
+        conn.execute("UPDATE player_secrets SET profile_id = NULL WHERE profile_id = ?", (profile_id,))
+
+    conn.execute("DELETE FROM player_history WHERE profile_id = ?", (profile_id,))
+    conn.execute("DELETE FROM profile_community_elo WHERE profile_id = ?", (profile_id,))
+    conn.execute("DELETE FROM profile_club_elo WHERE profile_id = ?", (profile_id,))
+    conn.execute("DELETE FROM player_tournament_path_cache WHERE profile_id = ?", (profile_id,))
+    conn.execute("DELETE FROM player_profiles WHERE id = ?", (profile_id,))
+
+
+def list_ghost_profiles_for_tournament(tournament_id: str) -> list[dict[str, str]]:
+    """Return ghost profiles linked via ``player_secrets`` to a tournament."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT pp.id AS id, pp.name AS name
+              FROM player_secrets ps
+              JOIN player_profiles pp ON pp.id = ps.profile_id
+             WHERE ps.tournament_id = ? AND pp.is_ghost = 1
+            """,
+            (tournament_id,),
+        ).fetchall()
+    return [{"id": r["id"], "name": r["name"] or ""} for r in rows]
 
 
 # ────────────────────────────────────────────────────────────────────────────

@@ -1,12 +1,14 @@
-// ─── TV Mode ─────────────────────────────────────────────
+// ─── TV / Scope / Comms / Maintenance panel bodies ──────────────────────
+//
+// Each body function returns inner HTML (no outer card / details wrapper).
+// They are composed by `_renderSettingsCard` (admin-settings-panel.js) into
+// a unified Settings card with a sub-tab navigator.
 
 /**
- * Render the TV Mode control card for the admin panel.
- * tvSettings is the object returned by GET /api/tournaments/{tid}/tv-settings.
- * hasCourts indicates whether the tournament uses court assignments.
- * isMexicano indicates whether the tournament is a Mexicano-type (score breakdowns only apply there).
+ * TV display & sharing body: alias, banner, TV section toggles, refresh
+ * interval, schema sliders, "Open TV" launcher.
  */
-function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
+function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlayoffs = false) {
   if (!currentTid) return '';
   const s = tvSettings || {};
   const def = (k, d) => (s[k] !== undefined ? s[k] : d);
@@ -20,7 +22,6 @@ function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
     const checked = resolvedVal ? 'checked' : '';
     const disabledAttr = disabled ? 'disabled' : '';
     const opacityStyle = disabled ? 'opacity:0.45;cursor:not-allowed;' : 'cursor:pointer;';
-    // Auto-persist forced value so the backend/TV page stays in sync
     if ((forceOff || forceOn) && def(key, defaultVal) !== resolvedVal) {
       _updateTvSetting(key, resolvedVal);
     }
@@ -31,27 +32,21 @@ function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
     </label>`;
   };
 
-  // Get current tournament alias
   const currentAlias = currentTournament.alias || '';
-  const currentCommunityId = currentTournament.community_id || 'open';
-  const communityOptions = (_adminCommunities || []).map(c =>
-    `<option value="${esc(c.id)}" ${c.id === currentCommunityId ? 'selected' : ''}>${c.is_builtin ? t('txt_comm_global_default') : esc(c.name)}</option>`
-  ).join('');
-  
-  let html = `<details class="card" id="tv-controls-panel">`;
-  html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
-  html += `<span style="font-size:1.1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="display:inline-block;transition:transform 0.18s;font-size:0.7em;color:var(--text-muted)">▸</span> ${t('txt_txt_tv_mode_controls')}</span>`;
-  html += `<button type="button" class="btn btn-primary" style="margin-left:auto" onclick="event.preventDefault();window.open('/tv/'+((_tournamentMeta[currentTid]&&_tournamentMeta[currentTid].alias)||currentTid),'padel_tv_'+currentTid,'noopener noreferrer')">📺 ↗</button>`;
-  html += `</summary>`;
-  html += `<div style="margin-top:0.65rem">`;
-  
-  // Tournament Alias Section
-  html += `<div style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)">`;
-  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">🔗 ${t('txt_txt_tournament_alias')}</label>`;
-  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_tv_alias_help')}</p>`;
-  html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
-  html += `<input type="text" id="tournament-alias-input" placeholder="${t('txt_tv_alias_placeholder')}" value="${escAttr(currentAlias)}" 
-    pattern="[a-zA-Z0-9_-]+" maxlength="64" 
+
+  let html = '';
+
+  // ── Group: Public link ─────────────────────────────────────────
+  html += `<div class="settings-group">`;
+  html += `<h4 class="settings-group-title">🔗 ${t('txt_admin_settings_group_public_link')}</h4>`;
+
+  // Tournament Alias
+  html += `<div class="settings-block">`;
+  html += `<label class="settings-label">${t('txt_txt_tournament_alias')}</label>`;
+  html += `<p class="settings-help">${t('txt_tv_alias_help')}</p>`;
+  html += `<div class="settings-inline-row">`;
+  html += `<input type="text" id="tournament-alias-input" placeholder="${t('txt_tv_alias_placeholder')}" value="${escAttr(currentAlias)}"
+    pattern="[a-zA-Z0-9_-]+" maxlength="64"
     style="flex:1;min-width:200px;font-family:monospace;font-size:0.85rem">`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setTournamentAlias()" style="white-space:nowrap">${t('txt_txt_set_alias')}</button>`;
   if (currentAlias) {
@@ -59,60 +54,30 @@ function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
   }
   html += `</div>`;
   const _tvSlug = currentAlias || currentTid;
-  html += `<div style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:0.78rem">`;
-  html += `<span style="color:var(--text-muted)">${t('txt_txt_tv_url')}</span> <code style="color:var(--accent);font-size:0.85rem">/tv/${esc(_tvSlug)}</code>`;
-  if (!currentAlias) {
-    html += ` <span style="color:var(--text-muted);font-size:0.72rem">(${t('txt_tv_raw_id_hint')})</span>`;
-  }
-  html += ` <button type="button" onclick="navigator.clipboard.writeText(window.location.origin+'/tv/${escAttr(_tvSlug)}');alert('${escAttr(t('txt_txt_url_copied'))}')"
-      style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:3px;padding:0.1rem 0.4rem;cursor:pointer;font-size:0.75rem;margin-left:0.3rem">📋 ${t('txt_txt_copy')}</button>`;
+  html += `<div class="settings-url-preview">`;
+  html += `<div class="settings-url-preview-row">`;
+  html += `<span style="color:var(--text-muted)">${t('txt_txt_tv_url')}</span> <code>/tv/${esc(_tvSlug)}</code>`;
+  html += `</div>`;
+  html += `<div class="settings-url-actions">`;
+  html += `<button type="button" class="settings-url-copy-btn" onclick="navigator.clipboard.writeText(window.location.origin+'/tv/${escAttr(_tvSlug)}');alert('${escAttr(t('txt_txt_url_copied'))}')">📋 ${t('txt_txt_copy')}</button>`;
+  html += `<button type="button" class="settings-url-copy-btn" onclick="window.open('/tv/${escAttr(_tvSlug)}','padel_tv_${escAttr(currentTid)}','noopener noreferrer')">📺 ${t('txt_txt_tv_mode_controls')} ↗</button>`;
+  html += `</div>`;
+  html += `</div>`;
   html += `</div>`;
   html += `</div>`;
 
-  // Club / community attachment section
-  html += `<div style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)">`;
-  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">🏷️ ${t('txt_tv_attach_scope')}</label>`;
-  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_tv_attach_club_community_help')}</p>`;
-  // Club row — shown only when the admin has clubs in the current community
-  const adminClubsLocal = (_adminClubs || []).filter(c => c.community_id === currentCommunityId);
-  if (adminClubsLocal.length) {
-    const currentClubId = currentTournament.club_id || '';
-    const noneLabel = t('txt_txt_none_selected') || 'none';
-    const clubOptions = `<option value="" ${!currentClubId ? 'selected' : ''}>— ${esc(noneLabel)} —</option>`
-      + adminClubsLocal.map(c =>
-        `<option value="${esc(c.id)}" ${c.id === currentClubId ? 'selected' : ''}>${esc(c.name)}</option>`
-      ).join('');
-    html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.35rem">`;
-    html += `<span style="font-size:0.82rem;color:var(--text-muted);white-space:nowrap">${t('txt_tv_attach_club')}</span>`;
-    html += `<select id="tournament-club-select" style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem;min-width:180px">${clubOptions}</select>`;
-    html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setTournamentClub()">${t('txt_tv_attach_now')}</button>`;
-    html += `<span id="tournament-club-msg" style="font-size:0.78rem"></span>`;
-    html += `</div>`;
-  }
-  // Community row — always shown as the advanced / fallback option
-  if (communityOptions) {
-    html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
-    html += `<select id="tournament-community-select" style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem;min-width:220px">${communityOptions}</select>`;
-    html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setTournamentCommunity()">${t('txt_tv_attach_now')}</button>`;
-    html += `<span id="tournament-community-msg" style="font-size:0.78rem"></span>`;
-    html += `</div>`;
-  } else {
-    html += `<p style="color:var(--text-muted);font-size:0.78rem;margin:0">${t('txt_comm_no_communities')}</p>`;
-  }
-  const currentCommunityLabel = currentTournament.community_name || currentCommunityId;
-  const currentClubLabel = currentTournament.club_name || '';
-  const currentScopeLabel = currentClubLabel || currentCommunityLabel;
-  html += `<div style="margin-top:0.4rem;font-size:0.78rem;color:var(--text-muted)">${t('txt_tv_current_scope')}: ${esc(currentScopeLabel)}</div>`;
-  html += `</div>`;
-  
-  // Banner Section
+  // ── Group: On-screen content ───────────────────────────────────
+  html += `<div class="settings-group">`;
+  html += `<h4 class="settings-group-title">📺 ${t('txt_admin_settings_group_onscreen')}</h4>`;
+
+  // Banner
   const currentBanner = def('banner_text', '');
-  html += `<div style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border)">`;
-  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">📢 ${t('txt_banner_label')}</label>`;
-  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_banner_help')}</p>`;
-  html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
-  html += `<input type="text" id="tournament-banner-input" placeholder="${t('txt_banner_placeholder')}" value="${escAttr(currentBanner)}" 
-    maxlength="500" 
+  html += `<div class="settings-block">`;
+  html += `<label class="settings-label">${t('txt_banner_label')}</label>`;
+  html += `<p class="settings-help">${t('txt_banner_help')}</p>`;
+  html += `<div class="settings-inline-row">`;
+  html += `<input type="text" id="tournament-banner-input" placeholder="${t('txt_banner_placeholder')}" value="${escAttr(currentBanner)}"
+    maxlength="500"
     style="flex:1;min-width:200px;font-size:0.85rem">`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setTournamentBanner()" style="white-space:nowrap">${t('txt_txt_set')}</button>`;
   if (currentBanner) {
@@ -121,70 +86,46 @@ function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
   html += `</div>`;
   html += `</div>`;
 
-  html += `<p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:0.65rem">${t('txt_tv_sections_help')}</p>`;
+  // TV section toggles
+  html += `<div class="settings-block">`;
+  html += `<label class="settings-label">${t('txt_admin_settings_tv_sections')}</label>`;
+  html += `<p class="settings-help">${t('txt_tv_sections_help')}</p>`;
   html += `<div class="tv-settings-grid">`;
   html += chkRow('show_past_matches',   t('txt_txt_past_matches'),            true);
-  if (isMexicano) html += chkRow('show_score_breakdown',t('txt_tv_score_breakdowns'),         false);
+  if (isMexicano) html += chkRow('show_score_breakdown', t('txt_tv_score_breakdowns'), false);
   html += chkRow('show_standings',      t('txt_tv_standings_leaderboard'),    true);
   html += chkRow('show_bracket',        t('txt_txt_play_off_bracket'),        true);
   html += chkRow('show_courts',         t('txt_tv_court_assignments_view'),   true,  { disabled: !hasCourts, forceOff: !hasCourts });
-  html += chkRow('show_pending_matches', t('txt_tv_pending_matches_view'),     false, { forceOn: !hasCourts });
+  html += chkRow('show_pending_matches', t('txt_tv_pending_matches_view'),    false, { forceOn: !hasCourts });
+  html += `</div>`;
+  html += `</div>`;
   html += `</div>`;
 
-  // Player scoring toggle
-  const _playerScoringOn = def('allow_player_scoring', true);
-  html += `<div style="margin-top:0.65rem;padding-top:0.55rem;border-top:1px solid var(--border)">`;
-  html += `<label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;font-size:0.84rem;">
-    <input type="checkbox" style="width:auto;min-height:auto;margin:0" ${_playerScoringOn ? 'checked' : ''}
-      onchange="_updateTvSetting('allow_player_scoring', this.checked); document.getElementById('scoring-dep-settings').style.opacity = this.checked ? '1' : '0.4'; document.getElementById('scoring-dep-settings').style.pointerEvents = this.checked ? '' : 'none'">
-    ${t('txt_tv_allow_player_scoring')}
-  </label>`;
-  html += `<p style="color:var(--text-muted);font-size:0.76rem;margin:0.25rem 0 0 1.4rem">${t('txt_tv_allow_player_scoring_help')}</p>`;
-  html += `</div>`;
+  // ── Group: Refresh & visuals ───────────────────────────────────
+  html += `<div class="settings-group">`;
+  html += `<h4 class="settings-group-title">🔄 ${t('txt_admin_settings_group_refresh_visuals')}</h4>`;
 
-  // Dependent scoring settings — greyed out when player scoring is off
-  html += `<div id="scoring-dep-settings" style="transition:opacity 0.15s;${_playerScoringOn ? '' : 'opacity:0.4;pointer-events:none;'}">`;
-
-  // Score confirmation mode
-  html += `<div style="margin-top:0.65rem;padding-top:0.55rem;border-top:1px solid var(--border)">`;
-  const scoreConf = def('score_confirmation', 'immediate');
-  html += `<label style="font-size:0.84rem;display:block;margin-bottom:0.3rem">${t('txt_tv_score_confirmation')}</label>`;
-  html += `<select style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem" onchange="_updateTvSetting('score_confirmation', this.value)">`;
-  html += `<option value="immediate"${scoreConf === 'immediate' ? ' selected' : ''}>${t('txt_tv_score_confirmation_immediate')}</option>`;
-  html += `<option value="required"${scoreConf === 'required' ? ' selected' : ''}>${t('txt_tv_score_confirmation_required')}</option>`;
-  html += `</select>`;
-  html += `<p style="color:var(--text-muted);font-size:0.76rem;margin:0.25rem 0 0">${t('txt_tv_score_confirmation_help')}</p>`;
-  html += `</div>`;
-
-  // Correction window (displayed in minutes, stored as seconds)
-  const corrSecs = def('correction_window_seconds', 0);
-  const corrMins = Math.round(corrSecs / 60 * 10) / 10;
-  html += `<div style="margin-top:0.65rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">`;
-  html += `<label style="font-size:0.84rem;color:var(--text-muted);white-space:nowrap">${t('txt_tv_correction_window')}</label>`;
-  html += `<input type="number" min="0" max="60" step="0.5" value="${corrMins}" style="width:5rem;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem"`;
-  html += ` onchange="_updateTvSetting('correction_window_seconds', Math.max(0, Math.min(3600, Math.round((+this.value||0)*60))))">`;
-  html += `<span style="font-size:0.84rem;color:var(--text-muted)">${t('txt_tv_window_minutes_label')}</span>`;
-  html += `</div>`;
-  html += `<p style="color:var(--text-muted);font-size:0.76rem;margin:0.15rem 0 0">${t('txt_tv_correction_window_help')}</p>`;
-
-  html += `</div>`; // close #scoring-dep-settings
-
+  // Auto-refresh
   const currentInterval = def('refresh_interval', 15);
-  html += `<div style="margin-top:0.65rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">`;
-  html += `<label style="font-size:0.84rem;color:var(--text-muted);white-space:nowrap">${t('txt_txt_auto_refresh_every')}</label>`;
+  html += `<div class="settings-block">`;
+  html += `<label class="settings-label">${t('txt_txt_auto_refresh_every')}</label>`;
+  html += `<p class="settings-help">${t('txt_admin_settings_refresh_help')}</p>`;
   html += `<select style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem" onchange="_updateTvSetting('refresh_interval', +this.value)">`;
   [[-1,t('txt_tv_on_update')],[0,t('txt_tv_never')],[5,'5 s'],[10,'10 s'],[15,'15 s'],[30,'30 s'],[60,'1 min'],[120,'2 min'],[300,'5 min']].forEach(([secs, lbl]) => {
     html += `<option value="${secs}"${currentInterval === secs ? ' selected' : ''}>${lbl}</option>`;
   });
-  html += `</select></div>`;
+  html += `</select>`;
+  html += `</div>`;
 
-  // Schema rendering controls
+  // Schema rendering controls — only relevant when playoffs are active.
+  if (hasPlayoffs) {
   const boxScale   = def('schema_box_scale',   1.0);
   const lineWidth  = def('schema_line_width',  1.0);
   const arrowScale = def('schema_arrow_scale', 1.0);
   const titleFontScale = def('schema_title_font_scale', 1.0);
-  html += `<details style="margin-top:0.65rem">`;
-  html += `<summary style="cursor:pointer;color:var(--text-muted);font-size:0.82rem;user-select:none">⚙ ${t('txt_txt_rendering_options')}</summary>`;
+  html += `<div class="settings-block">`;
+  html += `<details class="settings-collapse-inner">`;
+  html += `<summary>⚙ ${t('txt_txt_rendering_options')}</summary>`;
   html += `<div class="tv-sliders-grid">`;
   const sliders = [
     ['schema_box_scale',        'tv-schema-box',         t('txt_txt_box_size'),    0.3, 3.0, boxScale],
@@ -199,9 +140,236 @@ function _renderTvControls(tvSettings, hasCourts, isMexicano = false) {
       onchange="_updateTvSetting('${key}', +this.value)">`;
   });
   html += `</div></details>`;
-  html += _renderEloSection();
   html += `</div>`;
-  html += `</details>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+/**
+ * Scoring rules body: player scoring toggle, score-confirmation mode,
+ * correction window, and per-stage points/sets toggles for active stages.
+ *
+ * scoringStages: optional array of `{ key, label }` entries; each adds a
+ * points/sets toggle bound to `_setStageScoreMode(key, mode)`.
+ */
+function _renderScoringRulesBody(tvSettings, scoringStages = []) {
+  if (!currentTid) return '';
+  const s = tvSettings || {};
+  const def = (k, d) => (s[k] !== undefined ? s[k] : d);
+
+  let html = '';
+
+  // ── Group: Player scoring & confirmation ─────────────────────
+  html += `<div class="settings-group">`;
+  html += `<h4 class="settings-group-title">🎯 ${t('txt_admin_settings_group_scoring_flow')}</h4>`;
+
+  const _playerScoringOn = def('allow_player_scoring', true);
+  html += `<div class="settings-block">`;
+  html += `<label class="settings-master-toggle">`
+    + `<input type="checkbox" ${_playerScoringOn ? 'checked' : ''}`
+    +   ` onchange="_updateTvSetting('allow_player_scoring', this.checked); document.getElementById('scoring-dep-settings').classList.toggle('disabled', !this.checked)">`
+    + `${t('txt_tv_allow_player_scoring')}`
+    + `</label>`;
+  html += `<p class="settings-master-help">${t('txt_tv_allow_player_scoring_help')}</p>`;
+  html += `</div>`;
+
+  html += `<div id="scoring-dep-settings" class="settings-dep-group${_playerScoringOn ? '' : ' disabled'}">`;
+
+  const scoreConf = def('score_confirmation', 'immediate');
+  html += `<div class="settings-block">`;
+  html += `<label class="settings-label">${t('txt_tv_score_confirmation')}</label>`;
+  html += `<p class="settings-help">${t('txt_tv_score_confirmation_help')}</p>`;
+  html += `<select style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem" onchange="_updateTvSetting('score_confirmation', this.value)">`;
+  html += `<option value="immediate"${scoreConf === 'immediate' ? ' selected' : ''}>${t('txt_tv_score_confirmation_immediate')}</option>`;
+  html += `<option value="required"${scoreConf === 'required' ? ' selected' : ''}>${t('txt_tv_score_confirmation_required')}</option>`;
+  html += `</select>`;
+  html += `</div>`;
+
+  const corrSecs = def('correction_window_seconds', 0);
+  const corrMins = Math.round(corrSecs / 60 * 10) / 10;
+  html += `<div class="settings-block">`;
+  html += `<label class="settings-label">${t('txt_tv_correction_window')}</label>`;
+  html += `<p class="settings-help">${t('txt_tv_correction_window_help')}</p>`;
+  html += `<div class="settings-inline-row">`;
+  html += `<input type="number" min="0" max="60" step="0.5" value="${corrMins}" style="width:5rem;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem"`;
+  html += ` onchange="_updateTvSetting('correction_window_seconds', Math.max(0, Math.min(3600, Math.round((+this.value||0)*60))))">`;
+  html += `<span style="font-size:0.84rem;color:var(--text-muted)">${t('txt_tv_window_minutes_label')}</span>`;
+  html += `</div>`;
+  html += `</div>`;
+
+  html += `</div>`;
+  html += `</div>`;
+
+  // ── Group: Score format per stage ────────────────────────────
+  if (scoringStages && scoringStages.length) {
+    html += `<div class="settings-group">`;
+    html += `<h4 class="settings-group-title">🎾 ${t('txt_admin_settings_group_score_format')}</h4>`;
+    html += `<div class="settings-block">`;
+    html += `<label class="settings-label">${t('txt_admin_settings_input_format')}</label>`;
+    html += `<p class="settings-help">${t('txt_admin_settings_input_format_help')}</p>`;
+    for (const stage of scoringStages) {
+      const mode = _gpScoreMode[stage.key] || 'points';
+      html += `<div class="settings-stage-row">`;
+      html += `<span class="settings-stage-label">${esc(stage.label)}</span>`;
+      html += `<div class="score-mode-toggle">`;
+      html += `<button type="button" class="${mode === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('${escAttr(stage.key)}','points')">${t('txt_txt_points_label')}</button>`;
+      html += `<button type="button" class="${mode === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('${escAttr(stage.key)}','sets')">🎾 ${t('txt_txt_sets')}</button>`;
+      html += `</div>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+    html += `</div>`;
+  }
+
+  return html;
+}
+
+/**
+ * Communications body: sender display name, reply-to, "Notify next round"
+ * shortcut, "Send all player codes" shortcut, organizer message composer.
+ * Returns '' when `window._emailConfigured` is false.
+ */
+function _renderCommsBody(emailSettings) {
+  if (!currentTid || !window._emailConfigured) return '';
+  const s = emailSettings || {};
+  const senderName = s.sender_name || '';
+  const replyTo = s.reply_to || '';
+  const playerCount = Object.keys(_playerSecrets || {}).length;
+
+  let html = '';
+
+  // ── Group: Sender configuration ─────────────────────────────
+  html += `<div class="settings-group">`;
+  html += `<h4 class="settings-group-title">✉ ${t('txt_admin_settings_group_sender')}</h4>`;
+
+  html += `<div class="settings-block">`;
+  html += `<label class="settings-label">${t('txt_email_sender_name')}</label>`;
+  html += `<p class="settings-help">${t('txt_email_sender_name_help')}</p>`;
+  html += `<input type="text" id="email-settings-sender-name" value="${escAttr(senderName)}" maxlength="100"
+    placeholder="${t('txt_email_sender_placeholder')}" style="width:100%;font-size:0.85rem">`;
+  html += `</div>`;
+
+  html += `<div class="settings-block">`;
+  html += `<label class="settings-label">${t('txt_email_reply_to')}</label>`;
+  html += `<p class="settings-help">${t('txt_email_reply_to_help')}</p>`;
+  html += `<input type="email" id="email-settings-reply-to" value="${escAttr(replyTo)}"
+    placeholder="${t('txt_email_reply_to_placeholder')}" style="width:100%;font-size:0.85rem">`;
+  html += `</div>`;
+
+  html += `<div class="settings-block">`;
+  html += `<div class="settings-inline-row">`;
+  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveEmailSettings())">${t('txt_email_save_email')}</button>`;
+  html += `<span id="email-settings-saved-msg" style="color:var(--success,#22c55e);font-size:0.82rem;display:none">${t('txt_email_settings_saved')}</span>`;
+  html += `</div>`;
+  html += `</div>`;
+  html += `</div>`;
+
+  // ── Group: Bulk notifications ───────────────────────────────
+  html += `<div class="settings-group">`;
+  html += `<h4 class="settings-group-title">📣 ${t('txt_admin_settings_group_bulk')}</h4>`;
+  html += `<div class="settings-block">`;
+  html += `<p class="settings-help">${t('txt_admin_settings_comms_bulk_help')}</p>`;
+  html += `<div class="settings-inline-row">`;
+  html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,_sendNextRoundEmails)">📧 ${t('txt_email_notify_round')}</button>`;
+  if (playerCount > 0) {
+    html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,_sendAllTournamentEmails)">📧 ${t('txt_email_send_all')}</button>`;
+  }
+  html += `</div>`;
+  html += `</div>`;
+  html += `</div>`;
+
+  // ── Group: Organizer message ────────────────────────────────
+  if (playerCount > 0) {
+    html += `<div class="settings-group">`;
+    html += `<h4 class="settings-group-title">💬 ${t('txt_admin_settings_group_organizer_msg')}</h4>`;
+    html += `<div class="settings-block">`;
+    html += `<label class="settings-label">${t('txt_email_organizer_message')}</label>`;
+    html += `<textarea id="pc-organizer-message" class="reg-desc-textarea" rows="3" placeholder="${t('txt_email_message_placeholder')}" oninput="_autoResizeTextarea(this)" style="width:100%"></textarea>`;
+    html += `<div class="settings-inline-row" style="margin-top:0.4rem">`;
+    html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendTournamentMessageEmails())">📧 ${t('txt_email_send_message')}</button>`;
+    html += `</div>`;
+    html += `</div>`;
+    html += `</div>`;
+  }
+
+  return html;
+}
+
+/**
+ * Access & scope body: collaborators list, club + community attachment row,
+ * and Recalculate-ELO action.
+ */
+function _renderAccessScopeBody(collaborators) {
+  if (!currentTid) return '';
+  const currentTournament = _tournamentMeta[currentTid] || {};
+  const currentCommunityId = currentTournament.community_id || 'open';
+  const communityOptions = (_adminCommunities || []).map(c =>
+    `<option value="${esc(c.id)}" ${c.id === currentCommunityId ? 'selected' : ''}>${c.is_builtin ? t('txt_comm_global_default') : esc(c.name)}</option>`
+  ).join('');
+
+  let html = '';
+
+  // ── Group: Scope (community + club) ─────────────────────────
+  html += `<div class="settings-group">`;
+  html += `<h4 class="settings-group-title">🏷 ${t('txt_admin_settings_group_scope')}</h4>`;
+  html += `<div class="settings-block">`;
+
+  html += `<p class="settings-help">${t('txt_tv_attach_club_community_help')}</p>`;
+
+  const adminClubsLocal = (_adminClubs || []).filter(c => c.community_id === currentCommunityId);
+  if (adminClubsLocal.length) {
+    const currentClubId = currentTournament.club_id || '';
+    const noneLabel = t('txt_txt_none_selected') || 'none';
+    const clubOptions = `<option value="" ${!currentClubId ? 'selected' : ''}>— ${esc(noneLabel)} —</option>`
+      + adminClubsLocal.map(c =>
+        `<option value="${esc(c.id)}" ${c.id === currentClubId ? 'selected' : ''}>${esc(c.name)}</option>`
+      ).join('');
+    html += `<div class="settings-inline-row" style="margin-bottom:0.35rem">`;
+    html += `<span style="font-size:0.82rem;color:var(--text-muted);white-space:nowrap">${t('txt_tv_attach_club')}</span>`;
+    html += `<select id="tournament-club-select" style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem;min-width:180px">${clubOptions}</select>`;
+    html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setTournamentClub()">${t('txt_tv_attach_now')}</button>`;
+    html += `<span id="tournament-club-msg" style="font-size:0.78rem"></span>`;
+    html += `</div>`;
+  }
+  if (communityOptions) {
+    html += `<div class="settings-inline-row">`;
+    html += `<select id="tournament-community-select" style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem;min-width:220px">${communityOptions}</select>`;
+    html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setTournamentCommunity()">${t('txt_tv_attach_now')}</button>`;
+    html += `<span id="tournament-community-msg" style="font-size:0.78rem"></span>`;
+    html += `</div>`;
+  } else {
+    html += `<p class="settings-help">${t('txt_comm_no_communities')}</p>`;
+  }
+  const currentCommunityLabel = currentTournament.community_name || currentCommunityId;
+  const currentClubLabel = currentTournament.club_name || '';
+  const currentScopeLabel = currentClubLabel || currentCommunityLabel;
+  html += `<div style="margin-top:0.4rem;font-size:0.78rem;color:var(--text-muted)">${t('txt_tv_current_scope')}: ${esc(currentScopeLabel)}</div>`;
+  html += `</div>`;
+  html += `</div>`;
+
+  // ── Group: Collaborators ────────────────────────────────────
+  const collabHtml = _renderCollaboratorsBody(collaborators);
+  if (collabHtml) {
+    html += `<div class="settings-group">`;
+    html += `<h4 class="settings-group-title">👥 ${t('txt_txt_collaborators')}</h4>`;
+    html += `<div class="settings-block">`;
+    html += collabHtml;
+    html += `</div>`;
+    html += `</div>`;
+  }
+
+  // ── Group: Maintenance ──────────────────────────────────────
+  html += `<div class="settings-group">`;
+  html += `<h4 class="settings-group-title">🛠 ${t('txt_admin_settings_maintenance')}</h4>`;
+  html += `<div class="settings-block">`;
+  html += `<p class="settings-help">${t('txt_admin_settings_recalc_help')}</p>`;
+  html += `<div class="settings-inline-row">`;
+  html += `<button type="button" class="btn btn-warning btn-sm" onclick="withLoading(this,_recalculateTournamentElo)">♻ ${t('txt_txt_recalculate_elo')}</button>`;
+  html += `</div>`;
+  html += `</div>`;
+  html += `</div>`;
+
   return html;
 }
 
@@ -216,62 +384,6 @@ async function _updateTvSetting(key, value) {
   } catch (e) {
     console.error('TV setting update failed:', e.message);
   }
-}
-
-// ─── Email Settings ────────────────────────────────────────
-
-/**
- * Render the Email Settings control card for the admin panel.
- * emailSettings is the object returned by GET /api/tournaments/{tid}/email-settings.
- * Only rendered when window._emailConfigured is true.
- */
-function _renderEmailControls(emailSettings) {
-  if (!currentTid || !window._emailConfigured) return '';
-  const s = emailSettings || {};
-  const senderName = s.sender_name || '';
-  const replyTo = s.reply_to || '';
-
-  let html = `<details class="card" id="email-controls-panel">`;
-  html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
-  html += `<span style="font-size:1.1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="display:inline-block;transition:transform 0.18s;font-size:0.7em;color:var(--text-muted)">▸</span> 📧 ${t('txt_email_settings')}</span>`;
-  html += `</summary>`;
-  html += `<div style="margin-top:0.65rem">`;
-
-  // Sender Display Name
-  html += `<div style="margin-bottom:1rem">`;
-  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;display:block">${t('txt_email_sender_name')}</label>`;
-  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_email_sender_name_help')}</p>`;
-  html += `<input type="text" id="email-settings-sender-name" value="${escAttr(senderName)}" maxlength="100"
-    placeholder="${t('txt_email_sender_placeholder')}" style="width:100%;font-size:0.85rem">`;
-  html += `</div>`;
-
-  // Reply-To Address
-  html += `<div style="margin-bottom:1rem">`;
-  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;display:block">${t('txt_email_reply_to')}</label>`;
-  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_email_reply_to_help')}</p>`;
-  html += `<input type="email" id="email-settings-reply-to" value="${escAttr(replyTo)}"
-    placeholder="${t('txt_email_reply_to_placeholder')}" style="width:100%;font-size:0.85rem">`;
-  html += `</div>`;
-
-  html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
-  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveEmailSettings())">${t('txt_email_save_email')}</button>`;
-  html += `<span id="email-settings-saved-msg" style="color:var(--success,#22c55e);font-size:0.82rem;display:none">${t('txt_email_settings_saved')}</span>`;
-  html += `</div>`;
-
-  html += `</div></details>`;
-  return html;
-}
-
-/** Render a small ELO recalculate section (meant to be placed inside the TV controls card). */
-function _renderEloSection() {
-  if (!currentTid) return '';
-  let html = `<div style="margin-top:0.65rem;padding-top:0.55rem;border-top:1px solid var(--border)">`;
-  html += `<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">`;
-  html += `<button type="button" class="btn btn-warning btn-sm" onclick="withLoading(this,_recalculateTournamentElo)">`;
-  html += `♻️ ${t('txt_txt_recalculate_elo')}`;
-  html += `</button>`;
-  html += `</div></div>`;
-  return html;
 }
 
 /** Trigger full tournament ELO recomputation from completed matches. */

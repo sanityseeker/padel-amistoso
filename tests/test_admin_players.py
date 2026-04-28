@@ -243,6 +243,63 @@ class TestListProfiles:
         assert len(data) == 1
         assert data[0]["name"] == "Bob"
 
+    def test_list_filter_by_club(self, client: TestClient, auth_headers: dict) -> None:
+        alice = _insert_profile(name="Alice", email="alice@example.com")
+        _insert_profile(name="Bob", email="bob@example.com")
+        carol = _insert_profile(name="Carol", email="carol@example.com")
+        club = _insert_club(cid="comm-x", club_id="club-x")
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "INSERT INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden)"
+                " VALUES (?, ?, 'padel', 1000, 0, 0)",
+                (alice, club),
+            )
+            # Carol is in the club but hidden — should not appear.
+            conn.execute(
+                "INSERT INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden)"
+                " VALUES (?, ?, 'padel', 1000, 0, 1)",
+                (carol, club),
+            )
+        resp = client.get(f"/api/admin/player-profiles?club_id={club}", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        names = {p["name"] for p in data}
+        assert names == {"Alice"}
+
+    def test_list_filter_by_community(self, client: TestClient, auth_headers: dict) -> None:
+        alice = _insert_profile(name="Alice", email="alice@example.com")
+        _insert_profile(name="Bob", email="bob@example.com")
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO communities (id, name, created_by, created_at) VALUES (?, ?, ?, ?)",
+                ("comm-y", "Y Community", "admin", "2026-01-01T00:00:00+00:00"),
+            )
+            conn.execute(
+                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)"
+                " VALUES (?, 'comm-y', 'padel', 1000, 0)",
+                (alice,),
+            )
+        resp = client.get("/api/admin/player-profiles?community_id=comm-y", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        names = {p["name"] for p in data}
+        assert names == {"Alice"}
+
+    def test_list_filter_by_club_combined_with_query(self, client: TestClient, auth_headers: dict) -> None:
+        alice = _insert_profile(name="Alice", email="alice@example.com")
+        bob = _insert_profile(name="Bob", email="bob@example.com")
+        club = _insert_club(cid="comm-z", club_id="club-z")
+        with db_mod.get_db() as conn:
+            for pid in (alice, bob):
+                conn.execute(
+                    "INSERT INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden)"
+                    " VALUES (?, ?, 'padel', 1000, 0, 0)",
+                    (pid, club),
+                )
+        resp = client.get(f"/api/admin/player-profiles?club_id={club}&q=ali", headers=auth_headers)
+        data = resp.json()
+        assert {p["name"] for p in data} == {"Alice"}
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Get profile detail

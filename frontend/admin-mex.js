@@ -73,11 +73,14 @@ async function renderMex() {
       matches: activeMatches,
     });
     let html = '';
-    html += _renderTvControls(tvSettings, hasCourts, true);
-    html += _renderEmailControls(emailSettings);
-    html += _renderPlayerCodes(playerSecrets);
-    html += _renderCollaboratorsSection(collabData?.collaborators || []);
     html += _renderMexOpsHeader(mexOpsStats);
+    // Top-of-page court assignments (most important admin focus).
+    if (isPlayoffs || hasPlayoffBracket) {
+      const pendingPo = (playoffsData.pending || []).filter(m => m.status !== 'completed');
+      html += _renderCourtAssignmentsCard(pendingPo, t('txt_txt_court_assignments_mexicano_play_offs'), status.assign_courts !== false);
+    } else {
+      html += _renderCourtAssignmentsCard(matches.current_matches, t('txt_txt_court_assignments_current_round'), status.assign_courts !== false);
+    }
     html += _renderMexReviewQueueCard(activeMatches);
 
     if (isPlayoffs) {
@@ -110,37 +113,27 @@ async function renderMex() {
     }
 
     if (isPlayoffs || hasPlayoffBracket) {
-      const pendingPo = (playoffsData.pending || []).filter(m => m.status !== 'completed');
-      html += _renderCourtAssignmentsCard(pendingPo, t('txt_txt_court_assignments_mexicano_play_offs'), status.assign_courts !== false);
-
       html += _schemaCardHtml('mex-playoff-schema', t('txt_txt_mexicano_play_offs_bracket'), 'generateMexPlayoffSchema');
 
       html += `<div class="card">`;
       html += `<div class="playoff-header-row">`;
       html += `<h2 class="playoff-header-title">${t('txt_txt_mexicano_play_off_bracket')}</h2>`;
-      if (window._emailConfigured) {
-        html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,_sendNextRoundEmails)">📧 ${t('txt_email_notify_round')}</button>`;
-      }
       html += `</div>`;
-      html += `<div class="score-format-row">`;
-      html += `<span class="score-format-label">${t('txt_txt_score_format')}:</span>`;
-      html += `<div class="score-mode-toggle">`;
-      html += `<button type="button" class="${_gpScoreMode['mex-playoff'] === 'points' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','points')">${t('txt_txt_points_label')}</button>`;
-      html += `<button type="button" class="${_gpScoreMode['mex-playoff'] === 'sets' ? 'active' : ''}" onclick="_setStageScoreMode('mex-playoff','sets')">🎾 ${t('txt_txt_sets')}</button>`;
-      html += `</div></div>`;
+      const _schFmt = (tvSettings && tvSettings.schema_format) || 'svg';
       html += `<details id="mex-inline-bracket" class="bracket-collapse bracket-inline" open><summary class="bracket-collapse-summary"><span class="bracket-chevron bracket-chevron-anim">▶</span>${t('txt_txt_mexicano_play_offs_bracket')}</summary>`;
-      html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/mex/playoffs-schema?fmt=png&_t=${Date.now()}" alt="${t('txt_txt_mexicano_play_offs_bracket')}" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'">`;
+      html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/mex/playoffs-schema?fmt=${_schFmt}&_t=${Date.now()}" alt="${t('txt_txt_mexicano_play_offs_bracket')}" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'">`;
       html += `</details>`;
       for (const m of _sortTbdLast(playoffsData.matches)) {
         html += matchRow(m, 'mex-playoff');
       }
       html += `</div>`;
-    } else {
-      html += _renderCourtAssignmentsCard(matches.current_matches, t('txt_txt_court_assignments_current_round'), status.assign_courts !== false);
     }
 
-    // Leaderboard (rendered after innerHTML is set, to allow sorting without re-fetching)
-    html += `<div class="card" id="mex-leaderboard-card"></div>`;
+    // Leaderboard placeholder for the playoff/finished branches — rendered
+    // after the playoff matches so the current round of play sits above it.
+    if (isPlayoffs || isFinished) {
+      html += `<div class="card" id="mex-leaderboard-card"></div>`;
+    }
 
     // Phase: Mexicano rounds
     if (!(isPlayoffs || isFinished)) {
@@ -149,15 +142,16 @@ async function renderMex() {
         html += `<div class="card">`;
         html += `<div class="current-round-header">`;
         html += `<h2 class="playoff-header-title">${t('txt_txt_current_round_matches')}</h2>`;
-        if (window._emailConfigured) {
-          html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,_sendNextRoundEmails)" title="${t('txt_email_notify_round')}">📧 ${t('txt_email_notify_round')}</button>`;
-        }
         html += `</div>`;
         for (const m of matches.current_matches) {
           html += matchRow(m, 'mex');
         }
         html += `</div>`;
       }
+
+      // Leaderboard placeholder rendered after the current round matches so
+      // the live round of play stays above it.
+      html += `<div class="card" id="mex-leaderboard-card"></div>`;
 
       // Next round / end / playoffs controls
       const pending = matches.pending.length;
@@ -200,10 +194,7 @@ async function renderMex() {
         html += `</div>`;
         html += `</div>`;
       } else if (pending > 0) {
-        const totalMex = matches.current_matches.length;
-        const doneMex = totalMex - pending;
-        const pctMex = totalMex > 0 ? Math.round((doneMex / totalMex) * 100) : 0;
-        html += `<div id="mex-round-progress" class="alert alert-info">${t('txt_txt_n_match_remaining', { n: pending })} (${doneMex}/${totalMex})<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pctMex}%"></div></div></div>`;
+        // (intentionally empty: per-round progress alert removed in favour of the status bar)
       } else if (pending === 0 && !mexicanoEnded && !canGenerateRound) {
         html += `<div id="mex-next-section">`;
         html += `<button type="button" class="btn btn-primary" onclick="withLoading(this,endMexicano)">🛑 ${t('txt_txt_end_mexicano')}</button>`;
@@ -252,6 +243,20 @@ async function renderMex() {
       }
     }
 
+    const scoringStages = [];
+    if (isPlayoffs || hasPlayoffBracket) {
+      scoringStages.push({ key: 'mex-playoff', label: t('txt_txt_play_offs') });
+    }
+    html += _renderSettingsCard({
+      tvSettings,
+      emailSettings,
+      hasCourts,
+      isMexicano: true,
+      scoringStages,
+      playerSecrets,
+      collaborators: collabData?.collaborators || [],
+    });
+
     if (currentTid !== _renderTid) return;
     el.innerHTML = html;
     _renderMexLeaderboard();
@@ -264,7 +269,6 @@ async function renderMex() {
 }
 
 let _mexReviewQueueFilterState = 'all';
-let _courtBoardCompact = localStorage.getItem('courtBoardCompact') === '1';
 
 function _buildMexOpsStats({ status, hasPlayoffBracket, hasCourts, matches }) {
   const unresolved = (matches || []).filter(m => m.status !== 'completed');
@@ -312,12 +316,13 @@ function _renderMexOpsHeader(stats) {
   };
   const actionLabel = actionLabelMap[stats.nextAction] || actionLabelMap.none;
   return `
-    <div class="card gp-ops-header" id="mex-ops-header">
+    <div class="card gp-ops-header tournament-status-bar" id="mex-ops-header">
       <div class="gp-ops-header-top">
-        <h3>${t('txt_txt_ops_overview')}</h3>
+        <h3>${t('txt_admin_status_phase')}</h3>
         <div class="gp-ops-next-action">
           <span>${t('txt_txt_next_action')}:</span>
           <button type="button" class="btn btn-sm" ${stats.nextAction === 'none' ? 'disabled' : ''} onclick="_mexFocusNextAction('${stats.nextAction}')">${esc(actionLabel)}</button>
+          <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">⚙ ${t('txt_admin_status_jump_settings')}</button>
         </div>
       </div>
       <div class="gp-ops-stats-grid">
@@ -556,10 +561,13 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
   }
 
   const _teamLabel = (team) => (team && team.length > 0) ? team.join(' & ') : 'TBD';
-  const compactCls = _courtBoardCompact ? ' court-board-compact' : '';
-  const compactBtnLabel = _courtBoardCompact ? t('txt_txt_court_board_expand') : t('txt_txt_court_board_compact');
+  // Auto-compact: switch to dense layout on narrow viewports or when many
+  // courts are competing for horizontal space. No user toggle — the layout
+  // adapts to the current screen and tournament size.
+  const isCompact = _shouldUseCompactCourtBoard(courtNames.length);
+  const compactCls = isCompact ? ' court-board-compact' : '';
 
-  let html = `<div class="card"><div class="court-board-header"><h3>${esc(title)}</h3><button type="button" class="btn btn-sm btn-outline" onclick="_toggleCourtBoardCompact()" aria-pressed="${_courtBoardCompact}">${esc(compactBtnLabel)}</button></div><div class="court-board${compactCls}">`;
+  let html = `<div class="card"><div class="court-board-header"><h3>${esc(title)}</h3></div><div class="court-board${compactCls}">`;
   for (const courtName of courtNames) {
     const courtMatches = matchesByCourt[courtName];
     html += `<div class="court-column">`;
@@ -572,7 +580,7 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
       const jumpLabel = `${t('txt_txt_go_to_match')}: ${t1} vs ${t2}`;
       const upcomingCls = i > 0 ? ' court-match-upcoming' : '';
       html += `<div class="court-match-item${upcomingCls}" role="button" tabindex="0" data-match-id="${m.id}" aria-label="${esc(jumpLabel)}" onclick="_scrollToMatch('${m.id}')" onkeydown="if(event.key==='Enter')_scrollToMatch('${m.id}')">${esc(t1)} <span class="muted-text">vs</span> ${esc(t2)}${r}</div>`;
-      if (m.comment && !_courtBoardCompact) html += `<div class="court-match-item court-match-item-no-top"><span class="match-comment-text match-comment-static">💬 ${esc(m.comment)}</span></div>`;
+      if (m.comment && !isCompact) html += `<div class="court-match-item court-match-item-no-top"><span class="match-comment-text match-comment-static">💬 ${esc(m.comment)}</span></div>`;
     }
     html += `</div>`;
   }
@@ -580,13 +588,40 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
   return html;
 }
 
-function _toggleCourtBoardCompact() {
-  _courtBoardCompact = !_courtBoardCompact;
-  localStorage.setItem('courtBoardCompact', _courtBoardCompact ? '1' : '0');
-  if (currentType === 'group_playoff') renderGP();
-  else if (currentType === 'playoff') renderPO();
-  else renderMex();
+/**
+ * Decide whether the court board should render in its compact form.
+ * Compact when the viewport is narrow OR when more than a handful of
+ * courts would otherwise overflow the layout.
+ */
+function _shouldUseCompactCourtBoard(courtCount) {
+  const narrow = typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(max-width: 720px)').matches;
+  return narrow || (courtCount || 0) > 4;
 }
+
+let _courtBoardResizeTimer = null;
+let _courtBoardResizeBound = false;
+function _bindCourtBoardResizeListener() {
+  if (_courtBoardResizeBound || typeof window === 'undefined') return;
+  _courtBoardResizeBound = true;
+  window.addEventListener('resize', () => {
+    clearTimeout(_courtBoardResizeTimer);
+    _courtBoardResizeTimer = setTimeout(() => {
+      const board = document.querySelector('.court-board');
+      if (!board) return;
+      const cols = board.querySelectorAll('.court-column').length;
+      const wantCompact = _shouldUseCompactCourtBoard(cols);
+      const isCompact = board.classList.contains('court-board-compact');
+      if (wantCompact !== isCompact) {
+        if (typeof _rerenderCurrentViewPreserveDrafts === 'function') {
+          _rerenderCurrentViewPreserveDrafts();
+        }
+      }
+    }, 180);
+  });
+}
+_bindCourtBoardResizeListener();
 
 async function nextMexRound() {
   try {

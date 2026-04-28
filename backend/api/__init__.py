@@ -396,6 +396,18 @@ async def serve_admin_collaborators_js(request: Request) -> Response:
     return _serve_js_file("admin-collaborators.js", request)
 
 
+@app.get("/admin-settings-panel.js")
+async def serve_admin_settings_panel_js(request: Request) -> Response:
+    """Serve the unified per-tournament Settings card orchestrator."""
+    return _serve_js_file("admin-settings-panel.js", request)
+
+
+@app.get("/admin-lobby-settings-panel.js")
+async def serve_admin_lobby_settings_panel_js(request: Request) -> Response:
+    """Serve the unified per-lobby (registration) Settings card orchestrator."""
+    return _serve_js_file("admin-lobby-settings-panel.js", request)
+
+
 @app.get("/admin-players.js")
 async def serve_admin_players_js(request: Request) -> Response:
     """Serve Player Hub admin management."""

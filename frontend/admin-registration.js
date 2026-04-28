@@ -20,42 +20,6 @@ async function _setRegLang(rid, pid, lang, toggleEl) {
 }
 let _currentRegDetail = null;  // last-opened registration (for convert flow)
 
-/** Render the per-registration email settings collapsible section. */
-function _renderRegEmailControls(rid, emailSettings) {
-  if (!window._emailConfigured) return '';
-  const s = emailSettings || {};
-  const senderName = s.sender_name || '';
-  const replyTo = s.reply_to || '';
-
-  let html = `<details class="reg-section" style="margin-bottom:1rem">`;
-  html += `<summary class="reg-section-summary" style="cursor:pointer;font-weight:700;display:flex;align-items:center;gap:0.45rem">`;
-  html += `<span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>📧 ${t('txt_email_settings')}`;
-  html += `</summary>`;
-  html += `<div style="padding:0.75rem 0">`;
-
-  // Sender Display Name
-  html += `<div class="form-group">`;
-  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;display:block">${t('txt_email_sender_name')}</label>`;
-  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_email_sender_name_help')}</p>`;
-  html += `<input type="text" id="reg-email-settings-sender-name-${esc(rid)}" value="${escAttr(senderName)}" maxlength="100" placeholder="${t('txt_email_sender_placeholder')}" style="width:100%;font-size:0.85rem">`;
-  html += `</div>`;
-
-  // Reply-To Address
-  html += `<div class="form-group">`;
-  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.3rem;display:block">${t('txt_email_reply_to')}</label>`;
-  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_email_reply_to_help')}</p>`;
-  html += `<input type="email" id="reg-email-settings-reply-to-${esc(rid)}" value="${escAttr(replyTo)}" placeholder="${t('txt_email_reply_to_placeholder')}" style="width:100%;font-size:0.85rem">`;
-  html += `</div>`;
-
-  html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
-  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegEmailSettings('${esc(rid)}'))">${t('txt_email_save_email')}</button>`;
-  html += `<span id="reg-email-settings-saved-msg-${esc(rid)}" style="color:var(--success,#22c55e);font-size:0.82rem;display:none">${t('txt_email_settings_saved')}</span>`;
-  html += `</div>`;
-
-  html += `</div></details>`;
-  return html;
-}
-
 /** Persist per-registration email settings (sender_name, reply_to) to the backend. */
 async function _saveRegEmailSettings(rid) {
   const senderName = document.getElementById(`reg-email-settings-sender-name-${rid}`)?.value.trim() ?? '';
@@ -168,114 +132,16 @@ function _renderRegDetailInline(rid) {
   const r = _regDetails[rid];
   if (!el || !r) return;
 
-  let closeOpenBtn = '';
-  if (r.archived) {
-    closeOpenBtn = `<button type="button" class="btn btn-secondary" style="padding:0.35rem 0.8rem;font-size:0.78rem;white-space:nowrap" onclick="withLoading(this,()=>_archiveRegistration('${esc(rid)}',false))">${t('txt_reg_unarchive')}</button>`;
-  } else if (r.open) {
-    closeOpenBtn = `<button type="button" class="btn" style="padding:0.35rem 0.8rem;font-size:0.78rem;background:var(--red);color:#fff;white-space:nowrap" onclick="withLoading(this,()=>_toggleRegOpen('${esc(rid)}',true))">${t('txt_reg_close_registration')}</button>`;
-  } else {
-    closeOpenBtn = `<div style="display:flex;gap:0.4rem;flex-shrink:0">`
-      + `<button type="button" class="btn btn-primary" style="padding:0.35rem 0.8rem;font-size:0.78rem;white-space:nowrap" onclick="withLoading(this,()=>_toggleRegOpen('${esc(rid)}',false))">${t('txt_reg_open_registration')}</button>`
-      + `<button type="button" class="btn btn-secondary" style="padding:0.35rem 0.8rem;font-size:0.78rem;white-space:nowrap" onclick="withLoading(this,()=>_archiveRegistration('${esc(rid)}',true))">${t('txt_reg_archive')}</button>`
-      + `</div>`;
-  }
-  let html = `<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;margin-bottom:0.5rem"><h2 style="margin:0">${esc(r.name)}</h2>${closeOpenBtn}</div>`;
-  const regAlias = r.alias || '';
-  const regUrl = regAlias
-    ? `${window.location.origin}/register/${regAlias}`
-    : `${window.location.origin}/register/${esc(r.id)}`;
+  let html = `<div class="card">`;
 
-  // Registration link + alias section
-  html += `<div style="margin-bottom:1rem;padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px">`;
-  html += `<label style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;display:block">${t('txt_reg_registration_alias')}</label>`;
-  html += `<p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:0.5rem">${t('txt_reg_alias_help')}</p>`;
-  html += `<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">`;
-  html += `<input type="text" id="reg-alias-input-${esc(rid)}" placeholder="${t('txt_tv_alias_placeholder')}" value="${esc(regAlias)}" pattern="[a-zA-Z0-9_-]+" maxlength="64" style="flex:1;min-width:180px;font-family:monospace;font-size:0.85rem">`;
-  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_setRegAlias('${esc(rid)}'))" style="white-space:nowrap">${t('txt_txt_set_alias')}</button>`;
-  if (regAlias) {
-    html += `<button type="button" class="btn btn-danger btn-sm" onclick="withLoading(this,()=>_deleteRegAlias('${esc(rid)}'))" style="white-space:nowrap">${t('txt_txt_remove')}</button>`;
-  }
-  html += `</div>`;
-  html += `<div style="margin-top:0.5rem;display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">`;
-  html += `<div style="flex:1;min-width:220px;padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:0.78rem;word-break:break-all">`;
-  html += `<span style="color:var(--text-muted)">${t('txt_reg_public_url')}</span> <a href="${regUrl}" target="_blank" style="color:var(--accent);font-size:0.85rem">${regUrl}</a>`;
-  html += `</div>`;
-  html += `<button type="button" class="btn btn-sm" style="font-size:0.7rem;white-space:nowrap" onclick="_copyRegLink('${esc(rid)}')">${t('txt_reg_copy_link')}</button>`;
-  html += `</div></div>`;
+  // Status bar (replaces the old title row + close/open + archive buttons)
+  html += _renderLobbyStatusBar(rid, r);
 
-  html += `<div class="reg-sections-group reg-sections-group-admin">`;
-
-  // Settings section
-  html += `<details class="reg-section" style="margin-bottom:1rem">`;
-  html += `<summary class="reg-section-summary" style="cursor:pointer;font-weight:700;display:flex;align-items:center;gap:0.45rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_reg_settings')}</summary>`;
-  html += `<div style="padding:0.75rem 0">`;
-  html += `<div class="form-group"><label>${t('txt_reg_tournament_name')}</label>`;
-  html += `<input type="text" id="reg-edit-name-${esc(rid)}" value="${esc(r.name)}"></div>`;
-  html += `<div class="form-group"><label>${t('txt_reg_description')}</label>`;
-  html += `<textarea id="reg-edit-desc-${esc(rid)}" class="reg-desc-textarea" rows="3" oninput="_autoResizeTextarea(this)">${esc(r.description || '')}</textarea>`;
-  html += `<div id="reg-desc-preview-${esc(rid)}" style="display:none;margin-top:0.5rem;padding:0.5rem;border:1px solid var(--border);border-radius:6px;font-size:0.9rem"></div>`;
-  html += `<button type="button" class="btn btn-sm" style="margin-top:0.3rem;font-size:0.75rem" onclick="_toggleRegDescPreview('${esc(rid)}')">${t('txt_reg_preview')}</button></div>`;
-  html += `<div class="form-group"><label>${t('txt_email_requirement')}</label>`;
-  html += `<select id="reg-edit-emailreq-${esc(rid)}">`;
-  html += `<option value="required" ${(r.email_requirement || 'optional') === 'required' ? 'selected' : ''}>${t('txt_email_mode_required')}</option>`;
-  html += `<option value="optional" ${(r.email_requirement || 'optional') === 'optional' ? 'selected' : ''}>${t('txt_email_mode_optional')}</option>`;
-  html += `<option value="disabled" ${(r.email_requirement || 'optional') === 'disabled' ? 'selected' : ''}>${t('txt_email_mode_disabled')}</option>`;
-  html += `</select></div>`;
-  html += `<div class="form-group"><label>${t('txt_reg_join_code')}</label>`;
-  html += `<input type="text" id="reg-edit-joincode-${esc(rid)}" value="${esc(r.join_code || '')}" placeholder="${t('txt_reg_join_code_placeholder')}"></div>`;
-  html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.5rem">`;
-  html += `<input type="checkbox" id="reg-edit-listed-${esc(rid)}" ${r.listed ? 'checked' : ''} style="width:1rem;height:1rem;cursor:pointer">`;
-  html += `<label for="reg-edit-listed-${esc(rid)}" style="font-size:0.85rem;cursor:pointer">${t('txt_reg_listed')}</label></div>`;
-  if (window._emailConfigured) {
-    html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.5rem">`;
-    html += `<input type="checkbox" id="reg-edit-autoemail-${esc(rid)}" ${r.auto_send_email ? 'checked' : ''} style="width:1rem;height:1rem;cursor:pointer">`;
-    html += `<label for="reg-edit-autoemail-${esc(rid)}" style="font-size:0.85rem;cursor:pointer">${t('txt_email_auto_send')}</label></div>`;
-  }
-  html += `<div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.5rem">`;
-  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegSettings('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
-  html += `</div>`;
-  html += _renderRegCollaboratorsSection(rid, _regCollaborators[rid] || []);
-  html += `</div></details>`;
-
-  // Email settings section (only when email is configured)
-  if (window._emailConfigured) {
-    html += _renderRegEmailControls(rid, _regEmailSettings[rid] || {});
-  }
-
-  // Admin message section
-  html += `<details class="reg-section" style="margin-bottom:1rem">`;
-  html += `<summary class="reg-section-summary" style="cursor:pointer;font-weight:700;display:flex;align-items:center;gap:0.45rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_reg_admin_message')}</summary>`;
-  html += `<div style="padding:0.75rem 0">`;
-  html += `<div class="form-group" style="margin-bottom:0.4rem">`;
-  html += `<textarea id="reg-edit-message-${esc(rid)}" class="reg-desc-textarea" rows="3" placeholder="${t('txt_reg_message_placeholder')}" oninput="_autoResizeTextarea(this)">${esc(r.message || '')}</textarea>`;
-  html += `</div>`;
-  html += `<div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem">`;
-  if (window._emailConfigured) {
-    html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendRegMessageEmails('${esc(rid)}'))" title="${t('txt_email_confirm_send_message_all')}">📧 ${t('txt_email_send_message_all')}</button>`;
-  }
-  html += `<button type="button" class="btn btn-primary btn-sm" style="margin-left:auto" onclick="withLoading(this,()=>_saveRegMessage('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
-  html += `</div></div></details>`;
-
-  // Questions edit section
-  const editQContainer = `reg-edit-questions-${rid}`;
-  html += `<details class="reg-section" style="margin-bottom:1rem">`;
-  html += `<summary class="reg-section-summary" style="cursor:pointer;user-select:none;font-weight:700;display:flex;align-items:center;gap:0.5rem;list-style:none">`;
-  html += `<span style="display:flex;align-items:center;gap:0.4rem;flex:1"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_reg_questions')}</span>`;
-  html += `<span class="participant-count" id="${editQContainer}-count">(0)</span>`;
-  html += `</summary>`;
-  html += `<div style="padding:0.6rem 0">`;
-  const hasContactQ = (r.questions || []).some(q => q.key === 'contact');
-  html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.55rem">`;
-  html += `<input type="checkbox" id="reg-contact-toggle-${esc(rid)}" style="width:1rem;height:1rem;cursor:pointer" ${hasContactQ ? 'checked' : ''} onchange="_toggleRegContactQuestion('${esc(rid)}', this.checked, '${editQContainer}')">`;
-  html += `<label for="reg-contact-toggle-${esc(rid)}" style="font-size:0.85rem;cursor:pointer">${t('txt_reg_request_contact')}</label>`;
-  html += `</div>`;
-  html += `<div id="${editQContainer}"><div class="reg-q-empty" id="${editQContainer}-empty">${t('txt_reg_q_no_questions')}</div></div>`;
-  html += `<div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap;align-items:center">`;
-  html += `<button type="button" class="add-participant-btn" onclick="_addRegQuestion('${editQContainer}')" style="flex:1">${t('txt_reg_add_question')}</button>`;
-  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegQuestions('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
-  html += `</div></div></details>`;
-
-  html += `</div>`;
+  // Unified Settings card (Share / Details / Questions / Message / Comms / Access)
+  html += _renderLobbySettingsCard(rid, {
+    regDetail: r,
+    emailSettings: _regEmailSettings[rid] || null,
+  });
 
   html += `<div class="reg-sections-group reg-sections-group-players">`;
 
@@ -897,7 +763,7 @@ async function _copyAllRegCodes(rid) {
 }
 
 function _renderAnswersPanel(rid, r, questions) {
-  let h = `<details class="reg-section" style="margin-bottom:0.75rem">`;
+  let h = `<details class="reg-section" id="reg-answers-panel-${esc(rid)}" style="margin-bottom:0.75rem">`;
   h += `<summary class="reg-section-summary" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
   h += `<span style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_reg_answers_title')} (${questions.length})</span>`;
   h += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="event.preventDefault();_downloadAnswersCSV('${esc(rid)}')">${t('txt_reg_download_answers_csv')}</button>`;

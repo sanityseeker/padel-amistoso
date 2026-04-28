@@ -874,9 +874,14 @@ def get_secrets_for_tournament(tournament_id: str) -> dict[str, dict]:
         return cached
     try:
         with get_db() as conn:
+            # ``finished_at`` is set when the tournament ends (see
+            # ``delete_secrets_for_tournament``) but the rows are preserved on
+            # purpose so organizer-side surfaces (admin Player Codes panel,
+            # bulk emails, QR/regenerate endpoints) keep working after the
+            # tournament finishes. Do not filter on it here.
             rows = conn.execute(
                 "SELECT player_id, player_name, passphrase, token, contact, email, profile_id, lang"
-                " FROM player_secrets WHERE tournament_id = ? AND finished_at IS NULL",
+                " FROM player_secrets WHERE tournament_id = ?",
                 (tournament_id,),
             ).fetchall()
     except sqlite3.Error as exc:

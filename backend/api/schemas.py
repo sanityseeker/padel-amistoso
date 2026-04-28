@@ -261,6 +261,7 @@ class TvSettingsRequest(BaseModel):
     schema_arrow_scale: float | None = Field(default=None, ge=0.3, le=5.0)
     schema_title_font_scale: float | None = Field(default=None, ge=0.3, le=5.0)
     schema_output_scale: float | None = Field(default=None, ge=0.5, le=3.0)
+    schema_format: Literal["svg", "png"] | None = None
     score_mode: dict[str, str] | None = None
     banner_text: str | None = None
     score_confirmation: ScoreConfirmation | None = None
@@ -285,6 +286,9 @@ class TvSettings(BaseModel):
     schema_arrow_scale: float = 1.0
     schema_title_font_scale: float = 1.0
     schema_output_scale: float = 1.0
+    # Rendering format for live bracket images shown on TV/admin views.
+    # SVG is vector and stays crisp at any zoom; PNG is the legacy raster fallback.
+    schema_format: Literal["svg", "png"] = "svg"
     score_mode: dict[str, str] = Field(default_factory=dict)
     banner_text: str = ""
     # "immediate": score counts on submit (good for fast Mexicano rounds).

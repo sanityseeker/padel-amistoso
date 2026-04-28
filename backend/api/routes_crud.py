@@ -46,6 +46,10 @@ from .state import _delete_tournament, _save_tournament, _tournaments
 from .elo_integration import elo_recalculate_tournament
 from .elo_store import safe_transfer_elos_to_profiles
 from .elo_store import delete_tournament_elos
+from .routes_admin_players import (
+    _purge_profile_record,
+    list_ghost_profiles_for_tournament,
+)
 from .routes_clubs import resolve_club_for_scope
 
 
@@ -181,8 +185,26 @@ async def set_tournament_community(tid: str, req: SetCommunityRequest, user: Use
     }
 
 
+@router.get("/{tournament_id}/ghost-profiles")
+async def list_tournament_ghost_profiles(tournament_id: str, user: User = Depends(get_current_user)) -> dict:
+    """Return ghost Player Hub profiles linked to this tournament.
+
+    Used by the admin UI to ask the operator whether to also purge them
+    when the tournament itself is deleted.
+    """
+    _require_owner_or_admin(tournament_id, user)
+    if tournament_id not in _tournaments:
+        raise HTTPException(404, "Tournament not found")
+    ghosts = list_ghost_profiles_for_tournament(tournament_id)
+    return {"count": len(ghosts), "profiles": ghosts}
+
+
 @router.delete("/{tournament_id}")
-async def delete_tournament(tournament_id: str, user: User = Depends(get_current_user)) -> dict:
+async def delete_tournament(
+    tournament_id: str,
+    user: User = Depends(get_current_user),
+    purge_ghosts: bool = False,
+) -> dict:
     _require_owner_or_admin(tournament_id, user)
     async with state.get_tournament_lock(tournament_id):
         if tournament_id not in _tournaments:
@@ -190,6 +212,9 @@ async def delete_tournament(tournament_id: str, user: User = Depends(get_current
         t_data = _tournaments[tournament_id]
         entity_name = t_data.get("name", "")
         player_stats = extract_history_stats(t_data)
+        ghost_ids: list[str] = []
+        if purge_ghosts:
+            ghost_ids = [g["id"] for g in list_ghost_profiles_for_tournament(tournament_id)]
         del _tournaments[tournament_id]
         _delete_tournament(tournament_id)
         delete_secrets_for_tournament(
@@ -200,7 +225,22 @@ async def delete_tournament(tournament_id: str, user: User = Depends(get_current
             partner_rival_stats=extract_partner_rival_stats(t_data),
         )
         delete_tournament_elos(tournament_id)
-    return {"ok": True}
+        purged: list[str] = []
+        if purge_ghosts and ghost_ids:
+            # ``_delete_tournament`` already wiped ``player_secrets`` rows
+            # for this tournament, so we cleanly purge the ghost profile
+            # rows themselves (history, club/community ELO, profile row).
+            with get_db() as conn:
+                for gid in ghost_ids:
+                    row = conn.execute(
+                        "SELECT 1 FROM player_profiles WHERE id = ? AND is_ghost = 1",
+                        (gid,),
+                    ).fetchone()
+                    if row is None:
+                        continue
+                    _purge_profile_record(conn, gid, is_ghost=True)
+                    purged.append(gid)
+    return {"ok": True, "ghosts_purged": len(purged)}
 
 
 @router.get("/{tid}/version")

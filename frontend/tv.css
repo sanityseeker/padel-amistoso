@@ -396,9 +396,14 @@ details[open] > .breakdown-toggle { color: var(--accent); }
 /* ── Bracket ── */
 .bracket-scroll-wrapper { overflow: visible; }
 .bracket-img {
+  /* Fit-to-screen on all devices: never exceed container width nor a portion
+     of the viewport height, preserving aspect ratio. Lightbox remains the path
+     to full-resolution viewing. */
   max-width: 100%;
-  width: 100%;
+  max-height: 75vh;
+  width: auto;
   height: auto;
+  object-fit: contain;
   border: 1px solid var(--border);
   border-radius: 8px;
   display: block;
@@ -815,12 +820,11 @@ html[data-theme="light"] .standings-table tr:hover td {
   .tv-picker-form input,
   .tv-picker-form button { min-height: 44px; font-size: 1rem; }
 
-  /* Bracket: horizontal scroll at readable size on mobile */
-  .bracket-scroll-wrapper {
-    overflow-x: auto; -webkit-overflow-scrolling: touch;
-  }
+  /* Bracket: fit the screen on mobile too (no forced horizontal scroll).
+     The lightbox remains for full-resolution inspection via tap. */
+  .bracket-scroll-wrapper { overflow: visible; }
   .bracket-scroll-wrapper .bracket-img {
-    width: auto; max-width: none; min-width: 580px;
+    width: auto; max-width: 100%; min-width: 0; max-height: 60vh;
   }
   .bracket-tap-hint { display: block; }
 }

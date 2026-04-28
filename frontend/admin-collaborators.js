@@ -92,29 +92,20 @@ async function _removeRegCollaborator(rid, username) {
 // ─── Collaborators / Sharing ─────────────────────────────
 
 /**
- * Render the Collaborators management card.
- * Only visible to the tournament owner and site admins — co-editors cannot
- * modify the share list.
+ * Body-only collaborators panel for the unified Settings card.
+ * Returns the help text + add row + list without the outer
+ * `<details class="card">` wrapper. Returns '' for non-owners / non-admins.
  */
-function _renderCollaboratorsSection(collaborators) {
+function _renderCollaboratorsBody(collaborators) {
   if (!currentTid) return '';
   const isOwner = _tournamentMeta[currentTid]?.owner === getAuthUsername();
   if (!isOwner && !isAdmin()) return '';
 
   const list = collaborators || [];
+  let html = '';
+  html += `<p class="settings-help" style="margin-top:0">${t('txt_txt_collaborators_help')}</p>`;
 
-  let html = `<details class="card" id="collaborators-panel">`;
-  html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
-  html += `<span style="font-size:1.1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem">`;
-  html += `<span class="tv-chevron" style="display:inline-block;transition:transform 0.18s;font-size:0.7em;color:var(--text-muted)">▸</span>`;
-  html += ` 👥 ${t('txt_txt_collaborators')}`;
-  if (list.length > 0) html += ` <span style="font-size:0.75rem;font-weight:400;color:var(--text-muted)">(${list.length})</span>`;
-  html += `</span></summary>`;
-  html += `<div style="margin-top:0.65rem">`;
-  html += `<p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:0.75rem">${t('txt_txt_collaborators_help')}</p>`;
-
-  // Add co-editor input row
-  html += `<div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap">`;
+  html += `<div class="settings-inline-row" style="margin-bottom:0.5rem">`;
   html += `<input type="text" id="collab-username-input" placeholder="${t('txt_txt_add_collaborator_placeholder')}"`;
   html += ` list="collab-username-suggestions" autocomplete="off"`;
   html += ` style="flex:1;min-width:180px;font-size:0.85rem"`;
@@ -124,21 +115,19 @@ function _renderCollaboratorsSection(collaborators) {
   html += `</div>`;
   html += `<div id="collab-error" style="color:var(--danger,#ef4444);font-size:0.82rem;margin-bottom:0.5rem;display:none"></div>`;
 
-  // Current co-editors list
   html += `<div id="collaborators-list">`;
   if (list.length === 0) {
-    html += `<p style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem 0">${t('txt_txt_no_collaborators')}</p>`;
+    html += `<p style="color:var(--text-muted);font-size:0.85rem;padding:0.4rem 0;margin:0">${t('txt_txt_no_collaborators')}</p>`;
   } else {
     for (const username of list) {
-      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--border)">`;
-      html += `<span style="font-size:0.9rem">👤 ${esc(username)}</span>`;
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.35rem 0;border-bottom:1px solid var(--border)">`;
+      html += `<span style="font-size:0.88rem">👤 ${esc(username)}</span>`;
       html += `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem"`;
       html += ` onclick="_removeCollaborator('${escAttr(username)}')">✕ ${t('txt_txt_remove')}</button>`;
       html += `</div>`;
     }
   }
   html += `</div>`;
-  html += `</div></details>`;
   return html;
 }
 

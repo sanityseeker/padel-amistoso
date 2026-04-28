@@ -1511,7 +1511,8 @@ function _renderGP(tvSettings, status, groups, playoffs) {
       const lw = tvSettings.schema_line_width  || 1.0;
       const as_ = tvSettings.schema_arrow_scale || 1.0;
       const tfs = tvSettings.schema_title_font_scale || 1.0;
-      const imgUrl = `/api/tournaments/${TID}/gp/playoffs-schema?fmt=png&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
+      const fmt = tvSettings.schema_format || 'svg';
+      const imgUrl = `/api/tournaments/${TID}/gp/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
       html += _buildBracketSection(imgUrl);
     }
 
@@ -1580,7 +1581,8 @@ function _renderPO(tvSettings, status, playoffs) {
     const lw  = tvSettings.schema_line_width       || 1.0;
     const as_ = tvSettings.schema_arrow_scale      || 1.0;
     const tfs = tvSettings.schema_title_font_scale || 1.0;
-    const imgUrl = `/api/tournaments/${TID}/po/playoffs-schema?fmt=png&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
+    const fmt = tvSettings.schema_format || 'svg';
+    const imgUrl = `/api/tournaments/${TID}/po/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
     html += _buildBracketSection(imgUrl);
   }
 
@@ -1628,7 +1630,8 @@ function _renderMex(tvSettings, status, matches, playoffs) {
       const lw = tvSettings.schema_line_width  || 1.0;
       const as_ = tvSettings.schema_arrow_scale || 1.0;
       const tfs = tvSettings.schema_title_font_scale || 1.0;
-      const imgUrl = `/api/tournaments/${TID}/mex/playoffs-schema?fmt=png&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
+      const fmt = tvSettings.schema_format || 'svg';
+      const imgUrl = `/api/tournaments/${TID}/mex/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
       html += _buildBracketSection(imgUrl);
     }
 

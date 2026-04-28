@@ -277,8 +277,17 @@ async function loadTournaments() {
 }
 
 async function deleteTournament(id) {
-  if (!confirm(t('txt_txt_delete_this_tournament'))) return;
-  await api('/api/tournaments/' + id, { method: 'DELETE' });
+  let ghosts = [];
+  try {
+    const info = await api(`/api/tournaments/${id}/ghost-profiles`);
+    ghosts = (info && Array.isArray(info.profiles)) ? info.profiles : [];
+  } catch (e) {
+    console.warn('Could not list ghost profiles before delete', e);
+  }
+  const decision = await _confirmDeleteTournament(ghosts);
+  if (!decision.confirmed) return;
+  const url = `/api/tournaments/${id}` + (decision.purgeGhosts ? '?purge_ghosts=true' : '');
+  await api(url, { method: 'DELETE' });
   _openTournaments = _openTournaments.filter(tournament => tournament.id !== id);
   if (id === currentTid) {
     _stopAdminVersionPoll();
@@ -291,6 +300,94 @@ async function deleteTournament(id) {
     updateActiveTournamentUI();
   }
   loadTournaments();
+}
+
+/** Show the delete-tournament confirmation modal.
+ * Resolves to { confirmed: boolean, purgeGhosts: boolean }.
+ */
+function _confirmDeleteTournament(ghosts) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'modal-dialog modal-md delete-tourn-dialog';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'delete-tourn-title');
+
+    const ghostCount = ghosts.length;
+    const visibleGhosts = ghosts.slice(0, 5);
+    const remaining = ghostCount - visibleGhosts.length;
+    const chipsHtml = visibleGhosts
+      .map(g => `<span class="delete-tourn-ghost-chip">${esc(g.name || g.id)}</span>`)
+      .join('') + (remaining > 0
+        ? `<span class="delete-tourn-ghost-chip delete-tourn-ghost-chip-more">+${remaining}</span>`
+        : '');
+    const ghostBlockHtml = ghostCount > 0 ? `
+      <label class="delete-tourn-ghost-card" for="delete-tourn-purge-ghosts">
+        <input type="checkbox" id="delete-tourn-purge-ghosts" class="delete-tourn-ghost-check">
+        <div class="delete-tourn-ghost-body">
+          <div class="delete-tourn-ghost-title">
+            ${esc(t('txt_txt_purge_ghost_profiles_label').replace('{count}', ghostCount))}
+          </div>
+          <p class="delete-tourn-ghost-help">${esc(t('txt_txt_purge_ghost_profiles_help'))}</p>
+          <div class="delete-tourn-ghost-chips">${chipsHtml}</div>
+        </div>
+      </label>` : '';
+
+    dialog.innerHTML = `
+      <div class="modal-header delete-tourn-header">
+        <h2 class="modal-title delete-tourn-title" id="delete-tourn-title">
+          <span class="delete-tourn-title-icon" aria-hidden="true">⚠</span>
+          ${esc(t('txt_txt_delete_this_tournament'))}
+        </h2>
+        <button type="button" class="modal-close-btn" data-action="cancel" aria-label="${esc(t('txt_txt_close'))}">✕</button>
+      </div>
+      <p class="delete-tourn-warning">${esc(t('txt_txt_delete_tournament_warning'))}</p>
+      ${ghostBlockHtml}
+      <div class="modal-actions">
+        <button type="button" class="btn btn-muted" data-action="cancel">${esc(t('txt_txt_cancel'))}</button>
+        <button type="button" class="btn btn-danger" data-action="confirm">${esc(t('txt_txt_delete'))}</button>
+      </div>
+    `;
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    let resolved = false;
+    function finish(result) {
+      if (resolved) return;
+      resolved = true;
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+      resolve(result);
+    }
+    function onKey(ev) {
+      if (ev.key === 'Escape') finish({ confirmed: false, purgeGhosts: false });
+    }
+    overlay.addEventListener('click', ev => {
+      if (ev.target === overlay) finish({ confirmed: false, purgeGhosts: false });
+    });
+    dialog.querySelectorAll('[data-action="cancel"]').forEach(btn => {
+      btn.addEventListener('click', () => finish({ confirmed: false, purgeGhosts: false }));
+    });
+    dialog.querySelector('[data-action="confirm"]').addEventListener('click', () => {
+      const cb = dialog.querySelector('#delete-tourn-purge-ghosts');
+      finish({ confirmed: true, purgeGhosts: !!(cb && cb.checked) });
+    });
+    // Reflect checked state on the wrapping card for visual feedback.
+    const card = dialog.querySelector('.delete-tourn-ghost-card');
+    const checkbox = dialog.querySelector('#delete-tourn-purge-ghosts');
+    if (card && checkbox) {
+      const sync = () => card.classList.toggle('is-checked', checkbox.checked);
+      checkbox.addEventListener('change', sync);
+      sync();
+    }
+    document.addEventListener('keydown', onKey);
+    // Focus the destructive button so Enter confirms.
+    setTimeout(() => dialog.querySelector('[data-action="confirm"]').focus(), 0);
+  });
 }
 
 async function togglePublic(id, currentlyPublic) {
