@@ -1,3 +1,9 @@
+## v1.10.0 (2026-04-28)
+
+### Feat
+
+- **admin**: re-organize admin panel in tournaments and lobby
+
 ## v1.9.8 (2026-04-23)
 
 ### Fix
