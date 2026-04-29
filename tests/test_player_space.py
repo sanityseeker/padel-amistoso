@@ -3570,7 +3570,81 @@ class TestLeaderboard:
         assert padel[0]["matches"] == 4
         assert padel[0]["elo"] == 1190
 
-    def test_manual_elo_adjustment_appears_in_history(self, client: TestClient) -> None:
+    def test_leaderboard_lists_all_non_empty_communities(self, client: TestClient) -> None:
+        """`available_communities` exposes every community that has played matches.
+
+        Empty communities (no players, no matches) must be hidden so the
+        global leaderboard filter dropdown only offers usable choices.
+        """
+        active_id = f"c-lb-active-{uuid.uuid4().hex[:8]}"
+        empty_id = f"c-lb-empty-{uuid.uuid4().hex[:8]}"
+        _insert_community(active_id, "Active Community")
+        _insert_community(empty_id, "Empty Community")
+
+        tid = f"t-lb-active-{uuid.uuid4().hex[:8]}"
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO tournaments"
+                " (id, name, type, owner, public, tournament_blob, version, sport, community_id)"
+                " VALUES (?, ?, 'group_playoff', 'admin', 1, X'', 0, 'padel', ?)",
+                (tid, "Active Cup", active_id),
+            )
+        _insert_player_secret(tid, "p-active", "Active Player", "pp-active", uuid.uuid4().hex)
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "INSERT INTO player_elo (tournament_id, player_id, sport, elo_before, elo_after, matches_played, updated_at)"
+                " VALUES (?, ?, 'padel', 1000, 1080, 2, ?)",
+                (tid, "p-active", now),
+            )
+
+        res = client.get("/api/player-profile/leaderboard")
+        assert res.status_code == 200
+        available = res.json()["available_communities"]
+        ids = [c["id"] for c in available]
+        assert active_id in ids
+        assert empty_id not in ids
+        assert "open" not in ids
+
+    def test_leaderboard_available_communities_independent_of_filter(self, client: TestClient) -> None:
+        """The dropdown options stay stable regardless of the active filter."""
+        first_id = f"c-lb-first-{uuid.uuid4().hex[:8]}"
+        second_id = f"c-lb-second-{uuid.uuid4().hex[:8]}"
+        _insert_community(first_id, "First Community")
+        _insert_community(second_id, "Second Community")
+
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            for cid, tid_suffix, pid in (
+                (first_id, "first", "p-first"),
+                (second_id, "second", "p-second"),
+            ):
+                tid = f"t-lb-{tid_suffix}-{uuid.uuid4().hex[:8]}"
+                conn.execute(
+                    "INSERT OR IGNORE INTO tournaments"
+                    " (id, name, type, owner, public, tournament_blob, version, sport, community_id)"
+                    " VALUES (?, ?, 'group_playoff', 'admin', 1, X'', 0, 'padel', ?)",
+                    (tid, "Cup", cid),
+                )
+                conn.execute(
+                    "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token)"
+                    " VALUES (?, ?, ?, ?, ?)",
+                    (tid, pid, "Some Player", f"pp-{pid}", uuid.uuid4().hex),
+                )
+                conn.execute(
+                    "INSERT INTO player_elo (tournament_id, player_id, sport, elo_before, elo_after, matches_played, updated_at)"
+                    " VALUES (?, ?, 'padel', 1000, 1100, 1, ?)",
+                    (tid, pid, now),
+                )
+
+        global_res = client.get("/api/player-profile/leaderboard")
+        scoped_res = client.get(f"/api/player-profile/leaderboard?community_id={first_id}")
+        assert global_res.status_code == 200 and scoped_res.status_code == 200
+        global_ids = {c["id"] for c in global_res.json()["available_communities"]}
+        scoped_ids = {c["id"] for c in scoped_res.json()["available_communities"]}
+        assert {first_id, second_id}.issubset(global_ids)
+        assert global_ids == scoped_ids
+
         """Verify that manual ELO adjustments appear in history with is_manual=True."""
         profile = _create_profile(client, name="Admin Test", email="admin-test@example.com")
         profile_id = profile["profile"]["id"]

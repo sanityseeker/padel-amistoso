@@ -180,7 +180,53 @@ function _init() {
     clean.searchParams.delete('token');
     window.history.replaceState(null, '', clean.toString());
   }
+  // Hub auto-login token from email invite (`#hub_token=...`). Consumed
+  // before fetching the registration so the form renders pre-filled.
+  const hubToken = _readHubTokenFromHash();
+  if (hubToken) {
+    _resumeHubSessionFromToken(hubToken).finally(() => _fullRender());
+    return;
+  }
   _fullRender();
+}
+
+/**
+ * Pull the Hub auto-login token from the URL hash (if any) and strip it
+ * from the address bar to avoid leaking it via history / bookmarks.
+ */
+function _readHubTokenFromHash() {
+  if (!location.hash) return null;
+  const params = new URLSearchParams(location.hash.slice(1));
+  const token = params.get('hub_token');
+  if (!token) return null;
+  if (window.history?.replaceState) {
+    params.delete('hub_token');
+    const remaining = params.toString();
+    history.replaceState(null, '', location.pathname + location.search + (remaining ? `#${remaining}` : ''));
+  }
+  return token;
+}
+
+/**
+ * Resume the recipient's Player Hub session from a one-shot magic-link
+ * token: stash the JWT, fetch the profile (incl. passphrase), and persist
+ * both so `_tryProfileAutoLogin` finds them on the next render.
+ */
+async function _resumeHubSessionFromToken(token) {
+  try {
+    const res = await fetch('/api/player-profile/space', {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data?.profile) return;
+    try {
+      localStorage.setItem('padel-player-profile', data.access_token || token);
+      localStorage.setItem('padel-player-profile-data', JSON.stringify(data.profile));
+    } catch (_) {}
+  } catch (_) {
+    // Silent: invalid/expired token just falls back to anonymous registration.
+  }
 }
 
 async function _fetchRegistration(rid) {

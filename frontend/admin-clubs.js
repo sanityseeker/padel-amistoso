@@ -23,6 +23,7 @@ let _clubSeasons = [];       // SeasonOut[] for active club
 let _clubPlayers = [];       // ClubPlayerOut[] for active club
 let _clubCollaborators = []; // collaborators for active club
 let _clubsInviteSelectedIds = new Set();
+let _clubsRecipientFilter = '';
 let _clubsMessagingTab = 'lobby'; // 'lobby' | 'announce'
 let _clubsPlayerSearchTimer = null;
 let _clubsPlayerSearchSelected = null;
@@ -31,6 +32,10 @@ let _clubsAttachSearch = '';
 let _clubsPlayerFilter = '';
 let _clubsEloDebounceTimers = {}; // keyed by `${profileId}-${sport}`
 let _clubsLeaderboardSort = { col: 'elo', dir: 'desc' };
+let _clubsLeaderboardScope = 'global'; // 'global' | season id
+let _clubsSeasonStandingsCache = {}; // seasonId -> { padel: [...], tennis: [...] }
+const _CLUBS_LB_SCOPE_KEY = 'amistoso-clubs-leaderboard-scope';
+try { _clubsLeaderboardScope = sessionStorage.getItem(_CLUBS_LB_SCOPE_KEY) || 'global'; } catch (_) {}
 let _clubsRosterNoticeText = '';
 let _clubsRosterNoticeError = false;
 let _clubsRosterNoticeTimer = null;
@@ -130,11 +135,15 @@ function _clubsRenderOverview() {
   if (!_clubsList.length) {
     html += `<p class="muted-note">${t('txt_clubs_no_clubs')}</p>`;
   } else {
+    // Hide the Community column when every club lives in the same community
+    // (the most common single-community deployment) — it's pure noise then.
+    const usedCommunityIds = new Set(_clubsList.map(cl => cl.community_id));
+    const showCommColumn = usedCommunityIds.size > 1;
     html += `<div class="player-codes-table-wrap"><table class="player-codes-table">
       <thead>
         <tr class="player-codes-head-row">
           <th class="player-codes-th">${t('txt_clubs_name')}</th>
-          <th class="player-codes-th" style="color:var(--text-muted)">${t('txt_clubs_community')}</th>
+          ${showCommColumn ? `<th class="player-codes-th" style="color:var(--text-muted)">${t('txt_clubs_community')}</th>` : ''}
           <th class="player-codes-th"></th>
         </tr>
       </thead>
@@ -148,7 +157,7 @@ function _clubsRenderOverview() {
               <strong style="cursor:pointer;color:var(--accent)" onclick="clubsOpenDetail('${esc(cl.id)}')">${esc(cl.name)}</strong>
               ${cl.shared ? `<span class="badge badge-shared" style="margin-left:0.35rem">${t('txt_clubs_badge_shared')}</span>` : ''}
             </td>
-            <td class="player-codes-cell" style="color:var(--text-muted);font-size:0.82rem">${comm ? esc(comm.name) : esc(cl.community_id)}</td>
+            ${showCommColumn ? `<td class="player-codes-cell" style="color:var(--text-muted);font-size:0.82rem">${comm ? esc(comm.name) : esc(cl.community_id)}</td>` : ''}
             <td class="player-codes-cell-center" style="white-space:nowrap">
               ${!cl.shared || isAdmin() ? `<button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsDelete('${esc(cl.id)}')" title="${t('txt_txt_remove')}" aria-label="${t('txt_txt_remove')} ${esc(cl.name)}">🗑</button>` : ''}
             </td>
@@ -251,21 +260,15 @@ function clubsBackToOverview() {
 function setClubsSport(sport) {
   _clubsSport = sport;
   try { localStorage.setItem(_CLUBS_SPORT_KEY, sport); } catch (_) {}
-  // Update only the global header sport pills (not the standings-specific ones)
-  document.querySelectorAll('.clubs-sport-bar .clubs-sport-pill').forEach(btn => {
+  // Update the global header sport pills (now in the status bar) without
+  // needing a full re-render. Standings view pills have their own toggle.
+  document.querySelectorAll('.clubs-sport-toggle--inline .clubs-sport-pill').forEach(btn => {
     btn.classList.toggle('clubs-sport-pill--active', btn.dataset.sport === sport);
   });
-  // Sync standings view sport if it is currently open
-  if (window._clubsStandingsData) {
-    const sData = window._clubsStandingsData;
-    const hasSport = (sData[sport] || []).length > 0;
-    const fallback = sport === 'padel' ? 'tennis' : 'padel';
-    const hasFallback = (sData[fallback] || []).length > 0;
-    _clubsUpdateStandingsSport(hasSport ? sport : (hasFallback ? fallback : sport), sData);
-  }
   // Re-render sport-dependent sections
   _clubsRenderTiers();
   _clubsRenderPlayers();
+  _clubsRenderLeaderboard();
 }
 
 function _clubsRenderDetail() {
@@ -277,90 +280,12 @@ function _clubsRenderDetail() {
 
   const comm = _clubsCommunities.find(c => c.id === club.community_id);
 
-  let html = `
-    <div class="card">
-      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap">
-        <button class="btn btn-sm" onclick="clubsBackToOverview()" style="padding:0.2rem 0.5rem" aria-label="${t('txt_txt_back')}">← ${t('txt_txt_back')}</button>
-        <h2 style="margin:0;flex:1">
-          ${club.has_logo ? `<img src="/api/clubs/${esc(club.id)}/logo?_=${Date.now()}" alt="" style="height:24px;width:24px;object-fit:cover;border-radius:4px;margin-right:0.4rem;vertical-align:middle">` : ''}
-          ${esc(club.name)}
-        </h2>
-        <span class="muted-note">${comm ? esc(comm.name) : ''}</span>
-      </div>
+  let html = '';
+  // Status bar (back, name + logo, sport toggle, settings shortcut).
+  html += _renderClubStatusBar(club, comm);
 
-      <!-- Rename -->
-      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.75rem">
-        <input type="text" id="clubs-rename-input" value="${esc(club.name)}" placeholder="${t('txt_clubs_name')}" style="flex:1;min-width:140px;padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
-        <button class="btn btn-sm btn-primary" onclick="clubsRename()">${t('txt_txt_save')}</button>
-        <span id="clubs-rename-msg" style="font-size:0.84rem"></span>
-      </div>
-
-      <!-- Logo -->
-      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.85rem">
-        <label class="btn btn-sm" style="cursor:pointer;margin:0">
-          📷 ${t('txt_clubs_upload_logo')}
-          <input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="clubsUploadLogo(this)">
-        </label>
-        ${club.has_logo ? `<button class="btn btn-sm btn-danger" onclick="clubsDeleteLogo()">🗑 ${t('txt_clubs_remove_logo')}</button>` : ''}
-        <span id="clubs-logo-msg" style="font-size:0.84rem"></span>
-        <span class="muted-note" style="font-size:0.78rem">${t('txt_clubs_logo_max_size_hint')}</span>
-      </div>
-    </div>
-
-    <!-- Sticky sport bar + jump nav -->
-    <div class="clubs-sticky-header">
-      <div class="clubs-sport-bar">
-        <span class="clubs-sport-bar-label">${t('txt_txt_sport')}</span>
-        <div class="clubs-sport-toggle" role="group" aria-label="${t('txt_txt_sport')}">
-          <button type="button" class="clubs-sport-pill${_clubsSport === 'padel' ? ' clubs-sport-pill--active' : ''}" data-sport="padel" onclick="setClubsSport('padel')">${t('txt_txt_sport_padel')}</button>
-          <button type="button" class="clubs-sport-pill${_clubsSport === 'tennis' ? ' clubs-sport-pill--active' : ''}" data-sport="tennis" onclick="setClubsSport('tennis')">${t('txt_txt_sport_tennis')}</button>
-        </div>
-      </div>
-      <nav class="clubs-jump-nav" aria-label="${t('txt_txt_nav') || 'Navigation'}">
-      <a href="#clubs-players-card" class="clubs-jump-link">\ud83d\udc65 ${t('txt_clubs_players')}</a>
-      <a href="#clubs-leaderboard-card" class="clubs-jump-link">\ud83d\udcca ${t('txt_clubs_leaderboard')}</a>
-      <a href="#clubs-seasons-card" class="clubs-jump-link">\ud83d\udcc5 ${t('txt_clubs_seasons')}</a>
-      <a href="#clubs-tiers-card" class="clubs-jump-link">${t('txt_clubs_tiers')}</a>
-      ${(isAdmin() || club.created_by === getAuthUsername()) ? `<a href="#clubs-collabs-card" class="clubs-jump-link">\ud83e\udd1d ${t('txt_clubs_collaborators')}</a>` : ''}
-      </nav>
-    </div>
-
-    <!-- Tiers -->
-    <details class="card" id="clubs-tiers-card">
-      <summary class="player-codes-summary">
-        <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> ${t('txt_clubs_tiers')}</span>
-        <span class="muted-note" style="font-size:0.8rem;margin-left:0.5rem">${t('txt_clubs_tiers_help')}</span>
-      </summary>
-      <div class="player-codes-body">
-        <div id="clubs-tiers-list"></div>
-        <div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap;align-items:center">
-          <input type="text" id="clubs-tier-name" placeholder="${t('txt_clubs_tier_name_placeholder')}" style="flex:1;min-width:120px;padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
-          <label style="font-size:0.82rem;display:flex;align-items:center;gap:0.25rem">${t('txt_clubs_tier_base_elo')}<input type="number" id="clubs-tier-elo" value="1000" min="0" max="3000" step="50" style="width:70px;padding:0.35rem 0.4rem;font-size:0.85rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);text-align:center"></label>
-          <button class="btn btn-sm btn-success" onclick="clubsCreateTier()">+ ${t('txt_txt_add')}</button>
-        </div>
-        <div id="clubs-tiers-msg" style="margin-top:0.4rem;font-size:0.84rem"></div>
-      </div>
-    </details>
-
-    <!-- Seasons & Season assignment (combined) -->
-    <details class="card" id="clubs-seasons-card">
-      <summary class="player-codes-summary">
-        <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> 📅 ${t('txt_clubs_seasons')}</span>
-        ${(() => { const active = _clubSeasons.find(s => s.active); return active ? `<span class="clubs-card-badge clubs-card-badge--active">${esc(active.name)}</span>` : (_clubSeasons.length ? `<span class="clubs-card-badge">${_clubSeasons.length}</span>` : ''); })()}
-      </summary>
-      <div class="player-codes-body">
-        <div id="clubs-seasons-list"></div>
-        <div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap;align-items:center">
-          <input type="text" id="clubs-season-name" placeholder="${t('txt_clubs_season_name_placeholder')}" style="flex:1;min-width:180px;padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
-          <button class="btn btn-sm btn-success" onclick="clubsCreateSeason()">+ ${t('txt_txt_add')}</button>
-        </div>
-        <div id="clubs-seasons-msg" style="margin-top:0.4rem;font-size:0.84rem"></div>
-        <hr style="margin:0.85rem 0;border:none;border-top:1px solid var(--border)">
-        <div id="clubs-season-assign"></div>
-      </div>
-    </details>
-
-    <!-- Players -->
+  html += `
+    <!-- Players (primary content) -->
     <details class="card" open id="clubs-players-card">
       <summary class="player-codes-summary">
         <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> 👥 ${t('txt_clubs_players')}</span>
@@ -373,67 +298,26 @@ function _clubsRenderDetail() {
       </div>
     </details>
 
-    <!-- Club leaderboard -->
+    <!-- Club leaderboard (primary content) -->
     <details class="card" open id="clubs-leaderboard-card">
       <summary class="player-codes-summary">
         <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> 📊 ${t('txt_clubs_leaderboard')}</span>
         ${(() => { const ranked = _clubPlayers.filter(p => (_clubsSport === 'padel' ? p.elo_padel : p.elo_tennis) != null); return ranked.length ? `<span class="clubs-card-badge">${ranked.length}</span>` : ''; })()}
       </summary>
       <div class="player-codes-body">
+        <div id="clubs-leaderboard-scope-bar"></div>
         <div id="clubs-leaderboard"></div>
       </div>
     </details>
-
-    <!-- Collaborators (owner or admin only) -->
-    ${(isAdmin() || club.created_by === getAuthUsername()) ? `
-    <details class="card" id="clubs-collabs-card">
-      <summary class="player-codes-summary">
-        <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> 🤝 ${t('txt_clubs_collaborators')}</span>
-      </summary>
-      <div class="player-codes-body">
-        <p class="player-codes-help">${t('txt_clubs_collaborators_help')}</p>
-        <div id="clubs-collabs-list"></div>
-        <div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center">
-          <input type="text" id="clubs-collab-input" placeholder="${t('txt_clubs_add_collab_placeholder')}" style="flex:1;min-width:160px;padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off"
-            oninput="_clubsCollabInputChange(this.value)" list="clubs-collab-suggestions">
-          <datalist id="clubs-collab-suggestions"></datalist>
-          <button class="btn btn-sm btn-primary" onclick="clubsAddCollaborator()">${t('txt_clubs_add_collab_btn')}</button>
-        </div>
-        <div id="clubs-collab-msg" style="margin-top:0.4rem;font-size:0.84rem"></div>
-      </div>
-    </details>
-    ` : ''}
-
-    <!-- Email settings (owner or admin only) -->
-    ${(isAdmin() || club.created_by === getAuthUsername()) ? `
-    <details class="card" id="clubs-email-settings-card">
-      <summary class="player-codes-summary">
-        <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> ✉️ ${t('txt_clubs_email_settings')}</span>
-      </summary>
-      <div class="player-codes-body">
-        <p class="player-codes-help">${t('txt_clubs_email_settings_help')}</p>
-        <div style="display:flex;flex-direction:column;gap:0.6rem;max-width:420px">
-          <label style="font-size:0.88rem">${t('txt_clubs_email_reply_to')}
-            <input type="email" id="clubs-email-reply-to" value="${esc((club.email_settings && club.email_settings.reply_to) || '')}" placeholder="${t('txt_clubs_email_reply_to_placeholder')}" style="display:block;width:100%;margin-top:0.2rem;padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
-          </label>
-          <label style="font-size:0.88rem">${t('txt_clubs_email_sender_name')}
-            <input type="text" id="clubs-email-sender-name" value="${esc((club.email_settings && club.email_settings.sender_name) || '')}" placeholder="${esc(club.name)}" style="display:block;width:100%;margin-top:0.2rem;padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
-          </label>
-          <div style="display:flex;align-items:center;gap:0.5rem">
-            <button class="btn btn-sm btn-primary" onclick="clubsSaveEmailSettings()">${t('txt_txt_save')}</button>
-            <span id="clubs-email-settings-msg" style="font-size:0.84rem"></span>
-          </div>
-        </div>
-      </div>
-    </details>
-    ` : ''}
   `;
+
+  // Unified Settings card (general / tiers / seasons / comms / access).
+  html += _renderClubSettingsCard(club);
 
   detail.innerHTML = html;
 
-  // Restore + persist collapsible card open/closed state via sessionStorage
-  const _collapsibleCardIds = ['clubs-players-card', 'clubs-tiers-card', 'clubs-seasons-card', 'clubs-leaderboard-card', 'clubs-collabs-card', 'clubs-email-settings-card'];
-  _collapsibleCardIds.forEach(id => {
+  // Restore + persist collapsible state for the two primary cards.
+  ['clubs-players-card', 'clubs-leaderboard-card'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     const stored = sessionStorage.getItem(`clubs-card-open:${id}`);
@@ -443,7 +327,7 @@ function _clubsRenderDetail() {
     }, { once: false });
   });
 
-  // Render sub-sections
+  // Render sub-sections (containers live inside Settings sub-panels + main cards).
   _clubsRenderTiers();
   _clubsRenderSeasons();
   _clubsRenderSeasonAssignment();
@@ -517,7 +401,7 @@ function _clubsRenderTiers() {
   if (!container) return;
   const tiersForSport = _clubTiers.filter(tier => tier.sport === _clubsSport);
   if (!tiersForSport.length) {
-    container.innerHTML = `<p class="muted-note">${t('txt_clubs_no_tiers')}</p>`;
+    container.innerHTML = `<p class="muted-note clubs-empty-cta">${t('txt_clubs_no_tiers')} <button type="button" class="btn btn-sm btn-link" onclick="document.getElementById('clubs-tier-name')?.focus()">${t('txt_clubs_empty_create_first')}</button></p>`;
     return;
   }
   container.innerHTML = `
@@ -526,7 +410,6 @@ function _clubsRenderTiers() {
         <tr class="player-codes-head-row">
           <th class="player-codes-th">${t('txt_clubs_tier_name')}</th>
           <th style="text-align:right;padding:0.3rem 0.5rem">${t('txt_clubs_tier_base_elo')}</th>
-          <th class="player-codes-th-center">${t('txt_clubs_tier_position')}</th>
           <th class="player-codes-th"></th>
         </tr>
       </thead>
@@ -535,7 +418,6 @@ function _clubsRenderTiers() {
           <tr class="player-codes-row">
             <td class="player-codes-name">${esc(tier.name)}</td>
             <td class="player-codes-cell-center">${tier.base_elo}</td>
-            <td class="player-codes-cell-center">${tier.position}</td>
             <td class="player-codes-cell-center" style="white-space:nowrap">
               <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsDeleteTier('${esc(tier.id)}')" title="${t('txt_txt_remove')}" aria-label="${t('txt_txt_remove')} ${esc(tier.name)}">X</button>
             </td>
@@ -590,7 +472,7 @@ function _clubsRenderSeasons() {
   const container = document.getElementById('clubs-seasons-list');
   if (!container) return;
   if (!_clubSeasons.length) {
-    container.innerHTML = `<p class="muted-note">${t('txt_clubs_no_seasons')}</p>`;
+    container.innerHTML = `<p class="muted-note clubs-empty-cta">${t('txt_clubs_no_seasons')} <button type="button" class="btn btn-sm btn-link" onclick="document.getElementById('clubs-season-name')?.focus()">${t('txt_clubs_empty_create_first')}</button></p>`;
     return;
   }
   container.innerHTML = `
@@ -615,7 +497,7 @@ function _clubsRenderSeasons() {
               <button class="btn btn-sm player-codes-icon-btn" onclick="clubsToggleSeason('${esc(s.id)}', ${!s.active})" title="${s.active ? t('txt_clubs_season_archive') : t('txt_clubs_season_activate')}" aria-label="${s.active ? t('txt_clubs_season_archive') : t('txt_clubs_season_activate')}">
                 ${s.active ? '📦' : '✅'}
               </button>
-              <button class="btn btn-sm player-codes-icon-btn" onclick="clubsViewStandings('${esc(s.id)}')" title="${t('txt_clubs_season_standings')}" aria-label="${t('txt_clubs_season_standings')} ${esc(s.name)}">📊</button>
+              <button class="btn btn-sm player-codes-icon-btn" onclick="clubsViewSeasonInLeaderboard('${esc(s.id)}')" title="${t('txt_clubs_season_view_in_leaderboard')}" aria-label="${t('txt_clubs_season_view_in_leaderboard')} ${esc(s.name)}">📊</button>
               <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsDeleteSeason('${esc(s.id)}')" title="${t('txt_txt_remove')}" aria-label="${t('txt_txt_remove')} ${esc(s.name)}">🗑</button>
             </td>
           </tr>
@@ -653,9 +535,11 @@ async function clubsToggleSeason(seasonId, active) {
       body: JSON.stringify({ active }),
     });
     _clubsMsg(msgEl, '✓', false);
+    delete _clubsSeasonStandingsCache[seasonId];
     _clubSeasons = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/seasons`).catch(() => []);
     _clubsRenderSeasons();
     _clubsRenderSeasonAssignment();
+    _clubsRenderLeaderboard();
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -667,9 +551,11 @@ async function clubsDeleteSeason(seasonId) {
   try {
     await apiAuth(`/api/seasons/${encodeURIComponent(seasonId)}`, { method: 'DELETE' });
     _clubsMsg(msgEl, '✓', false);
+    delete _clubsSeasonStandingsCache[seasonId];
     _clubSeasons = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/seasons`).catch(() => []);
     _clubsRenderSeasons();
     _clubsRenderSeasonAssignment();
+    _clubsRenderLeaderboard();
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -677,98 +563,17 @@ async function clubsDeleteSeason(seasonId) {
 
 // ─── Season standings ────────────────────────────────────
 
-let _standingsSport = 'padel';
-
-function _renderStandingsTable(standings) {
-  if (!standings || !standings.length) {
-    return `<p class="muted-note">${t('txt_clubs_season_no_standings')}</p>`;
-  }
-  return `<div class="player-codes-table-wrap">
-    <table class="player-codes-table">
-      <thead>
-        <tr class="player-codes-head-row">
-          <th class="player-codes-th-center">#</th>
-          <th class="player-codes-th">${t('txt_player_leaderboard_name')}</th>
-          <th class="player-codes-th-center">${t('txt_player_elo_rating')}</th>
-          <th class="player-codes-th-center">${t('txt_clubs_season_elo_change')}</th>
-          <th class="player-codes-th-center">${t('txt_player_leaderboard_matches')}</th>
-          <th class="player-codes-th-center">${t('txt_clubs_season_best_rank')}</th>
-          <th class="player-codes-th-center">${t('txt_clubs_season_events')}</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${standings.map((s, i) => `
-          <tr class="player-codes-row">
-            <td class="player-codes-cell-center" style="color:var(--text-muted)">${i + 1}</td>
-            <td class="player-codes-name">${esc(s.player_name)}</td>
-            <td class="player-codes-cell-center">${s.elo_end != null ? Math.round(s.elo_end) : '—'}</td>
-            <td class="player-codes-cell-center" style="color:${s.elo_change > 0 ? 'var(--green)' : s.elo_change < 0 ? 'var(--red)' : 'var(--text-muted)'}">${s.elo_change != null ? (s.elo_change > 0 ? '+' : '') + s.elo_change.toFixed(1) : '—'}</td>
-            <td class="player-codes-cell-center">${s.matches_played}</td>
-            <td class="player-codes-cell-center">${s.best_rank != null ? '#' + s.best_rank + (s.best_rank_tournament_name ? ` <span class="muted-tiny">(${esc(s.best_rank_tournament_name)})</span>` : '') : '—'}</td>
-            <td class="player-codes-cell-center">${s.tournaments_played}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  </div>`;
-}
-
-function _clubsUpdateStandingsSport(sport, data) {
-  _standingsSport = sport;
-  // Update pill active state (using same clubs-sport-pill--active class as the global toggle)
-  document.querySelectorAll('#clubs-standings-sport-toggle .clubs-sport-pill').forEach(btn => {
-    btn.classList.toggle('clubs-sport-pill--active', btn.dataset.sport === sport);
-  });
-  // Re-render table
-  const tableEl = document.getElementById('clubs-standings-table');
-  if (tableEl) tableEl.innerHTML = _renderStandingsTable(data[sport] || []);
-}
-
-async function clubsViewStandings(seasonId) {
-  const season = _clubSeasons.find(s => s.id === seasonId);
-  if (!season) return;
-
-  const container = document.getElementById('clubs-seasons-msg');
-  if (!container) return;
-  container.innerHTML = `<div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div>`;
-
-  try {
-    const data = await apiAuth(`/api/seasons/${encodeURIComponent(seasonId)}/standings`);
-    const hasPadel = data.padel && data.padel.length > 0;
-    const hasTennis = data.tennis && data.tennis.length > 0;
-    const hasAny = hasPadel || hasTennis;
-
-    // Sync initial standings sport with global club sport, falling back gracefully
-    _standingsSport = hasPadel && _clubsSport === 'padel' ? 'padel'
-      : hasTennis && _clubsSport === 'tennis' ? 'tennis'
-      : hasPadel ? 'padel' : 'tennis';
-    const multisport = hasPadel && hasTennis;
-
-    const sportToggleHtml = multisport
-      ? `<div class="clubs-sport-toggle" id="clubs-standings-sport-toggle">
-           <button type="button" class="clubs-sport-pill${_standingsSport === 'padel' ? ' clubs-sport-pill--active' : ''}" data-sport="padel" onclick="_clubsUpdateStandingsSport('padel', window._clubsStandingsData)">${t('txt_txt_sport_padel')}</button>
-           <button type="button" class="clubs-sport-pill${_standingsSport === 'tennis' ? ' clubs-sport-pill--active' : ''}" data-sport="tennis" onclick="_clubsUpdateStandingsSport('tennis', window._clubsStandingsData)">${t('txt_txt_sport_tennis')}</button>
-         </div>`
-      : hasPadel
-        ? `<span class="badge" style="font-size:0.8rem">${t('txt_txt_sport_padel')}</span>`
-        : hasTennis
-          ? `<span class="badge" style="font-size:0.8rem">${t('txt_txt_sport_tennis')}</span>`
-          : '';
-
-    window._clubsStandingsData = data;
-
-    container.innerHTML = `<div class="card" style="margin-top:0.5rem">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap">
-        <h3 style="margin:0">📊 ${esc(season.name)} — ${t('txt_clubs_season_standings')}</h3>
-        <div style="display:flex;align-items:center;gap:0.5rem">
-          ${sportToggleHtml}
-          <button class="btn btn-sm" onclick="document.getElementById('clubs-seasons-msg').innerHTML='';window._clubsStandingsData=null" style="padding:0.2rem 0.5rem">✕</button>
-        </div>
-      </div>
-      <div id="clubs-standings-table">${hasAny ? _renderStandingsTable(data[_standingsSport] || []) : `<p class="muted-note">${t('txt_clubs_season_no_standings')}</p>`}</div>
-    </div>`;
-  } catch (e) {
-    container.innerHTML = `<span style="color:var(--red);font-size:0.84rem">${esc(e.message)}</span>`;
+/**
+ * Switch the leaderboard scope dropdown to a given season and scroll to
+ * the leaderboard card. Replaces the old inline standings popover that
+ * lived in the seasons-table message slot.
+ */
+function clubsViewSeasonInLeaderboard(seasonId) {
+  const card = document.getElementById('clubs-leaderboard-card');
+  if (card && !card.open) card.open = true;
+  clubsSetLeaderboardScope(seasonId);
+  if (card && typeof card.scrollIntoView === 'function') {
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
 
@@ -795,7 +600,8 @@ function _clubsRenderSeasonAssignment() {
 
   let html = '';
 
-  // Attach section — only shown when there are candidates
+  // Attach section — only shown when there are candidates. Flat <section>
+  // (no nested <details>) so users don't need to expand it to reach the search.
   if (attachableT.length) {
     const attachFilter = _clubsAttachSearch.trim().toLowerCase();
     const filtered = [...attachableT].filter(t_ => {
@@ -808,32 +614,30 @@ function _clubsRenderSeasonAssignment() {
       return d !== 0 ? d : (a.name || '').localeCompare(b.name || '');
     });
 
-    html += `<details style="margin-bottom:0.75rem">
-      <summary style="cursor:pointer;font-size:0.9rem;font-weight:600;color:var(--text-muted);user-select:none">➕ ${t('txt_clubs_attach_tournaments')}</summary>
-      <p class="player-codes-help" style="margin:0.35rem 0 0.5rem">${t('txt_clubs_attach_tournaments_help')}</p>
-      <div style="margin-top:0.5rem">
-        <input type="text" id="clubs-attach-search" value="${escAttr(_clubsAttachSearch)}"
-          placeholder="${escAttr(t('txt_clubs_attach_search_placeholder'))}"
-          oninput="clubsSetAttachTournamentSearch(this.value)"
-          style="width:100%;max-width:320px;margin-bottom:0.4rem;padding:0.35rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
-        ${filtered.length ? `
-        <div class="player-codes-table-wrap" style="margin-bottom:0.5rem"><table class="player-codes-table">
-          <tbody>
-            ${filtered.map(t_ => {
-              const comm = _clubsCommunities.find(c => c.id === (t_.community_id || 'open'));
-              return `<tr class="player-codes-row">
-                <td class="player-codes-name">${esc(t_.name)}<span class="muted-note" style="margin-left:0.4rem;font-size:0.8rem">${comm ? esc(comm.name) : ''}</span></td>
-                <td class="player-codes-cell" style="white-space:nowrap;color:var(--text-muted);font-size:0.8rem">${_clubsFormatDate(t_.created_at)}</td>
-                <td class="player-codes-cell" style="white-space:nowrap">
-                  <button type="button" class="btn btn-sm btn-primary" onclick="clubsAttachTournamentToClub('${esc(t_.id)}', this)">${t('txt_clubs_attach_to_club')}</button>
-                  <span id="clubs-tattach-msg-${esc(t_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
-                </td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table></div>` : `<p class="muted-note">${t('txt_clubs_no_attachable_tournaments')}</p>`}
-      </div>
-    </details>`;
+    html += `<section class="clubs-assign-section">
+      <h4 class="clubs-assign-section-title">➕ ${t('txt_clubs_attach_tournaments')}</h4>
+      <p class="player-codes-help" style="margin:0 0 0.5rem">${t('txt_clubs_attach_tournaments_help')}</p>
+      <input type="text" id="clubs-attach-search" value="${escAttr(_clubsAttachSearch)}"
+        placeholder="${escAttr(t('txt_clubs_attach_search_placeholder'))}"
+        oninput="clubsSetAttachTournamentSearch(this.value)"
+        class="clubs-assign-search-input">
+      ${filtered.length ? `
+      <div class="player-codes-table-wrap" style="margin-bottom:0.5rem"><table class="player-codes-table">
+        <tbody>
+          ${filtered.map(t_ => {
+            const comm = _clubsCommunities.find(c => c.id === (t_.community_id || 'open'));
+            return `<tr class="player-codes-row">
+              <td class="player-codes-name">${esc(t_.name)}<span class="muted-note" style="margin-left:0.4rem;font-size:0.8rem">${comm ? esc(comm.name) : ''}</span></td>
+              <td class="player-codes-cell" style="white-space:nowrap;color:var(--text-muted);font-size:0.8rem">${_clubsFormatDate(t_.created_at)}</td>
+              <td class="player-codes-cell" style="white-space:nowrap">
+                <button type="button" class="btn btn-sm btn-primary" onclick="clubsAttachTournamentToClub('${esc(t_.id)}', this)">${t('txt_clubs_attach_to_club')}</button>
+                <span id="clubs-tattach-msg-${esc(t_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table></div>` : `<p class="muted-note">${t('txt_clubs_no_attachable_tournaments')}</p>`}
+    </section>`;
   }
 
   if (!hasSeasons) {
@@ -842,59 +646,66 @@ function _clubsRenderSeasonAssignment() {
     return;
   }
 
-  // Tournaments
+  // Tournaments (flat section)
   if (matchingT.length) {
-    html += `<div class="player-codes-table-wrap" style="margin-bottom:0.75rem"><table class="player-codes-table">
-      <tbody>
-        ${matchingT.map(t_ => {
-          const inThisClub = t_.club_id === _activeClubId;
-          const otherClubLabel = (t_.club_id && !inThisClub) ? (t_.club_name || t_.club_id) : '';
-          const clubBtnLabel = inThisClub ? t('txt_clubs_remove_from_club') : t('txt_clubs_attach_to_club');
-          const clubBtnClass = inThisClub ? 'btn btn-sm btn-muted' : 'btn btn-sm btn-primary';
-          const otherTag = otherClubLabel
-            ? `<span class="muted-note" style="margin-left:0.4rem;font-size:0.78rem">${t('txt_clubs_currently_in_club')}: ${esc(otherClubLabel)}</span>`
-            : '';
-          return `
-          <tr class="player-codes-row">
-            <td class="player-codes-name">${esc(t_.name)}${otherTag}</td>
-            <td class="player-codes-cell" style="white-space:nowrap">
-              <button type="button" class="${clubBtnClass}" onclick="clubsToggleTournamentClub('${esc(t_.id)}', this)">${clubBtnLabel}</button>
-              <span id="clubs-tclub-msg-${esc(t_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
-            </td>
-            <td class="player-codes-cell">
-              <select id="clubs-tsn-sel-${esc(t_.id)}" class="admin-sel" onchange="clubsAssignTournamentSeason('${esc(t_.id)}')">
-                <option value="">— ${t('txt_txt_none_selected')} —</option>
-                ${seasonOptions}
-              </select>
-              <span id="clubs-tsn-msg-${esc(t_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
-            </td>
-          </tr>
-        `;
-        }).join('')}
-      </tbody>
-    </table></div>`;
+    const inClubCount = matchingT.filter(t_ => t_.club_id === _activeClubId).length;
+    html += `<section class="clubs-assign-section" id="clubs-season-assign-tournaments">
+      <h4 class="clubs-assign-section-title">🏆 ${t('txt_clubs_tournaments_in_club')} <span class="clubs-card-badge">${inClubCount}/${matchingT.length}</span></h4>
+      <div class="player-codes-table-wrap"><table class="player-codes-table">
+        <tbody>
+          ${matchingT.map(t_ => {
+            const inThisClub = t_.club_id === _activeClubId;
+            const otherClubLabel = (t_.club_id && !inThisClub) ? (t_.club_name || t_.club_id) : '';
+            const clubBtnLabel = inThisClub ? t('txt_clubs_remove_from_club') : t('txt_clubs_attach_to_club');
+            const clubBtnClass = inThisClub ? 'btn btn-sm btn-muted' : 'btn btn-sm btn-primary';
+            const otherTag = otherClubLabel
+              ? `<span class="muted-note" style="margin-left:0.4rem;font-size:0.78rem">${t('txt_clubs_currently_in_club')}: ${esc(otherClubLabel)}</span>`
+              : '';
+            return `
+            <tr class="player-codes-row">
+              <td class="player-codes-name">${esc(t_.name)}${otherTag}</td>
+              <td class="player-codes-cell" style="white-space:nowrap">
+                <button type="button" class="${clubBtnClass}" onclick="clubsToggleTournamentClub('${esc(t_.id)}', this)">${clubBtnLabel}</button>
+                <span id="clubs-tclub-msg-${esc(t_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
+              </td>
+              <td class="player-codes-cell">
+                <select id="clubs-tsn-sel-${esc(t_.id)}" class="admin-sel" onchange="clubsAssignTournamentSeason('${esc(t_.id)}')">
+                  <option value="">— ${t('txt_txt_none_selected')} —</option>
+                  ${seasonOptions}
+                </select>
+                <span id="clubs-tsn-msg-${esc(t_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
+              </td>
+            </tr>
+          `;
+          }).join('')}
+        </tbody>
+      </table></div>
+    </section>`;
   } else {
     html += `<p class="muted-note">${t('txt_clubs_no_matching_tournaments')}</p>`;
   }
 
-  // Registrations
+  // Lobbies / Registrations (flat section)
   if (matchingR.length) {
-    html += `<div class="player-codes-table-wrap"><table class="player-codes-table">
-      <tbody>
-        ${matchingR.map(r_ => `
-          <tr class="player-codes-row">
-            <td class="player-codes-name">${esc(r_.name)}</td>
-            <td class="player-codes-cell">
-              <select id="clubs-rsn-sel-${esc(r_.id)}" class="admin-sel" onchange="clubsAssignRegistrationSeason('${esc(r_.id)}')">
-                <option value="">— ${t('txt_txt_none_selected')} —</option>
-                ${seasonOptions}
-              </select>
-              <span id="clubs-rsn-msg-${esc(r_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
-            </td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table></div>`;
+    html += `<section class="clubs-assign-section" id="clubs-season-assign-registrations">
+      <h4 class="clubs-assign-section-title">📝 ${t('txt_clubs_lobbies_in_club')} <span class="clubs-card-badge">${matchingR.length}</span></h4>
+      <div class="player-codes-table-wrap"><table class="player-codes-table">
+        <tbody>
+          ${matchingR.map(r_ => `
+            <tr class="player-codes-row">
+              <td class="player-codes-name">${esc(r_.name)}</td>
+              <td class="player-codes-cell">
+                <select id="clubs-rsn-sel-${esc(r_.id)}" class="admin-sel" onchange="clubsAssignRegistrationSeason('${esc(r_.id)}')">
+                  <option value="">— ${t('txt_txt_none_selected')} —</option>
+                  ${seasonOptions}
+                </select>
+                <span id="clubs-rsn-msg-${esc(r_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table></div>
+    </section>`;
   }
 
   container.innerHTML = html;
@@ -1059,15 +870,10 @@ function _clubsRenderPlayers() {
   if (!container) return;
 
   const visiblePlayerIds = new Set(_clubPlayers.map(p => p.profile_id));
-  const selectableInSportIds = new Set(
-    _clubPlayers
-      .filter(p => !_clubsIsHiddenInCurrentSport(p))
-      .map(p => p.profile_id)
-  );
+  // Prune any selected recipients that no longer exist in the current roster.
+  // (Sport-visibility pruning is handled when the Comms panel renders.)
   _clubsInviteSelectedIds = new Set(
-    Array.from(_clubsInviteSelectedIds).filter(
-      profileId => visiblePlayerIds.has(profileId) && selectableInSportIds.has(profileId)
-    )
+    Array.from(_clubsInviteSelectedIds).filter(profileId => visiblePlayerIds.has(profileId))
   );
 
   const sport = _clubsSport;
@@ -1079,30 +885,22 @@ function _clubsRenderPlayers() {
   const eloInputStyle = 'width:4.5rem;padding:0.15rem 0.3rem;font-size:0.82rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);text-align:right';
   const selStyle = 'padding:0.2rem 0.3rem;font-size:0.82rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);max-width:120px';
   const sportLabel = sport === 'padel' ? t('txt_txt_sport_padel') : t('txt_txt_sport_tennis');
-  const selectedCount = _clubsInviteSelectedIds.size;
-  const selectedWithEmailCount = _clubPlayers.filter(
-    p => _clubsInviteSelectedIds.has(p.profile_id) && p.email
-  ).length;
 
   // Filtered players for the table (applied to both visible and hidden-from-sport sections)
   const filteredPlayers = _clubsGetFilteredPlayers();
 
   const visibleForSport = filteredPlayers.filter(p => sport === 'padel' ? !p.hidden_padel : !p.hidden_tennis);
   const hiddenFromSport = filteredPlayers.filter(p => sport === 'padel' ? p.hidden_padel : p.hidden_tennis);
-  const selectedVisibleCount = visibleForSport.filter(p => _clubsInviteSelectedIds.has(p.profile_id)).length;
-  const allVisibleSelected = visibleForSport.length > 0 && selectedVisibleCount === visibleForSport.length;
 
-  // Add player form
+  // Add player form (inline labeled row, no nested card)
   let html = `
-    <div class="card" style="margin-bottom:0.75rem;padding:0.6rem 0.85rem">
-      <p class="muted-note" style="margin:0 0 0.45rem 0;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.04em">${t('txt_clubs_add_player')}</p>
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
-        <input type="text" id="clubs-add-player-input" placeholder="${t('txt_clubs_add_player_placeholder')}" style="flex:1;min-width:160px;padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off"
-          oninput="_clubsPlayerSearchInput(this.value)" onchange="_clubsPlayerSuggestionChosen(this.value)" list="clubs-add-player-suggestions">
-        <datalist id="clubs-add-player-suggestions"></datalist>
-        <button class="btn btn-sm btn-success" id="clubs-add-player-btn" onclick="clubsAddPlayer()" disabled>+ ${t('txt_clubs_add_player')}</button>
-        <span id="clubs-add-player-msg" style="font-size:0.84rem"></span>
-      </div>
+    <div class="clubs-add-player-row">
+      <label class="clubs-add-player-label" for="clubs-add-player-input">${t('txt_clubs_add_player')}</label>
+      <input type="text" id="clubs-add-player-input" placeholder="${t('txt_clubs_add_player_placeholder')}" autocomplete="off"
+        oninput="_clubsPlayerSearchInput(this.value)" onchange="_clubsPlayerSuggestionChosen(this.value)" list="clubs-add-player-suggestions">
+      <datalist id="clubs-add-player-suggestions"></datalist>
+      <button class="btn btn-sm btn-success" id="clubs-add-player-btn" onclick="clubsAddPlayer()" disabled>+ ${t('txt_txt_add')}</button>
+      <span id="clubs-add-player-msg" class="clubs-add-player-msg"></span>
     </div>
     <div class="clubs-players-toolbar">
       <div class="clubs-players-filter-wrap">
@@ -1111,14 +909,8 @@ function _clubsRenderPlayers() {
           oninput="clubsSetPlayerFilter(this.value)">
         ${_clubsPlayerFilter ? `<button class="btn btn-sm btn-muted" type="button" onclick="clubsSetPlayerFilter('')">${t('txt_txt_clear')}</button>` : ''}
       </div>
-      <div class="clubs-players-actions">
-        <button class="btn btn-sm" type="button" onclick="clubsSelectPlayersWithEmail()">${t('txt_clubs_select_with_email')}</button>
-        <button class="btn btn-sm btn-muted" type="button" onclick="clubsClearPlayerSelection()">${t('txt_clubs_clear_selection')}</button>
-      </div>
-      <span class="muted-note clubs-players-selection-status">${t('txt_clubs_selection_status').replace('{selected}', String(selectedCount)).replace('{emailable}', String(selectedWithEmailCount))}</span>
     </div>
-    ${_clubsRosterNoticeText ? `<div class="alert ${_clubsRosterNoticeError ? 'alert-error' : 'alert-success'} clubs-roster-notice" role="status" aria-live="polite">${esc(_clubsRosterNoticeText)}</div>` : ''}
-    ${_clubsRenderMessagingPanel(selectedWithEmailCount)}`;
+    ${_clubsRosterNoticeText ? `<div class="alert ${_clubsRosterNoticeError ? 'alert-error' : 'alert-success'} clubs-roster-notice" role="status" aria-live="polite">${esc(_clubsRosterNoticeText)}</div>` : ''}`;
 
   if (!_clubPlayers.length) {
     html += `<p class="muted-note">${t('txt_clubs_no_players')}</p>`;
@@ -1130,9 +922,6 @@ function _clubsRenderPlayers() {
       <table class="player-codes-table">
         <thead>
           <tr class="player-codes-head-row">
-            <th class="player-codes-th-center" style="width:34px">
-              <input type="checkbox" id="clubs-players-select-all" onchange="clubsToggleAllPlayersSelection(this.checked)" ${allVisibleSelected ? 'checked' : ''}>
-            </th>
             <th class="player-codes-th">${t('txt_player_leaderboard_name')}</th>
             <th class="player-codes-th">${t('txt_clubs_hub_status')}</th>
             <th class="player-codes-th">${t('txt_txt_email')}</th>
@@ -1153,9 +942,6 @@ function _clubsRenderPlayers() {
             const removeTip = t('txt_clubs_remove_all_sports');
             return `
             <tr class="player-codes-row">
-              <td class="player-codes-cell-center">
-                <input type="checkbox" ${_clubsInviteSelectedIds.has(p.profile_id) ? 'checked' : ''} onchange="clubsTogglePlayerSelection('${esc(p.profile_id)}', this.checked)">
-              </td>
               <td class="player-codes-name">
                 ${esc(p.name)}
                 ${noGames ? `<span class="muted-tiny" style="margin-left:0.3rem">(${t('txt_txt_no_matches')})</span>` : ''}
@@ -1237,21 +1023,14 @@ function _clubsRenderPlayers() {
     }
   }
 
-  // Capture messaging form values before re-rendering
-  const _savedSubject = document.getElementById('clubs-messaging-subject')?.value ?? '';
-  const _savedMessage = document.getElementById('clubs-messaging-message')?.value ?? '';
-
   container.innerHTML = html;
 
   // Restore filter input value (re-rendered so cursor is lost, but value is preserved)
   const filterInput = document.getElementById('clubs-player-filter-input');
   if (filterInput && filterInput.value !== _clubsPlayerFilter) filterInput.value = _clubsPlayerFilter;
 
-  // Restore messaging form values so player selection doesn't clear them
-  const subjectEl = document.getElementById('clubs-messaging-subject');
-  const messageEl = document.getElementById('clubs-messaging-message');
-  if (subjectEl && _savedSubject) subjectEl.value = _savedSubject;
-  if (messageEl && _savedMessage) messageEl.value = _savedMessage;
+  // Refresh the messaging panel in Comms (kept in sync with the player selection).
+  _clubsRenderMessagingPanelInto();
 
   // Set selected tier for each player
   filteredPlayers.forEach(p => {
@@ -1487,22 +1266,22 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
 
   const sport = _clubsSport;
   let html = `
-    <details id="clubs-possible-members-details"${_clubsPossibleMembersOpen ? ' open' : ''} style="margin-top:1rem;border:1px solid var(--border);border-radius:6px;padding:0 0.75rem">
-      <summary style="cursor:pointer;user-select:none;padding:0.55rem 0;font-size:0.88rem;font-weight:600;list-style:none;display:flex;align-items:center;gap:0.4rem"
+    <details id="clubs-possible-members-details"${_clubsPossibleMembersOpen ? ' open' : ''} class="clubs-ghost-section">
+      <summary class="clubs-ghost-section-summary"
         onclick="_clubsPossibleMembersOpen = document.getElementById('clubs-possible-members-details')?.open ?? false">
-        <span class="tv-chevron" style="font-size:0.65em;color:var(--text-muted)">&#9658;</span>
+        <span class="tv-chevron clubs-ghost-section-chevron">&#9658;</span>
         ${t('txt_clubs_possible_members_title', { n: members.length })}
-        <span style="font-size:0.76rem;font-weight:400;color:var(--text-muted)">${t('txt_clubs_possible_members_hint')}</span>
+        <span class="muted-tiny clubs-ghost-section-hint">${t('txt_clubs_possible_members_hint')}</span>
       </summary>
-      <div style="padding:0.5rem 0 0.75rem">
-        <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.5rem">
+      <div class="clubs-ghost-section-body">
+        <div class="clubs-ghost-search-row">
           <input type="text" id="clubs-ghost-search-input" value="${escAttr(_clubsGhostSearch)}"
             oninput="clubsSetGhostSearch(this.value)"
             placeholder="${t('txt_clubs_possible_members_search_placeholder')}"
-            style="flex:1;min-width:200px;padding:0.35rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)"
+            class="clubs-ghost-search-input"
             aria-label="${t('txt_clubs_possible_members_search_placeholder')}">
           ${ghostFilter ? `<button type="button" class="btn btn-sm btn-muted" onclick="clubsSetGhostSearch('')">${t('txt_txt_clear')}</button>` : ''}
-          <span style="font-size:0.76rem;color:var(--text-muted)">${filteredMembers.length}/${members.length}</span>
+          <span class="muted-tiny">${filteredMembers.length}/${members.length}</span>
         </div>
         <div class="player-codes-table-wrap">
           <table class="player-codes-table">
@@ -1551,35 +1330,35 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
       .filter(Boolean);
     const suggestedName = selectedNames[0] || '';
     html += `
-      <div style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
-        <span style="font-size:0.88rem">${t('txt_ph_ghosts_selected', { n: _clubsSelectedGhostProfiles.size })}</span>
+      <div class="clubs-ghost-merge-bar">
+        <span class="clubs-ghost-merge-bar-label">${t('txt_ph_ghosts_selected', { n: _clubsSelectedGhostProfiles.size })}</span>
         <input type="text" id="clubs-ghost-manual-name" value="${escAttr(suggestedName)}"
           placeholder="${t('txt_ph_consolidate_name_placeholder')}"
-          style="flex:1;min-width:160px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"
+          class="clubs-ghost-merge-bar-input"
           aria-label="${t('txt_ph_consolidate_name_label')}">
         <button type="button" class="btn btn-primary btn-sm" onclick="clubsConsolidateSelectedGhosts()">${t('txt_ph_consolidate_ghosts')}</button>
         <button type="button" class="btn btn-sm btn-muted" onclick="clubsClearGhostMergeSelection()">${t('txt_txt_clear')}</button>
       </div>
-      <div id="clubs-ghost-manual-msg" style="margin-top:0.35rem;font-size:0.82rem"></div>`;
+      <div id="clubs-ghost-manual-msg" class="clubs-ghost-merge-bar-msg"></div>`;
   }
 
   // Duplicate-group merge section (if any)
   if (_clubsGhostGroups.length) {
     html += `
-      <details id="clubs-ghost-dup-details"${_clubsGhostMergeOpen ? ' open' : ''} style="margin-top:0.75rem;border:1px solid var(--border);border-radius:6px;padding:0 0.75rem">
-        <summary style="cursor:pointer;user-select:none;padding:0.45rem 0;font-size:0.84rem;font-weight:600;list-style:none;display:flex;align-items:center;gap:0.4rem"
+      <details id="clubs-ghost-dup-details"${_clubsGhostMergeOpen ? ' open' : ''} class="clubs-ghost-section clubs-ghost-section--inner">
+        <summary class="clubs-ghost-section-summary"
           onclick="_clubsGhostMergeOpen = document.getElementById('clubs-ghost-dup-details')?.open ?? false">
-          <span class="tv-chevron" style="font-size:0.65em;color:var(--text-muted)">&#9658;</span>
+          <span class="tv-chevron clubs-ghost-section-chevron">&#9658;</span>
           ${t('txt_clubs_ghost_dup_title', { n: _clubsGhostGroups.length })}
-          <span style="font-size:0.72rem;font-weight:400;color:var(--text-muted)">${t('txt_clubs_ghost_dup_hint')}</span>
+          <span class="muted-tiny clubs-ghost-section-hint">${t('txt_clubs_ghost_dup_hint')}</span>
         </summary>
-        <div style="padding:0.4rem 0 0.6rem">`;
+        <div class="clubs-ghost-section-body">`;
 
     for (const [gi, group] of _clubsGhostGroups.entries()) {
       html += `
-        <div style="margin-bottom:0.75rem;padding:0.5rem;background:var(--surface);border:1px solid var(--border);border-radius:6px">
-          <div style="font-size:0.84rem;font-weight:600;margin-bottom:0.35rem">${esc(group.name)}</div>
-          <div class="player-codes-table-wrap" style="margin-bottom:0.4rem">
+        <div class="clubs-ghost-group-card">
+          <div class="clubs-ghost-group-name">${esc(group.name)}</div>
+          <div class="player-codes-table-wrap clubs-ghost-group-table-wrap">
             <table class="player-codes-table" style="font-size:0.82rem">
               <thead><tr class="player-codes-head-row">
                 <th class="player-codes-th-center" style="width:2rem">#</th>
@@ -1596,15 +1375,15 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
         </tr>`;
       }
       html += `</tbody></table></div>
-          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
-            <label style="font-size:0.82rem">${t('txt_ph_consolidate_name_label')}:
+          <div class="clubs-ghost-group-actions">
+            <label class="clubs-ghost-group-name-label">${t('txt_ph_consolidate_name_label')}:
               <input type="text" id="clubs-ghost-name-${gi}" value="${escAttr(group.name)}"
-                style="margin-left:0.3rem;padding:0.2rem 0.35rem;font-size:0.82rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);min-width:130px"
+                class="clubs-ghost-group-name-input"
                 aria-label="${t('txt_ph_consolidate_name_label')}">
             </label>
             <button type="button" class="btn btn-sm btn-primary" onclick="clubsConsolidateGhostGroup(${gi})">${t('txt_ph_consolidate_ghosts')}</button>
           </div>
-          <div id="clubs-ghost-msg-${gi}" style="margin-top:0.3rem;font-size:0.82rem"></div>
+          <div id="clubs-ghost-msg-${gi}" class="clubs-ghost-group-msg"></div>
         </div>`;
     }
     html += `</div></details>`;
@@ -1666,7 +1445,55 @@ function clubsSortLeaderboard(col) {
   _clubsRenderLeaderboard();
 }
 
+function clubsSetLeaderboardScope(scope) {
+  _clubsLeaderboardScope = scope || 'global';
+  try { sessionStorage.setItem(_CLUBS_LB_SCOPE_KEY, _clubsLeaderboardScope); } catch (_) {}
+  _clubsRenderLeaderboard();
+}
+
+function _clubsRenderLeaderboardScopeBar() {
+  const bar = document.getElementById('clubs-leaderboard-scope-bar');
+  if (!bar) return;
+  const seasons = Array.isArray(_clubSeasons) ? _clubSeasons : [];
+  if (!seasons.length) {
+    bar.innerHTML = '';
+    return;
+  }
+  const opts = [
+    `<option value="global"${_clubsLeaderboardScope === 'global' ? ' selected' : ''}>${esc(t('txt_clubs_leaderboard_scope_global'))}</option>`,
+    ...seasons.map(s => {
+      const label = s.active ? s.name : `${s.name} (${t('txt_clubs_season_archived')})`;
+      return `<option value="${esc(s.id)}"${_clubsLeaderboardScope === s.id ? ' selected' : ''}>${esc(label)}</option>`;
+    }),
+  ].join('');
+  const activeSeason = seasons.find(s => s.id === _clubsLeaderboardScope);
+  const archivedBadge = (activeSeason && !activeSeason.active)
+    ? `<span class="badge badge-closed clubs-lb-frozen-badge" title="${escAttr(t('txt_clubs_leaderboard_archived_note'))}">📦 ${esc(t('txt_clubs_season_archived'))}</span>`
+    : '';
+  bar.innerHTML = `
+    <div class="clubs-lb-scope-row">
+      <label class="clubs-lb-scope-label" for="clubs-lb-scope-sel">${esc(t('txt_clubs_leaderboard_scope_label'))}</label>
+      <select id="clubs-lb-scope-sel" class="select" onchange="clubsSetLeaderboardScope(this.value)">${opts}</select>
+      ${archivedBadge}
+    </div>`;
+}
+
 function _clubsRenderLeaderboard() {
+  _clubsRenderLeaderboardScopeBar();
+  // Auto-fall-back to global if a previously selected season no longer exists.
+  if (_clubsLeaderboardScope !== 'global'
+      && Array.isArray(_clubSeasons)
+      && !_clubSeasons.some(s => s.id === _clubsLeaderboardScope)) {
+    _clubsLeaderboardScope = 'global';
+  }
+  if (_clubsLeaderboardScope === 'global') {
+    _clubsRenderGlobalLeaderboard();
+  } else {
+    _clubsRenderSeasonLeaderboard(_clubsLeaderboardScope);
+  }
+}
+
+function _clubsRenderGlobalLeaderboard() {
   const container = document.getElementById('clubs-leaderboard');
   if (!container) return;
 
@@ -1732,41 +1559,125 @@ function _clubsRenderLeaderboard() {
   _clubsMarkScrollableTables(container);
 }
 
+async function _clubsRenderSeasonLeaderboard(seasonId) {
+  const container = document.getElementById('clubs-leaderboard');
+  if (!container) return;
+  const season = (_clubSeasons || []).find(s => s.id === seasonId);
+  const sport = _clubsSport;
+
+  const cached = _clubsSeasonStandingsCache[seasonId];
+  // Active seasons may shift with new matches — always refetch on render.
+  // Archived seasons are immutable; serve from cache when available.
+  if (!cached || (season && season.active)) {
+    container.innerHTML = `<div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div>`;
+    try {
+      const data = await apiAuth(`/api/seasons/${encodeURIComponent(seasonId)}/standings`);
+      _clubsSeasonStandingsCache[seasonId] = data;
+    } catch (e) {
+      container.innerHTML = `<p class="muted-note" style="color:var(--red)">${esc(e.message)}</p>`;
+      return;
+    }
+  }
+
+  const data = _clubsSeasonStandingsCache[seasonId] || { padel: [], tennis: [] };
+  const rows = (data[sport] || []).slice();
+  if (!rows.length) {
+    container.innerHTML = `<p class="muted-note">${t('txt_clubs_season_no_standings')}</p>`;
+    return;
+  }
+
+  const { col, dir } = _clubsLeaderboardSort;
+  rows.sort((a, b) => {
+    let aVal, bVal;
+    if (col === 'elo') {
+      aVal = a.elo_end ?? 0;
+      bVal = b.elo_end ?? 0;
+    } else if (col === 'matches') {
+      aVal = a.matches_played ?? 0;
+      bVal = b.matches_played ?? 0;
+    } else {
+      aVal = (a.player_name || '').toLowerCase();
+      bVal = (b.player_name || '').toLowerCase();
+      return dir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    }
+    return dir === 'asc' ? aVal - bVal : bVal - aVal;
+  });
+
+  const sortIcon = (c) => {
+    if (_clubsLeaderboardSort.col !== c) return '<span class="clubs-sort-icon clubs-sort-icon--neutral">⇅</span>';
+    return dir === 'asc'
+      ? '<span class="clubs-sort-icon clubs-sort-icon--active">▲</span>'
+      : '<span class="clubs-sort-icon clubs-sort-icon--active">▼</span>';
+  };
+
+  container.innerHTML = `
+    <div class="player-codes-table-wrap">
+      <table class="player-codes-table">
+        <thead>
+          <tr class="player-codes-head-row">
+            <th class="player-codes-th-center">#</th>
+            <th class="player-codes-th clubs-sortable-th" onclick="clubsSortLeaderboard('name')">${t('txt_player_leaderboard_name')} ${sortIcon('name')}</th>
+            <th class="player-codes-th-center clubs-sortable-th" onclick="clubsSortLeaderboard('elo')">${t('txt_player_elo_rating')} ${sortIcon('elo')}</th>
+            <th class="player-codes-th-center">${t('txt_clubs_season_elo_change')}</th>
+            <th class="player-codes-th-center clubs-sortable-th" onclick="clubsSortLeaderboard('matches')">${t('txt_player_leaderboard_matches')}<br><span class="muted-tiny">${t('txt_clubs_leaderboard_in_season')}</span> ${sortIcon('matches')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((s, i) => `
+            <tr class="player-codes-row">
+              <td class="player-codes-cell-center" style="color:var(--text-muted)">${i + 1}</td>
+              <td class="player-codes-name">${esc(s.player_name)}</td>
+              <td class="player-codes-cell-center">${s.elo_end != null ? Math.round(s.elo_end) : '—'}</td>
+              <td class="player-codes-cell-center" style="color:${s.elo_change > 0 ? 'var(--green)' : s.elo_change < 0 ? 'var(--red)' : 'var(--text-muted)'}">${s.elo_change != null ? (s.elo_change > 0 ? '+' : '') + s.elo_change.toFixed(1) : '—'}</td>
+              <td class="player-codes-cell-center">${s.matches_played != null ? s.matches_played : '—'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  _clubsMarkScrollableTables(container);
+}
+
 function clubsTogglePlayerSelection(profileId, selected) {
   if (selected) {
     _clubsInviteSelectedIds.add(profileId);
   } else {
     _clubsInviteSelectedIds.delete(profileId);
   }
-  _clubsRenderPlayers();
+  _clubsRenderMessagingPanelInto();
 }
 
 function clubsToggleAllPlayersSelection(selected) {
-  const filteredPlayers = _clubsGetFilteredPlayers();
-  const visibleForSport = filteredPlayers.filter(p => !_clubsIsHiddenInCurrentSport(p));
-  const visibleForSportIds = new Set(visibleForSport.map(p => p.profile_id));
+  const eligible = _clubsMessagingEligiblePlayers();
   if (selected) {
-    visibleForSport.forEach(p => _clubsInviteSelectedIds.add(p.profile_id));
+    eligible.forEach(p => _clubsInviteSelectedIds.add(p.profile_id));
   } else {
-    visibleForSportIds.forEach(profileId => _clubsInviteSelectedIds.delete(profileId));
+    eligible.forEach(p => _clubsInviteSelectedIds.delete(p.profile_id));
   }
-  _clubsRenderPlayers();
+  _clubsRenderMessagingPanelInto();
 }
 
 function clubsSelectPlayersWithEmail() {
-  const filteredPlayers = _clubsGetFilteredPlayers();
-  const visibleForSport = filteredPlayers.filter(p => !_clubsIsHiddenInCurrentSport(p));
-  visibleForSport.forEach(p => {
-    if (p.email) {
-      _clubsInviteSelectedIds.add(p.profile_id);
-    }
+  _clubsMessagingEligiblePlayers().forEach(p => {
+    if (p.email) _clubsInviteSelectedIds.add(p.profile_id);
   });
-  _clubsRenderPlayers();
+  _clubsRenderMessagingPanelInto();
 }
 
 function clubsClearPlayerSelection() {
   _clubsInviteSelectedIds.clear();
-  _clubsRenderPlayers();
+  _clubsRenderMessagingPanelInto();
+}
+
+/** Players eligible to receive messages (visible in current sport, filtered). */
+function _clubsMessagingEligiblePlayers() {
+  return _clubPlayers.filter(p => {
+    if (_clubsIsHiddenInCurrentSport(p)) return false;
+    if (!_clubsRecipientFilter) return true;
+    const f = _clubsRecipientFilter.toLowerCase();
+    return (p.name || '').toLowerCase().includes(f)
+        || (p.email || '').toLowerCase().includes(f);
+  });
 }
 
 async function _clubsPlayerSearchInput(value) {
@@ -1921,16 +1832,83 @@ async function clubsTogglePlayerSport(profileId, sport, makeVisible) {
   }
 }
 
-function _clubsRenderMessagingPanel(selectedWithEmailCount) {
-  const activeClub = _clubsList.find(c => c.id === _activeClubId);
-  const communityLobbies = activeClub
-    ? _clubsRegistrations.filter(r => r.community_id === activeClub.community_id)
-    : [];
-  const selectedCount = _clubsInviteSelectedIds.size;
-  const noEmailCount = selectedCount - selectedWithEmailCount;
+function _clubsRenderMessagingPanelInto() {
+  const container = document.getElementById('clubs-messaging-panel');
+  if (!container) return; // Comms tab not mounted (e.g. user lacks owner/admin perms).
 
-  const tabBtnStyle = (active) =>
-    `btn btn-sm${active ? ' btn-primary' : ''}`;
+  const activeClub = _clubsList.find(c => c.id === _activeClubId);
+  if (!activeClub) { container.innerHTML = ''; return; }
+
+  // Drop selections that are no longer eligible (e.g. player removed or sport switched).
+  const eligibleAll = _clubPlayers.filter(p => !_clubsIsHiddenInCurrentSport(p));
+  const eligibleAllIds = new Set(eligibleAll.map(p => p.profile_id));
+  for (const id of Array.from(_clubsInviteSelectedIds)) {
+    if (!eligibleAllIds.has(id)) _clubsInviteSelectedIds.delete(id);
+  }
+
+  const filtered = _clubsMessagingEligiblePlayers();
+  const filteredIds = new Set(filtered.map(p => p.profile_id));
+  const selectedCount = _clubsInviteSelectedIds.size;
+  const selectedWithEmailCount = _clubPlayers.filter(
+    p => _clubsInviteSelectedIds.has(p.profile_id) && p.email
+  ).length;
+  const noEmailCount = selectedCount - selectedWithEmailCount;
+  const allFilteredSelected = filtered.length > 0 && filtered.every(p => _clubsInviteSelectedIds.has(p.profile_id));
+  const sportLabel = _clubsSport === 'padel' ? t('txt_txt_sport_padel') : t('txt_txt_sport_tennis');
+
+  const communityLobbies = _clubsRegistrations.filter(r => r.community_id === activeClub.community_id);
+
+  // Preserve any in-progress text the user typed before re-rendering.
+  const _savedSubject = document.getElementById('clubs-messaging-subject')?.value ?? '';
+  const _savedMessage = document.getElementById('clubs-messaging-message')?.value ?? '';
+
+  const tabBtnStyle = (active) => `btn btn-sm${active ? ' btn-primary' : ''}`;
+
+  // ── Recipients picker ────────────────────────────────────────────────
+  const recipientsHeader = `
+    <div class="clubs-recipients-header">
+      <span class="clubs-recipients-title">${t('txt_clubs_messaging_recipients')} <span class="muted-tiny">(${sportLabel})</span></span>
+      <span class="muted-note clubs-recipients-status">
+        ${t('txt_clubs_selection_status').replace('{selected}', String(selectedCount)).replace('{emailable}', String(selectedWithEmailCount))}
+      </span>
+    </div>`;
+
+  const recipientsToolbar = `
+    <div class="clubs-recipients-toolbar">
+      <input type="search" id="clubs-recipient-filter" value="${escAttr(_clubsRecipientFilter)}"
+        placeholder="${escAttr(t('txt_clubs_player_filter_placeholder'))}"
+        oninput="clubsSetRecipientFilter(this.value)"
+        class="clubs-recipients-filter-input">
+      <button class="btn btn-sm" type="button" onclick="clubsSelectPlayersWithEmail()">${t('txt_clubs_select_with_email')}</button>
+      <button class="btn btn-sm btn-muted" type="button" onclick="clubsClearPlayerSelection()">${t('txt_clubs_clear_selection')}</button>
+    </div>`;
+
+  let recipientsList;
+  if (!eligibleAll.length) {
+    recipientsList = `<p class="muted-note">${t('txt_clubs_no_players')}</p>`;
+  } else if (!filtered.length) {
+    recipientsList = `<p class="muted-note">${t('txt_txt_no_results')}</p>`;
+  } else {
+    recipientsList = `
+      <div class="clubs-recipients-list" role="group" aria-label="${escAttr(t('txt_clubs_messaging_recipients'))}">
+        <label class="clubs-recipient-row clubs-recipient-row--all">
+          <input type="checkbox" ${allFilteredSelected ? 'checked' : ''}
+            onchange="clubsToggleAllPlayersSelection(this.checked)">
+          <span class="clubs-recipient-name">${t('txt_clubs_messaging_recipients_select_all')}</span>
+        </label>
+        ${filtered.map(p => {
+          const hasEmail = Boolean(p.email);
+          const checked = _clubsInviteSelectedIds.has(p.profile_id);
+          return `
+            <label class="clubs-recipient-row${hasEmail ? '' : ' clubs-recipient-row--no-email'}">
+              <input type="checkbox" ${checked ? 'checked' : ''}
+                onchange="clubsTogglePlayerSelection('${esc(p.profile_id)}', this.checked)">
+              <span class="clubs-recipient-name">${esc(p.name)}</span>
+              <span class="clubs-recipient-email muted-tiny">${hasEmail ? esc(p.email) : `— ${t('txt_clubs_player_no_email')}`}</span>
+            </label>`;
+        }).join('')}
+      </div>`;
+  }
 
   const lobbyContent = `
     <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
@@ -1960,21 +1938,53 @@ function _clubsRenderMessagingPanel(selectedWithEmailCount) {
       </div>
     </div>`;
 
-  return `<div class="card" style="margin-bottom:0.75rem;padding:0.75rem 1rem">
-    <div style="display:flex;gap:0.5rem;margin-bottom:0.65rem">
-      <button class="${tabBtnStyle(_clubsMessagingTab === 'lobby')}" type="button"
-        onclick="clubsMessagingTab('lobby')">${t('txt_clubs_messaging_tab_lobby')}</button>
-      <button class="${tabBtnStyle(_clubsMessagingTab === 'announce')}" type="button"
-        onclick="clubsMessagingTab('announce')">${t('txt_clubs_messaging_tab_announce')}</button>
+  const composeHint = selectedCount === 0
+    ? `<p class="muted-tiny" style="margin:0 0 0.4rem 0">${t('txt_clubs_messaging_select_recipients_first')}</p>`
+    : '';
+
+  container.innerHTML = `
+    <div class="clubs-recipients-block">
+      ${recipientsHeader}
+      ${recipientsToolbar}
+      ${recipientsList}
     </div>
-    <span id="clubs-messaging-msg" style="font-size:0.84rem;display:block;margin-bottom:0.4rem"></span>
-    ${_clubsMessagingTab === 'lobby' ? lobbyContent : announceContent}
-  </div>`;
+    <div class="clubs-compose-block">
+      ${composeHint}
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.65rem">
+        <button class="${tabBtnStyle(_clubsMessagingTab === 'lobby')}" type="button"
+          onclick="clubsMessagingTab('lobby')">${t('txt_clubs_messaging_tab_lobby')}</button>
+        <button class="${tabBtnStyle(_clubsMessagingTab === 'announce')}" type="button"
+          onclick="clubsMessagingTab('announce')">${t('txt_clubs_messaging_tab_announce')}</button>
+      </div>
+      <span id="clubs-messaging-msg" style="font-size:0.84rem;display:block;margin-bottom:0.4rem"></span>
+      ${_clubsMessagingTab === 'lobby' ? lobbyContent : announceContent}
+    </div>`;
+
+  // Restore typed values that survived re-render.
+  const subjectEl = document.getElementById('clubs-messaging-subject');
+  const messageEl = document.getElementById('clubs-messaging-message');
+  if (subjectEl && _savedSubject) subjectEl.value = _savedSubject;
+  if (messageEl && _savedMessage) messageEl.value = _savedMessage;
+
+  // Keep filter focus after re-render so typing isn't interrupted.
+  const filterEl = document.getElementById('clubs-recipient-filter');
+  if (filterEl && document.activeElement !== filterEl && _clubsRecipientFilterFocused) {
+    filterEl.focus();
+    const v = filterEl.value;
+    filterEl.setSelectionRange(v.length, v.length);
+  }
+}
+
+let _clubsRecipientFilterFocused = false;
+function clubsSetRecipientFilter(v) {
+  _clubsRecipientFilter = v || '';
+  _clubsRecipientFilterFocused = true;
+  _clubsRenderMessagingPanelInto();
 }
 
 function clubsMessagingTab(tab) {
   _clubsMessagingTab = tab;
-  _clubsRenderPlayers();
+  _clubsRenderMessagingPanelInto();
 }
 
 async function clubsSendLobbyInvite() {

@@ -426,6 +426,12 @@ async def serve_admin_clubs_js(request: Request) -> Response:
     return _serve_js_file("admin-clubs.js", request)
 
 
+@app.get("/admin-clubs-settings-panel.js")
+async def serve_admin_clubs_settings_panel_js(request: Request) -> Response:
+    """Serve the unified per-club Settings card orchestrator."""
+    return _serve_js_file("admin-clubs-settings-panel.js", request)
+
+
 @app.get("/tv.js")
 async def serve_tv_js(request: Request) -> Response:
     """Serve the TV view JavaScript for public.html."""

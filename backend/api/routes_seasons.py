@@ -156,19 +156,39 @@ async def create_season(club_id: str, req: SeasonCreate, user: User = Depends(ge
 
 @router.patch("/api/seasons/{season_id}", response_model=SeasonOut)
 async def update_season(season_id: str, req: SeasonUpdate, user: User = Depends(get_current_user)) -> SeasonOut:
-    """Update a season's name or active status."""
+    """Update a season's name or active status.
+
+    Archiving (active 1→0) snapshots the live standings into ``frozen_standings``
+    so the standings shown for an archived season never change again, even if
+    new matches are added retroactively to its tournaments.  Re-activating
+    (active 0→1) clears the snapshot so standings go back to live aggregation.
+    """
     season = _get_season(season_id)
     club = _get_club(season["club_id"])
     _require_club_admin(club, user)
+    was_active = bool(season["active"])
     with get_db() as conn:
         updates: list[str] = []
         params: list = []
         if req.name is not None:
             updates.append("name = ?")
             params.append(req.name.strip())
-        if req.active is not None:
+        if req.active is not None and req.active != was_active:
             updates.append("active = ?")
             params.append(int(req.active))
+            if was_active and not req.active:
+                # Archiving: snapshot live standings.
+                snapshot = _compute_live_standings(season_id)
+                updates.append("frozen_standings = ?")
+                params.append(snapshot.model_dump_json())
+                updates.append("archived_at = ?")
+                params.append(datetime.now(timezone.utc).isoformat())
+            else:
+                # Re-activating: drop snapshot, go back to live.
+                updates.append("frozen_standings = ?")
+                params.append(None)
+                updates.append("archived_at = ?")
+                params.append(None)
         if updates:
             params.append(season_id)
             conn.execute(f"UPDATE seasons SET {', '.join(updates)} WHERE id = ?", params)
@@ -216,6 +236,11 @@ async def set_tournament_season(tid: str, req: SetSeasonRequest, user: User = De
 
         if req.season_id is not None:
             season = _get_season(req.season_id)
+            if not season["active"]:
+                raise HTTPException(
+                    400,
+                    "Cannot assign a tournament to an archived season. Re-activate the season first.",
+                )
             club = _get_club(season["club_id"])
             tournament_community = _tournaments[tid].get("community_id", "open")
             if club["community_id"] != tournament_community:
@@ -245,6 +270,11 @@ async def set_registration_season(rid: str, req: SetSeasonRequest, user: User = 
 
     if req.season_id is not None:
         season = _get_season(req.season_id)
+        if not season["active"]:
+            raise HTTPException(
+                400,
+                "Cannot assign a registration to an archived season. Re-activate the season first.",
+            )
         club = _get_club(season["club_id"])
         reg_community = registration.get("community_id", "open")
         if club["community_id"] != reg_community:
@@ -349,10 +379,22 @@ async def set_registration_club(rid: str, req: SetClubRequest, user: User = Depe
 async def get_season_standings(season_id: str) -> SeasonStandingsResponse:
     """Cumulative standings for a season, split by sport.
 
-    Aggregates ELO progression (from ``player_elo_log``) and best results
-    (from ``player_history``) across all tournaments assigned to the season.
-    Returns separate lists for padel and tennis.
+    For archived seasons returns the frozen snapshot taken at archive time.
+    For active seasons aggregates ELO progression (from ``player_elo_log``)
+    and best results (from ``player_history``) live across all tournaments
+    assigned to the season.  Returns separate lists for padel and tennis.
     """
+    season = _get_season(season_id)
+    if season.get("frozen_standings"):
+        try:
+            return SeasonStandingsResponse.model_validate_json(season["frozen_standings"])
+        except Exception:  # noqa: BLE001 — fall back to live aggregation if snapshot is corrupt
+            pass
+    return _compute_live_standings(season_id)
+
+
+def _compute_live_standings(season_id: str) -> SeasonStandingsResponse:
+    """Live aggregation of season standings from `player_elo_log` + `player_history`."""
     season = _get_season(season_id)
     club = _get_club(season["club_id"])
     community_id = club["community_id"]  # noqa: F841

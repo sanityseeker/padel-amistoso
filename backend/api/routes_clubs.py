@@ -270,6 +270,20 @@ def _load_player_profile(profile_id: str) -> dict | None:
     return dict(row) if row is not None else None
 
 
+def _invite_hub_login_token(profile: dict) -> str | None:
+    """Mint a short-lived Player Hub auto-login token for invite emails.
+
+    Only emitted for non-ghost profiles; ghost profiles have no Hub session
+    to resume, so the recipient registers normally.
+    """
+    if profile.get("is_ghost"):
+        return None
+    profile_id = profile.get("id")
+    if not profile_id:
+        return None
+    return create_profile_token(profile_id, expires_delta=timedelta(days=7))
+
+
 def _find_community_participant(conn, community_id: str, past_player_id: str) -> dict | None:
     """Return latest known participant row for a community + player_id."""
     row = conn.execute(
@@ -1699,6 +1713,7 @@ async def invite_players_to_lobby(
             registration_id=reg["id"],
             reply_to=reply_to,
             sender_name=sender_name,
+            hub_login_token=_invite_hub_login_token(profile),
         )
         send_email_background(email, subject, body, sender_name=sender_name, reply_to=reply_to)
         sent += 1

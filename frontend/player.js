@@ -836,21 +836,25 @@ async function _fetchCommunities() {
 }
 
 function _buildCommunitySelect(eleId) {
-  // Only show the selector when there are specialized communities beyond the built-in global.
-  const allSpecialized = (_communities || []).filter(c => !c.is_builtin && c.id !== 'open');
-  // When the logged-in user has communities, restrict choices to those they've participated in.
-  const specialized = (_profile && _playerCommunities.length > 0)
-    ? allSpecialized.filter(c => _playerCommunities.some(pc => pc.id === c.id))
-    : allSpecialized;
-  if (specialized.length === 0 && allSpecialized.length === 0) {
-    // Step 7: show a hint for logged-in players so they know communities can be created.
+  // Show every community that has at least one match played in it. The list
+  // comes from the leaderboard payload (`available_communities`) so empty
+  // communities are filtered server-side. Fall back to `/api/communities`
+  // (filtered to specialized communities) when the leaderboard hasn't loaded
+  // yet — this preserves the dropdown on first paint for unlogged users.
+  const fromLeaderboard = (_leaderboard && Array.isArray(_leaderboard.available_communities))
+    ? _leaderboard.available_communities
+    : null;
+  const fallback = (_communities || []).filter(c => !c.is_builtin && c.id !== 'open');
+  const specialized = fromLeaderboard !== null ? fromLeaderboard : fallback;
+  if (specialized.length === 0 && fallback.length === 0) {
+    // Hint for logged-in players so they know communities can be created.
     if (_profile) {
       const hint = t('txt_player_community_hint');
       return hint ? `<p class="leaderboard-community-hint" style="font-size:0.8rem;color:var(--text-muted);margin:0.25rem 0 0.5rem">${esc(hint)}</p>` : '';
     }
     return '';
   }
-  if (specialized.length === 0) return ''; // user logged in but no matching orgs yet
+  if (specialized.length === 0) return '';
   let html = `<select id="${esc(eleId)}" class="leaderboard-community-select" onchange="_setSelectedCommunity(this.value)" aria-label="Community">`;
   html += `<option value=""${!_selectedCommunityId ? ' selected' : ''}>${esc(t('txt_player_community_all') || 'Global')}</option>`;
   for (const c of specialized) {
@@ -901,8 +905,10 @@ function _buildLeaderboardPanel() {
   // Only hide the entire panel if there are neither players nor any community
   // filters to interact with — otherwise keep it visible with empty results so
   // unlogged users can switch between communities even when one has no players.
-  const allSpecialized = (_communities || []).filter(c => !c.is_builtin && c.id !== 'open');
-  const hasCommunityFilter = allSpecialized.length > 0;
+  const availableCommunities = (_leaderboard && Array.isArray(_leaderboard.available_communities))
+    ? _leaderboard.available_communities
+    : (_communities || []).filter(c => !c.is_builtin && c.id !== 'open');
+  const hasCommunityFilter = availableCommunities.length > 0;
   if (!hasPadel && !hasTennis && !hasCommunityFilter) return '';
 
   const openAttr = (_isLeaderboardPanelOpen() || sessionStorage.getItem(STORAGE_LEADERBOARD_PANEL_KEY) == null) ? ' open' : '';

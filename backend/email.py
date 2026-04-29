@@ -764,13 +764,20 @@ def render_club_lobby_invite_email(
     registration_id: str = "",
     reply_to: str = "",
     sender_name: str = "",
+    hub_login_token: str | None = None,
     lang: str = "en",
 ) -> tuple[str, str]:
-    """Return ``(subject, html_body)`` for a club lobby invitation email."""
+    """Return ``(subject, html_body)`` for a club lobby invitation email.
+
+    When ``hub_login_token`` is provided the registration link is appended
+    with ``#hub_token=...`` so the registration page can resume the player's
+    Player Hub session and pre-fill the form.
+    """
     base = _site_url()
     reg_path = f"/register/{registration_alias}" if registration_alias else f"/register/{registration_id}"
     reg_url = f"{base}{reg_path}" if base else ""
-
+    if reg_url and hub_login_token:
+        reg_url = f"{reg_url}#hub_token={hub_login_token}"
     subject = _tx(
         lang,
         f"You're invited to {lobby_name}",

@@ -412,6 +412,128 @@ class TestSeasonStandings:
 
 
 # ---------------------------------------------------------------------------
+# Season archive snapshot + assignment block
+# ---------------------------------------------------------------------------
+
+
+class TestSeasonArchiveSnapshot:
+    """Archiving freezes standings; reactivating unfreezes; assignment is blocked."""
+
+    def _seed_one_match(self, club, comm, season, client, auth_headers):
+        """Create one tournament in `season` with one ELO log row for 'Player X'."""
+        res = client.post(
+            "/api/tournaments/group-playoff",
+            json={
+                "name": "GP Snap",
+                "player_names": ["A", "B", "C", "D"],
+                "num_groups": 1,
+                "top_per_group": 2,
+                "court_names": ["Court 1"],
+                "community_id": comm["id"],
+                "season_id": season["id"],
+            },
+            headers=auth_headers,
+        )
+        tid = res.json()["id"]
+        profile_id = "prof_snap"
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO player_profiles (id, passphrase, name, email, is_ghost, created_at)"
+                " VALUES (?, ?, 'Player X', '', 0, datetime('now'))",
+                (profile_id, "pp-snap"),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO player_secrets"
+                " (tournament_id, player_id, player_name, passphrase, token, contact, email, profile_id)"
+                " VALUES (?, ?, 'Player X', 'pps', 'tok-snap', '', '', ?)",
+                (tid, "pid-snap", profile_id),
+            )
+            conn.execute(
+                "INSERT INTO player_elo_log"
+                " (tournament_id, sport, match_id, player_id, match_order, elo_before, elo_after, elo_delta, match_payload, updated_at)"
+                " VALUES (?, 'padel', 'm0', ?, 0, 1000.0, 1100.0, 100.0, '{}', ?)",
+                (tid, "pid-snap", datetime.now(timezone.utc).isoformat()),
+            )
+        return tid, profile_id
+
+    def test_archive_snapshots_standings_and_freezes_against_new_matches(self, client, auth_headers) -> None:
+        club, comm = _setup_club(client, auth_headers)
+        season = _create_season(client, auth_headers, club["id"])
+        tid, profile_id = self._seed_one_match(club, comm, season, client, auth_headers)
+
+        # Sanity: live standings show 1100.
+        live = client.get(f"/api/seasons/{season['id']}/standings").json()
+        entry = next(e for e in live["padel"] if e["profile_id"] == profile_id)
+        assert entry["elo_end"] == 1100.0
+
+        # Archive.
+        res = client.patch(f"/api/seasons/{season['id']}", json={"active": False}, headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json()["active"] is False
+
+        # Add a NEW match retroactively — should NOT change the frozen snapshot.
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO player_elo_log"
+                " (tournament_id, sport, match_id, player_id, match_order, elo_before, elo_after, elo_delta, match_payload, updated_at)"
+                " VALUES (?, 'padel', 'm1', ?, 1, 1100.0, 1500.0, 400.0, '{}', ?)",
+                (tid, "pid-snap", datetime.now(timezone.utc).isoformat()),
+            )
+
+        frozen = client.get(f"/api/seasons/{season['id']}/standings").json()
+        entry = next(e for e in frozen["padel"] if e["profile_id"] == profile_id)
+        assert entry["elo_end"] == 1100.0  # still the snapshot value
+
+    def test_reactivate_unfreezes_standings(self, client, auth_headers) -> None:
+        club, comm = _setup_club(client, auth_headers)
+        season = _create_season(client, auth_headers, club["id"])
+        tid, profile_id = self._seed_one_match(club, comm, season, client, auth_headers)
+
+        client.patch(f"/api/seasons/{season['id']}", json={"active": False}, headers=auth_headers)
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO player_elo_log"
+                " (tournament_id, sport, match_id, player_id, match_order, elo_before, elo_after, elo_delta, match_payload, updated_at)"
+                " VALUES (?, 'padel', 'm1', ?, 1, 1100.0, 1500.0, 400.0, '{}', ?)",
+                (tid, "pid-snap", datetime.now(timezone.utc).isoformat()),
+            )
+
+        # Reactivate — snapshot dropped, live aggregation resumes.
+        res = client.patch(f"/api/seasons/{season['id']}", json={"active": True}, headers=auth_headers)
+        assert res.status_code == 200
+        live = client.get(f"/api/seasons/{season['id']}/standings").json()
+        entry = next(e for e in live["padel"] if e["profile_id"] == profile_id)
+        assert entry["elo_end"] == 1500.0
+
+    def test_cannot_assign_tournament_to_archived_season(self, client, auth_headers) -> None:
+        club, comm = _setup_club(client, auth_headers)
+        season = _create_season(client, auth_headers, club["id"])
+        client.patch(f"/api/seasons/{season['id']}", json={"active": False}, headers=auth_headers)
+
+        res = client.post(
+            "/api/tournaments/group-playoff",
+            json={
+                "name": "GP",
+                "player_names": ["A", "B", "C", "D"],
+                "num_groups": 1,
+                "top_per_group": 2,
+                "court_names": ["Court 1"],
+                "community_id": comm["id"],
+            },
+            headers=auth_headers,
+        )
+        tid = res.json()["id"]
+
+        res = client.patch(
+            f"/api/tournaments/{tid}/season",
+            json={"season_id": season["id"]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 400
+        assert "archived" in res.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
 # Season with created_at on tournament
 # ---------------------------------------------------------------------------
 

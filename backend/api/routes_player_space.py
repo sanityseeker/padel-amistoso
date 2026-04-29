@@ -302,11 +302,23 @@ class LeaderboardEntry(BaseModel):
     tier_name: str | None = None
 
 
+class LeaderboardCommunityRef(BaseModel):
+    """A community that has at least one match played in it.
+
+    Used to populate the leaderboard community filter dropdown so that
+    empty communities (no players or matches) are hidden.
+    """
+
+    id: str
+    name: str
+
+
 class LeaderboardResponse(BaseModel):
     """Public ELO leaderboard grouped by sport."""
 
     padel: list[LeaderboardEntry] = Field(default_factory=list)
     tennis: list[LeaderboardEntry] = Field(default_factory=list)
+    available_communities: list[LeaderboardCommunityRef] = Field(default_factory=list)
 
 
 class ProfileLoginResponse(BaseModel):
@@ -1877,7 +1889,35 @@ async def get_leaderboard(
     scope_community = community_id or ""
     padel = _leaderboard_for_sport("padel", scope_community, club_id=club_id)
     tennis = _leaderboard_for_sport("tennis", scope_community, club_id=club_id)
-    return LeaderboardResponse(padel=padel, tennis=tennis)
+    available_communities = _leaderboard_available_communities()
+    return LeaderboardResponse(padel=padel, tennis=tennis, available_communities=available_communities)
+
+
+def _leaderboard_available_communities() -> list[LeaderboardCommunityRef]:
+    """Return non-builtin communities that have at least one played match.
+
+    A community is considered non-empty when it has at least one tournament
+    with one or more recorded ``player_elo`` rows (``matches_played > 0``).
+    This covers both Hub-linked players and unlinked tournament participants
+    — mirroring the data sources used by ``_leaderboard_for_sport``.
+    """
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT c.id AS id, c.name AS name
+              FROM communities c
+             WHERE c.id != 'open'
+               AND EXISTS (
+                   SELECT 1
+                     FROM tournaments t
+                     JOIN player_elo pe ON pe.tournament_id = t.id
+                    WHERE t.community_id = c.id
+                      AND pe.matches_played > 0
+               )
+             ORDER BY c.name
+            """,
+        ).fetchall()
+    return [LeaderboardCommunityRef(id=r["id"], name=r["name"]) for r in rows]
 
 
 def _leaderboard_for_sport(sport: str, community_id: str = "", club_id: str | None = None) -> list[LeaderboardEntry]:

@@ -349,11 +349,13 @@ CREATE INDEX IF NOT EXISTS idx_club_tiers_club
     ON club_tiers (club_id);
 
 CREATE TABLE IF NOT EXISTS seasons (
-    id           TEXT PRIMARY KEY,
-    club_id      TEXT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
-    name         TEXT NOT NULL,
-    active       INTEGER NOT NULL DEFAULT 1,
-    created_at   TEXT NOT NULL
+    id                TEXT PRIMARY KEY,
+    club_id           TEXT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+    name              TEXT NOT NULL,
+    active            INTEGER NOT NULL DEFAULT 1,
+    created_at        TEXT NOT NULL,
+    frozen_standings  TEXT,
+    archived_at       TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_seasons_club
@@ -652,6 +654,12 @@ def init_db() -> None:
         pce_cols = {r[1] for r in conn.execute("PRAGMA table_info(profile_community_elo)").fetchall()}
         if pce_cols and "tier_id" not in pce_cols:
             conn.execute("ALTER TABLE profile_community_elo ADD COLUMN tier_id TEXT")
+        # Migrate: add frozen_standings + archived_at to seasons (snapshot on archive)
+        season_cols = {r[1] for r in conn.execute("PRAGMA table_info(seasons)").fetchall()}
+        if season_cols and "frozen_standings" not in season_cols:
+            conn.execute("ALTER TABLE seasons ADD COLUMN frozen_standings TEXT")
+        if season_cols and "archived_at" not in season_cols:
+            conn.execute("ALTER TABLE seasons ADD COLUMN archived_at TEXT")
         # Migrate: add sport + base_elo to club_tiers (replaces base_elo_padel/base_elo_tennis)
         ct_cols = {r[1] for r in conn.execute("PRAGMA table_info(club_tiers)").fetchall()}
         if ct_cols and "sport" not in ct_cols:
