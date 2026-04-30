@@ -1317,8 +1317,9 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
 /* ── Group quick-nav bar ── */
 .group-nav-bar {
   position: sticky;
-  /* Sit right under the per-tournament status bar (which is also sticky). */
-  top: var(--status-bar-height, 70px);
+  /* The group-playoff status bar is intentionally non-sticky during the
+     group phase so this quick-nav bar is the only pinned element. */
+  top: 0;
   z-index: 10;
   display: flex;
   align-items: center;
@@ -1360,12 +1361,13 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
 .group-nav-btn.all-done { opacity: 0.55; }
 
 /* ── GP ops overview ── */
-/* Per-tournament status bar is permanently sticky in all phases for all
-   tournament types. The group quick-nav bar (only present during the GP
-   groups phase) pins itself directly underneath via top:<bar-height>. */
-.gp-ops-header,
-#mex-ops-header,
-#po-ops-header {
+/* The Mexicano per-tournament status bar is sticky because it has no other
+   pinned element underneath it. The group-playoff status bar (`.gp-ops-header`,
+   used for both the groups and play-offs phases of the GP format and for the
+   standalone Playoff format) is intentionally NOT sticky: during the groups
+   phase the `.group-nav-bar` (groups / matches selector) is the only pinned
+   element, and the two sticky bars would otherwise overlap or leave a gap. */
+#mex-ops-header {
   position: sticky;
   top: 0;
   z-index: 11;
