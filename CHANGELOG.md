@@ -1,3 +1,9 @@
+## v1.10.3 (2026-04-30)
+
+### Fix
+
+- **admin**: group stage sticky bar
+
 ## v1.10.2 (2026-04-30)
 
 ### Fix
