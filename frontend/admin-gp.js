@@ -35,7 +35,7 @@ async function renderGP() {
       matches: phaseMatches,
     });
     let html = '';
-    html += _renderGpOpsHeader(gpOpsStats);
+    html += _renderGpOpsHeader(gpOpsStats, status.phase);
     // Pending court assignments are the most important admin focus, so they
     // appear immediately under the status bar.
     const groupPending = _sortTbdLast(Object.values(groups.matches)
@@ -74,7 +74,8 @@ async function renderGP() {
       html += `<details id="gp-group-stage-details" class="card"><summary>${t('txt_txt_group_stage_results_format_value', { value: groupFormatLabel })}</summary>`;
     }
 
-    // Group quick-nav bar + match filter (only during active group phase)
+    // Group quick-nav bar (only during active group phase). The unified
+    // match filter chips share this bar so they sit alongside the group chips.
     if (status.phase === 'groups' && _gpGroupNames.length > 1) {
       html += `<div class="group-nav-bar" id="gp-group-nav">`;
       for (const gName of _gpGroupNames) {
@@ -82,12 +83,11 @@ async function renderGP() {
         const cls = gPending > 0 ? 'group-nav-btn has-pending' : 'group-nav-btn all-done';
         html += `<button type="button" class="${cls}" onclick="_scrollToGroup('${escAttr(gName)}')">${t('txt_txt_group_name_value', { value: esc(gName) })}</button>`;
       }
-      html += `<div class="match-filter-toggle" id="gp-match-filter">`;
-      html += `<button type="button" class="active" onclick="_applyMatchFilter('all')">${t('txt_txt_filter_all')}</button>`;
-      html += `<button type="button" onclick="_applyMatchFilter('pending')">${t('txt_txt_filter_pending')}</button>`;
-      html += `<button type="button" onclick="_applyMatchFilter('completed')">${t('txt_txt_filter_completed')}</button>`;
+      html += `<span class="group-nav-sep" aria-hidden="true"></span>`;
+      html += _renderMatchFilterChips(currentTid);
       html += `</div>`;
-      html += `</div>`;
+    } else if (status.phase === 'groups') {
+      html += `<div class="group-nav-bar" id="gp-group-nav">${_renderMatchFilterChips(currentTid)}</div>`;
     }
 
     // Group standings
@@ -128,25 +128,34 @@ async function renderGP() {
       html += `</details>`;
     }
 
-    // Next round / Start playoffs controls
+    // Next round / Start playoffs controls. Always rendered during the
+    // groups phase so admins can see what's possible; buttons are disabled
+    // with a tooltip when prerequisites aren't met (#13).
     if (status.phase === 'groups') {
       const pending = allGroupMatches.filter(m => m.status !== 'completed');
-      if (pending.length === 0) {
-        html += `<div id="gp-playoffs-section">`;
-        html += _renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/gp/courts`);
-        html += `<div class="decision-actions-row">`;
-        if (groups.has_more_rounds) {
-          html += `<button type="button" class="btn btn-primary btn-lg-action" onclick="withLoading(this,nextGpGroupRound)">⚡ ${t('txt_txt_generate_next_group_round')}</button>`;
-        }
-        html += `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,proposeGpPlayoffs)">🏆 ${t('txt_txt_start_playoffs')} →</button>`;
-        html += `</div>`;
-        html += `</div>`;
+      const blockedReason = _decisionDisabledReason({
+        pendingMatches: pending.length,
+        hasMoreRounds: true,
+      });
+      html += `<div id="gp-playoffs-section">`;
+      html += _renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/gp/courts`);
+      html += `<div class="decision-actions-row">`;
+      if (groups.has_more_rounds) {
+        const reason = blockedReason;
+        html += `<button type="button" class="btn btn-primary btn-lg-action"${_decisionDisabledAttrs(reason)} onclick="withLoading(this,nextGpGroupRound)">⚡ ${t('txt_txt_generate_next_group_round')}</button>`;
       }
+      const playoffReason = blockedReason;
+      html += `<button type="button" class="btn btn-success btn-lg-action"${_decisionDisabledAttrs(playoffReason)} onclick="withLoading(this,proposeGpPlayoffs)">🏆 ${t('txt_txt_start_playoffs')} →</button>`;
+      if (blockedReason) {
+        html += `<div class="decision-actions-disabled-note">${esc(blockedReason)}</div>`;
+      }
+      html += `</div>`;
+      html += `</div>`;
     }
 
     // Playoff bracket
     if (status.phase === 'playoffs' || status.phase === 'finished') {
-      html += _schemaCardHtml('gp-playoff-schema', t('txt_txt_play_off_bracket'), 'generateGpPlayoffSchema');
+      html += _renderAdminBracketCard(`/api/tournaments/${currentTid}/gp/playoffs-schema`, tvSettings);
 
       html += `<div class="card">`;
       html += `<div class="playoff-header-row">`;
@@ -181,6 +190,8 @@ async function renderGP() {
     if (currentTid !== _renderTid) return;
     el.innerHTML = html;
     _gpApplyReviewQueueFilter();
+    _applyMatchFilter(_readPersistedMatchFilter(currentTid));
+    _ensureAdminActivityLauncher();
   } catch (e) {
     if (currentTid !== _renderTid) return;
     if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
@@ -220,7 +231,7 @@ function _buildGpOpsStats({ phase, hasCourts, hasMoreGroupRounds, matches }) {
   };
 }
 
-function _renderGpOpsHeader(stats) {
+function _renderGpOpsHeader(stats, phase) {
   const actionLabelMap = {
     review: t('txt_txt_next_action_review_queue'),
     record: t('txt_txt_next_action_record_scores'),
@@ -240,11 +251,8 @@ function _renderGpOpsHeader(stats) {
           <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">⚙ ${t('txt_admin_status_jump_settings')}</button>
         </div>
       </div>
-      <div class="gp-ops-stats-grid">
-        <div class="gp-ops-stat-pill"><span>${t('txt_txt_pending_matches')}</span><strong>${stats.unresolvedCount}</strong></div>
-        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_pending_confirmation')}</span><strong>${stats.pendingConfirmationCount}</strong></div>` : ''}
-        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_disputes')}</span><strong>${stats.disputesCount}</strong></div>` : ''}
-        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_escalated')}</span><strong>${stats.escalatedCount}</strong></div>` : ''}
+      <div class="gp-ops-header-collapsible">
+        ${_renderStatusBarStats(stats, 'gp-review-queue-card')}
       </div>
     </div>
   `;
@@ -411,17 +419,13 @@ async function renderPO() {
       html += `</div>`;
     }
 
-    html += _schemaCardHtml('po-playoff-schema', t('txt_txt_play_off_bracket'), 'generatePoPlayoffSchema');
+    html += _renderAdminBracketCard(`/api/tournaments/${currentTid}/po/playoffs-schema`, tvSettings);
 
     html += `<div class="card">`;
     html += `<div class="playoff-header-row">`;
     html += `<h2 class="playoff-header-title">${t('txt_txt_play_offs')}</h2>`;
     html += `</div>`;
 
-    const _schFmt = (tvSettings && tvSettings.schema_format) || 'svg';
-    html += `<details id="po-inline-bracket" class="bracket-collapse bracket-inline" open><summary class="bracket-collapse-summary"><span class="bracket-chevron bracket-chevron-anim">▶</span>${t('txt_txt_play_off_bracket')}</summary>`;
-    html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/po/playoffs-schema?fmt=${_schFmt}&_t=${Date.now()}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'">`;
-    html += `</details>`;
     if (playoffs.matches) {
       for (const m of _sortTbdLast(playoffs.matches)) {
         html += matchRow(m, 'po-playoff');
@@ -442,6 +446,7 @@ async function renderPO() {
     if (currentTid !== _renderTid) return;
     el.innerHTML = html;
     _poApplyReviewQueueFilter();
+    _ensureAdminActivityLauncher();
   } catch (e) {
     if (currentTid !== _renderTid) return;
     if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
@@ -467,11 +472,8 @@ function _renderPoOpsHeader(stats) {
           <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">⚙ ${t('txt_admin_status_jump_settings')}</button>
         </div>
       </div>
-      <div class="gp-ops-stats-grid">
-        <div class="gp-ops-stat-pill"><span>${t('txt_txt_pending_matches')}</span><strong>${stats.unresolvedCount}</strong></div>
-        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_pending_confirmation')}</span><strong>${stats.pendingConfirmationCount}</strong></div>` : ''}
-        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_disputes')}</span><strong>${stats.disputesCount}</strong></div>` : ''}
-        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_escalated')}</span><strong>${stats.escalatedCount}</strong></div>` : ''}
+      <div class="gp-ops-header-collapsible">
+        ${_renderStatusBarStats(stats, 'po-review-queue-card')}
       </div>
     </div>
   `;
@@ -588,7 +590,7 @@ function matchRow(m, ctx) {
     const w2 = sc[1] > sc[0];
     const t1Class = w1 ? ' team-winner' : (w2 ? ' team-loser' : '');
     const t2Class = w2 ? ' team-winner' : (w1 ? ' team-loser' : '');
-    let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap" data-status="completed">`;
+    let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap" data-status="completed" data-disputed="${m.disputed ? '1' : '0'}">`;
     html += `${roundLabel} <div class="match-teams"><span class="${t1Class}">${esc(t1)}</span> <span class="vs">vs</span> <span class="${t2Class}">${esc(t2)}</span></div> ${court}`;
     html += ` <span class="${scoreClass}" id="mscore-${m.id}">${scoreDisplay}</span>`;
     html += ` <span class="badge badge-completed">✓</span>`;
@@ -727,7 +729,7 @@ function matchRow(m, ctx) {
       scoreDisplay = `${sc[0]} – ${sc[1]}`;
     }
 
-    let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap" data-status="pending">`;
+    let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap" data-status="pending" data-disputed="${m.disputed ? '1' : '0'}">`;
     html += `${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
     html += ` <span class="${scoreClass}" id="mscore-${m.id}">${scoreDisplay}</span>`;
     if (m.disputed) {
@@ -846,7 +848,7 @@ function matchRow(m, ctx) {
   const tbdClass = hasTbd ? ' match-tbd-disabled' : '';
   const saveBtnClass = `btn btn-success btn-sm${hasTbd ? ' btn-disabled-ish' : ''}`;
 
-  let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap${tbdClass}" data-status="pending">${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
+  let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap${tbdClass}" data-status="pending" data-disputed="0">${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
 
   // Points / tennis-set scoring toggle for playoff/group contexts
   if (isSetScoringCtx) {
@@ -1177,6 +1179,7 @@ async function submitScore(matchId, ctx) {
     await api(_scoreApiPath(ctx, false), {
       method: 'POST', body: JSON.stringify({ match_id: matchId, score1: s1, score2: s2 })
     });
+    _recordActivity(`${t('txt_admin_toast_score_saved')} (${s1}–${s2})`);
     await _surgicalScoreUpdate(matchId, ctx);
   } catch (e) { alert(e.message); }
 }
@@ -1238,6 +1241,7 @@ async function submitTennisScore(matchId, ctx) {
     await api(_scoreApiPath(ctx, true), {
       method: 'POST', body: JSON.stringify({ match_id: matchId, sets })
     });
+    _recordActivity(`${t('txt_admin_toast_score_saved')} (${sets.map(s => `${s[0]}-${s[1]}`).join(' / ')})`);
     await _surgicalScoreUpdate(matchId, ctx);
   } catch (e) { alert(e.message); }
 }
@@ -1255,6 +1259,8 @@ let _poCurrentPhase = '';
 async function nextGpGroupRound() {
   try {
     await api(`/api/tournaments/${currentTid}/gp/next-group-round`, { method: 'POST' });
+    _recordActivity(t('txt_admin_toast_round_generated'));
+    _showAdminToast(t('txt_admin_toast_round_generated'), { duration: 3000 });
     renderGP();
   } catch (e) { alert(e.message); }
 }
@@ -1519,35 +1525,41 @@ function _scrollToGroup(gName) {
   card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-/** Apply match filter: 'all' | 'pending' | 'completed'. Toggles display on .match-card-wrap elements. */
+/** Apply match filter: 'all' | 'pending' | 'completed' | 'disputed'.
+ *  Toggles display on .match-card-wrap elements via data-status / data-disputed.
+ *  Persists per-tournament in sessionStorage. */
 function _applyMatchFilter(filter) {
+  if (!_MATCH_FILTER_VALUES.has(filter)) filter = 'all';
   _gpMatchFilterState = filter;
+  if (typeof currentTid !== 'undefined') _persistMatchFilter(currentTid, filter);
   const root = document.getElementById('view-content');
   if (!root) return;
 
-  // Update toggle button styling
-  const toggle = document.getElementById('gp-match-filter');
-  if (toggle) {
+  // Update toggle button styling on every chip row currently in the DOM.
+  for (const toggle of root.querySelectorAll('#gp-match-filter, .match-filter-toggle')) {
     for (const btn of toggle.querySelectorAll('button')) {
-      btn.classList.toggle('active', btn.textContent.trim() === _filterLabel(filter));
+      const key = btn.dataset.filter || _legacyFilterKeyFromLabel(btn.textContent.trim());
+      btn.classList.toggle('active', key === filter);
     }
   }
 
-  // Show/hide match cards based on data-status
+  // Show/hide match cards based on data-status / data-disputed.
   for (const card of root.querySelectorAll('.match-card-wrap[data-status]')) {
-    if (filter === 'all') {
-      card.style.display = '';
-    } else {
-      card.style.display = card.dataset.status === filter ? '' : 'none';
-    }
+    let show;
+    if (filter === 'all') show = true;
+    else if (filter === 'disputed') show = card.dataset.disputed === '1';
+    else show = card.dataset.status === filter;
+    card.style.display = show ? '' : 'none';
   }
 }
 
-/** Map filter value to the translated label for button matching. */
-function _filterLabel(filter) {
-  if (filter === 'pending') return t('txt_txt_filter_pending');
-  if (filter === 'completed') return t('txt_txt_filter_completed');
-  return t('txt_txt_filter_all');
+/** Legacy fallback: derive a filter key from button text (older chip rows
+ *  rendered before this refactor still match by translated label). */
+function _legacyFilterKeyFromLabel(label) {
+  if (label === t('txt_txt_filter_pending')) return 'pending';
+  if (label === t('txt_txt_filter_completed')) return 'completed';
+  if (label === t('txt_admin_filter_disputed')) return 'disputed';
+  return 'all';
 }
 
 /** Scroll to a match card by ID, opening its parent <details> if collapsed, and flash-highlight it. */

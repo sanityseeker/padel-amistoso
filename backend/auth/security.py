@@ -24,7 +24,7 @@ from ..models import TokenType
 # ────────────────────────────────────────────────────────────────────────────
 
 _ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 365  # 1 year
 
 _SECRET_FILE = DATA_DIR / ".jwt_secret"
 
@@ -133,7 +133,7 @@ def decode_player_token(token: str) -> tuple[str, str] | None:
 # Profile tokens (cross-tournament player identity, long-lived)
 # ────────────────────────────────────────────────────────────────────────────
 
-PROFILE_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
+PROFILE_TOKEN_EXPIRE_MINUTES = 60 * 24 * 365  # 1 year
 PROFILE_EMAIL_VERIFY_EXPIRE_MINUTES = 60  # 1 hour
 
 

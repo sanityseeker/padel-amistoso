@@ -113,16 +113,12 @@ async function renderMex() {
     }
 
     if (isPlayoffs || hasPlayoffBracket) {
-      html += _schemaCardHtml('mex-playoff-schema', t('txt_txt_mexicano_play_offs_bracket'), 'generateMexPlayoffSchema');
+      html += _renderAdminBracketCard(`/api/tournaments/${currentTid}/mex/playoffs-schema`, tvSettings, { title: t('txt_txt_mexicano_play_offs_bracket') });
 
       html += `<div class="card">`;
       html += `<div class="playoff-header-row">`;
       html += `<h2 class="playoff-header-title">${t('txt_txt_mexicano_play_off_bracket')}</h2>`;
       html += `</div>`;
-      const _schFmt = (tvSettings && tvSettings.schema_format) || 'svg';
-      html += `<details id="mex-inline-bracket" class="bracket-collapse bracket-inline" open><summary class="bracket-collapse-summary"><span class="bracket-chevron bracket-chevron-anim">▶</span>${t('txt_txt_mexicano_play_offs_bracket')}</summary>`;
-      html += `<img class="bracket-img" src="/api/tournaments/${currentTid}/mex/playoffs-schema?fmt=${_schFmt}&_t=${Date.now()}" alt="${t('txt_txt_mexicano_play_offs_bracket')}" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'">`;
-      html += `</details>`;
       for (const m of _sortTbdLast(playoffsData.matches)) {
         html += matchRow(m, 'mex-playoff');
       }
@@ -160,9 +156,10 @@ async function renderMex() {
       // Advanced settings panel (always visible during Mexicano phase)
       html += _renderMexSettingsSection();
 
-      if (pending === 0 && !mexicanoEnded && canGenerateRound) {
-        // Missed games / sit-out management panel
-        if (status.sit_out_count > 0 && status.missed_games) {
+      if (!mexicanoEnded) {
+        // Missed games / sit-out management panel — only shown when ready
+        // to generate the next round.
+        if (pending === 0 && canGenerateRound && status.sit_out_count > 0 && status.missed_games) {
           html += `<div class="card" id="mex-sitout-panel">`;
           html += `<h3>🪑 ${t('txt_txt_missed_games_sitout')}</h3>`;
           html += `<p class="muted-note-sm">${t('txt_txt_sitout_instructions', { n: status.sit_out_count })}</p>`;
@@ -184,20 +181,24 @@ async function renderMex() {
           html += `</div>`;
         }
 
+        // Decision row — always rendered. Buttons disable themselves with a
+        // tooltip explaining why when prerequisites aren't met (#13).
+        const proposeReason = _decisionDisabledReason({
+          pendingMatches: pending,
+          hasMoreRounds: canGenerateRound,
+        });
+        const endReason = pending > 0
+          ? t('txt_admin_decision_disabled_pending', { n: pending })
+          : (status.current_round === 0 ? t('txt_admin_decision_disabled_finished') : null);
+
         html += `<div id="mex-next-section">`;
         html += _renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/mex/courts`);
         html += `<div class="decision-actions-row">`;
-        html += `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,proposeMexPairings)">⚡ ${t('txt_txt_propose_next_round')}</button>`;
-        if (status.current_round > 0) {
-          html += `<button type="button" class="btn btn-primary btn-lg-action" onclick="withLoading(this,endMexicano)">🛑 ${t('txt_txt_end_mexicano')}</button>`;
-        }
+        html += `<button type="button" class="btn btn-success btn-lg-action"${_decisionDisabledAttrs(proposeReason)} onclick="withLoading(this,proposeMexPairings)">⚡ ${t('txt_txt_propose_next_round')}</button>`;
+        html += `<button type="button" class="btn btn-primary btn-lg-action"${_decisionDisabledAttrs(endReason)} onclick="withLoading(this,endMexicano)">🛑 ${t('txt_txt_end_mexicano')}</button>`;
+        const overallReason = proposeReason && endReason ? proposeReason : null;
+        if (overallReason) html += `<div class="decision-actions-disabled-note">${esc(overallReason)}</div>`;
         html += `</div>`;
-        html += `</div>`;
-      } else if (pending > 0) {
-        // (intentionally empty: per-round progress alert removed in favour of the status bar)
-      } else if (pending === 0 && !mexicanoEnded && !canGenerateRound) {
-        html += `<div id="mex-next-section">`;
-        html += `<button type="button" class="btn btn-primary" onclick="withLoading(this,endMexicano)">🛑 ${t('txt_txt_end_mexicano')}</button>`;
         html += `</div>`;
       }
 
@@ -261,6 +262,7 @@ async function renderMex() {
     el.innerHTML = html;
     _renderMexLeaderboard();
     _mexApplyReviewQueueFilter();
+    _ensureAdminActivityLauncher();
   } catch (e) {
     if (currentTid !== _renderTid) return;
     if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
@@ -325,11 +327,8 @@ function _renderMexOpsHeader(stats) {
           <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">⚙ ${t('txt_admin_status_jump_settings')}</button>
         </div>
       </div>
-      <div class="gp-ops-stats-grid">
-        <div class="gp-ops-stat-pill"><span>${t('txt_txt_pending_matches')}</span><strong>${stats.unresolvedCount}</strong></div>
-        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_pending_confirmation')}</span><strong>${stats.pendingConfirmationCount}</strong></div>` : ''}
-        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_disputes')}</span><strong>${stats.disputesCount}</strong></div>` : ''}
-        ${_scoreConfirmationMode !== 'immediate' ? `<div class="gp-ops-stat-pill"><span>${t('txt_txt_escalated')}</span><strong>${stats.escalatedCount}</strong></div>` : ''}
+      <div class="gp-ops-header-collapsible">
+        ${_renderStatusBarStats(stats, 'mex-review-queue-card')}
       </div>
     </div>
   `;
@@ -507,7 +506,7 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
   if (!assignCourts) {
     // Courts disabled — group by round, defined players first, multi-column grid
     if (!matches || matches.length === 0) {
-      return `<div class="card"><h3>${t('txt_txt_pending_matches')}</h3><em>${t('txt_txt_no_pending_assignments')}</em></div>`;
+      return `<div class="card"><h3>${t('txt_txt_pending_matches')}</h3><div class="empty-state-line">${t('txt_txt_no_pending_assignments')}</div></div>`;
     }
     const _tl = (team) => (team && team.length > 0) ? team.join(' & ') : 'TBD';
     const _hasTbd = (m) => !m.team1?.join('').trim() || !m.team2?.join('').trim();
@@ -541,7 +540,7 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
   }
 
   if (!matches || matches.length === 0) {
-    return `<div class="card"><h3>${esc(title)}</h3><em>${t('txt_txt_no_pending_assignments')}</em></div>`;
+    return `<div class="card"><h3>${esc(title)}</h3><div class="empty-state-line">${t('txt_txt_no_pending_assignments')}</div></div>`;
   }
 
   // Group all pending matches by court, sorted by slot_number within each court.
@@ -557,7 +556,7 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
 
   const courtNames = Object.keys(matchesByCourt).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   if (courtNames.length === 0) {
-    return `<div class="card"><h3>${esc(title)}</h3><em>${t('txt_txt_no_pending_assignments')}</em></div>`;
+    return `<div class="card"><h3>${esc(title)}</h3><div class="empty-state-line">${t('txt_txt_no_pending_assignments')}</div></div>`;
   }
 
   const _teamLabel = (team) => (team && team.length > 0) ? team.join(' & ') : 'TBD';
@@ -1742,15 +1741,20 @@ async function _changeMexPlayoffTeamCount(value) {
 }
 
 async function endMexicano() {
-  if (!confirm(t('txt_txt_confirm_end_mexicano'))) return;
   try {
     await api(`/api/tournaments/${currentTid}/mex/end`, { method: 'POST' });
+    _recordActivity(t('txt_admin_undo_mexicano_ended'));
+    _showAdminToast(t('txt_admin_undo_mexicano_ended'), {
+      onUndo: async () => {
+        await api(`/api/tournaments/${currentTid}/mex/undo-end`, { method: 'POST' });
+        renderMex();
+      },
+    });
     renderMex();
   } catch (e) { _showToast(e.message, 'error'); }
 }
 
 async function undoEndMexicano() {
-  if (!confirm(t('txt_txt_confirm_undo_end_mexicano'))) return;
   try {
     await api(`/api/tournaments/${currentTid}/mex/undo-end`, { method: 'POST' });
     renderMex();

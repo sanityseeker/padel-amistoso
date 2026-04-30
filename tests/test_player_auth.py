@@ -454,6 +454,95 @@ class TestPlayerAuthEndpoint:
         rpa._rate_limiter._log.clear()
 
 
+class TestPlayerAuthHubFlag:
+    """``has_hub_profile`` flag in the /player-auth response."""
+
+    def test_unlinked_secret_returns_false(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        sec = next(iter(secrets.values()))
+
+        r = _player_auth_passphrase(client, tid, sec["passphrase"])
+        assert r.status_code == 200
+        assert r.json()["has_hub_profile"] is False
+
+    def test_ghost_only_link_returns_false(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid, sec = next(iter(secrets.items()))
+
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, email, email_verified_at, contact, is_ghost, created_at)
+                   VALUES ('ghost-1', 'ghost-pp-1', 'Ghost', '', NULL, '', 1, '2025-01-01T00:00:00Z')""",
+            )
+            conn.execute(
+                """INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                   VALUES (?, ?, ?, ?, ?, 'ghost-1')""",
+                (tid, pid, sec["name"], sec["passphrase"] + "_db", sec["token"] + "_db"),
+            )
+
+        r = _player_auth_passphrase(client, tid, sec["passphrase"])
+        assert r.status_code == 200
+        assert r.json()["has_hub_profile"] is False
+
+    def test_real_profile_link_returns_true(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid, sec = next(iter(secrets.items()))
+
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, email, email_verified_at, contact, is_ghost, created_at)
+                   VALUES ('real-1', 'real-pp-1', 'Real Hub', 'real@example.com', '2025-01-01T00:00:00Z', '', 0, '2025-01-01T00:00:00Z')""",
+            )
+            conn.execute(
+                """INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                   VALUES (?, ?, ?, ?, ?, 'real-1')""",
+                (tid, pid, sec["name"], sec["passphrase"] + "_db2", sec["token"] + "_db2"),
+            )
+
+        r = _player_auth_passphrase(client, tid, sec["passphrase"])
+        assert r.status_code == 200
+        assert r.json()["has_hub_profile"] is True
+
+    def test_real_profile_link_returns_hub_credentials(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        pid, sec = next(iter(secrets.items()))
+
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, email, email_verified_at, contact, is_ghost, created_at)
+                   VALUES ('real-2', 'hub-pp-xyz', 'Real Hub', 'real2@example.com', '2025-01-01T00:00:00Z', '', 0, '2025-01-01T00:00:00Z')""",
+            )
+            conn.execute(
+                """INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                   VALUES (?, ?, ?, ?, ?, 'real-2')""",
+                (tid, pid, sec["name"], sec["passphrase"] + "_db3", sec["token"] + "_db3"),
+            )
+
+        r = _player_auth_passphrase(client, tid, sec["passphrase"])
+        assert r.status_code == 200
+        data = r.json()
+        assert data["has_hub_profile"] is True
+        assert data["hub_profile_id"] == "real-2"
+        assert data["hub_passphrase"] == "hub-pp-xyz"
+        assert isinstance(data["hub_access_token"], str) and len(data["hub_access_token"]) > 20
+
+    def test_unlinked_secret_omits_hub_credentials(self, client, auth_headers):
+        tid = _create_gp(client, auth_headers)
+        secrets = _get_secrets(client, tid, auth_headers)
+        sec = next(iter(secrets.values()))
+
+        r = _player_auth_passphrase(client, tid, sec["passphrase"])
+        assert r.status_code == 200
+        data = r.json()
+        assert data["hub_profile_id"] is None
+        assert data["hub_passphrase"] is None
+        assert data["hub_access_token"] is None
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # API tests — secrets management endpoints (owner/admin only)
 # ────────────────────────────────────────────────────────────────────────────

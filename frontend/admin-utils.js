@@ -609,19 +609,76 @@ function _updateSchemaSummary() {
   });
 }
 
-function generateGpPlayoffSchema() {
-  if (!currentTid) return;
-  _fetchSchema('gp-playoff-schema', `/api/tournaments/${currentTid}/gp/playoffs-schema`, 'playoffs');
+// ─── Admin bracket plot driven by TV settings ──────────────
+// The admin per-tournament view shows ONE bracket image whose rendering
+// (format + box/line/arrow/header/output scales) follows the TV settings.
+// This guarantees the public TV/spectator page and the admin preview stay
+// in sync, so admins can tune readability and see the result everyone sees.
+
+/**
+ * Build the schema URL from a tvSettings object. Mirrors the URL
+ * construction used by the public TV view (`tv.js`).
+ */
+function _adminBracketUrl(apiBase, tvSettings) {
+  const s = tvSettings || {};
+  const fmt = s.schema_format || 'svg';
+  const bs  = s.schema_box_scale        ?? 1.0;
+  const lw  = s.schema_line_width       ?? 1.0;
+  const ar  = s.schema_arrow_scale      ?? 1.0;
+  const tfs = s.schema_title_font_scale ?? 1.0;
+  const os  = s.schema_output_scale     ?? 1.0;
+  const params = `fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${ar}&title_font_scale=${tfs}&output_scale=${os}`;
+  return `${apiBase}?${params}&_t=${Date.now()}`;
 }
 
-function generateMexPlayoffSchema() {
-  if (!currentTid) return;
-  _fetchSchema('mex-playoff-schema', `/api/tournaments/${currentTid}/mex/playoffs-schema`, 'mex-playoffs');
+/**
+ * Render the admin bracket card for a tournament view. Single source of
+ * truth: any rendering tweak goes through TV settings, then this card
+ * (and the public TV view) reflects it.
+ */
+function _renderAdminBracketCard(apiBase, tvSettings, opts = {}) {
+  const title = opts.title || t('txt_txt_play_off_bracket');
+  const url = _adminBracketUrl(apiBase, tvSettings);
+  let h = `<div class="card admin-bracket-card" data-bracket-api="${apiBase}">`;
+  h += `<div class="admin-bracket-header">`;
+  h += `<h2 class="admin-bracket-title">${esc(title)}</h2>`;
+  h += `<button type="button" class="btn btn-sm btn-muted" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_bracket_open_settings_hint'))}">⚙ ${esc(t('txt_admin_bracket_tune_btn'))}</button>`;
+  h += `</div>`;
+  h += `<div class="bracket-scroll-wrapper">`;
+  h += `<img id="admin-bracket-img" class="bracket-img" src="${url}" alt="${escAttr(title)}" onclick="_openBracketLightbox(this.src)" title="${escAttr(t('txt_txt_click_to_expand'))}" onerror="this.style.display='none'">`;
+  h += `</div>`;
+  h += `<p class="settings-help admin-bracket-hint">${esc(t('txt_admin_bracket_settings_hint'))}</p>`;
+  h += `</div>`;
+  return h;
 }
 
-function generatePoPlayoffSchema() {
-  if (!currentTid) return;
-  _fetchSchema('po-playoff-schema', `/api/tournaments/${currentTid}/po/playoffs-schema`, 'po-playoffs');
+/**
+ * Refresh the admin bracket image's `src` from current DOM TV settings
+ * controls so a slider/format change updates the preview immediately
+ * without re-rendering the whole view (preserves drafts/scroll).
+ */
+function _refreshAdminBracketPreview() {
+  const img = document.getElementById('admin-bracket-img');
+  if (!img) return;
+  const card = img.closest('.admin-bracket-card');
+  if (!card) return;
+  const apiBase = card.dataset.bracketApi;
+  if (!apiBase) return;
+  const num = (id, fallback) => {
+    const el = document.getElementById(id);
+    return el ? +el.value : fallback;
+  };
+  const fmtEl = document.getElementById('tv-schema-format');
+  const tvSettings = {
+    schema_format:           fmtEl ? fmtEl.value : 'svg',
+    schema_box_scale:        num('tv-schema-box',         1.0),
+    schema_line_width:       num('tv-schema-lw',          1.0),
+    schema_arrow_scale:      num('tv-schema-arrow',       1.0),
+    schema_title_font_scale: num('tv-schema-title-scale', 1.0),
+    schema_output_scale:     num('tv-schema-output',      1.0),
+  };
+  img.style.display = '';
+  img.src = _adminBracketUrl(apiBase, tvSettings);
 }
 
 async function generatePoPreviewSchema() {
@@ -650,37 +707,10 @@ async function generatePoPreviewSchema() {
   }
 }
 
-/** Build the collapsible Play-offs Schema card HTML. */
-function _schemaCardHtml(prefix, placeholder, generateFn) {
-  let h = `<details id="${prefix}-card" class="card">`;
-  h += `<summary>${t('txt_txt_play_offs_schema')}</summary>`;
-  h += `<div class="schema-card-body">`;
-  h += `<div class="form-grid">`;
-  h += `<label>${t('txt_txt_title')}</label><input id="${prefix}-title" type="text" placeholder="${placeholder}">`;
-  h += `<label>${t('txt_txt_format')}</label><select id="${prefix}-fmt"><option value="png">PNG</option><option value="svg">SVG</option><option value="pdf">PDF</option></select>`;
-  h += `</div>`;
-  h += `<details class="schema-options-details">`;
-  h += `<summary class="schema-options-summary">⚙ ${t('txt_txt_rendering_options')}</summary>`;
-  h += `<div class="schema-options-body">`;
-  h += `<label>${t('txt_txt_box_size')} <span id="${prefix}-box-val" class="schema-range-value">1.0</span></label>`;
-  h += `<input id="${prefix}-box" type="range" min="0.3" max="3.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-box-val').textContent=this.value">`;
-  h += `<label>${t('txt_txt_line_width')} <span id="${prefix}-lw-val" class="schema-range-value">1.0</span></label>`;
-  h += `<input id="${prefix}-lw" type="range" min="0.3" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-lw-val').textContent=this.value">`;
-  h += `<label>${t('txt_txt_arrow_size')} <span id="${prefix}-arrow-val" class="schema-range-value">1.0</span></label>`;
-  h += `<input id="${prefix}-arrow" type="range" min="0.3" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-arrow-val').textContent=this.value">`;
-  h += `<label>${t('txt_txt_header_size')} <span id="${prefix}-title-scale-val" class="schema-range-value">1.0</span></label>`;
-  h += `<input id="${prefix}-title-scale" type="range" min="0.3" max="3.0" step="0.1" value="1.0" oninput="document.getElementById('${prefix}-title-scale-val').textContent=this.value">`;
-  h += `<label>${t('txt_txt_output_scale')} <span id="${prefix}-output-scale-val" class="schema-range-value">0.7</span></label>`;
-  h += `<input id="${prefix}-output-scale" type="range" min="0.5" max="3.0" step="0.1" value="0.7" oninput="document.getElementById('${prefix}-output-scale-val').textContent=this.value">`;
-  h += `</div>`;
-  h += `</details>`;
-  h += `<button type="button" class="btn btn-primary" onclick="${generateFn}()">${t('txt_txt_generate_playoffs_schema')}</button>`;
-  h += `<div id="${prefix}-msg" class="alert alert-error hidden schema-card-msg"></div>`;
-  h += `<div id="${prefix}-result" class="schema-card-result"></div>`;
-  h += `</div>`;
-  h += `</details>`;
-  return h;
-}
+// Removed `_schemaCardHtml` + `generate{Gp,Mex,Po}PlayoffSchema` (2026-04-30):
+// the per-tournament admin views now render a single bracket plot via
+// `_renderAdminBracketCard`, driven by TV settings, so the schema is always
+// in sync with what the public TV/spectator page shows.
 
 // ─── API helper ────────────────────────────────────────────
 // Use authenticated API wrapper from auth.js
@@ -722,4 +752,242 @@ async function _setSecLang(tid, pid, lang, toggleEl) {
     // Update local cache
     if (_playerSecrets && _playerSecrets[pid]) _playerSecrets[pid].lang = lang;
   } catch (e) { console.error('Failed to update player lang:', e.message); }
+}
+
+// ─── Admin toast / undo snackbar (#5) ─────────────────────────────────────
+let _adminToastSeq = 0;
+
+/**
+ * Show an ephemeral snackbar at the bottom of the screen.
+ *
+ * @param {string} msg                 Message text to display.
+ * @param {object} [opts]
+ * @param {Function} [opts.onUndo]     If provided, an "Undo" button is shown.
+ *                                     Click handler triggers this then closes.
+ * @param {number}   [opts.duration]   ms before auto-dismiss (default 6000).
+ */
+function _showAdminToast(msg, opts = {}) {
+  let stack = document.getElementById('admin-toast-stack');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.id = 'admin-toast-stack';
+    stack.className = 'admin-toast-stack';
+    document.body.appendChild(stack);
+  }
+  const id = `admin-toast-${++_adminToastSeq}`;
+  const toast = document.createElement('div');
+  toast.className = 'admin-toast';
+  toast.id = id;
+  toast.setAttribute('role', 'status');
+  toast.setAttribute('aria-live', 'polite');
+  const msgSpan = document.createElement('span');
+  msgSpan.className = 'admin-toast-msg';
+  msgSpan.textContent = msg;
+  toast.appendChild(msgSpan);
+
+  if (typeof opts.onUndo === 'function') {
+    const undoBtn = document.createElement('button');
+    undoBtn.type = 'button';
+    undoBtn.className = 'admin-toast-undo';
+    undoBtn.textContent = t('txt_admin_undo');
+    undoBtn.onclick = async () => {
+      _dismissAdminToast(id);
+      try { await opts.onUndo(); } catch (e) { console.error('Undo failed:', e); }
+    };
+    toast.appendChild(undoBtn);
+  }
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'admin-toast-close';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.textContent = '×';
+  closeBtn.onclick = () => _dismissAdminToast(id);
+  toast.appendChild(closeBtn);
+  stack.appendChild(toast);
+
+  const duration = opts.duration ?? 6000;
+  if (duration > 0) {
+    setTimeout(() => _dismissAdminToast(id), duration);
+  }
+  return id;
+}
+
+function _dismissAdminToast(id) {
+  const el = document.getElementById(id);
+  if (!el || el.classList.contains('is-leaving')) return;
+  el.classList.add('is-leaving');
+  setTimeout(() => el.remove(), 220);
+}
+
+// ─── In-memory activity drawer (#19) ──────────────────────────────────────
+const _ADMIN_ACTIVITY_MAX = 30;
+const _adminActivityLog = [];
+
+/**
+ * Record an admin action so it shows up in the activity drawer. Pure
+ * frontend / in-memory — cleared on full page reload.
+ */
+function _recordActivity(label) {
+  if (!label) return;
+  _adminActivityLog.unshift({ label: String(label), ts: Date.now() });
+  if (_adminActivityLog.length > _ADMIN_ACTIVITY_MAX) _adminActivityLog.length = _ADMIN_ACTIVITY_MAX;
+  _refreshAdminActivityDrawer();
+}
+
+function _formatActivityTime(ts) {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch (_) { return ''; }
+}
+
+function _ensureAdminActivityLauncher() {
+  if (document.getElementById('admin-activity-launcher')) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'admin-activity-launcher';
+  btn.className = 'admin-activity-launcher';
+  btn.setAttribute('aria-label', t('txt_admin_activity_open'));
+  btn.title = t('txt_admin_activity_open');
+  btn.textContent = '🕒';
+  btn.onclick = _toggleAdminActivityDrawer;
+  document.body.appendChild(btn);
+
+  const drawer = document.createElement('div');
+  drawer.id = 'admin-activity-drawer';
+  drawer.className = 'admin-activity-drawer hidden';
+  drawer.setAttribute('aria-hidden', 'true');
+  drawer.innerHTML = `
+    <div class="admin-activity-head">
+      <span>${esc(t('txt_admin_activity_title'))}</span>
+      <button type="button" class="admin-toast-close" aria-label="${escAttr(t('txt_admin_activity_close'))}" onclick="_toggleAdminActivityDrawer(false)">×</button>
+    </div>
+    <ul class="admin-activity-list" id="admin-activity-list"></ul>
+  `;
+  document.body.appendChild(drawer);
+  _refreshAdminActivityDrawer();
+}
+
+function _toggleAdminActivityDrawer(forceOpen) {
+  const drawer = document.getElementById('admin-activity-drawer');
+  if (!drawer) return;
+  const willOpen = (typeof forceOpen === 'boolean') ? forceOpen : drawer.classList.contains('hidden');
+  drawer.classList.toggle('hidden', !willOpen);
+  drawer.setAttribute('aria-hidden', willOpen ? 'false' : 'true');
+  if (willOpen) _refreshAdminActivityDrawer();
+}
+
+function _refreshAdminActivityDrawer() {
+  const list = document.getElementById('admin-activity-list');
+  if (!list) return;
+  if (_adminActivityLog.length === 0) {
+    list.innerHTML = `<li class="admin-activity-empty">${esc(t('txt_admin_activity_empty'))}</li>`;
+    return;
+  }
+  list.innerHTML = _adminActivityLog
+    .map(e => `<li><span>${esc(e.label)}</span><span class="admin-activity-time">${esc(_formatActivityTime(e.ts))}</span></li>`)
+    .join('');
+}
+
+// ─── Unified match filter (#6) ────────────────────────────────────────────
+// Filter chip row applied to .match-card-wrap globally. Persisted per
+// tournament in sessionStorage so reloads inside the same tab keep the
+// admin's choice. Possible values: 'all' | 'pending' | 'completed' | 'disputed'.
+const _MATCH_FILTER_VALUES = new Set(['all', 'pending', 'completed', 'disputed']);
+
+function _matchFilterStorageKey(tid) {
+  return `adminMatchFilter:${tid}`;
+}
+
+function _readPersistedMatchFilter(tid) {
+  if (!tid) return 'all';
+  try {
+    const v = sessionStorage.getItem(_matchFilterStorageKey(tid));
+    return _MATCH_FILTER_VALUES.has(v) ? v : 'all';
+  } catch (_) { return 'all'; }
+}
+
+function _persistMatchFilter(tid, value) {
+  if (!tid) return;
+  try { sessionStorage.setItem(_matchFilterStorageKey(tid), value); } catch (_) { /* ignore */ }
+}
+
+/**
+ * Render the unified match filter chip row. Rendered inside the status bar.
+ * The disputed chip only appears when score confirmation is non-immediate
+ * (the only context where disputes can exist).
+ */
+function _renderMatchFilterChips(tid) {
+  const current = _readPersistedMatchFilter(tid);
+  // _gpMatchFilterState is the legacy global used by _applyMatchFilter; keep in sync.
+  if (typeof _gpMatchFilterState !== 'undefined') _gpMatchFilterState = current;
+  const showDisputed = (typeof _scoreConfirmationMode !== 'undefined') && _scoreConfirmationMode !== 'immediate';
+  const chip = (key, label) => {
+    const active = current === key ? ' active' : '';
+    return `<button type="button" class="${active}" data-filter="${key}" onclick="_applyMatchFilter('${key}')">${esc(label)}</button>`;
+  };
+  let html = `<div class="match-filter-row" id="admin-match-filter-row" role="tablist" aria-label="Match filter">`;
+  html += `<div class="match-filter-toggle" id="gp-match-filter">`;
+  html += chip('all', t('txt_txt_filter_all'));
+  html += chip('pending', t('txt_txt_filter_pending'));
+  html += chip('completed', t('txt_txt_filter_completed'));
+  if (showDisputed) html += chip('disputed', t('txt_admin_filter_disputed'));
+  html += `</div></div>`;
+  return html;
+}
+
+// ─── Status-bar attention badge (#3) ──────────────────────────────────────
+/**
+ * Build the attention area inside the status bar. When there are review
+ * items (disputes / pending confirmation), collapse the four pending stat
+ * pills into one warning button that scrolls to the review queue. Other
+ * stat pills are only emitted when their value is non-zero.
+ *
+ * @param {object} stats          From `_buildGpOpsStats` / `_buildMexOpsStats`.
+ * @param {string} reviewCardId   DOM id of the review queue card to scroll to.
+ */
+function _renderStatusBarStats(stats, reviewCardId) {
+  const reviewItems = (stats.disputesCount || 0) + (stats.pendingConfirmationCount || 0);
+  let html = `<div class="gp-ops-stats-row">`;
+  if (reviewItems > 0 && reviewCardId) {
+    const label = reviewItems === 1
+      ? t('txt_admin_status_attention_one')
+      : t('txt_admin_status_attention', { n: reviewItems });
+    html += `<button type="button" class="gp-ops-attention" onclick="document.getElementById('${reviewCardId}')?.scrollIntoView({behavior:'smooth', block:'center'})">`;
+    html += `<span class="gp-ops-attention-icon" aria-hidden="true">⚠</span>${esc(label)}`;
+    html += `</button>`;
+  }
+  if (stats.unresolvedCount > 0) {
+    html += `<div class="gp-ops-stat-pill"><span>${t('txt_txt_pending_matches')}</span><strong>${stats.unresolvedCount}</strong></div>`;
+  }
+  if (stats.unassignedCourtsCount > 0) {
+    html += `<div class="gp-ops-stat-pill"><span>${t('txt_txt_no_courts')}</span><strong>${stats.unassignedCourtsCount}</strong></div>`;
+  }
+  if (stats.escalatedCount > 0) {
+    html += `<div class="gp-ops-stat-pill"><span>${t('txt_txt_escalated')}</span><strong>${stats.escalatedCount}</strong></div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+/**
+ * Build the disabled-with-reason attribute string for a decision button.
+ * Returns either ` disabled title="..."` (when reason provided) or empty.
+ */
+function _decisionDisabledAttrs(reason) {
+  if (!reason) return '';
+  return ` disabled title="${escAttr(reason)}" aria-disabled="true"`;
+}
+
+/**
+ * Pick the reason a "next round / start playoffs" button should be disabled,
+ * or null if the action is currently allowed.
+ */
+function _decisionDisabledReason({ pendingMatches = 0, finished = false, hasMoreRounds = true } = {}) {
+  if (finished) return t('txt_admin_decision_disabled_finished');
+  if (pendingMatches > 0) {
+    return t('txt_admin_decision_disabled_pending', { n: pendingMatches });
+  }
+  if (!hasMoreRounds) return t('txt_admin_decision_disabled_no_more_rounds');
+  return null;
 }

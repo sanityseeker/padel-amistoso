@@ -141,10 +141,10 @@ function _renderClubGeneralBody(club) {
   let html = `<div class="settings-block">`;
   html += `<label class="settings-label">${t('txt_clubs_name')}</label>`;
   html += `<div class="settings-inline-row">`;
-  html += `<input type="text" id="clubs-rename-input" value="${escAttr(club.name)}" placeholder="${escAttr(t('txt_clubs_name'))}" style="flex:1;min-width:140px;padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">`;
+  html += `<input type="text" id="clubs-rename-input" class="settings-input settings-input--grow" value="${escAttr(club.name)}" placeholder="${escAttr(t('txt_clubs_name'))}">`;
   html += `<button class="btn btn-sm btn-primary" onclick="clubsRename()">${t('txt_txt_save')}</button>`;
-  html += `<span id="clubs-rename-msg" style="font-size:0.84rem"></span>`;
   html += `</div>`;
+  html += `<div id="clubs-rename-msg" class="settings-inline-msg"></div>`;
   html += `</div>`;
 
   html += `<div class="settings-block">`;
@@ -178,14 +178,14 @@ function _renderClubTiersBody() {
   let html = `<div class="settings-block">`;
   html += `<p class="settings-help">${t('txt_clubs_tiers_help')}</p>`;
   html += `<div id="clubs-tiers-list"></div>`;
-  html += `<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center">`;
-  html += `<input type="text" id="clubs-tier-name" placeholder="${escAttr(t('txt_clubs_tier_name_placeholder'))}" style="flex:1;min-width:120px;padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">`;
+  html += `<div class="settings-inline-row" style="margin-top:0.6rem">`;
+  html += `<input type="text" id="clubs-tier-name" class="settings-input settings-input--grow" placeholder="${escAttr(t('txt_clubs_tier_name_placeholder'))}" autocomplete="off">`;
   html += `<label style="font-size:0.82rem;display:flex;align-items:center;gap:0.25rem">${t('txt_clubs_tier_base_elo')}`;
-  html += `<input type="number" id="clubs-tier-elo" value="1000" min="0" max="3000" step="50" style="width:70px;padding:0.35rem 0.4rem;font-size:0.85rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);text-align:center">`;
+  html += `<input type="number" id="clubs-tier-elo" class="settings-input" value="1000" min="0" max="3000" step="50" style="width:70px;text-align:center">`;
   html += `</label>`;
   html += `<button class="btn btn-sm btn-success" onclick="clubsCreateTier()">+ ${t('txt_txt_add')}</button>`;
   html += `</div>`;
-  html += `<div id="clubs-tiers-msg" style="margin-top:0.4rem;font-size:0.84rem"></div>`;
+  html += `<div id="clubs-tiers-msg" class="settings-inline-msg"></div>`;
   html += `</div>`;
   return html;
 }
@@ -198,11 +198,11 @@ function _renderClubTiersBody() {
 function _renderClubSeasonsBody() {
   let html = `<div class="settings-block">`;
   html += `<div id="clubs-seasons-list"></div>`;
-  html += `<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center">`;
-  html += `<input type="text" id="clubs-season-name" placeholder="${escAttr(t('txt_clubs_season_name_placeholder'))}" style="flex:1;min-width:180px;padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">`;
+  html += `<div class="settings-inline-row" style="margin-top:0.6rem">`;
+  html += `<input type="text" id="clubs-season-name" class="settings-input settings-input--grow" placeholder="${escAttr(t('txt_clubs_season_name_placeholder'))}" autocomplete="off">`;
   html += `<button class="btn btn-sm btn-success" onclick="clubsCreateSeason()">+ ${t('txt_txt_add')}</button>`;
   html += `</div>`;
-  html += `<div id="clubs-seasons-msg" style="margin-top:0.4rem;font-size:0.84rem"></div>`;
+  html += `<div id="clubs-seasons-msg" class="settings-inline-msg"></div>`;
   html += `</div>`;
   return html;
 }
@@ -233,13 +233,13 @@ function _renderClubCommsBody(club) {
   html += `<label class="settings-label">${t('txt_clubs_comms_section_branding')}</label>`;
   html += `<p class="settings-help">${t('txt_clubs_email_settings_help')}</p>`;
   html += `<label class="settings-label" style="margin-top:0.4rem">${t('txt_clubs_email_reply_to')}</label>`;
-  html += `<input type="email" id="clubs-email-reply-to" value="${escAttr(reply)}" placeholder="${escAttr(t('txt_clubs_email_reply_to_placeholder'))}" style="width:100%;max-width:420px;padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);margin-bottom:0.6rem">`;
+  html += `<input type="email" id="clubs-email-reply-to" class="settings-input" value="${escAttr(reply)}" placeholder="${escAttr(t('txt_clubs_email_reply_to_placeholder'))}" style="width:100%;max-width:420px;margin-bottom:0.6rem">`;
   html += `<label class="settings-label">${t('txt_clubs_email_sender_name')}</label>`;
-  html += `<input type="text" id="clubs-email-sender-name" value="${escAttr(sender)}" placeholder="${escAttr(club.name)}" style="width:100%;max-width:420px;padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);margin-bottom:0.6rem">`;
-  html += `<div style="display:flex;align-items:center;gap:0.5rem">`;
+  html += `<input type="text" id="clubs-email-sender-name" class="settings-input" value="${escAttr(sender)}" placeholder="${escAttr(club.name)}" style="width:100%;max-width:420px;margin-bottom:0.6rem">`;
+  html += `<div class="settings-inline-row">`;
   html += `<button class="btn btn-sm btn-primary" onclick="clubsSaveEmailSettings()">${t('txt_txt_save')}</button>`;
-  html += `<span id="clubs-email-settings-msg" style="font-size:0.84rem"></span>`;
   html += `</div>`;
+  html += `<div id="clubs-email-settings-msg" class="settings-inline-msg"></div>`;
   html += `</div>`;
 
   html += `<div class="settings-block">`;
@@ -260,12 +260,12 @@ function _renderClubAccessBody(club) {
   let html = `<div class="settings-block">`;
   html += `<p class="settings-help">${t('txt_clubs_collaborators_help')}</p>`;
   html += `<div id="clubs-collabs-list"></div>`;
-  html += `<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center">`;
-  html += `<input type="text" id="clubs-collab-input" placeholder="${escAttr(t('txt_clubs_add_collab_placeholder'))}" style="flex:1;min-width:160px;padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off" oninput="_clubsCollabInputChange(this.value)" list="clubs-collab-suggestions">`;
+  html += `<div class="settings-inline-row" style="margin-top:0.6rem">`;
+  html += `<input type="text" id="clubs-collab-input" class="settings-input settings-input--grow" placeholder="${escAttr(t('txt_clubs_add_collab_placeholder'))}" autocomplete="off" oninput="_clubsCollabInputChange(this.value)" list="clubs-collab-suggestions">`;
   html += `<datalist id="clubs-collab-suggestions"></datalist>`;
   html += `<button class="btn btn-sm btn-primary" onclick="clubsAddCollaborator()">${t('txt_clubs_add_collab_btn')}</button>`;
   html += `</div>`;
-  html += `<div id="clubs-collab-msg" style="margin-top:0.4rem;font-size:0.84rem"></div>`;
+  html += `<div id="clubs-collab-msg" class="settings-inline-msg"></div>`;
   html += `</div>`;
   return html;
 }

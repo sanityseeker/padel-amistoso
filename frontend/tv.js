@@ -169,6 +169,10 @@ function _loadPlayerSession() {
     tvState.playerJwt = data.jwt || null;
     tvState.playerId = data.playerId || null;
     tvState.playerName = data.playerName || null;
+    tvState.playerHasHubProfile = data.hasHubProfile;
+    tvState.playerLoginPassphrase = data.loginPassphrase || null;
+    tvState.hubPassphrase = data.hubPassphrase || null;
+    tvState.hubAccessToken = data.hubAccessToken || null;
   } catch { _clearPlayerSession(); }
 }
 
@@ -178,12 +182,24 @@ function _savePlayerSession() {
     jwt: tvState.playerJwt,
     playerId: tvState.playerId,
     playerName: tvState.playerName,
+    hasHubProfile: tvState.playerHasHubProfile,
+    loginPassphrase: tvState.playerLoginPassphrase,
+    hubPassphrase: tvState.hubPassphrase,
+    hubAccessToken: tvState.hubAccessToken,
   }));
 }
 
 function _clearPlayerSession() {
   tvState.playerJwt = null; tvState.playerId = null; tvState.playerName = null;
   tvState.playerOpponents = []; tvState.playerOpponentsLoaded = false;
+  tvState.playerHasHubProfile = undefined;
+  tvState.playerLoginPassphrase = null;
+  tvState.hubPassphrase = null;
+  tvState.hubAccessToken = null;
+  try {
+    const key = _hubCtaDismissedKey();
+    if (key) sessionStorage.removeItem(key);
+  } catch (_) {}
   _removePlayerSessionRaw();
 }
 
@@ -216,6 +232,15 @@ async function _playerAuth(passphrase, token) {
   tvState.playerJwt = data.access_token;
   tvState.playerId = data.player_id;
   tvState.playerName = data.player_name;
+  tvState.playerHasHubProfile = !!data.has_hub_profile;
+  // Stash the passphrase used to log in so the hub-CTA banner can deep-link
+  // it into /player. Token-only logins leave this null (banner stays hidden).
+  tvState.playerLoginPassphrase = passphrase || null;
+  // Stash the linked Hub profile credentials so the player menu can show
+  // the passphrase and offer one-click auto-login to the Hub. Null when
+  // there is no real (non-ghost) Hub profile linked.
+  tvState.hubPassphrase = data.hub_passphrase || null;
+  tvState.hubAccessToken = data.hub_access_token || null;
   _savePlayerSession();
   return data;
 }
@@ -482,6 +507,7 @@ function _buildPlayerOpponentsHtml() {
   }
   let html = `<div class="player-opponents-body">`;
   for (const [round, list] of Object.entries(byRound)) {
+    html += `<div class="player-opponents-group">`;
     if (round) html += `<div class="player-opponents-round">${t('txt_txt_round')} ${esc(round)}</div>`;
     for (const o of list) {
       const contactHtml = o.contact
@@ -489,9 +515,49 @@ function _buildPlayerOpponentsHtml() {
         : '';
       html += `<div class="player-opponents-row"><span class="player-opponents-name">${esc(o.name)}</span>${contactHtml}</div>`;
     }
+    html += `</div>`;
   }
   html += `</div>`;
   return html;
+}
+
+/** Build the optional Player Hub section (passphrase + auto-login button) */
+function _buildPlayerHubSectionHtml() {
+  const passphrase = tvState.hubPassphrase;
+  if (!passphrase) return '';
+  const hasToken = !!tvState.hubAccessToken;
+  const openBtn = hasToken
+    ? `<button class="player-hub-section-open" onclick="_openHubAutoLogin()" title="${t('txt_player_hub_open')}">${t('txt_player_hub_open')}</button>`
+    : '';
+  return `
+    <div class="player-hub-section">
+      <span class="player-hub-section-title">${t('txt_player_hub_section_title')}</span>
+      <code class="player-hub-section-passphrase" data-passphrase="${esc(passphrase)}" onclick="_copyHubPassphrase(this)" title="${t('txt_txt_click_to_copy')}">${esc(passphrase)}</code>
+      ${openBtn}
+    </div>`;
+}
+
+/** Click-to-copy the Hub passphrase with brief visual feedback */
+function _copyHubPassphrase(el) {
+  const text = el.dataset.passphrase;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    el.classList.add('player-hub-section-passphrase--copied');
+    el.dataset.orig = el.textContent;
+    el.textContent = `✓ ${t('txt_txt_copied')}`;
+    setTimeout(() => {
+      el.textContent = el.dataset.orig;
+      el.classList.remove('player-hub-section-passphrase--copied');
+    }, 1500);
+  }).catch(() => {});
+}
+
+/** Open the Player Hub in a new tab using the short-lived auto-login token */
+function _openHubAutoLogin() {
+  const token = tvState.hubAccessToken;
+  if (!token) return;
+  const url = `/player#token=${encodeURIComponent(token)}`;
+  window.open(url, '_blank', 'noopener');
 }
 
 /** Build the expand panel DOM element using current tvState */
@@ -502,11 +568,13 @@ function _buildPlayerPanel() {
   const pushBtnHtml = _pushSupported()
     ? `<button id="push-toggle-btn" class="push-toggle-btn" onclick="_togglePush()"></button>`
     : '';
+  const hubSectionHtml = _buildPlayerHubSectionHtml();
   panel.innerHTML = `
     <button class="player-expand-close" onclick="_closePlayerPanel()" title="${t('txt_txt_close')}">✕</button>
     <div class="player-expand-inner">
       <span class="player-expand-title">${t('txt_txt_upcoming_opponents')}</span>
       ${_buildPlayerOpponentsHtml()}
+      ${hubSectionHtml}
     </div>
     <div class="player-expand-footer">
       ${pushBtnHtml}
@@ -550,6 +618,48 @@ function _togglePlayerPanel() {
   }
 }
 
+/** sessionStorage key remembering that the player dismissed the hub-CTA banner this tab session */
+function _hubCtaDismissedKey() { return TID ? `padel-hub-cta-dismissed:${TID}` : null; }
+
+/** Should the inline "register on Player Hub" banner be shown for this logged-in player? */
+function _shouldShowHubCta() {
+  if (!_isPlayerLoggedIn()) return false;
+  if (tvState.playerHasHubProfile !== false) return false;
+  if (!tvState.playerLoginPassphrase) return false;
+  try {
+    const key = _hubCtaDismissedKey();
+    if (key && sessionStorage.getItem(key) === '1') return false;
+    if (localStorage.getItem('padel-player-profile-data')) return false;
+  } catch (_) {}
+  return true;
+}
+
+/** Render the inline hub-CTA banner as a full-width row below the TV header */
+function _renderHubCtaBanner() {
+  if (!_shouldShowHubCta()) return;
+  const header = document.getElementById('tv-header-main');
+  if (!header) return;
+  const banner = document.createElement('div');
+  banner.id = 'hub-cta-banner';
+  banner.className = 'hub-cta-banner';
+  const href = `/player#participant_passphrase=${encodeURIComponent(tvState.playerLoginPassphrase)}`;
+  banner.innerHTML = `
+    <span class="hub-cta-banner-text">${t('txt_hub_cta_banner_title')}</span>
+    <a class="hub-cta-banner-action" href="${href}" target="_blank" rel="noopener">${t('txt_hub_cta_banner_action')}</a>
+    <button type="button" class="hub-cta-banner-dismiss" aria-label="${t('txt_hub_cta_banner_dismiss')}" title="${t('txt_hub_cta_banner_dismiss')}" onclick="_dismissHubCta()">✕</button>
+  `;
+  header.appendChild(banner);
+}
+
+/** Dismiss the hub-CTA banner for the current tab session (per tournament) */
+function _dismissHubCta() {
+  try {
+    const key = _hubCtaDismissedKey();
+    if (key) sessionStorage.setItem(key, '1');
+  } catch (_) {}
+  document.getElementById('hub-cta-banner')?.remove();
+}
+
 /** Render the player bar at the top (or the floating login button) */
 function _renderPlayerBar() {
   // Remove existing
@@ -557,6 +667,7 @@ function _renderPlayerBar() {
   document.getElementById('player-login-fab')?.remove();
   document.getElementById('player-name-btn')?.remove();
   document.getElementById('player-session-widget')?.remove();
+  document.getElementById('hub-cta-banner')?.remove();
   // Capture panel open state before removing it
   if (document.getElementById('player-expand-panel')) tvState.playerPanelOpen = true;
   document.getElementById('player-expand-panel')?.remove();
@@ -588,6 +699,8 @@ function _renderPlayerBar() {
 
     widget.appendChild(triggerBtn);
     slot.appendChild(widget);
+
+    _renderHubCtaBanner();
 
     // Restore open state after re-render
     if (tvState.playerPanelOpen) {
@@ -1511,8 +1624,9 @@ function _renderGP(tvSettings, status, groups, playoffs) {
       const lw = tvSettings.schema_line_width  || 1.0;
       const as_ = tvSettings.schema_arrow_scale || 1.0;
       const tfs = tvSettings.schema_title_font_scale || 1.0;
+      const os  = tvSettings.schema_output_scale || 1.0;
       const fmt = tvSettings.schema_format || 'svg';
-      const imgUrl = `/api/tournaments/${TID}/gp/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
+      const imgUrl = `/api/tournaments/${TID}/gp/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&output_scale=${os}&_t=${Date.now()}`;
       html += _buildBracketSection(imgUrl);
     }
 
@@ -1581,8 +1695,9 @@ function _renderPO(tvSettings, status, playoffs) {
     const lw  = tvSettings.schema_line_width       || 1.0;
     const as_ = tvSettings.schema_arrow_scale      || 1.0;
     const tfs = tvSettings.schema_title_font_scale || 1.0;
+    const os  = tvSettings.schema_output_scale     || 1.0;
     const fmt = tvSettings.schema_format || 'svg';
-    const imgUrl = `/api/tournaments/${TID}/po/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
+    const imgUrl = `/api/tournaments/${TID}/po/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&output_scale=${os}&_t=${Date.now()}`;
     html += _buildBracketSection(imgUrl);
   }
 
@@ -1630,8 +1745,9 @@ function _renderMex(tvSettings, status, matches, playoffs) {
       const lw = tvSettings.schema_line_width  || 1.0;
       const as_ = tvSettings.schema_arrow_scale || 1.0;
       const tfs = tvSettings.schema_title_font_scale || 1.0;
+      const os  = tvSettings.schema_output_scale || 1.0;
       const fmt = tvSettings.schema_format || 'svg';
-      const imgUrl = `/api/tournaments/${TID}/mex/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&_t=${Date.now()}`;
+      const imgUrl = `/api/tournaments/${TID}/mex/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&output_scale=${os}&_t=${Date.now()}`;
       html += _buildBracketSection(imgUrl);
     }
 

@@ -20,16 +20,26 @@ function _phaseLabel(phase) {
   return map[phase] || phase;
 }
 
-let _homeTournamentFilter = 'all'; // all | tournaments | lobbies | finished | mine
+let _homeTournamentFilter = 'all'; // all | active | tournaments | lobbies | finished | mine
 let _homeTournamentSearch = '';
 const _HOME_TOURN_FILTER_KEY = 'amistoso-home-tournament-filter';
 const _HOME_TOURN_SEARCH_KEY = 'amistoso-home-tournament-search';
-const _HOME_TOURN_FILTERS = new Set(['all', 'tournaments', 'lobbies', 'finished', 'mine']);
+const _HOME_TOURN_FILTERS = new Set(['all', 'active', 'tournaments', 'lobbies', 'finished', 'mine']);
+// Filters reserved for admins (other roles only ever see their own / shared items,
+// so the "mine" filter would either be a no-op or redundant for them).
+const _HOME_TOURN_ADMIN_ONLY_FILTERS = new Set(['mine']);
 try {
   const saved = localStorage.getItem(_HOME_TOURN_FILTER_KEY);
   if (saved && _HOME_TOURN_FILTERS.has(saved)) _homeTournamentFilter = saved;
 } catch (_) {}
 try { _homeTournamentSearch = localStorage.getItem(_HOME_TOURN_SEARCH_KEY) || ''; } catch (_) {}
+
+// Counts for the toolbar chips. Computed inside loadTournaments() against
+// the search-filtered (but unfiltered-by-chip) item universe so users can
+// see how many items each filter would surface.
+let _homeTournamentChipCounts = {
+  all: 0, active: 0, tournaments: 0, lobbies: 0, finished: 0, mine: 0,
+};
 
 function _persistHomeTournamentFilter() {
   try { localStorage.setItem(_HOME_TOURN_FILTER_KEY, _homeTournamentFilter); } catch (_) {}
@@ -42,9 +52,17 @@ function _persistHomeTournamentSearch() {
 function _renderHomeTournamentToolbar() {
   const toolbar = document.getElementById('home-tournament-toolbar');
   if (!toolbar) return;
-  const mineBtn = isAuthenticated()
-    ? `<button type="button" class="home-filter-chip${_homeTournamentFilter === 'mine' ? ' active' : ''}" onclick="_setHomeTournamentFilter('mine')">${t('txt_txt_mine')}</button>`
-    : '';
+  const counts = _homeTournamentChipCounts || {};
+  const countBadge = (key) => {
+    const n = counts[key] ?? 0;
+    return `<span class="home-filter-chip-count" aria-hidden="true">${n}</span>`;
+  };
+  const chip = (key, label) => {
+    const isActive = _homeTournamentFilter === key;
+    const ariaLabel = `${label} (${counts[key] ?? 0})`;
+    return `<button type="button" class="home-filter-chip${isActive ? ' active' : ''}" aria-pressed="${isActive}" aria-label="${escAttr(ariaLabel)}" onclick="_setHomeTournamentFilter('${key}')">${label}${countBadge(key)}</button>`;
+  };
+  const mineChip = isAdmin() ? chip('mine', t('txt_txt_mine')) : '';
   toolbar.innerHTML = `
     <div class="home-search-row">
       <input
@@ -59,11 +77,12 @@ function _renderHomeTournamentToolbar() {
       <button type="button" class="btn btn-sm btn-muted" onclick="_clearHomeTournamentSearch()">${t('txt_txt_clear')}</button>
     </div>
     <div class="home-filter-row" role="tablist" aria-label="Home tournament filters">
-      <button type="button" class="home-filter-chip${_homeTournamentFilter === 'all' ? ' active' : ''}" onclick="_setHomeTournamentFilter('all')">${t('txt_txt_filter_all')}</button>
-      <button type="button" class="home-filter-chip${_homeTournamentFilter === 'tournaments' ? ' active' : ''}" onclick="_setHomeTournamentFilter('tournaments')">${t('txt_txt_tournaments')}</button>
-      <button type="button" class="home-filter-chip${_homeTournamentFilter === 'lobbies' ? ' active' : ''}" onclick="_setHomeTournamentFilter('lobbies')">${t('txt_reg_lobby')}</button>
-      <button type="button" class="home-filter-chip${_homeTournamentFilter === 'finished' ? ' active' : ''}" onclick="_setHomeTournamentFilter('finished')">${t('txt_txt_finished')}</button>
-      ${mineBtn}
+      ${chip('all', t('txt_txt_filter_all'))}
+      ${chip('active', t('txt_txt_filter_active'))}
+      ${chip('tournaments', t('txt_txt_tournaments'))}
+      ${chip('lobbies', t('txt_reg_lobby'))}
+      ${chip('finished', t('txt_txt_finished'))}
+      ${mineChip}
     </div>
   `;
 }
@@ -145,6 +164,29 @@ async function loadTournaments() {
     finishedLobbies = finishedLobbies.filter(matchesSearch);
     visibleArchivedRegList = visibleArchivedRegList.filter(matchesSearch);
 
+    // Drop admin-only filters when caller is not an admin (e.g. "mine" — non-admins
+    // already only see their own / shared items, so the filter would be a no-op).
+    if (_HOME_TOURN_ADMIN_ONLY_FILTERS.has(_homeTournamentFilter) && !isAdmin()) {
+      _homeTournamentFilter = 'all';
+      _persistHomeTournamentFilter();
+    }
+
+    // Compute chip counts against the search-filtered universe so the badges
+    // reflect what each chip would surface from the same starting set.
+    const mineTournaments = active.filter(ownsTournament);
+    const mineFinishedTournaments = finished.filter(ownsTournament);
+    const mineActiveLobbies = activeLobbies.filter(ownsLobby);
+    const mineFinishedLobbies = finishedLobbies.filter(ownsLobby);
+    const mineArchivedLobbies = visibleArchivedRegList.filter(ownsLobby);
+    _homeTournamentChipCounts = {
+      all: active.length + finished.length + activeLobbies.length + finishedLobbies.length + visibleArchivedRegList.length,
+      active: active.length + activeLobbies.length,
+      tournaments: active.length + finished.length,
+      lobbies: activeLobbies.length + finishedLobbies.length + visibleArchivedRegList.length,
+      finished: finished.length + finishedLobbies.length + visibleArchivedRegList.length,
+      mine: mineTournaments.length + mineFinishedTournaments.length + mineActiveLobbies.length + mineFinishedLobbies.length + mineArchivedLobbies.length,
+    };
+
     if (_homeTournamentFilter === 'tournaments') {
       activeLobbies = [];
       finishedLobbies = [];
@@ -155,12 +197,17 @@ async function loadTournaments() {
     } else if (_homeTournamentFilter === 'finished') {
       active = [];
       activeLobbies = [];
+    } else if (_homeTournamentFilter === 'active') {
+      // Active = ongoing tournaments + open lobbies. Hide everything finished/archived.
+      finished = [];
+      finishedLobbies = [];
+      visibleArchivedRegList = [];
     } else if (_homeTournamentFilter === 'mine') {
-      active = active.filter(ownsTournament);
-      finished = finished.filter(ownsTournament);
-      activeLobbies = activeLobbies.filter(ownsLobby);
-      finishedLobbies = finishedLobbies.filter(ownsLobby);
-      visibleArchivedRegList = visibleArchivedRegList.filter(ownsLobby);
+      active = mineTournaments;
+      finished = mineFinishedTournaments;
+      activeLobbies = mineActiveLobbies;
+      finishedLobbies = mineFinishedLobbies;
+      visibleArchivedRegList = mineArchivedLobbies;
     }
 
     _renderHomeTournamentToolbar();

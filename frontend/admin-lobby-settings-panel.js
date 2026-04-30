@@ -177,10 +177,10 @@ function _renderLobbyDetailsBody(rid, r) {
   html += `<label class="settings-label">${t('txt_reg_registration_alias')}</label>`;
   html += `<p class="settings-help">${t('txt_reg_alias_help')}</p>`;
   html += `<div class="settings-inline-row">`;
-  html += `<input type="text" id="reg-alias-input-${esc(rid)}" placeholder="${t('txt_tv_alias_placeholder')}" value="${escAttr(regAlias)}" pattern="[a-zA-Z0-9_-]+" maxlength="64" style="flex:1;min-width:180px;font-family:monospace;font-size:0.85rem">`;
-  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_setRegAlias('${esc(rid)}'))">${t('txt_txt_set_alias')}</button>`;
+  html += `<input type="text" id="reg-alias-input-${esc(rid)}" class="settings-input settings-input--mono settings-input--grow" placeholder="${t('txt_tv_alias_placeholder')}" value="${escAttr(regAlias)}" pattern="[a-zA-Z0-9_-]+" maxlength="64">`;
+  html += `<button type="button" class="btn btn-sm btn-primary" onclick="withLoading(this,()=>_setRegAlias('${esc(rid)}'))">${t('txt_txt_save')}</button>`;
   if (regAlias) {
-    html += `<button type="button" class="btn btn-danger btn-sm" onclick="withLoading(this,()=>_deleteRegAlias('${esc(rid)}'))">${t('txt_txt_remove')}</button>`;
+    html += `<button type="button" class="btn btn-sm btn-danger" onclick="withLoading(this,()=>_deleteRegAlias('${esc(rid)}'))">✕ ${t('txt_txt_remove')}</button>`;
   }
   html += `</div>`;
   html += `<div class="settings-url-preview">`;

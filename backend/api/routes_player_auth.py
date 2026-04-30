@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from ..auth.deps import PlayerIdentity, get_current_player, get_current_user
 from ..auth.models import User
-from ..auth.security import create_player_token
+from ..auth.security import create_player_token, create_profile_token
 from ..models import GPPhase, Player, TournamentType
 from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .db import get_db
@@ -114,6 +114,10 @@ class PlayerAuthResponse(BaseModel):
     player_id: str
     player_name: str
     tournament_id: str
+    has_hub_profile: bool = False
+    hub_profile_id: str | None = None
+    hub_passphrase: str | None = None
+    hub_access_token: str | None = None
 
 
 class PlayerContactRequest(BaseModel):
@@ -176,12 +180,41 @@ async def player_auth(tid: str, req: PlayerAuthRequest, request: Request) -> Pla
         raise HTTPException(401, "Invalid passphrase or token")
 
     jwt_token = create_player_token(tid, player_info["player_id"])
+    hub_info = _get_linked_hub_profile(tid, player_info["player_id"])
     return PlayerAuthResponse(
         access_token=jwt_token,
         player_id=player_info["player_id"],
         player_name=player_info["player_name"],
         tournament_id=tid,
+        has_hub_profile=hub_info is not None,
+        hub_profile_id=hub_info["profile_id"] if hub_info else None,
+        hub_passphrase=hub_info["passphrase"] if hub_info else None,
+        hub_access_token=(create_profile_token(hub_info["profile_id"]) if hub_info else None),
     )
+
+
+def _get_linked_hub_profile(tid: str, player_id: str) -> dict | None:
+    """Return ``{profile_id, passphrase}`` for the linked real Hub profile, or None."""
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            SELECT pp.id AS profile_id, pp.passphrase AS passphrase
+            FROM player_secrets ps
+            JOIN player_profiles pp ON pp.id = ps.profile_id
+            WHERE ps.tournament_id = ? AND ps.player_id = ?
+              AND ps.profile_id IS NOT NULL AND pp.is_ghost = 0
+            LIMIT 1
+            """,
+            (tid, player_id),
+        ).fetchone()
+    if row is None:
+        return None
+    return {"profile_id": row["profile_id"], "passphrase": row["passphrase"]}
+
+
+def _player_has_hub_profile(tid: str, player_id: str) -> bool:
+    """Return True iff this tournament participation is linked to a real (non-ghost) Hub profile."""
+    return _get_linked_hub_profile(tid, player_id) is not None
 
 
 # ────────────────────────────────────────────────────────────────────────────

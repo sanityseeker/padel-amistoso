@@ -45,12 +45,11 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
   html += `<label class="settings-label">${t('txt_txt_tournament_alias')}</label>`;
   html += `<p class="settings-help">${t('txt_tv_alias_help')}</p>`;
   html += `<div class="settings-inline-row">`;
-  html += `<input type="text" id="tournament-alias-input" placeholder="${t('txt_tv_alias_placeholder')}" value="${escAttr(currentAlias)}"
-    pattern="[a-zA-Z0-9_-]+" maxlength="64"
-    style="flex:1;min-width:200px;font-family:monospace;font-size:0.85rem">`;
-  html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setTournamentAlias()" style="white-space:nowrap">${t('txt_txt_set_alias')}</button>`;
+  html += `<input type="text" id="tournament-alias-input" class="settings-input settings-input--mono settings-input--grow" placeholder="${t('txt_tv_alias_placeholder')}" value="${escAttr(currentAlias)}"
+    pattern="[a-zA-Z0-9_-]+" maxlength="64">`;
+  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_setTournamentAlias()">${t('txt_txt_save')}</button>`;
   if (currentAlias) {
-    html += `<button type="button" class="btn btn-danger btn-sm" onclick="_deleteTournamentAlias()" style="white-space:nowrap">✕ ${t('txt_txt_remove')}</button>`;
+    html += `<button type="button" class="btn btn-sm btn-danger" onclick="_deleteTournamentAlias()">✕ ${t('txt_txt_remove')}</button>`;
   }
   html += `</div>`;
   const _tvSlug = currentAlias || currentTid;
@@ -76,12 +75,11 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
   html += `<label class="settings-label">${t('txt_banner_label')}</label>`;
   html += `<p class="settings-help">${t('txt_banner_help')}</p>`;
   html += `<div class="settings-inline-row">`;
-  html += `<input type="text" id="tournament-banner-input" placeholder="${t('txt_banner_placeholder')}" value="${escAttr(currentBanner)}"
-    maxlength="500"
-    style="flex:1;min-width:200px;font-size:0.85rem">`;
-  html += `<button type="button" class="btn btn-primary btn-sm" onclick="_setTournamentBanner()" style="white-space:nowrap">${t('txt_txt_set')}</button>`;
+  html += `<input type="text" id="tournament-banner-input" class="settings-input settings-input--grow" placeholder="${t('txt_banner_placeholder')}" value="${escAttr(currentBanner)}"
+    maxlength="500">`;
+  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_setTournamentBanner()">${t('txt_txt_save')}</button>`;
   if (currentBanner) {
-    html += `<button type="button" class="btn btn-danger btn-sm" onclick="_clearTournamentBanner()" style="white-space:nowrap">✕ ${t('txt_txt_remove')}</button>`;
+    html += `<button type="button" class="btn btn-sm btn-danger" onclick="_clearTournamentBanner()">✕ ${t('txt_txt_remove')}</button>`;
   }
   html += `</div>`;
   html += `</div>`;
@@ -119,24 +117,37 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
 
   // Schema rendering controls — only relevant when playoffs are active.
   if (hasPlayoffs) {
-  const boxScale   = def('schema_box_scale',   1.0);
-  const lineWidth  = def('schema_line_width',  1.0);
-  const arrowScale = def('schema_arrow_scale', 1.0);
+  const boxScale       = def('schema_box_scale',        1.0);
+  const lineWidth      = def('schema_line_width',       1.0);
+  const arrowScale     = def('schema_arrow_scale',      1.0);
   const titleFontScale = def('schema_title_font_scale', 1.0);
+  const outputScale    = def('schema_output_scale',     1.0);
+  const fmt            = def('schema_format',           'svg');
   html += `<div class="settings-block">`;
-  html += `<details class="settings-collapse-inner">`;
+  html += `<details class="settings-collapse-inner" open>`;
   html += `<summary>⚙ ${t('txt_txt_rendering_options')}</summary>`;
+  html += `<p class="settings-help">${t('txt_admin_settings_bracket_render_help')}</p>`;
+  html += `<div class="settings-inline-row">`;
+  html += `<label style="font-size:0.83rem;color:var(--text-muted)">${t('txt_txt_format')}</label>`;
+  html += `<select id="tv-schema-format" style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem"`
+       + ` onchange="_updateTvSetting('schema_format', this.value); _refreshAdminBracketPreview()">`;
+  for (const opt of ['svg', 'png']) {
+    html += `<option value="${opt}"${fmt === opt ? ' selected' : ''}>${opt.toUpperCase()}</option>`;
+  }
+  html += `</select>`;
+  html += `</div>`;
   html += `<div class="tv-sliders-grid">`;
   const sliders = [
-    ['schema_box_scale',        'tv-schema-box',         t('txt_txt_box_size'),    0.3, 3.0, boxScale],
-    ['schema_line_width',       'tv-schema-lw',          t('txt_txt_line_width'),  0.3, 5.0, lineWidth],
-    ['schema_arrow_scale',      'tv-schema-arrow',       t('txt_txt_arrow_size'),  0.3, 5.0, arrowScale],
-    ['schema_title_font_scale', 'tv-schema-title-scale', t('txt_txt_header_size'), 0.3, 3.0, titleFontScale],
+    ['schema_box_scale',        'tv-schema-box',          t('txt_txt_box_size'),     0.3, 3.0, boxScale],
+    ['schema_line_width',       'tv-schema-lw',           t('txt_txt_line_width'),   0.3, 5.0, lineWidth],
+    ['schema_arrow_scale',      'tv-schema-arrow',        t('txt_txt_arrow_size'),   0.3, 5.0, arrowScale],
+    ['schema_title_font_scale', 'tv-schema-title-scale',  t('txt_txt_header_size'),  0.3, 3.0, titleFontScale],
+    ['schema_output_scale',     'tv-schema-output',       t('txt_txt_output_scale'), 0.5, 3.0, outputScale],
   ];
   sliders.forEach(([key, elId, label, min, max, val]) => {
     html += `<label style="font-size:0.83rem;color:var(--text-muted);white-space:nowrap">${label} <span id="${elId}-val" style="color:var(--text)">${val.toFixed(1)}</span></label>`;
     html += `<input type="range" id="${elId}" min="${min}" max="${max}" step="0.1" value="${val}" style="width:100%;min-height:auto"
-      oninput="document.getElementById('${elId}-val').textContent=(+this.value).toFixed(1)"
+      oninput="document.getElementById('${elId}-val').textContent=(+this.value).toFixed(1); _refreshAdminBracketPreview()"
       onchange="_updateTvSetting('${key}', +this.value)">`;
   });
   html += `</div></details>`;
@@ -582,7 +593,6 @@ async function _setTournamentAlias() {
     await loadTournaments();
     // Re-render current view to show updated alias section
     await _rerenderCurrentViewPreserveDrafts();
-    alert(t('txt_txt_alias_value_set_successfully', { value: alias }));
   } catch (e) {
     alert(t('txt_txt_failed_to_set_alias_value', { value: e.message }));
   }

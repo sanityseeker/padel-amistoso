@@ -244,6 +244,53 @@ function _init() {
   const _hashParams = new URLSearchParams(location.hash.slice(1));
   const _tokenFromHash = _hashParams.get('token');
   const _verifyTokenFromHash = _hashParams.get('verify_token');
+  // Prefill the passphrase from a tournament-login banner deep-link
+  // (e.g. /player#participant_passphrase=foo-bar-baz). Strip the hash
+  // immediately so the passphrase isn't left in the address bar / history,
+  // then jump straight to the profile-creation form (phase 2).
+  const _participantPpFromHash = _hashParams.get('participant_passphrase');
+  if (_participantPpFromHash && !_tokenFromHash && !_verifyTokenFromHash) {
+    history.replaceState(null, '', location.pathname + location.search);
+    const cleanPp = _participantPpFromHash.trim();
+    if (cleanPp) {
+      // Render phase 2 immediately with empty matches list; backfill via
+      // /resolve in the background so the matches appear without blocking.
+      _resolvedPassphrase = cleanPp;
+      _resolveResult = { type: 'participation', matches: [] };
+      _authStep = 'create';
+      _apiPost('/resolve', { passphrase: cleanPp })
+        .then(async result => {
+          if (_authStep !== 'create' || _resolvedPassphrase !== cleanPp) return;
+          if (result?.type === 'participation') {
+            _resolveResult = result;
+            _render();
+          } else if (result?.type === 'profile') {
+            // Passphrase already belongs to a Hub profile — log in instead.
+            try {
+              const data = await _apiPost('/login', { passphrase: cleanPp });
+              _jwt = data.access_token;
+              _profile = data.profile;
+              _saveSession();
+              await _fetchSpace();
+            } catch (_) { /* fall through to phase 1 below */ }
+            _authStep = _jwt ? _authStep : 'passphrase';
+            _render();
+          } else {
+            // Unknown passphrase — drop back to phase 1 with the value prefilled
+            // and an error so the player can correct it.
+            _authStep = 'passphrase';
+            _resolveResult = null;
+            _errorMsg = t('txt_player_not_found');
+            _render();
+            const inp = document.getElementById('ps-passphrase');
+            if (inp) inp.value = cleanPp;
+          }
+        })
+        .catch(() => { /* keep phase-2 form usable; create call will surface any error */ });
+      _render();
+      return;
+    }
+  }
   if (_tokenFromHash || _verifyTokenFromHash) {
     history.replaceState(null, '', location.pathname + location.search);
     Promise.resolve()

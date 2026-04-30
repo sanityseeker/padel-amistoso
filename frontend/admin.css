@@ -604,6 +604,23 @@ details.card[open] > summary .player-codes-chevron { transform: rotate(90deg); }
 @media (max-width: 720px) {
   .bracket-img { max-height: 60vh; }
 }
+.admin-bracket-card .admin-bracket-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.admin-bracket-card .admin-bracket-title {
+  margin: 0;
+}
+.admin-bracket-card .bracket-scroll-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.admin-bracket-card .admin-bracket-hint {
+  margin-top: 0.5rem;
+}
 .bracket-svg {
   /* Mirror .bracket-img fit-to-screen behavior for inline SVG schema previews.
      The viewBox preserves aspect ratio; width/height attrs are stripped in JS
@@ -730,6 +747,23 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
 .home-filter-chip.active {
   background: color-mix(in srgb, var(--accent) 14%, var(--surface));
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--text);
+}
+.home-filter-chip-count {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0 0.4rem;
+  min-width: 1.1rem;
+  border-radius: 999px;
+  background: var(--bg-alt, #eee);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+  text-align: center;
+}
+.home-filter-chip.active .home-filter-chip-count {
+  background: color-mix(in srgb, var(--accent) 28%, var(--surface));
   color: var(--text);
 }
 
@@ -1283,7 +1317,8 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
 /* ── Group quick-nav bar ── */
 .group-nav-bar {
   position: sticky;
-  top: 0;
+  /* Sit right under the per-tournament status bar (which is also sticky). */
+  top: var(--status-bar-height, 70px);
   z-index: 10;
   display: flex;
   align-items: center;
@@ -1325,10 +1360,35 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
 .group-nav-btn.all-done { opacity: 0.55; }
 
 /* ── GP ops overview ── */
-.gp-ops-header {
-  /* Not sticky: the group quick-nav bar is the only pinned element so it
-     stays visible while scrolling through groups. */
+/* Per-tournament status bar is permanently sticky in all phases for all
+   tournament types. The group quick-nav bar (only present during the GP
+   groups phase) pins itself directly underneath via top:<bar-height>. */
+.gp-ops-header,
+#mex-ops-header,
+#po-ops-header {
+  position: sticky;
+  top: 0;
+  z-index: 11;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+  margin-bottom: 0.6rem;
 }
+/* Slim variant once the user collapses the bar via the toggle. */
+.gp-ops-header.is-collapsed .gp-ops-header-collapsible { display: none; }
+.gp-ops-header.is-collapsed { padding-top: 0.4rem; padding-bottom: 0.4rem; }
+.gp-ops-header-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.85rem;
+  margin-left: 0.25rem;
+}
+.gp-ops-header-toggle:hover { color: var(--text); }
 .gp-ops-header-top {
   display: flex;
   align-items: center;
@@ -4977,6 +5037,27 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   gap: 0.5rem;
   flex-wrap: wrap;
 }
+.settings-inline-row > .btn { white-space: nowrap; flex: 0 0 auto; }
+/* Compact text/number/select input used inside Settings cards. Keeps a
+   consistent height and font-size across all sub-tabs (alias, banner,
+   rename, tier name, season name, collaborator email, etc.) so save
+   buttons line up vertically when stacked across cards. */
+.settings-input {
+  width: auto;
+  min-height: auto;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+}
+.settings-input--mono { font-family: monospace; }
+.settings-input--grow { flex: 1; min-width: 180px; }
+/* Inline message slot rendered below a settings-inline-row (success / error
+   feedback). Reserves vertical space so layout doesn't jump when text appears. */
+.settings-inline-msg {
+  font-size: 0.82rem;
+  margin-top: 0.35rem;
+  min-height: 1em;
+  color: var(--text-muted);
+}
 .settings-section-actions {
   display: flex;
   justify-content: center;
@@ -5253,4 +5334,215 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   .settings-subtab-label { display: none; }
   .settings-subtab-icon { font-size: 1.15rem; }
   .settings-stage-label { min-width: 0; flex: 1 1 auto; }
+}
+
+/* ── Status-bar attention badge (#3) ──────────────────────────────────────
+   When there are review items (disputes / pending confirmation), collapse
+   the four pending pills into a single coloured warning button that links
+   to the Review queue. */
+.gp-ops-attention {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--warning-bg, #fff7e6);
+  color: var(--warning-text, #8a4b00);
+  border: 1px solid var(--warning-border, #f0b97a);
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.gp-ops-attention:hover { filter: brightness(0.98); }
+.gp-ops-attention-icon { font-size: 1rem; }
+[data-theme="dark"] .gp-ops-attention {
+  background: color-mix(in srgb, #c47900 22%, transparent);
+  color: #f1c280;
+  border-color: color-mix(in srgb, #c47900 55%, transparent);
+}
+.gp-ops-stats-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem;
+}
+.gp-ops-stats-row .gp-ops-stat-pill {
+  flex: 0 1 auto;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.78rem;
+}
+.gp-ops-stats-row .gp-ops-stat-pill span {
+  font-size: 0.7rem;
+}
+.gp-ops-stats-row .gp-ops-stat-pill strong {
+  font-size: 0.92rem;
+}
+
+/* ── Unified match filter chip row (#6) ───────────────────────────────── */
+.match-filter-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+}
+.group-nav-bar .match-filter-row { margin-top: 0; flex-wrap: nowrap; }
+.group-nav-sep {
+  display: inline-block;
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 0 0.25rem;
+  flex: 0 0 auto;
+}
+.match-filter-row .match-filter-toggle { margin-left: 0; }
+.match-filter-row .match-filter-toggle button[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Disabled decision buttons w/ reason (#13) ────────────────────────── */
+.decision-actions-row .btn[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.decision-actions-disabled-note {
+  flex-basis: 100%;
+  margin-top: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+/* ── Larger mobile tap targets for inline score inputs (#22) ──────────── */
+@media (max-width: 480px) {
+  .score-input-narrow { width: 56px !important; min-height: 44px; font-size: 1rem; }
+}
+
+/* ── Admin toast (#5 — undo / confirmation snackbar) ──────────────────── */
+.admin-toast-stack {
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+.admin-toast {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  padding: 0.55rem 0.8rem;
+  min-width: 240px;
+  max-width: 90vw;
+  font-size: 0.9rem;
+  animation: admin-toast-in 180ms ease-out;
+}
+.admin-toast.is-leaving { animation: admin-toast-out 200ms ease-in forwards; }
+@keyframes admin-toast-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);  opacity: 1; }
+}
+@keyframes admin-toast-out {
+  from { transform: translateY(0);  opacity: 1; }
+  to   { transform: translateY(8px); opacity: 0; }
+}
+.admin-toast-msg { flex: 1 1 auto; }
+.admin-toast-undo {
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 6px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin-toast-undo:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.admin-toast-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+}
+
+/* ── Activity drawer (#19) ─────────────────────────────────────────────── */
+.admin-activity-launcher {
+  position: fixed;
+  right: 0.85rem;
+  bottom: 0.85rem;
+  z-index: 9990;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1.1rem;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.admin-activity-launcher:hover { filter: brightness(1.05); }
+.admin-activity-drawer {
+  position: fixed;
+  right: 0.85rem;
+  bottom: 4rem;
+  z-index: 9991;
+  width: min(340px, calc(100vw - 1.7rem));
+  max-height: 60vh;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.admin-activity-drawer.hidden { display: none; }
+.admin-activity-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.admin-activity-list {
+  list-style: none; margin: 0; padding: 0.4rem 0.5rem;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+.admin-activity-list li {
+  padding: 0.4rem 0.45rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+  display: flex; flex-direction: column; gap: 0.15rem;
+}
+.admin-activity-list li:last-child { border-bottom: none; }
+.admin-activity-time {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.admin-activity-empty {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  text-align: center;
+  padding: 1rem 0.5rem;
+}
+
+/* ── Empty-state lines for review queue / court assignments (#26) ─────── */
+.empty-state-line {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: 0.4rem 0;
 }
