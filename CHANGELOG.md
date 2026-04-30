@@ -1,3 +1,9 @@
+## v1.10.2 (2026-04-30)
+
+### Fix
+
+- **frontend**: improve players and admins tournament ux
+
 ## v1.10.1 (2026-04-29)
 
 ### Fix
