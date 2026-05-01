@@ -146,6 +146,33 @@ async function _loadClubs() {
     });
     el.dataset.clubSyncBound = '1';
   });
+
+  _applySubdomainClubLock();
+}
+
+// When the admin SPA is loaded on a club subdomain, force the create panel to
+// use that club + its parent community and lock the selects so the operator
+// can't accidentally create items under another club.
+function _applySubdomainClubLock() {
+  const subdomainClub = (typeof window !== 'undefined' && window.__ADMIN_SUBDOMAIN_CLUB__) || null;
+  if (!subdomainClub || !subdomainClub.club_id) return;
+  const club = (_clubs || []).find(c => c && c.id === subdomainClub.club_id);
+  if (!club) return;
+  // Force community + club selection.
+  for (const commEl of _getCommunitySelects()) {
+    commEl.value = club.community_id;
+    commEl.disabled = true;
+    commEl.title = (typeof t === 'function' && t('txt_create_locked_to_subdomain')) || '';
+  }
+  for (const el of _getClubSelects()) {
+    el.value = club.id;
+    el.disabled = true;
+    el.title = (typeof t === 'function' && t('txt_create_locked_to_subdomain')) || '';
+  }
+  try {
+    localStorage.setItem(COMMUNITY_KEY, club.community_id);
+    localStorage.setItem(CLUB_KEY, club.id);
+  } catch (_) {}
 }
 
 function setSport(sport) {

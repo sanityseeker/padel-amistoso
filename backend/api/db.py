@@ -300,6 +300,7 @@ CREATE TABLE IF NOT EXISTS clubs (
     name           TEXT NOT NULL,
     logo_path      TEXT,
     email_settings TEXT,
+    slug           TEXT UNIQUE,
     created_by     TEXT NOT NULL,
     created_at     TEXT NOT NULL
 );
@@ -675,6 +676,16 @@ def init_db() -> None:
         club_cols = {r[1] for r in conn.execute("PRAGMA table_info(clubs)").fetchall()}
         if club_cols and "email_settings" not in club_cols:
             conn.execute("ALTER TABLE clubs ADD COLUMN email_settings TEXT")
+        # Migrate: add slug column to clubs if missing (subdomain routing)
+        if club_cols and "slug" not in club_cols:
+            conn.execute("ALTER TABLE clubs ADD COLUMN slug TEXT")
+        # Migrate: add landing-page customisation columns to clubs
+        if club_cols and "description" not in club_cols:
+            conn.execute("ALTER TABLE clubs ADD COLUMN description TEXT")
+        if club_cols and "pinned_tournament_ids" not in club_cols:
+            conn.execute("ALTER TABLE clubs ADD COLUMN pinned_tournament_ids TEXT")
+        # Always ensure the unique index on slug exists (works for fresh and migrated DBs)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_clubs_slug ON clubs (slug) WHERE slug IS NOT NULL")
         # Migrate: add is_ghost column to player_profiles if missing
         pp_cols2 = {r[1] for r in conn.execute("PRAGMA table_info(player_profiles)").fetchall()}
         if pp_cols2 and "is_ghost" not in pp_cols2:
@@ -714,22 +725,39 @@ def init_db() -> None:
                     name           TEXT NOT NULL,
                     logo_path      TEXT,
                     email_settings TEXT,
+                    slug           TEXT UNIQUE,
                     created_by     TEXT NOT NULL,
                     created_at     TEXT NOT NULL
                 )
                 """
             )
-            conn.execute(
-                """
-                INSERT INTO clubs_migration_new
-                SELECT id, community_id, name, logo_path, email_settings, created_by,
-                       COALESCE(created_at, datetime('now')) AS created_at
-                FROM clubs
-                """
-            )
+            # Existing rows may or may not have a slug column depending on which
+            # migration ran first; copy it when present.
+            existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(clubs)").fetchall()}
+            if "slug" in existing_cols:
+                conn.execute(
+                    """
+                    INSERT INTO clubs_migration_new
+                    SELECT id, community_id, name, logo_path, email_settings, slug, created_by,
+                           COALESCE(created_at, datetime('now')) AS created_at
+                    FROM clubs
+                    """
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO clubs_migration_new (
+                        id, community_id, name, logo_path, email_settings, created_by, created_at
+                    )
+                    SELECT id, community_id, name, logo_path, email_settings, created_by,
+                           COALESCE(created_at, datetime('now')) AS created_at
+                    FROM clubs
+                    """
+                )
             conn.execute("DROP TABLE clubs")
             conn.execute("ALTER TABLE clubs_migration_new RENAME TO clubs")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_clubs_community_id ON clubs (community_id)")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_clubs_slug ON clubs (slug) WHERE slug IS NOT NULL")
             conn.execute("PRAGMA foreign_keys = ON")
         # Migrate: create profile_club_elo table if missing
         all_tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}

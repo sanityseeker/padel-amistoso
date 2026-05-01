@@ -343,3 +343,53 @@ class TestEloRecalculateEndpoint:
         recalc = client.post(f"/api/tournaments/{tid}/elo/recalculate", headers=auth_headers)
         assert recalc.status_code == 200
         assert recalc.json()["players_with_elo"] == 8
+
+
+class TestTournamentPlayerPublicCard:
+    """GET /api/tournaments/{tid}/players/{player_id}/public-card — no auth."""
+
+    MEX_BODY = {
+        "name": "Card Mex",
+        "player_names": ["Alice", "Bob", "Carol", "Dave"],
+        "court_names": ["Court 1"],
+        "total_points_per_match": 32,
+        "num_rounds": 1,
+    }
+
+    def test_unknown_tournament(self, client):
+        res = client.get("/api/tournaments/t_missing/players/p_x/public-card")
+        assert res.status_code == 404
+
+    def test_unknown_player(self, client, auth_headers):
+        r = client.post("/api/tournaments/mexicano", json=self.MEX_BODY, headers=auth_headers)
+        tid = r.json()["id"]
+        res = client.get(f"/api/tournaments/{tid}/players/does_not_exist/public-card")
+        assert res.status_code == 404
+
+    def test_known_player_returns_stats(self, client, auth_headers):
+        r = client.post("/api/tournaments/mexicano", json=self.MEX_BODY, headers=auth_headers)
+        tid = r.json()["id"]
+        client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
+        matches = client.get(f"/api/tournaments/{tid}/mex/matches").json()
+        m = matches["current_matches"][0]
+        client.post(
+            f"/api/tournaments/{tid}/mex/record",
+            json={"match_id": m["id"], "score1": 20, "score2": 12},
+            headers=auth_headers,
+        )
+        winner_pid = m["team1_ids"][0]
+        res = client.get(f"/api/tournaments/{tid}/players/{winner_pid}/public-card")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["player_id"] == winner_pid
+        assert body["player_name"]
+        assert body["matches"] == 1
+        assert body["wins"] == 1
+        assert body["losses"] == 0
+        assert body["draws"] == 0
+        assert isinstance(body["recent_matches"], list)
+        assert len(body["recent_matches"]) == 1
+        assert body["recent_matches"][0]["score"] == [20, 12]
+        assert body["elo"] is not None
+        assert isinstance(body["elo_history"], list)
+        assert "email" not in body

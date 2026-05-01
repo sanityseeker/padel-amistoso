@@ -104,6 +104,7 @@ const _TV_PICKER_POLL_INTERVAL_MS = 3000;
 // SSE stream controllers — closed on teardown / navigation.
 let _tvVersionStream = null;
 let _pickerVersionStream = null;
+let _subdomainClub = null; // {club_id, name, ...} when on a club subdomain
 
 function _tvLabel() {
   return tvState.tournamentSport === 'tennis' ? t('txt_txt_tennis_tv') : t('txt_txt_padel_tv');
@@ -1652,7 +1653,8 @@ function _renderGP(tvSettings, status, groups, playoffs) {
         rows.forEach((r, i) => {
           const isMe = tvState.playerId && r.player_id === tvState.playerId;
           const eloHtml = r.elo ? ` <span class="elo-badge">${Math.round(r.elo)}</span>` : '';
-          html += `<tr${isMe ? ' class="my-row"' : ''}><td class="rank-cell col-hash">${i + 1}</td><td class="player-cell col-player">${esc(r.player)}${eloHtml}</td>`;
+          const nameHtml = _tvPlayerNameCell(r.player_id, r.player);
+          html += `<tr${isMe ? ' class="my-row"' : ''}><td class="rank-cell col-hash">${i + 1}</td><td class="player-cell col-player">${nameHtml}${eloHtml}</td>`;
           html += `<td class="col-played">${r.played}</td><td class="col-w">${r.wins}</td><td class="col-d">${r.draws}</td><td class="col-l">${r.losses}</td>`;
           if (hasSets) html += `<td class="col-sw">${r.sets_won}</td><td class="col-sl">${r.sets_lost}</td><td class="col-sd">${r.sets_diff}</td>`;
           html += `<td class="col-pf">${r.points_for}</td><td class="col-pa">${r.points_against}</td>`;
@@ -1840,7 +1842,7 @@ function _tvRenderMexLeaderboard() {
     const rankCell = r.removed ? `<span style="color:var(--text-muted)">—</span>` : r.rank;
     const nameCell = r.removed
       ? `${esc(r.player)} <span style="font-size:0.7em;opacity:0.7">(${t('txt_txt_removed')})</span>`
-      : esc(r.player) + (r.elo ? ` <span class="elo-badge">${Math.round(r.elo)}</span>` : '');
+      : _tvPlayerNameCell(r.player_id, r.player) + (r.elo ? ` <span class="elo-badge">${Math.round(r.elo)}</span>` : '');
     html += `<tr${isMe ? ' class="my-row"' : ''}${removedStyle ? ` style="${removedStyle}"` : ''}><td class="rank-cell">${rankCell}</td><td class="player-cell">${nameCell}</td>`;
     const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
     const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
@@ -2303,6 +2305,9 @@ async function _resolveAlias() {
 }
 
 function _renderPickerHtml(tournaments) {
+  const visibleTournaments = _subdomainClub
+    ? tournaments.filter(item => item && item.club_id === _subdomainClub.club_id && item.community_id === _subdomainClub.community_id)
+    : tournaments;
   const langToggle = _languageToggleMeta();
   let html = `<div class="tv-picker">`;
   html += `<div class="tv-header-title-row" style="margin-bottom:1rem">`;
@@ -2313,10 +2318,19 @@ function _renderPickerHtml(tournaments) {
   html += `<button type="button" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>`;
   html += `</div>`;
   html += `</div>`;
-  if (tournaments.length > 0) {
+  if (_subdomainClub) {
+    const label = (t('txt_picker_subdomain_banner') || '{club}').replace('{club}', _subdomainClub.name || _subdomainClub.slug || '');
+    html += `<div class="player-subdomain-banner" role="status">`;
+    if (_subdomainClub.logo_url) {
+      html += `<img class="player-subdomain-logo" src="${escAttr(_subdomainClub.logo_url)}" alt="">`;
+    }
+    html += `<span class="player-subdomain-text">${esc(label)}</span>`;
+    html += `</div>`;
+  }
+  if (visibleTournaments.length > 0) {
     html += `<div class="subtitle">${t('txt_txt_select_a_tournament_to_display')}</div>`;
     html += `<ul class="tv-picker-list">`;
-    for (const tournament of tournaments) {
+    for (const tournament of visibleTournaments) {
       const modeLabel = tournament.has_team_roster ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode');
       const phaseLabel = _phaseLabel(tournament.phase);
       const aliasTag = tournament.alias ? `<span class="picker-alias">${esc(tournament.alias)}</span>` : '';
@@ -2347,6 +2361,7 @@ function _renderPickerHtml(tournaments) {
 }
 
 async function _showPicker() {
+  try { _subdomainClub = await resolveClubSubdomainContext(); } catch (_) { _subdomainClub = null; }
   let tournaments = [];
   try { tournaments = await api('/api/tournaments'); } catch (_) {}
   _renderPickerHtml(tournaments);
@@ -2418,3 +2433,152 @@ async function _goToTournament(e) {
   await _tryProfileAutoLogin();
   loadTV();
 })();
+
+// ---------------------------------------------------------------------------
+// Tournament-scoped player mini-card (clickable name on TV standings)
+// ---------------------------------------------------------------------------
+
+const _TV_PLAYER_CARD_AUTO_CLOSE_MS = 30_000;
+const _TV_PLAYER_CARD_PREFETCH = new Map();
+let _tvPlayerCardAutoCloseTimer = null;
+
+function _tvPlayerNameCell(playerId, playerName) {
+  const safe = esc(playerName || playerId || '');
+  if (!playerId) return safe;
+  const aria = esc(t('txt_tv_open_player_card', { name: playerName || playerId || '' }) || `Open profile for ${playerName || playerId}`);
+  return `<button type="button" class="tv-name-btn" aria-label="${aria}" `
+    + `onclick="_tvOpenPlayerCard('${esc(playerId)}')" `
+    + `onmouseenter="_tvPrefetchPlayerCard('${esc(playerId)}')" `
+    + `onfocus="_tvPrefetchPlayerCard('${esc(playerId)}')">${safe}</button>`;
+}
+
+function _tvPrefetchPlayerCard(playerId) {
+  if (!playerId || !TID) return;
+  const key = `${TID}:${playerId}`;
+  if (_TV_PLAYER_CARD_PREFETCH.has(key)) return;
+  const url = `/api/tournaments/${encodeURIComponent(TID)}/players/${encodeURIComponent(playerId)}/public-card`;
+  const promise = fetch(url).then(r => r.ok ? r.json() : null).catch(() => null);
+  _TV_PLAYER_CARD_PREFETCH.set(key, promise);
+  setTimeout(() => _TV_PLAYER_CARD_PREFETCH.delete(key), 12_000);
+}
+
+function _tvPlayerCardEnsureOverlay() {
+  return ensureMiniCardOverlay({
+    id: 'tv-player-card-overlay',
+    className: 'tv-player-card-overlay',
+    onClose: _tvClosePlayerCard,
+  });
+}
+
+function _tvClosePlayerCard() {
+  if (_tvPlayerCardAutoCloseTimer) {
+    clearTimeout(_tvPlayerCardAutoCloseTimer);
+    _tvPlayerCardAutoCloseTimer = null;
+  }
+  hideMiniCardOverlay(document.getElementById('tv-player-card-overlay'));
+}
+
+function _tvScheduleAutoClose() {
+  if (_tvPlayerCardAutoCloseTimer) clearTimeout(_tvPlayerCardAutoCloseTimer);
+  _tvPlayerCardAutoCloseTimer = setTimeout(_tvClosePlayerCard, _TV_PLAYER_CARD_AUTO_CLOSE_MS);
+}
+
+async function _tvOpenPlayerCard(playerId) {
+  if (!playerId || !TID) return;
+  const overlay = _tvPlayerCardEnsureOverlay();
+  const loadingLabel = esc(t('txt_txt_loading', {}) || 'Loading…');
+  const closeLabel = esc(t('txt_txt_close', {}) || 'Close');
+  overlay.innerHTML = `
+    <div class="tv-player-card" role="document">
+      <button type="button" class="tv-player-card-close" aria-label="${closeLabel}" onclick="_tvClosePlayerCard()">×</button>
+      <div class="tv-player-card-loading">${loadingLabel}</div>
+    </div>`;
+  showMiniCardOverlay(overlay);
+  // Reset the inactivity timer on any user activity inside the card.
+  overlay.addEventListener('mousemove', _tvScheduleAutoClose);
+  overlay.addEventListener('keydown', _tvScheduleAutoClose);
+  overlay.addEventListener('click', _tvScheduleAutoClose);
+  let card;
+  try {
+    const key = `${TID}:${playerId}`;
+    const prefetched = _TV_PLAYER_CARD_PREFETCH.get(key);
+    if (prefetched) {
+      card = await prefetched;
+      _TV_PLAYER_CARD_PREFETCH.delete(key);
+    }
+    if (!card) {
+      const res = await fetch(`/api/tournaments/${encodeURIComponent(TID)}/players/${encodeURIComponent(playerId)}/public-card`);
+      if (!res.ok) throw new Error('http ' + res.status);
+      card = await res.json();
+    }
+  } catch (e) {
+    overlay.querySelector('.tv-player-card').innerHTML = `
+      <button type="button" class="tv-player-card-close" aria-label="${closeLabel}" onclick="_tvClosePlayerCard()">×</button>
+      <div class="tv-player-card-error">${esc(t('txt_tv_player_card_error', {}) || 'Could not load player.')}</div>`;
+    _tvScheduleAutoClose();
+    return;
+  }
+  _tvRenderPlayerCard(overlay, card);
+  if (typeof applyI18n === 'function') applyI18n(overlay);
+  const closeBtn = overlay.querySelector('.tv-player-card-close');
+  if (closeBtn) closeBtn.focus();
+  _tvScheduleAutoClose();
+}
+
+function _tvRenderPlayerCard(overlay, card) {
+  const closeLabel = esc(t('txt_txt_close', {}) || 'Close');
+  const eloLabel = esc(t('txt_player_elo_label', {}) || 'ELO');
+  const matchesLabel = esc(t('txt_txt_matches', {}) || 'Matches');
+  const wLabel = esc(t('txt_txt_w_abbrev', {}) || 'W');
+  const dLabel = esc(t('txt_txt_d_abbrev', {}) || 'D');
+  const lLabel = esc(t('txt_txt_l_abbrev', {}) || 'L');
+  const recentLabel = esc(t('txt_tv_player_card_recent', {}) || 'Recent matches in this tournament');
+  const emptyRecent = esc(t('txt_tv_player_card_no_recent', {}) || 'No matches yet.');
+  const deltaLabel = esc(t('txt_tv_player_card_elo_delta', {}) || 'ELO change');
+
+  const elo = card.elo;
+  const delta = card.elo_delta_total;
+  const deltaClass = delta > 0 ? 'tv-player-delta-up' : delta < 0 ? 'tv-player-delta-down' : 'tv-player-delta-flat';
+  const deltaStr = delta == null ? '—' : (delta > 0 ? '+' : '') + Number(delta).toFixed(1);
+
+  const recent = Array.isArray(card.recent_matches) ? card.recent_matches : [];
+  const recentHtml = recent.length === 0
+    ? `<div class="tv-player-recent-empty">${emptyRecent}</div>`
+    : `<div class="elo-log">${recent.map(m => {
+        const d = m.elo_delta;
+        const dCls = d > 0 ? 'elo-transition--gain' : d < 0 ? 'elo-transition--loss' : 'elo-transition--neutral';
+        const dStr = d == null ? '' : (d > 0 ? '+' : '') + Number(d).toFixed(1);
+        const score = Array.isArray(m.score) && m.score.length >= 2 ? `${m.score[0]} – ${m.score[1]}` : '';
+        const t1 = Array.isArray(m.team1) ? m.team1.join(' / ') : '';
+        const t2 = Array.isArray(m.team2) ? m.team2.join(' / ') : '';
+        const roundTxt = m.round_label || (m.round_number ? `R${m.round_number}` : '');
+        const roundChip = roundTxt ? `<span class="elo-log-round">${esc(roundTxt)}</span>` : '';
+        const mid = score
+          ? `<span class="elo-score-sep">${esc(score)}</span>`
+          : `<span class="elo-vs-sep">vs</span>`;
+        return `<div class="elo-log-row elo-log-row--inline">
+          ${roundChip}
+          <div class="elo-log-teams">
+            <span class="elo-team elo-team--a">${esc(t1)}</span>
+            ${mid}
+            <span class="elo-team elo-team--b">${esc(t2)}</span>
+          </div>
+          <span class="elo-transition ${dCls}">${esc(dStr)}</span>
+        </div>`;
+      }).join('')}</div>`;
+
+  overlay.innerHTML = `
+    <div class="tv-player-card" role="document">
+      <button type="button" class="tv-player-card-close" aria-label="${closeLabel}" onclick="_tvClosePlayerCard()">×</button>
+      <div class="tv-player-card-name">${esc(card.player_name)}</div>
+      <div class="tv-player-card-stats">
+        <div class="tv-player-stat"><div class="tv-player-stat-label">${eloLabel}</div><div class="tv-player-stat-value">${elo == null ? '—' : Math.round(elo)}</div></div>
+        <div class="tv-player-stat"><div class="tv-player-stat-label">${deltaLabel}</div><div class="tv-player-stat-value ${deltaClass}">${deltaStr}</div></div>
+        <div class="tv-player-stat"><div class="tv-player-stat-label">${matchesLabel}</div><div class="tv-player-stat-value">${card.matches || 0}</div></div>
+        <div class="tv-player-stat"><div class="tv-player-stat-label">${wLabel}/${dLabel}/${lLabel}</div><div class="tv-player-stat-value">${card.wins || 0}/${card.draws || 0}/${card.losses || 0}</div></div>
+      </div>
+      <div class="tv-player-recent">
+        ${recentHtml}
+      </div>
+    </div>`;
+}

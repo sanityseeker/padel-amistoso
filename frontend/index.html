@@ -20,6 +20,8 @@
       // those flows must stay on the admin SPA so initAuth() can handle them.
       var qs = window.location.search;
       if (qs.indexOf('invite_token') !== -1 || qs.indexOf('reset_token') !== -1) return;
+      // Explicit /admin URL always stays on the admin page — skip page selection.
+      if (window.location.pathname === '/admin') return;
       var PAGE_MAP = { tv: '/tv', register: '/register', player: '/player' };
       var home = localStorage.getItem('amistoso-home-page');
       var key = home || localStorage.getItem('amistoso-last-page');
@@ -43,7 +45,7 @@
           <span class="page-selector-arrow">▾</span>
         </button>
         <div class="page-selector-menu" id="page-selector-menu">
-          <a href="/" class="page-selector-item active" data-page="admin">
+          <a href="/admin" class="page-selector-item active" data-page="admin">
             <span class="page-selector-item-icon">🛠️</span>
             <span data-i18n="txt_nav_admin">Admin</span>
           </a>
@@ -395,6 +397,18 @@
 
       <!-- ─── CREATE LOBBY ────────────────────────────────── -->
       <div class="subtab-panel" id="create-panel-lobby">
+        <div class="create-meta-row" style="margin-bottom:0.85rem">
+          <div class="field-section create-meta-card" style="margin-bottom:0">
+            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_comm_col_community">Community</div>
+            <select id="create-community-lobby" class="tournament-name-input create-community-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Community" data-i18n-aria-label="txt_comm_col_community" title="Community" data-i18n-title="txt_comm_col_community">
+              <option value="open" data-i18n="txt_comm_global_default">Global (default)</option>
+            </select>
+          </div>
+          <div class="field-section create-meta-card create-club-wrapper" style="margin-bottom:0;display:none">
+            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_create_club">Club</div>
+            <select id="create-club-lobby" class="tournament-name-input create-club-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Club" data-i18n-aria-label="txt_create_club" title="Club" data-i18n-title="txt_create_club"></select>
+          </div>
+        </div>
         <div id="reg-create-form"></div>
       </div>
 
@@ -1181,6 +1195,7 @@
 <script src="/admin-communities.js"></script>
 <script src="/admin-clubs-settings-panel.js"></script>
 <script src="/admin-clubs.js"></script>
+<script src="/admin-subdomain-context.js" defer></script>
 
 </body>
 </html>

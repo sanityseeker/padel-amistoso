@@ -22,6 +22,7 @@ let _clubTiers = [];         // TierOut[] for active club
 let _clubSeasons = [];       // SeasonOut[] for active club
 let _clubPlayers = [];       // ClubPlayerOut[] for active club
 let _clubCollaborators = []; // collaborators for active club
+let _clubPublicTournaments = []; // public-tournaments for active club (used by landing settings)
 let _clubsInviteSelectedIds = new Set();
 let _clubsRecipientFilter = '';
 let _clubsMessagingTab = 'lobby'; // 'lobby' | 'announce'
@@ -39,6 +40,7 @@ try { _clubsLeaderboardScope = sessionStorage.getItem(_CLUBS_LB_SCOPE_KEY) || 'g
 let _clubsRosterNoticeText = '';
 let _clubsRosterNoticeError = false;
 let _clubsRosterNoticeTimer = null;
+let _clubsPinnedSaveTimer = null;
 const _CLUBS_SPORT_KEY = 'amistoso-clubs-sport';
 const _CLUBS_GHOST_SEARCH_KEY = 'amistoso-clubs-ghost-search';
 let _clubsSport = 'padel';
@@ -52,12 +54,27 @@ try { _clubsGhostSearch = localStorage.getItem(_CLUBS_GHOST_SEARCH_KEY) || ''; }
  * Called automatically when the user navigates to the clubs tab.
  */
 async function loadClubsPanel() {
-  await Promise.all([
+  // Resolve the subdomain club in parallel with data loads. Using the cached
+  // promise directly avoids the race where admin-subdomain-context.js sets
+  // window.__ADMIN_SUBDOMAIN_CLUB__ after we've already read it.
+  const [subdomainClub] = await Promise.all([
+    (typeof resolveClubSubdomainContext === 'function' ? resolveClubSubdomainContext() : Promise.resolve(null)),
     _clubsLoadClubs(),
     _clubsLoadCommunities(),
     _clubsLoadTournaments(),
     _clubsLoadRegistrations(),
   ]);
+  // Ensure the global is set before any render so _renderClubStatusBar sees it.
+  if (subdomainClub && subdomainClub.club_id) {
+    window.__ADMIN_SUBDOMAIN_CLUB__ = subdomainClub;
+  }
+  // When opened on a club subdomain, jump straight to that club's detail view
+  // (only if the user hasn't already drilled into another club this session).
+  if (!_activeClubId && subdomainClub && subdomainClub.club_id
+      && (_clubsList || []).some(c => c && c.id === subdomainClub.club_id)) {
+    await clubsOpenDetail(subdomainClub.club_id);
+    return;
+  }
   _clubsRenderOverview();
 }
 
@@ -108,16 +125,18 @@ async function _clubsLoadRegistrations() {
 }
 
 async function _clubsLoadClubDetail(clubId) {
-  const [tiers, seasons, players, collaborators] = await Promise.all([
+  const [tiers, seasons, players, collaborators, publicTournaments] = await Promise.all([
     apiAuth(`/api/clubs/${encodeURIComponent(clubId)}/tiers`).catch(() => []),
     apiAuth(`/api/clubs/${encodeURIComponent(clubId)}/seasons`).catch(() => []),
     apiAuth(`/api/clubs/${encodeURIComponent(clubId)}/players`).catch(() => []),
     apiAuth(`/api/clubs/${encodeURIComponent(clubId)}/collaborators`).catch(() => ({ collaborators: [] })),
+    fetch(`/api/clubs/${encodeURIComponent(clubId)}/public-tournaments`).then(r => r.ok ? r.json() : []).catch(() => []),
   ]);
   _clubTiers = tiers;
   _clubSeasons = seasons;
   _clubPlayers = players;
   _clubCollaborators = collaborators?.collaborators ?? [];
+  _clubPublicTournaments = Array.isArray(publicTournaments) ? publicTournaments : [];
 }
 
 // ─── Overview (club list + create) ────────────────────────
@@ -221,8 +240,15 @@ async function clubsCreate() {
 async function clubsDelete(clubId) {
   const club = _clubsList.find(c => c.id === clubId);
   if (!club) return;
-  if (!confirm(t('txt_clubs_delete_confirm').replace('{name}', club.name))) return;
+  const expected = (club.name || '').trim();
+  const promptMsg = t('txt_clubs_delete_type_to_confirm').replace('{name}', expected);
+  const typed = window.prompt(promptMsg, '');
+  if (typed == null) return;
   const msgEl = document.getElementById('clubs-msg');
+  if (typed.trim() !== expected) {
+    _clubsMsg(msgEl, t('txt_clubs_delete_type_mismatch'), true);
+    return;
+  }
   try {
     await apiAuth(`/api/clubs/${encodeURIComponent(clubId)}`, { method: 'DELETE' });
     _clubsMsg(msgEl, `✓ ${t('txt_clubs_deleted')}`, false);
@@ -253,6 +279,9 @@ async function clubsOpenDetail(clubId) {
 }
 
 function clubsBackToOverview() {
+  // On a club subdomain, the overview list is hidden — stay on the detail view.
+  const subdomainClub = (typeof window !== 'undefined' && window.__ADMIN_SUBDOMAIN_CLUB__) || null;
+  if (subdomainClub && subdomainClub.club_id) return;
   _activeClubId = null;
   _clubsRenderOverview();
 }
@@ -333,6 +362,7 @@ function _clubsRenderDetail() {
   _clubsRenderSeasonAssignment();
   _clubsRenderPlayers();  // also calls _clubsRenderLeaderboard
   _clubsRenderCollaborators();
+  _clubsRenderLandingPinnedList();
 }
 
 // ─── Club rename ─────────────────────────────────────────
@@ -351,6 +381,132 @@ async function clubsRename() {
     _clubsMsg(msgEl, '✓', false);
     const club = _clubsList.find(c => c.id === _activeClubId);
     if (club) club.name = name;
+  } catch (e) {
+    _clubsMsg(msgEl, e.message, true);
+  }
+}
+
+// ─── Landing page (description + pinned) ─────────────────
+
+function _clubsRenderLandingPinnedList() {
+  const container = document.getElementById('clubs-landing-pinned-list');
+  if (!container) return;
+  const club = _clubsList.find(c => c.id === _activeClubId);
+  const pinnedIds = new Set(club?.pinned_tournament_ids || []);
+  if (!_clubPublicTournaments.length) {
+    container.innerHTML = `<p class="muted-note">${t('txt_clubs_landing_pinned_none')}</p>`;
+    return;
+  }
+  const items = _clubPublicTournaments.map(item => {
+    const pinId = item.pin_key || item.id;
+    const checked = (item.pinned || pinnedIds.has(pinId) || pinnedIds.has(item.id)) ? ' checked' : '';
+    const kindIcon = item.kind === 'registration' ? '📋' : '🏆';
+    const statusKey = item.status === 'in_progress' ? 'txt_club_status_live' : ('txt_club_status_' + item.status);
+    return `
+      <label class="clubs-landing-pin-row">
+        <input type="checkbox" class="clubs-landing-pin-cb" data-pin-id="${escAttr(pinId)}" data-item-id="${escAttr(item.id)}"${checked} onchange="clubsQueuePinnedTournamentsSave()">
+        <span class="clubs-landing-pin-name">${kindIcon} ${esc(item.alias || item.name)}</span>
+        <span class="badge badge-${item.status === 'finished' ? 'closed' : 'open'} clubs-landing-pin-status">${esc(t(statusKey) || item.status)}</span>
+      </label>`;
+  }).join('');
+  container.innerHTML = `<div class="clubs-landing-pin-list">${items}</div>`;
+}
+
+function clubsQueuePinnedTournamentsSave() {
+  if (_clubsPinnedSaveTimer) clearTimeout(_clubsPinnedSaveTimer);
+  _clubsPinnedSaveTimer = setTimeout(() => {
+    clubsSavePinnedTournaments();
+  }, 180);
+}
+
+async function clubsSaveLandingDescription() {
+  const input = document.getElementById('clubs-landing-desc-input');
+  const msgEl = document.getElementById('clubs-landing-desc-msg');
+  if (!input || !_activeClubId) return;
+  const description = input.value.trim() || null;
+  try {
+    const updated = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/landing`, {
+      method: 'PATCH',
+      body: JSON.stringify({ description }),
+    });
+    _clubsMsg(msgEl, '✓', false);
+    const club = _clubsList.find(c => c.id === _activeClubId);
+    if (club) club.description = updated.description;
+  } catch (e) {
+    _clubsMsg(msgEl, e.message, true);
+  }
+}
+
+async function clubsSavePinnedTournaments() {
+  const msgEl = document.getElementById('clubs-landing-pinned-msg');
+  if (!_activeClubId) return;
+  if (_clubsPinnedSaveTimer) {
+    clearTimeout(_clubsPinnedSaveTimer);
+    _clubsPinnedSaveTimer = null;
+  }
+  const list = document.getElementById('clubs-landing-pinned-list');
+  if (!list) return;
+  const cbs = list.querySelectorAll('.clubs-landing-pin-cb');
+  const pinned_tournament_ids = [...cbs]
+    .filter(cb => cb.checked)
+    .map(cb => cb.dataset.pinId || cb.dataset.itemId)
+    .filter(Boolean);
+  try {
+    const updated = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/landing`, {
+      method: 'PATCH',
+      body: JSON.stringify({ pinned_tournament_ids }),
+    });
+    _clubsMsg(msgEl, '✓', false);
+    const club = _clubsList.find(c => c.id === _activeClubId);
+    if (club) club.pinned_tournament_ids = updated.pinned_tournament_ids;
+  } catch (e) {
+    _clubsMsg(msgEl, e.message, true);
+  }
+}
+
+// ─── Slug (subdomain) management ─────────────────────────
+
+async function _clubsSetSlug(rawSlug) {
+  const msgEl = document.getElementById('clubs-slug-msg');
+  if (!_activeClubId) return;
+  try {
+    const updated = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/slug`, {
+      method: 'PATCH',
+      body: JSON.stringify({ slug: rawSlug }),
+    });
+    const club = _clubsList.find(c => c.id === _activeClubId);
+    if (club) club.slug = updated.slug;
+    _clubsMsg(msgEl, '✓', false);
+    _clubsRenderDetail();
+  } catch (e) {
+    _clubsMsg(msgEl, e.message, true);
+  }
+}
+
+async function clubsSaveSlug() {
+  const input = document.getElementById('clubs-slug-input');
+  if (!input) return;
+  const candidate = (input.value || '').trim().toLowerCase();
+  if (!candidate) {
+    return _clubsSetSlug(null);
+  }
+  if (!/^[a-z0-9-]{2,30}$/.test(candidate)) {
+    const msgEl = document.getElementById('clubs-slug-msg');
+    _clubsMsg(msgEl, t('txt_clubs_slug_invalid'), true);
+    return;
+  }
+  return _clubsSetSlug(candidate);
+}
+
+async function clubsClearSlug() {
+  return _clubsSetSlug(null);
+}
+
+async function clubsCopySlugUrl(url) {
+  const msgEl = document.getElementById('clubs-slug-msg');
+  try {
+    await navigator.clipboard.writeText(url);
+    _clubsMsg(msgEl, t('txt_clubs_slug_copied'), false);
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }

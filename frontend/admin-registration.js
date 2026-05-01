@@ -623,6 +623,10 @@ async function _submitCreateRegistration() {
 
   body.sport = _currentSport || 'padel';
   body.community_id = (typeof _getSelectedCommunityId === 'function') ? _getSelectedCommunityId() : 'open';
+  if (typeof _getSelectedClubId === 'function') {
+    const clubId = _getSelectedClubId();
+    if (clubId) body.club_id = clubId;
+  }
 
   await api('/api/registrations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   await loadRegistrations();

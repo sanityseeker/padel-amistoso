@@ -51,6 +51,7 @@ function _regToggleLanguage() {
 
 // ── Registration page logic ──────────────────────────────
 const API = '/api/registrations';
+let _subdomainClub = null; // {club_id, name, ...} when on a club subdomain
 let _regData = null;
 let _lastResult = null;
 let _pollTimer = null;
@@ -260,6 +261,7 @@ async function _showDirectory() {
   el.style.display = 'block';
 
   try {
+    try { _subdomainClub = await resolveClubSubdomainContext(); } catch (_) { _subdomainClub = null; }
     const res = await fetch(`${API}/public`);
     if (!res.ok) throw new Error();
     const lobbies = await res.json();
@@ -270,6 +272,9 @@ async function _showDirectory() {
 }
 
 function _renderDirectory(lobbies) {
+  const visibleLobbies = _subdomainClub
+    ? lobbies.filter(item => item && item.club_id === _subdomainClub.club_id && item.community_id === _subdomainClub.community_id)
+    : lobbies;
   const el = document.getElementById('state-directory');
   const langMeta = _languageToggleMeta();
   const themeIcon = _theme === 'dark' ? '🌙' : '☀️';
@@ -283,10 +288,19 @@ function _renderDirectory(lobbies) {
   html += `<button type="button" data-theme-toggle-icon="1" class="theme-btn" onclick="_regToggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${themeIcon}</button>`;
   html += `</div>`;
   html += `</div>`;
-  if (lobbies.length > 0) {
+  if (_subdomainClub) {
+    const label = (t('txt_picker_subdomain_banner') || '{club}').replace('{club}', _subdomainClub.name || _subdomainClub.slug || '');
+    html += `<div class="player-subdomain-banner" role="status">`;
+    if (_subdomainClub.logo_url) {
+      html += `<img class="player-subdomain-logo" src="${escAttr(_subdomainClub.logo_url)}" alt="">`;
+    }
+    html += `<span class="player-subdomain-text">${esc(label)}</span>`;
+    html += `</div>`;
+  }
+  if (visibleLobbies.length > 0) {
     html += `<div class="subtitle">${t('txt_reg_directory_subtitle')}</div>`;
     html += `<ul class="tv-picker-list">`;
-    for (const lobby of lobbies) {
+    for (const lobby of visibleLobbies) {
       const url = lobby.alias
         ? `/register/${encodeURIComponent(lobby.alias)}`
         : `/register/${encodeURIComponent(lobby.id)}`;

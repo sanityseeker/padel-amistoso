@@ -141,3 +141,31 @@ def test_scheduler_runs_backup_off_thread(tmp_path: Path, source_db: Path) -> No
 
     asyncio.run(run())
     assert len(list(backup_dir.glob("padel_*.db"))) == 1
+
+
+def test_scheduler_runs_first_backup_immediately(tmp_path: Path, source_db: Path) -> None:
+    """The loop must produce a backup before the first sleep interval."""
+    import asyncio
+
+    import backend.api.backup as backup_mod
+
+    backup_dir = tmp_path / "backups"
+
+    async def run() -> None:
+        with patch.object(backup_mod, "DB_PATH", source_db):
+            # Use a huge interval so the loop is still sleeping when we cancel;
+            # if the first backup didn't run *before* the sleep, no file exists.
+            task = asyncio.create_task(backup_mod._backup_loop(1e6, 3, backup_dir))
+            # Yield control until the backup file appears or we time out.
+            for _ in range(50):
+                await asyncio.sleep(0.01)
+                if list(backup_dir.glob("padel_*.db")):
+                    break
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run(run())
+    assert len(list(backup_dir.glob("padel_*.db"))) == 1

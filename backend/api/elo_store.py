@@ -255,6 +255,8 @@ def upsert_tournament_elo_log(
         "sets": [list(s) for s in (getattr(match, "sets", None) or [])],
         "team1": team1,
         "team2": team2,
+        "round_number": int(getattr(match, "round_number", 0) or 0),
+        "round_label": str(getattr(match, "round_label", "") or ""),
     }
     payload_json = json.dumps(payload)
 
@@ -736,6 +738,7 @@ def retroactive_transfer_elo(profile_id: str, player_id: str) -> None:
     global_elos: dict[str, float] = {}  # {sport: latest elo} — cross-community running latest
     global_counts: dict[str, int] = {}  # {sport: latest cumulative matches (already global)}
 
+    history_updates: list[tuple[float, float, str, str]] = []
     for row in rows:
         cid = row["community_id"]
         sport = row["sport"]
@@ -745,17 +748,16 @@ def retroactive_transfer_elo(profile_id: str, player_id: str) -> None:
         # Keep global (open) state up-to-date via chronological ordering
         global_elos[sport] = row["elo_after"]
         global_counts[sport] = row["matches_played"]
+        history_updates.append((row["elo_before"], row["elo_after"], profile_id, row["tournament_id"]))
 
-        # Update player_history with ELO snapshot
-        with get_db() as conn:
-            conn.execute(
+    # Write community-scoped ELOs and global (open) ELO in a single connection.
+    with get_db() as conn:
+        if history_updates:
+            conn.executemany(
                 "UPDATE player_history SET elo_before = ?, elo_after = ?"
                 " WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
-                (row["elo_before"], row["elo_after"], profile_id, row["tournament_id"]),
+                history_updates,
             )
-
-    # Write community-scoped ELOs and global (open) ELO.
-    with get_db() as conn:
         for cid, sport_elos in community_elos.items():
             for sport, elo in sport_elos.items():
                 matches = community_counts.get(cid, {}).get(sport, 0)

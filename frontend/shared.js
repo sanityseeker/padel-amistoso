@@ -59,6 +59,64 @@ function _sortTbdLast(matches) {
   });
 }
 
+// ── Subdomain detection ──────────────────────────────────
+
+/**
+ * Return the leftmost host label when the page is being served from a
+ * ``{label}.amistoso.club``-style subdomain (or any non-localhost host with
+ * 3+ parts). Returns null on the apex domain, on ``admin.``, on reserved
+ * labels, on ``localhost``, or on bare-IP hosts.
+ *
+ * Used by club.html to fetch ``/api/clubs/by-slug/{slug}`` and by callers
+ * that want to know whether they are on a per-club landing page.
+ *
+ * @returns {string | null}
+ */
+function getClubSubdomain() {
+  const RESERVED = new Set([
+    'admin', 'tv', 'player', 'register', 'api', 'www', 'app', 'mail', 'ftp', 'static', 'assets'
+  ]);
+  try {
+    const host = (window.location.hostname || '').toLowerCase();
+    if (!host || host === 'localhost') return null;
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return null;
+    const parts = host.split('.');
+    // Accept either ``{slug}.{base}.{tld}`` (production) or ``{slug}.localhost``
+    // (local dev via /etc/hosts aliases or *.localhost auto-resolution).
+    const isLocalhostChild = parts.length >= 2 && parts[parts.length - 1] === 'localhost';
+    if (parts.length < 3 && !isLocalhostChild) return null;
+    const label = parts[0];
+    if (!label || RESERVED.has(label)) return null;
+    if (!/^[a-z0-9-]{2,30}$/.test(label)) return null;
+    return label;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Memoized resolver for the current subdomain's club, if any.
+ *
+ * Returns the same promise on subsequent calls, so multiple consumers (TV
+ * picker, register directory, player hub) share a single ``GET
+ * /api/clubs/by-slug/{slug}`` request per page load.
+ *
+ * @returns {Promise<null | {club_id: string, name: string, slug: string, has_logo: boolean, logo_url: string}>}
+ */
+let _subdomainClubPromise = null;
+function resolveClubSubdomainContext() {
+  if (_subdomainClubPromise) return _subdomainClubPromise;
+  const slug = (typeof getClubSubdomain === 'function') ? getClubSubdomain() : null;
+  if (!slug) {
+    _subdomainClubPromise = Promise.resolve(null);
+    return _subdomainClubPromise;
+  }
+  _subdomainClubPromise = fetch(`/api/clubs/by-slug/${encodeURIComponent(slug)}`)
+    .then(res => (res.ok ? res.json() : null))
+    .catch(() => null);
+  return _subdomainClubPromise;
+}
+
 // ── Theme persistence ─────────────────────────────────────
 
 /** Single storage key shared by all pages. */
@@ -492,7 +550,7 @@ function _bracketLightboxKeyHandler(e) {
 
 function buildPageSelectorHtml(currentPage) {
   const pages = [
-    { key: 'admin', href: '/', icon: '🛠️', label: t('txt_nav_admin') },
+    { key: 'admin', href: '/admin', icon: '🛠️', label: t('txt_nav_admin') },
     { key: 'player', href: '/player', icon: '🎾', label: t('txt_nav_player_space') },
     { key: 'tv', href: '/tv', icon: '📺', label: t('txt_nav_tv_view') },
     { key: 'register', href: '/register', icon: '📋', label: t('txt_nav_registrations') },
@@ -656,4 +714,70 @@ function createVersionStream(opts) {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Player mini-card primitives (shared by club.js and tv.js)
+// ---------------------------------------------------------------------------
+
+const _MINI_CARD_FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Create (once) and return the modal overlay element for a mini-card.
+ * Wires Esc + backdrop close, focus trap, and focus restoration.
+ *
+ * @param {object} opts
+ * @param {string} opts.id        — DOM id of the overlay node (per page).
+ * @param {string} opts.className — overlay CSS class (e.g. 'club-mini-card-overlay').
+ * @param {() => void} opts.onClose — invoked when user dismisses the overlay.
+ * @returns {HTMLElement}
+ */
+function ensureMiniCardOverlay({ id, className, onClose }) {
+  let overlay = document.getElementById(id);
+  if (overlay) return overlay;
+  overlay = document.createElement('div');
+  overlay.id = id;
+  overlay.className = className;
+  overlay.hidden = true;
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay._miniCardLastFocus = null;
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) onClose();
+  });
+  overlay.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+    if (e.key !== 'Tab') return;
+    const focusables = overlay.querySelectorAll(_MINI_CARD_FOCUSABLE);
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+    else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
+  });
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+/** Show a mini-card overlay, remember the trigger, and focus into it. */
+function showMiniCardOverlay(overlay) {
+  overlay._miniCardLastFocus = document.activeElement;
+  overlay.hidden = false;
+  // Defer focus so the rendered close button exists.
+  setTimeout(() => {
+    const first = overlay.querySelector(_MINI_CARD_FOCUSABLE);
+    if (first) first.focus();
+  }, 0);
+}
+
+/** Hide a mini-card overlay and restore focus to the originating element. */
+function hideMiniCardOverlay(overlay) {
+  if (!overlay) return;
+  overlay.hidden = true;
+  overlay.innerHTML = '';
+  const restore = overlay._miniCardLastFocus;
+  overlay._miniCardLastFocus = null;
+  if (restore && typeof restore.focus === 'function') {
+    try { restore.focus(); } catch (_) { /* ignore */ }
+  }
 }

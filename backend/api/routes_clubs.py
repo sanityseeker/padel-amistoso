@@ -11,12 +11,14 @@ from __future__ import annotations
 import io
 import json
 import secrets
+import re
+
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from PIL import Image
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..auth.deps import get_current_user
 from ..auth.models import User, UserRole
@@ -37,7 +39,14 @@ from .db import (
     get_shared_club_ids,
     remove_club_co_editor,
 )
-from .elo_store import consolidate_ghost_elos, retroactive_transfer_elo
+from .elo_store import consolidate_ghost_elos, get_profile_recent_elo_logs, retroactive_transfer_elo
+from .leaderboard_cache import (
+    _SYNC_VERSION_CACHE,
+    club_sync_version as _club_sync_version,
+    etag_for,
+    get_cached_leaderboard_rows,
+    get_mini_card_cached,
+)
 from .routes_communities import DEFAULT_COMMUNITY_ID
 from .schemas import AddCollaboratorRequest, CollaboratorListResponse, EmailLang
 from ..tournaments.player_secrets import generate_passphrase
@@ -47,6 +56,9 @@ router = APIRouter(prefix="/api/clubs", tags=["clubs"])
 _LOGOS_DIR = DATA_DIR / "logos"
 _MAX_LOGO_BYTES = 5 * 1024 * 1024  # 5 MB
 _LOGO_MAX_PX = 256  # max width/height after resizing
+
+# Leaderboard / sync caches now live in ``leaderboard_cache`` and are
+# re-exported above for backward-compatible imports (tests, etc.).
 
 _ID_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz"
 _ID_LEN = 8
@@ -63,17 +75,34 @@ def _generate_id(prefix: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _require_non_blank(value: str) -> str:
+    """Reject names that are empty or whitespace-only after trimming."""
+    if value is None or not value.strip():
+        raise ValueError("must not be blank")
+    return value
+
+
 class ClubCreate(BaseModel):
     """Request body for creating a club from an existing community."""
 
     community_id: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=100)
 
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str) -> str:
+        return _require_non_blank(v)
+
 
 class ClubUpdate(BaseModel):
     """Request body for updating club details."""
 
     name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str) -> str:
+        return _require_non_blank(v)
 
 
 class ClubOut(BaseModel):
@@ -87,6 +116,16 @@ class ClubOut(BaseModel):
     created_at: str
     shared: bool = False
     email_settings: dict | None = None
+    slug: str | None = None
+    description: str | None = None
+    pinned_tournament_ids: list[str] = []
+
+
+class ClubLandingUpdate(BaseModel):
+    """Update the landing-page customisation fields for a club."""
+
+    description: str | None = Field(default=None, max_length=500)
+    pinned_tournament_ids: list[str] | None = Field(default=None, max_length=50)
 
 
 class ClubEmailSettings(BaseModel):
@@ -246,11 +285,54 @@ def _require_club_editor(club: dict, user: User) -> None:
         raise HTTPException(403, "You do not have editing access to this club")
 
 
+def _safe_json_loads(raw: str | None, default):
+    """json.loads with graceful fallback for malformed/legacy data."""
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except (ValueError, TypeError):
+        return default
+
+
+def _pin_key(kind: str, entity_id: str) -> str:
+    """Return a stable, namespaced pin key for a club item."""
+    prefix = "reg" if kind == "registration" else "tn"
+    return f"{prefix}:{entity_id}"
+
+
+def _valid_pinnable_ids_for_club(club_id: str) -> set[str]:
+    """Return the set of tournament/registration IDs that may be pinned by ``club_id``."""
+    from .state import _tournaments  # noqa: PLC0415
+
+    valid: set[str] = set()
+    for tid, data in _tournaments.items():
+        if data.get("club_id") != club_id:
+            continue
+        # Keep raw IDs for backward compatibility with older frontends,
+        # and include namespaced keys to avoid collisions with registrations.
+        valid.add(tid)
+        valid.add(_pin_key("tournament", tid))
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT id FROM registrations WHERE club_id = ? AND archived = 0",
+            (club_id,),
+        ).fetchall()
+    for r in rows:
+        rid = r["id"]
+        valid.add(rid)
+        valid.add(_pin_key("registration", rid))
+    return valid
+
+
 def _build_club_out(r: dict, *, shared: bool = False) -> ClubOut:
     """Build a ClubOut from a DB row dict."""
     logo_exists = (_LOGOS_DIR / f"{r['id']}.png").exists() if r.get("logo_path") else False
-    raw_settings = r.get("email_settings")
-    email_settings = json.loads(raw_settings) if raw_settings else None
+    email_settings = _safe_json_loads(r.get("email_settings"), None)
+    if not isinstance(email_settings, dict):
+        email_settings = None
+    raw_pinned = _safe_json_loads(r.get("pinned_tournament_ids"), [])
+    pinned_ids: list[str] = [pid for pid in raw_pinned if isinstance(pid, str)] if isinstance(raw_pinned, list) else []
     return ClubOut(
         id=r["id"],
         community_id=r["community_id"],
@@ -260,6 +342,9 @@ def _build_club_out(r: dict, *, shared: bool = False) -> ClubOut:
         created_at=r["created_at"],
         shared=shared,
         email_settings=email_settings,
+        slug=r.get("slug"),
+        description=r.get("description"),
+        pinned_tournament_ids=pinned_ids,
     )
 
 
@@ -492,8 +577,8 @@ def _get_or_create_ghost_profile_for_club_participant(
 
 def _club_invite_settings(club: dict) -> tuple[str, str]:
     """Return ``(reply_to, sender_name)`` for club email sends."""
-    raw_settings = club.get("email_settings")
-    settings: dict = json.loads(raw_settings) if raw_settings else {}
+    parsed = _safe_json_loads(club.get("email_settings"), {})
+    settings: dict = parsed if isinstance(parsed, dict) else {}
     reply_to = settings.get("reply_to") or ""
     sender_name = settings.get("sender_name") or club["name"]
     return reply_to, sender_name
@@ -598,6 +683,479 @@ async def get_club_by_community(community_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Slug management + public landing-page endpoints (subdomain routing)
+# ---------------------------------------------------------------------------
+
+_SLUG_RE = re.compile(r"^[a-z0-9-]{2,30}$")
+_RESERVED_SLUGS: frozenset[str] = frozenset(
+    {"admin", "tv", "player", "register", "api", "www", "app", "mail", "ftp", "static", "assets"}
+)
+
+
+class ClubSlugUpdate(BaseModel):
+    """Request body for setting a club's subdomain slug.
+
+    Pass ``slug=null`` (or omit and send ``{}``) to clear the slug.
+    """
+
+    slug: str | None = Field(default=None, max_length=30)
+
+
+def _validate_slug(raw: str | None) -> str | None:
+    """Normalize, validate, and reserved-check a slug. Returns None for empty."""
+    if raw is None:
+        return None
+    candidate = raw.strip().lower()
+    if not candidate:
+        return None
+    if not _SLUG_RE.match(candidate):
+        raise HTTPException(400, "Slug must be 2-30 chars, lowercase letters, digits, and hyphens only")
+    if candidate in _RESERVED_SLUGS:
+        raise HTTPException(400, f"Slug '{candidate}' is reserved")
+    return candidate
+
+
+@router.patch("/{club_id}/slug", response_model=ClubOut)
+async def set_club_slug(club_id: str, req: ClubSlugUpdate, user: User = Depends(get_current_user)) -> ClubOut:
+    """Set or clear the public subdomain slug for a club."""
+    club = _get_club(club_id)
+    _require_club_editor(club, user)
+    new_slug = _validate_slug(req.slug)
+    with get_db() as conn:
+        if new_slug is not None:
+            existing = conn.execute("SELECT id FROM clubs WHERE slug = ? AND id != ?", (new_slug, club_id)).fetchone()
+            if existing is not None:
+                raise HTTPException(409, f"Slug '{new_slug}' is already taken")
+        conn.execute("UPDATE clubs SET slug = ? WHERE id = ?", (new_slug, club_id))
+    club["slug"] = new_slug
+    return _build_club_out(club)
+
+
+@router.get("/by-slug/{slug}")
+async def get_club_by_slug(slug: str) -> dict:
+    """Public — resolve a slug to its club's minimal public info."""
+    candidate = (slug or "").strip().lower()
+    if not candidate or candidate in _RESERVED_SLUGS:
+        raise HTTPException(404, "Club not found")
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM clubs WHERE slug = ?", (candidate,)).fetchone()
+    if row is None:
+        raise HTTPException(404, "Club not found")
+    club = _build_club_out(dict(row))
+    return {
+        "club_id": club.id,
+        "community_id": club.community_id,
+        "name": club.name,
+        "slug": club.slug,
+        "has_logo": club.has_logo,
+        "logo_url": f"/api/clubs/{club.id}/logo" if club.has_logo else None,
+        "description": club.description,
+        "pinned_tournament_ids": club.pinned_tournament_ids,
+    }
+
+
+def _tournament_public_status(t_obj) -> str:
+    """Map a tournament's domain phase to a public-landing status string."""
+    from ..models import GPPhase, MexPhase, POPhase  # noqa: PLC0415
+
+    phase = getattr(t_obj, "phase", None)
+    if phase in (GPPhase.FINISHED, MexPhase.FINISHED, POPhase.FINISHED):
+        return "finished"
+    if phase == GPPhase.SETUP:
+        return "upcoming"
+    return "in_progress"
+
+
+@router.get("/{club_id}/public-tournaments")
+async def get_club_public_tournaments(club_id: str) -> list[dict]:
+    """Public — list a club's public tournaments + open registrations.
+
+    Each entry has: ``id``, ``pin_key``, ``name``, ``alias``, ``status`` (one of
+    ``in_progress`` / ``open_registration`` / ``upcoming`` / ``finished``),
+    ``kind`` (``tournament`` or ``registration``), ``sport``, ``type``
+    (tournament format or ``"registration"``), and ``pinned``.
+    """
+    club_row = _get_club(club_id)  # 404 if club doesn't exist
+    raw_pinned = _safe_json_loads(club_row.get("pinned_tournament_ids"), [])
+    pinned_set: set[str] = (
+        {pid for pid in raw_pinned if isinstance(pid, str)} if isinstance(raw_pinned, list) else set()
+    )
+    from .state import _tournaments  # noqa: PLC0415
+
+    out: list[dict] = []
+    for tid, data in _tournaments.items():
+        if data.get("club_id") != club_id:
+            continue
+        if not data.get("public", True):
+            continue
+        t_obj = data.get("tournament")
+        tournament_pin_key = _pin_key("tournament", tid)
+        out.append(
+            {
+                "id": tid,
+                "pin_key": tournament_pin_key,
+                "name": data.get("name", ""),
+                "alias": data.get("alias"),
+                "status": _tournament_public_status(t_obj),
+                "kind": "tournament",
+                "sport": data.get("sport", "padel"),
+                "type": data.get("type", "group_playoff"),
+                "pinned": tournament_pin_key in pinned_set or tid in pinned_set,
+            }
+        )
+
+    with get_db() as conn:
+        reg_rows = conn.execute(
+            "SELECT id, name, alias, open, sport FROM registrations "
+            "WHERE club_id = ? AND archived = 0 AND listed = 1 ORDER BY created_at DESC",
+            (club_id,),
+        ).fetchall()
+    for r in reg_rows:
+        if not r["open"]:
+            continue
+        reg_pin_key = _pin_key("registration", r["id"])
+        out.append(
+            {
+                "id": r["id"],
+                "pin_key": reg_pin_key,
+                "name": r["name"],
+                "alias": r["alias"],
+                "status": "open_registration",
+                "kind": "registration",
+                "sport": r["sport"] or "padel",
+                "type": "registration",
+                "pinned": reg_pin_key in pinned_set or r["id"] in pinned_set,
+            }
+        )
+    # Pinned items float to the top, preserving relative order within each group.
+    out.sort(key=lambda x: 0 if x["pinned"] else 1)
+    return out
+
+
+def _compute_club_leaderboard_rows(conn, club_id: str) -> list[dict]:
+    """Return per-(profile, sport) leaderboard rows for a club.
+
+    Source of truth shared between the admin players endpoint and the public
+    leaderboard so both views stay consistent. Each row contains:
+    ``profile_id, name, is_ghost, sport, elo, matches, tier_name, hidden``.
+    ``elo`` is the live latest ELO from ``player_elo_log`` scoped to the
+    club's tournaments, falling back to the snapshot in ``profile_club_elo``
+    when no matches were logged yet. ``matches`` counts non-manual entries.
+
+    Memoised by :mod:`.leaderboard_cache` against a version key plus a
+    max-age guard so missed invalidations can't keep stale rows alive.
+    """
+    return get_cached_leaderboard_rows(conn, club_id, _compute_club_leaderboard_rows_uncached)
+
+
+def _compute_club_leaderboard_rows_uncached(conn, club_id: str) -> list[dict]:
+    """Uncached computation — see :func:`_compute_club_leaderboard_rows`."""
+    base_rows = conn.execute(
+        """SELECT pce.profile_id, pce.sport, pce.elo, pce.matches, pce.tier_id, pce.hidden,
+                  pp.name AS player_name, pp.email AS player_email, pp.is_ghost AS player_is_ghost,
+                  ct.name AS tier_name
+           FROM profile_club_elo pce
+           JOIN player_profiles pp ON pp.id = pce.profile_id
+           LEFT JOIN club_tiers ct ON ct.id = pce.tier_id
+           WHERE pce.club_id = ? AND pp.is_ghost = 0
+             AND EXISTS (
+                 SELECT 1 FROM profile_club_elo sub
+                 WHERE sub.profile_id = pce.profile_id AND sub.club_id = ? AND sub.hidden = 0
+             )
+           ORDER BY pp.name""",
+        (club_id, club_id),
+    ).fetchall()
+    live_rows = conn.execute(
+        """
+        WITH linked_tournament_players AS (
+            SELECT ps.profile_id AS profile_id,
+                   ps.tournament_id AS tournament_id,
+                   ps.player_id AS player_id
+              FROM player_secrets ps
+             WHERE ps.profile_id IN (
+                 SELECT profile_id FROM profile_club_elo WHERE club_id = ?
+             )
+            UNION
+            SELECT ph.profile_id AS profile_id,
+                   ph.entity_id AS tournament_id,
+                   ph.player_id AS player_id
+              FROM player_history ph
+             WHERE ph.entity_type = 'tournament'
+               AND ph.profile_id IN (
+                   SELECT profile_id FROM profile_club_elo WHERE club_id = ?
+               )
+        ),
+        scoped AS (
+            SELECT lp.profile_id  AS profile_id,
+                   l.sport        AS sport,
+                   l.elo_after    AS elo_after,
+                   l.is_manual    AS is_manual,
+                   l.updated_at   AS updated_at,
+                   l.match_order  AS match_order
+              FROM player_elo_log l
+              JOIN linked_tournament_players lp
+                ON lp.tournament_id = l.tournament_id
+               AND lp.player_id = l.player_id
+              JOIN tournaments t
+                ON t.id = l.tournament_id
+             WHERE t.club_id = ?
+        ),
+        matches_agg AS (
+            SELECT s.profile_id,
+                   s.sport,
+                   SUM(CASE WHEN s.is_manual = 0 THEN 1 ELSE 0 END) AS matches
+              FROM scoped s
+          GROUP BY s.profile_id, s.sport
+        ),
+        latest AS (
+            SELECT s.profile_id,
+                   s.sport,
+                   s.elo_after,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY s.profile_id, s.sport
+                       ORDER BY s.updated_at DESC, s.match_order DESC
+                   ) AS rn
+              FROM scoped s
+        )
+        SELECT m.profile_id  AS profile_id,
+               m.sport       AS sport,
+               m.matches     AS matches,
+               lt.elo_after  AS elo
+          FROM matches_agg m
+     LEFT JOIN latest lt
+            ON lt.profile_id = m.profile_id
+           AND lt.sport = m.sport
+           AND lt.rn = 1
+        """,
+        (club_id, club_id, club_id),
+    ).fetchall()
+    live_by_key: dict[tuple[str, str], dict] = {
+        (r["profile_id"], r["sport"]): {
+            "matches": int(r["matches"] or 0),
+            "elo": r["elo"],
+        }
+        for r in live_rows
+    }
+    out: list[dict] = []
+    for r in base_rows:
+        key = (r["profile_id"], r["sport"])
+        live = live_by_key.get(key, {})
+        live_matches = int(live.get("matches") or 0)
+        live_elo = live.get("elo")
+        # Prefer live ELO from match logs; fall back to the snapshot (tier base
+        # ELO / manual overrides) when the player has no logged matches yet.
+        effective_elo = live_elo if live_elo is not None else r["elo"]
+        out.append(
+            {
+                "profile_id": r["profile_id"],
+                "name": r["player_name"],
+                "email": r["player_email"],
+                "is_ghost": bool(r["player_is_ghost"]),
+                "sport": r["sport"],
+                "elo": round(effective_elo, 1) if effective_elo is not None else None,
+                "matches": live_matches,
+                "tier_id": r["tier_id"],
+                "tier_name": r["tier_name"],
+                "hidden": bool(r["hidden"]),
+            }
+        )
+    return out
+
+
+@router.get("/{club_id}/public-leaderboard", response_model=None)
+async def get_club_public_leaderboard(
+    club_id: str,
+    request: Request,
+    response: Response,
+    sport: str = Query(default="all", pattern=r"^(padel|tennis|all)$"),
+) -> dict | list[dict] | Response:
+    """Public ELO leaderboard for a club. No emails are exposed.
+
+    When ``sport=all`` (default) returns ``{padel: [...], tennis: [...]}``,
+    each list being ``[{rank, name, elo, tier_name, matches}]`` sorted by ELO desc.
+    When ``sport=padel`` or ``sport=tennis`` returns a plain list for that sport.
+    Mirrors the admin leaderboard so both views show the same players, ELO,
+    and match counts.
+
+    Sets ``ETag`` + ``Cache-Control: public, max-age=30`` so well-behaved
+    clients (and reverse proxies) can short-circuit repeat requests.
+    """
+    _get_club(club_id)
+
+    def _project(rows: list[dict], target_sport: str) -> list[dict]:
+        entries = [
+            {
+                "profile_id": r["profile_id"],
+                "name": r["name"],
+                "elo": r["elo"],
+                "tier_name": r["tier_name"],
+                "matches": r["matches"],
+            }
+            for r in rows
+            if r["sport"] == target_sport and not r["hidden"] and r["elo"] is not None
+        ]
+        entries.sort(key=lambda e: (-(e["elo"] or 0), -(e["matches"]), e["name"].lower()))
+        for idx, e in enumerate(entries, start=1):
+            e["rank"] = idx
+        return entries
+
+    with get_db() as conn:
+        all_rows = _compute_club_leaderboard_rows(conn, club_id)
+    if sport == "all":
+        payload: dict | list[dict] = {s: _project(all_rows, s) for s in ("padel", "tennis")}
+    else:
+        payload = _project(all_rows, sport)
+
+    tag = etag_for(payload)
+    if request.headers.get("if-none-match") == tag:
+        return Response(status_code=304, headers={"ETag": tag, "Cache-Control": "public, max-age=30"})
+    response.headers["ETag"] = tag
+    response.headers["Cache-Control"] = "public, max-age=30"
+    return payload
+
+
+class ClubPlayerMiniCard(BaseModel):
+    """Public mini-profile shown when a leaderboard row is clicked."""
+
+    profile_id: str
+    name: str
+    elo_padel: float | None = None
+    elo_tennis: float | None = None
+    matches_padel: int = 0
+    matches_tennis: int = 0
+    tier_name_padel: str | None = None
+    tier_name_tennis: str | None = None
+    rank_padel: int | None = None
+    rank_tennis: int | None = None
+    recent_matches: list[dict]
+    elo_history_padel: list[float]
+    elo_history_tennis: list[float]
+
+
+@router.get("/{club_id}/players/{profile_id}/public-card", response_model=None)
+async def get_club_player_public_card(
+    club_id: str,
+    profile_id: str,
+    request: Request,
+    response: Response,
+) -> ClubPlayerMiniCard | Response:
+    """Public mini-card for a player at a club.
+
+    Returns club-scoped ELO/tier/rank for both sports plus the most recent
+    matches and a short ELO sparkline history. No emails or other PII.
+
+    Cached in-memory for ``MINI_CARD_TTL_S`` to absorb repeat clicks, and
+    served with ``ETag`` + ``Cache-Control: public, max-age=30``.
+    """
+    _get_club(club_id)
+
+    def _build() -> ClubPlayerMiniCard:
+        return _build_club_player_card(club_id, profile_id)
+
+    card = get_mini_card_cached(("club", club_id, profile_id), _build)
+    payload = card.model_dump()
+    tag = etag_for(payload)
+    if request.headers.get("if-none-match") == tag:
+        return Response(status_code=304, headers={"ETag": tag, "Cache-Control": "public, max-age=30"})
+    response.headers["ETag"] = tag
+    response.headers["Cache-Control"] = "public, max-age=30"
+    return card
+
+
+def _build_club_player_card(club_id: str, profile_id: str) -> ClubPlayerMiniCard:
+    """Build (uncached) the public mini-card payload for a club player."""
+    with get_db() as conn:
+        rows = _compute_club_leaderboard_rows(conn, club_id)
+
+    by_sport: dict[str, dict] = {r["sport"]: r for r in rows if r["profile_id"] == profile_id}
+    if not by_sport:
+        raise HTTPException(404, "Player not in this club")
+
+    name = next(iter(by_sport.values()))["name"]
+
+    def _rank_for(sport: str) -> int | None:
+        ordered = sorted(
+            (r for r in rows if r["sport"] == sport and not r["hidden"] and r["elo"] is not None),
+            key=lambda r: (-(r["elo"] or 0), -r["matches"], r["name"].lower()),
+        )
+        for idx, r in enumerate(ordered, start=1):
+            if r["profile_id"] == profile_id:
+                return idx
+        return None
+
+    padel = by_sport.get("padel") or {}
+    tennis = by_sport.get("tennis") or {}
+
+    raw_logs = get_profile_recent_elo_logs(profile_id, limit=10, club_id=club_id)
+    recent: list[dict] = []
+    history_by_sport: dict[str, list[float]] = {"padel": [], "tennis": []}
+    round_info_cache: dict[str, dict[str, tuple[int, str]]] = {}
+    # Lazy import: ``routes_crud`` already imports from this module, so a
+    # top-level import here would create a cycle.
+    from .routes_crud import _collect_tournament_match_round_info  # noqa: PLC0415
+    from .state import _tournaments  # noqa: PLC0415
+
+    for log in raw_logs:
+        try:
+            payload = json.loads(log.get("match_payload") or "{}")
+        except (ValueError, TypeError):
+            payload = {}
+        team1 = [p.get("player_name", "") for p in payload.get("team1", [])]
+        team2 = [p.get("player_name", "") for p in payload.get("team2", [])]
+        round_number = payload.get("round_number")
+        round_label = payload.get("round_label") or ""
+        if not round_number and not round_label:
+            tid = log.get("tournament_id")
+            if tid:
+                if tid not in round_info_cache:
+                    tournament = _tournaments.get(tid, {}).get("tournament")
+                    round_info_cache[tid] = _collect_tournament_match_round_info(tournament)
+                fallback = round_info_cache[tid].get(log.get("match_id"))
+                if fallback:
+                    round_number = fallback[0] or None
+                    round_label = fallback[1]
+        recent.append(
+            {
+                "tournament_name": log.get("tournament_name"),
+                "tournament_alias": log.get("tournament_alias"),
+                "sport": log.get("sport"),
+                "score": payload.get("score") or [],
+                "team1": team1,
+                "team2": team2,
+                "elo_before": log.get("elo_before"),
+                "elo_after": log.get("elo_after"),
+                "elo_delta": log.get("elo_delta"),
+                "updated_at": log.get("updated_at"),
+                "is_manual": bool(log.get("is_manual")),
+                "round_number": round_number or None,
+                "round_label": round_label,
+            }
+        )
+        sport = log.get("sport")
+        if sport in history_by_sport and log.get("elo_after") is not None:
+            history_by_sport[sport].append(round(float(log["elo_after"]), 1))
+    # Logs are returned newest-first; sparkline reads chronologically.
+    for sport in history_by_sport:
+        history_by_sport[sport].reverse()
+
+    return ClubPlayerMiniCard(
+        profile_id=profile_id,
+        name=name,
+        elo_padel=padel.get("elo") if not padel.get("hidden") else None,
+        elo_tennis=tennis.get("elo") if not tennis.get("hidden") else None,
+        matches_padel=padel.get("matches") or 0,
+        matches_tennis=tennis.get("matches") or 0,
+        tier_name_padel=padel.get("tier_name") if not padel.get("hidden") else None,
+        tier_name_tennis=tennis.get("tier_name") if not tennis.get("hidden") else None,
+        rank_padel=_rank_for("padel"),
+        rank_tennis=_rank_for("tennis"),
+        recent_matches=recent,
+        elo_history_padel=history_by_sport["padel"],
+        elo_history_tennis=history_by_sport["tennis"],
+    )
+
+
+# ---------------------------------------------------------------------------
 # Club CRUD
 # ---------------------------------------------------------------------------
 
@@ -688,6 +1246,44 @@ async def update_club(club_id: str, req: ClubUpdate, user: User = Depends(get_cu
         conn.execute("UPDATE clubs SET name = ? WHERE id = ?", (new_name, club_id))
     club["name"] = new_name
     return _build_club_out(club)
+
+
+@router.patch("/{club_id}/landing", response_model=ClubOut)
+async def update_club_landing(club_id: str, req: ClubLandingUpdate, user: User = Depends(get_current_user)) -> ClubOut:
+    """Update landing-page customisation: tagline description and pinned tournaments."""
+    club = _get_club(club_id)
+    _require_club_editor(club, user)
+    updates: list[str] = []
+    values: list[object] = []
+    if req.description is not None:
+        updates.append("description = ?")
+        values.append(req.description.strip() or None)
+    if req.pinned_tournament_ids is not None:
+        valid_ids = _valid_pinnable_ids_for_club(club_id)
+        seen: set[str] = set()
+        normalized: list[str] = []
+        for pid in req.pinned_tournament_ids:
+            if pid not in valid_ids:
+                continue
+            if pid.startswith("tn:") or pid.startswith("reg:"):
+                canonical = pid
+            elif pid.startswith("tn_"):
+                canonical = _pin_key("tournament", pid)
+            elif pid.startswith("rg_"):
+                canonical = _pin_key("registration", pid)
+            else:
+                canonical = pid
+            if canonical in seen:
+                continue
+            seen.add(canonical)
+            normalized.append(canonical)
+        updates.append("pinned_tournament_ids = ?")
+        values.append(json.dumps(normalized))
+    if updates:
+        values.append(club_id)
+        with get_db() as conn:
+            conn.execute(f"UPDATE clubs SET {', '.join(updates)} WHERE id = ?", values)
+    return _build_club_out(_get_club(club_id))
 
 
 @router.delete("/{club_id}")
@@ -916,7 +1512,17 @@ async def list_club_players(
     """
     club = _get_club(club_id)
     with get_db() as conn:
-        needs_elo_transfer = _sync_club_players_from_community(conn, club_id, club["community_id"])
+        # Skip the (relatively heavy) participant sync when nothing relevant
+        # has changed since the previous call. The version key is two cheap
+        # COUNT(*) lookups that hit existing indexes.
+        version = _club_sync_version(conn, club_id)
+        if _SYNC_VERSION_CACHE.get(club_id) == version:
+            needs_elo_transfer: list[tuple[str, str]] = []
+        else:
+            needs_elo_transfer = _sync_club_players_from_community(conn, club_id, club["community_id"])
+            if not needs_elo_transfer:
+                # Mark this version as fully reconciled so subsequent calls skip.
+                _SYNC_VERSION_CACHE[club_id] = version
 
     # Call retroactive ELO transfer for ghost profiles outside the transaction
     # to avoid nested DB connections.  After transfer, re-sync club ELO rows.
@@ -926,132 +1532,37 @@ async def list_club_players(
         with get_db() as conn:
             for profile_id, _ in needs_elo_transfer:
                 _upsert_default_club_player_rows(conn, profile_id, club_id, club["community_id"], is_ghost_insert=True)
+            # Refresh sync version so the next call short-circuits.
+            _SYNC_VERSION_CACHE[club_id] = _club_sync_version(conn, club_id)
 
     with get_db() as conn:
-        rows = conn.execute(
-            """SELECT pce.profile_id, pce.sport, pce.elo, pce.matches, pce.tier_id, pce.hidden,
-                      pp.name AS player_name, pp.email AS player_email, pp.is_ghost AS player_is_ghost,
-                      ct.name AS tier_name
-               FROM profile_club_elo pce
-               JOIN player_profiles pp ON pp.id = pce.profile_id
-               LEFT JOIN club_tiers ct ON ct.id = pce.tier_id
-               WHERE pce.club_id = ? AND pp.is_ghost = 0
-                 AND EXISTS (
-                     SELECT 1 FROM profile_club_elo sub
-                     WHERE sub.profile_id = pce.profile_id AND sub.club_id = ? AND sub.hidden = 0
-                 )
-               ORDER BY pp.name""",
-            (club_id, club_id),
-        ).fetchall()
-        # Live-derive matches and latest ELO from player_elo_log scoped to this
-        # club's tournaments. profile_club_elo.matches/elo are stale snapshots
-        # that are only seeded on insert and never incremented per match, so
-        # the leaderboard would otherwise lag behind actual play.
-        live_rows = conn.execute(
-            """
-            WITH linked_tournament_players AS (
-                SELECT ps.profile_id AS profile_id,
-                       ps.tournament_id AS tournament_id,
-                       ps.player_id AS player_id
-                  FROM player_secrets ps
-                 WHERE ps.profile_id IN (
-                     SELECT profile_id FROM profile_club_elo WHERE club_id = ?
-                 )
-                UNION
-                SELECT ph.profile_id AS profile_id,
-                       ph.entity_id AS tournament_id,
-                       ph.player_id AS player_id
-                  FROM player_history ph
-                 WHERE ph.entity_type = 'tournament'
-                   AND ph.profile_id IN (
-                       SELECT profile_id FROM profile_club_elo WHERE club_id = ?
-                   )
-            ),
-            scoped AS (
-                SELECT lp.profile_id  AS profile_id,
-                       l.sport        AS sport,
-                       l.elo_after    AS elo_after,
-                       l.is_manual    AS is_manual,
-                       l.updated_at   AS updated_at,
-                       l.match_order  AS match_order
-                  FROM player_elo_log l
-                  JOIN linked_tournament_players lp
-                    ON lp.tournament_id = l.tournament_id
-                   AND lp.player_id = l.player_id
-                  JOIN tournaments t
-                    ON t.id = l.tournament_id
-                 WHERE t.club_id = ?
-            ),
-            matches_agg AS (
-                SELECT s.profile_id,
-                       s.sport,
-                       SUM(CASE WHEN s.is_manual = 0 THEN 1 ELSE 0 END) AS matches
-                  FROM scoped s
-              GROUP BY s.profile_id, s.sport
-            ),
-            latest AS (
-                SELECT s.profile_id,
-                       s.sport,
-                       s.elo_after,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY s.profile_id, s.sport
-                           ORDER BY s.updated_at DESC, s.match_order DESC
-                       ) AS rn
-                  FROM scoped s
-            )
-            SELECT m.profile_id  AS profile_id,
-                   m.sport       AS sport,
-                   m.matches     AS matches,
-                   lt.elo_after  AS elo
-              FROM matches_agg m
-         LEFT JOIN latest lt
-                ON lt.profile_id = m.profile_id
-               AND lt.sport = m.sport
-               AND lt.rn = 1
-            """,
-            (club_id, club_id, club_id),
-        ).fetchall()
-
-    live_by_key: dict[tuple[str, str], dict[str, float | int | None]] = {
-        (r["profile_id"], r["sport"]): {
-            "matches": int(r["matches"] or 0),
-            "elo": r["elo"],
-        }
-        for r in live_rows
-    }
+        leaderboard_rows = _compute_club_leaderboard_rows(conn, club_id)
 
     # Pivot: group by profile_id, combine padel + tennis rows.
     # Rows include hidden sport rows so that hidden_padel / hidden_tennis flags are populated.
     players: dict[str, ClubPlayerOut] = {}
-    for r in rows:
+    for r in leaderboard_rows:
         pid = r["profile_id"]
         if pid not in players:
             players[pid] = ClubPlayerOut(
                 profile_id=pid,
-                name=r["player_name"],
-                email=r["player_email"],
-                has_hub_profile=not bool(r["player_is_ghost"]),
+                name=r["name"],
+                email=r["email"],
+                has_hub_profile=not r["is_ghost"],
             )
         p = players[pid]
-        live = live_by_key.get((pid, r["sport"]), {})
-        live_matches = int(live.get("matches") or 0)
-        live_elo = live.get("elo")
-        # Prefer live ELO from match logs; fall back to the snapshot (which
-        # captures tier base ELO and admin-set manual overrides) when the
-        # player has no logged matches in this club yet.
-        effective_elo = live_elo if live_elo is not None else r["elo"]
         if r["sport"] == "padel":
-            p.elo_padel = round(effective_elo, 1) if effective_elo is not None else None
-            p.matches_padel = live_matches
+            p.elo_padel = r["elo"]
+            p.matches_padel = r["matches"]
             p.tier_id_padel = r["tier_id"]
             p.tier_name_padel = r["tier_name"]
-            p.hidden_padel = bool(r["hidden"])
+            p.hidden_padel = r["hidden"]
         elif r["sport"] == "tennis":
-            p.elo_tennis = round(effective_elo, 1) if effective_elo is not None else None
-            p.matches_tennis = live_matches
+            p.elo_tennis = r["elo"]
+            p.matches_tennis = r["matches"]
             p.tier_id_tennis = r["tier_id"]
             p.tier_name_tennis = r["tier_name"]
-            p.hidden_tennis = bool(r["hidden"])
+            p.hidden_tennis = r["hidden"]
     player_list = list(players.values())
     if sport == "padel":
         return [player for player in player_list if not player.hidden_padel]

@@ -331,10 +331,11 @@ function updateAuthUI() {
   
   if (authStatus) {
     if (username) {
+      const _onSubdomain = !!(typeof window !== 'undefined' && window.__ADMIN_SUBDOMAIN_CLUB__);
       const adminBtn = isAdmin()
         ? `<button class="btn btn-sm" onclick="setActiveTab('players-hub')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_nav_player_space')}">🎾</button>`
           + `<button class="btn btn-sm" onclick="setActiveTab('user-mgmt')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_user_management')}">👥</button>`
-          + `<button class="btn btn-sm" onclick="setActiveTab('communities')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="Communities">🏘️</button>`
+          + (_onSubdomain ? '' : `<button class="btn btn-sm" onclick="setActiveTab('communities')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="Communities">🏘️</button>`)
         : '';
       const clubsBtn = `<button class="btn btn-sm" onclick="setActiveTab('clubs')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_clubs_title')}">🏟️</button>`;
       const changePwdBtn = `<button class="btn btn-sm" onclick="showChangePasswordDialog()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_change_password')}">🔑</button>`;

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title data-i18n="txt_club_landing_title">Club</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#3b82f6">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="/tv.css">
+<link rel="stylesheet" href="/club.css">
+</head>
+<body>
+<main id="club-root" class="club-page">
+  <div class="tv-header-title-row club-topbar-row">
+    <div class="tv-lang-cell"><button type="button" id="club-lang-btn" class="theme-btn" onclick="_clubToggleLanguage()" aria-label="Language">🇬🇧</button></div>
+    <div class="club-topbar-logo">
+      <img id="club-logo" alt="" data-i18n-alt="txt_club_logo_alt" hidden>
+    </div>
+    <div class="tv-toggle-btns"><button type="button" id="club-theme-btn" class="theme-btn" onclick="_clubToggleTheme()" data-theme-toggle-icon aria-label="Theme">☀️</button></div>
+  </div>
+  <div id="club-loading" class="tv-loading" data-i18n="txt_txt_loading">Loading…</div>
+
+  <section id="club-header" class="club-header" hidden>
+    <h1 id="club-name" class="club-name"></h1>
+    <p id="club-description" class="club-description" hidden></p>
+  </section>
+
+  <!-- Login buttons (centered under header) -->
+  <section id="club-login" class="club-login-section" hidden>
+    <a id="club-login-admin" class="club-login-btn club-login-btn--admin" href="/admin">
+      <span class="club-login-icon">🔑</span>
+      <span class="club-login-label" data-i18n="txt_club_login_admin">Organizer login</span>
+    </a>
+    <a id="club-login-player" class="club-login-btn club-login-btn--player" href="/player">
+      <span class="club-login-icon">👤</span>
+      <span class="club-login-label" data-i18n="txt_club_login_player">Player hub</span>
+    </a>
+  </section>
+
+  <!-- Unified sport selector — filters both tournaments and leaderboard -->
+  <div id="club-sport-selector" class="club-sport-selector" role="group" aria-label="Sport filter" hidden>
+    <button class="club-sport-pill" data-sport="padel"
+            data-i18n="txt_txt_sport_padel" onclick="_clubToggleSportPill('padel')">Padel</button>
+    <button class="club-sport-pill" data-sport="tennis"
+            data-i18n="txt_txt_sport_tennis" onclick="_clubToggleSportPill('tennis')">Tennis</button>
+  </div>
+
+  <!-- Tournaments — active first, then finished -->
+  <section id="club-items" class="club-items-section" hidden>
+    <header class="club-items-header">
+      <h2 data-i18n="txt_club_items_title">Tournaments</h2>
+      <div class="home-filter-row" role="tablist" aria-label="Status filter">
+        <button class="home-filter-chip active" data-items-tab="live" role="tab" aria-selected="true"
+                onclick="_clubSetItemsTab('live')">
+          <span data-i18n="txt_club_items_tab_live">Live</span>
+          <span class="home-filter-chip-count" id="club-items-tab-count-live"></span>
+        </button>
+        <button class="home-filter-chip" data-items-tab="finished" role="tab" aria-selected="false"
+                onclick="_clubSetItemsTab('finished')">
+          <span data-i18n="txt_club_items_tab_finished">Finished</span>
+          <span class="home-filter-chip-count" id="club-items-tab-count-finished"></span>
+        </button>
+      </div>
+    </header>
+    <div id="club-items-body" class="club-items-body"></div>
+  </section>
+
+  <!-- Tournament / registration ID search -->
+  <section id="club-search" class="club-search-section" hidden>
+    <form class="home-search-row club-search-form" onsubmit="_clubSearchSubmit(event)">
+      <input id="club-search-input" type="search" class="home-search-input"
+             data-i18n-placeholder="txt_club_search_placeholder"
+             placeholder="Tournament / registration ID or alias" autocomplete="off" spellcheck="false">
+      <button type="submit" class="btn btn-sm btn-primary" data-i18n="txt_club_search_btn">Find</button>
+    </form>
+    <div id="club-search-result" class="club-search-result" hidden></div>
+  </section>
+
+  <!-- Leaderboard -->
+  <section id="club-leaderboard" class="club-leaderboard-section" hidden>
+    <header class="club-leaderboard-header">
+      <h2 data-i18n="txt_club_leaderboard_title">Leaderboard</h2>
+    </header>
+    <div id="club-leaderboard-scope-bar" class="club-leaderboard-scope-bar" hidden></div>
+    <div id="club-leaderboard-body" class="club-leaderboard-body"></div>
+  </section>
+
+  <!-- Empty state -->
+  <section id="club-empty" class="club-empty" hidden>
+    <p data-i18n="txt_club_empty_state">No public activity yet.</p>
+  </section>
+</main>
+
+<script src="/i18n.js"></script>
+<script src="/shared.js"></script>
+<script src="/club.js"></script>
+</body>
+</html>

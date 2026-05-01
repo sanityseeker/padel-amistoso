@@ -452,8 +452,8 @@ async def create_registration(
             with get_db() as conn:
                 conn.execute(
                     """INSERT INTO registrations
-                       (id, name, owner, open, join_code, questions, description, message, listed, sport, auto_send_email, email_requirement, community_id, created_at)
-                       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       (id, name, owner, open, join_code, questions, description, message, listed, sport, auto_send_email, email_requirement, community_id, club_id, created_at)
+                       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         rid,
                         req.name,
@@ -467,6 +467,7 @@ async def create_registration(
                         1 if req.auto_send_email else 0,
                         req.email_requirement,
                         req.community_id,
+                        req.club_id,
                         now,
                     ),
                 )
@@ -582,11 +583,29 @@ async def list_public_registrations() -> list[RegistrationPublicOut]:
                 registrants=[],
                 community_id=community_id,
                 community_name=branding["community_name"],
+                club_id=r.get("club_id"),
                 club_name=branding["club_name"],
                 club_logo_url=branding["club_logo_url"],
             )
         )
     return result
+
+
+@router.get("/public/{rid}")
+async def resolve_public_registration(rid: str) -> dict:
+    """Public — resolve a registration by id or alias without authentication.
+
+    Returns ``{"kind": "registration", "id": <canonical_id>}`` or 404.
+    Used by the club landing page search to determine whether an unknown
+    id/alias is a registration (→ /register/) or a tournament (→ /tv/).
+    """
+    with get_db() as conn:
+        row = conn.execute("SELECT id FROM registrations WHERE id = ?", (rid,)).fetchone()
+        if not row:
+            row = conn.execute("SELECT id FROM registrations WHERE alias = ?", (rid,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Registration not found")
+    return {"kind": "registration", "id": row["id"]}
 
 
 @router.get("/{rid}")

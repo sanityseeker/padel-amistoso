@@ -109,6 +109,13 @@ function _clearHomeTournamentSearch() {
 }
 
 async function loadTournaments() {
+  // Ensure the subdomain club global is set before we filter against it.
+  if (typeof resolveClubSubdomainContext === 'function') {
+    try {
+      const ctx = await resolveClubSubdomainContext();
+      if (ctx && ctx.club_id) window.__ADMIN_SUBDOMAIN_CLUB__ = ctx;
+    } catch (_) {}
+  }
   try {
     const registrationsPath = '/api/registrations?include_archived=1';
     const [list, regList, commList, clubsList] = await Promise.all([
@@ -163,6 +170,25 @@ async function loadTournaments() {
     activeLobbies = activeLobbies.filter(matchesSearch);
     finishedLobbies = finishedLobbies.filter(matchesSearch);
     visibleArchivedRegList = visibleArchivedRegList.filter(matchesSearch);
+
+    // When the admin SPA is opened on a club subdomain we hide everything that
+    // doesn't belong to that club so the operator only sees relevant items.
+    // The dismiss button on the subdomain banner clears this global, so the
+    // user can opt back into the full list without leaving the subdomain.
+    const subdomainClub = (typeof window !== 'undefined' && window.__ADMIN_SUBDOMAIN_CLUB__) || null;
+    if (subdomainClub && subdomainClub.club_id) {
+      // Filter by both club_id AND community_id so cross-community legacy assignments
+      // (e.g. a tournament with club_id set to this club but a different community_id)
+      // are excluded.
+      const matchesSubdomainClub = (item) => item
+        && item.club_id === subdomainClub.club_id
+        && item.community_id === subdomainClub.community_id;
+      active = active.filter(matchesSubdomainClub);
+      finished = finished.filter(matchesSubdomainClub);
+      activeLobbies = activeLobbies.filter(matchesSubdomainClub);
+      finishedLobbies = finishedLobbies.filter(matchesSubdomainClub);
+      visibleArchivedRegList = visibleArchivedRegList.filter(matchesSubdomainClub);
+    }
 
     // Drop admin-only filters when caller is not an admin (e.g. "mine" — non-admins
     // already only see their own / shared items, so the filter would be a no-op).

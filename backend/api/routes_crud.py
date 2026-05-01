@@ -46,6 +46,7 @@ from .state import _delete_tournament, _save_tournament, _tournaments
 from .elo_integration import elo_recalculate_tournament
 from .elo_store import safe_transfer_elos_to_profiles
 from .elo_store import delete_tournament_elos
+from .leaderboard_cache import etag_for, get_mini_card_cached
 from .routes_admin_players import (
     _purge_profile_record,
     list_ghost_profiles_for_tournament,
@@ -434,6 +435,203 @@ async def get_tournament_meta(tid: str) -> dict:
         "club_logo_url": branding["club_logo_url"],
         "community_name": branding["community_name"],
         "club_name": branding["club_name"],
+    }
+
+
+@router.get("/{tid}/players/{player_id}/public-card", response_model=None)
+async def get_tournament_player_public_card(
+    tid: str,
+    player_id: str,
+    request: Request,
+    response: Response,
+) -> dict | Response:
+    """Public mini-card for a player WITHIN a single tournament.
+
+    Returns name + per-tournament ELO snapshot + W/L/D record + the most
+    recent matches (with score and ELO delta) and an ELO sparkline. No auth
+    required; mirrors the public TV view's exposure surface (no emails).
+
+    Cached in-memory for ``MINI_CARD_TTL_S`` to absorb repeat clicks, and
+    served with ``ETag`` + ``Cache-Control: public, max-age=15``.
+    """
+    if tid not in state._tournaments:
+        raise HTTPException(404, "Tournament not found")
+
+    payload = get_mini_card_cached(
+        ("tournament", tid, player_id),
+        lambda: _build_tournament_player_card(tid, player_id),
+    )
+    tag = etag_for(payload)
+    if request.headers.get("if-none-match") == tag:
+        return Response(status_code=304, headers={"ETag": tag, "Cache-Control": "public, max-age=15"})
+    response.headers["ETag"] = tag
+    response.headers["Cache-Control"] = "public, max-age=15"
+    return payload
+
+
+# Hard upper bound on the per-tournament mini-card history payload. Realistic
+# match counts sit well below this; the cap protects the ETag cost and JSON
+# size against pathological / back-imported tournaments.
+RECENT_MATCHES_HARD_CAP: int = 200
+
+
+def _collect_tournament_match_round_info(tournament: object) -> dict[str, tuple[int, str]]:
+    """Map ``match_id -> (round_number, round_label)`` from the live tournament.
+
+    Used as a fallback for ELO logs stored before round info was persisted in
+    ``match_payload``. Walks every container exposed by the format.
+    """
+    info: dict[str, tuple[int, str]] = {}
+
+    def _ingest(matches: list) -> None:
+        for m in matches or []:
+            mid = getattr(m, "id", None)
+            if mid:
+                info[mid] = (int(getattr(m, "round_number", 0) or 0), str(getattr(m, "round_label", "") or ""))
+
+    if tournament is None:
+        return info
+    all_matches_fn = getattr(tournament, "all_matches", None)
+    if callable(all_matches_fn):
+        _ingest(all_matches_fn())
+    for g in getattr(tournament, "groups", []) or []:
+        _ingest(getattr(g, "matches", []))
+    bracket = getattr(tournament, "playoff_bracket", None)
+    bracket_all_fn = getattr(bracket, "all_matches", None) if bracket is not None else None
+    if callable(bracket_all_fn):
+        _ingest(bracket_all_fn())
+    return info
+
+
+def _build_tournament_player_card(tid: str, player_id: str) -> dict:
+    """Build (uncached) the public mini-card payload for a tournament player."""
+    data = state._tournaments[tid]
+    tournament = data.get("tournament")
+    sport = data.get("sport", Sport.PADEL)
+    round_info_by_match = _collect_tournament_match_round_info(tournament)
+
+    # Resolve display name from the in-memory tournament roster (preferred)
+    # or fall back to the most recent match log payload.
+    player_name: str | None = None
+    if tournament is not None:
+        for p in getattr(tournament, "players", []) or []:
+            if getattr(p, "id", None) == player_id:
+                player_name = getattr(p, "name", None) or player_id
+                break
+
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT match_id, sport, elo_before, elo_after, elo_delta,
+                      match_payload, updated_at, is_manual, match_order
+               FROM player_elo_log
+              WHERE tournament_id = ? AND player_id = ?
+              ORDER BY updated_at ASC, match_order ASC""",
+            (tid, player_id),
+        ).fetchall()
+
+    if player_name is None and not rows:
+        raise HTTPException(404, "Player not in this tournament")
+    if player_name is None:
+        # Last resort: scan the latest payload for the player's name.
+        for r in reversed(rows):
+            try:
+                payload = json.loads(r["match_payload"] or "{}")
+            except (ValueError, TypeError):
+                payload = {}
+            for entry in (payload.get("team1") or []) + (payload.get("team2") or []):
+                if entry.get("player_id") == player_id and entry.get("player_name"):
+                    player_name = entry["player_name"]
+                    break
+            if player_name:
+                break
+        if player_name is None:
+            player_name = player_id
+
+    wins = draws = losses = 0
+    elo_history: list[float] = []
+    recent: list[dict] = []
+    for r in rows:
+        try:
+            payload = json.loads(r["match_payload"] or "{}")
+        except (ValueError, TypeError):
+            payload = {}
+        team1 = payload.get("team1") or []
+        team2 = payload.get("team2") or []
+        team1_ids = {p.get("player_id") for p in team1}
+        team2_ids = {p.get("player_id") for p in team2}
+        on_team1 = player_id in team1_ids
+        on_team2 = player_id in team2_ids
+
+        score = payload.get("score") or []
+        if not r["is_manual"] and isinstance(score, list) and len(score) >= 2:
+            try:
+                s1 = int(score[0])
+                s2 = int(score[1])
+            except (ValueError, TypeError):
+                s1 = s2 = 0
+            if on_team1 or on_team2:
+                if s1 == s2:
+                    draws += 1
+                else:
+                    won = (s1 > s2 and on_team1) or (s2 > s1 and on_team2)
+                    if won:
+                        wins += 1
+                    else:
+                        losses += 1
+
+        if r["elo_after"] is not None:
+            elo_history.append(round(float(r["elo_after"]), 1))
+
+        round_number = payload.get("round_number")
+        round_label = payload.get("round_label") or ""
+        if not round_number and not round_label:
+            fallback = round_info_by_match.get(r["match_id"])
+            if fallback:
+                round_number = fallback[0] or None
+                round_label = fallback[1]
+
+        recent.append(
+            {
+                "match_id": r["match_id"],
+                "score": score,
+                "team1": [p.get("player_name", "") for p in team1],
+                "team2": [p.get("player_name", "") for p in team2],
+                "elo_before": r["elo_before"],
+                "elo_after": r["elo_after"],
+                "elo_delta": r["elo_delta"],
+                "updated_at": r["updated_at"],
+                "is_manual": bool(r["is_manual"]),
+                "round_number": round_number or None,
+                "round_label": round_label,
+            }
+        )
+
+    # Newest-first for display; sparkline already chronological.
+    recent.reverse()
+    matches_played = wins + draws + losses
+    current_elo = elo_history[-1] if elo_history else None
+    starting_elo = next(
+        (float(r["elo_before"]) for r in rows if r["elo_before"] is not None),
+        None,
+    )
+    elo_delta_total = (
+        round(current_elo - starting_elo, 1) if current_elo is not None and starting_elo is not None else None
+    )
+
+    return {
+        "tournament_id": tid,
+        "player_id": player_id,
+        "player_name": player_name,
+        "sport": sport,
+        "elo": current_elo,
+        "elo_start": round(starting_elo, 1) if starting_elo is not None else None,
+        "elo_delta_total": elo_delta_total,
+        "matches": matches_played,
+        "wins": wins,
+        "draws": draws,
+        "losses": losses,
+        "recent_matches": recent[:RECENT_MATCHES_HARD_CAP],
+        "elo_history": elo_history,
     }
 
 

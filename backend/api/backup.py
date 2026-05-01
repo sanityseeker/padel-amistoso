@@ -96,14 +96,20 @@ async def _run_backup_cycle(backup_dir: Path, keep: int) -> None:
 
 
 async def _backup_loop(interval_hours: float, keep: int, backup_dir: Path) -> None:
-    """Async loop that runs backup + prune on the given interval."""
+    """Async loop that runs backup + prune on the given interval.
+
+    Runs a first cycle immediately so a fresh process always produces a
+    snapshot, then sleeps between subsequent cycles. This avoids the case
+    where a server that restarts more frequently than ``interval_hours``
+    never creates a backup at all.
+    """
     interval_secs = interval_hours * 3600
     while True:
-        await asyncio.sleep(interval_secs)
         try:
             await _run_backup_cycle(backup_dir, keep)
         except Exception as exc:  # noqa: BLE001
             log.error("Scheduled backup failed: %s", exc)
+        await asyncio.sleep(interval_secs)
 
 
 def start_backup_scheduler(

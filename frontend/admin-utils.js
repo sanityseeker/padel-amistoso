@@ -5,6 +5,9 @@ const API = '';  // same origin
   try {
     const response = await fetch('/api/config');
     const config = await response.json();
+    if (config && config.amistoso_domain) {
+      window.__AMISTOSO_DOMAIN__ = String(config.amistoso_domain).toLowerCase();
+    }
     const demoBanner = document.getElementById('demo-banner');
     if (config.demo_mode && demoBanner) {
       demoBanner.style.display = 'block';

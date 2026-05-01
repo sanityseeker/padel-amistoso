@@ -49,6 +49,7 @@ try {
 } catch (_) {}
 let _selectedCommunityId = null; // null = global, otherwise community filter sent to API
 let _selectedClubId = null; // null = no club filter
+let _subdomainClub = null; // {club_id, name, slug, has_logo, logo_url} when on a club subdomain, else null
 let _authStep = 'passphrase'; // 'passphrase' | 'create'
 let _resolveResult = null;    // null | {type: 'profile'|'participation'|'not_found', matches: [...]}
 let _resolvedPassphrase = ''; // the passphrase that was resolved
@@ -236,8 +237,14 @@ function _prunePathState() {
 // ── Init ─────────────────────────────────────────────────
 
 function _init() {
-  // Fetch communities and leaderboard (public, no auth) — fire-and-forget, re-renders when ready
-  _fetchCommunities().then(() => _fetchLeaderboard()).then(() => _render()).catch(() => {});
+  // Resolve the club subdomain context (if any) before fetching public data, so
+  // the leaderboard/space queries can be pre-scoped to that club on first paint.
+  _resolveSubdomainContext().then(() => {
+    // Fetch communities and leaderboard (public, no auth) — fire-and-forget, re-renders when ready
+    _fetchCommunities().then(() => _fetchLeaderboard()).then(() => _render()).catch(() => {});
+  }).catch(() => {
+    _fetchCommunities().then(() => _fetchLeaderboard()).then(() => _render()).catch(() => {});
+  });
 
   // Check for JWT autologin and/or email verification via URL fragment.
   // Used by email links like #token=<jwt> and #verify_token=<jwt>.
@@ -766,6 +773,9 @@ function _setSelectedStatsScope(scopeValue) {
   _selectedCommunityId = _scopeToCommunityId(_selectedStatsScope);
   _selectedClubId = _scopeToClubId(_selectedStatsScope);
   try { localStorage.setItem(STORAGE_COMMUNITY_KEY, _selectedStatsScope || ''); } catch (_) {}
+  // Mark that the user has explicitly chosen a scope this session so the
+  // subdomain auto-scope won't override their choice on the next render.
+  try { sessionStorage.setItem('player-subdomain-override', '1'); } catch (_) {}
   // Re-fetch scope-aware data then re-render.
   Promise.all([
     _fetchLeaderboard(),
@@ -872,6 +882,61 @@ function _buildStatsScopeCard() {
   return html;
 }
 
+// ── Subdomain context (club-scoped player space) ──────────────────────────
+
+async function _resolveSubdomainContext() {
+  // When the page is loaded on ``{slug}.amistoso.club``, resolve the slug to a
+  // club and (only if the user has no explicit scope yet) auto-select that
+  // club so the leaderboard / space queries are pre-filtered.
+  const slug = (typeof getClubSubdomain === 'function') ? getClubSubdomain() : null;
+  if (!slug) return;
+  try {
+    const res = await fetch(`/api/clubs/by-slug/${encodeURIComponent(slug)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data || !data.club_id) return;
+    _subdomainClub = data;
+    // Apply the club scope on every page load unless the user explicitly opted
+    // out via the "Show all" button (or the scope selector) during this session.
+    // This ensures the club page always shows club-scoped stats by default,
+    // regardless of any scope the user saved from a previous visit elsewhere.
+    let overridden = false;
+    try { overridden = sessionStorage.getItem('player-subdomain-override') === '1'; } catch (_) {}
+    if (!overridden) {
+      _selectedStatsScope = `club:${data.club_id}`;
+      _selectedClubId = data.club_id;
+      _selectedCommunityId = null;
+    }
+  } catch (_) {
+    // Silently ignore \u2014 subdomain context is optional
+  }
+}
+
+function _clearSubdomainScope() {
+  // Lets the user opt out of the subdomain-imposed default scope. The choice
+  // is remembered for this browser session only — a fresh tab on the same
+  // subdomain will once again default to the club scope.
+  try { sessionStorage.setItem('player-subdomain-override', '1'); } catch (_) {}
+  _setSelectedStatsScope('');
+}
+
+function _buildSubdomainBanner() {
+  if (!_subdomainClub) return '';
+  const name = _subdomainClub.name || _subdomainClub.slug || '';
+  const showingClubScope = _selectedClubId === _subdomainClub.club_id;
+  const label = (t('txt_player_subdomain_banner') || 'Stats scoped to {club}').replace('{club}', name);
+  let html = `<div class="player-subdomain-banner" role="status">`;
+  if (_subdomainClub.logo_url) {
+    html += `<img class="player-subdomain-logo" src="${esc(_subdomainClub.logo_url)}" alt="${esc(t('txt_club_logo_alt') || 'Club logo')}">`;
+  }
+  html += `<span class="player-subdomain-text">${esc(label)}</span>`;
+  if (showingClubScope) {
+    html += `<button type="button" class="player-subdomain-clear" onclick="_clearSubdomainScope()">${esc(t('txt_player_subdomain_show_all') || 'Show all')}</button>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
 async function _fetchCommunities() {
   try {
     const res = await fetch('/api/communities');
@@ -965,19 +1030,21 @@ function _buildLeaderboardPanel() {
   html += `<div class="player-leaderboard-body">`;
 
   // Controls row: community selector + sport toggle pills — same flex row.
-  // Always render the sport toggle so users can switch sports even when the
-  // current selection has no players (and we just show empty results).
+  // When only one sport has data, auto-select that sport and hide the toggle.
   const communitySelectHtml = _buildCommunitySelect('leaderboard-community');
-  const activeSportPill = _leaderboardSport;
-  const sportToggleHtml = `<div class="leaderboard-sport-toggle">`
-    + `<button type="button" class="leaderboard-pill${activeSportPill === 'padel' ? ' leaderboard-pill--active' : ''}" data-sport="padel" onclick="event.stopPropagation(); _setLeaderboardSport('padel')">${esc(t('txt_player_sport_padel'))}</button>`
-    + `<button type="button" class="leaderboard-pill${activeSportPill === 'tennis' ? ' leaderboard-pill--active' : ''}" data-sport="tennis" onclick="event.stopPropagation(); _setLeaderboardSport('tennis')">${esc(t('txt_player_sport_tennis'))}</button>`
-    + `</div>`;
+  const bothSports = hasPadel && hasTennis;
+  const activeSportPill = bothSports ? _leaderboardSport : (hasTennis ? 'tennis' : 'padel');
+  const sportToggleHtml = bothSports
+    ? (`<div class="leaderboard-sport-toggle">`
+      + `<button type="button" class="leaderboard-pill${activeSportPill === 'padel' ? ' leaderboard-pill--active' : ''}" data-sport="padel" onclick="event.stopPropagation(); _setLeaderboardSport('padel')">${esc(t('txt_player_sport_padel'))}</button>`
+      + `<button type="button" class="leaderboard-pill${activeSportPill === 'tennis' ? ' leaderboard-pill--active' : ''}" data-sport="tennis" onclick="event.stopPropagation(); _setLeaderboardSport('tennis')">${esc(t('txt_player_sport_tennis'))}</button>`
+      + `</div>`)
+    : '';
   if (communitySelectHtml || sportToggleHtml) {
     html += `<div class="leaderboard-controls-row">${communitySelectHtml}${sportToggleHtml}</div>`;
   }
 
-  const entries = _leaderboardSport === 'tennis' ? (_leaderboard.tennis || []) : (_leaderboard.padel || []);
+  const entries = activeSportPill === 'tennis' ? (_leaderboard.tennis || []) : (_leaderboard.padel || []);
   html += _buildLeaderboardTable(entries);
 
   html += `</div>`;
@@ -1031,6 +1098,7 @@ function _render() {
   if (_jwt && _profile) _startSpacePolling();
   else _stopSpacePolling();
   let html = _buildHeader();
+  html += _buildSubdomainBanner();
   if (_jwt && _profile) {
     html += _buildDashboard();
   } else {

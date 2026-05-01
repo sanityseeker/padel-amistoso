@@ -117,7 +117,7 @@ function _renderClubStatusBar(club, comm) {
   return `
     <div class="card club-status-bar tournament-status-bar" id="club-status-bar-${esc(club.id)}">
       <div class="club-status-bar-row">
-        <button class="btn btn-sm club-status-bar-back" onclick="clubsBackToOverview()" aria-label="${escAttr(t('txt_txt_back'))}">←</button>
+        ${!(typeof window !== 'undefined' && window.__ADMIN_SUBDOMAIN_CLUB__) ? `<button class="btn btn-sm club-status-bar-back" onclick="clubsBackToOverview()" aria-label="${escAttr(t('txt_txt_back'))}">←</button>` : ''}
         ${logoImg}
         <h3 class="club-status-bar-title">${esc(club.name)}${comm ? `<span class="muted-note club-status-bar-comm">· ${esc(comm.name)}</span>` : ''}</h3>
         <span class="badge badge-count club-status-bar-count">${playerCount} ${t(playerCount === 1 ? 'txt_clubs_player_singular' : 'txt_clubs_players_plural')}</span>
@@ -164,6 +164,61 @@ function _renderClubGeneralBody(club) {
   }
   html += `<span id="clubs-logo-msg" style="font-size:0.84rem"></span>`;
   html += `</div>`;
+  html += `</div>`;
+
+  // Web address (subdomain slug)
+  const slug = club.slug || '';
+  // Prefer the server-configured base domain (from /api/config). Fall back
+  // to inferring from window.location, then to the canonical production
+  // domain so the preview stays shareable from local dev.
+  const configuredDomain = (typeof window !== 'undefined' && window.__AMISTOSO_DOMAIN__) || '';
+  const host = (typeof window !== 'undefined' && window.location && window.location.hostname) || '';
+  const parts = host.split('.');
+  const looksPublic = parts.length >= 2 && !host.endsWith('localhost') && host !== '127.0.0.1';
+  const baseDomain = configuredDomain || (looksPublic ? parts.slice(-2).join('.') : 'amistoso.club');
+  // The constructed URL targets the public domain, which is always HTTPS.
+  const fullUrl = slug ? `https://${slug}.${baseDomain}` : '';
+  html += `<div class="settings-block">`;
+  html += `<label class="settings-label" for="clubs-slug-input">${t('txt_clubs_slug_label')}</label>`;
+  html += `<p class="settings-help">${t('txt_clubs_slug_help')}</p>`;
+  html += `<div class="settings-inline-row">`;
+  html += `<input type="text" id="clubs-slug-input" class="settings-input settings-input--mono settings-input--grow" `
+        + `value="${escAttr(slug)}" placeholder="${escAttr(t('txt_clubs_slug_placeholder'))}" `
+        + `pattern="[a-z0-9-]{2,30}" maxlength="30" autocomplete="off" spellcheck="false">`;
+  html += `<button class="btn btn-sm btn-primary" onclick="clubsSaveSlug()">${t('txt_clubs_slug_save')}</button>`;
+  if (slug) {
+    html += `<button class="btn btn-sm btn-danger" onclick="clubsClearSlug()">${t('txt_clubs_slug_clear')}</button>`;
+  }
+  html += `</div>`;
+  if (slug) {
+    html += `<div class="settings-inline-row" style="margin-top:0.4rem">`;
+    html += `<a href="${escAttr(fullUrl)}" target="_blank" rel="noopener" class="settings-input settings-input--mono settings-input--grow" `
+          + `style="text-decoration:none">${esc(fullUrl)}</a>`;
+    html += `<button class="btn btn-sm" onclick="clubsCopySlugUrl('${escAttr(fullUrl)}')">${t('txt_clubs_slug_copy')}</button>`;
+    html += `</div>`;
+  }
+  html += `<div id="clubs-slug-msg" class="settings-inline-msg"></div>`;
+  html += `</div>`;
+
+  // Landing page customisation: description (tagline) + pinned tournaments
+  html += `<div class="settings-block">`;
+  html += `<label class="settings-label">${t('txt_clubs_landing_section')}</label>`;
+  html += `<p class="settings-help">${t('txt_clubs_landing_description_help')}</p>`;
+  html += `<div class="settings-inline-row">`;
+  html += `<input type="text" id="clubs-landing-desc-input" class="settings-input settings-input--grow" `
+        + `value="${escAttr(club.description || '')}" placeholder="${escAttr(t('txt_clubs_landing_description_placeholder'))}" maxlength="500">`;
+  html += `<button class="btn btn-sm btn-primary" onclick="clubsSaveLandingDescription()">${t('txt_txt_save')}</button>`;
+  html += `</div>`;
+  html += `<div id="clubs-landing-desc-msg" class="settings-inline-msg"></div>`;
+  html += `</div>`;
+
+  html += `<div class="settings-block clubs-landing-pinned-block">`;
+  html += `<details class="clubs-landing-pinned-details" open>`;
+  html += `<summary class="clubs-landing-pinned-summary">${t('txt_clubs_landing_pinned_label')}</summary>`;
+  html += `<p class="settings-help">${t('txt_clubs_landing_pinned_help')}</p>`;
+  html += `<div id="clubs-landing-pinned-list" class="clubs-landing-pinned-list"></div>`;
+  html += `</details>`;
+  html += `<div id="clubs-landing-pinned-msg" class="settings-inline-msg"></div>`;
   html += `</div>`;
 
   return html;

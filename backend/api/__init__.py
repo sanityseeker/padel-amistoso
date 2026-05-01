@@ -95,16 +95,34 @@ app = FastAPI(
     lifespan=_lifespan,
 )
 
+_AMISTOSO_DOMAIN = os.environ.get("AMISTOSO_DOMAIN", "").strip().lower()
+
+
+def _amistoso_origin_regex() -> str | None:
+    """Return a regex matching ``http(s)://{anything}.{AMISTOSO_DOMAIN}`` or its apex."""
+    if not _AMISTOSO_DOMAIN:
+        return None
+    escaped = _AMISTOSO_DOMAIN.replace(".", r"\.")
+    # Optional subdomain label, then the domain, optional explicit port.
+    return rf"^https?://([a-z0-9-]+\.)*{escaped}(:\d+)?$"
+
+
+_CORS_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:8000").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("ALLOWED_ORIGINS", "http://localhost:8000").split(","),
+    allow_origins=_CORS_ORIGINS,
+    allow_origin_regex=_amistoso_origin_regex(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-_ALLOWED_ORIGINS = [
-    o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:8000").split(",") if o.strip()
-]
+_ALLOWED_ORIGINS = list(_CORS_ORIGINS)
+_AMISTOSO_ORIGIN_RE = None
+if _AMISTOSO_DOMAIN:
+    import re as _re
+
+    _AMISTOSO_ORIGIN_RE = _re.compile(_amistoso_origin_regex() or "")
 _UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
@@ -117,6 +135,14 @@ def _origin_from_header(value: str | None) -> str | None:
     return None
 
 
+def _origin_is_allowed(origin: str) -> bool:
+    if origin in _ALLOWED_ORIGINS:
+        return True
+    if _AMISTOSO_ORIGIN_RE is not None and _AMISTOSO_ORIGIN_RE.match(origin):
+        return True
+    return False
+
+
 @app.middleware("http")
 async def csrf_origin_protection(request: Request, call_next):
     """Block cross-site browser writes by validating Origin/Referer.
@@ -124,18 +150,106 @@ async def csrf_origin_protection(request: Request, call_next):
     - Only applies to unsafe API methods.
     - Requests without Origin/Referer are allowed (CLI clients, tests).
     - Browser requests with mismatched origin are rejected.
+    - Same-origin requests (Origin host == Host header) are always allowed.
+    - Any ``*.{AMISTOSO_DOMAIN}`` origin is accepted when the env var is set.
     """
     if request.method in _UNSAFE_METHODS and request.url.path.startswith("/api/"):
         origin = _origin_from_header(request.headers.get("origin"))
         referer_origin = _origin_from_header(request.headers.get("referer"))
         source_origin = origin or referer_origin
-        if source_origin is not None and source_origin not in _ALLOWED_ORIGINS:
-            return JSONResponse(status_code=403, content={"detail": "CSRF validation failed"})
+        if source_origin is not None and not _origin_is_allowed(source_origin):
+            # Same-origin: the request's Origin host matches the Host header
+            # the server is replying on. This covers any subdomain a user
+            # legitimately reaches the app through, regardless of env config.
+            host_header = (request.headers.get("host") or "").lower()
+            source_host = urlparse(source_origin).netloc.lower()
+            if not host_header or source_host != host_header:
+                return JSONResponse(status_code=403, content={"detail": "CSRF validation failed"})
     _persist_failed.set(False)
     response = await call_next(request)
     if _persist_failed.get():
         response.headers["X-Persist-Warning"] = "true"
     return response
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Subdomain routing middleware
+# ────────────────────────────────────────────────────────────────────────────
+#
+# When the request arrives for ``{label}.{AMISTOSO_DOMAIN}``:
+#
+# - ``admin.amistoso.club``   → 301 redirect to the apex (admin lives at ``/``)
+# - ``{slug}.amistoso.club`` + path ``/`` → ``club.html`` if the slug resolves
+#
+# All other paths (``/api/*``, ``/tv``, ``/register``, static assets, …) are
+# left untouched so they keep working from any subdomain.
+
+_SUBDOMAIN_RESERVED: frozenset[str] = frozenset(
+    {"admin", "tv", "player", "register", "api", "www", "app", "mail", "ftp", "static", "assets"}
+)
+
+
+def _extract_subdomain_label(host: str) -> str | None:
+    """Return the leftmost label of ``host`` if it sits under AMISTOSO_DOMAIN.
+
+    Returns ``"__invalid__"`` for multi-level prefixes so the caller can 404
+    them rather than leaking apex content under arbitrary hostnames.
+    """
+    if not _AMISTOSO_DOMAIN or not host:
+        return None
+    h = host.split(":")[0].lower()
+    if h == _AMISTOSO_DOMAIN or not h.endswith("." + _AMISTOSO_DOMAIN):
+        return None
+    label = h[: -(len(_AMISTOSO_DOMAIN) + 1)]
+    if "." in label:
+        # Multi-level (e.g. ``foo.bar.amistoso.club``) — treat as invalid.
+        return "__invalid__"
+    return label or None
+
+
+@app.middleware("http")
+async def subdomain_router(request: Request, call_next):
+    """Handle ``admin.`` redirects and ``{slug}.`` landing pages."""
+    host = request.headers.get("host", "")
+    label = _extract_subdomain_label(host)
+    if label is None:
+        return await call_next(request)
+    if label == "__invalid__":
+        # Multi-level subdomains can never be a valid club slug. Redirect straight
+        # to the apex — the backend knows the correct home URL, so we don't need
+        # the JS split-on-dot heuristic at all.
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme) or "https"
+        port = request.url.port
+        apex = f"{_AMISTOSO_DOMAIN}:{port}" if port else _AMISTOSO_DOMAIN
+        return RedirectResponse(url=f"{scheme}://{apex}/", status_code=302)
+    if label in _SUBDOMAIN_RESERVED:
+        return await call_next(request)
+    # Resolve the label as a club slug. Unknown subdomains 404 entirely so we
+    # don't leak the apex content under arbitrary hostnames.
+    from .db import get_db  # noqa: PLC0415
+
+    with get_db() as conn:
+        row = conn.execute("SELECT id FROM clubs WHERE slug = ?", (label,)).fetchone()
+    if row is None:
+        # Only intercept the root path so that assets (/404.png, /i18n.js, etc.)
+        # can still be served by the apex routes.
+        if request.url.path != "/" or request.method != "GET":
+            return await call_next(request)
+        return Response(
+            content=_read_frontend_text("404.html") or "<h1>Not found</h1>",
+            media_type="text/html",
+            status_code=404,
+            headers={"Cache-Control": "no-cache"},
+        )
+    # Known club: serve club.html only on the root GET; let everything else
+    # (API calls, /admin, /tv, static assets) fall through to the apex routes.
+    if request.url.path != "/" or request.method != "GET":
+        return await call_next(request)
+    return Response(
+        content=_read_frontend_text("club.html") or "<h1>Club page not found</h1>",
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 # Register routers
@@ -168,7 +282,10 @@ app.include_router(sse_router)
 async def get_config(response: Response) -> dict:
     """Return application configuration for frontend."""
     response.headers["Cache-Control"] = "public, max-age=60"
-    return {"demo_mode": os.environ.get("DEMO_MODE", "").lower() in ("true", "1", "yes")}
+    return {
+        "demo_mode": os.environ.get("DEMO_MODE", "").lower() in ("true", "1", "yes"),
+        "amistoso_domain": _AMISTOSO_DOMAIN or None,
+    }
 
 
 @app.get("/api/version")
@@ -259,6 +376,7 @@ def _serve_png_file(filename: str, request: Request | None = None) -> Response:
 
 
 @app.get("/")
+@app.get("/admin")
 async def serve_frontend() -> Response:
     return Response(
         content=_read_frontend_text("index.html") or "<h1>Frontend not found</h1>",
@@ -430,6 +548,24 @@ async def serve_admin_clubs_js(request: Request) -> Response:
 async def serve_admin_clubs_settings_panel_js(request: Request) -> Response:
     """Serve the unified per-club Settings card orchestrator."""
     return _serve_js_file("admin-clubs-settings-panel.js", request)
+
+
+@app.get("/admin-subdomain-context.js")
+async def serve_admin_subdomain_context_js(request: Request) -> Response:
+    """Serve the admin subdomain context banner script."""
+    return _serve_js_file("admin-subdomain-context.js", request)
+
+
+@app.get("/club.js")
+async def serve_club_js(request: Request) -> Response:
+    """Serve the per-club public landing-page JavaScript."""
+    return _serve_js_file("club.js", request)
+
+
+@app.get("/club.css")
+async def serve_club_css(request: Request) -> Response:
+    """Serve the per-club public landing-page stylesheet."""
+    return _serve_css_file("club.css", request)
 
 
 @app.get("/tv.js")

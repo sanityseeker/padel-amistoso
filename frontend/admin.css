@@ -862,6 +862,15 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
 .player-codes-head-row { border-bottom: 2px solid var(--border); }
 .player-codes-th { text-align: left; padding: 0.4rem 0.6rem; }
 .player-codes-th-center { text-align: center; padding: 0.4rem 0.6rem; }
+/* Sticky thead so column titles remain visible when scrolling long player /
+   leaderboard tables. Background must be opaque to mask scrolled rows. */
+.player-codes-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  box-shadow: inset 0 -2px 0 var(--border);
+}
 .player-codes-row { border-bottom: 1px solid var(--border); }
 .player-codes-name { padding: 0.4rem 0.6rem; font-weight: 600; }
 .player-codes-cell { padding: 0.4rem 0.6rem; }
@@ -2590,7 +2599,9 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
 .clubs-sport-pill:not(:last-child) { border-right: 1px solid var(--border); }
 .clubs-sport-pill:hover { background: var(--bg); }
 .clubs-sport-pill--active { background: var(--accent); color: #fff; font-weight: 600; }
+.clubs-sport-pill--active:hover { background: var(--accent); }
 .clubs-sport-pill--active[data-sport="tennis"] { background: var(--sport-tennis, #10b981); }
+.clubs-sport-pill--active[data-sport="tennis"]:hover { background: var(--sport-tennis, #10b981); }
 .clubs-sport-bar {
   display: flex;
   align-items: center;
@@ -2736,6 +2747,70 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
 .clubs-recipient-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clubs-recipient-email { white-space: nowrap; }
 .clubs-compose-block { padding-top: 0.2rem; }
+
+/* Clubs landing pinned checklist (Settings > General) */
+.clubs-landing-pinned-block {
+  margin-top: 0.25rem;
+}
+
+.clubs-landing-pinned-details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.6rem;
+  background: var(--surface-alt, var(--surface));
+}
+
+.clubs-landing-pinned-summary {
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text);
+  user-select: none;
+}
+
+.clubs-landing-pinned-details > .settings-help {
+  margin-top: 0.45rem;
+}
+
+.clubs-landing-pinned-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+
+.clubs-landing-pin-row {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.28rem 0.38rem;
+  border-radius: 6px;
+}
+
+.clubs-landing-pin-row:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.clubs-landing-pin-cb {
+  margin: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.clubs-landing-pin-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clubs-landing-pin-status {
+  font-size: 0.72rem;
+}
 
 .clubs-players-toolbar {
   display: flex;
@@ -5548,3 +5623,43 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   font-size: 0.85rem;
   padding: 0.4rem 0;
 }
+
+/* Sticky banner shown at the top of the admin SPA when loaded on a club
+   subdomain (e.g. ``myclub.amistoso.club/admin``). Purely informational —
+   actual permissions are unchanged. */
+.admin-subdomain-banner {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.85rem;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  font-size: 0.88rem;
+  color: var(--text);
+  flex-wrap: wrap;
+  text-align: center;
+}
+.admin-subdomain-logo {
+  width: 24px; height: 24px; border-radius: 50%;
+  object-fit: cover; flex: 0 0 auto;
+}
+.admin-subdomain-text { flex: 0 1 auto; min-width: 0; }
+.admin-subdomain-link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px dashed color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.admin-subdomain-link:hover { border-bottom-style: solid; }
+.admin-subdomain-dismiss {
+  background: transparent; border: none;
+  color: var(--text-muted);
+  font-size: 1.2rem; line-height: 1;
+  padding: 0 0.4rem;
+  cursor: pointer;
+}
+.admin-subdomain-dismiss:hover { color: var(--text); }

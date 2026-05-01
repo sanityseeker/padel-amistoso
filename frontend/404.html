@@ -73,15 +73,28 @@
 </style>
 </head>
 <body>
-  <img id="error-img" src="/404.png" alt="404 – Page not found" data-i18n-alt="txt_txt_404_image_alt">
+  <img id="error-img" src="" alt="404 – Page not found" data-i18n-alt="txt_txt_404_image_alt">
   <p id="context-msg" class="context-msg" style="display:none"></p>
   <p class="countdown"><span data-i18n="txt_txt_redirecting_home_in">Redirecting to home in</span> <span id="counter">5</span> <span data-i18n="txt_txt_seconds_ellipsis">seconds…</span></p>
   <a id="home-link" class="home-link" href="/" data-i18n="txt_txt_go_home_now">Go home now</a>
 
 <script>
+  // Always strip the leftmost label so any subdomain redirects to its parent.
+  // e.g. wrongclub.localhost → localhost, wrongclub.amistoso.app → amistoso.app
+  function _rootHomeUrl() {
+    const parts = window.location.hostname.split('.');
+    const apex = parts.length > 1 ? parts.slice(1).join('.') : parts[0];
+    return window.location.protocol + '//' + apex
+      + (window.location.port ? ':' + window.location.port : '') + '/';
+  }
+
+  // Point static assets at the apex domain so they load on unknown subdomains.
+  const _rootOrigin = _rootHomeUrl().replace(/\/$/, '');
+  document.getElementById('error-img').src = _rootOrigin + '/404.png';
+
   const params = new URLSearchParams(window.location.search);
   const context = params.get('m');
-  const redirectTarget = params.get('to') || '/';
+  const redirectTarget = params.get('to') || _rootHomeUrl();
   if (context) {
     const contextEl = document.getElementById('context-msg');
     contextEl.textContent = context;

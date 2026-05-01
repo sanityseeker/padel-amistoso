@@ -1862,3 +1862,473 @@ class TestClubPossibleMembers:
             ).fetchone()
         assert row is not None
         assert row["hidden"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Subdomain slug + public landing-page endpoints
+# ---------------------------------------------------------------------------
+
+
+class TestClubSlug:
+    """PATCH /api/clubs/{id}/slug — set/clear/validate/conflict."""
+
+    def test_set_and_get_slug(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.patch(
+            f"/api/clubs/{club['id']}/slug",
+            json={"slug": "myclub"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["slug"] == "myclub"
+
+        get_res = client.get(f"/api/clubs/{club['id']}", headers=auth_headers)
+        assert get_res.status_code == 200
+        assert get_res.json()["slug"] == "myclub"
+
+    def test_clear_slug(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        client.patch(f"/api/clubs/{club['id']}/slug", json={"slug": "todrop"}, headers=auth_headers)
+        res = client.patch(f"/api/clubs/{club['id']}/slug", json={"slug": None}, headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json()["slug"] is None
+
+    @pytest.mark.parametrize("bad", ["x", "A", "with space", "under_score"])
+    def test_invalid_slug_rejected(self, client, auth_headers, bad) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.patch(
+            f"/api/clubs/{club['id']}/slug",
+            json={"slug": bad},
+            headers=auth_headers,
+        )
+        assert res.status_code == 400
+
+    @pytest.mark.parametrize("reserved", ["admin", "tv", "register", "api", "www"])
+    def test_reserved_slug_rejected(self, client, auth_headers, reserved) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.patch(
+            f"/api/clubs/{club['id']}/slug",
+            json={"slug": reserved},
+            headers=auth_headers,
+        )
+        assert res.status_code == 400
+
+    def test_duplicate_slug_rejected(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        c1 = _create_club(client, auth_headers, comm["id"], name="One")
+        c2 = _create_club(client, auth_headers, comm["id"], name="Two")
+        client.patch(f"/api/clubs/{c1['id']}/slug", json={"slug": "shared"}, headers=auth_headers)
+        res = client.patch(
+            f"/api/clubs/{c2['id']}/slug",
+            json={"slug": "shared"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 409
+
+
+class TestClubBySlug:
+    """GET /api/clubs/by-slug/{slug} — public lookup."""
+
+    def test_resolve_known_slug(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        client.patch(f"/api/clubs/{club['id']}/slug", json={"slug": "found"}, headers=auth_headers)
+        # Public — no auth header
+        res = client.get("/api/clubs/by-slug/found")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["club_id"] == club["id"]
+        assert body["slug"] == "found"
+        assert body["name"] == club["name"]
+        assert "email" not in body
+
+    def test_unknown_slug_returns_404(self, client) -> None:
+        res = client.get("/api/clubs/by-slug/does-not-exist")
+        assert res.status_code == 404
+
+    def test_reserved_slug_returns_404(self, client) -> None:
+        res = client.get("/api/clubs/by-slug/admin")
+        assert res.status_code == 404
+
+
+class TestPublicLeaderboard:
+    """GET /api/clubs/{id}/public-leaderboard — no auth, no email."""
+
+    def test_empty_club(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.get(f"/api/clubs/{club['id']}/public-leaderboard?sport=padel")
+        assert res.status_code == 200
+        assert res.json() == []
+
+    def test_unknown_club(self, client) -> None:
+        res = client.get("/api/clubs/cl_unknown/public-leaderboard")
+        assert res.status_code == 404
+
+    def test_no_email_in_response(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        # Seed one profile with a club ELO row + one match in a club tournament.
+        with get_db() as conn:
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                "INSERT INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost)"
+                " VALUES (?, ?, ?, ?, '', ?, 0)",
+                ("pp_lb1", _secrets.token_hex(8), "Leaderboard P1", "secret@example.com", now),
+            )
+            conn.execute(
+                "INSERT INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden)"
+                " VALUES (?, ?, 'padel', 1100, 0, 0)",
+                ("pp_lb1", club["id"]),
+            )
+            conn.execute(
+                "INSERT INTO tournaments (id, name, type, owner, public, tournament_blob, version,"
+                " sport, community_id, created_at, club_id)"
+                " VALUES (?, 'T', 'group_playoff', 'admin', 1, X'00', 0, 'padel', ?, ?, ?)",
+                ("t_lb1", comm["id"], now, club["id"]),
+            )
+            conn.execute(
+                "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)"
+                " VALUES (?, ?, '', ?, ?, ?)",
+                ("t_lb1", "pl1", _secrets.token_hex(8), _secrets.token_hex(8), "pp_lb1"),
+            )
+            conn.execute(
+                "INSERT INTO player_elo_log (tournament_id, player_id, sport, elo_before, elo_after,"
+                " elo_delta, match_id, match_payload, match_order, updated_at, is_manual)"
+                " VALUES (?, ?, 'padel', 1000, 1100, 100, 'm1', '{}', 1, ?, 0)",
+                ("t_lb1", "pl1", now),
+            )
+        res = client.get(f"/api/clubs/{club['id']}/public-leaderboard?sport=padel")
+        assert res.status_code == 200
+        rows = res.json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["name"] == "Leaderboard P1"
+        assert row["matches"] == 1
+        assert row["rank"] == 1
+        assert row["elo"] == 1100.0
+        assert "email" not in row
+
+
+class TestPublicPlayerCard:
+    """GET /api/clubs/{id}/players/{profile_id}/public-card — no auth, no email."""
+
+    def _seed_player_with_match(self, client, auth_headers, *, hidden: bool = False):
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                "INSERT INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost)"
+                " VALUES (?, ?, ?, ?, '', ?, 0)",
+                ("pp_card1", _secrets.token_hex(8), "Card Player", "secret@example.com", now),
+            )
+            conn.execute(
+                "INSERT INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden)"
+                " VALUES (?, ?, 'padel', 1175, 0, ?)",
+                ("pp_card1", club["id"], 1 if hidden else 0),
+            )
+            conn.execute(
+                "INSERT INTO tournaments (id, name, type, owner, public, tournament_blob, version,"
+                " sport, community_id, created_at, club_id)"
+                " VALUES (?, 'CardT', 'group_playoff', 'admin', 1, X'00', 0, 'padel', ?, ?, ?)",
+                ("t_card1", comm["id"], now, club["id"]),
+            )
+            conn.execute(
+                "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)"
+                " VALUES (?, ?, '', ?, ?, ?)",
+                ("t_card1", "plc1", _secrets.token_hex(8), _secrets.token_hex(8), "pp_card1"),
+            )
+            payload = '{"team1":[{"player_name":"Card Player"}],"team2":[{"player_name":"Opp"}],"score":[[6,3]]}'
+            conn.execute(
+                "INSERT INTO player_elo_log (tournament_id, player_id, sport, elo_before, elo_after,"
+                " elo_delta, match_id, match_payload, match_order, updated_at, is_manual)"
+                " VALUES (?, ?, 'padel', 1100, 1175, 75, 'mc1', ?, 1, ?, 0)",
+                ("t_card1", "plc1", payload, now),
+            )
+        return club
+
+    def test_unknown_club(self, client) -> None:
+        res = client.get("/api/clubs/cl_missing/players/pp_x/public-card")
+        assert res.status_code == 404
+
+    def test_unknown_profile(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.get(f"/api/clubs/{club['id']}/players/pp_missing/public-card")
+        assert res.status_code == 404
+
+    def test_returns_stats_recent_and_no_email(self, client, auth_headers) -> None:
+        club = self._seed_player_with_match(client, auth_headers)
+        res = client.get(f"/api/clubs/{club['id']}/players/pp_card1/public-card")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["name"] == "Card Player"
+        assert body["elo_padel"] == 1175.0
+        assert body["matches_padel"] == 1
+        assert body["rank_padel"] == 1
+        assert body["elo_tennis"] is None
+        assert body["matches_tennis"] == 0
+        assert body["rank_tennis"] is None
+        assert isinstance(body["recent_matches"], list)
+        assert len(body["recent_matches"]) == 1
+        rm = body["recent_matches"][0]
+        assert rm["sport"] == "padel"
+        assert rm["elo_after"] == 1175
+        assert rm["team1"] == ["Card Player"]
+        assert "email" not in body
+
+    def test_hidden_player_hides_elo_and_tier(self, client, auth_headers) -> None:
+        # A profile that is hidden in every sport is not exposed at all.
+        club = self._seed_player_with_match(client, auth_headers, hidden=True)
+        res = client.get(f"/api/clubs/{club['id']}/players/pp_card1/public-card")
+        assert res.status_code == 404
+
+
+class TestLeaderboardCacheReuse:
+    """``_compute_club_leaderboard_rows`` caches behind a version key."""
+
+    def test_repeat_calls_use_cache(self, client, auth_headers) -> None:
+        from backend.api import routes_clubs
+
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        routes_clubs.invalidate_club_leaderboard_cache(club["id"])
+        with get_db() as conn:
+            rows1 = routes_clubs._compute_club_leaderboard_rows(conn, club["id"])
+            cached1 = routes_clubs._LEADERBOARD_CACHE.get(club["id"])
+            rows2 = routes_clubs._compute_club_leaderboard_rows(conn, club["id"])
+            cached2 = routes_clubs._LEADERBOARD_CACHE.get(club["id"])
+        assert rows1 == rows2
+        # Same in-memory list object (no recomputation) when version unchanged.
+        assert cached1 is cached2
+        assert rows2 is cached2[1]
+
+    def test_invalidate_drops_cached_rows(self, client, auth_headers) -> None:
+        from backend.api import routes_clubs
+
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            routes_clubs._compute_club_leaderboard_rows(conn, club["id"])
+        assert club["id"] in routes_clubs._LEADERBOARD_CACHE
+        routes_clubs.invalidate_club_leaderboard_cache(club["id"])
+        assert club["id"] not in routes_clubs._LEADERBOARD_CACHE
+
+    def test_max_age_guard_evicts_stale_entries(self, client, auth_headers) -> None:
+        """Even with an unchanged version key, entries past the TTL are recomputed."""
+        from backend.api import leaderboard_cache, routes_clubs
+
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        routes_clubs.invalidate_club_leaderboard_cache(club["id"])
+        with get_db() as conn:
+            rows1 = routes_clubs._compute_club_leaderboard_rows(conn, club["id"])
+            cached1 = leaderboard_cache._LEADERBOARD_CACHE[club["id"]]
+            # Force-expire by rewriting the entry with an expires_at in the past.
+            leaderboard_cache._LEADERBOARD_CACHE[club["id"]] = (cached1[0], cached1[1], 0.0)
+            rows2 = routes_clubs._compute_club_leaderboard_rows(conn, club["id"])
+            cached2 = leaderboard_cache._LEADERBOARD_CACHE[club["id"]]
+        assert rows1 == rows2
+        # Entry was rebuilt (new tuple, different expires_at).
+        assert cached2[2] > 0.0
+
+
+class TestMiniCardCache:
+    """``get_mini_card_cached`` absorbs repeat lookups within the TTL."""
+
+    def test_ttl_cache_returns_same_payload(self) -> None:
+        from backend.api import leaderboard_cache
+
+        leaderboard_cache.invalidate_mini_card_cache()
+        calls = {"n": 0}
+
+        def builder() -> dict:
+            calls["n"] += 1
+            return {"value": calls["n"]}
+
+        a = leaderboard_cache.get_mini_card_cached(("test", "k1"), builder)
+        b = leaderboard_cache.get_mini_card_cached(("test", "k1"), builder)
+        assert a == b == {"value": 1}
+        assert calls["n"] == 1
+
+    def test_invalidate_by_prefix(self) -> None:
+        from backend.api import leaderboard_cache
+
+        leaderboard_cache.invalidate_mini_card_cache()
+        leaderboard_cache.get_mini_card_cached(("club", "a", "p1"), lambda: {"v": 1})
+        leaderboard_cache.get_mini_card_cached(("club", "b", "p2"), lambda: {"v": 2})
+        leaderboard_cache.get_mini_card_cached(("tournament", "t1", "p1"), lambda: {"v": 3})
+        leaderboard_cache.invalidate_mini_card_cache(("club", "a"))
+        # Only the ("club", "a", ...) entry was dropped.
+        assert ("club", "a", "p1") not in leaderboard_cache._MINI_CARD_CACHE
+        assert ("club", "b", "p2") in leaderboard_cache._MINI_CARD_CACHE
+        assert ("tournament", "t1", "p1") in leaderboard_cache._MINI_CARD_CACHE
+
+
+class TestPublicEndpointETags:
+    """``ETag`` + ``Cache-Control`` short-circuit on public endpoints."""
+
+    def test_leaderboard_returns_etag_and_handles_if_none_match(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        url = f"/api/clubs/{club['id']}/public-leaderboard"
+        first = client.get(url)
+        assert first.status_code == 200
+        tag = first.headers.get("etag")
+        assert tag and tag.startswith('"') and tag.endswith('"')
+        assert "max-age" in (first.headers.get("cache-control") or "")
+        second = client.get(url, headers={"If-None-Match": tag})
+        assert second.status_code == 304
+        assert second.headers.get("etag") == tag
+
+
+class TestPublicTournaments:
+    """GET /api/clubs/{id}/public-tournaments — public list."""
+
+    def test_unknown_club(self, client) -> None:
+        res = client.get("/api/clubs/cl_unknown/public-tournaments")
+        assert res.status_code == 404
+
+    def test_empty_club(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.get(f"/api/clubs/{club['id']}/public-tournaments")
+        assert res.status_code == 200
+        assert res.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Validation hardening
+# ---------------------------------------------------------------------------
+
+
+class TestClubNameValidation:
+    """Reject blank / whitespace-only club names on create and rename."""
+
+    @pytest.mark.parametrize("blank_name", ["", "   ", "\t", "\n"])
+    def test_create_rejects_blank_name(self, client, auth_headers, blank_name) -> None:
+        comm = _create_community(client, auth_headers)
+        res = client.post(
+            "/api/clubs",
+            json={"community_id": comm["id"], "name": blank_name},
+            headers=auth_headers,
+        )
+        assert res.status_code == 422
+
+    def test_rename_rejects_whitespace_only(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.patch(
+            f"/api/clubs/{club['id']}",
+            json={"name": "   "},
+            headers=auth_headers,
+        )
+        assert res.status_code == 422
+
+
+class TestLandingPinnedValidation:
+    """Pinned tournament IDs must belong to the same club; foreign IDs are dropped."""
+
+    def test_unknown_pinned_ids_are_filtered(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.patch(
+            f"/api/clubs/{club['id']}/landing",
+            json={"pinned_tournament_ids": ["tn_does_not_exist", "rg_also_fake"]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["pinned_tournament_ids"] == []
+
+    def test_pinned_ids_dedupe(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        # Create a registration belonging to the club so it becomes a valid pinnable id.
+        reg = client.post(
+            "/api/registrations",
+            json={
+                "name": "Open Reg",
+                "community_id": comm["id"],
+                "club_id": club["id"],
+                "sport": "padel",
+            },
+            headers=auth_headers,
+        )
+        assert reg.status_code in (200, 201)
+        rid = reg.json()["id"]
+        res = client.patch(
+            f"/api/clubs/{club['id']}/landing",
+            json={"pinned_tournament_ids": [rid, rid, "tn_unknown"]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["pinned_tournament_ids"] == [f"reg:{rid}"]
+
+    def test_prefixed_pinned_id_is_kept_and_exposed_in_public_list(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        reg = client.post(
+            "/api/registrations",
+            json={
+                "name": "Prefixed Open Reg",
+                "community_id": comm["id"],
+                "club_id": club["id"],
+                "sport": "padel",
+                "open": True,
+                "listed": True,
+            },
+            headers=auth_headers,
+        )
+        assert reg.status_code in (200, 201)
+        rid = reg.json()["id"]
+        prefixed = f"reg:{rid}"
+
+        update = client.patch(
+            f"/api/clubs/{club['id']}/landing",
+            json={"pinned_tournament_ids": [prefixed]},
+            headers=auth_headers,
+        )
+        assert update.status_code == 200
+        assert update.json()["pinned_tournament_ids"] == [prefixed]
+
+        public = client.get(f"/api/clubs/{club['id']}/public-tournaments")
+        assert public.status_code == 200
+        reg_row = next((row for row in public.json() if row["kind"] == "registration" and row["id"] == rid), None)
+        assert reg_row is not None
+        assert reg_row["pin_key"] == prefixed
+        assert reg_row["pinned"] is True
+
+
+class TestClubMalformedJsonResilience:
+    """Read endpoints should not 500 if legacy/malformed JSON is in the DB."""
+
+    def test_list_clubs_with_corrupt_pinned_json(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE clubs SET pinned_tournament_ids = ? WHERE id = ?",
+                ("not-valid-json{", club["id"]),
+            )
+        res = client.get(f"/api/clubs/{club['id']}", headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json()["pinned_tournament_ids"] == []
+        public = client.get(f"/api/clubs/{club['id']}/public-tournaments")
+        assert public.status_code == 200
+
+    def test_club_with_corrupt_email_settings(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE clubs SET email_settings = ? WHERE id = ?",
+                ("{not json", club["id"]),
+            )
+        res = client.get(f"/api/clubs/{club['id']}", headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json()["email_settings"] is None

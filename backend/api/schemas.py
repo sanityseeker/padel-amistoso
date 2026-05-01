@@ -501,6 +501,7 @@ class RegistrationCreate(BaseModel):
     auto_send_email: bool = False
     email_requirement: EmailRequirement = "optional"
     community_id: str = Field(default="open", min_length=1, max_length=64)
+    club_id: str | None = Field(default=None, max_length=64)
     season_id: str | None = Field(default=None, max_length=64)
 
 
@@ -622,6 +623,7 @@ class RegistrationPublicOut(BaseModel):
     registrants: list[RegistrantOut] = []
     community_id: str = "open"
     community_name: str | None = None
+    club_id: str | None = None
     club_name: str | None = None
     club_logo_url: str | None = None
 
