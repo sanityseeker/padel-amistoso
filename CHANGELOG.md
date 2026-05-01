@@ -1,3 +1,9 @@
+## v1.11.0 (2026-05-02)
+
+### Feat
+
+- **clubs**: add clubs home page; add tournamnets players mini cards; bug fixes
+
 ## v1.10.3 (2026-04-30)
 
 ### Fix
