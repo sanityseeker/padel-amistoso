@@ -2093,31 +2093,31 @@ class TestLeaderboardCacheReuse:
     """``_compute_club_leaderboard_rows`` caches behind a version key."""
 
     def test_repeat_calls_use_cache(self, client, auth_headers) -> None:
-        from backend.api import routes_clubs
+        from backend.api import leaderboard_cache, routes_clubs
 
         comm = _create_community(client, auth_headers)
         club = _create_club(client, auth_headers, comm["id"])
-        routes_clubs.invalidate_club_leaderboard_cache(club["id"])
+        leaderboard_cache.invalidate_leaderboard_cache(club["id"])
         with get_db() as conn:
             rows1 = routes_clubs._compute_club_leaderboard_rows(conn, club["id"])
-            cached1 = routes_clubs._LEADERBOARD_CACHE.get(club["id"])
+            cached1 = leaderboard_cache._LEADERBOARD_CACHE.get(club["id"])
             rows2 = routes_clubs._compute_club_leaderboard_rows(conn, club["id"])
-            cached2 = routes_clubs._LEADERBOARD_CACHE.get(club["id"])
+            cached2 = leaderboard_cache._LEADERBOARD_CACHE.get(club["id"])
         assert rows1 == rows2
         # Same in-memory list object (no recomputation) when version unchanged.
         assert cached1 is cached2
         assert rows2 is cached2[1]
 
     def test_invalidate_drops_cached_rows(self, client, auth_headers) -> None:
-        from backend.api import routes_clubs
+        from backend.api import leaderboard_cache, routes_clubs
 
         comm = _create_community(client, auth_headers)
         club = _create_club(client, auth_headers, comm["id"])
         with get_db() as conn:
             routes_clubs._compute_club_leaderboard_rows(conn, club["id"])
-        assert club["id"] in routes_clubs._LEADERBOARD_CACHE
-        routes_clubs.invalidate_club_leaderboard_cache(club["id"])
-        assert club["id"] not in routes_clubs._LEADERBOARD_CACHE
+        assert club["id"] in leaderboard_cache._LEADERBOARD_CACHE
+        leaderboard_cache.invalidate_leaderboard_cache(club["id"])
+        assert club["id"] not in leaderboard_cache._LEADERBOARD_CACHE
 
     def test_max_age_guard_evicts_stale_entries(self, client, auth_headers) -> None:
         """Even with an unchanged version key, entries past the TTL are recomputed."""
@@ -2125,7 +2125,7 @@ class TestLeaderboardCacheReuse:
 
         comm = _create_community(client, auth_headers)
         club = _create_club(client, auth_headers, comm["id"])
-        routes_clubs.invalidate_club_leaderboard_cache(club["id"])
+        leaderboard_cache.invalidate_leaderboard_cache(club["id"])
         with get_db() as conn:
             rows1 = routes_clubs._compute_club_leaderboard_rows(conn, club["id"])
             cached1 = leaderboard_cache._LEADERBOARD_CACHE[club["id"]]
