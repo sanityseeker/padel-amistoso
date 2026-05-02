@@ -1211,7 +1211,7 @@ def lookup_profile_by_passphrase(passphrase: str) -> dict | None:
             if row is not None:
                 return dict(row)
 
-            # Fallback: tournament passphrase linked to a real (non-ghost) profile.
+            # Fallback: tournament participant passphrase linked to a real (non-ghost) profile.
             secret_row = conn.execute(
                 """
                 SELECT pp.id, pp.passphrase, pp.name, pp.email,
@@ -1225,6 +1225,21 @@ def lookup_profile_by_passphrase(passphrase: str) -> dict | None:
             ).fetchone()
             if secret_row is not None:
                 return dict(secret_row)
+
+            # Fallback: lobby registrant passphrase linked to a real (non-ghost) profile.
+            registrant_row = conn.execute(
+                """
+                SELECT pp.id, pp.passphrase, pp.name, pp.email,
+                       pp.email_verified_at, pp.contact, pp.created_at
+                  FROM registrants r
+                  JOIN player_profiles pp ON pp.id = r.profile_id
+                 WHERE r.passphrase = ? AND pp.is_ghost = 0
+                 LIMIT 1
+                """,
+                (passphrase,),
+            ).fetchone()
+            if registrant_row is not None:
+                return dict(registrant_row)
     except sqlite3.Error as exc:
         logger.warning("Profile passphrase lookup failed: %s", exc)
         return None
@@ -1248,6 +1263,28 @@ def resolve_passphrase(passphrase: str) -> dict:
                 (passphrase,),
             ).fetchone()
             if profile_row is not None:
+                return {"type": "profile"}
+
+            # 1b. Participant/registrant passphrase linked to a real (non-ghost) hub profile
+            # also resolves as a profile login (mirrors the TV-side fallback in
+            # ``lookup_by_passphrase`` that lets users authenticate to a tournament
+            # using their hub passphrase even when it differs from the participant code).
+            linked_profile_row = conn.execute(
+                """
+                SELECT 1
+                  FROM player_secrets ps
+                  JOIN player_profiles pp ON pp.id = ps.profile_id
+                 WHERE ps.passphrase = ? AND pp.is_ghost = 0
+                 UNION ALL
+                SELECT 1
+                  FROM registrants r
+                  JOIN player_profiles pp ON pp.id = r.profile_id
+                 WHERE r.passphrase = ? AND pp.is_ghost = 0
+                 LIMIT 1
+                """,
+                (passphrase, passphrase),
+            ).fetchone()
+            if linked_profile_row is not None:
                 return {"type": "profile"}
 
             # 2. Check tournament participations

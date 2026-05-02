@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import re
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -120,9 +121,7 @@ app.add_middleware(
 _ALLOWED_ORIGINS = list(_CORS_ORIGINS)
 _AMISTOSO_ORIGIN_RE = None
 if _AMISTOSO_DOMAIN:
-    import re as _re
-
-    _AMISTOSO_ORIGIN_RE = _re.compile(_amistoso_origin_regex() or "")
+    _AMISTOSO_ORIGIN_RE = re.compile(_amistoso_origin_regex() or "")
 _UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
@@ -187,24 +186,48 @@ async def csrf_origin_protection(request: Request, call_next):
 _SUBDOMAIN_RESERVED: frozenset[str] = frozenset(
     {"admin", "tv", "player", "register", "api", "www", "app", "mail", "ftp", "static", "assets"}
 )
+_SLUG_LABEL_RE = re.compile(r"^[a-z0-9-]{2,30}$")
 
 
 def _extract_subdomain_label(host: str) -> str | None:
-    """Return the leftmost label of ``host`` if it sits under AMISTOSO_DOMAIN.
+    """Return the leftmost label of ``host`` if it looks like a club subdomain.
 
-    Returns ``"__invalid__"`` for multi-level prefixes so the caller can 404
-    them rather than leaking apex content under arbitrary hostnames.
+    When ``AMISTOSO_DOMAIN`` is configured, only hosts ending with that suffix
+    are considered (strict mode); multi-level prefixes return ``"__invalid__"``
+    so the caller can redirect them to the apex.
+
+    When ``AMISTOSO_DOMAIN`` is **not** set, fall back to a heuristic that
+    mirrors the frontend's ``getClubSubdomain()``: any host with 3+ parts
+    (and not a bare IP or localhost) yields its leftmost label. This makes
+    wildcard CNAME setups (``* → onrender.com``) work out of the box without
+    requiring extra deployment configuration.
     """
-    if not _AMISTOSO_DOMAIN or not host:
+    if not host:
         return None
     h = host.split(":")[0].lower()
-    if h == _AMISTOSO_DOMAIN or not h.endswith("." + _AMISTOSO_DOMAIN):
+    if not h or h == "localhost":
         return None
-    label = h[: -(len(_AMISTOSO_DOMAIN) + 1)]
-    if "." in label:
-        # Multi-level (e.g. ``foo.bar.amistoso.club``) — treat as invalid.
-        return "__invalid__"
-    return label or None
+    # Bare IPv4 / IPv6 → never a subdomain.
+    if re.match(r"^\d+\.\d+\.\d+\.\d+$", h) or ":" in h or h.startswith("["):
+        return None
+    if _AMISTOSO_DOMAIN:
+        if h == _AMISTOSO_DOMAIN or not h.endswith("." + _AMISTOSO_DOMAIN):
+            return None
+        label = h[: -(len(_AMISTOSO_DOMAIN) + 1)]
+        if "." in label:
+            # Multi-level (e.g. ``foo.bar.amistoso.club``) — treat as invalid.
+            return "__invalid__"
+        return label or None
+    # Heuristic mode: require apex.tld at minimum (e.g. ``slug.example.com``)
+    # or ``slug.localhost`` for local dev via /etc/hosts.
+    parts = h.split(".")
+    is_localhost_child = len(parts) >= 2 and parts[-1] == "localhost"
+    if len(parts) < 3 and not is_localhost_child:
+        return None
+    label = parts[0]
+    if not label or not _SLUG_LABEL_RE.match(label):
+        return None
+    return label
 
 
 @app.middleware("http")

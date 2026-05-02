@@ -435,6 +435,31 @@ class TestProfileLogin:
         assert data["profile"]["name"] == "Linked Player"
         assert isinstance(data["access_token"], str)
 
+    def test_login_with_registrant_passphrase_resolves_linked_profile(self, client: TestClient) -> None:
+        """Lobby registrant passphrase linked to a real Hub profile should grant Hub login."""
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, created_at)
+                   VALUES ('hub-prof-reg-login', 'hub-real-reg-login-pp', 'Reg Player',
+                           datetime('now'))""",
+            )
+        rid = f"r-link-login-{uuid.uuid4().hex[:8]}"
+        _insert_registration(rid)
+        _insert_registrant(
+            rid,
+            "pid-reg-link-login",
+            "Reg Player",
+            "registrant-pp-xyz",
+            uuid.uuid4().hex,
+            profile_id="hub-prof-reg-login",
+        )
+
+        res = client.post("/api/player-profile/login", json={"passphrase": "registrant-pp-xyz"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["profile"]["id"] == "hub-prof-reg-login"
+        assert data["profile"]["name"] == "Reg Player"
+
     def test_login_with_ghost_tournament_passphrase_rejected(self, client: TestClient) -> None:
         """Tournament passphrase linked to a ghost (is_ghost=1) profile must not grant Hub login."""
         with db_mod.get_db() as conn:
@@ -3229,6 +3254,74 @@ class TestResolvePassphrase:
     def test_resolve_empty_passphrase_rejected(self, client: TestClient) -> None:
         res = client.post("/api/player-profile/resolve", json={"passphrase": ""})
         assert res.status_code == 422
+
+    def test_resolve_tournament_passphrase_linked_to_real_profile_returns_profile(self, client: TestClient) -> None:
+        """Participant passphrase linked to a non-ghost hub profile resolves as 'profile'.
+
+        Mirrors the TV-side fallback: a hub passphrase is accepted as a tournament code,
+        and conversely a tournament code linked to a real profile is accepted as a hub login.
+        """
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, created_at)
+                   VALUES ('hub-prof-resolve', 'hub-real-resolve-pp', 'Linked Player',
+                           datetime('now'))""",
+            )
+            conn.execute(
+                """INSERT INTO player_secrets
+                   (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                   VALUES ('t-res-link', 'pid-res-link', 'Linked Player',
+                           'tourn-pp-linked-xyz', 'tok-res-link', 'hub-prof-resolve')""",
+            )
+
+        res = client.post("/api/player-profile/resolve", json={"passphrase": "tourn-pp-linked-xyz"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["type"] == "profile"
+        assert data["matches"] == []
+
+    def test_resolve_tournament_passphrase_linked_to_ghost_returns_participation(self, client: TestClient) -> None:
+        """Participant passphrase linked to a ghost profile must NOT resolve as profile."""
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, created_at, is_ghost)
+                   VALUES ('ghost-prof-resolve', 'ghost-resolve-pp', 'Ghost', datetime('now'), 1)""",
+            )
+            tid = f"t-res-ghost-{uuid.uuid4().hex[:8]}"
+            _insert_tournament(tid, name="Ghost Cup")
+            with db_mod.get_db() as conn:
+                conn.execute(
+                    """INSERT INTO player_secrets
+                       (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                       VALUES (?, 'pid-res-ghost', 'Ghost', 'tourn-pp-ghost-xyz',
+                               'tok-res-ghost', 'ghost-prof-resolve')""",
+                    (tid,),
+                )
+
+        res = client.post("/api/player-profile/resolve", json={"passphrase": "tourn-pp-ghost-xyz"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["type"] == "participation"
+        assert len(data["matches"]) == 1
+
+    def test_resolve_registrant_passphrase_linked_to_real_profile_returns_profile(self, client: TestClient) -> None:
+        """Lobby registrant passphrase linked to a non-ghost hub profile resolves as 'profile'."""
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, created_at)
+                   VALUES ('hub-prof-reg-res', 'hub-reg-real-pp', 'Reg Linked', datetime('now'))""",
+            )
+        rid = f"r-res-link-{uuid.uuid4().hex[:8]}"
+        _insert_registration(rid)
+        _insert_registrant(
+            rid, "pid-reg-res", "Reg Linked", "reg-pp-linked-xyz", uuid.uuid4().hex, profile_id="hub-prof-reg-res"
+        )
+
+        res = client.post("/api/player-profile/resolve", json={"passphrase": "reg-pp-linked-xyz"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["type"] == "profile"
+        assert data["matches"] == []
 
     def test_resolve_mixed_tournament_and_registration(self, client: TestClient) -> None:
         """Passphrase matches both a tournament and a registration."""

@@ -1955,6 +1955,45 @@ class TestClubBySlug:
         assert res.status_code == 404
 
 
+class TestSubdomainRouter:
+    """Heuristic + strict modes of the ``subdomain_router`` middleware."""
+
+    def test_heuristic_serves_club_html_for_known_slug(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        client.patch(f"/api/clubs/{club['id']}/slug", json={"slug": "myclub"}, headers=auth_headers)
+        # No AMISTOSO_DOMAIN env var → heuristic mode picks ``myclub`` from the host.
+        res = client.get("/", headers={"host": "myclub.example.com"})
+        assert res.status_code == 200
+        assert "text/html" in res.headers["content-type"]
+        # club.html ships a ``<body data-page="club">`` marker; a sufficient fingerprint
+        # is that the response is NOT the admin SPA index.
+        assert 'id="club-root"' in res.text or "club" in res.text.lower()
+
+    def test_heuristic_404_for_unknown_slug(self, client) -> None:
+        res = client.get("/", headers={"host": "nosuchclub.example.com"})
+        assert res.status_code == 404
+
+    def test_heuristic_skips_assets_on_unknown_subdomain(self, client) -> None:
+        # Static / API requests on an unknown subdomain must fall through to the
+        # apex routes so the 404 page itself can load its assets.
+        res = client.get("/api/config", headers={"host": "nosuchclub.example.com"})
+        assert res.status_code == 200
+
+    def test_heuristic_ignores_apex_two_part_host(self, client) -> None:
+        # ``example.com`` has only 2 parts → no subdomain → admin SPA served.
+        res = client.get("/", headers={"host": "example.com"})
+        assert res.status_code == 200
+
+    def test_heuristic_ignores_reserved_label(self, client) -> None:
+        res = client.get("/", headers={"host": "www.example.com"})
+        assert res.status_code == 200
+
+    def test_heuristic_ignores_bare_ip(self, client) -> None:
+        res = client.get("/", headers={"host": "192.168.1.1"})
+        assert res.status_code == 200
+
+
 class TestPublicLeaderboard:
     """GET /api/clubs/{id}/public-leaderboard — no auth, no email."""
 
