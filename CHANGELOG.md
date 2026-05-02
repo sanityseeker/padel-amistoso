@@ -1,3 +1,9 @@
+## v1.11.2 (2026-05-02)
+
+### Fix
+
+- **clubs**: fix domain resolution; fix player hub slug search
+
 ## v1.11.1 (2026-05-02)
 
 ### Fix
