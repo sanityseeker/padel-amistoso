@@ -20,49 +20,125 @@ function _phaseLabel(phase) {
   return map[phase] || phase;
 }
 
-let _homeTournamentFilter = 'all'; // all | active | tournaments | lobbies | finished | mine
+// Three independent filter dimensions for the home admin view.
+// Defaults: ownership=mine, status=active, type=all.
+const _HOME_FILTER_DIMS = ['ownership', 'status', 'type'];
+const _HOME_FILTER_VALUES = {
+  ownership: ['mine', 'all'],
+  status: ['active', 'all'],
+  type: ['all', 'tournament', 'lobby'],
+};
+const _HOME_FILTER_DEFAULTS = { ownership: 'mine', status: 'active', type: 'all' };
+const _HOME_FILTER_KEYS = {
+  ownership: 'amistoso-home-filter-ownership',
+  status: 'amistoso-home-filter-status',
+  type: 'amistoso-home-filter-type',
+};
+// Ownership filter is admin-only — non-admins already only see their own / shared
+// items, so the dimension would be a no-op for them.
+const _HOME_ADMIN_ONLY_DIMS = new Set(['ownership']);
+
+let _homeFilters = { ..._HOME_FILTER_DEFAULTS };
 let _homeTournamentSearch = '';
-const _HOME_TOURN_FILTER_KEY = 'amistoso-home-tournament-filter';
 const _HOME_TOURN_SEARCH_KEY = 'amistoso-home-tournament-search';
-const _HOME_TOURN_FILTERS = new Set(['all', 'active', 'tournaments', 'lobbies', 'finished', 'mine']);
-// Filters reserved for admins (other roles only ever see their own / shared items,
-// so the "mine" filter would either be a no-op or redundant for them).
-const _HOME_TOURN_ADMIN_ONLY_FILTERS = new Set(['mine']);
+
 try {
-  const saved = localStorage.getItem(_HOME_TOURN_FILTER_KEY);
-  if (saved && _HOME_TOURN_FILTERS.has(saved)) _homeTournamentFilter = saved;
+  for (const dim of _HOME_FILTER_DIMS) {
+    const saved = localStorage.getItem(_HOME_FILTER_KEYS[dim]);
+    if (saved && _HOME_FILTER_VALUES[dim].includes(saved)) _homeFilters[dim] = saved;
+  }
 } catch (_) {}
 try { _homeTournamentSearch = localStorage.getItem(_HOME_TOURN_SEARCH_KEY) || ''; } catch (_) {}
 
-// Counts for the toolbar chips. Computed inside loadTournaments() against
-// the search-filtered (but unfiltered-by-chip) item universe so users can
-// see how many items each filter would surface.
-let _homeTournamentChipCounts = {
-  all: 0, active: 0, tournaments: 0, lobbies: 0, finished: 0, mine: 0,
-};
+// Counts per (dimension, value). Each count answers: "how many items would I
+// see if I picked this value while keeping the other two dimensions as-is?"
+let _homeFilterChipCounts = { ownership: {}, status: {}, type: {} };
+// Which filter dropdown (if any) is currently open. One of the dim names or null.
+let _homeFilterOpenDim = null;
 
-function _persistHomeTournamentFilter() {
-  try { localStorage.setItem(_HOME_TOURN_FILTER_KEY, _homeTournamentFilter); } catch (_) {}
+function _persistHomeFilterDim(dim) {
+  try { localStorage.setItem(_HOME_FILTER_KEYS[dim], _homeFilters[dim]); } catch (_) {}
 }
 
 function _persistHomeTournamentSearch() {
   try { localStorage.setItem(_HOME_TOURN_SEARCH_KEY, _homeTournamentSearch); } catch (_) {}
 }
 
+function _resetHomeFiltersToDefault() {
+  for (const dim of _HOME_FILTER_DIMS) {
+    _homeFilters[dim] = _HOME_FILTER_DEFAULTS[dim];
+    _persistHomeFilterDim(dim);
+  }
+}
+
+function _homeFiltersAtDefault() {
+  return _HOME_FILTER_DIMS.every(dim => _homeFilters[dim] === _HOME_FILTER_DEFAULTS[dim]);
+}
+
+// Labels shown for each filter value. Kept module-level so both the trigger
+// button and the dropdown menu use the same wording.
+function _homeFilterLabels() {
+  return {
+    ownership: { mine: t('txt_txt_mine'), all: t('txt_txt_filter_all') },
+    status: { active: t('txt_txt_filter_active'), all: t('txt_txt_filter_all') },
+    type: { all: t('txt_txt_filter_all'), tournament: t('txt_txt_tournaments'), lobby: t('txt_reg_lobby') },
+  };
+}
+
+function _homeFilterDimLabels() {
+  return {
+    ownership: t('txt_txt_filter_dim_ownership'),
+    status: t('txt_txt_filter_dim_status'),
+    type: t('txt_txt_filter_dim_type'),
+  };
+}
+
+function _renderHomeFilterDropdown(dim) {
+  if (_HOME_ADMIN_ONLY_DIMS.has(dim) && !isAdmin()) return '';
+  const labels = _homeFilterLabels()[dim];
+  const dimLabel = _homeFilterDimLabels()[dim];
+  const counts = _homeFilterChipCounts[dim] || {};
+  const currentValue = _homeFilters[dim];
+  const currentLabel = labels[currentValue] ?? currentValue;
+  const isOpen = _homeFilterOpenDim === dim;
+  const isNonDefault = currentValue !== _HOME_FILTER_DEFAULTS[dim];
+  const triggerCls = `home-filter-chip home-filter-dropdown-trigger${isNonDefault ? ' active' : ''}${isOpen ? ' open' : ''}`;
+  const triggerLabel = `${dimLabel}: ${currentLabel}`;
+  const menuItems = _HOME_FILTER_VALUES[dim].map(value => {
+    const isSelected = value === currentValue;
+    const n = counts[value] ?? 0;
+    const label = labels[value] ?? value;
+    return `<button type="button" role="menuitemradio" aria-checked="${isSelected}"
+      class="home-filter-dropdown-item${isSelected ? ' selected' : ''}"
+      onclick="_setHomeFilter('${dim}','${value}')">
+      <span class="home-filter-dropdown-item-check" aria-hidden="true">${isSelected ? '✓' : ''}</span>
+      <span class="home-filter-dropdown-item-label">${label}</span>
+      <span class="home-filter-chip-count" aria-hidden="true">${n}</span>
+    </button>`;
+  }).join('');
+  const menu = isOpen ? `
+    <div class="home-filter-dropdown-menu" role="menu" aria-label="${escAttr(dimLabel)}">
+      ${menuItems}
+    </div>` : '';
+  return `
+    <div class="home-filter-dropdown" data-dim="${dim}">
+      <button type="button" class="${triggerCls}"
+        aria-haspopup="menu" aria-expanded="${isOpen}"
+        aria-label="${escAttr(triggerLabel)}"
+        onclick="_toggleHomeFilterDropdown('${dim}')">
+        <span class="home-filter-dropdown-dim">${dimLabel}:</span>
+        <span class="home-filter-dropdown-value">${currentLabel}</span>
+        <span class="home-filter-dropdown-caret" aria-hidden="true">▾</span>
+      </button>
+      ${menu}
+    </div>
+  `;
+}
+
 function _renderHomeTournamentToolbar() {
   const toolbar = document.getElementById('home-tournament-toolbar');
   if (!toolbar) return;
-  const counts = _homeTournamentChipCounts || {};
-  const countBadge = (key) => {
-    const n = counts[key] ?? 0;
-    return `<span class="home-filter-chip-count" aria-hidden="true">${n}</span>`;
-  };
-  const chip = (key, label) => {
-    const isActive = _homeTournamentFilter === key;
-    const ariaLabel = `${label} (${counts[key] ?? 0})`;
-    return `<button type="button" class="home-filter-chip${isActive ? ' active' : ''}" aria-pressed="${isActive}" aria-label="${escAttr(ariaLabel)}" onclick="_setHomeTournamentFilter('${key}')">${label}${countBadge(key)}</button>`;
-  };
-  const mineChip = isAdmin() ? chip('mine', t('txt_txt_mine')) : '';
+  const dropdowns = _HOME_FILTER_DIMS.map(_renderHomeFilterDropdown).join('');
   toolbar.innerHTML = `
     <div class="home-search-row">
       <input
@@ -76,20 +152,43 @@ function _renderHomeTournamentToolbar() {
       <button type="button" class="btn btn-sm" onclick="_submitHomeTournamentSearch()">${t('txt_txt_go')}</button>
       <button type="button" class="btn btn-sm btn-muted" onclick="_clearHomeTournamentSearch()">${t('txt_txt_clear')}</button>
     </div>
-    <div class="home-filter-row" role="tablist" aria-label="Home tournament filters">
-      ${chip('all', t('txt_txt_filter_all'))}
-      ${chip('active', t('txt_txt_filter_active'))}
-      ${chip('tournaments', t('txt_txt_tournaments'))}
-      ${chip('lobbies', t('txt_reg_lobby'))}
-      ${chip('finished', t('txt_txt_finished'))}
-      ${mineChip}
+    <div class="home-filter-row" role="toolbar" aria-label="Home filters">
+      ${dropdowns}
     </div>
   `;
+  _ensureHomeFilterOutsideClick();
 }
 
-function _setHomeTournamentFilter(filter) {
-  _homeTournamentFilter = filter;
-  _persistHomeTournamentFilter();
+// Close any open filter dropdown when the user clicks outside the toolbar.
+let _homeFilterOutsideClickBound = false;
+function _ensureHomeFilterOutsideClick() {
+  if (_homeFilterOutsideClickBound) return;
+  document.addEventListener('click', (ev) => {
+    if (_homeFilterOpenDim === null) return;
+    const wrap = ev.target.closest('.home-filter-dropdown');
+    if (wrap && wrap.dataset.dim === _homeFilterOpenDim) return;
+    _homeFilterOpenDim = null;
+    _renderHomeTournamentToolbar();
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && _homeFilterOpenDim !== null) {
+      _homeFilterOpenDim = null;
+      _renderHomeTournamentToolbar();
+    }
+  });
+  _homeFilterOutsideClickBound = true;
+}
+
+function _toggleHomeFilterDropdown(dim) {
+  _homeFilterOpenDim = _homeFilterOpenDim === dim ? null : dim;
+  _renderHomeTournamentToolbar();
+}
+
+function _setHomeFilter(dim, value) {
+  if (!_HOME_FILTER_VALUES[dim] || !_HOME_FILTER_VALUES[dim].includes(value)) return;
+  _homeFilters[dim] = value;
+  _persistHomeFilterDim(dim);
+  _homeFilterOpenDim = null;
   loadTournaments();
 }
 
@@ -101,6 +200,19 @@ function _submitHomeTournamentSearch() {
 }
 
 function _clearHomeTournamentSearch() {
+  _homeTournamentSearch = '';
+  _persistHomeTournamentSearch();
+  const input = document.getElementById('home-tournament-search');
+  if (input) input.value = '';
+  loadTournaments();
+}
+
+function _clearHomeFiltersAndSearch() {
+  // Widen all dimensions to "all" so the user sees every available item.
+  for (const dim of _HOME_FILTER_DIMS) {
+    _homeFilters[dim] = 'all';
+    _persistHomeFilterDim(dim);
+  }
   _homeTournamentSearch = '';
   _persistHomeTournamentSearch();
   const input = document.getElementById('home-tournament-search');
@@ -190,51 +302,63 @@ async function loadTournaments() {
       visibleArchivedRegList = visibleArchivedRegList.filter(matchesSubdomainClub);
     }
 
-    // Drop admin-only filters when caller is not an admin (e.g. "mine" — non-admins
-    // already only see their own / shared items, so the filter would be a no-op).
-    if (_HOME_TOURN_ADMIN_ONLY_FILTERS.has(_homeTournamentFilter) && !isAdmin()) {
-      _homeTournamentFilter = 'all';
-      _persistHomeTournamentFilter();
+    // Drop admin-only filter dimensions when caller is not an admin (the server
+    // already restricts non-admins to their own / shared items).
+    if (!isAdmin()) {
+      for (const dim of _HOME_ADMIN_ONLY_DIMS) {
+        if (_homeFilters[dim] !== _HOME_FILTER_DEFAULTS[dim]) {
+          _homeFilters[dim] = _HOME_FILTER_DEFAULTS[dim];
+          _persistHomeFilterDim(dim);
+        }
+      }
     }
 
-    // Compute chip counts against the search-filtered universe so the badges
-    // reflect what each chip would surface from the same starting set.
-    const mineTournaments = active.filter(ownsTournament);
-    const mineFinishedTournaments = finished.filter(ownsTournament);
-    const mineActiveLobbies = activeLobbies.filter(ownsLobby);
-    const mineFinishedLobbies = finishedLobbies.filter(ownsLobby);
-    const mineArchivedLobbies = visibleArchivedRegList.filter(ownsLobby);
-    _homeTournamentChipCounts = {
-      all: active.length + finished.length + activeLobbies.length + finishedLobbies.length + visibleArchivedRegList.length,
-      active: active.length + activeLobbies.length,
-      tournaments: active.length + finished.length,
-      lobbies: activeLobbies.length + finishedLobbies.length + visibleArchivedRegList.length,
-      finished: finished.length + finishedLobbies.length + visibleArchivedRegList.length,
-      mine: mineTournaments.length + mineFinishedTournaments.length + mineActiveLobbies.length + mineFinishedLobbies.length + mineArchivedLobbies.length,
+    // Universe of items after search + subdomain filters but BEFORE the user's
+    // chip selections. Used as the input for both rendering and chip counts.
+    const universe = {
+      activeT: active,
+      finishedT: finished,
+      activeL: activeLobbies,
+      finishedL: finishedLobbies,
+      archivedL: visibleArchivedRegList,
     };
 
-    if (_homeTournamentFilter === 'tournaments') {
-      activeLobbies = [];
-      finishedLobbies = [];
-      visibleArchivedRegList = [];
-    } else if (_homeTournamentFilter === 'lobbies') {
-      active = [];
-      finished = [];
-    } else if (_homeTournamentFilter === 'finished') {
-      active = [];
-      activeLobbies = [];
-    } else if (_homeTournamentFilter === 'active') {
-      // Active = ongoing tournaments + open lobbies. Hide everything finished/archived.
-      finished = [];
-      finishedLobbies = [];
-      visibleArchivedRegList = [];
-    } else if (_homeTournamentFilter === 'mine') {
-      active = mineTournaments;
-      finished = mineFinishedTournaments;
-      activeLobbies = mineActiveLobbies;
-      finishedLobbies = mineFinishedLobbies;
-      visibleArchivedRegList = mineArchivedLobbies;
+    const applyHomeFilters = (state) => {
+      const ownsT = (tournament) => state.ownership === 'all' || ownsTournament(tournament);
+      const ownsL = (registration) => state.ownership === 'all' || ownsLobby(registration);
+      let aT = universe.activeT.filter(ownsT);
+      let fT = universe.finishedT.filter(ownsT);
+      let aL = universe.activeL.filter(ownsL);
+      let fL = universe.finishedL.filter(ownsL);
+      let arL = universe.archivedL.filter(ownsL);
+      if (state.status === 'active') {
+        fT = []; fL = []; arL = [];
+      }
+      if (state.type === 'tournament') {
+        aL = []; fL = []; arL = [];
+      } else if (state.type === 'lobby') {
+        aT = []; fT = [];
+      }
+      return { activeT: aT, finishedT: fT, activeL: aL, finishedL: fL, archivedL: arL };
+    };
+    const totalCount = (r) =>
+      r.activeT.length + r.finishedT.length + r.activeL.length + r.finishedL.length + r.archivedL.length;
+
+    // Chip counts: per (dim, value), holding the other dims at their current value.
+    _homeFilterChipCounts = { ownership: {}, status: {}, type: {} };
+    for (const dim of _HOME_FILTER_DIMS) {
+      for (const value of _HOME_FILTER_VALUES[dim]) {
+        const probe = { ..._homeFilters, [dim]: value };
+        _homeFilterChipCounts[dim][value] = totalCount(applyHomeFilters(probe));
+      }
     }
+
+    const filtered = applyHomeFilters(_homeFilters);
+    active = filtered.activeT;
+    finished = filtered.finishedT;
+    activeLobbies = filtered.activeL;
+    finishedLobbies = filtered.finishedL;
+    visibleArchivedRegList = filtered.archivedL;
 
     _renderHomeTournamentToolbar();
     const archivedLobbiesCount = archivedRegList.length;
@@ -331,11 +455,11 @@ async function loadTournaments() {
     const hasAnyItems = active.length || activeLobbies.length || finishedSection.hasContent;
 
     if (!hasAnyItems) {
-      const hasFilter = Boolean((_homeTournamentSearch || '').trim()) || _homeTournamentFilter !== 'all';
+      const hasFilter = Boolean((_homeTournamentSearch || '').trim()) || !_homeFiltersAtDefault();
       const emptyTitle = hasFilter ? t('txt_txt_no_home_items_match') : t('txt_txt_no_tournaments_yet');
       const emptyHint = hasFilter ? t('txt_txt_try_adjusting_filters') : t('txt_txt_no_tournaments_hint');
       const actionBtn = hasFilter
-        ? `<button type="button" class="btn btn-primary btn-sm" onclick="_setHomeTournamentFilter('all');_clearHomeTournamentSearch()">${t('txt_txt_clear')}</button>`
+        ? `<button type="button" class="btn btn-primary btn-sm" onclick="_clearHomeFiltersAndSearch()">${t('txt_txt_clear')}</button>`
         : `<button type="button" class="btn btn-primary btn-sm" onclick="setActiveTab('create')">${t('txt_txt_create_first')}</button>`;
       el.innerHTML = `<div class="tournaments-empty-state"><div class="tournaments-empty-icon">🏆</div><div class="tournaments-empty-title">${emptyTitle}</div><div class="tournaments-empty-hint">${emptyHint}</div>${actionBtn}</div>`;
       return;

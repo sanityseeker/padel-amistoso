@@ -725,10 +725,8 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
 .home-filter-row {
   display: flex;
   gap: 0.35rem;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
+  flex-wrap: wrap;
+  align-items: center;
 }
 .home-filter-chip {
   border: 1px solid var(--border);
@@ -765,6 +763,78 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
 .home-filter-chip.active .home-filter-chip-count {
   background: color-mix(in srgb, var(--accent) 28%, var(--surface));
   color: var(--text);
+}
+
+/* Dropdown variant: a chip-styled trigger that opens a small menu of values. */
+.home-filter-dropdown {
+  position: relative;
+  flex-shrink: 0;
+}
+.home-filter-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.home-filter-dropdown-trigger.open {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+.home-filter-dropdown-dim {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.home-filter-dropdown-value {
+  color: var(--text);
+  font-weight: 600;
+}
+.home-filter-dropdown-caret {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-left: 0.1rem;
+}
+.home-filter-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 11rem;
+  max-width: 18rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.home-filter-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.35rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.home-filter-dropdown-item:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.home-filter-dropdown-item.selected {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+.home-filter-dropdown-item-check {
+  width: 0.9rem;
+  text-align: center;
+  color: var(--accent);
+  font-weight: 700;
+}
+.home-filter-dropdown-item-label {
+  flex: 1;
 }
 
 .export-actions-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }

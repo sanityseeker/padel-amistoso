@@ -211,8 +211,9 @@ async function _submitPlayerToGroup(groupName) {
 
 /** Add a new player to the running tournament — inline (no prompt) */
 function _addTournamentPlayer() {
-  const panel = document.getElementById('player-codes-panel');
-  if (panel && !panel.open) panel.open = true;
+  // The codes panel lives inside .player-codes-body (the "codes" sub-tab of the settings card).
+  // There is no element with id="player-codes-panel" in the DOM.
+  const codesBody = document.querySelector('.player-codes-body');
 
   // If there's already a pending add row, just focus it
   if (document.getElementById('pc-new-row')) {
@@ -220,18 +221,18 @@ function _addTournamentPlayer() {
     return;
   }
 
-  let tbody = panel?.querySelector('table tbody');
+  let tbody = codesBody?.querySelector('table tbody');
 
   // If no table exists yet (0 players), create one
   if (!tbody) {
-    const noMsg = panel?.querySelector('div > p');
+    const noMsg = codesBody?.querySelector('.player-codes-empty');
     if (noMsg) noMsg.remove();
     const wrapper = document.createElement('div');
     wrapper.style.overflowX = 'auto';
     wrapper.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:0.84rem"><thead><tr style="border-bottom:2px solid var(--border)"><th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_player')}</th><th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_passphrase')}</th><th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_contact')}</th><th style="text-align:center;padding:0.4rem 0.6rem">${t('txt_txt_qr_code')}</th><th></th><th></th></tr></thead><tbody></tbody></table>`;
-    const addBtnDiv = panel?.querySelector('.add-participant-btn')?.parentElement;
+    const addBtnDiv = codesBody?.querySelector('.add-participant-btn')?.parentElement;
     if (addBtnDiv) addBtnDiv.before(wrapper);
-    else panel?.querySelector('div')?.appendChild(wrapper);
+    else codesBody?.appendChild(wrapper);
     tbody = wrapper.querySelector('tbody');
   }
 
@@ -434,7 +435,6 @@ async function _savePlayerContact(playerId) {
 /** Auto-save the email address for a single player on blur */
 async function _savePlayerEmail(playerId) {
   const input = document.getElementById(`pc-email-${playerId}`);
-  const badge = document.getElementById(`pc-linked-${playerId}`);
   if (!input || input.value === input.dataset.orig) return;
   try {
     const result = await api(`/api/tournaments/${currentTid}/player-secrets/${playerId}/email`, {
@@ -456,7 +456,13 @@ async function _savePlayerEmail(playerId) {
       const contactInput = document.getElementById(`pc-contact-${playerId}`);
       if (contactInput && result.contact != null) contactInput.value = result.contact;
     }
-    if (badge) badge.hidden = !result.profile_linked;
+    // Update the Hub link cell in-place to reflect new linked/unlinked state.
+    const row = document.getElementById(`pc-row-${playerId}`);
+    const cell = row?.querySelector('.pc-hub-link-btn')?.closest('td')
+              || row?.querySelector('.player-codes-cell-center');
+    if (cell) {
+      cell.innerHTML = _renderHubLinkCellInner(playerId, _playerSecrets[playerId] || { profile_id: result.profile_linked ? 'linked' : null });
+    }
     input.dataset.orig = input.value;
     _flashSaved(input);
   } catch (e) {

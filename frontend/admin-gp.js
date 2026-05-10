@@ -121,6 +121,13 @@ async function renderGP() {
         html += `</details>`;
       }
 
+      // Per-group add-player area — only during the group phase.
+      if (status.phase === 'groups') {
+        html += `<div id="gp-add-player-area-${escAttr(gName)}" style="margin-top:0.5rem">`;
+        html += `<button type="button" class="add-participant-btn" onclick="_addPlayerToGroup(${JSON.stringify(gName)})">＋ ${t('txt_txt_add_player')}</button>`;
+        html += `</div>`;
+      }
+
       html += `</div>`;
     }
 

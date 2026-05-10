@@ -1310,10 +1310,27 @@ async function clubsAddGhostToRoster(profileId) {
 // ─── Possible members (past participants / ghost profiles) ─
 
 let _clubsGhostGroups = [];
-let _clubsGhostMergeOpen = false;
-let _clubsPossibleMembersOpen = false;
+const _CLUBS_POSSIBLE_MEMBERS_OPEN_KEY = 'amistoso-clubs-possible-members-open';
+const _CLUBS_GHOST_MERGE_OPEN_KEY = 'amistoso-clubs-ghost-merge-open';
+function _clubsReadOpenFlag(key) {
+  try { return localStorage.getItem(key) === '1'; } catch (_) { return false; }
+}
+function _clubsWriteOpenFlag(key, value) {
+  try { localStorage.setItem(key, value ? '1' : '0'); } catch (_) {}
+}
+let _clubsGhostMergeOpen = _clubsReadOpenFlag(_CLUBS_GHOST_MERGE_OPEN_KEY);
+let _clubsPossibleMembersOpen = _clubsReadOpenFlag(_CLUBS_POSSIBLE_MEMBERS_OPEN_KEY);
 let _clubsSelectedGhostProfiles = new Set();
 let _clubsPossibleGhostMembers = [];
+
+function _clubsSetPossibleMembersOpen(open) {
+  _clubsPossibleMembersOpen = !!open;
+  _clubsWriteOpenFlag(_CLUBS_POSSIBLE_MEMBERS_OPEN_KEY, _clubsPossibleMembersOpen);
+}
+function _clubsSetGhostMergeOpen(open) {
+  _clubsGhostMergeOpen = !!open;
+  _clubsWriteOpenFlag(_CLUBS_GHOST_MERGE_OPEN_KEY, _clubsGhostMergeOpen);
+}
 
 
 function clubsSetGhostSearch(value) {
@@ -1424,7 +1441,7 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
   let html = `
     <details id="clubs-possible-members-details"${_clubsPossibleMembersOpen ? ' open' : ''} class="clubs-ghost-section">
       <summary class="clubs-ghost-section-summary"
-        onclick="_clubsPossibleMembersOpen = document.getElementById('clubs-possible-members-details')?.open ?? false">
+        onclick="_clubsSetPossibleMembersOpen(document.getElementById('clubs-possible-members-details')?.open ?? false)">
         <span class="tv-chevron clubs-ghost-section-chevron">&#9658;</span>
         ${t('txt_clubs_possible_members_title', { n: members.length })}
         <span class="muted-tiny clubs-ghost-section-hint">${t('txt_clubs_possible_members_hint')}</span>
@@ -1503,7 +1520,7 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
     html += `
       <details id="clubs-ghost-dup-details"${_clubsGhostMergeOpen ? ' open' : ''} class="clubs-ghost-section clubs-ghost-section--inner">
         <summary class="clubs-ghost-section-summary"
-          onclick="_clubsGhostMergeOpen = document.getElementById('clubs-ghost-dup-details')?.open ?? false">
+          onclick="_clubsSetGhostMergeOpen(document.getElementById('clubs-ghost-dup-details')?.open ?? false)">
           <span class="tv-chevron clubs-ghost-section-chevron">&#9658;</span>
           ${t('txt_clubs_ghost_dup_title', { n: _clubsGhostGroups.length })}
           <span class="muted-tiny clubs-ghost-section-hint">${t('txt_clubs_ghost_dup_hint')}</span>
