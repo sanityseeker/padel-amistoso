@@ -1,3 +1,9 @@
+## v1.11.3 (2026-05-10)
+
+### Fix
+
+- **admin-frontend**: fix add/remove player in a tournament;improve filters in a tournament list
+
 ## v1.11.2 (2026-05-02)
 
 ### Fix
