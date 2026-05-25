@@ -578,17 +578,15 @@ async function _clubInit() {
   _clubHide('club-loading');
   _clubRenderHeader(_clubData);
 
-  let actions = [];
-  try {
-    actions = await _clubFetchJson(`/api/clubs/${encodeURIComponent(_clubData.club_id)}/public-tournaments`);
-  } catch (_) { /* non-fatal */ }
+  // Fetch items and seasons in parallel — both depend only on club_id.
+  const cid = encodeURIComponent(_clubData.club_id);
+  const [actions, seasons] = await Promise.all([
+    _clubFetchJson(`/api/clubs/${cid}/public-tournaments`).catch(() => []),
+    _clubFetchJson(`/api/clubs/${cid}/seasons`).catch(() => []),
+  ]);
   _clubRenderItems(actions || []);
+  _clubSeasons = Array.isArray(seasons) ? seasons : [];
 
-  try {
-    _clubSeasons = await _clubFetchJson(`/api/clubs/${encodeURIComponent(_clubData.club_id)}/seasons`);
-  } catch (_) {
-    _clubSeasons = [];
-  }
   _clubLeaderboardScope = _clubResolveInitialScope();
   _clubCurrentSport = _clubResolveInitialSport();
 

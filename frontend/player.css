@@ -259,6 +259,13 @@
   font-weight: 700;
 }
 
+.player-scope-club-community {
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 400;
+  opacity: 0.75;
+}
+
 .player-scope-club-stats {
   color: var(--text-muted);
   font-family: monospace;

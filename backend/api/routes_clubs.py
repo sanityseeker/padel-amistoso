@@ -731,8 +731,8 @@ async def set_club_slug(club_id: str, req: ClubSlugUpdate, user: User = Depends(
     return _build_club_out(club)
 
 
-@router.get("/by-slug/{slug}")
-async def get_club_by_slug(slug: str) -> dict:
+@router.get("/by-slug/{slug}", response_model=None)
+async def get_club_by_slug(slug: str, request: Request, response: Response) -> dict | Response:
     """Public — resolve a slug to its club's minimal public info."""
     candidate = (slug or "").strip().lower()
     if not candidate or candidate in _RESERVED_SLUGS:
@@ -742,7 +742,7 @@ async def get_club_by_slug(slug: str) -> dict:
     if row is None:
         raise HTTPException(404, "Club not found")
     club = _build_club_out(dict(row))
-    return {
+    payload = {
         "club_id": club.id,
         "community_id": club.community_id,
         "name": club.name,
@@ -752,6 +752,12 @@ async def get_club_by_slug(slug: str) -> dict:
         "description": club.description,
         "pinned_tournament_ids": club.pinned_tournament_ids,
     }
+    tag = etag_for(payload)
+    if request.headers.get("if-none-match") == tag:
+        return Response(status_code=304, headers={"ETag": tag, "Cache-Control": "public, max-age=60"})
+    response.headers["ETag"] = tag
+    response.headers["Cache-Control"] = "public, max-age=60"
+    return payload
 
 
 def _tournament_public_status(t_obj) -> str:
@@ -766,14 +772,21 @@ def _tournament_public_status(t_obj) -> str:
     return "in_progress"
 
 
-@router.get("/{club_id}/public-tournaments")
-async def get_club_public_tournaments(club_id: str) -> list[dict]:
+@router.get("/{club_id}/public-tournaments", response_model=None)
+async def get_club_public_tournaments(
+    club_id: str,
+    request: Request,
+    response: Response,
+) -> list[dict] | Response:
     """Public — list a club's public tournaments + open registrations.
 
     Each entry has: ``id``, ``pin_key``, ``name``, ``alias``, ``status`` (one of
     ``in_progress`` / ``open_registration`` / ``upcoming`` / ``finished``),
     ``kind`` (``tournament`` or ``registration``), ``sport``, ``type``
     (tournament format or ``"registration"``), and ``pinned``.
+
+    Sets ``ETag`` + ``Cache-Control: public, max-age=15`` so repeat requests
+    within the same page session are cheap.
     """
     club_row = _get_club(club_id)  # 404 if club doesn't exist
     raw_pinned = _safe_json_loads(club_row.get("pinned_tournament_ids"), [])
@@ -829,6 +842,12 @@ async def get_club_public_tournaments(club_id: str) -> list[dict]:
         )
     # Pinned items float to the top, preserving relative order within each group.
     out.sort(key=lambda x: 0 if x["pinned"] else 1)
+
+    tag = etag_for(out)
+    if request.headers.get("if-none-match") == tag:
+        return Response(status_code=304, headers={"ETag": tag, "Cache-Control": "public, max-age=15"})
+    response.headers["ETag"] = tag
+    response.headers["Cache-Control"] = "public, max-age=15"
     return out
 
 

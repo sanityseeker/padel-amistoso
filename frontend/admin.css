@@ -5382,6 +5382,10 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
 
 /* Assignments sub-tab — flat sections (no nested <details>). */
 .clubs-assign-section { margin-bottom: 1rem; }
+.clubs-assign-section .player-codes-table-wrap {
+  max-height: 18rem;
+  overflow-y: auto;
+}
 .clubs-assign-section-title {
   margin: 0 0 0.4rem;
   font-size: 0.92rem; font-weight: 600;

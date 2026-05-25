@@ -2361,9 +2361,16 @@ function _renderPickerHtml(tournaments) {
 }
 
 async function _showPicker() {
-  try { _subdomainClub = await resolveClubSubdomainContext(); } catch (_) { _subdomainClub = null; }
+  // Resolve subdomain context and fetch tournament list in parallel.
   let tournaments = [];
-  try { tournaments = await api('/api/tournaments'); } catch (_) {}
+  try {
+    [_subdomainClub, tournaments] = await Promise.all([
+      resolveClubSubdomainContext().catch(() => null),
+      api('/api/tournaments').catch(() => []),
+    ]);
+  } catch (_) {
+    _subdomainClub = null;
+  }
   _renderPickerHtml(tournaments);
 
   // Use SSE (with polling fallback) to detect tournament list changes instantly.

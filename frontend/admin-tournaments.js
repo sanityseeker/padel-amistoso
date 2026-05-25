@@ -221,21 +221,21 @@ function _clearHomeFiltersAndSearch() {
 }
 
 async function loadTournaments() {
-  // Ensure the subdomain club global is set before we filter against it.
-  if (typeof resolveClubSubdomainContext === 'function') {
-    try {
-      const ctx = await resolveClubSubdomainContext();
-      if (ctx && ctx.club_id) window.__ADMIN_SUBDOMAIN_CLUB__ = ctx;
-    } catch (_) {}
-  }
   try {
     const registrationsPath = '/api/registrations?include_archived=1';
-    const [list, regList, commList, clubsList] = await Promise.all([
+    // Resolve subdomain context in parallel with data fetches so it adds no
+    // extra RTT on club subdomains.
+    const subdomainPromise = (typeof resolveClubSubdomainContext === 'function')
+      ? resolveClubSubdomainContext().catch(() => null)
+      : Promise.resolve(null);
+    const [subdomainCtx, list, regList, commList, clubsList] = await Promise.all([
+      subdomainPromise,
       api('/api/tournaments'),
       isAuthenticated() ? api(registrationsPath).catch(() => []) : Promise.resolve([]),
       isAuthenticated() ? api('/api/communities').catch(() => []) : Promise.resolve([]),
       isAuthenticated() ? api('/api/clubs').catch(() => []) : Promise.resolve([]),
     ]);
+    if (subdomainCtx && subdomainCtx.club_id) window.__ADMIN_SUBDOMAIN_CLUB__ = subdomainCtx;
     _adminCommunities = commList;
     _adminClubs = clubsList;
     const nonArchivedRegList = regList.filter(r => !r.archived);

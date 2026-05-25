@@ -744,7 +744,7 @@ function _clubsRenderSeasonAssignment() {
 
   const clubCommunity = club.community_id;
   const matchingT = _clubsTournaments.filter(t => (t.community_id || 'open') === clubCommunity);
-  const attachableT = _clubsTournaments.filter(t => (t.community_id || 'open') !== clubCommunity);
+  const attachableT = _clubsTournaments.filter(t => (t.community_id || 'open') === clubCommunity && t.club_id !== _activeClubId);
   const matchingR = _clubsRegistrations.filter(r => (r.community_id || 'open') === clubCommunity);
 
   const allSeasons = _clubSeasons;

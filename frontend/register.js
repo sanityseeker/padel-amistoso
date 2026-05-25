@@ -261,8 +261,12 @@ async function _showDirectory() {
   el.style.display = 'block';
 
   try {
-    try { _subdomainClub = await resolveClubSubdomainContext(); } catch (_) { _subdomainClub = null; }
-    const res = await fetch(`${API}/public`);
+    // Resolve subdomain context and fetch lobby list in parallel.
+    const [subdomainCtx, res] = await Promise.all([
+      resolveClubSubdomainContext().catch(() => null),
+      fetch(`${API}/public`),
+    ]);
+    _subdomainClub = subdomainCtx;
     if (!res.ok) throw new Error();
     const lobbies = await res.json();
     _renderDirectory(lobbies);

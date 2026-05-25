@@ -22,9 +22,6 @@
   window.__ADMIN_SUBDOMAIN_CLUB__ = club;
   // Re-render the nav bar so the communities button is hidden immediately.
   if (typeof updateAuthUI === 'function') updateAuthUI();
-  // Re-load the home tab so tournaments and lobbies are filtered by this club
-  // (loadTournaments may have run before this IIFE completed).
-  if (typeof loadTournaments === 'function') loadTournaments();
 
   const _apexUrl = new URL(location.href);
   _apexUrl.hostname = location.hostname.split('.').slice(1).join('.') || location.hostname;

@@ -851,7 +851,8 @@ function _buildStatsScopeCard() {
     for (const club of _playerClubs) {
       const value = `club:${club.id}`;
       const sel = _selectedStatsScope === value ? ' selected' : '';
-      html += `<option value="${esc(value)}"${sel}>${esc(club.name)}</option>`;
+      const communityLabel = club.community_name ? ` (${club.community_name})` : '';
+      html += `<option value="${esc(value)}"${sel}>${esc(club.name)}${esc(communityLabel)}</option>`;
     }
     html += `</optgroup>`;
   }
@@ -879,6 +880,7 @@ function _buildStatsScopeCard() {
       const isActive = scopeValue === _selectedStatsScope;
       html += `<button type="button" class="player-scope-club-tag${isActive ? ' is-active' : ''}" onclick="_setSelectedStatsScope('${esc(scopeValue)}')">`;
       html += `<span class="player-scope-club-name">${esc(club.name)}</span>`;
+      if (club.community_name) html += `<span class="player-scope-club-community">${esc(club.community_name)}</span>`;
       if (stats) html += `<span class="player-scope-club-stats">${esc(stats)}</span>`;
       html += `</button>`;
     }
