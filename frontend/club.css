@@ -1,5 +1,33 @@
 /* club.css — Per-club public landing page */
 
+/* ── Theme variable aliases ────────────────────────────────────────────────
+ * tv.css (loaded first) provides --bg, --surface, --surface2, --border,
+ * --accent, --text, --text-muted.  Club-specific names used throughout this
+ * file are mapped here so dark/light both look consistent with the rest of
+ * the app.
+ * ── */
+:root {
+  /* dark default — mirrors tv.css dark palette */
+  --card-bg:      #162032;   /* = --surface */
+  --bg-muted:     #1e293b;   /* = --surface2 */
+  --bg-elevated:  #162032;   /* input / select elevated bg */
+  --bg-alt:       #1e293b;   /* badge / chip tint surface */
+  --border-color: #2d3f57;   /* = --border */
+}
+html[data-theme="light"] {
+  --card-bg:      #ffffff;
+  --bg-muted:     #f1f5f9;
+  --bg-elevated:  #ffffff;
+  --bg-alt:       #e2e8f0;
+  --border-color: #e2e8f0;
+}
+
+/* Reserve scrollbar space so the layout width never shifts when the page
+ * height changes (e.g. switching sport filter shows/hides sections). */
+body {
+  scrollbar-gutter: stable;
+}
+
 /* Buttons (minimal — mirrors admin.css since admin.css is not loaded here) */
 .btn {
   padding: 0.5rem 1rem;
@@ -167,7 +195,7 @@
 
 .club-sport-pill {
   border: 1px solid var(--border-color, #e2e8f0);
-  background: transparent;
+  background: var(--card-bg, var(--surface, #fff));
   padding: 0.35rem 1.1rem;
   border-radius: 999px;
   font-size: 0.88rem;
@@ -175,6 +203,7 @@
   cursor: pointer;
   color: var(--text-muted);
   transition: border-color 0.15s, background 0.15s, color 0.15s;
+  flex-shrink: 0;
 }
 
 .club-sport-pill:hover {

@@ -590,10 +590,12 @@ def _build_tournament_player_card(tid: str, player_id: str) -> dict:
                 round_number = fallback[0] or None
                 round_label = fallback[1]
 
+        sets = payload.get("sets") or []
         recent.append(
             {
                 "match_id": r["match_id"],
                 "score": score,
+                "sets": sets,
                 "team1": [p.get("player_name", "") for p in team1],
                 "team2": [p.get("player_name", "") for p in team2],
                 "elo_before": r["elo_before"],

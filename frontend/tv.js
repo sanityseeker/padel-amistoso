@@ -2548,7 +2548,10 @@ function _tvRenderPlayerCard(overlay, card) {
         const d = m.elo_delta;
         const dCls = d > 0 ? 'elo-transition--gain' : d < 0 ? 'elo-transition--loss' : 'elo-transition--neutral';
         const dStr = d == null ? '' : (d > 0 ? '+' : '') + Number(d).toFixed(1);
-        const score = Array.isArray(m.score) && m.score.length >= 2 ? `${m.score[0]} – ${m.score[1]}` : '';
+        const hasSets = Array.isArray(m.sets) && m.sets.length > 0;
+        const score = hasSets
+          ? m.sets.map(s => `${s[0]}-${s[1]}`).join(' · ')
+          : (Array.isArray(m.score) && m.score.length >= 2 ? `${m.score[0]} – ${m.score[1]}` : '');
         const t1 = Array.isArray(m.team1) ? m.team1.join(' / ') : '';
         const t2 = Array.isArray(m.team2) ? m.team2.join(' / ') : '';
         const roundTxt = m.round_label || (m.round_number ? `R${m.round_number}` : '');

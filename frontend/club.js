@@ -743,9 +743,10 @@ function _clubRenderMiniCard(overlay, card) {
         const delta = m.elo_delta;
         const deltaClass = delta > 0 ? 'elo-transition--gain' : delta < 0 ? 'elo-transition--loss' : 'elo-transition--neutral';
         const deltaStr = delta == null ? '' : (delta > 0 ? '+' : '') + Number(delta).toFixed(1);
-        const score = Array.isArray(m.score) && m.score.length
-          ? m.score.map(s => `${s[0] ?? ''}-${s[1] ?? ''}`).join(' ')
-          : '';
+        const hasSets = Array.isArray(m.sets) && m.sets.length > 0;
+        const score = hasSets
+          ? m.sets.map(s => `${s[0]}-${s[1]}`).join(' · ')
+          : (Array.isArray(m.score) && m.score.length >= 2 ? `${m.score[0]} – ${m.score[1]}` : '');
         const team1 = Array.isArray(m.team1) ? m.team1.join(' / ') : '';
         const team2 = Array.isArray(m.team2) ? m.team2.join(' / ') : '';
         const sportTag = m.sport === 'tennis' ? tennisLabel : padelLabel;

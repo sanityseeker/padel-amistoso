@@ -1,7 +1,7 @@
 // ─── Unified per-tournament Settings card ─────────────────────────────────
 //
 // Renders all per-tournament configuration into a single collapsible card
-// with five sub-tabs: TV & sharing, Scoring, Communications, Player codes,
+// with five sub-tabs: Public view & sharing, Scoring, Communications, Player codes,
 // Access & scope. The active sub-tab is persisted per tournament in
 // localStorage under `adminSettingsSubtab:<tid>`.
 

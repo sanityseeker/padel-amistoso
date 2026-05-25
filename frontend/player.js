@@ -237,9 +237,13 @@ function _prunePathState() {
 // ── Init ─────────────────────────────────────────────────
 
 function _init() {
-  // Resolve the club subdomain context (if any) before fetching public data, so
-  // the leaderboard/space queries can be pre-scoped to that club on first paint.
-  _resolveSubdomainContext().then(() => {
+  // Resolve the club subdomain context (if any) before fetching any scoped
+  // data. Save the promise so _fetchSpace() calls below can wait for it —
+  // this prevents a race where the saved-session fetch fires before the slug
+  // is resolved, which would return unfiltered (global) ELO stats instead of
+  // club-scoped ones for first-time visitors on a club subdomain.
+  const _subdomainReady = _resolveSubdomainContext();
+  _subdomainReady.then(() => {
     // Fetch communities and leaderboard (public, no auth) — fire-and-forget, re-renders when ready
     _fetchCommunities().then(() => _fetchLeaderboard()).then(() => _render()).catch(() => {});
   }).catch(() => {
@@ -300,7 +304,9 @@ function _init() {
   }
   if (_tokenFromHash || _verifyTokenFromHash) {
     history.replaceState(null, '', location.pathname + location.search);
-    Promise.resolve()
+    // Wait for subdomain scope before fetching space so the club filter is
+    // applied even on a first visit via a #token= deep-link.
+    _subdomainReady
       .then(async () => {
         if (_verifyTokenFromHash) {
           await _apiPost('/verify-email', { token: _verifyTokenFromHash });
@@ -338,8 +344,9 @@ function _init() {
   } catch (_) {}
 
   if (_jwt && _profile) {
-    // Refresh space from server in background
-    _fetchSpace().then(() => _render()).catch(() => {
+    // Wait for subdomain scope before refreshing, so a first visit to a club
+    // subdomain always fetches club-filtered ELO stats.
+    _subdomainReady.then(() => _fetchSpace()).then(() => _render()).catch(() => {
       _jwt = null;
       _profile = null;
       _render();

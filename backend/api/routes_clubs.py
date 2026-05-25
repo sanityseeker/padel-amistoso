@@ -1120,6 +1120,7 @@ def _build_club_player_card(club_id: str, profile_id: str) -> ClubPlayerMiniCard
                 "tournament_alias": log.get("tournament_alias"),
                 "sport": log.get("sport"),
                 "score": payload.get("score") or [],
+                "sets": payload.get("sets") or [],
                 "team1": team1,
                 "team2": team2,
                 "elo_before": log.get("elo_before"),

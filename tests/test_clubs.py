@@ -2121,6 +2121,59 @@ class TestPublicPlayerCard:
         assert rm["team1"] == ["Card Player"]
         assert "email" not in body
 
+    def test_tennis_recent_match_includes_sets(self, client, auth_headers) -> None:
+        """recent_matches for tennis matches must include the sets array, not just the game total."""
+        import json as _json
+
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                "INSERT INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost)"
+                " VALUES (?, ?, ?, ?, '', ?, 0)",
+                ("pp_tennis1", _secrets.token_hex(8), "Tennis Player", "t@example.com", now),
+            )
+            conn.execute(
+                "INSERT INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden)"
+                " VALUES (?, ?, 'tennis', 1050, 0, 0)",
+                ("pp_tennis1", club["id"]),
+            )
+            conn.execute(
+                "INSERT INTO tournaments (id, name, type, owner, public, tournament_blob, version,"
+                " sport, community_id, created_at, club_id)"
+                " VALUES (?, 'TennisT', 'group_playoff', 'admin', 1, X'00', 0, 'tennis', ?, ?, ?)",
+                ("t_tennis1", comm["id"], now, club["id"]),
+            )
+            conn.execute(
+                "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)"
+                " VALUES (?, ?, '', ?, ?, ?)",
+                ("t_tennis1", "plt1", _secrets.token_hex(8), _secrets.token_hex(8), "pp_tennis1"),
+            )
+            sets = [[6, 4], [3, 6], [7, 5]]
+            mp = _json.dumps(
+                {
+                    "team1": [{"player_name": "Tennis Player"}],
+                    "team2": [{"player_name": "Opp"}],
+                    "score": [16, 15],
+                    "sets": sets,
+                }
+            )
+            conn.execute(
+                "INSERT INTO player_elo_log (tournament_id, player_id, sport, elo_before, elo_after,"
+                " elo_delta, match_id, match_payload, match_order, updated_at, is_manual)"
+                " VALUES (?, ?, 'tennis', 1000, 1050, 50, 'mt1', ?, 1, ?, 0)",
+                ("t_tennis1", "plt1", mp, now),
+            )
+        res = client.get(f"/api/clubs/{club['id']}/players/pp_tennis1/public-card")
+        assert res.status_code == 200
+        body = res.json()
+        assert len(body["recent_matches"]) == 1
+        rm = body["recent_matches"][0]
+        assert rm["sport"] == "tennis"
+        assert rm["sets"] == [[6, 4], [3, 6], [7, 5]], "sets must be forwarded to the mini-card payload"
+        assert rm["score"] == [16, 15]
+
     def test_hidden_player_hides_elo_and_tier(self, client, auth_headers) -> None:
         # A profile that is hidden in every sport is not exposed at all.
         club = self._seed_player_with_match(client, auth_headers, hidden=True)
@@ -2229,6 +2282,35 @@ class TestPublicEndpointETags:
 class TestPublicTournaments:
     """GET /api/clubs/{id}/public-tournaments — public list."""
 
+    _GP_BODY = {
+        "name": "Test Cup",
+        "player_names": ["A", "B", "C", "D"],
+        "team_mode": False,
+        "court_names": ["Court 1"],
+        "num_groups": 1,
+        "top_per_group": 1,
+        "double_elimination": False,
+    }
+
+    def _setup_club_with_tournament(self, client, auth_headers) -> tuple[dict, str]:
+        """Create a community + club, create a GP tournament, assign it to the club."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        r = client.post("/api/tournaments/group-playoff", json=self._GP_BODY, headers=auth_headers)
+        assert r.status_code == 200
+        tid = r.json()["id"]
+        client.patch(
+            f"/api/tournaments/{tid}/community",
+            json={"community_id": comm["id"]},
+            headers=auth_headers,
+        )
+        client.patch(
+            f"/api/tournaments/{tid}/club",
+            json={"club_id": club["id"]},
+            headers=auth_headers,
+        )
+        return club, tid
+
     def test_unknown_club(self, client) -> None:
         res = client.get("/api/clubs/cl_unknown/public-tournaments")
         assert res.status_code == 404
@@ -2237,6 +2319,123 @@ class TestPublicTournaments:
         comm = _create_community(client, auth_headers)
         club = _create_club(client, auth_headers, comm["id"])
         res = client.get(f"/api/clubs/{club['id']}/public-tournaments")
+        assert res.status_code == 200
+        assert res.json() == []
+
+    def test_upcoming_tournament_shows_correct_status(self, client, auth_headers) -> None:
+        """A GP tournament in SETUP phase is reported as 'upcoming'."""
+        from backend.models import GPPhase
+        from backend.api.state import _tournaments
+
+        club, tid = self._setup_club_with_tournament(client, auth_headers)
+        # Manually rewind to SETUP to verify the upcoming status mapping.
+        _tournaments[tid]["tournament"]._phase = GPPhase.SETUP
+
+        res = client.get(f"/api/clubs/{club['id']}/public-tournaments")
+        assert res.status_code == 200
+        items = res.json()
+        assert len(items) == 1
+        assert items[0]["id"] == tid
+        assert items[0]["status"] == "upcoming"
+        assert items[0]["kind"] == "tournament"
+
+    def test_in_progress_tournament_shows_correct_status(self, client, auth_headers) -> None:
+        """A GP tournament in GROUPS phase is reported as 'in_progress'."""
+        from backend.models import GPPhase
+        from backend.api.state import _tournaments
+
+        club, tid = self._setup_club_with_tournament(client, auth_headers)
+        _tournaments[tid]["tournament"]._phase = GPPhase.GROUPS
+
+        res = client.get(f"/api/clubs/{club['id']}/public-tournaments")
+        assert res.status_code == 200
+        items = res.json()
+        assert len(items) == 1
+        assert items[0]["id"] == tid
+        assert items[0]["status"] == "in_progress"
+
+    def test_finished_gp_tournament_shows_correct_status(self, client, auth_headers) -> None:
+        """A finished GP tournament is included in the list with status 'finished'."""
+        from backend.models import GPPhase
+        from backend.api.state import _tournaments
+
+        club, tid = self._setup_club_with_tournament(client, auth_headers)
+        _tournaments[tid]["tournament"]._phase = GPPhase.FINISHED
+
+        res = client.get(f"/api/clubs/{club['id']}/public-tournaments")
+        assert res.status_code == 200
+        items = res.json()
+        assert len(items) == 1
+        assert items[0]["id"] == tid
+        assert items[0]["status"] == "finished"
+        assert items[0]["kind"] == "tournament"
+
+    def test_finished_mex_tournament_shows_correct_status(self, client, auth_headers) -> None:
+        """A finished Mexicano tournament is included with status 'finished'."""
+        from backend.api.state import _tournaments
+
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        mex_body = {
+            "name": "Mex Cup",
+            "player_names": ["A", "B", "C", "D"],
+            "court_names": ["Court 1"],
+            "total_points_per_match": 32,
+            "num_rounds": 2,
+        }
+        r = client.post("/api/tournaments/mexicano", json=mex_body, headers=auth_headers)
+        assert r.status_code == 200
+        tid = r.json()["id"]
+        client.patch(
+            f"/api/tournaments/{tid}/community",
+            json={"community_id": comm["id"]},
+            headers=auth_headers,
+        )
+        client.patch(
+            f"/api/tournaments/{tid}/club",
+            json={"club_id": club["id"]},
+            headers=auth_headers,
+        )
+        # MexicanTournament stores phase in _phase attribute (same pattern as GP)
+        _tournaments[tid]["tournament"]._phase = "finished"
+
+        res = client.get(f"/api/clubs/{club['id']}/public-tournaments")
+        assert res.status_code == 200
+        items = res.json()
+        assert len(items) == 1
+        assert items[0]["id"] == tid
+        assert items[0]["status"] == "finished"
+
+    def test_private_finished_tournament_excluded(self, client, auth_headers) -> None:
+        """A private (public=False) finished tournament is excluded from the list."""
+        from backend.models import GPPhase
+        from backend.api.state import _tournaments
+
+        club, tid = self._setup_club_with_tournament(client, auth_headers)
+        _tournaments[tid]["tournament"]._phase = GPPhase.FINISHED
+        _tournaments[tid]["public"] = False
+
+        res = client.get(f"/api/clubs/{club['id']}/public-tournaments")
+        assert res.status_code == 200
+        assert res.json() == []
+
+    def test_finished_tournament_from_other_club_not_included(self, client, auth_headers) -> None:
+        """A finished tournament assigned to a different club is not listed."""
+        from backend.models import GPPhase
+        from backend.api.state import _tournaments
+
+        comm = _create_community(client, auth_headers)
+        club_a = _create_club(client, auth_headers, comm["id"], name="Club A")
+        club_b = _create_club(client, auth_headers, comm["id"], name="Club B")
+
+        r = client.post("/api/tournaments/group-playoff", json=self._GP_BODY, headers=auth_headers)
+        assert r.status_code == 200
+        tid = r.json()["id"]
+        client.patch(f"/api/tournaments/{tid}/community", json={"community_id": comm["id"]}, headers=auth_headers)
+        client.patch(f"/api/tournaments/{tid}/club", json={"club_id": club_b["id"]}, headers=auth_headers)
+        _tournaments[tid]["tournament"]._phase = GPPhase.FINISHED
+
+        res = client.get(f"/api/clubs/{club_a['id']}/public-tournaments")
         assert res.status_code == 200
         assert res.json() == []
 
