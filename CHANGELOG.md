@@ -1,3 +1,9 @@
+## v1.11.4 (2026-05-25)
+
+### Fix
+
+- **public-view**: fix public club view; fix tennis format in mini cards
+
 ## v1.11.3 (2026-05-10)
 
 ### Fix
