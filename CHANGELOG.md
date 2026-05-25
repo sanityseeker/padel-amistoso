@@ -1,3 +1,9 @@
+## v1.11.5 (2026-05-25)
+
+### Fix
+
+- **club**: performance and frontend fixes
+
 ## v1.11.4 (2026-05-25)
 
 ### Fix
