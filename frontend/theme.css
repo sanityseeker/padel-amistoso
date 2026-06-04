@@ -1,0 +1,305 @@
+/* Theme: padel-amistoso
+   Aesthetic: sport/utility — dense, high contrast, functional light-first
+   Generated: 2026-06-04
+   Source: extracted from admin.css, tv.css, club.css, player.css, register.css
+
+   NOTE: Light-first. :root carries light-mode tokens.
+   Dark mode is activated via [data-theme="dark"] / html[data-theme="dark"]
+   or automatically via prefers-color-scheme: dark.
+
+   CONFLICTS NOTED (dark palette):
+   ┌──────────────┬──────────────────┬──────────────────┐
+   │ token        │ tv.css (canon)   │ admin.css        │
+   ├──────────────┼──────────────────┼──────────────────┤
+   │ --color-bg   │ #0b1220          │ #0f172a          │
+   │ --color-srf  │ #162032          │ #1e293b          │
+   │ --color-bdr  │ #2d3f57          │ #334155          │
+   │ --color-text │ #e8f0fe          │ #e2e8f0          │
+   └──────────────┴──────────────────┴──────────────────┘
+   tv.css values are canonical (it is the base sheet others extend).
+*/
+
+/* ─────────────────────────────────────────────────────────────────
+   FONT IMPORTS
+   No custom fonts currently loaded — using system stack.
+   To add: uncomment and replace with a Fontshare or Google import.
+   <!-- <link rel="preconnect" href="https://api.fontshare.com"> -->
+   <!-- <link href="https://api.fontshare.com/v2/css?f[]=..." rel="stylesheet"> -->
+   ───────────────────────────────────────────────────────────────── */
+
+
+/* ─────────────────────────────────────────────────────────────────
+   LIGHT MODE — default (:root)
+   ───────────────────────────────────────────────────────────────── */
+:root {
+
+  /* Typography — fonts */
+  --font-display: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body:    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:    ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace;
+
+  /* Typography — fluid scale (12px absolute floor) */
+  --text-xs:   clamp(0.75rem,  0.7rem  + 0.25vw, 0.875rem);  /* ~12–14px */
+  --text-sm:   clamp(0.875rem, 0.8rem  + 0.35vw, 1rem);      /* ~14–16px */
+  --text-base: clamp(1rem,     0.95rem + 0.25vw, 1.125rem);  /* ~16–18px */
+  --text-lg:   clamp(1.125rem, 1rem    + 0.75vw, 1.5rem);    /* ~18–24px */
+  --text-xl:   clamp(1.5rem,   1.2rem  + 1.25vw, 2.25rem);   /* ~24–36px */
+  --text-2xl:  clamp(2rem,     1.2rem  + 2.5vw,  3.5rem);    /* ~32–56px */
+
+  /* Spacing — 4px base unit */
+  --space-1:  0.25rem;   /* 4px  */
+  --space-2:  0.5rem;    /* 8px  */
+  --space-3:  0.75rem;   /* 12px */
+  --space-4:  1rem;      /* 16px */
+  --space-5:  1.25rem;   /* 20px */
+  --space-6:  1.5rem;    /* 24px */
+  --space-8:  2rem;      /* 32px */
+  --space-10: 2.5rem;    /* 40px */
+  --space-12: 3rem;      /* 48px */
+  --space-16: 4rem;      /* 64px */
+  --space-20: 5rem;      /* 80px */
+  --space-24: 6rem;      /* 96px */
+
+  /* Surfaces — light */
+  --color-bg:             #f8fafc;
+  --color-surface:        #ffffff;
+  --color-surface-2:      #f1f5f9;
+  --color-surface-offset: #eff6ff;
+  --color-divider:        rgba(203, 213, 225, 0.6);
+  --color-border:         #e2e8f0;
+
+  /* Text — light */
+  --color-text:         #0f172a;
+  --color-text-muted:   #475569;
+  --color-text-faint:   #94a3b8;
+  --color-text-inverse: #f8fafc;
+
+  /* Primary accent — light */
+  --color-primary:           #2563eb;
+  --color-primary-hover:     #1d4ed8;
+  --color-primary-active:    #1e40af;
+  --color-primary-highlight: color-mix(in srgb, #2563eb 12%, transparent);
+  --color-on-primary:        #ffffff;
+
+  /* Success — light */
+  --color-success:           #16a34a;
+  --color-success-highlight: color-mix(in srgb, #16a34a 15%, transparent);
+  --color-on-success:        #ffffff;
+
+  /* Warning / amber — light */
+  --color-warning:        #d97706;
+  --color-warning-bg:     color-mix(in srgb, #d97706 10%, transparent);
+  --color-warning-border: color-mix(in srgb, #d97706 30%, transparent);
+  --color-warning-text:   #7c2d12;
+  --color-on-warning:     #ffffff;
+
+  /* Error — light */
+  --color-error:           #dc2626;
+  --color-error-highlight: color-mix(in srgb, #dc2626 10%, transparent);
+  --color-on-error:        #ffffff;
+
+  /* Project-specific semantic colours */
+  --color-yellow:       #ca8a04; /* phase badges, group labels */
+  --color-on-yellow:    #ffffff;
+  --color-amber:        #d97706; /* dispute / attention states */
+  --color-on-amber:     #ffffff;
+  --color-sport-tennis: #0d9488; /* tennis sport accent */
+
+  /* Interactive component helpers */
+  --color-hover-overlay:    rgba(37, 99, 235, 0.05);  /* table row hover */
+  --color-active-overlay:   rgba(37, 99, 235, 0.10);  /* selected rows */
+  --color-overlay-backdrop: rgba(0, 0, 0, 0.50);      /* modal backdrops */
+  --color-switch-thumb:     #ffffff;
+
+  /* Border radius */
+  --radius-sm:   0.375rem;  /* 6px  */
+  --radius-md:   0.5rem;    /* 8px  */
+  --radius-lg:   0.75rem;   /* 12px */
+  --radius-xl:   1rem;      /* 16px */
+  --radius-full: 9999px;
+
+  /* Shadows — cool-gray tinted */
+  --shadow-sm:      0 1px 2px   oklch(0.2 0.01 240 / 0.06);
+  --shadow-md:      0 4px 12px  oklch(0.2 0.01 240 / 0.08);
+  --shadow-lg:      0 12px 32px oklch(0.2 0.01 240 / 0.12);
+  --shadow-overlay: 0 8px 24px  oklch(0.2 0.01 240 / 0.14);
+
+  /* Transitions */
+  --transition-interactive: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-slow:        320ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Layout */
+  --content-narrow:  640px;
+  --content-default: 960px;
+  --content-wide:    1400px;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────
+   DARK MODE — explicit toggle
+   ───────────────────────────────────────────────────────────────── */
+[data-theme="dark"],
+html[data-theme="dark"] {
+
+  /* Surfaces — dark */
+  --color-bg:             #0b1220;
+  --color-surface:        #162032;
+  --color-surface-2:      #1e293b;
+  --color-surface-offset: #0f1e35;
+  --color-divider:        rgba(45, 63, 87, 0.7);
+  --color-border:         #2d3f57;
+
+  /* Text — dark */
+  --color-text:         #e8f0fe;
+  --color-text-muted:   #94a3b8;
+  --color-text-faint:   #64748b;
+  --color-text-inverse: #0f172a;
+
+  /* Primary accent — dark */
+  --color-primary:           #3b82f6;
+  --color-primary-hover:     #2563eb;
+  --color-primary-active:    #1d4ed8;
+  --color-primary-highlight: color-mix(in srgb, #3b82f6 14%, transparent);
+  --color-on-primary:        #ffffff;
+
+  /* Success — dark */
+  --color-success:           #22c55e;
+  --color-success-highlight: color-mix(in srgb, #22c55e 15%, transparent);
+  --color-on-success:        #000000;
+
+  /* Warning — dark */
+  --color-warning:        #d97706;
+  --color-warning-bg:     color-mix(in srgb, #d97706 18%, transparent);
+  --color-warning-border: color-mix(in srgb, #d97706 45%, transparent);
+  --color-warning-text:   #fbbf24;
+  --color-on-warning:     #000000;
+
+  /* Error — dark */
+  --color-error:           #ef4444;
+  --color-error-highlight: color-mix(in srgb, #ef4444 15%, transparent);
+  --color-on-error:        #ffffff;
+
+  /* Project-specific — dark */
+  --color-yellow:       #eab308;
+  --color-on-yellow:    #000000;
+  --color-amber:        #d97706;
+  --color-on-amber:     #000000;
+  --color-sport-tennis: #14b8a6;
+
+  /* Interactive */
+  --color-hover-overlay:    rgba(59, 130, 246, 0.06);
+  --color-active-overlay:   rgba(59, 130, 246, 0.14);
+  --color-overlay-backdrop: rgba(0, 0, 0, 0.70);
+
+  /* Shadows — warm-navy tinted */
+  --shadow-sm:      0 1px 2px   oklch(0.08 0.02 240 / 0.40);
+  --shadow-md:      0 4px 12px  oklch(0.08 0.02 240 / 0.50);
+  --shadow-lg:      0 12px 32px oklch(0.08 0.02 240 / 0.60);
+  --shadow-overlay: 0 8px 24px  oklch(0.08 0.02 240 / 0.55);
+}
+
+
+/* ─────────────────────────────────────────────────────────────────
+   DARK MODE — system preference fallback
+   ───────────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --color-bg:             #0b1220;
+    --color-surface:        #162032;
+    --color-surface-2:      #1e293b;
+    --color-surface-offset: #0f1e35;
+    --color-divider:        rgba(45, 63, 87, 0.7);
+    --color-border:         #2d3f57;
+
+    --color-text:         #e8f0fe;
+    --color-text-muted:   #94a3b8;
+    --color-text-faint:   #64748b;
+    --color-text-inverse: #0f172a;
+
+    --color-primary:           #3b82f6;
+    --color-primary-hover:     #2563eb;
+    --color-primary-active:    #1d4ed8;
+    --color-primary-highlight: color-mix(in srgb, #3b82f6 14%, transparent);
+    --color-on-primary:        #ffffff;
+
+    --color-success:           #22c55e;
+    --color-success-highlight: color-mix(in srgb, #22c55e 15%, transparent);
+    --color-on-success:        #000000;
+
+    --color-warning:        #d97706;
+    --color-warning-bg:     color-mix(in srgb, #d97706 18%, transparent);
+    --color-warning-border: color-mix(in srgb, #d97706 45%, transparent);
+    --color-warning-text:   #fbbf24;
+    --color-on-warning:     #000000;
+
+    --color-error:           #ef4444;
+    --color-error-highlight: color-mix(in srgb, #ef4444 15%, transparent);
+    --color-on-error:        #ffffff;
+
+    --color-yellow:       #eab308;
+    --color-on-yellow:    #000000;
+    --color-amber:        #d97706;
+    --color-on-amber:     #000000;
+    --color-sport-tennis: #14b8a6;
+
+    --color-hover-overlay:    rgba(59, 130, 246, 0.06);
+    --color-active-overlay:   rgba(59, 130, 246, 0.14);
+    --color-overlay-backdrop: rgba(0, 0, 0, 0.70);
+
+    --shadow-sm:      0 1px 2px   oklch(0.08 0.02 240 / 0.40);
+    --shadow-md:      0 4px 12px  oklch(0.08 0.02 240 / 0.50);
+    --shadow-lg:      0 12px 32px oklch(0.08 0.02 240 / 0.60);
+    --shadow-overlay: 0 8px 24px  oklch(0.08 0.02 240 / 0.55);
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────────────
+   LEGACY ALIASES
+   Maps every existing component var name → new semantic token.
+   Load theme.css before all other CSS sheets so these take effect
+   without modifying any component file.
+
+   Once components are migrated to --color-* tokens, delete this block.
+   ───────────────────────────────────────────────────────────────── */
+:root,
+[data-theme="dark"],
+html[data-theme="dark"] {
+  /* Core palette (admin.css, tv.css, player.css, register.css) */
+  --bg:           var(--color-bg);
+  --surface:      var(--color-surface);
+  --surface2:     var(--color-surface-2);
+  --border:       var(--color-border);
+  --accent:       var(--color-primary);
+  --accent-hover: var(--color-primary-hover);
+  --green:        var(--color-success);
+  --yellow:       var(--color-yellow);
+  --red:          var(--color-error);
+  --text:         var(--color-text);
+  --text-muted:   var(--color-text-muted);
+
+  /* Semantic helpers */
+  --amber:        var(--color-amber);
+  --warning:      var(--color-warning);
+  --danger:       var(--color-error);
+  --success:      var(--color-success);
+  --info:         var(--color-primary);
+
+  /* Sport accent */
+  --sport-tennis: var(--color-sport-tennis);
+
+  /* club.css alias vars */
+  --card-bg:      var(--color-surface);
+  --bg-muted:     var(--color-surface-2);
+  --bg-elevated:  var(--color-surface);
+  --bg-alt:       var(--color-surface-2);
+  --border-color: var(--color-border);
+
+  /* tv.css */
+  --court-bg:     var(--color-surface-offset);
+
+  /* attention / warning state (admin gp-ops-attention) */
+  --warning-bg:     var(--color-warning-bg);
+  --warning-border: var(--color-warning-border);
+  --warning-text:   var(--color-warning-text);
+}
