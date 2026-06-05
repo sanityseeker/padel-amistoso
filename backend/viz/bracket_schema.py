@@ -764,19 +764,37 @@ def _build_double_elim_bracket(
                 positions[_fv][1] <= y_losers_top + 0.01 for _fv in _feeder_vns if _fv and _fv in positions
             ]
 
+            # x/y placement depends on whether feeders come from the winners or
+            # losers bracket.
+            _feeder_xs = [positions[_fv][0] for _fv in _feeder_vns if _fv and _fv in positions]
+            _all_from_winners = bool(_feeder_ys) and not any(_feeder_in_losers)
+
             if len(_feeder_ys) == 2:
                 if all(_feeder_in_losers):
                     _y_mid = (_feeder_ys[0] + _feeder_ys[1]) / 2
+                    _x_eff = _x_lr
                 elif any(_feeder_in_losers):
                     _y_mid = _feeder_ys[_feeder_in_losers.index(True)]
+                    _x_eff = _x_lr
                 else:
-                    _y_mid = _y_losers_cursor
-                    _y_losers_cursor -= _LOSERS_STACK_GAP
+                    # Both feeders are in the winners bracket.  The stacking cursor
+                    # accumulated from earlier WR-drop rounds places this node far
+                    # below its WR sources, making it appear disconnected.  Instead,
+                    # anchor y just below the WR feeder midpoint (clamped into the
+                    # LR zone) so the drop arrows stay short and visible.
+                    _wf_y_mid = (_feeder_ys[0] + _feeder_ys[1]) / 2
+                    _y_mid = min(y_losers_top - _LOSERS_STACK_GAP * 0.25, _wf_y_mid - losers_gap)
+                    # Snap x to the midpoint between the WR source column and the
+                    # sequential LR slot so the drop edge stays a moderate diagonal
+                    # rather than a long nearly-horizontal line.
+                    _x_eff = (max(_feeder_xs) + _x_lr) / 2 if _feeder_xs else _x_lr
             elif _feeder_ys:
                 _y_mid = _feeder_ys[0]
+                _x_eff = _x_lr
             else:
                 _y_mid = _y_losers_cursor
                 _y_losers_cursor -= _LOSERS_STACK_GAP
+                _x_eff = _x_lr
 
             _mid = f"l_{global_idx}"
             _label = f"Match {_mref.pair_index + 1}" if len(_lr_round) > 1 else ""
@@ -791,7 +809,7 @@ def _build_double_elim_bracket(
             if _md:
                 node_meta[_mid]["label"] = _label_from_match_data(_md)
                 node_meta[_mid]["has_teams"] = True
-            positions[_mid] = (_x_lr, _y_mid)
+            positions[_mid] = (_x_eff, _y_mid)
             id_to_viz[_mref.id] = _mid
             losers_idx_to_node[global_idx] = _mid
             _round_nodes.append(_mid)
@@ -800,7 +818,10 @@ def _build_double_elim_bracket(
 
         if _round_nodes:
             _enforce_min_spacing(positions, _round_nodes, min_gap=2.0)
-            stages.append({"name": _round_name, "x": _x_lr, "nodes": _round_nodes})
+            # Use the actual x of the round's nodes as the column header position
+            # (may differ from _x_lr when nodes were x-snapped to WR source columns).
+            _stage_x = sum(positions[n][0] for n in _round_nodes) / len(_round_nodes)
+            stages.append({"name": _round_name, "x": _stage_x, "nodes": _round_nodes})
 
     # Add topology-driven edges between bracket matches.
     # WR→WR winner edges are already added by the winners loop above, so skip them.
