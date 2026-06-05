@@ -105,6 +105,13 @@ const _TV_PICKER_POLL_INTERVAL_MS = 3000;
 let _tvVersionStream = null;
 let _pickerVersionStream = null;
 let _subdomainClub = null; // {club_id, name, ...} when on a club subdomain
+let _pickerLastTournaments = []; // last-fetched list, used for archive toggle re-render
+let _pickerShowArchive = false;  // false = hide finished tournaments in picker
+
+function togglePickerArchive() {
+  _pickerShowArchive = !_pickerShowArchive;
+  _renderPickerHtml(_pickerLastTournaments);
+}
 
 function _tvLabel() {
   return tvState.tournamentSport === 'tennis' ? t('txt_txt_tennis_tv') : t('txt_txt_padel_tv');
@@ -1628,7 +1635,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
       const os  = tvSettings.schema_output_scale || 1.0;
       const fmt = tvSettings.schema_format || 'svg';
       const imgUrl = `/api/tournaments/${TID}/gp/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&output_scale=${os}&_t=${Date.now()}`;
-      html += _buildBracketSection(imgUrl);
+      html += _buildBracketSection(imgUrl, status.double_elimination === true);
     }
 
     if (tvSettings.show_past_matches) {
@@ -1679,6 +1686,8 @@ function _renderGP(tvSettings, status, groups, playoffs) {
 function _renderPO(tvSettings, status, playoffs) {
   const phase = status.phase || '';
   const champion = status.champion;
+  const isEspejo = status.espejo === true;
+  const hasSuperFinal = status.espejo_super_final === true;
 
   const pending = _sortTbdLast((playoffs?.pending || []).filter(m => m.status !== 'completed'));
 
@@ -1687,6 +1696,12 @@ function _renderPO(tvSettings, status, playoffs) {
 
   if (champion) {
     html += `<div class="champion-banner">🏆 ${t('txt_txt_champion')}: ${esc(champion.join(' & '))}</div>`;
+  } else if (isEspejo && !hasSuperFinal) {
+    // No super final: show each bracket's champion independently once decided.
+    const wc = status.winners_champion;
+    const lc = status.losers_champion;
+    if (wc) html += `<div class="champion-banner champion-banner--half">🏆 ${esc(t('txt_txt_espejo_winners_bracket'))}: ${esc(wc.join(' & '))}</div>`;
+    if (lc) html += `<div class="champion-banner champion-banner--half">🥈 ${esc(t('txt_txt_espejo_losers_bracket'))}: ${esc(lc.join(' & '))}</div>`;
   }
 
   const hasCourts = status.assign_courts !== false;
@@ -1700,7 +1715,7 @@ function _renderPO(tvSettings, status, playoffs) {
     const os  = tvSettings.schema_output_scale     || 1.0;
     const fmt = tvSettings.schema_format || 'svg';
     const imgUrl = `/api/tournaments/${TID}/po/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&output_scale=${os}&_t=${Date.now()}`;
-    html += _buildBracketSection(imgUrl);
+    html += _buildBracketSection(imgUrl, status.double_elimination === true, status.espejo === true);
   }
 
   if (tvSettings.show_past_matches) {
@@ -1750,7 +1765,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
       const os  = tvSettings.schema_output_scale || 1.0;
       const fmt = tvSettings.schema_format || 'svg';
       const imgUrl = `/api/tournaments/${TID}/mex/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&output_scale=${os}&_t=${Date.now()}`;
-      html += _buildBracketSection(imgUrl);
+      html += _buildBracketSection(imgUrl, status.double_elimination === true);
     }
 
     if (tvSettings.show_standings) {
@@ -1982,13 +1997,39 @@ function _buildHeader(name, phase, champion) {
 }
 
 /** Build bracket section HTML with scrollable wrapper for mobile */
-function _buildBracketSection(imgUrl) {
+function _buildBracketSection(imgUrl, isDouble = false, isEspejo = false) {
   let html = `<details class="tv-collapsible" data-tv-key="bracket" open>`;
   html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2></summary>`;
   html += `<div class="tv-section bracket-section">`;
-  html += `<div class="bracket-scroll-wrapper">`;
-  html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'">`;
-  html += `</div>`;
+  if (isDouble) {
+    html += `<div class="double-elim-explainer">`;
+    html += `<strong>${t('txt_double_elim_explain_title')}</strong>`;
+    html += `<ul>`;
+    html += `<li>${t('txt_double_elim_explain_purpose')}</li>`;
+    html += `<li>${t('txt_double_elim_explain_loss')}</li>`;
+    html += `</ul>`;
+    html += `<span class="double-elim-legend">${t('txt_double_elim_explain_colors')}</span>`;
+    html += `</div>`;
+  }
+  if (isEspejo) {
+    html += `<div class="espejo-brackets-row">`;
+    html += `<div class="espejo-bracket-half">`;
+    html += `<div class="espejo-bracket-label">${esc(t('txt_txt_espejo_winners_bracket'))}</div>`;
+    html += `<div class="bracket-scroll-wrapper"><img class="bracket-img" src="${imgUrl}&side=winners" alt="Winners" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'"></div>`;
+    html += `</div>`;
+    html += `<div class="espejo-bracket-half">`;
+    html += `<div class="espejo-bracket-label">${esc(t('txt_txt_espejo_losers_bracket'))}</div>`;
+    html += `<div class="bracket-scroll-wrapper">` +
+      `<img class="bracket-img" src="${imgUrl}&side=losers" alt="Losers" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
+      `<div style="display:none;align-items:center;justify-content:center;padding:1.5rem;color:var(--text-muted);font-size:0.84rem;text-align:center;border:1px dashed var(--border);border-radius:8px">${t('txt_espejo_lb_pending')}</div>` +
+      `</div>`;
+    html += `</div>`;
+    html += `</div>`;
+  } else {
+    html += `<div class="bracket-scroll-wrapper">`;
+    html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'">`;
+    html += `</div>`;
+  }
   html += `<p class="bracket-tap-hint">${t('txt_txt_tap_to_expand_bracket')}</p>`;
   html += `</div></details>`;
   return html;
@@ -2310,9 +2351,12 @@ async function _resolveAlias() {
 }
 
 function _renderPickerHtml(tournaments) {
+  _pickerLastTournaments = tournaments;
   const visibleTournaments = _subdomainClub
     ? tournaments.filter(item => item && item.club_id === _subdomainClub.club_id && item.community_id === _subdomainClub.community_id)
     : tournaments;
+  const activeTournaments = visibleTournaments.filter(t => t.phase !== 'finished');
+  const finishedTournaments = visibleTournaments.filter(t => t.phase === 'finished');
   const langToggle = _languageToggleMeta();
   let html = `<div class="tv-picker">`;
   html += `<div class="tv-header-title-row" style="margin-bottom:1rem">`;
@@ -2332,28 +2376,31 @@ function _renderPickerHtml(tournaments) {
     html += `<span class="player-subdomain-text">${esc(label)}</span>`;
     html += `</div>`;
   }
-  if (visibleTournaments.length > 0) {
+  if (activeTournaments.length > 0 || finishedTournaments.length > 0) {
     html += `<div class="subtitle">${t('txt_txt_select_a_tournament_to_display')}</div>`;
-    html += `<ul class="tv-picker-list">`;
-    for (const tournament of visibleTournaments) {
-      const modeLabel = tournament.has_team_roster ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode');
-      const phaseLabel = _phaseLabel(tournament.phase);
-      const aliasTag = tournament.alias ? `<span class="picker-alias">${esc(tournament.alias)}</span>` : '';
-      const isTennis = tournament.sport === 'tennis';
-      const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
-      const pickerSlug = tournament.alias || tournament.id;
-      const brandingLabel = tournament.club_name || tournament.community_name || '';
-      const logoImg = tournament.club_logo_url
-        ? `<img src="${escAttr(tournament.club_logo_url)}" alt="" style="height:18px;width:18px;object-fit:cover;border-radius:3px;margin-right:0.35rem;vertical-align:middle;flex-shrink:0">`
-        : '';
-      html += `<a class="tv-picker-item" href="/tv/${encodeURIComponent(pickerSlug)}">`;
-      html += `${logoImg}${esc(tournament.name)}<span class="picker-badge picker-badge-sport">${esc(sportLabel)}</span><span class="picker-badge picker-badge-type">${esc(modeLabel)}</span><span class="picker-badge picker-badge-phase">${esc(phaseLabel)}</span>${aliasTag}`;
-      if (brandingLabel) {
-        html += `<span style="display:block;margin-top:0.2rem;color:var(--text-muted);font-size:0.78rem">${esc(brandingLabel)}</span>`;
+    if (activeTournaments.length > 0) {
+      html += `<ul class="tv-picker-list">`;
+      for (const tournament of activeTournaments) {
+        html += _renderPickerItem(tournament);
       }
-      html += `</a>`;
+      html += `</ul>`;
+    } else if (!_pickerShowArchive) {
+      html += `<p class="tv-picker-empty">${t('txt_txt_finished_tournaments')}</p>`;
     }
-    html += `</ul>`;
+    if (finishedTournaments.length > 0) {
+      const archiveBtnLabel = _pickerShowArchive ? t('txt_tv_hide_archive') : t('txt_tv_show_archive');
+      html += `<button type="button" class="tv-picker-archive-btn" onclick="togglePickerArchive()" aria-expanded="${_pickerShowArchive}">`;
+      html += `<span class="tv-picker-archive-icon">${_pickerShowArchive ? '▲' : '▼'}</span> ${esc(archiveBtnLabel)}`;
+      html += ` <span class="tv-picker-archive-count">${finishedTournaments.length}</span>`;
+      html += `</button>`;
+      if (_pickerShowArchive) {
+        html += `<ul class="tv-picker-list tv-picker-list--archive">`;
+        for (const tournament of finishedTournaments) {
+          html += _renderPickerItem(tournament);
+        }
+        html += `</ul>`;
+      }
+    }
     html += `<div style="color:var(--text-muted);font-size:0.85rem;margin-top:1.5rem;margin-bottom:0.5rem">${t('txt_txt_or_enter_a_tournament_id_alias_directly')}</div>`;
   }
   html += `<form class="tv-picker-form" onsubmit="return _goToTournament(event)">`;
@@ -2363,6 +2410,26 @@ function _renderPickerHtml(tournaments) {
   html += `</div>`;
 
   document.getElementById('tv-root').innerHTML = html;
+}
+
+function _renderPickerItem(tournament) {
+  const modeLabel = tournament.has_team_roster ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode');
+  const phaseLabel = _phaseLabel(tournament.phase);
+  const aliasTag = tournament.alias ? `<span class="picker-alias">${esc(tournament.alias)}</span>` : '';
+  const isTennis = tournament.sport === 'tennis';
+  const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
+  const pickerSlug = tournament.alias || tournament.id;
+  const brandingLabel = tournament.club_name || tournament.community_name || '';
+  const logoImg = tournament.club_logo_url
+    ? `<img src="${escAttr(tournament.club_logo_url)}" alt="" style="height:18px;width:18px;object-fit:cover;border-radius:3px;margin-right:0.35rem;vertical-align:middle;flex-shrink:0">`
+    : '';
+  let html = `<a class="tv-picker-item" href="/tv/${encodeURIComponent(pickerSlug)}">`;
+  html += `${logoImg}${esc(tournament.name)}<span class="picker-badge picker-badge-sport">${esc(sportLabel)}</span><span class="picker-badge picker-badge-type">${esc(modeLabel)}</span><span class="picker-badge picker-badge-phase">${esc(phaseLabel)}</span>${aliasTag}`;
+  if (brandingLabel) {
+    html += `<span style="display:block;margin-top:0.2rem;color:var(--text-muted);font-size:0.78rem">${esc(brandingLabel)}</span>`;
+  }
+  html += `</a>`;
+  return html;
 }
 
 async function _showPicker() {

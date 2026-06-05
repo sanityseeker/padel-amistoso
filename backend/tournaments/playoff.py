@@ -795,3 +795,172 @@ class DoubleEliminationBracket:
                 if self._losses.get(wk, 0) == 0:
                     return w
         return None
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Espejo (parallel independent brackets)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class EspejoParallelBracket:
+    """Two fully independent single-elimination brackets.
+
+    All teams enter the Winners Bracket (WB).  After every Round-1 WB match
+    completes, the Round-1 losers are collected and seeded into a separate
+    Losers Bracket (LB) using mirror seeding (``_make_seed_order``), so that
+    the strongest Round-1 loser gets the most favourable LB draw.
+
+    Teams that receive a bye in Round 1 of the WB do **not** drop into the LB
+    (they never played, so they never lost).
+
+    Optionally, when both bracket champions are decided a **Super Final**
+    match is created: WB champion vs LB champion.  Without the Super Final
+    the two champions are co-champions.
+
+    Parameters
+    ----------
+    teams:
+        Ordered list of teams by seed (index 0 = top seed).
+    super_final:
+        Whether to create a Super Final once both bracket champions are known.
+    """
+
+    def __init__(self, teams: list[list[Player]], *, super_final: bool = False):
+        if len(teams) < 2:
+            raise ValueError("Need at least 2 teams")
+
+        self.super_final_enabled = super_final
+        self.winners_bracket = SingleEliminationBracket(teams)
+        self.losers_bracket: SingleEliminationBracket | None = None
+        self.super_final_match: Match | None = None
+        self._match_map: dict[str, Match] = {}
+
+        # Index WB matches so record_result can route correctly.
+        for m in self.winners_bracket.matches:
+            self._match_map[m.id] = m
+
+        # Detect whether all R1 WB matches are already complete (edge case:
+        # single team after byes — no R1 matches).
+        self._try_seed_losers_bracket()
+
+    # ------------------------------------------------------------------ #
+    # Public API
+    # ------------------------------------------------------------------ #
+
+    @property
+    def all_matches(self) -> list[Match]:
+        """All matches across both brackets, then super final (if any)."""
+        wb = [m for m in self.winners_bracket.matches if not (m.team1 == [] and m.team2 == [])]
+        lb = list(self.losers_bracket.matches) if self.losers_bracket else []
+        sf = [self.super_final_match] if self.super_final_match else []
+        return wb + lb + sf
+
+    def pending_matches(self) -> list[Match]:
+        """Matches that are ready to play (both teams filled, not complete)."""
+        return [m for m in self.all_matches if m.status != MatchStatus.COMPLETED and m.team1 and m.team2]
+
+    def record_result(
+        self,
+        match_id: str,
+        score: tuple[int, int],
+        sets: list[tuple[int, int]] | None = None,
+    ) -> None:
+        """Record the result of a match in either bracket or the super final."""
+        if self.super_final_match and self.super_final_match.id == match_id:
+            m = self.super_final_match
+            m.score = score
+            m.sets = sets
+            m.status = MatchStatus.COMPLETED
+            if m.winner_team is None:
+                raise ValueError("Super Final cannot end in a draw")
+            return
+
+        if match_id in {m.id for m in self.winners_bracket.matches}:
+            self.winners_bracket.record_result(match_id, score, sets=sets)
+            self._try_seed_losers_bracket()
+            self._try_create_super_final()
+            return
+
+        if self.losers_bracket and match_id in {m.id for m in self.losers_bracket.matches}:
+            self.losers_bracket.record_result(match_id, score, sets=sets)
+            self._try_create_super_final()
+            return
+
+        raise KeyError(f"Match {match_id!r} not found in Espejo bracket")
+
+    def champion(self) -> list[Player] | None:
+        """Return the overall champion.
+
+        With super final enabled: winner of super final match.
+        Without super final: WB champion only (both champions are returned
+        individually via ``winners_champion`` / ``losers_champion``).
+        """
+        if self.super_final_enabled:
+            if self.super_final_match and self.super_final_match.status == MatchStatus.COMPLETED:
+                return self.super_final_match.winner_team
+            return None
+        return self.winners_bracket.champion()
+
+    def winners_champion(self) -> list[Player] | None:
+        return self.winners_bracket.champion()
+
+    def losers_champion(self) -> list[Player] | None:
+        return self.losers_bracket.champion() if self.losers_bracket else None
+
+    # ------------------------------------------------------------------ #
+    # Internal helpers
+    # ------------------------------------------------------------------ #
+
+    def _r1_losers(self) -> list[list[Player]] | None:
+        """Return the ordered list of Round-1 losers once all R1 WB matches done.
+
+        Returns ``None`` if R1 is not yet complete.
+        Teams that advanced via bye (never played) are excluded.
+        """
+        r1_matches = [m for m in self.winners_bracket.matches if m.round_number == 1]
+        if not r1_matches:
+            return None  # No R1 matches (2 teams with 1 match → Round 1 IS the final)
+        if any(m.status != MatchStatus.COMPLETED for m in r1_matches):
+            return None
+        # Collect losers in original seed order (pair_index gives bracket slot).
+        losers_by_slot: dict[int, list[Player]] = {}
+        for m in r1_matches:
+            loser = m.loser_team
+            if loser is not None:
+                losers_by_slot[m.pair_index] = loser
+        # Return sorted by pair_index so seeding order is deterministic.
+        return [losers_by_slot[k] for k in sorted(losers_by_slot)]
+
+    def _try_seed_losers_bracket(self) -> None:
+        """Seed the LB from R1 WB losers once all R1 WB matches are done."""
+        if self.losers_bracket is not None:
+            return
+        losers = self._r1_losers()
+        if losers is None or len(losers) < 2:
+            return
+        # Mirror seeding: apply _make_seed_order so the best R1 loser (index 0
+        # = fewest points dropped, highest seed) gets the most favourable draw.
+        # The losers list is already in ascending pair_index order, which maps
+        # to descending seed quality (slot 0 = seed1 vs seedN loser, best loser).
+        self.losers_bracket = SingleEliminationBracket(losers)
+        for m in self.losers_bracket.matches:
+            self._match_map[m.id] = m
+
+    def _try_create_super_final(self) -> None:
+        """Create the Super Final match once both bracket champions are decided."""
+        if not self.super_final_enabled:
+            return
+        if self.super_final_match is not None:
+            return
+        wc = self.winners_bracket.champion()
+        lc = self.losers_bracket.champion() if self.losers_bracket else None
+        if wc is None or lc is None:
+            return
+        self.super_final_match = Match(
+            team1=wc,
+            team2=lc,
+            court=None,
+            round_label="Super Final",
+            round_number=999,
+        )
+        self._match_map[self.super_final_match.id] = self.super_final_match

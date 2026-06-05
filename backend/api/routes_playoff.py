@@ -95,6 +95,8 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
         teams=teams,
         courts=courts,
         double_elimination=req.double_elimination,
+        espejo=req.espejo,
+        espejo_super_final=req.espejo_super_final,
         team_mode=req.team_mode,
         initial_strength=initial_strength,
     )
@@ -151,9 +153,24 @@ async def po_status(tid: str) -> dict:
         "phase": t.phase,
         "team_mode": t.team_mode,
         "double_elimination": t.double_elimination,
+        "espejo": getattr(t, "espejo", False),
+        "espejo_super_final": getattr(t, "espejo_super_final", False),
+        "espejo_losers_bracket_seeded": (
+            t.bracket.losers_bracket is not None if getattr(t, "espejo", False) else False
+        ),
         "assign_courts": data.get("assign_courts", True),
         "courts": [{"id": c.id, "name": c.name} for c in t.courts],
         "champion": [p.name for p in t.champion()] if t.champion() else None,
+        "winners_champion": (
+            [p.name for p in t.bracket.winners_champion()]
+            if getattr(t, "espejo", False) and t.bracket.winners_champion()
+            else None
+        ),
+        "losers_champion": (
+            [p.name for p in t.bracket.losers_champion()]
+            if getattr(t, "espejo", False) and t.bracket.losers_champion()
+            else None
+        ),
         "sport": data.get("sport", "padel"),
     }
 
@@ -162,9 +179,37 @@ async def po_status(tid: str) -> dict:
 async def po_playoffs(tid: str) -> dict:
     """Return all play-off matches, pending matches, and the champion (if decided)."""
     t: PlayoffTournament = _get_tournament(tid, _PO)["tournament"]
+
+    def _serialize_with_side(m, side: str | None) -> dict:
+        d = _serialize_match(m)
+        if side:
+            d["bracket_side"] = side
+        return d
+
+    if getattr(t, "espejo", False):
+        bracket = t.bracket
+        wb_ids = {m.id for m in bracket.winners_bracket.matches}
+        lb_ids = {m.id for m in bracket.losers_bracket.matches} if bracket.losers_bracket else set()
+        sf_id = bracket.super_final_match.id if bracket.super_final_match else None
+
+        def _side(m):
+            if m.id in wb_ids:
+                return "winners"
+            if m.id in lb_ids:
+                return "losers"
+            if m.id == sf_id:
+                return "super_final"
+            return None
+
+        matches = [_serialize_with_side(m, _side(m)) for m in t.all_matches() if not _is_bye_match(m)]
+        pending = [_serialize_with_side(m, _side(m)) for m in t.pending_matches()]
+    else:
+        matches = [_serialize_match(m) for m in t.all_matches() if not _is_bye_match(m)]
+        pending = [_serialize_match(m) for m in t.pending_matches()]
+
     return {
-        "matches": [_serialize_match(m) for m in t.all_matches() if not _is_bye_match(m)],
-        "pending": [_serialize_match(m) for m in t.pending_matches()],
+        "matches": matches,
+        "pending": pending,
         "champion": [p.name for p in t.champion()] if t.champion() else None,
     }
 
@@ -179,10 +224,39 @@ async def po_playoffs_schema(
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(1.0, ge=0.5, le=3.0),
+    side: Literal["winners", "losers"] | None = Query(None),
 ) -> Response:
-    """Generate a schema image/document for the active Play-off bracket."""
+    """Generate a schema image for the active Play-off bracket.
+
+    For Espejo tournaments, pass ``side=winners`` or ``side=losers`` to get
+    each bracket independently.  Without ``side``, the winners bracket is
+    returned (backwards-compatible default).
+    """
     t: PlayoffTournament = _get_tournament(tid, _PO)["tournament"]
-    participant_names = [" & ".join(p.name for p in team) for team in t.bracket.original_teams]
+
+    # Pick the right bracket object and names.
+    if t.espejo:
+        bracket = t.bracket
+        if side == "losers":
+            if bracket.losers_bracket is None:
+                raise HTTPException(
+                    425, "Losers bracket not yet seeded — wait for all Round-1 winners matches to complete"
+                )
+            active_bracket = bracket.losers_bracket
+            auto_title = title or "Losers Bracket"
+        else:
+            active_bracket = bracket.winners_bracket
+            auto_title = title or "Winners Bracket"
+        participant_names = [" & ".join(p.name for p in team) for team in active_bracket.original_teams]
+        elim = EliminationType.SINGLE
+        match_labels = _build_match_labels(active_bracket)
+    else:
+        active_bracket = t.bracket
+        participant_names = [" & ".join(p.name for p in team) for team in active_bracket.original_teams]
+        elim = EliminationType.DOUBLE if t.double_elimination else EliminationType.SINGLE
+        match_labels = _build_match_labels(active_bracket)
+        auto_title = title
+
     if len(participant_names) < 2:
         raise HTTPException(400, "Need at least 2 participants for play-off schema")
 
@@ -191,9 +265,10 @@ async def po_playoffs_schema(
         "po",
         tid,
         version,
+        side or "default",
         tuple(participant_names),
-        EliminationType.DOUBLE if t.double_elimination else EliminationType.SINGLE,
-        title,
+        elim,
+        auto_title,
         fmt,
         box_scale,
         line_width,
@@ -207,9 +282,9 @@ async def po_playoffs_schema(
 
     img = render_playoff_schema(
         participant_names=participant_names,
-        elimination=EliminationType.DOUBLE if t.double_elimination else EliminationType.SINGLE,
-        match_labels=_build_match_labels(t.bracket),
-        title=title,
+        elimination=elim,
+        match_labels=match_labels,
+        title=auto_title,
         fmt=fmt,
         box_scale=box_scale,
         line_width=line_width,

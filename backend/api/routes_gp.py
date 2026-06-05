@@ -173,6 +173,7 @@ async def gp_status(tid: str) -> dict:
         "phase": t.phase,
         "num_groups": len(t.groups),
         "team_mode": t.team_mode,
+        "double_elimination": t.double_elimination,
         "assign_courts": data.get("assign_courts", True),
         "courts": [{"id": c.id, "name": c.name} for c in t.courts],
         "champion": [p.name for p in t.champion()] if t.champion() else None,
@@ -364,6 +365,8 @@ async def gp_start_playoffs(
                 if req.extra_participants
                 else None,
                 double_elimination=req.double_elimination,
+                espejo=req.espejo,
+                espejo_super_final=req.espejo_super_final,
                 playoff_teams=req.playoff_teams,
             )
         except (RuntimeError, KeyError, ValueError) as e:

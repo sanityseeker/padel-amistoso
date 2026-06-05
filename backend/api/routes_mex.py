@@ -213,6 +213,7 @@ async def mex_status(tid: str) -> dict:
             for p in t.players
         },
         "champion": [p.name for p in t.champion()] if t.champion() else None,
+        "double_elimination": hasattr(t.playoff_bracket, "all_matches") if t.playoff_bracket else False,
         "sport": data.get("sport", "padel"),
     }
 

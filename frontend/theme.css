@@ -119,8 +119,12 @@
   --radius-sm:   0.125rem;  /* 2px  */
   --radius-md:   0.25rem;   /* 4px  */
   --radius-lg:   0.375rem;  /* 6px  */
-  --radius-xl:   0.625rem;  /* 10px */
-  --radius-full: 9999px;
+  --radius-xl:     0.625rem;  /* 10px */
+  --radius-full:   9999px;
+
+  /* Semantic radius tokens — use these on components */
+  --radius-card:   0.5rem;    /* 8px  — cards, inputs, table wrappers */
+  --radius-dialog: 0.75rem;   /* 12px — dialogs, floating panels, lightbox */
 
   /* Shadows — cool blue-gray tinted, never warm or pure black */
   --shadow-sm:      0 1px 3px   oklch(0.2 0.02 240 / 0.08);
@@ -312,4 +316,8 @@ html[data-theme="dark"] {
   --surface-alt:  var(--color-surface);        /* alternate surface (clubs recipients, settings panels) */
   --hover:        var(--color-hover-overlay);   /* generic hover bg on interactive rows */
   --bg-soft:      color-mix(in srgb, var(--color-text) 4%, transparent); /* subtle tint (passphrase pills) */
+
+  /* Semantic radius aliases — same values in both modes */
+  --radius-card:   0.5rem;
+  --radius-dialog: 0.75rem;
 }

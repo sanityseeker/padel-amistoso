@@ -797,15 +797,34 @@ function _adminBracketUrl(apiBase, tvSettings) {
  */
 function _renderAdminBracketCard(apiBase, tvSettings, opts = {}) {
   const title = opts.title || t('txt_txt_play_off_bracket');
+  const isEspejo = opts.isEspejo === true;
   const url = _adminBracketUrl(apiBase, tvSettings);
-  let h = `<div class="card admin-bracket-card" data-bracket-api="${apiBase}">`;
+  let h = `<div class="card admin-bracket-card" data-bracket-api="${apiBase}" data-espejo="${isEspejo ? '1' : ''}">`;
   h += `<div class="admin-bracket-header">`;
   h += `<h2 class="admin-bracket-title">${esc(title)}</h2>`;
   h += `<button type="button" class="btn btn-sm btn-muted" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_bracket_open_settings_hint'))}">${_antIc('setting')} ${esc(t('txt_admin_bracket_tune_btn'))}</button>`;
   h += `</div>`;
-  h += `<div class="bracket-scroll-wrapper">`;
-  h += `<img id="admin-bracket-img" class="bracket-img" src="${url}" alt="${escAttr(title)}" onclick="_openBracketLightbox(this.src)" title="${escAttr(t('txt_txt_click_to_expand'))}" onerror="this.style.display='none'">`;
-  h += `</div>`;
+  if (isEspejo) {
+    h += `<div class="espejo-brackets-row">`;
+    h += `<div class="espejo-bracket-half">`;
+    h += `<div class="espejo-bracket-label">${esc(t('txt_txt_espejo_winners_bracket'))}</div>`;
+    h += `<div class="bracket-scroll-wrapper"><img id="admin-bracket-img" class="bracket-img" src="${url}&side=winners" alt="Winners" onclick="_openBracketLightbox(this.src)" title="${escAttr(t('txt_txt_click_to_expand'))}" onerror="this.style.display='none'"></div>`;
+    h += `</div>`;
+    h += `<div class="espejo-bracket-half">`;
+    h += `<div class="espejo-bracket-label">${esc(t('txt_txt_espejo_losers_bracket'))}</div>`;
+    h += `<div class="bracket-scroll-wrapper" id="admin-bracket-losers-wrap">` +
+      `<img id="admin-bracket-img-losers" class="bracket-img" src="${url}&side=losers" alt="Losers"` +
+      ` onclick="_openBracketLightbox(this.src)" title="${escAttr(t('txt_txt_click_to_expand'))}"` +
+      ` onerror="this.style.display='none';var p=document.getElementById('admin-bracket-losers-pending');if(p)p.style.display='flex'">` +
+      `<div id="admin-bracket-losers-pending" style="display:none;align-items:center;justify-content:center;padding:1.5rem;color:var(--text-muted);font-size:0.84rem;text-align:center;border:1px dashed var(--border);border-radius:8px">${esc(t('txt_espejo_lb_pending'))}</div>` +
+      `</div>`;
+    h += `</div>`;
+    h += `</div>`;
+  } else {
+    h += `<div class="bracket-scroll-wrapper">`;
+    h += `<img id="admin-bracket-img" class="bracket-img" src="${url}" alt="${escAttr(title)}" onclick="_openBracketLightbox(this.src)" title="${escAttr(t('txt_txt_click_to_expand'))}" onerror="this.style.display='none'">`;
+    h += `</div>`;
+  }
   h += `<p class="settings-help admin-bracket-hint">${esc(t('txt_admin_bracket_settings_hint'))}</p>`;
   h += `</div>`;
   return h;
@@ -838,6 +857,12 @@ function _refreshAdminBracketPreview() {
   };
   img.style.display = '';
   img.src = _adminBracketUrl(apiBase, tvSettings);
+  // For Espejo: refresh the losers bracket image too.
+  const losersImg = document.getElementById('admin-bracket-img-losers');
+  if (losersImg && card.dataset.espejo === '1') {
+    losersImg.style.opacity = '1';
+    losersImg.src = _adminBracketUrl(apiBase, tvSettings) + '&side=losers';
+  }
   // Keep schema builder sliders in sync with TV settings so both preview
   // surfaces always reflect the same rendering configuration.
   _syncSchemaBuilderFromTvSettings(tvSettings);
@@ -881,9 +906,9 @@ async function generatePoPreviewSchema() {
   }
   resultEl.innerHTML = `<em>${t('txt_txt_generating')}</em>`;
   try {
-    const elim = document.getElementById('po-double-elim').checked ? 'double' : 'single';
-    // Read rendering options from the schema builder sliders if present,
-    // so the PO preview respects the same tuning as the Info tab builder.
+    const isEspejo = document.getElementById('po-espejo')?.checked || false;
+    const elim = (!isEspejo && document.getElementById('po-double-elim').checked) ? 'double' : 'single';
+    // Read rendering options from the schema builder sliders if present.
     const numOpt = (id, fallback) => {
       const el = document.getElementById(id);
       return el ? +el.value : fallback;
@@ -895,18 +920,80 @@ async function generatePoPreviewSchema() {
     const titleScale  = numOpt('schema-title-scale',  1.0);
     const outputScale = numOpt('schema-output-scale', 0.7);
     const title       = document.getElementById('schema-title')?.value?.trim() || '';
-    const params = new URLSearchParams({
-      participants: names.length,
-      elimination: elim,
-      fmt,
-      box_scale: boxScale,
-      line_width: lineWidth,
-      arrow_scale: arrowScale,
-      title_font_scale: titleScale,
-      output_scale: outputScale,
-    });
-    if (title) params.set('title', title);
-    for (const n of names) params.append('names', n);
+
+    const _buildParams = (participantNames, extraTitle) => {
+      const p = new URLSearchParams({
+        participants: participantNames.length,
+        elimination: 'single',
+        fmt,
+        box_scale: boxScale,
+        line_width: lineWidth,
+        arrow_scale: arrowScale,
+        title_font_scale: titleScale,
+        output_scale: outputScale,
+      });
+      const t_ = extraTitle || title;
+      if (t_) p.set('title', t_);
+      for (const n of participantNames) p.append('names', n);
+      return p;
+    };
+
+    if (isEspejo) {
+      // Espejo preview: winners bracket with real names, losers bracket with
+      // anonymous "Loser N" seeds — we don't know the R1 losers yet.
+      const wbNames = names;
+      const lbCount = Math.floor(names.length / 2);
+      // Anonymous loser seeds for the LB structural preview.
+      const lbNames = Array.from({ length: lbCount }, (_, i) => `Loser ${i + 1}`);
+
+      const wbUrl = `/api/schema/playoff-preview?${_buildParams(wbNames, title || t('txt_txt_espejo_winners_bracket'))}`;
+
+      let wbHtml = '', lbHtml = '';
+
+      // Fetch WB always; only fetch LB when there are ≥2 losers to show.
+      const fetchWb = fetch(wbUrl);
+      const fetchLb = lbCount >= 2 ? fetch(`/api/schema/playoff-preview?${_buildParams(lbNames, t('txt_txt_espejo_losers_bracket'))}`) : null;
+      const [wbRes, lbRes] = await Promise.all([fetchWb, fetchLb || Promise.resolve(null)]);
+
+      if (!wbRes.ok) throw new Error((await wbRes.json().catch(() => ({}))).detail || 'Error');
+      if (lbRes && !lbRes.ok) throw new Error((await lbRes.json().catch(() => ({}))).detail || 'Error');
+
+      const _renderBracketResponse = async (res, altText) => {
+        if (!res) return `<p class="settings-help" style="margin:0.5rem 0">${t('txt_txt_espejo_approx_losers')}: ${t('txt_txt_need_at_least_2_participants')}</p>`;
+        if (fmt === 'svg') {
+          const wrap = document.createElement('div');
+          wrap.innerHTML = await res.text();
+          const svgEl = wrap.querySelector('svg');
+          if (svgEl) {
+            svgEl.removeAttribute('width'); svgEl.removeAttribute('height');
+            svgEl.classList.add('bracket-svg');
+            svgEl.style.cursor = 'zoom-in';
+            svgEl.title = t('txt_txt_click_to_expand');
+            svgEl.addEventListener('click', () => {
+              const blob = new Blob([svgEl.outerHTML], { type: 'image/svg+xml' });
+              _openBracketLightbox(URL.createObjectURL(blob));
+            });
+          }
+          return wrap.innerHTML;
+        } else {
+          const blobUrl = URL.createObjectURL(await res.blob());
+          return `<img class="bracket-img" src="${blobUrl}" alt="${escAttr(altText)}" onclick="_openBracketLightbox('${blobUrl}')" title="${t('txt_txt_click_to_expand')}">`;
+        }
+      };
+
+      wbHtml = await _renderBracketResponse(wbRes, t('txt_txt_espejo_winners_bracket'));
+      lbHtml = await _renderBracketResponse(lbRes, t('txt_txt_espejo_losers_bracket'));
+
+      resultEl.innerHTML =
+        `<div class="espejo-brackets-row">` +
+        `<div class="espejo-bracket-half"><div class="espejo-bracket-label">${esc(t('txt_txt_espejo_winners_bracket'))}</div>${wbHtml}</div>` +
+        `<div class="espejo-bracket-half"><div class="espejo-bracket-label">${esc(t('txt_txt_espejo_losers_bracket'))}${lbCount >= 2 ? ` <small style="font-weight:400;text-transform:none;letter-spacing:0">(~${lbCount} ${t('txt_txt_espejo_approx_losers')})</small>` : ''}</div>${lbHtml}</div>` +
+        `</div>`;
+      return;
+    }
+
+    const params = _buildParams(names, title);
+    params.set('elimination', elim);
     const url = `/api/schema/playoff-preview?${params}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Error');
@@ -1068,7 +1155,6 @@ function _recordActivity(label) {
   if (!label) return;
   _adminActivityLog.unshift({ label: String(label), ts: Date.now() });
   if (_adminActivityLog.length > _ADMIN_ACTIVITY_MAX) _adminActivityLog.length = _ADMIN_ACTIVITY_MAX;
-  _refreshAdminActivityDrawer();
 }
 
 function _formatActivityTime(ts) {
@@ -1076,54 +1162,6 @@ function _formatActivityTime(ts) {
     const d = new Date(ts);
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   } catch (_) { return ''; }
-}
-
-function _ensureAdminActivityLauncher() {
-  if (document.getElementById('admin-activity-launcher')) return;
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.id = 'admin-activity-launcher';
-  btn.className = 'admin-activity-launcher';
-  btn.setAttribute('aria-label', t('txt_admin_activity_open'));
-  btn.title = t('txt_admin_activity_open');
-  btn.textContent = '🕒';
-  btn.onclick = _toggleAdminActivityDrawer;
-  document.body.appendChild(btn);
-
-  const drawer = document.createElement('div');
-  drawer.id = 'admin-activity-drawer';
-  drawer.className = 'admin-activity-drawer hidden';
-  drawer.setAttribute('aria-hidden', 'true');
-  drawer.innerHTML = `
-    <div class="admin-activity-head">
-      <span>${esc(t('txt_admin_activity_title'))}</span>
-      <button type="button" class="admin-toast-close" aria-label="${escAttr(t('txt_admin_activity_close'))}" onclick="_toggleAdminActivityDrawer(false)">×</button>
-    </div>
-    <ul class="admin-activity-list" id="admin-activity-list"></ul>
-  `;
-  document.body.appendChild(drawer);
-  _refreshAdminActivityDrawer();
-}
-
-function _toggleAdminActivityDrawer(forceOpen) {
-  const drawer = document.getElementById('admin-activity-drawer');
-  if (!drawer) return;
-  const willOpen = (typeof forceOpen === 'boolean') ? forceOpen : drawer.classList.contains('hidden');
-  drawer.classList.toggle('hidden', !willOpen);
-  drawer.setAttribute('aria-hidden', willOpen ? 'false' : 'true');
-  if (willOpen) _refreshAdminActivityDrawer();
-}
-
-function _refreshAdminActivityDrawer() {
-  const list = document.getElementById('admin-activity-list');
-  if (!list) return;
-  if (_adminActivityLog.length === 0) {
-    list.innerHTML = `<li class="admin-activity-empty">${esc(t('txt_admin_activity_empty'))}</li>`;
-    return;
-  }
-  list.innerHTML = _adminActivityLog
-    .map(e => `<li><span>${esc(e.label)}</span><span class="admin-activity-time">${esc(_formatActivityTime(e.ts))}</span></li>`)
-    .join('');
 }
 
 // ─── Unified match filter (#6) ────────────────────────────────────────────

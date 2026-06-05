@@ -114,15 +114,7 @@ async function renderMex() {
 
     if (isPlayoffs || hasPlayoffBracket) {
       html += _renderAdminBracketCard(`/api/tournaments/${currentTid}/mex/playoffs-schema`, tvSettings, { title: t('txt_txt_mexicano_play_offs_bracket') });
-
-      html += `<div class="card">`;
-      html += `<div class="playoff-header-row">`;
-      html += `<h2 class="playoff-header-title">${t('txt_txt_mexicano_play_off_bracket')}</h2>`;
-      html += `</div>`;
-      for (const m of _sortTbdLast(playoffsData.matches)) {
-        html += matchRow(m, 'mex-playoff');
-      }
-      html += `</div>`;
+      html += _renderPlayoffMatchesByRound(playoffsData.matches || [], 'mex-playoff');
     }
 
     // Leaderboard placeholder for the playoff/finished branches — rendered
@@ -262,7 +254,10 @@ async function renderMex() {
     el.innerHTML = html;
     _renderMexLeaderboard();
     _mexApplyReviewQueueFilter();
-    _ensureAdminActivityLauncher();
+    if (isPlayoffs || hasPlayoffBracket) {
+      const savedMexFilter = _readPersistedMatchFilter(currentTid);
+      _applyMatchFilter(savedMexFilter === 'all' ? 'pending' : savedMexFilter);
+    }
     requestAnimationFrame(() => _syncSchemaBuilderFromTvSettings(tvSettings));
   } catch (e) {
     if (currentTid !== _renderTid) return;

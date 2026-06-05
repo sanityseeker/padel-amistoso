@@ -633,3 +633,113 @@ class TestPlayoffTournamentCourtAssignment:
         # Stricter: if more than 1 W-R2 match has a court, they must differ.
         if len(wr2_courts) > 1:
             assert len(set(wr2_courts)) > 1, f"Multiple W-R2 matches all on same court: {wr2_courts}"
+
+
+# ── Espejo parallel bracket ────────────────────────────────
+
+
+class TestEspejoParallelBracket:
+    """Tests for EspejoParallelBracket (two independent single-elim brackets)."""
+
+    def _play_r1(self, bracket):
+        """Play all Round-1 winners matches, team1 always wins."""
+        r1 = [m for m in bracket.winners_bracket.matches if m.round_number == 1]
+        for m in r1:
+            bracket.record_result(m.id, (6, 3))
+        return r1
+
+    def test_losers_bracket_none_before_r1_complete(self):
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(4))
+        assert b.losers_bracket is None
+
+    def test_losers_bracket_seeded_after_r1_complete(self):
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(4))
+        self._play_r1(b)
+        assert b.losers_bracket is not None
+
+    def test_r1_losers_count_4_teams(self):
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(4))
+        self._play_r1(b)
+        assert len(b.losers_bracket.original_teams) == 2
+
+    def test_r1_losers_count_8_teams(self):
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(8))
+        self._play_r1(b)
+        assert len(b.losers_bracket.original_teams) == 4
+
+    def test_bye_team_not_in_losers_bracket(self):
+        """With 3 teams only 1 real R1 match exists (seed 1 gets a bye),
+        so only 1 loser is produced — not enough for a LB.  The LB is not
+        seeded in this case.  Seed 1 (T1) never loses, so they definitely
+        cannot appear in any LB."""
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(3))
+        self._play_r1(b)
+        # With only 1 R1 loser, the LB is not seeded (need ≥2 losers).
+        assert b.losers_bracket is None
+
+    def test_no_super_final_without_flag(self):
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(4), super_final=False)
+        self._play_r1(b)
+        for m in b.winners_bracket.pending_matches():
+            b.record_result(m.id, (6, 3))
+        for m in b.losers_bracket.pending_matches():
+            b.record_result(m.id, (6, 3))
+        assert b.super_final_match is None
+        assert b.champion() == b.winners_champion()
+
+    def test_super_final_created_when_both_done(self):
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(4), super_final=True)
+        self._play_r1(b)
+        for m in b.winners_bracket.pending_matches():
+            b.record_result(m.id, (6, 3))
+        assert b.super_final_match is None  # LB not done yet
+        for m in b.losers_bracket.pending_matches():
+            b.record_result(m.id, (6, 3))
+        assert b.super_final_match is not None
+
+    def test_super_final_winner_is_champion(self):
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(4), super_final=True)
+        self._play_r1(b)
+        for m in b.winners_bracket.pending_matches():
+            b.record_result(m.id, (6, 3))
+        for m in b.losers_bracket.pending_matches():
+            b.record_result(m.id, (6, 3))
+        sf = b.super_final_match
+        assert b.champion() is None  # SF not played
+        b.record_result(sf.id, (6, 3))
+        assert b.champion() == sf.winner_team
+
+    def test_record_unknown_match_raises(self):
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(4))
+        with pytest.raises(KeyError):
+            b.record_result("nonexistent-id", (6, 3))
+
+    def test_playoff_tournament_espejo_flag(self):
+        t = PlayoffTournament(teams=_teams(4), espejo=True, espejo_super_final=False)
+        assert t.espejo is True
+        assert len(t.all_matches()) > 0
+
+    def test_playoff_tournament_espejo_seeds_lb_after_r1(self):
+        t = PlayoffTournament(teams=_teams(4), espejo=True)
+        r1 = [m for m in t.all_matches() if m.round_number == 1]
+        for m in r1:
+            t.record_result(m.id, (6, 3))
+        assert t.bracket.losers_bracket is not None

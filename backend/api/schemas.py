@@ -199,6 +199,8 @@ class CreatePlayoffRequest(BaseModel):
     season_id: str | None = Field(default=None, max_length=64)
     club_id: str | None = Field(default=None, max_length=64)
     double_elimination: bool = False
+    espejo: bool = False
+    espejo_super_final: bool = False
     public: bool = True
     assign_courts: bool = True
     player_strengths: dict[str, float] = Field(default_factory=dict)
@@ -449,6 +451,8 @@ class StartGroupPlayoffsRequest(BaseModel):
     advancing_player_ids: list[str] | None = None
     extra_participants: list[ExternalParticipant] | None = None
     double_elimination: bool | None = None
+    espejo: bool = False
+    espejo_super_final: bool = False
     playoff_teams: list[list[str]] | None = None
 
 

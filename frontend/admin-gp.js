@@ -164,17 +164,7 @@ async function renderGP() {
     // Playoff bracket
     if (status.phase === 'playoffs' || status.phase === 'finished') {
       html += _renderAdminBracketCard(`/api/tournaments/${currentTid}/gp/playoffs-schema`, tvSettings);
-
-      html += `<div class="card">`;
-      html += `<div class="playoff-header-row">`;
-      html += `<h2 class="playoff-header-title">${t('txt_txt_play_offs')}</h2>`;
-      html += `</div>`;
-      if (playoffs && playoffs.matches) {
-        for (const m of _sortTbdLast(playoffs.matches)) {
-          html += matchRow(m, 'gp-playoff');
-        }
-      }
-      html += `</div>`;
+      html += _renderPlayoffMatchesByRound(playoffs?.matches || [], 'gp-playoff');
     }
 
     // Unified Settings card at the bottom of the page.
@@ -198,8 +188,9 @@ async function renderGP() {
     if (currentTid !== _renderTid) return;
     el.innerHTML = html;
     _gpApplyReviewQueueFilter();
-    _applyMatchFilter(_readPersistedMatchFilter(currentTid));
-    _ensureAdminActivityLauncher();
+    // Default to pending filter when entering playoffs so completed matches are hidden by default.
+    const savedFilter = _readPersistedMatchFilter(currentTid);
+    _applyMatchFilter(status.phase === 'playoffs' && savedFilter === 'all' ? 'pending' : savedFilter);
     // Sync schema builder sliders to loaded TV settings so both previews match.
     requestAnimationFrame(() => _syncSchemaBuilderFromTvSettings(tvSettings));
   } catch (e) {
@@ -433,26 +424,27 @@ async function renderPO() {
       html += `</div>`;
     }
 
-    html += _renderAdminBracketCard(`/api/tournaments/${currentTid}/po/playoffs-schema`, tvSettings);
+    html += _renderAdminBracketCard(`/api/tournaments/${currentTid}/po/playoffs-schema`, tvSettings, { isEspejo: status.espejo === true });
+    html += _renderPlayoffMatchesByRound(
+      playoffs.matches || [],
+      'po-playoff',
+      status.espejo ? 'po-espejo-losers' : 'po-playoff',
+      status.espejo_super_final ? 'po-espejo-super-final' : (status.espejo ? 'po-espejo-losers' : 'po-playoff'),
+    );
 
-    html += `<div class="card">`;
-    html += `<div class="playoff-header-row">`;
-    html += `<h2 class="playoff-header-title">${t('txt_txt_play_offs')}</h2>`;
-    html += `</div>`;
-
-    if (playoffs.matches) {
-      for (const m of _sortTbdLast(playoffs.matches)) {
-        html += matchRow(m, 'po-playoff');
-      }
+    const poScoringStages = [{ key: 'po-playoff', label: t('txt_txt_play_offs') }];
+    if (status.espejo) {
+      poScoringStages.push({ key: 'po-espejo-losers', label: t('txt_txt_espejo_losers_bracket') });
     }
-    html += `</div>`;
-
+    if (status.espejo_super_final) {
+      poScoringStages.push({ key: 'po-espejo-super-final', label: t('txt_txt_espejo_super_final') });
+    }
     html += _renderSettingsCard({
       tvSettings,
       emailSettings,
       hasCourts,
       isMexicano: false,
-      scoringStages: [{ key: 'po-playoff', label: t('txt_txt_play_offs') }],
+      scoringStages: poScoringStages,
       playerSecrets,
       collaborators: collabData?.collaborators || [],
     });
@@ -460,7 +452,9 @@ async function renderPO() {
     if (currentTid !== _renderTid) return;
     el.innerHTML = html;
     _poApplyReviewQueueFilter();
-    _ensureAdminActivityLauncher();
+    // Default to pending filter so completed matches start collapsed.
+    const savedPoFilter = _readPersistedMatchFilter(currentTid);
+    _applyMatchFilter(status.phase !== 'finished' && savedPoFilter === 'all' ? 'pending' : savedPoFilter);
     requestAnimationFrame(() => _syncSchemaBuilderFromTvSettings(tvSettings));
   } catch (e) {
     if (currentTid !== _renderTid) return;
@@ -639,7 +633,7 @@ function matchRow(m, ctx) {
       html += `</div>`;
 
       // Custom score inputs (hidden until 'custom' radio is selected)
-      const isSetCtx = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff';
+      const isSetCtx = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff' || ctx === 'po-espejo-losers' || ctx === 'po-espejo-super-final';
       const custMode = _gpScoreMode[ctx] || 'points';
       html += `<div class="admin-dispute-custom hidden" id="dr-custom-${m.id}">`;
       if (isSetCtx) {
@@ -668,7 +662,7 @@ function matchRow(m, ctx) {
     }
 
     // Inline edit form (hidden)
-    const isSetScoringCtxEdit = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff';
+    const isSetScoringCtxEdit = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff' || ctx === 'po-espejo-losers' || ctx === 'po-espejo-super-final';
     const autoCalc = _totalPts > 0 && ctx === 'mex';
     const onInput = autoCalc ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"` : '';
     html += `<div class="match-actions hidden" id="medit-${m.id}">`;
@@ -777,7 +771,7 @@ function matchRow(m, ctx) {
       html += `<label><input type="radio" name="dr-${m.id}" value="custom" onclick="document.getElementById('dr-custom-${m.id}')?.classList.remove('hidden')"> <span class="dispute-option-text">${t('txt_txt_custom_score')}</span></label>`;
       html += `</div>`;
 
-      const isSetCtx = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff';
+      const isSetCtx = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff' || ctx === 'po-espejo-losers' || ctx === 'po-espejo-super-final';
       const custMode = _gpScoreMode[ctx] || 'points';
       html += `<div class="admin-dispute-custom hidden" id="dr-custom-${m.id}">`;
       if (isSetCtx) {
@@ -806,7 +800,7 @@ function matchRow(m, ctx) {
     }
 
     // Inline edit form (hidden)
-    const isSetScoringCtxEdit = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff';
+    const isSetScoringCtxEdit = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff' || ctx === 'po-espejo-losers' || ctx === 'po-espejo-super-final';
     const autoCalcEdit = _totalPts > 0 && ctx === 'mex';
     const onInputEdit = autoCalcEdit ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"` : '';
     html += `<div class="match-actions hidden" id="medit-${m.id}">`;
@@ -853,7 +847,7 @@ function matchRow(m, ctx) {
 
   // Not yet completed — show input form
   const isMex = ctx === 'mex' || ctx === 'mex-playoff';
-  const isSetScoringCtx = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff';
+  const isSetScoringCtx = ctx === 'gp-group' || ctx === 'gp-playoff' || ctx === 'mex-playoff' || ctx === 'po-playoff' || ctx === 'po-espejo-losers' || ctx === 'po-espejo-super-final';
   const autoCalc = _totalPts > 0 && ctx === 'mex';
   const onInput = autoCalc
     ? `oninput="_autoFillScore('${m.id}', ${_totalPts})"`
@@ -1175,11 +1169,13 @@ async function _surgicalScoreUpdate(matchId, ctx) {
 
 /** Map scoring context to API path suffix. */
 const _SCORE_ENDPOINTS = {
-  'gp-group':   { points: 'gp/record-group',           tennis: 'gp/record-group-tennis' },
-  'gp-playoff': { points: 'gp/record-playoff',         tennis: 'gp/record-playoff-tennis' },
-  'mex-playoff':{ points: 'mex/record-playoff',        tennis: 'mex/record-playoff-tennis' },
-  'mex':        { points: 'mex/record',                 tennis: null },
-  'po-playoff': { points: 'po/record',                  tennis: 'po/record-tennis' },
+  'gp-group':        { points: 'gp/record-group',           tennis: 'gp/record-group-tennis' },
+  'gp-playoff':      { points: 'gp/record-playoff',         tennis: 'gp/record-playoff-tennis' },
+  'mex-playoff':     { points: 'mex/record-playoff',        tennis: 'mex/record-playoff-tennis' },
+  'mex':             { points: 'mex/record',                 tennis: null },
+  'po-playoff':      { points: 'po/record',                  tennis: 'po/record-tennis' },
+  'po-espejo-losers':{ points: 'po/record',                  tennis: 'po/record-tennis' },
+  'po-espejo-super-final':{ points: 'po/record',             tennis: 'po/record-tennis' },
 };
 
 function _scoreApiPath(ctx, isTennis) {
@@ -1347,8 +1343,12 @@ function _renderGpPlayoffEditor() {
 
   // Format selector
   html += `<div class="gp-format-row">`;
-  html += `<div class="form-group"><label>${t('txt_txt_format')}</label><select id="gp-playoff-format"><option value="single">${t('txt_txt_single_elimination')}</option><option value="double">${t('txt_txt_double_elimination')}</option></select></div>`;
+  html += `<div class="form-group"><label>${t('txt_txt_format')}</label><select id="gp-playoff-format" onchange="_gpPlayoffFormatChanged()"><option value="single">${t('txt_txt_single_elimination')}</option><option value="double">${t('txt_txt_double_elimination')}</option><option value="espejo">${t('txt_txt_espejo_format')}</option></select></div>`;
   html += `</div>`;
+  html += `<div id="gp-espejo-options" style="display:none;margin-top:0.35rem;padding:0.4rem 0.6rem;border-left:2px solid var(--border)">`;
+  html += `<label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer">`;
+  html += `<input type="checkbox" id="gp-espejo-super-final" style="width:1rem;height:1rem"> ${t('txt_txt_espejo_super_final')}`;
+  html += `</label></div>`;
 
   // Playoff team mode toggle — shown for tennis individual tournaments
   const _gpIsIndividualTennis = _gpSport === 'tennis' && (!_gpTeamRoster || Object.keys(_gpTeamRoster).length === 0);
@@ -1382,6 +1382,12 @@ function _renderGpPlayoffEditor() {
 function _gpToggleAdvancing(cb) {
   if (cb.checked) _gpAdvancingIds.add(cb.value);
   else _gpAdvancingIds.delete(cb.value);
+}
+
+function _gpPlayoffFormatChanged() {
+  const fmt = document.getElementById('gp-playoff-format')?.value;
+  const opts = document.getElementById('gp-espejo-options');
+  if (opts) opts.style.display = fmt === 'espejo' ? '' : 'none';
 }
 
 function _gpAddExternal() {
@@ -1498,6 +1504,8 @@ async function _confirmGpPlayoffs() {
     advancing_player_ids: ids.length > 0 ? ids : null,
     extra_participants: extra,
     double_elimination: fmt === 'double',
+    espejo: fmt === 'espejo',
+    espejo_super_final: fmt === 'espejo' && (document.getElementById('gp-espejo-super-final')?.checked || false),
   };
   if (_gpPlayoffTeamMode && _gpPlayoffTeams.length > 0) {
     const validTeams = _gpPlayoffTeams.filter(team => team.every(pid => pid));
@@ -1538,6 +1546,74 @@ function _scrollToGroup(gName) {
   const card = document.getElementById('gp-group-card-' + gName);
   if (!card) return;
   card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** Smooth-scroll to a playoff round card and briefly highlight it. */
+function _scrollToPlayoffRound(roundKey) {
+  const card = document.getElementById('po-round-card-' + roundKey);
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/**
+ * Render playoff matches grouped by round_label, mirroring the group-stage
+ * pattern: a sticky round nav bar at the top + one collapsible card per round.
+ *
+ * @param {Array}  matches      - All playoff matches (completed + pending).
+ * @param {string} ctx          - Score context for winners matches.
+ * @param {string} [losersCtx]  - Score context for losers-bracket matches
+ *                                (only relevant for Espejo; defaults to ctx).
+ * @returns {string} HTML string.
+ */
+function _renderPlayoffMatchesByRound(matches, ctx, losersCtx = ctx, superFinalCtx = ctx) {
+  if (!matches || matches.length === 0) return '';
+
+  // Group by round_label, preserving first-seen order (which follows bracket round order).
+  const roundOrder = [];
+  const byRound = {};
+  for (const m of matches) {
+    const key = m.round_label || t('txt_txt_match');
+    if (!byRound[key]) { byRound[key] = []; roundOrder.push(key); }
+    byRound[key].push(m);
+  }
+
+  // ── Round nav bar ─────────────────────────────────────────────────────────
+  let html = `<div class="group-nav-bar" id="po-round-nav">`;
+  for (const key of roundOrder) {
+    const rMatches = byRound[key];
+    const pending = rMatches.filter(m => m.status !== 'completed').length;
+    const cls = pending > 0 ? 'group-nav-btn has-pending' : 'group-nav-btn all-done';
+    html += `<button type="button" class="${cls}" onclick="_scrollToPlayoffRound('${escAttr(key)}')">${esc(key)}</button>`;
+  }
+  html += `<span class="group-nav-sep" aria-hidden="true"></span>`;
+  html += _renderMatchFilterChips(currentTid);
+  html += `</div>`;
+
+  // ── One card per round ────────────────────────────────────────────────────
+  for (const key of roundOrder) {
+    const rMatches = _sortTbdLast(byRound[key]);
+    const pending = rMatches.filter(m => m.status !== 'completed').length;
+    const total = rMatches.length;
+    // Start open when there are pending matches; collapse done rounds.
+    const openAttr = pending > 0 ? ' open' : '';
+
+    // Determine effective ctx: use losersCtx for losers, superFinalCtx for super_final.
+    const firstSide = rMatches[0]?.bracket_side;
+    const roundCtx = firstSide === 'super_final' ? superFinalCtx : (firstSide === 'losers' ? losersCtx : ctx);
+
+    html += `<div class="card" id="po-round-card-${escAttr(key)}">`;
+    html += `<details class="group-matches-details"${openAttr}>`;
+    html += `<summary>${esc(key)} <span class="matches-summary-count">(${pending} / ${total})</span></summary>`;
+    for (const m of rMatches) {
+      const mSide = m.bracket_side;
+      const mCtx = mSide === 'super_final' ? superFinalCtx : (mSide === 'losers' ? losersCtx : ctx);
+      html += matchRow(m, mCtx);
+    }
+    html += `</details>`;
+    html += `</div>`;
+  }
+
+  return html;
 }
 
 /** Apply match filter: 'all' | 'pending' | 'completed' | 'disputed'.

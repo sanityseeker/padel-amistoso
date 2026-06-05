@@ -6,6 +6,40 @@ try { _currentSport = localStorage.getItem(SPORT_KEY) || 'padel'; } catch (_) {}
 let _clubs = [];
 let _onCommunityChange = null;
 
+// ─── Default title generation ─────────────────────────────
+const _FORMAT_LABELS = { gp: 'GP', mex: 'Mexicano', po: 'Playoffs', lobby: 'Lobby' };
+
+function _generateDefaultTitle(format) {
+  const parts = [];
+  const clubId = _getSelectedClubId ? _getSelectedClubId() : null;
+  if (clubId && _clubs.length) {
+    const club = _clubs.find(c => c.id === clubId);
+    if (club) parts.push(club.name);
+  }
+  parts.push(_currentSport === 'tennis' ? 'Tennis' : 'Padel');
+  if (_FORMAT_LABELS[format]) parts.push(_FORMAT_LABELS[format]);
+  const now = new Date();
+  parts.push(now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }));
+  return parts.join(' · ');
+}
+
+const _DEFAULT_TITLE_IDS = { gp: 'gp-name', mex: 'mex-name', po: 'po-name' };
+let _defaultTitles = {};
+
+function _refreshDefaultTitles() {
+  for (const [format, inputId] of Object.entries(_DEFAULT_TITLE_IDS)) {
+    const el = document.getElementById(inputId);
+    if (!el) continue;
+    const generated = _generateDefaultTitle(format);
+    const prevDefault = _defaultTitles[format];
+    // Only replace if the field still holds the previous auto-generated value
+    if (!prevDefault || el.value.trim() === prevDefault) {
+      el.value = generated;
+    }
+    _defaultTitles[format] = generated;
+  }
+}
+
 // ─── Community selector ───────────────────────────────────
 function _getCommunitySelects() {
   return Array.from(document.querySelectorAll('.create-community-select'));
@@ -143,11 +177,13 @@ async function _loadClubs() {
           try { localStorage.setItem(COMMUNITY_KEY, club.community_id); } catch (_) {}
         }
       }
+      _refreshDefaultTitles();
     });
     el.dataset.clubSyncBound = '1';
   });
 
   _applySubdomainClubLock();
+  _refreshDefaultTitles();
 }
 
 // When the admin SPA is loaded on a club subdomain, force the create panel to
@@ -221,11 +257,15 @@ function _applySportToCreatePanel() {
   // Update lobby name if it still has a default value
   const regNameEl = document.getElementById('reg-new-name');
   if (regNameEl) {
-    const defaults = ['My Padel Tournament', 'My Tennis Tournament', 'My Tournament'];
-    if (defaults.includes(regNameEl.value.trim())) {
-      regNameEl.value = _defaultLobbyName();
+    const prevLobbyDefault = _defaultTitles['lobby'];
+    const generated = _generateDefaultTitle('lobby');
+    const legacyDefaults = ['My Padel Tournament', 'My Tennis Tournament', 'My Tournament'];
+    if (legacyDefaults.includes(regNameEl.value.trim()) || !prevLobbyDefault || regNameEl.value.trim() === prevLobbyDefault) {
+      regNameEl.value = generated;
     }
+    _defaultTitles['lobby'] = generated;
   }
+  _refreshDefaultTitles();
   syncCreateEntryCardVisibility();
 }
 
@@ -1441,6 +1481,8 @@ async function createPO() {
       court_names: getCourtNames('po'),
       team_mode: _currentSport === 'tennis' ? _entryModeIsTeam('po') : true,
       double_elimination: document.getElementById('po-double-elim').checked,
+      espejo: document.getElementById('po-espejo')?.checked || false,
+      espejo_super_final: document.getElementById('po-espejo-super-final')?.checked || false,
       public: document.getElementById('po-public').checked,
       sport: _currentSport,
       community_id: _getSelectedCommunityId(),
@@ -1572,6 +1614,17 @@ async function _createHubSelect(profileId) {
 }
 
 // ─── Community + Club list bootstrap ─────────────────────
-_loadCommunities().then(() => _loadClubs());
+_loadCommunities().then(() => _loadClubs().then(() => _refreshDefaultTitles()));
+
+/** Toggle Espejo sub-options and mutually exclude Double Elimination. */
+function _poToggleEspejo() {
+  const espejoBox = document.getElementById('po-espejo');
+  const optionsDiv = document.getElementById('po-espejo-options');
+  const dblElimBox = document.getElementById('po-double-elim');
+  if (!espejoBox || !optionsDiv) return;
+  const checked = espejoBox.checked;
+  optionsDiv.style.display = checked ? '' : 'none';
+  if (checked && dblElimBox) dblElimBox.checked = false;
+}
 
 // ─── Render Group+Playoff ─────────────────────────────────

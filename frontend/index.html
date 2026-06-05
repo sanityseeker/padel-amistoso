@@ -163,7 +163,7 @@
       <div class="subtab-panel active" id="create-panel-gp">
         <div class="field-section" style="margin-bottom:0.75rem">
           <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_txt_title">Title</div>
-          <input id="gp-name" value="Tournament Cup 2026" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
+          <input id="gp-name" value="" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
         </div>
         <div class="create-meta-row" style="margin-bottom:0.85rem">
           <div class="field-section create-meta-card" style="margin-bottom:0">
@@ -246,7 +246,7 @@
       <div class="subtab-panel" id="create-panel-mex">
         <div class="field-section" style="margin-bottom:0.75rem">
           <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_txt_title">Title</div>
-          <input id="mex-name" value="Mexicano Night" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
+          <input id="mex-name" value="" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
         </div>
         <div class="create-meta-row" style="margin-bottom:0.85rem">
           <div class="field-section create-meta-card" style="margin-bottom:0">
@@ -423,7 +423,7 @@
       <div class="subtab-panel" id="create-panel-po">
         <div class="field-section" style="margin-bottom:0.75rem">
           <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_txt_title">Title</div>
-          <input id="po-name" value="Play-offs 2026" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
+          <input id="po-name" value="" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
         </div>
         <div class="create-meta-row" style="margin-bottom:0.85rem">
           <div class="field-section create-meta-card" style="margin-bottom:0">
@@ -489,6 +489,16 @@
           <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.2rem">
             <input type="checkbox" id="po-double-elim" style="width:1rem;height:1rem;cursor:pointer">
             <label for="po-double-elim" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_double_elimination">Double elimination</label>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.35rem">
+            <input type="checkbox" id="po-espejo" style="width:1rem;height:1rem;cursor:pointer" onchange="_poToggleEspejo()">
+            <label for="po-espejo" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_espejo_format">Espejo (parallel losers bracket)</label>
+          </div>
+          <div id="po-espejo-options" style="display:none;margin-top:0.3rem;padding:0.4rem 0.6rem;border-left:2px solid var(--border);margin-left:1.4rem">
+            <div style="display:flex;align-items:center;gap:0.5rem">
+              <input type="checkbox" id="po-espejo-super-final" style="width:1rem;height:1rem;cursor:pointer">
+              <label for="po-espejo-super-final" style="font-size:0.82rem;cursor:pointer" data-i18n="txt_txt_espejo_super_final">Super Final (WB winner vs LB winner)</label>
+            </div>
           </div>
         </div>
         <div class="field-section" style="margin-top:0.5rem">

@@ -440,7 +440,11 @@ async function _deleteRegistration(rid) {
 // ─── Create registration form ─────────────────────────────
 
 function _defaultLobbyName() {
-  return _currentSport === 'tennis' ? 'My Tennis Tournament' : 'My Padel Tournament';
+  if (typeof _generateDefaultTitle === 'function') return _generateDefaultTitle('lobby');
+  const sport = _currentSport === 'tennis' ? 'Tennis' : 'Padel';
+  const now = new Date();
+  const date = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return `${sport} · Lobby · ${date}`;
 }
 
 function _captureCreateRegistrationDraft() {

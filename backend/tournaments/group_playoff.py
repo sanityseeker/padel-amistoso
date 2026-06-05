@@ -53,6 +53,8 @@ class GroupPlayoffTournament:
 
         self.groups: list[Group] = []
         self.playoff_bracket: SingleEliminationBracket | DoubleEliminationBracket | None = None
+        self._espejo: bool = False
+        self._espejo_super_final: bool = False
 
         self._phase: GPPhase = GPPhase.SETUP
 
@@ -343,6 +345,8 @@ class GroupPlayoffTournament:
         advancing_player_ids: list[str] | None = None,
         extra_players: list[tuple[str, float]] | None = None,
         double_elimination: bool | None = None,
+        espejo: bool = False,
+        espejo_super_final: bool = False,
         playoff_teams: list[list[str]] | None = None,
     ) -> None:
         """Seed the play‑off bracket from group results.
@@ -389,6 +393,8 @@ class GroupPlayoffTournament:
 
         if double_elimination is not None:
             self.double_elimination = double_elimination
+        self._espejo = espejo
+        self._espejo_super_final = espejo_super_final
 
         # Build player lookup from group-stage participants
         player_map: dict[str, Player] = {p.id: p for p in self.players}
@@ -501,12 +507,16 @@ class GroupPlayoffTournament:
                 # Sort formed teams by combined standings for proper bracket seeding.
                 teams.sort(key=lambda t: tuple(-x for x in _seed_key(t)))
 
-        if self.double_elimination:
+        if espejo:
+            from .playoff import EspejoParallelBracket
+
+            self.playoff_bracket = EspejoParallelBracket(teams, super_final=espejo_super_final)
+        elif self.double_elimination:
             self.playoff_bracket = DoubleEliminationBracket(teams, courts=self.courts)
         else:
             self.playoff_bracket = SingleEliminationBracket(teams)
 
-        if self.courts:
+        if self.courts and not espejo:
             all_matches = (
                 self.playoff_bracket.all_matches
                 if isinstance(self.playoff_bracket, DoubleEliminationBracket)
@@ -519,6 +529,10 @@ class GroupPlayoffTournament:
     def playoff_matches(self) -> list[Match]:
         if self.playoff_bracket is None:
             return []
+        from .playoff import EspejoParallelBracket
+
+        if isinstance(self.playoff_bracket, EspejoParallelBracket):
+            return self.playoff_bracket.all_matches
         if isinstance(self.playoff_bracket, DoubleEliminationBracket):
             return self.playoff_bracket.all_matches
         return self.playoff_bracket.matches

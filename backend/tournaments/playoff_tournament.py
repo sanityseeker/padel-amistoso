@@ -8,7 +8,7 @@ Each participant name becomes a single bracket entry (team of one entry).
 from __future__ import annotations
 
 from ..models import Court, Match, MatchStatus, POPhase, Player
-from .playoff import DoubleEliminationBracket, SingleEliminationBracket
+from .playoff import DoubleEliminationBracket, EspejoParallelBracket, SingleEliminationBracket
 
 
 class PlayoffTournament:
@@ -34,12 +34,16 @@ class PlayoffTournament:
         teams: list[list[Player]],
         courts: list[Court] | None = None,
         double_elimination: bool = False,
+        espejo: bool = False,
+        espejo_super_final: bool = False,
         team_mode: bool = True,
         initial_strength: dict[str, float] | None = None,
     ):
         self.original_teams = list(teams)
         self.courts = courts or []
         self.double_elimination = double_elimination
+        self.espejo = espejo
+        self.espejo_super_final = espejo_super_final
         self.team_mode = team_mode
         self.initial_strength = initial_strength
 
@@ -54,8 +58,12 @@ class PlayoffTournament:
 
         # Never pass courts to the bracket — PlayoffTournament owns all
         # court assignment so the bracket never internally pre-assigns anything.
-        if double_elimination:
-            self.bracket: SingleEliminationBracket | DoubleEliminationBracket = DoubleEliminationBracket(teams)
+        if espejo:
+            self.bracket: SingleEliminationBracket | DoubleEliminationBracket | EspejoParallelBracket = (
+                EspejoParallelBracket(teams, super_final=espejo_super_final)
+            )
+        elif double_elimination:
+            self.bracket = DoubleEliminationBracket(teams)
         else:
             self.bracket = SingleEliminationBracket(teams)
 
@@ -71,6 +79,8 @@ class PlayoffTournament:
 
     def all_matches(self) -> list[Match]:
         """Return all bracket matches (including future TBD matches)."""
+        if self.espejo:
+            return self.bracket.all_matches  # type: ignore[return-value]
         if self.double_elimination:
             return self.bracket.all_matches  # type: ignore[return-value]
         return list(self.bracket.matches)
@@ -102,24 +112,18 @@ class PlayoffTournament:
     def update_courts(self, courts: list[Court]) -> None:
         """Replace the court list and reassign courts across all pending bracket matches."""
         self.courts = list(courts)
-        all_matches = self.bracket.all_matches if self.double_elimination else list(self.bracket.matches)
+        all_matches = self.all_matches()
         for m in all_matches:
             if m.status != MatchStatus.COMPLETED:
                 m.court = None
         self._assign_courts_greedily()
 
     def _assign_courts_greedily(self) -> None:
-        """Assign free courts to ready matches that don't have one yet.
-
-        A court is *free* if it is not currently assigned to an active
-        (not-yet-completed) match.  Called after construction and after
-        every recorded result so every court stays occupied as long as
-        there are matches waiting.
-        """
+        """Assign free courts to ready matches that don't have one yet."""
         if not self.courts:
             return
 
-        all_matches = self.bracket.all_matches if self.double_elimination else list(self.bracket.matches)
+        all_matches = self.all_matches()
 
         occupied_court_ids: set[str] = {
             m.court.id for m in all_matches if m.court is not None and m.status != MatchStatus.COMPLETED
