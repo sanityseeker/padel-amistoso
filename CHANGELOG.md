@@ -1,3 +1,9 @@
+## v1.12.1 (2026-06-05)
+
+### Fix
+
+- **playoffs**: court addition/removal
+
 ## v1.12.0 (2026-06-05)
 
 ### Feat
