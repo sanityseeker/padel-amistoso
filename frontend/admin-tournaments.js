@@ -368,7 +368,7 @@ async function loadTournaments() {
       const canDelete = isAdmin() || getAuthUsername() === tournament.owner;
       const isPublic = tournament.public !== false;
       const visBtn = canEdit
-        ? `<button type="button" class="btn btn-sm btn-visibility" title="${t('txt_txt_visibility')}" onclick="togglePublic('${tournament.id}',${isPublic})">${isPublic ? '🌍 ' + t('txt_txt_public') : '🔒 ' + t('txt_txt_private')}</button>`
+        ? `<button type="button" class="btn btn-sm btn-visibility" title="${t('txt_txt_visibility')}" onclick="togglePublic('${tournament.id}',${isPublic})">${isPublic ? _ic('globe') + ' ' + t('txt_txt_public') : _ic('lock') + ' ' + t('txt_txt_private')}</button>`
         : '';
       const deleteBtn = canDelete
         ? `<button type="button" class="btn btn-danger btn-sm" onclick="deleteTournament('${tournament.id}')">✕</button>`
@@ -417,7 +417,7 @@ async function loadTournaments() {
         : `<span class="badge badge-lobby-closed">${r.archived ? t('txt_reg_registration_archived') : t('txt_reg_registration_closed')}</span>`;
       const countLabel = `<span class="reg-lobby-count">(${count})</span>`;
       const isListed = r.listed !== false && r.listed !== 0;
-      const visBtn = `<button type="button" class="btn btn-sm btn-visibility" title="${t('txt_txt_visibility')}" onclick="_toggleRegListed('${esc(rid)}',${isListed})">${isListed ? '🌍 ' + t('txt_txt_public') : '🔒 ' + t('txt_txt_private')}</button>`;
+      const visBtn = `<button type="button" class="btn btn-sm btn-visibility" title="${t('txt_txt_visibility')}" onclick="_toggleRegListed('${esc(rid)}',${isListed})">${isListed ? _ic('globe') + ' ' + t('txt_txt_public') : _ic('lock') + ' ' + t('txt_txt_private')}</button>`;
       const actionBtns = `
         ${visBtn}
         <button type="button" class="btn btn-danger btn-sm" onclick="_deleteRegistration('${esc(rid)}')" title="${t('txt_reg_delete')}">✕</button>
@@ -537,7 +537,7 @@ function _confirmDeleteTournament(ghosts) {
     dialog.innerHTML = `
       <div class="modal-header delete-tourn-header">
         <h2 class="modal-title delete-tourn-title" id="delete-tourn-title">
-          <span class="delete-tourn-title-icon" aria-hidden="true">⚠</span>
+          <span class="delete-tourn-title-icon" aria-hidden="true">${_antIc('warning')}</span>
           ${esc(t('txt_txt_delete_this_tournament'))}
         </h2>
         <button type="button" class="modal-close-btn" data-action="cancel" aria-label="${esc(t('txt_txt_close'))}">✕</button>

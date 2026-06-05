@@ -933,9 +933,9 @@ function _buildPlayerScoreForm(m, scoreCtx) {
       const maxAttr = i < 2 ? 'max="7"' : '';
       html += `<div class="player-set-row">`;
       html += `<span class="player-set-label">S${i + 1}</span>`;
-      html += `<input type="number" id="pts1-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
+      html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="pts1-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
       html += `<span style="color:var(--text-muted)">-</span>`;
-      html += `<input type="number" id="pts2-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
+      html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="pts2-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
       html += `</div>`;
     }
     html += `</div></div>`;
@@ -1053,9 +1053,9 @@ function _buildScoreLifecyclePanel(m, scoreCtx) {
     // Points correction inputs
     html += `<div class="correct-score-inputs${defaultCorrMode === 'sets' ? ' hidden' : ''}" id="pc-points-${m.id}">`;
     const onInput = autoCalc ? `oninput="_playerAutoFillCorrection('${m.id}', ${tvState.totalPts})"` : '';
-    html += `<input type="number" id="pc1-${m.id}" min="0" value="" placeholder="0" ${onInput}>`;
+    html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="pc1-${m.id}" min="0" value="" placeholder="0" ${onInput}>`;
     html += `<span class="score-dash">–</span>`;
-    html += `<input type="number" id="pc2-${m.id}" min="0" value="" placeholder="${autoCalc ? tvState.totalPts : 0}" ${onInput}>`;
+    html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="pc2-${m.id}" min="0" value="" placeholder="${autoCalc ? tvState.totalPts : 0}" ${onInput}>`;
     html += `</div>`;
 
     // Sets correction inputs (hidden by default unless mode=sets)
@@ -1065,9 +1065,9 @@ function _buildScoreLifecyclePanel(m, scoreCtx) {
         const maxAttr = i < 2 ? 'max="7"' : '';
         html += `<div class="player-set-row">`;
         html += `<span class="player-set-label">S${i + 1}</span>`;
-        html += `<input type="number" id="pcs1-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
+        html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="pcs1-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
         html += `<span style="color:var(--text-muted)">-</span>`;
-        html += `<input type="number" id="pcs2-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
+        html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="pcs2-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
         html += `</div>`;
       }
       html += `</div></div>`;
@@ -1878,7 +1878,9 @@ function _buildAbbrevLegend(type) {
     [t('txt_txt_l_abbrev'),         t('txt_txt_abbrev_l_full')],
     [t('txt_txt_avg_pts_abbrev'),   t('txt_txt_abbrev_avg_pts_full')],
   ];
-  return `<table>${rows.map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table>`;
+  const tiebreakerKey = type === 'standings' ? 'txt_txt_abbrev_tiebreaker_standings' : 'txt_txt_abbrev_tiebreaker_leaderboard';
+  const tiebreakerHtml = `<p style="margin:0.6rem 0 0;padding-top:0.5rem;border-top:1px solid var(--border);font-size:0.78rem;color:var(--text-muted)"><strong>${esc(t('txt_txt_abbrev_tiebreaker_title'))}</strong><br>${esc(t(tiebreakerKey))}</p>`;
+  return `<table>${rows.map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table>${tiebreakerHtml}`;
 }
 
 function showAbbrevPopup(event, type) {
@@ -1900,9 +1902,12 @@ function showAbbrevPopup(event, type) {
   popup.style.top = (rect.bottom + 6) + 'px';
 }
 
-document.addEventListener('click', () => {
+document.addEventListener('click', (e) => {
   const p = document.getElementById('abbrev-popup');
-  if (p) { p.style.display = 'none'; tvState.abbrevPopupBtn = null; }
+  if (p && p.style.display === 'block' && !p.contains(e.target) && e.target !== tvState.abbrevPopupBtn) {
+    p.style.display = 'none';
+    tvState.abbrevPopupBtn = null;
+  }
 });
 
 document.addEventListener('keydown', e => {

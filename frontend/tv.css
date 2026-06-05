@@ -1,34 +1,8 @@
-:root {
-  --bg: #0b1220;
-  --surface: #162032;
-  --surface2: #1e293b;
-  --border: #2d3f57;
-  --accent: #3b82f6;
-  --green: #22c55e;
-  --yellow: #eab308;
-  --red: #ef4444;
-  --text: #e8f0fe;
-  --text-muted: #94a3b8;
-  --court-bg: #0f1e35;
-  --sport-tennis: #14b8a6;
-}
-html[data-theme="light"] {
-  --bg: #f8fafc;
-  --surface: #ffffff;
-  --surface2: #f1f5f9;
-  --border: #e2e8f0;
-  --accent: #2563eb;
-  --green: #16a34a;
-  --yellow: #b45309;
-  --red: #dc2626;
-  --text: #0f172a;
-  --text-muted: #64748b;
-  --court-bg: #eff6ff;
-  --sport-tennis: #0d9488;
-}
+/* All design tokens live in theme.css — loaded before this file.
+   No :root variable declarations here. */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-data);
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -74,6 +48,7 @@ body {
   flex-shrink: 0;
 }
 .tv-tournament-name {
+  font-family: var(--font-display);
   font-size: 2rem;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -155,7 +130,7 @@ body {
 .tv-section-header h2 {
   font-size: 1.3rem;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--text);
   letter-spacing: -0.01em;
 }
 
@@ -375,7 +350,7 @@ details.round-block[open] > .round-summary .chevron { transform: rotate(90deg); 
   padding: 0.15rem 0.5rem;
   border-radius: 999px;
 }
-.badge-completed { background: var(--green); color: #000; }
+.badge-completed { background: var(--green); color: var(--color-on-success); }
 .badge-scheduled { background: var(--border); color: var(--text); }
 
 /* ── Score breakdown (nested) ── */
@@ -628,10 +603,12 @@ details[open] > .breakdown-toggle { color: var(--accent); }
   margin-left: 0.4rem;
   vertical-align: middle;
 }
-.picker-badge-sport { background: rgba(56,189,248,0.25); color: #7dd3fc; border: 1px solid rgba(56,189,248,0.45); }
-html[data-theme="light"] .picker-badge-sport { background: rgba(2,132,199,0.15); color: #0369a1; border: 1px solid rgba(2,132,199,0.35); }
+.picker-badge-sport { background: color-mix(in srgb, var(--color-sport-tennis) 22%, transparent); color: var(--color-sport-tennis); border: 1px solid color-mix(in srgb, var(--color-sport-tennis) 45%, transparent); }
 .picker-badge-type { background: rgba(139,92,246,0.18); color: #a78bfa; border: 1px solid rgba(139,92,246,0.3); }
-.picker-badge-phase { background: var(--yellow); color: #000; }
+.picker-badge-phase { background: var(--yellow); color: var(--color-on-yellow); }
+[data-theme="light"] .picker-badge-sport,
+html[data-theme="light"] .picker-badge-sport { background: color-mix(in srgb, var(--color-sport-tennis) 15%, transparent); color: color-mix(in srgb, var(--color-sport-tennis) 85%, #000); border: 1px solid color-mix(in srgb, var(--color-sport-tennis) 35%, transparent); }
+[data-theme="light"] .picker-badge-type,
 html[data-theme="light"] .picker-badge-type { background: rgba(139,92,246,0.12); color: #7c3aed; border: 1px solid rgba(139,92,246,0.25); }
 .tv-picker-item .picker-alias {
   font-size: 0.78rem;
@@ -690,7 +667,7 @@ details.tv-collapsible[open] summary.tv-collapsible-header .chevron { transform:
 
 /* ── Champion banner ── */
 .champion-banner {
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(59, 130, 246, 0.1) 100%);
+  background: color-mix(in srgb, var(--color-success) 12%, var(--color-bg));
   border: 2px solid var(--green);
   border-radius: 12px;
   padding: 1rem 1.4rem;
@@ -704,7 +681,7 @@ details.tv-collapsible[open] summary.tv-collapsible-header .chevron { transform:
 
 /* ── Admin announcement banner ── */
 .admin-banner {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(168, 85, 247, 0.06) 100%);
+  background: var(--color-surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.75rem 1.4rem;
@@ -712,7 +689,6 @@ details.tv-collapsible[open] summary.tv-collapsible-header .chevron { transform:
   font-size: 0.92rem;
   font-weight: 500;
   color: var(--text-muted);
-  text-align: center;
   white-space: pre-line;
 }
 
@@ -842,8 +818,11 @@ html[data-theme="light"] .standings-table tr:hover td {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* Visual size is 18px; hit area is padded to 44×44px via padding */
   width: 18px;
   height: 18px;
+  padding: 13px;
+  margin: -13px;
   font-size: 0.72rem;
   font-weight: 800;
   font-style: italic;
@@ -852,7 +831,6 @@ html[data-theme="light"] .standings-table tr:hover td {
   background: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 0;
   flex-shrink: 0;
   line-height: 1;
   transition: color 0.15s, border-color 0.15s;
@@ -894,7 +872,8 @@ html[data-theme="light"] .standings-table tr:hover td {
 .player-bar .player-name { font-weight: 700; color: var(--accent); }
 .player-bar button {
   background: none; border: 1px solid var(--border); color: var(--text-muted);
-  border-radius: 4px; padding: 0.2rem 0.6rem; cursor: pointer; font-size: 0.78rem;
+  border-radius: 4px; padding: 0.35rem 0.75rem; cursor: pointer; font-size: 0.78rem;
+  min-height: 2rem;
 }
 .player-bar button:hover { border-color: var(--accent); color: var(--accent); }
 
@@ -963,9 +942,8 @@ html[data-theme="light"] .standings-table tr:hover td {
   gap: 0.6rem;
   margin: 0.5rem 0.5rem 0 auto;
   padding: 0.4rem 0.55rem 0.4rem 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
+  background: var(--color-primary-highlight);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, var(--border));
   border-radius: 6px;
   font-size: 0.85rem;
   line-height: 1.3;
@@ -1046,7 +1024,7 @@ html[data-theme="light"] .standings-table tr:hover td {
   margin-right: 0.15rem;
 }
 .player-hub-section-passphrase {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem; color: var(--accent);
   background: var(--bg-soft, rgba(0,0,0,0.04));
   padding: 0.1rem 0.4rem; border-radius: 4px;
@@ -1171,7 +1149,7 @@ html[data-theme="light"] .standings-table tr:hover td {
 .player-login-modal input {
   width: 100%; padding: 0.55rem 0.7rem; border: 1px solid var(--border);
   border-radius: 6px; background: var(--bg); color: var(--text); font-size: 0.95rem;
-  margin-bottom: 0.6rem; text-align: center; font-family: monospace;
+  margin-bottom: 0.6rem; text-align: center; font-family: var(--font-mono);
 }
 .player-login-modal .btn {
   display: inline-block; padding: 0.5rem 2rem; border-radius: 6px;

@@ -351,7 +351,7 @@ function _phRenderDetail(data) {
   html += '<div style="display:grid;grid-template-columns:auto 1fr;gap:0.3rem 1rem;font-size:0.88rem;margin-bottom:1rem">';
   const passDisplay = data.is_ghost
     ? `<span style="color:var(--text-muted)" title="${t('txt_ph_ghost_no_passphrase')}">—</span>`
-    : `<code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(data.passphrase)}</code> <button type="button" class="btn btn-sm btn-muted" onclick="phResetPassphrase('${escAttr(data.id)}')" style="font-size:0.76rem;padding:0.15rem 0.4rem">🔄 ${t('txt_ph_reset')}</button>`;
+    : `<code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(data.passphrase)}</code> <button type="button" class="btn btn-sm btn-muted" onclick="phResetPassphrase('${escAttr(data.id)}')" style="font-size:0.76rem;padding:0.15rem 0.4rem">${_ic('reset')} ${t('txt_ph_reset')}</button>`;
   html += `<strong>${t('txt_txt_passphrase')}:</strong><span>${passDisplay}</span>`;
   html += `<strong>${t('txt_ph_name')}:</strong><span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap"><input type="text" id="ph-name-input" value="${escAttr(data.name || '')}" style="flex:1;min-width:180px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" onclick="phUpdateName('${escAttr(data.id)}')" id="ph-name-save-btn">${t('txt_txt_save')}</button></span>`;
   html += `<strong>${t('txt_txt_email')}:</strong><span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap"><input type="email" id="ph-email-input" value="${escAttr(data.email || '')}" style="flex:1;min-width:180px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" onclick="phUpdateEmail('${escAttr(data.id)}')" id="ph-email-save-btn">${t('txt_txt_save')}</button></span>`;
@@ -436,7 +436,7 @@ function _phParticipationTable(participations, profileId, isFinished) {
       html += `<td class="player-codes-cell-center">${p.wins}/${p.losses}/${p.draws}</td>`;
       html += `<td class="player-codes-cell-center">${p.points_for}/${p.points_against}</td>`;
     }
-    const unlinkLabel = isFinished ? `⚠️ ${t('txt_ph_unlink')}` : t('txt_ph_unlink');
+    const unlinkLabel = isFinished ? `${_antIc('warning')} ${t('txt_ph_unlink')}` : t('txt_ph_unlink');
     const btnClass = isFinished ? 'btn btn-danger btn-sm' : 'btn btn-sm btn-muted';
     html += `<td class="player-codes-cell-center"><button type="button" class="${btnClass}" onclick="phUnlink('${escAttr(p.tournament_id)}','${escAttr(p.player_id)}',${isFinished})" style="font-size:0.78rem">${unlinkLabel}</button></td>`;
     html += '</tr>';

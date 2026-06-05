@@ -7,19 +7,21 @@
  * the app.
  * ── */
 :root {
-  /* dark default — mirrors tv.css dark palette */
-  --card-bg:      #162032;   /* = --surface */
-  --bg-muted:     #1e293b;   /* = --surface2 */
-  --bg-elevated:  #162032;   /* input / select elevated bg */
-  --bg-alt:       #1e293b;   /* badge / chip tint surface */
-  --border-color: #2d3f57;   /* = --border */
+  /* Club-specific aliases — all reference the canonical vars from tv.css / theme.css.
+   * Never duplicate raw hex here; update theme.css instead. */
+  --card-bg:      var(--surface);
+  --bg-muted:     var(--surface2);
+  --bg-elevated:  var(--surface);
+  --bg-alt:       var(--surface2);
+  --border-color: var(--border);
 }
 html[data-theme="light"] {
-  --card-bg:      #ffffff;
-  --bg-muted:     #f1f5f9;
-  --bg-elevated:  #ffffff;
-  --bg-alt:       #e2e8f0;
-  --border-color: #e2e8f0;
+  /* light overrides are already carried by theme.css; no raw hex needed */
+  --card-bg:      var(--surface);
+  --bg-muted:     var(--surface2);
+  --bg-elevated:  var(--surface);
+  --bg-alt:       var(--surface2);
+  --border-color: var(--border);
 }
 
 /* Reserve scrollbar space so the layout width never shifts when the page
@@ -55,19 +57,12 @@ body {
 
 .club-item-card--pinned {
   position: relative;
-  padding-left: 1.1rem;
-  border-left: 3px solid var(--accent, #3b82f6);
+  background: var(--color-primary-highlight);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 
 .club-item-card--pinned::before {
-  content: '';
-  position: absolute;
-  left: 0.25rem;
-  top: 0.35rem;
-  bottom: 0.35rem;
-  width: 4px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent, #3b82f6) 70%, #fff), var(--accent, #3b82f6));
+  content: none;
 }
 
 /* Admin landing pin checklist */
@@ -215,18 +210,18 @@ body {
 .club-sport-pill.active {
   background: var(--accent, #3b82f6);
   border-color: var(--accent, #3b82f6);
-  color: #fff;
+  color: var(--color-on-primary);
   font-weight: 600;
 }
 
 .club-sport-pill[data-sport="padel"].active {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
 }
 
 .club-sport-pill[data-sport="tennis"].active {
-  background: #16a34a;
-  border-color: #16a34a;
+  background: var(--color-sport-tennis);
+  border-color: var(--color-sport-tennis);
 }
 
 .club-leaderboard-scope-bar {
@@ -434,13 +429,13 @@ body {
 }
 
 .club-item-badge--sport {
-  background: color-mix(in srgb, #2563eb 12%, transparent);
-  color: #2563eb;
+  background: var(--color-primary-highlight);
+  color: var(--color-primary);
 }
 
 .club-item-badge--sport.club-item-badge--tennis {
-  background: color-mix(in srgb, #16a34a 12%, transparent);
-  color: #16a34a;
+  background: color-mix(in srgb, var(--color-sport-tennis) 12%, transparent);
+  color: var(--color-sport-tennis);
 }
 
 .club-item-badge--type {
@@ -534,7 +529,7 @@ body {
 
 .club-search-link {
   color: var(--accent, #3b82f6);
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .club-search-hint {
@@ -642,8 +637,8 @@ body {
   color: var(--text-muted);
 }
 .club-item-status--in_progress {
-  background: color-mix(in srgb, #16a34a 15%, transparent);
-  color: #16a34a;
+  background: var(--color-success-highlight);
+  color: var(--color-success);
 }
 .club-item-status--open_registration {
   background: color-mix(in srgb, var(--accent, #3b82f6) 15%, transparent);

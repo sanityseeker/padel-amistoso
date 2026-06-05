@@ -32,7 +32,7 @@
   flex-wrap: wrap;
 }
 .passphrase-text {
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 1.2rem;
   font-weight: 700;
   color: var(--accent);
@@ -60,7 +60,7 @@
   white-space: nowrap;
 }
 .passphrase-strip-text {
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   font-weight: 700;
   color: var(--accent);
@@ -133,7 +133,7 @@
 
 .elo-chip-count {
   font-weight: 400;
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
 }
 
@@ -261,14 +261,14 @@
 
 .player-scope-club-community {
   color: var(--text-muted);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 400;
   opacity: 0.75;
 }
 
 .player-scope-club-stats {
   color: var(--text-muted);
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 /* Inline badge that shows the active scope inside scoped section headings
@@ -279,7 +279,7 @@
   align-items: center;
   margin-left: 0.5rem;
   padding: 0.08rem 0.45rem;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 600;
   line-height: 1.4;
   text-transform: none;
@@ -372,9 +372,10 @@
   background: none;
   border: none;
   color: var(--red, #ef4444);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  padding: 0;
+  padding: 0.25rem 0.4rem;
+  min-height: 2rem;
   cursor: pointer;
   opacity: 0.5;
   white-space: nowrap;
@@ -388,9 +389,10 @@
   background: none;
   border: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  padding: 0.18rem 0.6rem;
+  padding: 0.35rem 0.75rem;
+  min-height: 2rem;
   border-radius: 5px;
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
@@ -506,7 +508,7 @@
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--red) 45%, var(--border));
   color: var(--red);
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -531,7 +533,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.22rem;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 0.08rem 0.4rem;
@@ -540,7 +542,7 @@
 }
 
 .entry-path-chip strong {
-  font-size: 0.66rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--text);
@@ -566,7 +568,7 @@
 }
 
 .entry-path-side-label {
-  font-size: 0.6rem;
+  font-size: 0.72rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--text-muted) 88%, var(--accent));
@@ -616,14 +618,14 @@
 
 /* Points delta inside chip */
 .entry-path-pts-delta {
-  font-size: 0.64rem;
+  font-size: 0.72rem;
   font-weight: 700;
   color: var(--green);
 }
 
 /* Rank trend arrow inside chip */
 .entry-path-rank-arrow {
-  font-size: 0.66rem;
+  font-size: 0.72rem;
   font-weight: 700;
 }
 .entry-path-rank-arrow--up   { color: var(--green); }
@@ -657,7 +659,7 @@
   min-width: 4.7rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  font-size: 0.66rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
 }
 
@@ -668,10 +670,10 @@
 }
 
 /* Badges */
-.badge { display: inline-block; font-size: 0.68rem; padding: 0.12rem 0.45rem; border-radius: 999px; font-weight: 700; }
-.badge-sport  { background: var(--accent); color: #fff; }
+.badge { display: inline-block; font-size: 0.72rem; padding: 0.12rem 0.45rem; border-radius: 999px; font-weight: 700; }
+.badge-sport  { background: var(--accent); color: var(--color-on-primary); }
 .badge-type   { background: var(--surface2, var(--border)); color: var(--text-muted); }
-.badge-active { background: var(--green); color: #fff; }
+.badge-active { background: var(--green); color: var(--color-on-success); }
 .badge-finished { background: var(--border); color: var(--text-muted); }
 
 /* Empty states */
@@ -707,7 +709,7 @@
   line-height: 1.15;
 }
 .global-stats-label {
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -715,7 +717,7 @@
   margin-top: 0.2rem;
 }
 .global-stats-tournament {
-  font-size: 0.58rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -769,7 +771,7 @@
 }
 .best-results-tag {
   flex-shrink: 0;
-  font-size: 0.58rem;
+  font-size: 0.72rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -782,8 +784,10 @@
 
 .global-stats-sport-section {
   margin-bottom: 0.6rem;
-  padding-left: 0.65rem;
-  border-left: 3px solid var(--accent);
+  padding: 0.4rem 0.65rem;
+  background: var(--color-primary-highlight);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, var(--border));
+  border-radius: 6px;
 }
 
 .global-stats-sport-section:last-of-type {
@@ -791,11 +795,12 @@
 }
 
 .global-stats-sport-section[data-sport="tennis"] {
-  border-left-color: var(--sport-tennis);
+  background: color-mix(in srgb, var(--color-sport-tennis) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-sport-tennis) 25%, var(--border));
 }
 
 .global-stats-sport-label {
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -818,7 +823,7 @@
 }
 
 .elo-rating-sport-label {
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1764,6 +1769,7 @@ h1 { font-size: 1.5rem; margin-bottom: 0.3rem; text-align: center; }
   gap: 0.35rem;
   padding: 0.7rem 0.8rem;
   user-select: none;
+  overflow: hidden;
 }
 .player-leaderboard-summary::-webkit-details-marker { display: none; }
 .player-leaderboard-panel[open] .player-history-chevron { transform: rotate(90deg); }
@@ -1854,7 +1860,7 @@ h1 { font-size: 1.5rem; margin-bottom: 0.3rem; text-align: center; }
 .info-formulas code {
   display: block;
   font-size: 0.82rem;
-  font-family: ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;

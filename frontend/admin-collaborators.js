@@ -8,7 +8,7 @@ function _renderRegCollaboratorsSection(rid, collaborators) {
 
   let html = `<div style="margin-top:0.9rem;padding-top:0.75rem;border-top:1px solid var(--border)">`;
   html += `<div style="font-weight:700;display:flex;align-items:center;gap:0.45rem;margin-bottom:0.55rem">`;
-  html += `👥 ${t('txt_txt_collaborators')}`;
+  html += `${_antIc('team')} ${t('txt_txt_collaborators')}`;
   if (list.length > 0) html += ` <span style="font-size:0.75rem;font-weight:400;color:var(--text-muted)">(${list.length})</span>`;
   html += `</div>`;
   html += `<p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:0.75rem">${t('txt_txt_collaborators_help')}</p>`;
@@ -31,7 +31,7 @@ function _renderRegCollaboratorsSection(rid, collaborators) {
   } else {
     for (const username of list) {
       html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--border)">`;
-      html += `<span style="font-size:0.9rem">👤 ${esc(username)}</span>`;
+      html += `<span style="font-size:0.9rem">${_antIc('user')} ${esc(username)}</span>`;
       html += `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem"`;
       html += ` onclick="_removeRegCollaborator('${esc(rid)}', '${escAttr(username)}')">✕ ${t('txt_txt_remove')}</button>`;
       html += `</div>`;
@@ -121,7 +121,7 @@ function _renderCollaboratorsBody(collaborators) {
   } else {
     for (const username of list) {
       html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.35rem 0;border-bottom:1px solid var(--border)">`;
-      html += `<span style="font-size:0.88rem">👤 ${esc(username)}</span>`;
+      html += `<span style="font-size:0.88rem">${_antIc('user')} ${esc(username)}</span>`;
       html += `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem"`;
       html += ` onclick="_removeCollaborator('${escAttr(username)}')">✕ ${t('txt_txt_remove')}</button>`;
       html += `</div>`;

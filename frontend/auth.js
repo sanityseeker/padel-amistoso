@@ -333,19 +333,19 @@ function updateAuthUI() {
     if (username) {
       const _onSubdomain = !!(typeof window !== 'undefined' && window.__ADMIN_SUBDOMAIN_CLUB__);
       const adminBtn = isAdmin()
-        ? `<button class="btn btn-sm" onclick="setActiveTab('players-hub')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_nav_player_space')}">🎾</button>`
-          + `<button class="btn btn-sm" onclick="setActiveTab('user-mgmt')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_user_management')}">👥</button>`
-          + (_onSubdomain ? '' : `<button class="btn btn-sm" onclick="setActiveTab('communities')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="Communities">🏘️</button>`)
+        ? `<button class="btn btn-sm" onclick="setActiveTab('players-hub')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_nav_player_space')}">${_ic('user')} <span class="nav-btn-label">${t('txt_nav_player_space')}</span></button>`
+          + `<button class="btn btn-sm" onclick="setActiveTab('user-mgmt')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_user_management')}">${_ic('users')} <span class="nav-btn-label">${t('txt_txt_users_tab')}</span></button>`
+          + (_onSubdomain ? '' : `<button class="btn btn-sm" onclick="setActiveTab('communities')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="Communities">${_ic('grid')} <span class="nav-btn-label">${t('txt_comm_title')}</span></button>`)
         : '';
-      const clubsBtn = `<button class="btn btn-sm" onclick="setActiveTab('clubs')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_clubs_title')}">🏟️</button>`;
-      const changePwdBtn = `<button class="btn btn-sm" onclick="showChangePasswordDialog()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_change_password')}">🔑</button>`;
+      const clubsBtn = `<button class="btn btn-sm" onclick="setActiveTab('clubs')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_clubs_title')}">${_ic('building')} <span class="nav-btn-label">${t('txt_clubs_title')}</span></button>`;
+      const changePwdBtn = `<button class="btn btn-sm" onclick="showChangePasswordDialog()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_change_password')}">${_ic('shield')}</button>`;
       authStatus.innerHTML = `
         ${adminBtn}${clubsBtn}${changePwdBtn}<strong style="margin-right:0.5rem">${esc(username)}</strong>
         <button class="btn btn-sm" onclick="logout()" style="padding:0.3rem 0.6rem">${t('txt_txt_logout')}</button>
       `;
     } else {
       authStatus.innerHTML = `
-        <button class="btn btn-sm" onclick="showLoginDialog()" style="background:var(--green);color:#fff;border:none;padding:0.4rem 0.8rem;font-weight:600">🔓 ${t('txt_txt_login')}</button>
+        <button class="btn btn-sm" onclick="showLoginDialog()" style="background:var(--green);color:#fff;border:none;padding:0.4rem 0.8rem;font-weight:600">${_ic('unlock')} ${t('txt_txt_login')}</button>
       `;
     }
   }
@@ -483,8 +483,8 @@ function filterUserMgmtList(query) {
       </div>
       <div class="umgmt-col-actions">
         ${u.username !== self
-          ? `<button class="btn btn-sm" onclick="showChangePasswordDialog('${esc(u.username)}')" title="${t('txt_txt_change_password')}">🔑</button><button class="btn btn-sm btn-danger" onclick="deleteUserWithConfirm('${esc(u.username)}')">🗑</button>`
-          : `<span class="umgmt-self-badge" title="${t('txt_txt_protected')}">🔒</span>`}
+          ? `<button class="btn btn-sm" onclick="showChangePasswordDialog('${esc(u.username)}')" title="${t('txt_txt_change_password')}">${_ic('key')}</button><button class="btn btn-sm btn-danger" onclick="deleteUserWithConfirm('${esc(u.username)}')">${_ic('trash')}</button>`
+          : `<span class="umgmt-self-badge" title="${t('txt_txt_protected')}">${_antIc('lock')}</span>`}
       </div>
     </li>`).join('');
 }

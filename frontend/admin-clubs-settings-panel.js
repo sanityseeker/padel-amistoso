@@ -97,7 +97,7 @@ function _renderClubStatusBar(club, comm) {
   // Compact season chip: shown only when there are 2+ active seasons (the
   // single-active case is already obvious from the leaderboard scope dropdown).
   const seasonChip = activeSeasons.length > 1
-    ? `<span class="badge badge-open" title="${escAttr(activeSeasons.map(s => s.name).join(', '))}">📅 ${activeSeasons.length} ${esc(t('txt_clubs_status_seasons_active'))}</span>`
+    ? `<span class="badge badge-open" title="${escAttr(activeSeasons.map(s => s.name).join(', '))}">${_antIc('calendar')} ${activeSeasons.length} ${esc(t('txt_clubs_status_seasons_active'))}</span>`
     : '';
 
   const sportToggle = `
@@ -112,7 +112,7 @@ function _renderClubStatusBar(club, comm) {
     <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn"
       title="${escAttr(t('txt_admin_status_jump_settings'))}"
       aria-label="${escAttr(t('txt_admin_status_jump_settings'))}"
-      onclick="_jumpToClubSettings('${esc(club.id)}')">⚙</button>`;
+      onclick="_jumpToClubSettings('${esc(club.id)}')">${_ic('settings')}</button>`;
 
   return `
     <div class="card club-status-bar tournament-status-bar" id="club-status-bar-${esc(club.id)}">
@@ -154,13 +154,13 @@ function _renderClubGeneralBody(club) {
   if (club.has_logo) {
     html += `<img src="/api/clubs/${esc(club.id)}/logo?_=${Date.now()}" alt="" class="clubs-logo-preview">`;
   } else {
-    html += `<span class="clubs-logo-preview clubs-logo-preview--empty" aria-hidden="true">📷</span>`;
+    html += `<span class="clubs-logo-preview clubs-logo-preview--empty" aria-hidden="true">${_antIc('camera')}</span>`;
   }
-  html += `<label class="btn btn-sm" style="cursor:pointer;margin:0">📷 ${t('txt_clubs_upload_logo')}`;
+  html += `<label class="btn btn-sm" style="cursor:pointer;margin:0">${_antIc('camera')} ${t('txt_clubs_upload_logo')}`;
   html += `<input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="clubsUploadLogo(this)">`;
   html += `</label>`;
   if (club.has_logo) {
-    html += `<button class="btn btn-sm btn-danger" onclick="clubsDeleteLogo()">🗑 ${t('txt_clubs_remove_logo')}</button>`;
+    html += `<button class="btn btn-sm btn-danger" onclick="clubsDeleteLogo()">${_ic('trash')} ${t('txt_clubs_remove_logo')}</button>`;
   }
   html += `<span id="clubs-logo-msg" style="font-size:0.84rem"></span>`;
   html += `</div>`;
@@ -336,12 +336,12 @@ function _renderClubSettingsCard(club) {
   const active = _getClubSubtab(club.id);
 
   const subtabs = [
-    { key: 'general',     label: t('txt_club_settings_tab_general'),     icon: '⚙',  body: _renderClubGeneralBody(club) },
-    { key: 'tiers',       label: t('txt_club_settings_tab_tiers'),       icon: '🏷', body: _renderClubTiersBody() },
-    { key: 'seasons',     label: t('txt_club_settings_tab_seasons'),     icon: '📅', body: _renderClubSeasonsBody() },
-    { key: 'assignments', label: t('txt_club_settings_tab_assignments'), icon: '🔗', body: _renderClubAssignmentsBody() },
-    { key: 'comms',       label: t('txt_club_settings_tab_comms'),       icon: '📧', body: _renderClubCommsBody(club) },
-    { key: 'access',      label: t('txt_club_settings_tab_access'),      icon: '🛡', body: _renderClubAccessBody(club) },
+    { key: 'general',     label: t('txt_club_settings_tab_general'),     icon: _antIc('setting'),   body: _renderClubGeneralBody(club) },
+    { key: 'tiers',       label: t('txt_club_settings_tab_tiers'),       icon: _antIc('tag'),       body: _renderClubTiersBody() },
+    { key: 'seasons',     label: t('txt_club_settings_tab_seasons'),     icon: _antIc('calendar'),  body: _renderClubSeasonsBody() },
+    { key: 'assignments', label: t('txt_club_settings_tab_assignments'), icon: _antIc('link'),      body: _renderClubAssignmentsBody() },
+    { key: 'comms',       label: t('txt_club_settings_tab_comms'),       icon: _antIc('mail'),      body: _renderClubCommsBody(club) },
+    { key: 'access',      label: t('txt_club_settings_tab_access'),      icon: _antIc('safety'),    body: _renderClubAccessBody(club) },
   ].filter(st => st.body && st.body.trim());
 
   if (subtabs.length === 0) return '';
@@ -351,7 +351,7 @@ function _renderClubSettingsCard(club) {
   const isOpen = _getClubSettingsOpen(club.id);
   html += `<details class="admin-settings-details"${isOpen ? ' open' : ''} ontoggle="_setClubSettingsOpen('${esc(club.id)}', this.open)">`;
   html += `<summary class="admin-settings-summary">`;
-  html += `<span class="admin-settings-title"><span class="tv-chevron admin-settings-chevron">▸</span> ⚙ ${t('txt_club_settings_title')}</span>`;
+  html += `<span class="admin-settings-title"><span class="tv-chevron admin-settings-chevron">▸</span> ${_antIc('setting')} ${t('txt_club_settings_title')}</span>`;
   html += `</summary>`;
 
   html += `<div class="admin-settings-body">`;

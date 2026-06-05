@@ -1,3 +1,9 @@
+## v1.12.0 (2026-06-05)
+
+### Feat
+
+- **frontend-/-styling**: heavily refactor and refine the project styling
+
 ## v1.11.5 (2026-05-25)
 
 ### Fix

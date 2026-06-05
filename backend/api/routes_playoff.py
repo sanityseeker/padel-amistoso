@@ -19,6 +19,7 @@ from .helpers import (
     _build_match_labels,
     _get_tournament,
     _is_bye_match,
+    _require_editor_access,
     _require_score_permission,
     _find_match,
     _schema_cache_get,
@@ -31,7 +32,7 @@ from .helpers import (
     _apply_player_score_metadata,
     _mark_admin_score,
 )
-from .schemas import CreatePlayoffRequest, RecordScoreRequest, RecordTennisScoreRequest
+from .schemas import CreatePlayoffRequest, RecordScoreRequest, RecordTennisScoreRequest, UpdateCourtsRequest
 from .state import allocate_tournament_id, _save_tournament, _tournament_versions, get_tournament_lock
 from .player_secret_store import create_secrets_for_tournament
 from .push_events import notify_champion
@@ -127,6 +128,20 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
     return {"id": tid, "phase": t.phase}
 
 
+@router.patch("/{tid}/po/courts")
+async def po_update_courts(tid: str, req: UpdateCourtsRequest, user=Depends(get_current_user)) -> dict:
+    """Replace the court list for the standalone play-off tournament."""
+    _require_editor_access(tid, user)
+    async with get_tournament_lock(tid):
+        data = _get_tournament(tid, _PO)
+        t: PlayoffTournament = data["tournament"]
+        courts = [Court(name=n) for n in req.court_names]
+        t.update_courts(courts)
+        data["assign_courts"] = len(courts) > 0
+        _save_tournament(tid)
+    return {"courts": [{"id": c.id, "name": c.name} for c in t.courts]}
+
+
 @router.get("/{tid}/po/status")
 async def po_status(tid: str) -> dict:
     """Return high-level status (phase, champion, bracket type) for a standalone Play-off tournament."""
@@ -137,6 +152,7 @@ async def po_status(tid: str) -> dict:
         "team_mode": t.team_mode,
         "double_elimination": t.double_elimination,
         "assign_courts": data.get("assign_courts", True),
+        "courts": [{"id": c.id, "name": c.name} for c in t.courts],
         "champion": [p.name for p in t.champion()] if t.champion() else None,
         "sport": data.get("sport", "padel"),
     }

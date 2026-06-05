@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#3b82f6">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');</script>
+<script>(function(){try{var t=localStorage.getItem('amistoso-theme')||localStorage.getItem('padel-theme');if(!t)t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(_){}})();</script>
 <script>
   // Restore pinned home page or last-visited page so PWA users land where they left off.
   // Runs synchronously in <head> to avoid any flash of the admin page.
@@ -29,6 +30,12 @@
     } catch (_) {}
   })();
 </script>
+<link rel="preconnect" href="https://api.fontshare.com">
+<link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=cabinet-grotesk@400,500,700,800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
 <link rel="stylesheet" href="/admin.css">
 <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.3.3/dist/purify.min.js" integrity="sha384-pcBjnGbkyKeOXaoFkmJiuR9E08/6gkmus6/Strimnxtl3uk0Hx23v345pWyC/MMr" crossorigin="anonymous"></script>
@@ -40,13 +47,13 @@
       <button type="button" id="lang-toggle-btn" class="compact-icon-btn" data-action="toggleLanguage" title="Language" data-i18n-title="txt_txt_language" aria-label="Language" data-i18n-aria-label="txt_txt_language">🇬🇧</button>
       <div class="page-selector" id="page-selector">
         <button type="button" class="page-selector-btn" id="page-selector-btn" data-action="togglePageSelector">
-          <span class="page-selector-icon">🛠️</span>
+          <span class="page-selector-icon"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M876.6 239.5c-.5-.9-1.2-1.8-2-2.5-5-5-13.1-5-18.1 0L684.2 409.3l-67.9-67.9L788.7 169c.8-.8 1.4-1.6 2-2.5 3.6-6.1 1.6-13.9-4.5-17.5-98.2-58-226.8-44.7-311.3 39.7-67 67-89.2 162-66.5 247.4l-293 293c-3 3-2.8 7.9.3 11l169.7 169.7c3.1 3.1 8.1 3.3 11 .3l292.9-292.9c85.5 22.8 180.5.7 247.6-66.4 84.4-84.5 97.7-213.1 39.7-311.3z"/></svg></span>
           <span class="page-selector-label" data-i18n="txt_nav_admin">Admin</span>
           <span class="page-selector-arrow">▾</span>
         </button>
         <div class="page-selector-menu" id="page-selector-menu">
           <a href="/admin" class="page-selector-item active" data-page="admin">
-            <span class="page-selector-item-icon">🛠️</span>
+            <span class="page-selector-item-icon"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M876.6 239.5c-.5-.9-1.2-1.8-2-2.5-5-5-13.1-5-18.1 0L684.2 409.3l-67.9-67.9L788.7 169c.8-.8 1.4-1.6 2-2.5 3.6-6.1 1.6-13.9-4.5-17.5-98.2-58-226.8-44.7-311.3 39.7-67 67-89.2 162-66.5 247.4l-293 293c-3 3-2.8 7.9.3 11l169.7 169.7c3.1 3.1 8.1 3.3 11 .3l292.9-292.9c85.5 22.8 180.5.7 247.6-66.4 84.4-84.5 97.7-213.1 39.7-311.3z"/></svg></span>
             <span data-i18n="txt_nav_admin">Admin</span>
           </a>
            <a href="/player" class="page-selector-item" data-page="player">
@@ -54,16 +61,16 @@
             <span data-i18n="txt_nav_player_space">Player Hub</span>
           </a>
           <a href="/tv" class="page-selector-item" data-page="tv">
-            <span class="page-selector-item-icon">📺</span>
+            <span class="page-selector-item-icon"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M928 140H96c-17.7 0-32 14.3-32 32v496c0 17.7 14.3 32 32 32h380v112H304c-8.8 0-16 7.2-16 16v48c0 4.4 3.6 8 8 8h432c4.4 0 8-3.6 8-8v-48c0-8.8-7.2-16-16-16H548V700h380c17.7 0 32-14.3 32-32V172c0-17.7-14.3-32-32-32zm-40 488H136V212h752v416z"/></svg></span>
             <span data-i18n="txt_nav_tv_view">Tournaments</span>
           </a>
           <a href="/register" class="page-selector-item" data-page="register">
-            <span class="page-selector-item-icon">📋</span>
+            <span class="page-selector-item-icon"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg></span>
             <span data-i18n="txt_nav_registrations">Registrations</span>
           </a>
           <div class="page-selector-divider"></div>
           <button type="button" class="page-selector-pin-btn" id="admin-pin-home-btn" data-action="toggleHomePin">
-            <span class="pin-icon">📍</span> <span class="pin-label" data-i18n="txt_nav_set_home">Set as home page</span>
+            <span class="pin-icon"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M878.3 392.1L631.9 145.7c-6.5-6.5-15-9.7-23.5-9.7s-17 3.2-23.5 9.7L423.8 306.9c-12.2-1.4-24.5-2-36.8-2-73.2 0-146.4 24.1-206.5 72.3a33.23 33.23 0 00-2.7 49.4l181.7 181.7-215.4 215.2a15.8 15.8 0 00-4.6 9.8l-3.4 37.2c-.9 9.4 6.6 17.4 15.9 17.4.5 0 1 0 1.5-.1l37.2-3.4c3.7-.3 7.2-2 9.8-4.6l215.4-215.4 181.7 181.7c6.5 6.5 15 9.7 23.5 9.7 9.7 0 19.3-4.2 25.9-12.4 56.3-70.3 79.7-158.3 70.2-243.4l161.1-161.1c12.9-12.8 12.9-33.8 0-46.8z"/></svg></span> <span class="pin-label" data-i18n="txt_nav_set_home">Set as home page</span>
           </button>
         </div>
       </div>
@@ -107,9 +114,9 @@
   <!-- ─── CREATE ─────────────────────────────────────────── -->
   <div class="tab-panel" id="panel-create" role="tabpanel">
     <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
+      <div style="display:flex;align-items:center;margin-bottom:0.5rem">
         <h2 style="margin:0" data-i18n="txt_txt_create_tournament">Create Tournament</h2>
-        <button type="button" class="format-info-btn" id="create-format-info-btn" data-action="openFormatInfo" aria-label="About this format" data-i18n-aria-label="txt_txt_about_this_format" data-i18n-title="txt_txt_about_this_format" title="About this format">i</button>
+        <button type="button" class="format-info-btn" id="create-format-info-btn" data-action="openFormatInfo" aria-label="About this format" data-i18n-aria-label="txt_txt_about_this_format" data-i18n-title="txt_txt_about_this_format" title="About this format" style="margin-left:auto">i</button>
       </div>
       <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.85rem;flex-wrap:wrap">
         <div class="subtabs" role="tablist" aria-label="Create tournament type" data-i18n-aria-label="txt_txt_create_tournament_type" style="margin-bottom:0">
@@ -179,7 +186,7 @@
             <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
               <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="gp" data-i18n="txt_txt_clear_all">Clear all</button>
               <button type="button" class="paste-list-btn" onclick="addPlayersFromClub('gp')" data-i18n="txt_create_add_from_club">Add from club</button>
-              <button type="button" class="paste-list-btn" id="gp-paste-toggle" data-action="togglePasteMode" data-ctx="gp">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
+              <button type="button" class="paste-list-btn" id="gp-paste-toggle" data-action="togglePasteMode" data-ctx="gp"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
           <div id="gp-participant-fields">
@@ -191,7 +198,7 @@
           </div>
         </div>
         <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="gp-contact-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">📇 <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
           <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Add email and/or contact info (e.g. phone, WhatsApp) for each player. Used for notifications and shared with co-players.</p>
           <div id="gp-contact-container"></div>
         </details>
@@ -262,7 +269,7 @@
             <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
               <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="mex" data-i18n="txt_txt_clear_all">Clear all</button>
               <button type="button" class="paste-list-btn" onclick="addPlayersFromClub('mex')" data-i18n="txt_create_add_from_club">Add from club</button>
-              <button type="button" class="paste-list-btn" id="mex-paste-toggle" data-action="togglePasteMode" data-ctx="mex">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
+              <button type="button" class="paste-list-btn" id="mex-paste-toggle" data-action="togglePasteMode" data-ctx="mex"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
           <div id="mex-participant-fields">
@@ -274,7 +281,7 @@
           </div>
         </div>
         <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="mex-contact-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">📇 <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
           <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Add email and/or contact info (e.g. phone, WhatsApp) for each player. Used for notifications and shared with co-players.</p>
           <div id="mex-contact-container"></div>
         </details>
@@ -439,7 +446,7 @@
             <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
               <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="po" data-i18n="txt_txt_clear_all">Clear all</button>
               <button type="button" class="paste-list-btn" onclick="addPlayersFromClub('po')" data-i18n="txt_create_add_from_club">Add from club</button>
-              <button type="button" class="paste-list-btn" id="po-paste-toggle" data-action="togglePasteMode" data-ctx="po">📋 <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
+              <button type="button" class="paste-list-btn" id="po-paste-toggle" data-action="togglePasteMode" data-ctx="po"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
           <div id="po-participant-fields">
@@ -451,7 +458,7 @@
           </div>
         </div>
         <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="po-contact-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">📇 <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
           <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Add email and/or contact info (e.g. phone, WhatsApp) for each player. Used for notifications and shared with co-players.</p>
           <div id="po-contact-container"></div>
         </details>
@@ -507,11 +514,11 @@
   <!-- ─── PLAYERS HUB ADMIN ─────────────────────────────── -->
   <div class="tab-panel" id="panel-players-hub" role="tabpanel">
     <div class="card">
-      <h2 style="margin:0 0 0.75rem" data-i18n="txt_ph_admin_title">🎾 Players Hub Admin</h2>
+      <h2 style="margin:0 0 0.75rem" data-i18n="txt_ph_admin_title">Players Hub</h2>
       <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_ph_admin_desc">Search and manage Player Hub profiles. Link or unlink tournament participations and reset credentials.</p>
       <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
         <input type="text" id="ph-search-input" placeholder="Search by name or email…" data-i18n-placeholder="txt_hub_search_placeholder" style="flex:1;min-width:200px;padding:0.45rem 0.65rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
-        <button type="button" class="btn btn-primary btn-sm" id="ph-search-btn" onclick="phSearch()">🔍 <span data-i18n="txt_ph_search_btn">Search</span></button>
+        <button type="button" class="btn btn-primary btn-sm" id="ph-search-btn" onclick="phSearch()"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M909.6 854.5L649.9 594.8C690.2 542.7 712 479 712 412c0-80.2-31.3-155.4-87.9-212.1-56.6-56.7-132-87.9-212.1-87.9s-155.5 31.3-212.1 87.9C143.2 256.5 112 331.8 112 412c0 80.1 31.3 155.5 87.9 212.1C256.5 680.8 331.8 712 412 712c67 0 130.6-21.8 182.7-62l259.7 259.6a8.2 8.2 0 0011.6 0l43.6-43.5a8.2 8.2 0 000-11.6zM570.4 570.4C528 612.7 471.8 636 412 636s-116-23.3-158.4-65.6C211.3 528 188 471.8 188 412s23.3-116.1 65.6-158.4C296 211.3 352.2 188 412 188s116.1 23.2 158.4 65.6S636 352.2 636 412s-23.3 116.1-65.6 158.4z"/></svg> <span data-i18n="txt_ph_search_btn">Search</span></button>
       </div>
       <div id="ph-results"></div>
     </div>
@@ -521,7 +528,7 @@
   <!-- ─── USER MANAGEMENT (admin only) ──────────────────── -->
   <div class="tab-panel" id="panel-user-mgmt" role="tabpanel">
     <div class="card">
-      <h2 style="margin:0 0 0.75rem" data-i18n="txt_txt_user_management">👥 User Management</h2>
+      <h2 style="margin:0 0 0.75rem" data-i18n="txt_txt_user_management"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> User Management</h2>
       <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_txt_user_mgmt_desc">Search, create, and manage admin and organizer accounts. Invite new users by email or reset credentials.</p>
       <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap">
         <input type="search" id="user-mgmt-search" placeholder="Search users…" data-i18n-placeholder="txt_txt_search_users" autocomplete="off" oninput="filterUserMgmtList(this.value)" style="flex:1;min-width:200px;padding:0.45rem 0.65rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
@@ -584,7 +591,7 @@
       </div>
 
       <div class="card" id="invite-section">
-        <h3 class="umgmt-card-title">✉️ <span data-i18n="txt_txt_invite_by_email">Invite by Email</span></h3>
+        <h3 class="umgmt-card-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M928 160H96c-17.7 0-32 14.3-32 32v640c0 17.7 14.3 32 32 32h832c17.7 0 32-14.3 32-32V192c0-17.7-14.3-32-32-32zm-40 110.8V792H136V270.8l-27.6-21.5 39.3-50.5 42.8 33.3h643.1l42.8-33.3 39.3 50.5-27.7 21.5zM833.6 232L512 482 190.4 232l-42.8-33.3-39.3 50.5 27.6 21.5 341.6 265.6a55.99 55.99 0 0068.7 0L888 270.8l27.6-21.5-39.3-50.5-42.7 33.2z"/></svg> <span data-i18n="txt_txt_invite_by_email">Invite by Email</span></h3>
         <p class="umgmt-card-desc" data-i18n="txt_txt_invite_help">Send an invite link — the recipient sets their own password. Link expires in 48 hours.</p>
         <form onsubmit="handleInvite(event)">
           <div class="umgmt-form-group">
@@ -631,7 +638,7 @@
 
         <!-- Community list management -->
         <div class="card">
-          <h2 style="margin:0 0 0.5rem">🏘️ <span data-i18n="txt_comm_title">Communities</span></h2>
+          <h2 style="margin:0 0 0.5rem"><span data-i18n="txt_comm_title">Communities</span></h2>
           <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_help">Create and manage communities to scope ELO ratings and group tournaments by club or league.</p>
           <div id="comm-list"></div>
           <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap">
@@ -650,7 +657,7 @@
 
         <!-- Registration assignment -->
         <div class="card">
-          <h2 style="margin:0 0 0.5rem">📋 <span data-i18n="txt_comm_lobby_title">Lobby Community Assignment</span></h2>
+          <h2 style="margin:0 0 0.5rem"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_comm_lobby_title">Lobby Community Assignment</span></h2>
           <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_lobby_help">Reassign registration lobbies to different communities.</p>
           <div id="comm-registration-list"><div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
         </div>
@@ -662,7 +669,7 @@
       <div>
         <div class="card" id="clubs-overview-card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;gap:0.5rem">
-            <h2 style="margin:0">🏟️ <span data-i18n="txt_clubs_title">Clubs</span></h2>
+            <h2 style="margin:0"><span data-i18n="txt_clubs_title">Clubs</span></h2>
             <button type="button" class="format-info-btn" data-action="openContextInfo" data-context="clubs" aria-label="About clubs" data-i18n-aria-label="txt_clubs_info_panel_title" data-i18n-title="txt_clubs_info_panel_title" title="About clubs">i</button>
           </div>
           <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_clubs_panel_help">Upgrade a community to a club to add branding, player tiers, and seasons.</p>
@@ -966,7 +973,7 @@
         <div id="schema-summary" class="schema-summary"></div>
         <details class="schema-rendering-details">
           <summary>
-            <span data-i18n="txt_txt_rendering_options">⚙ Rendering options</span>
+            <span data-i18n="txt_txt_rendering_options"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M924.8 625.7l-65.5-56c3.1-19 4.7-38.4 4.7-57.8s-1.6-38.8-4.7-57.8l65.5-56a32.03 32.03 0 009.3-35.2l-.9-2.6a443.74 443.74 0 00-79.7-137.9l-1.8-2.1a32.12 32.12 0 00-35.1-9.5l-81.3 28.9c-30-24.6-63.5-44-99.7-57.6l-15.7-85a32.05 32.05 0 00-25.8-25.7l-2.7-.5c-52.1-9.4-106.9-9.4-159 0l-2.7.5a32.05 32.05 0 00-25.8 25.7l-15.8 85.4a351.86 351.86 0 00-99 57.4l-81.9-29.1a32 32 0 00-35.1 9.5l-1.8 2.1a446.02 446.02 0 00-79.7 137.9l-.9 2.6c-4.5 12.5-.8 26.5 9.3 35.2l66.3 56.6c-3.1 18.8-4.6 38-4.6 57.1 0 19.2 1.5 38.4 4.6 57.1L99 625.5a32.03 32.03 0 00-9.3 35.2l.9 2.6c18.1 50.4 44.9 96.9 79.7 137.9l1.8 2.1a32.12 32.12 0 0035.1 9.5l81.9-29.1c29.8 24.5 63.1 43.9 99 57.4l15.8 85.4a32.05 32.05 0 0025.8 25.7l2.7.5a449.4 449.4 0 00159 0l2.7-.5a32.05 32.05 0 0025.8-25.7l15.7-85a350 350 0 0099.7-57.6l81.3 28.9a32 32 0 0035.1-9.5l1.8-2.1c34.8-41.1 61.6-87.5 79.7-137.9l.9-2.6c4.5-12.3.8-26.3-9.3-35zM512 326c-97.2 0-176 78.8-176 176s78.8 176 176 176 176-78.8 176-176-78.8-176-176-176z"/></svg> Rendering options</span>
           </summary>
           <div class="schema-rendering-grid">
             <div class="form-group">
@@ -1056,7 +1063,7 @@
 <div id="auth-overlay" class="modal-overlay" data-action="hideLoginDialog"></div>
 <div id="auth-dialog" class="modal-dialog modal-sm">
   <div class="modal-header">
-    <h2 class="modal-title">🔐 <span data-i18n="txt_txt_login_required">Login Required</span></h2>
+    <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 464h-68V240c0-70.7-57.3-128-128-128H388c-70.7 0-128 57.3-128 128v224h-68c-17.7 0-32 14.3-32 32v384c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V496c0-17.7-14.3-32-32-32zM332 240c0-30.9 25.1-56 56-56h248c30.9 0 56 25.1 56 56v224H332V240zm460 600H232V536h560v304z"/></svg> <span data-i18n="txt_txt_login_required">Login Required</span></h2>
     <button type="button" class="modal-close-btn" data-action="hideLoginDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
   </div>
   <p class="modal-subtitle" data-i18n="txt_txt_please_log_in_to_create_or_modify_tournaments">Please log in to create or modify tournaments</p>
@@ -1070,14 +1077,14 @@
       <input type="password" id="auth-password" class="modal-input" placeholder="••••••••" autocomplete="current-password">
     </div>
     <div style="text-align:right;margin-bottom:1rem">
-      <a href="#" class="modal-link" style="font-size:0.85rem" onclick="showForgotPasswordDialog();return false">🔑 <span data-i18n="txt_txt_forgot_password">Forgot password?</span></a>
+      <a href="#" class="modal-link" style="font-size:0.85rem" onclick="showForgotPasswordDialog();return false"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5l-41.1 41.1-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-44.9 44.9-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-65.3 65.3a8.03 8.03 0 000 11.3l42.3 42.3c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6A304.06 304.06 0 00608 720c167.9 0 304-136.1 304-304S775.9 112 608 112z"/></svg> <span data-i18n="txt_txt_forgot_password">Forgot password?</span></a>
     </div>
     <div class="modal-error" id="auth-error"></div>
     <button type="submit" id="auth-login-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_login">Login</button>
   </form>
   <p class="modal-footer-links">
-    <a href="/tv" class="modal-link">📺 <span data-i18n="txt_nav_tv_view">Tournaments</span></a>
-    <a href="/register" class="modal-link">📋 <span data-i18n="txt_nav_registrations">Registrations</span></a>
+    <a href="/tv" class="modal-link"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M928 140H96c-17.7 0-32 14.3-32 32v496c0 17.7 14.3 32 32 32h380v112H304c-8.8 0-16 7.2-16 16v48c0 4.4 3.6 8 8 8h432c4.4 0 8-3.6 8-8v-48c0-8.8-7.2-16-16-16H548V700h380c17.7 0 32-14.3 32-32V172c0-17.7-14.3-32-32-32zm-40 488H136V212h752v416z"/></svg> <span data-i18n="txt_nav_tv_view">Tournaments</span></a>
+    <a href="/register" class="modal-link"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_nav_registrations">Registrations</span></a>
     <a href="/player" class="modal-link">🎾 <span data-i18n="txt_nav_player_space">Player Hub</span></a>
   </p>
 </div>
@@ -1086,7 +1093,7 @@
 <div id="change-pwd-overlay" class="modal-overlay">
   <div class="modal-dialog modal-sm">
     <div class="modal-header" style="margin-bottom:0.5rem">
-      <h2 class="modal-title">🔑 <span data-i18n="txt_txt_change_password">Change Password</span></h2>
+      <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5l-41.1 41.1-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-44.9 44.9-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-65.3 65.3a8.03 8.03 0 000 11.3l42.3 42.3c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6A304.06 304.06 0 00608 720c167.9 0 304-136.1 304-304S775.9 112 608 112z"/></svg> <span data-i18n="txt_txt_change_password">Change Password</span></h2>
       <button type="button" class="modal-close-btn" data-action="hideChangePasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
     </div>
     <p id="change-pwd-for" class="modal-subtitle" style="margin-bottom:1rem"></p>

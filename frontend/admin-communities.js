@@ -132,7 +132,7 @@ function _commRenderList() {
   }
 
   if (!specialized.length) {
-    html += `<p class="muted-note" style="margin-top:0.25rem">${t('txt_comm_no_communities')}</p>`;
+    html += `<p class="muted-note" style="margin-top:0.25rem">${t('txt_comm_no_communities')} <button type="button" class="btn btn-sm btn-link" style="vertical-align:baseline" onclick="openContextInfo('communities')">${_antIc('info-circle')} ${esc(t('txt_txt_learn_more'))}</button></p>`;
   } else {
     html += `
       <div class="player-codes-table-wrap"><table class="player-codes-table">
@@ -151,8 +151,8 @@ function _commRenderList() {
               </td>
               <td class="player-codes-cell" style="color:var(--text-muted);font-size:0.8rem;font-family:monospace">${esc(c.id)}</td>
               <td id="comm-actions-${esc(c.id)}" class="player-codes-cell-center" style="white-space:nowrap">
-                <button class="btn btn-sm player-codes-icon-btn" onclick="commStartRename('${esc(c.id)}')" style="margin-right:0.25rem" title="${t('txt_comm_rename')}">✏️</button>
-                <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="commDelete('${esc(c.id)}')" title="${t('txt_txt_remove')}">🗑</button>
+                <button class="btn btn-sm player-codes-icon-btn" onclick="commStartRename('${esc(c.id)}')" style="margin-right:0.25rem" title="${t('txt_comm_rename')}">${_ic('edit')}</button>
+                <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="commDelete('${esc(c.id)}')" title="${t('txt_txt_remove')}">${_ic('trash')}</button>
               </td>
             </tr>
           `).join('')}

@@ -152,7 +152,7 @@ function _clubsRenderOverview() {
 
   // Club list
   if (!_clubsList.length) {
-    html += `<p class="muted-note">${t('txt_clubs_no_clubs')}</p>`;
+    html += `<p class="muted-note">${t('txt_clubs_no_clubs')} <button type="button" class="btn btn-sm btn-link" style="vertical-align:baseline" onclick="openContextInfo('clubs')">${_antIc('info-circle')} ${esc(t('txt_txt_learn_more'))}</button></p>`;
   } else {
     // Hide the Community column when every club lives in the same community
     // (the most common single-community deployment) — it's pure noise then.
@@ -178,7 +178,7 @@ function _clubsRenderOverview() {
             </td>
             ${showCommColumn ? `<td class="player-codes-cell" style="color:var(--text-muted);font-size:0.82rem">${comm ? esc(comm.name) : esc(cl.community_id)}</td>` : ''}
             <td class="player-codes-cell-center" style="white-space:nowrap">
-              ${!cl.shared || isAdmin() ? `<button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsDelete('${esc(cl.id)}')" title="${t('txt_txt_remove')}" aria-label="${t('txt_txt_remove')} ${esc(cl.name)}">🗑</button>` : ''}
+              ${!cl.shared || isAdmin() ? `<button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsDelete('${esc(cl.id)}')" title="${t('txt_txt_remove')}" aria-label="${t('txt_txt_remove')} ${esc(cl.name)}">${_ic('trash')}</button>` : ''}
             </td>
           </tr>`;
         }).join('')}
@@ -317,7 +317,7 @@ function _clubsRenderDetail() {
     <!-- Players (primary content) -->
     <details class="card" open id="clubs-players-card">
       <summary class="player-codes-summary">
-        <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> 👥 ${t('txt_clubs_players')}</span>
+        <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> ${_antIc('team')} ${t('txt_clubs_players')}</span>
         <span class="clubs-card-badge">${_clubPlayers.length}</span>
       </summary>
       <div class="player-codes-body">
@@ -330,7 +330,7 @@ function _clubsRenderDetail() {
     <!-- Club leaderboard (primary content) -->
     <details class="card" open id="clubs-leaderboard-card">
       <summary class="player-codes-summary">
-        <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> 📊 ${t('txt_clubs_leaderboard')}</span>
+        <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> ${_antIc('bar-chart')} ${t('txt_clubs_leaderboard')}</span>
         ${(() => { const ranked = _clubPlayers.filter(p => (_clubsSport === 'padel' ? p.elo_padel : p.elo_tennis) != null); return ranked.length ? `<span class="clubs-card-badge">${ranked.length}</span>` : ''; })()}
       </summary>
       <div class="player-codes-body">
@@ -400,7 +400,7 @@ function _clubsRenderLandingPinnedList() {
   const items = _clubPublicTournaments.map(item => {
     const pinId = item.pin_key || item.id;
     const checked = (item.pinned || pinnedIds.has(pinId) || pinnedIds.has(item.id)) ? ' checked' : '';
-    const kindIcon = item.kind === 'registration' ? '📋' : '🏆';
+    const kindIcon = item.kind === 'registration' ? _ic('link') : _ic('trophy');
     const statusKey = item.status === 'in_progress' ? 'txt_club_status_live' : ('txt_club_status_' + item.status);
     return `
       <label class="clubs-landing-pin-row">
@@ -651,10 +651,10 @@ function _clubsRenderSeasons() {
             </td>
             <td class="player-codes-cell-center" style="white-space:nowrap">
               <button class="btn btn-sm player-codes-icon-btn" onclick="clubsToggleSeason('${esc(s.id)}', ${!s.active})" title="${s.active ? t('txt_clubs_season_archive') : t('txt_clubs_season_activate')}" aria-label="${s.active ? t('txt_clubs_season_archive') : t('txt_clubs_season_activate')}">
-                ${s.active ? '📦' : '✅'}
+                ${s.active ? _ic('lock') : _ic('unlock')}
               </button>
-              <button class="btn btn-sm player-codes-icon-btn" onclick="clubsViewSeasonInLeaderboard('${esc(s.id)}')" title="${t('txt_clubs_season_view_in_leaderboard')}" aria-label="${t('txt_clubs_season_view_in_leaderboard')} ${esc(s.name)}">📊</button>
-              <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsDeleteSeason('${esc(s.id)}')" title="${t('txt_txt_remove')}" aria-label="${t('txt_txt_remove')} ${esc(s.name)}">🗑</button>
+              <button class="btn btn-sm player-codes-icon-btn" onclick="clubsViewSeasonInLeaderboard('${esc(s.id)}')" title="${t('txt_clubs_season_view_in_leaderboard')}" aria-label="${t('txt_clubs_season_view_in_leaderboard')} ${esc(s.name)}">${_ic('chart')}</button>
+              <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsDeleteSeason('${esc(s.id)}')" title="${t('txt_txt_remove')}" aria-label="${t('txt_txt_remove')} ${esc(s.name)}">${_ic('trash')}</button>
             </td>
           </tr>
         `).join('')}
@@ -771,7 +771,7 @@ function _clubsRenderSeasonAssignment() {
     });
 
     html += `<section class="clubs-assign-section">
-      <h4 class="clubs-assign-section-title">➕ ${t('txt_clubs_attach_tournaments')}</h4>
+      <h4 class="clubs-assign-section-title">${_antIc('plus')} ${t('txt_clubs_attach_tournaments')}</h4>
       <p class="player-codes-help" style="margin:0 0 0.5rem">${t('txt_clubs_attach_tournaments_help')}</p>
       <input type="text" id="clubs-attach-search" value="${escAttr(_clubsAttachSearch)}"
         placeholder="${escAttr(t('txt_clubs_attach_search_placeholder'))}"
@@ -844,7 +844,7 @@ function _clubsRenderSeasonAssignment() {
   // Lobbies / Registrations (flat section)
   if (matchingR.length) {
     html += `<section class="clubs-assign-section" id="clubs-season-assign-registrations">
-      <h4 class="clubs-assign-section-title">📝 ${t('txt_clubs_lobbies_in_club')} <span class="clubs-card-badge">${matchingR.length}</span></h4>
+      <h4 class="clubs-assign-section-title">${_antIc('file-text')} ${t('txt_clubs_lobbies_in_club')} <span class="clubs-card-badge">${matchingR.length}</span></h4>
       <div class="player-codes-table-wrap"><table class="player-codes-table">
         <tbody>
           ${matchingR.map(r_ => `
@@ -1641,7 +1641,7 @@ function _clubsRenderLeaderboardScopeBar() {
   ].join('');
   const activeSeason = seasons.find(s => s.id === _clubsLeaderboardScope);
   const archivedBadge = (activeSeason && !activeSeason.active)
-    ? `<span class="badge badge-closed clubs-lb-frozen-badge" title="${escAttr(t('txt_clubs_leaderboard_archived_note'))}">📦 ${esc(t('txt_clubs_season_archived'))}</span>`
+    ? `<span class="badge badge-closed clubs-lb-frozen-badge" title="${escAttr(t('txt_clubs_leaderboard_archived_note'))}">${_ic('lock')} ${esc(t('txt_clubs_season_archived'))}</span>`
     : '';
   bar.innerHTML = `
     <div class="clubs-lb-scope-row">

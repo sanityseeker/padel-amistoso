@@ -48,8 +48,8 @@ function _renderPlayerCodesBody(secrets) {
 
   if (entries.length > 0) {
     html += `<div class="settings-inline-row" style="margin-bottom:0.5rem">`;
-    html += `<button type="button" class="btn btn-sm player-codes-btn" onclick="_copyAllPlayerCodes()">📋 ${t('txt_txt_copy_all_codes')}</button>`;
-    html += `<button type="button" class="btn btn-sm player-codes-btn" onclick="_printPlayerCodes()">🖨 ${t('txt_txt_print_all_codes')}</button>`;
+    html += `<button type="button" class="btn btn-sm player-codes-btn" onclick="_copyAllPlayerCodes()">${_ic('copy')} ${t('txt_txt_copy_all_codes')}</button>`;
+    html += `<button type="button" class="btn btn-sm player-codes-btn" onclick="_printPlayerCodes()">${_ic('print')} ${t('txt_txt_print_all_codes')}</button>`;
     html += `</div>`;
   }
 
@@ -64,7 +64,7 @@ function _renderPlayerCodesBody(secrets) {
     html += `<th class="player-codes-th">${t('txt_txt_contact')}</th>`;
     html += `<th class="player-codes-th-center">${t('txt_hub_link')}</th>`;
     if (_showEmail) html += `<th class="player-codes-th">${t('txt_email')}</th>`;
-    html += `<th class="player-codes-th-center">🌐</th>`;
+    html += `<th class="player-codes-th-center">${_antIc('global')}</th>`;
     html += `<th class="player-codes-th-center">${t('txt_txt_qr_code')}</th>`;
     html += `<th class="player-codes-th-center"></th>`;
     html += `<th class="player-codes-th-center"></th>`;
@@ -77,13 +77,13 @@ function _renderPlayerCodesBody(secrets) {
       html += `<td class="player-codes-cell-center">${_renderHubLinkCellInner(pid, info)}</td>`;
       if (_showEmail) {
         html += `<td class="player-codes-cell"><span class="player-codes-edit-wrap"><input type="email" id="pc-email-${pid}" value="${escAttr(info.email || '')}" data-orig="${escAttr(info.email || '')}" placeholder="${t('txt_email_placeholder')}" class="player-codes-input player-codes-input-email" onblur="_savePlayerEmail('${pid}')">`;
-        if (info.email) html += `<button type="button" class="btn btn-sm player-codes-icon-btn" onclick="_sendPlayerEmail('${pid}')" title="${t('txt_email_send')}">✉️</button>`;
+        if (info.email) html += `<button type="button" class="btn btn-sm player-codes-icon-btn" onclick="_sendPlayerEmail('${pid}')" title="${t('txt_email_send')}">${_ic('mail')}</button>`;
         html += `</span></td>`;
       }
       html += `<td class="player-codes-cell-center">${_langToggle(currentTid, pid, info.lang || 'en', 'sec')}</td>`;
-      html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-sm player-codes-action-btn" onclick="_showPlayerQr('${escAttr(pid)}','${escAttr(info.name)}')">📱 ${t('txt_txt_qr_code')}</button></td>`;
-      html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-sm btn-muted player-codes-action-btn" onclick="_regeneratePlayerCode('${pid}')">🔄 ${t('txt_txt_regenerate')}</button></td>`;
-      html += `<td class="player-codes-cell-center">${_isMex ? `<button type="button" class="btn btn-danger btn-sm player-codes-icon-btn" onclick="_removeTournamentPlayer('${pid}','${escAttr(info.name)}')" title="${t('txt_txt_remove_player')}">🗑</button>` : ''}</td>`;
+      html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-sm player-codes-action-btn" onclick="_showPlayerQr('${escAttr(pid)}','${escAttr(info.name)}')">${_ic('qr')} ${t('txt_txt_qr_code')}</button></td>`;
+      html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-sm btn-muted player-codes-action-btn" onclick="_regeneratePlayerCode('${pid}')">${_ic('reset')} ${t('txt_txt_regenerate')}</button></td>`;
+      html += `<td class="player-codes-cell-center">${_isMex ? `<button type="button" class="btn btn-danger btn-sm player-codes-icon-btn" onclick="_removeTournamentPlayer('${pid}','${escAttr(info.name)}')" title="${t('txt_txt_remove_player')}">${_ic('trash')}</button>` : ''}</td>`;
       html += `</tr>`;
     }
     html += `</tbody></table>`;
@@ -556,7 +556,7 @@ function _hubEnsureModal() {
   overlay.className = 'pc-hub-modal-overlay';
   overlay.innerHTML = `<div class="pc-hub-modal-box">`
     + `<div class="pc-hub-modal-header">`
-    + `<span class="pc-hub-modal-title">🔗 ${t('txt_hub_link')}</span>`
+    + `<span class="pc-hub-modal-title">${_antIc('link')} ${t('txt_hub_link')}</span>`
     + `<button type="button" class="pc-hub-close-btn" onclick="_hubCloseModal()">✕</button>`
     + `</div>`
     + `<div id="pc-hub-modal-scope" class="pc-hub-scope-row" role="group" aria-label="${escAttr(t('txt_hub_scope_label'))}"></div>`

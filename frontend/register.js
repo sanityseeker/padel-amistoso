@@ -962,7 +962,10 @@ function _showSuccess() {
     html += `<p class="subtitle subtitle-strong">${esc(identityLabel)}</p>`;
   }
   html += `<div class="passphrase-label">${t('txt_reg_your_passphrase')}</div>`;
-  html += `<div class="passphrase-box">${esc(r.passphrase)}</div>`;
+  html += `<div class="passphrase-copy-row">`;
+  html += `<div class="passphrase-box" id="reg-passphrase-box">${esc(r.passphrase)}</div>`;
+  html += `<button type="button" class="btn btn-primary passphrase-copy-btn" id="reg-copy-btn" onclick="_copyPassphrase()">${t('txt_txt_copy')}</button>`;
+  html += `</div>`;
   html += `<p class="keep-note">${t('txt_reg_keep_code')}</p>`;
   html += `<div class="success-actions"><a href="/register" class="btn btn-primary success-back-btn">${t('txt_reg_back_home')}</a><button type="button" class="success-register-another" onclick="_registerAnother()">${t('txt_reg_register_another')}</button></div>`;
 
@@ -1004,6 +1007,26 @@ function _showSuccess() {
   el.querySelectorAll('textarea.reg-text-expand').forEach(_regAutoResize);
 
   _startPolling();
+}
+
+function _copyPassphrase() {
+  const box = document.getElementById('reg-passphrase-box');
+  const btn = document.getElementById('reg-copy-btn');
+  if (!box || !btn) return;
+  const text = box.textContent.trim();
+  navigator.clipboard.writeText(text).then(() => {
+    const original = btn.textContent;
+    btn.textContent = t('txt_txt_copied');
+    btn.disabled = true;
+    setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1800);
+  }).catch(() => {
+    // Fallback for browsers without clipboard API
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(box);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
 }
 
 // ── Form submission ──────────────────────────────────────
