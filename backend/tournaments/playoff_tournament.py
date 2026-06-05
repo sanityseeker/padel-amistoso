@@ -99,6 +99,15 @@ class PlayoffTournament:
     # Internal helpers
     # ------------------------------------------------------------------ #
 
+    def update_courts(self, courts: list[Court]) -> None:
+        """Replace the court list and reassign courts across all pending bracket matches."""
+        self.courts = list(courts)
+        all_matches = self.bracket.all_matches if self.double_elimination else list(self.bracket.matches)
+        for m in all_matches:
+            if m.status != MatchStatus.COMPLETED:
+                m.court = None
+        self._assign_courts_greedily()
+
     def _assign_courts_greedily(self) -> None:
         """Assign free courts to ready matches that don't have one yet.
 
