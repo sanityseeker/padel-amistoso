@@ -530,9 +530,20 @@ function _bracketLightboxOpenFull() {
 
 function _bracketLightboxDownload() {
   if (!_lbSrc) return;
+  // Derive a sensible filename from the active title field (if present) and the
+  // format embedded in the src URL (blob URLs default to 'png').
+  const titleEl = document.getElementById('schema-title');
+  const baseName = (titleEl && titleEl.value.trim()) ? titleEl.value.trim() : 'bracket';
+  let ext = 'png';
+  if (!_lbSrc.startsWith('blob:')) {
+    const fmtMatch = _lbSrc.match(/[?&]fmt=([a-z]+)/i);
+    if (fmtMatch) ext = fmtMatch[1];
+  } else if (_lbSrc.includes('svg+xml') || document.getElementById('schema-fmt')?.value === 'svg') {
+    ext = 'svg';
+  }
   const a    = document.createElement('a');
   a.href     = _lbSrc;
-  a.download = 'bracket.png';
+  a.download = `${baseName}.${ext}`;
   a.rel      = 'noopener';
   document.body.appendChild(a);
   a.click();

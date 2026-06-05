@@ -726,6 +726,17 @@ class DoubleEliminationBracket:
         matches.sort(key=self._interleave_key)
         return matches
 
+    def update_courts(self, courts: list[Court]) -> None:
+        """Replace the court list and reassign courts across all pending bracket matches."""
+        self.courts = list(courts)
+        self._court_cursor = 0
+        # Clear and reassign courts only for pending (not-yet-played) matches
+        # that already have both teams known (are actionable right now).
+        for m in self.all_matches():
+            m.court = None
+            if m.status != MatchStatus.COMPLETED and m.team1 and m.team2:
+                m.court = self._next_court()
+
     def record_result(
         self,
         match_id: str,

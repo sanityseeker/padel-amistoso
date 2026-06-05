@@ -585,6 +585,12 @@ async def serve_club_js(request: Request) -> Response:
     return _serve_js_file("club.js", request)
 
 
+@app.get("/theme.css")
+async def serve_theme_css(request: Request) -> Response:
+    """Serve the shared design-token stylesheet loaded before all other sheets."""
+    return _serve_css_file("theme.css", request)
+
+
 @app.get("/club.css")
 async def serve_club_css(request: Request) -> Response:
     """Serve the per-club public landing-page stylesheet."""

@@ -413,6 +413,8 @@ function _updateParticipantCount(mode) {
   // Refresh contact fields and strength bubbles when their sections are open
   if (document.getElementById(`${mode}-contact-section`)?.open) renderContactFields(mode);
   if (document.getElementById(`${mode}-strength-section`)?.open) renderStrengthBubbles(mode);
+  // Auto-refresh PO bracket preview as participants change (debounced)
+  if (mode === 'po') _schedulePoPreview();
 }
 
 function removeParticipantField(mode, index) {
@@ -448,7 +450,7 @@ function togglePasteMode(mode) {
     fields?.classList.remove('hidden');
     _participantPasteMode[mode] = false;
     renderParticipantFields(mode);
-    if (btn) btn.innerHTML = `📋 <span data-i18n="txt_txt_paste_a_list">${t('txt_txt_paste_a_list')}</span>`;
+    if (btn) btn.innerHTML = `${_antIc('container')} <span data-i18n="txt_txt_paste_a_list">${t('txt_txt_paste_a_list')}</span>`;
   }
   _updateParticipantCount(mode);
 }
@@ -1032,7 +1034,7 @@ function renderContactFields(mode) {
     html += `<label title="${escaped}">${escaped}</label>`;
     html += `<input type="email" class="create-contact-email" data-mode="${mode}" data-key="${escaped}" value="${esc(emailVal)}" placeholder="${t('txt_contact_email_placeholder')}" oninput="_participantEmails['${mode}'][this.dataset.key]=this.value.trim()">`;
     html += `<input type="text" class="create-contact-info" data-mode="${mode}" data-key="${escaped}" value="${esc(contactVal)}" placeholder="${t('txt_contact_info_placeholder')}" oninput="_participantContacts['${mode}'][this.dataset.key]=this.value.trim()">`;
-    html += `<button type="button" class="contact-hub-btn" title="${t('txt_hub_link')}" onclick="_createHubOpen('${escAttr(mode)}','${escAttr(name)}')">🔗</button>`;
+    html += `<button type="button" class="contact-hub-btn" title="${t('txt_hub_link')}" onclick="_createHubOpen('${escAttr(mode)}','${escAttr(name)}')">${_ic('link')}</button>`;
     html += `</div>`;
   });
   html += '</div>';
@@ -1228,7 +1230,7 @@ function _renderGPGroupPreview() {
   const canAdjustGroups = groups.length > 1;
   const str = _gpGroupPreview.strengths;
   let html = `<div class="gp-group-preview-title-row">`;
-  html += `<div class="field-section-title field-section-title-inline">📋 ${t('txt_gp_group_assignments')}</div>`;
+  html += `<div class="field-section-title field-section-title-inline">${_antIc('container')} ${t('txt_gp_group_assignments')}</div>`;
   html += `<button type="button" class="gp-preview-close" onclick="_cancelGPPreview()" title="${t('txt_txt_back')}">&times;</button>`;
   html += `</div>`;
   html += `<div class="gp-group-preview-grid">`;
@@ -1254,7 +1256,7 @@ function _renderGPGroupPreview() {
   });
   html += `</div>`;
   if (canAdjustGroups) {
-    html += `<div class="gp-preview-shuffle-row"><button type="button" class="btn-outline-muted" onclick="_shuffleGPGroups()">🔀 ${t('txt_gp_shuffle')}</button></div>`;
+    html += `<div class="gp-preview-shuffle-row"><button type="button" class="btn-outline-muted" onclick="_shuffleGPGroups()">${_ic('shuffle')} ${t('txt_gp_shuffle')}</button></div>`;
   }
 
   container.innerHTML = html;
@@ -1262,7 +1264,7 @@ function _renderGPGroupPreview() {
 
   // Centered confirm button
   buttonsEl.innerHTML = `<div class="gp-preview-actions">`
-    + `<button type="button" class="btn btn-success btn-mid-action" data-action="withLoading" data-handler="createGP">🏆 ${t('txt_gp_confirm_create')}</button>`
+    + `<button type="button" class="btn btn-success btn-mid-action" data-action="withLoading" data-handler="createGP">${_ic('trophy')} ${t('txt_gp_confirm_create')}</button>`
     + `</div>`;
 }
 
@@ -1485,7 +1487,7 @@ function _createHubEnsureModal() {
   overlay.className = 'pc-hub-modal-overlay';
   overlay.innerHTML = `<div class="pc-hub-modal-box">`
     + `<div class="pc-hub-modal-header">`
-    + `<span class="pc-hub-modal-title">🔗 ${t('txt_hub_link')}</span>`
+    + `<span class="pc-hub-modal-title">${_antIc('link')} ${t('txt_hub_link')}</span>`
     + `<button type="button" class="pc-hub-close-btn" onclick="_createHubClose()">✕</button>`
     + `</div>`
     + `<input type="text" id="create-hub-q" class="player-codes-input" placeholder="${t('txt_hub_search_placeholder')}" oninput="_createHubDebouncedSearch()">`

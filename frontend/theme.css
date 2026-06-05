@@ -1,42 +1,42 @@
 /* Theme: padel-amistoso
-   Aesthetic: sport/utility — dense, high contrast, functional light-first
+   Aesthetic: Hardcourt Nights — retro 80s/90s hard court
+   Mood: DecoTurf blue, stadium concrete, Penn ball yellow-green, night session
    Generated: 2026-06-04
    Source: extracted from admin.css, tv.css, club.css, player.css, register.css
 
-   NOTE: Light-first. :root carries light-mode tokens.
+   NOTE: Light-first. :root carries day-court (light) tokens.
+   Dark mode = night session under floodlights.
    Dark mode is activated via [data-theme="dark"] / html[data-theme="dark"]
    or automatically via prefers-color-scheme: dark.
-
-   CONFLICTS NOTED (dark palette):
-   ┌──────────────┬──────────────────┬──────────────────┐
-   │ token        │ tv.css (canon)   │ admin.css        │
-   ├──────────────┼──────────────────┼──────────────────┤
-   │ --color-bg   │ #0b1220          │ #0f172a          │
-   │ --color-srf  │ #162032          │ #1e293b          │
-   │ --color-bdr  │ #2d3f57          │ #334155          │
-   │ --color-text │ #e8f0fe          │ #e2e8f0          │
-   └──────────────┴──────────────────┴──────────────────┘
-   tv.css values are canonical (it is the base sheet others extend).
 */
 
 /* ─────────────────────────────────────────────────────────────────
    FONT IMPORTS
-   No custom fonts currently loaded — using system stack.
-   To add: uncomment and replace with a Fontshare or Google import.
-   <!-- <link rel="preconnect" href="https://api.fontshare.com"> -->
-   <!-- <link href="https://api.fontshare.com/v2/css?f[]=..." rel="stylesheet"> -->
+   Clash Display — bold geometric, scoreboard/signage energy (display)
+   Cabinet Grotesk — clean utilitarian, court-side notices (brand body)
+   Roboto — neutral workhorse for dense data UIs (admin tables/forms)
+   Roboto Mono — tabular figures for scores, ELO, codes, passphrases
+
+   Add to every HTML <head> before theme.css:
+   <link rel="preconnect" href="https://api.fontshare.com">
+   <link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=cabinet-grotesk@400,500,700,800&display=swap" rel="stylesheet">
+   <link rel="preconnect" href="https://fonts.googleapis.com">
+   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
    ───────────────────────────────────────────────────────────────── */
 
 
 /* ─────────────────────────────────────────────────────────────────
-   LIGHT MODE — default (:root)
+   DAY COURT — default (:root / light mode)
+   Cool stadium concrete, DecoTurf blue accent
    ───────────────────────────────────────────────────────────────── */
 :root {
 
   /* Typography — fonts */
-  --font-display: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-body:    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono:    ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace;
+  --font-display: 'Clash Display', system-ui, sans-serif;
+  --font-body:    'Cabinet Grotesk', system-ui, sans-serif;
+  --font-data:    'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:    'Roboto Mono', ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace;
 
   /* Typography — fluid scale (12px absolute floor) */
   --text-xs:   clamp(0.75rem,  0.7rem  + 0.25vw, 0.875rem);  /* ~12–14px */
@@ -45,6 +45,10 @@
   --text-lg:   clamp(1.125rem, 1rem    + 0.75vw, 1.5rem);    /* ~18–24px */
   --text-xl:   clamp(1.5rem,   1.2rem  + 1.25vw, 2.25rem);   /* ~24–36px */
   --text-2xl:  clamp(2rem,     1.2rem  + 2.5vw,  3.5rem);    /* ~32–56px */
+
+  /* Letter-spacing tokens */
+  --tracking-display: -0.02em;  /* tight — tournament names, scoreboard */
+  --tracking-caps:     0.09em;  /* wide uppercase — court labels, stat headers */
 
   /* Spacing — 4px base unit */
   --space-1:  0.25rem;   /* 4px  */
@@ -60,69 +64,69 @@
   --space-20: 5rem;      /* 80px */
   --space-24: 6rem;      /* 96px */
 
-  /* Surfaces — light */
-  --color-bg:             #f8fafc;
-  --color-surface:        #ffffff;
-  --color-surface-2:      #f1f5f9;
-  --color-surface-offset: #eff6ff;
-  --color-divider:        rgba(203, 213, 225, 0.6);
-  --color-border:         #e2e8f0;
+  /* Surfaces — day court (cool concrete) */
+  --color-bg:             #eff2f6;  /* stadium concrete */
+  --color-surface:        #fafbfc;  /* freshly painted surface white */
+  --color-surface-2:      #e5eaf2;  /* shadowed concrete */
+  --color-surface-offset: #dce3ee;  /* court marking area */
+  --color-divider:        rgba(148, 168, 192, 0.45);
+  --color-border:         #bfc9d8;  /* cool slate */
 
-  /* Text — light */
-  --color-text:         #0f172a;
-  --color-text-muted:   #475569;
-  --color-text-faint:   #94a3b8;
-  --color-text-inverse: #f8fafc;
+  /* Text — day court */
+  --color-text:         #0d1520;  /* deep navy-black */
+  --color-text-muted:   #4a5a6e;  /* cool slate */
+  --color-text-faint:   #8496a8;  /* muted steel */
+  --color-text-inverse: #f4f7fb;
 
-  /* Primary accent — light */
-  --color-primary:           #2563eb;
-  --color-primary-hover:     #1d4ed8;
-  --color-primary-active:    #1e40af;
-  --color-primary-highlight: color-mix(in srgb, #2563eb 12%, transparent);
+  /* Primary accent — DecoTurf court blue */
+  --color-primary:           #1a5fa3;
+  --color-primary-hover:     #155090;
+  --color-primary-active:    #10406f;
+  --color-primary-highlight: color-mix(in srgb, #1a5fa3 11%, transparent);
   --color-on-primary:        #ffffff;
 
-  /* Success — light */
-  --color-success:           #16a34a;
-  --color-success-highlight: color-mix(in srgb, #16a34a 15%, transparent);
+  /* Success — match-won forest green */
+  --color-success:           #2a7a40;
+  --color-success-highlight: color-mix(in srgb, #2a7a40 13%, transparent);
   --color-on-success:        #ffffff;
 
-  /* Warning / amber — light */
-  --color-warning:        #d97706;
-  --color-warning-bg:     color-mix(in srgb, #d97706 10%, transparent);
-  --color-warning-border: color-mix(in srgb, #d97706 30%, transparent);
-  --color-warning-text:   #7c2d12;
+  /* Warning / amber */
+  --color-warning:        #c87800;
+  --color-warning-bg:     color-mix(in srgb, #c87800 10%, transparent);
+  --color-warning-border: color-mix(in srgb, #c87800 30%, transparent);
+  --color-warning-text:   #6b3e00;
   --color-on-warning:     #ffffff;
 
-  /* Error — light */
-  --color-error:           #dc2626;
-  --color-error-highlight: color-mix(in srgb, #dc2626 10%, transparent);
+  /* Error — fault red */
+  --color-error:           #c0301e;
+  --color-error-highlight: color-mix(in srgb, #c0301e 10%, transparent);
   --color-on-error:        #ffffff;
 
   /* Project-specific semantic colours */
-  --color-yellow:       #ca8a04; /* phase badges, group labels */
+  --color-yellow:       #b89000;  /* stadium gold — phase badges */
   --color-on-yellow:    #ffffff;
-  --color-amber:        #d97706; /* dispute / attention states */
+  --color-amber:        #c87800;  /* dispute / attention */
   --color-on-amber:     #ffffff;
-  --color-sport-tennis: #0d9488; /* tennis sport accent */
+  --color-sport-tennis: #4a8c00;  /* Penn ball yellow-green on light */
 
   /* Interactive component helpers */
-  --color-hover-overlay:    rgba(37, 99, 235, 0.05);  /* table row hover */
-  --color-active-overlay:   rgba(37, 99, 235, 0.10);  /* selected rows */
-  --color-overlay-backdrop: rgba(0, 0, 0, 0.50);      /* modal backdrops */
+  --color-hover-overlay:    rgba(26, 95, 163, 0.05);
+  --color-active-overlay:   rgba(26, 95, 163, 0.10);
+  --color-overlay-backdrop: rgba(13, 21, 32, 0.55);
   --color-switch-thumb:     #ffffff;
 
-  /* Border radius */
-  --radius-sm:   0.375rem;  /* 6px  */
-  --radius-md:   0.5rem;    /* 8px  */
-  --radius-lg:   0.75rem;   /* 12px */
-  --radius-xl:   1rem;      /* 16px */
+  /* Border radius — architectural, crisp like court lines */
+  --radius-sm:   0.125rem;  /* 2px  */
+  --radius-md:   0.25rem;   /* 4px  */
+  --radius-lg:   0.375rem;  /* 6px  */
+  --radius-xl:   0.625rem;  /* 10px */
   --radius-full: 9999px;
 
-  /* Shadows — cool-gray tinted */
-  --shadow-sm:      0 1px 2px   oklch(0.2 0.01 240 / 0.06);
-  --shadow-md:      0 4px 12px  oklch(0.2 0.01 240 / 0.08);
-  --shadow-lg:      0 12px 32px oklch(0.2 0.01 240 / 0.12);
-  --shadow-overlay: 0 8px 24px  oklch(0.2 0.01 240 / 0.14);
+  /* Shadows — cool blue-gray tinted, never warm or pure black */
+  --shadow-sm:      0 1px 3px   oklch(0.2 0.02 240 / 0.08);
+  --shadow-md:      0 4px 12px  oklch(0.2 0.02 240 / 0.12);
+  --shadow-lg:      0 12px 32px oklch(0.2 0.02 240 / 0.16);
+  --shadow-overlay: 0 8px 24px  oklch(0.2 0.02 240 / 0.20);
 
   /* Transitions */
   --transition-interactive: 180ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -136,99 +140,100 @@
 
 
 /* ─────────────────────────────────────────────────────────────────
-   DARK MODE — explicit toggle
+   NIGHT SESSION — explicit dark toggle
+   Deep navy court under floodlights
    ───────────────────────────────────────────────────────────────── */
 [data-theme="dark"],
 html[data-theme="dark"] {
 
-  /* Surfaces — dark */
-  --color-bg:             #0b1220;
-  --color-surface:        #162032;
-  --color-surface-2:      #1e293b;
-  --color-surface-offset: #0f1e35;
-  --color-divider:        rgba(45, 63, 87, 0.7);
-  --color-border:         #2d3f57;
+  /* Surfaces — night court */
+  --color-bg:             #07101c;  /* deep night — empty stadium */
+  --color-surface:        #0e1c2e;  /* dark court surface */
+  --color-surface-2:      #152438;  /* elevated dark panel */
+  --color-surface-offset: #091424;  /* deepest shadow / court surround */
+  --color-divider:        rgba(28, 46, 68, 0.8);
+  --color-border:         #1c2e44;  /* dark navy */
 
-  /* Text — dark */
-  --color-text:         #e8f0fe;
-  --color-text-muted:   #94a3b8;
-  --color-text-faint:   #64748b;
-  --color-text-inverse: #0f172a;
+  /* Text — under stadium lights */
+  --color-text:         #e4ecf5;  /* cool near-white */
+  --color-text-muted:   #8ea6be;  /* cool mid steel */
+  --color-text-faint:   #506070;  /* dark steel */
+  --color-text-inverse: #0d1520;
 
-  /* Primary accent — dark */
-  --color-primary:           #3b82f6;
-  --color-primary-hover:     #2563eb;
-  --color-primary-active:    #1d4ed8;
-  --color-primary-highlight: color-mix(in srgb, #3b82f6 14%, transparent);
+  /* Primary accent — bright DecoTurf blue under lights */
+  --color-primary:           #2e8ad4;
+  --color-primary-hover:     #2577bb;
+  --color-primary-active:    #1c62a0;
+  --color-primary-highlight: color-mix(in srgb, #2e8ad4 14%, transparent);
   --color-on-primary:        #ffffff;
 
-  /* Success — dark */
+  /* Success */
   --color-success:           #22c55e;
   --color-success-highlight: color-mix(in srgb, #22c55e 15%, transparent);
   --color-on-success:        #000000;
 
-  /* Warning — dark */
-  --color-warning:        #d97706;
-  --color-warning-bg:     color-mix(in srgb, #d97706 18%, transparent);
-  --color-warning-border: color-mix(in srgb, #d97706 45%, transparent);
+  /* Warning */
+  --color-warning:        #d48000;
+  --color-warning-bg:     color-mix(in srgb, #d48000 18%, transparent);
+  --color-warning-border: color-mix(in srgb, #d48000 45%, transparent);
   --color-warning-text:   #fbbf24;
   --color-on-warning:     #000000;
 
-  /* Error — dark */
+  /* Error */
   --color-error:           #ef4444;
   --color-error-highlight: color-mix(in srgb, #ef4444 15%, transparent);
   --color-on-error:        #ffffff;
 
-  /* Project-specific — dark */
-  --color-yellow:       #eab308;
+  /* Project-specific — night session */
+  --color-yellow:       #d4a800;  /* stadium gold under lights */
   --color-on-yellow:    #000000;
-  --color-amber:        #d97706;
+  --color-amber:        #d48000;
   --color-on-amber:     #000000;
-  --color-sport-tennis: #14b8a6;
+  --color-sport-tennis: #9abb00;  /* Penn ball yellow-green — pops under lights */
 
   /* Interactive */
-  --color-hover-overlay:    rgba(59, 130, 246, 0.06);
-  --color-active-overlay:   rgba(59, 130, 246, 0.14);
-  --color-overlay-backdrop: rgba(0, 0, 0, 0.70);
+  --color-hover-overlay:    rgba(46, 138, 212, 0.07);
+  --color-active-overlay:   rgba(46, 138, 212, 0.14);
+  --color-overlay-backdrop: rgba(0, 8, 18, 0.75);
 
-  /* Shadows — warm-navy tinted */
-  --shadow-sm:      0 1px 2px   oklch(0.08 0.02 240 / 0.40);
-  --shadow-md:      0 4px 12px  oklch(0.08 0.02 240 / 0.50);
-  --shadow-lg:      0 12px 32px oklch(0.08 0.02 240 / 0.60);
-  --shadow-overlay: 0 8px 24px  oklch(0.08 0.02 240 / 0.55);
+  /* Shadows — deep navy, never pure black */
+  --shadow-sm:      0 1px 3px   oklch(0.05 0.03 240 / 0.50);
+  --shadow-md:      0 4px 12px  oklch(0.05 0.03 240 / 0.60);
+  --shadow-lg:      0 12px 32px oklch(0.05 0.03 240 / 0.70);
+  --shadow-overlay: 0 8px 24px  oklch(0.05 0.03 240 / 0.65);
 }
 
 
 /* ─────────────────────────────────────────────────────────────────
-   DARK MODE — system preference fallback
+   NIGHT SESSION — system preference fallback
    ───────────────────────────────────────────────────────────────── */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --color-bg:             #0b1220;
-    --color-surface:        #162032;
-    --color-surface-2:      #1e293b;
-    --color-surface-offset: #0f1e35;
-    --color-divider:        rgba(45, 63, 87, 0.7);
-    --color-border:         #2d3f57;
+    --color-bg:             #07101c;
+    --color-surface:        #0e1c2e;
+    --color-surface-2:      #152438;
+    --color-surface-offset: #091424;
+    --color-divider:        rgba(28, 46, 68, 0.8);
+    --color-border:         #1c2e44;
 
-    --color-text:         #e8f0fe;
-    --color-text-muted:   #94a3b8;
-    --color-text-faint:   #64748b;
-    --color-text-inverse: #0f172a;
+    --color-text:         #e4ecf5;
+    --color-text-muted:   #8ea6be;
+    --color-text-faint:   #506070;
+    --color-text-inverse: #0d1520;
 
-    --color-primary:           #3b82f6;
-    --color-primary-hover:     #2563eb;
-    --color-primary-active:    #1d4ed8;
-    --color-primary-highlight: color-mix(in srgb, #3b82f6 14%, transparent);
+    --color-primary:           #2e8ad4;
+    --color-primary-hover:     #2577bb;
+    --color-primary-active:    #1c62a0;
+    --color-primary-highlight: color-mix(in srgb, #2e8ad4 14%, transparent);
     --color-on-primary:        #ffffff;
 
     --color-success:           #22c55e;
     --color-success-highlight: color-mix(in srgb, #22c55e 15%, transparent);
     --color-on-success:        #000000;
 
-    --color-warning:        #d97706;
-    --color-warning-bg:     color-mix(in srgb, #d97706 18%, transparent);
-    --color-warning-border: color-mix(in srgb, #d97706 45%, transparent);
+    --color-warning:        #d48000;
+    --color-warning-bg:     color-mix(in srgb, #d48000 18%, transparent);
+    --color-warning-border: color-mix(in srgb, #d48000 45%, transparent);
     --color-warning-text:   #fbbf24;
     --color-on-warning:     #000000;
 
@@ -236,20 +241,20 @@ html[data-theme="dark"] {
     --color-error-highlight: color-mix(in srgb, #ef4444 15%, transparent);
     --color-on-error:        #ffffff;
 
-    --color-yellow:       #eab308;
+    --color-yellow:       #d4a800;
     --color-on-yellow:    #000000;
-    --color-amber:        #d97706;
+    --color-amber:        #d48000;
     --color-on-amber:     #000000;
-    --color-sport-tennis: #14b8a6;
+    --color-sport-tennis: #9abb00;
 
-    --color-hover-overlay:    rgba(59, 130, 246, 0.06);
-    --color-active-overlay:   rgba(59, 130, 246, 0.14);
-    --color-overlay-backdrop: rgba(0, 0, 0, 0.70);
+    --color-hover-overlay:    rgba(46, 138, 212, 0.07);
+    --color-active-overlay:   rgba(46, 138, 212, 0.14);
+    --color-overlay-backdrop: rgba(0, 8, 18, 0.75);
 
-    --shadow-sm:      0 1px 2px   oklch(0.08 0.02 240 / 0.40);
-    --shadow-md:      0 4px 12px  oklch(0.08 0.02 240 / 0.50);
-    --shadow-lg:      0 12px 32px oklch(0.08 0.02 240 / 0.60);
-    --shadow-overlay: 0 8px 24px  oklch(0.08 0.02 240 / 0.55);
+    --shadow-sm:      0 1px 3px   oklch(0.05 0.03 240 / 0.50);
+    --shadow-md:      0 4px 12px  oklch(0.05 0.03 240 / 0.60);
+    --shadow-lg:      0 12px 32px oklch(0.05 0.03 240 / 0.70);
+    --shadow-overlay: 0 8px 24px  oklch(0.05 0.03 240 / 0.65);
   }
 }
 
@@ -302,4 +307,9 @@ html[data-theme="dark"] {
   --warning-bg:     var(--color-warning-bg);
   --warning-border: var(--color-warning-border);
   --warning-text:   var(--color-warning-text);
+
+  /* misc component helpers */
+  --surface-alt:  var(--color-surface);        /* alternate surface (clubs recipients, settings panels) */
+  --hover:        var(--color-hover-overlay);   /* generic hover bg on interactive rows */
+  --bg-soft:      color-mix(in srgb, var(--color-text) 4%, transparent); /* subtle tint (passphrase pills) */
 }

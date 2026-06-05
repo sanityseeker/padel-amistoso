@@ -141,7 +141,7 @@ function _renderLobbyStatusBar(rid, r) {
     actions += `<button type="button" class="btn btn-sm btn-secondary" onclick="withLoading(this,()=>_archiveRegistration('${esc(rid)}',true))">${t('txt_reg_archive')}</button>`;
   }
   actions += `<button type="button" class="btn btn-sm" onclick="_copyRegLink('${esc(rid)}')">${t('txt_reg_copy_link')}</button>`;
-  actions += `<button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToLobbySettings('${esc(rid)}','details')" title="${escAttr(t('txt_admin_status_jump_settings'))}">⚙ ${t('txt_admin_status_jump_settings')}</button>`;
+  actions += `<button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToLobbySettings('${esc(rid)}','details')" title="${escAttr(t('txt_admin_status_jump_settings'))}">${_ic('settings')} ${t('txt_admin_status_jump_settings')}</button>`;
 
   return `
     <div class="card lobby-status-bar tournament-status-bar" id="lobby-status-bar-${esc(rid)}">
@@ -271,7 +271,7 @@ function _renderLobbyCommsBody(rid, r, emailSettings) {
   html += `<textarea id="reg-edit-message-${esc(rid)}" class="reg-desc-textarea" rows="3" placeholder="${t('txt_reg_message_placeholder')}" oninput="_autoResizeTextarea(this)">${esc(r.message || '')}</textarea>`;
   html += `<div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem">`;
   if (window._emailConfigured) {
-    html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendRegMessageEmails('${esc(rid)}'))" title="${t('txt_email_confirm_send_message_all')}">📧 ${t('txt_email_send_message_all')}</button>`;
+    html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendRegMessageEmails('${esc(rid)}'))" title="${t('txt_email_confirm_send_message_all')}">${_ic('mail')} ${t('txt_email_send_message_all')}</button>`;
   }
   html += `<button type="button" class="btn btn-primary btn-sm" style="margin-left:auto" onclick="withLoading(this,()=>_saveRegMessage('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
   html += `</div>`;

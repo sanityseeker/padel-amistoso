@@ -348,7 +348,7 @@ def _compute_playoff_layout(
 
     x_participants = 0.0
     # Use wider slot spacing when team names will be rendered inside boxes
-    slot_spacing = 1.6 if match_labels else 0.9
+    slot_spacing = 1.6 if match_labels else (1.2 if elimination == EliminationType.DOUBLE else 0.9)
     y_start = (len(participant_names) - 1) * slot_spacing / 2
 
     participant_nodes: list[str] = []
@@ -617,12 +617,14 @@ def _build_double_elim_bracket(
             positions[nid] = (positions[nid][0], y_pool[y_idx])
             y_idx += 1
 
+    _W_STEP = 4.0  # wider column step improves readability for the dense DE layout
+
     x_round = x_start
 
     w_match_nodes_per_round: list[list[str]] = []
 
     for r in range(num_rounds_w):
-        x_round = x_start + r * 3.0
+        x_round = x_start + r * _W_STEP
         num_pairs = len(w_prev) // 2
         w_curr: list[str | None] = []
         round_match_nodes: list[str] = []
@@ -712,13 +714,13 @@ def _build_double_elim_bracket(
         if node_meta.get(n, {}).get("kind")
         in (BracketNodeKind.WINNERS_MATCH, BracketNodeKind.ADVANCE, BracketNodeKind.GROUP, BracketNodeKind.BYE)
     )
-    losers_gap = 2.0
+    losers_gap = 3.0
     y_losers_top = lowest_winners_y - losers_gap
     losers_stage_offset = 2 + num_rounds_w
 
     # Pre-compute LR round x-positions: midpoints between winners columns.
-    w_xs = [x_start + _r * 3.0 for _r in range(num_rounds_w)]
-    w_step = 3.0
+    w_xs = [x_start + _r * _W_STEP for _r in range(num_rounds_w)]
+    w_step = _W_STEP
     losers_x_slots: list[float] = []
     for _i in range(len(w_xs) - 1):
         losers_x_slots.append((w_xs[_i] + w_xs[_i + 1]) / 2)
@@ -729,7 +731,7 @@ def _build_double_elim_bracket(
     # Stacking cursor: when both feeders are in the winners region, assign
     # distinct y-slots to prevent edges from passing through other cells.
     _y_losers_cursor = y_losers_top
-    _LOSERS_STACK_GAP = 1.6
+    _LOSERS_STACK_GAP = 2.2
 
     losers_idx_to_node: dict[int, str] = {}  # global_idx → viz node ID
     global_idx = 0  # sequential index of real (non-bye) LR matches
@@ -797,17 +799,39 @@ def _build_double_elim_bracket(
             global_idx += 1
 
         if _round_nodes:
-            _enforce_min_spacing(positions, _round_nodes)
+            _enforce_min_spacing(positions, _round_nodes, min_gap=2.0)
             stages.append({"name": _round_name, "x": _x_lr, "nodes": _round_nodes})
 
     # Add topology-driven edges between bracket matches.
     # WR→WR winner edges are already added by the winners loop above, so skip them.
+    #
+    # Some LR matches are bye slots (only 1 real feeder) and are skipped in the
+    # viz layout — id_to_viz maps their topo ID to None.  We resolve those through
+    # the topology's winner-forward chain so the edges that *should* skip over a
+    # bye are drawn directly to the first real viz node downstream.
+    _winner_forward: dict[str, str] = {}
+    for _e in topo.advancement_edges:
+        if not _e.is_loser:
+            _winner_forward[_e.from_id] = _e.to_id
+
+    def _resolve_viz(topo_id: str) -> str | None:
+        """Follow winner paths through skipped bye matches to find a real viz node."""
+        _seen: set[str] = set()
+        _curr: str | None = topo_id
+        while _curr and _curr not in _seen:
+            _vn = id_to_viz.get(_curr)
+            if _vn is not None:
+                return _vn
+            _seen.add(_curr)
+            _curr = _winner_forward.get(_curr)
+        return None
+
     for _edge in topo.advancement_edges:
         _from_viz = id_to_viz.get(_edge.from_id)
-        _to_viz = id_to_viz.get(_edge.to_id)
-        if not _from_viz or not _to_viz:
+        if not _from_viz or _from_viz not in positions:
             continue
-        if _from_viz not in positions or _to_viz not in positions:
+        _to_viz = _resolve_viz(_edge.to_id)
+        if not _to_viz or _to_viz not in positions:
             continue
         if node_meta.get(_to_viz, {}).get("kind") == BracketNodeKind.WINNERS_MATCH:
             continue  # WR→WR edges already created by winners loop
@@ -897,8 +921,8 @@ _STYLE: dict[str, dict] = {
 
 # Edge styles by relation type
 _EDGE_STYLE: dict[str, dict] = {
-    "win": {"color": "#5A9E6F", "lw": 1.8, "linestyle": "solid"},  # muted green
-    "loss": {"color": "#C07060", "lw": 1.4, "linestyle": "dashed"},  # muted red
+    "win": {"color": "#4A9660", "lw": 1.8, "linestyle": "solid"},  # muted green
+    "loss": {"color": "#C04040", "lw": 2.0, "linestyle": (0, (5, 3))},  # red dashed — thicker & clearly dashed
     "neutral": {"color": "#888888", "lw": 1.5, "linestyle": "solid"},  # grey
 }
 
@@ -970,8 +994,12 @@ def _draw(
     ys = [p[1] for p in positions.values()]
     x_span = max(xs) - min(xs) + 4
     y_span = max(ys) - min(ys) + 4
+    _is_double = layout.get("elimination") == EliminationType.DOUBLE
     if figsize is None:
-        figsize = (max(12, x_span * 1.3), max(6, y_span * 1.1))
+        if _is_double:
+            figsize = (max(16, x_span * 1.55), max(10, y_span * 1.35))
+        else:
+            figsize = (max(12, x_span * 1.3), max(6, y_span * 1.1))
     figsize = (max(4.0, figsize[0] * output_scale), max(3.0, figsize[1] * output_scale))
 
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
@@ -1039,6 +1067,18 @@ def _draw(
         rel = edata.get("relation", "neutral")
         es = _EDGE_STYLE.get(rel, _EDGE_STYLE["neutral"])
         edge_lw = es["lw"] * line_width
+        # Loss edges arc downward (negative rad) so they visually separate from
+        # win/neutral edges; the curvature increases with line distance so that
+        # multiple parallel loss edges fan out and are individually traceable.
+        _dx = abs(tx - sx)
+        _dy = abs(ty - sy)
+        _dist = max(0.5, (_dx**2 + _dy**2) ** 0.5)
+        if rel == "loss":
+            _rad = -(0.12 + min(0.18, _dist * 0.018))
+        elif rel == "win":
+            _rad = 0.06
+        else:
+            _rad = 0.04
         arrow = mpatches.FancyArrowPatch(
             (sx, sy),
             (tx, ty),
@@ -1047,7 +1087,7 @@ def _draw(
             linewidth=edge_lw,
             linestyle=es["linestyle"],
             color=es["color"],
-            connectionstyle="arc3,rad=0.05",
+            connectionstyle=f"arc3,rad={_rad}",
             zorder=2,
         )
         ax.add_patch(arrow)

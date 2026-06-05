@@ -2607,6 +2607,7 @@ async function _doLink() {
 
 function _buildEloInfoHtml() {
   let html = `<h3>${esc(t('txt_txt_info_elo_title'))}</h3>`;
+  html += `<p style="background:var(--bg-alt,#f5f5f5);border:1px solid var(--border);border-radius:6px;padding:0.6rem 0.8rem;margin-bottom:0.75rem;font-size:0.9rem">${esc(t('txt_txt_info_elo_quick_summary'))}</p>`;
   html += `<p style="color:var(--text-muted);font-size:0.84rem">${esc(t('txt_txt_info_elo_subtitle'))}</p>`;
 
   html += `<div class="info-block">`;

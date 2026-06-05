@@ -77,9 +77,9 @@ async function renderMex() {
     // Top-of-page court assignments (most important admin focus).
     if (isPlayoffs || hasPlayoffBracket) {
       const pendingPo = (playoffsData.pending || []).filter(m => m.status !== 'completed');
-      html += _renderCourtAssignmentsCard(pendingPo, t('txt_txt_court_assignments_mexicano_play_offs'), status.assign_courts !== false);
+      html += _renderCourtAssignmentsCard(pendingPo, t('txt_txt_court_assignments_mexicano_play_offs'), status.assign_courts !== false, 'mex-playoff');
     } else {
-      html += _renderCourtAssignmentsCard(matches.current_matches, t('txt_txt_court_assignments_current_round'), status.assign_courts !== false);
+      html += _renderCourtAssignmentsCard(matches.current_matches, t('txt_txt_court_assignments_current_round'), status.assign_courts !== false, null);
     }
     html += _renderMexReviewQueueCard(activeMatches);
 
@@ -194,8 +194,8 @@ async function renderMex() {
         html += `<div id="mex-next-section">`;
         html += _renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/mex/courts`);
         html += `<div class="decision-actions-row">`;
-        html += `<button type="button" class="btn btn-success btn-lg-action"${_decisionDisabledAttrs(proposeReason)} onclick="withLoading(this,proposeMexPairings)">⚡ ${t('txt_txt_propose_next_round')}</button>`;
-        html += `<button type="button" class="btn btn-primary btn-lg-action"${_decisionDisabledAttrs(endReason)} onclick="withLoading(this,endMexicano)">🛑 ${t('txt_txt_end_mexicano')}</button>`;
+        html += `<button type="button" class="btn btn-success btn-lg-action"${_decisionDisabledAttrs(proposeReason)} onclick="withLoading(this,proposeMexPairings)">${_antIc('thunderbolt')} ${t('txt_txt_propose_next_round')}</button>`;
+        html += `<button type="button" class="btn btn-primary btn-lg-action"${_decisionDisabledAttrs(endReason)} onclick="withLoading(this,endMexicano)">&#9632; ${t('txt_txt_end_mexicano')}</button>`;
         const overallReason = proposeReason && endReason ? proposeReason : null;
         if (overallReason) html += `<div class="decision-actions-disabled-note">${esc(overallReason)}</div>`;
         html += `</div>`;
@@ -208,7 +208,7 @@ async function renderMex() {
         html += `<p class="panel-intro">${t('txt_txt_post_mexicano_instructions')}</p>`;
         html += _renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/mex/courts`);
         html += `<div class="decision-actions-row">`;
-        html += `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,proposeMexPlayoffs)">🏆 ${t('txt_txt_start_optional_playoffs')}</button>`;
+        html += `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,proposeMexPlayoffs)">${_ic('trophy')} ${t('txt_txt_start_optional_playoffs')}</button>`;
         html += `<button type="button" class="btn btn-muted btn-lg-action" onclick="withLoading(this,finishMexicanoAsIs)">✓ ${t('txt_txt_finish_as_is')}</button>`;
         html += `<button type="button" class="btn btn-muted btn-lg-action" onclick="withLoading(this,undoEndMexicano)">← ${t('txt_txt_back_to_mexicano')}</button>`;
         html += `</div>`;
@@ -263,6 +263,7 @@ async function renderMex() {
     _renderMexLeaderboard();
     _mexApplyReviewQueueFilter();
     _ensureAdminActivityLauncher();
+    requestAnimationFrame(() => _syncSchemaBuilderFromTvSettings(tvSettings));
   } catch (e) {
     if (currentTid !== _renderTid) return;
     if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
@@ -324,7 +325,7 @@ function _renderMexOpsHeader(stats) {
         <div class="gp-ops-next-action">
           <span>${t('txt_txt_next_action')}:</span>
           <button type="button" class="btn btn-sm" ${stats.nextAction === 'none' ? 'disabled' : ''} onclick="_mexFocusNextAction('${stats.nextAction}')">${esc(actionLabel)}</button>
-          <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">⚙ ${t('txt_admin_status_jump_settings')}</button>
+          <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">${_ic('settings')} ${t('txt_admin_status_jump_settings')}</button>
         </div>
       </div>
       <div class="gp-ops-header-collapsible">
@@ -502,7 +503,14 @@ function _renderMexLeaderboard() {
   card.innerHTML = html;
 }
 
-function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
+function _courtFormatChip(ctx) {
+  if (!ctx || typeof _gpScoreMode === 'undefined' || !(ctx in _gpScoreMode)) return '';
+  const mode = _gpScoreMode[ctx] || 'points';
+  const label = mode === 'sets' ? t('txt_txt_sets') : t('txt_txt_points_label');
+  return `<span class="court-format-chip">${_antIc('profile')} ${esc(label)}</span>`;
+}
+
+function _renderCourtAssignmentsCard(matches, title, assignCourts = true, scoreContext = null) {
   if (!assignCourts) {
     // Courts disabled — group by round, defined players first, multi-column grid
     if (!matches || matches.length === 0) {
@@ -529,7 +537,7 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
       if (key) html += `<div class="pending-round-label">${esc(key)}</div>`;
       for (const m of _byRound[key]) {
         const tbd = _hasTbd(m);
-        const _cmt = m.comment ? `<div class="match-comment-text match-comment-static">💬 ${esc(m.comment)}</div>` : '';
+        const _cmt = m.comment ? `<div class="match-comment-text match-comment-static">${_antIc('message')} ${esc(m.comment)}</div>` : '';
         const _jumpAttr = m.id ? ` role="button" tabindex="0" style="cursor:pointer" onclick="_scrollToMatch('${m.id}')" onkeydown="if(event.key==='Enter')_scrollToMatch('${m.id}')"` : '';
         html += `<div class="match-card pending-match-card${tbd ? ' match-tbd-disabled' : ''}"${_jumpAttr}><div class="match-teams">${esc(_tl(m.team1))} <span class="vs">vs</span> ${esc(_tl(m.team2))}</div>${_cmt}</div>`;
       }
@@ -565,8 +573,9 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
   // adapts to the current screen and tournament size.
   const isCompact = _shouldUseCompactCourtBoard(courtNames.length);
   const compactCls = isCompact ? ' court-board-compact' : '';
+  const chip = _courtFormatChip(scoreContext);
 
-  let html = `<div class="card"><div class="court-board-header"><h3>${esc(title)}</h3></div><div class="court-board${compactCls}">`;
+  let html = `<div class="card"><div class="court-board-header"><h3>${esc(title)}</h3>${chip}</div><div class="court-board${compactCls}">`;
   for (const courtName of courtNames) {
     const courtMatches = matchesByCourt[courtName];
     html += `<div class="court-column">`;
@@ -579,7 +588,7 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true) {
       const jumpLabel = `${t('txt_txt_go_to_match')}: ${t1} vs ${t2}`;
       const upcomingCls = i > 0 ? ' court-match-upcoming' : '';
       html += `<div class="court-match-item${upcomingCls}" role="button" tabindex="0" data-match-id="${m.id}" aria-label="${esc(jumpLabel)}" onclick="_scrollToMatch('${m.id}')" onkeydown="if(event.key==='Enter')_scrollToMatch('${m.id}')">${esc(t1)} <span class="muted-text">vs</span> ${esc(t2)}${r}</div>`;
-      if (m.comment && !isCompact) html += `<div class="court-match-item court-match-item-no-top"><span class="match-comment-text match-comment-static">💬 ${esc(m.comment)}</span></div>`;
+      if (m.comment && !isCompact) html += `<div class="court-match-item court-match-item-no-top"><span class="match-comment-text match-comment-static">${_antIc('message')} ${esc(m.comment)}</span></div>`;
     }
     html += `</div>`;
   }
@@ -804,7 +813,7 @@ function _renderProposalPicker(proposals) {
   let html = `<div class="card">`;
   html += `<div class="proposal-header-row">`;
   html += `<h2>${t('txt_txt_choose_pairings')}</h2>`;
-  html += `<button type="button" class="btn btn-outline-muted" onclick="_showManualEditor()">✏️ ${t('txt_txt_manual_override')}</button>`;
+  html += `<button type="button" class="btn btn-outline-muted" onclick="_showManualEditor()">${_ic('edit')} ${t('txt_txt_manual_override')}</button>`;
   html += `</div>`;
   html += `<div class="proposal-display-controls">`;  
 
@@ -855,17 +864,17 @@ function _renderProposalPicker(proposals) {
     if (p.recommended) card += `<span class="badge badge-best">★ ${t('txt_txt_best')}</span>`;
     card += `</div>`;
     card += `<div class="proposal-metrics">`;
-    card += `⚖️ ${t('txt_txt_score_gap')}: <strong>${fmt2(p.score_imbalance)} pts</strong><br>`;
+    card += `${_antIc('bar-chart')} ${t('txt_txt_score_gap')}: <strong>${fmt2(p.score_imbalance)} pts</strong><br>`;
     const repLabel = p.repeat_count === 0
       ? `✅ ${t('txt_txt_no_repeated_matchups')}`
-      : `⚠️ ${t('txt_txt_n_repeats', { n: fmt2(p.repeat_count) })}`;  
+      : `${_antIc('warning')} ${t('txt_txt_n_repeats', { n: fmt2(p.repeat_count) })}`;  
     card += `${repLabel}`;
     if ((p.exact_prev_round_repeats || 0) > 0) {
-      card += `<br>🔁 ${t('txt_txt_exact_rematch_warning', { n: p.exact_prev_round_repeats })}`;
+      card += `<br>${_antIc('retweet')} ${t('txt_txt_exact_rematch_warning', { n: p.exact_prev_round_repeats })}`;
     }
     if ((p.skill_gap_violations || 0) > 0) {
       const excess = fmt2(p.skill_gap_worst_excess || 0);
-      card += `<br>🚫 ${t('txt_txt_skill_gap_violation', { n: p.skill_gap_violations, excess })}`;
+      card += `<br>${_antIc('stop')} ${t('txt_txt_skill_gap_violation', { n: p.skill_gap_violations, excess })}`;
     }
     if (p.sit_out_names && p.sit_out_names.length > 0) {
       card += `<br>🪑 ${t('txt_txt_sitting_out')}: <em>${esc(p.sit_out_names.join(', '))}</em>`;
@@ -926,7 +935,7 @@ function _renderProposalPicker(proposals) {
     if (!hasLoadedMore) {
       html += `<button class="proposal-inline-action" type="button" onclick="_loadMoreMexPairings(this)">⬇ ${t('txt_txt_load_more_combos')}</button>`;
     } else {
-      html += `<button class="proposal-inline-action" type="button" onclick="_loadMoreMexPairings(this)">🔄 ${t('txt_txt_refresh_proposals')}</button>`;
+      html += `<button class="proposal-inline-action" type="button" onclick="_loadMoreMexPairings(this)">${_ic('reset')} ${t('txt_txt_refresh_proposals')}</button>`;
     }
     html += `</div>`;
     html += `</div>`;
@@ -1151,6 +1160,7 @@ async function _saveCourtEditor(patchUrl) {
     _courtEditorPatchUrl = '';
     if (currentType === 'mexicano') renderMex();
     else if (currentType === 'group_playoff') renderGP();
+    else if (currentType === 'playoff') renderPO();
   } catch (e) { _showToast(e.message, 'error'); }
 }
 
@@ -1159,6 +1169,7 @@ function _cancelCourtEditor() {
   _courtEditorPatchUrl = '';
   if (currentType === 'mexicano') renderMex();
   else if (currentType === 'group_playoff') renderGP();
+  else if (currentType === 'playoff') renderPO();
 }
 
 // ─── Manual pairing editor ───────────────────────────────
@@ -1197,7 +1208,7 @@ function _showManualEditor() {
 
   let html = `<div class="card manual-editor-card">`;
   html += `<div class="manual-editor-header">`;
-  html += `<h2>✏️ ${t('txt_txt_manual_pairing_editor')}</h2>`;
+  html += `<h2>${_antIc('edit')} ${t('txt_txt_manual_pairing_editor')}</h2>`;
   html += `<div class="manual-editor-actions">`;
   html += `<button type="button" class="btn btn-sm btn-outline-muted" onclick="proposeMexPairings()">← ${t('txt_txt_back_to_proposals')}</button>`;
   html += `<button type="button" class="btn btn-sm btn-outline-muted" onclick="_manualClearAll()">✕ ${t('txt_txt_manual_clear_all')}</button>`;
@@ -1284,9 +1295,9 @@ function _renderManualMatch(idx) {
   card += `<div class="manual-match-header">`;
   card += `<div class="manual-match-title">${t('txt_txt_match_n', { n: idx + 1 })}</div>`;
   if (isLocked) {
-    card += `<button type="button" class="btn btn-sm manual-lock-btn locked" onclick="_manualUnlockMatch(${idx})">🔒 ${t('txt_txt_manual_unlock_match')}</button>`;
+    card += `<button type="button" class="btn btn-sm manual-lock-btn locked" onclick="_manualUnlockMatch(${idx})">&#x1F513; ${t('txt_txt_manual_unlock_match')}</button>`;
   } else {
-    card += `<button type="button" class="btn btn-sm manual-lock-btn" onclick="_manualLockMatch(${idx})">🔓 ${t('txt_txt_manual_lock_match')}</button>`;
+    card += `<button type="button" class="btn btn-sm manual-lock-btn" onclick="_manualLockMatch(${idx})">&#x1F512; ${t('txt_txt_manual_lock_match')}</button>`;
   }
   card += `</div>`;
 
@@ -1575,18 +1586,18 @@ function _updateManualRoundStats() {
   let html = `<div class="manual-stats-card">`;
   html += `<div class="manual-stats-title">${t('txt_txt_round_summary')}</div>`;
   html += `<div class="proposal-metrics">`;
-  html += `⚖️ ${t('txt_txt_score_gap')}: <strong>${fmt2(stats.score_imbalance)} pts</strong><br>`;
+  html += `${_antIc('bar-chart')} ${t('txt_txt_score_gap')}: <strong>${fmt2(stats.score_imbalance)} pts</strong><br>`;
 
   if (stats.repeat_count === 0) {
     html += `✅ ${t('txt_txt_no_repeated_matchups')}`;
   } else {
-    html += `⚠️ ${t('txt_txt_n_repeats', { n: fmt2(stats.repeat_count) })}`;
+    html += `${_antIc('warning')} ${t('txt_txt_n_repeats', { n: fmt2(stats.repeat_count) })}`;
   }
   if (stats.exact_prev_round_repeats > 0) {
-    html += `<br>🔁 ${t('txt_txt_exact_rematch_warning', { n: stats.exact_prev_round_repeats })}`;
+    html += `<br>${_antIc('retweet')} ${t('txt_txt_exact_rematch_warning', { n: stats.exact_prev_round_repeats })}`;
   }
   if (stats.skill_gap_violations > 0) {
-    html += `<br>🚫 ${t('txt_txt_skill_gap_violation', { n: stats.skill_gap_violations, excess: fmt2(stats.skill_gap_worst_excess) })}`;
+    html += `<br>${_antIc('stop')} ${t('txt_txt_skill_gap_violation', { n: stats.skill_gap_violations, excess: fmt2(stats.skill_gap_worst_excess) })}`;
   }
   html += `</div>`;
 
@@ -1825,7 +1836,7 @@ function _renderPlayoffEditor() {
       const ep = _mexExternalParticipants[i];
       html += `<div class="playoff-editor-external-row">`;
       html += `<span class="playoff-editor-external-name">★ ${esc(ep.name)}</span>`;
-      html += `<input type="number" value="${ep.score}" class="playoff-editor-score-input" onchange="_mexUpdateExternalScore(${i}, this.value)">`;
+      html += `<input type="number" value="${ep.score}" class="playoff-editor-score-input" inputmode="numeric" pattern="[0-9]*" onchange="_mexUpdateExternalScore(${i}, this.value)">`;
       html += `<button type="button" class="btn btn-sm btn-muted playoff-editor-remove-btn" onclick="_mexRemoveExternal(${i})">✕</button>`;
       html += `</div>`;
     }
@@ -1835,7 +1846,7 @@ function _renderPlayoffEditor() {
   // Tennis inverts: effectiveTM=true means 1v1 (player), effectiveTM=false means 2v2 (team).
   const extIsTeam = _mexSport === 'tennis' ? !effectiveTeamMode : effectiveTeamMode;
   html += `<input type="text" id="mex-external-name" class="playoff-editor-external-name-input" placeholder="${extIsTeam ? t('txt_txt_add_external_team') : t('txt_txt_add_external_player')}" onkeydown="if(event.key==='Enter')_mexAddExternal()">`;
-  html += `<input type="number" id="mex-external-score" class="playoff-editor-score-input" placeholder="${t('txt_txt_score')}" value="0">`;
+  html += `<input type="number" id="mex-external-score" class="playoff-editor-score-input" inputmode="numeric" pattern="[0-9]*" placeholder="${t('txt_txt_score')}" value="0">`;
   html += `<button type="button" class="btn btn-sm btn-primary" onclick="_mexAddExternal()">+</button>`;
   html += `</div>`;
   html += `</div>`;
@@ -1900,7 +1911,7 @@ function _renderPlayoffEditor() {
   html += `<div class="form-group"><label>${t('txt_txt_format')}</label><select id="playoff-format"><option value="single">${t('txt_txt_single_elimination')}</option><option value="double">${t('txt_txt_double_elimination')}</option></select></div>`;
   html += `</div>`;
   html += `<div class="proposal-actions">`;
-  html += `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,_startMexPlayoffs)">✓ ${t('txt_txt_start_mexicano_playoffs')}</button>`;
+  html += `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,_startMexPlayoffs)">${_ic('trophy')} ${t('txt_txt_start_mexicano_playoffs')}</button>`;
   html += `<button type="button" class="btn btn-muted btn-lg-action" onclick="renderMex()">✕ ${t('txt_txt_cancel')}</button>`;
   html += `</div>`;
   html += `</div>`;

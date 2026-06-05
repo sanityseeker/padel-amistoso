@@ -47,6 +47,7 @@ async function renderGP() {
       assignmentMatches,
       status.phase === 'groups' ? t('txt_txt_court_assignments_group_stage') : t('txt_txt_court_assignments_play_offs'),
       status.assign_courts !== false,
+      status.phase === 'groups' ? 'gp-group' : 'gp-playoff',
     );
     html += _renderGpReviewQueueCard(phaseMatches);
     if (status.phase === 'playoffs') {
@@ -149,10 +150,10 @@ async function renderGP() {
       html += `<div class="decision-actions-row">`;
       if (groups.has_more_rounds) {
         const reason = blockedReason;
-        html += `<button type="button" class="btn btn-primary btn-lg-action"${_decisionDisabledAttrs(reason)} onclick="withLoading(this,nextGpGroupRound)">⚡ ${t('txt_txt_generate_next_group_round')}</button>`;
+        html += `<button type="button" class="btn btn-primary btn-lg-action"${_decisionDisabledAttrs(reason)} onclick="withLoading(this,nextGpGroupRound)">${_antIc('thunderbolt')} ${t('txt_txt_generate_next_group_round')}</button>`;
       }
       const playoffReason = blockedReason;
-      html += `<button type="button" class="btn btn-success btn-lg-action"${_decisionDisabledAttrs(playoffReason)} onclick="withLoading(this,proposeGpPlayoffs)">🏆 ${t('txt_txt_start_playoffs')} →</button>`;
+      html += `<button type="button" class="btn btn-success btn-lg-action"${_decisionDisabledAttrs(playoffReason)} onclick="withLoading(this,proposeGpPlayoffs)">${_ic('trophy')} ${t('txt_txt_start_playoffs')} →</button>`;
       if (blockedReason) {
         html += `<div class="decision-actions-disabled-note">${esc(blockedReason)}</div>`;
       }
@@ -199,6 +200,8 @@ async function renderGP() {
     _gpApplyReviewQueueFilter();
     _applyMatchFilter(_readPersistedMatchFilter(currentTid));
     _ensureAdminActivityLauncher();
+    // Sync schema builder sliders to loaded TV settings so both previews match.
+    requestAnimationFrame(() => _syncSchemaBuilderFromTvSettings(tvSettings));
   } catch (e) {
     if (currentTid !== _renderTid) return;
     if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
@@ -255,7 +258,7 @@ function _renderGpOpsHeader(stats, phase) {
         <div class="gp-ops-next-action">
           <span>${t('txt_txt_next_action')}:</span>
           <button type="button" class="btn btn-sm" ${stats.nextAction === 'none' ? 'disabled' : ''} onclick="_gpFocusNextAction('${stats.nextAction}')">${esc(actionLabel)}</button>
-          <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">⚙ ${t('txt_admin_status_jump_settings')}</button>
+          <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">${_ic('settings')} ${t('txt_admin_status_jump_settings')}</button>
         </div>
       </div>
       <div class="gp-ops-header-collapsible">
@@ -408,8 +411,12 @@ async function renderPO() {
     let html = '';
     html += _renderPoOpsHeader(poOpsStats);
     const pending = _sortTbdLast((playoffs.pending || []).filter(m => m.status !== 'completed'));
-    html += _renderCourtAssignmentsCard(pending, t('txt_txt_court_assignments_play_offs'), status.assign_courts !== false);
+    html += _renderCourtAssignmentsCard(pending, t('txt_txt_court_assignments_play_offs'), status.assign_courts !== false, 'po-playoff');
     html += _renderPoReviewQueueCard(poMatches);
+
+    if (hasCourts) {
+      html += _renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/po/courts`);
+    }
 
     if (status.champion) {
       html += `<div class="alert alert-success">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
@@ -454,6 +461,7 @@ async function renderPO() {
     el.innerHTML = html;
     _poApplyReviewQueueFilter();
     _ensureAdminActivityLauncher();
+    requestAnimationFrame(() => _syncSchemaBuilderFromTvSettings(tvSettings));
   } catch (e) {
     if (currentTid !== _renderTid) return;
     if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
@@ -476,7 +484,7 @@ function _renderPoOpsHeader(stats) {
         <div class="gp-ops-next-action">
           <span>${t('txt_txt_next_action')}:</span>
           <button type="button" class="btn btn-sm" ${stats.nextAction === 'none' ? 'disabled' : ''} onclick="_poFocusNextAction('${stats.nextAction}')">${esc(actionLabel)}</button>
-          <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">⚙ ${t('txt_admin_status_jump_settings')}</button>
+          <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">${_ic('settings')} ${t('txt_admin_status_jump_settings')}</button>
         </div>
       </div>
       <div class="gp-ops-header-collapsible">
@@ -603,9 +611,9 @@ function matchRow(m, ctx) {
     html += ` <span class="badge badge-completed">✓</span>`;
     if (m.disputed) {
       if (m.dispute_escalated) {
-        html += ` <span class="badge badge-dispute" title="${t('txt_txt_dispute_escalated_tip')}">⚠️ ${t('txt_txt_dispute_label')}</span>`;
+        html += ` <span class="badge badge-dispute" title="${t('txt_txt_dispute_escalated_tip')}">${_antIc('warning')} ${t('txt_txt_dispute_label')}</span>`;
       } else {
-        html += ` <span class="badge badge-dispute badge-dispute-pending" title="${t('txt_txt_dispute_pending_tip')}">🔄 ${t('txt_txt_dispute_review_label')}</span>`;
+        html += ` <span class="badge badge-dispute badge-dispute-pending" title="${t('txt_txt_dispute_pending_tip')}">${_antIc('sync')} ${t('txt_txt_dispute_review_label')}</span>`;
       }
     } else if (m.scored_by && !m.score_confirmed && _scoreConfirmationMode !== 'immediate') {
       html += ` <span class="badge badge-pending-score" title="${t('txt_txt_player_submitted_not_confirmed')}">⏳</span>`;
@@ -620,8 +628,8 @@ function matchRow(m, ctx) {
         ? m.dispute_sets.map(s => `${s[0]}–${s[1]}`).join(' / ')
         : (m.dispute_score ? `${m.dispute_score[0]}–${m.dispute_score[1]}` : '?');
       const escalatedNote = m.dispute_escalated
-        ? `<div class="admin-dispute-note note-escalated">⚠️ ${t('txt_txt_escalated_by_player')}</div>`
-        : `<div class="admin-dispute-note note-reviewing">🔄 ${t('txt_txt_players_reviewing')}</div>`;
+        ? `<div class="admin-dispute-note note-escalated">${_antIc('warning')} ${t('txt_txt_escalated_by_player')}</div>`
+        : `<div class="admin-dispute-note note-reviewing">${_antIc('sync')} ${t('txt_txt_players_reviewing')}</div>`;
       html += `<div class="admin-dispute-panel" id="dispute-panel-${m.id}">`;
       html += escalatedNote;
       html += `<div class="admin-dispute-scores">`;
@@ -667,9 +675,9 @@ function matchRow(m, ctx) {
     if (isSetScoringCtxEdit) {
       const stageMode = _gpScoreMode[ctx] || 'points';
       html += `<div id="score-normal-${m.id}" class="${stageMode === 'sets' ? 'hidden' : ''}">`;
-      html += `<input type="number" id="s1-${m.id}" class="score-input-narrow" min="0" value="${sc[0]}" ${onInput}>`;
+      html += `<input type="number" id="s1-${m.id}" class="score-input-narrow" inputmode="numeric" pattern="[0-9]*" min="0" value="${sc[0]}" ${onInput}>`;
       html += `<span>–</span>`;
-      html += `<input type="number" id="s2-${m.id}" class="score-input-narrow" min="0" value="${sc[1]}" ${onInput}>`;
+      html += `<input type="number" id="s2-${m.id}" class="score-input-narrow" inputmode="numeric" pattern="[0-9]*" min="0" value="${sc[1]}" ${onInput}>`;
       html += `<button type="button" class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
       html += `</div>`;
       html += `<div id="score-tennis-${m.id}" class="${stageMode === 'sets' ? '' : 'hidden'}">`;
@@ -679,9 +687,9 @@ function matchRow(m, ctx) {
       html += `<button type="button" class="btn btn-success btn-sm" onclick="submitTennisScore('${m.id}','${ctx}')">${t('txt_txt_save_sets')}</button>`;
       html += `</div>`;
     } else {
-      html += `<input type="number" id="s1-${m.id}" class="score-input-narrow" min="0" value="${sc[0]}" ${onInput}>`;
+      html += `<input type="number" id="s1-${m.id}" class="score-input-narrow" inputmode="numeric" pattern="[0-9]*" min="0" value="${sc[0]}" ${onInput}>`;
       html += `<span>–</span>`;
-      html += `<input type="number" id="s2-${m.id}" class="score-input-narrow" min="0" value="${sc[1]}" ${onInput}>`;
+      html += `<input type="number" id="s2-${m.id}" class="score-input-narrow" inputmode="numeric" pattern="[0-9]*" min="0" value="${sc[1]}" ${onInput}>`;
       html += `<button type="button" class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
     }
     html += `<button type="button" class="btn btn-sm btn-muted" onclick="_cancelEditMatch('${m.id}')">✕</button>`;
@@ -692,7 +700,7 @@ function matchRow(m, ctx) {
     const bd = isMex ? _mexBreakdowns[m.id] : null;
     if (bd && Object.keys(bd).length > 0) {
       html += `<details class="breakdown-details" id="breakdown-${m.id}">`;
-      html += `<summary>📊 ${t('txt_txt_score_breakdown')}</summary>`;
+      html += `<summary>${_antIc('bar-chart')} ${t('txt_txt_score_breakdown')}</summary>`;
       html += `<div class="breakdown-panel">`;
       html += `<table class="breakdown-table"><thead><tr><th>${t('txt_txt_player')}</th><th>${t('txt_txt_raw')}</th><th>${t('txt_txt_relative_strength')}</th><th>${t('txt_txt_strength_weight')}</th><th>${t('txt_txt_strength_multiplier')}</th><th>${t('txt_txt_loss_disc_multiplier')}</th><th>${t('txt_txt_win_bonus_header')}</th><th>${t('txt_txt_final')}</th></tr></thead><tbody>`;
       for (const [pid, d] of Object.entries(bd)) {
@@ -707,9 +715,9 @@ function matchRow(m, ctx) {
     // Comment banner (completed match)
     html += `<div class="match-comment-banner">`;
     if (m.comment) {
-      html += `<span class="match-comment-text" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_click_to_edit')}">💬 ${esc(m.comment)}</span>`;
+      html += `<span class="match-comment-text" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_click_to_edit')}">${_antIc('message')} ${esc(m.comment)}</span>`;
     } else {
-      html += `<span class="match-comment-add" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_comment_placeholder')}">💬 ${t('txt_match_add_comment')}</span>`;
+      html += `<span class="match-comment-add" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_comment_placeholder')}">${_antIc('message')} ${t('txt_match_add_comment')}</span>`;
     }
     html += `<div class="match-comment-edit hidden" id="mc-row-${m.id}">`;
     html += `<input type="text" id="mc-${m.id}" value="${m.comment ? esc(m.comment) : ''}" placeholder="${t('txt_match_comment_placeholder')}" maxlength="500" onkeydown="if(event.key==='Enter')_setMatchComment('${m.id}')">` ;
@@ -741,9 +749,9 @@ function matchRow(m, ctx) {
     html += ` <span class="${scoreClass}" id="mscore-${m.id}">${scoreDisplay}</span>`;
     if (m.disputed) {
       if (m.dispute_escalated) {
-        html += ` <span class="badge badge-dispute" title="${t('txt_txt_dispute_escalated_tip')}">⚠️ ${t('txt_txt_dispute_label')}</span>`;
+        html += ` <span class="badge badge-dispute" title="${t('txt_txt_dispute_escalated_tip')}">${_antIc('warning')} ${t('txt_txt_dispute_label')}</span>`;
       } else {
-        html += ` <span class="badge badge-dispute badge-dispute-pending" title="${t('txt_txt_dispute_pending_tip')}">🔄 ${t('txt_txt_dispute_review_label')}</span>`;
+        html += ` <span class="badge badge-dispute badge-dispute-pending" title="${t('txt_txt_dispute_pending_tip')}">${_antIc('sync')} ${t('txt_txt_dispute_review_label')}</span>`;
       }
     } else if (_scoreConfirmationMode !== 'immediate') {
       html += ` <span class="badge badge-pending-score" title="${t('txt_txt_player_submitted_awaiting_confirmation')}">⏳</span>`;
@@ -759,8 +767,8 @@ function matchRow(m, ctx) {
         ? m.dispute_sets.map(s => `${s[0]}–${s[1]}`).join(' / ')
         : (m.dispute_score ? `${m.dispute_score[0]}–${m.dispute_score[1]}` : '?');
       const escalatedNote = m.dispute_escalated
-        ? `<div class="admin-dispute-note note-escalated">⚠️ ${t('txt_txt_escalated_by_player')}</div>`
-        : `<div class="admin-dispute-note note-reviewing">🔄 ${t('txt_txt_players_reviewing')}</div>`;
+        ? `<div class="admin-dispute-note note-escalated">${_antIc('warning')} ${t('txt_txt_escalated_by_player')}</div>`
+        : `<div class="admin-dispute-note note-reviewing">${_antIc('sync')} ${t('txt_txt_players_reviewing')}</div>`;
       html += `<div class="admin-dispute-panel" id="dispute-panel-${m.id}">`;
       html += escalatedNote;
       html += `<div class="admin-dispute-scores">`;
@@ -805,9 +813,9 @@ function matchRow(m, ctx) {
     if (isSetScoringCtxEdit) {
       const stageMode = _gpScoreMode[ctx] || 'points';
       html += `<div id="score-normal-${m.id}" class="${stageMode === 'sets' ? 'hidden' : ''}">`;
-      html += `<input type="number" id="s1-${m.id}" class="score-input-narrow" min="0" value="${sc[0]}" ${onInputEdit}>`;
+      html += `<input type="number" id="s1-${m.id}" class="score-input-narrow" inputmode="numeric" pattern="[0-9]*" min="0" value="${sc[0]}" ${onInputEdit}>`;
       html += `<span>–</span>`;
-      html += `<input type="number" id="s2-${m.id}" class="score-input-narrow" min="0" value="${sc[1]}" ${onInputEdit}>`;
+      html += `<input type="number" id="s2-${m.id}" class="score-input-narrow" inputmode="numeric" pattern="[0-9]*" min="0" value="${sc[1]}" ${onInputEdit}>`;
       html += `<button type="button" class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
       html += `</div>`;
       html += `<div id="score-tennis-${m.id}" class="${stageMode === 'sets' ? '' : 'hidden'}">`;
@@ -817,9 +825,9 @@ function matchRow(m, ctx) {
       html += `<button type="button" class="btn btn-success btn-sm" onclick="submitTennisScore('${m.id}','${ctx}')">${t('txt_txt_save_sets')}</button>`;
       html += `</div>`;
     } else {
-      html += `<input type="number" id="s1-${m.id}" class="score-input-narrow" min="0" value="${sc[0]}" ${onInputEdit}>`;
+      html += `<input type="number" id="s1-${m.id}" class="score-input-narrow" inputmode="numeric" pattern="[0-9]*" min="0" value="${sc[0]}" ${onInputEdit}>`;
       html += `<span>–</span>`;
-      html += `<input type="number" id="s2-${m.id}" class="score-input-narrow" min="0" value="${sc[1]}" ${onInputEdit}>`;
+      html += `<input type="number" id="s2-${m.id}" class="score-input-narrow" inputmode="numeric" pattern="[0-9]*" min="0" value="${sc[1]}" ${onInputEdit}>`;
       html += `<button type="button" class="btn btn-success btn-sm" onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
     }
     html += `<button type="button" class="btn btn-sm btn-muted" onclick="_cancelEditMatch('${m.id}')">✕</button>`;
@@ -828,9 +836,9 @@ function matchRow(m, ctx) {
     // Comment banner
     html += `<div class="match-comment-banner">`;
     if (m.comment) {
-      html += `<span class="match-comment-text" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_click_to_edit')}">💬 ${esc(m.comment)}</span>`;
+      html += `<span class="match-comment-text" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_click_to_edit')}">${_antIc('message')} ${esc(m.comment)}</span>`;
     } else {
-      html += `<span class="match-comment-add" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_comment_placeholder')}">💬 ${t('txt_match_add_comment')}</span>`;
+      html += `<span class="match-comment-add" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_comment_placeholder')}">${_antIc('message')} ${t('txt_match_add_comment')}</span>`;
     }
     html += `<div class="match-comment-edit hidden" id="mc-row-${m.id}">`;
     html += `<input type="text" id="mc-${m.id}" value="${m.comment ? esc(m.comment) : ''}" placeholder="${t('txt_match_comment_placeholder')}" maxlength="500" onkeydown="if(event.key==='Enter')_setMatchComment('${m.id}')">`;
@@ -862,9 +870,9 @@ function matchRow(m, ctx) {
     const stageMode = _gpScoreMode[ctx] || 'points';
     html += `<div class="match-actions" id="score-input-${m.id}">`;
     html += `<div id="score-normal-${m.id}" class="${stageMode === 'sets' ? 'hidden' : ''}">`;
-    html += `<input type="number" id="s1-${m.id}" class="score-input-narrow" min="0" value="" placeholder="0" ${onInput}>`;
+    html += `<input type="number" id="s1-${m.id}" class="score-input-narrow" inputmode="numeric" pattern="[0-9]*" min="0" value="" placeholder="0" ${onInput}>`;
     html += `<span>–</span>`;
-    html += `<input type="number" id="s2-${m.id}" class="score-input-narrow" min="0" value="" placeholder="${autoCalc ? _totalPts : 0}" ${onInput}>`;
+    html += `<input type="number" id="s2-${m.id}" class="score-input-narrow" inputmode="numeric" pattern="[0-9]*" min="0" value="" placeholder="${autoCalc ? _totalPts : 0}" ${onInput}>`;
     html += `<button type="button" class="${saveBtnClass}"${tbdAttr} onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
     html += `</div>`;
     html += `<div id="score-tennis-${m.id}" class="${stageMode === 'sets' ? '' : 'hidden'}">`;
@@ -876,9 +884,9 @@ function matchRow(m, ctx) {
     html += `</div>`;
   } else {
     html += `<div class="match-actions">`;
-    html += `<input type="number" id="s1-${m.id}" class="score-input-narrow" min="0" value="" placeholder="0" ${onInput}>`;
+    html += `<input type="number" id="s1-${m.id}" class="score-input-narrow" inputmode="numeric" pattern="[0-9]*" min="0" value="" placeholder="0" ${onInput}>`;
     html += `<span>–</span>`;
-    html += `<input type="number" id="s2-${m.id}" class="score-input-narrow" min="0" value="" placeholder="${autoCalc ? _totalPts : 0}" ${onInput}>`;
+    html += `<input type="number" id="s2-${m.id}" class="score-input-narrow" inputmode="numeric" pattern="[0-9]*" min="0" value="" placeholder="${autoCalc ? _totalPts : 0}" ${onInput}>`;
     html += `<button type="button" class="${saveBtnClass}"${tbdAttr} onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
     html += `</div>`;
   }
@@ -886,9 +894,9 @@ function matchRow(m, ctx) {
   // Comment banner (pending match)
   html += `<div class="match-comment-banner">`;
   if (m.comment) {
-    html += `<span class="match-comment-text" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_click_to_edit')}">💬 ${esc(m.comment)}</span>`;
+    html += `<span class="match-comment-text" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_click_to_edit')}">${_antIc('message')} ${esc(m.comment)}</span>`;
   } else {
-    html += `<span class="match-comment-add" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_comment_placeholder')}">💬 ${t('txt_match_add_comment')}</span>`;
+    html += `<span class="match-comment-add" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_comment_placeholder')}">${_antIc('message')} ${t('txt_match_add_comment')}</span>`;
   }
   html += `<div class="match-comment-edit hidden" id="mc-row-${m.id}">`;
   html += `<input type="text" id="mc-${m.id}" value="${m.comment ? esc(m.comment) : ''}" placeholder="${t('txt_match_comment_placeholder')}" maxlength="500" onkeydown="if(event.key==='Enter')_setMatchComment('${m.id}')">`;
@@ -1198,9 +1206,9 @@ function _renderTennisSetInputs(matchId, numSets) {
     const maxAttr = isLastSet ? '' : ' max="7"';
     html += `<div class="tennis-set-row">`;
     html += `<span class="tennis-set-label">S${i + 1}:</span>`;
-    html += `<input class="tennis-set-input" type="number" id="ts1-${matchId}-${i}" min="0"${maxAttr} value="" placeholder="0">`;
+    html += `<input class="tennis-set-input" inputmode="numeric" pattern="[0-9]*" type="number" id="ts1-${matchId}-${i}" min="0"${maxAttr} value="" placeholder="0">`;
     html += `<span class="tennis-set-sep">-</span>`;
-    html += `<input class="tennis-set-input" type="number" id="ts2-${matchId}-${i}" min="0"${maxAttr} value="" placeholder="0">`;
+    html += `<input class="tennis-set-input" inputmode="numeric" pattern="[0-9]*" type="number" id="ts2-${matchId}-${i}" min="0"${maxAttr} value="" placeholder="0">`;
     html += `</div>`;
   }
   return html;
@@ -1325,14 +1333,14 @@ function _renderGpPlayoffEditor() {
     const ep = _gpExternalParticipants[i];
     html += `<div class="gp-external-row">`;
     html += `<span class="gp-external-name">★ ${esc(ep.name)}</span>`;
-    html += `<input type="number" value="${ep.score}" class="playoff-editor-score-input" onchange="_gpUpdateExternalScore(${i}, this.value)">`;
+    html += `<input type="number" value="${ep.score}" class="playoff-editor-score-input" inputmode="numeric" pattern="[0-9]*" onchange="_gpUpdateExternalScore(${i}, this.value)">`;
     html += `<button type="button" class="btn btn-sm btn-muted playoff-editor-remove-btn" onclick="_gpRemoveExternal(${i})">✕</button>`;
     html += `</div>`;
   }
   html += `</div>`;
   html += `<div class="gp-external-add-row">`;
   html += `<input type="text" id="gp-external-name" placeholder="${t('txt_txt_add_external_participant')}" onkeydown="if(event.key==='Enter')_gpAddExternal()">`;
-  html += `<input type="number" id="gp-external-score" class="playoff-editor-score-input" placeholder="${t('txt_txt_score')}" value="0">`;
+  html += `<input type="number" id="gp-external-score" class="playoff-editor-score-input" inputmode="numeric" pattern="[0-9]*" placeholder="${t('txt_txt_score')}" value="0">`;
   html += `<button type="button" class="btn btn-sm btn-primary" onclick="_gpAddExternal()">+</button>`;
   html += `</div>`;
   html += `</div>`;
@@ -1364,7 +1372,7 @@ function _renderGpPlayoffEditor() {
   // Courts + action buttons
   html += _renderCourtsSection(_gpCurrentCourts, `/api/tournaments/${currentTid}/gp/courts`);
   html += `<div class="decision-actions-row">`;
-  html += `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,_confirmGpPlayoffs)">✓ ${t('txt_txt_start_playoffs')}</button>`;
+  html += `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,_confirmGpPlayoffs)">${_ic('trophy')} ${t('txt_txt_start_playoffs')}</button>`;
   html += `<button type="button" class="btn btn-muted btn-lg-action" onclick="renderGP()">✕ ${t('txt_txt_cancel')}</button>`;
   html += `</div>`;
   html += `</div>`;
