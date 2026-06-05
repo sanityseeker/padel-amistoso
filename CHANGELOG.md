@@ -1,3 +1,9 @@
+## v1.13.0 (2026-06-06)
+
+### Feat
+
+- **playoffs**: implement espejo logic; improve admin frontend for play offs
+
 ## v1.12.2 (2026-06-05)
 
 ### Fix
