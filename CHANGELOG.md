@@ -1,3 +1,9 @@
+## v1.13.1 (2026-06-09)
+
+### Fix
+
+- **frontend**: fix group stage frontend; add number of matches approximation
+
 ## v1.13.0 (2026-06-06)
 
 ### Feat
