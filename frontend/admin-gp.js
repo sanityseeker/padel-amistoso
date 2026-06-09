@@ -122,13 +122,6 @@ async function renderGP() {
         html += `</details>`;
       }
 
-      // Per-group add-player area — only during the group phase.
-      if (status.phase === 'groups') {
-        html += `<div id="gp-add-player-area-${escAttr(gName)}" style="margin-top:0.5rem">`;
-        html += `<button type="button" class="add-participant-btn" onclick="_addPlayerToGroup(${JSON.stringify(gName)})">＋ ${t('txt_txt_add_player')}</button>`;
-        html += `</div>`;
-      }
-
       html += `</div>`;
     }
 
@@ -163,7 +156,7 @@ async function renderGP() {
 
     // Playoff bracket
     if (status.phase === 'playoffs' || status.phase === 'finished') {
-      html += _renderAdminBracketCard(`/api/tournaments/${currentTid}/gp/playoffs-schema`, tvSettings);
+      html += _renderAdminBracketCard(`/api/tournaments/${currentTid}/gp/playoffs-schema`, tvSettings, { isDouble: status.double_elimination === true });
       html += _renderPlayoffMatchesByRound(playoffs?.matches || [], 'gp-playoff');
     }
 
@@ -228,6 +221,8 @@ function _buildGpOpsStats({ phase, hasCourts, hasMoreGroupRounds, matches }) {
     escalatedCount: escalated.length,
     pendingConfirmationCount: pendingConfirmation.length,
     unassignedCourtsCount: unassignedCourts,
+    completedMatchCount: (matches || []).filter(m => m.status === 'completed').length,
+    totalMatchCount: (matches || []).length,
     nextAction,
   };
 }
@@ -1347,8 +1342,10 @@ function _renderGpPlayoffEditor() {
   html += `</div>`;
   html += `<div id="gp-espejo-options" style="display:none;margin-top:0.35rem;padding:0.4rem 0.6rem;border-left:2px solid var(--border)">`;
   html += `<label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer">`;
-  html += `<input type="checkbox" id="gp-espejo-super-final" style="width:1rem;height:1rem"> ${t('txt_txt_espejo_super_final')}`;
+  html += `<input type="checkbox" id="gp-espejo-super-final" style="width:1rem;height:1rem" onchange="_gpUpdatePlayoffMatchCount()"> ${t('txt_txt_espejo_super_final')}`;
   html += `</label></div>`;
+  html += `<div class="gp-playoff-match-estimate" id="gp-playoff-match-estimate"></div>`;
+  setTimeout(_gpUpdatePlayoffMatchCount, 0);
 
   // Playoff team mode toggle — shown for tennis individual tournaments
   const _gpIsIndividualTennis = _gpSport === 'tennis' && (!_gpTeamRoster || Object.keys(_gpTeamRoster).length === 0);
@@ -1382,12 +1379,121 @@ function _renderGpPlayoffEditor() {
 function _gpToggleAdvancing(cb) {
   if (cb.checked) _gpAdvancingIds.add(cb.value);
   else _gpAdvancingIds.delete(cb.value);
+  _gpUpdatePlayoffMatchCount();
 }
 
 function _gpPlayoffFormatChanged() {
   const fmt = document.getElementById('gp-playoff-format')?.value;
   const opts = document.getElementById('gp-espejo-options');
   if (opts) opts.style.display = fmt === 'espejo' ? '' : 'none';
+  _gpUpdatePlayoffMatchCount();
+}
+
+function _gpNextPowerOfTwo(n) {
+  let p = 1;
+  while (p < n) p <<= 1;
+  return p;
+}
+
+// Returns the number of simultaneous matches per round for single elimination.
+function _gpSingleElimSequence(n) {
+  if (n < 2) return [];
+  const p = _gpNextPowerOfTwo(n);
+  const seq = [];
+  const r1 = n - p / 2;
+  if (r1 > 0) seq.push(r1);
+  let r = p / 4;
+  while (r >= 1) { seq.push(r); r = Math.floor(r / 2); }
+  return seq;
+}
+
+// Returns separate { wbSeq, lbSeq } for double elimination so WB and LB rows
+// can be displayed independently. LB rounds run alongside WB from R2 onward;
+// remaining LB rounds (where WB champion waits) are appended to lbSeq.
+function _gpDeSequences(n) {
+  if (n < 2) return { wbSeq: [1], lbSeq: [] };
+  const wbSeq = _gpSingleElimSequence(n);
+  const lbDuring = [];
+  let lbTeams = wbSeq[0];
+  for (let k = 1; k < wbSeq.length; k++) {
+    const lbMatches = Math.floor(lbTeams / 2);
+    lbDuring.push(lbMatches);
+    lbTeams = (lbTeams - lbMatches) + wbSeq[k];
+  }
+  const lbAfter = [];
+  while (lbTeams > 1) {
+    const lbMatches = Math.floor(lbTeams / 2);
+    lbAfter.push(lbMatches);
+    lbTeams -= lbMatches;
+  }
+  return { wbSeq, lbSeq: [...lbDuring, ...lbAfter] };
+}
+
+// Returns separate { wbSeq, lbSeq } for espejo — WB has all n teams (single
+// elim), LB is seeded with R1 WB losers and runs as its own single elim.
+function _gpEspejoSequences(n) {
+  const p = _gpNextPowerOfTwo(n);
+  const wbSeq = _gpSingleElimSequence(n);
+  const lbTeams = n - p / 2;
+  const lbSeq = lbTeams >= 2 ? _gpSingleElimSequence(lbTeams) : [];
+  return { wbSeq, lbSeq };
+}
+
+function _gpFormatConcurrencySeq(seq) {
+  if (!seq || seq.length === 0) return '';
+  if (seq.every(v => v === seq[0])) return `${seq[0]}/round`;
+  return seq.join(' → ');
+}
+
+function _gpEstimatePlayoffMatches(n, format, superFinal) {
+  if (n < 2) return 0;
+  if (format === 'single') return n - 1;
+  if (format === 'double') return 2 * (n - 1);
+  if (format === 'espejo') {
+    const lbTeams = n - _gpNextPowerOfTwo(n) / 2;
+    return (n - 1) + Math.max(0, lbTeams - 1) + (superFinal ? 1 : 0);
+  }
+  return n - 1;
+}
+
+function _gpUpdatePlayoffMatchCount() {
+  const el = document.getElementById('gp-playoff-match-estimate');
+  if (!el) return;
+  const n = _gpAdvancingIds.size + _gpExternalParticipants.length;
+  const format = document.getElementById('gp-playoff-format')?.value || 'single';
+  const superFinal = document.getElementById('gp-espejo-super-final')?.checked || false;
+  if (n < 2) { el.innerHTML = ''; return; }
+
+  const count = _gpEstimatePlayoffMatches(n, format, superFinal);
+  const matchText = `~${count} ${t('txt_txt_matches')}`;
+
+  function branchRow(label, seq, suffix) {
+    const seqStr = seq.join(' → ');
+    return `<div class="gp-playoff-branch">` +
+      `<span class="gp-playoff-branch-label">${label}</span>` +
+      `<span>${seqStr}${suffix ? ` · ${suffix}` : ''}</span>` +
+      `</div>`;
+  }
+
+  if (format === 'single') {
+    const seqStr = _gpFormatConcurrencySeq(_gpSingleElimSequence(n));
+    el.textContent = seqStr ? `${matchText} · ${seqStr}` : matchText;
+  } else if (format === 'double') {
+    const { wbSeq, lbSeq } = _gpDeSequences(n);
+    el.innerHTML = `<span class="gp-playoff-estimate-count">${matchText}</span>` +
+      `<div class="gp-playoff-branches">` +
+      branchRow('WB', wbSeq, '') +
+      branchRow('LB', lbSeq, 'GF') +
+      `</div>`;
+  } else {
+    const { wbSeq, lbSeq } = _gpEspejoSequences(n);
+    const sfSuffix = superFinal ? 'SF' : '';
+    el.innerHTML = `<span class="gp-playoff-estimate-count">${matchText}</span>` +
+      `<div class="gp-playoff-branches">` +
+      branchRow('WB', wbSeq, '') +
+      (lbSeq.length ? branchRow('LB', lbSeq, sfSuffix) : '') +
+      `</div>`;
+  }
 }
 
 function _gpAddExternal() {
@@ -1582,8 +1688,9 @@ function _renderPlayoffMatchesByRound(matches, ctx, losersCtx = ctx, superFinalC
   for (const key of roundOrder) {
     const rMatches = byRound[key];
     const pending = rMatches.filter(m => m.status !== 'completed').length;
+    const total = rMatches.length;
     const cls = pending > 0 ? 'group-nav-btn has-pending' : 'group-nav-btn all-done';
-    html += `<button type="button" class="${cls}" onclick="_scrollToPlayoffRound('${escAttr(key)}')">${esc(key)}</button>`;
+    html += `<button type="button" class="${cls}" onclick="_scrollToPlayoffRound('${escAttr(key)}')">${esc(key)}<span class="nav-btn-round-count">${pending > 0 ? `${pending}/` : ''}${total}</span></button>`;
   }
   html += `<span class="group-nav-sep" aria-hidden="true"></span>`;
   html += _renderMatchFilterChips(currentTid);

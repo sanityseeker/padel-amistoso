@@ -2001,7 +2001,7 @@ function _buildBracketSection(imgUrl, isDouble = false, isEspejo = false) {
   let html = `<details class="tv-collapsible" data-tv-key="bracket" open>`;
   html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2></summary>`;
   html += `<div class="tv-section bracket-section">`;
-  if (isDouble) {
+  if (isDouble && !isEspejo) {
     html += `<div class="double-elim-explainer">`;
     html += `<strong>${t('txt_double_elim_explain_title')}</strong>`;
     html += `<ul>`;
@@ -2011,7 +2011,7 @@ function _buildBracketSection(imgUrl, isDouble = false, isEspejo = false) {
     html += `<span class="double-elim-legend">${t('txt_double_elim_explain_colors')}</span>`;
     html += `</div>`;
   }
-  if (isEspejo) {
+  if (isEspejo || isDouble) {
     html += `<div class="espejo-brackets-row">`;
     html += `<div class="espejo-bracket-half">`;
     html += `<div class="espejo-bracket-label">${esc(t('txt_txt_espejo_winners_bracket'))}</div>`;
@@ -2019,10 +2019,14 @@ function _buildBracketSection(imgUrl, isDouble = false, isEspejo = false) {
     html += `</div>`;
     html += `<div class="espejo-bracket-half">`;
     html += `<div class="espejo-bracket-label">${esc(t('txt_txt_espejo_losers_bracket'))}</div>`;
-    html += `<div class="bracket-scroll-wrapper">` +
-      `<img class="bracket-img" src="${imgUrl}&side=losers" alt="Losers" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
-      `<div style="display:none;align-items:center;justify-content:center;padding:1.5rem;color:var(--text-muted);font-size:0.84rem;text-align:center;border:1px dashed var(--border);border-radius:8px">${t('txt_espejo_lb_pending')}</div>` +
-      `</div>`;
+    if (isEspejo) {
+      html += `<div class="bracket-scroll-wrapper">` +
+        `<img class="bracket-img" src="${imgUrl}&side=losers" alt="Losers" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
+        `<div style="display:none;align-items:center;justify-content:center;padding:1.5rem;color:var(--text-muted);font-size:0.84rem;text-align:center;border:1px dashed var(--border);border-radius:8px">${t('txt_espejo_lb_pending')}</div>` +
+        `</div>`;
+    } else {
+      html += `<div class="bracket-scroll-wrapper"><img class="bracket-img" src="${imgUrl}&side=losers" alt="Losers" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'"></div>`;
+    }
     html += `</div>`;
     html += `</div>`;
   } else {

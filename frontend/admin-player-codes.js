@@ -135,79 +135,6 @@ async function _refreshCurrentView() {
   _restoreViewDrafts(drafts);
 }
 
-/** Open an inline add-player form inside the specific group card. */
-function _addPlayerToGroup(groupName) {
-  const areaId = `gp-add-player-area-${groupName}`;
-  const inputId = `gp-add-name-${groupName}`;
-  const area = document.getElementById(areaId);
-  if (!area) return;
-
-  // Already open — just focus.
-  if (document.getElementById(inputId)) {
-    document.getElementById(inputId).focus();
-    return;
-  }
-
-  // Replace the button with an inline input row.
-  area.innerHTML = `
-    <span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;margin-top:0.1rem">
-      <input type="text" id="${escAttr(inputId)}"
-        placeholder="${escAttr(t('txt_txt_add_player_prompt'))}"
-        style="flex:1;min-width:150px;font-size:0.88rem;padding:0.3rem 0.5rem;border:2px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--text)"
-        maxlength="128">
-      <button type="button" class="btn btn-primary btn-sm"
-        style="font-size:0.78rem;padding:0.25rem 0.6rem;white-space:nowrap"
-        onclick="_submitPlayerToGroup(${JSON.stringify(groupName)})">✓</button>
-      <button type="button" class="btn btn-sm"
-        style="font-size:0.78rem;padding:0.25rem 0.5rem"
-        onclick="_cancelAddPlayerToGroup(${JSON.stringify(groupName)})">✕</button>
-    </span>`;
-
-  const input = document.getElementById(inputId);
-  if (input) {
-    input.focus();
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') _submitPlayerToGroup(groupName);
-      else if (e.key === 'Escape') _cancelAddPlayerToGroup(groupName);
-    });
-  }
-}
-
-/** Restore the add-player button after cancelling. */
-function _cancelAddPlayerToGroup(groupName) {
-  const area = document.getElementById(`gp-add-player-area-${groupName}`);
-  if (!area) return;
-  area.innerHTML = `<button type="button" class="add-participant-btn" onclick="_addPlayerToGroup(${JSON.stringify(groupName)})">＋ ${t('txt_txt_add_player')}</button>`;
-}
-
-/** Submit a new player directly to a specific group. */
-async function _submitPlayerToGroup(groupName) {
-  const inputId = `gp-add-name-${groupName}`;
-  const input = document.getElementById(inputId);
-  if (!input) return;
-  const name = input.value.trim();
-  if (!name) { input.focus(); return; }
-
-  input.disabled = true;
-  const area = document.getElementById(`gp-add-player-area-${groupName}`);
-  if (area) area.querySelectorAll('button').forEach(b => b.disabled = true);
-
-  try {
-    await api(`/api/tournaments/${currentTid}/players`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, group_name: groupName }),
-    });
-    const drafts = _captureViewDrafts();
-    drafts['details:player-codes-panel'] = true;
-    await renderGP();
-    _restoreViewDrafts(drafts);
-  } catch (e) {
-    alert(e.message || t('txt_reg_error'));
-    if (input) input.disabled = false;
-    if (area) area.querySelectorAll('button').forEach(b => b.disabled = false);
-  }
-}
 
 /** Add a new player to the running tournament — inline (no prompt) */
 function _addTournamentPlayer() {
@@ -362,8 +289,7 @@ async function _submitNewPlayer() {
     const drafts = _captureViewDrafts();
     drafts['details:player-codes-panel'] = true;
     if (currentType === 'group_playoff') await renderGP();
-    else if (currentType === 'playoff') await renderPO();
-    else if (currentType === 'mexicano') await renderMex();
+    else await renderMex();
     _restoreViewDrafts(drafts);
   } catch (e) {
     alert(e.message || t('txt_reg_error'));

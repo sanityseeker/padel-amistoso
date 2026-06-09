@@ -798,13 +798,15 @@ function _adminBracketUrl(apiBase, tvSettings) {
 function _renderAdminBracketCard(apiBase, tvSettings, opts = {}) {
   const title = opts.title || t('txt_txt_play_off_bracket');
   const isEspejo = opts.isEspejo === true;
+  const isDouble = opts.isDouble === true;
+  const useSplit = isEspejo || isDouble;
   const url = _adminBracketUrl(apiBase, tvSettings);
-  let h = `<div class="card admin-bracket-card" data-bracket-api="${apiBase}" data-espejo="${isEspejo ? '1' : ''}">`;
+  let h = `<div class="card admin-bracket-card" data-bracket-api="${apiBase}" data-espejo="${isEspejo ? '1' : ''}" data-double="${isDouble ? '1' : ''}">`;
   h += `<div class="admin-bracket-header">`;
   h += `<h2 class="admin-bracket-title">${esc(title)}</h2>`;
   h += `<button type="button" class="btn btn-sm btn-muted" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_bracket_open_settings_hint'))}">${_antIc('setting')} ${esc(t('txt_admin_bracket_tune_btn'))}</button>`;
   h += `</div>`;
-  if (isEspejo) {
+  if (useSplit) {
     h += `<div class="espejo-brackets-row">`;
     h += `<div class="espejo-bracket-half">`;
     h += `<div class="espejo-bracket-label">${esc(t('txt_txt_espejo_winners_bracket'))}</div>`;
@@ -814,10 +816,17 @@ function _renderAdminBracketCard(apiBase, tvSettings, opts = {}) {
     h += `<div class="espejo-bracket-label">${esc(t('txt_txt_espejo_losers_bracket'))}</div>`;
     h += `<div class="bracket-scroll-wrapper" id="admin-bracket-losers-wrap">` +
       `<img id="admin-bracket-img-losers" class="bracket-img" src="${url}&side=losers" alt="Losers"` +
-      ` onclick="_openBracketLightbox(this.src)" title="${escAttr(t('txt_txt_click_to_expand'))}"` +
-      ` onerror="this.style.display='none';var p=document.getElementById('admin-bracket-losers-pending');if(p)p.style.display='flex'">` +
-      `<div id="admin-bracket-losers-pending" style="display:none;align-items:center;justify-content:center;padding:1.5rem;color:var(--text-muted);font-size:0.84rem;text-align:center;border:1px dashed var(--border);border-radius:8px">${esc(t('txt_espejo_lb_pending'))}</div>` +
-      `</div>`;
+      ` onclick="_openBracketLightbox(this.src)" title="${escAttr(t('txt_txt_click_to_expand'))}"`;
+    if (isEspejo) {
+      h += ` onerror="this.style.display='none';var p=document.getElementById('admin-bracket-losers-pending');if(p)p.style.display='flex'"`;
+    } else {
+      h += ` onerror="this.style.display='none'"`;
+    }
+    h += `>`;
+    if (isEspejo) {
+      h += `<div id="admin-bracket-losers-pending" style="display:none;align-items:center;justify-content:center;padding:1.5rem;color:var(--text-muted);font-size:0.84rem;text-align:center;border:1px dashed var(--border);border-radius:8px">${esc(t('txt_espejo_lb_pending'))}</div>`;
+    }
+    h += `</div>`;
     h += `</div>`;
     h += `</div>`;
   } else {
@@ -855,11 +864,12 @@ function _refreshAdminBracketPreview() {
     schema_title_font_scale: num('tv-schema-title-scale', 1.0),
     schema_output_scale:     num('tv-schema-output',      1.0),
   };
+  const isSplit = card.dataset.espejo === '1' || card.dataset.double === '1';
   img.style.display = '';
-  img.src = _adminBracketUrl(apiBase, tvSettings);
-  // For Espejo: refresh the losers bracket image too.
+  img.src = _adminBracketUrl(apiBase, tvSettings) + (isSplit ? '&side=winners' : '');
+  // For split brackets (espejo or DE): refresh the losers bracket image too.
   const losersImg = document.getElementById('admin-bracket-img-losers');
-  if (losersImg && card.dataset.espejo === '1') {
+  if (losersImg && isSplit) {
     losersImg.style.opacity = '1';
     losersImg.src = _adminBracketUrl(apiBase, tvSettings) + '&side=losers';
   }
@@ -900,6 +910,7 @@ async function generatePoPreviewSchema() {
   const resultEl = document.getElementById('po-preview-result');
   const msgEl = document.getElementById('po-preview-msg');
   msgEl.classList.add('hidden');
+  if (typeof _updatePoMatchEstimate === 'function') _updatePoMatchEstimate();
   if (names.length < 2) {
     resultEl.innerHTML = '';
     return;
@@ -1240,6 +1251,9 @@ function _renderStatusBarStats(stats, reviewCardId) {
   }
   if (stats.escalatedCount > 0) {
     html += `<div class="gp-ops-stat-pill"><span>${t('txt_txt_escalated')}</span><strong>${stats.escalatedCount}</strong></div>`;
+  }
+  if (stats.totalMatchCount > 0) {
+    html += `<div class="gp-ops-stat-pill"><span>${t('txt_txt_matches')}</span><strong>${stats.completedMatchCount}/${stats.totalMatchCount}</strong></div>`;
   }
   html += `</div>`;
   return html;

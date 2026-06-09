@@ -1295,6 +1295,24 @@ function _renderGPGroupPreview() {
     html += `</div>`;
   });
   html += `</div>`;
+  const isTeamMode = _currentSport === 'tennis' || _entryModeIsTeam('gp');
+  const perGroupCounts = groups.map(g => {
+    const n = g.players.length;
+    return isTeamMode ? Math.floor(n * (n - 1) / 2) : Math.ceil(n * (n - 1) / 4);
+  });
+  const totalEstimate = perGroupCounts.reduce((a, b) => a + b, 0);
+  const courtsPerRound = groups.reduce((sum, g) => {
+    const n = g.players.length;
+    return sum + (isTeamMode ? Math.floor(n / 2) : Math.floor(n / 4));
+  }, 0);
+  if (totalEstimate > 0) {
+    const perGroupDetail = groups.length > 1
+      ? ` (${groups.map((g, i) => `${esc(g.name)}: ~${perGroupCounts[i]}`).join(', ')})`
+      : '';
+    const courtsStr = courtsPerRound > 0 ? ` · ${courtsPerRound}/round` : '';
+    html += `<div class="gp-preview-match-estimate">~${totalEstimate} ${t('txt_txt_matches')}${perGroupDetail}${courtsStr}</div>`;
+  }
+
   if (canAdjustGroups) {
     html += `<div class="gp-preview-shuffle-row"><button type="button" class="btn-outline-muted" onclick="_shuffleGPGroups()">${_ic('shuffle')} ${t('txt_gp_shuffle')}</button></div>`;
   }
@@ -1625,6 +1643,43 @@ function _poToggleEspejo() {
   const checked = espejoBox.checked;
   optionsDiv.style.display = checked ? '' : 'none';
   if (checked && dblElimBox) dblElimBox.checked = false;
+  _updatePoMatchEstimate();
+}
+
+function _updatePoMatchEstimate() {
+  const el = document.getElementById('po-match-estimate');
+  if (!el) return;
+  const n = getParticipantNames('po').length;
+  if (n < 2) { el.innerHTML = ''; return; }
+  const isEspejo = document.getElementById('po-espejo')?.checked || false;
+  const isDouble = !isEspejo && (document.getElementById('po-double-elim')?.checked || false);
+  const superFinal = document.getElementById('po-espejo-super-final')?.checked || false;
+  const format = isEspejo ? 'espejo' : (isDouble ? 'double' : 'single');
+  const count = _gpEstimatePlayoffMatches(n, format, superFinal);
+  const matchText = `~${count} ${t('txt_txt_matches')}`;
+  function branchRow(label, seq, suffix) {
+    return `<div class="gp-playoff-branch">` +
+      `<span class="gp-playoff-branch-label">${label}</span>` +
+      `<span>${seq.join(' → ')}${suffix ? ` · ${suffix}` : ''}</span>` +
+      `</div>`;
+  }
+  if (format === 'single') {
+    const seqStr = _gpFormatConcurrencySeq(_gpSingleElimSequence(n));
+    el.textContent = seqStr ? `${matchText} · ${seqStr}` : matchText;
+  } else if (format === 'double') {
+    const { wbSeq, lbSeq } = _gpDeSequences(n);
+    el.innerHTML = `<span class="gp-playoff-estimate-count">${matchText}</span>` +
+      `<div class="gp-playoff-branches">` +
+      branchRow('WB', wbSeq, '') + branchRow('LB', lbSeq, 'GF') +
+      `</div>`;
+  } else {
+    const { wbSeq, lbSeq } = _gpEspejoSequences(n);
+    el.innerHTML = `<span class="gp-playoff-estimate-count">${matchText}</span>` +
+      `<div class="gp-playoff-branches">` +
+      branchRow('WB', wbSeq, '') +
+      (lbSeq.length ? branchRow('LB', lbSeq, superFinal ? 'SF' : '') : '') +
+      `</div>`;
+  }
 }
 
 // ─── Render Group+Playoff ─────────────────────────────────

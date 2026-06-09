@@ -135,12 +135,34 @@ def render_schema(
     return _fig_to_bytes(fig, fmt=fmt, dpi=dpi)
 
 
+def _filter_layout_by_side(layout: dict, side: str) -> dict:
+    """Return a copy of a DE layout containing only winners-side or losers-side nodes."""
+    positions = layout["positions"]
+    if side == "winners":
+        keep = {n for n in positions if n.startswith("seed_") or n.startswith("w_r") or n == "grand_final"}
+    else:
+        keep = {n for n in positions if n.startswith("l_") or n == "grand_final"}
+    G: nx.DiGraph = layout["graph"]
+    return {
+        "graph": G.subgraph(keep).copy(),
+        "positions": {n: p for n, p in positions.items() if n in keep},
+        "node_meta": {n: m for n, m in layout["node_meta"].items() if n in keep},
+        "stages": [
+            {**s, "nodes": [n for n in s.get("nodes", []) if n in keep]}
+            for s in layout["stages"]
+            if any(n in keep for n in s.get("nodes", []))
+        ],
+        "elimination": layout.get("elimination"),
+    }
+
+
 def render_playoff_schema(
     participant_names: list[str],
     elimination: EliminationType = EliminationType.SINGLE,
     *,
     match_labels: dict[str, dict] | None = None,
     title: str | None = None,
+    side: str | None = None,
     fmt: Literal["png", "svg", "pdf"] = "png",
     dpi: int = 150,
     figsize: tuple[float, float] | None = None,
@@ -155,6 +177,8 @@ def render_playoff_schema(
         raise ValueError("Need at least 2 participants")
 
     layout = _compute_playoff_layout(participant_names, elimination, match_labels=match_labels)
+    if side and elimination == EliminationType.DOUBLE:
+        layout = _filter_layout_by_side(layout, side)
     fig = _draw(
         layout,
         title=title,

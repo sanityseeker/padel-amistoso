@@ -397,6 +397,7 @@ async def gp_playoffs_schema(
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(1.0, ge=0.5, le=3.0),
+    side: Literal["winners", "losers"] | None = Query(None),
 ) -> Response:
     """Generate a schema image/document for the active Group+Playoff bracket."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
@@ -412,6 +413,7 @@ async def gp_playoffs_schema(
         "gp",
         tid,
         version,
+        side or "default",
         tuple(participant_names),
         EliminationType.DOUBLE if t.double_elimination else EliminationType.SINGLE,
         title,
@@ -431,6 +433,7 @@ async def gp_playoffs_schema(
         elimination=EliminationType.DOUBLE if t.double_elimination else EliminationType.SINGLE,
         match_labels=_build_match_labels(t.playoff_bracket),
         title=title,
+        side=side,
         fmt=fmt,
         box_scale=box_scale,
         line_width=line_width,

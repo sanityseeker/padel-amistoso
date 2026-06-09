@@ -1446,6 +1446,12 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
   background: var(--accent);
 }
 .group-nav-btn.all-done { opacity: 0.55; }
+.nav-btn-round-count {
+  margin-left: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  opacity: 0.7;
+}
 
 /* ── GP ops overview ── */
 /* The Mexicano per-tournament status bar is sticky because it has no other
@@ -4739,6 +4745,40 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   flex-shrink: 0;
   width: auto;
   max-width: 5rem;
+}
+.gp-preview-match-estimate {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+}
+.gp-playoff-match-estimate {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+.gp-playoff-estimate-count {
+  display: block;
+}
+.gp-playoff-branches {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin-top: 0.2rem;
+}
+.gp-playoff-branch {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+.gp-playoff-branch-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--border);
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  flex-shrink: 0;
 }
 .gp-preview-shuffle-row {
   display: flex;
