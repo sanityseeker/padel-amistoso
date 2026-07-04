@@ -1,6 +1,7 @@
 let _registrations = [];
 let _showArchivedRegistrations = false;
 let _regDetails = {};  // rid → full registration detail data
+let _regClaims = {};  // rid → list of pending participation claims
 let _regCollaborators = {};  // rid → list of co-editor usernames
 let _regEmailSettings = {};  // rid → email settings {sender_name, reply_to}
 
@@ -124,7 +125,24 @@ async function _loadRegDetail(rid) {
   const data = await api(`/api/registrations/${rid}`);
   _regDetails[rid] = data;
   _currentRegDetail = data;
+  // Fetch pending participation claims (name-based recovery awaiting approval).
+  try {
+    _regClaims[rid] = await api(`/api/registrations/${rid}/claims`);
+  } catch (_) { _regClaims[rid] = []; }
   _renderRegDetailInline(rid);
+}
+
+/** Approve or reject a pending participation claim, then refresh the detail. */
+async function _resolveRegClaim(rid, claimId, approve) {
+  try {
+    await api(`/api/registrations/${rid}/claims/${claimId}/resolve?approve=${approve ? 'true' : 'false'}`, {
+      method: 'POST',
+    });
+    _regClaims[rid] = await api(`/api/registrations/${rid}/claims`);
+    _renderRegDetailInline(rid);
+  } catch (e) {
+    console.error('Failed to resolve claim:', e.message);
+  }
 }
 
 function _renderRegDetailInline(rid) {
@@ -205,6 +223,31 @@ function _renderRegDetailInline(rid) {
   }
   html += `<div style="margin-top:0.5rem"><button type="button" class="add-participant-btn" onclick="_adminAddRegistrant('${esc(rid)}')">${t('txt_reg_add_player')}</button></div>`;
   html += `</details>`;
+
+  // Pending participation claims (name-based recovery awaiting organizer approval)
+  const _claims = _regClaims[rid] || [];
+  if (_claims.length > 0) {
+    html += `<details class="reg-section" open style="margin-bottom:0.75rem">`;
+    html += `<summary class="reg-section-summary" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:0.4rem;list-style:none">`;
+    html += `<span style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_reg_claims_title')} (${_claims.length})</span>`;
+    html += `</summary>`;
+    html += `<p style="color:var(--text-muted);font-size:0.82rem;margin:0.6rem 0 0.5rem;line-height:1.5">${t('txt_reg_claims_help')}</p>`;
+    html += `<div style="display:flex;flex-direction:column;gap:0.5rem">`;
+    for (const c of _claims) {
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:0.6rem;padding:0.55rem 0.7rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;flex-wrap:wrap">`;
+      html += `<div style="font-size:0.84rem">`;
+      html += `<div style="font-weight:600">${esc(c.claimant_name || c.claimant_email || '—')}</div>`;
+      html += `<div style="color:var(--text-muted);font-size:0.8em">${t('txt_reg_claims_claims_label')}: ${esc(c.player_name)} · ${esc(c.entity_name)}${c.claimant_email ? ' · ' + esc(c.claimant_email) : ''}</div>`;
+      html += `</div>`;
+      html += `<div style="display:flex;gap:0.4rem;flex-shrink:0">`;
+      html += `<button type="button" class="btn btn-success btn-sm" style="font-size:0.76rem" onclick="_resolveRegClaim('${esc(rid)}','${esc(c.id)}',true)">${t('txt_reg_claims_approve')}</button>`;
+      html += `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.76rem" onclick="_resolveRegClaim('${esc(rid)}','${esc(c.id)}',false)">${t('txt_reg_claims_reject')}</button>`;
+      html += `</div>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+    html += `</details>`;
+  }
 
   // Question Answers panel (separate, only shown when questions exist)
   const questions = r.questions || [];

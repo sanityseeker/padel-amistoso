@@ -20,6 +20,7 @@ from __future__ import annotations
 from collections import defaultdict
 import json
 import logging
+import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -398,6 +399,77 @@ def _link_email_participations(profile_id: str, email: str) -> None:
         )
     # Transfer ELO from all newly-linked participations.
     retroactive_transfer_all_elos(profile_id)
+
+
+def _find_or_create_profile_for_email(email: str, lang: EmailLang = "en") -> str | None:
+    """Return the id of a non-ghost profile owning ``email``, creating one if needed.
+
+    Used by the email-based recovery flows to connect a returning player — who
+    may have participations but no Hub profile — to a durable identity.  Only
+    called after at least one participation with this email has been found, so
+    the created profile always has history to sweep in.
+
+    - If a non-ghost profile already exists for the email, its id is returned.
+    - Otherwise a new profile is created (email unverified), a display name is
+      seeded from the most recent matching participation, and all matching
+      participations plus their history/ELO are swept in via
+      ``_link_email_participations`` / the history backfills.
+
+    Returns ``None`` only on an unexpected DB error.
+    """
+    clean_email = email.strip()
+    if not clean_email:
+        return None
+    try:
+        with get_db() as conn:
+            existing = conn.execute(
+                """
+                SELECT id FROM player_profiles
+                 WHERE LOWER(email) = LOWER(?) AND is_ghost = 0
+                 ORDER BY email_verified_at IS NULL, created_at
+                 LIMIT 1
+                """,
+                (clean_email,),
+            ).fetchone()
+            if existing is not None:
+                return existing["id"]
+
+            # Seed a display name from the most recent matching participation.
+            name_row = conn.execute(
+                """
+                SELECT player_name FROM (
+                    SELECT player_name, registered_at AS ts FROM registrants
+                     WHERE LOWER(email) = LOWER(?) AND player_name != ''
+                    UNION ALL
+                    SELECT player_name, '' AS ts FROM player_secrets
+                     WHERE LOWER(email) = LOWER(?) AND player_name != ''
+                )
+                ORDER BY ts DESC LIMIT 1
+                """,
+                (clean_email, clean_email),
+            ).fetchone()
+            seed_name = (name_row["player_name"] if name_row else "") or ""
+
+            profile_id = str(uuid.uuid4())
+            passphrase = _generate_unique_passphrase()
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                """
+                INSERT INTO player_profiles
+                    (id, passphrase, name, email, email_verified_at, contact, lang, created_at)
+                VALUES (?, ?, ?, ?, NULL, '', ?, ?)
+                """,
+                (profile_id, passphrase, seed_name, clean_email, lang, now),
+            )
+    except sqlite3.Error as exc:
+        logger.warning("find-or-create profile for email failed: %s", exc)
+        return None
+
+    # Sweep in every matching participation and backfill history + ELO.
+    _link_email_participations(profile_id, clean_email)
+    _backfill_history_for_profile(profile_id)
+    _backfill_finished_secrets(profile_id)
+    return profile_id
 
 
 def _send_email_verification(
@@ -2652,6 +2724,63 @@ async def recover_passphrase(req: ProfileRecoverRequest, request: Request) -> di
             name=row["name"], email=row["email"], access_token=recovery_token, lang=row["lang"] or "en"
         )
         send_email_background(row["email"], subject, html_body)
+
+    return {"ok": True}
+
+
+@router.post("/recover-by-participation")
+async def recover_by_participation(req: ProfileRecoverRequest, request: Request) -> dict:
+    """Recover Hub access by email for a returning player who forgot their code.
+
+    Serves players who have *participated* before (tournament or lobby) but may
+    never have created a Player Hub profile.  Given an email, if any past
+    participation matches it, we find-or-create a durable profile for that email,
+    connect all matching participations to it, and email a magic login link.
+    The passphrase is never emailed, and — critically — we **always** return
+    ``{"ok": True}`` and never reveal on-screen whether the email matched, so
+    typing someone else's email leaks nothing and cannot be used to impersonate
+    them (only the inbox owner can act on the emailed link).
+    """
+    _RECOVER_RATE_LIMITER.check(_client_ip(request), "Too many recovery requests — try again in 15 minutes")
+    _RECOVER_RATE_LIMITER.record(_client_ip(request))
+
+    clean_email = req.email.strip()
+    if not is_valid_email(clean_email):
+        return {"ok": True}
+
+    # Only proceed if at least one participation matches this email — otherwise we
+    # must not create an empty profile (which would let anyone mint a profile for
+    # an arbitrary email).
+    with get_db() as conn:
+        match = conn.execute(
+            """
+            SELECT 1 FROM registrants   WHERE LOWER(email) = LOWER(?)
+            UNION ALL
+            SELECT 1 FROM player_secrets WHERE LOWER(email) = LOWER(?)
+            LIMIT 1
+            """,
+            (clean_email, clean_email),
+        ).fetchone()
+    if match is None:
+        return {"ok": True}
+
+    profile_id = _find_or_create_profile_for_email(clean_email)
+    if profile_id is None:
+        return {"ok": True}
+
+    # Sweep ELO for any freshly-linked participations, then email a magic link.
+    retroactive_transfer_all_elos(profile_id)
+    with get_db() as conn:
+        prof = conn.execute(
+            "SELECT name, email, lang FROM player_profiles WHERE id = ?",
+            (profile_id,),
+        ).fetchone()
+    if prof is not None:
+        recovery_token = create_profile_token(profile_id, expires_delta=timedelta(hours=1))
+        subject, html_body = render_player_space_magic_link(
+            name=prof["name"], email=prof["email"], access_token=recovery_token, lang=prof["lang"] or "en"
+        )
+        send_email_background(prof["email"], subject, html_body)
 
     return {"ok": True}
 

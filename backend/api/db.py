@@ -361,6 +361,27 @@ CREATE TABLE IF NOT EXISTS seasons (
 
 CREATE INDEX IF NOT EXISTS idx_seasons_club
     ON seasons (club_id);
+
+CREATE TABLE IF NOT EXISTS participation_claims (
+    id            TEXT PRIMARY KEY,
+    profile_id    TEXT NOT NULL,
+    entity_type   TEXT NOT NULL,          -- 'tournament' | 'registration'
+    entity_id     TEXT NOT NULL,          -- tournament_id or registration_id
+    entity_name   TEXT NOT NULL DEFAULT '',
+    player_id     TEXT NOT NULL,          -- the per-event player id being claimed
+    player_name   TEXT NOT NULL DEFAULT '',
+    registration_id TEXT,                 -- lobby the claim was raised from (for organizer routing)
+    status        TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'approved' | 'rejected'
+    created_at    TEXT NOT NULL,
+    resolved_at   TEXT,
+    resolved_by   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_participation_claims_registration
+    ON participation_claims (registration_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_participation_claims_profile
+    ON participation_claims (profile_id, status);
 """
 
 
