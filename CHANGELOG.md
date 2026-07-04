@@ -1,3 +1,9 @@
+## v1.13.3 (2026-07-04)
+
+### Fix
+
+- **frontend**: improve page loading; refactor
+
 ## v1.13.2 (2026-07-04)
 
 ### Fix
