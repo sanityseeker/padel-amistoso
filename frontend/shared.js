@@ -866,9 +866,17 @@ function mountIsland(rootSelector, scope) {
     return null;
   }
   const resolved = typeof scope === 'function' ? scope() : scope;
-  const finalScope = Object.assign(_islandGlobals(), resolved);
-  PetiteVue.createApp(finalScope).mount(root);
+  // Inject the globals onto the store itself rather than copying the store
+  // into a new object: petite-vue's createApp() reuses an already-reactive
+  // scope as-is, so this keeps the caller's store and the mounted scope the
+  // SAME reactive proxy — external mutations (store.foo = x) patch the DOM.
+  // An Object.assign copy here would silently disconnect the two.
+  const globals = _islandGlobals();
+  for (const key in globals) {
+    if (!(key in resolved)) resolved[key] = globals[key];
+  }
+  PetiteVue.createApp(resolved).mount(root);
   root._petiteVueMounted = true;
-  root._petiteVueScope = finalScope;
-  return finalScope;
+  root._petiteVueScope = resolved;
+  return resolved;
 }

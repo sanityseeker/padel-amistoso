@@ -595,6 +595,52 @@ class RegistrantAnswersUpdateIn(BaseModel):
     answers: dict[str, str] = Field(default_factory=dict)
 
 
+class FindByNameRequest(BaseModel):
+    """Search past participations by player name, scoped to a lobby's club/community."""
+
+    player_name: str = Field(min_length=1, max_length=128)
+
+
+class ParticipationMatchOut(BaseModel):
+    """A past participation surfaced by name search (no secrets, no email)."""
+
+    entity_type: str  # 'tournament' | 'registration'
+    entity_id: str
+    entity_name: str
+    player_id: str
+    player_name: str
+
+
+class ClaimParticipationRequest(BaseModel):
+    """Request to claim a name-matched past participation for a Hub profile.
+
+    The claimant identifies their Hub profile with its passphrase (created or
+    logged-in on the registration page).  The claim is not linked until an
+    organizer approves it.
+    """
+
+    profile_passphrase: str = Field(min_length=1, max_length=256)
+    entity_type: str = Field(min_length=1, max_length=32)
+    entity_id: str = Field(min_length=1, max_length=128)
+    player_id: str = Field(min_length=1, max_length=128)
+
+
+class ParticipationClaimOut(BaseModel):
+    """A pending participation claim shown to the organizer."""
+
+    id: str
+    profile_id: str
+    entity_type: str
+    entity_id: str
+    entity_name: str
+    player_id: str
+    player_name: str
+    claimant_name: str = ""
+    claimant_email: str = ""
+    status: str
+    created_at: str
+
+
 class LinkedTournamentOut(BaseModel):
     """Linked tournament metadata exposed to registration viewers."""
 

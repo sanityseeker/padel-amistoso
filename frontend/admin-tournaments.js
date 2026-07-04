@@ -11,14 +11,11 @@ async function withLoading(btn, asyncFn) {
   finally { btn.classList.remove('loading'); }
 }
 
-// ─── Home: list tournaments ───────────────────────────────
-function _phaseLabel(phase) {
-  const map = {
-    setup: t('txt_txt_setup'), groups: t('txt_txt_group_stage'), playoffs: t('txt_txt_play_offs'),
-    finished: t('txt_txt_finished'), mexicano: t('txt_txt_mexicano'),
-  };
-  return map[phase] || phase;
-}
+// ─── Home: list tournaments (Petite-Vue island) ───────────
+// The home toolbar + card list under `#home-island` (index.html) are bound to
+// `_homeStore`. `loadTournaments()` fetches and assigns raw data into the
+// store; filtering, chip counts and the card entries are reactive getters, so
+// filter/search changes re-render client-side without a refetch.
 
 // Three independent filter dimensions for the home admin view.
 // Defaults: ownership=mine, status=active, type=all.
@@ -37,188 +34,227 @@ const _HOME_FILTER_KEYS = {
 // Ownership filter is admin-only — non-admins already only see their own / shared
 // items, so the dimension would be a no-op for them.
 const _HOME_ADMIN_ONLY_DIMS = new Set(['ownership']);
-
-let _homeFilters = { ..._HOME_FILTER_DEFAULTS };
-let _homeTournamentSearch = '';
 const _HOME_TOURN_SEARCH_KEY = 'amistoso-home-tournament-search';
 
-try {
-  for (const dim of _HOME_FILTER_DIMS) {
-    const saved = localStorage.getItem(_HOME_FILTER_KEYS[dim]);
-    if (saved && _HOME_FILTER_VALUES[dim].includes(saved)) _homeFilters[dim] = saved;
-  }
-} catch (_) {}
-try { _homeTournamentSearch = localStorage.getItem(_HOME_TOURN_SEARCH_KEY) || ''; } catch (_) {}
-
-// Counts per (dimension, value). Each count answers: "how many items would I
-// see if I picked this value while keeping the other two dimensions as-is?"
-let _homeFilterChipCounts = { ownership: {}, status: {}, type: {} };
-// Which filter dropdown (if any) is currently open. One of the dim names or null.
-let _homeFilterOpenDim = null;
-
 function _persistHomeFilterDim(dim) {
-  try { localStorage.setItem(_HOME_FILTER_KEYS[dim], _homeFilters[dim]); } catch (_) {}
+  try { localStorage.setItem(_HOME_FILTER_KEYS[dim], _homeStore.filters[dim]); } catch (_) {}
 }
 
 function _persistHomeTournamentSearch() {
-  try { localStorage.setItem(_HOME_TOURN_SEARCH_KEY, _homeTournamentSearch); } catch (_) {}
+  try { localStorage.setItem(_HOME_TOURN_SEARCH_KEY, _homeStore.search); } catch (_) {}
 }
 
-function _resetHomeFiltersToDefault() {
-  for (const dim of _HOME_FILTER_DIMS) {
-    _homeFilters[dim] = _HOME_FILTER_DEFAULTS[dim];
-    _persistHomeFilterDim(dim);
-  }
-}
-
-function _homeFiltersAtDefault() {
-  return _HOME_FILTER_DIMS.every(dim => _homeFilters[dim] === _HOME_FILTER_DEFAULTS[dim]);
-}
-
-// Labels shown for each filter value. Kept module-level so both the trigger
-// button and the dropdown menu use the same wording.
-function _homeFilterLabels() {
-  return {
-    ownership: { mine: t('txt_txt_mine'), all: t('txt_txt_filter_all') },
-    status: { active: t('txt_txt_filter_active'), all: t('txt_txt_filter_all') },
-    type: { all: t('txt_txt_filter_all'), tournament: t('txt_txt_tournaments'), lobby: t('txt_reg_lobby') },
-  };
-}
-
-function _homeFilterDimLabels() {
-  return {
-    ownership: t('txt_txt_filter_dim_ownership'),
-    status: t('txt_txt_filter_dim_status'),
-    type: t('txt_txt_filter_dim_type'),
-  };
-}
-
-function _renderHomeFilterDropdown(dim) {
-  if (_HOME_ADMIN_ONLY_DIMS.has(dim) && !isAdmin()) return '';
-  const labels = _homeFilterLabels()[dim];
-  const dimLabel = _homeFilterDimLabels()[dim];
-  const counts = _homeFilterChipCounts[dim] || {};
-  const currentValue = _homeFilters[dim];
-  const currentLabel = labels[currentValue] ?? currentValue;
-  const isOpen = _homeFilterOpenDim === dim;
-  const isNonDefault = currentValue !== _HOME_FILTER_DEFAULTS[dim];
-  const triggerCls = `home-filter-chip home-filter-dropdown-trigger${isNonDefault ? ' active' : ''}${isOpen ? ' open' : ''}`;
-  const triggerLabel = `${dimLabel}: ${currentLabel}`;
-  const menuItems = _HOME_FILTER_VALUES[dim].map(value => {
-    const isSelected = value === currentValue;
-    const n = counts[value] ?? 0;
-    const label = labels[value] ?? value;
-    return `<button type="button" role="menuitemradio" aria-checked="${isSelected}"
-      class="home-filter-dropdown-item${isSelected ? ' selected' : ''}"
-      onclick="_setHomeFilter('${dim}','${value}')">
-      <span class="home-filter-dropdown-item-check" aria-hidden="true">${isSelected ? '✓' : ''}</span>
-      <span class="home-filter-dropdown-item-label">${label}</span>
-      <span class="home-filter-chip-count" aria-hidden="true">${n}</span>
-    </button>`;
-  }).join('');
-  const menu = isOpen ? `
-    <div class="home-filter-dropdown-menu" role="menu" aria-label="${escAttr(dimLabel)}">
-      ${menuItems}
-    </div>` : '';
-  return `
-    <div class="home-filter-dropdown" data-dim="${dim}">
-      <button type="button" class="${triggerCls}"
-        aria-haspopup="menu" aria-expanded="${isOpen}"
-        aria-label="${escAttr(triggerLabel)}"
-        onclick="_toggleHomeFilterDropdown('${dim}')">
-        <span class="home-filter-dropdown-dim">${dimLabel}:</span>
-        <span class="home-filter-dropdown-value">${currentLabel}</span>
-        <span class="home-filter-dropdown-caret" aria-hidden="true">▾</span>
-      </button>
-      ${menu}
-    </div>
-  `;
-}
-
-function _renderHomeTournamentToolbar() {
-  const toolbar = document.getElementById('home-tournament-toolbar');
-  if (!toolbar) return;
-  const dropdowns = _HOME_FILTER_DIMS.map(_renderHomeFilterDropdown).join('');
-  toolbar.innerHTML = `
-    <div class="home-search-row">
-      <input
-        id="home-tournament-search"
-        class="home-search-input"
-        type="search"
-        value="${escAttr(_homeTournamentSearch)}"
-        placeholder="${escAttr(t('txt_txt_search_tournaments_placeholder'))}"
-        onkeydown="if(event.key==='Enter')_submitHomeTournamentSearch()"
-      >
-      <button type="button" class="btn btn-sm" onclick="_submitHomeTournamentSearch()">${t('txt_txt_go')}</button>
-      <button type="button" class="btn btn-sm btn-muted" onclick="_clearHomeTournamentSearch()">${t('txt_txt_clear')}</button>
-    </div>
-    <div class="home-filter-row" role="toolbar" aria-label="Home filters">
-      ${dropdowns}
-    </div>
-  `;
-  _ensureHomeFilterOutsideClick();
-}
-
-// Close any open filter dropdown when the user clicks outside the toolbar.
-let _homeFilterOutsideClickBound = false;
-function _ensureHomeFilterOutsideClick() {
-  if (_homeFilterOutsideClickBound) return;
-  document.addEventListener('click', (ev) => {
-    if (_homeFilterOpenDim === null) return;
-    const wrap = ev.target.closest('.home-filter-dropdown');
-    if (wrap && wrap.dataset.dim === _homeFilterOpenDim) return;
-    _homeFilterOpenDim = null;
-    _renderHomeTournamentToolbar();
-  });
-  document.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape' && _homeFilterOpenDim !== null) {
-      _homeFilterOpenDim = null;
-      _renderHomeTournamentToolbar();
+function _savedHomeFilters() {
+  const filters = { ..._HOME_FILTER_DEFAULTS };
+  try {
+    for (const dim of _HOME_FILTER_DIMS) {
+      const saved = localStorage.getItem(_HOME_FILTER_KEYS[dim]);
+      if (saved && _HOME_FILTER_VALUES[dim].includes(saved)) filters[dim] = saved;
     }
-  });
-  _homeFilterOutsideClickBound = true;
+  } catch (_) {}
+  return filters;
 }
 
-function _toggleHomeFilterDropdown(dim) {
-  _homeFilterOpenDim = _homeFilterOpenDim === dim ? null : dim;
-  _renderHomeTournamentToolbar();
+function _savedHomeSearch() {
+  try { return localStorage.getItem(_HOME_TOURN_SEARCH_KEY) || ''; } catch (_) { return ''; }
 }
 
-function _setHomeFilter(dim, value) {
-  if (!_HOME_FILTER_VALUES[dim] || !_HOME_FILTER_VALUES[dim].includes(value)) return;
-  _homeFilters[dim] = value;
-  _persistHomeFilterDim(dim);
-  _homeFilterOpenDim = null;
-  loadTournaments();
-}
+const _homeStore = reactiveStore({
+  // Raw data, assigned by loadTournaments(); everything below derives from it.
+  loading: true,
+  tournaments: [],
+  registrations: [],
+  communities: [],
+  // Auth/context snapshot taken at load time (auth changes re-run loadTournaments).
+  admin: false,
+  authUser: null,
+  subdomainClub: null,
+  // UI state
+  filters: _savedHomeFilters(),
+  defaults: _HOME_FILTER_DEFAULTS,
+  search: _savedHomeSearch(),
+  searchDraft: _savedHomeSearch(),
+  openDim: null,
+  lang: 'en',
 
-function _submitHomeTournamentSearch() {
-  const input = document.getElementById('home-tournament-search');
-  _homeTournamentSearch = (input?.value || '').trim();
-  _persistHomeTournamentSearch();
-  loadTournaments();
-}
+  // Shadows the injected global t() with a lang-tracking wrapper so every text
+  // binding in the island re-renders when the app language changes.
+  t(key) { void this.lang; return window.t(key); },
 
-function _clearHomeTournamentSearch() {
-  _homeTournamentSearch = '';
-  _persistHomeTournamentSearch();
-  const input = document.getElementById('home-tournament-search');
-  if (input) input.value = '';
-  loadTournaments();
-}
-
-function _clearHomeFiltersAndSearch() {
-  // Widen all dimensions to "all" so the user sees every available item.
-  for (const dim of _HOME_FILTER_DIMS) {
-    _homeFilters[dim] = 'all';
+  // ── Toolbar ──
+  get visibleDims() {
+    return this.admin
+      ? _HOME_FILTER_DIMS
+      : _HOME_FILTER_DIMS.filter(dim => !_HOME_ADMIN_ONLY_DIMS.has(dim));
+  },
+  dimValues(dim) { return _HOME_FILTER_VALUES[dim]; },
+  dimLabel(dim) {
+    return {
+      ownership: this.t('txt_txt_filter_dim_ownership'),
+      status: this.t('txt_txt_filter_dim_status'),
+      type: this.t('txt_txt_filter_dim_type'),
+    }[dim] || dim;
+  },
+  valueLabel(dim, value) {
+    const labels = {
+      ownership: { mine: this.t('txt_txt_mine'), all: this.t('txt_txt_filter_all') },
+      status: { active: this.t('txt_txt_filter_active'), all: this.t('txt_txt_filter_all') },
+      type: { all: this.t('txt_txt_filter_all'), tournament: this.t('txt_txt_tournaments'), lobby: this.t('txt_reg_lobby') },
+    }[dim] || {};
+    return labels[value] ?? value;
+  },
+  toggleDropdown(dim) { this.openDim = this.openDim === dim ? null : dim; },
+  setFilter(dim, value) {
+    if (!_HOME_FILTER_VALUES[dim] || !_HOME_FILTER_VALUES[dim].includes(value)) return;
+    this.filters[dim] = value;
     _persistHomeFilterDim(dim);
-  }
-  _homeTournamentSearch = '';
-  _persistHomeTournamentSearch();
-  const input = document.getElementById('home-tournament-search');
-  if (input) input.value = '';
-  loadTournaments();
-}
+    this.openDim = null;
+  },
+  submitSearch() {
+    this.search = (this.searchDraft || '').trim();
+    _persistHomeTournamentSearch();
+  },
+  clearSearch() {
+    this.searchDraft = '';
+    this.search = '';
+    _persistHomeTournamentSearch();
+  },
+  clearAll() {
+    // Widen all dimensions to "all" so the user sees every available item.
+    for (const dim of _HOME_FILTER_DIMS) {
+      this.filters[dim] = 'all';
+      _persistHomeFilterDim(dim);
+    }
+    this.clearSearch();
+  },
+
+  // ── Filtering pipeline ──
+  _matchesSearch(item) {
+    const needle = (this.search || '').trim().toLowerCase();
+    if (!needle) return true;
+    const hay = [item.name, item.club_name, item.community_name, item.owner]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return hay.includes(needle);
+  },
+  // When the admin SPA is opened on a club subdomain we hide everything that
+  // doesn't belong to that club so the operator only sees relevant items
+  // (the subdomain banner's dismiss button clears the context). Filter by
+  // both club_id AND community_id so cross-community legacy assignments
+  // (e.g. a tournament with club_id set to this club but a different
+  // community_id) are excluded.
+  _matchesSubdomainClub(item) {
+    const sub = this.subdomainClub;
+    if (!sub) return true;
+    return item && item.club_id === sub.club_id && item.community_id === sub.community_id;
+  },
+  _owns(item) {
+    if (!this.authUser) return false;
+    return item.owner === this.authUser || item.shared === true;
+  },
+  // Universe of items after search + subdomain filters but BEFORE the user's
+  // chip selections. Input for both the rendered view and the chip counts.
+  get universe() {
+    const visible = (item) => this._matchesSearch(item) && this._matchesSubdomainClub(item);
+    const tournaments = this.tournaments.filter(visible);
+    const lobbies = this.registrations.filter(visible);
+    const nonArchived = lobbies.filter(r => !r.archived);
+    return {
+      activeT: tournaments.filter(tr => tr.phase !== 'finished'),
+      finishedT: tournaments.filter(tr => tr.phase === 'finished'),
+      // Active section: open lobbies only. Finished section: all non-archived
+      // closed lobbies (converted or not).
+      activeL: nonArchived.filter(r => r.open),
+      finishedL: nonArchived.filter(r => !r.open),
+      archivedL: lobbies.filter(r => r.archived),
+    };
+  },
+  _applyFilters(state) {
+    const u = this.universe;
+    const owns = (item) => state.ownership === 'all' || this._owns(item);
+    let activeT = u.activeT.filter(owns);
+    let finishedT = u.finishedT.filter(owns);
+    let activeL = u.activeL.filter(owns);
+    let finishedL = u.finishedL.filter(owns);
+    let archivedL = u.archivedL.filter(owns);
+    if (state.status === 'active') { finishedT = []; finishedL = []; archivedL = []; }
+    if (state.type === 'tournament') { activeL = []; finishedL = []; archivedL = []; }
+    else if (state.type === 'lobby') { activeT = []; finishedT = []; }
+    return { activeT, finishedT, activeL, finishedL, archivedL };
+  },
+  get view() { return this._applyFilters(this.filters); },
+  // Chip count per (dim, value): "how many items would I see if I picked this
+  // value while keeping the other two dimensions as-is?"
+  chipCount(dim, value) {
+    const r = this._applyFilters({ ...this.filters, [dim]: value });
+    return r.activeT.length + r.finishedT.length + r.activeL.length
+      + r.finishedL.length + r.archivedL.length;
+  },
+
+  // ── Cards ──
+  get mainCards() {
+    const v = this.view;
+    const lobby = (r) => ({ key: 'lobby:' + r.id, kind: 'lobby', item: r });
+    const tourn = (tr) => ({ key: 'tourn:' + tr.id, kind: 'tournament', item: tr });
+    // Open lobbies first, then active tournaments, then the finished section.
+    return [
+      ...v.activeL.map(lobby),
+      ...v.activeT.map(tourn),
+      ...v.finishedT.map(tourn),
+      ...v.finishedL.map(lobby),
+    ];
+  },
+  get archivedEntries() {
+    return this.view.archivedL.map(r => ({ key: 'lobby:' + r.id, kind: 'lobby', item: r }));
+  },
+  get hasAnyItems() { return this.mainCards.length > 0 || this.archivedEntries.length > 0; },
+  get hasFilter() {
+    return Boolean((this.search || '').trim())
+      || _HOME_FILTER_DIMS.some(dim => this.filters[dim] !== _HOME_FILTER_DEFAULTS[dim]);
+  },
+  cardTemplate(entry) {
+    return { $template: entry.kind === 'tournament' ? '#tpl-home-tourn-card' : '#tpl-home-lobby-card' };
+  },
+  phaseLabel(phase) {
+    const map = {
+      setup: this.t('txt_txt_setup'), groups: this.t('txt_txt_group_stage'), playoffs: this.t('txt_txt_play_offs'),
+      finished: this.t('txt_txt_finished'), mexicano: this.t('txt_txt_mexicano'),
+    };
+    return map[phase] || phase;
+  },
+  sportLabel(item) {
+    return (item.sport || 'padel') === 'tennis'
+      ? this.t('txt_txt_sport_tennis')
+      : this.t('txt_txt_sport_padel');
+  },
+  identityLabel(item) {
+    const community = this.communities.find(c => c.id === (item.community_id || 'open'));
+    return item.club_name
+      || item.community_name
+      || ((community && !community.is_builtin) ? community.name : '');
+  },
+  isListed(r) { return r.listed !== false && r.listed !== 0; },
+  canEditTournament(tr) { return this.admin || this.authUser === tr.owner || tr.shared === true; },
+  canDeleteTournament(tr) { return this.admin || this.authUser === tr.owner; },
+});
+
+// Close any open filter dropdown when the user clicks outside it / hits Escape.
+document.addEventListener('click', (ev) => {
+  if (_homeStore.openDim === null) return;
+  const wrap = ev.target.closest('.home-filter-dropdown');
+  if (wrap && wrap.dataset.dim === _homeStore.openDim) return;
+  _homeStore.openDim = null;
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') _homeStore.openDim = null;
+});
+// Language switches re-render all island text via the store's t() wrapper.
+document.addEventListener('app-language-changed', (ev) => {
+  _homeStore.lang = (ev.detail && ev.detail.lang) || getAppLanguage();
+});
+
+mountIsland('#home-island', _homeStore);
 
 async function loadTournaments() {
   try {
@@ -238,238 +274,34 @@ async function loadTournaments() {
     if (subdomainCtx && subdomainCtx.club_id) window.__ADMIN_SUBDOMAIN_CLUB__ = subdomainCtx;
     _adminCommunities = commList;
     _adminClubs = clubsList;
-    const nonArchivedRegList = regList.filter(r => !r.archived);
-    const archivedRegList = regList.filter(r => r.archived);
-    let visibleArchivedRegList = archivedRegList;
     _tournamentMeta = {};
     for (const tournament of list) _tournamentMeta[tournament.id] = tournament;
-    _registrations = nonArchivedRegList;
-    const el = document.getElementById('tournament-list');
-    let active = list.filter(tr => tr.phase !== 'finished');
-    let finished = list.filter(tr => tr.phase === 'finished');
-    // Active section: open lobbies only.
-    // Finished section: all non-archived closed lobbies (converted or not).
-    let activeLobbies = nonArchivedRegList.filter(r => r.open);
-    let finishedLobbies = nonArchivedRegList.filter(r => !r.open);
-
-    const searchNeedle = (_homeTournamentSearch || '').trim().toLowerCase();
-    const ownsTournament = (tournament) => {
-      const username = getAuthUsername();
-      if (!username) return false;
-      return tournament.owner === username || tournament.shared === true;
-    };
-    const ownsLobby = (registration) => {
-      const username = getAuthUsername();
-      if (!username) return false;
-      return registration.owner === username || registration.shared === true;
-    };
-    const matchesSearch = (item) => {
-      if (!searchNeedle) return true;
-      const hay = [
-        item.name,
-        item.club_name,
-        item.community_name,
-        item.owner,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return hay.includes(searchNeedle);
-    };
-
-    active = active.filter(matchesSearch);
-    finished = finished.filter(matchesSearch);
-    activeLobbies = activeLobbies.filter(matchesSearch);
-    finishedLobbies = finishedLobbies.filter(matchesSearch);
-    visibleArchivedRegList = visibleArchivedRegList.filter(matchesSearch);
-
-    // When the admin SPA is opened on a club subdomain we hide everything that
-    // doesn't belong to that club so the operator only sees relevant items.
-    // The dismiss button on the subdomain banner clears this global, so the
-    // user can opt back into the full list without leaving the subdomain.
-    const subdomainClub = (typeof window !== 'undefined' && window.__ADMIN_SUBDOMAIN_CLUB__) || null;
-    if (subdomainClub && subdomainClub.club_id) {
-      // Filter by both club_id AND community_id so cross-community legacy assignments
-      // (e.g. a tournament with club_id set to this club but a different community_id)
-      // are excluded.
-      const matchesSubdomainClub = (item) => item
-        && item.club_id === subdomainClub.club_id
-        && item.community_id === subdomainClub.community_id;
-      active = active.filter(matchesSubdomainClub);
-      finished = finished.filter(matchesSubdomainClub);
-      activeLobbies = activeLobbies.filter(matchesSubdomainClub);
-      finishedLobbies = finishedLobbies.filter(matchesSubdomainClub);
-      visibleArchivedRegList = visibleArchivedRegList.filter(matchesSubdomainClub);
-    }
+    _registrations = regList.filter(r => !r.archived);
 
     // Drop admin-only filter dimensions when caller is not an admin (the server
     // already restricts non-admins to their own / shared items).
     if (!isAdmin()) {
       for (const dim of _HOME_ADMIN_ONLY_DIMS) {
-        if (_homeFilters[dim] !== _HOME_FILTER_DEFAULTS[dim]) {
-          _homeFilters[dim] = _HOME_FILTER_DEFAULTS[dim];
+        if (_homeStore.filters[dim] !== _HOME_FILTER_DEFAULTS[dim]) {
+          _homeStore.filters[dim] = _HOME_FILTER_DEFAULTS[dim];
           _persistHomeFilterDim(dim);
         }
       }
     }
 
-    // Universe of items after search + subdomain filters but BEFORE the user's
-    // chip selections. Used as the input for both rendering and chip counts.
-    const universe = {
-      activeT: active,
-      finishedT: finished,
-      activeL: activeLobbies,
-      finishedL: finishedLobbies,
-      archivedL: visibleArchivedRegList,
-    };
-
-    const applyHomeFilters = (state) => {
-      const ownsT = (tournament) => state.ownership === 'all' || ownsTournament(tournament);
-      const ownsL = (registration) => state.ownership === 'all' || ownsLobby(registration);
-      let aT = universe.activeT.filter(ownsT);
-      let fT = universe.finishedT.filter(ownsT);
-      let aL = universe.activeL.filter(ownsL);
-      let fL = universe.finishedL.filter(ownsL);
-      let arL = universe.archivedL.filter(ownsL);
-      if (state.status === 'active') {
-        fT = []; fL = []; arL = [];
-      }
-      if (state.type === 'tournament') {
-        aL = []; fL = []; arL = [];
-      } else if (state.type === 'lobby') {
-        aT = []; fT = [];
-      }
-      return { activeT: aT, finishedT: fT, activeL: aL, finishedL: fL, archivedL: arL };
-    };
-    const totalCount = (r) =>
-      r.activeT.length + r.finishedT.length + r.activeL.length + r.finishedL.length + r.archivedL.length;
-
-    // Chip counts: per (dim, value), holding the other dims at their current value.
-    _homeFilterChipCounts = { ownership: {}, status: {}, type: {} };
-    for (const dim of _HOME_FILTER_DIMS) {
-      for (const value of _HOME_FILTER_VALUES[dim]) {
-        const probe = { ..._homeFilters, [dim]: value };
-        _homeFilterChipCounts[dim][value] = totalCount(applyHomeFilters(probe));
-      }
-    }
-
-    const filtered = applyHomeFilters(_homeFilters);
-    active = filtered.activeT;
-    finished = filtered.finishedT;
-    activeLobbies = filtered.activeL;
-    finishedLobbies = filtered.finishedL;
-    visibleArchivedRegList = filtered.archivedL;
-
-    _renderHomeTournamentToolbar();
-    const archivedLobbiesCount = archivedRegList.length;
-    const showArchivedToggle = isAuthenticated() && archivedLobbiesCount > 0;
-    const renderTournamentCard = (tournament) => {
-      const canEdit = isAdmin() || getAuthUsername() === tournament.owner || tournament.shared === true;
-      const canDelete = isAdmin() || getAuthUsername() === tournament.owner;
-      const isPublic = tournament.public !== false;
-      const visBtn = canEdit
-        ? `<button type="button" class="btn btn-sm btn-visibility" title="${t('txt_txt_visibility')}" onclick="togglePublic('${tournament.id}',${isPublic})">${isPublic ? _ic('globe') + ' ' + t('txt_txt_public') : _ic('lock') + ' ' + t('txt_txt_private')}</button>`
-        : '';
-      const deleteBtn = canDelete
-        ? `<button type="button" class="btn btn-danger btn-sm" onclick="deleteTournament('${tournament.id}')">✕</button>`
-        : '';
-      const actionBtns = (canEdit || canDelete) ? `${visBtn}${deleteBtn}` : '';
-      const isTennis = tournament.sport === 'tennis';
-      const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
-      const sharedBadge = tournament.shared ? `<span class="badge badge-shared">${t('txt_badge_shared')}</span>` : '';
-      const communityData = _adminCommunities.find(c => c.id === tournament.community_id);
-      const identityLabel = tournament.club_name
-        || tournament.community_name
-        || ((communityData && !communityData.is_builtin) ? communityData.name : '');
-      const identityBadge = identityLabel
-        ? `<span class="badge" style="background:var(--bg-alt,#eee);color:var(--text-muted);font-size:0.72rem;border:1px solid var(--border);font-weight:500">${esc(identityLabel)}</span>`
-        : '';
-      return `
-      <div class="match-card tournament-list-card${tournament.id === currentTid ? ' active-tournament' : ''}">
-        <div class="match-teams">
-          <a class="tournament-name-link" href="#" onclick="openTournament('${tournament.id}','${tournament.type}');return false">${esc(tournament.name)}</a>
-          <span class="badge badge-sport">${esc(sportLabel)}</span>
-          <span class="badge badge-type">${tournament.has_team_roster ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode')}</span>
-          <span class="badge badge-phase">${_phaseLabel(tournament.phase)}</span>
-          ${sharedBadge}
-          ${identityBadge}
-        </div>
-        <div class="tournament-actions">${actionBtns}</div>
-      </div>
-    `;
-    };
-    // Render lobby cards in the same list style
-    const _renderLobbyCard = (r) => {
-      const rid = r.id;
-      const isOpen = r.open;
-      const count = r.registrant_count || 0;
-      const isTennis = (r.sport || 'padel') === 'tennis';
-      const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
-      const regCommunity = _adminCommunities.find(c => c.id === (r.community_id || 'open'));
-      const identityLabel = r.club_name
-        || r.community_name
-        || ((regCommunity && !regCommunity.is_builtin) ? regCommunity.name : '');
-      const identityBadge = identityLabel
-        ? `<span class="badge" style="background:var(--bg-alt,#eee);color:var(--text-muted);font-size:0.72rem;border:1px solid var(--border);font-weight:500">${esc(identityLabel)}</span>`
-        : '';
-      const phaseBadge = isOpen
-        ? `<span class="badge badge-lobby-open">${t('txt_reg_registration_open')}</span>`
-        : `<span class="badge badge-lobby-closed">${r.archived ? t('txt_reg_registration_archived') : t('txt_reg_registration_closed')}</span>`;
-      const countLabel = `<span class="reg-lobby-count">(${count})</span>`;
-      const isListed = r.listed !== false && r.listed !== 0;
-      const visBtn = `<button type="button" class="btn btn-sm btn-visibility" title="${t('txt_txt_visibility')}" onclick="_toggleRegListed('${esc(rid)}',${isListed})">${isListed ? _ic('globe') + ' ' + t('txt_txt_public') : _ic('lock') + ' ' + t('txt_txt_private')}</button>`;
-      const actionBtns = `
-        ${visBtn}
-        <button type="button" class="btn btn-danger btn-sm" onclick="_deleteRegistration('${esc(rid)}')" title="${t('txt_reg_delete')}">✕</button>
-      `;
-      return `
-      <div class="match-card tournament-list-card reg-lobby-card">
-        <div class="match-teams">
-          <a class="tournament-name-link" href="#" onclick="openRegistration('${escAttr(rid)}','${escAttr(r.name)}');return false">${esc(r.name)}</a>
-          <span class="badge badge-sport">${esc(sportLabel)}</span>
-          ${identityBadge}
-          ${phaseBadge} ${countLabel}
-        </div>
-        <div class="tournament-actions">
-          ${actionBtns}
-        </div>
-      </div>
-    `;
-    };
-    const _renderFinishedSection = () => {
-      const finishedTournamentsHtml = finished.map(renderTournamentCard).join('');
-      const finishedLobbiesHtml = finishedLobbies.map(_renderLobbyCard).join('');
-      const archivedCount = visibleArchivedRegList.length;
-      const archivedTabHtml = archivedCount > 0
-        ? `<details class="card archived-lobbies-panel">
-            <summary class="archived-lobbies-summary">${t('txt_reg_show_archived')} (${archivedCount})</summary>
-            <div class="archived-lobbies-body">${visibleArchivedRegList.map(_renderLobbyCard).join('')}</div>
-          </details>`
-        : '';
-      return {
-        hasContent: Boolean(finishedTournamentsHtml || finishedLobbiesHtml || archivedTabHtml),
-        html: `${finishedTournamentsHtml}${finishedLobbiesHtml}${archivedTabHtml}`,
-      };
-    };
-    const finishedSection = _renderFinishedSection();
-    const hasAnyItems = active.length || activeLobbies.length || finishedSection.hasContent;
-
-    if (!hasAnyItems) {
-      const hasFilter = Boolean((_homeTournamentSearch || '').trim()) || !_homeFiltersAtDefault();
-      const emptyTitle = hasFilter ? t('txt_txt_no_home_items_match') : t('txt_txt_no_tournaments_yet');
-      const emptyHint = hasFilter ? t('txt_txt_try_adjusting_filters') : t('txt_txt_no_tournaments_hint');
-      const actionBtn = hasFilter
-        ? `<button type="button" class="btn btn-primary btn-sm" onclick="_clearHomeFiltersAndSearch()">${t('txt_txt_clear')}</button>`
-        : `<button type="button" class="btn btn-primary btn-sm" onclick="setActiveTab('create')">${t('txt_txt_create_first')}</button>`;
-      el.innerHTML = `<div class="tournaments-empty-state"><div class="tournaments-empty-icon">🏆</div><div class="tournaments-empty-title">${emptyTitle}</div><div class="tournaments-empty-hint">${emptyHint}</div>${actionBtn}</div>`;
-      return;
-    }
-
-    // Open lobbies first, then active tournaments, then finished section with a divider
-    let html = activeLobbies.map(_renderLobbyCard).join('');
-    html += active.map(renderTournamentCard).join('');
-    html += finishedSection.html;
-    el.innerHTML = html;
+    // Assign the fetched data into the reactive store — Petite-Vue re-renders
+    // the toolbar chip counts and the card list from the store's getters.
+    // The dismiss button on the subdomain banner clears the global, so the
+    // user can opt back into the full list without leaving the subdomain.
+    const subdomainClub = (typeof window !== 'undefined' && window.__ADMIN_SUBDOMAIN_CLUB__) || null;
+    _homeStore.lang = getAppLanguage();
+    _homeStore.admin = isAdmin();
+    _homeStore.authUser = getAuthUsername();
+    _homeStore.subdomainClub = (subdomainClub && subdomainClub.club_id) ? subdomainClub : null;
+    _homeStore.tournaments = list;
+    _homeStore.registrations = regList;
+    _homeStore.communities = commList;
+    _homeStore.loading = false;
   } catch (e) { console.error(e); }
 }
 

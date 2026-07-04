@@ -155,12 +155,20 @@ def render_registration_confirmation(
     lobby_alias: str | None = None,
     lobby_id: str = "",
     reply_to: str = "",
+    hub_login_token: str | None = None,
     lang: str = "en",
 ) -> tuple[str, str]:
-    """Return ``(subject, html_body)`` for a registration confirmation email."""
+    """Return ``(subject, html_body)`` for a registration confirmation email.
+
+    When ``hub_login_token`` is provided the login link also carries
+    ``#hub_token=...`` so clicking it resumes (and thereby verifies) the
+    player's Player Hub profile — converging participation and identity.
+    """
     base = _site_url()
     lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register/{lobby_id}"
     login_url = f"{base}{lobby_path}?token={token}" if base else ""
+    if login_url and hub_login_token:
+        login_url = f"{login_url}#hub_token={hub_login_token}"
 
     subject = _tx(lang, f"Registration confirmed \u2014 {lobby_name}", f"Registro confirmado \u2014 {lobby_name}")
     body = f"""\

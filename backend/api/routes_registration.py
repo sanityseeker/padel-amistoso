@@ -45,10 +45,14 @@ from .player_secret_store import (
     lookup_profile_by_passphrase,
 )
 from .schemas import (
+    ClaimParticipationRequest,
     ConvertRegistrationRequest,
     EmailSettings,
     EmailSettingsRequest,
+    FindByNameRequest,
     LinkedTournamentOut,
+    ParticipationClaimOut,
+    ParticipationMatchOut,
     QuestionDef,
     RegistrantAdminOut,
     RegistrantAnswersUpdateIn,
@@ -1102,6 +1106,10 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
     # Auto-send confirmation email if the lobby has auto_send_email enabled
     if email and is_valid_email(email) and reg.get("auto_send_email"):
         es = _get_reg_email_settings(reg)
+        # Convergence: bootstrap/find a Hub profile for this email and carry a
+        # hub-login token in the link so clicking it verifies the email and
+        # connects the participation to a durable identity.
+        hub_login_token = _hub_login_token_for_email(email, lang)
         subject, body = render_registration_confirmation(
             lobby_name=reg["name"],
             player_name=req.player_name,
@@ -1110,6 +1118,7 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
             lobby_alias=reg.get("alias"),
             lobby_id=reg_id,
             reply_to=es.reply_to,
+            hub_login_token=hub_login_token,
             lang=lang,
         )
         send_email_background(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
@@ -1119,6 +1128,11 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
         "player_name": req.player_name,
         "passphrase": passphrase,
         "token": token,
+        # True when this registration was linked to an existing Player Hub profile
+        # (via explicit passphrase or verified-email auto-link above), so the
+        # success screen can confirm the link instead of offering to create a new
+        # profile.
+        "profile_linked": profile_id is not None,
     }
 
 
@@ -1904,3 +1918,308 @@ async def send_waitlist_email(
     if not ok:
         raise HTTPException(502, "Failed to send email — check server SMTP configuration")
     return {"sent": True}
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Returning-player recovery by name (organizer-approved claims)
+# ────────────────────────────────────────────────────────────────────────────
+#
+# For a returning player who has no code and no email on record, we let them
+# find their past participation by name — but name is neither secret nor unique,
+# so a name match can NEVER auto-link (that would enable impersonation and
+# corrupt ELO history).  Instead the player raises a *claim* that the organizer,
+# who knows who actually played, approves.  The name search is scoped to the
+# current lobby's club/community to limit who-played-what exposure.
+
+
+def _normalize_name(name: str) -> str:
+    return " ".join(name.strip().lower().split())
+
+
+def _hub_login_token_for_email(email: str, lang: str = "en") -> str | None:
+    """Find-or-create a Hub profile for ``email`` and return a short-lived login token.
+
+    Used to embed ``#hub_token=`` in transactional email links so that clicking
+    one verifies the email and connects the participation to a durable identity.
+    Returns ``None`` on any failure so email sending is never blocked.
+
+    Local imports avoid module import-order coupling with the Hub routes.
+    """
+    try:
+        from .routes_player_space import _find_or_create_profile_for_email
+        from ..auth.security import create_profile_token
+        from datetime import timedelta
+
+        profile_id = _find_or_create_profile_for_email(email, lang)
+        if not profile_id:
+            return None
+        return create_profile_token(profile_id, expires_delta=timedelta(hours=24))
+    except Exception:  # pragma: no cover - defensive; never block email send
+        return None
+
+
+@router.post("/{rid}/find-by-name", response_model=list[ParticipationMatchOut])
+async def find_participations_by_name(
+    rid: str, req: FindByNameRequest, request: Request
+) -> list[ParticipationMatchOut]:
+    """Search past participations by name within this lobby's club/community.
+
+    Returns a short list of ``name + event`` matches with no emails, no
+    passphrases, and no out-of-scope players.  Used by the returning-player
+    section for someone who has neither their code nor an email on record.
+    """
+    client_ip = _client_ip(request)
+    _public_passphrase_rate_limiter.check(client_ip, "Too many lookups — try again later")
+    _public_passphrase_rate_limiter.record(client_ip)
+
+    reg = _get_registration(rid)
+    community_id = reg.get("community_id") or "open"
+    club_id = reg.get("club_id")
+    target = _normalize_name(req.player_name)
+    if not target:
+        return []
+
+    matches: list[ParticipationMatchOut] = []
+    with get_db() as conn:
+        # Tournaments in the same club/community (scope lives on the tournaments
+        # table, joined via tournament_id — player_secrets has no scope columns).
+        if club_id:
+            tourn_rows = conn.execute(
+                """
+                SELECT ps.tournament_id, ps.player_id, ps.player_name, t.name AS tname
+                  FROM player_secrets ps
+                  JOIN tournaments t ON t.id = ps.tournament_id
+                 WHERE t.club_id = ?
+                   AND ps.profile_id IS NULL
+                """,
+                (club_id,),
+            ).fetchall()
+        else:
+            tourn_rows = conn.execute(
+                """
+                SELECT ps.tournament_id, ps.player_id, ps.player_name, t.name AS tname
+                  FROM player_secrets ps
+                  JOIN tournaments t ON t.id = ps.tournament_id
+                 WHERE t.community_id = ?
+                   AND ps.profile_id IS NULL
+                """,
+                (community_id,),
+            ).fetchall()
+        for row in tourn_rows:
+            if _normalize_name(row["player_name"]) == target:
+                matches.append(
+                    ParticipationMatchOut(
+                        entity_type="tournament",
+                        entity_id=row["tournament_id"],
+                        entity_name=row["tname"] or "",
+                        player_id=row["player_id"],
+                        player_name=row["player_name"],
+                    )
+                )
+
+        # Registration lobbies in the same club/community (scope on registrations).
+        if club_id:
+            reg_rows = conn.execute(
+                """
+                SELECT r.registration_id, r.player_id, r.player_name, reg.name AS rname
+                  FROM registrants r
+                  JOIN registrations reg ON reg.id = r.registration_id
+                 WHERE reg.club_id = ?
+                   AND r.profile_id IS NULL
+                   AND r.registration_id != ?
+                """,
+                (club_id, reg["id"]),
+            ).fetchall()
+        else:
+            reg_rows = conn.execute(
+                """
+                SELECT r.registration_id, r.player_id, r.player_name, reg.name AS rname
+                  FROM registrants r
+                  JOIN registrations reg ON reg.id = r.registration_id
+                 WHERE reg.community_id = ?
+                   AND r.profile_id IS NULL
+                   AND r.registration_id != ?
+                """,
+                (community_id, reg["id"]),
+            ).fetchall()
+        for row in reg_rows:
+            if _normalize_name(row["player_name"]) == target:
+                matches.append(
+                    ParticipationMatchOut(
+                        entity_type="registration",
+                        entity_id=row["registration_id"],
+                        entity_name=row["rname"] or "",
+                        player_id=row["player_id"],
+                        player_name=row["player_name"],
+                    )
+                )
+
+    # Cap results so a common name can't be used to enumerate a whole club.
+    return matches[:20]
+
+
+@router.post("/{rid}/claim-participation")
+async def claim_participation(rid: str, req: ClaimParticipationRequest, request: Request) -> dict:
+    """Raise a pending claim tying a name-matched participation to a Hub profile.
+
+    Nothing is linked here — an organizer must approve the claim.  The claimant
+    identifies their profile by passphrase (created/logged-in on this page).
+    """
+    client_ip = _client_ip(request)
+    _public_passphrase_rate_limiter.check(client_ip, "Too many requests — try again later")
+    _public_passphrase_rate_limiter.record(client_ip)
+
+    reg = _get_registration(rid)
+
+    profile = lookup_profile_by_passphrase(req.profile_passphrase.strip())
+    if profile is None:
+        raise HTTPException(401, "Player Hub profile not recognised")
+
+    if req.entity_type not in ("tournament", "registration"):
+        raise HTTPException(400, "Invalid entity type")
+
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        # Verify the target participation exists and is still unclaimed.
+        if req.entity_type == "tournament":
+            row = conn.execute(
+                "SELECT player_name, profile_id FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
+                (req.entity_id, req.player_id),
+            ).fetchone()
+            entity_name_row = conn.execute("SELECT name FROM tournaments WHERE id = ?", (req.entity_id,)).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT player_name, profile_id FROM registrants WHERE registration_id = ? AND player_id = ?",
+                (req.entity_id, req.player_id),
+            ).fetchone()
+            entity_name_row = conn.execute("SELECT name FROM registrations WHERE id = ?", (req.entity_id,)).fetchone()
+        if row is None:
+            raise HTTPException(404, "Participation not found")
+        if row["profile_id"]:
+            raise HTTPException(409, "This participation is already linked to a profile")
+
+        # Avoid duplicate pending claims for the same participation by the same profile.
+        dup = conn.execute(
+            """SELECT 1 FROM participation_claims
+               WHERE profile_id = ? AND entity_type = ? AND entity_id = ? AND player_id = ?
+                 AND status = 'pending' LIMIT 1""",
+            (profile["id"], req.entity_type, req.entity_id, req.player_id),
+        ).fetchone()
+        if dup:
+            return {"ok": True, "status": "pending"}
+
+        claim_id = uuid.uuid4().hex
+        conn.execute(
+            """INSERT INTO participation_claims
+               (id, profile_id, entity_type, entity_id, entity_name, player_id, player_name,
+                registration_id, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
+            (
+                claim_id,
+                profile["id"],
+                req.entity_type,
+                req.entity_id,
+                (entity_name_row["name"] if entity_name_row else "") or "",
+                req.player_id,
+                row["player_name"] or "",
+                reg["id"],
+                now,
+            ),
+        )
+
+    return {"ok": True, "status": "pending"}
+
+
+@router.get("/{rid}/claims", response_model=list[ParticipationClaimOut])
+async def list_participation_claims(rid: str, user: User = Depends(get_current_user)) -> list[ParticipationClaimOut]:
+    """Organizer: list pending participation claims raised from this lobby."""
+    reg = _get_registration(rid)
+    _require_registration_editor(reg, user)
+
+    out: list[ParticipationClaimOut] = []
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT c.*, p.name AS claimant_name, p.email AS claimant_email
+                 FROM participation_claims c
+                 LEFT JOIN player_profiles p ON p.id = c.profile_id
+                WHERE c.registration_id = ? AND c.status = 'pending'
+                ORDER BY c.created_at""",
+            (reg["id"],),
+        ).fetchall()
+        for row in rows:
+            out.append(
+                ParticipationClaimOut(
+                    id=row["id"],
+                    profile_id=row["profile_id"],
+                    entity_type=row["entity_type"],
+                    entity_id=row["entity_id"],
+                    entity_name=row["entity_name"] or "",
+                    player_id=row["player_id"],
+                    player_name=row["player_name"] or "",
+                    claimant_name=row["claimant_name"] or "",
+                    claimant_email=row["claimant_email"] or "",
+                    status=row["status"],
+                    created_at=row["created_at"],
+                )
+            )
+    return out
+
+
+@router.post("/{rid}/claims/{claim_id}/resolve")
+async def resolve_participation_claim(
+    rid: str, claim_id: str, approve: bool = Query(...), user: User = Depends(get_current_user)
+) -> dict:
+    """Organizer: approve or reject a pending participation claim.
+
+    On approve, the claimed participation is linked to the claimant's profile
+    (``profile_id`` set) and its history + ELO are backfilled, exactly as the
+    passphrase-based ``/link`` flow does.
+    """
+    reg = _get_registration(rid)
+    _require_registration_editor(reg, user)
+
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        claim = conn.execute(
+            "SELECT * FROM participation_claims WHERE id = ? AND registration_id = ?",
+            (claim_id, reg["id"]),
+        ).fetchone()
+        if claim is None:
+            raise HTTPException(404, "Claim not found")
+        if claim["status"] != "pending":
+            raise HTTPException(409, "Claim already resolved")
+
+        if not approve:
+            conn.execute(
+                "UPDATE participation_claims SET status = 'rejected', resolved_at = ?, resolved_by = ? WHERE id = ?",
+                (now, user.username, claim_id),
+            )
+            return {"ok": True, "status": "rejected"}
+
+        profile_id = claim["profile_id"]
+        # Link the participation only if still unclaimed.
+        if claim["entity_type"] == "tournament":
+            conn.execute(
+                "UPDATE player_secrets SET profile_id = ? WHERE tournament_id = ? AND player_id = ? AND profile_id IS NULL",
+                (profile_id, claim["entity_id"], claim["player_id"]),
+            )
+        else:
+            conn.execute(
+                "UPDATE registrants SET profile_id = ? WHERE registration_id = ? AND player_id = ? AND profile_id IS NULL",
+                (profile_id, claim["entity_id"], claim["player_id"]),
+            )
+        conn.execute(
+            "UPDATE participation_claims SET status = 'approved', resolved_at = ?, resolved_by = ? WHERE id = ?",
+            (now, user.username, claim_id),
+        )
+
+    # Backfill history + transfer ELO for the newly-linked participation.
+    # Local import avoids any module import-order coupling with the Hub routes.
+    from .routes_player_space import _backfill_finished_secrets, _backfill_history_for_profile
+    from .elo_store import retroactive_transfer_all_elos
+
+    _backfill_history_for_profile(profile_id)
+    _backfill_finished_secrets(profile_id)
+    retroactive_transfer_all_elos(profile_id)
+
+    return {"ok": True, "status": "approved"}

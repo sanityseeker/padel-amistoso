@@ -9,6 +9,8 @@ httpx transport transparently decodes compressed bodies).
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 # Representative text assets served through the compression middleware +
@@ -96,7 +98,10 @@ def test_service_worker_caches_petite_vue(client):
     """The service worker caches Petite-Vue and bumped its cache version."""
     sw = client.get("/service-worker.js", headers={"Accept-Encoding": "identity"}).text
     assert PETITE_VUE_SRC in sw, "Petite-Vue not added to service-worker STATIC_ASSETS"
-    assert "amistoso-v30" in sw, "CACHE_NAME must be bumped so the new dep is cached"
+    version = re.search(r"CACHE_NAME = 'amistoso-v(\d+)'", sw)
+    assert version, "service worker must define CACHE_NAME = 'amistoso-vNN'"
+    # v30 introduced the Petite-Vue dep; later conversions keep bumping it.
+    assert int(version.group(1)) >= 30, "CACHE_NAME must be bumped so the new dep is cached"
 
 
 # ── Phase 1 pilot: login + change-password dialogs converted to islands ──────
@@ -142,3 +147,124 @@ def test_auth_js_mounts_dialog_islands(client):
     assert "mountIsland('#change-pwd-overlay .modal-dialog'" in js
     # The legacy keypress listener was replaced by @keyup.enter in the template.
     assert "addEventListener('keypress'" not in js
+
+
+def test_mount_island_preserves_store_identity(client):
+    """mountIsland must mount the caller's reactive store itself, not a copy.
+
+    Petite-Vue's createApp() reuses an already-reactive scope as-is; copying
+    the store into a new object (e.g. via Object.assign) silently disconnects
+    external store mutations from the mounted DOM.
+    """
+    js = client.get("/shared.js", headers={"Accept-Encoding": "identity"}).text
+    assert "PetiteVue.createApp(resolved)" in js
+    assert "Object.assign(_islandGlobals()" not in js
+
+
+# ── Phase 2: home tournament list + filter toolbar as a reactive island ─────
+#
+# The toolbar and card list in index.html are bound to `_homeStore` in
+# admin-tournaments.js; card markup lives in <template> defs instantiated via
+# v-scope. These guard the served-markup contract (runtime reactivity is
+# covered manually).
+
+
+def test_home_island_has_reactive_bindings(client):
+    """The home panel is a v-scope island: v-model search, v-for filters/cards."""
+    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    block = html[html.index('id="home-island"') :]
+    block = block[: block.index('id="panel-create"')]
+    assert 'v-model="searchDraft"' in block
+    assert '@click="submitSearch()"' in block
+    assert 'v-for="dim in visibleDims"' in block
+    assert '@click="setFilter(dim, value)"' in block
+    assert 'v-for="entry in mainCards"' in block
+    assert 'v-scope="cardTemplate(entry)"' in block
+    assert 'id="tpl-home-tourn-card"' in block
+    assert 'id="tpl-home-lobby-card"' in block
+
+
+def test_admin_tournaments_js_mounts_home_island(client):
+    """admin-tournaments.js builds the home store and mounts the island."""
+    js = client.get("/admin-tournaments.js", headers={"Accept-Encoding": "identity"}).text
+    assert "const _homeStore = reactiveStore(" in js
+    assert "mountIsland('#home-island', _homeStore)" in js
+    # The legacy string-building renderers must be gone.
+    assert "_renderHomeTournamentToolbar" not in js
+    assert 'onclick="_setHomeFilter' not in js
+
+
+def test_tv_picker_item_template_shipped(client):
+    """public.html (TV view) ships the picker island's per-item card template."""
+    html = client.get("/tv", headers={"Accept-Encoding": "identity"}).text
+    assert 'id="tpl-tv-picker-item"' in html
+    assert 'class="tv-picker-item"' in html
+    assert "{{ it.name }}" in html
+
+
+def test_tv_js_mounts_picker_island(client):
+    """tv.js builds the picker store, binds the island shell, mounts it, and no
+    longer rebuilds the picker as an HTML string with inline handlers."""
+    js = client.get("/tv.js", headers={"Accept-Encoding": "identity"}).text
+    assert "const _pickerStore = reactiveStore(" in js
+    assert "mountIsland('#tv-picker-island', _pickerStore)" in js
+    # Reactive bindings replace the old inline onclick / string list.
+    assert '@click="toggleArchive()"' in js
+    assert 'v-for="tv in activeTournaments"' in js
+    assert "v-scope=\"{ $template: '#tpl-tv-picker-item'" in js
+    # Legacy string-builder and its inline handler must be gone.
+    assert "function _renderPickerItem" not in js
+    assert 'onclick="togglePickerArchive()"' not in js
+
+
+def test_communities_panel_has_reactive_bindings(client):
+    """The communities tab is a v-scope island: v-model inputs, v-for rows."""
+    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    block = html[html.index('id="panel-communities"') :]
+    block = block[: block.index('id="panel-clubs"')]
+    assert "v-scope" in block
+    assert 'v-model="newName"' in block
+    assert 'v-model="defaultSelection"' in block
+    assert '@click="create()"' in block
+    assert 'v-for="c in specialized"' in block
+    assert 'v-for="tour in sortedTournaments"' in block
+    assert 'v-for="r in sortedRegistrations"' in block
+    assert '@change="assignTournament(tour.id, $event.target.value)"' in block
+
+
+def test_admin_communities_js_mounts_island(client):
+    """admin-communities.js builds the store, mounts the island, and no longer
+    string-builds the panel via the old _commRenderX renderers."""
+    js = client.get("/admin-communities.js", headers={"Accept-Encoding": "identity"}).text
+    assert "const _commStore = reactiveStore(" in js
+    assert "mountIsland('#panel-communities', _commStore)" in js
+    # Legacy string-building renderers must be gone.
+    assert "function _commRenderList" not in js
+    assert "function _commRenderTournaments" not in js
+    assert 'onclick="commDelete' not in js
+
+
+def test_players_hub_search_has_reactive_bindings(client):
+    """The Players Hub search/results/merge bar is a v-scope island."""
+    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    block = html[html.index('id="panel-players-hub"') :]
+    block = block[: block.index('id="ph-detail"')]
+    assert 'id="ph-search-island" v-scope' in block
+    assert 'v-model="query"' in block
+    assert '@click="search()"' in block
+    assert 'v-for="p in visibleProfiles"' in block
+    assert '@change="toggleGhost(p.id, $event.target.checked)"' in block
+    assert '@change="toggleHub(p.id, $event.target.checked)"' in block
+    assert '@click="consolidate(' in block
+
+
+def test_admin_players_js_mounts_search_island(client):
+    """admin-players.js builds the search store, mounts the island, and no longer
+    string-builds the results list / merge bar via the old renderers."""
+    js = client.get("/admin-players.js", headers={"Accept-Encoding": "identity"}).text
+    assert "const _phStore = reactiveStore(" in js
+    assert "mountIsland('#ph-search-island', _phStore)" in js
+    # Legacy list/merge-bar string builders must be gone.
+    assert "function _phRenderProfileList" not in js
+    assert "function _phUpdateMergeBar" not in js
+    assert 'onchange="_phToggleGhostSelect' not in js

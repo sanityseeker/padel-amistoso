@@ -1,321 +1,165 @@
 // ─── Players Hub Admin ────────────────────────────────────
 // Admin interface for managing Player Hub profiles.
 // Uses the same api() helper and auth token as the rest of the admin.
+//
+// The search box + results list + selection/merge action bar are a Petite-Vue
+// island (`_phStore`, mounted on #ph-search-island). The single-profile detail
+// view (phLoadProfile → _phRenderDetail and the #ph-detail sub-panels) is still
+// legacy innerHTML: it renders into a separate container, has no shared nodes
+// with the island, and is a deeper nested-builder rewrite left for later. The
+// island's "Manage"/"Convert ghost" buttons call those legacy globals directly.
 
-let _phProfiles = [];
-let _phCurrentProfileId = null;
-let _phSelectedGhosts = new Set();
-let _phSelectedHub = null;
+// ─── Reactive store (search + results + merge bar) ────────
 
-/** Search profiles by name or email */
-async function phSearch() {
-  const input = document.getElementById('ph-search-input');
-  const q = (input?.value || '').trim();
-  const container = document.getElementById('ph-results');
-  if (!container) return;
-  _phSelectedGhosts = new Set();
-  _phSelectedHub = null;
-  container.innerHTML = `<em>${t('txt_ph_searching')}</em>`;
-  try {
-    const profiles = await api(`/api/admin/player-profiles?q=${encodeURIComponent(q)}`);
-    _phProfiles = profiles;
-    if (profiles.length === 0) {
-      container.innerHTML = q
-        ? `<p style="color:var(--text-muted)">${t('txt_ph_no_profiles_matching_q', { q: esc(q) })}</p>`
-        : `<p style="color:var(--text-muted)">${t('txt_hub_no_results')}.</p>`;
-      return;
+const _phStore = reactiveStore({
+  query: '',                 // search box (v-model)
+  profiles: [],              // raw results from the last search
+  searched: false,           // a search has run at least once
+  searching: false,
+  error: '',                 // search error text
+  showGhosts: (typeof localStorage !== 'undefined' && localStorage.getItem('ph-show-ghosts') !== '0'),
+  profilesOpen: (typeof localStorage !== 'undefined' && localStorage.getItem('ph-profiles-open') === '1'),
+  // Selection state (id→true maps; petite-vue tracks plain objects, not Sets).
+  selectedGhosts: {},        // ghost profiles picked for consolidation
+  selectedHub: null,         // one non-ghost profile as merge target
+  mergeName: '',             // v-model for the consolidate-name input
+  mergeMsg: '',              // merge/consolidate status (alert text)
+  mergeMsgError: false,
+  merging: false,
+  lang: 'en',                // tracked so t() bindings re-render on language switch
+
+  // Lang-tracking t() wrapper (petite-vue only re-renders on reactive reads).
+  t(key, params) { void this.lang; return window.t(key, params); },
+
+  // ── Derived ──
+  get ghostCount() { return this.profiles.filter(p => p.is_ghost).length; },
+  get visibleProfiles() {
+    return this.showGhosts ? this.profiles : this.profiles.filter(p => !p.is_ghost);
+  },
+  get selectedGhostIds() { return Object.keys(this.selectedGhosts).filter(id => this.selectedGhosts[id]); },
+  get selectedGhostCount() { return this.selectedGhostIds.length; },
+  get hubProfile() { return this.selectedHub ? this.profiles.find(p => p.id === this.selectedHub) : null; },
+  get selectedGhostNames() {
+    return this.selectedGhostIds.map(id => this.profiles.find(p => p.id === id)?.name || id);
+  },
+  // Which merge-bar variant to show.
+  get mergeMode() {
+    if (this.merging || this.mergeMsg) return this.mergeMsg ? 'msg' : 'busy';
+    if (this.selectedHub) return this.selectedGhostCount > 0 ? 'hub-ghosts' : 'hub';
+    if (this.selectedGhostCount >= 2) return 'ghosts';
+    return 'none';
+  },
+
+  // ── Formatting helpers (used in templates) ──
+  padelElo(p) {
+    return p.elo_padel_matches > 0 ? `${Math.round(p.elo_padel)}` : '—';
+  },
+  padelEloMatches(p) { return p.elo_padel_matches > 0 ? p.elo_padel_matches : null; },
+  tennisElo(p) {
+    return p.elo_tennis_matches > 0 ? `${Math.round(p.elo_tennis)}` : '—';
+  },
+  tennisEloMatches(p) { return p.elo_tennis_matches > 0 ? p.elo_tennis_matches : null; },
+  fmtDate(iso) { return _phFormatDate(iso); },
+  copyText(ev) { try { navigator.clipboard.writeText(ev.target.textContent); } catch (_) {} },
+
+  // ── Actions ──
+  async search() {
+    const q = (this.query || '').trim();
+    this.selectedGhosts = {};
+    this.selectedHub = null;
+    this.mergeMsg = '';
+    this.error = '';
+    this.searching = true;
+    try {
+      this.profiles = await api(`/api/admin/player-profiles?q=${encodeURIComponent(q)}`);
+      this.searched = true;
+    } catch (e) {
+      this.profiles = [];
+      this.error = e.message;
+    } finally {
+      this.searching = false;
     }
-    _phRenderProfileList(container);
-  } catch (e) {
-    container.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
-  }
-}
-
-/** Toggle ghost profile visibility and re-render from cached data */
-function _phToggleShowGhosts() {
-  const current = localStorage.getItem('ph-show-ghosts') !== '0';
-  localStorage.setItem('ph-show-ghosts', current ? '0' : '1');
-  _phSelectedGhosts = new Set();
-  _phSelectedHub = null;
-  const container = document.getElementById('ph-results');
-  if (container && _phProfiles.length > 0) _phRenderProfileList(container);
-}
-
-/** Render (or re-render) the profiles list into container from _phProfiles */
-function _phRenderProfileList(container) {
-  const showGhosts = localStorage.getItem('ph-show-ghosts') !== '0';
-  const profiles = _phProfiles;
-  const ghostCount = profiles.filter(p => p.is_ghost).length;
-  const visible = showGhosts ? profiles : profiles.filter(p => !p.is_ghost);
-  const _phOpen = localStorage.getItem('ph-profiles-open') === '1';
-
-  let html = `<details class="ph-profiles-collapse" id="ph-profiles-details" style="margin-top:0.25rem"${_phOpen ? ' open' : ''}>`;
-  html += `<summary style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:0.4rem;list-style:none;font-size:0.95rem;font-weight:700;padding:0.3rem 0">`;
-  html += `<span class="tv-chevron" style="font-size:0.65em;color:var(--text-muted)">&#9658;</span>`;
-  html += `${t('txt_ph_all_profiles_n', { n: profiles.length })}`;
-  if (ghostCount > 0) {
-    html += ` <span style="font-size:0.78rem;font-weight:400;color:var(--text-muted)">(${ghostCount} ${t('txt_ph_ghost_badge')})</span>`;
-    const toggleLabel = showGhosts ? t('txt_ph_hide_ghosts') : t('txt_ph_show_ghosts');
-    html += ` <button type="button" onclick="event.preventDefault();event.stopPropagation();_phToggleShowGhosts()"
-      style="font-size:0.72rem;padding:0.1rem 0.45rem;background:var(--surface-hover);border:1px solid var(--border);border-radius:3px;cursor:pointer;color:var(--text-muted);line-height:1.4"
-      aria-label="${escAttr(toggleLabel)}">${escAttr(toggleLabel)}</button>`;
-  }
-  html += `</summary>`;
-  html += '<div class="player-codes-table-wrap" style="margin-top:0.5rem"><table class="player-codes-table">';
-  html += '<thead><tr class="player-codes-head-row">';
-  html += `<th class="player-codes-th-center" style="width:2rem"></th>`;
-  html += `<th class="player-codes-th">${t('txt_ph_name')}</th>`;
-  html += `<th class="player-codes-th">${t('txt_txt_email')}</th>`;
-  html += `<th class="player-codes-th-center">${t('txt_ph_padel_elo')}</th>`;
-  html += `<th class="player-codes-th-center">${t('txt_ph_tennis_elo')}</th>`;
-  html += `<th class="player-codes-th">${t('txt_txt_passphrase')}</th>`;
-  html += `<th class="player-codes-th">${t('txt_ph_created')}</th>`;
-  html += '<th class="player-codes-th-center"></th>';
-  html += '</tr></thead><tbody>';
-  for (const p of visible) {
-    const padelElo = p.elo_padel_matches > 0 ? `${Math.round(p.elo_padel)} <span style="font-size:0.75rem;color:var(--text-muted)">(${p.elo_padel_matches})</span>` : '<span style="color:var(--text-muted)">—</span>';
-    const tennisElo = p.elo_tennis_matches > 0 ? `${Math.round(p.elo_tennis)} <span style="font-size:0.75rem;color:var(--text-muted)">(${p.elo_tennis_matches})</span>` : '<span style="color:var(--text-muted)">—</span>';
-    const ghostBadge = p.is_ghost
-      ? ` <span style="font-size:0.7rem;background:var(--surface-hover);color:var(--text-muted);border:1px solid var(--border);border-radius:3px;padding:0 0.3em;vertical-align:middle">${t('txt_ph_ghost_badge')}</span>`
-      : '';
-    let checkCell;
-    if (p.is_ghost) {
-      checkCell = `<input type="checkbox" class="ph-ghost-check" data-profile-id="${escAttr(p.id)}" aria-label="${t('txt_ph_select_for_merge')}" onchange="_phToggleGhostSelect('${escAttr(p.id)}', this.checked)" style="cursor:pointer">`;
+  },
+  toggleShowGhosts() {
+    this.showGhosts = !this.showGhosts;
+    try { localStorage.setItem('ph-show-ghosts', this.showGhosts ? '1' : '0'); } catch (_) {}
+    this.selectedGhosts = {};
+    this.selectedHub = null;
+  },
+  persistOpen(ev) {
+    this.profilesOpen = ev.target.open;
+    try { localStorage.setItem('ph-profiles-open', this.profilesOpen ? '1' : '0'); } catch (_) {}
+  },
+  toggleGhost(id, checked) {
+    if (checked) {
+      this.selectedGhosts[id] = true;
+      // Suggest the first selected ghost's name as the consolidated name
+      // (only when the user hasn't typed one) — mirrors the legacy default.
+      if (!this.mergeName) {
+        this.mergeName = this.profiles.find(p => p.id === id)?.name || '';
+      }
     } else {
-      checkCell = `<input type="checkbox" class="ph-hub-check" data-profile-id="${escAttr(p.id)}" aria-label="${t('txt_ph_select_as_hub_target')}" onchange="_phToggleHubSelect('${escAttr(p.id)}', this.checked)" style="cursor:pointer">`;
+      delete this.selectedGhosts[id];
     }
-    html += `<tr class="player-codes-row">`;
-    html += `<td class="player-codes-cell-center">${checkCell}</td>`;
-    html += `<td class="player-codes-name">${esc(p.name || '—')}${ghostBadge}</td>`;
-    html += `<td class="player-codes-cell">${esc(p.email || '—')}</td>`;
-    html += `<td class="player-codes-cell-center">${padelElo}</td>`;
-    html += `<td class="player-codes-cell-center">${tennisElo}</td>`;
-    const passCell = p.is_ghost
-      ? `<span style="color:var(--text-muted)" title="${t('txt_ph_ghost_no_passphrase')}">—</span>`
-      : `<code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(p.passphrase)}</code>`;
-    html += `<td class="player-codes-cell">${passCell}</td>`;
-    html += `<td class="player-codes-cell" style="font-size:0.8rem;color:var(--text-muted)">${_phFormatDate(p.created_at)}</td>`;
-    html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-primary btn-sm" onclick="phLoadProfile('${escAttr(p.id)}')">${t('txt_ph_manage')}</button>${p.is_ghost ? ` <button type="button" class="btn btn-sm btn-success" onclick="phShowConvertForm('${escAttr(p.id)}')" title="${t('txt_ph_convert_ghost_hint')}">${t('txt_ph_convert_ghost')}</button>` : ''}</td>`;
-    html += `</tr>`;
-  }
-  html += '</tbody></table></div></details>';
-  html += '<div id="ph-merge-bar"></div>';
-  container.innerHTML = html;
-  const _phDetails = document.getElementById('ph-profiles-details');
-  if (_phDetails) _phDetails.addEventListener('toggle', () => localStorage.setItem('ph-profiles-open', _phDetails.open ? '1' : '0'));
-  _phUpdateMergeBar();
-}
-
-/** Toggle a ghost profile's selection for consolidation */
-function _phToggleGhostSelect(profileId, checked) {
-  if (checked) {
-    _phSelectedGhosts.add(profileId);
-  } else {
-    _phSelectedGhosts.delete(profileId);
-  }
-  _phUpdateMergeBar();
-}
-
-/** Toggle a hub (non-ghost) profile as the merge target — only one allowed at a time */
-function _phToggleHubSelect(profileId, checked) {
-  if (checked) {
-    // Uncheck any previously selected hub checkbox
-    document.querySelectorAll('#ph-results .ph-hub-check').forEach(cb => {
-      if (cb.dataset.profileId !== profileId) cb.checked = false;
-    });
-    _phSelectedHub = profileId;
-  } else {
-    if (_phSelectedHub === profileId) _phSelectedHub = null;
-  }
-  _phUpdateMergeBar();
-}
-
-/** Update the action bar based on current ghost/hub selection */
-function _phUpdateMergeBar() {
-  const bar = document.getElementById('ph-merge-bar');
-  if (!bar) return;
-  const ghostCount = _phSelectedGhosts.size;
-
-  if (_phSelectedHub) {
-    const hubProfile = _phProfiles.find(p => p.id === _phSelectedHub);
-    const hubName = esc(hubProfile?.name || _phSelectedHub);
-    if (ghostCount === 0) {
-      bar.innerHTML = `
-        <div style="margin-top:0.75rem;padding:0.65rem 0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
-          <span style="font-size:0.85rem;color:var(--text-muted)">${t('txt_ph_hub_selected_hint', { hub: hubName })}</span>
-          <button type="button" class="btn btn-sm btn-muted" onclick="phClearGhostSelection()">${t('txt_txt_clear')}</button>
-        </div>`;
+  },
+  toggleHub(id, checked) {
+    this.selectedHub = checked ? id : (this.selectedHub === id ? null : this.selectedHub);
+  },
+  clearSelection() {
+    this.selectedGhosts = {};
+    this.selectedHub = null;
+    this.mergeName = '';
+    this.mergeMsg = '';
+  },
+  async consolidate(intoHub) {
+    if (intoHub) {
+      if (!this.selectedHub || this.selectedGhostCount < 1) return;
+      const hubName = this.hubProfile?.name || this.selectedHub;
+      const names = this.selectedGhostNames.join(', ');
+      if (!confirm(this.t('txt_ph_merge_into_hub_confirm', { hub: hubName, names }))) return;
     } else {
-      bar.innerHTML = `
-        <div style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
-          <span style="font-size:0.88rem">${t('txt_ph_merge_into_hub_info', { n: ghostCount, hub: hubName })}</span>
-          <button type="button" class="btn btn-primary btn-sm" onclick="phConsolidateGhosts(true)">${t('txt_ph_merge_into_hub')}</button>
-          <button type="button" class="btn btn-sm btn-muted" onclick="phClearGhostSelection()">${t('txt_txt_clear')}</button>
-        </div>`;
+      if (this.selectedGhostCount < 2) return;
+      const names = this.selectedGhostNames.join(', ');
+      if (!confirm(this.t('txt_ph_consolidate_confirm', { names }))) return;
     }
-    return;
-  }
-
-  if (ghostCount < 2) {
-    bar.innerHTML = '';
-    return;
-  }
-
-  const selectedNames = [..._phSelectedGhosts]
-    .map(id => _phProfiles.find(p => p.id === id)?.name || id)
-    .filter(Boolean);
-  const suggestedName = selectedNames[0] || '';
-  bar.innerHTML = `
-    <div style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
-      <span style="font-size:0.88rem">${t('txt_ph_ghosts_selected', { n: ghostCount })}</span>
-      <input type="text" id="ph-merge-name-input" value="${escAttr(suggestedName)}"
-        placeholder="${t('txt_ph_consolidate_name_placeholder')}"
-        style="flex:1;min-width:160px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"
-        aria-label="${t('txt_ph_consolidate_name_label')}">
-      <button type="button" class="btn btn-primary btn-sm" onclick="phConsolidateGhosts(false)">${t('txt_ph_consolidate_ghosts')}</button>
-      <button type="button" class="btn btn-sm btn-muted" onclick="phClearGhostSelection()">${t('txt_txt_clear')}</button>
-    </div>`;
-}
-
-/** Clear the ghost/hub selection and hide the action bar */
-function phClearGhostSelection() {
-  _phSelectedGhosts = new Set();
-  _phSelectedHub = null;
-  document.querySelectorAll('#ph-results input[type=checkbox]').forEach(cb => { cb.checked = false; });
-  _phUpdateMergeBar();
-}
-
-/**
- * Consolidate ghost profiles — either ghost-only or merge into a Hub profile.
- * @param {boolean} mergeIntoHub - When true, merges selected ghosts into _phSelectedHub.
- */
-async function phConsolidateGhosts(mergeIntoHub = false) {
-  const bar = document.getElementById('ph-merge-bar');
-
-  if (mergeIntoHub) {
-    if (!_phSelectedHub || _phSelectedGhosts.size < 1) return;
-    const hubProfile = _phProfiles.find(p => p.id === _phSelectedHub);
-    const ghostNames = [..._phSelectedGhosts]
-      .map(id => _phProfiles.find(p => p.id === id)?.name || id)
-      .join(', ');
-    if (!confirm(t('txt_ph_merge_into_hub_confirm', { hub: hubProfile?.name || _phSelectedHub, names: ghostNames }))) return;
-    if (bar) bar.innerHTML = `<div style="margin-top:0.75rem;font-size:0.88rem;color:var(--text-muted)"><em>${t('txt_ph_merging')}</em></div>`;
-    const ids = [_phSelectedHub, ..._phSelectedGhosts];
+    const ids = intoHub ? [this.selectedHub, ...this.selectedGhostIds] : [...this.selectedGhostIds];
+    const name = intoHub ? null : (this.mergeName || '').trim() || null;
+    this.merging = true;
+    this.mergeMsg = '';
     try {
       const result = await api('/api/admin/player-profiles/consolidate-ghosts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source_ids: ids, name: null }),
+        body: JSON.stringify({ source_ids: ids, name }),
       });
-      _phSelectedGhosts = new Set();
-      _phSelectedHub = null;
-      await phSearch();
-      const successBar = document.getElementById('ph-merge-bar');
-      if (successBar) {
-        successBar.innerHTML = `<div class="alert alert-info" style="margin-top:0.5rem">${t('txt_ph_merge_into_hub_ok', { name: esc(result.name) })}</div>`;
-        setTimeout(() => { const b = document.getElementById('ph-merge-bar'); if (b) b.innerHTML = ''; }, 4000);
-      }
+      this.selectedGhosts = {};
+      this.selectedHub = null;
+      this.mergeName = '';
+      this.merging = false;
+      await this.search();
+      this._flashMerge(false, this.t(intoHub ? 'txt_ph_merge_into_hub_ok' : 'txt_ph_consolidate_ok', { name: result.name }));
     } catch (e) {
-      if (bar) bar.innerHTML = `<div class="alert alert-error" style="margin-top:0.5rem">${esc(e.message)}</div>`;
+      this.merging = false;
+      this._flashMerge(true, e.message);
     }
-    return;
-  }
+  },
+  _flashMerge(isError, text) {
+    this.mergeMsgError = isError;
+    this.mergeMsg = text;
+    if (!isError) setTimeout(() => { this.mergeMsg = ''; }, 4000);
+  },
 
-  const nameInput = document.getElementById('ph-merge-name-input');
-  const name = nameInput?.value?.trim() || null;
-  const ids = [..._phSelectedGhosts];
-  if (ids.length < 2) return;
+  // Delegate to the legacy detail-view / convert-form globals.
+  manage(id) { phLoadProfile(id); },
+  showConvert(id) { phShowConvertForm(id); },
+});
 
-  const selectedNames = ids
-    .map(id => _phProfiles.find(p => p.id === id)?.name || id)
-    .join(', ');
-  if (!confirm(t('txt_ph_consolidate_confirm', { names: selectedNames }))) return;
-
-  if (bar) bar.innerHTML = `<div style="margin-top:0.75rem;font-size:0.88rem;color:var(--text-muted)"><em>${t('txt_ph_consolidating')}</em></div>`;
-
-  try {
-    const result = await api('/api/admin/player-profiles/consolidate-ghosts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source_ids: ids, name }),
-    });
-    _phSelectedGhosts = new Set();
-    await phSearch();
-    const successBar = document.getElementById('ph-merge-bar');
-    if (successBar) {
-      successBar.innerHTML = `<div class="alert alert-info" style="margin-top:0.5rem">${t('txt_ph_consolidate_ok', { name: esc(result.name) })}</div>`;
-      setTimeout(() => { if (successBar) successBar.innerHTML = ''; }, 4000);
-    }
-  } catch (e) {
-    if (bar) bar.innerHTML = `<div class="alert alert-error" style="margin-top:0.5rem">${esc(e.message)}</div>`;
-  }
+/** Search profiles by name or email (kept as a global for legacy callers). */
+async function phSearch() {
+  return _phStore.search();
 }
 
-/** Show inline convert-ghost form for a single ghost profile */
-function phShowConvertForm(profileId) {
-  const profile = _phProfiles.find(p => p.id === profileId);
-  const bar = document.getElementById('ph-merge-bar');
-  if (!bar) return;
-  const suggestedName = profile?.name || '';
-  bar.innerHTML = `
-    <div style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface)" id="ph-convert-form">
-      <p style="margin:0 0 0.5rem;font-size:0.88rem;font-weight:600">${t('txt_ph_convert_ghost_title')}</p>
-      <p style="margin:0 0 0.65rem;font-size:0.82rem;color:var(--text-muted)">${t('txt_ph_convert_ghost_help')}</p>
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end">
-        <label style="font-size:0.84rem;display:flex;flex-direction:column;gap:0.2rem;flex:1;min-width:140px">
-          ${t('txt_txt_name')}
-          <input type="text" id="ph-convert-name" value="${escAttr(suggestedName)}"
-            style="padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"
-            aria-label="${t('txt_txt_name')}">
-        </label>
-        <label style="font-size:0.84rem;display:flex;flex-direction:column;gap:0.2rem;flex:2;min-width:180px">
-          ${t('txt_txt_email')} <span style="font-weight:400;color:var(--text-muted)">(${t('txt_txt_optional')})</span>
-          <input type="email" id="ph-convert-email" placeholder="${t('txt_ph_convert_email_placeholder')}"
-            style="padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"
-            aria-label="${t('txt_txt_email')}">
-        </label>
-        <button type="button" class="btn btn-success btn-sm" onclick="phConvertGhost('${escAttr(profileId)}')">${t('txt_ph_convert_confirm')}</button>
-        <button type="button" class="btn btn-sm btn-muted" onclick="document.getElementById('ph-merge-bar').innerHTML=''">${t('txt_txt_cancel')}</button>
-      </div>
-      <div id="ph-convert-msg" style="margin-top:0.5rem;font-size:0.82rem"></div>
-    </div>`;
-}
-
-/** Execute the ghost-to-Hub-profile conversion */
-async function phConvertGhost(profileId) {
-  const nameInput = document.getElementById('ph-convert-name');
-  const emailInput = document.getElementById('ph-convert-email');
-  const msgEl = document.getElementById('ph-convert-msg');
-  const name = nameInput?.value?.trim() || null;
-  const email = emailInput?.value?.trim() || null;
-
-  if (msgEl) msgEl.innerHTML = `<em>${t('txt_ph_converting')}</em>`;
-
-  try {
-    const result = await api(`/api/admin/player-profiles/${encodeURIComponent(profileId)}/convert-ghost`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email }),
-    });
-    // Reload list and show the new passphrase
-    await phSearch();
-    const bar = document.getElementById('ph-merge-bar');
-    if (bar) {
-      bar.innerHTML = `
-        <div class="alert alert-info" style="margin-top:0.5rem">
-          <strong>${t('txt_ph_convert_ok', { name: esc(result.name) })}</strong><br>
-          <span style="font-size:0.84rem">${t('txt_ph_convert_passphrase_label')}: </span>
-          <code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(result.passphrase)}</code>
-          ${result.email ? `<br><span style="font-size:0.8rem;color:var(--text-muted)">${t('txt_ph_convert_email_sent', { email: esc(result.email) })}</span>` : ''}
-        </div>`;
-      setTimeout(() => { const b = document.getElementById('ph-merge-bar'); if (b) b.innerHTML = ''; }, 12000);
-    }
-  } catch (e) {
-    if (msgEl) msgEl.innerHTML = `<span style="color:var(--error)">${esc(e.message)}</span>`;
-  }
-}
-
-/** Load and render a single profile detail view */
+/** Load and render a single profile detail view (legacy innerHTML) */
 async function phLoadProfile(profileId) {
   const detail = document.getElementById('ph-detail');
   if (!detail) return;
@@ -331,7 +175,10 @@ async function phLoadProfile(profileId) {
   }
 }
 
-/** Render the full profile detail card */
+// Detail-view state (legacy).
+let _phCurrentProfileId = null;
+
+/** Render the full profile detail card (legacy innerHTML) */
 function _phRenderDetail(data) {
   const detail = document.getElementById('ph-detail');
   if (!detail) return;
@@ -445,13 +292,77 @@ function _phParticipationTable(participations, profileId, isFinished) {
   return html;
 }
 
+/** Show inline convert-ghost form for a single ghost profile (legacy, into #ph-detail) */
+function phShowConvertForm(profileId) {
+  const profile = _phStore.profiles.find(p => p.id === profileId);
+  const detail = document.getElementById('ph-detail');
+  if (!detail) return;
+  const suggestedName = profile?.name || '';
+  detail.style.display = '';
+  detail.innerHTML = `
+    <div class="card" id="ph-convert-form">
+      <p style="margin:0 0 0.5rem;font-size:0.88rem;font-weight:600">${t('txt_ph_convert_ghost_title')}</p>
+      <p style="margin:0 0 0.65rem;font-size:0.82rem;color:var(--text-muted)">${t('txt_ph_convert_ghost_help')}</p>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end">
+        <label style="font-size:0.84rem;display:flex;flex-direction:column;gap:0.2rem;flex:1;min-width:140px">
+          ${t('txt_txt_name')}
+          <input type="text" id="ph-convert-name" value="${escAttr(suggestedName)}"
+            style="padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"
+            aria-label="${t('txt_txt_name')}">
+        </label>
+        <label style="font-size:0.84rem;display:flex;flex-direction:column;gap:0.2rem;flex:2;min-width:180px">
+          ${t('txt_txt_email')} <span style="font-weight:400;color:var(--text-muted)">(${t('txt_txt_optional')})</span>
+          <input type="email" id="ph-convert-email" placeholder="${t('txt_ph_convert_email_placeholder')}"
+            style="padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"
+            aria-label="${t('txt_txt_email')}">
+        </label>
+        <button type="button" class="btn btn-success btn-sm" onclick="phConvertGhost('${escAttr(profileId)}')">${t('txt_ph_convert_confirm')}</button>
+        <button type="button" class="btn btn-sm btn-muted" onclick="phCloseDetail()">${t('txt_txt_cancel')}</button>
+      </div>
+      <div id="ph-convert-msg" style="margin-top:0.5rem;font-size:0.82rem"></div>
+    </div>`;
+  detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** Execute the ghost-to-Hub-profile conversion */
+async function phConvertGhost(profileId) {
+  const nameInput = document.getElementById('ph-convert-name');
+  const emailInput = document.getElementById('ph-convert-email');
+  const msgEl = document.getElementById('ph-convert-msg');
+  const name = nameInput?.value?.trim() || null;
+  const email = emailInput?.value?.trim() || null;
+
+  if (msgEl) msgEl.innerHTML = `<em>${t('txt_ph_converting')}</em>`;
+
+  try {
+    const result = await api(`/api/admin/player-profiles/${encodeURIComponent(profileId)}/convert-ghost`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email }),
+    });
+    // Reload list and show the new passphrase
+    await phSearch();
+    const detail = document.getElementById('ph-detail');
+    if (detail) {
+      detail.innerHTML = `
+        <div class="card alert alert-info" style="margin-top:0.5rem">
+          <strong>${t('txt_ph_convert_ok', { name: esc(result.name) })}</strong><br>
+          <span style="font-size:0.84rem">${t('txt_ph_convert_passphrase_label')}: </span>
+          <code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(result.passphrase)}</code>
+          ${result.email ? `<br><span style="font-size:0.8rem;color:var(--text-muted)">${t('txt_ph_convert_email_sent', { email: esc(result.email) })}</span>` : ''}
+        </div>`;
+      setTimeout(() => { const d = document.getElementById('ph-detail'); if (d) { d.style.display = 'none'; d.innerHTML = ''; } }, 12000);
+    }
+  } catch (e) {
+    if (msgEl) msgEl.innerHTML = `<span style="color:var(--error)">${esc(e.message)}</span>`;
+  }
+}
+
 /** Close the detail panel */
 function phCloseDetail() {
   const detail = document.getElementById('ph-detail');
   if (detail) { detail.style.display = 'none'; detail.innerHTML = ''; }
   _phCurrentProfileId = null;
-  const results = document.getElementById('ph-results');
-  if (results) results.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 /** Show a non-blocking notice inside the profile detail panel */
@@ -459,14 +370,6 @@ function phShowInlineNotice(message, isError = false) {
   const area = document.getElementById('ph-inline-msg') || document.getElementById('ph-passphrase-result');
   if (!area) return;
   area.innerHTML = `<div class="alert ${isError ? 'alert-error' : 'alert-info'}" style="margin-bottom:0.75rem">${esc(message)}</div>`;
-}
-
-/** Show a non-blocking notice above the profile search results */
-function phShowResultsNotice(message, isError = false) {
-  const container = document.getElementById('ph-results');
-  if (!container) return;
-  const className = isError ? 'alert alert-error' : 'alert alert-info';
-  container.insertAdjacentHTML('afterbegin', `<div class="${className}" style="margin-bottom:0.75rem">${esc(message)}</div>`);
 }
 
 /** Reset a profile's passphrase */
@@ -567,7 +470,6 @@ async function phDeleteProfile(profileId) {
     await api(`/api/admin/player-profiles/${profileId}`, { method: 'DELETE' });
     phCloseDetail();
     await phSearch();
-    phShowResultsNotice(t('txt_ph_delete_profile_ok'));
   } catch (e) {
     phShowInlineNotice(t('txt_ph_failed_delete_profile_value', { value: e.message }), true);
   }
@@ -606,8 +508,8 @@ async function phStartLink(profileId) {
     html += `<label style="font-size:0.84rem;color:var(--text-muted)">${t('txt_ph_select_tournament')}</label>`;
     html += `<select id="ph-link-tid" style="width:100%;padding:0.35rem 0.5rem;font-size:0.88rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);margin-top:0.25rem" onchange="phLoadUnlinkedPlayers('${escAttr(profileId)}')">`;
     html += `<option value="">${t('txt_ph_choose')}</option>`;
-    for (const t of tournaments) {
-      html += `<option value="${escAttr(t.id)}">${esc(t.name)} (${esc(t.phase || t.type)})</option>`;
+    for (const tour of tournaments) {
+      html += `<option value="${escAttr(tour.id)}">${esc(tour.name)} (${esc(tour.phase || tour.type)})</option>`;
     }
     html += '</select></div>';
     html += '<div id="ph-link-players"></div>';
@@ -671,12 +573,10 @@ function _phFormatDate(isoStr) {
   } catch { return isoStr; }
 }
 
-// Wire up Enter key on search input
-document.addEventListener('DOMContentLoaded', () => {
-  const input = document.getElementById('ph-search-input');
-  if (input) {
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') phSearch();
-    });
-  }
+// Keep the island's language in sync when the app language changes.
+document.addEventListener('app-language-changed', (ev) => {
+  _phStore.lang = (ev.detail && ev.detail.lang) || getAppLanguage();
 });
+
+// Mount the search/results island once at load.
+mountIsland('#ph-search-island', _phStore);

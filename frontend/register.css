@@ -283,3 +283,40 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 .reg-ps-create-success p { font-size: 0.82rem; color: var(--text-muted); }
 .reg-ps-create-success .reg-ps-already-have { font-size: 0.78rem; margin-top: 0.4rem; }
 .reg-ps-create-success .reg-ps-already-have a { color: var(--accent); text-decoration: underline; }
+
+/* ── Two-state status header (profile identity vs this-tournament entry) ── */
+.reg-status-header { margin: 0 0 0.85rem; display: flex; flex-direction: column; gap: 0.35rem; }
+.reg-status-row { display: flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; padding: 0.4rem 0.6rem; border-radius: 8px; border: 1px solid var(--border); flex-wrap: wrap; }
+.reg-status-dot { font-weight: 700; line-height: 1; }
+.reg-status-profile.in { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.reg-status-profile.out { color: var(--text-muted); background: var(--bg); }
+.reg-status-entry.pending { color: var(--text-muted); background: var(--bg); }
+.reg-status-entry.done { color: var(--color-success, #2e7d32); background: color-mix(in srgb, var(--color-success, #2e7d32) 12%, transparent); border-color: color-mix(in srgb, var(--color-success, #2e7d32) 35%, transparent); font-weight: 600; }
+.reg-status-row .reg-ps-logout-link { margin-left: auto; font-size: 0.76rem; color: var(--text-muted); cursor: pointer; text-decoration: underline; background: none; border: none; padding: 0; font-family: inherit; }
+.reg-status-row .reg-ps-logout-link:hover { color: var(--red); }
+
+/* ── Unified "Returning player?" section (code / email / name) ── */
+.reg-returning { margin: 0 0 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); overflow: hidden; }
+.reg-returning-summary { cursor: pointer; list-style: none; padding: 0.65rem 0.85rem; font-size: 0.88rem; font-weight: 600; color: var(--text); }
+.reg-returning-summary::-webkit-details-marker { display: none; }
+.reg-returning-body { padding: 0.75rem 0.85rem 0.9rem; border-top: 1px solid var(--border); }
+.reg-returning-tabs { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.75rem; }
+.reg-returning-tab { flex: 1 1 auto; min-width: max-content; padding: 0.4rem 0.6rem; font-size: 0.78rem; font-family: inherit; font-weight: 500; color: var(--text-muted); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; transition: color 0.15s, border-color 0.15s; }
+.reg-returning-tab:hover { color: var(--text); }
+.reg-returning-tab.active { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.reg-returning-pane .form-group { margin-bottom: 0.65rem; }
+.reg-returning-pane .form-group label { font-size: 0.82rem; }
+.reg-returning-pane #reg-returning-passphrase { font-family: var(--font-mono); }
+.reg-returning-pane .btn-secondary { width: 100%; text-align: center; }
+.reg-returning-help { font-size: 0.8rem; color: var(--text-muted); margin: 0 0 0.6rem; line-height: 1.5; }
+.reg-returning-msg { font-size: 0.8rem; margin: 0.4rem 0; min-height: 0; line-height: 1.45; }
+.reg-returning-msg.ok { color: var(--accent); }
+.reg-returning-msg.error { color: var(--red); }
+#reg-returning-error { color: var(--red); font-size: 0.8rem; margin-bottom: 0.4rem; min-height: 0; }
+.reg-name-results { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.reg-name-result { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.45rem 0.6rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; flex-wrap: wrap; }
+.reg-name-result-label { font-size: 0.82rem; color: var(--text); }
+.reg-name-claim-btn { flex-shrink: 0; padding: 0.35rem 0.7rem; font-size: 0.78rem; width: auto; }
+
+/* Success: auto-linked-to-profile confirmation */
+.reg-ps-auto-linked { font-size: 0.85rem; color: var(--color-success, #2e7d32); background: color-mix(in srgb, var(--color-success, #2e7d32) 12%, transparent); border: 1px solid color-mix(in srgb, var(--color-success, #2e7d32) 35%, transparent); border-radius: 8px; padding: 0.5rem 0.75rem; margin: 0 0 0.85rem; line-height: 1.5; }

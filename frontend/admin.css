@@ -1,6 +1,8 @@
 /* All design tokens live in theme.css — loaded before this file.
    No :root variable declarations here. */
 * { box-sizing: border-box; margin: 0; padding: 0; }
+/* Petite-Vue islands: hide bound markup until mount (attr removed on mount) */
+[v-cloak] { display: none !important; }
 body {
   font-family: var(--font-data);
   background: var(--bg); color: var(--text);
@@ -480,16 +482,18 @@ textarea { resize: vertical; min-height: 80px; }
 /* Buttons */
 .btn {
   display: inline-flex; align-items: center; gap: 0.4em;
-  padding: 0.5rem 1rem; border: none; border-radius: 6px; cursor: pointer;
+  padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
   font-size: 0.9rem; font-weight: 600;
+  background: var(--surface2); color: var(--text);
 }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent-hover); }
-.btn-success { background: var(--green); color: var(--color-on-success); }
+.btn:hover { background: var(--hover, var(--surface2)); border-color: var(--text-muted); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-success { background: var(--green); border-color: var(--green); color: var(--color-on-success); }
 .btn-success:hover { opacity: 0.9; }
-.btn-danger { background: var(--red); color: #fff; }
+.btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
 .btn-danger:hover { opacity: 0.9; }
-.btn-warning { background: var(--amber, #d97706); color: #fff; }
+.btn-warning { background: var(--amber, #d97706); border-color: var(--amber, #d97706); color: #fff; }
 .btn-warning:hover { opacity: 0.9; }
 .btn-sm { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
 .btn.loading { opacity: 0.7; pointer-events: none; position: relative; }
