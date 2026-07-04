@@ -427,3 +427,33 @@ class TestComputeMatchEloUpdates:
         counts = {p.id: 0 for p in players}
         updates = compute_match_elo_updates(m, ratings, counts, team_mode=False)
         assert len(updates) == 4
+
+    def test_tennis_match_winner_with_fewer_total_games_still_gains(self) -> None:
+        """Winning 2 sets to 1 while losing the total game count is still a win.
+
+        Sets (2,6), (6,4), (7,6): team1 wins the match 2 sets to 1, but total
+        games are 15-16 in team2's favor. The match winner must not be treated
+        as having lost ELO just because the game-count proxy favors the loser.
+        """
+        p1, p2 = Player(name="A"), Player(name="B")
+        m = _make_match([p1], [p2], (2, 1), sets=[(2, 6), (6, 4), (7, 6)])
+        assert tennis_sets_to_score(m.sets) == (15, 16)  # games favor the match loser
+        ratings = {p1.id: 1000.0, p2.id: 1000.0}
+        counts = {p1.id: 20, p2.id: 20}
+        updates = compute_match_elo_updates(m, ratings, counts, team_mode=False)
+        by_id = {u.player_id: u for u in updates}
+        assert by_id[p1.id].elo_after > 1000, "match winner must gain ELO"
+        assert by_id[p2.id].elo_after < 1000, "match loser must lose ELO"
+
+    def test_2v2_tennis_match_winner_with_fewer_total_games_still_gains(self) -> None:
+        """Same scenario as above, but for a 2v2 (padel/tennis doubles) match."""
+        players = [Player(name=n) for n in "ABCD"]
+        m = _make_match(players[:2], players[2:], (2, 1), sets=[(2, 6), (6, 4), (7, 6)])
+        ratings = {p.id: 1000.0 for p in players}
+        counts = {p.id: 20 for p in players}
+        updates = compute_match_elo_updates(m, ratings, counts, team_mode=True)
+        by_id = {u.player_id: u for u in updates}
+        for p in players[:2]:
+            assert by_id[p.id].elo_after > 1000, "winning team must gain ELO"
+        for p in players[2:]:
+            assert by_id[p.id].elo_after < 1000, "losing team must lose ELO"

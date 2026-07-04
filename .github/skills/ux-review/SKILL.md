@@ -45,6 +45,11 @@ When reviewing any UI, evaluate across these dimensions:
 - Are success/error states visible and specific?
 - Do score updates animate or just snap?
 - Are empty states informative (not just blank)?
+- For live/SSE-driven views (TV, admin tournament list): does a background update patch
+  in place, or does it flash/reset the whole view and lose scroll position or an
+  in-progress score entry? Once a view is on the Petite-Vue reactive-store pattern (see
+  the `frontend-dev` skill), prefer flagging any remaining full-reload-on-update
+  behavior as a feedback issue — targeted patching is the achievable bar there.
 
 ### 6. Mobile/Context fit
 - Admin view: is it usable on a tablet at courtside?

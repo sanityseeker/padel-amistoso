@@ -119,7 +119,12 @@ def compute_expected_score(rating_a: float, rating_b: float) -> float:
     return 1.0 / (1.0 + 10.0 ** ((rating_b - rating_a) / 400.0))
 
 
-def compute_blended_outcome(score_a: int, score_b: int, alpha: float = OUTCOME_BLEND_WEIGHT) -> float:
+def compute_blended_outcome(
+    score_a: int,
+    score_b: int,
+    alpha: float = OUTCOME_BLEND_WEIGHT,
+    match_result: tuple[int, int] | None = None,
+) -> float:
     """Compute the blended outcome S for the player who scored *score_a*.
 
     Blends binary win/loss/draw with a continuous score ratio so that
@@ -130,9 +135,17 @@ def compute_blended_outcome(score_a: int, score_b: int, alpha: float = OUTCOME_B
     where ``W`` ∈ {1, 0.5, 0} and ``R = 0.5 + (a - b) / (2·(a + b))``.
 
     Args:
-        score_a: Points scored by the player (or their team).
+        score_a: Points scored by the player (or their team). Used for the
+            continuous ratio component, and — when *match_result* is not
+            given — also to determine the binary win/loss component.
         score_b: Points scored by the opponent (or opposing team).
         alpha: Blend weight.  0 → pure ratio, 1 → pure binary.
+        match_result: Optional ``(result_a, result_b)`` pair used solely to
+            decide the binary ``W`` component. Needed for tennis, where
+            *score_a*/*score_b* are total games (a margin proxy) that can
+            disagree with who actually won the match (e.g. winning 2 sets
+            to 1 while losing the total game count). When omitted, the
+            outcome is inferred from *score_a*/*score_b* directly.
 
     Returns:
         Blended outcome in [0, 1].
@@ -141,10 +154,11 @@ def compute_blended_outcome(score_a: int, score_b: int, alpha: float = OUTCOME_B
     if total == 0:
         return 0.5
 
-    # Binary component
-    if score_a > score_b:
+    # Binary component: always reflects who actually won the match.
+    result_a, result_b = match_result if match_result is not None else (score_a, score_b)
+    if result_a > result_b:
         w = 1.0
-    elif score_a < score_b:
+    elif result_a < result_b:
         w = 0.0
     else:
         w = 0.5
@@ -174,15 +188,17 @@ def tennis_sets_to_score(sets: list[tuple[int, int]]) -> tuple[int, int]:
 # ---------------------------------------------------------------------------
 
 
-def _clamp_delta(delta: float, score: tuple[int, int]) -> float:
+def _clamp_delta(delta: float, result: tuple[int, int]) -> float:
     """Ensure winners always gain and losers always lose ELO.
 
-    Draws are left unclamped.
+    *result* must reflect who actually won the match (e.g. sets for tennis),
+    not a margin proxy like total games, or a real match winner could be
+    clamped as if they had lost. Draws are left unclamped.
     """
-    if score[0] > score[1]:
+    if result[0] > result[1]:
         # Winner: delta must be at least +MIN_DELTA_WIN
         return max(delta, MIN_DELTA_WIN)
-    if score[0] < score[1]:
+    if result[0] < result[1]:
         # Loser: delta must be at most -MIN_DELTA_WIN
         return min(delta, -MIN_DELTA_WIN)
     return delta
@@ -200,13 +216,17 @@ def compute_1v1_update(
     matches_played: int,
     k_factor_override: int | None = None,
     opponent_matches_played: int | None = None,
+    match_result: tuple[int, int] | None = None,
 ) -> float:
     """Compute the new ELO rating for a 1v1 match.
 
     Args:
         player_rating: Current rating of the player.
         opponent_rating: Current rating of the opponent.
-        score: ``(player_score, opponent_score)``.
+        score: ``(player_score, opponent_score)``. Used as the margin proxy
+            (e.g. total games for tennis) that determines how big a win/loss
+            is, but does not necessarily determine who won — see
+            *match_result*.
         matches_played: Number of matches the player has completed so far
             (before this match).
         k_factor_override: If set, use this K value instead of the
@@ -216,12 +236,19 @@ def compute_1v1_update(
             is already established (≥ ``RELIABILITY_THRESHOLD`` matches),
             the delta is dampened via the reliability factor.  Provisional
             players always receive the full delta for fast calibration.
+        match_result: Optional ``(player_result, opponent_result)`` pair
+            (e.g. sets won) identifying who actually won the match. When
+            *score* is a margin proxy that can disagree with the real
+            outcome (tennis total games vs. sets won), pass this so the
+            match winner is never treated as a loser. Defaults to *score*
+            when omitted.
 
     Returns:
         Updated rating.
     """
+    result = match_result if match_result is not None else score
     expected = compute_expected_score(player_rating, opponent_rating)
-    actual = compute_blended_outcome(score[0], score[1])
+    actual = compute_blended_outcome(score[0], score[1], match_result=result)
     k = k_factor_override if k_factor_override is not None else get_k_factor(matches_played)
     delta = k * (actual - expected)
     # Dampen delta only for established players facing provisional opponents.
@@ -229,7 +256,7 @@ def compute_1v1_update(
     # quickly during calibration.
     if opponent_matches_played is not None and matches_played >= RELIABILITY_THRESHOLD:
         delta *= reliability(opponent_matches_played)
-    return player_rating + _clamp_delta(delta, score)
+    return player_rating + _clamp_delta(delta, result)
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +285,7 @@ def compute_2v2_update(
     matches_played: int,
     k_factor_override: int | None = None,
     opponent_matches: tuple[int, int] | None = None,
+    match_result: tuple[int, int] | None = None,
 ) -> float:
     """Compute the new ELO rating for one player in a 2v2 match.
 
@@ -270,7 +298,9 @@ def compute_2v2_update(
         partner_rating: Partner's current ELO.
         opp1_rating: First opponent's current ELO.
         opp2_rating: Second opponent's current ELO.
-        score: ``(team_score, opponent_team_score)``.
+        score: ``(team_score, opponent_team_score)``. Used as the margin
+            proxy (e.g. total games for tennis) — see *match_result* for
+            determining who actually won.
         matches_played: Player's completed matches before this one.
         k_factor_override: If set, use this K value instead of the
             tier-based default.
@@ -280,14 +310,19 @@ def compute_2v2_update(
             matches).  The *minimum* reliability of the two opponents is
             used, shielding the player when *either* opponent is
             provisional.
+        match_result: Optional ``(team_result, opponent_result)`` pair
+            (e.g. sets won) identifying who actually won the match. Needed
+            when *score* is a margin proxy that can disagree with the real
+            outcome. Defaults to *score* when omitted.
 
     Returns:
         Updated rating.
     """
+    result = match_result if match_result is not None else score
     team_avg = (player_rating + partner_rating) / 2.0
     opp_avg = (opp1_rating + opp2_rating) / 2.0
     expected = compute_expected_score(team_avg, opp_avg)
-    actual = compute_blended_outcome(score[0], score[1])
+    actual = compute_blended_outcome(score[0], score[1], match_result=result)
     k = k_factor_override if k_factor_override is not None else get_k_factor(matches_played)
     adj = _partner_adjustment(player_rating, partner_rating)
     delta = k * adj * (actual - expected)
@@ -295,7 +330,7 @@ def compute_2v2_update(
     if opponent_matches is not None and matches_played >= RELIABILITY_THRESHOLD:
         opp_rel = min(reliability(opponent_matches[0]), reliability(opponent_matches[1]))
         delta *= opp_rel
-    return player_rating + _clamp_delta(delta, score)
+    return player_rating + _clamp_delta(delta, result)
 
 
 # ---------------------------------------------------------------------------
@@ -331,8 +366,12 @@ def compute_match_elo_updates(
 
     overrides = k_factor_overrides or {}
 
+    result = match.score  # Real match outcome (e.g. sets won) — always the source of truth for who won.
     score = match.score
-    # For tennis matches with sets, use total games as the score proxy
+    # For tennis matches with sets, use total games as the margin proxy for
+    # blended-outcome magnitude. Games can disagree with who won the match
+    # (e.g. winning 2 sets to 1 while losing the total game count), so
+    # `result` (not `score`) is what decides win/loss downstream.
     if match.sets:
         score = tennis_sets_to_score(match.sets)
 
@@ -357,6 +396,7 @@ def compute_match_elo_updates(
                 count,
                 k_factor_override=overrides.get(player.id),
                 opponent_matches=opp_counts,
+                match_result=result,
             )
             updates.append(
                 EloUpdate(
@@ -373,6 +413,7 @@ def compute_match_elo_updates(
             elo_before = ratings.get(player.id, DEFAULT_RATING)
             count = match_counts.get(player.id, 0)
             reversed_score = (score[1], score[0])
+            reversed_result = (result[1], result[0])
             opp_counts = (
                 match_counts.get(match.team1[0].id, 0),
                 match_counts.get(match.team1[1].id, 0),
@@ -386,6 +427,7 @@ def compute_match_elo_updates(
                 count,
                 k_factor_override=overrides.get(player.id),
                 opponent_matches=opp_counts,
+                match_result=reversed_result,
             )
             updates.append(
                 EloUpdate(
@@ -406,7 +448,13 @@ def compute_match_elo_updates(
         count2 = match_counts.get(p2.id, 0)
 
         new_elo1 = compute_1v1_update(
-            elo1, elo2, score, count1, k_factor_override=overrides.get(p1.id), opponent_matches_played=count2
+            elo1,
+            elo2,
+            score,
+            count1,
+            k_factor_override=overrides.get(p1.id),
+            opponent_matches_played=count2,
+            match_result=result,
         )
         new_elo2 = compute_1v1_update(
             elo2,
@@ -415,6 +463,7 @@ def compute_match_elo_updates(
             count2,
             k_factor_override=overrides.get(p2.id),
             opponent_matches_played=count1,
+            match_result=(result[1], result[0]),
         )
 
         updates.append(

@@ -74,7 +74,7 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 .success-card h2 { color: var(--green); margin-bottom: 0.75rem; }
 .passphrase-copy-row { display: flex; align-items: stretch; gap: 0.6rem; margin: 0.75rem 0; }
 .passphrase-box { flex: 1; background: var(--bg); border: 2px dashed var(--accent); border-radius: 10px; padding: 1rem; font-size: 1.15rem; font-weight: 700; letter-spacing: 0.5px; word-break: break-word; margin: 0; }
-.passphrase-copy-btn { flex-shrink: 0; align-self: stretch; white-space: nowrap; border-radius: 10px; }
+.passphrase-copy-btn { flex-shrink: 0; align-self: stretch; white-space: nowrap; border-radius: 10px; width: auto; }
 .passphrase-label { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem; }
 .keep-note { font-size: 0.82rem; color: var(--text-muted); margin: 0.75rem 0; line-height: 1.4; }
 
