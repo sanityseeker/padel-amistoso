@@ -1,5 +1,5 @@
 // Service worker — optimal caching for performance + freshness.
-const CACHE_NAME = 'amistoso-v29';
+const CACHE_NAME = 'amistoso-v30';
 const STATIC_ASSETS = [
   '/shared.js', '/auth.js', '/i18n.js', '/manifest.json',
   '/admin-utils.js', '/admin-tournaments.js', '/admin-create.js',
@@ -9,6 +9,7 @@ const STATIC_ASSETS = [
   '/tv.js', '/register.js', '/player.js',
   '/admin.css', '/tv.css', '/register.css', '/player.css',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js',
+  'https://cdn.jsdelivr.net/npm/petite-vue@0.4.1/dist/petite-vue.iife.js',
 ];
 const SHELL = ['/'];
 

@@ -24,6 +24,7 @@ load_dotenv()
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from brotli_asgi import BrotliMiddleware
 
 from . import state as _state_module
 from ..auth import auth_router
@@ -117,6 +118,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Compress text responses (JS/CSS/HTML/JSON) on the fly. Brotli when the client
+# accepts it (`Accept-Encoding: br`), gzip otherwise (gzip_fallback=True). This
+# is the single biggest page-load win for the ~1.4 MB of uncompressed JS: quality
+# 4 is a good speed/ratio balance for per-request compression, and minimum_size
+# skips responses too small to benefit. Vary: Accept-Encoding is set by the
+# middleware so shared caches store per-encoding variants correctly.
+app.add_middleware(BrotliMiddleware, quality=4, minimum_size=500)
 
 _ALLOWED_ORIGINS = list(_CORS_ORIGINS)
 _AMISTOSO_ORIGIN_RE = None
@@ -338,6 +347,7 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
 
 
 @lru_cache(maxsize=32)
+@lru_cache(maxsize=64)
 def _read_frontend_text(filename: str) -> str:
     """Read a frontend text file, caching the result for the process lifetime."""
     path = FRONTEND_DIR / filename

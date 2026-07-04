@@ -243,6 +243,38 @@ let _loginResolve = null;
  * Show the login dialog and wait for user to log in.
  * @returns {Promise<void>}
  */
+// Reactive store backing the login dialog island (mounted in initAuth).
+// v-model binds username/password; error/submitting drive the error text and
+// the disabled button. `submit()` replaces the old handleLogin() body.
+const _loginStore = reactiveStore({
+  username: '',
+  password: '',
+  error: '',
+  submitting: false,
+  async submit() {
+    const username = this.username.trim();
+    const password = this.password;
+    if (!username || !password) {
+      this.error = t('txt_txt_please_enter_username_and_password');
+      return;
+    }
+    this.submitting = true;
+    this.error = '';
+    const result = await login(username, password);
+    if (result.success) {
+      hideLoginDialog();
+      if (_loginResolve) {
+        _loginResolve();
+        _loginResolve = null;
+      }
+      updateAuthUI();
+    } else {
+      this.error = result.error || t('txt_txt_login_failed');
+      this.submitting = false;
+    }
+  },
+});
+
 function showLoginDialog() {
   return new Promise((resolve) => {
     _loginResolve = resolve;
@@ -270,13 +302,11 @@ function hideLoginDialog() {
     dialog.style.display = 'none';
     document.body.classList.remove('login-dialog-open');
   }
-  // Clear inputs
-  const usernameInput = document.getElementById('auth-username');
-  const passwordInput = document.getElementById('auth-password');
-  const errorDiv = document.getElementById('auth-error');
-  if (usernameInput) usernameInput.value = '';
-  if (passwordInput) passwordInput.value = '';
-  if (errorDiv) errorDiv.textContent = '';
+  // Clear reactive form state (v-model writes back into the inputs).
+  _loginStore.username = '';
+  _loginStore.password = '';
+  _loginStore.error = '';
+  _loginStore.submitting = false;
   // If the user dismissed without logging in, redirect to the info tab
   if (!isAuthenticated() && typeof setActiveTab === 'function') {
     setActiveTab('info');
@@ -284,42 +314,12 @@ function hideLoginDialog() {
 }
 
 /**
- * Handle login form submission.
+ * Handle login form submission. Kept as a thin global wrapper for any legacy
+ * callers; the real logic lives in `_loginStore.submit()`.
  */
 async function handleLogin(event) {
   if (event) event.preventDefault();
-
-  const usernameInput = document.getElementById('auth-username');
-  const passwordInput = document.getElementById('auth-password');
-  const errorDiv = document.getElementById('auth-error');
-  const loginBtn = document.getElementById('auth-login-btn');
-
-  const username = usernameInput?.value.trim();
-  const password = passwordInput?.value;
-
-  if (!username || !password) {
-    if (errorDiv) errorDiv.textContent = t('txt_txt_please_enter_username_and_password');
-    return;
-  }
-
-  // Disable button during login
-  if (loginBtn) loginBtn.disabled = true;
-  if (errorDiv) errorDiv.textContent = '';
-
-  const result = await login(username, password);
-
-  if (result.success) {
-    hideLoginDialog();
-    if (_loginResolve) {
-      _loginResolve();
-      _loginResolve = null;
-    }
-    // Update UI to show logged-in state
-    updateAuthUI();
-  } else {
-    if (errorDiv) errorDiv.textContent = result.error || t('txt_txt_login_failed');
-    if (loginBtn) loginBtn.disabled = false;
-  }
+  return _loginStore.submit();
 }
 
 /**
@@ -907,6 +907,45 @@ async function handleResetPassword(event) {
 /** Username whose password is being changed. Defaults to the current user. */
 let _changePwdTarget = null;
 
+// Reactive store backing the change-password dialog island (mounted in initAuth).
+const _changePwdStore = reactiveStore({
+  newPwd: '',
+  confirmPwd: '',
+  error: '',
+  success: '',
+  submitting: false,
+  targetLabel: '',
+  async submit() {
+    this.error = '';
+    this.success = '';
+    if (!this.newPwd || !this.confirmPwd) {
+      this.error = t('txt_txt_please_enter_username_and_password');
+      return;
+    }
+    if (this.newPwd !== this.confirmPwd) {
+      this.error = t('txt_txt_passwords_do_not_match');
+      return;
+    }
+    const username = _changePwdTarget || getAuthUsername();
+    if (!username) return;
+    this.submitting = true;
+    try {
+      await apiAuth(`/api/auth/users/${encodeURIComponent(username)}/password`, {
+        method: 'PATCH',
+        body: JSON.stringify({ new_password: this.newPwd }),
+      });
+      this.success = t('txt_txt_password_changed_successfully');
+      this.newPwd = '';
+      this.confirmPwd = '';
+      setTimeout(() => hideChangePasswordDialog(), 2000);
+    } catch (e) {
+      this.error = e.message;
+    } finally {
+      this.submitting = false;
+    }
+  },
+});
+
 /**
  * Show the change-password dialog.
  * @param {string} [targetUsername] - The user whose password will be changed.
@@ -916,12 +955,9 @@ function showChangePasswordDialog(targetUsername) {
   _changePwdTarget = targetUsername || getAuthUsername();
   const overlay = document.getElementById('change-pwd-overlay');
   if (!overlay) return;
-  const label = document.getElementById('change-pwd-for');
-  if (label) {
-    label.textContent = _changePwdTarget !== getAuthUsername()
-      ? `${t('txt_txt_username')}: ${_changePwdTarget}`
-      : '';
-  }
+  _changePwdStore.targetLabel = _changePwdTarget !== getAuthUsername()
+    ? `${t('txt_txt_username')}: ${_changePwdTarget}`
+    : '';
   overlay.style.display = 'flex';
   document.getElementById('change-pwd-new')?.focus();
 }
@@ -933,61 +969,22 @@ function hideChangePasswordDialog() {
   _changePwdTarget = null;
   const overlay = document.getElementById('change-pwd-overlay');
   if (overlay) overlay.style.display = 'none';
-  const newPwd = document.getElementById('change-pwd-new');
-  const confirmPwd = document.getElementById('change-pwd-confirm');
-  const errDiv = document.getElementById('change-pwd-error');
-  const successDiv = document.getElementById('change-pwd-success');
-  if (newPwd) newPwd.value = '';
-  if (confirmPwd) confirmPwd.value = '';
-  if (errDiv) errDiv.textContent = '';
-  if (successDiv) successDiv.textContent = '';
-  const label = document.getElementById('change-pwd-for');
-  if (label) label.textContent = '';
+  _changePwdStore.newPwd = '';
+  _changePwdStore.confirmPwd = '';
+  _changePwdStore.error = '';
+  _changePwdStore.success = '';
+  _changePwdStore.submitting = false;
+  _changePwdStore.targetLabel = '';
 }
 
 /**
- * Handle the change-password form submission.
+ * Handle the change-password form submission. Thin wrapper kept for any legacy
+ * callers; real logic lives in `_changePwdStore.submit()`.
  * @param {Event} event
  */
 async function handleChangePassword(event) {
-  event.preventDefault();
-  const newPwd = document.getElementById('change-pwd-new')?.value;
-  const confirmPwd = document.getElementById('change-pwd-confirm')?.value;
-  const errDiv = document.getElementById('change-pwd-error');
-  const successDiv = document.getElementById('change-pwd-success');
-  const btn = document.getElementById('change-pwd-btn');
-
-  if (errDiv) errDiv.textContent = '';
-  if (successDiv) successDiv.textContent = '';
-
-  if (!newPwd || !confirmPwd) {
-    if (errDiv) errDiv.textContent = t('txt_txt_please_enter_username_and_password');
-    return;
-  }
-
-  if (newPwd !== confirmPwd) {
-    if (errDiv) errDiv.textContent = t('txt_txt_passwords_do_not_match');
-    return;
-  }
-
-  const username = _changePwdTarget || getAuthUsername();
-  if (!username) return;
-
-  if (btn) btn.disabled = true;
-  try {
-    await apiAuth(`/api/auth/users/${encodeURIComponent(username)}/password`, {
-      method: 'PATCH',
-      body: JSON.stringify({ new_password: newPwd }),
-    });
-    if (successDiv) successDiv.textContent = t('txt_txt_password_changed_successfully');
-    document.getElementById('change-pwd-new').value = '';
-    document.getElementById('change-pwd-confirm').value = '';
-    setTimeout(() => hideChangePasswordDialog(), 2000);
-  } catch (e) {
-    if (errDiv) errDiv.textContent = e.message;
-  } finally {
-    if (btn) btn.disabled = false;
-  }
+  if (event) event.preventDefault();
+  return _changePwdStore.submit();
 }
 
 // ── Initialization ────────────────────────────────────────
@@ -998,12 +995,12 @@ async function handleChangePassword(event) {
 function initAuth() {
   updateAuthUI();
 
-  // Add enter key handler to login form
-  const passwordInput = document.getElementById('auth-password');
-  if (passwordInput) {
-    passwordInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') handleLogin();
-    });
+  // Mount the login + change-password dialogs as Petite-Vue reactive islands.
+  // (The Enter-to-submit handler that used to be wired here is now `@keyup.enter`
+  // on the password field in the template.)
+  if (typeof mountIsland === 'function') {
+    mountIsland('#auth-dialog', _loginStore);
+    mountIsland('#change-pwd-overlay .modal-dialog', _changePwdStore);
   }
 
   // Handle invite and reset-password tokens in the URL.

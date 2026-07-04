@@ -792,3 +792,83 @@ function hideMiniCardOverlay(overlay) {
     try { restore.focus(); } catch (_) { /* ignore */ }
   }
 }
+
+// ── Petite-Vue reactive islands ─────────────────────────────────────────
+//
+// Petite-Vue (loaded via CDN as the `PetiteVue` global) is the sanctioned
+// reactive layer for this app — no build step, mounted one container at a
+// time so unconverted views keep working alongside converted ones. These two
+// helpers are the shared entry point for every migrated view: build a store
+// with `reactiveStore()`, mount it onto a `v-scope` root with `mountIsland()`.
+// See `.github/skills/frontend-dev/SKILL.md` → "Reactive views with Petite-Vue"
+// for the full conversion recipe.
+
+/**
+ * Shared globals injected into every reactive island's scope so templates can
+ * call them as bare functions (`{{ t('txt_key') }}`, `@click="esc(...)"`, …)
+ * without each view re-wiring them. Values are read lazily at mount time, so a
+ * page that defines its own `api()` (admin/tv) still gets that page's version.
+ * @returns {object}
+ */
+function _islandGlobals() {
+  const g = {};
+  for (const name of ['t', 'ts', 'trl', 'esc', 'escAttr', 'api']) {
+    const fn = window[name];
+    if (typeof fn === 'function') g[name] = fn;
+  }
+  return g;
+}
+
+/**
+ * Wrap a plain object in Petite-Vue reactivity, giving a view one named store
+ * whose mutations auto-patch the bound DOM — replacing the scattered
+ * module-level `let` vars + manual `renderX()` calls of the legacy pattern.
+ *
+ * Falls back to returning the object unchanged if Petite-Vue is unavailable
+ * (e.g. CDN blocked offline before caching), so callers never crash — the view
+ * just won't be reactive until the library loads.
+ *
+ * @param {object} obj  Initial state (data + methods).
+ * @returns {object}    The reactive proxy (or `obj` if Petite-Vue is missing).
+ */
+function reactiveStore(obj) {
+  if (typeof PetiteVue === 'undefined' || !PetiteVue.reactive) return obj;
+  return PetiteVue.reactive(obj);
+}
+
+/**
+ * Mount a Petite-Vue app onto a single existing container (a `v-scope` root),
+ * not the whole page. Injects the shared globals (`t`, `esc`, `api`, …) into
+ * the scope so templates can call them directly. Guards against double-mount
+ * (re-calling on the same element is a no-op) and against a missing root or a
+ * missing Petite-Vue library.
+ *
+ * SSE-driven views should mutate the returned store inside their
+ * `createVersionStream({ onVersion })` callback rather than calling a full
+ * `loadX()` rebuild — Petite-Vue patches only the changed nodes, so open forms
+ * and scroll position survive live updates.
+ *
+ * @param {string|Element} rootSelector  CSS selector or element to mount on.
+ * @param {object|function} scope        The reactive store (or a factory returning one).
+ * @returns {object|null}                The mounted scope, or null if it couldn't mount.
+ */
+function mountIsland(rootSelector, scope) {
+  const root = typeof rootSelector === 'string'
+    ? document.querySelector(rootSelector)
+    : rootSelector;
+  if (!root) {
+    console.warn('[mountIsland] root not found:', rootSelector);
+    return null;
+  }
+  if (root._petiteVueMounted) return root._petiteVueScope || null;
+  if (typeof PetiteVue === 'undefined' || !PetiteVue.createApp) {
+    console.warn('[mountIsland] Petite-Vue not loaded; skipping mount for', rootSelector);
+    return null;
+  }
+  const resolved = typeof scope === 'function' ? scope() : scope;
+  const finalScope = Object.assign(_islandGlobals(), resolved);
+  PetiteVue.createApp(finalScope).mount(root);
+  root._petiteVueMounted = true;
+  root._petiteVueScope = finalScope;
+  return finalScope;
+}

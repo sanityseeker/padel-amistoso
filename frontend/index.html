@@ -39,6 +39,7 @@
 <link rel="stylesheet" href="/admin.css">
 <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.3.3/dist/purify.min.js" integrity="sha384-pcBjnGbkyKeOXaoFkmJiuR9E08/6gkmus6/Strimnxtl3uk0Hx23v345pWyC/MMr" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/petite-vue@0.4.1/dist/petite-vue.iife.js" integrity="sha384-G3VE2R9nao/dKH0R46Bvk6qIVBAeImWjeTj+SwWOJzJ4N0vQ2RKWuC/cp36l4Iba" crossorigin="anonymous"></script>
 </head>
 <body>
 <div class="container">
@@ -1072,26 +1073,26 @@
 
 <!-- Authentication Dialog -->
 <div id="auth-overlay" class="modal-overlay" data-action="hideLoginDialog"></div>
-<div id="auth-dialog" class="modal-dialog modal-sm">
+<div id="auth-dialog" class="modal-dialog modal-sm" v-scope>
   <div class="modal-header">
     <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 464h-68V240c0-70.7-57.3-128-128-128H388c-70.7 0-128 57.3-128 128v224h-68c-17.7 0-32 14.3-32 32v384c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V496c0-17.7-14.3-32-32-32zM332 240c0-30.9 25.1-56 56-56h248c30.9 0 56 25.1 56 56v224H332V240zm460 600H232V536h560v304z"/></svg> <span data-i18n="txt_txt_login_required">Login Required</span></h2>
     <button type="button" class="modal-close-btn" data-action="hideLoginDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
   </div>
   <p class="modal-subtitle" data-i18n="txt_txt_please_log_in_to_create_or_modify_tournaments">Please log in to create or modify tournaments</p>
-  <form onsubmit="handleLogin(event)">
+  <form @submit.prevent="submit()">
     <div class="modal-field">
       <label class="modal-label" data-i18n="txt_txt_username">Username</label>
-      <input type="text" id="auth-username" class="modal-input" placeholder="admin" data-i18n-placeholder="txt_txt_admin_username_placeholder" autocomplete="username">
+      <input type="text" id="auth-username" v-model="username" class="modal-input" placeholder="admin" data-i18n-placeholder="txt_txt_admin_username_placeholder" autocomplete="username">
     </div>
     <div class="modal-field" style="margin-bottom:0.25rem">
       <label class="modal-label" data-i18n="txt_txt_password">Password</label>
-      <input type="password" id="auth-password" class="modal-input" placeholder="••••••••" autocomplete="current-password">
+      <input type="password" id="auth-password" v-model="password" @keyup.enter="submit()" class="modal-input" placeholder="••••••••" autocomplete="current-password">
     </div>
     <div style="text-align:right;margin-bottom:1rem">
       <a href="#" class="modal-link" style="font-size:0.85rem" onclick="showForgotPasswordDialog();return false"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5l-41.1 41.1-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-44.9 44.9-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-65.3 65.3a8.03 8.03 0 000 11.3l42.3 42.3c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6A304.06 304.06 0 00608 720c167.9 0 304-136.1 304-304S775.9 112 608 112z"/></svg> <span data-i18n="txt_txt_forgot_password">Forgot password?</span></a>
     </div>
-    <div class="modal-error" id="auth-error"></div>
-    <button type="submit" id="auth-login-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_login">Login</button>
+    <div class="modal-error" id="auth-error" v-text="error"></div>
+    <button type="submit" id="auth-login-btn" class="btn btn-primary" style="width:100%" :disabled="submitting" data-i18n="txt_txt_login">Login</button>
   </form>
   <p class="modal-footer-links">
     <a href="/tv" class="modal-link"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M928 140H96c-17.7 0-32 14.3-32 32v496c0 17.7 14.3 32 32 32h380v112H304c-8.8 0-16 7.2-16 16v48c0 4.4 3.6 8 8 8h432c4.4 0 8-3.6 8-8v-48c0-8.8-7.2-16-16-16H548V700h380c17.7 0 32-14.3 32-32V172c0-17.7-14.3-32-32-32zm-40 488H136V212h752v416z"/></svg> <span data-i18n="txt_nav_tv_view">Tournaments</span></a>
@@ -1102,24 +1103,24 @@
 
 <!-- Change Password Modal (all authenticated users) -->
 <div id="change-pwd-overlay" class="modal-overlay">
-  <div class="modal-dialog modal-sm">
+  <div class="modal-dialog modal-sm" v-scope>
     <div class="modal-header" style="margin-bottom:0.5rem">
       <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5l-41.1 41.1-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-44.9 44.9-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-65.3 65.3a8.03 8.03 0 000 11.3l42.3 42.3c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6A304.06 304.06 0 00608 720c167.9 0 304-136.1 304-304S775.9 112 608 112z"/></svg> <span data-i18n="txt_txt_change_password">Change Password</span></h2>
       <button type="button" class="modal-close-btn" data-action="hideChangePasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
     </div>
-    <p id="change-pwd-for" class="modal-subtitle" style="margin-bottom:1rem"></p>
-    <form onsubmit="handleChangePassword(event)">
+    <p id="change-pwd-for" class="modal-subtitle" style="margin-bottom:1rem" v-text="targetLabel"></p>
+    <form @submit.prevent="submit()">
       <div class="modal-field">
         <label class="modal-label" data-i18n="txt_txt_new_password">New Password</label>
-        <input type="password" id="change-pwd-new" class="modal-input" placeholder="••••••••" autocomplete="new-password">
+        <input type="password" id="change-pwd-new" v-model="newPwd" class="modal-input" placeholder="••••••••" autocomplete="new-password">
       </div>
       <div class="modal-field" style="margin-bottom:1rem">
         <label class="modal-label" data-i18n="txt_txt_confirm_new_password">Confirm New Password</label>
-        <input type="password" id="change-pwd-confirm" class="modal-input" placeholder="••••••••" autocomplete="new-password">
+        <input type="password" id="change-pwd-confirm" v-model="confirmPwd" class="modal-input" placeholder="••••••••" autocomplete="new-password">
       </div>
-      <div class="modal-success" id="change-pwd-success"></div>
-      <div class="modal-error" id="change-pwd-error"></div>
-      <button type="submit" id="change-pwd-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_change_password">Change Password</button>
+      <div class="modal-success" id="change-pwd-success" v-text="success"></div>
+      <div class="modal-error" id="change-pwd-error" v-text="error"></div>
+      <button type="submit" id="change-pwd-btn" class="btn btn-primary" style="width:100%" :disabled="submitting" data-i18n="txt_txt_change_password">Change Password</button>
     </form>
   </div>
 </div>
