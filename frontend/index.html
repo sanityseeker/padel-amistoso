@@ -621,15 +621,89 @@
   </div>
 
   <!-- ─── PLAYERS HUB ADMIN ─────────────────────────────── -->
+  <!-- Petite-Vue island: search + results + merge bar bound to _phStore
+       (admin-players.js). The #ph-detail sibling below stays legacy innerHTML. -->
   <div class="tab-panel" id="panel-players-hub" role="tabpanel">
-    <div class="card">
+    <div class="card" id="ph-search-island" v-scope>
       <h2 style="margin:0 0 0.75rem" data-i18n="txt_ph_admin_title">Players Hub</h2>
       <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_ph_admin_desc">Search and manage Player Hub profiles. Link or unlink tournament participations and reset credentials.</p>
       <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
-        <input type="text" id="ph-search-input" placeholder="Search by name or email…" data-i18n-placeholder="txt_hub_search_placeholder" style="flex:1;min-width:200px;padding:0.45rem 0.65rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
-        <button type="button" class="btn btn-primary btn-sm" id="ph-search-btn" onclick="phSearch()"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M909.6 854.5L649.9 594.8C690.2 542.7 712 479 712 412c0-80.2-31.3-155.4-87.9-212.1-56.6-56.7-132-87.9-212.1-87.9s-155.5 31.3-212.1 87.9C143.2 256.5 112 331.8 112 412c0 80.1 31.3 155.5 87.9 212.1C256.5 680.8 331.8 712 412 712c67 0 130.6-21.8 182.7-62l259.7 259.6a8.2 8.2 0 0011.6 0l43.6-43.5a8.2 8.2 0 000-11.6zM570.4 570.4C528 612.7 471.8 636 412 636s-116-23.3-158.4-65.6C211.3 528 188 471.8 188 412s23.3-116.1 65.6-158.4C296 211.3 352.2 188 412 188s116.1 23.2 158.4 65.6S636 352.2 636 412s-23.3 116.1-65.6 158.4z"/></svg> <span data-i18n="txt_ph_search_btn">Search</span></button>
+        <input type="text" id="ph-search-input" v-model="query" @keydown.enter="search()" placeholder="Search by name or email…" data-i18n-placeholder="txt_hub_search_placeholder" style="flex:1;min-width:200px;padding:0.45rem 0.65rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
+        <button type="button" class="btn btn-primary btn-sm" id="ph-search-btn" @click="search()"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M909.6 854.5L649.9 594.8C690.2 542.7 712 479 712 412c0-80.2-31.3-155.4-87.9-212.1-56.6-56.7-132-87.9-212.1-87.9s-155.5 31.3-212.1 87.9C143.2 256.5 112 331.8 112 412c0 80.1 31.3 155.5 87.9 212.1C256.5 680.8 331.8 712 412 712c67 0 130.6-21.8 182.7-62l259.7 259.6a8.2 8.2 0 0011.6 0l43.6-43.5a8.2 8.2 0 000-11.6zM570.4 570.4C528 612.7 471.8 636 412 636s-116-23.3-158.4-65.6C211.3 528 188 471.8 188 412s23.3-116.1 65.6-158.4C296 211.3 352.2 188 412 188s116.1 23.2 158.4 65.6S636 352.2 636 412s-23.3 116.1-65.6 158.4z"/></svg> <span data-i18n="txt_ph_search_btn">Search</span></button>
       </div>
-      <div id="ph-results"></div>
+      <div id="ph-results">
+        <p v-if="searching"><em>{{ t('txt_ph_searching') }}</em></p>
+        <div v-else-if="error" class="alert alert-error">{{ error }}</div>
+        <p v-else-if="searched && !profiles.length" style="color:var(--text-muted)">{{ query ? t('txt_ph_no_profiles_matching_q', { q: query }) : (t('txt_hub_no_results') + '.') }}</p>
+        <template v-else-if="profiles.length">
+          <details class="ph-profiles-collapse" id="ph-profiles-details" style="margin-top:0.25rem" :open="profilesOpen" @toggle="persistOpen($event)">
+            <summary style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:0.4rem;list-style:none;font-size:0.95rem;font-weight:700;padding:0.3rem 0">
+              <span class="tv-chevron" style="font-size:0.65em;color:var(--text-muted)">&#9658;</span>
+              {{ t('txt_ph_all_profiles_n', { n: profiles.length }) }}
+              <template v-if="ghostCount > 0">
+                <span style="font-size:0.78rem;font-weight:400;color:var(--text-muted)">({{ ghostCount }} {{ t('txt_ph_ghost_badge') }})</span>
+                <button type="button" @click="$event.preventDefault(); $event.stopPropagation(); toggleShowGhosts()"
+                  style="font-size:0.72rem;padding:0.1rem 0.45rem;background:var(--surface-hover);border:1px solid var(--border);border-radius:3px;cursor:pointer;color:var(--text-muted);line-height:1.4"
+                  :aria-label="showGhosts ? t('txt_ph_hide_ghosts') : t('txt_ph_show_ghosts')">{{ showGhosts ? t('txt_ph_hide_ghosts') : t('txt_ph_show_ghosts') }}</button>
+              </template>
+            </summary>
+            <div class="player-codes-table-wrap" style="margin-top:0.5rem"><table class="player-codes-table">
+              <thead><tr class="player-codes-head-row">
+                <th class="player-codes-th-center" style="width:2rem"></th>
+                <th class="player-codes-th">{{ t('txt_ph_name') }}</th>
+                <th class="player-codes-th">{{ t('txt_txt_email') }}</th>
+                <th class="player-codes-th-center">{{ t('txt_ph_padel_elo') }}</th>
+                <th class="player-codes-th-center">{{ t('txt_ph_tennis_elo') }}</th>
+                <th class="player-codes-th">{{ t('txt_txt_passphrase') }}</th>
+                <th class="player-codes-th">{{ t('txt_ph_created') }}</th>
+                <th class="player-codes-th-center"></th>
+              </tr></thead>
+              <tbody>
+                <tr v-for="p in visibleProfiles" :key="p.id" class="player-codes-row">
+                  <td class="player-codes-cell-center">
+                    <input v-if="p.is_ghost" type="checkbox" class="ph-ghost-check" :checked="!!selectedGhosts[p.id]" :aria-label="t('txt_ph_select_for_merge')" @change="toggleGhost(p.id, $event.target.checked)" style="cursor:pointer">
+                    <input v-else type="checkbox" class="ph-hub-check" :checked="selectedHub === p.id" :aria-label="t('txt_ph_select_as_hub_target')" @change="toggleHub(p.id, $event.target.checked)" style="cursor:pointer">
+                  </td>
+                  <td class="player-codes-name">{{ p.name || '—' }}<span v-if="p.is_ghost" style="font-size:0.7rem;background:var(--surface-hover);color:var(--text-muted);border:1px solid var(--border);border-radius:3px;padding:0 0.3em;vertical-align:middle;margin-left:0.3em">{{ t('txt_ph_ghost_badge') }}</span></td>
+                  <td class="player-codes-cell">{{ p.email || '—' }}</td>
+                  <td class="player-codes-cell-center"><span v-if="padelEloMatches(p)">{{ padelElo(p) }} <span style="font-size:0.75rem;color:var(--text-muted)">({{ padelEloMatches(p) }})</span></span><span v-else style="color:var(--text-muted)">—</span></td>
+                  <td class="player-codes-cell-center"><span v-if="tennisEloMatches(p)">{{ tennisElo(p) }} <span style="font-size:0.75rem;color:var(--text-muted)">({{ tennisEloMatches(p) }})</span></span><span v-else style="color:var(--text-muted)">—</span></td>
+                  <td class="player-codes-cell">
+                    <span v-if="p.is_ghost" style="color:var(--text-muted)" :title="t('txt_ph_ghost_no_passphrase')">—</span>
+                    <code v-else class="player-codes-passphrase" @click="copyText($event)" :title="t('txt_txt_click_to_copy')">{{ p.passphrase }}</code>
+                  </td>
+                  <td class="player-codes-cell" style="font-size:0.8rem;color:var(--text-muted)">{{ fmtDate(p.created_at) }}</td>
+                  <td class="player-codes-cell-center">
+                    <button type="button" class="btn btn-primary btn-sm" @click="manage(p.id)">{{ t('txt_ph_manage') }}</button>
+                    <button v-if="p.is_ghost" type="button" class="btn btn-sm btn-success" @click="showConvert(p.id)" :title="t('txt_ph_convert_ghost_hint')">{{ t('txt_ph_convert_ghost') }}</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table></div>
+          </details>
+          <!-- Merge / consolidate action bar (reactive on selection) -->
+          <div id="ph-merge-bar">
+            <div v-if="mergeMode === 'msg'" class="alert" :class="mergeMsgError ? 'alert-error' : 'alert-info'" style="margin-top:0.5rem">{{ mergeMsg }}</div>
+            <div v-else-if="mergeMode === 'busy'" style="margin-top:0.75rem;font-size:0.88rem;color:var(--text-muted)"><em>{{ t('txt_ph_merging') }}</em></div>
+            <div v-else-if="mergeMode === 'hub'" style="margin-top:0.75rem;padding:0.65rem 0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
+              <span style="font-size:0.85rem;color:var(--text-muted)">{{ t('txt_ph_hub_selected_hint', { hub: hubProfile ? (hubProfile.name || selectedHub) : selectedHub }) }}</span>
+              <button type="button" class="btn btn-sm btn-muted" @click="clearSelection()">{{ t('txt_txt_clear') }}</button>
+            </div>
+            <div v-else-if="mergeMode === 'hub-ghosts'" style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
+              <span style="font-size:0.88rem">{{ t('txt_ph_merge_into_hub_info', { n: selectedGhostCount, hub: hubProfile ? (hubProfile.name || selectedHub) : selectedHub }) }}</span>
+              <button type="button" class="btn btn-primary btn-sm" @click="consolidate(true)">{{ t('txt_ph_merge_into_hub') }}</button>
+              <button type="button" class="btn btn-sm btn-muted" @click="clearSelection()">{{ t('txt_txt_clear') }}</button>
+            </div>
+            <div v-else-if="mergeMode === 'ghosts'" style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
+              <span style="font-size:0.88rem">{{ t('txt_ph_ghosts_selected', { n: selectedGhostCount }) }}</span>
+              <input type="text" v-model="mergeName" :placeholder="t('txt_ph_consolidate_name_placeholder')" :aria-label="t('txt_ph_consolidate_name_label')"
+                style="flex:1;min-width:160px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
+              <button type="button" class="btn btn-primary btn-sm" @click="consolidate(false)">{{ t('txt_ph_consolidate_ghosts') }}</button>
+              <button type="button" class="btn btn-sm btn-muted" @click="clearSelection()">{{ t('txt_txt_clear') }}</button>
+            </div>
+          </div>
+        </template>
+      </div>
     </div>
     <div id="ph-detail" style="display:none"></div>
   </div>
@@ -727,48 +801,140 @@
   </div>
 
   <!-- ─── COMMUNITIES ──────────────────────────────────── -->
-  <div class="tab-panel" id="panel-communities" role="tabpanel">
+  <!-- Petite-Vue island: bound to _commStore (admin-communities.js). -->
+  <div class="tab-panel" id="panel-communities" role="tabpanel" v-scope>
       <div>
-        <!-- My default community -->
-        <div class="card" id="comm-my-default-card">
+        <!-- My default community (hidden until specialized communities exist) -->
+        <div class="card" id="comm-my-default-card" v-if="hasSpecialized">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;gap:0.5rem">
             <h2 style="margin:0">⭐ <span data-i18n="txt_comm_default_title">My Default Community</span></h2>
             <button type="button" class="format-info-btn" data-action="openContextInfo" data-context="communities" aria-label="About communities" data-i18n-aria-label="txt_comm_info_panel_title" data-i18n-title="txt_comm_info_panel_title" title="About communities">i</button>
           </div>
           <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_default_help">The community pre-selected when you create a new tournament or lobby.</p>
           <div class="comm-default-form-row">
-            <select id="comm-my-default-select" class="comm-default-select">
-              <option value="open">Open</option>
+            <select id="comm-my-default-select" class="comm-default-select" v-model="defaultSelection">
+              <option v-for="c in specialized" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
-            <button type="button" class="btn btn-primary comm-default-save-btn" onclick="commSaveMyDefault()" data-i18n="txt_txt_save">Save</button>
+            <button type="button" class="btn btn-primary comm-default-save-btn" @click="saveMyDefault()" data-i18n="txt_txt_save">Save</button>
           </div>
-          <span id="comm-my-default-msg" class="comm-default-msg"></span>
+          <span class="comm-default-msg" :style="{ color: defaultMsgOk ? 'var(--green)' : 'var(--red)' }">{{ defaultMsg }}</span>
         </div>
 
         <!-- Community list management -->
         <div class="card">
           <h2 style="margin:0 0 0.5rem"><span data-i18n="txt_comm_title">Communities</span></h2>
           <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_help">Create and manage communities to scope ELO ratings and group tournaments by club or league.</p>
-          <div id="comm-list"></div>
-          <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap">
-            <input type="text" id="comm-new-name" data-i18n-placeholder="txt_comm_new_name_placeholder" placeholder="New community name…" style="flex:1;min-width:160px;padding:0.4rem 0.6rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
-            <button type="button" class="btn btn-success btn-sm" onclick="commCreate()" data-i18n="txt_comm_add">+ Add</button>
+          <div id="comm-list">
+            <!-- Global default — read-only card, always shown when present -->
+            <div v-if="global" style="display:flex;align-items:center;gap:0.6rem;padding:0.5rem 0.6rem;margin-bottom:0.75rem;background:var(--bg-alt,#f5f5f5);border:1px solid var(--border);border-radius:6px">
+              <span style="font-weight:600;font-size:0.9rem">🌐 {{ t('txt_comm_global') }}</span>
+              <span style="font-size:0.78rem;color:var(--text-muted)">— {{ t('txt_comm_global_desc') }}</span>
+              <span style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);padding:0.15rem 0.4rem;border:1px solid var(--border);border-radius:4px;white-space:nowrap">{{ t('txt_comm_builtin_badge') }}</span>
+            </div>
+            <p v-if="!hasSpecialized" class="muted-note" style="margin-top:0.25rem">
+              {{ t('txt_comm_no_communities') }}
+              <button type="button" class="btn btn-sm btn-link" style="vertical-align:baseline" @click="openInfo()"><span v-html="icInfo()"></span> {{ t('txt_txt_learn_more') }}</button>
+            </p>
+            <div v-else class="player-codes-table-wrap"><table class="player-codes-table">
+              <thead>
+                <tr class="player-codes-head-row">
+                  <th class="player-codes-th">{{ t('txt_comm_col_name') }}</th>
+                  <th class="player-codes-th" style="color:var(--text-muted)">{{ t('txt_comm_col_id') }}</th>
+                  <th class="player-codes-th"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="c in specialized" :key="c.id" class="player-codes-row">
+                  <td class="player-codes-name" style="font-weight:normal">
+                    <span v-if="renamingId !== c.id">{{ c.name }}</span>
+                    <input v-else type="text" v-model="renameDraft"
+                           @keydown.enter="confirmRename(c.id)" @keydown.escape="cancelRename()"
+                           style="padding:0.2rem 0.4rem;font-size:0.88rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);width:100%;max-width:200px">
+                  </td>
+                  <td class="player-codes-cell" style="color:var(--text-muted);font-size:0.8rem;font-family:monospace">{{ c.id }}</td>
+                  <td class="player-codes-cell-center" style="white-space:nowrap">
+                    <template v-if="renamingId !== c.id">
+                      <button class="btn btn-sm player-codes-icon-btn" @click="startRename(c.id)" style="margin-right:0.25rem" :title="t('txt_comm_rename')"><span v-html="icEdit()"></span></button>
+                      <button class="btn btn-sm btn-danger player-codes-icon-btn" @click="remove(c.id)" :title="t('txt_txt_remove')"><span v-html="icTrash()"></span></button>
+                    </template>
+                    <template v-else>
+                      <button class="btn btn-sm btn-primary" @click="confirmRename(c.id)" style="padding:0.2rem 0.5rem;margin-right:0.25rem" :title="t('txt_txt_save')">✓</button>
+                      <button class="btn btn-sm" @click="cancelRename()" style="padding:0.2rem 0.5rem" :title="t('txt_txt_cancel')">✕</button>
+                    </template>
+                  </td>
+                </tr>
+              </tbody>
+            </table></div>
           </div>
-          <div id="comm-msg" style="margin-top:0.5rem;font-size:0.84rem"></div>
+          <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap">
+            <input type="text" v-model="newName" @keydown.enter="create()" data-i18n-placeholder="txt_comm_new_name_placeholder" placeholder="New community name…" style="flex:1;min-width:160px;padding:0.4rem 0.6rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
+            <button type="button" class="btn btn-success btn-sm" @click="create()" data-i18n="txt_comm_add">+ Add</button>
+          </div>
+          <div id="comm-msg" style="margin-top:0.5rem;font-size:0.84rem" :style="{ color: msgOk ? 'var(--green)' : 'var(--red)' }">{{ msg }}</div>
         </div>
 
         <!-- Tournament assignment -->
         <div class="card">
           <h2 style="margin:0 0 0.5rem">🏆 <span data-i18n="txt_comm_tournament_title">Tournament Community Assignment</span></h2>
           <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_tournament_help">Reassign tournaments to different communities. Changes take effect immediately.</p>
-          <div id="comm-tournament-list"><div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
+          <div id="comm-tournament-list">
+            <div v-if="!loaded" class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div>
+            <p v-else-if="!tournaments.length" style="color:var(--text-muted);font-size:0.85rem">{{ t('txt_comm_no_tournaments') }}</p>
+            <div v-else class="player-codes-table-wrap"><table class="player-codes-table">
+              <thead>
+                <tr class="player-codes-head-row">
+                  <th class="player-codes-th">{{ t('txt_comm_col_tournament') }}</th>
+                  <th class="player-codes-th">{{ t('txt_comm_col_community') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="tour in sortedTournaments" :key="tour.id" class="player-codes-row">
+                  <td class="player-codes-name" style="font-weight:normal">
+                    <strong>{{ tour.name }}</strong>
+                    <span style="font-size:0.78rem;color:var(--text-muted);margin-left:0.4rem">{{ tour.type }}</span>
+                  </td>
+                  <td class="player-codes-cell">
+                    <select class="admin-sel" :value="tour.community_id || 'open'" @change="assignTournament(tour.id, $event.target.value)">
+                      <option v-for="c in communities" :key="c.id" :value="c.id">{{ optionLabel(c) }}</option>
+                    </select>
+                    <span v-if="rowMsg('t', tour.id)" style="font-size:0.78rem;margin-left:0.3rem" :style="{ color: rowMsg('t', tour.id).ok ? 'var(--green)' : 'var(--red)' }">{{ rowMsg('t', tour.id).text }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table></div>
+          </div>
         </div>
 
         <!-- Registration assignment -->
         <div class="card">
           <h2 style="margin:0 0 0.5rem"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_comm_lobby_title">Lobby Community Assignment</span></h2>
           <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_lobby_help">Reassign registration lobbies to different communities.</p>
-          <div id="comm-registration-list"><div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
+          <div id="comm-registration-list">
+            <div v-if="!loaded" class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div>
+            <p v-else-if="!registrations.length" style="color:var(--text-muted);font-size:0.85rem">{{ t('txt_comm_no_registrations') }}</p>
+            <div v-else class="player-codes-table-wrap"><table class="player-codes-table">
+              <thead>
+                <tr class="player-codes-head-row">
+                  <th class="player-codes-th">{{ t('txt_comm_col_lobby') }}</th>
+                  <th class="player-codes-th">{{ t('txt_comm_col_community') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in sortedRegistrations" :key="r.id" class="player-codes-row">
+                  <td class="player-codes-name" style="font-weight:normal">
+                    <strong>{{ r.name }}</strong>
+                    <span v-if="r.archived" style="font-size:0.75rem;color:var(--text-muted);margin-left:0.3rem">{{ t('txt_comm_archived') }}</span>
+                  </td>
+                  <td class="player-codes-cell">
+                    <select class="admin-sel" :value="r.community_id || 'open'" @change="assignRegistration(r.id, $event.target.value)">
+                      <option v-for="c in communities" :key="c.id" :value="c.id">{{ optionLabel(c) }}</option>
+                    </select>
+                    <span v-if="rowMsg('r', r.id)" style="font-size:0.78rem;margin-left:0.3rem" :style="{ color: rowMsg('r', r.id).ok ? 'var(--green)' : 'var(--red)' }">{{ rowMsg('r', r.id).text }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table></div>
+          </div>
         </div>
       </div>
   </div>

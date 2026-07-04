@@ -21,13 +21,14 @@ function _toggleTheme() {
   _applyTheme(_theme);
   _saveTheme(_theme);
   _refreshThemeToggleButtons();
+  if (typeof _pickerStore !== 'undefined') _pickerStore.theme = _theme;
 }
 
 function _toggleLanguage() {
   _lang = _lang === 'es' ? 'en' : 'es';
   setAppLanguage(_lang);
   if (TID) loadTV();
-  else _showPicker();
+  else if (typeof _pickerStore !== 'undefined') _pickerStore.lang = _lang;
 }
 
 function _languageToggleMeta() {
@@ -105,13 +106,73 @@ const _TV_PICKER_POLL_INTERVAL_MS = 3000;
 let _tvVersionStream = null;
 let _pickerVersionStream = null;
 let _subdomainClub = null; // {club_id, name, ...} when on a club subdomain
-let _pickerLastTournaments = []; // last-fetched list, used for archive toggle re-render
-let _pickerShowArchive = false;  // false = hide finished tournaments in picker
+// ── Picker reactive island (Phase 2b, slice 1) ────────────
+// The tournament picker (shown when no tournament is selected) is a Petite-Vue
+// island: `_pickerStore` holds the raw list + UI state, the header/list markup
+// is bound in `#tv-picker-island` (injected into #tv-root by _renderPickerHtml,
+// template in public.html). SSE (_showPicker's onVersion) and the archive toggle
+// mutate the store instead of rebuilding an HTML string. The live panel still
+// owns #tv-root via innerHTML when a tournament is selected — the two views are
+// mutually exclusive, so the island shell is re-injected+re-mounted each time
+// the picker is shown (a fresh element, so mountIsland's double-mount guard is a
+// no-op) while the store itself persists across mounts.
+const _pickerStore = reactiveStore({
+  tournaments: [],       // raw list from /api/tournaments
+  subdomainClub: null,   // {club_id, community_id, name, slug, logo_url} or null
+  showArchive: false,    // false = hide finished tournaments
+  theme: 'light',        // mirrors _theme so the toggle icon is reactive
+  lang: 'en',            // tracked so t() bindings re-render on language switch
 
-function togglePickerArchive() {
-  _pickerShowArchive = !_pickerShowArchive;
-  _renderPickerHtml(_pickerLastTournaments);
-}
+  // Lang-tracking t() wrapper (petite-vue only re-renders on reactive reads).
+  t(key) { void this.lang; return window.t(key); },
+
+  get _visible() {
+    const sub = this.subdomainClub;
+    if (!sub) return this.tournaments;
+    return this.tournaments.filter(item =>
+      item && item.club_id === sub.club_id && item.community_id === sub.community_id);
+  },
+  get activeTournaments() { return this._visible.filter(x => x.phase !== 'finished'); },
+  get finishedTournaments() { return this._visible.filter(x => x.phase === 'finished'); },
+  get hasAny() { return this.activeTournaments.length > 0 || this.finishedTournaments.length > 0; },
+
+  get langToggle() { void this.lang; return _languageToggleMeta(); },
+  get themeIcon() { return this.theme === 'dark' ? '🌙' : '☀️'; },
+  get toggleThemeTitle() { return this.t('txt_txt_toggle_light_dark_mode'); },
+  get pageSelectorHtml() { void this.lang; return buildPageSelectorHtml('tv'); },
+
+  get subdomainBannerLabel() {
+    const sub = this.subdomainClub;
+    if (!sub) return '';
+    return (this.t('txt_picker_subdomain_banner') || '{club}')
+      .replace('{club}', sub.name || sub.slug || '');
+  },
+  get archiveBtnLabel() {
+    return this.showArchive ? this.t('txt_tv_hide_archive') : this.t('txt_tv_show_archive');
+  },
+
+  // Per-item view-model for the picker template.
+  item(tournament) {
+    return {
+      name: tournament.name,
+      slug: tournament.alias || tournament.id,
+      alias: tournament.alias || '',
+      modeLabel: tournament.has_team_roster
+        ? this.t('txt_txt_team_mode_short') : this.t('txt_txt_individual_mode'),
+      sportLabel: tournament.sport === 'tennis'
+        ? this.t('txt_txt_sport_tennis') : this.t('txt_txt_sport_padel'),
+      phaseLabel: _phaseLabel(tournament.phase),
+      brandingLabel: tournament.club_name || tournament.community_name || '',
+      logoUrl: tournament.club_logo_url || '',
+    };
+  },
+
+  toggleArchive() { this.showArchive = !this.showArchive; },
+  toggleTheme() { _toggleTheme(); this.theme = _theme; },
+  toggleLanguage() { _toggleLanguage(); },
+  refresh() { _showPicker(); },
+  submitGoTo(e) { return _goToTournament(e); },
+});
 
 function _tvLabel() {
   return tvState.tournamentSport === 'tennis' ? t('txt_txt_tennis_tv') : t('txt_txt_padel_tv');
@@ -2354,86 +2415,63 @@ async function _resolveAlias() {
   return true;
 }
 
+// Static shell for the picker island. Re-injected into #tv-root on each
+// _showPicker() (the live panel clobbers #tv-root when a tournament is shown),
+// then mounted via mountIsland(). The per-item card markup lives in the
+// #tpl-tv-picker-item <template> in public.html.
+const _PICKER_ISLAND_HTML = `
+<div id="tv-picker-island" v-scope class="tv-picker">
+  <div class="tv-header-title-row" style="margin-bottom:1rem">
+    <div class="tv-lang-cell">
+      <button type="button" class="theme-btn" @click="toggleLanguage()"
+              :title="langToggle.label" :aria-label="langToggle.label">{{ langToggle.icon }}</button>
+    </div>
+    <div v-html="pageSelectorHtml"></div>
+    <div class="tv-toggle-btns">
+      <button type="button" class="theme-btn" @click="refresh()"
+              :title="t('txt_txt_refresh_now')"
+              style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;font-size:0.8rem;line-height:1">↻</button>
+      <button type="button" data-theme-toggle-icon="1" class="theme-btn" @click="toggleTheme()"
+              :title="toggleThemeTitle">{{ themeIcon }}</button>
+    </div>
+  </div>
+  <div v-if="subdomainClub" class="player-subdomain-banner" role="status">
+    <img v-if="subdomainClub.logo_url" class="player-subdomain-logo" :src="subdomainClub.logo_url" alt="">
+    <span class="player-subdomain-text">{{ subdomainBannerLabel }}</span>
+  </div>
+  <div v-if="hasAny">
+    <div class="subtitle">{{ t('txt_txt_select_a_tournament_to_display') }}</div>
+    <ul v-if="activeTournaments.length" class="tv-picker-list">
+      <li v-for="tv in activeTournaments" :key="tv.id" v-scope="{ $template: '#tpl-tv-picker-item', it: item(tv) }"></li>
+    </ul>
+    <p v-else-if="!showArchive" class="tv-picker-empty">{{ t('txt_txt_finished_tournaments') }}</p>
+    <div v-if="finishedTournaments.length">
+      <button type="button" class="tv-picker-archive-btn" @click="toggleArchive()" :aria-expanded="showArchive">
+        <span class="tv-picker-archive-icon">{{ showArchive ? '▲' : '▼' }}</span> {{ archiveBtnLabel }}
+        <span class="tv-picker-archive-count">{{ finishedTournaments.length }}</span>
+      </button>
+      <ul v-if="showArchive" class="tv-picker-list tv-picker-list--archive">
+        <li v-for="tv in finishedTournaments" :key="tv.id" v-scope="{ $template: '#tpl-tv-picker-item', it: item(tv) }"></li>
+      </ul>
+    </div>
+    <div style="color:var(--text-muted);font-size:0.85rem;margin-top:1.5rem;margin-bottom:0.5rem">{{ t('txt_txt_or_enter_a_tournament_id_alias_directly') }}</div>
+  </div>
+  <form class="tv-picker-form" @submit="submitGoTo($event)">
+    <input type="text" id="picker-input" :placeholder="t('txt_txt_tournament_id_or_alias')">
+    <button type="submit">{{ t('txt_txt_go') }}</button>
+  </form>
+</div>`;
+
 function _renderPickerHtml(tournaments) {
-  _pickerLastTournaments = tournaments;
-  const visibleTournaments = _subdomainClub
-    ? tournaments.filter(item => item && item.club_id === _subdomainClub.club_id && item.community_id === _subdomainClub.community_id)
-    : tournaments;
-  const activeTournaments = visibleTournaments.filter(t => t.phase !== 'finished');
-  const finishedTournaments = visibleTournaments.filter(t => t.phase === 'finished');
-  const langToggle = _languageToggleMeta();
-  let html = `<div class="tv-picker">`;
-  html += `<div class="tv-header-title-row" style="margin-bottom:1rem">`;
-  html += `<div class="tv-lang-cell"><button type="button" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button></div>`;
-  html += buildPageSelectorHtml('tv');
-  html += `<div class="tv-toggle-btns">`;
-  html += buildCompactRefreshButtonHtml('_showPicker()', t('txt_txt_refresh_now'));
-  html += `<button type="button" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>`;
-  html += `</div>`;
-  html += `</div>`;
-  if (_subdomainClub) {
-    const label = (t('txt_picker_subdomain_banner') || '{club}').replace('{club}', _subdomainClub.name || _subdomainClub.slug || '');
-    html += `<div class="player-subdomain-banner" role="status">`;
-    if (_subdomainClub.logo_url) {
-      html += `<img class="player-subdomain-logo" src="${escAttr(_subdomainClub.logo_url)}" alt="">`;
-    }
-    html += `<span class="player-subdomain-text">${esc(label)}</span>`;
-    html += `</div>`;
-  }
-  if (activeTournaments.length > 0 || finishedTournaments.length > 0) {
-    html += `<div class="subtitle">${t('txt_txt_select_a_tournament_to_display')}</div>`;
-    if (activeTournaments.length > 0) {
-      html += `<ul class="tv-picker-list">`;
-      for (const tournament of activeTournaments) {
-        html += _renderPickerItem(tournament);
-      }
-      html += `</ul>`;
-    } else if (!_pickerShowArchive) {
-      html += `<p class="tv-picker-empty">${t('txt_txt_finished_tournaments')}</p>`;
-    }
-    if (finishedTournaments.length > 0) {
-      const archiveBtnLabel = _pickerShowArchive ? t('txt_tv_hide_archive') : t('txt_tv_show_archive');
-      html += `<button type="button" class="tv-picker-archive-btn" onclick="togglePickerArchive()" aria-expanded="${_pickerShowArchive}">`;
-      html += `<span class="tv-picker-archive-icon">${_pickerShowArchive ? '▲' : '▼'}</span> ${esc(archiveBtnLabel)}`;
-      html += ` <span class="tv-picker-archive-count">${finishedTournaments.length}</span>`;
-      html += `</button>`;
-      if (_pickerShowArchive) {
-        html += `<ul class="tv-picker-list tv-picker-list--archive">`;
-        for (const tournament of finishedTournaments) {
-          html += _renderPickerItem(tournament);
-        }
-        html += `</ul>`;
-      }
-    }
-    html += `<div style="color:var(--text-muted);font-size:0.85rem;margin-top:1.5rem;margin-bottom:0.5rem">${t('txt_txt_or_enter_a_tournament_id_alias_directly')}</div>`;
-  }
-  html += `<form class="tv-picker-form" onsubmit="return _goToTournament(event)">`;
-  html += `<input type="text" id="picker-input" placeholder="${t('txt_txt_tournament_id_or_alias')}">`;
-  html += `<button type="submit">${t('txt_txt_go')}</button>`;
-  html += `</form>`;
-  html += `</div>`;
-
-  document.getElementById('tv-root').innerHTML = html;
-}
-
-function _renderPickerItem(tournament) {
-  const modeLabel = tournament.has_team_roster ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode');
-  const phaseLabel = _phaseLabel(tournament.phase);
-  const aliasTag = tournament.alias ? `<span class="picker-alias">${esc(tournament.alias)}</span>` : '';
-  const isTennis = tournament.sport === 'tennis';
-  const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
-  const pickerSlug = tournament.alias || tournament.id;
-  const brandingLabel = tournament.club_name || tournament.community_name || '';
-  const logoImg = tournament.club_logo_url
-    ? `<img src="${escAttr(tournament.club_logo_url)}" alt="" style="height:18px;width:18px;object-fit:cover;border-radius:3px;margin-right:0.35rem;vertical-align:middle;flex-shrink:0">`
-    : '';
-  let html = `<a class="tv-picker-item" href="/tv/${encodeURIComponent(pickerSlug)}">`;
-  html += `${logoImg}${esc(tournament.name)}<span class="picker-badge picker-badge-sport">${esc(sportLabel)}</span><span class="picker-badge picker-badge-type">${esc(modeLabel)}</span><span class="picker-badge picker-badge-phase">${esc(phaseLabel)}</span>${aliasTag}`;
-  if (brandingLabel) {
-    html += `<span style="display:block;margin-top:0.2rem;color:var(--text-muted);font-size:0.78rem">${esc(brandingLabel)}</span>`;
-  }
-  html += `</a>`;
-  return html;
+  _pickerStore.tournaments = tournaments || [];
+  _pickerStore.subdomainClub = _subdomainClub;
+  _pickerStore.theme = _theme;
+  _pickerStore.lang = getAppLanguage();
+  const root = document.getElementById('tv-root');
+  // The live panel owns #tv-root via innerHTML; re-inject the island shell so
+  // it exists as a fresh element, then mount the persistent store onto it.
+  root.innerHTML = _PICKER_ISLAND_HTML;
+  mountIsland('#tv-picker-island', _pickerStore);
 }
 
 async function _showPicker() {
