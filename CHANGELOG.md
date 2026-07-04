@@ -1,3 +1,9 @@
+## v1.13.2 (2026-07-04)
+
+### Fix
+
+- **email**: create an email notification even if the email was not verified but is present in the system; add auto-verification
+
 ## v1.13.1 (2026-06-09)
 
 ### Fix
