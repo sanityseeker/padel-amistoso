@@ -1481,9 +1481,7 @@ class TestEmailVerification:
         assert res.json() == {"ok": True}
 
         with db_mod.get_db() as conn:
-            after = conn.execute(
-                "SELECT email_verified_at FROM player_profiles WHERE id = ?", (profile_id,)
-            ).fetchone()
+            after = conn.execute("SELECT email_verified_at FROM player_profiles WHERE id = ?", (profile_id,)).fetchone()
             linked = conn.execute(
                 "SELECT profile_id FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
                 (tid, pid),
