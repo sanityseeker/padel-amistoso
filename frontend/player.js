@@ -320,6 +320,16 @@ function _init() {
         if (_effectiveToken) {
           _jwt = _effectiveToken;
           await _fetchSpace();
+          if (_tokenFromHash) {
+            // Arriving via an emailed link (welcome or magic-link recovery)
+            // proves the player owns this inbox — auto-verify the email
+            // without requiring a separate verification click.
+            try {
+              await _apiPost('/confirm-email-link', {}, _tokenFromHash);
+              if (_profile) _profile.email_verified = true;
+              _saveSession();
+            } catch (_) {}
+          }
         }
       })
       .then(() => _render())

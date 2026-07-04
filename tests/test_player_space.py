@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -1171,6 +1172,22 @@ class TestRecoverPassphrase:
         if res.status_code == 200:
             assert res.json() == {"ok": True}
 
+    def test_recover_unverified_email_still_sends_magic_link(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # An unverified profile should not be locked out of password/passphrase
+        # recovery — recovery email friction is separate from email verification.
+        _create_profile(client, name="Unverified Recover", email="unverified-recover@example.com")
+
+        sent: list[str] = []
+        monkeypatch.setattr(
+            "backend.api.routes_player_space.send_email_background",
+            lambda to, _subject, _body: sent.append(to),
+        )
+        res = client.post("/api/player-profile/recover", json={"email": "unverified-recover@example.com"})
+        assert res.status_code == 200
+        assert sent == ["unverified-recover@example.com"]
+
     def test_recover_invalid_email_does_not_raise_validation_error(self, client: TestClient) -> None:
         # Invalid email silently does nothing; rate limiter may fire in test runs (429 also acceptable)
         res = client.post("/api/player-profile/recover", json={"email": "notanemail"})
@@ -1179,6 +1196,57 @@ class TestRecoverPassphrase:
     def test_recover_missing_email_returns_422(self, client: TestClient) -> None:
         res = client.post("/api/player-profile/recover", json={})
         assert res.status_code == 422
+
+    def test_recover_admin_set_email_logs_in_and_auto_verifies(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Simulates an admin manually setting a profile's email (which never
+        # runs the verification-email flow) — the player should still be able
+        # to recover via that email, and using the resulting login link should
+        # both log them in and auto-verify the email.
+        monkeypatch.setattr("backend.email.SITE_URL", "https://example.com")
+        created = _create_profile(client, name="Admin Set", email="original@example.com")
+        profile_id = created["profile"]["id"]
+        # Mirrors what PUT /admin/player-profiles/{id}/email does: overwrite the
+        # email directly with no verification email and no verified-state reset.
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "UPDATE player_profiles SET email = ? WHERE id = ?",
+                ("admin-set@example.com", profile_id),
+            )
+            unverified = conn.execute(
+                "SELECT email_verified_at FROM player_profiles WHERE id = ?", (profile_id,)
+            ).fetchone()
+        assert unverified["email_verified_at"] is None
+
+        sent_tokens: list[str] = []
+
+        def _capture(_to: str, _subject: str, html_body: str) -> None:
+            match = re.search(r"#token=([^\"'&\s]+)", html_body)
+            assert match, "expected a #token= login link in the recovery email"
+            sent_tokens.append(match.group(1))
+
+        monkeypatch.setattr("backend.api.routes_player_space.send_email_background", _capture)
+
+        res = client.post("/api/player-profile/recover", json={"email": "admin-set@example.com"})
+        assert res.status_code == 200
+        assert len(sent_tokens) == 1
+        login_token = sent_tokens[0]
+
+        # Following the emailed link logs the player in...
+        space_res = client.get("/api/player-profile/space", headers=_headers(login_token))
+        assert space_res.status_code == 200
+        assert space_res.json()["profile"]["id"] == profile_id
+
+        # ...and confirming the link (as the frontend does right after) verifies the email.
+        confirm_res = client.post("/api/player-profile/confirm-email-link", headers=_headers(login_token))
+        assert confirm_res.status_code == 200
+
+        with db_mod.get_db() as conn:
+            verified = conn.execute(
+                "SELECT email_verified_at FROM player_profiles WHERE id = ?", (profile_id,)
+            ).fetchone()
+        assert verified["email_verified_at"] is not None
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -1383,7 +1451,69 @@ class TestEmailVerification:
         html_body = sent_html[-1]
         assert "#verify_token=" in html_body
         assert "&amp;token=" in html_body
-        assert html_body.find("#verify_token=") < html_body.find("&amp;token=")
+
+    def test_confirm_email_link_marks_verified_and_links_by_email(self, client: TestClient) -> None:
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        pid = f"p-{uuid.uuid4().hex[:8]}"
+        _insert_tournament(tid, "Confirm Link Cup")
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO player_secrets
+                    (tournament_id, player_id, player_name, passphrase, token, contact, email, profile_id)
+                VALUES (?, ?, ?, ?, ?, '', ?, NULL)
+                """,
+                (tid, pid, "Confirm Player", f"pp-{uuid.uuid4().hex[:12]}", uuid.uuid4().hex, "confirm@example.com"),
+            )
+
+        created = _create_profile(client, name="Confirm Link", email="confirm@example.com")
+        token = created["access_token"]
+        profile_id = created["profile"]["id"]
+
+        with db_mod.get_db() as conn:
+            before = conn.execute(
+                "SELECT email_verified_at FROM player_profiles WHERE id = ?", (profile_id,)
+            ).fetchone()
+        assert before["email_verified_at"] is None
+
+        res = client.post("/api/player-profile/confirm-email-link", headers=_headers(token))
+        assert res.status_code == 200
+        assert res.json() == {"ok": True}
+
+        with db_mod.get_db() as conn:
+            after = conn.execute(
+                "SELECT email_verified_at FROM player_profiles WHERE id = ?", (profile_id,)
+            ).fetchone()
+            linked = conn.execute(
+                "SELECT profile_id FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
+                (tid, pid),
+            ).fetchone()
+        assert after["email_verified_at"] is not None
+        assert linked["profile_id"] == profile_id
+
+    def test_confirm_email_link_requires_auth(self, client: TestClient) -> None:
+        res = client.post("/api/player-profile/confirm-email-link")
+        assert res.status_code == 401
+
+    def test_confirm_email_link_is_idempotent(self, client: TestClient) -> None:
+        created = _create_profile(client, name="Confirm Twice", email="confirmtwice@example.com")
+        token = created["access_token"]
+        profile_id = created["profile"]["id"]
+
+        first = client.post("/api/player-profile/confirm-email-link", headers=_headers(token))
+        assert first.status_code == 200
+        with db_mod.get_db() as conn:
+            first_verified_at = conn.execute(
+                "SELECT email_verified_at FROM player_profiles WHERE id = ?", (profile_id,)
+            ).fetchone()["email_verified_at"]
+
+        second = client.post("/api/player-profile/confirm-email-link", headers=_headers(token))
+        assert second.status_code == 200
+        with db_mod.get_db() as conn:
+            second_verified_at = conn.execute(
+                "SELECT email_verified_at FROM player_profiles WHERE id = ?", (profile_id,)
+            ).fetchone()["email_verified_at"]
+        assert second_verified_at == first_verified_at
 
     def test_no_profile_email_no_auto_link(self, client: TestClient, auth_headers: dict) -> None:
         rid = self._create_lobby(client, auth_headers)

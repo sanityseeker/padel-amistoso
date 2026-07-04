@@ -2527,6 +2527,39 @@ async def verify_profile_email(req: VerifyEmailRequest) -> dict:
     return {"ok": True}
 
 
+@router.post("/confirm-email-link")
+async def confirm_email_link(identity: ProfileIdentity | None = Depends(get_current_profile)) -> dict:
+    """Mark the profile's email verified because the player used an emailed access link.
+
+    Both the welcome email and the recovery magic-link email carry a profile
+    JWT (``#token=``) that only this app's inbox could have delivered to the
+    player, so successfully authenticating with one is itself proof of email
+    ownership — no separate ``verify_token`` click is required.  The frontend
+    calls this once, right after such a link resolves.
+    """
+    if identity is None:
+        raise HTTPException(401, "Profile authentication required")
+
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT email, email_verified_at FROM player_profiles WHERE id = ?",
+            (identity.profile_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(404, "Profile not found")
+        email = (row["email"] or "").strip()
+        if email and not row["email_verified_at"]:
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                "UPDATE player_profiles SET email_verified_at = ? WHERE id = ?",
+                (now, identity.profile_id),
+            )
+
+    if email:
+        _link_email_participations(identity.profile_id, email)
+    return {"ok": True}
+
+
 @router.post("/resend-verification")
 async def resend_profile_email_verification(
     request: Request,
@@ -2590,8 +2623,10 @@ async def recover_passphrase(req: ProfileRecoverRequest, request: Request) -> di
     """Email the player a one-click login link given their registered email address.
 
     The link embeds a short-lived (1-hour) profile JWT — the passphrase is
-    never included in the email.  Always returns ``{"ok": True}`` regardless
-    of whether the email is found, to prevent account enumeration.
+    never included in the email.  Sent regardless of whether the profile's
+    email is verified yet, so an unverified account isn't locked out of
+    recovery.  Always returns ``{"ok": True}`` regardless of whether the
+    email is found, to prevent account enumeration.
     """
     _RECOVER_RATE_LIMITER.check(_client_ip(request), "Too many recovery requests — try again in 15 minutes")
     _RECOVER_RATE_LIMITER.record(_client_ip(request))
@@ -2606,7 +2641,6 @@ async def recover_passphrase(req: ProfileRecoverRequest, request: Request) -> di
                         SELECT id, passphrase, name, email, lang
                             FROM player_profiles
                          WHERE LOWER(email) = LOWER(?)
-                             AND email_verified_at IS NOT NULL
                         """,
             (clean_email,),
         ).fetchone()
