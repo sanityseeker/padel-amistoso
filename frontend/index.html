@@ -104,12 +104,109 @@
   </div>
 
   <!-- ─── HOME ──────────────────────────────────────────── -->
+  <!-- Petite-Vue island: bound to _homeStore (admin-tournaments.js). Card
+       markup lives in the <template> defs below the card and is instantiated
+       per entry via v-scope="cardTemplate(entry)" so each card type is
+       defined exactly once. -->
   <div class="tab-panel active" id="panel-home" role="tabpanel">
-    <div class="card">
+    <div class="card" id="home-island" v-scope>
       <h2 style="margin:0 0 1rem" data-i18n="txt_txt_tournaments">Tournaments</h2>
-      <div id="home-tournament-toolbar" class="home-tournament-toolbar"></div>
-      <div id="tournament-list"><div class="skeleton-loader"><div class="skeleton-line skeleton-line-lg"></div><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
+      <div id="home-tournament-toolbar" class="home-tournament-toolbar" v-cloak>
+        <div class="home-search-row">
+          <input id="home-tournament-search" class="home-search-input" type="search"
+                 v-model="searchDraft" :placeholder="t('txt_txt_search_tournaments_placeholder')"
+                 @keydown.enter="submitSearch()">
+          <button type="button" class="btn btn-sm" @click="submitSearch()">{{ t('txt_txt_go') }}</button>
+          <button type="button" class="btn btn-sm btn-muted" @click="clearSearch()">{{ t('txt_txt_clear') }}</button>
+        </div>
+        <div class="home-filter-row" role="toolbar" aria-label="Home filters">
+          <div v-for="dim in visibleDims" :key="dim" class="home-filter-dropdown" :data-dim="dim">
+            <button type="button" class="home-filter-chip home-filter-dropdown-trigger"
+                    :class="{ active: filters[dim] !== defaults[dim], open: openDim === dim }"
+                    aria-haspopup="menu" :aria-expanded="openDim === dim"
+                    :aria-label="dimLabel(dim) + ': ' + valueLabel(dim, filters[dim])"
+                    @click="toggleDropdown(dim)">
+              <span class="home-filter-dropdown-dim">{{ dimLabel(dim) }}:</span>
+              <span class="home-filter-dropdown-value">{{ valueLabel(dim, filters[dim]) }}</span>
+              <span class="home-filter-dropdown-caret" aria-hidden="true">▾</span>
+            </button>
+            <div v-if="openDim === dim" class="home-filter-dropdown-menu" role="menu" :aria-label="dimLabel(dim)">
+              <button v-for="value in dimValues(dim)" :key="value" type="button" role="menuitemradio"
+                      :aria-checked="filters[dim] === value"
+                      class="home-filter-dropdown-item" :class="{ selected: filters[dim] === value }"
+                      @click="setFilter(dim, value)">
+                <span class="home-filter-dropdown-item-check" aria-hidden="true">{{ filters[dim] === value ? '✓' : '' }}</span>
+                <span class="home-filter-dropdown-item-label">{{ valueLabel(dim, value) }}</span>
+                <span class="home-filter-chip-count" aria-hidden="true">{{ chipCount(dim, value) }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="tournament-list">
+        <div v-if="loading" class="skeleton-loader"><div class="skeleton-line skeleton-line-lg"></div><div class="skeleton-line"></div><div class="skeleton-line"></div></div>
+        <div v-else-if="!hasAnyItems" class="tournaments-empty-state" v-cloak>
+          <div class="tournaments-empty-icon">🏆</div>
+          <div class="tournaments-empty-title">{{ hasFilter ? t('txt_txt_no_home_items_match') : t('txt_txt_no_tournaments_yet') }}</div>
+          <div class="tournaments-empty-hint">{{ hasFilter ? t('txt_txt_try_adjusting_filters') : t('txt_txt_no_tournaments_hint') }}</div>
+          <button v-if="hasFilter" type="button" class="btn btn-primary btn-sm" @click="clearAll()">{{ t('txt_txt_clear') }}</button>
+          <button v-else type="button" class="btn btn-primary btn-sm" @click="setActiveTab('create')">{{ t('txt_txt_create_first') }}</button>
+        </div>
+        <!-- Plain div, not <template>: petite-vue 0.4.1 breaks v-for + v-scope
+             with an external $template when nested inside a <template v-if>/
+             v-else wrapper (insertBefore on a null parent). A <div v-else>
+             doesn't hit that path. -->
+        <div v-else>
+          <div v-for="entry in mainCards" :key="entry.key" v-scope="cardTemplate(entry)"></div>
+          <details v-if="archivedEntries.length" class="card archived-lobbies-panel">
+            <summary class="archived-lobbies-summary">{{ t('txt_reg_show_archived') }} ({{ archivedEntries.length }})</summary>
+            <div class="archived-lobbies-body">
+              <div v-for="entry in archivedEntries" :key="entry.key" v-scope="cardTemplate(entry)"></div>
+            </div>
+          </details>
+        </div>
+      </div>
     </div>
+
+    <!-- Card templates for the home list island (inert until instantiated) -->
+    <template id="tpl-home-tourn-card">
+      <div class="match-card tournament-list-card" :class="{ 'active-tournament': entry.item.id === currentTid }">
+        <div class="match-teams">
+          <a class="tournament-name-link" href="#" @click.prevent="openTournament(entry.item.id, entry.item.type)">{{ entry.item.name }}</a>
+          <span class="badge badge-sport">{{ sportLabel(entry.item) }}</span>
+          <span class="badge badge-type">{{ entry.item.has_team_roster ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode') }}</span>
+          <span class="badge badge-phase">{{ phaseLabel(entry.item.phase) }}</span>
+          <span v-if="entry.item.shared" class="badge badge-shared">{{ t('txt_badge_shared') }}</span>
+          <span v-if="identityLabel(entry.item)" class="badge" style="background:var(--bg-alt,#eee);color:var(--text-muted);font-size:0.72rem;border:1px solid var(--border);font-weight:500">{{ identityLabel(entry.item) }}</span>
+        </div>
+        <div class="tournament-actions">
+          <button v-if="canEditTournament(entry.item)" type="button" class="btn btn-sm btn-visibility" :title="t('txt_txt_visibility')"
+                  @click="togglePublic(entry.item.id, entry.item.public !== false)">
+            <span v-html="_ic(entry.item.public !== false ? 'globe' : 'lock')"></span> {{ entry.item.public !== false ? t('txt_txt_public') : t('txt_txt_private') }}
+          </button>
+          <button v-if="canDeleteTournament(entry.item)" type="button" class="btn btn-danger btn-sm" @click="deleteTournament(entry.item.id)">✕</button>
+        </div>
+      </div>
+    </template>
+    <template id="tpl-home-lobby-card">
+      <div class="match-card tournament-list-card reg-lobby-card">
+        <div class="match-teams">
+          <a class="tournament-name-link" href="#" @click.prevent="openRegistration(entry.item.id, entry.item.name)">{{ entry.item.name }}</a>
+          <span class="badge badge-sport">{{ sportLabel(entry.item) }}</span>
+          <span v-if="identityLabel(entry.item)" class="badge" style="background:var(--bg-alt,#eee);color:var(--text-muted);font-size:0.72rem;border:1px solid var(--border);font-weight:500">{{ identityLabel(entry.item) }}</span>
+          <span v-if="entry.item.open" class="badge badge-lobby-open">{{ t('txt_reg_registration_open') }}</span>
+          <span v-else class="badge badge-lobby-closed">{{ entry.item.archived ? t('txt_reg_registration_archived') : t('txt_reg_registration_closed') }}</span>
+          <span class="reg-lobby-count">({{ entry.item.registrant_count || 0 }})</span>
+        </div>
+        <div class="tournament-actions">
+          <button type="button" class="btn btn-sm btn-visibility" :title="t('txt_txt_visibility')"
+                  @click="_toggleRegListed(entry.item.id, isListed(entry.item))">
+            <span v-html="_ic(isListed(entry.item) ? 'globe' : 'lock')"></span> {{ isListed(entry.item) ? t('txt_txt_public') : t('txt_txt_private') }}
+          </button>
+          <button type="button" class="btn btn-danger btn-sm" :title="t('txt_reg_delete')" @click="_deleteRegistration(entry.item.id)">✕</button>
+        </div>
+      </div>
+    </template>
   </div>
 
   <!-- ─── CREATE ─────────────────────────────────────────── -->
