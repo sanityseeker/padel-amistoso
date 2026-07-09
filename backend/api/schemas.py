@@ -611,11 +611,13 @@ class FindByNameRequest(BaseModel):
 class ParticipationMatchOut(BaseModel):
     """A past participation surfaced by name search (no secrets, no email).
 
-    ``already_linked`` marks participations that already belong to a Hub
+    ``already_linked`` marks participations that already belong to a real Hub
     profile — they are shown for recognition but cannot be claimed.
+    ``entity_type="profile"`` matches are ghost profiles (internal tracking
+    identities); claiming one merges all its participations + ELO at once.
     """
 
-    entity_type: str  # 'tournament' | 'registration'
+    entity_type: str  # 'tournament' | 'registration' | 'profile'
     entity_id: str
     entity_name: str
     player_id: str

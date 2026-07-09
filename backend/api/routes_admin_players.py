@@ -198,6 +198,83 @@ async def search_past_participants(
 # ────────────────────────────────────────────────────────────────────────────
 
 
+def _reassign_profile_data(conn, primary_id: str, secondary_id: str) -> None:
+    """Move all participations/history from ``secondary_id`` to ``primary_id``.
+
+    Deletes the secondary profile and its per-scope ELO rows; the caller is
+    responsible for recomputing ELO (``consolidate_ghost_elos``) afterwards.
+    """
+    conn.execute(
+        "UPDATE player_secrets SET profile_id = ? WHERE profile_id = ?",
+        (primary_id, secondary_id),
+    )
+    conn.execute(
+        "UPDATE registrants SET profile_id = ? WHERE profile_id = ?",
+        (primary_id, secondary_id),
+    )
+    # Remove history rows that would conflict with existing primary rows, then
+    # reassign the rest.
+    conn.execute(
+        """DELETE FROM player_history
+           WHERE profile_id = ?
+             AND entity_type = 'tournament'
+             AND entity_id IN (
+                 SELECT entity_id FROM player_history
+                  WHERE profile_id = ? AND entity_type = 'tournament'
+             )""",
+        (secondary_id, primary_id),
+    )
+    conn.execute(
+        "UPDATE player_history SET profile_id = ? WHERE profile_id = ?",
+        (primary_id, secondary_id),
+    )
+    # Community and club ELO will be fully recomputed by the caller.
+    conn.execute("DELETE FROM profile_community_elo WHERE profile_id = ?", (secondary_id,))
+    conn.execute("DELETE FROM profile_club_elo WHERE profile_id = ?", (secondary_id,))
+    conn.execute("DELETE FROM player_profiles WHERE id = ?", (secondary_id,))
+
+
+def _combined_player_ids(conn, profile_id: str) -> list[str]:
+    """All distinct tournament ``player_id``s now owned by ``profile_id``."""
+    return [
+        r["player_id"]
+        for r in conn.execute(
+            """
+            SELECT DISTINCT player_id FROM (
+                SELECT player_id FROM player_secrets
+                 WHERE profile_id = ? AND player_id IS NOT NULL
+                UNION
+                SELECT player_id FROM player_history
+                 WHERE profile_id = ? AND entity_type = 'tournament'
+                   AND player_id IS NOT NULL
+            )
+            """,
+            (profile_id, profile_id),
+        ).fetchall()
+    ]
+
+
+def merge_ghost_into_profile(primary_id: str, ghost_id: str) -> bool:
+    """Merge one ghost profile's data into ``primary_id`` and recompute ELO.
+
+    Used by organizer-approved participation claims (``entity_type="profile"``
+    in ``routes_registration``).  Returns ``False`` — leaving everything
+    untouched — when ``ghost_id`` no longer exists or is not a ghost (e.g. it
+    was already merged), or when ``primary_id`` does not exist.
+    """
+    if primary_id == ghost_id:
+        return False
+    with get_db() as conn:
+        ghost = conn.execute("SELECT is_ghost FROM player_profiles WHERE id = ?", (ghost_id,)).fetchone()
+        target = conn.execute("SELECT 1 FROM player_profiles WHERE id = ?", (primary_id,)).fetchone()
+        if ghost is None or not ghost["is_ghost"] or target is None:
+            return False
+        _reassign_profile_data(conn, primary_id, ghost_id)
+        all_player_ids = _combined_player_ids(conn, primary_id)
+    consolidate_ghost_elos(primary_id, all_player_ids)
+    return True
+
+
 @router.post("/consolidate-ghosts", response_model=AdminPlayerProfileSummary)
 async def consolidate_ghost_profiles(
     req: GhostConsolidateRequest,
@@ -265,47 +342,9 @@ async def consolidate_ghost_profiles(
             )
 
         for secondary_id in secondary_ids:
-            conn.execute(
-                "UPDATE player_secrets SET profile_id = ? WHERE profile_id = ?",
-                (primary_id, secondary_id),
-            )
-            # Remove history rows that would conflict with existing primary rows, then
-            # reassign the rest.
-            conn.execute(
-                """DELETE FROM player_history
-                   WHERE profile_id = ?
-                     AND entity_type = 'tournament'
-                     AND entity_id IN (
-                         SELECT entity_id FROM player_history
-                          WHERE profile_id = ? AND entity_type = 'tournament'
-                     )""",
-                (secondary_id, primary_id),
-            )
-            conn.execute(
-                "UPDATE player_history SET profile_id = ? WHERE profile_id = ?",
-                (primary_id, secondary_id),
-            )
-            # Community and club ELO will be fully recomputed below.
-            conn.execute("DELETE FROM profile_community_elo WHERE profile_id = ?", (secondary_id,))
-            conn.execute("DELETE FROM profile_club_elo WHERE profile_id = ?", (secondary_id,))
-            conn.execute("DELETE FROM player_profiles WHERE id = ?", (secondary_id,))
+            _reassign_profile_data(conn, primary_id, secondary_id)
 
-        all_player_ids = [
-            r["player_id"]
-            for r in conn.execute(
-                """
-                SELECT DISTINCT player_id FROM (
-                    SELECT player_id FROM player_secrets
-                     WHERE profile_id = ? AND player_id IS NOT NULL
-                    UNION
-                    SELECT player_id FROM player_history
-                     WHERE profile_id = ? AND entity_type = 'tournament'
-                       AND player_id IS NOT NULL
-                )
-                """,
-                (primary_id, primary_id),
-            ).fetchall()
-        ]
+        all_player_ids = _combined_player_ids(conn, primary_id)
 
     consolidate_ghost_elos(primary_id, all_player_ids)
 

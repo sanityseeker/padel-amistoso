@@ -312,6 +312,164 @@ class TestNameClaims:
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# Ghost-profile discovery + claims (merge on approval)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _insert_ghost(ghost_id: str, name: str) -> None:
+    with db_mod.get_db() as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO player_profiles
+               (id, passphrase, name, email, contact, created_at, is_ghost)
+               VALUES (?, ?, ?, '', '', datetime('now'), 1)""",
+            (ghost_id, f"ghost-pass-{ghost_id}", name),
+        )
+
+
+def _link_registrant_to_profile(rid: str, player_id: str, profile_id: str) -> None:
+    with db_mod.get_db() as conn:
+        conn.execute(
+            "UPDATE registrants SET profile_id = ? WHERE registration_id = ? AND player_id = ?",
+            (profile_id, rid, player_id),
+        )
+
+
+def _insert_club_elo(profile_id: str, club_id: str) -> None:
+    with db_mod.get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO profile_club_elo (profile_id, club_id, sport, elo, matches) VALUES (?, ?, 'padel', 1050, 4)",
+            (profile_id, club_id),
+        )
+
+
+class TestGhostClaims:
+    def _setup_scope(self):
+        _insert_community("c-alpha", "Alpha")
+        _insert_club("club-a", "c-alpha", "Club A")
+
+    def test_ghost_linked_participation_is_claimable_profile_match(self, client, auth_headers):
+        self._setup_scope()
+        past = _make_lobby(client, auth_headers, name="Past", community_id="c-alpha", club_id="club-a")
+        past_reg = _register(client, past, "Gloria Ghost")
+        _insert_ghost("ghost_g1", "Gloria Ghost")
+        _link_registrant_to_profile(past, past_reg["player_id"], "ghost_g1")
+
+        cur = _make_lobby(client, auth_headers, name="Current", community_id="c-alpha", club_id="club-a")
+        r = client.post(f"/api/registrations/{cur}/find-by-name", json={"player_name": "gloria"})
+        assert r.status_code == 200, r.text
+        results = r.json()
+        assert len(results) == 1
+        m = results[0]
+        assert m["entity_type"] == "profile"
+        assert m["entity_id"] == "ghost_g1"
+        assert m["already_linked"] is False
+        # Event context is kept for recognition.
+        assert m["entity_name"] == "Past"
+
+    def test_real_linked_participation_stays_unclaimable(self, client, auth_headers):
+        self._setup_scope()
+        past = _make_lobby(client, auth_headers, name="Past", community_id="c-alpha", club_id="club-a")
+        past_reg = _register(client, past, "Rita Real", email="rita@example.com")
+        prof = _create_profile(client, "Rita Real", "rita@example.com", past_reg["passphrase"])
+        _link_registrant_to_profile(past, past_reg["player_id"], prof["profile"]["id"])
+
+        cur = _make_lobby(client, auth_headers, name="Current", community_id="c-alpha", club_id="club-a")
+        r = client.post(f"/api/registrations/{cur}/find-by-name", json={"player_name": "rita"})
+        assert r.status_code == 200, r.text
+        results = r.json()
+        assert len(results) == 1
+        assert results[0]["entity_type"] == "registration"
+        assert results[0]["already_linked"] is True
+
+    def test_ghost_with_club_elo_found_without_participation_rows(self, client, auth_headers):
+        # Simulates the durable case: player_secrets purged / tournament deleted,
+        # but the ghost still carries club ELO.
+        self._setup_scope()
+        _insert_ghost("ghost_g2", "Old Oscar")
+        _insert_club_elo("ghost_g2", "club-a")
+
+        cur = _make_lobby(client, auth_headers, name="Current", community_id="c-alpha", club_id="club-a")
+        r = client.post(f"/api/registrations/{cur}/find-by-name", json={"player_name": "old osc"})
+        assert r.status_code == 200, r.text
+        results = r.json()
+        assert len(results) == 1
+        m = results[0]
+        assert m["entity_type"] == "profile"
+        assert m["entity_id"] == "ghost_g2"
+        assert m["already_linked"] is False
+
+    def test_claim_ghost_and_approve_merges_into_claimant(self, client, auth_headers):
+        self._setup_scope()
+        past = _make_lobby(client, auth_headers, name="Past", community_id="c-alpha", club_id="club-a")
+        past_reg = _register(client, past, "Merge Mona")
+        _insert_ghost("ghost_g3", "Merge Mona")
+        _link_registrant_to_profile(past, past_reg["player_id"], "ghost_g3")
+        _insert_club_elo("ghost_g3", "club-a")
+
+        # Claimant profile from a seed participation.
+        seed_lobby = _make_lobby(client, auth_headers, name="Seed", community_id="c-alpha", club_id="club-a")
+        seed = _register(client, seed_lobby, "Merge Mona", email="mona@example.com")
+        prof = _create_profile(client, "Merge Mona", "mona@example.com", seed["passphrase"])
+        claimant_id = prof["profile"]["id"]
+        pp = _profile_passphrase(claimant_id)
+
+        cur = _make_lobby(client, auth_headers, name="Current", community_id="c-alpha", club_id="club-a")
+        r = client.post(
+            f"/api/registrations/{cur}/claim-participation",
+            json={
+                "profile_passphrase": pp,
+                "entity_type": "profile",
+                "entity_id": "ghost_g3",
+                "player_id": "ghost_g3",
+            },
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "pending"
+        # Nothing merged yet.
+        assert _registrant_profile_id(past, past_reg["player_id"]) == "ghost_g3"
+
+        claims = client.get(f"/api/registrations/{cur}/claims", headers=auth_headers).json()
+        assert len(claims) == 1
+        assert claims[0]["entity_type"] == "profile"
+
+        r = client.post(
+            f"/api/registrations/{cur}/claims/{claims[0]['id']}/resolve",
+            params={"approve": True},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "approved"
+
+        # The ghost's participation now belongs to the claimant; ghost is gone.
+        assert _registrant_profile_id(past, past_reg["player_id"]) == claimant_id
+        with db_mod.get_db() as conn:
+            assert conn.execute("SELECT 1 FROM player_profiles WHERE id = 'ghost_g3'").fetchone() is None
+
+    def test_claim_nonghost_profile_rejected(self, client, auth_headers):
+        self._setup_scope()
+        seed_lobby = _make_lobby(client, auth_headers, name="Seed", community_id="c-alpha", club_id="club-a")
+        seed = _register(client, seed_lobby, "Target Tina", email="tina@example.com")
+        target = _create_profile(client, "Target Tina", "tina@example.com", seed["passphrase"])
+
+        seed2 = _make_lobby(client, auth_headers, name="Seed2", community_id="c-alpha", club_id="club-a")
+        reg2 = _register(client, seed2, "Claimer Carl", email="carl@example.com")
+        prof2 = _create_profile(client, "Claimer Carl", "carl@example.com", reg2["passphrase"])
+        pp = _profile_passphrase(prof2["profile"]["id"])
+
+        cur = _make_lobby(client, auth_headers, name="Current", community_id="c-alpha", club_id="club-a")
+        r = client.post(
+            f"/api/registrations/{cur}/claim-participation",
+            json={
+                "profile_passphrase": pp,
+                "entity_type": "profile",
+                "entity_id": target["profile"]["id"],
+                "player_id": target["profile"]["id"],
+            },
+        )
+        assert r.status_code == 404
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # Email convergence: confirmation link carries #hub_token
 # ────────────────────────────────────────────────────────────────────────────
 

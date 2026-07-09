@@ -819,7 +819,10 @@ function _renderPastClaimSection() {
  */
 function _matchEventLine(m) {
   const parts = [m.entity_name || ''];
-  parts.push(t(m.entity_type === 'tournament' ? 'txt_reg_match_type_tournament' : 'txt_reg_match_type_lobby'));
+  const typeKey = m.entity_type === 'tournament' ? 'txt_reg_match_type_tournament'
+    : m.entity_type === 'profile' ? 'txt_reg_match_type_profile'
+    : 'txt_reg_match_type_lobby';
+  parts.push(t(typeKey));
   if (m.sport) parts.push(t(m.sport === 'tennis' ? 'txt_player_sport_tennis' : 'txt_player_sport_padel'));
   if (m.event_date) {
     const d = new Date(m.event_date);

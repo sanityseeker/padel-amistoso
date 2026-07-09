@@ -2041,8 +2041,15 @@ async def find_participations_by_name(
     Accent-insensitive token-prefix matching (autosuggest-friendly: "den bel"
     finds "Denis Belyakov").  Returns a short list of ``name + event`` matches
     with no emails, no passphrases, and no out-of-scope players.  Participations
-    already linked to a Hub profile are included with ``already_linked=True``
+    already linked to a real Hub profile are included with ``already_linked=True``
     so the player understands why they cannot be claimed.
+
+    Participations linked to a *ghost* profile (internal ELO-tracking identity,
+    no owner) are claimable: they surface as ``entity_type="profile"`` matches
+    whose approval merges the whole ghost — all its participations and ELO —
+    into the claimant's profile.  Ghost profiles with club/community ELO are
+    also searched directly, so players stay findable after their
+    ``player_secrets`` rows are purged or their tournaments deleted.
     """
     client_ip = _client_ip(request)
     _find_by_name_rate_limiter.check(client_ip, "Too many lookups — try again later")
@@ -2056,6 +2063,41 @@ async def find_participations_by_name(
         return []
 
     matches: list[ParticipationMatchOut] = []
+    seen_ghosts: set[str] = set()
+
+    def _participation_match(entity_type: str, entity_id: str, entity_name: str, row) -> ParticipationMatchOut | None:
+        """Build a match for one participation row, folding ghost links.
+
+        A ghost-linked participation becomes a claimable ``profile`` match
+        (one per ghost — the merge covers every event at once); a real-linked
+        one stays visible but unclaimable.
+        """
+        profile_id = row["profile_id"]
+        if profile_id and row["is_ghost"]:
+            if profile_id in seen_ghosts:
+                return None
+            seen_ghosts.add(profile_id)
+            return ParticipationMatchOut(
+                entity_type="profile",
+                entity_id=profile_id,
+                entity_name=entity_name,
+                player_id=profile_id,
+                player_name=row["player_name"],
+                already_linked=False,
+                sport=row["sport"],
+                event_date=row["event_date"] or None,
+            )
+        return ParticipationMatchOut(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            entity_name=entity_name,
+            player_id=row["player_id"],
+            player_name=row["player_name"],
+            already_linked=profile_id is not None,
+            sport=row["sport"],
+            event_date=row["event_date"] or None,
+        )
+
     with get_db() as conn:
         # Tournaments in the same club/community (scope lives on the tournaments
         # table, joined via tournament_id — player_secrets has no scope columns).
@@ -2063,9 +2105,11 @@ async def find_participations_by_name(
             tourn_rows = conn.execute(
                 """
                 SELECT ps.tournament_id, ps.player_id, ps.player_name, ps.profile_id,
+                       COALESCE(pp.is_ghost, 0) AS is_ghost,
                        t.name AS tname, t.sport AS sport, t.created_at AS event_date
                   FROM player_secrets ps
                   JOIN tournaments t ON t.id = ps.tournament_id
+                  LEFT JOIN player_profiles pp ON pp.id = ps.profile_id
                  WHERE t.club_id = ?
                 """,
                 (club_id,),
@@ -2074,36 +2118,31 @@ async def find_participations_by_name(
             tourn_rows = conn.execute(
                 """
                 SELECT ps.tournament_id, ps.player_id, ps.player_name, ps.profile_id,
+                       COALESCE(pp.is_ghost, 0) AS is_ghost,
                        t.name AS tname, t.sport AS sport, t.created_at AS event_date
                   FROM player_secrets ps
                   JOIN tournaments t ON t.id = ps.tournament_id
+                  LEFT JOIN player_profiles pp ON pp.id = ps.profile_id
                  WHERE t.community_id = ?
                 """,
                 (community_id,),
             ).fetchall()
         for row in tourn_rows:
             if _name_matches(target, _normalize_name(row["player_name"])):
-                matches.append(
-                    ParticipationMatchOut(
-                        entity_type="tournament",
-                        entity_id=row["tournament_id"],
-                        entity_name=row["tname"] or "",
-                        player_id=row["player_id"],
-                        player_name=row["player_name"],
-                        already_linked=row["profile_id"] is not None,
-                        sport=row["sport"],
-                        event_date=row["event_date"] or None,
-                    )
-                )
+                m = _participation_match("tournament", row["tournament_id"], row["tname"] or "", row)
+                if m is not None:
+                    matches.append(m)
 
         # Registration lobbies in the same club/community (scope on registrations).
         if club_id:
             reg_rows = conn.execute(
                 """
                 SELECT r.registration_id, r.player_id, r.player_name, r.profile_id,
+                       COALESCE(pp.is_ghost, 0) AS is_ghost,
                        reg.name AS rname, reg.sport AS sport, r.registered_at AS event_date
                   FROM registrants r
                   JOIN registrations reg ON reg.id = r.registration_id
+                  LEFT JOIN player_profiles pp ON pp.id = r.profile_id
                  WHERE reg.club_id = ?
                    AND r.registration_id != ?
                 """,
@@ -2113,9 +2152,11 @@ async def find_participations_by_name(
             reg_rows = conn.execute(
                 """
                 SELECT r.registration_id, r.player_id, r.player_name, r.profile_id,
+                       COALESCE(pp.is_ghost, 0) AS is_ghost,
                        reg.name AS rname, reg.sport AS sport, r.registered_at AS event_date
                   FROM registrants r
                   JOIN registrations reg ON reg.id = r.registration_id
+                  LEFT JOIN player_profiles pp ON pp.id = r.profile_id
                  WHERE reg.community_id = ?
                    AND r.registration_id != ?
                 """,
@@ -2123,16 +2164,44 @@ async def find_participations_by_name(
             ).fetchall()
         for row in reg_rows:
             if _name_matches(target, _normalize_name(row["player_name"])):
+                m = _participation_match("registration", row["registration_id"], row["rname"] or "", row)
+                if m is not None:
+                    matches.append(m)
+
+        # Ghost profiles with ELO history in this club/community — durable even
+        # after their player_secrets rows are purged (30 days post-finish) or
+        # their tournaments deleted, so long-returning players stay findable.
+        if club_id:
+            ghost_rows = conn.execute(
+                """
+                SELECT DISTINCT pp.id, pp.name
+                  FROM profile_club_elo pce
+                  JOIN player_profiles pp ON pp.id = pce.profile_id
+                 WHERE pce.club_id = ? AND pp.is_ghost = 1
+                """,
+                (club_id,),
+            ).fetchall()
+        else:
+            ghost_rows = conn.execute(
+                """
+                SELECT DISTINCT pp.id, pp.name
+                  FROM profile_community_elo pce
+                  JOIN player_profiles pp ON pp.id = pce.profile_id
+                 WHERE pce.community_id = ? AND pp.is_ghost = 1
+                """,
+                (community_id,),
+            ).fetchall()
+        for row in ghost_rows:
+            if row["id"] not in seen_ghosts and _name_matches(target, _normalize_name(row["name"])):
+                seen_ghosts.add(row["id"])
                 matches.append(
                     ParticipationMatchOut(
-                        entity_type="registration",
-                        entity_id=row["registration_id"],
-                        entity_name=row["rname"] or "",
-                        player_id=row["player_id"],
-                        player_name=row["player_name"],
-                        already_linked=row["profile_id"] is not None,
-                        sport=row["sport"],
-                        event_date=row["event_date"] or None,
+                        entity_type="profile",
+                        entity_id=row["id"],
+                        entity_name="",
+                        player_id=row["id"],
+                        player_name=row["name"],
+                        already_linked=False,
                     )
                 )
 
@@ -2159,35 +2228,55 @@ async def claim_participation(rid: str, req: ClaimParticipationRequest, request:
     if profile is None:
         raise HTTPException(401, "Player Hub profile not recognised")
 
-    if req.entity_type not in ("tournament", "registration"):
+    if req.entity_type not in ("tournament", "registration", "profile"):
         raise HTTPException(400, "Invalid entity type")
 
     now = datetime.now(timezone.utc).isoformat()
     with get_db() as conn:
         # Verify the target participation exists and is still unclaimed.
-        if req.entity_type == "tournament":
-            row = conn.execute(
-                "SELECT player_name, profile_id FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
-                (req.entity_id, req.player_id),
+        if req.entity_type == "profile":
+            # Claim a whole ghost profile (internal tracking identity) — approval
+            # merges its participations + ELO into the claimant's profile.
+            prow = conn.execute(
+                "SELECT name, is_ghost FROM player_profiles WHERE id = ?",
+                (req.entity_id,),
             ).fetchone()
-            entity_name_row = conn.execute("SELECT name FROM tournaments WHERE id = ?", (req.entity_id,)).fetchone()
+            if prow is None or not prow["is_ghost"]:
+                raise HTTPException(404, "Participation not found")
+            # One claim per ghost: normalize player_id to the ghost id so
+            # matches shown with different event context dedupe to one claim.
+            player_id = req.entity_id
+            player_name = prow["name"] or ""
+            entity_name = prow["name"] or ""
         else:
-            row = conn.execute(
-                "SELECT player_name, profile_id FROM registrants WHERE registration_id = ? AND player_id = ?",
-                (req.entity_id, req.player_id),
-            ).fetchone()
-            entity_name_row = conn.execute("SELECT name FROM registrations WHERE id = ?", (req.entity_id,)).fetchone()
-        if row is None:
-            raise HTTPException(404, "Participation not found")
-        if row["profile_id"]:
-            raise HTTPException(409, "This participation is already linked to a profile")
+            if req.entity_type == "tournament":
+                row = conn.execute(
+                    "SELECT player_name, profile_id FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
+                    (req.entity_id, req.player_id),
+                ).fetchone()
+                entity_name_row = conn.execute("SELECT name FROM tournaments WHERE id = ?", (req.entity_id,)).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT player_name, profile_id FROM registrants WHERE registration_id = ? AND player_id = ?",
+                    (req.entity_id, req.player_id),
+                ).fetchone()
+                entity_name_row = conn.execute(
+                    "SELECT name FROM registrations WHERE id = ?", (req.entity_id,)
+                ).fetchone()
+            if row is None:
+                raise HTTPException(404, "Participation not found")
+            if row["profile_id"]:
+                raise HTTPException(409, "This participation is already linked to a profile")
+            player_id = req.player_id
+            player_name = row["player_name"] or ""
+            entity_name = (entity_name_row["name"] if entity_name_row else "") or ""
 
         # Avoid duplicate pending claims for the same participation by the same profile.
         dup = conn.execute(
             """SELECT 1 FROM participation_claims
                WHERE profile_id = ? AND entity_type = ? AND entity_id = ? AND player_id = ?
                  AND status = 'pending' LIMIT 1""",
-            (profile["id"], req.entity_type, req.entity_id, req.player_id),
+            (profile["id"], req.entity_type, req.entity_id, player_id),
         ).fetchone()
         if dup:
             return {"ok": True, "status": "pending"}
@@ -2203,9 +2292,9 @@ async def claim_participation(rid: str, req: ClaimParticipationRequest, request:
                 profile["id"],
                 req.entity_type,
                 req.entity_id,
-                (entity_name_row["name"] if entity_name_row else "") or "",
-                req.player_id,
-                row["player_name"] or "",
+                entity_name,
+                player_id,
+                player_name,
                 reg["id"],
                 now,
             ),
@@ -2257,7 +2346,9 @@ async def resolve_participation_claim(
 
     On approve, the claimed participation is linked to the claimant's profile
     (``profile_id`` set) and its history + ELO are backfilled, exactly as the
-    passphrase-based ``/link`` flow does.
+    passphrase-based ``/link`` flow does.  For ``entity_type="profile"`` claims
+    the target is a ghost profile, which is merged wholesale (participations,
+    history, ELO) into the claimant's profile.
     """
     reg = _get_registration(rid)
     _require_registration_editor(reg, user)
@@ -2280,22 +2371,36 @@ async def resolve_participation_claim(
             )
             return {"ok": True, "status": "rejected"}
 
-        profile_id = claim["profile_id"]
-        # Link the participation only if still unclaimed.
-        if claim["entity_type"] == "tournament":
+    profile_id = claim["profile_id"]
+    if claim["entity_type"] == "profile":
+        # Merge the claimed ghost profile into the claimant's profile.  Uses
+        # its own connections, so it runs outside the claim-row transaction.
+        from .routes_admin_players import merge_ghost_into_profile
+
+        if not merge_ghost_into_profile(profile_id, claim["entity_id"]):
+            raise HTTPException(409, "This player record no longer exists — it may already have been merged")
+        with get_db() as conn:
             conn.execute(
-                "UPDATE player_secrets SET profile_id = ? WHERE tournament_id = ? AND player_id = ? AND profile_id IS NULL",
-                (profile_id, claim["entity_id"], claim["player_id"]),
+                "UPDATE participation_claims SET status = 'approved', resolved_at = ?, resolved_by = ? WHERE id = ?",
+                (now, user.username, claim_id),
             )
-        else:
+    else:
+        with get_db() as conn:
+            # Link the participation only if still unclaimed.
+            if claim["entity_type"] == "tournament":
+                conn.execute(
+                    "UPDATE player_secrets SET profile_id = ? WHERE tournament_id = ? AND player_id = ? AND profile_id IS NULL",
+                    (profile_id, claim["entity_id"], claim["player_id"]),
+                )
+            else:
+                conn.execute(
+                    "UPDATE registrants SET profile_id = ? WHERE registration_id = ? AND player_id = ? AND profile_id IS NULL",
+                    (profile_id, claim["entity_id"], claim["player_id"]),
+                )
             conn.execute(
-                "UPDATE registrants SET profile_id = ? WHERE registration_id = ? AND player_id = ? AND profile_id IS NULL",
-                (profile_id, claim["entity_id"], claim["player_id"]),
+                "UPDATE participation_claims SET status = 'approved', resolved_at = ?, resolved_by = ? WHERE id = ?",
+                (now, user.username, claim_id),
             )
-        conn.execute(
-            "UPDATE participation_claims SET status = 'approved', resolved_at = ?, resolved_by = ? WHERE id = ?",
-            (now, user.username, claim_id),
-        )
 
     # Backfill history + transfer ELO for the newly-linked participation.
     # Local import avoids any module import-order coupling with the Hub routes.
