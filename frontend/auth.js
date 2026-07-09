@@ -512,8 +512,9 @@ async function saveUserSettings(username) {
     });
     const ix = _allUsers.findIndex(u => u.username === username);
     if (ix >= 0) _allUsers[ix] = updated;
+    flashSuccess(communitySel);
     msgEl.style.color = 'var(--green)';
-    msgEl.textContent = `✓ ${t('txt_txt_saved')}`;
+    msgEl.textContent = t('txt_txt_saved');
     setTimeout(() => { if (msgEl) msgEl.textContent = ''; }, 1800);
   } catch (e) {
     msgEl.style.color = 'var(--red)';

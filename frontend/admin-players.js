@@ -406,8 +406,7 @@ async function phUpdateName(profileId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newName }),
     });
-    if (btn) { btn.disabled = false; btn.textContent = `${t('txt_txt_saved')} ✓`; }
-    setTimeout(() => { if (btn) btn.textContent = t('txt_txt_save'); }, 1500);
+    if (btn) { btn.disabled = false; btn.textContent = t('txt_txt_save'); flashSuccess(btn, t('txt_txt_saved')); }
     // Refresh list so the updated name shows there too
     phSearch();
   } catch (e) {
@@ -428,8 +427,7 @@ async function phUpdateEmail(profileId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: input.value }),
     });
-    if (btn) { btn.disabled = false; btn.textContent = `${t('txt_txt_saved')} ✓`; }
-    setTimeout(() => { if (btn) btn.textContent = t('txt_txt_save'); }, 1500);
+    if (btn) { btn.disabled = false; btn.textContent = t('txt_txt_save'); flashSuccess(btn, t('txt_txt_saved')); }
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = t('txt_txt_save'); }
     phShowInlineNotice(t('txt_ph_failed_update_email_value', { value: e.message }), true);
@@ -455,8 +453,7 @@ async function phUpdateKFactor(profileId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ k_factor_override: kValue }),
     });
-    if (btn) { btn.disabled = false; btn.textContent = `${t('txt_txt_saved')} ✓`; }
-    setTimeout(() => { if (btn) btn.textContent = t('txt_txt_save'); }, 1500);
+    if (btn) { btn.disabled = false; btn.textContent = t('txt_txt_save'); flashSuccess(btn, t('txt_txt_saved')); }
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = t('txt_txt_save'); }
     phShowInlineNotice(t('txt_ph_failed_update_kfactor_value', { value: e.message }), true);

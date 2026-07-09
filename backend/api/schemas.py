@@ -554,6 +554,13 @@ class RegistrantOut(BaseModel):
     lang: EmailLang = "en"
 
 
+class RegistrantPublicOut(BaseModel):
+    """Names-only view of a registrant, safe for the public lobby page."""
+
+    player_id: str
+    player_name: str
+
+
 class RegistrantAdminOut(BaseModel):
     """Admin view of a registrant (includes secrets)."""
 
@@ -602,13 +609,22 @@ class FindByNameRequest(BaseModel):
 
 
 class ParticipationMatchOut(BaseModel):
-    """A past participation surfaced by name search (no secrets, no email)."""
+    """A past participation surfaced by name search (no secrets, no email).
+
+    ``already_linked`` marks participations that already belong to a Hub
+    profile — they are shown for recognition but cannot be claimed.
+    """
 
     entity_type: str  # 'tournament' | 'registration'
     entity_id: str
     entity_name: str
     player_id: str
     player_name: str
+    already_linked: bool = False
+    sport: str | None = None
+    # Tournament creation date / lobby registration date — shown so the player
+    # can recognize WHICH event the found name belongs to.
+    event_date: str | None = None
 
 
 class ClaimParticipationRequest(BaseModel):
@@ -670,7 +686,7 @@ class RegistrationPublicOut(BaseModel):
     auto_send_email: bool = False
     email_requirement: EmailRequirement = "optional"
     registrant_count: int = 0
-    registrants: list[RegistrantOut] = []
+    registrants: list[RegistrantPublicOut] = []
     community_id: str = "open"
     community_name: str | None = None
     club_id: str | None = None

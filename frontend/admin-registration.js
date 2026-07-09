@@ -382,8 +382,7 @@ function _copyRegLink(rid) {
     ? `${window.location.origin}/register/${alias}`
     : `${window.location.origin}/register/${rid}`;
   navigator.clipboard.writeText(url).then(() => {
-    const origText = event?.target?.textContent;
-    if (event?.target) { event.target.textContent = '✓'; setTimeout(() => { event.target.textContent = origText || t('txt_reg_copy_link'); }, 1200); }
+    if (event?.target) flashSuccess(event.target, t('txt_txt_copied'));
   });
 }
 

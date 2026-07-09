@@ -388,6 +388,37 @@ function setTournamentLink({ id, alias }) {
 }
 
 /**
+ * Transient success feedback on the control the user just acted on.
+ *
+ * Plays the shared `flash-success` animation (theme.css) and optionally swaps
+ * the element's label for a short moment (plain text — no ✓/✗ glyphs; the
+ * animation itself is the success signal). Safe on any element.
+ *
+ * @param {HTMLElement|null} el
+ * @param {string} [tempLabel] optional temporary label, e.g. t('txt_txt_copied')
+ */
+function flashSuccess(el, tempLabel) {
+  if (!el) return;
+  el.classList.remove('flash-success');
+  void el.offsetWidth; // restart the animation when re-triggered quickly
+  el.classList.add('flash-success');
+  let originalLabel = null;
+  const isButton = el.tagName === 'BUTTON';
+  if (tempLabel !== undefined && tempLabel !== null) {
+    originalLabel = el.textContent;
+    el.textContent = tempLabel;
+    if (isButton) el.disabled = true;
+  }
+  setTimeout(() => {
+    el.classList.remove('flash-success');
+    if (originalLabel !== null) {
+      el.textContent = originalLabel;
+      if (isButton) el.disabled = false;
+    }
+  }, 1400);
+}
+
+/**
  * Copies the tournament URL to the clipboard.
  */
 function copyTournamentUrl() {
@@ -395,14 +426,7 @@ function copyTournamentUrl() {
   const link = alias ? `/${alias}` : `/tv/${encodeURIComponent(tournamentId)}`;
   const fullUrl = window.location.origin + link;
   navigator.clipboard.writeText(fullUrl).then(() => {
-    const copyButton = document.getElementById('copy-tv-url-button');
-    if (copyButton) {
-      const originalText = copyButton.innerText;
-      copyButton.innerText = t('txt_tv_url_copied');
-      setTimeout(() => {
-        copyButton.innerText = originalText;
-      }, 2000);
-    }
+    flashSuccess(document.getElementById('copy-tv-url-button'), t('txt_tv_url_copied'));
   });
 }
 

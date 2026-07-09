@@ -1094,18 +1094,6 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
   gap: 0.5rem;
 }
 
-/* Save-button success flash */
-.btn-save-success {
-  background: var(--green, #22c55e) !important;
-  border-color: var(--green, #22c55e) !important;
-  color: #fff !important;
-  pointer-events: none;
-  transition: background 0.25s, border-color 0.25s, opacity 0.4s;
-}
-.btn-save-success.fade-out {
-  opacity: 0.6;
-}
-
 .player-link-existing-btn {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--border));

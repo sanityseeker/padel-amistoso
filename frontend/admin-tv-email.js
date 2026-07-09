@@ -637,9 +637,10 @@ async function _setTournamentCommunity() {
     });
     await loadTournaments();
     await _rerenderCurrentViewPreserveDrafts();
+    flashSuccess(sel);
     if (msgEl) {
       msgEl.style.color = 'var(--green)';
-      msgEl.textContent = `✓ ${t('txt_tv_attach_updated')}`;
+      msgEl.textContent = t('txt_tv_attach_updated');
       setTimeout(() => { msgEl.textContent = ''; }, 2200);
     }
   } catch (e) {
@@ -663,9 +664,10 @@ async function _setTournamentClub() {
     });
     await loadTournaments();
     await _rerenderCurrentViewPreserveDrafts();
+    flashSuccess(sel);
     if (msgEl) {
       msgEl.style.color = 'var(--green)';
-      msgEl.textContent = `✓ ${t('txt_tv_attach_updated')}`;
+      msgEl.textContent = t('txt_tv_attach_updated');
       setTimeout(() => { msgEl.textContent = ''; }, 2200);
     }
   } catch (e) {

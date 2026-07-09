@@ -352,3 +352,158 @@ class TestEmailHubTokenConvergence:
             ).fetchone()
         assert prof is not None
         assert _registrant_profile_id(rid, res["player_id"]) == prof["id"]
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Autosuggest matching semantics + already_linked flag on find-by-name
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestFindByNameMatching:
+    def _setup_scope(self):
+        _insert_community("c-alpha", "Alpha")
+        _insert_club("club-a", "c-alpha", "Club A")
+
+    def _lobby_pair(self, client, auth_headers) -> tuple[str, str]:
+        """A past lobby and the current lobby, both in club A."""
+        past = _make_lobby(client, auth_headers, name="Past A", community_id="c-alpha", club_id="club-a")
+        cur = _make_lobby(client, auth_headers, name="Current A", community_id="c-alpha", club_id="club-a")
+        return past, cur
+
+    def _search(self, client, rid: str, query: str) -> list[dict]:
+        r = client.post(f"/api/registrations/{rid}/find-by-name", json={"player_name": query})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    def test_token_prefix_matching(self, client, auth_headers):
+        self._setup_scope()
+        past, cur = self._lobby_pair(client, auth_headers)
+        _register(client, past, "Denis Belyakov")
+
+        for query in ("den", "den bel", "belya", "DENIS BELYAKOV"):
+            names = [m["player_name"] for m in self._search(client, cur, query)]
+            assert "Denis Belyakov" in names, f"query {query!r} should match"
+
+        assert self._search(client, cur, "denisx") == []
+        assert self._search(client, cur, "den bez") == []
+
+    def test_match_carries_event_context(self, client, auth_headers):
+        # Each match names the event it belongs to, with sport and date, so
+        # the player can recognize WHICH tournament the found name is from.
+        self._setup_scope()
+        past, cur = self._lobby_pair(client, auth_headers)
+        _register(client, past, "Context Carla")
+
+        [match] = self._search(client, cur, "context carla")
+        assert match["entity_name"] == "Past A"
+        assert match["sport"] == "padel"
+        assert match["event_date"]  # registrant's registered_at timestamp
+
+    def test_accent_insensitive(self, client, auth_headers):
+        self._setup_scope()
+        past, cur = self._lobby_pair(client, auth_headers)
+        _register(client, past, "José García")
+
+        assert self._search(client, cur, "jose garcia") != []
+        assert self._search(client, cur, "josé") != []
+
+    def test_min_query_length(self, client, auth_headers):
+        self._setup_scope()
+        past, cur = self._lobby_pair(client, auth_headers)
+        _register(client, past, "Denis Belyakov")
+        assert self._search(client, cur, "d") == []
+
+    def test_already_linked_included_and_flagged(self, client, auth_headers):
+        self._setup_scope()
+        past, cur = self._lobby_pair(client, auth_headers)
+        linked = _register(client, past, "Linked Lena", email="lena@example.com")
+        _create_profile(client, "Linked Lena", "lena@example.com", linked["passphrase"])
+
+        [match] = self._search(client, cur, "linked lena")
+        assert match["already_linked"] is True
+
+        # Claiming a linked participation is still rejected server-side.
+        pp = _profile_passphrase(_registrant_profile_id(past, linked["player_id"]))
+        r = client.post(
+            f"/api/registrations/{cur}/claim-participation",
+            json={
+                "profile_passphrase": pp,
+                "entity_type": "registration",
+                "entity_id": past,
+                "player_id": linked["player_id"],
+            },
+        )
+        assert r.status_code == 409
+
+    def test_exact_matches_sort_first(self, client, auth_headers):
+        self._setup_scope()
+        past, cur = self._lobby_pair(client, auth_headers)
+        _register(client, past, "Ana Torres Marino")
+        _register(client, past, "Ana Torres")
+
+        results = self._search(client, cur, "ana torres")
+        assert results[0]["player_name"] == "Ana Torres"
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# GET /{rid}/my-entry — JWT-based "am I registered here?" check
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestMyEntry:
+    def _profile_token(self, client, passphrase: str) -> str:
+        r = client.post("/api/player-profile/login", json={"passphrase": passphrase})
+        assert r.status_code == 200, r.text
+        return r.json()["access_token"]
+
+    def test_requires_profile_auth(self, client, auth_headers):
+        rid = _make_lobby(client, auth_headers)
+        r = client.get(f"/api/registrations/{rid}/my-entry")
+        assert r.status_code == 401
+
+    def test_404_when_not_registered(self, client, auth_headers):
+        seed_lobby = _make_lobby(client, auth_headers, name="Seed")
+        seed = _register(client, seed_lobby, "Elsewhere Eva", email="eva@example.com")
+        prof = _create_profile(client, "Elsewhere Eva", "eva@example.com", seed["passphrase"])
+        token = self._profile_token(client, _profile_passphrase(prof["profile"]["id"]))
+
+        other = _make_lobby(client, auth_headers, name="Other")
+        r = client.get(f"/api/registrations/{other}/my-entry", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 404
+
+    def test_finds_profile_linked_entry(self, client, auth_headers):
+        seed_lobby = _make_lobby(client, auth_headers, name="Seed")
+        seed = _register(client, seed_lobby, "Hub Hanna", email="hanna@example.com")
+        prof = _create_profile(client, "Hub Hanna", "hanna@example.com", seed["passphrase"])
+        pp = _profile_passphrase(prof["profile"]["id"])
+        token = self._profile_token(client, pp)
+
+        rid = _make_lobby(client, auth_headers, name="Target")
+        reg = client.post(
+            f"/api/registrations/{rid}/register",
+            json={"player_name": "Hub Hanna", "profile_passphrase": pp},
+        ).json()
+
+        r = client.get(f"/api/registrations/{rid}/my-entry", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200, r.text
+        assert r.json()["player_id"] == reg["player_id"]
+        assert r.json()["player_name"] == "Hub Hanna"
+
+    def test_falls_back_to_profile_passphrase_match(self, client, auth_headers):
+        seed_lobby = _make_lobby(client, auth_headers, name="Seed")
+        seed = _register(client, seed_lobby, "Fallback Fay", email="fay@example.com")
+        prof = _create_profile(client, "Fallback Fay", "fay@example.com", seed["passphrase"])
+        pid = prof["profile"]["id"]
+        token = self._profile_token(client, _profile_passphrase(pid))
+
+        # The seed registrant shares the profile passphrase; sever the explicit
+        # link to exercise the passphrase fallback.
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "UPDATE registrants SET profile_id = NULL WHERE registration_id = ? AND player_id = ?",
+                (seed_lobby, seed["player_id"]),
+            )
+
+        r = client.get(f"/api/registrations/{seed_lobby}/my-entry", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200, r.text
+        assert r.json()["player_id"] == seed["player_id"]
