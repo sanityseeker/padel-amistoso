@@ -1,3 +1,10 @@
+## v1.14.0 (2026-07-09)
+
+### Feat
+
+- **registration**: show event context on name-search matches
+- **registration**: autosuggest recognition, registered-state fix, identity strip, animated feedback
+
 ## v1.13.4 (2026-07-04)
 
 ## v1.13.3 (2026-07-04)
