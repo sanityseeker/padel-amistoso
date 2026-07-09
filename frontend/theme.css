@@ -321,3 +321,39 @@ html[data-theme="dark"] {
   --radius-card:   0.5rem;
   --radius-dialog: 0.75rem;
 }
+
+/* ── Inline SVG icons — inherit currentColor, scale with font-size ──
+   (Shared page-agnostic copy of the admin.css .ic rule so player-facing
+   pages can use the same inline-SVG icon convention.) */
+.ic {
+  display: inline-block;
+  width: 1em; height: 1em;
+  vertical-align: -0.125em;
+  flex-shrink: 0;
+}
+
+/* ── Transient success feedback ─────────────────────────────────────
+   A short flash on the control the user just acted on (copy, save, …),
+   replacing the old "swap the label to a ✓" pattern. Apply via
+   flashSuccess(el) in shared.js — the class is removed automatically. */
+@keyframes flash-success {
+  0% {
+    box-shadow: 0 0 0 3px var(--color-success-highlight);
+    background-color: var(--color-success-highlight);
+    border-color: var(--color-success);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.flash-success {
+  animation: flash-success 900ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Static tint instead of motion — the class is removed by JS shortly after. */
+  .flash-success {
+    animation: none;
+    background-color: var(--color-success-highlight);
+    border-color: var(--color-success);
+  }
+}

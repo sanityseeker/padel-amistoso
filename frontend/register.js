@@ -78,6 +78,64 @@ function _isValidEmail(value) {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test((value || '').trim());
 }
 
+// ── Inline SVG icons (no emoji/unicode glyphs in padel-facing UI) ──────────
+const _IC_CHECK = 'M912 190h-69.9c-9.8 0-19.1 4.5-25.1 12.2L404.7 724.5 207 474a32 32 0 00-25.1-12.2H112c-6.7 0-10.4 7.7-6.3 12.9l273.9 347c12.8 16.2 37.4 16.2 50.3 0l488.4-618.9c4.1-5.1.4-12.8-6.3-12.8z';
+const _IC_USER = 'M858.5 763.6a374 374 0 00-80.6-119.5 375.63 375.63 0 00-119.5-80.6c-.4-.2-.8-.3-1.2-.5C719.5 518 760 444.7 760 362c0-137-111-248-248-248S264 225 264 362c0 82.7 40.5 156 102.8 201.1-.4.2-.8.3-1.2.5-44.8 18.9-85 46-119.5 80.6a375.63 375.63 0 00-80.6 119.5A371.7 371.7 0 00136 901.8a8 8 0 008 8.2h60c4.4 0 7.9-3.5 8-7.8 2-77.2 33-149.5 87.8-204.3 56.7-56.7 132-87.9 212.2-87.9s155.5 31.2 212.2 87.9C779 752.7 810 825 812 902.2c.1 4.4 3.6 7.8 8 7.8h60a8 8 0 008-8.2c-1-47.8-10.9-94.3-29.5-138.2z';
+const _IC_WARN = 'M955.7 856l-416-720c-6.2-10.7-16.9-16-27.7-16s-21.6 5.3-27.7 16l-416 720C56 877.4 71.4 904 96 904h832c24.6 0 40-26.6 27.7-48zM480 416c0-4.4 3.6-8 8-8h48c4.4 0 8 3.6 8 8v184c0 4.4-3.6 8-8 8h-48c-4.4 0-8-3.6-8-8V416zm32 352a48.01 48.01 0 010-96 48.01 48.01 0 010 96z';
+
+function _svgIcon(path) {
+  return `<svg class="ic" viewBox="64 64 896 896" fill="currentColor" aria-hidden="true"><path d="${path}"/></svg>`;
+}
+
+function _nameInitials(name) {
+  const tokens = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return '';
+  const first = tokens[0][0] || '';
+  const last = tokens.length > 1 ? tokens[tokens.length - 1][0] : '';
+  return (first + last).toUpperCase();
+}
+
+/**
+ * Identity strip shown on the form and success screens: who the visitor is
+ * (Player Hub identity) and whether they hold an entry in THIS tournament.
+ * The two facts are deliberately side by side so "signed in" is never
+ * mistaken for "registered".
+ */
+function _renderIdentityStrip(opts) {
+  const loggedIn = !!opts.loggedIn;
+  const name = opts.name || '';
+  const registered = !!opts.registered;
+
+  let html = `<div class="reg-identity-strip">`;
+  html += `<div class="reg-identity-who">`;
+  if (loggedIn) {
+    const initials = _nameInitials(name);
+    html += `<span class="reg-avatar in" aria-hidden="true">${initials ? esc(initials) : _svgIcon(_IC_USER)}</span>`;
+    html += `<span class="reg-identity-text">`;
+    html += `<span class="reg-identity-name">${esc(name)}</span>`;
+    html += `<span class="reg-identity-caption">${t('txt_reg_identity_hub_in')}</span>`;
+    html += `</span>`;
+  } else {
+    html += `<span class="reg-avatar out" aria-hidden="true">${_svgIcon(_IC_USER)}</span>`;
+    html += `<span class="reg-identity-text">`;
+    html += `<span class="reg-identity-name reg-identity-name-muted">${t('txt_reg_identity_guest')}</span>`;
+    html += `<span class="reg-identity-caption">${t('txt_reg_identity_hub_out')}</span>`;
+    html += `</span>`;
+  }
+  html += `</div>`;
+  html += `<div class="reg-identity-actions">`;
+  if (registered) {
+    html += `<span class="reg-entry-chip done">${_svgIcon(_IC_CHECK)}<span>${t('txt_reg_chip_registered')}</span></span>`;
+  } else {
+    html += `<span class="reg-entry-chip pending">${t('txt_reg_chip_not_registered')}</span>`;
+  }
+  if (loggedIn) {
+    html += `<button type="button" class="reg-ps-logout-link" onclick="_logoutPlayerSpace()">${t('txt_reg_ps_logout')}</button>`;
+  }
+  html += `</div></div>`;
+  return html;
+}
+
 function _regTokenKeyCandidates() {
   const ids = [];
   if (_regData?.id) ids.push(_regData.id);
@@ -271,7 +329,7 @@ async function _showDirectory() {
     const lobbies = await res.json();
     _renderDirectory(lobbies);
   } catch (e) {
-    el.innerHTML = `<div class="card state-msg"><h2>⚠️</h2><p>${t('txt_reg_error')}</p></div>`;
+    el.innerHTML = `<div class="card state-msg"><div class="reg-error-icon">${_svgIcon(_IC_WARN)}</div><p>${t('txt_reg_error')}</p></div>`;
   }
 }
 
@@ -391,17 +449,30 @@ async function _tryProfileAutoLogin() {
     const rawJwt = localStorage.getItem('padel-player-profile');
     if (!rawData || !rawJwt) return false;
     const profile = JSON.parse(rawData);
-    const passphrase = profile?.passphrase;
-    if (!passphrase) return false;
+    const passphrase = profile?.passphrase || null;
 
-    const res = await fetch(`${API}/${encodeURIComponent(_rid)}/player-login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passphrase }),
-    });
-    if (!res.ok) return false;
+    // Preferred: ask the server by profile JWT — finds the entry via the
+    // profile link even when the cached passphrase is stale or missing.
+    let data = null;
+    try {
+      const res = await fetch(`${API}/${encodeURIComponent(_rid)}/my-entry`, {
+        headers: { 'Authorization': `Bearer ${rawJwt}` },
+      });
+      if (res.ok) data = await res.json();
+    } catch (_) {}
 
-    const data = await res.json();
+    // Fallback: this-lobby login with the profile's global passphrase
+    // (covers an expired JWT while the passphrase still matches).
+    if (!data && passphrase) {
+      const res = await fetch(`${API}/${encodeURIComponent(_rid)}/player-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passphrase }),
+      });
+      if (res.ok) data = await res.json();
+    }
+    if (!data) return false;
+
     _linkedProfilePassphrase = passphrase;
     _lastResult = {
       player_id: data.player_id,
@@ -429,7 +500,7 @@ function _hideAll() {
 function _showError(msg) {
   _hideAll();
   const el = document.getElementById('state-error');
-  el.innerHTML = `<h2>⚠️</h2><p>${esc(msg)}</p>`;
+  el.innerHTML = `<div class="reg-error-icon">${_svgIcon(_IC_WARN)}</div><p>${esc(msg)}</p>`;
   el.style.display = 'block';
 }
 
@@ -524,6 +595,10 @@ function _renderLinkedTournaments() {
 function _showForm() {
   _hideAll();
   const el = document.getElementById('state-form');
+  // Clear the success container so its element ids don't shadow the form's
+  // (both live in #reg-root; only one is visible at a time).
+  const successEl = document.getElementById('state-success');
+  if (successEl) successEl.innerHTML = '';
   const identityLabel = _registrationIdentityLabel(_regData);
   let html = '';
   if (_regData.club_logo_url) {
@@ -564,28 +639,13 @@ function _showForm() {
   const prefillContact = _regPrefill?.contact || '';
   const isLoggedIn = !!_linkedProfilePassphrase;
 
-  // ── Two-state status header: Player Hub identity vs this-tournament entry ──
-  // Keeps "logged in" and "registered" visually distinct so they're never
-  // conflated. The entry row stays "pending" on the form and flips to "done"
-  // on the success screen.
-  html += `<div class="reg-status-header">`;
-  if (isLoggedIn) {
-    html += `<div class="reg-status-row reg-status-profile in">`;
-    html += `<span class="reg-status-dot">✦</span>`;
-    html += `<span>${t('txt_reg_status_profile_in', { name: esc(prefillName || _regPrefill?.email || '') })}</span>`;
-    html += `<button type="button" class="reg-ps-logout-link" onclick="_logoutPlayerSpace()">${t('txt_reg_ps_logout')}</button>`;
-    html += `</div>`;
-  } else {
-    html += `<div class="reg-status-row reg-status-profile out">`;
-    html += `<span class="reg-status-dot">○</span>`;
-    html += `<span>${t('txt_reg_status_profile_out')}</span>`;
-    html += `</div>`;
-  }
-  html += `<div class="reg-status-row reg-status-entry pending">`;
-  html += `<span class="reg-status-dot">→</span>`;
-  html += `<span>${t('txt_reg_status_entry_pending')}</span>`;
-  html += `</div>`;
-  html += `</div>`;
+  // Identity strip: Player Hub identity vs this-tournament entry, side by
+  // side so "signed in" is never mistaken for "registered".
+  html += _renderIdentityStrip({
+    loggedIn: isLoggedIn,
+    name: prefillName || _regPrefill?.email || '',
+    registered: false,
+  });
 
   // ── Unified "Returning player?" section: code / email / name ──
   html += _renderReturningPlayerSection(isLoggedIn);
@@ -593,7 +653,7 @@ function _showForm() {
   html += `<form id="reg-form" onsubmit="return false">`;
 
   if (prefillName || prefillEmail) {
-    html += `<p class="reg-prefill-notice">✦ ${t('txt_reg_prefilled_from_profile')}</p>`;
+    html += `<p class="reg-prefill-notice">${_svgIcon(_IC_USER)} ${t('txt_reg_prefilled_from_profile')}</p>`;
   }
 
   html += `<div class="form-group">
@@ -680,7 +740,7 @@ function _renderReturningPlayerSection(isLoggedIn) {
   if (isLoggedIn) return '';
 
   let html = `<details class="reg-returning">`;
-  html += `<summary class="reg-returning-summary">🎾 ${t('txt_reg_returning_title')}</summary>`;
+  html += `<summary class="reg-returning-summary">${t('txt_reg_returning_title')}</summary>`;
   html += `<div class="reg-returning-body">`;
 
   // Tabs
@@ -713,19 +773,59 @@ function _renderReturningPlayerSection(isLoggedIn) {
 
   // Tier 3: name (organizer-approved claim)
   html += `<div class="reg-returning-pane reg-hidden" data-pane="name">`;
-  html += `<p class="reg-returning-help">${t('txt_reg_name_search_help')}</p>`;
-  html += `<div class="form-group">`;
-  html += `<label>${t('txt_reg_name')}</label>`;
-  html += `<input type="text" id="reg-name-search" maxlength="128" placeholder="${esc(t('txt_reg_name_placeholder'))}">`;
-  html += `</div>`;
-  html += `<div class="reg-returning-msg" id="reg-name-msg"></div>`;
-  html += `<button type="button" class="btn btn-secondary" id="reg-name-btn" onclick="_searchByName()">${t('txt_reg_name_search_cta')}</button>`;
-  html += `<div class="reg-name-results" id="reg-name-results"></div>`;
+  html += _renderNameSearchPane();
   html += `</div>`;
 
   html += `</div>`; // .reg-returning-body
   html += `</details>`;
   return html;
+}
+
+/**
+ * Name-search pane with live autosuggest, shared between the returning
+ * section (form) and the past-participation section (success screen).
+ * Only one instance exists in the DOM at a time — the state containers
+ * are cleared when switching screens.
+ */
+function _renderNameSearchPane() {
+  let html = `<p class="reg-returning-help">${t('txt_reg_name_search_help')}</p>`;
+  html += `<div class="form-group">`;
+  html += `<label>${t('txt_reg_name')}</label>`;
+  html += `<input type="text" id="reg-name-search" maxlength="128" placeholder="${esc(t('txt_reg_name_placeholder'))}" autocomplete="off" oninput="_onNameSearchInput()">`;
+  html += `</div>`;
+  html += `<div class="reg-returning-msg" id="reg-name-msg"></div>`;
+  html += `<button type="button" class="btn btn-secondary" id="reg-name-btn" onclick="_searchByName()">${t('txt_reg_name_search_cta')}</button>`;
+  html += `<div class="reg-name-results" id="reg-name-results"></div>`;
+  return html;
+}
+
+/**
+ * Success-screen variant: with a profile at hand (session or fresh
+ * creation), past participations can be found and claimed right here —
+ * the moment the "needs a profile" precondition is actually satisfied.
+ */
+function _renderPastClaimSection() {
+  let html = `<details class="reg-returning reg-claim-past">`;
+  html += `<summary class="reg-returning-summary">${t('txt_reg_claim_past_title')}</summary>`;
+  html += `<div class="reg-returning-body">`;
+  html += _renderNameSearchPane();
+  html += `</div></details>`;
+  return html;
+}
+
+// Live autosuggest: debounce keystrokes into _searchByName(auto=true).
+let _nameSearchTimer = null;
+function _onNameSearchInput() {
+  if (_nameSearchTimer) clearTimeout(_nameSearchTimer);
+  const val = document.getElementById('reg-name-search')?.value?.trim() || '';
+  if (val.length < 2) {
+    const resultsEl = document.getElementById('reg-name-results');
+    const msgEl = document.getElementById('reg-name-msg');
+    if (resultsEl) resultsEl.innerHTML = '';
+    if (msgEl) msgEl.textContent = '';
+    return;
+  }
+  _nameSearchTimer = setTimeout(() => _searchByName(true), 350);
 }
 
 function _switchReturningTab(tab) {
@@ -758,7 +858,9 @@ async function _returningCodeLogin() {
         localStorage.setItem('padel-player-profile', data.access_token);
         localStorage.setItem('padel-player-profile-data', JSON.stringify(data.profile));
       } catch (_) {}
-      _showForm();
+      // Re-render through _render() so the "am I already registered here?"
+      // check runs — a registered player lands on their entry, not the form.
+      _render();
       return;
     }
     // 2) Fall back to a this-lobby registrant code (already registered here).
@@ -814,16 +916,17 @@ async function _recoverByEmail() {
   }
 }
 
-// Tier 3: name search → organizer-approved claim.
-async function _searchByName() {
+// Tier 3: name search → organizer-approved claim. `auto` marks a debounced
+// autosuggest call (no button state changes, quieter empty state).
+async function _searchByName(auto) {
   const name = document.getElementById('reg-name-search')?.value?.trim();
   const msgEl = document.getElementById('reg-name-msg');
   const resultsEl = document.getElementById('reg-name-results');
   const btn = document.getElementById('reg-name-btn');
   if (!name) return;
   if (msgEl) msgEl.textContent = '';
-  if (resultsEl) resultsEl.innerHTML = '';
-  if (btn) { btn.disabled = true; btn.textContent = t('txt_reg_name_search_searching'); }
+  if (!auto && resultsEl) resultsEl.innerHTML = '';
+  if (!auto && btn) { btn.disabled = true; btn.textContent = t('txt_reg_name_search_searching'); }
   try {
     const res = await fetch(`${API}/${encodeURIComponent(_rid)}/find-by-name`, {
       method: 'POST',
@@ -831,7 +934,11 @@ async function _searchByName() {
       body: JSON.stringify({ player_name: name }),
     });
     const matches = res.ok ? await res.json() : [];
+    // A stale response must not overwrite results for newer input.
+    const current = document.getElementById('reg-name-search')?.value?.trim();
+    if (current !== name) return;
     if (!matches.length) {
+      if (resultsEl) resultsEl.innerHTML = '';
       if (msgEl) { msgEl.className = 'reg-returning-msg'; msgEl.textContent = t('txt_reg_name_search_none'); }
       return;
     }
@@ -840,16 +947,20 @@ async function _searchByName() {
       const key = `${m.entity_type}:${m.entity_id}:${m.player_id}`;
       html += `<div class="reg-name-result">`;
       html += `<span class="reg-name-result-label">${esc(m.player_name)} · ${esc(m.entity_name)}</span>`;
-      html += `<button type="button" class="btn btn-secondary reg-name-claim-btn" data-key="${esc(key)}" `;
-      html += `onclick="_claimParticipation('${esc(m.entity_type)}','${esc(m.entity_id)}','${esc(m.player_id)}',this)">`;
-      html += `${t('txt_reg_name_search_this_is_me')}</button>`;
+      if (m.already_linked) {
+        html += `<span class="reg-name-result-linked">${t('txt_reg_name_already_linked')}</span>`;
+      } else {
+        html += `<button type="button" class="btn btn-secondary reg-name-claim-btn" data-key="${esc(key)}" `;
+        html += `onclick="_claimParticipation('${esc(m.entity_type)}','${esc(m.entity_id)}','${esc(m.player_id)}',this)">`;
+        html += `${t('txt_reg_name_search_this_is_me')}</button>`;
+      }
       html += `</div>`;
     }
     if (resultsEl) resultsEl.innerHTML = html;
   } catch (_) {
     if (msgEl) { msgEl.className = 'reg-returning-msg error'; msgEl.textContent = t('txt_reg_error'); }
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = t('txt_reg_name_search_cta'); }
+    if (!auto && btn) { btn.disabled = false; btn.textContent = t('txt_reg_name_search_cta'); }
   }
 }
 
@@ -1060,7 +1171,7 @@ async function _cancelReturningRegistration() {
     _render();
     const toast = document.createElement('div');
     toast.className = 'reg-toast';
-    toast.textContent = `✓ ${t('txt_reg_cancelled')}`;
+    toast.textContent = t('txt_reg_cancelled');
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 2500);
   } catch (_) {
@@ -1073,6 +1184,10 @@ async function _cancelReturningRegistration() {
 function _showSuccess() {
   _hideAll();
   const el = document.getElementById('state-success');
+  // Clear the form container so its input ids don't shadow the success
+  // screen's (both live in #reg-root; only one is visible at a time).
+  const formEl = document.getElementById('state-form');
+  if (formEl) formEl.innerHTML = '';
   const r = _lastResult;
   const identityLabel = _registrationIdentityLabel(_regData);
 
@@ -1081,24 +1196,29 @@ function _showSuccess() {
     _setRegToken(r.token);
   }
 
-  let html = `<h2>✅ ${t('txt_reg_registered', { name: r.player_name })}</h2>`;
+  let html = `<h2 class="reg-success-title"><span class="reg-success-check">${_svgIcon(_IC_CHECK)}</span>${t('txt_reg_registered', { name: r.player_name })}</h2>`;
   if (identityLabel) {
     html += `<p class="subtitle subtitle-strong">${esc(identityLabel)}</p>`;
   }
 
-  // Two-state status header: this-tournament entry is now done.
-  html += `<div class="reg-status-header">`;
-  html += `<div class="reg-status-row reg-status-entry done">`;
-  html += `<span class="reg-status-dot">✓</span>`;
-  html += `<span>${t('txt_reg_status_entry_done')}</span>`;
-  html += `</div>`;
-  html += `</div>`;
+  // Identity strip: the this-tournament chip is now "registered".
+  let _sessProfile = null;
+  try {
+    const rawData = localStorage.getItem('padel-player-profile-data');
+    const rawJwt = localStorage.getItem('padel-player-profile');
+    if (rawData && rawJwt) _sessProfile = JSON.parse(rawData);
+  } catch (_) {}
+  html += _renderIdentityStrip({
+    loggedIn: !!_sessProfile,
+    name: _sessProfile?.name || _sessProfile?.email || '',
+    registered: true,
+  });
 
   // If the registration was linked to an existing Hub profile server-side,
   // confirm it instead of offering to create a new profile.
   const _profileLinked = !!r.profile_linked;
   if (_profileLinked) {
-    html += `<p class="reg-ps-auto-linked">${t('txt_reg_ps_auto_linked')}</p>`;
+    html += `<p class="reg-ps-auto-linked">${_svgIcon(_IC_CHECK)} ${t('txt_reg_ps_auto_linked')}</p>`;
   }
 
   html += `<div class="passphrase-label">${t('txt_reg_your_passphrase')}</div>`;
@@ -1129,7 +1249,7 @@ function _showSuccess() {
     const needsEmail = emailMode === 'disabled' || !hasEmail;
 
     html += `<details class="reg-ps-create-section" id="reg-ps-create-section">`;
-    html += `<summary class="reg-ps-create-summary">💡 ${t('txt_reg_ps_save_help')}</summary>`;
+    html += `<summary class="reg-ps-create-summary">${t('txt_reg_ps_save_help')}</summary>`;
     html += `<div class="reg-ps-create-body">`;
     if (needsEmail) {
       html += `<div class="reg-ps-create-email"><label style="font-size:0.8rem;color:var(--text-muted)">${t('txt_reg_ps_email_needed')}</label>`;
@@ -1140,6 +1260,12 @@ function _showSuccess() {
     html += `<p class="reg-ps-already-have">${t('txt_reg_ps_already_have')} <a href="/player">${t('txt_player_login')}</a></p>`;
     html += `</div>`;
     html += `</div>`;
+  }
+
+  // With a profile session, past participations can be found and claimed
+  // right here — the claim precondition (a profile) is now satisfied.
+  if (_hasProfileSession) {
+    html += _renderPastClaimSection();
   }
 
   el.innerHTML = html;
@@ -1155,10 +1281,7 @@ function _copyPassphrase() {
   if (!box || !btn) return;
   const text = box.textContent.trim();
   navigator.clipboard.writeText(text).then(() => {
-    const original = btn.textContent;
-    btn.textContent = t('txt_txt_copied');
-    btn.disabled = true;
-    setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1800);
+    flashSuccess(btn, t('txt_txt_copied'));
   }).catch(() => {
     // Fallback for browsers without clipboard API
     const sel = window.getSelection();
@@ -1244,8 +1367,15 @@ async function _handleSubmit(e) {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      const msg = data.detail || t('txt_reg_error');
-      errorEl.textContent = msg;
+      if (res.status === 409) {
+        // Same name already registered — likely a returning player. Point
+        // them at the recovery section instead of a dead-end error.
+        errorEl.textContent = t('txt_reg_name_taken_hint');
+        const returning = document.querySelector('#state-form .reg-returning');
+        if (returning) returning.setAttribute('open', '');
+      } else {
+        errorEl.textContent = data.detail || t('txt_reg_error');
+      }
       submitBtn.disabled = false;
       return;
     }
@@ -1325,7 +1455,7 @@ async function _pollLobby() {
 function _showRedirectToast(tid) {
   const toast = document.createElement('div');
   toast.className = 'reg-toast';
-  toast.textContent = `🎾 ${t('txt_reg_tournament_started')}`;
+  toast.textContent = t('txt_reg_tournament_started');
   document.body.appendChild(toast);
 
   let url = `/tv/${encodeURIComponent(tid)}`;
@@ -1341,7 +1471,7 @@ function _showRedirectToast(tid) {
 
 function _renderMessage() {
   if (!_regData?.message) return '';
-  return `<div class="reg-message-label">📢 ${t('txt_reg_admin_message')}</div>
+  return `<div class="reg-message-label">${t('txt_reg_admin_message')}</div>
     <div class="reg-message">${_renderMarkdown(_regData.message)}</div>`;
 }
 
@@ -1441,7 +1571,7 @@ async function _createPlayerSpace() {
     if (section) {
       const samePassphrase = data.profile.passphrase === r.passphrase;
       let html = `<div class="reg-ps-create-success">`;
-      html += `<p>✅ ${t('txt_reg_ps_created')}</p>`;
+      html += `<p>${_svgIcon(_IC_CHECK)} ${t('txt_reg_ps_created')}</p>`;
       if (samePassphrase) {
         html += `<p>${t('txt_reg_ps_created_same_pp')}</p>`;
       } else {
@@ -1450,6 +1580,10 @@ async function _createPlayerSpace() {
       }
       html += `</div>`;
       section.innerHTML = html;
+      // The visitor now has a profile — surface the past-participation finder.
+      if (!document.querySelector('.reg-claim-past')) {
+        section.insertAdjacentHTML('afterend', _renderPastClaimSection());
+      }
     }
   } catch (_) {
     if (errorEl) errorEl.textContent = t('txt_reg_ps_create_error');

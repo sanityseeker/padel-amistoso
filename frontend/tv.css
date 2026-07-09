@@ -1025,9 +1025,6 @@ html[data-theme="light"] .court-card--yours {
   transition: opacity 0.15s;
 }
 .player-opponents-contact:hover { opacity: 0.75; }
-.player-opponents-contact--copied {
-  color: var(--text-muted); font-style: italic; cursor: default;
-}
 .player-opponents-no-contact { color: var(--text-muted); font-style: italic; }
 .player-opponents-empty { color: var(--text-muted); font-size: 0.8rem; padding: 0.3rem 0; }
 
@@ -1137,9 +1134,6 @@ html[data-theme="light"] .court-card--yours {
   transition: opacity 0.15s;
 }
 .player-hub-section-passphrase:hover { opacity: 0.8; }
-.player-hub-section-passphrase--copied {
-  color: var(--text-muted); font-style: italic; cursor: default;
-}
 .player-hub-section-open {
   background: transparent; color: var(--accent);
   border: 1px solid var(--accent);

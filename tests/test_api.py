@@ -838,7 +838,10 @@ class TestRegistrationAPI:
 
         pub = client.get(f"/api/registrations/{rid}/public")
         assert pub.json()["registrant_count"] == 1
-        assert pub.json()["registrants"] == []  # player list not exposed publicly
+        # names-only player list is public; no secrets/answers/emails leak
+        [public_entry] = pub.json()["registrants"]
+        assert public_entry["player_name"] == "Alice"
+        assert set(public_entry.keys()) == {"player_id", "player_name"}
 
         # admin endpoint still returns full registrant data
         admin = client.get(f"/api/registrations/{rid}", headers=auth_headers)
@@ -973,10 +976,11 @@ class TestRegistrationAPI:
         assert upd.status_code == 200
         assert upd.json()["answers"] == {"q0": "advanced", "q1": "right"}
 
-        # public endpoint no longer exposes answers or registrant list
+        # public endpoint exposes names only — never answers
         pub = client.get(f"/api/registrations/{rid}/public")
         assert pub.status_code == 200
-        assert pub.json()["registrants"] == []
+        [public_entry] = pub.json()["registrants"]
+        assert set(public_entry.keys()) == {"player_id", "player_name"}
 
         # admin endpoint still returns full answers
         admin = client.get(f"/api/registrations/{rid}", headers=auth_headers)

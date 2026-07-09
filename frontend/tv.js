@@ -550,13 +550,7 @@ function _copyContact(el) {
   const text = el.dataset.contact;
   if (!text) return;
   navigator.clipboard.writeText(text).then(() => {
-    el.classList.add('player-opponents-contact--copied');
-    el.dataset.orig = el.textContent;
-    el.textContent = `✓ ${t('txt_txt_copied')}`;
-    setTimeout(() => {
-      el.textContent = el.dataset.orig;
-      el.classList.remove('player-opponents-contact--copied');
-    }, 1500);
+    flashSuccess(el, t('txt_txt_copied'));
   }).catch(() => {});
 }
 
@@ -611,13 +605,7 @@ function _copyHubPassphrase(el) {
   const text = el.dataset.passphrase;
   if (!text) return;
   navigator.clipboard.writeText(text).then(() => {
-    el.classList.add('player-hub-section-passphrase--copied');
-    el.dataset.orig = el.textContent;
-    el.textContent = `✓ ${t('txt_txt_copied')}`;
-    setTimeout(() => {
-      el.textContent = el.dataset.orig;
-      el.classList.remove('player-hub-section-passphrase--copied');
-    }, 1500);
+    flashSuccess(el, t('txt_txt_copied'));
   }).catch(() => {});
 }
 
@@ -2004,11 +1992,7 @@ function _copyTournamentSlug() {
   const slug = tvState.tournamentAlias || TID;
   if (!slug) return;
   navigator.clipboard.writeText(slug).then(() => {
-    const el = document.getElementById('tv-slug-chip');
-    if (!el) return;
-    const prev = el.textContent;
-    el.textContent = '✓ ' + t('txt_txt_url_copied');
-    setTimeout(() => { el.textContent = prev; }, 1400);
+    flashSuccess(document.getElementById('tv-slug-chip'), t('txt_txt_url_copied'));
   });
 }
 

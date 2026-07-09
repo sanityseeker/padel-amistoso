@@ -229,7 +229,7 @@ async function clubsCreate() {
       body: JSON.stringify({ community_id, name }),
     });
     nameInput.value = '';
-    _clubsMsg(msgEl, `✓ ${t('txt_clubs_created')}`, false);
+    _clubsMsg(msgEl, t('txt_clubs_created'), false);
     await _clubsLoadClubs();
     _clubsRenderOverview();
   } catch (e) {
@@ -251,7 +251,7 @@ async function clubsDelete(clubId) {
   }
   try {
     await apiAuth(`/api/clubs/${encodeURIComponent(clubId)}`, { method: 'DELETE' });
-    _clubsMsg(msgEl, `✓ ${t('txt_clubs_deleted')}`, false);
+    _clubsMsg(msgEl, t('txt_clubs_deleted'), false);
     _activeClubId = null;
     await _clubsLoadClubs();
     _clubsRenderOverview();
@@ -378,7 +378,7 @@ async function clubsRename() {
       method: 'PATCH',
       body: JSON.stringify({ name }),
     });
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     const club = _clubsList.find(c => c.id === _activeClubId);
     if (club) club.name = name;
   } catch (e) {
@@ -429,7 +429,7 @@ async function clubsSaveLandingDescription() {
       method: 'PATCH',
       body: JSON.stringify({ description }),
     });
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     const club = _clubsList.find(c => c.id === _activeClubId);
     if (club) club.description = updated.description;
   } catch (e) {
@@ -456,7 +456,7 @@ async function clubsSavePinnedTournaments() {
       method: 'PATCH',
       body: JSON.stringify({ pinned_tournament_ids }),
     });
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     const club = _clubsList.find(c => c.id === _activeClubId);
     if (club) club.pinned_tournament_ids = updated.pinned_tournament_ids;
   } catch (e) {
@@ -476,7 +476,7 @@ async function _clubsSetSlug(rawSlug) {
     });
     const club = _clubsList.find(c => c.id === _activeClubId);
     if (club) club.slug = updated.slug;
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     _clubsRenderDetail();
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
@@ -527,7 +527,7 @@ async function clubsUploadLogo(fileInput) {
       body: formData,
     });
     if (!resp.ok) { const d = await resp.json().catch(() => ({})); throw new Error(d.detail || t('txt_clubs_upload_failed')); }
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     const club = _clubsList.find(c => c.id === _activeClubId);
     if (club) club.has_logo = true;
     _clubsRenderDetail();
@@ -541,7 +541,7 @@ async function clubsDeleteLogo() {
   if (!_activeClubId) return;
   try {
     await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/logo`, { method: 'DELETE' });
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     const club = _clubsList.find(c => c.id === _activeClubId);
     if (club) club.has_logo = false;
     _clubsRenderDetail();
@@ -599,7 +599,7 @@ async function clubsCreateTier() {
       body: JSON.stringify({ name, sport, base_elo, position }),
     });
     nameInput.value = '';
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     _clubTiers = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/tiers`).catch(() => []);
     _clubsRenderTiers();
     _clubsRenderPlayers(); // refresh tier dropdowns
@@ -613,7 +613,7 @@ async function clubsDeleteTier(tierId) {
   const msgEl = document.getElementById('clubs-tiers-msg');
   try {
     await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/tiers/${encodeURIComponent(tierId)}`, { method: 'DELETE' });
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     _clubTiers = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/tiers`).catch(() => []);
     _clubsRenderTiers();
     _clubsRenderPlayers();
@@ -674,7 +674,7 @@ async function clubsCreateSeason() {
       body: JSON.stringify({ name }),
     });
     nameInput.value = '';
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     _clubSeasons = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/seasons`).catch(() => []);
     _clubsRenderSeasons();
     _clubsRenderSeasonAssignment();
@@ -690,7 +690,7 @@ async function clubsToggleSeason(seasonId, active) {
       method: 'PATCH',
       body: JSON.stringify({ active }),
     });
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     delete _clubsSeasonStandingsCache[seasonId];
     _clubSeasons = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/seasons`).catch(() => []);
     _clubsRenderSeasons();
@@ -706,7 +706,7 @@ async function clubsDeleteSeason(seasonId) {
   const msgEl = document.getElementById('clubs-seasons-msg');
   try {
     await apiAuth(`/api/seasons/${encodeURIComponent(seasonId)}`, { method: 'DELETE' });
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     delete _clubsSeasonStandingsCache[seasonId];
     _clubSeasons = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/seasons`).catch(() => []);
     _clubsRenderSeasons();
@@ -907,7 +907,7 @@ async function clubsAttachTournamentToClub(tid, btn) {
       if (clubRes && 'season_id' in clubRes) t_.season_id = clubRes.season_id;
       t_.club_name = club.name;
     }
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     _clubsRenderSeasonAssignment();
     if (typeof loadTournaments === 'function') {
       loadTournaments().catch(() => {});
@@ -946,7 +946,7 @@ async function clubsToggleTournamentClub(tid, btn) {
     } else {
       t_.club_name = null;
     }
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     _clubsRenderSeasonAssignment();
     if (typeof loadTournaments === 'function') {
       loadTournaments().catch(() => {});
@@ -977,7 +977,7 @@ async function clubsAssignTournamentSeason(tid) {
     });
     const t_ = _clubsTournaments.find(t => t.id === tid);
     if (t_) t_.season_id = season_id;
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -995,7 +995,7 @@ async function clubsAssignRegistrationSeason(rid) {
     });
     const r_ = _clubsRegistrations.find(r => r.id === rid);
     if (r_) r_.season_id = season_id;
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -1958,7 +1958,7 @@ async function clubsAddPlayer() {
     });
     input.value = '';
     _clubsPlayerSearchSelected = null;
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     _clubPlayers = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players`).catch(() => []);
     _clubsRenderPlayers();
   } catch (e) {
@@ -2237,7 +2237,7 @@ async function clubsSaveElo(profileId, sport) {
       method: 'PATCH',
       body: JSON.stringify({ elo, sport }),
     });
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     // Update local cache
     const p = _clubPlayers.find(x => x.profile_id === profileId);
     if (p) {
@@ -2271,7 +2271,7 @@ async function clubsAssignTier(profileId, sport) {
       method: 'PATCH',
       body: JSON.stringify({ sport, tier_id, apply_base_elo }),
     });
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     // Refresh player list to show updated ELO
     if (apply_base_elo) {
       _clubPlayers = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players`).catch(() => []);
@@ -2328,7 +2328,7 @@ async function clubsAddCollaborator() {
     input.value = '';
     _clubCollaborators = res.collaborators || [];
     _clubsRenderCollaborators();
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -2341,7 +2341,7 @@ async function clubsRemoveCollaborator(username) {
     const res = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/collaborators/${encodeURIComponent(username)}`, { method: 'DELETE' });
     _clubCollaborators = res.collaborators || [];
     _clubsRenderCollaborators();
-    _clubsMsg(msgEl, '✓', false);
+    _clubsMsg(msgEl, t('txt_txt_saved'), false);
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -2370,7 +2370,7 @@ async function clubsSaveEmailSettings() {
         sender_name: senderName?.value?.trim() || null,
       };
     }
-    _clubsMsg(msgEl, `✓ ${t('txt_clubs_email_saved')}`, false);
+    _clubsMsg(msgEl, t('txt_clubs_email_saved'), false);
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }

@@ -68,7 +68,7 @@ const _commStore = reactiveStore({
       });
       try { localStorage.setItem('padel-auth-default-community', result.default_community_id); } catch (_) {}
       _refreshCreateCommunityDropdown(community_id);
-      this._flashDefault(true, `✓ ${window.t('txt_comm_saved')}`);
+      this._flashDefault(true, window.t('txt_comm_saved'));
     } catch (e) {
       this._flashDefault(false, e.message);
     }
@@ -86,7 +86,7 @@ const _commStore = reactiveStore({
     try {
       await apiAuth('/api/communities', { method: 'POST', body: JSON.stringify({ name }) });
       this.newName = '';
-      this._flash(true, `✓ ${window.t('txt_comm_created').replace('{name}', name)}`);
+      this._flash(true, window.t('txt_comm_created').replace('{name}', name));
       await _commLoadCommunities();
       if (typeof _loadCommunities === 'function') _loadCommunities();
     } catch (e) {
@@ -108,7 +108,7 @@ const _commStore = reactiveStore({
       await apiAuth(`/api/communities/${encodeURIComponent(id)}`, {
         method: 'PUT', body: JSON.stringify({ name: newName }),
       });
-      this._flash(true, `✓ ${window.t('txt_comm_renamed').replace('{name}', newName)}`);
+      this._flash(true, window.t('txt_comm_renamed').replace('{name}', newName));
       this.cancelRename();
       await _commLoadCommunities();
       if (typeof _loadCommunities === 'function') _loadCommunities();
@@ -123,7 +123,7 @@ const _commStore = reactiveStore({
     if (!confirm(window.t('txt_comm_delete_confirm').replace('{name}', community.name))) return;
     try {
       await apiAuth(`/api/communities/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      this._flash(true, `✓ ${window.t('txt_comm_deleted')}`);
+      this._flash(true, window.t('txt_comm_deleted'));
       await Promise.all([_commLoadCommunities(), _commLoadTournaments(), _commLoadRegistrations()]);
       if (typeof _loadCommunities === 'function') _loadCommunities();
     } catch (e) {
@@ -148,7 +148,7 @@ const _commStore = reactiveStore({
         if (res && 'club_id' in res) item.club_id = res.club_id;
         if (res && 'season_id' in res) item.season_id = res.season_id;
       }
-      this._flashRow('t', tid, true, '✓');
+      this._flashRow('t', tid, true, window.t('txt_txt_saved'));
     } catch (e) {
       this._flashRow('t', tid, false, e.message);
     }
@@ -164,13 +164,13 @@ const _commStore = reactiveStore({
         if (res && 'club_id' in res) item.club_id = res.club_id;
         if (res && 'season_id' in res) item.season_id = res.season_id;
       }
-      this._flashRow('r', rid, true, '✓');
+      this._flashRow('r', rid, true, window.t('txt_txt_saved'));
     } catch (e) {
       this._flashRow('r', rid, false, e.message);
     }
   },
   // Per-row assignment status (keyed "t:<id>" / "r:<id>"), reactive so the
-  // "✓" / error text next to a select re-renders.
+  // saved/error text next to a select re-renders.
   rowMsgs: {},
   rowMsg(kind, id) { return this.rowMsgs[`${kind}:${id}`] || null; },
   _flashRow(kind, id, ok, text) {

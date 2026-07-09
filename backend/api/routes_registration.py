@@ -14,6 +14,7 @@ import asyncio
 import json
 import secrets
 import sqlite3
+import unicodedata
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -21,7 +22,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from .rate_limit import BoundedRateLimiter
-from ..auth.deps import get_current_user
+from ..auth.deps import ProfileIdentity, get_current_profile, get_current_user
 from ..auth.models import User, UserRole
 from ..email import (
     is_configured as email_is_configured,
@@ -60,6 +61,7 @@ from .schemas import (
     RegistrantLoginIn,
     RegistrantLoginOut,
     RegistrantPatch,
+    RegistrantPublicOut,
     RegistrationAdminOut,
     RegistrationCreate,
     RegistrationPublicOut,
@@ -101,6 +103,14 @@ _public_register_rate_limiter = BoundedRateLimiter(
 
 _public_passphrase_rate_limiter = BoundedRateLimiter(
     max_attempts=_PUBLIC_PASSCODE_MAX_ATTEMPTS,
+    window_seconds=_PUBLIC_WINDOW_SECONDS,
+    max_tracked_ips=_PUBLIC_MAX_TRACKED_IPS,
+)
+
+# Name autosuggest fires on every debounced keystroke, so it needs more
+# headroom than the passphrase limiter (results are names-only and capped).
+_find_by_name_rate_limiter = BoundedRateLimiter(
+    max_attempts=240,
     window_seconds=_PUBLIC_WINDOW_SECONDS,
     max_tracked_ips=_PUBLIC_MAX_TRACKED_IPS,
 )
@@ -584,7 +594,9 @@ async def list_public_registrations() -> list[RegistrationPublicOut]:
                 sport=r.get("sport", Sport.PADEL),
                 email_requirement=_email_requirement(r),
                 registrant_count=len(registrants),
-                registrants=[],
+                registrants=[
+                    RegistrantPublicOut(player_id=p["player_id"], player_name=p["player_name"]) for p in registrants
+                ],
                 community_id=community_id,
                 community_name=branding["community_name"],
                 club_id=r.get("club_id"),
@@ -990,7 +1002,7 @@ async def get_registration_public(rid: str) -> RegistrationPublicOut:
         sport=reg.get("sport", Sport.PADEL),
         email_requirement=_email_requirement(reg),
         registrant_count=len(registrants),
-        registrants=[],
+        registrants=[RegistrantPublicOut(player_id=p["player_id"], player_name=p["player_name"]) for p in registrants],
         community_id=community_id,
         community_name=branding["community_name"],
         club_name=branding["club_name"],
@@ -1560,6 +1572,55 @@ async def player_login(rid: str, req: RegistrantLoginIn, request: Request) -> Re
     return RegistrantLoginOut(**result)
 
 
+@router.get("/{rid}/my-entry", response_model=RegistrantLoginOut)
+async def get_my_entry(rid: str, identity: ProfileIdentity | None = Depends(get_current_profile)) -> RegistrantLoginOut:
+    """Return the authenticated Hub profile's own registration in this lobby.
+
+    Matches by ``registrants.profile_id`` first, then by the profile's global
+    passphrase (rows registered with the unified passphrase before linking).
+    Lets the registration page answer "am I already registered here?" from the
+    profile JWT alone, without relying on a cached passphrase. 404 when the
+    profile has no entry in this lobby.
+    """
+    if identity is None:
+        raise HTTPException(401, "Profile authentication required")
+
+    reg = _get_registration(rid)
+    fields = "player_id, player_name, passphrase, token, answers, registered_at"
+    with get_db() as conn:
+        row = conn.execute(
+            f"SELECT {fields} FROM registrants WHERE registration_id = ? AND profile_id = ?",
+            (reg["id"], identity.profile_id),
+        ).fetchone()
+        if row is None:
+            profile_row = conn.execute(
+                "SELECT passphrase FROM player_profiles WHERE id = ?",
+                (identity.profile_id,),
+            ).fetchone()
+            if profile_row is not None:
+                row = conn.execute(
+                    f"SELECT {fields} FROM registrants WHERE registration_id = ? AND passphrase = ?",
+                    (reg["id"], profile_row["passphrase"]),
+                ).fetchone()
+    if row is None:
+        raise HTTPException(404, "No registration for this profile in this lobby")
+
+    answers: dict = {}
+    if row["answers"]:
+        try:
+            answers = json.loads(row["answers"])
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return RegistrantLoginOut(
+        player_id=row["player_id"],
+        player_name=row["player_name"],
+        passphrase=row["passphrase"],
+        token=row["token"],
+        answers=answers,
+        registered_at=row["registered_at"],
+    )
+
+
 @router.patch("/{rid}/player-answers", response_model=RegistrantLoginOut)
 async def player_update_answers(rid: str, req: RegistrantAnswersUpdateIn, request: Request) -> RegistrantLoginOut:
     """Allow a returning player to update their own answers by passphrase."""
@@ -1933,7 +1994,20 @@ async def send_waitlist_email(
 
 
 def _normalize_name(name: str) -> str:
-    return " ".join(name.strip().lower().split())
+    """Lowercase, collapse whitespace, and strip accents ("José" → "jose")."""
+    folded = unicodedata.normalize("NFKD", name)
+    stripped = "".join(ch for ch in folded if not unicodedata.combining(ch))
+    return " ".join(stripped.strip().lower().split())
+
+
+def _name_matches(query: str, candidate: str) -> bool:
+    """Token-prefix match: every query token is a prefix of some candidate token.
+
+    Both arguments must already be normalized. "den bel" matches
+    "denis belyakov"; "belya" matches too; "denisx" does not.
+    """
+    candidate_tokens = candidate.split()
+    return all(any(ct.startswith(qt) for ct in candidate_tokens) for qt in query.split())
 
 
 def _hub_login_token_for_email(email: str, lang: str = "en") -> str | None:
@@ -1964,19 +2038,21 @@ async def find_participations_by_name(
 ) -> list[ParticipationMatchOut]:
     """Search past participations by name within this lobby's club/community.
 
-    Returns a short list of ``name + event`` matches with no emails, no
-    passphrases, and no out-of-scope players.  Used by the returning-player
-    section for someone who has neither their code nor an email on record.
+    Accent-insensitive token-prefix matching (autosuggest-friendly: "den bel"
+    finds "Denis Belyakov").  Returns a short list of ``name + event`` matches
+    with no emails, no passphrases, and no out-of-scope players.  Participations
+    already linked to a Hub profile are included with ``already_linked=True``
+    so the player understands why they cannot be claimed.
     """
     client_ip = _client_ip(request)
-    _public_passphrase_rate_limiter.check(client_ip, "Too many lookups — try again later")
-    _public_passphrase_rate_limiter.record(client_ip)
+    _find_by_name_rate_limiter.check(client_ip, "Too many lookups — try again later")
+    _find_by_name_rate_limiter.record(client_ip)
 
     reg = _get_registration(rid)
     community_id = reg.get("community_id") or "open"
     club_id = reg.get("club_id")
     target = _normalize_name(req.player_name)
-    if not target:
+    if len(target) < 2:
         return []
 
     matches: list[ParticipationMatchOut] = []
@@ -1986,27 +2062,25 @@ async def find_participations_by_name(
         if club_id:
             tourn_rows = conn.execute(
                 """
-                SELECT ps.tournament_id, ps.player_id, ps.player_name, t.name AS tname
+                SELECT ps.tournament_id, ps.player_id, ps.player_name, ps.profile_id, t.name AS tname
                   FROM player_secrets ps
                   JOIN tournaments t ON t.id = ps.tournament_id
                  WHERE t.club_id = ?
-                   AND ps.profile_id IS NULL
                 """,
                 (club_id,),
             ).fetchall()
         else:
             tourn_rows = conn.execute(
                 """
-                SELECT ps.tournament_id, ps.player_id, ps.player_name, t.name AS tname
+                SELECT ps.tournament_id, ps.player_id, ps.player_name, ps.profile_id, t.name AS tname
                   FROM player_secrets ps
                   JOIN tournaments t ON t.id = ps.tournament_id
                  WHERE t.community_id = ?
-                   AND ps.profile_id IS NULL
                 """,
                 (community_id,),
             ).fetchall()
         for row in tourn_rows:
-            if _normalize_name(row["player_name"]) == target:
+            if _name_matches(target, _normalize_name(row["player_name"])):
                 matches.append(
                     ParticipationMatchOut(
                         entity_type="tournament",
@@ -2014,6 +2088,7 @@ async def find_participations_by_name(
                         entity_name=row["tname"] or "",
                         player_id=row["player_id"],
                         player_name=row["player_name"],
+                        already_linked=row["profile_id"] is not None,
                     )
                 )
 
@@ -2021,11 +2096,10 @@ async def find_participations_by_name(
         if club_id:
             reg_rows = conn.execute(
                 """
-                SELECT r.registration_id, r.player_id, r.player_name, reg.name AS rname
+                SELECT r.registration_id, r.player_id, r.player_name, r.profile_id, reg.name AS rname
                   FROM registrants r
                   JOIN registrations reg ON reg.id = r.registration_id
                  WHERE reg.club_id = ?
-                   AND r.profile_id IS NULL
                    AND r.registration_id != ?
                 """,
                 (club_id, reg["id"]),
@@ -2033,17 +2107,16 @@ async def find_participations_by_name(
         else:
             reg_rows = conn.execute(
                 """
-                SELECT r.registration_id, r.player_id, r.player_name, reg.name AS rname
+                SELECT r.registration_id, r.player_id, r.player_name, r.profile_id, reg.name AS rname
                   FROM registrants r
                   JOIN registrations reg ON reg.id = r.registration_id
                  WHERE reg.community_id = ?
-                   AND r.profile_id IS NULL
                    AND r.registration_id != ?
                 """,
                 (community_id, reg["id"]),
             ).fetchall()
         for row in reg_rows:
-            if _normalize_name(row["player_name"]) == target:
+            if _name_matches(target, _normalize_name(row["player_name"])):
                 matches.append(
                     ParticipationMatchOut(
                         entity_type="registration",
@@ -2051,10 +2124,13 @@ async def find_participations_by_name(
                         entity_name=row["rname"] or "",
                         player_id=row["player_id"],
                         player_name=row["player_name"],
+                        already_linked=row["profile_id"] is not None,
                     )
                 )
 
-    # Cap results so a common name can't be used to enumerate a whole club.
+    # Exact-name matches first, claimable before already-linked; then cap so a
+    # common name can't be used to enumerate a whole club.
+    matches.sort(key=lambda m: (_normalize_name(m.player_name) != target, m.already_linked))
     return matches[:20]
 
 

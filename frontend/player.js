@@ -2549,16 +2549,7 @@ async function _doSaveProfile() {
     const updated = await _apiPut('', { name, email, contact }, _jwt);
     _profile = { ..._profile, ...updated };
     _saveSession();
-    const btn = document.getElementById('save-profile-btn');
-    if (btn) {
-      btn.textContent = '✓ ' + t('txt_player_save_btn');
-      btn.classList.add('btn-save-success');
-      setTimeout(() => btn.classList.add('fade-out'), 1200);
-      setTimeout(() => {
-        btn.textContent = t('txt_player_save_btn');
-        btn.classList.remove('btn-save-success', 'fade-out');
-      }, 1800);
-    }
+    flashSuccess(document.getElementById('save-profile-btn'));
   } catch (err) {
     _errorMsg = err.message;
     _render();
