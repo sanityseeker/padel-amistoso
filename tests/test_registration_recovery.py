@@ -387,6 +387,18 @@ class TestFindByNameMatching:
         assert self._search(client, cur, "denisx") == []
         assert self._search(client, cur, "den bez") == []
 
+    def test_match_carries_event_context(self, client, auth_headers):
+        # Each match names the event it belongs to, with sport and date, so
+        # the player can recognize WHICH tournament the found name is from.
+        self._setup_scope()
+        past, cur = self._lobby_pair(client, auth_headers)
+        _register(client, past, "Context Carla")
+
+        [match] = self._search(client, cur, "context carla")
+        assert match["entity_name"] == "Past A"
+        assert match["sport"] == "padel"
+        assert match["event_date"]  # registrant's registered_at timestamp
+
     def test_accent_insensitive(self, client, auth_headers):
         self._setup_scope()
         past, cur = self._lobby_pair(client, auth_headers)

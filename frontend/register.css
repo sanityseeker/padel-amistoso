@@ -322,7 +322,9 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 #reg-returning-error { color: var(--red); font-size: 0.8rem; margin-bottom: 0.4rem; min-height: 0; }
 .reg-name-results { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
 .reg-name-result { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.45rem 0.6rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; flex-wrap: wrap; }
-.reg-name-result-label { font-size: 0.82rem; color: var(--text); }
+.reg-name-result-info { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; text-align: left; }
+.reg-name-result-label { font-size: 0.82rem; font-weight: 600; color: var(--text); }
+.reg-name-result-event { font-size: 0.74rem; color: var(--text-muted); line-height: 1.35; }
 .reg-name-claim-btn { flex-shrink: 0; padding: 0.35rem 0.7rem; font-size: 0.78rem; width: auto; }
 .reg-name-result-linked { font-size: 0.74rem; color: var(--text-muted); flex-shrink: 1; text-align: right; }
 

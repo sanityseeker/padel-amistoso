@@ -813,6 +813,23 @@ function _renderPastClaimSection() {
   return html;
 }
 
+/**
+ * Context line for a name-search match: which event the found name belongs
+ * to — event name, type (tournament / lobby), sport, and date.
+ */
+function _matchEventLine(m) {
+  const parts = [m.entity_name || ''];
+  parts.push(t(m.entity_type === 'tournament' ? 'txt_reg_match_type_tournament' : 'txt_reg_match_type_lobby'));
+  if (m.sport) parts.push(t(m.sport === 'tennis' ? 'txt_player_sport_tennis' : 'txt_player_sport_padel'));
+  if (m.event_date) {
+    const d = new Date(m.event_date);
+    if (!isNaN(d)) {
+      parts.push(d.toLocaleDateString(getAppLanguage() === 'es' ? 'es' : 'en', { year: 'numeric', month: 'short' }));
+    }
+  }
+  return parts.filter(Boolean).join(' · ');
+}
+
 // Live autosuggest: debounce keystrokes into _searchByName(auto=true).
 let _nameSearchTimer = null;
 function _onNameSearchInput() {
@@ -946,7 +963,10 @@ async function _searchByName(auto) {
     for (const m of matches) {
       const key = `${m.entity_type}:${m.entity_id}:${m.player_id}`;
       html += `<div class="reg-name-result">`;
-      html += `<span class="reg-name-result-label">${esc(m.player_name)} · ${esc(m.entity_name)}</span>`;
+      html += `<span class="reg-name-result-info">`;
+      html += `<span class="reg-name-result-label">${esc(m.player_name)}</span>`;
+      html += `<span class="reg-name-result-event">${esc(_matchEventLine(m))}</span>`;
+      html += `</span>`;
       if (m.already_linked) {
         html += `<span class="reg-name-result-linked">${t('txt_reg_name_already_linked')}</span>`;
       } else {

@@ -621,6 +621,10 @@ class ParticipationMatchOut(BaseModel):
     player_id: str
     player_name: str
     already_linked: bool = False
+    sport: str | None = None
+    # Tournament creation date / lobby registration date — shown so the player
+    # can recognize WHICH event the found name belongs to.
+    event_date: str | None = None
 
 
 class ClaimParticipationRequest(BaseModel):

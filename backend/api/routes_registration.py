@@ -2062,7 +2062,8 @@ async def find_participations_by_name(
         if club_id:
             tourn_rows = conn.execute(
                 """
-                SELECT ps.tournament_id, ps.player_id, ps.player_name, ps.profile_id, t.name AS tname
+                SELECT ps.tournament_id, ps.player_id, ps.player_name, ps.profile_id,
+                       t.name AS tname, t.sport AS sport, t.created_at AS event_date
                   FROM player_secrets ps
                   JOIN tournaments t ON t.id = ps.tournament_id
                  WHERE t.club_id = ?
@@ -2072,7 +2073,8 @@ async def find_participations_by_name(
         else:
             tourn_rows = conn.execute(
                 """
-                SELECT ps.tournament_id, ps.player_id, ps.player_name, ps.profile_id, t.name AS tname
+                SELECT ps.tournament_id, ps.player_id, ps.player_name, ps.profile_id,
+                       t.name AS tname, t.sport AS sport, t.created_at AS event_date
                   FROM player_secrets ps
                   JOIN tournaments t ON t.id = ps.tournament_id
                  WHERE t.community_id = ?
@@ -2089,6 +2091,8 @@ async def find_participations_by_name(
                         player_id=row["player_id"],
                         player_name=row["player_name"],
                         already_linked=row["profile_id"] is not None,
+                        sport=row["sport"],
+                        event_date=row["event_date"] or None,
                     )
                 )
 
@@ -2096,7 +2100,8 @@ async def find_participations_by_name(
         if club_id:
             reg_rows = conn.execute(
                 """
-                SELECT r.registration_id, r.player_id, r.player_name, r.profile_id, reg.name AS rname
+                SELECT r.registration_id, r.player_id, r.player_name, r.profile_id,
+                       reg.name AS rname, reg.sport AS sport, r.registered_at AS event_date
                   FROM registrants r
                   JOIN registrations reg ON reg.id = r.registration_id
                  WHERE reg.club_id = ?
@@ -2107,7 +2112,8 @@ async def find_participations_by_name(
         else:
             reg_rows = conn.execute(
                 """
-                SELECT r.registration_id, r.player_id, r.player_name, r.profile_id, reg.name AS rname
+                SELECT r.registration_id, r.player_id, r.player_name, r.profile_id,
+                       reg.name AS rname, reg.sport AS sport, r.registered_at AS event_date
                   FROM registrants r
                   JOIN registrations reg ON reg.id = r.registration_id
                  WHERE reg.community_id = ?
@@ -2125,6 +2131,8 @@ async def find_participations_by_name(
                         player_id=row["player_id"],
                         player_name=row["player_name"],
                         already_linked=row["profile_id"] is not None,
+                        sport=row["sport"],
+                        event_date=row["event_date"] or None,
                     )
                 )
 
