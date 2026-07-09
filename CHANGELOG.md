@@ -1,3 +1,335 @@
+## v1.15.0 (2026-07-09)
+
+### Feat
+
+- **registration**: show event context on name-search matches
+- **registration**: autosuggest recognition, registered-state fix, identity strip, animated feedback
+
+### Fix
+
+- **past-participations**: improve the search for past participations during new registratinos
+
+## v1.13.4 (2026-07-04)
+
+## v1.13.3 (2026-07-04)
+
+### Fix
+
+- **frontend**: improve page loading; refactor
+
+## v1.13.2 (2026-07-04)
+
+### Fix
+
+- **email**: create an email notification even if the email was not verified but is present in the system; add auto-verification
+
+## v1.13.1 (2026-06-09)
+
+### Fix
+
+- **frontend**: fix group stage frontend; add number of matches approximation
+
+## v1.13.0 (2026-06-06)
+
+### Feat
+
+- **playoffs**: implement espejo logic; improve admin frontend for play offs
+
+## v1.12.2 (2026-06-05)
+
+### Fix
+
+- **playoff**: fix po previes for 7/14 teams
+
+## v1.12.1 (2026-06-05)
+
+### Fix
+
+- **playoffs**: court addition/removal
+
+## v1.12.0 (2026-06-05)
+
+### Feat
+
+- **frontend-/-styling**: heavily refactor and refine the project styling
+
+## v1.11.5 (2026-05-25)
+
+### Fix
+
+- **club**: performance and frontend fixes
+
+## v1.11.4 (2026-05-25)
+
+### Fix
+
+- **public-view**: fix public club view; fix tennis format in mini cards
+
+## v1.11.3 (2026-05-10)
+
+### Fix
+
+- **admin-frontend**: fix add/remove player in a tournament;improve filters in a tournament list
+
+## v1.11.2 (2026-05-02)
+
+### Fix
+
+- **clubs**: fix domain resolution; fix player hub slug search
+
+## v1.11.1 (2026-05-02)
+
+### Fix
+
+- **tests**: update tests
+
+## v1.11.0 (2026-05-02)
+
+### Feat
+
+- **clubs**: add clubs home page; add tournamnets players mini cards; bug fixes
+
+## v1.10.3 (2026-04-30)
+
+### Fix
+
+- **admin**: group stage sticky bar
+
+## v1.10.2 (2026-04-30)
+
+### Fix
+
+- **frontend**: improve players and admins tournament ux
+
+## v1.10.1 (2026-04-29)
+
+### Fix
+
+- **admin-clubs**: improve ux
+
+## v1.10.0 (2026-04-28)
+
+### Feat
+
+- **admin**: re-organize admin panel in tournaments and lobby
+
+## v1.9.8 (2026-04-23)
+
+### Fix
+
+- **admin**: hotfix admin interface
+
+## v1.9.7 (2026-04-23)
+
+### Fix
+
+- admin
+
+## v1.9.6 (2026-04-23)
+
+### Fix
+
+- **players**: allow deleting ghost profiles; scope club players to past participants
+
+## v1.9.5 (2026-04-22)
+
+### Fix
+
+- **group-stage**: return sticky admin management bar
+
+## v1.9.4 (2026-04-22)
+
+### Fix
+
+- **player-hub**: fix number of matches when recalculating elo
+
+## v1.9.3 (2026-04-22)
+
+### Fix
+
+- **player-hub**: fix player hub view profile
+
+## v1.9.2 (2026-04-22)
+
+### Fix
+
+- **clubs**: fix communities/clubs distinction; fix players management and conversion from ghost entities to permanent
+
+## v1.9.1 (2026-04-22)
+
+### Fix
+
+- **profiles**: fixes for ghost profiles; frontend
+
+## v1.9.0 (2026-04-21)
+
+### Feat
+
+- **community/clubs**: introduce communities functionality
+
+## v1.8.5 (2026-04-20)
+
+### Fix
+
+- **admin**: creating new users from email; frontend improvement
+
+## v1.8.4 (2026-04-17)
+
+### Fix
+
+- **elo;-frontend**: add scores confidence to elo; improve frontend for admin and player hub
+
+## v1.8.3 (2026-04-17)
+
+### Fix
+
+- **frontend**: fix translations
+- **admin-inteface**: improve group stage admin ux
+
+## v1.8.1 (2026-04-16)
+
+### Fix
+
+- **player-hub**: sport selector behavior for elo when there are few matches
+
+## v1.8.0 (2026-04-16)
+
+### Feat
+
+- **emails;-player-hub**: remember language preferences of users to send them emails in english or spanish; improve linking players to player hub, enhance frontend
+
+## v1.7.10 (2026-04-16)
+
+### Fix
+
+- **player-hub**: show best results only for finished tournaments
+
+## v1.7.9 (2026-04-16)
+
+### Fix
+
+- **player-hub**: improve frontend formatting
+
+## v1.7.8 (2026-04-15)
+
+### Fix
+
+- **elo,-mexicano**: fix mexicano team mode; improve player hub elo ui; frontend fixes
+
+## v1.7.7 (2026-04-15)
+
+### Fix
+
+- **elo**: fix elo history frontend
+
+## v1.7.6 (2026-04-15)
+
+### Fix
+
+- **elo-history**: improve frontend
+
+## v1.7.5 (2026-04-15)
+
+### Fix
+
+- **elo-history**: add sport selector
+
+## v1.7.4 (2026-04-15)
+
+### Fix
+
+- **elo**: fix tests
+
+## v1.7.3 (2026-04-15)
+
+### Fix
+
+- **readme**: add documentation on elo
+
+## v1.7.2 (2026-04-15)
+
+### Fix
+
+- **elo**: fix recalculation from history for linked players
+
+## v1.7.1 (2026-04-15)
+
+### Fix
+
+- **elo**: allow historical re-calculation
+
+## v1.7.0 (2026-04-15)
+
+### Feat
+
+- **player-hub,-tennis-tournaments**: create live ELO rating system; allow doubles in tennis
+
+## v1.6.4 (2026-04-14)
+
+### Fix
+
+- **frontend**: fix player hub history names alignment, fix admin panel
+
+## v1.6.3 (2026-04-14)
+
+### Fix
+
+- **frontend**: fixes in admin and hub panels
+
+## v1.6.2 (2026-04-14)
+
+### Fix
+
+- **frontend**: fix loading older mexicano tournaments; improve admin tournament creation frontend with linking Hub players; improve matches history frontend in Hub
+
+## v1.6.1 (2026-04-13)
+
+### Fix
+
+- **mexicano**: allow loading older format of tournaments
+
+## v1.6.0 (2026-04-13)
+
+### Feat
+
+- **players-path,-frontend**: add play off stats to players path; separate group stage and play offs in general stats; add a pin for a home page; fix scores mofifiers based on teams balance
+
+## v1.5.4 (2026-04-12)
+
+### Fix
+
+- **tests**: fix email test
+
+## v1.5.3 (2026-04-12)
+
+### Fix
+
+- **tests**: fix email verification test
+
+## v1.5.2 (2026-04-12)
+
+### Fix
+
+- **email-verification**: fix frontend
+
+## v1.5.1 (2026-04-12)
+
+### Fix
+
+- **tests**: fix email verification test rate limiter
+
+## v1.5.0 (2026-04-12)
+
+### Feat
+
+- **player-hub**: add email verification; frontend enhancements; add a tournament path feature
+
+## v1.4.1 (2026-04-11)
+
+### Fix
+
+- **public-links**: use uuids for tournaments and registrations links to avoid collisions
+
 ## v1.14.0 (2026-07-09)
 
 ### Feat
