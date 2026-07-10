@@ -7,6 +7,8 @@ QR-code token, and for tournament organizers to manage player secrets.
 
 from __future__ import annotations
 
+import asyncio
+
 import io
 import time
 import uuid
@@ -39,7 +41,7 @@ from .player_secret_store import (
     update_lang,
 )
 from .schemas import EmailLang, PlayerEmailRequest
-from .state import _save_tournament, _tournaments, get_tournament_lock, rename_player_in_tournament
+from .state import _tournaments, get_tournament_lock, rename_player_in_tournament, save_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["player-auth"])
 
@@ -360,7 +362,7 @@ async def add_player_to_tournament(
                         (ghost_profile_id, community_id, sport),
                     )
 
-        _save_tournament(tid)
+        await save_tournament(tid)
 
     return {
         "player_id": pid,
@@ -422,7 +424,7 @@ async def remove_player_from_tournament(
         t._est_cache = None
 
         remove_player_secret(tid, player_id)
-        _save_tournament(tid)
+        await save_tournament(tid)
 
     return {"ok": True, "player_id": player_id}
 
@@ -543,7 +545,7 @@ async def update_player_email(
         resp["player_name"] = result["player_name"]
         resp["contact"] = result["contact"]
         if result["player_name"]:
-            rename_player_in_tournament(tid, player_id, result["player_name"])
+            await asyncio.to_thread(rename_player_in_tournament, tid, player_id, result["player_name"])
     return resp
 
 

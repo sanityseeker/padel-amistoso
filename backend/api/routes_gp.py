@@ -4,6 +4,8 @@ Group + Play-off tournament routes.
 
 from __future__ import annotations
 
+import asyncio
+
 import uuid
 from typing import Literal
 
@@ -43,10 +45,10 @@ from .schemas import (
 )
 from .state import (
     allocate_tournament_id,
-    _save_tournament,
+    save_tournament,
     _tournament_versions,
     get_tournament_lock,
-    maybe_update_live_stats,
+    update_live_stats,
 )
 from .player_secret_store import create_secrets_for_tournament
 from .push_events import notify_matches_ready, notify_champion, notify_score_submitted
@@ -135,7 +137,8 @@ async def create_group_playoff(
         raise HTTPException(400, str(e))
 
     tid = await allocate_tournament_id()
-    _store_tournament(
+    await asyncio.to_thread(
+        _store_tournament,
         tid,
         name=req.name,
         tournament_type=TournamentType.GROUP_PLAYOFF.value,
@@ -235,10 +238,10 @@ async def gp_record_group(
         else:
             actor = user.username if user else None
             _mark_admin_score(match, actor)
-        _save_tournament(tid)
+        await save_tournament(tid)
         if not (is_player_action and is_required):
             elo_after_score(tid, data, match)
-        maybe_update_live_stats(tid)
+        await update_live_stats(tid)
     if is_player_action and is_required:
         notify_score_submitted(tid, data, match, player.player_id)
     return {"ok": True}
@@ -289,10 +292,10 @@ async def gp_record_group_tennis(
         else:
             actor = user.username if user else None
             _mark_admin_score(match, actor)
-        _save_tournament(tid)
+        await save_tournament(tid)
         if not (is_player_action and is_required):
             elo_after_score(tid, data, match)
-        maybe_update_live_stats(tid)
+        await update_live_stats(tid)
     if is_player_action and is_required:
         notify_score_submitted(tid, data, match, player.player_id)
     return {
@@ -313,7 +316,7 @@ async def gp_update_courts(tid: str, req: UpdateCourtsRequest, user=Depends(get_
         courts = [Court(name=n) for n in req.court_names]
         t.update_courts(courts)
         data["assign_courts"] = len(courts) > 0
-        _save_tournament(tid)
+        await save_tournament(tid)
     return {"courts": [{"id": c.id, "name": c.name} for c in t.courts]}
 
 
@@ -332,7 +335,7 @@ async def gp_next_group_round(tid: str, user=Depends(get_current_user)) -> dict:
             new_matches = t.generate_next_group_round()
         except RuntimeError as e:
             raise HTTPException(400, str(e))
-        _save_tournament(tid)
+        await save_tournament(tid)
     notify_matches_ready(tid, data, new_matches)
     return {
         "matches": [_serialize_match(m) for m in new_matches],
@@ -371,7 +374,7 @@ async def gp_start_playoffs(
             )
         except (RuntimeError, KeyError, ValueError) as e:
             raise HTTPException(400, str(e))
-        _save_tournament(tid)
+        await save_tournament(tid)
     notify_matches_ready(tid, data, t.pending_playoff_matches())
     return {"phase": t.phase}
 
@@ -468,9 +471,9 @@ async def gp_record_playoff(
             _apply_player_score_metadata(match, player.player_id, score=[req.score1, req.score2], confirmed=True)
         else:
             _mark_admin_score(match, user.username if user else None)
-        _save_tournament(tid)
+        await save_tournament(tid)
         elo_after_score(tid, data, match)
-        maybe_update_live_stats(tid)
+        await update_live_stats(tid)
     champ = t.champion()
     if champ:
         elo_finish_tournament(tid)
@@ -504,9 +507,9 @@ async def gp_record_playoff_tennis(
             )
         else:
             _mark_admin_score(match, user.username if user else None)
-        _save_tournament(tid)
+        await save_tournament(tid)
         elo_after_score(tid, data, match)
-        maybe_update_live_stats(tid)
+        await update_live_stats(tid)
     champ = t.champion()
     if champ:
         elo_finish_tournament(tid)

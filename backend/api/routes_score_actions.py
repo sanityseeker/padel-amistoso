@@ -38,7 +38,7 @@ from .helpers import (
     _tennis_sets_to_scores,
 )
 from .schemas import RecordScoreRequest, RecordTennisScoreRequest
-from .state import _save_tournament, _tournaments, get_tournament_lock, maybe_update_live_stats
+from .state import _tournaments, get_tournament_lock, save_tournament, update_live_stats
 from .push_events import notify_score_accepted, notify_score_disputed, notify_champion
 from .elo_integration import elo_after_score, elo_recalculate_tournament
 
@@ -192,8 +192,8 @@ async def accept_score(
                 "timestamp": time.time(),
             }
         )
-        _save_tournament(tid)
-        maybe_update_live_stats(tid)
+        await save_tournament(tid)
+        await update_live_stats(tid)
         elo_after_score(tid, data, match)
 
     notify_score_accepted(tid, data, match, player.player_id)
@@ -264,7 +264,7 @@ async def correct_score(
                 "timestamp": now,
             }
         )
-        _save_tournament(tid)
+        await save_tournament(tid)
 
     notify_score_disputed(tid, data, match, player.player_id)
     return {"ok": True}
@@ -328,7 +328,7 @@ async def correct_score_tennis(
                 "timestamp": now,
             }
         )
-        _save_tournament(tid)
+        await save_tournament(tid)
 
     notify_score_disputed(tid, data, match, player.player_id)
     return {"ok": True}
@@ -398,8 +398,8 @@ async def accept_correction(
                 "timestamp": now,
             }
         )
-        _save_tournament(tid)
-        maybe_update_live_stats(tid)
+        await save_tournament(tid)
+        await update_live_stats(tid)
 
     notify_score_accepted(tid, data, match, player.player_id)
     champ = getattr(t, "champion", lambda: None)()
@@ -452,7 +452,7 @@ async def escalate_dispute(
                 "timestamp": now,
             }
         )
-        _save_tournament(tid)
+        await save_tournament(tid)
 
     return {"ok": True}
 
@@ -531,8 +531,8 @@ async def resolve_dispute(
                 "chosen": req.chosen,
             }
         )
-        _save_tournament(tid)
-        maybe_update_live_stats(tid)
+        await save_tournament(tid)
+        await update_live_stats(tid)
         elo_recalculate_tournament(tid)
 
     champ = getattr(t, "champion", lambda: None)()

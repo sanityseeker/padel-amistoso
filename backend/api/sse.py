@@ -52,20 +52,47 @@ _HEARTBEAT_INTERVAL_SECS = 25
 # Set during application shutdown to unblock all SSE streams.
 _shutdown_event = asyncio.Event()
 
+# Event loop the SSE streams (and their queues) live on.  Captured at
+# subscription time so notify_* can be called from worker threads
+# (persistence runs in asyncio.to_thread) and still wake subscribers safely.
+_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _fanout(queues: list[asyncio.Queue], payload: str | None) -> None:
+    """Deliver *payload* to *queues*, hopping to the SSE loop if needed.
+
+    ``asyncio.Queue`` is not thread-safe: calling ``put_nowait`` from a worker
+    thread would race with the loop.  When called off-loop, schedule the
+    delivery on the captured loop instead.
+    """
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+
+    def _deliver() -> None:
+        for q in queues:
+            try:
+                q.put_nowait(payload)
+            except asyncio.QueueFull:
+                pass  # slow client — skip this event, they'll get the next one
+
+    if running is not None:
+        _deliver()
+    elif _loop is not None and not _loop.is_closed():
+        _loop.call_soon_threadsafe(_deliver)
+    # else: no loop yet → no subscribers to notify.
+
 
 def notify_tournament(tid: str) -> None:
     """Push a version-changed event to all subscribers of *tid*.
 
     Called from ``_save_tournament()`` after the version counter is bumped.
-    Safe to call from sync code — it does not ``await`` anything.
+    Safe to call from sync code on any thread — it does not ``await`` anything.
     """
     version = _state_module._tournament_versions.get(tid, 0)
     payload = json.dumps({"tid": tid, "version": version})
-    for q in _tournament_subscribers.get(tid, set()).copy():
-        try:
-            q.put_nowait(payload)
-        except asyncio.QueueFull:
-            pass  # slow client — skip this event, they'll get the next one
+    _fanout(list(_tournament_subscribers.get(tid, set())), payload)
 
 
 def notify_global() -> None:
@@ -75,11 +102,7 @@ def notify_global() -> None:
     """
     version = _state_module._state_version
     payload = json.dumps({"version": version})
-    for q in _global_subscribers.copy():
-        try:
-            q.put_nowait(payload)
-        except asyncio.QueueFull:
-            pass
+    _fanout(list(_global_subscribers), payload)
 
 
 def shutdown() -> None:
@@ -166,6 +189,8 @@ async def tournament_events(tid: str, request: Request) -> StreamingResponse:
     On connection the current version is sent immediately so the client
     can compare it with its local copy and decide whether to fetch new data.
     """
+    global _loop
+    _loop = asyncio.get_running_loop()
     queue: asyncio.Queue = asyncio.Queue(maxsize=32)
     _tournament_subscribers[tid].add(queue)
 
@@ -190,6 +215,8 @@ async def global_events(request: Request) -> StreamingResponse:
 
     The TV tournament picker subscribes here instead of polling ``/api/version``.
     """
+    global _loop
+    _loop = asyncio.get_running_loop()
     queue: asyncio.Queue = asyncio.Queue(maxsize=32)
     _global_subscribers.add(queue)
 

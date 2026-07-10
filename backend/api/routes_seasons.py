@@ -254,9 +254,9 @@ async def set_tournament_season(tid: str, req: SetSeasonRequest, user: User = De
 
         _tournaments[tid]["season_id"] = req.season_id
         _tournaments[tid]["club_id"] = new_club_id
-        from .state import _save_tournament  # noqa: PLC0415
+        from .state import save_tournament  # noqa: PLC0415
 
-        _save_tournament(tid)
+        await save_tournament(tid)
     return {"ok": True, "season_id": req.season_id, "club_id": new_club_id}
 
 
@@ -332,9 +332,9 @@ async def set_tournament_club(tid: str, req: SetClubRequest, user: User = Depend
                 _tournaments[tid]["season_id"] = None
 
         _tournaments[tid]["club_id"] = req.club_id
-        from .state import _save_tournament  # noqa: PLC0415
+        from .state import save_tournament  # noqa: PLC0415
 
-        _save_tournament(tid)
+        await save_tournament(tid)
     return {"ok": True, "club_id": req.club_id, "season_id": _tournaments[tid].get("season_id")}
 
 

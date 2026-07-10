@@ -9,6 +9,8 @@ profile email.
 
 from __future__ import annotations
 
+import asyncio
+
 import json
 import logging
 from typing import Annotated
@@ -68,6 +70,7 @@ async def list_profiles(
     q: str = "",
     club_id: str | None = None,
     community_id: str | None = None,
+    limit: int = 500,
     _admin: User = Depends(require_admin),
 ) -> list[AdminPlayerProfileSummary]:
     """Return all player profiles, optionally filtered by name/email and by scope.
@@ -80,10 +83,11 @@ async def list_profiles(
             this community (i.e. have a ``profile_community_elo`` row for it).
             Ignored when ``club_id`` is provided, since clubs are already
             community-scoped.
+        limit: Maximum rows returned (newest profiles first), clamped to 2000.
     """
     elo_cols = ", elo_padel, elo_padel_matches, elo_tennis, elo_tennis_matches, k_factor_override, is_ghost"
     where_clauses: list[str] = []
-    params: list[str] = []
+    params: list[str | int] = []
     if q.strip():
         pattern = f"%{q.strip()}%"
         where_clauses.append("(p.name LIKE ? OR p.email LIKE ?)")
@@ -101,7 +105,8 @@ async def list_profiles(
     )
     if where_clauses:
         sql += " WHERE " + " AND ".join(where_clauses)
-    sql += " ORDER BY p.created_at DESC"
+    sql += " ORDER BY p.created_at DESC LIMIT ?"
+    params.append(max(1, min(limit, 2000)))
     with get_db() as conn:
         rows = conn.execute(sql, params).fetchall()
 
@@ -662,7 +667,7 @@ async def admin_link_participation(
 
         # Rename the player in the live tournament object if name was populated.
         if "name" in populated and not is_finished:
-            rename_player_in_tournament(tid, player_id, populated["name"])
+            await asyncio.to_thread(rename_player_in_tournament, tid, player_id, populated["name"])
 
         if is_finished:
             # Backfill into player_history using the snapshot stored at finish time.
@@ -1006,7 +1011,7 @@ async def admin_update_name(
             )
 
     for row in active_rows:
-        rename_player_in_tournament(row["tournament_id"], row["player_id"], new_name)
+        await asyncio.to_thread(rename_player_in_tournament, row["tournament_id"], row["player_id"], new_name)
         invalidate_secrets_cache(row["tournament_id"])
 
     return {"ok": True, "name": new_name}

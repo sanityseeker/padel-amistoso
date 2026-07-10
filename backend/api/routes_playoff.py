@@ -4,6 +4,8 @@ Standalone Play-off tournament routes.
 
 from __future__ import annotations
 
+import asyncio
+
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -33,7 +35,7 @@ from .helpers import (
     _mark_admin_score,
 )
 from .schemas import CreatePlayoffRequest, RecordScoreRequest, RecordTennisScoreRequest, UpdateCourtsRequest
-from .state import allocate_tournament_id, _save_tournament, _tournament_versions, get_tournament_lock
+from .state import allocate_tournament_id, _tournament_versions, get_tournament_lock, save_tournament
 from .player_secret_store import create_secrets_for_tournament
 from .push_events import notify_champion
 from .elo_integration import elo_after_score, elo_finish_tournament, elo_init_tournament
@@ -102,7 +104,8 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
     )
 
     tid = await allocate_tournament_id()
-    _store_tournament(
+    await asyncio.to_thread(
+        _store_tournament,
         tid,
         name=req.name,
         tournament_type=TournamentType.PLAYOFF.value,
@@ -140,7 +143,7 @@ async def po_update_courts(tid: str, req: UpdateCourtsRequest, user=Depends(get_
         courts = [Court(name=n) for n in req.court_names]
         t.update_courts(courts)
         data["assign_courts"] = len(courts) > 0
-        _save_tournament(tid)
+        await save_tournament(tid)
     return {"courts": [{"id": c.id, "name": c.name} for c in t.courts]}
 
 
@@ -319,7 +322,7 @@ async def po_record(
             _apply_player_score_metadata(match, player.player_id, score=[req.score1, req.score2], confirmed=True)
         else:
             _mark_admin_score(match, user.username if user else None)
-        _save_tournament(tid)
+        await save_tournament(tid)
         elo_after_score(tid, data, match)
     champ = t.champion()
     if champ:
@@ -354,7 +357,7 @@ async def po_record_tennis(
             )
         else:
             _mark_admin_score(match, user.username if user else None)
-        _save_tournament(tid)
+        await save_tournament(tid)
         elo_after_score(tid, data, match)
     champ = t.champion()
     if champ:

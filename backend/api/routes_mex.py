@@ -4,6 +4,8 @@ Mexicano tournament routes.
 
 from __future__ import annotations
 
+import asyncio
+
 import uuid
 from typing import Literal
 
@@ -40,7 +42,7 @@ from .schemas import (
     StartMexicanoPlayoffsRequest,
     UpdateCourtsRequest,
 )
-from .state import allocate_tournament_id, _save_tournament, get_tournament_lock, maybe_update_live_stats
+from .state import allocate_tournament_id, get_tournament_lock, save_tournament, update_live_stats
 from .player_secret_store import create_secrets_for_tournament
 from .push_events import notify_matches_ready, notify_champion, notify_score_submitted
 from .elo_integration import elo_after_score, elo_finish_tournament, elo_init_tournament
@@ -136,7 +138,8 @@ async def create_mexicano(req: CreateMexicanoRequest, request: Request, user=Dep
         t.team_member_names = team_member_names
 
     tid = await allocate_tournament_id()
-    _store_tournament(
+    await asyncio.to_thread(
+        _store_tournament,
         tid,
         name=req.name,
         tournament_type=TournamentType.MEXICANO.value,
@@ -265,10 +268,10 @@ async def mex_record(
             )
         else:
             _mark_admin_score(match, user.username if user else None)
-        _save_tournament(tid)
+        await save_tournament(tid)
         if not is_required:
             elo_after_score(tid, data, match)
-        maybe_update_live_stats(tid)
+        await update_live_stats(tid)
         breakdown = t.get_match_breakdown(req.match_id)
     if is_player_action and is_required:
         notify_score_submitted(tid, data, match, player.player_id)
@@ -295,7 +298,7 @@ async def mex_update_settings(tid: str, req: PatchMexSettingsRequest, user=Depen
         t.strength_win_factor = req.strength_win_factor
         t.strength_draw_factor = req.strength_draw_factor
         t.strength_loss_factor = req.strength_loss_factor
-        _save_tournament(tid)
+        await save_tournament(tid)
     return {
         "num_rounds": t.num_rounds,
         "skill_gap": t.skill_gap,
@@ -324,7 +327,7 @@ async def mex_update_courts(tid: str, req: UpdateCourtsRequest, user=Depends(get
         courts = [Court(name=n) for n in req.court_names]
         t.update_courts(courts)
         data["assign_courts"] = len(courts) > 0
-        _save_tournament(tid)
+        await save_tournament(tid)
     return {"courts": [{"id": c.id, "name": c.name} for c in t.courts]}
 
 
@@ -381,7 +384,7 @@ async def mex_next_round(tid: str, req: NextRoundRequest = NextRoundRequest(), u
             t.generate_next_round(option_id=req.option_id)
         except (RuntimeError, KeyError) as e:
             raise HTTPException(400, str(e))
-        _save_tournament(tid)
+        await save_tournament(tid)
     notify_matches_ready(tid, data, t.current_round_matches())
     return {"current_round": t.current_round}
 
@@ -402,7 +405,7 @@ async def mex_custom_round(tid: str, req: CustomRoundRequest, user=Depends(get_c
             )
         except (RuntimeError, ValueError) as e:
             raise HTTPException(400, str(e))
-        _save_tournament(tid)
+        await save_tournament(tid)
     notify_matches_ready(tid, data, t.current_round_matches())
     return {"current_round": t.current_round}
 
@@ -433,7 +436,7 @@ async def mex_start_playoffs(tid: str, req: StartMexicanoPlayoffsRequest, user=D
             )
         except (RuntimeError, ValueError, KeyError) as e:
             raise HTTPException(400, str(e))
-        _save_tournament(tid)
+        await save_tournament(tid)
     notify_matches_ready(tid, data, t.pending_playoff_matches())
     return {"phase": t.phase}
 
@@ -448,7 +451,7 @@ async def mex_end(tid: str, user=Depends(get_current_user)) -> dict:
             t.end_mexicano()
         except RuntimeError as e:
             raise HTTPException(400, str(e))
-        _save_tournament(tid)
+        await save_tournament(tid)
     return {"phase": t.phase, "mexicano_ended": t.mexicano_ended}
 
 
@@ -462,7 +465,7 @@ async def mex_undo_end(tid: str, user=Depends(get_current_user)) -> dict:
             t.undo_end_mexicano()
         except RuntimeError as e:
             raise HTTPException(400, str(e))
-        _save_tournament(tid)
+        await save_tournament(tid)
     return {"phase": t.phase, "mexicano_ended": t.mexicano_ended}
 
 
@@ -476,7 +479,7 @@ async def mex_finish(tid: str, user=Depends(get_current_user)) -> dict:
             t.finish_without_playoffs()
         except RuntimeError as e:
             raise HTTPException(400, str(e))
-        _save_tournament(tid)
+        await save_tournament(tid)
     elo_finish_tournament(tid)
     return {"phase": t.phase, "is_finished": t.is_finished}
 
@@ -551,9 +554,9 @@ async def mex_record_playoff(
             _apply_player_score_metadata(match, player.player_id, score=[req.score1, req.score2], confirmed=True)
         else:
             _mark_admin_score(match, user.username if user else None)
-        _save_tournament(tid)
+        await save_tournament(tid)
         elo_after_score(tid, data, match)
-        maybe_update_live_stats(tid)
+        await update_live_stats(tid)
     champ = t.champion()
     if champ:
         elo_finish_tournament(tid)
@@ -587,9 +590,9 @@ async def mex_record_playoff_tennis(
             )
         else:
             _mark_admin_score(match, user.username if user else None)
-        _save_tournament(tid)
+        await save_tournament(tid)
         elo_after_score(tid, data, match)
-        maybe_update_live_stats(tid)
+        await update_live_stats(tid)
     champ = t.champion()
     if champ:
         elo_finish_tournament(tid)

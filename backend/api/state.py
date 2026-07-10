@@ -277,6 +277,29 @@ def _save_tournament(tid: str) -> bool:
     return persisted
 
 
+async def save_tournament(tid: str) -> bool:
+    """Persist a tournament without blocking the event loop.
+
+    Runs :func:`_save_tournament` (pickle + SQLite upsert) in a worker thread
+    so slow writes don't stall SSE streams and concurrent requests.  Callers
+    must hold the per-tournament lock across the ``await`` so no other
+    coroutine mutates the tournament while it is being pickled.
+
+    ``asyncio.to_thread`` executes in a *copy* of the current context, so the
+    ``persist_failed`` context-var set inside the thread never reaches the
+    response middleware — re-set it here from the return value.
+    """
+    persisted = await asyncio.to_thread(_save_tournament, tid)
+    if not persisted:
+        persist_failed.set(True)
+    return persisted
+
+
+async def update_live_stats(tid: str) -> None:
+    """Run :func:`maybe_update_live_stats` in a worker thread (SQLite write)."""
+    await asyncio.to_thread(maybe_update_live_stats, tid)
+
+
 def maybe_update_live_stats(tid: str) -> None:
     """Snapshot in-progress stats to Player Hub after every score recording.
 

@@ -587,6 +587,13 @@ def init_db() -> None:
             ]:
                 if col not in ph_cols:
                     conn.execute(ddl)
+            # Scope indexes for find-by-name discovery (created here, not in
+            # _DDL, because club_id/community_id may be migration-added on
+            # old DBs and executescript(_DDL) runs before the ALTERs above).
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_player_history_club ON player_history (club_id)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_player_history_community ON player_history (community_id, entity_type)"
+            )
         # Migrate: add ELO columns to player_profiles if missing
         if pp_cols:
             for col, ddl in [

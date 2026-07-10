@@ -4,6 +4,8 @@ Tournament CRUD routes — list, delete, and TV settings for tournaments.
 
 from __future__ import annotations
 
+import asyncio
+
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -42,7 +44,7 @@ from .schemas import (
     TvSettingsRequest,
 )
 from . import state
-from .state import _delete_tournament, _save_tournament, _tournaments
+from .state import _delete_tournament, _tournaments, save_tournament
 from .elo_integration import elo_recalculate_tournament
 from .elo_store import safe_transfer_elos_to_profiles
 from .elo_store import delete_tournament_elos
@@ -177,7 +179,7 @@ async def set_tournament_community(tid: str, req: SetCommunityRequest, user: Use
         _tournaments[tid]["community_id"] = new_community_id
         _tournaments[tid]["club_id"] = existing_club_id
         _tournaments[tid]["season_id"] = existing_season_id
-        _save_tournament(tid)
+        await save_tournament(tid)
     return {
         "ok": True,
         "community_id": new_community_id,
@@ -207,9 +209,8 @@ async def delete_tournament(
     purge_ghosts: bool = False,
 ) -> dict:
     _require_owner_or_admin(tournament_id, user)
-    async with state.get_tournament_lock(tournament_id):
-        if tournament_id not in _tournaments:
-            raise HTTPException(404, "Tournament not found")
+
+    def _delete_blocking() -> list[str]:
         t_data = _tournaments[tournament_id]
         entity_name = t_data.get("name", "")
         player_stats = extract_history_stats(t_data)
@@ -247,6 +248,14 @@ async def delete_tournament(
                         continue
                     _purge_profile_record(conn, gid, is_ghost=True)
                     purged.append(gid)
+        return purged
+
+    async with state.get_tournament_lock(tournament_id):
+        if tournament_id not in _tournaments:
+            raise HTTPException(404, "Tournament not found")
+        # History snapshot + secrets/ELO deletion is a long chain of SQLite
+        # work — run it off the event loop so it can't stall other clients.
+        purged = await asyncio.to_thread(_delete_blocking)
     return {"ok": True, "ghosts_purged": len(purged)}
 
 
@@ -298,7 +307,7 @@ async def update_tv_settings(tid: str, req: TvSettingsRequest, user: User = Depe
             patch["score_mode"] = merged
         updated = current.model_copy(update=patch)
         _tournaments[tid]["tv_settings"] = updated.model_dump()
-        _save_tournament(tid)
+        await save_tournament(tid)
     return updated.model_dump()
 
 
@@ -336,7 +345,7 @@ async def update_email_settings(tid: str, req: EmailSettingsRequest, user: User 
         patch = req.model_dump(exclude_none=True)
         updated = current.model_copy(update=patch)
         _tournaments[tid]["email_settings"] = updated.model_dump()
-        _save_tournament(tid)
+        await save_tournament(tid)
     return updated.model_dump()
 
 
@@ -348,7 +357,7 @@ async def set_public(tid: str, req: SetPublicRequest, user: User = Depends(get_c
         if tid not in _tournaments:
             raise HTTPException(404, "Tournament not found")
         _tournaments[tid]["public"] = req.public
-        _save_tournament(tid)
+        await save_tournament(tid)
     return {"ok": True, "public": req.public}
 
 
@@ -390,7 +399,7 @@ async def set_alias(tid: str, req: SetAliasRequest, user: User = Depends(get_cur
             if other_tid != tid and data.get("alias") == req.alias:
                 raise HTTPException(409, f"Alias '{req.alias}' is already used by tournament {other_tid}")
         _tournaments[tid]["alias"] = req.alias
-        _save_tournament(tid)
+        await save_tournament(tid)
     return {"ok": True, "alias": req.alias}
 
 
@@ -402,7 +411,7 @@ async def delete_alias(tid: str, user: User = Depends(get_current_user)) -> dict
         if tid not in _tournaments:
             raise HTTPException(404, "Tournament not found")
         _tournaments[tid].pop("alias", None)
-        _save_tournament(tid)
+        await save_tournament(tid)
     return {"ok": True}
 
 
@@ -655,7 +664,7 @@ async def set_match_comment(tid: str, req: SetMatchCommentRequest, user: User = 
         if match is None:
             raise HTTPException(404, "Match not found")
         match.comment = req.comment.strip()
-        _save_tournament(tid)
+        await save_tournament(tid)
     return {"ok": True, "match_id": req.match_id, "comment": match.comment}
 
 

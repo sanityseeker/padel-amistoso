@@ -117,6 +117,25 @@ _find_by_name_rate_limiter = BoundedRateLimiter(
 
 _registration_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
+# Cap concurrent SMTP sends per bulk-email request: parallel enough that a
+# 30-registrant blast returns in seconds, bounded so we don't open dozens of
+# simultaneous connections to the SMTP relay.
+_BULK_EMAIL_CONCURRENCY = 5
+
+
+async def _send_emails_bounded(jobs: list[tuple[str, str, str]], es: EmailSettings) -> tuple[int, int]:
+    """Send ``(recipient, subject, body)`` jobs concurrently; return (sent, failed)."""
+    semaphore = asyncio.Semaphore(_BULK_EMAIL_CONCURRENCY)
+
+    async def _send_one(recipient: str, subject: str, body: str) -> bool:
+        async with semaphore:
+            return await send_email(recipient, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
+
+    results = await asyncio.gather(*(_send_one(*job) for job in jobs))
+    sent = sum(1 for ok in results if ok)
+    return sent, len(results) - sent
+
+
 # Dedicated lock for registration ID allocation/insertion — mirrors
 # ``_id_allocation_lock`` in ``state.py`` for tournament IDs.
 _reg_id_allocation_lock: asyncio.Lock = asyncio.Lock()
@@ -359,6 +378,15 @@ def _get_registrants_by_registration_id(registration_ids: list[str]) -> dict[str
     return grouped
 
 
+def _is_finished(tid: str) -> bool:
+    """True when a linked tournament is finished (or no longer in memory)."""
+    tournament_data = _tournaments.get(tid)
+    if tournament_data is None:
+        return True
+    tournament = tournament_data.get("tournament")
+    return str(getattr(tournament, "phase", "")) == GPPhase.FINISHED
+
+
 def _get_linked_tournaments_by_registration(
     tids_by_registration: dict[str, list[str]],
 ) -> dict[str, list[LinkedTournamentOut]]:
@@ -383,13 +411,6 @@ def _get_linked_tournaments_by_registration(
             }
             for row in rows
         }
-
-    def _is_finished(tid: str) -> bool:
-        tournament_data = _tournaments.get(tid)
-        if tournament_data is None:
-            return True
-        tournament = tournament_data.get("tournament")
-        return str(getattr(tournament, "phase", "")) == GPPhase.FINISHED
 
     return {
         rid: [
@@ -425,13 +446,6 @@ def _get_linked_tournaments(tids: list[str]) -> list[LinkedTournamentOut]:
         }
         for row in rows
     }
-
-    def _is_finished(tid: str) -> bool:
-        tournament_data = _tournaments.get(tid)
-        if tournament_data is None:
-            return True
-        tournament = tournament_data.get("tournament")
-        return str(getattr(tournament, "phase", "")) == GPPhase.FINISHED
 
     return [
         LinkedTournamentOut(
@@ -845,36 +859,38 @@ async def admin_add_registrant(rid: str, req: RegistrantIn, user: User = Depends
     player_id = uuid.uuid4().hex[:8]
     now = datetime.now(timezone.utc).isoformat()
 
-    existing_passphrases: set[str] = set()
-    existing_names: set[str] = set()
-    with get_db() as conn:
-        rows = conn.execute(
-            "SELECT player_name, passphrase FROM registrants WHERE registration_id = ?",
-            (reg_id,),
-        ).fetchall()
-        for r in rows:
-            existing_passphrases.add(r["passphrase"])
-            existing_names.add(r["player_name"].strip().lower())
+    # Same read-check-insert race as the public endpoint — hold the lobby lock.
+    async with _get_registration_lock(reg_id):
+        existing_passphrases: set[str] = set()
+        existing_names: set[str] = set()
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT player_name, passphrase FROM registrants WHERE registration_id = ?",
+                (reg_id,),
+            ).fetchall()
+            for r in rows:
+                existing_passphrases.add(r["passphrase"])
+                existing_names.add(r["player_name"].strip().lower())
 
-    if req.player_name.strip().lower() in existing_names:
-        raise HTTPException(409, "A player with this name is already registered")
+        if req.player_name.strip().lower() in existing_names:
+            raise HTTPException(409, "A player with this name is already registered")
 
-    passphrase = generate_passphrase()
-    while passphrase in existing_passphrases:
         passphrase = generate_passphrase()
+        while passphrase in existing_passphrases:
+            passphrase = generate_passphrase()
 
-    token = generate_token()
+        token = generate_token()
 
-    answers_json = json.dumps(req.answers) if req.answers else None
-    email = req.email.strip()
-    lang = req.lang or "en"
-    with get_db() as conn:
-        conn.execute(
-            """INSERT INTO registrants
-               (registration_id, player_id, player_name, passphrase, token, answers, email, registered_at, lang)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now, lang),
-        )
+        answers_json = json.dumps(req.answers) if req.answers else None
+        email = req.email.strip()
+        lang = req.lang or "en"
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO registrants
+                   (registration_id, player_id, player_name, passphrase, token, answers, email, registered_at, lang)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now, lang),
+            )
 
     # Auto-send confirmation email if the lobby has auto_send_email enabled
     if email and is_valid_email(email) and reg.get("auto_send_email"):
@@ -1039,81 +1055,85 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
     player_id = uuid.uuid4().hex[:8]
     now = datetime.now(timezone.utc).isoformat()
 
-    # Fetch existing registrants for uniqueness checks
-    existing_passphrases: set[str] = set()
-    existing_names: set[str] = set()
-    with get_db() as conn:
-        rows = conn.execute(
-            "SELECT player_name, passphrase FROM registrants WHERE registration_id = ?",
-            (reg_id,),
-        ).fetchall()
-        for r in rows:
-            existing_passphrases.add(r["passphrase"])
-            existing_names.add(r["player_name"].strip().lower())
+    # Hold the lobby lock across the read-check-insert so two concurrent
+    # submissions can't both pass the duplicate-name check or collide on a
+    # generated passphrase (registration rushes make this race real).
+    async with _get_registration_lock(reg_id):
+        # Fetch existing registrants for uniqueness checks
+        existing_passphrases: set[str] = set()
+        existing_names: set[str] = set()
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT player_name, passphrase FROM registrants WHERE registration_id = ?",
+                (reg_id,),
+            ).fetchall()
+            for r in rows:
+                existing_passphrases.add(r["passphrase"])
+                existing_names.add(r["player_name"].strip().lower())
 
-    if req.player_name.strip().lower() in existing_names:
-        raise HTTPException(409, "A player with this name is already registered")
+        if req.player_name.strip().lower() in existing_names:
+            raise HTTPException(409, "A player with this name is already registered")
 
-    passphrase = generate_passphrase()
-    while passphrase in existing_passphrases:
         passphrase = generate_passphrase()
+        while passphrase in existing_passphrases:
+            passphrase = generate_passphrase()
 
-    token = generate_token()
+        token = generate_token()
 
-    # Resolve optional Player Hub profile link
-    profile_id: str | None = None
-    if req.profile_passphrase:
-        profile = lookup_profile_by_passphrase(req.profile_passphrase.strip())
-        if profile is not None:
-            # Use the profile's global passphrase as the registrant's passphrase
-            # so the player only needs to remember one phrase across all events.
-            profile_passphrase_value = req.profile_passphrase.strip()
-            if profile_passphrase_value not in existing_passphrases:
-                passphrase = profile_passphrase_value
-            profile_id = profile["id"]
+        # Resolve optional Player Hub profile link
+        profile_id: str | None = None
+        if req.profile_passphrase:
+            profile = lookup_profile_by_passphrase(req.profile_passphrase.strip())
+            if profile is not None:
+                # Use the profile's global passphrase as the registrant's passphrase
+                # so the player only needs to remember one phrase across all events.
+                profile_passphrase_value = req.profile_passphrase.strip()
+                if profile_passphrase_value not in existing_passphrases:
+                    passphrase = profile_passphrase_value
+                profile_id = profile["id"]
 
-    # Auto-link by email: if the player provides an email that matches a Player Hub
-    # profile and they haven't explicitly linked via passphrase, link them silently.
-    if profile_id is None:
-        potential_email = req.email.strip()
-        if potential_email and is_valid_email(potential_email):
-            with get_db() as conn:
-                profile_row = conn.execute(
-                    """
-                                        SELECT id, passphrase
-                                            FROM player_profiles
-                                         WHERE LOWER(email) = LOWER(?)
-                                             AND email_verified_at IS NOT NULL
-                                        """,
-                    (potential_email,),
-                ).fetchone()
-            if profile_row is not None:
-                pp_val = profile_row["passphrase"]
-                if pp_val not in existing_passphrases:
-                    passphrase = pp_val
-                profile_id = profile_row["id"]
+        # Auto-link by email: if the player provides an email that matches a Player Hub
+        # profile and they haven't explicitly linked via passphrase, link them silently.
+        if profile_id is None:
+            potential_email = req.email.strip()
+            if potential_email and is_valid_email(potential_email):
+                with get_db() as conn:
+                    profile_row = conn.execute(
+                        """
+                                            SELECT id, passphrase
+                                                FROM player_profiles
+                                             WHERE LOWER(email) = LOWER(?)
+                                                 AND email_verified_at IS NOT NULL
+                                            """,
+                        (potential_email,),
+                    ).fetchone()
+                if profile_row is not None:
+                    pp_val = profile_row["passphrase"]
+                    if pp_val not in existing_passphrases:
+                        passphrase = pp_val
+                    profile_id = profile_row["id"]
 
-    answers_json = json.dumps(req.answers) if req.answers else None
-    email = req.email.strip()
-    email_mode = _email_requirement(reg)
-    if email_mode == "required":
-        if not email or not is_valid_email(email):
-            raise HTTPException(400, "A valid email address is required for this registration")
-    elif email_mode == "disabled":
-        if email:
-            raise HTTPException(400, "Email is disabled for this registration")
-        email = ""
-    elif email and not is_valid_email(email):
-        raise HTTPException(400, "Invalid email address")
+        answers_json = json.dumps(req.answers) if req.answers else None
+        email = req.email.strip()
+        email_mode = _email_requirement(reg)
+        if email_mode == "required":
+            if not email or not is_valid_email(email):
+                raise HTTPException(400, "A valid email address is required for this registration")
+        elif email_mode == "disabled":
+            if email:
+                raise HTTPException(400, "Email is disabled for this registration")
+            email = ""
+        elif email and not is_valid_email(email):
+            raise HTTPException(400, "Invalid email address")
 
-    lang = req.lang or "en"
-    with get_db() as conn:
-        conn.execute(
-            """INSERT INTO registrants
-               (registration_id, player_id, player_name, passphrase, token, answers, email, registered_at, profile_id, lang)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now, profile_id, lang),
-        )
+        lang = req.lang or "en"
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO registrants
+                   (registration_id, player_id, player_name, passphrase, token, answers, email, registered_at, profile_id, lang)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now, profile_id, lang),
+            )
 
     # Auto-send confirmation email if the lobby has auto_send_email enabled
     if email and is_valid_email(email) and reg.get("auto_send_email"):
@@ -1316,7 +1336,8 @@ async def convert_registration(
                 t.generate()
             except ValueError as e:
                 raise HTTPException(400, str(e))
-            _store_tournament(
+            await asyncio.to_thread(
+                _store_tournament,
                 tid,
                 name=tournament_name,
                 tournament_type=TournamentType.GROUP_PLAYOFF.value,
@@ -1396,7 +1417,8 @@ async def convert_registration(
                 )
             except ValueError as e:
                 raise HTTPException(400, str(e))
-            _store_tournament(
+            await asyncio.to_thread(
+                _store_tournament,
                 tid,
                 name=tournament_name,
                 tournament_type=TournamentType.MEXICANO.value,
@@ -1430,7 +1452,8 @@ async def convert_registration(
                 team_mode=req.team_mode,
                 initial_strength=initial_strength,
             )
-            _store_tournament(
+            await asyncio.to_thread(
+                _store_tournament,
                 tid,
                 name=tournament_name,
                 tournament_type=TournamentType.PLAYOFF.value,
@@ -1838,9 +1861,8 @@ async def send_all_registrant_emails(rid: str, request: Request, user: User = De
 
     registrants = _get_registrants(reg_id)
     es = _get_reg_email_settings(reg)
-    sent = 0
     skipped = 0
-    failed = 0
+    jobs: list[tuple[str, str, str]] = []
     for r in registrants:
         email = r.get("email", "")
         if not email or not is_valid_email(email):
@@ -1856,11 +1878,8 @@ async def send_all_registrant_emails(rid: str, request: Request, user: User = De
             reply_to=es.reply_to,
             lang=r.get("lang", "en"),
         )
-        ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
-        if ok:
-            sent += 1
-        else:
-            failed += 1
+        jobs.append((email, subject, body))
+    sent, failed = await _send_emails_bounded(jobs, es)
 
     return {"sent": sent, "skipped": skipped, "failed": failed}
 
@@ -1885,9 +1904,8 @@ async def send_registration_message_emails(rid: str, request: Request, user: Use
 
     registrants = _get_registrants(reg_id)
     es = _get_reg_email_settings(reg)
-    sent = 0
     skipped = 0
-    failed = 0
+    jobs: list[tuple[str, str, str]] = []
     for r in registrants:
         email = r.get("email", "")
         if not email or not is_valid_email(email):
@@ -1903,11 +1921,8 @@ async def send_registration_message_emails(rid: str, request: Request, user: Use
             reply_to=es.reply_to,
             lang=r.get("lang", "en"),
         )
-        ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
-        if ok:
-            sent += 1
-        else:
-            failed += 1
+        jobs.append((email, subject, body))
+    sent, failed = await _send_emails_bounded(jobs, es)
 
     return {"sent": sent, "skipped": skipped, "failed": failed}
 
@@ -2123,149 +2138,160 @@ async def find_participations_by_name(
             event_date=row["event_date"] or None,
         )
 
-    with get_db() as conn:
-        # Tournaments in the same club/community (scope lives on the tournaments
-        # table, joined via tournament_id — player_secrets has no scope columns).
-        if club_id:
-            tourn_rows = conn.execute(
-                """
-                SELECT ps.tournament_id, ps.player_id, ps.player_name, ps.profile_id,
-                       COALESCE(pp.is_ghost, 0) AS is_ghost,
-                       t.name AS tname, t.sport AS sport, t.created_at AS event_date
-                  FROM player_secrets ps
-                  JOIN tournaments t ON t.id = ps.tournament_id
-                  LEFT JOIN player_profiles pp ON pp.id = ps.profile_id
-                 WHERE t.club_id = ?
-                """,
-                (club_id,),
-            ).fetchall()
-        else:
-            tourn_rows = conn.execute(
-                """
-                SELECT ps.tournament_id, ps.player_id, ps.player_name, ps.profile_id,
-                       COALESCE(pp.is_ghost, 0) AS is_ghost,
-                       t.name AS tname, t.sport AS sport, t.created_at AS event_date
-                  FROM player_secrets ps
-                  JOIN tournaments t ON t.id = ps.tournament_id
-                  LEFT JOIN player_profiles pp ON pp.id = ps.profile_id
-                 WHERE t.community_id = ?
-                """,
-                (community_id,),
-            ).fetchall()
-        for row in tourn_rows:
-            if _name_matches(target, _normalize_name(row["player_name"])):
-                matches.append(_participation_match("tournament", row["tournament_id"], row["tname"] or "", row))
+    def _search_blocking() -> None:
+        """Full participation scan + Python-side accent-insensitive matching.
 
-        # Durable history for tournaments whose player_secrets row is gone —
-        # purged 30 days after finish, or the tournament itself was deleted.
-        # club_id/community_id are denormalized onto player_history at finish
-        # time specifically so this scope check survives both. Excludes rows
-        # already covered by tourn_rows above (still-live player_secrets).
-        if club_id:
-            hist_rows = conn.execute(
-                """
-                SELECT ph.entity_id AS tournament_id, ph.player_id, ph.player_name, ph.profile_id,
-                       COALESCE(pp.is_ghost, 0) AS is_ghost,
-                       ph.entity_name AS tname, ph.sport AS sport, ph.finished_at AS event_date
-                  FROM player_history ph
-                  LEFT JOIN player_profiles pp ON pp.id = ph.profile_id
-                 WHERE ph.entity_type = 'tournament' AND ph.club_id = ?
-                   AND NOT EXISTS (
-                       SELECT 1 FROM player_secrets ps
-                        WHERE ps.tournament_id = ph.entity_id AND ps.player_id = ph.player_id
-                   )
-                """,
-                (club_id,),
-            ).fetchall()
-        else:
-            hist_rows = conn.execute(
-                """
-                SELECT ph.entity_id AS tournament_id, ph.player_id, ph.player_name, ph.profile_id,
-                       COALESCE(pp.is_ghost, 0) AS is_ghost,
-                       ph.entity_name AS tname, ph.sport AS sport, ph.finished_at AS event_date
-                  FROM player_history ph
-                  LEFT JOIN player_profiles pp ON pp.id = ph.profile_id
-                 WHERE ph.entity_type = 'tournament' AND ph.community_id = ?
-                   AND NOT EXISTS (
-                       SELECT 1 FROM player_secrets ps
-                        WHERE ps.tournament_id = ph.entity_id AND ps.player_id = ph.player_id
-                   )
-                """,
-                (community_id,),
-            ).fetchall()
-        for row in hist_rows:
-            if _name_matches(target, _normalize_name(row["player_name"])):
-                matches.append(_participation_match("tournament", row["tournament_id"], row["tname"] or "", row))
+        Runs in a worker thread: on a large club this walks thousands of
+        rows per (debounced) autosuggest keystroke and must not stall the
+        event loop.
+        """
+        with get_db() as conn:
+            # Tournaments in the same club/community (scope lives on the tournaments
+            # table, joined via tournament_id — player_secrets has no scope columns).
+            if club_id:
+                tourn_rows = conn.execute(
+                    """
+                    SELECT ps.tournament_id, ps.player_id, ps.player_name, ps.profile_id,
+                           COALESCE(pp.is_ghost, 0) AS is_ghost,
+                           t.name AS tname, t.sport AS sport, t.created_at AS event_date
+                      FROM player_secrets ps
+                      JOIN tournaments t ON t.id = ps.tournament_id
+                      LEFT JOIN player_profiles pp ON pp.id = ps.profile_id
+                     WHERE t.club_id = ?
+                    """,
+                    (club_id,),
+                ).fetchall()
+            else:
+                tourn_rows = conn.execute(
+                    """
+                    SELECT ps.tournament_id, ps.player_id, ps.player_name, ps.profile_id,
+                           COALESCE(pp.is_ghost, 0) AS is_ghost,
+                           t.name AS tname, t.sport AS sport, t.created_at AS event_date
+                      FROM player_secrets ps
+                      JOIN tournaments t ON t.id = ps.tournament_id
+                      LEFT JOIN player_profiles pp ON pp.id = ps.profile_id
+                     WHERE t.community_id = ?
+                    """,
+                    (community_id,),
+                ).fetchall()
+            for row in tourn_rows:
+                if _name_matches(target, _normalize_name(row["player_name"])):
+                    matches.append(_participation_match("tournament", row["tournament_id"], row["tname"] or "", row))
 
-        # Registration lobbies in the same club/community (scope on registrations).
-        if club_id:
-            reg_rows = conn.execute(
-                """
-                SELECT r.registration_id, r.player_id, r.player_name, r.profile_id,
-                       COALESCE(pp.is_ghost, 0) AS is_ghost,
-                       reg.name AS rname, reg.sport AS sport, r.registered_at AS event_date
-                  FROM registrants r
-                  JOIN registrations reg ON reg.id = r.registration_id
-                  LEFT JOIN player_profiles pp ON pp.id = r.profile_id
-                 WHERE reg.club_id = ?
-                   AND r.registration_id != ?
-                """,
-                (club_id, reg["id"]),
-            ).fetchall()
-        else:
-            reg_rows = conn.execute(
-                """
-                SELECT r.registration_id, r.player_id, r.player_name, r.profile_id,
-                       COALESCE(pp.is_ghost, 0) AS is_ghost,
-                       reg.name AS rname, reg.sport AS sport, r.registered_at AS event_date
-                  FROM registrants r
-                  JOIN registrations reg ON reg.id = r.registration_id
-                  LEFT JOIN player_profiles pp ON pp.id = r.profile_id
-                 WHERE reg.community_id = ?
-                   AND r.registration_id != ?
-                """,
-                (community_id, reg["id"]),
-            ).fetchall()
-        for row in reg_rows:
-            if _name_matches(target, _normalize_name(row["player_name"])):
-                matches.append(_participation_match("registration", row["registration_id"], row["rname"] or "", row))
+            # Durable history for tournaments whose player_secrets row is gone —
+            # purged 30 days after finish, or the tournament itself was deleted.
+            # club_id/community_id are denormalized onto player_history at finish
+            # time specifically so this scope check survives both. Excludes rows
+            # already covered by tourn_rows above (still-live player_secrets).
+            if club_id:
+                hist_rows = conn.execute(
+                    """
+                    SELECT ph.entity_id AS tournament_id, ph.player_id, ph.player_name, ph.profile_id,
+                           COALESCE(pp.is_ghost, 0) AS is_ghost,
+                           ph.entity_name AS tname, ph.sport AS sport, ph.finished_at AS event_date
+                      FROM player_history ph
+                      LEFT JOIN player_profiles pp ON pp.id = ph.profile_id
+                     WHERE ph.entity_type = 'tournament' AND ph.club_id = ?
+                       AND NOT EXISTS (
+                           SELECT 1 FROM player_secrets ps
+                            WHERE ps.tournament_id = ph.entity_id AND ps.player_id = ph.player_id
+                       )
+                    """,
+                    (club_id,),
+                ).fetchall()
+            else:
+                hist_rows = conn.execute(
+                    """
+                    SELECT ph.entity_id AS tournament_id, ph.player_id, ph.player_name, ph.profile_id,
+                           COALESCE(pp.is_ghost, 0) AS is_ghost,
+                           ph.entity_name AS tname, ph.sport AS sport, ph.finished_at AS event_date
+                      FROM player_history ph
+                      LEFT JOIN player_profiles pp ON pp.id = ph.profile_id
+                     WHERE ph.entity_type = 'tournament' AND ph.community_id = ?
+                       AND NOT EXISTS (
+                           SELECT 1 FROM player_secrets ps
+                            WHERE ps.tournament_id = ph.entity_id AND ps.player_id = ph.player_id
+                       )
+                    """,
+                    (community_id,),
+                ).fetchall()
+            for row in hist_rows:
+                if _name_matches(target, _normalize_name(row["player_name"])):
+                    matches.append(_participation_match("tournament", row["tournament_id"], row["tname"] or "", row))
 
-        # Ghost profiles with ELO history in this club/community — durable even
-        # after their player_secrets rows are purged (30 days post-finish) or
-        # their tournaments deleted, so long-returning players stay findable.
-        if club_id:
-            ghost_rows = conn.execute(
-                """
-                SELECT DISTINCT pp.id, pp.name
-                  FROM profile_club_elo pce
-                  JOIN player_profiles pp ON pp.id = pce.profile_id
-                 WHERE pce.club_id = ? AND pp.is_ghost = 1
-                """,
-                (club_id,),
-            ).fetchall()
-        else:
-            ghost_rows = conn.execute(
-                """
-                SELECT DISTINCT pp.id, pp.name
-                  FROM profile_community_elo pce
-                  JOIN player_profiles pp ON pp.id = pce.profile_id
-                 WHERE pce.community_id = ? AND pp.is_ghost = 1
-                """,
-                (community_id,),
-            ).fetchall()
-        for row in ghost_rows:
-            if row["id"] not in ghosts_with_events and _name_matches(target, _normalize_name(row["name"])):
-                matches.append(
-                    ParticipationMatchOut(
-                        entity_type="profile",
-                        entity_id=row["id"],
-                        entity_name="",
-                        player_id=row["id"],
-                        player_name=row["name"],
-                        already_linked=False,
-                        ghost_profile_id=row["id"],
+            # Registration lobbies in the same club/community (scope on registrations).
+            if club_id:
+                reg_rows = conn.execute(
+                    """
+                    SELECT r.registration_id, r.player_id, r.player_name, r.profile_id,
+                           COALESCE(pp.is_ghost, 0) AS is_ghost,
+                           reg.name AS rname, reg.sport AS sport, r.registered_at AS event_date
+                      FROM registrants r
+                      JOIN registrations reg ON reg.id = r.registration_id
+                      LEFT JOIN player_profiles pp ON pp.id = r.profile_id
+                     WHERE reg.club_id = ?
+                       AND r.registration_id != ?
+                    """,
+                    (club_id, reg["id"]),
+                ).fetchall()
+            else:
+                reg_rows = conn.execute(
+                    """
+                    SELECT r.registration_id, r.player_id, r.player_name, r.profile_id,
+                           COALESCE(pp.is_ghost, 0) AS is_ghost,
+                           reg.name AS rname, reg.sport AS sport, r.registered_at AS event_date
+                      FROM registrants r
+                      JOIN registrations reg ON reg.id = r.registration_id
+                      LEFT JOIN player_profiles pp ON pp.id = r.profile_id
+                     WHERE reg.community_id = ?
+                       AND r.registration_id != ?
+                    """,
+                    (community_id, reg["id"]),
+                ).fetchall()
+            for row in reg_rows:
+                if _name_matches(target, _normalize_name(row["player_name"])):
+                    matches.append(
+                        _participation_match("registration", row["registration_id"], row["rname"] or "", row)
                     )
-                )
+
+            # Ghost profiles with ELO history in this club/community — durable even
+            # after their player_secrets rows are purged (30 days post-finish) or
+            # their tournaments deleted, so long-returning players stay findable.
+            if club_id:
+                ghost_rows = conn.execute(
+                    """
+                    SELECT DISTINCT pp.id, pp.name
+                      FROM profile_club_elo pce
+                      JOIN player_profiles pp ON pp.id = pce.profile_id
+                     WHERE pce.club_id = ? AND pp.is_ghost = 1
+                    """,
+                    (club_id,),
+                ).fetchall()
+            else:
+                ghost_rows = conn.execute(
+                    """
+                    SELECT DISTINCT pp.id, pp.name
+                      FROM profile_community_elo pce
+                      JOIN player_profiles pp ON pp.id = pce.profile_id
+                     WHERE pce.community_id = ? AND pp.is_ghost = 1
+                    """,
+                    (community_id,),
+                ).fetchall()
+            for row in ghost_rows:
+                if row["id"] not in ghosts_with_events and _name_matches(target, _normalize_name(row["name"])):
+                    matches.append(
+                        ParticipationMatchOut(
+                            entity_type="profile",
+                            entity_id=row["id"],
+                            entity_name="",
+                            player_id=row["id"],
+                            player_name=row["name"],
+                            already_linked=False,
+                            ghost_profile_id=row["id"],
+                        )
+                    )
+
+    await asyncio.to_thread(_search_blocking)
 
     # Exact-name matches first, claimable before already-linked, tournaments
     # before registrations before context-free profile rows; then cap so a
