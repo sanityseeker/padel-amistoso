@@ -1,3 +1,9 @@
+## v1.14.2 (2026-07-10)
+
+### Fix
+
+- **database**: optimize calls to a database; remove unnecessary locks
+
 ## v1.14.1 (2026-07-10)
 
 ### Fix
