@@ -216,15 +216,21 @@ async def delete_tournament(
         ghost_ids: list[str] = []
         if purge_ghosts:
             ghost_ids = [g["id"] for g in list_ghost_profiles_for_tournament(tournament_id)]
-        del _tournaments[tournament_id]
-        _delete_tournament(tournament_id)
+        # Snapshot history while player_secrets rows still exist — deleting
+        # the tournament first would leave this querying an already-empty
+        # table, silently dropping every participant's history (linked or
+        # not) instead of preserving it durably in player_history.
         delete_secrets_for_tournament(
             tournament_id,
             entity_name=entity_name,
             player_stats=player_stats,
             sport=t_data.get("sport", Sport.PADEL),
             partner_rival_stats=extract_partner_rival_stats(t_data),
+            club_id=t_data.get("club_id"),
+            community_id=t_data.get("community_id", "open"),
         )
+        del _tournaments[tournament_id]
+        _delete_tournament(tournament_id)
         delete_tournament_elos(tournament_id)
         purged: list[str] = []
         if purge_ghosts and ghost_ids:

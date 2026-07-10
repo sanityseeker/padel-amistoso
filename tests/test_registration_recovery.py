@@ -347,7 +347,7 @@ class TestGhostClaims:
         _insert_community("c-alpha", "Alpha")
         _insert_club("club-a", "c-alpha", "Club A")
 
-    def test_ghost_linked_participation_is_claimable_profile_match(self, client, auth_headers):
+    def test_ghost_linked_participation_is_claimable_with_event_context(self, client, auth_headers):
         self._setup_scope()
         past = _make_lobby(client, auth_headers, name="Past", community_id="c-alpha", club_id="club-a")
         past_reg = _register(client, past, "Gloria Ghost")
@@ -360,11 +360,61 @@ class TestGhostClaims:
         results = r.json()
         assert len(results) == 1
         m = results[0]
-        assert m["entity_type"] == "profile"
-        assert m["entity_id"] == "ghost_g1"
-        assert m["already_linked"] is False
-        # Event context is kept for recognition.
+        # Real event identity is kept for display/recognition...
+        assert m["entity_type"] == "registration"
+        assert m["entity_id"] == past
         assert m["entity_name"] == "Past"
+        assert m["already_linked"] is False
+        # ...but the claim target is the ghost profile.
+        assert m["ghost_profile_id"] == "ghost_g1"
+
+    def test_ghost_with_multiple_events_lists_each_one(self, client, auth_headers):
+        self._setup_scope()
+        past1 = _make_lobby(client, auth_headers, name="Past One", community_id="c-alpha", club_id="club-a")
+        reg1 = _register(client, past1, "Multi Mia")
+        past2 = _make_lobby(client, auth_headers, name="Past Two", community_id="c-alpha", club_id="club-a")
+        reg2 = _register(client, past2, "Multi Mia")
+        _insert_ghost("ghost_multi", "Multi Mia")
+        _link_registrant_to_profile(past1, reg1["player_id"], "ghost_multi")
+        _link_registrant_to_profile(past2, reg2["player_id"], "ghost_multi")
+
+        cur = _make_lobby(client, auth_headers, name="Current", community_id="c-alpha", club_id="club-a")
+        r = client.post(f"/api/registrations/{cur}/find-by-name", json={"player_name": "multi mia"})
+        assert r.status_code == 200, r.text
+        results = r.json()
+        assert len(results) == 2
+        entity_ids = {m["entity_id"] for m in results}
+        assert entity_ids == {past1, past2}
+        assert all(m["ghost_profile_id"] == "ghost_multi" for m in results)
+
+    def test_tournament_hits_sort_before_registration_hits(self, client, auth_headers):
+        self._setup_scope()
+        # A registration-lobby hit for "Sort Sam"...
+        past_reg_lobby = _make_lobby(client, auth_headers, name="Lobby Past", community_id="c-alpha", club_id="club-a")
+        reg_hit = _register(client, past_reg_lobby, "Sort Sam")
+        _insert_ghost("ghost_sort", "Sort Sam")
+        _link_registrant_to_profile(past_reg_lobby, reg_hit["player_id"], "ghost_sort")
+        # ...and a tournament hit, inserted directly (tournaments aren't created
+        # via this test's helpers, so write the rows straight to the DB).
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO tournaments (id, name, type, owner, public, tournament_blob, version,
+                       sport, community_id, club_id, created_at)
+                   VALUES ('t-sort', 'Tourney Past', 'group_playoff', 'admin', 0, '{}', 1,
+                           'padel', 'c-alpha', 'club-a', datetime('now'))"""
+            )
+            conn.execute(
+                """INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                   VALUES ('t-sort', 'p-sort', 'Sort Sam', 'pass-sort', 'tok-sort', 'ghost_sort')"""
+            )
+
+        cur = _make_lobby(client, auth_headers, name="Current", community_id="c-alpha", club_id="club-a")
+        r = client.post(f"/api/registrations/{cur}/find-by-name", json={"player_name": "sort sam"})
+        assert r.status_code == 200, r.text
+        results = r.json()
+        assert len(results) == 2
+        assert results[0]["entity_type"] == "tournament"
+        assert results[1]["entity_type"] == "registration"
 
     def test_real_linked_participation_stays_unclaimable(self, client, auth_headers):
         self._setup_scope()
@@ -470,6 +520,59 @@ class TestGhostClaims:
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# /my-entry self-heal: verified-email retroactive link
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestMyEntrySelfHeal:
+    def test_verified_email_match_links_and_returns_entry(self, client, auth_headers):
+        # Registered before ever having a Hub profile — no profile_id, and the
+        # registrant's own passphrase differs from the profile's.
+        rid = _make_lobby(client, auth_headers)
+        entry = _register(client, rid, "Late Profile Larry", email="larry@example.com")
+        assert entry["profile_linked"] is False
+
+        # Hub profile created afterwards from a *different* participation, with
+        # the same (now verified) email.
+        seed = _make_lobby(client, auth_headers, name="Seed")
+        seed_entry = _register(client, seed, "Larry Seed", email="larry@example.com")
+        prof = _create_profile(client, "Late Profile Larry", "larry@example.com", seed_entry["passphrase"])
+        profile_id = prof["profile"]["id"]
+        _verify_email(profile_id)
+
+        hub = client.post("/api/player-profile/login", json={"passphrase": _profile_passphrase(profile_id)})
+        assert hub.status_code == 200, hub.text
+        jwt = hub.json()["access_token"]
+
+        # Not yet linked.
+        assert _registrant_profile_id(rid, entry["player_id"]) is None
+
+        r = client.get(f"/api/registrations/{rid}/my-entry", headers={"Authorization": f"Bearer {jwt}"})
+        assert r.status_code == 200, r.text
+        assert r.json()["player_id"] == entry["player_id"]
+
+        # Self-healed: profile_id now set, so a second lookup takes the fast path.
+        assert _registrant_profile_id(rid, entry["player_id"]) == profile_id
+
+    def test_unverified_email_match_is_not_linked(self, client, auth_headers):
+        rid = _make_lobby(client, auth_headers)
+        entry = _register(client, rid, "Unverified Uma", email="uma@example.com")
+
+        seed = _make_lobby(client, auth_headers, name="Seed")
+        seed_entry = _register(client, seed, "Uma Seed", email="uma@example.com")
+        prof = _create_profile(client, "Unverified Uma", "uma@example.com", seed_entry["passphrase"])
+        profile_id = prof["profile"]["id"]
+        # Email intentionally left unverified.
+
+        hub = client.post("/api/player-profile/login", json={"passphrase": _profile_passphrase(profile_id)})
+        jwt = hub.json()["access_token"]
+
+        r = client.get(f"/api/registrations/{rid}/my-entry", headers={"Authorization": f"Bearer {jwt}"})
+        assert r.status_code == 404
+        assert _registrant_profile_id(rid, entry["player_id"]) is None
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # Email convergence: confirmation link carries #hub_token
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -515,6 +618,101 @@ class TestEmailHubTokenConvergence:
 # ────────────────────────────────────────────────────────────────────────────
 # Autosuggest matching semantics + already_linked flag on find-by-name
 # ────────────────────────────────────────────────────────────────────────────
+
+
+class TestFindByNameDurableHistory:
+    """A tournament participant must stay findable after player_secrets is
+    purged (30 days post-finish) and even after the tournament is deleted
+    outright — closing the gap where only ghost profiles with ELO survived.
+    """
+
+    def _setup_scope(self):
+        _insert_community("c-alpha", "Alpha")
+        _insert_club("club-a", "c-alpha", "Club A")
+
+    def _insert_finished_history(
+        self, tid: str, player_id: str, player_name: str, entity_name: str, *, club_id: str, profile_id=None
+    ) -> None:
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_history
+                   (profile_id, entity_type, entity_id, entity_name, player_id, player_name,
+                    finished_at, club_id, community_id)
+                   VALUES (?, 'tournament', ?, ?, ?, ?, datetime('now'), ?, 'c-alpha')""",
+                (profile_id, tid, entity_name, player_id, player_name, club_id),
+            )
+
+    def test_unlinked_player_found_after_secrets_purged_and_tournament_gone(self, client, auth_headers):
+        self._setup_scope()
+        # No player_secrets row and no tournaments row at all — simulates both
+        # the 30-day purge and the tournament having been deleted outright.
+        self._insert_finished_history("t-gone", "p-gone", "Gone Gina", "Old Cup", club_id="club-a")
+
+        cur = _make_lobby(client, auth_headers, name="Current", community_id="c-alpha", club_id="club-a")
+        r = client.post(f"/api/registrations/{cur}/find-by-name", json={"player_name": "gone gina"})
+        assert r.status_code == 200, r.text
+        results = r.json()
+        assert len(results) == 1
+        m = results[0]
+        assert m["entity_type"] == "tournament"
+        assert m["entity_id"] == "t-gone"
+        assert m["entity_name"] == "Old Cup"
+        assert m["already_linked"] is False
+        assert m["ghost_profile_id"] is None
+
+    def test_other_club_history_not_found(self, client, auth_headers):
+        self._setup_scope()
+        _insert_community("c-beta", "Beta")
+        _insert_club("club-b", "c-beta", "Club B")
+        self._insert_finished_history("t-other", "p-other", "Other Owen", "Other Cup", club_id="club-b")
+
+        cur = _make_lobby(client, auth_headers, name="Current", community_id="c-alpha", club_id="club-a")
+        r = client.post(f"/api/registrations/{cur}/find-by-name", json={"player_name": "other owen"})
+        assert r.status_code == 200, r.text
+        assert r.json() == []
+
+    def test_row_still_covered_by_live_secrets_is_not_duplicated(self, client, auth_headers):
+        # A tournament that finished but whose player_secrets row is still
+        # present (within the 30-day grace window) must appear once, from the
+        # live player_secrets query, not doubled by the history fallback.
+        self._setup_scope()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO tournaments (id, name, type, owner, public, tournament_blob, version,
+                       sport, community_id, club_id, created_at)
+                   VALUES ('t-live', 'Live Cup', 'group_playoff', 'admin', 0, '{}', 1,
+                           'padel', 'c-alpha', 'club-a', datetime('now'))"""
+            )
+            conn.execute(
+                """INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, finished_at)
+                   VALUES ('t-live', 'p-live', 'Live Larry', 'pass-live', 'tok-live', datetime('now'))"""
+            )
+        self._insert_finished_history("t-live", "p-live", "Live Larry", "Live Cup", club_id="club-a")
+
+        cur = _make_lobby(client, auth_headers, name="Current", community_id="c-alpha", club_id="club-a")
+        r = client.post(f"/api/registrations/{cur}/find-by-name", json={"player_name": "live larry"})
+        assert r.status_code == 200, r.text
+        assert len(r.json()) == 1
+
+    def test_ghost_linked_history_row_is_claimable_via_ghost_merge(self, client, auth_headers):
+        self._setup_scope()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT OR IGNORE INTO player_profiles
+                   (id, passphrase, name, email, contact, created_at, is_ghost)
+                   VALUES ('ghost_durable', 'ghost-pass-durable', 'Durable Ghost', '', '', datetime('now'), 1)"""
+            )
+        self._insert_finished_history(
+            "t-ghost-gone", "p-ghost-gone", "Durable Ghost", "Ghost Cup", club_id="club-a", profile_id="ghost_durable"
+        )
+
+        cur = _make_lobby(client, auth_headers, name="Current", community_id="c-alpha", club_id="club-a")
+        r = client.post(f"/api/registrations/{cur}/find-by-name", json={"player_name": "durable ghost"})
+        assert r.status_code == 200, r.text
+        results = r.json()
+        assert len(results) == 1
+        assert results[0]["ghost_profile_id"] == "ghost_durable"
+        assert results[0]["already_linked"] is False
 
 
 class TestFindByNameMatching:

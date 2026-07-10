@@ -191,7 +191,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_player_profiles_passphrase
     ON player_profiles (passphrase);
 
 CREATE TABLE IF NOT EXISTS player_history (
-    profile_id      TEXT NOT NULL,
+    -- Nullable: every participant gets a snapshot at tournament finish, linked
+    -- or not, so the record survives player_secrets purge / tournament
+    -- deletion; profile_id fills in later when the player claims/links.
+    profile_id      TEXT,
     entity_type     TEXT NOT NULL,
     entity_id       TEXT NOT NULL,
     entity_name     TEXT NOT NULL DEFAULT '',
@@ -210,7 +213,15 @@ CREATE TABLE IF NOT EXISTS player_history (
     top_rivals      TEXT,
     all_partners    TEXT,
     all_rivals      TEXT,
-    PRIMARY KEY (profile_id, entity_type, entity_id)
+    -- Denormalized from the tournament at snapshot time so an unlinked
+    -- participant stays scope-checkable (for find-by-name) after the
+    -- tournament row itself is purged/deleted.
+    club_id         TEXT,
+    community_id    TEXT NOT NULL DEFAULT 'open',
+    -- player_id (not profile_id) is the stable key: it's unique per
+    -- participation and never changes when profile_id transitions from NULL
+    -- to a ghost/real profile.
+    PRIMARY KEY (player_id, entity_type, entity_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_player_history_profile
@@ -567,6 +578,12 @@ def init_db() -> None:
                 ("all_rivals", "ALTER TABLE player_history ADD COLUMN all_rivals TEXT"),
                 ("elo_before", "ALTER TABLE player_history ADD COLUMN elo_before REAL"),
                 ("elo_after", "ALTER TABLE player_history ADD COLUMN elo_after REAL"),
+                # Denormalized from the tournament at snapshot time: once the
+                # tournament row is gone (purged/deleted), this is the only
+                # way to scope-check an unlinked participant's history against
+                # a club/community for find-by-name discovery.
+                ("club_id", "ALTER TABLE player_history ADD COLUMN club_id TEXT"),
+                ("community_id", "ALTER TABLE player_history ADD COLUMN community_id TEXT NOT NULL DEFAULT 'open'"),
             ]:
                 if col not in ph_cols:
                     conn.execute(ddl)
@@ -826,6 +843,65 @@ def init_db() -> None:
                 JOIN clubs cl ON cl.community_id = pce.community_id
                 """
             )
+
+        # Migrate: player_history used to require profile_id and key on it —
+        # meaning unlinked participants never got a durable snapshot and were
+        # lost once player_secrets purged them 30 days after finish (or their
+        # tournament was deleted). Rebuild with profile_id nullable and the PK
+        # switched to player_id (stable and unique per participation, unlike
+        # profile_id which starts NULL and may later be set by a claim/link).
+        ph_cols = conn.execute("PRAGMA table_info(player_history)").fetchall()
+        if ph_cols and any(c[1] == "profile_id" and c[3] == 1 for c in ph_cols):
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("DROP TABLE IF EXISTS player_history_migration_new")
+            conn.execute(
+                """
+                CREATE TABLE player_history_migration_new (
+                    profile_id      TEXT,
+                    entity_type     TEXT NOT NULL,
+                    entity_id       TEXT NOT NULL,
+                    entity_name     TEXT NOT NULL DEFAULT '',
+                    player_id       TEXT NOT NULL,
+                    player_name     TEXT NOT NULL DEFAULT '',
+                    finished_at     TEXT NOT NULL,
+                    rank            INTEGER,
+                    total_players   INTEGER,
+                    wins            INTEGER NOT NULL DEFAULT 0,
+                    losses          INTEGER NOT NULL DEFAULT 0,
+                    draws           INTEGER NOT NULL DEFAULT 0,
+                    points_for      INTEGER NOT NULL DEFAULT 0,
+                    points_against  INTEGER NOT NULL DEFAULT 0,
+                    sport           TEXT    NOT NULL DEFAULT 'padel',
+                    top_partners    TEXT,
+                    top_rivals      TEXT,
+                    all_partners    TEXT,
+                    all_rivals      TEXT,
+                    elo_before      REAL,
+                    elo_after       REAL,
+                    club_id         TEXT,
+                    community_id    TEXT NOT NULL DEFAULT 'open',
+                    PRIMARY KEY (player_id, entity_type, entity_id)
+                )
+                """
+            )
+            # The ALTER-loop above already guarantees every one of these
+            # columns exists on the pre-rebuild table, regardless of how old
+            # it is — carry them all over, or a restart would silently wipe
+            # elo_before/elo_after/club_id/community_id back to NULL/default.
+            conn.execute(
+                """
+                INSERT INTO player_history_migration_new
+                SELECT profile_id, entity_type, entity_id, entity_name, player_id, player_name,
+                       finished_at, rank, total_players, wins, losses, draws, points_for, points_against,
+                       sport, top_partners, top_rivals, all_partners, all_rivals,
+                       elo_before, elo_after, club_id, community_id
+                FROM player_history
+                """
+            )
+            conn.execute("DROP TABLE player_history")
+            conn.execute("ALTER TABLE player_history_migration_new RENAME TO player_history")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_player_history_profile ON player_history (profile_id)")
+            conn.execute("PRAGMA foreign_keys = ON")
 
 
 # ── Co-editor / sharing helpers ─────────────────────────────────────────────

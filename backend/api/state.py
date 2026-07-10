@@ -266,6 +266,8 @@ def _save_tournament(tid: str) -> bool:
             player_stats=extract_history_stats(data),
             sport=data.get("sport", Sport.PADEL),
             partner_rival_stats=extract_partner_rival_stats(data),
+            club_id=data.get("club_id"),
+            community_id=data.get("community_id", "open"),
         )
 
     # Push SSE notifications so connected clients learn about the change

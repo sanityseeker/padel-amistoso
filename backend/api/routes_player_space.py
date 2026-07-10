@@ -1866,17 +1866,16 @@ def _backfill_finished_secrets(profile_id: str) -> None:
 
     After a profile is created or a manual link is made, any ``player_secrets``
     rows that already have ``finished_at`` set (tournament ended before the
-    player created their profile) are converted into history entries using the
-    stats snapshot that was serialised into the secret at finish time.
+    player created their profile) are reflected into ``player_history``.
 
-    Only rows that do not already have a matching ``player_history`` record are
-    considered. This prevents deleting already-retained finished secrets that
-    were linked before tournament completion.
-
-    Stats are read from the ``finished_stats`` / ``finished_top_partners`` /
-    ``finished_top_rivals`` columns, which were populated by
-    ``delete_secrets_for_tournament`` when the tournament finished.  This means
-    backfill works even after a server restart or tournament deletion.
+    A row for this ``(player_id, tournament_id)`` may already exist in
+    ``player_history`` with ``profile_id IS NULL`` — the durable snapshot
+    written for every participant, linked or not, at tournament finish (see
+    ``delete_secrets_for_tournament``) — so this is an upsert: set
+    ``profile_id`` on that existing row rather than inserting a conflicting
+    duplicate, only when it isn't already claimed by another profile. Falls
+    back to a fresh insert (using the ``finished_*`` snapshot columns) for
+    rows finished before that durable-snapshot behavior existed.
 
     Args:
         profile_id: The profile whose newly linked finished secrets should be
@@ -1889,15 +1888,7 @@ def _backfill_finished_secrets(profile_id: str) -> None:
                       finished_stats, finished_top_partners, finished_top_rivals,
                       finished_all_partners, finished_all_rivals
                FROM player_secrets
-                             WHERE profile_id = ?
-                                 AND finished_at IS NOT NULL
-                                 AND NOT EXISTS (
-                                             SELECT 1
-                                                 FROM player_history ph
-                                                WHERE ph.profile_id = player_secrets.profile_id
-                                                    AND ph.entity_type = 'tournament'
-                                                    AND ph.entity_id = player_secrets.tournament_id
-                                 )""",
+              WHERE profile_id = ? AND finished_at IS NOT NULL""",
             (profile_id,),
         ).fetchall()
         if not rows:
@@ -1911,12 +1902,15 @@ def _backfill_finished_secrets(profile_id: str) -> None:
             all_rivals = json.loads(row["finished_all_rivals"]) if row["finished_all_rivals"] else []
             conn.execute(
                 """
-                INSERT OR IGNORE INTO player_history
+                INSERT INTO player_history
                     (profile_id, entity_type, entity_id, entity_name,
                      player_id, player_name, finished_at,
                      rank, total_players, wins, losses, draws, points_for, points_against,
                      sport, top_partners, top_rivals, all_partners, all_rivals)
                 VALUES (?, 'tournament', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (player_id, entity_type, entity_id) DO UPDATE
+                    SET profile_id = excluded.profile_id
+                    WHERE player_history.profile_id IS NULL
                 """,
                 (
                     profile_id,

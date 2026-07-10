@@ -244,6 +244,8 @@ Once a champion is determined, export a self-contained HTML or PDF summary with 
 
 If the organizer opened a registration lobby, visit the shared link and fill in your name to sign up.
 
+**Played before but forgot your code?** The registration page's "Played before?" section offers three ways back in: your passphrase/QR code, an email-based magic-link recovery, or — if you have neither — searching by name among past participants at the same club/community. A name match can't auto-link (names aren't unique or secret), so it raises a claim that the organizer approves from the lobby's admin panel; once approved, the participation (and its ELO/history) is merged into your Player Hub profile.
+
 ### Public TV view
 
 The read-only TV view (`/tv/<tournament-id-or-alias>`) shows live standings, the bracket, and match results — no login needed. Works well on a big screen.
@@ -590,52 +592,21 @@ Then open <http://localhost:8000>.
 
 ## Project structure
 
+The app has grown well beyond tournaments-only — registration lobbies, a
+community/club hierarchy, a Player Hub with ELO, live TV views, and more — so
+a file-by-file tree here would just go stale again. **[`CLAUDE.md`](CLAUDE.md)**
+in the repo root has the maintained, current breakdown of every backend and
+frontend module. At a glance:
+
 ```text
 backend/
-  models.py                – Core data models (Player, Match, Court, …)
-  auth/                    – Authentication (JWT, bcrypt, user management)
-    deps.py                – FastAPI dependency: get_current_user
-    models.py              – User data model
-    routes.py              – Auth endpoints (login, user CRUD)
-    schemas.py             – Auth request/response schemas
-    security.py            – JWT helpers and password hashing
-    store.py               – User persistence (SQLite)
-  tournaments/             – Tournament logic
-    group_stage.py         – Group-stage round-robin logic
-    pairing.py             – Shared 2v2 pairing and history utilities
-    playoff.py             – Single & double elimination brackets
-    group_playoff.py       – Orchestrator: groups → play-offs
-    mexicano.py            – Mexicano tournament engine (+ play-off support)
-    player_secrets.py      – Passphrase & token generation for player auth
-  api/                     – FastAPI REST API
-    state.py               – In-memory state & SQLite persistence
-    schemas.py             – Pydantic request/response models
-    helpers.py             – Shared serialisation utilities
-    routes_crud.py         – List, delete, TV settings, and alias endpoints
-    routes_gp.py           – Group+play-off endpoints
-    routes_mex.py          – Mexicano endpoints
-    routes_player_auth.py  – Player self-scoring auth (passphrase, QR, secrets)
-    routes_schema.py       – Bracket diagram preview endpoint
-    player_secret_store.py – CRUD for player passphrase/token secrets (SQLite)
-  viz/                     – Visualisation utilities
-    bracket_schema.py      – networkx/matplotlib bracket diagram renderer
+  models.py, auth/, tournaments/, api/, viz/  — engine, auth, REST layer, bracket diagrams
 data/
-  padel.db                 – Auto-generated; SQLite database (tournaments + users)
+  padel.db          – auto-generated SQLite database (tournaments, users, players)
 frontend/
-  index.html               – Single-page admin UI (vanilla HTML/CSS/JS)
-  public.html              – Read-only TV display view
-  auth.js                  – Auth module (login, token storage, API helpers)
-  shared.js                – Shared utilities (theme, i18n, HTML escaping)
-  i18n.js                  – Internationalisation engine (en/es translations)
+  index.html (admin), player.html (Player Hub), public.html (TV), register.html (lobbies), club.html
 tests/
-  test_api.py              – Full HTTP API (tournaments, auth, scores)
-  test_auth.py             – JWT authentication and user management
-  test_group_playoff.py    – Group + playoff flow and bracket seeding
-  test_group_stage.py      – Group stage round-robin logic
-  test_helpers.py          – Shared helper utilities
-  test_mexicano.py         – Mexicano scoring and pairing logic
-  test_player_auth.py      – Player self-scoring authentication
-  test_playoff.py          – Single/double elimination bracket logic
+  pytest suite against the real app via FastAPI's TestClient — see tests/conftest.py for fixtures
 ```
 
 ## Linting & formatting
@@ -698,16 +669,10 @@ uv run pytest tests/ -x
 
 ### Test files
 
-| File | What it covers |
-| --- | --- |
-| `tests/test_api.py` | Full HTTP API (tournaments, auth, scores) |
-| `tests/test_auth.py` | JWT authentication, user management |
-| `tests/test_group_stage.py` | Group stage round-robin logic |
-| `tests/test_group_playoff.py` | Group + playoff flow, bracket seeding |
-| `tests/test_mexicano.py` | Mexicano scoring and pairing logic |
-| `tests/test_player_auth.py` | Player self-scoring authentication |
-| `tests/test_playoff.py` | Single/double elimination bracket logic |
-| `tests/test_helpers.py` | Shared helper utilities |
+30+ files under `tests/`, named after the feature area they cover rather than
+a specific source module (e.g. `test_registration_recovery.py` and
+`test_convert_registration.py` both cut across several `routes_*.py` files).
+Check `tests/conftest.py` for shared fixtures before adding new ones.
 
 ---
 

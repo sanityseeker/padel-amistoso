@@ -613,8 +613,15 @@ class ParticipationMatchOut(BaseModel):
 
     ``already_linked`` marks participations that already belong to a real Hub
     profile — they are shown for recognition but cannot be claimed.
-    ``entity_type="profile"`` matches are ghost profiles (internal tracking
-    identities); claiming one merges all its participations + ELO at once.
+
+    A ghost-linked participation (internal ELO-tracking identity, no owner)
+    keeps its real ``entity_type``/``entity_id`` for display — the player
+    sees every event individually, tournaments before registrations — but
+    carries ``ghost_profile_id``: the claim action for *any* of these targets
+    that whole ghost (``entity_type="profile"``), merging all its
+    participations + ELO into the claimant at once. A ghost with no live
+    participation row (its tournament/lobby was purged/deleted) falls back to
+    a single ``entity_type="profile"`` row with no event context.
     """
 
     entity_type: str  # 'tournament' | 'registration' | 'profile'
@@ -627,6 +634,9 @@ class ParticipationMatchOut(BaseModel):
     # Tournament creation date / lobby registration date — shown so the player
     # can recognize WHICH event the found name belongs to.
     event_date: str | None = None
+    # Set when this match is ghost-linked: claiming it must target this ghost
+    # profile id (entity_type="profile"), not the displayed entity/player_id.
+    ghost_profile_id: str | None = None
 
 
 class ClaimParticipationRequest(BaseModel):

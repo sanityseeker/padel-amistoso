@@ -158,6 +158,108 @@ class TestDeleteSecretsForTournament:
             ).fetchone()
             assert history is not None
 
+    def test_unlinked_players_also_get_a_durable_history_snapshot(self):
+        """Every participant is snapshotted at finish, linked or not.
+
+        Without this, an unlinked player's only record was the
+        ``player_secrets`` row, purged 30 days after finish (or gone
+        immediately if the tournament itself is deleted) — making them
+        permanently unfindable. The durable snapshot has ``profile_id NULL``
+        until the player later claims/links it.
+        """
+        tid = "t-finished-unlinked-durable"
+        with get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                VALUES (?, ?, ?, ?, ?, NULL)
+                """,
+                (tid, "p-durable", "Durable Dana", "pp-durable", "tok-durable"),
+            )
+
+        real_delete_secrets_for_tournament(
+            tid,
+            entity_name="Durable Cup",
+            player_stats={"p-durable": {"rank": 1, "total_players": 1, "wins": 1, "losses": 0, "draws": 0}},
+        )
+
+        with get_db() as conn:
+            history = conn.execute(
+                """SELECT profile_id, entity_name, player_name, wins
+                     FROM player_history WHERE entity_type = 'tournament' AND entity_id = ? AND player_id = ?""",
+                (tid, "p-durable"),
+            ).fetchone()
+            assert history is not None
+            assert history["profile_id"] is None
+            assert history["entity_name"] == "Durable Cup"
+            assert history["player_name"] == "Durable Dana"
+            assert history["wins"] == 1
+
+            # Simulate the 30-day purge and even outright tournament deletion —
+            # the history snapshot must survive both.
+            conn.execute("DELETE FROM player_secrets WHERE tournament_id = ?", (tid,))
+            conn.execute("DELETE FROM tournaments WHERE id = ?", (tid,))
+            still_there = conn.execute(
+                "SELECT 1 FROM player_history WHERE entity_type = 'tournament' AND entity_id = ? AND player_id = ?",
+                (tid, "p-durable"),
+            ).fetchone()
+            assert still_there is not None
+
+    def test_later_link_upserts_profile_id_onto_existing_snapshot(self):
+        """Linking after finish must not silently no-op or drop the row.
+
+        A naive ``INSERT OR IGNORE`` keyed the same as the durable snapshot's
+        ``(player_id, entity_type, entity_id)`` would conflict with the
+        existing unlinked row and be ignored — leaving profile_id stuck at
+        NULL forever, even though the caller believes the link succeeded.
+        """
+        from backend.api.routes_admin_players import _backfill_single_finished_secret
+
+        tid = "t-finished-later-link"
+        with get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                VALUES (?, ?, ?, ?, ?, NULL)
+                """,
+                (tid, "p-later", "Later Larry", "pp-later", "tok-later"),
+            )
+
+        real_delete_secrets_for_tournament(
+            tid, entity_name="Later Cup", player_stats={"p-later": {"rank": 1, "total_players": 1, "wins": 2}}
+        )
+
+        # Link now happens (mirrors admin_link_participation): set profile_id
+        # on player_secrets, then backfill/upsert player_history.
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE player_secrets SET profile_id = ? WHERE tournament_id = ? AND player_id = ?",
+                ("profile-later", tid, "p-later"),
+            )
+            _backfill_single_finished_secret(conn, "profile-later", tid, "p-later")
+
+        with get_db() as conn:
+            history = conn.execute(
+                "SELECT profile_id, wins FROM player_history WHERE entity_type = 'tournament' AND entity_id = ? AND player_id = ?",
+                (tid, "p-later"),
+            ).fetchone()
+            assert history is not None
+            assert history["profile_id"] == "profile-later"
+            assert history["wins"] == 2
+            # No duplicate row was created for this player_id/entity_id.
+            count = conn.execute(
+                "SELECT COUNT(*) AS c FROM player_history WHERE entity_type = 'tournament' AND entity_id = ? AND player_id = ?",
+                (tid, "p-later"),
+            ).fetchone()
+            assert count["c"] == 1
+            # The player_secrets row was cleaned up post-backfill.
+            assert (
+                conn.execute(
+                    "SELECT 1 FROM player_secrets WHERE tournament_id = ? AND player_id = ?", (tid, "p-later")
+                ).fetchone()
+                is None
+            )
+
     def test_get_secrets_returns_finished_rows(self):
         """Organizer endpoints (admin codes panel, bulk emails) must keep
         listing player secrets after the tournament finishes — finished rows

@@ -665,14 +665,19 @@ def delete_secrets_for_tournament(
     player_stats: dict[str, dict] | None = None,
     sport: str = Sport.PADEL,
     partner_rival_stats: dict[str, dict] | None = None,
+    club_id: str | None = None,
+    community_id: str = "open",
 ) -> None:
-    """Mark tournament player secrets as finished and persist linked history.
+    """Mark tournament player secrets as finished and persist durable history.
 
-    Any secrets linked to a Player Hub profile are written to
-    ``player_history`` so the player's dashboard retains a finished record.
-    The ``player_secrets`` rows are preserved (with ``finished_at`` and
-    snapshots) so the admin Players panel can still show participants after
-    a tournament ends.
+    Every participant — linked to a Hub profile or not — is written to
+    ``player_history`` (``profile_id`` is nullable there) so the record
+    survives the 30-day ``player_secrets`` purge and even tournament deletion.
+    An unlinked row's ``profile_id`` fills in later, in place, when the player
+    claims or links it (see ``merge_ghost_into_profile`` /
+    ``resolve_participation_claim``). The ``player_secrets`` rows are also
+    preserved (with ``finished_at`` and snapshots) so the admin Players panel
+    can still show participants after a tournament ends.
 
     Args:
         tournament_id: The tournament whose secrets should be purged.
@@ -684,6 +689,10 @@ def delete_secrets_for_tournament(
         sport: Sport string (``"padel"`` or ``"tennis"``) stored in the row.
         partner_rival_stats: Optional per-player partner/rival snapshot
             produced by ``extract_partner_rival_stats``.
+        club_id: The tournament's club, denormalized onto the history row so
+            an unlinked participant stays scope-checkable (find-by-name) even
+            after the tournament row itself is gone.
+        community_id: The tournament's community, same reason as ``club_id``.
     """
     from datetime import datetime, timezone
 
@@ -692,19 +701,19 @@ def delete_secrets_for_tournament(
     pr = partner_rival_stats or {}
     try:
         with get_db() as conn:
-            linked = conn.execute(
-                "SELECT profile_id, player_id, player_name"
-                " FROM player_secrets WHERE tournament_id = ? AND profile_id IS NOT NULL",
+            participants = conn.execute(
+                "SELECT profile_id, player_id, player_name FROM player_secrets WHERE tournament_id = ?",
                 (tournament_id,),
             ).fetchall()
-            if linked:
+            if participants:
                 conn.executemany(
                     """INSERT OR REPLACE INTO player_history
                        (profile_id, entity_type, entity_id, entity_name,
                         player_id, player_name, finished_at,
                         rank, total_players, wins, losses, draws, points_for, points_against,
-                        sport, top_partners, top_rivals, all_partners, all_rivals)
-                       VALUES (?, 'tournament', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        sport, top_partners, top_rivals, all_partners, all_rivals,
+                        club_id, community_id)
+                       VALUES (?, 'tournament', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     [
                         (
                             row["profile_id"],
@@ -725,8 +734,10 @@ def delete_secrets_for_tournament(
                             json.dumps(pr.get(row["player_id"], {}).get("top_rivals", [])),
                             json.dumps(pr.get(row["player_id"], {}).get("all_partners", [])),
                             json.dumps(pr.get(row["player_id"], {}).get("all_rivals", [])),
+                            club_id,
+                            community_id,
                         )
-                        for row in linked
+                        for row in participants
                     ],
                 )
             # Stamp finished metadata for every player_secrets row so both linked

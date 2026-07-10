@@ -9,6 +9,13 @@ from __future__ import annotations
 
 import re
 
+# Captured at module load time, before conftest's autouse fixture replaces
+# ``player_secret_store.delete_secrets_for_tournament`` with an in-memory
+# no-op for test speed/isolation (see test_player_auth.py for the same
+# pattern) — importing this inside a test function would instead capture
+# the mock, since the fixture has already run by then.
+from backend.api.player_secret_store import delete_secrets_for_tournament as _real_delete_secrets_for_tournament
+
 
 # ── General ────────────────────────────────────────────────
 
@@ -290,6 +297,59 @@ class TestGroupPlayoffAPI:
         with db_mod.get_db() as conn:
             assert conn.execute("SELECT 1 FROM player_profiles WHERE id = ?", (ghost_id,)).fetchone() is None
             assert conn.execute("SELECT 1 FROM player_profiles WHERE id = ?", (real_id,)).fetchone() is not None
+
+    def test_delete_tournament_snapshots_history_for_every_participant(self, client, auth_headers, monkeypatch):
+        """Deleting a tournament outright must not silently drop history.
+
+        ``delete_secrets_for_tournament`` has to run *before* the tournament
+        row (and its player_secrets) are wiped, or its own query against
+        ``player_secrets`` sees nothing and no history is written at all —
+        for linked or unlinked participants alike.
+
+        conftest's autouse fixture replaces ``routes_crud.delete_secrets_for_tournament``
+        with an in-memory no-op for test speed/isolation; swap in the real
+        implementation (captured at module load time, before the fixture
+        mocks it) for this test so the endpoint's call ordering is actually
+        exercised end-to-end.
+        """
+        import uuid
+
+        import backend.api.db as db_mod
+        import backend.api.routes_crud as crud_mod
+
+        monkeypatch.setattr(crud_mod, "delete_secrets_for_tournament", _real_delete_secrets_for_tournament)
+
+        tid = self._create(client, auth_headers)
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_secrets
+                   (tournament_id, player_id, player_name, passphrase, token, contact, email, profile_id)
+                   VALUES (?, 'p-linked-del', 'Linked Del', ?, ?, '', '', 'profile-del')""",
+                (tid, f"ps-{uuid.uuid4().hex[:8]}", uuid.uuid4().hex),
+            )
+            conn.execute(
+                """INSERT INTO player_secrets
+                   (tournament_id, player_id, player_name, passphrase, token, contact, email, profile_id)
+                   VALUES (?, 'p-unlinked-del', 'Unlinked Del', ?, ?, '', '', NULL)""",
+                (tid, f"ps-{uuid.uuid4().hex[:8]}", uuid.uuid4().hex),
+            )
+
+        r = client.delete(f"/api/tournaments/{tid}", headers=auth_headers)
+        assert r.status_code == 200
+
+        with db_mod.get_db() as conn:
+            linked_hist = conn.execute(
+                "SELECT profile_id FROM player_history WHERE entity_type = 'tournament' AND entity_id = ? AND player_id = ?",
+                (tid, "p-linked-del"),
+            ).fetchone()
+            unlinked_hist = conn.execute(
+                "SELECT profile_id FROM player_history WHERE entity_type = 'tournament' AND entity_id = ? AND player_id = ?",
+                (tid, "p-unlinked-del"),
+            ).fetchone()
+            assert linked_hist is not None
+            assert linked_hist["profile_id"] == "profile-del"
+            assert unlinked_hist is not None
+            assert unlinked_hist["profile_id"] is None
 
 
 # ── Mexicano API ──────────────────────────────────────────

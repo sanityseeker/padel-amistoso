@@ -973,8 +973,13 @@ async function _searchByName(auto) {
       if (m.already_linked) {
         html += `<span class="reg-name-result-linked">${t('txt_reg_name_already_linked')}</span>`;
       } else {
+        // A ghost-linked hit claims the whole ghost profile (all its events
+        // merge at once), not just this one displayed event.
+        const claimType = m.ghost_profile_id ? 'profile' : m.entity_type;
+        const claimId = m.ghost_profile_id || m.entity_id;
+        const claimPlayerId = m.ghost_profile_id || m.player_id;
         html += `<button type="button" class="btn btn-secondary reg-name-claim-btn" data-key="${esc(key)}" `;
-        html += `onclick="_claimParticipation('${esc(m.entity_type)}','${esc(m.entity_id)}','${esc(m.player_id)}',this)">`;
+        html += `onclick="_claimParticipation('${esc(claimType)}','${esc(claimId)}','${esc(claimPlayerId)}',this)">`;
         html += `${t('txt_reg_name_search_this_is_me')}</button>`;
       }
       html += `</div>`;

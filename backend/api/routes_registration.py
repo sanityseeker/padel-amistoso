@@ -1577,10 +1577,15 @@ async def get_my_entry(rid: str, identity: ProfileIdentity | None = Depends(get_
     """Return the authenticated Hub profile's own registration in this lobby.
 
     Matches by ``registrants.profile_id`` first, then by the profile's global
-    passphrase (rows registered with the unified passphrase before linking).
-    Lets the registration page answer "am I already registered here?" from the
-    profile JWT alone, without relying on a cached passphrase. 404 when the
-    profile has no entry in this lobby.
+    passphrase (rows registered with the unified passphrase before linking),
+    then — self-healing — by verified email: if the Hub profile's email
+    (verified) matches an unlinked registrant's email in this lobby, link it
+    now and return it. This covers registrations submitted *before* the
+    player had a Hub profile (or before their email was verified), which the
+    registration-time auto-link in ``register_player`` cannot catch
+    retroactively; once healed, the fast ``profile_id`` path serves it going
+    forward. Lets the registration page answer "am I already registered
+    here?" from the profile JWT alone. 404 when none of the three match.
     """
     if identity is None:
         raise HTTPException(401, "Profile authentication required")
@@ -1594,7 +1599,7 @@ async def get_my_entry(rid: str, identity: ProfileIdentity | None = Depends(get_
         ).fetchone()
         if row is None:
             profile_row = conn.execute(
-                "SELECT passphrase FROM player_profiles WHERE id = ?",
+                "SELECT passphrase, email, email_verified_at FROM player_profiles WHERE id = ?",
                 (identity.profile_id,),
             ).fetchone()
             if profile_row is not None:
@@ -1602,6 +1607,19 @@ async def get_my_entry(rid: str, identity: ProfileIdentity | None = Depends(get_
                     f"SELECT {fields} FROM registrants WHERE registration_id = ? AND passphrase = ?",
                     (reg["id"], profile_row["passphrase"]),
                 ).fetchone()
+                if row is None and profile_row["email"] and profile_row["email_verified_at"]:
+                    row = conn.execute(
+                        f"""SELECT {fields} FROM registrants
+                             WHERE registration_id = ? AND profile_id IS NULL
+                               AND LOWER(email) = LOWER(?)""",
+                        (reg["id"], profile_row["email"]),
+                    ).fetchone()
+                    if row is not None:
+                        conn.execute(
+                            """UPDATE registrants SET profile_id = ?
+                                WHERE registration_id = ? AND player_id = ? AND profile_id IS NULL""",
+                            (identity.profile_id, reg["id"], row["player_id"]),
+                        )
     if row is None:
         raise HTTPException(404, "No registration for this profile in this lobby")
 
@@ -2044,12 +2062,21 @@ async def find_participations_by_name(
     already linked to a real Hub profile are included with ``already_linked=True``
     so the player understands why they cannot be claimed.
 
-    Participations linked to a *ghost* profile (internal ELO-tracking identity,
-    no owner) are claimable: they surface as ``entity_type="profile"`` matches
-    whose approval merges the whole ghost — all its participations and ELO —
-    into the claimant's profile.  Ghost profiles with club/community ELO are
-    also searched directly, so players stay findable after their
-    ``player_secrets`` rows are purged or their tournaments deleted.
+    A player linked to a *ghost* profile (internal ELO-tracking identity, no
+    owner) may have played many events — every one of them is listed
+    individually (tournaments first) so the player recognizes their history;
+    claiming any single one raises a claim on the whole ghost (all
+    participations + ELO merge into the claimant at once on approval). Ghost
+    profiles with club/community ELO but no live participation row (purged
+    secrets / deleted tournament) still surface as a single context-free match,
+    so long-returning players stay findable.
+
+    Tournament participations also survive their own ``player_secrets`` row
+    disappearing (30-day purge, or the tournament was deleted outright): every
+    participant is snapshotted into ``player_history`` at finish, with
+    ``club_id``/``community_id`` denormalized onto that row so scope can still
+    be checked once the tournament itself is gone. Covers unlinked players who
+    never got a ghost profile, not just ghosts with ELO.
     """
     client_ip = _client_ip(request)
     _find_by_name_rate_limiter.check(client_ip, "Too many lookups — try again later")
@@ -2063,29 +2090,27 @@ async def find_participations_by_name(
         return []
 
     matches: list[ParticipationMatchOut] = []
-    seen_ghosts: set[str] = set()
+    ghosts_with_events: set[str] = set()
 
-    def _participation_match(entity_type: str, entity_id: str, entity_name: str, row) -> ParticipationMatchOut | None:
-        """Build a match for one participation row, folding ghost links.
+    def _participation_match(entity_type: str, entity_id: str, entity_name: str, row) -> ParticipationMatchOut:
+        """Build a match for one participation row.
 
-        A ghost-linked participation becomes a claimable ``profile`` match
-        (one per ghost — the merge covers every event at once); a real-linked
-        one stays visible but unclaimable.
+        Ghost-linked rows keep their real event identity for display but carry
+        ``ghost_profile_id`` so the frontend routes the claim to the ghost merge.
         """
         profile_id = row["profile_id"]
         if profile_id and row["is_ghost"]:
-            if profile_id in seen_ghosts:
-                return None
-            seen_ghosts.add(profile_id)
+            ghosts_with_events.add(profile_id)
             return ParticipationMatchOut(
-                entity_type="profile",
-                entity_id=profile_id,
+                entity_type=entity_type,
+                entity_id=entity_id,
                 entity_name=entity_name,
-                player_id=profile_id,
+                player_id=row["player_id"],
                 player_name=row["player_name"],
                 already_linked=False,
                 sport=row["sport"],
                 event_date=row["event_date"] or None,
+                ghost_profile_id=profile_id,
             )
         return ParticipationMatchOut(
             entity_type=entity_type,
@@ -2129,9 +2154,48 @@ async def find_participations_by_name(
             ).fetchall()
         for row in tourn_rows:
             if _name_matches(target, _normalize_name(row["player_name"])):
-                m = _participation_match("tournament", row["tournament_id"], row["tname"] or "", row)
-                if m is not None:
-                    matches.append(m)
+                matches.append(_participation_match("tournament", row["tournament_id"], row["tname"] or "", row))
+
+        # Durable history for tournaments whose player_secrets row is gone —
+        # purged 30 days after finish, or the tournament itself was deleted.
+        # club_id/community_id are denormalized onto player_history at finish
+        # time specifically so this scope check survives both. Excludes rows
+        # already covered by tourn_rows above (still-live player_secrets).
+        if club_id:
+            hist_rows = conn.execute(
+                """
+                SELECT ph.entity_id AS tournament_id, ph.player_id, ph.player_name, ph.profile_id,
+                       COALESCE(pp.is_ghost, 0) AS is_ghost,
+                       ph.entity_name AS tname, ph.sport AS sport, ph.finished_at AS event_date
+                  FROM player_history ph
+                  LEFT JOIN player_profiles pp ON pp.id = ph.profile_id
+                 WHERE ph.entity_type = 'tournament' AND ph.club_id = ?
+                   AND NOT EXISTS (
+                       SELECT 1 FROM player_secrets ps
+                        WHERE ps.tournament_id = ph.entity_id AND ps.player_id = ph.player_id
+                   )
+                """,
+                (club_id,),
+            ).fetchall()
+        else:
+            hist_rows = conn.execute(
+                """
+                SELECT ph.entity_id AS tournament_id, ph.player_id, ph.player_name, ph.profile_id,
+                       COALESCE(pp.is_ghost, 0) AS is_ghost,
+                       ph.entity_name AS tname, ph.sport AS sport, ph.finished_at AS event_date
+                  FROM player_history ph
+                  LEFT JOIN player_profiles pp ON pp.id = ph.profile_id
+                 WHERE ph.entity_type = 'tournament' AND ph.community_id = ?
+                   AND NOT EXISTS (
+                       SELECT 1 FROM player_secrets ps
+                        WHERE ps.tournament_id = ph.entity_id AND ps.player_id = ph.player_id
+                   )
+                """,
+                (community_id,),
+            ).fetchall()
+        for row in hist_rows:
+            if _name_matches(target, _normalize_name(row["player_name"])):
+                matches.append(_participation_match("tournament", row["tournament_id"], row["tname"] or "", row))
 
         # Registration lobbies in the same club/community (scope on registrations).
         if club_id:
@@ -2164,9 +2228,7 @@ async def find_participations_by_name(
             ).fetchall()
         for row in reg_rows:
             if _name_matches(target, _normalize_name(row["player_name"])):
-                m = _participation_match("registration", row["registration_id"], row["rname"] or "", row)
-                if m is not None:
-                    matches.append(m)
+                matches.append(_participation_match("registration", row["registration_id"], row["rname"] or "", row))
 
         # Ghost profiles with ELO history in this club/community — durable even
         # after their player_secrets rows are purged (30 days post-finish) or
@@ -2192,8 +2254,7 @@ async def find_participations_by_name(
                 (community_id,),
             ).fetchall()
         for row in ghost_rows:
-            if row["id"] not in seen_ghosts and _name_matches(target, _normalize_name(row["name"])):
-                seen_ghosts.add(row["id"])
+            if row["id"] not in ghosts_with_events and _name_matches(target, _normalize_name(row["name"])):
                 matches.append(
                     ParticipationMatchOut(
                         entity_type="profile",
@@ -2202,12 +2263,21 @@ async def find_participations_by_name(
                         player_id=row["id"],
                         player_name=row["name"],
                         already_linked=False,
+                        ghost_profile_id=row["id"],
                     )
                 )
 
-    # Exact-name matches first, claimable before already-linked; then cap so a
+    # Exact-name matches first, claimable before already-linked, tournaments
+    # before registrations before context-free profile rows; then cap so a
     # common name can't be used to enumerate a whole club.
-    matches.sort(key=lambda m: (_normalize_name(m.player_name) != target, m.already_linked))
+    _type_rank = {"tournament": 0, "registration": 1, "profile": 2}
+    matches.sort(
+        key=lambda m: (
+            _normalize_name(m.player_name) != target,
+            m.already_linked,
+            _type_rank.get(m.entity_type, 3),
+        )
+    )
     return matches[:20]
 
 

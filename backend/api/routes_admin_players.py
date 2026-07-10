@@ -682,10 +682,16 @@ async def admin_link_participation(
 def _backfill_single_finished_secret(conn, profile_id: str, tid: str, player_id: str) -> None:
     """Backfill a single finished player_secrets row into player_history.
 
-    Reads the ``finished_*`` snapshot columns and inserts into
-    ``player_history``, then deletes the ``player_secrets`` row (matching
-    the self-service ``_backfill_finished_secrets`` behaviour in
-    ``routes_player_space.py``).
+    A row for this ``(player_id, tid)`` may already exist in ``player_history``
+    with ``profile_id IS NULL`` — the durable snapshot written for every
+    participant, linked or not, at tournament finish (see
+    ``delete_secrets_for_tournament``) — so this upserts: set ``profile_id``
+    on that existing row rather than inserting a conflicting duplicate, only
+    when it isn't already claimed by another profile. Falls back to a fresh
+    insert (using the ``finished_*`` snapshot columns) for rows finished
+    before that durable-snapshot behavior existed. Then deletes the
+    ``player_secrets`` row (matching the self-service
+    ``_backfill_finished_secrets`` behaviour in ``routes_player_space.py``).
     """
     row = conn.execute(
         """SELECT tournament_id, player_id, player_name,
@@ -700,19 +706,6 @@ def _backfill_single_finished_secret(conn, profile_id: str, tid: str, player_id:
     if row is None:
         return
 
-    # Check that a history row doesn't already exist.
-    existing = conn.execute(
-        "SELECT 1 FROM player_history WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
-        (profile_id, tid),
-    ).fetchone()
-    if existing:
-        # Already backfilled — just delete the secret row.
-        conn.execute(
-            "DELETE FROM player_secrets WHERE profile_id = ? AND tournament_id = ? AND player_id = ?",
-            (profile_id, tid, player_id),
-        )
-        return
-
     stats = json.loads(row["finished_stats"]) if row["finished_stats"] else {}
     top_partners = json.loads(row["finished_top_partners"]) if row["finished_top_partners"] else []
     top_rivals = json.loads(row["finished_top_rivals"]) if row["finished_top_rivals"] else []
@@ -720,12 +713,15 @@ def _backfill_single_finished_secret(conn, profile_id: str, tid: str, player_id:
     all_rivals = json.loads(row["finished_all_rivals"]) if row["finished_all_rivals"] else []
 
     conn.execute(
-        """INSERT OR IGNORE INTO player_history
+        """INSERT INTO player_history
                (profile_id, entity_type, entity_id, entity_name,
                 player_id, player_name, finished_at,
                 rank, total_players, wins, losses, draws, points_for, points_against,
                 sport, top_partners, top_rivals, all_partners, all_rivals)
-           VALUES (?, 'tournament', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, 'tournament', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (player_id, entity_type, entity_id) DO UPDATE
+               SET profile_id = excluded.profile_id
+               WHERE player_history.profile_id IS NULL""",
         (
             profile_id,
             row["tournament_id"],
