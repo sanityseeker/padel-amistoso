@@ -1,3 +1,9 @@
+## v1.14.1 (2026-07-10)
+
+### Fix
+
+- **registration**: improve searching by name
+
 ## v1.14.0 (2026-07-09)
 
 ### Feat
