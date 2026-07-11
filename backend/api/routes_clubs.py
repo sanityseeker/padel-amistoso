@@ -688,7 +688,7 @@ async def get_club_by_community(community_id: str) -> dict:
 
 _SLUG_RE = re.compile(r"^[a-z0-9-]{2,30}$")
 _RESERVED_SLUGS: frozenset[str] = frozenset(
-    {"admin", "tv", "player", "register", "api", "www", "app", "mail", "ftp", "static", "assets"}
+    {"admin", "tv", "player", "register", "api", "www", "app", "mail", "ftp", "static", "assets", "demo"}
 )
 
 

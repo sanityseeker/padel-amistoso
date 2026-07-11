@@ -199,7 +199,7 @@ async def csrf_origin_protection(request: Request, call_next):
 # left untouched so they keep working from any subdomain.
 
 _SUBDOMAIN_RESERVED: frozenset[str] = frozenset(
-    {"admin", "tv", "player", "register", "api", "www", "app", "mail", "ftp", "static", "assets"}
+    {"admin", "tv", "player", "register", "api", "www", "app", "mail", "ftp", "static", "assets", "demo"}
 )
 _SLUG_LABEL_RE = re.compile(r"^[a-z0-9-]{2,30}$")
 

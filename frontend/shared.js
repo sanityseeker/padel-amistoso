@@ -74,7 +74,7 @@ function _sortTbdLast(matches) {
  */
 function getClubSubdomain() {
   const RESERVED = new Set([
-    'admin', 'tv', 'player', 'register', 'api', 'www', 'app', 'mail', 'ftp', 'static', 'assets'
+    'admin', 'tv', 'player', 'register', 'api', 'www', 'app', 'mail', 'ftp', 'static', 'assets', 'demo'
   ]);
   try {
     const host = (window.location.hostname || '').toLowerCase();
