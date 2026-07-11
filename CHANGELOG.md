@@ -1,3 +1,9 @@
+## v1.14.8 (2026-07-11)
+
+### Fix
+
+- **readability**: improve documentation
+
 ## v1.14.7 (2026-07-11)
 
 ### Fix
