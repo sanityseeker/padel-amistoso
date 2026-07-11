@@ -10,8 +10,14 @@ services:
         generateValue: true
       - key: PADEL_ADMIN_PASSWORD
         value: "admin"
-      - key: PE
+      - key: DEMO_MODE
         value: "true"
+      # The Render hostname's leftmost label ("padel-amistoso") looks like a
+      # club slug, so the subdomain router would treat "/" as an unknown club
+      # and 404 unless it knows this IS the apex. Pin the full host here so it
+      # never depends on a dashboard value that a blueprint sync can drop.
+      - key: AMISTOSO_DOMAIN
+        value: "padel-amistoso.onrender.com"
       - key: ALLOWED_ORIGINS
         value: "https://padel-amistoso.onrender.com"
     healthCheckPath: /api/tournaments
