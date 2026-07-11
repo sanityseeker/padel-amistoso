@@ -1,3 +1,9 @@
+## v1.14.3 (2026-07-11)
+
+### Fix
+
+- **frontend**: improve admin frontend, fix minor flaws (e.g. overflow on submit button during teams selection)
+
 ## v1.14.2 (2026-07-10)
 
 ### Fix
