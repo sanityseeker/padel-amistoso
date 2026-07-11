@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from ..auth.deps import PlayerIdentity, get_current_player, get_current_user
+from ..auth.deps import PlayerIdentity, get_current_player, get_current_user, require_not_demo
 from ..auth.models import User
 from ..auth.security import create_player_token, create_profile_token
 from ..models import GPPhase, Player, TournamentType
@@ -529,7 +529,7 @@ async def update_player_email(
     tid: str,
     player_id: str,
     req: PlayerEmailRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_not_demo),
 ) -> dict:
     """Set the email address for a player (organizer/admin only).
 

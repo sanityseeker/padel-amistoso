@@ -9,6 +9,8 @@ const AUTH_USERNAME_KEY = 'padel-auth-username';
 const AUTH_ROLE_KEY = 'padel-auth-role';
 const AUTH_DEFAULT_COMMUNITY_KEY = 'padel-auth-default-community';
 const AUTH_CAN_CREATE_CLUBS_KEY = 'padel-auth-can-create-clubs';
+const AUTH_IS_DEMO_KEY = 'padel-auth-is-demo';
+const AUTH_DEMO_EXPIRES_KEY = 'padel-auth-demo-expires';
 
 function _persistAuthValue(key, value) {
   try {
@@ -111,6 +113,8 @@ function clearAuth() {
   _removeAuthValue(AUTH_ROLE_KEY);
   _removeAuthValue(AUTH_DEFAULT_COMMUNITY_KEY);
   _removeAuthValue(AUTH_CAN_CREATE_CLUBS_KEY);
+  _removeAuthValue(AUTH_IS_DEMO_KEY);
+  _removeAuthValue(AUTH_DEMO_EXPIRES_KEY);
 }
 
 /**
@@ -127,6 +131,22 @@ function getAuthDefaultCommunity() {
  */
 function canCreateClubs() {
   return (_readAuthValue(AUTH_CAN_CREATE_CLUBS_KEY) || '1') === '1';
+}
+
+/**
+ * Return true if the current session is a throwaway demo account.
+ * @returns {boolean}
+ */
+function isDemoUser() {
+  return isAuthenticated() && _readAuthValue(AUTH_IS_DEMO_KEY) === '1';
+}
+
+/**
+ * Return the ISO timestamp when the demo sandbox is purged, or null.
+ * @returns {string|null}
+ */
+function getDemoExpiresAt() {
+  return _readAuthValue(AUTH_DEMO_EXPIRES_KEY);
 }
 
 // ── Login / Logout ────────────────────────────────────────
@@ -163,6 +183,12 @@ async function login(username, password) {
           _persistAuthValue(AUTH_DEFAULT_COMMUNITY_KEY, me.default_community_id);
         }
         _persistAuthValue(AUTH_CAN_CREATE_CLUBS_KEY, me.can_create_clubs ? '1' : '0');
+        _persistAuthValue(AUTH_IS_DEMO_KEY, me.is_demo ? '1' : '0');
+        if (me.demo_expires_at) {
+          _persistAuthValue(AUTH_DEMO_EXPIRES_KEY, me.demo_expires_at);
+        } else {
+          _removeAuthValue(AUTH_DEMO_EXPIRES_KEY);
+        }
       }
     } catch (_) {}
     return { success: true, username: data.username };
@@ -251,6 +277,12 @@ const _loginStore = reactiveStore({
   password: '',
   error: '',
   submitting: false,
+  // Demo mode: set from /api/config (checkDemoMode in admin-utils.js).
+  demoUrl: null,
+  isDemoInstance: false,
+  demoBusy: false,
+  demoCreds: null,
+  demoCopied: false,
   async submit() {
     const username = this.username.trim();
     const password = this.password;
@@ -272,6 +304,52 @@ const _loginStore = reactiveStore({
       this.error = result.error || t('txt_txt_login_failed');
       this.submitting = false;
     }
+  },
+  /**
+   * Mint a throwaway demo account (demo instance only) and switch the dialog
+   * to the passphrase-reveal screen. The passphrase is the account password —
+   * shown exactly once so the visitor can log in from another device.
+   */
+  async startDemo() {
+    this.demoBusy = true;
+    this.error = '';
+    try {
+      const res = await fetch('/api/auth/demo', { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        this.error = err.detail || t('txt_demo_mint_failed');
+        return;
+      }
+      const data = await res.json();
+      _saveAuthToken(data.access_token, data.username, data.role);
+      _persistAuthValue(AUTH_IS_DEMO_KEY, '1');
+      _persistAuthValue(AUTH_DEMO_EXPIRES_KEY, data.expires_at);
+      this.demoCreds = { username: data.username, passphrase: data.passphrase };
+    } catch (e) {
+      this.error = t('txt_demo_mint_failed');
+    } finally {
+      this.demoBusy = false;
+    }
+  },
+  async copyDemoPassphrase() {
+    if (!this.demoCreds) return;
+    try {
+      await navigator.clipboard.writeText(`${this.demoCreds.username} / ${this.demoCreds.passphrase}`);
+      this.demoCopied = true;
+      setTimeout(() => { this.demoCopied = false; }, 1800);
+    } catch (_) {}
+  },
+  /** Close the reveal screen and enter the (already authenticated) demo session. */
+  confirmDemoCreds() {
+    this.demoCreds = null;
+    hideLoginDialog();
+    if (_loginResolve) {
+      _loginResolve();
+      _loginResolve = null;
+    }
+    updateAuthUI();
+    if (typeof initDemoCountdown === 'function') initDemoCountdown();
+    if (typeof setActiveTab === 'function') setActiveTab('create');
   },
 });
 
@@ -307,6 +385,8 @@ function hideLoginDialog() {
   _loginStore.password = '';
   _loginStore.error = '';
   _loginStore.submitting = false;
+  _loginStore.demoBusy = false;
+  _loginStore.demoCreds = null;
   // If the user dismissed without logging in, redirect to the info tab
   if (!isAuthenticated() && typeof setActiveTab === 'function') {
     setActiveTab('info');
@@ -337,7 +417,11 @@ function updateAuthUI() {
           + `<button class="btn btn-sm" onclick="setActiveTab('user-mgmt')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_user_management')}">${_ic('users')} <span class="nav-btn-label">${t('txt_txt_users_tab')}</span></button>`
           + (_onSubdomain ? '' : `<button class="btn btn-sm" onclick="setActiveTab('communities')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="Communities">${_ic('grid')} <span class="nav-btn-label">${t('txt_comm_title')}</span></button>`)
         : '';
-      const clubsBtn = `<button class="btn btn-sm" onclick="setActiveTab('clubs')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_clubs_title')}">${_ic('building')} <span class="nav-btn-label">${t('txt_clubs_title')}</span></button>`;
+      // Demo accounts get the minimal surface: no Clubs (Player Space /
+      // Users / Communities are already admin-only above).
+      const clubsBtn = isDemoUser()
+        ? ''
+        : `<button class="btn btn-sm" onclick="setActiveTab('clubs')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_clubs_title')}">${_ic('building')} <span class="nav-btn-label">${t('txt_clubs_title')}</span></button>`;
       const changePwdBtn = `<button class="btn btn-sm" onclick="showChangePasswordDialog()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_change_password')}">${_ic('shield')}</button>`;
       authStatus.innerHTML = `
         ${adminBtn}${clubsBtn}${changePwdBtn}<strong style="margin-right:0.5rem">${esc(username)}</strong>
@@ -349,6 +433,7 @@ function updateAuthUI() {
       `;
     }
   }
+  if (typeof applyDemoUiRestrictions === 'function') applyDemoUiRestrictions();
 }
 
 // ── User Management (admin only) ──────────────────────────

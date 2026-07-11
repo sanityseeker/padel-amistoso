@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from .rate_limit import BoundedRateLimiter
-from ..auth.deps import ProfileIdentity, get_current_profile, get_current_user
+from ..auth.deps import ProfileIdentity, get_current_profile, get_current_user, require_not_demo
 from ..auth.models import User, UserRole
 from ..email import (
     is_configured as email_is_configured,
@@ -419,7 +419,7 @@ def _get_linked_tournaments(tids: list[str]) -> list[LinkedTournamentOut]:
 
 @router.post("")
 async def create_registration(
-    req: RegistrationCreate, request: Request, user: User = Depends(get_current_user)
+    req: RegistrationCreate, request: Request, user: User = Depends(require_not_demo)
 ) -> dict:
     """Create a new registration lobby."""
     client_ip = _client_ip(request)
@@ -1495,7 +1495,7 @@ async def convert_registration(
 
 
 @router.put("/{rid}/alias")
-async def set_registration_alias(rid: str, req: SetAliasRequest, user: User = Depends(get_current_user)) -> dict:
+async def set_registration_alias(rid: str, req: SetAliasRequest, user: User = Depends(require_not_demo)) -> dict:
     """Set a human-friendly alias for a registration (used in registration URLs)."""
     reg = _get_registration(rid)
     _require_registration_editor(reg, user)
@@ -1685,7 +1685,7 @@ async def player_cancel_registration(rid: str, req: RegistrantLoginIn, request: 
 
 
 @router.delete("/{rid}/alias")
-async def delete_registration_alias(rid: str, user: User = Depends(get_current_user)) -> dict:
+async def delete_registration_alias(rid: str, user: User = Depends(require_not_demo)) -> dict:
     """Remove the alias from a registration."""
     reg = _get_registration(rid)
     _require_registration_editor(reg, user)

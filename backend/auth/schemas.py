@@ -55,6 +55,23 @@ class UserResponse(BaseModel):
     email: str | None = None
     default_community_id: str = "open"
     can_create_clubs: bool = True
+    is_demo: bool = False
+    demo_expires_at: str | None = None
+
+
+class DemoTokenResponse(BaseModel):
+    """Returned when a throwaway demo account is minted.
+
+    The passphrase is the account password, shown to the visitor exactly once
+    so they can log in again from another device.
+    """
+
+    access_token: str
+    token_type: str = "bearer"
+    username: str
+    passphrase: str
+    role: str
+    expires_at: str
 
 
 class UpdateManagedUserSettingsRequest(BaseModel):

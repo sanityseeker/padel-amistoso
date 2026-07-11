@@ -125,10 +125,71 @@ function _antIc(name) {
     if (config.demo_mode && demoBanner) {
       demoBanner.style.display = 'block';
     }
+    // Demo instance / demo link config (drives the login dialog island).
+    if (typeof _loginStore !== 'undefined') {
+      _loginStore.demoUrl = config.demo_url || null;
+      _loginStore.isDemoInstance = !!config.demo_instance;
+    }
+    initDemoCountdown();
   } catch (err) {
     console.warn('Could not fetch config:', err);
   }
 })();
+
+// ─── Demo sandbox countdown + UI restrictions ──────────────
+
+let _demoCountdownTimer = null;
+
+/** Format the time left until *expires* as "3d 4h" / "5h 12m" / "0m". */
+function _demoTimeLeft(expires) {
+  const ms = Math.max(0, expires - Date.now());
+  const totalMinutes = Math.floor(ms / 60000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+/**
+ * Show the persistent demo-sandbox countdown banner for demo accounts and
+ * refresh it every minute. No-op for regular users.
+ */
+function initDemoCountdown() {
+  const banner = document.getElementById('demo-expiry-banner');
+  if (!banner) return;
+  if (typeof isDemoUser !== 'function' || !isDemoUser() || !getDemoExpiresAt()) {
+    banner.style.display = 'none';
+    if (_demoCountdownTimer) { clearInterval(_demoCountdownTimer); _demoCountdownTimer = null; }
+    return;
+  }
+  const expires = new Date(getDemoExpiresAt()).getTime();
+  if (!Number.isFinite(expires)) return;
+  const render = () => {
+    const date = new Date(expires).toLocaleString(undefined, {
+      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    });
+    banner.textContent = t('txt_demo_banner_text', { date, left: _demoTimeLeft(expires) });
+    banner.style.display = 'block';
+  };
+  render();
+  if (_demoCountdownTimer) clearInterval(_demoCountdownTimer);
+  _demoCountdownTimer = setInterval(render, 60000);
+}
+
+/**
+ * Hide UI surfaces demo accounts can't use (called from updateAuthUI).
+ * Whole sections are hidden; in-form controls are greyed out instead —
+ * see _applyDemoCreateLock (admin-create.js).
+ */
+function applyDemoUiRestrictions() {
+  const demo = typeof isDemoUser === 'function' && isDemoUser();
+  const lobbyTab = document.getElementById('create-tab-lobby');
+  if (lobbyTab) lobbyTab.style.display = demo ? 'none' : '';
+  if (typeof _applyDemoCreateLock === 'function') _applyDemoCreateLock();
+  initDemoCountdown();
+}
 
 // ─── Tab switching ─────────────────────────────────────────
 function setActiveTab(tabName) {
@@ -180,6 +241,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 let _currentCreateMode = 'gp';
 
 function setCreateMode(mode) {
+  // The lobby flow is server-blocked for demo accounts — fall back to GP.
+  if (mode === 'lobby' && typeof isDemoUser === 'function' && isDemoUser()) mode = 'gp';
   _currentCreateMode = mode;
   const isGp = mode === 'gp';
   const isMex = mode === 'mex';

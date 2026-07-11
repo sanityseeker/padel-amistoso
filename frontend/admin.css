@@ -4403,6 +4403,76 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   font-weight: 600;
 }
 
+/* ── Demo sandbox (throwaway demo accounts) ──────────────── */
+
+/* Inline "Not available in demo mode" hint next to greyed-out controls. */
+.demo-disabled-hint {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 0.2rem;
+}
+
+/* Login dialog: prominent demo entry above the credentials form. */
+.demo-entry { margin-bottom: 1rem; }
+.demo-try-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 0.7rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.demo-or-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.85rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.demo-or-divider::before,
+.demo-or-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+/* Passphrase-reveal screen (shown once after minting a demo account). */
+.demo-creds-title { margin: 0 0 0.75rem; font-size: 1.05rem; }
+.demo-creds-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+.demo-creds-label {
+  flex: 0 0 6.5rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.demo-creds-value {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  background: var(--color-surface-alt, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.2rem 0.45rem;
+  word-break: break-all;
+}
+.demo-creds-copy { margin: 0.25rem 0 0.75rem; }
+.demo-creds-hint {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning-text);
+  border-radius: var(--radius-card, 8px);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.84rem;
+  margin: 0 0 1rem;
+}
+
 /* Labelled input rows inside .modal-dialog forms (add/edit registrant, etc.) */
 .modal-form-field { margin-bottom: 0.85rem; }
 .modal-form-field label {

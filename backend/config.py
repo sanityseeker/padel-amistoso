@@ -51,3 +51,26 @@ SMTP_PASS: str | None = _optional_env("AMISTOSO_SMTP_PASS")
 SMTP_FROM: str | None = _optional_env("AMISTOSO_FROM_EMAIL")
 SMTP_USE_TLS: bool = os.environ.get("AMISTOSO_SMTP_USE_TLS", "1").lower() in ("1", "true", "yes")
 SITE_URL: str | None = _optional_env("AMISTOSO_SITE_URL")
+
+
+def _float_env(name: str, default: float) -> float:
+    raw = _optional_env(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Demo instance — a second process with its own AMISTOSO_DATA_DIR that hands
+# out throwaway sandbox accounts.  AMISTOSO_DEMO_INSTANCE turns this process
+# into the demo instance; AMISTOSO_DEMO_URL is set on the *core* instance so
+# its login dialog can link to the demo one.  Consumers must read these via
+# the module (``config.DEMO_INSTANCE``) so tests can monkeypatch them.
+# ────────────────────────────────────────────────────────────────────────────
+DEMO_INSTANCE: bool = os.environ.get("AMISTOSO_DEMO_INSTANCE", "").lower() in ("1", "true", "yes")
+DEMO_URL: str | None = _optional_env("AMISTOSO_DEMO_URL")
+DEMO_TTL_DAYS: float = _float_env("AMISTOSO_DEMO_TTL_DAYS", 3.0)
+DEMO_PURGE_INTERVAL_HOURS: float = _float_env("AMISTOSO_DEMO_PURGE_INTERVAL_HOURS", 1.0)

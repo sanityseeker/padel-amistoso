@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
 
-from ..auth.deps import get_current_user
+from ..auth.deps import get_current_user, require_not_demo
 from ..auth.models import User, UserRole
 from ..auth.security import create_profile_email_verify_token, create_profile_token
 from ..auth.store import user_store
@@ -1220,7 +1220,7 @@ async def get_club_endpoint(club_id: str) -> ClubOut:
 
 
 @router.post("", response_model=ClubOut, status_code=201)
-async def create_club(req: ClubCreate, user: User = Depends(get_current_user)) -> ClubOut:
+async def create_club(req: ClubCreate, user: User = Depends(require_not_demo)) -> ClubOut:
     """Create a club inside an existing community.
 
     A community can contain multiple clubs (e.g. a city community can host

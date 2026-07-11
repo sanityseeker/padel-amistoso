@@ -11,8 +11,13 @@ Auth API routes — login, user management, invite flow, password reset.
 
 from __future__ import annotations
 
+import secrets as _secrets
+from datetime import timedelta
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 
+from .. import config
+from ..api.demo_cleanup import demo_expires_at
 from ..api.rate_limit import BoundedRateLimiter
 from ..email import (
     is_configured as email_is_configured,
@@ -26,6 +31,7 @@ from .schemas import (
     AcceptInviteRequest,
     ChangePasswordRequest,
     CreateUserRequest,
+    DemoTokenResponse,
     ForgotPasswordRequest,
     InvitePreviewResponse,
     InviteRequest,
@@ -50,6 +56,20 @@ _login_rate_limiter = BoundedRateLimiter(
     window_seconds=_LOGIN_WINDOW_SECONDS,
     max_tracked_ips=_LOGIN_MAX_TRACKED_IPS,
 )
+
+# Demo minting creates persistent rows, so it is limited far more strictly
+# than login attempts.
+_DEMO_MAX_ATTEMPTS = 5
+_DEMO_WINDOW_SECONDS = 3600
+
+_demo_rate_limiter = BoundedRateLimiter(
+    max_attempts=_DEMO_MAX_ATTEMPTS,
+    window_seconds=_DEMO_WINDOW_SECONDS,
+    max_tracked_ips=_LOGIN_MAX_TRACKED_IPS,
+)
+
+# Unambiguous alphabet (no 0/1/i/l/o), same as tournament ids in api.state.
+_DEMO_USERNAME_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz"
 
 
 def _validate_community_exists(community_id: str) -> None:
@@ -82,6 +102,49 @@ async def login(req: LoginRequest, request: Request):
     return TokenResponse(access_token=token, username=user.username, role=user.role)
 
 
+@router.post("/demo", response_model=DemoTokenResponse)
+async def create_demo_account(request: Request):
+    """Mint a throwaway demo account (demo instance only).
+
+    Returns the generated passphrase in plaintext exactly once — it is the
+    account password, so the visitor can log in from another device.  The
+    account and everything it creates is purged ``DEMO_TTL_DAYS`` days later.
+    """
+    if not config.DEMO_INSTANCE:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    client_ip = _client_ip(request)
+    _demo_rate_limiter.check(client_ip, "Too many demo accounts created — try again later")
+    _demo_rate_limiter.record(client_ip)
+
+    from ..tournaments.player_secrets import generate_passphrase  # noqa: PLC0415
+
+    username = ""
+    for _ in range(20):
+        candidate = "demo-" + "".join(_secrets.choice(_DEMO_USERNAME_ALPHABET) for _ in range(6))
+        if user_store.get(candidate) is None:
+            username = candidate
+            break
+    if not username:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not allocate demo account")
+
+    passphrase = generate_passphrase()
+    user = user_store.create_user(
+        username,
+        passphrase,
+        role=UserRole.USER,
+        can_create_clubs=False,
+        is_demo=True,
+    )
+    token = create_access_token(username, expires_delta=timedelta(days=config.DEMO_TTL_DAYS))
+    return DemoTokenResponse(
+        access_token=token,
+        username=username,
+        passphrase=passphrase,
+        role=user.role,
+        expires_at=demo_expires_at(user) or "",
+    )
+
+
 @router.get("/me", response_model=UserResponse)
 async def me(current_user: User = Depends(get_current_user)):
     """Return the currently authenticated user's info."""
@@ -92,6 +155,8 @@ async def me(current_user: User = Depends(get_current_user)):
         email=current_user.email,
         default_community_id=current_user.default_community_id,
         can_create_clubs=current_user.can_create_clubs,
+        is_demo=current_user.is_demo,
+        demo_expires_at=demo_expires_at(current_user),
     )
 
 

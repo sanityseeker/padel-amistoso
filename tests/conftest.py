@@ -68,6 +68,7 @@ def _clean_state(tmp_path):
     reg_mod._public_passphrase_rate_limiter.clear()
     reg_mod._email_send_rate_limiter.clear()
     auth_routes_mod._login_rate_limiter.clear()
+    auth_routes_mod._demo_rate_limiter.clear()
     crud_mod._notify_rate_limiter.clear()
     crud_mod._email_send_rate_limiter.clear()
     ps_routes_mod._RATE_LIMITER.clear()
@@ -287,6 +288,7 @@ def _clean_state(tmp_path):
     reg_mod._public_passphrase_rate_limiter.clear()
     reg_mod._email_send_rate_limiter.clear()
     auth_routes_mod._login_rate_limiter.clear()
+    auth_routes_mod._demo_rate_limiter.clear()
     crud_mod._notify_rate_limiter.clear()
     crud_mod._email_send_rate_limiter.clear()
     state_mod._save_tournament = orig_save_tournament

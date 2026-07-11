@@ -27,6 +27,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from brotli_asgi import BrotliMiddleware
 
 from . import state as _state_module
+from .. import config
 from ..auth import auth_router
 from ..auth.store import user_store
 from .db import init_db
@@ -70,13 +71,19 @@ async def _lifespan(_app: FastAPI):
     from .backup import start_backup_scheduler  # noqa: PLC0415
 
     start_backup_scheduler()
+    if config.DEMO_INSTANCE:
+        from .demo_cleanup import start_demo_purge_scheduler  # noqa: PLC0415
+
+        start_demo_purge_scheduler()
     yield
     # ── Shutdown cleanup ──
     from .backup import shutdown_backup_scheduler  # noqa: PLC0415
+    from .demo_cleanup import shutdown_demo_purge_scheduler  # noqa: PLC0415
     from .push import shutdown_push  # noqa: PLC0415
     from .sse import shutdown as shutdown_sse  # noqa: PLC0415
 
     shutdown_backup_scheduler()
+    shutdown_demo_purge_scheduler()
     shutdown_sse()
     shutdown_push()
 
@@ -315,6 +322,8 @@ async def get_config(response: Response) -> dict:
     response.headers["Cache-Control"] = "public, max-age=60"
     return {
         "demo_mode": os.environ.get("DEMO_MODE", "").lower() in ("true", "1", "yes"),
+        "demo_instance": config.DEMO_INSTANCE,
+        "demo_url": config.DEMO_URL,
         "amistoso_domain": _AMISTOSO_DOMAIN or None,
     }
 

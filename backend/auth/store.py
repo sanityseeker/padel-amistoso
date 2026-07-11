@@ -49,9 +49,14 @@ class UserStore:
                     conn.execute("ALTER TABLE users ADD COLUMN default_community_id TEXT NOT NULL DEFAULT 'open'")
                 if "can_create_clubs" not in cols:
                     conn.execute("ALTER TABLE users ADD COLUMN can_create_clubs INTEGER NOT NULL DEFAULT 1")
+                if "is_demo" not in cols:
+                    conn.execute("ALTER TABLE users ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0")
+                if "created_at" not in cols:
+                    conn.execute("ALTER TABLE users ADD COLUMN created_at TEXT")
 
                 rows = conn.execute(
-                    "SELECT username, password_hash, role, disabled, email, default_community_id, can_create_clubs FROM users"
+                    "SELECT username, password_hash, role, disabled, email, default_community_id,"
+                    " can_create_clubs, is_demo, created_at FROM users"
                 ).fetchall()
             for row in rows:
                 user = User(
@@ -62,6 +67,8 @@ class UserStore:
                     email=row["email"],
                     default_community_id=row["default_community_id"] or "open",
                     can_create_clubs=bool(row["can_create_clubs"]),
+                    is_demo=bool(row["is_demo"]),
+                    created_at=row["created_at"],
                 )
                 self._users[user.username] = user
             logger.info("Loaded %d user(s) from SQLite", len(self._users))
@@ -74,8 +81,9 @@ class UserStore:
             with get_db() as conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO users "
-                    "(username, password_hash, role, disabled, email, default_community_id, can_create_clubs) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "(username, password_hash, role, disabled, email, default_community_id,"
+                    " can_create_clubs, is_demo, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         user.username,
                         user.password_hash,
@@ -84,6 +92,8 @@ class UserStore:
                         user.email,
                         user.default_community_id,
                         int(user.can_create_clubs),
+                        int(user.is_demo),
+                        user.created_at,
                     ),
                 )
         except Exception as exc:  # noqa: BLE001
@@ -149,10 +159,16 @@ class UserStore:
         email: str | None = None,
         default_community_id: str = "open",
         can_create_clubs: bool = True,
+        is_demo: bool = False,
+        created_at: str | None = None,
     ) -> User:
         """Create a new user with the given role. Raises ``ValueError`` if username is taken."""
         if username in self._users:
             raise ValueError(f"User '{username}' already exists")
+        if is_demo and created_at is None:
+            from datetime import datetime, timezone  # noqa: PLC0415
+
+            created_at = datetime.now(timezone.utc).isoformat()
         user = User(
             username=username,
             password_hash=hash_password(password),
@@ -160,6 +176,8 @@ class UserStore:
             email=email,
             default_community_id=default_community_id,
             can_create_clubs=can_create_clubs,
+            is_demo=is_demo,
+            created_at=created_at,
         )
         self._users[username] = user
         self._save_user(user)

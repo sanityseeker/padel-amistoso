@@ -21,8 +21,10 @@ from .helpers import (
     _build_match_labels,
     _get_tournament,
     _is_bye_match,
+    _require_demo_can_create_tournament,
     _require_editor_access,
     _require_score_permission,
+    _sanitize_demo_create_request,
     _find_match,
     _schema_cache_get,
     _schema_cache_key,
@@ -65,6 +67,8 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
     client_ip = _client_ip(request)
     _create_rate_limiter.check(client_ip, "Too many tournament creation attempts — try again later")
     _create_rate_limiter.record(client_ip)
+    _require_demo_can_create_tournament(user)
+    _sanitize_demo_create_request(req, user)
     courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 
     # Build initial_strength mapping keyed by player id

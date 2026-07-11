@@ -11,7 +11,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 
-from ..auth.deps import get_current_user, get_current_user_optional
+from ..auth.deps import get_current_user, get_current_user_optional, require_not_demo
 from ..auth.models import User, UserRole
 from ..email import (
     is_configured as email_is_configured,
@@ -355,7 +355,7 @@ async def recalculate_elo(tid: str, user: User = Depends(get_current_user)) -> d
 
 
 @router.put("/{tid}/alias")
-async def set_alias(tid: str, req: SetAliasRequest, user: User = Depends(get_current_user)) -> dict:
+async def set_alias(tid: str, req: SetAliasRequest, user: User = Depends(require_not_demo)) -> dict:
     """Set a human-friendly alias for a tournament (used in TV URLs like /tv/my-tourney)."""
     _require_editor_access(tid, user)
     async with state.get_tournament_lock(tid):
@@ -371,7 +371,7 @@ async def set_alias(tid: str, req: SetAliasRequest, user: User = Depends(get_cur
 
 
 @router.delete("/{tid}/alias")
-async def delete_alias(tid: str, user: User = Depends(get_current_user)) -> dict:
+async def delete_alias(tid: str, user: User = Depends(require_not_demo)) -> dict:
     """Remove the alias from a tournament."""
     _require_editor_access(tid, user)
     async with state.get_tournament_lock(tid):

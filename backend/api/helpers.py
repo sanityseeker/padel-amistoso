@@ -244,6 +244,35 @@ def _require_owner_or_admin(tid: str, user: User) -> None:
         raise HTTPException(403, "You do not have permission to modify this tournament")
 
 
+def _require_demo_can_create_tournament(user: User) -> None:
+    """Raise 403 if a demo user already owns a tournament (one at a time)."""
+    if not user.is_demo:
+        return
+    for data in _tournaments.values():
+        if data.get("owner") == user.username:
+            raise HTTPException(
+                403,
+                "Demo accounts can run one tournament at a time — delete the current one first",
+            )
+
+
+def _sanitize_demo_create_request(req, user: User) -> None:
+    """Strip scope and identity fields from a tournament-create payload for demo users.
+
+    Demo tournaments always live in the open community with no club/season,
+    and their players stay ephemeral: without emails or profile ids no Player
+    Hub link is ever created, so nothing leaks into hub/leaderboard tables.
+    """
+    if not user.is_demo:
+        return
+    req.community_id = "open"
+    req.season_id = None
+    req.club_id = None
+    req.player_emails = {}
+    req.player_contacts = {}
+    req.player_profile_ids = {}
+
+
 def _require_editor_access(tid: str, user: User) -> None:
     """Raise 403 if *user* may not edit the tournament.
 

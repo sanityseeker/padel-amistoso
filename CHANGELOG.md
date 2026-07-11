@@ -1,3 +1,9 @@
+## v1.14.4 (2026-07-11)
+
+### Fix
+
+- **registration-claims**: fix admin view on claiming the account during the registration
+
 ## v1.14.3 (2026-07-11)
 
 ### Fix

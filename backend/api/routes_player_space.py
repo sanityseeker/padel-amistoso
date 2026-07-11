@@ -69,6 +69,18 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def _forbid_on_demo_instance() -> None:
+    """Block Player Hub profile creation/linking on the demo instance.
+
+    Demo tournament players stay fully ephemeral — they authenticate only via
+    their tournament-scoped passphrase/QR and are purged with the tournament.
+    """
+    from .. import config  # noqa: PLC0415
+
+    if config.DEMO_INSTANCE:
+        raise HTTPException(403, "Player Hub profiles are not available on the demo instance")
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # Pydantic schemas
 # ────────────────────────────────────────────────────────────────────────────
@@ -2462,6 +2474,7 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
     Also returns an initial JWT so the player can immediately see their
     (empty) dashboard without a second round-trip.
     """
+    _forbid_on_demo_instance()
     _RATE_LIMITER.check(_client_ip(request), "Too many requests — try again later")
 
     clean_passphrase = req.participant_passphrase.strip()
@@ -2603,6 +2616,7 @@ async def confirm_email_link(identity: ProfileIdentity | None = Depends(get_curr
     ownership — no separate ``verify_token`` click is required.  The frontend
     calls this once, right after such a link resolves.
     """
+    _forbid_on_demo_instance()
     if identity is None:
         raise HTTPException(401, "Profile authentication required")
 
@@ -2735,6 +2749,7 @@ async def recover_by_participation(req: ProfileRecoverRequest, request: Request)
     typing someone else's email leaks nothing and cannot be used to impersonate
     them (only the inbox owner can act on the emailed link).
     """
+    _forbid_on_demo_instance()
     _RECOVER_RATE_LIMITER.check(_client_ip(request), "Too many recovery requests — try again in 15 minutes")
     _RECOVER_RATE_LIMITER.record(_client_ip(request))
 
@@ -3048,6 +3063,7 @@ async def link_participation(
     matching row gets ``profile_id`` set and the participation appears in the
     Player Hub dashboard.
     """
+    _forbid_on_demo_instance()
     if identity is None:
         raise HTTPException(401, "Profile authentication required")
 

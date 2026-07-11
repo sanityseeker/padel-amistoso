@@ -29,8 +29,10 @@ from .helpers import (
     _schema_cache_key,
     _schema_cache_put,
     _schema_image_response,
+    _require_demo_can_create_tournament,
     _require_editor_access,
     _require_score_permission,
+    _sanitize_demo_create_request,
     _find_match,
     _store_tournament,
     _apply_player_score_metadata,
@@ -82,6 +84,8 @@ async def create_group_playoff(
     client_ip = _client_ip(request)
     _create_rate_limiter.check(client_ip, "Too many tournament creation attempts — try again later")
     _create_rate_limiter.record(client_ip)
+    _require_demo_can_create_tournament(user)
+    _sanitize_demo_create_request(req, user)
     individual_players = [Player(name=n) for n in req.player_names]
     courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 

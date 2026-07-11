@@ -103,6 +103,16 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+async def require_not_demo(current_user: User = Depends(get_current_user)) -> User:
+    """Like ``get_current_user`` but rejects throwaway demo accounts (403)."""
+    if current_user.is_demo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not available in demo mode",
+        )
+    return current_user
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # Player authentication
 # ────────────────────────────────────────────────────────────────────────────

@@ -586,6 +586,32 @@ screen -dmS padel_b bash -c 'PADEL_DATA_DIR=data/instance_b uv run python -m uvi
 
 Each instance saves and restores its own tournaments independently.
 
+### Running a demo instance
+
+Demo mode is a second, fully isolated instance that hands out throwaway
+sandbox accounts. A visitor clicks "Try demo mode" on the core instance's
+login dialog, gets a `demo-xxxxxx` account with a generated passphrase
+(usable to log in from other devices), and can run one tournament at a time
+with a minimal admin surface — no lobbies, clubs, communities, custom
+addresses, or Player Hub profiles. The demo account and everything it created
+are permanently purged 3 days after the account was minted
+(`AMISTOSO_DEMO_TTL_DAYS`). Because the demo instance has its own data
+directory, the purge job never touches the core database.
+
+```bash
+# Core — port 8000; the login dialog links to the demo instance
+AMISTOSO_DATA_DIR=data/core AMISTOSO_DEMO_URL=https://demo.example.com \
+  uv run python -m uvicorn backend.api:app --port 8000
+
+# Demo — port 8001, isolated data dir, purge job enabled
+AMISTOSO_DATA_DIR=data/demo AMISTOSO_DEMO_INSTANCE=1 PADEL_ADMIN_PASSWORD=... \
+  uv run python -m uvicorn backend.api:app --port 8001
+```
+
+Note: the demo mint endpoint rate-limits by client IP; behind a reverse proxy
+the client address is the proxy's unless forwarded headers are handled
+upstream (same caveat as the login rate limit).
+
 Then open <http://localhost:8000>.
 
 ---

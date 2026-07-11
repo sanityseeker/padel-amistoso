@@ -28,3 +28,5 @@ class User(BaseModel):
     email: str | None = None
     default_community_id: str = "open"
     can_create_clubs: bool = True
+    is_demo: bool = False
+    created_at: str | None = None

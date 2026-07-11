@@ -24,8 +24,10 @@ from .helpers import (
     _build_match_labels,
     _tennis_sets_to_scores,
     _schema_image_response,
+    _require_demo_can_create_tournament,
     _require_editor_access,
     _require_score_permission,
+    _sanitize_demo_create_request,
     _find_match,
     _store_tournament,
     _get_tv_settings,
@@ -73,6 +75,8 @@ async def create_mexicano(req: CreateMexicanoRequest, request: Request, user=Dep
     client_ip = _client_ip(request)
     _create_rate_limiter.check(client_ip, "Too many tournament creation attempts — try again later")
     _create_rate_limiter.record(client_ip)
+    _require_demo_can_create_tournament(user)
+    _sanitize_demo_create_request(req, user)
     individual_players = [Player(name=n) for n in req.player_names]
     courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 

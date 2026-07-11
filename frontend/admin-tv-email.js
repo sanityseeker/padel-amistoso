@@ -40,16 +40,22 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
   html += `<div class="settings-group">`;
   html += `<h4 class="settings-group-title">${_antIc('link')} ${t('txt_admin_settings_group_public_link')}</h4>`;
 
-  // Tournament Alias
+  // Tournament Alias — demo accounts keep only the random tm_… address,
+  // so the custom-address controls are greyed out (server 403s enforce it).
+  const _demoAlias = typeof isDemoUser === 'function' && isDemoUser();
+  const _demoAliasAttr = _demoAlias ? ` disabled title="${escAttr(t('txt_demo_not_available'))}"` : '';
   html += `<div class="settings-block">`;
   html += `<label class="settings-label">${t('txt_txt_tournament_alias')}</label>`;
   html += `<p class="settings-help">${t('txt_tv_alias_help')}</p>`;
+  if (_demoAlias) {
+    html += `<p class="demo-disabled-hint">${t('txt_demo_not_available')}</p>`;
+  }
   html += `<div class="settings-inline-row">`;
   html += `<input type="text" id="tournament-alias-input" class="settings-input settings-input--mono settings-input--grow" placeholder="${t('txt_tv_alias_placeholder')}" value="${escAttr(currentAlias)}"
-    pattern="[a-zA-Z0-9_-]+" maxlength="64">`;
-  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_setTournamentAlias()">${t('txt_txt_save')}</button>`;
+    pattern="[a-zA-Z0-9_-]+" maxlength="64"${_demoAliasAttr}>`;
+  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_setTournamentAlias()"${_demoAliasAttr}>${t('txt_txt_save')}</button>`;
   if (currentAlias) {
-  html += `<button type="button" class="btn btn-sm btn-danger" onclick="_deleteTournamentAlias()">${_antIc('link')} ${t('txt_txt_remove')}</button>`;
+  html += `<button type="button" class="btn btn-sm btn-danger" onclick="_deleteTournamentAlias()"${_demoAliasAttr}>${_antIc('link')} ${t('txt_txt_remove')}</button>`;
   }
   html += `</div>`;
   const _tvSlug = currentAlias || currentTid;

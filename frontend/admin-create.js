@@ -183,6 +183,7 @@ async function _loadClubs() {
   });
 
   _applySubdomainClubLock();
+  _applyDemoCreateLock();
   _refreshDefaultTitles();
 }
 
@@ -209,6 +210,25 @@ function _applySubdomainClubLock() {
     localStorage.setItem(COMMUNITY_KEY, club.community_id);
     localStorage.setItem(CLUB_KEY, club.id);
   } catch (_) {}
+}
+
+// Demo accounts: community/club scoping is server-forced to the open
+// community, so grey out the selects (visible but disabled, with a hint)
+// rather than hiding them — the server 403/sanitizer is the enforcement.
+function _applyDemoCreateLock() {
+  if (typeof isDemoUser !== 'function' || !isDemoUser()) return;
+  document.querySelectorAll('.create-community-select, .create-club-select').forEach(el => {
+    el.disabled = true;
+    el.title = t('txt_demo_not_available');
+    if (el.dataset.demoLocked === '1') return;
+    el.dataset.demoLocked = '1';
+    if (el.parentElement && !el.parentElement.querySelector('.demo-disabled-hint')) {
+      const hint = document.createElement('span');
+      hint.className = 'demo-disabled-hint';
+      hint.textContent = t('txt_demo_not_available');
+      el.parentElement.appendChild(hint);
+    }
+  });
 }
 
 function setSport(sport) {
@@ -1065,16 +1085,21 @@ function renderContactFields(mode) {
     if (!names.includes(k)) delete _participantProfileIds[mode][k];
   }
   if (!names.length) { container.innerHTML = ''; return; }
-  let html = '<div class="contact-grid">';
+  // Demo accounts: contacts/emails/hub links are server-stripped (players stay
+  // ephemeral) — grey out the whole section with a hint instead of hiding it.
+  const _demo = typeof isDemoUser === 'function' && isDemoUser();
+  const _demoAttr = _demo ? ` disabled title="${escAttr(t('txt_demo_not_available'))}"` : '';
+  let html = _demo ? `<p class="demo-disabled-hint">${t('txt_demo_not_available')}</p>` : '';
+  html += '<div class="contact-grid">';
   names.forEach(name => {
     const emailVal = _participantEmails[mode][name] || '';
     const contactVal = _participantContacts[mode][name] || '';
     const escaped = esc(name);
     html += `<div class="contact-entry">`;
     html += `<label title="${escaped}">${escaped}</label>`;
-    html += `<input type="email" class="create-contact-email" data-mode="${mode}" data-key="${escaped}" value="${esc(emailVal)}" placeholder="${t('txt_contact_email_placeholder')}" oninput="_participantEmails['${mode}'][this.dataset.key]=this.value.trim()">`;
-    html += `<input type="text" class="create-contact-info" data-mode="${mode}" data-key="${escaped}" value="${esc(contactVal)}" placeholder="${t('txt_contact_info_placeholder')}" oninput="_participantContacts['${mode}'][this.dataset.key]=this.value.trim()">`;
-    html += `<button type="button" class="contact-hub-btn" title="${t('txt_hub_link')}" onclick="_createHubOpen('${escAttr(mode)}','${escAttr(name)}')">${_ic('link')}</button>`;
+    html += `<input type="email" class="create-contact-email" data-mode="${mode}" data-key="${escaped}" value="${esc(emailVal)}" placeholder="${t('txt_contact_email_placeholder')}" oninput="_participantEmails['${mode}'][this.dataset.key]=this.value.trim()"${_demoAttr}>`;
+    html += `<input type="text" class="create-contact-info" data-mode="${mode}" data-key="${escaped}" value="${esc(contactVal)}" placeholder="${t('txt_contact_info_placeholder')}" oninput="_participantContacts['${mode}'][this.dataset.key]=this.value.trim()"${_demoAttr}>`;
+    html += `<button type="button" class="contact-hub-btn"${_demoAttr || ` title="${t('txt_hub_link')}"`} onclick="_createHubOpen('${escAttr(mode)}','${escAttr(name)}')">${_ic('link')}</button>`;
     html += `</div>`;
   });
   html += '</div>';
