@@ -1993,6 +1993,12 @@ class TestSubdomainRouter:
         res = client.get("/", headers={"host": "192.168.1.1"})
         assert res.status_code == 200
 
+    def test_heuristic_ignores_onrender_service_host(self, client) -> None:
+        # ``<service>.onrender.com`` is the app's own hostname on Render, not a
+        # club subdomain — the apex must be served even without AMISTOSO_DOMAIN.
+        res = client.get("/", headers={"host": "padel-amistoso.onrender.com"})
+        assert res.status_code == 200
+
 
 class TestPublicLeaderboard:
     """GET /api/clubs/{id}/public-leaderboard — no auth, no email."""

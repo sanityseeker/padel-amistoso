@@ -961,11 +961,13 @@
   <div class="tab-panel" id="panel-info" role="tabpanel">
     <div class="card">
       <h2 data-i18n="txt_txt_info">Info</h2>
-      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_info_tab_desc">A practical control center for Padel and Tennis events: create tournaments or lobbies, manage rounds and scores, and share a live public view with players and guests.</p>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_info_tab_desc">What this app does and how to find your way around it. Use the sections below to understand the four pages, the player and organizer flows, the tournament formats, and the rating system.</p>
       <hr class="info-divider">
       <h3 style="margin-top:0" id="info-toc" data-i18n="txt_txt_info_toc_title">Table of contents</h3>
       <ol style="margin:0.25rem 0 0 1.1rem;color:var(--text-muted);font-size:0.85rem;line-height:1.7">
         <li><a href="#info-at-a-glance" class="github-link" data-i18n="txt_txt_info_toc_glance">At a glance</a></li>
+        <li><a href="#info-quickstart" class="github-link" data-i18n="txt_txt_info_toc_quickstart">Getting started</a></li>
+        <li><a href="#info-demo" class="github-link" data-i18n="txt_txt_info_toc_demo">Demo mode</a></li>
         <li><a href="#info-player-flow" class="github-link" data-i18n="txt_txt_info_toc_player_flow">Player flow</a></li>
         <li><a href="#info-admin-flow" class="github-link" data-i18n="txt_txt_info_toc_admin_flow">Admin flow</a></li>
         <li><a href="#info-main-features" class="github-link" data-i18n="txt_txt_info_toc_main_features">Main features</a></li>
@@ -980,7 +982,7 @@
     <div class="card" id="info-at-a-glance">
       <h2 data-i18n="txt_txt_info_glance_title">At a glance</h2>
       <div class="info-block">
-        <strong data-i18n="txt_txt_info_glance_pages_title">Four pages, one workflow</strong>
+        <strong data-i18n="txt_txt_info_glance_pages_title">The four pages</strong>
         <p data-i18n-html="txt_txt_info_glance_pages_desc"><strong>Admin</strong> — the organizer's control panel for creating tournaments and lobbies, managing rounds and scores, and coordinating the team. <strong>TV View</strong> — a public read-only display at <code>/tv/&lt;id&gt;</code> showing live standings, results, and the bracket, designed to be shown on a big screen or shared with all participants. <strong>Registrations</strong> — a sign-up page where players self-register with custom questionnaires before an event starts. <strong>Player Hub</strong> — each participant's personal dashboard at <code>/player</code>, aggregating all their active and past events under one passphrase.</p>
       </div>
       <div class="info-block">
@@ -988,8 +990,54 @@
         <p data-i18n="txt_txt_info_glance_no_accounts_desc">Participants never create a username or password. Each player is issued a unique passphrase — a short sequence of words — that gives access to their personal match view, score entry, and the Player Hub. The organizer can share it as a printed card, a QR code, or by email.</p>
       </div>
       <div class="info-block">
-        <strong data-i18n="txt_txt_info_glance_designed_title">Designed for real events</strong>
-        <p data-i18n="txt_txt_info_glance_designed_desc">Supports multiple tournament formats (Group+Playoff, Mexicano, direct Playoffs), co-organizers, player self-scoring, announcements, shareable links, and quick transitions from registration lobby to live competition — with every player credential carried over automatically.</p>
+        <strong data-i18n="txt_txt_info_glance_designed_title">Formats and tools</strong>
+        <p data-i18n="txt_txt_info_glance_designed_desc">Multiple tournament formats (Group+Playoff, Mexicano, direct Playoffs), co-organizers, player self-scoring, announcements, and shareable links. Converting a registration lobby into a live tournament carries every player credential over unchanged.</p>
+      </div>
+    </div>
+
+    <div class="card" id="info-quickstart">
+      <h2 data-i18n="txt_txt_info_qs_title">Run your first tournament</h2>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_info_qs_subtitle">From an empty screen to a live event.</p>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_qs_step1_title">1) Create the event</strong>
+        <p data-i18n="txt_txt_info_qs_step1_desc">In the Create tab, pick a format (Group + Play-off, Mexicano, or Direct Play-offs) and sport, then enter player or team names, court names, and — for Mexicano — points per match. Format-specific scoring and pairing knobs live under the Advanced Settings drop-down in the same form. Press Create Tournament.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_qs_step2_title">2) Give players their codes</strong>
+        <p data-i18n="txt_txt_info_qs_step2_desc">Open the Player Codes panel. Every player has a passphrase (e.g. brave-little-tiger) and a QR code — print the QR cards, copy a single code, or email them in bulk. That code is all a player needs to see their matches and enter scores; no account required.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_qs_step3_title">3) Put it on a screen</strong>
+        <p data-i18n-html="txt_txt_info_qs_step3_desc">Open <code>/tv/&lt;id&gt;</code> (or set a custom alias) on a big screen, or send players the link — it shows live standings, courts, and the bracket with no login. Choose which sections appear and whether players can self-score in the TV Settings panel.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_qs_step4_title">4) Run the rounds</strong>
+        <p data-i18n="txt_txt_info_qs_step4_desc">Enter scores as matches finish. In Mexicano, confirm each round’s proposed pairings to advance — browse the alternative pairing sets first if you want. You can add or remove players mid-event where the format allows.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_qs_step5_title">5) Finish</strong>
+        <p data-i18n="txt_txt_info_qs_step5_desc">When group or Mexicano play is done, press Start Play-offs to seed the bracket (add wildcards or late entries here). Once a champion is decided, export a self-contained HTML or PDF summary with the bracket and full match history.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_qs_where_title">Where things live</strong>
+        <ul style="margin:0.3rem 0 0 1.1rem;font-size:0.84rem;color:var(--text-muted);line-height:1.7" data-i18n-html="txt_txt_info_qs_where_list">
+          <li><strong>Mexicano tuning</strong> — Advanced Settings in the create form, or Admin → Settings after the tournament exists.</li>
+          <li><strong>Player passphrases &amp; QR codes</strong> — the Player Codes panel.</li>
+          <li><strong>Public-view sections &amp; self-scoring</strong> — the TV Settings panel.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card" id="info-demo">
+      <h2 data-i18n="txt_txt_info_demo_title">Demo mode</h2>
+      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_info_demo_subtitle">Two ways to try the app without setting anything up yourself.</p>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_demo_full_title">Full demo (shared admin login)</strong>
+        <p data-i18n="txt_txt_info_demo_full_desc">The public demo site runs the complete app. Log in with the shared admin account to use every feature — registration lobbies, clubs, communities, the Player Hub, custom addresses, and more. Data is shared between visitors and reset periodically, so don't use it for real events.</p>
+      </div>
+      <div class="info-block">
+        <strong data-i18n="txt_txt_info_demo_sandbox_title">Throwaway demo account</strong>
+        <p data-i18n-html="txt_txt_info_demo_sandbox_desc">From the login dialog you can also mint a personal <code>demo-xxxxxx</code> account with its own generated passphrase (usable to log in from other devices). It has a minimal admin surface: one active tournament at a time, and no registration lobbies, clubs, communities, custom addresses, or Player Hub profiles. The account and everything it creates are automatically deleted 3 days after sign-up.</p>
       </div>
     </div>
 

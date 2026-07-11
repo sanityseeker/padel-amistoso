@@ -1,6 +1,6 @@
 # Torneos Amistosos
 
-A convenient platform for organising **padel** and **tennis** events. Run structured tournaments in multiple formats, open registration lobbies with custom questionnaires, and share a live public view with all participants — all from a single lightweight app.
+A platform for organising **padel** and **tennis** events. Run structured tournaments in multiple formats, open registration lobbies with custom questionnaires, and share a live public view with all participants — all from a single lightweight app.
 
 Found a bug, unexpected behaviour, or have a suggestion? [Open an issue on GitHub](https://github.com/sanityseeker/padel-amistoso/issues/new).
 
@@ -12,16 +12,95 @@ Three tournament formats are supported:
 | **Mexicano** | Rating-based pairing each round, fixed total points per match, with optional seeded play-offs |
 | **Direct Play-offs** | Skip the group stage — seed participants and play a bracket immediately |
 
-**Live demo:** [padel-amistoso.onrender.com](https://padel-amistoso.onrender.com) — login with `admin` / `admin`
-> Free tier — app may take ~30 s to wake up after inactivity. Data resets on restart. **Don't use for real tournaments!**
-
----
+**Live demo:** [padel-amistoso.onrender.com](https://padel-amistoso.onrender.com) — login with `admin` / `admin` for the full feature set (lobbies, clubs, communities, Player Hub, custom addresses, ...). From that same login screen you can also mint a **throwaway demo account**: no signup, but it's capped to **one active tournament** and a minimal admin surface, and the account plus all its data is **automatically deleted after 3 days**.
+> Free tier — app may take ~30 s to wake up after inactivity. **Don't use for real tournaments!**
 
 ## Project status
 
 Prototype, still evolving. Built with heavy AI assistance by one DS person with very basic knowledge of frontend. Expect bugs and API changes.
 
 ---
+
+## Contents
+
+**New here? Start with [Quick start](#quick-start), then skim [Using the app](#using-the-app). The deeper tuning and math live under [Reference](#reference).**
+
+- [Quick start](#quick-start) — prerequisites, run it locally, stop/restart
+- [Using the app](#using-the-app) — the day-to-day workflow for organizers and players
+  - [For organizers](#for-organizers)
+  - [For players](#for-players)
+- [Reference](#reference) — the deep settings and formulas
+  - [Mexicano advanced settings](#mexicano-advanced-settings)
+  - [Seeding logic (play-offs)](#seeding-logic-play-offs)
+  - [ELO rating system](#elo-rating-system)
+  - [Authentication & API](#authentication--api)
+- [Deployment & operations](#deployment--operations)
+- [Development](#development)
+- [License](#license)
+
+> Tip: the running app has an in-app **Info** tab (top navigation) that walks through the same material with a guided player/organizer flow — often the fastest way to get oriented.
+
+---
+
+## Quick start
+
+### Prerequisites
+
+- **Python 3.12+** — check with `python3 --version`
+- **[uv](https://docs.astral.sh/uv/)** — fast Python package manager
+
+Install `uv` if you don't have it yet:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Run it locally
+
+```bash
+# 1. Clone the repo (or download and unzip)
+git clone <repo-url>
+cd padel-amistoso
+
+# 2. Install dependencies (creates .venv automatically)
+uv sync
+
+# 3. Start the server
+uv run uvicorn backend.api:app --reload --port 8000
+```
+
+Open <http://localhost:8000> in your browser and log in with the default `admin` / `admin`
+account (see [Authentication](#authentication--api) to change it). Interactive API docs are
+at `/docs` (Swagger) and `/redoc`. The `--reload` flag restarts the server automatically
+whenever you edit Python files.
+
+### Stopping and restarting
+
+Press **Ctrl+C** to stop the server. All tournament data is persisted to
+`data/padel.db` (SQLite) automatically after every score entry, round advance,
+or play-off action. When you restart, all tournaments resume exactly where
+they left off — just open the app and click the tournament you were working on.
+
+You can choose a custom data directory by setting **`PADEL_DATA_DIR`**:
+
+```bash
+PADEL_DATA_DIR=/path/to/my/data uv run uvicorn backend.api:app --reload --port 8000
+```
+
+If not set, it defaults to `data/` inside the project root.
+
+To **reset all data** (start completely fresh), delete the database file inside
+your data directory:
+
+```bash
+rm data/padel.db          # default location
+# or
+rm /path/to/my/data/padel.db
+```
+
+---
+
+## Using the app
 
 ## For organizers
 
@@ -40,6 +119,100 @@ Pick a **format** and **sport** (Padel or Tennis) at creation time. The engine i
 3. Pairings for the next round are proposed automatically (or can be overridden).
 4. After a set number of rounds (or in rolling mode, whenever you decide), the tournament moves to a seeded play-off.
 5. In individual mode, top players are paired into teams (#1+#2, #3+#4, …) before entering the bracket.
+
+Mexicano has extensive scoring and pairing tuning knobs — see [Mexicano advanced settings](#mexicano-advanced-settings) in the Reference section.
+
+**Direct Play-offs:** skip the group stage and go straight to a bracket — seed participants in the desired order and play immediately.
+
+### Registration lobbies
+
+Create a sign-up lobby and share the link with participants. Players self-register with their name (and any custom questions you configure). Once sign-ups close, convert the lobby to a real tournament with one click — player credentials carry over automatically.
+
+You can also add **co-editors** (collaborators) to a registration lobby so multiple organizers can manage sign-ups together.
+
+Tip for organizers: encourage players to link registrations to their **Player Hub** profile passphrase (or use matching email) so events appear automatically in their `/player` dashboard.
+
+### Communities and clubs
+
+The app separates organizational scope into two layers:
+
+- **Community**: the base scope used by tournaments and registration lobbies.
+- **Club**: an optional layer on top of a community that adds branding, roster tools, tiers, seasons, and club-level collaboration workflows.
+
+Recommended setup:
+
+1. Create communities for each venue/league/event family.
+2. Set your default community so new events are pre-assigned correctly.
+3. Upgrade active communities to clubs when you need logo identity and long-term progression.
+4. Organize events into club seasons to keep standings meaningful over time.
+
+Operational notes:
+
+- Community reassignment for tournaments and lobbies is immediate and intended for cleanup/migration.
+- Clubs are the right place for recurring organizer teams, player tier ladders, and club-specific communications.
+
+### Player codes
+
+Every player automatically gets a unique **passphrase** (e.g. `brave-little-tiger`) and a **QR code**. Open the 🔑 Player Codes panel to view, copy, print, or regenerate credentials for individual players.
+
+### During the tournament
+
+- **Record scores** as points or best-of-3 sets (where the format supports it).
+- **Player score confirmation flow**: choose how player-submitted scores are handled:
+  - **Immediate**: submitted score is applied right away.
+  - **Required**: submitted score stays pending until the opposing team accepts it, sends a correction, or escalates to the organizer.
+- **Match comments**: add a short note to any match (e.g. "Moved to Court 2") — visible on the public screen.
+- **Announcement banner**: broadcast a message to all participants on the public screen.
+- **Co-editing**: share tournaments with other registered users as co-editors. Co-editors can manage rounds and scores, but only the owner/admin can delete the tournament or manage collaborators.
+- **Roster updates**: add players mid-tournament (Mexicano and Group + Play-off during group phase), and remove players mid-tournament in Mexicano when they are not assigned to pending matches.
+- **Player contacts + email delivery**: store player contact/email info and (when SMTP is configured) send credential reminders, round schedules, organizer announcements, and final results by email.
+
+### TV display
+
+Each tournament has a public TV view at `/tv/<id>`, or a custom alias like `/tv/summer-cup`. Configure which sections appear (standings, bracket, match list), the refresh mode, bracket rendering, and player score confirmation mode from the Admin → TV Settings panel.
+
+### Exporting results
+
+Once a champion is determined, export a self-contained HTML or PDF summary with an embedded bracket diagram and optional full match history.
+
+## For players
+
+### Self-registration
+
+If the organizer opened a registration lobby, visit the shared link and fill in your name to sign up.
+
+**Played before but forgot your code?** The registration page's "Played before?" section offers three ways back in: your passphrase/QR code, an email-based magic-link recovery, or — if you have neither — searching by name among past participants at the same club/community. A name match can't auto-link (names aren't unique or secret), so it raises a claim that the organizer approves from the lobby's admin panel; once approved, the participation (and its ELO/history) is merged into your Player Hub profile.
+
+### Public TV view
+
+The read-only TV view (`/tv/<tournament-id-or-alias>`) shows live standings, the bracket, and match results — no login needed. Works well on a big screen.
+
+### Self-scoring
+
+Players can submit scores for their own matches without an admin account:
+
+1. On the public view, click **Login** and enter your passphrase (or scan the QR code the organizer shared with you).
+2. Once logged in, a "Record Score" form appears on your pending matches.
+3. If score confirmation is set to **Required**, the opposing team reviews the submission and can accept it, propose a correction, or escalate it for organizer resolution.
+
+The organizer can disable self-scoring at any time from the TV Settings panel.
+
+### Player Hub
+
+Players can use a personal **Player Hub** at `/player` to track all their linked events in one place.
+
+- **Access**: log in with your profile passphrase (and, if configured, email-based magic link).
+- **Dashboard**: see active and finished tournaments/registrations, with quick links back to each event.
+- **Career stats**: aggregated wins/losses/draws, points for/against, plus best teammates and toughest rivals.
+- **Participant lookup**: search any participant you've played with/against and view together-vs-against records and win rates.
+- **Linking events**: link by passphrase from registrations or use "Link existing" inside Player Hub; matching-email registrations can be auto-linked.
+
+---
+
+## Reference
+
+Deeper knobs and formulas. You don't need any of this to run a basic event — reach for it
+when you want to tune Mexicano, understand seeding, read the ELO math, or script the API.
 
 ### Mexicano advanced settings
 
@@ -173,8 +346,6 @@ Extra penalty for forming mismatched partner pairs within a team (e.g., pairing 
 
 > Has no effect in team mode (partners are fixed). In individual mode it complements `skill_gap` — `skill_gap` is a hard cut-off on court assignment, while `partner_balance_weight` softly prefers equal-strength partnerships within a court.
 
-**Direct Play-offs:** skip the group stage and go straight to a bracket.
-
 ### Seeding logic (play-offs)
 
 - **Group + Play-off seeding** prioritizes finishing position inside each group (1st place seeds above 2nd place), then uses performance tie-breakers.
@@ -185,98 +356,11 @@ Extra penalty for forming mismatched partner pairs within a team (e.g., pairing 
 - In Mexicano **individual mode**, selected players are converted into teams by pairing adjacent seeds (#1+#2, #3+#4, …); teams are then ordered by combined seed strength for bracket placement.
 - Organizers can override automatic selection by explicitly choosing playoff participants, and can include external participants with a seed score.
 
-### Registration lobbies
-
-Create a sign-up lobby and share the link with participants. Players self-register with their name (and any custom questions you configure). Once sign-ups close, convert the lobby to a real tournament with one click — player credentials carry over automatically.
-
-You can also add **co-editors** (collaborators) to a registration lobby so multiple organizers can manage sign-ups together.
-
-Tip for organizers: encourage players to link registrations to their **Player Hub** profile passphrase (or use matching email) so events appear automatically in their `/player` dashboard.
-
-### Communities and clubs
-
-The app separates organizational scope into two layers:
-
-- **Community**: the base scope used by tournaments and registration lobbies.
-- **Club**: an optional layer on top of a community that adds branding, roster tools, tiers, seasons, and club-level collaboration workflows.
-
-Recommended setup:
-
-1. Create communities for each venue/league/event family.
-2. Set your default community so new events are pre-assigned correctly.
-3. Upgrade active communities to clubs when you need logo identity and long-term progression.
-4. Organize events into club seasons to keep standings meaningful over time.
-
-Operational notes:
-
-- Community reassignment for tournaments and lobbies is immediate and intended for cleanup/migration.
-- Clubs are the right place for recurring organizer teams, player tier ladders, and club-specific communications.
-
-### Player codes
-
-Every player automatically gets a unique **passphrase** (e.g. `brave-little-tiger`) and a **QR code**. Open the 🔑 Player Codes panel to view, copy, print, or regenerate credentials for individual players.
-
-### During the tournament
-
-- **Record scores** as points or best-of-3 sets (where the format supports it).
-- **Player score confirmation flow**: choose how player-submitted scores are handled:
-  - **Immediate**: submitted score is applied right away.
-  - **Required**: submitted score stays pending until the opposing team accepts it, sends a correction, or escalates to the organizer.
-- **Match comments**: add a short note to any match (e.g. "Moved to Court 2") — visible on the public screen.
-- **Announcement banner**: broadcast a message to all participants on the public screen.
-- **Co-editing**: share tournaments with other registered users as co-editors. Co-editors can manage rounds and scores, but only the owner/admin can delete the tournament or manage collaborators.
-- **Roster updates**: add players mid-tournament (Mexicano and Group + Play-off during group phase), and remove players mid-tournament in Mexicano when they are not assigned to pending matches.
-- **Player contacts + email delivery**: store player contact/email info and (when SMTP is configured) send credential reminders, round schedules, organizer announcements, and final results by email.
-
-### TV display
-
-Each tournament has a public TV view at `/tv/<id>`, or a custom alias like `/tv/summer-cup`. Configure which sections appear (standings, bracket, match list), the refresh mode, bracket rendering, and player score confirmation mode from the Admin → TV Settings panel.
-
-### Exporting results
-
-Once a champion is determined, export a self-contained HTML or PDF summary with an embedded bracket diagram and optional full match history.
-
----
-
-## For players
-
-### Self-registration
-
-If the organizer opened a registration lobby, visit the shared link and fill in your name to sign up.
-
-**Played before but forgot your code?** The registration page's "Played before?" section offers three ways back in: your passphrase/QR code, an email-based magic-link recovery, or — if you have neither — searching by name among past participants at the same club/community. A name match can't auto-link (names aren't unique or secret), so it raises a claim that the organizer approves from the lobby's admin panel; once approved, the participation (and its ELO/history) is merged into your Player Hub profile.
-
-### Public TV view
-
-The read-only TV view (`/tv/<tournament-id-or-alias>`) shows live standings, the bracket, and match results — no login needed. Works well on a big screen.
-
-### Self-scoring
-
-Players can submit scores for their own matches without an admin account:
-
-1. On the public view, click **Login** and enter your passphrase (or scan the QR code the organizer shared with you).
-2. Once logged in, a "Record Score" form appears on your pending matches.
-3. If score confirmation is set to **Required**, the opposing team reviews the submission and can accept it, propose a correction, or escalate it for organizer resolution.
-
-The organizer can disable self-scoring at any time from the TV Settings panel.
-
-### Player Hub
-
-Players can use a personal **Player Hub** at `/player` to track all their linked events in one place.
-
-- **Access**: log in with your profile passphrase (and, if configured, email-based magic link).
-- **Dashboard**: see active and finished tournaments/registrations, with quick links back to each event.
-- **Career stats**: aggregated wins/losses/draws, points for/against, plus best teammates and toughest rivals.
-- **Participant lookup**: search any participant you've played with/against and view together-vs-against records and win rates.
-- **Linking events**: link by passphrase from registrations or use "Link existing" inside Player Hub; matching-email registrations can be auto-linked.
-
----
-
-## ELO Rating System
+### ELO rating system
 
 An ELO rating tracks each player's relative skill across tournaments. Ratings update after every completed match and are visible in the **Player Hub** career stats.
 
-### Core formula
+#### Core formula
 
 The engine uses a **margin-aware** variant of classic ELO. Instead of a pure win/loss binary, the actual outcome blends a binary component with a continuous score ratio:
 
@@ -294,7 +378,7 @@ $$E = \frac{1}{1 + 10^{(R_{opp} - R_{player}) \;/\; 400}}$$
 
 New players start at **1000**.
 
-### K-factor tiers
+#### K-factor tiers
 
 The K-factor controls how fast ratings change. New players move faster; experienced players are more stable.
 
@@ -304,11 +388,11 @@ The K-factor controls how fast ratings change. New players move faster; experien
 | ≤ 40 | 20 |
 | > 40 | 10 |
 
-### 1v1 update
+#### 1v1 update
 
 $$R'_{player} = R_{player} + K \cdot (S - E)$$
 
-### 2v2 update (partner-adjusted)
+#### 2v2 update (partner-adjusted)
 
 In doubles, the expected score uses team-average ratings:
 
@@ -323,23 +407,21 @@ $$\text{adj} = \text{clamp}\!\left(1.0 - 0.25 \cdot \frac{R_{partner} - R_{playe
 
 $$\Delta = K \cdot \text{adj} \cdot (S - E)$$
 
-### Minimum delta clamping
+#### Minimum delta clamping
 
 Winners always gain at least **+1** ELO and losers always lose at least **−1**, regardless of margin or expected score. This guarantees every result is meaningful.
 
-### Tennis matches
+#### Tennis matches
 
 For tennis (set-based scoring), total games across all sets are summed into a single score pair before the ELO calculation.
 
----
-
-## Authentication
+### Authentication & API
 
 All tournament mutations (creating tournaments, recording scores, advancing
 rounds) require authentication. Read-only endpoints (viewing tournaments,
 fetching standings) are public.
 
-### Default credentials
+#### Default credentials
 
 On first startup, a default admin user is created automatically:
 
@@ -348,7 +430,7 @@ On first startup, a default admin user is created automatically:
 
 **⚠️ Change this password immediately in production!**
 
-### Logging in
+#### Logging in
 
 **Via the web UI**: When you try to create a tournament or perform any action
 that requires authentication, a login dialog will appear automatically. Enter
@@ -387,7 +469,7 @@ Tokens expire after **7 days** by default.
 **Logging out**: Click the **Logout** button in the top navigation bar to clear
 your authentication token and return to the logged-out state.
 
-### Managing users
+#### Managing users
 
 Admin users can create, delete, and change passwords for other users:
 
@@ -417,7 +499,7 @@ DELETE /api/auth/users/{username}
 
 All user management endpoints require authentication and are admin-only.
 
-### Password reset by email
+#### Password reset by email
 
 If SMTP is configured, users can reset forgotten passwords without admin intervention:
 
@@ -437,7 +519,7 @@ POST /api/auth/reset-password/{token}
 
 Reset links are single-use and expire automatically.
 
-### Security notes
+#### Security notes
 
 - Passwords are hashed with **bcrypt** before storage
 - JWT tokens are signed with **HS256**
@@ -457,50 +539,7 @@ Reset links are single-use and expire automatically.
 
 ---
 
-## Prerequisites
-
-- **Python 3.12+** — check with `python3 --version`
-- **[uv](https://docs.astral.sh/uv/)** — fast Python package manager
-
-Install `uv` if you don't have it yet:
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
----
-
-## Running locally
-
-```bash
-# 1. Clone the repo (or download and unzip)
-git clone <repo-url>
-cd padel-amistoso
-
-# 2. Install dependencies (creates .venv automatically)
-uv sync
-
-# 3. Start the server
-uv run uvicorn backend.api:app --reload --port 8000
-```
-
-Open <http://localhost:8000> in your browser. Interactive API docs are at `/docs` (Swagger) and `/redoc`. The `--reload` flag restarts the
-server automatically whenever you edit Python files.
-
-### Stopping and restarting
-
-Press **Ctrl+C** to stop the server. All tournament data is persisted to
-`data/padel.db` (SQLite) automatically after every score entry, round advance,
-or play-off action. When you restart, all tournaments resume exactly where
-they left off — just open the app and click the tournament you were working on.
-
-You can choose a custom data directory by setting **`PADEL_DATA_DIR`**:
-
-```bash
-PADEL_DATA_DIR=/path/to/my/data uv run uvicorn backend.api:app --reload --port 8000
-```
-
-If not set, it defaults to `data/` inside the project root.
+## Deployment & operations
 
 ### SMTP email notifications (disabled by default)
 
@@ -527,15 +566,6 @@ Docker Compose note:
 - `docker-compose.yml` uses `${VAR:-None}` defaults, so SMTP remains disabled unless you set real values in your shell or `.env` file.
 - `docker-compose.nas.yml` also ships with `"None"` placeholders for the same reason.
 
-To **reset all data** (start completely fresh), delete the database file inside
-your data directory:
-
-```bash
-rm data/padel.db          # default location
-# or
-rm /path/to/my/data/padel.db
-```
-
 ### Running in a detached screen session
 
 To avoid accidentally stopping the server (e.g. by closing the terminal),
@@ -560,7 +590,6 @@ Useful screen commands:
 - This app keeps active tournament state in process memory and persists to SQLite.
 - For ~50 concurrent users, this is typically sufficient when polling intervals remain moderate.
 - If traffic grows, scale by running multiple isolated instances (different `PADEL_DATA_DIR`), not by adding workers to the same process.
-
 
 ### Running multiple independent instances in parallel
 
@@ -616,7 +645,9 @@ Then open <http://localhost:8000>.
 
 ---
 
-## Project structure
+## Development
+
+### Project structure
 
 The app has grown well beyond tournaments-only — registration lobbies, a
 community/club hierarchy, a Player Hub with ELO, live TV views, and more — so
@@ -635,7 +666,7 @@ tests/
   pytest suite against the real app via FastAPI's TestClient — see tests/conftest.py for fixtures
 ```
 
-## Linting & formatting
+### Linting & formatting
 
 This project uses [`ruff`](https://docs.astral.sh/ruff/) for both linting and formatting.
 
@@ -665,9 +696,7 @@ uv run pre-commit run --all-files
 
 Once installed, `ruff` will lint and format your staged files on every `git commit`. The commit is blocked if any issues can't be auto-fixed.
 
----
-
-## Running tests
+### Running tests
 
 The test suite uses `pytest` and covers the full API, tournament logic, and
 authentication flows via FastAPI's `TestClient` (no running server needed).
@@ -693,16 +722,12 @@ uv run pytest tests/ --cov=backend --cov-report=term-missing
 uv run pytest tests/ -x
 ```
 
-### Test files
-
-30+ files under `tests/`, named after the feature area they cover rather than
+**Test files:** 30+ files under `tests/`, named after the feature area they cover rather than
 a specific source module (e.g. `test_registration_recovery.py` and
 `test_convert_registration.py` both cut across several `routes_*.py` files).
 Check `tests/conftest.py` for shared fixtures before adding new ones.
 
----
-
-## Releasing a new version
+### Releasing a new version
 
 This project uses [`commitizen`](https://commitizen-tools.github.io/commitizen/) to automate version bumping, changelog generation, and git tagging.
 
