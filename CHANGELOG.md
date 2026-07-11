@@ -1,3 +1,9 @@
+## v1.14.9 (2026-07-11)
+
+### Fix
+
+- **nginx**: fix nginx configuration
+
 ## v1.14.8 (2026-07-11)
 
 ### Fix
