@@ -697,6 +697,13 @@ async function renderRegistration() {
     _currentRegDetail = data;
     if (collabResult) _regCollaborators[_renderTid] = collabResult.collaborators || [];
     if (emailSettingsResult) _regEmailSettings[_renderTid] = emailSettingsResult;
+    // Pending participation claims (name-based recovery awaiting approval) — the
+    // open path must fetch these too, otherwise the claims section only ever
+    // populates after a mutation-triggered _loadRegDetail refresh.
+    try {
+      _regClaims[_renderTid] = await api(`/api/registrations/${_renderTid}/claims`);
+    } catch (_) { _regClaims[_renderTid] = []; }
+    if (currentTid !== _renderTid) return;
     _renderRegDetailInline(_renderTid);
   } catch (e) {
     if (currentTid !== _renderTid) return;
