@@ -328,9 +328,13 @@ function showAbbrevPopup(event, type) {
   popup.style.display = 'block';
   const rect = btn.getBoundingClientRect();
   const pw = popup.offsetWidth || 210;
+  const ph = popup.offsetHeight || 200;
   const left = Math.max(8, Math.min(rect.left, window.innerWidth - pw - 8));
+  // Clamp vertically too — near the bottom of a phone screen the popup
+  // would otherwise extend past the viewport with no way to scroll to it.
+  const top = Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - ph - 8));
   popup.style.left = left + 'px';
-  popup.style.top = (rect.bottom + 6) + 'px';
+  popup.style.top = top + 'px';
 }
 
 document.addEventListener('click', (e) => {
@@ -1279,4 +1283,66 @@ function _decisionDisabledReason({ pendingMatches = 0, finished = false, hasMore
   }
   if (!hasMoreRounds) return t('txt_admin_decision_disabled_no_more_rounds');
   return null;
+}
+
+/**
+ * Themed replacement for window.confirm() — same look as the
+ * delete-tournament modal (.modal-overlay / .modal-dialog / .modal-actions).
+ *
+ * @param {string}  message        Question shown to the user (plain text).
+ * @param {object}  [opts]
+ * @param {boolean} [opts.danger]  Style the confirm button as destructive.
+ * @param {string}  [opts.title]   Optional dialog title.
+ * @param {string}  [opts.confirmLabel] Confirm button label (defaults to
+ *                                 Delete for danger, Confirm otherwise).
+ * @returns {Promise<boolean>} true when confirmed, false otherwise.
+ */
+function uiConfirm(message, opts = {}) {
+  if (typeof document === 'undefined' || !document.body) {
+    return Promise.resolve(window.confirm(message));
+  }
+  const danger = !!opts.danger;
+  const confirmLabel = opts.confirmLabel || t(danger ? 'txt_txt_delete' : 'txt_txt_confirm_score');
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'modal-dialog modal-md ui-confirm-dialog';
+    dialog.setAttribute('role', 'alertdialog');
+    dialog.setAttribute('aria-modal', 'true');
+
+    const titleHtml = opts.title
+      ? `<div class="modal-header"><h2 class="modal-title">${esc(opts.title)}</h2></div>`
+      : '';
+    dialog.innerHTML = `
+      ${titleHtml}
+      <p class="ui-confirm-message">${esc(message)}</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-muted" data-action="cancel">${esc(t('txt_txt_cancel'))}</button>
+        <button type="button" class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-action="confirm">${esc(confirmLabel)}</button>
+      </div>
+    `;
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    let resolved = false;
+    function finish(result) {
+      if (resolved) return;
+      resolved = true;
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+      resolve(result);
+    }
+    function onKey(ev) {
+      if (ev.key === 'Escape') finish(false);
+    }
+    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('click', ev => { if (ev.target === overlay) finish(false); });
+    dialog.querySelector('[data-action="cancel"]').addEventListener('click', () => finish(false));
+    dialog.querySelector('[data-action="confirm"]').addEventListener('click', () => finish(true));
+    // Focus the safe action first so Enter doesn't accidentally destroy.
+    dialog.querySelector('[data-action="cancel"]').focus();
+  });
 }

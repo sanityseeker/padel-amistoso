@@ -245,6 +245,8 @@ body.login-dialog-open .container { filter: blur(3px); pointer-events: none; tra
   display: none;
   position: fixed;
   z-index: 9995;
+  max-height: min(60vh, 400px);
+  overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1015,6 +1017,12 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
   width: 92vw;
   max-width: 340px;
   font-size: 0.88rem;
+  /* Never taller than the visible viewport (dvh shrinks with the on-screen
+     keyboard) — otherwise the box's bottom actions end up unreachable. */
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 @media (min-width: 600px) {
   .pc-hub-modal-box { max-width: 420px; padding: 1.2rem; font-size: 0.92rem; }
@@ -1291,9 +1299,17 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
   min-height: 0;
 }
 @media (max-width: 560px) {
-  .ccpicker-team-layout { flex-direction: column; height: auto; max-height: 500px; }
+  /* The desktop 380px results clip would cut off the stacked column layout —
+     including the confirm button at its end. Let the modal box itself scroll
+     instead (it is viewport-capped above). */
+  .create-club-picker-results--team { max-height: none; }
+  .ccpicker-team-layout { flex-direction: column; height: auto; max-height: none; }
   .ccpicker-team-players { border-right: none; border-bottom: 1px solid var(--border); padding-right: 0; padding-bottom: 0.5rem; max-height: 220px; }
-  .ccpicker-team-panel { width: 100%; padding-left: 0; padding-top: 0.5rem; max-height: 200px; }
+  .ccpicker-team-panel { width: 100%; padding-left: 0; padding-top: 0.5rem; }
+  .ccpicker-team-list { max-height: 180px; }
+  /* Confirm must always be reachable: full-width, comfortable touch target. */
+  .ccpicker-confirm-row { justify-content: stretch; }
+  .ccpicker-confirm-row .btn { width: 100%; min-height: 44px; }
 }
 
 .clubs-attach-created-mobile {
@@ -3604,9 +3620,42 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   /* Cards can scroll if content (e.g. a table) is wider than screen */
   .card { overflow-x: auto; }
 
+  /* iOS Safari auto-zooms the page when focusing any control under 16px —
+     the layout then stays zoomed/shifted, which reads as "the button moved".
+     !important so this also beats legacy inline font-size styles. */
+  input[type="text"], input[type="email"], input[type="number"],
+  input[type="password"], input[type="search"], select, textarea {
+    font-size: 16px !important;
+  }
+
   /* Table: tighten up on mobile */
   table { font-size: 0.78rem; }
   th, td { padding: 0.3rem 0.4rem; }
+
+  /* Standings: keep the identity column(s) pinned while the stats scroll,
+     so courtside score-reading doesn't lose who each row is. Sticky cells
+     need an opaque background to occlude the scrolling stats underneath. */
+  .standings-table th:first-child,
+  .standings-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--surface);
+  }
+  /* Rank-first tables (Mexicano leaderboard): pin rank AND player name. */
+  .standings-table--rank th:first-child,
+  .standings-table--rank td:first-child {
+    width: 2.4rem;
+    min-width: 2.4rem;
+    max-width: 2.4rem;
+  }
+  .standings-table--rank th:nth-child(2),
+  .standings-table--rank td:nth-child(2) {
+    position: sticky;
+    left: 2.4rem;
+    z-index: 1;
+    background: var(--surface);
+  }
 
   /* Court board: single column on very small screens */
   .court-board .court-column { flex-basis: 100%; }
@@ -4174,7 +4223,9 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   margin-top: 0;
 }
 .reg-q-choices-area.open {
-  max-height: 500px;
+  /* Animation cap only — generous so long choice lists don't get clipped
+     (same failure mode as the team-picker confirm button). */
+  max-height: 1200px;
   opacity: 1;
   margin-top: 0.1rem;
 }
@@ -4252,7 +4303,7 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   position: static;
   transform: none;
 }
-.modal-sm { width: min(400px, calc(100vw - 2rem)); }
+.modal-sm { width: min(400px, calc(100vw - 2rem)); max-height: 90vh; overflow-y: auto; }
 .modal-md { width: min(480px, calc(100vw - 2rem)); max-height: 90vh; overflow-y: auto; }
 .modal-header {
   display: flex;
@@ -4323,6 +4374,57 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   cursor: pointer;
   font-size: 0.9rem;
 }
+/* Duplicate-registrant-names warning strip in the lobby detail view. */
+.reg-duplicate-warning {
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.7rem;
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-lg);
+  font-size: 0.8rem;
+  color: var(--color-warning-text);
+}
+
+/* Demo-mode banner — warning-tokened, no decorative gradient (see frontend-dev skill). */
+.demo-banner {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning-text);
+  border-radius: var(--radius-card, 8px);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+}
+.demo-banner-code {
+  background: var(--color-warning-border);
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+/* Labelled input rows inside .modal-dialog forms (add/edit registrant, etc.) */
+.modal-form-field { margin-bottom: 0.85rem; }
+.modal-form-field label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+.modal-form-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.88rem;
+}
+.modal-form-optional { color: var(--text-muted); font-weight: 400; }
+
+.ui-confirm-message { margin: 0 0 1rem; color: var(--text); line-height: 1.55; overflow-wrap: anywhere; }
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

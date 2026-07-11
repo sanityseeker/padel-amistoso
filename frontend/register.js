@@ -1254,6 +1254,12 @@ function _showSuccess() {
   html += `<div class="passphrase-box" id="reg-passphrase-box">${esc(r.passphrase)}</div>`;
   html += `<button type="button" class="btn btn-primary passphrase-copy-btn" id="reg-copy-btn" onclick="_copyPassphrase()">${t('txt_txt_copy')}</button>`;
   html += `</div>`;
+  // Linked to a profile but the profile's code was already taken in this lobby:
+  // this entry has its own code — say so, or the player tries the profile code
+  // at the door and concludes "my code doesn't work".
+  if (r.passphrase_differs_from_profile) {
+    html += `<p class="reg-ps-passphrase-differs">${t('txt_reg_ps_passphrase_differs')}</p>`;
+  }
   html += `<p class="keep-note">${t('txt_reg_keep_code')}</p>`;
   html += `<div class="success-actions"><a href="/register" class="btn btn-primary success-back-btn">${t('txt_reg_back_home')}</a><button type="button" class="success-register-another" onclick="_registerAnother()">${t('txt_reg_register_another')}</button></div>`;
 

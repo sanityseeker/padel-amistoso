@@ -155,8 +155,8 @@ function _addTournamentPlayer() {
     const noMsg = codesBody?.querySelector('.player-codes-empty');
     if (noMsg) noMsg.remove();
     const wrapper = document.createElement('div');
-    wrapper.style.overflowX = 'auto';
-    wrapper.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:0.84rem"><thead><tr style="border-bottom:2px solid var(--border)"><th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_player')}</th><th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_passphrase')}</th><th style="text-align:left;padding:0.4rem 0.6rem">${t('txt_txt_contact')}</th><th style="text-align:center;padding:0.4rem 0.6rem">${t('txt_txt_qr_code')}</th><th></th><th></th></tr></thead><tbody></tbody></table>`;
+    wrapper.className = 'player-codes-table-wrap';
+    wrapper.innerHTML = `<table class="player-codes-table"><thead><tr><th>${t('txt_txt_player')}</th><th>${t('txt_txt_passphrase')}</th><th>${t('txt_txt_contact')}</th><th style="text-align:center">${t('txt_txt_qr_code')}</th><th></th><th></th></tr></thead><tbody></tbody></table>`;
     const addBtnDiv = codesBody?.querySelector('.add-participant-btn')?.parentElement;
     if (addBtnDiv) addBtnDiv.before(wrapper);
     else codesBody?.appendChild(wrapper);

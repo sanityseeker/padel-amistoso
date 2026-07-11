@@ -94,9 +94,6 @@ logger = logging.getLogger(__name__)
 # ────────────────────────────────────────────────────────────────────────────
 
 _tournaments: dict[str, dict] = {}
-# Legacy compatibility symbol kept for tests and backend.api re-exports.
-# Tournament IDs are now UUIDv7-based; this counter is no longer used.
-_counter: int = 0
 # Per-tournament version counters — bumped on every _save_tournament() call.
 # The TV display polls /{tid}/version cheaply and reloads only on change.
 _tournament_versions: dict[str, int] = {}
@@ -108,13 +105,9 @@ _state_version: int = 0
 
 # Per-tournament asyncio locks so concurrent writes to different tournaments
 # don't block each other.  ID allocation uses a dedicated lightweight lock.
-# The legacy global lock is kept as a backward-compatible alias.
 _tournament_locks: dict[str, asyncio.Lock] = {}
 _id_allocation_lock: asyncio.Lock = asyncio.Lock()
 _global_lock: asyncio.Lock = asyncio.Lock()
-
-# Backwards-compatible alias kept for any remaining import sites.
-state_lock = _global_lock
 
 
 def get_tournament_lock(tid: str) -> asyncio.Lock:

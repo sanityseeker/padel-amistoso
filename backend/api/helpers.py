@@ -18,6 +18,66 @@ from ..models import Match, MatchStatus
 from .db import get_co_editors
 from .state import _tournaments, _save_tournament
 
+
+def get_scope_branding(
+    community_id: str,
+    club_id: str | None = None,
+    cache: dict[tuple[str, str | None], dict[str, str | None]] | None = None,
+) -> dict[str, str | None]:
+    """Return community/club display metadata for a tournament or registration scope.
+
+    When ``club_id`` is provided it is used directly; otherwise the first club
+    in the community (by creation date) is used as a legacy fallback.
+    """
+    # Local imports: routes_clubs (transitively) loads route modules that
+    # import this helpers module at import time.
+    from .db import get_db  # noqa: PLC0415
+    from .routes_clubs import resolve_club_for_scope  # noqa: PLC0415
+
+    cache_key = (community_id, club_id)
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
+
+    with get_db() as conn:
+        row = conn.execute("SELECT name FROM communities WHERE id = ?", (community_id,)).fetchone()
+
+    club = resolve_club_for_scope(community_id, club_id)
+    branding = {
+        "community_name": (row["name"] if row is not None else None),
+        "club_name": (club.name if club is not None else None),
+        "club_logo_url": (f"/api/clubs/{club.id}/logo" if club is not None and club.has_logo else None),
+    }
+    if cache is not None:
+        cache[cache_key] = branding
+    return branding
+
+
+def revalidate_scope_for_community(
+    conn,
+    new_community_id: str,
+    club_id: str | None,
+    season_id: str | None,
+) -> tuple[str | None, str | None]:
+    """Clear ``club_id``/``season_id`` that don't belong to *new_community_id*.
+
+    Clubs and seasons are community-scoped, so reassigning a tournament or
+    registration to another community must drop references into the old one.
+    Returns the (possibly cleared) ``(club_id, season_id)``.
+    """
+    if club_id:
+        club_row = conn.execute("SELECT community_id FROM clubs WHERE id = ?", (club_id,)).fetchone()
+        if club_row is None or club_row["community_id"] != new_community_id:
+            club_id = None
+    if season_id:
+        season_row = conn.execute(
+            "SELECT c.community_id AS community_id FROM seasons s JOIN clubs c ON c.id = s.club_id WHERE s.id = ?",
+            (season_id,),
+        ).fetchone()
+        if season_row is None or season_row["community_id"] != new_community_id:
+            season_id = None
+    return club_id, season_id
+
+
 # MIME types for the three supported image/document formats.
 _SCHEMA_MEDIA_TYPES: dict[str, str] = {
     "png": "image/png",

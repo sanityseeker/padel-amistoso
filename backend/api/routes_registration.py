@@ -39,7 +39,7 @@ from ..models import Court, GPPhase, Player, QuestionType, Sport, TournamentType
 from ..tournaments import GroupPlayoffTournament, MexicanoTournament, PlayoffTournament
 from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .db import add_co_editor, get_db, get_registration_co_editors, get_shared_registration_ids
-from .helpers import _store_tournament
+from .helpers import _store_tournament, get_scope_branding as _get_scope_branding, revalidate_scope_for_community
 from .player_secret_store import (
     lookup_registrant_by_passphrase,
     lookup_registrant_by_token,
@@ -70,7 +70,6 @@ from .schemas import (
     SetCommunityRequest,
 )
 from .state import allocate_tournament_id, _tournaments
-from .routes_clubs import resolve_club_for_scope
 
 router = APIRouter(prefix="/api/registrations", tags=["registrations"])
 
@@ -158,33 +157,6 @@ def _email_requirement(reg: dict) -> str:
     if value in {"required", "optional", "disabled"}:
         return value
     return "optional"
-
-
-def _get_scope_branding(
-    community_id: str,
-    club_id: str | None = None,
-    cache: dict[tuple[str, str | None], dict[str, str | None]] | None = None,
-) -> dict[str, str | None]:
-    """Return club/community branding metadata for a registration scope.
-
-    When ``club_id`` is provided it is used directly; otherwise the first
-    club in the community is used as a legacy fallback.
-    """
-    cache_key = (community_id, club_id)
-    if cache is not None and cache_key in cache:
-        return cache[cache_key]
-
-    with get_db() as conn:
-        row = conn.execute("SELECT name FROM communities WHERE id = ?", (community_id,)).fetchone()
-    club = resolve_club_for_scope(community_id, club_id)
-    branding = {
-        "community_name": (row["name"] if row is not None else None),
-        "club_name": (club.name if club is not None else None),
-        "club_logo_url": (f"/api/clubs/{club.id}/logo" if club is not None and club.has_logo else None),
-    }
-    if cache is not None:
-        cache[cache_key] = branding
-    return branding
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -359,25 +331,6 @@ def _get_registrant_counts(registration_ids: list[str]) -> dict[str, int]:
     return {row["registration_id"]: row["c"] for row in rows}
 
 
-def _get_registrants_by_registration_id(registration_ids: list[str]) -> dict[str, list[dict]]:
-    """Return registrants grouped by registration ID."""
-    if not registration_ids:
-        return {}
-    placeholders = ",".join("?" for _ in registration_ids)
-    with get_db() as conn:
-        rows = conn.execute(
-            f"""SELECT registration_id, player_id, player_name, answers, registered_at
-                FROM registrants
-                WHERE registration_id IN ({placeholders})
-                ORDER BY registration_id, registered_at""",
-            registration_ids,
-        ).fetchall()
-    grouped: dict[str, list[dict]] = {rid: [] for rid in registration_ids}
-    for row in rows:
-        grouped[row["registration_id"]].append(dict(row))
-    return grouped
-
-
 def _is_finished(tid: str) -> bool:
     """True when a linked tournament is finished (or no longer in memory)."""
     tournament_data = _tournaments.get(tid)
@@ -511,39 +464,25 @@ async def list_registrations(
 ) -> list[dict]:
     """List registrations owned by or shared with the current user (admins see all)."""
     shared_ids: set[str] = set()
-    with get_db() as conn:
-        if user.role == UserRole.ADMIN:
-            if include_archived:
-                rows = conn.execute("SELECT * FROM registrations ORDER BY created_at DESC").fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT * FROM registrations WHERE archived = 0 ORDER BY created_at DESC"
-                ).fetchall()
+    where: list[str] = []
+    params: list = []
+    if user.role != UserRole.ADMIN:
+        shared_ids = set(get_shared_registration_ids(user.username))
+        if shared_ids:
+            placeholders = ",".join("?" * len(shared_ids))
+            where.append(f"(owner = ? OR id IN ({placeholders}))")
+            params.extend([user.username, *shared_ids])
         else:
-            shared_ids = set(get_shared_registration_ids(user.username))
-            if shared_ids:
-                placeholders = ",".join("?" * len(shared_ids))
-                if include_archived:
-                    rows = conn.execute(
-                        f"SELECT * FROM registrations WHERE owner = ? OR id IN ({placeholders}) ORDER BY created_at DESC",
-                        (user.username, *shared_ids),
-                    ).fetchall()
-                else:
-                    rows = conn.execute(
-                        f"SELECT * FROM registrations WHERE (owner = ? OR id IN ({placeholders})) AND archived = 0 ORDER BY created_at DESC",
-                        (user.username, *shared_ids),
-                    ).fetchall()
-            else:
-                if include_archived:
-                    rows = conn.execute(
-                        "SELECT * FROM registrations WHERE owner = ? ORDER BY created_at DESC",
-                        (user.username,),
-                    ).fetchall()
-                else:
-                    rows = conn.execute(
-                        "SELECT * FROM registrations WHERE owner = ? AND archived = 0 ORDER BY created_at DESC",
-                        (user.username,),
-                    ).fetchall()
+            where.append("owner = ?")
+            params.append(user.username)
+    if not include_archived:
+        where.append("archived = 0")
+    sql = "SELECT * FROM registrations"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY created_at DESC"
+    with get_db() as conn:
+        rows = conn.execute(sql, params).fetchall()
     reg_ids = [row["id"] for row in rows]
     registrant_counts = _get_registrant_counts(reg_ids)
 
@@ -569,14 +508,21 @@ async def list_registrations(
 
 @router.get("/public", response_model=list[RegistrationPublicOut])
 async def list_public_registrations() -> list[RegistrationPublicOut]:
-    """Return all open, publicly listed registrations."""
+    """Return all open, publicly listed registrations.
+
+    Directory listing only: registrant *names* are deliberately omitted
+    (``registrants=[]``) — the directory UI shows counts, and exposing every
+    participant name across all lobbies in one unauthenticated response would
+    allow trivial name enumeration.  The per-lobby ``GET /{rid}/public``
+    endpoint still returns the names for the lobby the visitor opened.
+    """
     with get_db() as conn:
         rows = conn.execute(
             "SELECT * FROM registrations WHERE open = 1 AND listed = 1 AND archived = 0 ORDER BY created_at DESC",
         ).fetchall()
     registrations = [dict(row) for row in rows]
     reg_ids = [registration["id"] for registration in registrations]
-    registrants_by_registration = _get_registrants_by_registration_id(reg_ids)
+    registrant_counts = _get_registrant_counts(reg_ids)
     tids_by_registration = {
         registration["id"]: _parse_tids(registration.get("converted_to_tids")) for registration in registrations
     }
@@ -589,7 +535,6 @@ async def list_public_registrations() -> list[RegistrationPublicOut]:
         branding = _get_scope_branding(community_id, r.get("club_id"), branding_cache)
         tids = tids_by_registration[r["id"]]
         linked_tournaments = linked_by_registration[r["id"]]
-        registrants = registrants_by_registration.get(r["id"], [])
         result.append(
             RegistrationPublicOut(
                 id=r["id"],
@@ -607,10 +552,8 @@ async def list_public_registrations() -> list[RegistrationPublicOut]:
                 archived=bool(r.get("archived", 0)),
                 sport=r.get("sport", Sport.PADEL),
                 email_requirement=_email_requirement(r),
-                registrant_count=len(registrants),
-                registrants=[
-                    RegistrantPublicOut(player_id=p["player_id"], player_name=p["player_name"]) for p in registrants
-                ],
+                registrant_count=registrant_counts.get(r["id"], 0),
+                registrants=[],
                 community_id=community_id,
                 community_name=branding["community_name"],
                 club_id=r.get("club_id"),
@@ -701,17 +644,9 @@ async def set_registration_community(
     existing_club_id = reg.get("club_id")
     existing_season_id = reg.get("season_id")
     with get_db() as conn:
-        if existing_club_id:
-            club_row = conn.execute("SELECT community_id FROM clubs WHERE id = ?", (existing_club_id,)).fetchone()
-            if club_row is None or club_row["community_id"] != new_community_id:
-                existing_club_id = None
-        if existing_season_id:
-            season_row = conn.execute(
-                "SELECT c.community_id AS community_id FROM seasons s JOIN clubs c ON c.id = s.club_id WHERE s.id = ?",
-                (existing_season_id,),
-            ).fetchone()
-            if season_row is None or season_row["community_id"] != new_community_id:
-                existing_season_id = None
+        existing_club_id, existing_season_id = revalidate_scope_for_community(
+            conn, new_community_id, existing_club_id, existing_season_id
+        )
         conn.execute(
             "UPDATE registrations SET community_id = ?, club_id = ?, season_id = ? WHERE id = ?",
             (new_community_id, existing_club_id, existing_season_id, reg["id"]),
@@ -1082,6 +1017,7 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
 
         # Resolve optional Player Hub profile link
         profile_id: str | None = None
+        profile_passphrase_linked: str | None = None
         if req.profile_passphrase:
             profile = lookup_profile_by_passphrase(req.profile_passphrase.strip())
             if profile is not None:
@@ -1091,6 +1027,7 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
                 if profile_passphrase_value not in existing_passphrases:
                     passphrase = profile_passphrase_value
                 profile_id = profile["id"]
+                profile_passphrase_linked = profile_passphrase_value
 
         # Auto-link by email: if the player provides an email that matches a Player Hub
         # profile and they haven't explicitly linked via passphrase, link them silently.
@@ -1112,6 +1049,7 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
                     if pp_val not in existing_passphrases:
                         passphrase = pp_val
                     profile_id = profile_row["id"]
+                    profile_passphrase_linked = pp_val
 
         answers_json = json.dumps(req.answers) if req.answers else None
         email = req.email.strip()
@@ -1165,6 +1103,12 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
         # success screen can confirm the link instead of offering to create a new
         # profile.
         "profile_linked": profile_id is not None,
+        # True when linked but the profile's passphrase was already taken in this
+        # lobby, so this entry got its own code.  The success screen explains the
+        # mismatch — otherwise the player tries their profile code and it fails.
+        "passphrase_differs_from_profile": (
+            profile_id is not None and profile_passphrase_linked is not None and passphrase != profile_passphrase_linked
+        ),
     }
 
 

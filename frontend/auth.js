@@ -577,7 +577,7 @@ async function handleCreateUser(event) {
  * @param {string} username
  */
 async function deleteUserWithConfirm(username) {
-  if (!confirm(t('txt_txt_delete_user_confirm').replace('{username}', username))) return;
+  if (!(await uiConfirm(t('txt_txt_delete_user_confirm').replace('{username}', username), { danger: true }))) return;
   const errDiv = document.getElementById('user-mgmt-error');
   try {
     await apiAuth(`/api/auth/users/${encodeURIComponent(username)}`, { method: 'DELETE' });

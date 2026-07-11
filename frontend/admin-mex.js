@@ -474,7 +474,7 @@ function _renderMexLeaderboard() {
   };
 
   let html = `<h2 class="card-heading-row">${t('txt_txt_leaderboard')} <button class="format-info-btn" onclick="showAbbrevPopup(event,'leaderboard')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h2>`;
-  html += `<table><thead><tr>`;
+  html += `<table class="standings-table standings-table--rank"><thead><tr>`;
   html += thHtml('rank', t('txt_txt_rank'));
   html += thHtml('player', (_mexTeamRoster && Object.keys(_mexTeamRoster).length > 0) ? t('txt_txt_team') : t('txt_txt_player'));
   html += thHtml('total_points', t('txt_txt_total_pts_abbrev'));

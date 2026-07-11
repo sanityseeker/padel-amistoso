@@ -339,3 +339,4 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 .reg-success-title { display: flex; align-items: center; justify-content: center; gap: 0.45rem; }
 .reg-success-check { display: inline-flex; color: var(--color-success); }
 .reg-error-icon { color: var(--color-warning, var(--red)); font-size: 2rem; line-height: 1; margin-bottom: 0.35rem; }
+.reg-ps-passphrase-differs { font-size: 0.82rem; color: var(--color-warning, var(--text-muted)); background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 0.5rem 0.75rem; margin: 0.5rem 0 0; line-height: 1.5; }

@@ -23,7 +23,13 @@ from ..email import (
     send_email,
 )
 from ..models import GPPhase, MatchStatus, Sport
-from .helpers import _find_match, _require_editor_access, _require_owner_or_admin
+from .helpers import (
+    _find_match,
+    _require_editor_access,
+    _require_owner_or_admin,
+    get_scope_branding as _get_tournament_branding,
+    revalidate_scope_for_community,
+)
 from .db import get_db, get_shared_tournament_ids
 from .player_secret_store import (
     delete_secrets_for_tournament,
@@ -53,35 +59,6 @@ from .routes_admin_players import (
     _purge_profile_record,
     list_ghost_profiles_for_tournament,
 )
-from .routes_clubs import resolve_club_for_scope
-
-
-def _get_tournament_branding(
-    community_id: str,
-    club_id: str | None = None,
-    cache: dict[tuple[str, str | None], dict[str, str | None]] | None = None,
-) -> dict[str, str | None]:
-    """Return community/club display metadata for a tournament.
-
-    When ``club_id`` is provided it is used directly; otherwise the first club
-    in the community (by creation date) is used as a legacy fallback.
-    """
-    cache_key = (community_id, club_id)
-    if cache is not None and cache_key in cache:
-        return cache[cache_key]
-
-    with get_db() as conn:
-        row = conn.execute("SELECT name FROM communities WHERE id = ?", (community_id,)).fetchone()
-
-    club = resolve_club_for_scope(community_id, club_id)
-    branding = {
-        "community_name": (row["name"] if row is not None else None),
-        "club_name": (club.name if club is not None else None),
-        "club_logo_url": (f"/api/clubs/{club.id}/logo" if club is not None and club.has_logo else None),
-    }
-    if cache is not None:
-        cache[cache_key] = branding
-    return branding
 
 
 router = APIRouter(prefix="/api/tournaments", tags=["tournaments"])
@@ -162,19 +139,9 @@ async def set_tournament_community(tid: str, req: SetCommunityRequest, user: Use
 
         # Validate referenced club / season still belong to the new community.
         with get_db() as conn:
-            if existing_club_id:
-                club_row = conn.execute("SELECT community_id FROM clubs WHERE id = ?", (existing_club_id,)).fetchone()
-                if club_row is None or club_row["community_id"] != new_community_id:
-                    existing_club_id = None
-            if existing_season_id:
-                season_row = conn.execute(
-                    "SELECT c.community_id AS community_id"
-                    " FROM seasons s JOIN clubs c ON c.id = s.club_id"
-                    " WHERE s.id = ?",
-                    (existing_season_id,),
-                ).fetchone()
-                if season_row is None or season_row["community_id"] != new_community_id:
-                    existing_season_id = None
+            existing_club_id, existing_season_id = revalidate_scope_for_community(
+                conn, new_community_id, existing_club_id, existing_season_id
+            )
 
         _tournaments[tid]["community_id"] = new_community_id
         _tournaments[tid]["club_id"] = existing_club_id

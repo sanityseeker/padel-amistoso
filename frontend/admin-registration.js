@@ -191,9 +191,9 @@ function _renderRegDetailInline(rid) {
         .filter(reg => _dupNames.has(reg.player_name.trim().toLowerCase()))
         .map(reg => esc(reg.player_name));
       const unique = [...new Set(dupList)].join(', ');
-      html += `<div style="margin-top:0.5rem;padding:0.45rem 0.7rem;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.5);border-radius:6px;font-size:0.8rem;color:#f59e0b">${t('txt_reg_duplicate_names', { names: unique })}</div>`;
+      html += `<div class="reg-duplicate-warning">${t('txt_reg_duplicate_names', { names: unique })}</div>`;
     }
-    html += `<div style="overflow-x:auto;margin-top:0.5rem"><table style="width:100%;border-collapse:collapse;font-size:0.84rem">`;
+    html += `<div class="table-wrap" style="margin-top:0.5rem"><table class="player-codes-table">`;
     html += `<thead><tr style="border-bottom:2px solid var(--border)">`;
     html += `<th style="text-align:left;padding:0.4rem 0.5rem">${t('txt_reg_name')}</th>`;
     html += `<th style="text-align:left;padding:0.4rem 0.5rem">${t('txt_email')}</th>`;
@@ -204,7 +204,7 @@ function _renderRegDetailInline(rid) {
     for (const reg of r.registrants) {
       const isDup = _dupNames.has(reg.player_name.trim().toLowerCase());
       const rowStyle = isDup
-        ? 'border-bottom:1px solid var(--border);background:rgba(251,191,36,0.08)'
+        ? 'border-bottom:1px solid var(--border);background:var(--color-warning-bg)'
         : 'border-bottom:1px solid var(--border)';
       html += `<tr style="${rowStyle}">`;
       html += `<td style="padding:0.4rem 0.5rem;font-weight:600">${isDup ? _antIc('warning')+' ' : ''}${esc(reg.player_name)}</td>`;
@@ -395,17 +395,17 @@ async function _setRegAlias(rid) {
     await api(`/api/registrations/${rid}/alias`, { method: 'PUT', body: JSON.stringify({ alias }) });
     if (_regDetails[rid]) _regDetails[rid].alias = alias;
     _renderRegDetailInline(rid);
-    alert(t('txt_txt_alias_value_set_successfully', { value: alias }));
+    _showToast(t('txt_txt_alias_value_set_successfully', { value: alias }));
   } catch (e) { alert(t('txt_txt_failed_to_set_alias_value', { value: e.message })); }
 }
 
 async function _deleteRegAlias(rid) {
-  if (!confirm(t('txt_txt_remove_the_alias_from_this_tournament'))) return;
+  if (!(await uiConfirm(t('txt_txt_remove_the_alias_from_this_tournament'), { danger: true }))) return;
   try {
     await api(`/api/registrations/${rid}/alias`, { method: 'DELETE' });
     if (_regDetails[rid]) delete _regDetails[rid].alias;
     _renderRegDetailInline(rid);
-    alert(t('txt_txt_alias_removed_successfully'));
+    _showToast(t('txt_txt_alias_removed_successfully'));
   } catch (e) { alert(t('txt_txt_failed_to_remove_alias_value', { value: e.message })); }
 }
 
@@ -468,7 +468,7 @@ function _openTournamentFromReg(tid) {
 }
 
 async function _deleteRegistration(rid) {
-  if (!confirm(t('txt_reg_confirm_delete'))) return;
+  if (!(await uiConfirm(t('txt_reg_confirm_delete'), { danger: true }))) return;
   try {
     await api(`/api/registrations/${rid}`, { method: 'DELETE' });
     delete _regDetails[rid];
@@ -1286,21 +1286,22 @@ async function _saveRegSettings(rid) {
 
 function _editRegistrant(rid, pid, currentName, currentEmail) {
   const modal = document.createElement('div');
-  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.className = 'modal-overlay';
+  modal.style.display = 'flex';
   modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-  modal.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.5rem;max-width:380px;width:100%">
-    <h3 style="margin:0 0 1rem;font-size:1rem">${t('txt_reg_edit_player')}</h3>
-    <div style="margin-bottom:0.75rem">
-      <label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:0.3rem">${t('txt_reg_name')}</label>
-      <input id="_er-name" type="text" value="${escAttr(currentName)}" maxlength="128" style="width:100%;box-sizing:border-box;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:0.88rem">
+  modal.innerHTML = `<div class="modal-dialog modal-md" role="dialog" aria-modal="true">
+    <div class="modal-header"><h2 class="modal-title">${t('txt_reg_edit_player')}</h2></div>
+    <div class="modal-form-field">
+      <label for="_er-name">${t('txt_reg_name')}</label>
+      <input id="_er-name" type="text" value="${escAttr(currentName)}" maxlength="128">
     </div>
-    <div style="margin-bottom:1.1rem">
-      <label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:0.3rem">${t('txt_reg_email_label')} <span style="color:var(--text-muted);font-weight:400">(${t('txt_txt_optional')})</span></label>
-      <input id="_er-email" type="email" value="${escAttr(currentEmail)}" maxlength="320" placeholder="${t('txt_reg_email_placeholder')}" style="width:100%;box-sizing:border-box;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:0.88rem">
+    <div class="modal-form-field">
+      <label for="_er-email">${t('txt_reg_email_label')} <span class="modal-form-optional">(${t('txt_txt_optional')})</span></label>
+      <input id="_er-email" type="email" value="${escAttr(currentEmail)}" maxlength="320" placeholder="${t('txt_reg_email_placeholder')}">
     </div>
-    <div style="display:flex;gap:0.5rem;justify-content:flex-end">
-      <button type="button" class="btn btn-sm" id="_er-cancel">${t('txt_txt_cancel')}</button>
-      <button type="button" class="btn btn-primary btn-sm" id="_er-save">${t('txt_reg_save')}</button>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-muted" id="_er-cancel">${t('txt_txt_cancel')}</button>
+      <button type="button" class="btn btn-primary" id="_er-save">${t('txt_reg_save')}</button>
     </div>
   </div>`;
   document.body.appendChild(modal);
@@ -1331,7 +1332,7 @@ function _editRegistrant(rid, pid, currentName, currentEmail) {
 }
 
 async function _removeRegistrant(rid, pid) {
-  if (!confirm(t('txt_reg_confirm_remove'))) return;
+  if (!(await uiConfirm(t('txt_reg_confirm_remove'), { danger: true }))) return;
   try {
     await api(`/api/registrations/${rid}/registrant/${pid}`, { method: 'DELETE' });
     await _loadRegDetail(rid);
@@ -1341,21 +1342,22 @@ async function _removeRegistrant(rid, pid) {
 
 function _adminAddRegistrant(rid) {
   const modal = document.createElement('div');
-  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.className = 'modal-overlay';
+  modal.style.display = 'flex';
   modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-  modal.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.5rem;max-width:380px;width:100%">
-    <h3 style="margin:0 0 1rem;font-size:1rem">${t('txt_reg_add_player')}</h3>
-    <div style="margin-bottom:0.75rem">
-      <label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:0.3rem">${t('txt_reg_name')}</label>
-      <input id="_ar-name" type="text" maxlength="128" placeholder="${t('txt_reg_add_player_prompt')}" style="width:100%;box-sizing:border-box;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:0.88rem">
+  modal.innerHTML = `<div class="modal-dialog modal-md" role="dialog" aria-modal="true">
+    <div class="modal-header"><h2 class="modal-title">${t('txt_reg_add_player')}</h2></div>
+    <div class="modal-form-field">
+      <label for="_ar-name">${t('txt_reg_name')}</label>
+      <input id="_ar-name" type="text" maxlength="128" placeholder="${t('txt_reg_add_player_prompt')}">
     </div>
-    <div style="margin-bottom:1.1rem">
-      <label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:0.3rem">${t('txt_reg_email_label')} <span style="color:var(--text-muted);font-weight:400">(${t('txt_txt_optional')})</span></label>
-      <input id="_ar-email" type="email" maxlength="320" placeholder="${t('txt_reg_email_placeholder')}" style="width:100%;box-sizing:border-box;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:0.88rem">
+    <div class="modal-form-field">
+      <label for="_ar-email">${t('txt_reg_email_label')} <span class="modal-form-optional">(${t('txt_txt_optional')})</span></label>
+      <input id="_ar-email" type="email" maxlength="320" placeholder="${t('txt_reg_email_placeholder')}">
     </div>
-    <div style="display:flex;gap:0.5rem;justify-content:flex-end">
-      <button type="button" class="btn btn-sm" id="_ar-cancel">${t('txt_txt_cancel')}</button>
-      <button type="button" class="btn btn-primary btn-sm" id="_ar-save">${t('txt_reg_add_player')}</button>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-muted" id="_ar-cancel">${t('txt_txt_cancel')}</button>
+      <button type="button" class="btn btn-primary" id="_ar-save">${t('txt_reg_add_player')}</button>
     </div>
   </div>`;
   document.body.appendChild(modal);

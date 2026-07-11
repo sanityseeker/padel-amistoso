@@ -31,3 +31,5 @@ notebooks
 docker-compose.nas.yml
 
 assets/
+
+.claude/

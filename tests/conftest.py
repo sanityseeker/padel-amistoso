@@ -45,7 +45,6 @@ def _clean_state(tmp_path):
     db_mod.init_db()
 
     state_mod._tournaments.clear()
-    state_mod._counter = 0
     state_mod._tournament_versions.clear()
     state_mod._tournament_locks.clear()
     state_mod._state_version = 0
@@ -267,7 +266,6 @@ def _clean_state(tmp_path):
     yield
 
     state_mod._tournaments.clear()
-    state_mod._counter = 0
     state_mod._tournament_versions.clear()
     state_mod._tournament_locks.clear()
     state_mod._state_version = 0

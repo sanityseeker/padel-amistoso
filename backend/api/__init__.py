@@ -49,7 +49,6 @@ from .routes_share import registration_share_router
 from .routes_push import router as push_router
 from .sse import router as sse_router
 from .state import (  # noqa: F401  — re-exported for tests
-    _counter,
     _load_state,
     _tournaments,
 )
