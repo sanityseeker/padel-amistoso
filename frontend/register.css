@@ -165,8 +165,6 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 /* Success actions */
 .success-actions { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; margin-top: 1rem; }
 .success-back-btn { display: block; width: 100%; text-decoration: none; }
-.success-register-another { background: none; border: none; cursor: pointer; font-size: 0.85rem; color: var(--text-muted); padding: 0.5rem 0.75rem; min-height: 2.75rem; border-radius: 6px; }
-.success-register-another:hover { color: var(--text); text-decoration: underline; }
 
 /* Directory — uses tv-picker-* classes from tv.css */
 
@@ -306,6 +304,8 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 .reg-returning { margin: 0 0 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); overflow: hidden; }
 .reg-returning-summary { cursor: pointer; list-style: none; padding: 0.65rem 0.85rem; font-size: 0.88rem; font-weight: 600; color: var(--text); }
 .reg-returning-summary::-webkit-details-marker { display: none; }
+.reg-returning-arrow { display: inline-block; font-size: 0.7em; color: var(--text-muted); transition: transform 0.15s; }
+.reg-returning[open] .reg-returning-arrow { transform: rotate(90deg); }
 .reg-returning-body { padding: 0.75rem 0.85rem 0.9rem; border-top: 1px solid var(--border); }
 .reg-returning-tabs { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.75rem; }
 .reg-returning-tab { flex: 1 1 auto; min-width: max-content; padding: 0.4rem 0.6rem; font-size: 0.78rem; font-family: inherit; font-weight: 500; color: var(--text-muted); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; transition: color 0.15s, border-color 0.15s; }

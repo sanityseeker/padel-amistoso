@@ -740,7 +740,7 @@ function _renderReturningPlayerSection(isLoggedIn) {
   if (isLoggedIn) return '';
 
   let html = `<details class="reg-returning">`;
-  html += `<summary class="reg-returning-summary">${t('txt_reg_returning_title')}</summary>`;
+  html += `<summary class="reg-returning-summary"><span class="reg-returning-arrow">▸</span> ${t('txt_reg_returning_title')}</summary>`;
   html += `<div class="reg-returning-body">`;
 
   // Tabs
@@ -752,6 +752,7 @@ function _renderReturningPlayerSection(isLoggedIn) {
 
   // Tier 1: code (passphrase)
   html += `<div class="reg-returning-pane" data-pane="code">`;
+  html += `<p class="reg-returning-help">${t('txt_reg_returning_code_help')}</p>`;
   html += `<div class="form-group">`;
   html += `<label>${t('txt_player_passphrase_label')}</label>`;
   html += `<input type="text" id="reg-returning-passphrase" maxlength="128" placeholder="${esc(t('txt_player_passphrase_placeholder'))}" autocomplete="off" autocapitalize="none" spellcheck="false">`;
@@ -857,7 +858,12 @@ function _switchReturningTab(tab) {
   });
 }
 
-// Tier 1: try Hub login first (enables prefill); fall back to this-lobby login.
+// Tier 1: check for a registration under the typed code in THIS lobby first,
+// then fall back to a Hub login (which just prefills the form). Order matters:
+// a Hub passphrase can differ from the entry's own registrant code, so trying
+// Hub login first could log the player into the Hub yet miss their registration
+// and wrongly show "not registered". The direct this-lobby lookup is the
+// authoritative "is there a registration connected with this code?" answer.
 async function _returningCodeLogin() {
   const passphrase = document.getElementById('reg-returning-passphrase')?.value?.trim();
   const errorEl = document.getElementById('reg-returning-error');
@@ -866,24 +872,9 @@ async function _returningCodeLogin() {
   if (errorEl) errorEl.textContent = '';
   if (btn) { btn.disabled = true; btn.textContent = t('txt_reg_ps_logging_in'); }
   try {
-    // 1) Hub login — a global passphrase that prefills the form.
-    const hub = await fetch('/api/player-profile/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passphrase }),
-    });
-    if (hub.ok) {
-      const data = await hub.json();
-      try {
-        localStorage.setItem('padel-player-profile', data.access_token);
-        localStorage.setItem('padel-player-profile-data', JSON.stringify(data.profile));
-      } catch (_) {}
-      // Re-render through _render() so the "am I already registered here?"
-      // check runs — a registered player lands on their entry, not the form.
-      _render();
-      return;
-    }
-    // 2) Fall back to a this-lobby registrant code (already registered here).
+    // 1) This-lobby registrant code: the exact code the player typed, matched
+    //    against a registration here. If it hits, they're registered — land
+    //    them on their entry so they can edit or cancel it right away.
     const lobby = await fetch(`${API}/${encodeURIComponent(_rid)}/player-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -901,6 +892,25 @@ async function _returningCodeLogin() {
       };
       if (data.token) _setRegToken(data.token);
       _showSuccess();
+      return;
+    }
+    // 2) Fall back to a Hub login — a global passphrase that prefills the form.
+    //    _render()'s profile-based entry check still lands a registered player
+    //    on their entry when the registration is linked to the profile.
+    const hub = await fetch('/api/player-profile/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passphrase }),
+    });
+    if (hub.ok) {
+      const data = await hub.json();
+      try {
+        localStorage.setItem('padel-player-profile', data.access_token);
+        localStorage.setItem('padel-player-profile-data', JSON.stringify(data.profile));
+      } catch (_) {}
+      // Re-render through _render() so the "am I already registered here?"
+      // check runs — a registered player lands on their entry, not the form.
+      _render();
       return;
     }
     if (errorEl) errorEl.textContent = t('txt_reg_login_not_found');
@@ -1261,7 +1271,7 @@ function _showSuccess() {
     html += `<p class="reg-ps-passphrase-differs">${t('txt_reg_ps_passphrase_differs')}</p>`;
   }
   html += `<p class="keep-note">${t('txt_reg_keep_code')}</p>`;
-  html += `<div class="success-actions"><a href="/register" class="btn btn-primary success-back-btn">${t('txt_reg_back_home')}</a><button type="button" class="success-register-another" onclick="_registerAnother()">${t('txt_reg_register_another')}</button></div>`;
+  html += `<div class="success-actions"><a href="/register" class="btn btn-primary success-back-btn">${t('txt_reg_back_home')}</a></div>`;
 
   html += _renderMessage();
 
@@ -1545,14 +1555,6 @@ function _regAutoResize(el) {
 }
 
 // ── Public API (for onclick handlers) ────────────────────
-
-function _registerAnother() {
-  _skipProfileAutoLoginOnce = true;
-  _lastResult = null;
-  _submittedEmail = '';
-  _stopPolling();
-  _render();
-}
 
 async function _createPlayerSpace() {
   const errorEl = document.getElementById('reg-ps-create-error');
