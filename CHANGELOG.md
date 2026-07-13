@@ -1,3 +1,9 @@
+## v1.14.11 (2026-07-13)
+
+### Fix
+
+- **performance**: optimize db connections
+
 ## v1.14.10 (2026-07-13)
 
 ### Fix
