@@ -66,7 +66,7 @@ class GhostConvertRequest(BaseModel):
 
 
 @router.get("", response_model=list[AdminPlayerProfileSummary])
-async def list_profiles(
+def list_profiles(
     q: str = "",
     club_id: str | None = None,
     community_id: str | None = None,
@@ -134,7 +134,7 @@ async def list_profiles(
 
 
 @router.get("/past-participants")
-async def search_past_participants(
+def search_past_participants(
     q: str = "",
     _admin: User = Depends(require_admin),
 ) -> list[dict]:
@@ -480,7 +480,7 @@ async def convert_ghost_to_hub_profile(
 
 
 @router.get("/{profile_id}", response_model=AdminPlayerProfileDetail)
-async def get_profile_detail(
+def get_profile_detail(
     profile_id: str,
     _admin: User = Depends(require_admin),
 ) -> AdminPlayerProfileDetail:
@@ -1059,7 +1059,7 @@ async def admin_update_email(
 
 
 @router.get("/unlinked/{tid}")
-async def list_unlinked_players(
+def list_unlinked_players(
     tid: str,
     _admin: User = Depends(require_admin),
 ) -> list[dict]:

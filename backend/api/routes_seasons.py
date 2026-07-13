@@ -118,7 +118,7 @@ club_seasons_router = APIRouter(prefix="/api/clubs/{club_id}/seasons", tags=["se
 
 
 @club_seasons_router.get("", response_model=list[SeasonOut])
-async def list_seasons(club_id: str) -> list[SeasonOut]:
+def list_seasons(club_id: str) -> list[SeasonOut]:
     """List all seasons for a club.  Active seasons first, then archived."""
     _get_club(club_id)
     with get_db() as conn:
@@ -376,7 +376,7 @@ async def set_registration_club(rid: str, req: SetClubRequest, user: User = Depe
 
 
 @router.get("/api/seasons/{season_id}/standings", response_model=SeasonStandingsResponse)
-async def get_season_standings(season_id: str) -> SeasonStandingsResponse:
+def get_season_standings(season_id: str) -> SeasonStandingsResponse:
     """Cumulative standings for a season, split by sport.
 
     For archived seasons returns the frozen snapshot taken at archive time.

@@ -8,6 +8,7 @@ Run with:
 # ruff: noqa: E402  -- load_dotenv() must run before local imports that read env vars at module level
 from __future__ import annotations
 
+import asyncio
 import json
 import hashlib
 import os
@@ -266,8 +267,14 @@ async def subdomain_router(request: Request, call_next):
     # don't leak the apex content under arbitrary hostnames.
     from .db import get_db  # noqa: PLC0415
 
-    with get_db() as conn:
-        row = conn.execute("SELECT id FROM clubs WHERE slug = ?", (label,)).fetchone()
+    def _resolve_slug():
+        with get_db() as conn:
+            return conn.execute("SELECT id FROM clubs WHERE slug = ?", (label,)).fetchone()
+
+    # Off the event loop: this middleware runs on every request to a club
+    # subdomain (assets and API calls included), so a blocking read here
+    # would stall all concurrent requests.
+    row = await asyncio.to_thread(_resolve_slug)
     if row is None:
         # Only intercept the root path so that assets (/404.png, /i18n.js, etc.)
         # can still be served by the apex routes.

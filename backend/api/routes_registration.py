@@ -458,7 +458,7 @@ async def create_registration(
 
 
 @router.get("")
-async def list_registrations(
+def list_registrations(
     include_archived: bool = Query(default=False),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
@@ -507,7 +507,7 @@ async def list_registrations(
 
 
 @router.get("/public", response_model=list[RegistrationPublicOut])
-async def list_public_registrations() -> list[RegistrationPublicOut]:
+def list_public_registrations() -> list[RegistrationPublicOut]:
     """Return all open, publicly listed registrations.
 
     Directory listing only: registrant *names* are deliberately omitted
@@ -565,7 +565,7 @@ async def list_public_registrations() -> list[RegistrationPublicOut]:
 
 
 @router.get("/public/{rid}")
-async def resolve_public_registration(rid: str) -> dict:
+def resolve_public_registration(rid: str) -> dict:
     """Public — resolve a registration by id or alias without authentication.
 
     Returns ``{"kind": "registration", "id": <canonical_id>}`` or 404.
@@ -582,7 +582,7 @@ async def resolve_public_registration(rid: str) -> dict:
 
 
 @router.get("/{rid}")
-async def get_registration(rid: str, user: User = Depends(get_current_user)) -> RegistrationAdminOut:
+def get_registration(rid: str, user: User = Depends(get_current_user)) -> RegistrationAdminOut:
     """Get full details of a registration including all registrants."""
     reg = _get_registration(rid)
     _require_registration_editor(reg, user)
@@ -904,7 +904,7 @@ async def delete_registrant(rid: str, player_id: str, user: User = Depends(get_c
 
 
 @router.get("/{rid}/secrets")
-async def get_registration_secrets(rid: str, user: User = Depends(get_current_user)) -> list[dict]:
+def get_registration_secrets(rid: str, user: User = Depends(get_current_user)) -> list[dict]:
     """Return all passphrase/token pairs for printing."""
     reg = _get_registration(rid)
     _require_registration_editor(reg, user)
@@ -927,7 +927,7 @@ async def get_registration_secrets(rid: str, user: User = Depends(get_current_us
 
 
 @router.get("/{rid}/public", response_model=RegistrationPublicOut)
-async def get_registration_public(rid: str) -> RegistrationPublicOut:
+def get_registration_public(rid: str) -> RegistrationPublicOut:
     """Return public information about a registration (no secrets)."""
     reg = _get_registration(rid)
     community_id = reg.get("community_id", "open")
@@ -1513,7 +1513,7 @@ async def set_registration_alias(rid: str, req: SetAliasRequest, user: User = De
 
 
 @router.post("/{rid}/player-login", response_model=RegistrantLoginOut)
-async def player_login(rid: str, req: RegistrantLoginIn, request: Request) -> RegistrantLoginOut:
+def player_login(rid: str, req: RegistrantLoginIn, request: Request) -> RegistrantLoginOut:
     """Allow a returning player to retrieve their registration data by passphrase or token.
 
     No admin auth required — the passphrase/token proves identity.
@@ -1540,7 +1540,7 @@ async def player_login(rid: str, req: RegistrantLoginIn, request: Request) -> Re
 
 
 @router.get("/{rid}/my-entry", response_model=RegistrantLoginOut)
-async def get_my_entry(rid: str, identity: ProfileIdentity | None = Depends(get_current_profile)) -> RegistrantLoginOut:
+def get_my_entry(rid: str, identity: ProfileIdentity | None = Depends(get_current_profile)) -> RegistrantLoginOut:
     """Return the authenticated Hub profile's own registration in this lobby.
 
     Matches by ``registrants.profile_id`` first, then by the profile's global
@@ -1711,7 +1711,7 @@ def _get_reg_email_settings(reg: dict) -> EmailSettings:
 
 
 @router.get("/{rid}/email-settings")
-async def get_reg_email_settings(rid: str, user: User = Depends(get_current_user)) -> dict:
+def get_reg_email_settings(rid: str, user: User = Depends(get_current_user)) -> dict:
     """Return the current per-registration email customisation settings."""
     reg = _get_registration(rid)
     _require_registration_editor(reg, user)
@@ -2344,7 +2344,7 @@ async def claim_participation(rid: str, req: ClaimParticipationRequest, request:
 
 
 @router.get("/{rid}/claims", response_model=list[ParticipationClaimOut])
-async def list_participation_claims(rid: str, user: User = Depends(get_current_user)) -> list[ParticipationClaimOut]:
+def list_participation_claims(rid: str, user: User = Depends(get_current_user)) -> list[ParticipationClaimOut]:
     """Organizer: list pending participation claims raised from this lobby."""
     reg = _get_registration(rid)
     _require_registration_editor(reg, user)

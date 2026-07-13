@@ -8,10 +8,12 @@ ELO scoping and tournament/registration assignment unchanged.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import secrets
 import re
+import threading
 
 from datetime import datetime, timedelta, timezone
 
@@ -52,6 +54,12 @@ from .schemas import AddCollaboratorRequest, CollaboratorListResponse, EmailLang
 from ..tournaments.player_secrets import generate_passphrase
 
 router = APIRouter(prefix="/api/clubs", tags=["clubs"])
+
+# Serializes the participant-sync section of ``list_club_players`` across the
+# request threadpool: the sync creates ghost profiles, and two concurrent
+# first-hits for the same club would otherwise both pass the version check
+# and double-create them.
+_CLUB_PLAYERS_SYNC_LOCK = threading.Lock()
 
 _LOGOS_DIR = DATA_DIR / "logos"
 _MAX_LOGO_BYTES = 5 * 1024 * 1024  # 5 MB
@@ -669,7 +677,7 @@ def get_club_logo_url(community_id: str, club_id: str | None = None) -> str | No
 
 
 @router.get("/by-community/{community_id}")
-async def get_club_by_community(community_id: str) -> dict:
+def get_club_by_community(community_id: str) -> dict:
     """Return minimal club info for a community. Public — used by TV/register."""
     club = get_club_for_community(community_id)
     if club is None:
@@ -732,7 +740,7 @@ async def set_club_slug(club_id: str, req: ClubSlugUpdate, user: User = Depends(
 
 
 @router.get("/by-slug/{slug}", response_model=None)
-async def get_club_by_slug(slug: str, request: Request, response: Response) -> dict | Response:
+def get_club_by_slug(slug: str, request: Request, response: Response) -> dict | Response:
     """Public — resolve a slug to its club's minimal public info."""
     candidate = (slug or "").strip().lower()
     if not candidate or candidate in _RESERVED_SLUGS:
@@ -788,13 +796,15 @@ async def get_club_public_tournaments(
     Sets ``ETag`` + ``Cache-Control: public, max-age=15`` so repeat requests
     within the same page session are cheap.
     """
-    club_row = _get_club(club_id)  # 404 if club doesn't exist
+    club_row = await asyncio.to_thread(_get_club, club_id)  # 404 if club doesn't exist
     raw_pinned = _safe_json_loads(club_row.get("pinned_tournament_ids"), [])
     pinned_set: set[str] = (
         {pid for pid in raw_pinned if isinstance(pid, str)} if isinstance(raw_pinned, list) else set()
     )
     from .state import _tournaments  # noqa: PLC0415
 
+    # The live-tournament scan stays on the event loop: iterating the shared
+    # _tournaments dict from a thread could race a concurrent create/delete.
     out: list[dict] = []
     for tid, data in _tournaments.items():
         if data.get("club_id") != club_id:
@@ -817,12 +827,15 @@ async def get_club_public_tournaments(
             }
         )
 
-    with get_db() as conn:
-        reg_rows = conn.execute(
-            "SELECT id, name, alias, open, sport FROM registrations "
-            "WHERE club_id = ? AND archived = 0 AND listed = 1 ORDER BY created_at DESC",
-            (club_id,),
-        ).fetchall()
+    def _fetch_reg_rows() -> list:
+        with get_db() as conn:
+            return conn.execute(
+                "SELECT id, name, alias, open, sport FROM registrations "
+                "WHERE club_id = ? AND archived = 0 AND listed = 1 ORDER BY created_at DESC",
+                (club_id,),
+            ).fetchall()
+
+    reg_rows = await asyncio.to_thread(_fetch_reg_rows)
     for r in reg_rows:
         if not r["open"]:
             continue
@@ -982,7 +995,7 @@ def _compute_club_leaderboard_rows_uncached(conn, club_id: str) -> list[dict]:
 
 
 @router.get("/{club_id}/public-leaderboard", response_model=None)
-async def get_club_public_leaderboard(
+def get_club_public_leaderboard(
     club_id: str,
     request: Request,
     response: Response,
@@ -1052,7 +1065,7 @@ class ClubPlayerMiniCard(BaseModel):
 
 
 @router.get("/{club_id}/players/{profile_id}/public-card", response_model=None)
-async def get_club_player_public_card(
+def get_club_player_public_card(
     club_id: str,
     profile_id: str,
     request: Request,
@@ -1181,7 +1194,7 @@ def _build_club_player_card(club_id: str, profile_id: str) -> ClubPlayerMiniCard
 
 
 @router.get("", response_model=list[ClubOut])
-async def list_clubs(user: User = Depends(get_current_user)) -> list[ClubOut]:
+def list_clubs(user: User = Depends(get_current_user)) -> list[ClubOut]:
     """List clubs visible to the current user.
 
     Admins see all clubs.  Regular users see clubs they created plus clubs
@@ -1213,7 +1226,7 @@ async def list_clubs(user: User = Depends(get_current_user)) -> list[ClubOut]:
 
 
 @router.get("/{club_id}", response_model=ClubOut)
-async def get_club_endpoint(club_id: str) -> ClubOut:
+def get_club_endpoint(club_id: str) -> ClubOut:
     """Get a club by ID."""
     club = _get_club(club_id)
     return _build_club_out(club)
@@ -1421,7 +1434,7 @@ async def delete_logo(club_id: str, user: User = Depends(get_current_user)) -> d
 
 
 @router.get("/{club_id}/logo")
-async def get_logo(club_id: str) -> FileResponse:
+def get_logo(club_id: str) -> FileResponse:
     """Serve the club logo image."""
     logo_path = _LOGOS_DIR / f"{club_id}.png"
     if not logo_path.exists():
@@ -1439,7 +1452,7 @@ async def get_logo(club_id: str) -> FileResponse:
 
 
 @router.get("/{club_id}/tiers", response_model=list[TierOut])
-async def list_tiers(club_id: str) -> list[TierOut]:
+def list_tiers(club_id: str) -> list[TierOut]:
     """List all tiers for a club, ordered by position."""
     _get_club(club_id)  # 404 if club doesn't exist
     with get_db() as conn:
@@ -1519,7 +1532,7 @@ async def delete_tier(club_id: str, tier_id: str, user: User = Depends(get_curre
 
 
 @router.get("/{club_id}/players", response_model=list[ClubPlayerOut])
-async def list_club_players(
+def list_club_players(
     club_id: str,
     sport: str = Query(default="", pattern=r"^(|padel|tennis)$"),
     user: User = Depends(get_current_user),
@@ -1531,29 +1544,34 @@ async def list_club_players(
     players are not proposed for the wrong sport.
     """
     club = _get_club(club_id)
-    with get_db() as conn:
-        # Skip the (relatively heavy) participant sync when nothing relevant
-        # has changed since the previous call. The version key is two cheap
-        # COUNT(*) lookups that hit existing indexes.
-        version = _club_sync_version(conn, club_id)
-        if _SYNC_VERSION_CACHE.get(club_id) == version:
-            needs_elo_transfer: list[tuple[str, str]] = []
-        else:
-            needs_elo_transfer = _sync_club_players_from_community(conn, club_id, club["community_id"])
-            if not needs_elo_transfer:
-                # Mark this version as fully reconciled so subsequent calls skip.
-                _SYNC_VERSION_CACHE[club_id] = version
-
-    # Call retroactive ELO transfer for ghost profiles outside the transaction
-    # to avoid nested DB connections.  After transfer, re-sync club ELO rows.
-    if needs_elo_transfer:
-        for profile_id, player_id in needs_elo_transfer:
-            retroactive_transfer_elo(profile_id, player_id)
+    # This handler runs in the request threadpool; the participant sync
+    # creates ghost profiles, so concurrent calls must not both run it.
+    with _CLUB_PLAYERS_SYNC_LOCK:
         with get_db() as conn:
-            for profile_id, _ in needs_elo_transfer:
-                _upsert_default_club_player_rows(conn, profile_id, club_id, club["community_id"], is_ghost_insert=True)
-            # Refresh sync version so the next call short-circuits.
-            _SYNC_VERSION_CACHE[club_id] = _club_sync_version(conn, club_id)
+            # Skip the (relatively heavy) participant sync when nothing relevant
+            # has changed since the previous call. The version key is two cheap
+            # COUNT(*) lookups that hit existing indexes.
+            version = _club_sync_version(conn, club_id)
+            if _SYNC_VERSION_CACHE.get(club_id) == version:
+                needs_elo_transfer: list[tuple[str, str]] = []
+            else:
+                needs_elo_transfer = _sync_club_players_from_community(conn, club_id, club["community_id"])
+                if not needs_elo_transfer:
+                    # Mark this version as fully reconciled so subsequent calls skip.
+                    _SYNC_VERSION_CACHE[club_id] = version
+
+        # Call retroactive ELO transfer for ghost profiles outside the transaction
+        # to avoid nested DB connections.  After transfer, re-sync club ELO rows.
+        if needs_elo_transfer:
+            for profile_id, player_id in needs_elo_transfer:
+                retroactive_transfer_elo(profile_id, player_id)
+            with get_db() as conn:
+                for profile_id, _ in needs_elo_transfer:
+                    _upsert_default_club_player_rows(
+                        conn, profile_id, club_id, club["community_id"], is_ghost_insert=True
+                    )
+                # Refresh sync version so the next call short-circuits.
+                _SYNC_VERSION_CACHE[club_id] = _club_sync_version(conn, club_id)
 
     with get_db() as conn:
         leaderboard_rows = _compute_club_leaderboard_rows(conn, club_id)
@@ -1688,7 +1706,7 @@ async def add_player_to_club(club_id: str, req: ClubPlayerAdd, user: User = Depe
 
 
 @router.get("/{club_id}/players/candidates", response_model=list[ClubPlayerCandidateOut])
-async def search_club_player_candidates(
+def search_club_player_candidates(
     club_id: str,
     q: str = "",
     user: User = Depends(get_current_user),
@@ -1791,7 +1809,7 @@ class ClubGhostConsolidateRequest(BaseModel):
 
 
 @router.get("/{club_id}/players/possible-members", response_model=list[ClubPlayerOut])
-async def list_possible_members(
+def list_possible_members(
     club_id: str,
     user: User = Depends(get_current_user),
 ) -> list[ClubPlayerOut]:
@@ -1848,7 +1866,7 @@ async def list_possible_members(
 
 
 @router.get("/{club_id}/players/ghost-duplicates", response_model=list[GhostDuplicateGroup])
-async def list_ghost_duplicates(
+def list_ghost_duplicates(
     club_id: str,
     user: User = Depends(get_current_user),
 ) -> list[GhostDuplicateGroup]:
@@ -2379,7 +2397,7 @@ async def assign_player_tier(
 
 
 @router.get("/{club_id}/collaborators", response_model=CollaboratorListResponse)
-async def list_club_collaborators(club_id: str, user: User = Depends(get_current_user)) -> CollaboratorListResponse:
+def list_club_collaborators(club_id: str, user: User = Depends(get_current_user)) -> CollaboratorListResponse:
     """Return the list of co-editors for a club.
 
     Accessible to the owner, any existing co-editor, and admins.

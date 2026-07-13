@@ -18,9 +18,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
 from collections import OrderedDict
 from typing import Any, Callable
+
+# Endpoints using these caches run both on the event loop and in the request
+# threadpool (sync ``def`` endpoints), so compound OrderedDict operations
+# (get → move_to_end, eviction loops) must be serialized. Builders run
+# outside the lock — a duplicate recompute is acceptable, a KeyError from a
+# concurrently evicted key is not.
+_CACHE_LOCK = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Leaderboard cache
@@ -96,12 +104,14 @@ def get_cached_leaderboard_rows(
     ``(conn, club_id)`` and returns the freshly computed rows list.
     """
     version = club_leaderboard_version(conn, club_id)
-    cached = _LEADERBOARD_CACHE.get(club_id)
     now = time.monotonic()
-    if cached is not None and cached[0] == version and cached[2] > now:
-        return cached[1]
+    with _CACHE_LOCK:
+        cached = _LEADERBOARD_CACHE.get(club_id)
+        if cached is not None and cached[0] == version and cached[2] > now:
+            return cached[1]
     rows = builder(conn, club_id)
-    _LEADERBOARD_CACHE[club_id] = (version, rows, now + LEADERBOARD_MAX_AGE_S)
+    with _CACHE_LOCK:
+        _LEADERBOARD_CACHE[club_id] = (version, rows, now + LEADERBOARD_MAX_AGE_S)
     return rows
 
 
@@ -111,13 +121,16 @@ def invalidate_leaderboard_cache(club_id: str | None = None) -> None:
     Also flushes mini-card cache entries for the affected club so a stale
     snapshot can't outlive its underlying leaderboard rows.
     """
+    with _CACHE_LOCK:
+        if club_id is None:
+            _LEADERBOARD_CACHE.clear()
+            _SYNC_VERSION_CACHE.clear()
+        else:
+            _LEADERBOARD_CACHE.pop(club_id, None)
+            _SYNC_VERSION_CACHE.pop(club_id, None)
     if club_id is None:
-        _LEADERBOARD_CACHE.clear()
-        _SYNC_VERSION_CACHE.clear()
         invalidate_mini_card_cache()
     else:
-        _LEADERBOARD_CACHE.pop(club_id, None)
-        _SYNC_VERSION_CACHE.pop(club_id, None)
         invalidate_mini_card_cache(("club", club_id))
 
 
@@ -141,26 +154,29 @@ def get_mini_card_cached(key: tuple, builder: Callable[[], Any], ttl: float = MI
     ``MINI_CARD_CACHE_MAX_ENTRIES`` with LRU eviction.
     """
     now = time.monotonic()
-    cached = _MINI_CARD_CACHE.get(key)
-    if cached is not None and cached[0] > now:
-        _MINI_CARD_CACHE.move_to_end(key)
-        return cached[1]
+    with _CACHE_LOCK:
+        cached = _MINI_CARD_CACHE.get(key)
+        if cached is not None and cached[0] > now:
+            _MINI_CARD_CACHE.move_to_end(key)
+            return cached[1]
     payload = builder()
-    _MINI_CARD_CACHE[key] = (now + ttl, payload)
-    _MINI_CARD_CACHE.move_to_end(key)
-    while len(_MINI_CARD_CACHE) > MINI_CARD_CACHE_MAX_ENTRIES:
-        _MINI_CARD_CACHE.popitem(last=False)
+    with _CACHE_LOCK:
+        _MINI_CARD_CACHE[key] = (now + ttl, payload)
+        _MINI_CARD_CACHE.move_to_end(key)
+        while len(_MINI_CARD_CACHE) > MINI_CARD_CACHE_MAX_ENTRIES:
+            _MINI_CARD_CACHE.popitem(last=False)
     return payload
 
 
 def invalidate_mini_card_cache(prefix: tuple | None = None) -> None:
     """Drop mini-card cache entries (all, or those starting with ``prefix``)."""
-    if prefix is None:
-        _MINI_CARD_CACHE.clear()
-        return
-    for k in list(_MINI_CARD_CACHE.keys()):
-        if k[: len(prefix)] == prefix:
-            _MINI_CARD_CACHE.pop(k, None)
+    with _CACHE_LOCK:
+        if prefix is None:
+            _MINI_CARD_CACHE.clear()
+            return
+        for k in list(_MINI_CARD_CACHE.keys()):
+            if k[: len(prefix)] == prefix:
+                _MINI_CARD_CACHE.pop(k, None)
 
 
 # ---------------------------------------------------------------------------

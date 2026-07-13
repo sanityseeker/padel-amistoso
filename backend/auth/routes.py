@@ -87,8 +87,12 @@ def _client_ip(request: Request) -> str:
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest, request: Request):
-    """Authenticate with username + password, receive a JWT."""
+def login(req: LoginRequest, request: Request):
+    """Authenticate with username + password, receive a JWT.
+
+    Sync ``def`` on purpose: FastAPI runs it in the threadpool, keeping the
+    ~100ms+ bcrypt verification off the event loop.
+    """
     client_ip = _client_ip(request)
     _login_rate_limiter.check(client_ip, "Too many failed login attempts — try again later")
     user = user_store.authenticate(req.username, req.password)

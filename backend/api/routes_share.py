@@ -121,7 +121,7 @@ def _require_registration_owner_or_admin(rid: str, user: User) -> None:
 
 
 @registration_share_router.get("/{rid}/collaborators", response_model=CollaboratorListResponse)
-async def list_registration_collaborators(rid: str, user: User = Depends(get_current_user)) -> CollaboratorListResponse:
+def list_registration_collaborators(rid: str, user: User = Depends(get_current_user)) -> CollaboratorListResponse:
     """Return the list of co-editors for a registration.
 
     Accessible to the owner and any existing co-editor.

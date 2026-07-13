@@ -1952,7 +1952,7 @@ def _backfill_finished_secrets(profile_id: str) -> None:
 
 
 @router.get("/leaderboard", response_model=LeaderboardResponse)
-async def get_leaderboard(
+def get_leaderboard(
     community_id: str | None = Query(default=None, max_length=64),
     club_id: str | None = Query(default=None, max_length=64),
 ) -> LeaderboardResponse:
@@ -2454,7 +2454,7 @@ def _get_profile_club_elo(profile_id: str, club_id: str) -> dict[str, float | in
 
 
 @router.post("/resolve", response_model=PassphraseResolveResponse)
-async def resolve_profile_passphrase(req: PassphraseResolveRequest, request: Request) -> PassphraseResolveResponse:
+def resolve_profile_passphrase(req: PassphraseResolveRequest, request: Request) -> PassphraseResolveResponse:
     """Resolve a passphrase to determine if it belongs to a hub profile or a tournament/registration.
 
     This is a read-only discovery endpoint: it does not create sessions or return JWTs.
@@ -2682,7 +2682,7 @@ async def resend_profile_email_verification(
 
 
 @router.post("/login", response_model=ProfileLoginResponse)
-async def login_profile(req: ProfileLoginRequest, request: Request) -> ProfileLoginResponse:
+def login_profile(req: ProfileLoginRequest, request: Request) -> ProfileLoginResponse:
     """Authenticate to the Player Hub with the 3-word global passphrase.
 
     Returns a 30-day JWT on success.
@@ -2795,7 +2795,7 @@ async def recover_by_participation(req: ProfileRecoverRequest, request: Request)
 
 
 @router.get("/space", response_model=PlayerSpaceResponse)
-async def get_player_space(
+def get_player_space(
     identity: ProfileIdentity | None = Depends(get_current_profile),
     elo_history_limit: int = Query(default=5, ge=5, le=50),
     community_id: str | None = Query(default=None, max_length=64),
@@ -2853,7 +2853,7 @@ async def get_player_space(
 
 
 @router.get("/tournament-path/{entity_id}/{player_id}", response_model=TournamentPathResponse)
-async def get_tournament_path(
+def get_tournament_path(
     entity_id: str,
     player_id: str,
     identity: ProfileIdentity | None = Depends(get_current_profile),

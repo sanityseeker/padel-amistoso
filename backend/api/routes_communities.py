@@ -68,7 +68,7 @@ def _generate_community_id() -> str:
 
 
 @router.get("", response_model=list[CommunityOut])
-async def list_communities(user: User | None = Depends(get_current_user_optional)) -> list[CommunityOut]:
+def list_communities(user: User | None = Depends(get_current_user_optional)) -> list[CommunityOut]:
     """List communities visible to the current user.
 
     Visibility rules:
@@ -140,7 +140,7 @@ async def list_communities(user: User | None = Depends(get_current_user_optional
 
 
 @router.get("/{community_id}", response_model=CommunityOut)
-async def get_community(community_id: str) -> CommunityOut:
+def get_community(community_id: str) -> CommunityOut:
     """Get a single community by ID."""
     with get_db() as conn:
         row = conn.execute(
