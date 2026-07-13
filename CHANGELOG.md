@@ -1,3 +1,9 @@
+## v1.14.10 (2026-07-13)
+
+### Fix
+
+- **registration**: improve the wording for returning players
+
 ## v1.14.9 (2026-07-11)
 
 ### Fix
