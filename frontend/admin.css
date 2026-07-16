@@ -4267,9 +4267,24 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   color: var(--color-warning);
   margin-right: auto;
 }
-.reg-eligible-mark { font-weight: 700; }
-.reg-eligible-mark.ok { color: var(--color-success); }
-.reg-eligible-mark.no { color: var(--text-muted); }
+.reg-eligible-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  margin-right: 0.45rem;
+  vertical-align: baseline;
+  flex-shrink: 0;
+}
+.reg-eligible-dot.ok {
+  background: var(--color-success);
+  box-shadow: 0 0 0 2px var(--color-success-highlight);
+}
+.reg-eligible-dot.no {
+  background: transparent;
+  border: 1.5px solid var(--text-muted);
+  opacity: 0.7;
+}
 .reg-row-not-eligible { opacity: 0.55; }
 .badge-eligible {
   background: var(--color-success-highlight);

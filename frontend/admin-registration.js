@@ -224,8 +224,8 @@ function _renderRegDetailInline(rid) {
       let eligibleMark = '';
       if (_hasSavedFilter) {
         eligibleMark = _eligibleSet.has(reg.player_id)
-          ? `<span class="reg-eligible-mark ok" title="${escAttr(t('txt_reg_filter_eligible_tooltip'))}">✓</span> `
-          : `<span class="reg-eligible-mark no" title="${escAttr(t('txt_reg_filter_not_eligible_tooltip'))}">✕</span> `;
+          ? `<span class="reg-eligible-dot ok" title="${escAttr(t('txt_reg_filter_eligible_tooltip'))}"></span>`
+          : `<span class="reg-eligible-dot no" title="${escAttr(t('txt_reg_filter_not_eligible_tooltip'))}"></span>`;
       }
       html += `<td style="padding:0.4rem 0.5rem;font-weight:600" class="${_hasSavedFilter && !_eligibleSet.has(reg.player_id) ? 'reg-row-not-eligible' : ''}">${eligibleMark}${isDup ? _antIc('warning')+' ' : ''}${esc(reg.player_name)}</td>`;
       html += `<td style="padding:0.4rem 0.5rem;font-size:0.82em;color:var(--text-muted)">${reg.email ? esc(reg.email) : '—'}</td>`;
