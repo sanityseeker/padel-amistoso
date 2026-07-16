@@ -4141,6 +4141,142 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   resize: none;
 }
 
+/* ── Final participant filter ── */
+.reg-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.reg-filter-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+.reg-filter-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--border);
+}
+.reg-filter-answered-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.reg-filter-answered-label input {
+  width: 0.85rem;
+  height: 0.85rem;
+  cursor: pointer;
+}
+.reg-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.reg-filter-chip {
+  font-size: 0.78rem;
+  padding: 0.22rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface2);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reg-filter-chip:hover { border-color: var(--accent); color: var(--text); }
+.reg-filter-chip.active {
+  background: var(--color-primary-highlight);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+.reg-filter-range-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.reg-filter-range-sep { color: var(--text-muted); flex-shrink: 0; }
+.reg-filter-input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  box-sizing: border-box;
+}
+.reg-filter-input:focus { outline: none; border-color: var(--accent); }
+.reg-filter-hint {
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.reg-filter-result {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.7rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.reg-filter-result-count { font-size: 0.85rem; }
+.reg-filter-result-empty {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin: 0;
+}
+.reg-filter-result-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+.reg-filter-name-chip {
+  font-size: 0.75rem;
+  padding: 0.14rem 0.5rem;
+  border-radius: 20px;
+  background: var(--color-success-highlight);
+  color: var(--color-success);
+  border: 1px solid color-mix(in srgb, var(--color-success) 35%, transparent);
+}
+.reg-filter-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+.reg-filter-unsaved {
+  font-size: 0.75rem;
+  color: var(--color-warning);
+  margin-right: auto;
+}
+.reg-eligible-mark { font-weight: 700; }
+.reg-eligible-mark.ok { color: var(--color-success); }
+.reg-eligible-mark.no { color: var(--text-muted); }
+.reg-row-not-eligible { opacity: 0.55; }
+.badge-eligible {
+  background: var(--color-success-highlight);
+  color: var(--color-success);
+  border: 1px solid color-mix(in srgb, var(--color-success) 40%, transparent);
+}
+
 /* ── Question builder cards ── */
 .reg-q-card {
   border: 1px solid var(--border);

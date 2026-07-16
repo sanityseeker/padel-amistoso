@@ -1,6 +1,7 @@
 let _registrations = [];
 let _showArchivedRegistrations = false;
 let _regDetails = {};  // rid → full registration detail data
+let _regFilterDraft = {};  // rid → per-question participant-filter draft (may be unsaved)
 let _regClaims = {};  // rid → list of pending participation claims
 let _regCollaborators = {};  // rid → list of co-editor usernames
 let _regEmailSettings = {};  // rid → email settings {sender_name, reply_to}
@@ -150,16 +151,29 @@ function _renderRegDetailInline(rid) {
   const r = _regDetails[rid];
   if (!el || !r) return;
 
+  const questions = r.questions || [];
+  // Initialize the participant-filter draft from the saved filter once per rid;
+  // later renders keep in-progress (unsaved) edits.
+  if (_regFilterDraft[rid] === undefined) {
+    _regFilterDraft[rid] = _regFilterConditionsToDraft(r.participant_filter || []);
+  }
+
+  // Settings live on a dedicated page (questions/description editing out of
+  // the way of the registrants + answers overview).
+  const settingsMode = _isLobbySettingsPageOpen(rid);
+  if (settingsMode) {
+    _renderRegSettingsPageInline(rid, el);
+    return;
+  }
+
+  // Eligibility marks for the registrants table (only when a filter is saved)
+  const _hasSavedFilter = (r.participant_filter?.length || 0) > 0;
+  const _eligibleSet = new Set(r.eligible_player_ids || []);
+
   let html = `<div class="card">`;
 
   // Status bar (replaces the old title row + close/open + archive buttons)
   html += _renderLobbyStatusBar(rid, r);
-
-  // Unified Settings card (Share / Details / Questions / Message / Comms / Access)
-  html += _renderLobbySettingsCard(rid, {
-    regDetail: r,
-    emailSettings: _regEmailSettings[rid] || null,
-  });
 
   html += `<div class="reg-sections-group reg-sections-group-players">`;
 
@@ -207,7 +221,13 @@ function _renderRegDetailInline(rid) {
         ? 'border-bottom:1px solid var(--border);background:var(--color-warning-bg)'
         : 'border-bottom:1px solid var(--border)';
       html += `<tr style="${rowStyle}">`;
-      html += `<td style="padding:0.4rem 0.5rem;font-weight:600">${isDup ? _antIc('warning')+' ' : ''}${esc(reg.player_name)}</td>`;
+      let eligibleMark = '';
+      if (_hasSavedFilter) {
+        eligibleMark = _eligibleSet.has(reg.player_id)
+          ? `<span class="reg-eligible-mark ok" title="${escAttr(t('txt_reg_filter_eligible_tooltip'))}">✓</span> `
+          : `<span class="reg-eligible-mark no" title="${escAttr(t('txt_reg_filter_not_eligible_tooltip'))}">✕</span> `;
+      }
+      html += `<td style="padding:0.4rem 0.5rem;font-weight:600" class="${_hasSavedFilter && !_eligibleSet.has(reg.player_id) ? 'reg-row-not-eligible' : ''}">${eligibleMark}${isDup ? _antIc('warning')+' ' : ''}${esc(reg.player_name)}</td>`;
       html += `<td style="padding:0.4rem 0.5rem;font-size:0.82em;color:var(--text-muted)">${reg.email ? esc(reg.email) : '—'}</td>`;
       html += `<td style="padding:0.4rem 0.3rem;text-align:center">${_langToggle(rid, reg.player_id, reg.lang || 'en', 'reg')}</td>`;
       html += `<td style="padding:0.4rem 0.5rem"><code style="font-size:0.9em;color:var(--accent);user-select:all;cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(reg.passphrase)}</code></td>`;
@@ -250,9 +270,13 @@ function _renderRegDetailInline(rid) {
   }
 
   // Question Answers panel (separate, only shown when questions exist)
-  const questions = r.questions || [];
   if (questions.length > 0 && r.registrants.length > 0) {
     html += _renderAnswersPanel(rid, r, questions);
+  }
+
+  // Final participant filter (conditions on answers → eligible set)
+  if (questions.length > 0 && r.registrants.length > 0) {
+    html += _renderRegFilterPanel(rid, r, questions);
   }
 
   html += `</div>`;
@@ -298,7 +322,6 @@ function _renderRegDetailInline(rid) {
     if (inp.type === 'checkbox') savedInputs[inp.id] = { checked: inp.checked };
     else savedInputs[inp.id] = { value: inp.value };
   });
-  const savedQuestionDraft = _captureRegQuestionsDraft(`reg-edit-questions-${rid}`);
   const scrollY = window.scrollY;
   // Save answers-panel filter state (not captured by id-based savedInputs)
   const savedParticipantFilter = el.querySelector('.reg-answers-participant-select')?.value ?? '';
@@ -365,6 +388,41 @@ function _renderRegDetailInline(rid) {
   el.querySelectorAll('.reg-answer-text-search').forEach(search => {
     if (search.value) _regFilterAnswers(search);
   });
+
+  // Sync the filter panel's live result with the current draft
+  _regFilterRefreshResult(rid);
+}
+
+/**
+ * Render the dedicated lobby settings page (separate view of the lobby
+ * detail). Preserves typed input values and the question-editor draft across
+ * re-renders (e.g. from the detail poll).
+ */
+function _renderRegSettingsPageInline(rid, el) {
+  const r = _regDetails[rid];
+  if (!el || !r) return;
+  const questions = r.questions || [];
+
+  const savedInputs = {};
+  el.querySelectorAll('input[id], textarea[id], select[id]').forEach(inp => {
+    if (inp.type === 'checkbox') savedInputs[inp.id] = { checked: inp.checked };
+    else savedInputs[inp.id] = { value: inp.value };
+  });
+  const savedQuestionDraft = _captureRegQuestionsDraft(`reg-edit-questions-${rid}`);
+  const scrollY = window.scrollY;
+
+  el.innerHTML = _renderLobbySettingsPage(rid, {
+    regDetail: r,
+    emailSettings: _regEmailSettings[rid] || null,
+  });
+
+  for (const [id, state] of Object.entries(savedInputs)) {
+    const inp = document.getElementById(id);
+    if (!inp) continue;
+    if ('checked' in state) inp.checked = state.checked;
+    else inp.value = state.value;
+  }
+  window.scrollTo({ top: scrollY });
 
   const descEl = document.getElementById(`reg-edit-desc-${rid}`);
   if (descEl) _autoResizeTextarea(descEl);
@@ -1089,6 +1147,298 @@ function _regSortChoiceAnswers(btn) {
   rows.forEach(row => list.appendChild(row));
 }
 
+// ─── Final participant filter ──────────────────────────────
+//
+// Admins combine conditions on question answers (choices, numeric ranges,
+// text matches, answered-at-all) to derive the final set of registrants who
+// can take part in the event. The filter is stored on the registration
+// (participant_filter); the backend computes eligible_player_ids and can
+// restrict organizer-message emails to the eligible set.
+
+/** Convert stored filter conditions into the per-question UI draft. */
+function _regFilterConditionsToDraft(conditions) {
+  const draft = {};
+  for (const c of conditions || []) {
+    const e = draft[c.key] || (draft[c.key] = { values: [], text: '', min: '', max: '', answered: false });
+    if (c.op === 'any_of') e.values = [...(c.values || [])];
+    else if (c.op === 'contains') e.text = c.text || '';
+    else if (c.op === 'range') {
+      e.min = (c.min_value ?? null) !== null ? String(c.min_value) : '';
+      e.max = (c.max_value ?? null) !== null ? String(c.max_value) : '';
+    }
+    else if (c.op === 'answered') e.answered = true;
+  }
+  return draft;
+}
+
+/** Build the list of filter conditions from the current UI draft. */
+function _regFilterDraftToConditions(rid) {
+  const r = _regDetails[rid];
+  const draft = _regFilterDraft[rid] || {};
+  const conditions = [];
+  for (const q of r?.questions || []) {
+    const e = draft[q.key];
+    if (!e) continue;
+    if (e.answered) conditions.push({ key: q.key, op: 'answered' });
+    if ((q.type === 'choice' || q.type === 'multichoice') && e.values?.length) {
+      conditions.push({ key: q.key, op: 'any_of', values: [...e.values] });
+    }
+    if (q.type === 'number') {
+      const min = parseFloat(e.min), max = parseFloat(e.max);
+      if (!isNaN(min) || !isNaN(max)) {
+        const cond = { key: q.key, op: 'range' };
+        if (!isNaN(min)) cond.min_value = min;
+        if (!isNaN(max)) cond.max_value = max;
+        conditions.push(cond);
+      }
+    }
+    if (q.type === 'text' && e.text?.trim()) {
+      conditions.push({ key: q.key, op: 'contains', text: e.text.trim() });
+    }
+  }
+  return conditions;
+}
+
+/**
+ * Evaluate one condition against a registrant's raw answer.
+ * Mirrors _answer_matches_condition in backend/api/routes_registration.py —
+ * keep both in sync (the backend is authoritative once the filter is saved).
+ */
+function _regEvalCondition(cond, rawValue, q) {
+  if (!rawValue) return false;
+  let value = String(rawValue);
+  if (q?.type === 'multichoice') {
+    let selected = [];
+    try { selected = JSON.parse(rawValue) || []; } catch (_) {}
+    if (!Array.isArray(selected)) selected = [];
+    if (cond.op === 'answered') return selected.length > 0;
+    if (cond.op === 'any_of') return selected.some(s => (cond.values || []).includes(s));
+    value = selected.join(', ');
+    if (!value) return false;
+  }
+  if (cond.op === 'answered') return value.trim() !== '';
+  if (cond.op === 'any_of') return (cond.values || []).includes(value);
+  if (cond.op === 'contains') {
+    const needle = (cond.text || '').trim().toLowerCase();
+    return !!needle && value.toLowerCase().includes(needle);
+  }
+  if (cond.op === 'range') {
+    const num = parseFloat(value.trim().replace(',', '.'));
+    if (isNaN(num)) return false;
+    if (cond.min_value !== undefined && cond.min_value !== null && num < cond.min_value) return false;
+    if (cond.max_value !== undefined && cond.max_value !== null && num > cond.max_value) return false;
+    return true;
+  }
+  return false;
+}
+
+/** Player IDs matching the current (possibly unsaved) filter draft. */
+function _regDraftEligibleIds(rid) {
+  const r = _regDetails[rid];
+  if (!r) return [];
+  const conditions = _regFilterDraftToConditions(rid);
+  if (!conditions.length) return (r.registrants || []).map(reg => reg.player_id);
+  const qByKey = {};
+  for (const q of r.questions || []) qByKey[q.key] = q;
+  return (r.registrants || [])
+    .filter(reg => conditions.every(c => _regEvalCondition(c, reg.answers?.[c.key], qByKey[c.key])))
+    .map(reg => reg.player_id);
+}
+
+/** Canonical string form of a condition list, for dirty-state comparison. */
+function _regFilterCanon(conditions) {
+  return JSON.stringify((conditions || []).map(c => [
+    c.key, c.op, [...(c.values || [])].sort(), c.text || '',
+    c.min_value ?? null, c.max_value ?? null,
+  ]));
+}
+
+function _renderRegFilterPanel(rid, r, questions) {
+  const draft = _regFilterDraft[rid] || {};
+  const savedActive = (r.participant_filter?.length || 0) > 0;
+  const eligibleCount = _regDraftEligibleIds(rid).length;
+  const total = r.registrants.length;
+
+  let h = `<details class="reg-section" id="reg-filter-panel-${esc(rid)}" data-rid="${escAttr(rid)}"${savedActive ? ' open' : ''} style="margin-bottom:0.75rem">`;
+  h += `<summary class="reg-section-summary" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
+  h += `<span style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_reg_filter_title')}`;
+  h += ` <span class="badge badge-count reg-filter-count-badge" id="reg-filter-count-${esc(rid)}"${savedActive || eligibleCount !== total ? '' : ' style="display:none"'}>${eligibleCount} / ${total}</span></span>`;
+  h += `</summary>`;
+  h += `<p style="color:var(--text-muted);font-size:0.82rem;margin:0.6rem 0 0.5rem;line-height:1.5">${t('txt_reg_filter_help')}</p>`;
+
+  h += `<div class="reg-filter-grid">`;
+  for (const q of questions) {
+    const e = draft[q.key] || {};
+    h += `<div class="reg-filter-card" data-key="${escAttr(q.key)}" data-qtype="${escAttr(q.type)}">`;
+    h += `<div class="reg-filter-card-header">`;
+    h += `<span class="reg-answer-card-label">${esc(q.label)}</span>`;
+    h += `<label class="reg-filter-answered-label" title="${escAttr(t('txt_reg_filter_require_answer_help'))}">`;
+    h += `<input type="checkbox" class="reg-filter-answered"${e.answered ? ' checked' : ''} onchange="_regFilterSetAnswered(this)">`;
+    h += `<span>${t('txt_reg_filter_require_answer')}</span></label>`;
+    h += `</div>`;
+    if ((q.type === 'choice' || q.type === 'multichoice') && q.choices?.length) {
+      h += `<div class="reg-filter-chips">`;
+      for (const c of q.choices) {
+        const active = e.values?.includes(c);
+        h += `<button type="button" class="reg-filter-chip${active ? ' active' : ''}" data-choice="${escAttr(c)}" onclick="_regFilterToggleChoice(this)">${esc(c)}</button>`;
+      }
+      h += `</div>`;
+      h += `<div class="reg-filter-hint">${t('txt_reg_filter_choice_hint')}</div>`;
+    } else if (q.type === 'number') {
+      h += `<div class="reg-filter-range-row">`;
+      h += `<input type="number" step="any" class="reg-filter-input reg-filter-min" value="${escAttr(e.min ?? '')}" placeholder="${escAttr(t('txt_reg_filter_min'))}" oninput="_regFilterSetField(this,'min')">`;
+      h += `<span class="reg-filter-range-sep">–</span>`;
+      h += `<input type="number" step="any" class="reg-filter-input reg-filter-max" value="${escAttr(e.max ?? '')}" placeholder="${escAttr(t('txt_reg_filter_max'))}" oninput="_regFilterSetField(this,'max')">`;
+      h += `</div>`;
+      h += `<div class="reg-filter-hint">${t('txt_reg_filter_range_hint')}</div>`;
+    } else {
+      h += `<input type="text" class="reg-filter-input reg-filter-text" value="${escAttr(e.text ?? '')}" placeholder="${escAttr(t('txt_reg_filter_contains_placeholder'))}" maxlength="256" oninput="_regFilterSetField(this,'text')">`;
+      h += `<div class="reg-filter-hint">${t('txt_reg_filter_contains_hint')}</div>`;
+    }
+    h += `</div>`;
+  }
+  h += `</div>`;
+
+  h += `<div class="reg-filter-result" id="reg-filter-result-${esc(rid)}">${_regFilterResultHtml(rid)}</div>`;
+
+  h += `<div class="reg-filter-actions">`;
+  h += `<span class="reg-filter-unsaved" id="reg-filter-unsaved-${esc(rid)}" style="display:none">${t('txt_reg_filter_unsaved')}</span>`;
+  if (window._emailConfigured) {
+    h += `<button type="button" class="btn btn-sm reg-filter-email-btn" id="reg-filter-email-${esc(rid)}" onclick="withLoading(this,()=>_regFilterEmailEligible('${esc(rid)}'))">${_ic('mail')} ${t('txt_email_send_message_eligible')}</button>`;
+  }
+  h += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_clearRegFilter('${esc(rid)}'))">${t('txt_reg_filter_clear')}</button>`;
+  h += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegFilter('${esc(rid)}'))">${t('txt_reg_filter_save')}</button>`;
+  h += `</div>`;
+
+  h += `</details>`;
+  return h;
+}
+
+function _regFilterResultHtml(rid) {
+  const r = _regDetails[rid];
+  if (!r) return '';
+  const conditions = _regFilterDraftToConditions(rid);
+  if (!conditions.length) {
+    return `<p class="reg-filter-result-empty">${t('txt_reg_filter_no_conditions')}</p>`;
+  }
+  const ids = new Set(_regDraftEligibleIds(rid));
+  const total = r.registrants.length;
+  let h = `<div class="reg-filter-result-count">${t('txt_reg_filter_matching')}: <b>${ids.size}</b> / ${total}</div>`;
+  if (ids.size > 0) {
+    h += `<div class="reg-filter-result-names">`;
+    for (const reg of r.registrants) {
+      if (ids.has(reg.player_id)) h += `<span class="reg-filter-name-chip">${esc(reg.player_name)}</span>`;
+    }
+    h += `</div>`;
+  } else {
+    h += `<p class="reg-filter-result-empty">${t('txt_reg_filter_none_matching')}</p>`;
+  }
+  return h;
+}
+
+/** Recompute the live result, count badge, and unsaved marker from the draft. */
+function _regFilterRefreshResult(rid) {
+  const r = _regDetails[rid];
+  if (!r) return;
+  const resultEl = document.getElementById(`reg-filter-result-${rid}`);
+  if (resultEl) resultEl.innerHTML = _regFilterResultHtml(rid);
+  const conditions = _regFilterDraftToConditions(rid);
+  const badge = document.getElementById(`reg-filter-count-${rid}`);
+  if (badge) {
+    badge.textContent = `${_regDraftEligibleIds(rid).length} / ${r.registrants.length}`;
+    badge.style.display = conditions.length ? '' : 'none';
+  }
+  const unsavedEl = document.getElementById(`reg-filter-unsaved-${rid}`);
+  if (unsavedEl) {
+    const dirty = _regFilterCanon(conditions) !== _regFilterCanon(r.participant_filter);
+    unsavedEl.style.display = dirty ? '' : 'none';
+  }
+  const emailBtn = document.getElementById(`reg-filter-email-${rid}`);
+  if (emailBtn) emailBtn.style.display = conditions.length ? '' : 'none';
+}
+
+function _regFilterDraftEntry(rid, key) {
+  const draft = _regFilterDraft[rid] || (_regFilterDraft[rid] = {});
+  return draft[key] || (draft[key] = { values: [], text: '', min: '', max: '', answered: false });
+}
+
+function _regFilterToggleChoice(btn) {
+  const card = btn.closest('.reg-filter-card');
+  const panel = btn.closest('details[data-rid]');
+  if (!card || !panel) return;
+  const rid = panel.dataset.rid;
+  const entry = _regFilterDraftEntry(rid, card.dataset.key);
+  const choice = btn.dataset.choice;
+  const idx = entry.values.indexOf(choice);
+  if (idx >= 0) entry.values.splice(idx, 1); else entry.values.push(choice);
+  btn.classList.toggle('active', idx < 0);
+  _regFilterRefreshResult(rid);
+}
+
+function _regFilterSetField(input, field) {
+  const card = input.closest('.reg-filter-card');
+  const panel = input.closest('details[data-rid]');
+  if (!card || !panel) return;
+  const rid = panel.dataset.rid;
+  const entry = _regFilterDraftEntry(rid, card.dataset.key);
+  entry[field] = input.value;
+  _regFilterRefreshResult(rid);
+}
+
+function _regFilterSetAnswered(cb) {
+  const card = cb.closest('.reg-filter-card');
+  const panel = cb.closest('details[data-rid]');
+  if (!card || !panel) return;
+  const rid = panel.dataset.rid;
+  _regFilterDraftEntry(rid, card.dataset.key).answered = cb.checked;
+  _regFilterRefreshResult(rid);
+}
+
+async function _saveRegFilter(rid) {
+  const conditions = _regFilterDraftToConditions(rid);
+  const body = conditions.length
+    ? { participant_filter: conditions }
+    : { clear_participant_filter: true };
+  try {
+    await api(`/api/registrations/${rid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    delete _regFilterDraft[rid];
+    await _loadRegDetail(rid);
+    _showToast(t('txt_reg_filter_saved'));
+  } catch (e) { alert(e.message || t('txt_reg_error')); }
+}
+
+async function _clearRegFilter(rid) {
+  try {
+    await api(`/api/registrations/${rid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clear_participant_filter: true }) });
+    delete _regFilterDraft[rid];
+    await _loadRegDetail(rid);
+  } catch (e) { alert(e.message || t('txt_reg_error')); }
+}
+
+/**
+ * Email the organizer message to the participants matching the filter.
+ * Saves the current draft first so the backend filters by what's on screen.
+ */
+async function _regFilterEmailEligible(rid) {
+  const r = _regDetails[rid];
+  if (!r) return;
+  if (!(r.message || '').trim()) {
+    alert(t('txt_reg_filter_no_message'));
+    _openLobbySettingsPage(rid, 'comms');
+    return;
+  }
+  const conditions = _regFilterDraftToConditions(rid);
+  if (_regFilterCanon(conditions) !== _regFilterCanon(r.participant_filter)) {
+    const body = conditions.length
+      ? { participant_filter: conditions }
+      : { clear_participant_filter: true };
+    await api(`/api/registrations/${rid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    delete _regFilterDraft[rid];
+    await _loadRegDetail(rid);
+  }
+  await _sendRegMessageEmails(rid, true);
+}
+
 function _csvCell(v) {
   const s = String(v ?? '');
   return /[,"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -1425,10 +1775,15 @@ async function _notifyTournamentPlayers(tid) {
   }
 }
 
-async function _sendRegMessageEmails(rid) {
-  if (!confirm(t('txt_email_confirm_send_message_all'))) return;
+async function _sendRegMessageEmails(rid, eligibleOnly = false) {
+  const confirmKey = eligibleOnly ? 'txt_email_confirm_send_message_eligible' : 'txt_email_confirm_send_message_all';
+  if (!confirm(t(confirmKey))) return;
   try {
-    const res = await api(`/api/registrations/${rid}/send-message-emails`, { method: 'POST' });
+    const res = await api(`/api/registrations/${rid}/send-message-emails`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eligible_only: eligibleOnly }),
+    });
     const data = typeof res === 'object' ? res : await res;
     _showToast(t('txt_email_message_sent_count', { sent: data.sent || 0, skipped: data.skipped || 0 }));
   } catch (e) {

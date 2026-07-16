@@ -664,6 +664,10 @@ function openRegistration(rid, name) {
   currentTid = rid;
   currentType = 'registration';
   currentTournamentName = name || rid;
+  // Fresh open always starts on the lobby overview with a draft synced to the
+  // saved participant filter (not a stale one from a previous visit).
+  if (typeof _lobbySettingsPageRids !== 'undefined') _lobbySettingsPageRids.delete(rid);
+  if (typeof _regFilterDraft !== 'undefined') delete _regFilterDraft[rid];
   const existing = _openTournaments.find(t => t.id === rid);
   if (existing) {
     existing.name = name || existing.name;

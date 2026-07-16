@@ -50,6 +50,7 @@ from .schemas import (
     ConvertRegistrationRequest,
     EmailSettings,
     EmailSettingsRequest,
+    FilterConditionDef,
     FindByNameRequest,
     LinkedTournamentOut,
     ParticipationClaimOut,
@@ -66,6 +67,7 @@ from .schemas import (
     RegistrationCreate,
     RegistrationPublicOut,
     RegistrationUpdate,
+    SendMessageEmailsRequest,
     SetAliasRequest,
     SetCommunityRequest,
 )
@@ -273,6 +275,80 @@ def _validate_answers(questions: list[QuestionDef], answers: dict[str, str]) -> 
                     raise HTTPException(400, f"Invalid choice '{item}' for: {q.label}")
             if q.required and len(selected) == 0:
                 raise HTTPException(400, f"Answer required for: {q.label}")
+
+
+def _parse_participant_filter(raw: str | None) -> list[FilterConditionDef]:
+    """Deserialise the JSON *participant_filter* column into condition models."""
+    if not raw:
+        return []
+    try:
+        return [FilterConditionDef(**c) for c in json.loads(raw)]
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return []
+
+
+def _multichoice_selection(value: str) -> list[str]:
+    """Parse a multichoice answer (JSON array string) into a list of choices."""
+    try:
+        selected = json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return selected if isinstance(selected, list) else []
+
+
+def _answer_matches_condition(cond: FilterConditionDef, value: str | None, question: QuestionDef | None) -> bool:
+    """Return True when a registrant's *value* for one question satisfies *cond*.
+
+    A missing/empty answer fails every operator. This mirrors the client-side
+    evaluation in ``admin-registration.js`` (``_regEvalCondition``) — keep both
+    in sync.
+    """
+    if not value:
+        return False
+    is_multichoice = question is not None and question.type == QuestionType.MULTICHOICE
+    if is_multichoice:
+        selected = _multichoice_selection(value)
+        if cond.op == "answered":
+            return len(selected) > 0
+        if cond.op == "any_of":
+            return any(item in cond.values for item in selected)
+        # contains/range on a multichoice answer: match against the joined text
+        value = ", ".join(str(s) for s in selected)
+        if not value:
+            return False
+    if cond.op == "answered":
+        return bool(value.strip())
+    if cond.op == "any_of":
+        return value in cond.values
+    if cond.op == "contains":
+        needle = cond.text.strip().lower()
+        return bool(needle) and needle in value.lower()
+    if cond.op == "range":
+        try:
+            num = float(value.strip().replace(",", "."))
+        except ValueError:
+            return False
+        if cond.min_value is not None and num < cond.min_value:
+            return False
+        return not (cond.max_value is not None and num > cond.max_value)
+    return False
+
+
+def _eligible_player_ids(reg: dict, registrants: list[dict]) -> list[str]:
+    """Player IDs of registrants passing every participant-filter condition.
+
+    All registrants are eligible when no filter is stored.
+    """
+    conditions = _parse_participant_filter(reg.get("participant_filter"))
+    if not conditions:
+        return [r["player_id"] for r in registrants]
+    questions_by_key = {q.key: q for q in _parse_questions(reg.get("questions"))}
+    eligible: list[str] = []
+    for r in registrants:
+        answers = _parse_answers(r.get("answers"))
+        if all(_answer_matches_condition(c, answers.get(c.key), questions_by_key.get(c.key)) for c in conditions):
+            eligible.append(r["player_id"])
+    return eligible
 
 
 def _parse_tids(raw: str | None) -> list[str]:
@@ -611,6 +687,8 @@ def get_registration(rid: str, user: User = Depends(get_current_user)) -> Regist
         linked_tournaments=linked_tournaments,
         assigned_player_ids=assigned_ids,
         player_tournament_map=player_tournament_map,
+        participant_filter=_parse_participant_filter(reg.get("participant_filter")),
+        eligible_player_ids=_eligible_player_ids(reg, registrants),
         created_at=reg["created_at"],
         registrants=[
             RegistrantAdminOut(
@@ -707,6 +785,11 @@ async def update_registration(rid: str, req: RegistrationUpdate, user: User = De
     if req.email_requirement is not None:
         updates.append("email_requirement = ?")
         params.append(req.email_requirement)
+    if req.clear_participant_filter:
+        updates.append("participant_filter = NULL")
+    elif req.participant_filter is not None:
+        updates.append("participant_filter = ?")
+        params.append(json.dumps([c.model_dump() for c in req.participant_filter]))
 
     if updates:
         params.append(reg_id)
@@ -1829,8 +1912,17 @@ async def send_all_registrant_emails(rid: str, request: Request, user: User = De
 
 
 @router.post("/{rid}/send-message-emails")
-async def send_registration_message_emails(rid: str, request: Request, user: User = Depends(get_current_user)) -> dict:
-    """Send organizer message email to all registrants with a valid email address."""
+async def send_registration_message_emails(
+    rid: str,
+    request: Request,
+    req: SendMessageEmailsRequest | None = None,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Send organizer message email to registrants with a valid email address.
+
+    With ``eligible_only=true`` in the body, only registrants passing the
+    stored participant filter receive the message.
+    """
     if not email_is_configured():
         raise HTTPException(400, "Email is not configured on this server")
 
@@ -1847,6 +1939,9 @@ async def send_registration_message_emails(rid: str, request: Request, user: Use
         raise HTTPException(400, "No organizer message set for this registration")
 
     registrants = _get_registrants(reg_id)
+    if req is not None and req.eligible_only:
+        eligible = set(_eligible_player_ids(reg, registrants))
+        registrants = [r for r in registrants if r["player_id"] in eligible]
     es = _get_reg_email_settings(reg)
     skipped = 0
     jobs: list[tuple[str, str, str]] = []

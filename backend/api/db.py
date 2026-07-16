@@ -142,6 +142,7 @@ CREATE TABLE IF NOT EXISTS registrations (
     sport             TEXT    NOT NULL DEFAULT 'padel',
     auto_send_email   INTEGER NOT NULL DEFAULT 0,
     email_requirement TEXT    NOT NULL DEFAULT 'optional',
+    participant_filter TEXT,
     community_id      TEXT    NOT NULL DEFAULT 'open' REFERENCES communities(id),
     club_id           TEXT    REFERENCES clubs(id) ON DELETE SET NULL,
     created_at        TEXT    NOT NULL
@@ -451,6 +452,8 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE registrations ADD COLUMN email_requirement TEXT NOT NULL DEFAULT 'optional'")
             if "email_settings" not in reg_cols:
                 conn.execute("ALTER TABLE registrations ADD COLUMN email_settings TEXT")
+            if "participant_filter" not in reg_cols:
+                conn.execute("ALTER TABLE registrations ADD COLUMN participant_filter TEXT")
             if "converted_to_tids" not in reg_cols:
                 conn.execute("ALTER TABLE registrations ADD COLUMN converted_to_tids TEXT NOT NULL DEFAULT '[]'")
                 # Back-fill from the legacy single converted_to_tid column

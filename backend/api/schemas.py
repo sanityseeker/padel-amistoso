@@ -309,6 +309,14 @@ class TvSettings(BaseModel):
             raise ValueError(f"score_confirmation must be one of {allowed}")
 
 
+class SendMessageEmailsRequest(BaseModel):
+    """Options for sending the organizer message email to registrants."""
+
+    # When True, only registrants passing the stored participant filter receive
+    # the message (everyone when no filter is set).
+    eligible_only: bool = False
+
+
 class EmailSettingsRequest(BaseModel):
     """Partial update for per-tournament email settings (PATCH semantics)."""
 
@@ -492,6 +500,25 @@ class QuestionDef(BaseModel):
     choices: list[str] = Field(default_factory=list)
 
 
+# Participant-filter condition operators:
+# - "any_of":   answer matches any of ``values`` (choice: equals; multichoice: intersects)
+# - "contains": answer contains ``text`` (case-insensitive substring)
+# - "range":    numeric answer within [min_value, max_value] (either bound optional)
+# - "answered": any non-empty answer
+FilterOp = Literal["any_of", "contains", "range", "answered"]
+
+
+class FilterConditionDef(BaseModel):
+    """One condition of a registration participant filter (conditions are AND-ed)."""
+
+    key: str = Field(min_length=1, max_length=64)
+    op: FilterOp
+    values: list[str] = Field(default_factory=list)
+    text: str = Field(default="", max_length=256)
+    min_value: float | None = None
+    max_value: float | None = None
+
+
 class RegistrationCreate(BaseModel):
     """Create a new registration lobby."""
 
@@ -523,9 +550,11 @@ class RegistrationUpdate(BaseModel):
     sport: Sport | None = None
     auto_send_email: bool | None = None
     email_requirement: EmailRequirement | None = None
+    participant_filter: list[FilterConditionDef] | None = None
     clear_join_code: bool = False
     clear_description: bool = False
     clear_message: bool = False
+    clear_participant_filter: bool = False
     clear_answers_for_keys: list[str] = []
 
 
@@ -727,6 +756,10 @@ class RegistrationAdminOut(BaseModel):
     linked_tournaments: list[LinkedTournamentOut] = Field(default_factory=list)
     assigned_player_ids: list[str] = Field(default_factory=list)
     player_tournament_map: dict[str, list[str]] = Field(default_factory=dict)
+    participant_filter: list[FilterConditionDef] = Field(default_factory=list)
+    # Registrants passing every participant-filter condition (all registrants
+    # when no filter is set) — the "final set" eligible for the event.
+    eligible_player_ids: list[str] = Field(default_factory=list)
     created_at: str
     registrants: list[RegistrantAdminOut] = []
 

@@ -1,33 +1,42 @@
-// ─── Unified per-lobby (registration) Settings card ───────────────────────
+// ─── Per-lobby (registration) Settings page ────────────────────────────────
 //
-// Mirrors the per-tournament Settings card (admin-settings-panel.js):
-// renders all per-lobby configuration into a single collapsible card with
-// four sub-tabs: Details (incl. public alias), Questions, Communications
-// (incl. organizer message), Access. Active sub-tab persists per-rid in
-// `adminLobbySettingsSubtab:<rid>`, open/closed state in
-// `adminLobbySettingsOpen:<rid>`.
+// All per-lobby configuration (details incl. public alias + description,
+// questions editor, communications incl. organizer message, access) lives on
+// a dedicated settings page — a separate view of the lobby detail — so the
+// overview stays focused on registrants and their answers. The page keeps
+// the sub-tab layout of the per-tournament Settings card
+// (admin-settings-panel.js); the active sub-tab persists per-rid in
+// `adminLobbySettingsSubtab:<rid>`.
 
 const LOBBY_SUBTAB_DEFAULT = 'details';
 const LOBBY_SUBTABS = ['details', 'questions', 'comms', 'access'];
 
+// rids whose settings page (instead of the lobby overview) is currently shown
+const _lobbySettingsPageRids = new Set();
+
+function _isLobbySettingsPageOpen(rid) {
+  return _lobbySettingsPageRids.has(rid);
+}
+
+/** Show the dedicated settings page for a lobby. */
+function _openLobbySettingsPage(rid, subtab) {
+  if (subtab) {
+    try { localStorage.setItem(_lobbySubtabStorageKey(rid), subtab); } catch (_) { /* ignore */ }
+  }
+  _lobbySettingsPageRids.add(rid);
+  _renderRegDetailInline(rid);
+  window.scrollTo({ top: 0 });
+}
+
+/** Leave the settings page and return to the lobby overview. */
+function _closeLobbySettingsPage(rid) {
+  _lobbySettingsPageRids.delete(rid);
+  _renderRegDetailInline(rid);
+  window.scrollTo({ top: 0 });
+}
+
 function _lobbySubtabStorageKey(rid) {
   return `adminLobbySettingsSubtab:${rid}`;
-}
-
-function _lobbyOpenStorageKey(rid) {
-  return `adminLobbySettingsOpen:${rid}`;
-}
-
-function _getLobbySettingsOpen(rid) {
-  try {
-    return localStorage.getItem(_lobbyOpenStorageKey(rid)) === '1';
-  } catch (_) {
-    return false;
-  }
-}
-
-function _setLobbySettingsOpen(rid, open) {
-  try { localStorage.setItem(_lobbyOpenStorageKey(rid), open ? '1' : '0'); } catch (_) { /* ignore */ }
 }
 
 function _getLobbySubtab(rid) {
@@ -60,28 +69,33 @@ function setLobbySubtab(rid, key) {
 }
 
 /**
- * Open the lobby Settings card (if collapsed) and jump to a sub-tab.
+ * Open the lobby settings page on a given sub-tab.
  * Used by the lobby status-bar shortcut button.
  */
 function _jumpToLobbySettings(rid, subtab) {
-  const card = document.getElementById('lobby-settings-card');
-  if (!card) return;
-  const details = card.querySelector('details.admin-settings-details');
-  if (details && !details.open) {
-    details.open = true;
-    if (rid) _setLobbySettingsOpen(rid, true);
-  }
-  if (subtab && rid) setLobbySubtab(rid, subtab);
-  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  _openLobbySettingsPage(rid, subtab);
 }
 
 /**
- * Open the read-only Answers panel (rendered below the Settings card) and
- * scroll it into view. Called from the Questions sub-tab "View answers"
- * shortcut.
+ * Open the read-only Answers panel (on the lobby overview) and scroll it into
+ * view. Called from the Questions sub-tab "View answers" shortcut — leaves
+ * the settings page first when it is open.
  */
 function _jumpToLobbyAnswers(rid) {
+  if (_isLobbySettingsPageOpen(rid)) _closeLobbySettingsPage(rid);
   const panel = document.getElementById(`reg-answers-panel-${rid}`);
+  if (!panel) return;
+  if (panel.tagName === 'DETAILS' && !panel.open) panel.open = true;
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/**
+ * Open the participant-filter panel (on the lobby overview) and scroll it
+ * into view.
+ */
+function _jumpToLobbyFilter(rid) {
+  if (_isLobbySettingsPageOpen(rid)) _closeLobbySettingsPage(rid);
+  const panel = document.getElementById(`reg-filter-panel-${rid}`);
   if (!panel) return;
   if (panel.tagName === 'DETAILS' && !panel.open) panel.open = true;
   panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -119,6 +133,8 @@ function _renderLobbyStatusBar(rid, r) {
   const count = r.registrants?.length ?? r.registrant_count ?? 0;
   const hasQuestions = (r.questions?.length || 0) > 0;
   const answeredCount = hasQuestions ? _countLobbyAnswered(r) : 0;
+  const hasFilter = (r.participant_filter?.length || 0) > 0;
+  const eligibleCount = hasFilter ? (r.eligible_player_ids?.length || 0) : 0;
 
   let statusPill;
   if (archived) {
@@ -151,6 +167,7 @@ function _renderLobbyStatusBar(rid, r) {
           ${statusPill}
           <span class="badge badge-count">${count} ${t(count === 1 ? 'txt_reg_player_singular' : 'txt_reg_players_plural')}</span>
           ${hasQuestions && answeredCount > 0 ? `<span class="badge badge-count" title="${escAttr(t('txt_reg_answers_title'))}" style="cursor:pointer" onclick="_jumpToLobbyAnswers('${esc(rid)}')">${answeredCount} ${t('txt_reg_answers_badge')}</span>` : ''}
+          ${hasFilter ? `<span class="badge badge-eligible" title="${escAttr(t('txt_reg_filter_title'))}" style="cursor:pointer" onclick="_jumpToLobbyFilter('${esc(rid)}')">${eligibleCount} / ${count} ${t('txt_reg_filter_eligible')}</span>` : ''}
         </h3>
         <div class="gp-ops-next-action">
           ${actions}
@@ -269,9 +286,13 @@ function _renderLobbyCommsBody(rid, r, emailSettings) {
   html += `<label class="settings-label">${t('txt_reg_admin_message')}</label>`;
   html += `<p class="settings-help">${t('txt_reg_message_placeholder')}</p>`;
   html += `<textarea id="reg-edit-message-${esc(rid)}" class="reg-desc-textarea" rows="3" placeholder="${t('txt_reg_message_placeholder')}" oninput="_autoResizeTextarea(this)">${esc(r.message || '')}</textarea>`;
-  html += `<div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem">`;
+  html += `<div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;flex-wrap:wrap">`;
   if (window._emailConfigured) {
     html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendRegMessageEmails('${esc(rid)}'))" title="${t('txt_email_confirm_send_message_all')}">${_ic('mail')} ${t('txt_email_send_message_all')}</button>`;
+    if ((r.participant_filter?.length || 0) > 0) {
+      const eligibleCount = r.eligible_player_ids?.length || 0;
+      html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendRegMessageEmails('${esc(rid)}',true))" title="${escAttr(t('txt_email_confirm_send_message_eligible'))}">${_ic('mail')} ${t('txt_email_send_message_eligible')} (${eligibleCount})</button>`;
+    }
   }
   html += `<button type="button" class="btn btn-primary btn-sm" style="margin-left:auto" onclick="withLoading(this,()=>_saveRegMessage('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
   html += `</div>`;
@@ -312,16 +333,17 @@ function _renderLobbyAccessBody(rid) {
   return _renderRegCollaboratorsSection(rid, list);
 }
 
-// ─── Card orchestrator ────────────────────────────────────────────────────
+// ─── Page orchestrator ────────────────────────────────────────────────────
 
 /**
- * Render the unified per-lobby Settings card.
+ * Render the dedicated per-lobby settings page: a back-to-lobby header bar
+ * followed by the sub-tabbed settings card (always expanded).
  *
  * ctx fields:
  *   - regDetail:     object from _regDetails[rid]
  *   - emailSettings: object from _regEmailSettings[rid] (may be null)
  */
-function _renderLobbySettingsCard(rid, ctx) {
+function _renderLobbySettingsPage(rid, ctx) {
   const r = (ctx && ctx.regDetail) || (typeof _regDetails === 'object' ? _regDetails[rid] : null);
   if (!r) return '';
   const emailSettings = (ctx && ctx.emailSettings) || null;
@@ -340,13 +362,19 @@ function _renderLobbySettingsCard(rid, ctx) {
   if (subtabs.length === 0) return '';
   const activeKey = subtabs.some(st => st.key === active) ? active : subtabs[0].key;
 
-  let html = `<div class="card admin-settings-card lobby-settings-card" id="lobby-settings-card">`;
-  const isOpen = _getLobbySettingsOpen(rid);
-  html += `<details class="admin-settings-details"${isOpen ? ' open' : ''} ontoggle="_setLobbySettingsOpen('${esc(rid)}', this.open)">`;
-  html += `<summary class="admin-settings-summary">`;
-  html += `<span class="admin-settings-title"><span class="tv-chevron admin-settings-chevron">▸</span> ⚙ ${t('txt_lobby_settings_title')}</span>`;
-  html += `</summary>`;
+  let html = `<div class="card lobby-status-bar tournament-status-bar lobby-settings-page-bar">`;
+  html += `<div class="gp-ops-header-top">`;
+  html += `<h3 style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">`;
+  html += `<span>${esc(r.name || rid)}</span>`;
+  html += `<span class="badge badge-count">${t('txt_lobby_settings_title')}</span>`;
+  html += `</h3>`;
+  html += `<div class="gp-ops-next-action">`;
+  html += `<button type="button" class="btn btn-sm btn-muted" onclick="_closeLobbySettingsPage('${esc(rid)}')">← ${t('txt_reg_back_to_lobby')}</button>`;
+  html += `</div>`;
+  html += `</div>`;
+  html += `</div>`;
 
+  html += `<div class="card admin-settings-card lobby-settings-card" id="lobby-settings-card">`;
   html += `<div class="admin-settings-body">`;
   html += `<div class="settings-subtabs" role="tablist" aria-label="${escAttr(t('txt_lobby_settings_title'))}">`;
   for (const st of subtabs) {
@@ -369,7 +397,6 @@ function _renderLobbySettingsCard(rid, ctx) {
   }
 
   html += `</div>`;   // body
-  html += `</details>`;
   html += `</div>`;   // card
   return html;
 }
