@@ -67,7 +67,7 @@ section.
   - `db.py` — SQLite connection/schema management (`get_db()`, `init_db()`).
   - Routes are split by feature: `routes_gp.py` (Group+Playoff), `routes_mex.py`
     (Mexicano), `routes_playoff.py`, `routes_registration.py` (lobbies),
-    `routes_player_auth.py` (passphrase/QR login), `routes_player_space.py` (Player
+    `routes_player_auth.py` (passphrase/QR login), `routesg_player_space.py` (Player
     Hub), `routes_clubs.py` / `routes_communities.py` / `routes_seasons.py`
     (community/club hierarchy — see README's "Communities and clubs"),
     `routes_admin_players.py`, `routes_score_actions.py` (score submit/confirm/dispute),

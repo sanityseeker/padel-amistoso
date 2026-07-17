@@ -1,3 +1,13 @@
+## v1.15.0 (2026-07-17)
+
+### Feat
+
+- **registration**: settings page, participant filter, and filtered messaging
+
+### Refactor
+
+- **registration**: status dots instead of tick/cross eligibility marks
+
 ## v1.14.11 (2026-07-13)
 
 ### Fix
