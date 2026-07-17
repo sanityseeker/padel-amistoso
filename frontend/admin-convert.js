@@ -71,10 +71,15 @@ function _renderConvertPanel(rid, preserveState = false) {
     _convExtraPlayers = [];
     _convGroupPreview = null;
 
-    // Initialize selection: all players selected by default (including previously-assigned).
+    // Initialize selection: all players selected by default (including
+    // previously-assigned). When a participant filter is saved on the lobby,
+    // preselect only the eligible players — the filter defines the final set
+    // who can take part.
     _convSelectedPlayers = new Set();
+    const _hasFilter = (r.participant_filter?.length || 0) > 0;
+    const _eligible = _hasFilter ? new Set(r.eligible_player_ids || []) : null;
     for (const reg of r.registrants) {
-      _convSelectedPlayers.add(reg.player_id);
+      if (!_eligible || _eligible.has(reg.player_id)) _convSelectedPlayers.add(reg.player_id);
     }
   } else {
     _convRid = rid;
