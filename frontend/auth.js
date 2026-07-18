@@ -281,8 +281,6 @@ const _loginStore = reactiveStore({
   demoUrl: null,
   isDemoInstance: false,
   demoBusy: false,
-  demoCreds: null,
-  demoCopied: false,
   async submit() {
     const username = this.username.trim();
     const password = this.password;
@@ -306,9 +304,10 @@ const _loginStore = reactiveStore({
     }
   },
   /**
-   * Mint a throwaway demo account (demo instance only) and switch the dialog
-   * to the passphrase-reveal screen. The passphrase is the account password —
-   * shown exactly once so the visitor can log in from another device.
+   * Mint a throwaway demo account (demo instance only) and enter the app in
+   * one click. The passphrase is the account password — it stays visible in a
+   * dismissible banner (showDemoCredsBanner) so the visitor can copy it to log
+   * in from another device.
    */
   async startDemo() {
     this.demoBusy = true;
@@ -324,32 +323,22 @@ const _loginStore = reactiveStore({
       _saveAuthToken(data.access_token, data.username, data.role);
       _persistAuthValue(AUTH_IS_DEMO_KEY, '1');
       _persistAuthValue(AUTH_DEMO_EXPIRES_KEY, data.expires_at);
-      this.demoCreds = { username: data.username, passphrase: data.passphrase };
+      hideLoginDialog();
+      if (_loginResolve) {
+        _loginResolve();
+        _loginResolve = null;
+      }
+      updateAuthUI();
+      if (typeof initDemoCountdown === 'function') initDemoCountdown();
+      if (typeof showDemoCredsBanner === 'function') {
+        showDemoCredsBanner(data.username, data.passphrase);
+      }
+      if (typeof setActiveTab === 'function') setActiveTab('create');
     } catch (e) {
       this.error = t('txt_demo_mint_failed');
     } finally {
       this.demoBusy = false;
     }
-  },
-  async copyDemoPassphrase() {
-    if (!this.demoCreds) return;
-    try {
-      await navigator.clipboard.writeText(`${this.demoCreds.username} / ${this.demoCreds.passphrase}`);
-      this.demoCopied = true;
-      setTimeout(() => { this.demoCopied = false; }, 1800);
-    } catch (_) {}
-  },
-  /** Close the reveal screen and enter the (already authenticated) demo session. */
-  confirmDemoCreds() {
-    this.demoCreds = null;
-    hideLoginDialog();
-    if (_loginResolve) {
-      _loginResolve();
-      _loginResolve = null;
-    }
-    updateAuthUI();
-    if (typeof initDemoCountdown === 'function') initDemoCountdown();
-    if (typeof setActiveTab === 'function') setActiveTab('create');
   },
 });
 
@@ -386,7 +375,6 @@ function hideLoginDialog() {
   _loginStore.error = '';
   _loginStore.submitting = false;
   _loginStore.demoBusy = false;
-  _loginStore.demoCreds = null;
   // If the user dismissed without logging in, redirect to the info tab
   if (!isAuthenticated() && typeof setActiveTab === 'function') {
     setActiveTab('info');

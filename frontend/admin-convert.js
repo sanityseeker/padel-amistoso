@@ -948,7 +948,14 @@ document.addEventListener('DOMContentLoaded', () => {
   initPersistedForms();
   _updateSchemaSummary();
   if (!isAuthenticated()) {
+    // Anonymous visitors land on the login dialog (info tab stays behind it
+    // as the backdrop and is reachable by dismissing the dialog) — unless an
+    // invite/reset dialog was just opened by initAuth for a URL token.
     setActiveTab('info');
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get('invite_token') && !params.get('reset_token')) {
+      showLoginDialog();
+    }
   } else {
     // Check if email sending is configured on the server
     api('/api/tournaments/email-status').then(d => {

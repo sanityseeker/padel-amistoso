@@ -131,6 +131,7 @@ function _antIc(name) {
       _loginStore.isDemoInstance = !!config.demo_instance;
     }
     initDemoCountdown();
+    restoreDemoCredsBanner();
   } catch (err) {
     console.warn('Could not fetch config:', err);
   }
@@ -176,6 +177,70 @@ function initDemoCountdown() {
   render();
   if (_demoCountdownTimer) clearInterval(_demoCountdownTimer);
   _demoCountdownTimer = setInterval(render, 60000);
+}
+
+// ── Demo account credentials banner ────────────────────────
+
+const DEMO_CREDS_KEY = 'padel-demo-creds';
+
+/**
+ * Show the dismissible banner with freshly minted demo credentials.
+ * Kept in sessionStorage so a reload doesn't lose the passphrase before the
+ * visitor saves it; dismissing forgets it for good.
+ */
+function showDemoCredsBanner(username, passphrase) {
+  try {
+    sessionStorage.setItem(DEMO_CREDS_KEY, JSON.stringify({ u: username, p: passphrase }));
+  } catch (_) {}
+  _renderDemoCredsBanner(username, passphrase);
+}
+
+function _renderDemoCredsBanner(username, passphrase) {
+  const banner = document.getElementById('demo-creds-banner');
+  if (!banner) return;
+  banner.innerHTML = `
+    <strong>${esc(t('txt_demo_creds_title'))}</strong>
+    <code class="demo-banner-code">${esc(username)}</code> / <code class="demo-banner-code">${esc(passphrase)}</code>
+    <button type="button" class="btn btn-sm" onclick="copyDemoCredsBanner(this)">${esc(t('txt_demo_creds_copy'))}</button>
+    <span class="demo-creds-note">${esc(t('txt_demo_creds_save_hint'))}</span>
+    <button type="button" class="demo-banner-dismiss" onclick="dismissDemoCredsBanner()" aria-label="${escAttr(t('txt_txt_close'))}">✕</button>
+  `;
+  banner.style.display = 'block';
+}
+
+async function copyDemoCredsBanner(btn) {
+  let creds = null;
+  try {
+    creds = JSON.parse(sessionStorage.getItem(DEMO_CREDS_KEY));
+  } catch (_) {}
+  if (!creds) return;
+  try {
+    await navigator.clipboard.writeText(`${creds.u} / ${creds.p}`);
+    const original = btn.textContent;
+    btn.textContent = t('txt_txt_copied');
+    setTimeout(() => { btn.textContent = original; }, 1800);
+  } catch (_) {}
+}
+
+function dismissDemoCredsBanner() {
+  try {
+    sessionStorage.removeItem(DEMO_CREDS_KEY);
+  } catch (_) {}
+  const banner = document.getElementById('demo-creds-banner');
+  if (banner) {
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+  }
+}
+
+/** Re-show the creds banner after a reload if it was never dismissed. */
+function restoreDemoCredsBanner() {
+  if (typeof isDemoUser !== 'function' || !isDemoUser()) return;
+  let creds = null;
+  try {
+    creds = JSON.parse(sessionStorage.getItem(DEMO_CREDS_KEY));
+  } catch (_) {}
+  if (creds && creds.u && creds.p) _renderDemoCredsBanner(creds.u, creds.p);
 }
 
 /**
