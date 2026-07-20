@@ -4538,6 +4538,7 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
 
 /* Demo-mode banner — warning-tokened, no decorative gradient (see frontend-dev skill). */
 .demo-banner {
+  position: relative;
   background: var(--color-warning-bg);
   border: 1px solid var(--color-warning-border);
   color: var(--color-warning-text);
@@ -4590,38 +4591,26 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   border-top: 1px solid var(--border);
 }
 
-/* Passphrase-reveal screen (shown once after minting a demo account). */
-.demo-creds-title { margin: 0 0 0.75rem; font-size: 1.05rem; }
-.demo-creds-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
-  margin-bottom: 0.5rem;
+/* Demo credentials banner (shown after minting until dismissed). */
+.demo-creds-note {
+  display: block;
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
 }
-.demo-creds-label {
-  flex: 0 0 6.5rem;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-.demo-creds-value {
-  font-family: var(--font-mono);
-  font-size: 0.95rem;
-  background: var(--color-surface-alt, var(--bg));
-  border: 1px solid var(--border);
+.demo-banner-dismiss {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.15rem 0.4rem;
   border-radius: 4px;
-  padding: 0.2rem 0.45rem;
-  word-break: break-all;
 }
-.demo-creds-copy { margin: 0.25rem 0 0.75rem; }
-.demo-creds-hint {
-  background: var(--color-warning-bg);
-  border: 1px solid var(--color-warning-border);
-  color: var(--color-warning-text);
-  border-radius: var(--radius-card, 8px);
-  padding: 0.55rem 0.75rem;
-  font-size: 0.84rem;
-  margin: 0 0 1rem;
+.demo-banner-dismiss:hover {
+  background: var(--color-warning-border);
 }
 
 /* Labelled input rows inside .modal-dialog forms (add/edit registrant, etc.) */

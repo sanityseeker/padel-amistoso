@@ -132,7 +132,6 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
   html += `<div class="settings-block">`;
   html += `<details class="settings-collapse-inner" open>`;
   html += `<summary>${_antIc('setting')} ${t('txt_txt_rendering_options')}</summary>`;
-  html += `<p class="settings-help">${t('txt_admin_settings_bracket_render_help')}</p>`;
   html += `<div class="settings-inline-row">`;
   html += `<label style="font-size:0.83rem;color:var(--text-muted)">${t('txt_txt_format')}</label>`;
   html += `<select id="tv-schema-format" style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem"`
@@ -196,7 +195,6 @@ html += `<h4 class="settings-group-title">${_antIc('setting')} ${t('txt_admin_se
   const scoreConf = def('score_confirmation', 'immediate');
   html += `<div class="settings-block">`;
   html += `<label class="settings-label">${t('txt_tv_score_confirmation')}</label>`;
-  html += `<p class="settings-help">${t('txt_tv_score_confirmation_help')}</p>`;
   html += `<select style="width:auto;min-height:auto;padding:0.3rem 0.5rem;font-size:0.84rem" onchange="_updateTvSetting('score_confirmation', this.value)">`;
   html += `<option value="immediate"${scoreConf === 'immediate' ? ' selected' : ''}>${t('txt_tv_score_confirmation_immediate')}</option>`;
   html += `<option value="required"${scoreConf === 'required' ? ' selected' : ''}>${t('txt_tv_score_confirmation_required')}</option>`;
