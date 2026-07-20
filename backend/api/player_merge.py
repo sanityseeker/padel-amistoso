@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import unicodedata
+from collections.abc import Sequence
 
 _PUNCT_RE = re.compile(r"[^\w\s]", flags=re.UNICODE)
 _WS_RE = re.compile(r"\s+")
@@ -90,6 +91,44 @@ def combined_player_ids(conn: sqlite3.Connection, profile_id: str) -> list[str]:
             (profile_id, profile_id),
         ).fetchall()
     ]
+
+
+def resolve_current_identities(conn: sqlite3.Connection, player_ids: Sequence[str]) -> dict[str, tuple[str, str]]:
+    """Map historical tournament ``player_id``s to their *current* profile identity.
+
+    Returns ``player_id -> (profile_id, profile_name)``.  Because
+    :func:`reassign_profile_data` repoints ``player_secrets``/``player_history``
+    at the primary profile on merge, this resolves to the post-merge account
+    even for participations recorded under an old name — which is what lets
+    career-wide stats group a renamed/merged player as one person.
+
+    ``player_id``s with no linked profile are absent from the result; callers
+    fall back to the historical name snapshot (see :func:`normalize_name`).
+    """
+    resolved: dict[str, tuple[str, str]] = {}
+    unique = [pid for pid in dict.fromkeys(player_ids) if pid]
+    # Each chunk is bound twice (once per UNION arm), so stay well under
+    # SQLite's default 999-variable limit.
+    for start in range(0, len(unique), 400):
+        chunk = unique[start : start + 400]
+        placeholders = ",".join("?" * len(chunk))
+        rows = conn.execute(
+            f"""
+            SELECT link.player_id AS player_id, pp.id AS profile_id, pp.name AS profile_name
+              FROM (
+                    SELECT player_id, profile_id FROM player_secrets
+                     WHERE player_id IN ({placeholders}) AND profile_id IS NOT NULL
+                    UNION
+                    SELECT player_id, profile_id FROM player_history
+                     WHERE player_id IN ({placeholders}) AND profile_id IS NOT NULL
+                   ) AS link
+              JOIN player_profiles pp ON pp.id = link.profile_id
+            """,
+            (*chunk, *chunk),
+        ).fetchall()
+        for row in rows:
+            resolved.setdefault(row["player_id"], (row["profile_id"], row["profile_name"] or ""))
+    return resolved
 
 
 def materialize_participants(player_ids: list[str]) -> list[str]:

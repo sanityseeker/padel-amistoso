@@ -765,6 +765,49 @@ class TestGetPlayerSpace:
         assert entry["all_partners"] == all_partners
         assert entry["all_rivals"] == all_rivals
 
+    def test_partner_snapshots_carry_counterpart_current_identity(self, client: TestClient) -> None:
+        """A partner who was later renamed/merged is tagged with their current account.
+
+        The stored ``name`` stays as-played so per-tournament cards remain
+        historically accurate; clients group career stats by ``profile_id``.
+        """
+        viewer = _create_profile(client, name="Alice", email="alice-ident@example.com")
+        partner = _create_profile(client, name="Roberto Silva", email="rob-ident@example.com")
+        partner_profile_id = partner["profile"]["id"]
+
+        old_pid = str(uuid.uuid4())
+        eid = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            # The partner's own participation, recorded under their old name.
+            conn.execute(
+                """INSERT INTO player_history
+                   (profile_id, entity_type, entity_id, player_id, player_name, finished_at)
+                   VALUES (?, 'tournament', ?, ?, 'Bob', ?)""",
+                (partner_profile_id, str(uuid.uuid4()), old_pid, now),
+            )
+            # The viewer's entry, whose partner snapshot points at that old id.
+            conn.execute(
+                """INSERT INTO player_history
+                   (profile_id, entity_type, entity_id, player_id, player_name, finished_at, all_partners)
+                   VALUES (?, 'tournament', ?, ?, 'Alice', ?, ?)""",
+                (
+                    viewer["profile"]["id"],
+                    eid,
+                    str(uuid.uuid4()),
+                    now,
+                    json.dumps([{"id": old_pid, "name": "Bob", "games": 5, "wins": 4, "win_pct": 80}]),
+                ),
+            )
+
+        res = client.get("/api/player-profile/space", headers=_headers(viewer["access_token"]))
+        entry = next(e for e in res.json()["entries"] if e["entity_id"] == eid)
+        counterpart = entry["all_partners"][0]
+
+        assert counterpart["profile_id"] == partner_profile_id
+        assert counterpart["current_name"] == "Roberto Silva"
+        assert counterpart["name"] == "Bob"
+
     def test_dashboard_finished_tournament_not_classified_as_active(self, client: TestClient) -> None:
         created = _create_profile(client)
         profile_id = created["profile"]["id"]

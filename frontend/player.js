@@ -1363,6 +1363,26 @@ function _rememberEloHistoryPanelOpen(detailsEl) {
   _setEloHistoryPanelOpen(!!detailsEl?.open);
 }
 
+// Grouping key for a partner/rival snapshot. The backend resolves each
+// counterpart's tournament player_id to their current profile, so renamed and
+// merged players collapse into one row instead of one row per old name.
+// Unlinked counterparts (no Hub account) fall back to a normalized name —
+// mirrors normalize_name() in backend/api/player_merge.py.
+function _counterpartKey(c) {
+  if (c.profile_id) return `p:${c.profile_id}`;
+  const normalized = (c.name || '')
+    .normalize('NFKD').replace(/\p{M}/gu, '')
+    .toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ').trim();
+  return normalized ? `n:${normalized}` : `i:${c.id || ''}`;
+}
+
+// Prefer the counterpart's current name so career stats show who they are now,
+// not the name they happened to play under in the oldest tournament.
+function _counterpartName(c) {
+  return c.current_name || c.name || '';
+}
+
 function _computeStatsForEntries(entries) {
   let totalTournaments = 0, totalWins = 0, totalLosses = 0, totalDraws = 0;
   const partnerMap = {};
@@ -1379,36 +1399,40 @@ function _computeStatsForEntries(entries) {
     const partners = (e.all_partners && e.all_partners.length > 0) ? e.all_partners : (e.top_partners || []);
     const rivals = (e.all_rivals && e.all_rivals.length > 0) ? e.all_rivals : (e.top_rivals || []);
     for (const p of partners) {
-      if (!partnerMap[p.name]) partnerMap[p.name] = {games: 0, wins: 0};
-      partnerMap[p.name].games += p.games || 0;
-      partnerMap[p.name].wins  += p.wins  || 0;
+      const key = _counterpartKey(p);
+      if (!partnerMap[key]) partnerMap[key] = {name: _counterpartName(p), games: 0, wins: 0};
+      partnerMap[key].name = _counterpartName(p) || partnerMap[key].name;
+      partnerMap[key].games += p.games || 0;
+      partnerMap[key].wins  += p.wins  || 0;
     }
     for (const r of rivals) {
-      if (!rivalMap[r.name]) rivalMap[r.name] = {games: 0, wins: 0};
-      rivalMap[r.name].games += r.games || 0;
-      rivalMap[r.name].wins  += r.wins  || 0;
+      const key = _counterpartKey(r);
+      if (!rivalMap[key]) rivalMap[key] = {name: _counterpartName(r), games: 0, wins: 0};
+      rivalMap[key].name = _counterpartName(r) || rivalMap[key].name;
+      rivalMap[key].games += r.games || 0;
+      rivalMap[key].wins  += r.wins  || 0;
     }
   }
 
   const totalGames = totalWins + totalLosses + totalDraws;
   const winRate = totalGames > 0 ? Math.round(totalWins / totalGames * 100) : null;
 
-  const toRanked = (map) => Object.entries(map)
-    .map(([name, s]) => ({ name, games: s.games, wins: s.wins, win_pct: s.games > 0 ? Math.round(s.wins / s.games * 100) : 0 }))
+  const toRanked = (map) => Object.values(map)
+    .map(s => ({ name: s.name, games: s.games, wins: s.wins, win_pct: s.games > 0 ? Math.round(s.wins / s.games * 100) : 0 }))
     .filter(e => e.games > 0);
   const topPartners = toRanked(partnerMap).sort((a, b) => b.win_pct - a.win_pct || b.wins - a.wins).slice(0, 3);
   const topRivals   = toRanked(rivalMap).sort((a, b) => a.win_pct - b.win_pct || b.games - a.games).slice(0, 3);
   const participantMap = {};
 
-  for (const [name, stats] of Object.entries(partnerMap)) {
-    participantMap[name] = { name, together_games: stats.games, together_wins: stats.wins, against_games: 0, against_wins: 0 };
+  for (const [key, stats] of Object.entries(partnerMap)) {
+    participantMap[key] = { name: stats.name, together_games: stats.games, together_wins: stats.wins, against_games: 0, against_wins: 0 };
   }
-  for (const [name, stats] of Object.entries(rivalMap)) {
-    if (!participantMap[name]) {
-      participantMap[name] = { name, together_games: 0, together_wins: 0, against_games: 0, against_wins: 0 };
+  for (const [key, stats] of Object.entries(rivalMap)) {
+    if (!participantMap[key]) {
+      participantMap[key] = { name: stats.name, together_games: 0, together_wins: 0, against_games: 0, against_wins: 0 };
     }
-    participantMap[name].against_games = stats.games;
-    participantMap[name].against_wins = stats.wins;
+    participantMap[key].against_games = stats.games;
+    participantMap[key].against_wins = stats.wins;
   }
   const participantRows = Object.values(participantMap)
     .filter(row => (row.together_games + row.against_games) > 0)

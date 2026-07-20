@@ -39,6 +39,7 @@ from .schemas import EmailLang
 from ..models import EntityType, MatchStatus, ParticipationStatus, ScoreMode, Sport, TournamentType
 from ..tournaments.player_secrets import generate_passphrase
 from .db import get_db
+from .player_merge import resolve_current_identities
 from .player_secret_store import (
     extract_history_stats,
     extract_partner_rival_stats,
@@ -904,6 +905,49 @@ def _build_history_entries(profile_id: str) -> list[PlayerSpaceEntry]:
                 )
             )
 
+    return entries
+
+
+_COUNTERPART_FIELDS = ("top_partners", "top_rivals", "all_partners", "all_rivals")
+
+
+def _annotate_counterpart_identities(entries: list[PlayerSpaceEntry]) -> list[PlayerSpaceEntry]:
+    """Tag partner/rival snapshots with the counterpart's current profile identity.
+
+    Each snapshot stores the name a counterpart played under at the time, so a
+    player later renamed — or merged into another account — looks like two
+    unrelated people once the Hub aggregates across tournaments.  Adding
+    ``profile_id``/``current_name`` gives clients a stable key to group by.
+
+    ``name`` is deliberately left untouched: per-tournament cards should keep
+    showing who the player actually played with that day.  Counterparts with no
+    linked profile (never claimed a Hub account) get neither field and fall back
+    to name-based grouping client-side.
+    """
+    player_ids = [
+        entry_dict["id"]
+        for entry in entries
+        for field in _COUNTERPART_FIELDS
+        for entry_dict in getattr(entry, field, None) or []
+        if isinstance(entry_dict, dict) and entry_dict.get("id")
+    ]
+    if not player_ids:
+        return entries
+
+    with get_db() as conn:
+        identities = resolve_current_identities(conn, player_ids)
+    if not identities:
+        return entries
+
+    for entry in entries:
+        for field in _COUNTERPART_FIELDS:
+            for counterpart in getattr(entry, field, None) or []:
+                if not isinstance(counterpart, dict):
+                    continue
+                resolved = identities.get(counterpart.get("id") or "")
+                if resolved is None:
+                    continue
+                counterpart["profile_id"], counterpart["current_name"] = resolved
     return entries
 
 
@@ -2641,7 +2685,7 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
     return PlayerSpaceResponse(
         profile=profile_out,
         access_token=token,
-        entries=_deduplicate_entries(active + history),
+        entries=_annotate_counterpart_identities(_deduplicate_entries(active + history)),
         elo_history=_build_elo_history(profile_id),
         player_communities=_get_player_communities(profile_id),
         player_clubs=_get_player_clubs(profile_id),
@@ -2886,7 +2930,7 @@ def get_player_space(
 
     active = _build_active_entries(identity.profile_id)
     history = _build_history_entries(identity.profile_id)
-    all_entries = _deduplicate_entries(active + history)
+    all_entries = _annotate_counterpart_identities(_deduplicate_entries(active + history))
     scoped_entries = _filter_entries_by_scope(all_entries, community_id=community_id, club_id=club_id)
 
     # De-duplicate: a registration that was converted to a tournament should

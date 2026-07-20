@@ -5,7 +5,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from backend.api import db as db_mod
-from backend.api.player_merge import materialize_participants, normalize_name
+from backend.api.player_merge import (
+    materialize_participants,
+    normalize_name,
+    reassign_profile_data,
+    resolve_current_identities,
+)
 
 
 class TestNormalizeName:
@@ -57,3 +62,49 @@ class TestMaterializeParticipants:
 
     def test_unknown_player_id_skipped(self) -> None:
         assert materialize_participants(["does-not-exist", ""]) == []
+
+
+def _make_profile(profile_id: str, name: str) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with db_mod.get_db() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO player_profiles (id, passphrase, name, created_at) VALUES (?, ?, ?, ?)",
+            (profile_id, f"pass-{profile_id}", name, now),
+        )
+
+
+def _insert_linked_history(profile_id: str, player_id: str, name: str, tid: str) -> None:
+    _insert_raw_history(player_id, name, tid)
+    with db_mod.get_db() as conn:
+        conn.execute("UPDATE player_history SET profile_id = ? WHERE player_id = ?", (profile_id, player_id))
+
+
+class TestResolveCurrentIdentities:
+    def test_old_player_ids_resolve_to_current_name(self) -> None:
+        """The whole point: two tournaments, two old names, one current account."""
+        _make_profile("prof-new", "Juan Pérez")
+        _insert_linked_history("prof-new", "pid-old", "Juan", "t-id-1")
+        _insert_linked_history("prof-new", "pid-newer", "Juan P", "t-id-2")
+
+        with db_mod.get_db() as conn:
+            resolved = resolve_current_identities(conn, ["pid-old", "pid-newer"])
+
+        assert resolved["pid-old"] == ("prof-new", "Juan Pérez")
+        assert resolved["pid-newer"] == ("prof-new", "Juan Pérez")
+
+    def test_resolves_across_a_merge(self) -> None:
+        _make_profile("prof-primary", "Ana Merged")
+        _make_profile("prof-secondary", "Ana Old")
+        _insert_linked_history("prof-secondary", "pid-merged", "Ana Old", "t-id-3")
+
+        with db_mod.get_db() as conn:
+            reassign_profile_data(conn, "prof-primary", "prof-secondary")
+            resolved = resolve_current_identities(conn, ["pid-merged"])
+
+        assert resolved["pid-merged"] == ("prof-primary", "Ana Merged")
+
+    def test_unlinked_and_unknown_ids_absent(self) -> None:
+        _insert_raw_history("pid-unlinked", "Nobody", "t-id-4")
+        with db_mod.get_db() as conn:
+            resolved = resolve_current_identities(conn, ["pid-unlinked", "pid-missing", ""])
+        assert resolved == {}
