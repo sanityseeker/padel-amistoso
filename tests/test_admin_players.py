@@ -1122,6 +1122,71 @@ class TestGhostProfileConsolidation:
         assert data["id"] == hub_id
         assert data["is_ghost"] is False
 
+    def test_consolidate_merges_raw_participant_into_hub(self, client: TestClient, auth_headers: dict) -> None:
+        """A raw past-participant (no profile) can be folded into a Hub via source_player_ids."""
+        from backend.api.db import get_db
+
+        hub_id = _insert_profile(name="Hub Target")
+        _insert_tournament("t-raw-adm", "Raw Adm")
+        # A finished participation under a *different* name, no profile linked.
+        _insert_history(None, "t-raw-adm", "rawp1", player_name="Alias Name")  # type: ignore[arg-type]
+
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            headers=auth_headers,
+            json={"source_ids": [hub_id], "source_player_ids": ["rawp1"]},
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["id"] == hub_id
+        assert data["is_ghost"] is False
+
+        with get_db() as conn:
+            # The raw participation now belongs to the Hub profile...
+            hist = conn.execute("SELECT profile_id FROM player_history WHERE player_id = 'rawp1'").fetchone()
+            # ...and the transient ghost created for it is gone.
+            ghost = conn.execute("SELECT 1 FROM player_profiles WHERE id = 'ghost_rawp1'").fetchone()
+        assert hist["profile_id"] == hub_id
+        assert ghost is None
+
+    def test_consolidate_requires_two_sources_across_both_fields(self, client: TestClient, auth_headers: dict) -> None:
+        """A lone source (one ghost, no participants) is rejected with 422."""
+        ghost_id = _insert_ghost_profile("solo-adm", "Solo")
+        resp = client.post(
+            "/api/admin/player-profiles/consolidate-ghosts",
+            headers=auth_headers,
+            json={"source_ids": [ghost_id]},
+        )
+        assert resp.status_code == 422
+
+
+class TestMergeCandidates:
+    """The conservative merge-candidate suggestion endpoint."""
+
+    def test_suggests_by_normalized_name_and_email(self, client: TestClient, auth_headers: dict) -> None:
+        target = _insert_profile(name="José Ruiz", email="jr@example.com")
+        # Ghost with an accent/case variant of the name → suggested.
+        name_match = _insert_ghost_profile("cand-name", "jose ruiz")
+        # Ghost sharing the email but a different name → suggested.
+        email_match = _insert_ghost_profile("cand-email", "Totally Different")
+        with db_mod.get_db() as conn:
+            conn.execute("UPDATE player_profiles SET email = 'jr@example.com' WHERE id = ?", (email_match,))
+        # Unrelated ghost → not suggested.
+        _insert_ghost_profile("cand-none", "Someone Else")
+
+        resp = client.get(f"/api/admin/player-profiles/{target}/merge-candidates", headers=auth_headers)
+        assert resp.status_code == 200
+        ids = {c["id"] for c in resp.json()}
+        assert ids == {name_match, email_match}
+
+    def test_requires_admin(self, client: TestClient, alice_headers: dict) -> None:
+        resp = client.get("/api/admin/player-profiles/whatever/merge-candidates", headers=alice_headers)
+        assert resp.status_code == 403
+
+    def test_404_for_missing_profile(self, client: TestClient, auth_headers: dict) -> None:
+        resp = client.get("/api/admin/player-profiles/missing/merge-candidates", headers=auth_headers)
+        assert resp.status_code == 404
+
 
 # ---------------------------------------------------------------------------
 # Ghost → Hub profile conversion

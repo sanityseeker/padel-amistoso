@@ -13,7 +13,6 @@ import asyncio
 
 import json
 import logging
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -28,6 +27,12 @@ from ..models import ParticipationStatus, Sport
 from ..tournaments.player_secrets import generate_passphrase
 from .db import get_db
 from .elo_store import consolidate_ghost_elos, retroactive_transfer_elo
+from .player_merge import (
+    combined_player_ids,
+    materialize_participants,
+    normalize_name,
+    reassign_profile_data,
+)
 from .player_secret_store import invalidate_secrets_cache
 from .state import rename_player_in_tournament
 from .schemas import (
@@ -46,9 +51,17 @@ router = APIRouter(prefix="/api/admin/player-profiles", tags=["admin-players"])
 
 
 class GhostConsolidateRequest(BaseModel):
-    """Request body for consolidating multiple ghost profiles into one."""
+    """Request body for consolidating multiple profiles/participants into one.
 
-    source_ids: Annotated[list[str], Field(min_length=2)]
+    ``source_ids`` are existing profile ids (ghost, or at most one Hub profile
+    used as the merge target).  ``source_player_ids`` are raw past-participant
+    ``player_id``s that have no profile row yet — they are materialized into
+    ghost profiles and merged in.  At least 2 distinct sources total are
+    required across both fields.
+    """
+
+    source_ids: list[str] = Field(default_factory=list)
+    source_player_ids: list[str] = Field(default_factory=list)
     name: str | None = Field(default=None, max_length=128)
 
 
@@ -203,60 +216,10 @@ def search_past_participants(
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def _reassign_profile_data(conn, primary_id: str, secondary_id: str) -> None:
-    """Move all participations/history from ``secondary_id`` to ``primary_id``.
-
-    Deletes the secondary profile and its per-scope ELO rows; the caller is
-    responsible for recomputing ELO (``consolidate_ghost_elos``) afterwards.
-    """
-    conn.execute(
-        "UPDATE player_secrets SET profile_id = ? WHERE profile_id = ?",
-        (primary_id, secondary_id),
-    )
-    conn.execute(
-        "UPDATE registrants SET profile_id = ? WHERE profile_id = ?",
-        (primary_id, secondary_id),
-    )
-    # Remove history rows that would conflict with existing primary rows, then
-    # reassign the rest.
-    conn.execute(
-        """DELETE FROM player_history
-           WHERE profile_id = ?
-             AND entity_type = 'tournament'
-             AND entity_id IN (
-                 SELECT entity_id FROM player_history
-                  WHERE profile_id = ? AND entity_type = 'tournament'
-             )""",
-        (secondary_id, primary_id),
-    )
-    conn.execute(
-        "UPDATE player_history SET profile_id = ? WHERE profile_id = ?",
-        (primary_id, secondary_id),
-    )
-    # Community and club ELO will be fully recomputed by the caller.
-    conn.execute("DELETE FROM profile_community_elo WHERE profile_id = ?", (secondary_id,))
-    conn.execute("DELETE FROM profile_club_elo WHERE profile_id = ?", (secondary_id,))
-    conn.execute("DELETE FROM player_profiles WHERE id = ?", (secondary_id,))
-
-
-def _combined_player_ids(conn, profile_id: str) -> list[str]:
-    """All distinct tournament ``player_id``s now owned by ``profile_id``."""
-    return [
-        r["player_id"]
-        for r in conn.execute(
-            """
-            SELECT DISTINCT player_id FROM (
-                SELECT player_id FROM player_secrets
-                 WHERE profile_id = ? AND player_id IS NOT NULL
-                UNION
-                SELECT player_id FROM player_history
-                 WHERE profile_id = ? AND entity_type = 'tournament'
-                   AND player_id IS NOT NULL
-            )
-            """,
-            (profile_id, profile_id),
-        ).fetchall()
-    ]
+# Merge primitives live in ``player_merge`` so the club endpoints share exactly
+# the same behavior; keep the private aliases for the existing call sites here.
+_reassign_profile_data = reassign_profile_data
+_combined_player_ids = combined_player_ids
 
 
 def merge_ghost_into_profile(primary_id: str, ghost_id: str) -> bool:
@@ -294,20 +257,25 @@ async def consolidate_ghost_profiles(
     the merged profile reflects the correct current rating.
 
     Args:
-        req: Contains ``source_ids`` (≥ 2 ghost profile ids) and an optional
-            ``name`` to assign to the surviving profile.
+        req: Contains ``source_ids`` (profile ids), optional
+            ``source_player_ids`` (raw past-participant player_ids to
+            materialize into ghosts and merge in), and an optional ``name`` to
+            assign to the surviving profile.
 
     Returns:
         The updated primary profile summary.
 
     Raises:
         HTTPException 404: One or more profiles not found.
-        HTTPException 422: Less than 2 distinct ids provided, or any profile
-            is not a ghost.
+        HTTPException 422: Fewer than 2 distinct sources, or more than one
+            non-ghost (Hub) profile provided.
     """
-    unique_ids: list[str] = list(dict.fromkeys(req.source_ids))
+    # Raw participants (no profile yet) become ghost profiles, appended after
+    # the explicit source_ids so the target selection below is preserved.
+    materialized = materialize_participants(req.source_player_ids)
+    unique_ids: list[str] = list(dict.fromkeys([*req.source_ids, *materialized]))
     if len(unique_ids) < 2:
-        raise HTTPException(422, "At least 2 distinct profile IDs are required")
+        raise HTTPException(422, "At least 2 distinct profiles/participants are required")
 
     primary_id = unique_ids[0]
     secondary_ids = unique_ids[1:]
@@ -373,6 +341,62 @@ async def consolidate_ghost_profiles(
         k_factor_override=row["k_factor_override"],
         is_ghost=bool(row["is_ghost"]),
     )
+
+
+@router.get("/{profile_id}/merge-candidates", response_model=list[AdminPlayerProfileSummary])
+def merge_candidates(
+    profile_id: str,
+    _admin: User = Depends(require_admin),
+) -> list[AdminPlayerProfileSummary]:
+    """Suggest ghost profiles likely to be the same person as ``profile_id``.
+
+    Conservative signals only: a ghost profile is suggested when it shares a
+    non-empty email with the target, or an accent/case/punctuation-normalized
+    identical name.  Never merges anything — the admin picks and confirms.
+
+    Raises:
+        HTTPException 404: The target profile does not exist.
+    """
+    with get_db() as conn:
+        target = conn.execute(
+            "SELECT id, name, email FROM player_profiles WHERE id = ?",
+            (profile_id,),
+        ).fetchone()
+        if target is None:
+            raise HTTPException(404, "Profile not found")
+
+        target_name_key = normalize_name(target["name"])
+        target_email = (target["email"] or "").strip().lower()
+
+        elo_cols = ", elo_padel, elo_padel_matches, elo_tennis, elo_tennis_matches, k_factor_override, is_ghost"
+        ghosts = conn.execute(
+            f"SELECT id, name, email, passphrase, created_at{elo_cols} "
+            f"FROM player_profiles WHERE is_ghost = 1 AND id != ?",
+            (profile_id,),
+        ).fetchall()
+
+    out: list[AdminPlayerProfileSummary] = []
+    for r in ghosts:
+        name_match = target_name_key and normalize_name(r["name"]) == target_name_key
+        email_match = target_email and (r["email"] or "").strip().lower() == target_email
+        if not (name_match or email_match):
+            continue
+        out.append(
+            AdminPlayerProfileSummary(
+                id=r["id"],
+                name=r["name"],
+                email=r["email"],
+                passphrase=r["passphrase"],
+                created_at=r["created_at"],
+                elo_padel=r["elo_padel"],
+                elo_padel_matches=r["elo_padel_matches"],
+                elo_tennis=r["elo_tennis"],
+                elo_tennis_matches=r["elo_tennis_matches"],
+                k_factor_override=r["k_factor_override"],
+                is_ghost=bool(r["is_ghost"]),
+            )
+        )
+    return out
 
 
 # ────────────────────────────────────────────────────────────────────────────

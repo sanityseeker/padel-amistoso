@@ -685,21 +685,57 @@
               </tbody>
             </table></div>
           </details>
+          <!-- Past participants (played but never got a profile) — selectable
+               as merge sources so their history can be folded into a player. -->
+          <details class="ph-profiles-collapse" style="margin-top:0.5rem" :open="pastOpen" @toggle="pastOpen = $event.target.open">
+            <summary style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:0.4rem;list-style:none;font-size:0.95rem;font-weight:700;padding:0.3rem 0">
+              <span class="tv-chevron" style="font-size:0.65em;color:var(--text-muted)">&#9658;</span>
+              {{ t('txt_ph_past_participants_title') }}
+              <span v-if="selectedPastCount" style="font-size:0.78rem;font-weight:400;color:var(--text-muted)">({{ selectedPastCount }} {{ t('txt_ph_selected_badge') }})</span>
+            </summary>
+            <div style="margin-top:0.5rem">
+              <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 0.5rem">{{ t('txt_ph_past_participants_hint') }}</p>
+              <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap">
+                <input type="text" v-model="pastQuery" @keydown.enter="searchPast()" :placeholder="t('txt_ph_past_search_placeholder')" :aria-label="t('txt_ph_past_search_placeholder')"
+                  style="flex:1;min-width:180px;padding:0.4rem 0.6rem;font-size:0.88rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
+                <button type="button" class="btn btn-sm btn-primary" @click="searchPast()">{{ t('txt_ph_search_btn') }}</button>
+              </div>
+              <p v-if="pastSearching"><em>{{ t('txt_ph_searching') }}</em></p>
+              <p v-else-if="pastSearched && !pastResults.length" style="color:var(--text-muted);font-size:0.86rem">{{ t('txt_txt_no_results') }}</p>
+              <div v-else-if="pastResults.length" class="player-codes-table-wrap"><table class="player-codes-table">
+                <thead><tr class="player-codes-head-row">
+                  <th class="player-codes-th-center" style="width:2rem"></th>
+                  <th class="player-codes-th">{{ t('txt_ph_name') }}</th>
+                  <th class="player-codes-th">{{ t('txt_ph_past_last_tournament') }}</th>
+                </tr></thead>
+                <tbody>
+                  <tr v-for="r in pastResults" :key="r.player_id" class="player-codes-row">
+                    <td class="player-codes-cell-center">
+                      <input type="checkbox" :checked="!!selectedPast[r.player_id]" :aria-label="t('txt_ph_select_for_merge')" @change="togglePast(r.player_id, r.name, $event.target.checked)" style="cursor:pointer">
+                    </td>
+                    <td class="player-codes-name">{{ r.name || '—' }}</td>
+                    <td class="player-codes-cell" style="font-size:0.82rem;color:var(--text-muted)">{{ r.last_tournament_name || '—' }}</td>
+                  </tr>
+                </tbody>
+              </table></div>
+            </div>
+          </details>
           <!-- Merge / consolidate action bar (reactive on selection) -->
           <div id="ph-merge-bar">
             <div v-if="mergeMode === 'msg'" class="alert" :class="mergeMsgError ? 'alert-error' : 'alert-info'" style="margin-top:0.5rem">{{ mergeMsg }}</div>
             <div v-else-if="mergeMode === 'busy'" style="margin-top:0.75rem;font-size:0.88rem;color:var(--text-muted)"><em>{{ t('txt_ph_merging') }}</em></div>
             <div v-else-if="mergeMode === 'hub'" style="margin-top:0.75rem;padding:0.65rem 0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
               <span style="font-size:0.85rem;color:var(--text-muted)">{{ t('txt_ph_hub_selected_hint', { hub: hubProfile ? (hubProfile.name || selectedHub) : selectedHub }) }}</span>
+              <button type="button" class="btn btn-sm btn-muted" @click="suggestForHub()" :disabled="suggesting">{{ suggesting ? t('txt_ph_searching') : t('txt_ph_suggest_matches') }}</button>
               <button type="button" class="btn btn-sm btn-muted" @click="clearSelection()">{{ t('txt_txt_clear') }}</button>
             </div>
             <div v-else-if="mergeMode === 'hub-ghosts'" style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
-              <span style="font-size:0.88rem">{{ t('txt_ph_merge_into_hub_info', { n: selectedGhostCount, hub: hubProfile ? (hubProfile.name || selectedHub) : selectedHub }) }}</span>
+              <span style="font-size:0.88rem">{{ t('txt_ph_merge_into_hub_info', { n: sourceCount, hub: hubProfile ? (hubProfile.name || selectedHub) : selectedHub }) }}</span>
               <button type="button" class="btn btn-primary btn-sm" @click="consolidate(true)">{{ t('txt_ph_merge_into_hub') }}</button>
               <button type="button" class="btn btn-sm btn-muted" @click="clearSelection()">{{ t('txt_txt_clear') }}</button>
             </div>
             <div v-else-if="mergeMode === 'ghosts'" style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
-              <span style="font-size:0.88rem">{{ t('txt_ph_ghosts_selected', { n: selectedGhostCount }) }}</span>
+              <span style="font-size:0.88rem">{{ t('txt_ph_ghosts_selected', { n: sourceCount }) }}</span>
               <input type="text" v-model="mergeName" :placeholder="t('txt_ph_consolidate_name_placeholder')" :aria-label="t('txt_ph_consolidate_name_label')"
                 style="flex:1;min-width:160px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
               <button type="button" class="btn btn-primary btn-sm" @click="consolidate(false)">{{ t('txt_ph_consolidate_ghosts') }}</button>

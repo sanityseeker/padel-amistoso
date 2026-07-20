@@ -26,6 +26,15 @@ const _phStore = reactiveStore({
   mergeMsg: '',              // merge/consolidate status (alert text)
   mergeMsgError: false,
   merging: false,
+  // Past participants (played but never got a profile) — selectable as merge
+  // sources; player_id → display name.
+  pastQuery: '',
+  pastResults: [],
+  pastSearching: false,
+  pastSearched: false,
+  pastOpen: false,
+  selectedPast: {},          // player_id → name
+  suggesting: false,
   lang: 'en',                // tracked so t() bindings re-render on language switch
 
   // Lang-tracking t() wrapper (petite-vue only re-renders on reactive reads).
@@ -42,11 +51,17 @@ const _phStore = reactiveStore({
   get selectedGhostNames() {
     return this.selectedGhostIds.map(id => this.profiles.find(p => p.id === id)?.name || id);
   },
+  get selectedPastIds() { return Object.keys(this.selectedPast); },
+  get selectedPastCount() { return this.selectedPastIds.length; },
+  get selectedPastNames() { return this.selectedPastIds.map(id => this.selectedPast[id]); },
+  // Ghosts + past participants both count as merge sources.
+  get sourceCount() { return this.selectedGhostCount + this.selectedPastCount; },
+  get allSourceNames() { return [...this.selectedGhostNames, ...this.selectedPastNames]; },
   // Which merge-bar variant to show.
   get mergeMode() {
     if (this.merging || this.mergeMsg) return this.mergeMsg ? 'msg' : 'busy';
-    if (this.selectedHub) return this.selectedGhostCount > 0 ? 'hub-ghosts' : 'hub';
-    if (this.selectedGhostCount >= 2) return 'ghosts';
+    if (this.selectedHub) return this.sourceCount > 0 ? 'hub-ghosts' : 'hub';
+    if (this.sourceCount >= 2) return 'ghosts';
     return 'none';
   },
 
@@ -67,6 +82,7 @@ const _phStore = reactiveStore({
     const q = (this.query || '').trim();
     this.selectedGhosts = {};
     this.selectedHub = null;
+    this.selectedPast = {};
     this.mergeMsg = '';
     this.error = '';
     this.searching = true;
@@ -108,21 +124,64 @@ const _phStore = reactiveStore({
   clearSelection() {
     this.selectedGhosts = {};
     this.selectedHub = null;
+    this.selectedPast = {};
     this.mergeName = '';
     this.mergeMsg = '';
   },
+  // ── Past-participant search (raw participants with no profile) ──
+  togglePast(id, name, checked) {
+    if (checked) {
+      this.selectedPast[id] = name || id;
+      if (!this.mergeName) this.mergeName = name || '';
+    } else {
+      delete this.selectedPast[id];
+    }
+  },
+  async searchPast() {
+    const q = (this.pastQuery || '').trim();
+    this.pastSearching = true;
+    try {
+      this.pastResults = await api(`/api/admin/player-profiles/past-participants?q=${encodeURIComponent(q)}`);
+      this.pastSearched = true;
+    } catch (e) {
+      this.pastResults = [];
+      this._flashMerge(true, e.message);
+    } finally {
+      this.pastSearching = false;
+    }
+  },
+  // Auto-select ghost profiles that likely match the chosen Hub target.
+  async suggestForHub() {
+    if (!this.selectedHub) return;
+    this.suggesting = true;
+    try {
+      const cands = await api(`/api/admin/player-profiles/${encodeURIComponent(this.selectedHub)}/merge-candidates`);
+      let added = 0;
+      for (const c of cands) {
+        // Surface the candidate in the list so it renders checked, then select it.
+        if (!this.profiles.some(p => p.id === c.id)) this.profiles.push(c);
+        if (!this.selectedGhosts[c.id]) { this.selectedGhosts[c.id] = true; added++; }
+      }
+      this._flashMerge(false, this.t('txt_ph_suggest_result', { n: added }));
+    } catch (e) {
+      this._flashMerge(true, e.message);
+    } finally {
+      this.suggesting = false;
+    }
+  },
   async consolidate(intoHub) {
+    const ghostIds = [...this.selectedGhostIds];
+    const pastIds = [...this.selectedPastIds];
+    const names = this.allSourceNames.join(', ');
     if (intoHub) {
-      if (!this.selectedHub || this.selectedGhostCount < 1) return;
+      if (!this.selectedHub || this.sourceCount < 1) return;
       const hubName = this.hubProfile?.name || this.selectedHub;
-      const names = this.selectedGhostNames.join(', ');
       if (!confirm(this.t('txt_ph_merge_into_hub_confirm', { hub: hubName, names }))) return;
     } else {
-      if (this.selectedGhostCount < 2) return;
-      const names = this.selectedGhostNames.join(', ');
+      if (this.sourceCount < 2) return;
       if (!confirm(this.t('txt_ph_consolidate_confirm', { names }))) return;
     }
-    const ids = intoHub ? [this.selectedHub, ...this.selectedGhostIds] : [...this.selectedGhostIds];
+    const ids = intoHub ? [this.selectedHub, ...ghostIds] : [...ghostIds];
     const name = intoHub ? null : (this.mergeName || '').trim() || null;
     this.merging = true;
     this.mergeMsg = '';
@@ -130,10 +189,13 @@ const _phStore = reactiveStore({
       const result = await api('/api/admin/player-profiles/consolidate-ghosts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source_ids: ids, name }),
+        body: JSON.stringify({ source_ids: ids, source_player_ids: pastIds, name }),
       });
       this.selectedGhosts = {};
       this.selectedHub = null;
+      this.selectedPast = {};
+      this.pastResults = [];
+      this.pastQuery = '';
       this.mergeName = '';
       this.merging = false;
       await this.search();

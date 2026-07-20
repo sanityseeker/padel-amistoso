@@ -445,6 +445,51 @@ def get_profile_elo(profile_id: str, community_id: str = DEFAULT_COMMUNITY_ID) -
     return result
 
 
+def get_profile_starting_elos(
+    pid_to_profile: dict[str, str],
+    community_id: str = DEFAULT_COMMUNITY_ID,
+    sport: str = Sport.PADEL,
+) -> dict[str, float]:
+    """Return ``{player_id: elo}`` for players linked to a profile.
+
+    Resolves each player's current profile ELO scoped to *community_id*, falling
+    back to the global (open) community rating for specialized communities — the
+    same precedence :func:`initialize_tournament_elos` uses — so a player's
+    cross-tournament rating can pre-seed group/bracket ordering before any match
+    is played.  Players without a linked profile (or with no rating rows) are
+    omitted from the result.
+    """
+    if not pid_to_profile:
+        return {}
+    profile_ids = list({pid for pid in pid_to_profile.values() if pid})
+    if not profile_ids:
+        return {}
+    if community_id != DEFAULT_COMMUNITY_ID:
+        community_ids = [community_id, DEFAULT_COMMUNITY_ID]
+    else:
+        community_ids = [community_id]
+    placeholders = ",".join("?" for _ in profile_ids)
+    community_placeholders = ",".join("?" for _ in community_ids)
+    with get_db() as conn:
+        rows = conn.execute(
+            f"SELECT profile_id, community_id, elo FROM profile_community_elo"
+            f" WHERE profile_id IN ({placeholders})"
+            f"   AND community_id IN ({community_placeholders}) AND sport = ?",
+            [*profile_ids, *community_ids, sport],
+        ).fetchall()
+    # Community-specific rating wins over the global fallback.
+    by_profile: dict[str, float] = {}
+    have_specific: set[str] = set()
+    for r in rows:
+        prof = r["profile_id"]
+        if r["community_id"] == community_id:
+            by_profile[prof] = r["elo"]
+            have_specific.add(prof)
+        elif prof not in have_specific:
+            by_profile.setdefault(prof, r["elo"])
+    return {pid: by_profile[prof] for pid, prof in pid_to_profile.items() if prof in by_profile}
+
+
 def transfer_elo_to_profile(
     profile_id: str,
     tournament_id: str,

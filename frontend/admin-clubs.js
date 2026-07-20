@@ -1321,6 +1321,9 @@ function _clubsWriteOpenFlag(key, value) {
 let _clubsGhostMergeOpen = _clubsReadOpenFlag(_CLUBS_GHOST_MERGE_OPEN_KEY);
 let _clubsPossibleMembersOpen = _clubsReadOpenFlag(_CLUBS_POSSIBLE_MEMBERS_OPEN_KEY);
 let _clubsSelectedGhostProfiles = new Set();
+// Optional registered (Hub) member to merge the selected ghosts into. When set,
+// only ≥1 ghost is needed; the ghosts fold into this player instead of a new one.
+let _clubsMergeTargetId = '';
 let _clubsPossibleGhostMembers = [];
 
 function _clubsSetPossibleMembersOpen(open) {
@@ -1352,15 +1355,25 @@ function clubsToggleGhostMergeSelect(profileId, checked) {
 
 function clubsClearGhostMergeSelection() {
   _clubsSelectedGhostProfiles = new Set();
+  _clubsMergeTargetId = '';
+  _clubsRenderPossibleMembers(false);
+}
+
+
+function clubsSetMergeTarget(profileId) {
+  _clubsMergeTargetId = profileId || '';
   _clubsRenderPossibleMembers(false);
 }
 
 
 async function clubsConsolidateSelectedGhosts() {
-  if (!_activeClubId || _clubsSelectedGhostProfiles.size < 2) return;
+  if (!_activeClubId) return;
+  const target = _clubsMergeTargetId;
+  const ghostIds = [..._clubsSelectedGhostProfiles];
+  // Need ≥1 ghost when merging into a registered player, ≥2 otherwise.
+  if (target ? ghostIds.length < 1 : ghostIds.length < 2) return;
 
-  const sourceIds = [..._clubsSelectedGhostProfiles];
-  const selectedNames = sourceIds
+  const ghostNames = ghostIds
     .map(id => {
       const groupProfile = _clubsGhostGroups.flatMap(g => g.profiles).find(p => p.profile_id === id);
       const rosterProfile = _clubPlayers.find(p => p.profile_id === id);
@@ -1368,11 +1381,19 @@ async function clubsConsolidateSelectedGhosts() {
     })
     .join(', ');
 
-  if (!confirm(t('txt_ph_consolidate_confirm', { names: selectedNames }))) return;
+  if (target) {
+    const targetName = _clubPlayers.find(p => p.profile_id === target)?.name || target;
+    if (!confirm(t('txt_ph_merge_into_hub_confirm', { hub: targetName, names: ghostNames }))) return;
+  } else if (!confirm(t('txt_ph_consolidate_confirm', { names: ghostNames }))) {
+    return;
+  }
 
   const msgEl = document.getElementById('clubs-ghost-manual-msg');
   const nameInput = document.getElementById('clubs-ghost-manual-name');
-  const name = nameInput?.value?.trim() || null;
+  // With a registered target we keep that player's name; otherwise use the input.
+  const name = target ? null : (nameInput?.value?.trim() || null);
+  // The target (Hub profile) leads source_ids so the backend picks it as target.
+  const sourceIds = target ? [target, ...ghostIds] : ghostIds;
   if (msgEl) msgEl.innerHTML = `<em>${t('txt_ph_consolidating')}</em>`;
 
   try {
@@ -1381,10 +1402,12 @@ async function clubsConsolidateSelectedGhosts() {
       body: JSON.stringify({ source_ids: sourceIds, name }),
     });
     _clubsSelectedGhostProfiles = new Set();
+    _clubsMergeTargetId = '';
 
     const players = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players`).catch(() => []);
     _clubPlayers = players;
     _clubsRenderPlayers();
+    _clubsRenderPossibleMembers(true);
 
     const area = document.getElementById('clubs-ghost-duplicates');
     if (area) {
@@ -1497,19 +1520,38 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
     html += `<p class="muted-note" style="margin-top:0.5rem">${t('txt_txt_no_results')}</p>`;
   }
 
-  if (_clubsSelectedGhostProfiles.size >= 2) {
+  // Registered (Hub) members that can be a merge target.
+  const hubMembers = _clubPlayers.filter(p => p.has_hub_profile);
+  const hasTarget = !!_clubsMergeTargetId;
+  const selCount = _clubsSelectedGhostProfiles.size;
+  // Show the bar when there's something actionable: a registered target with
+  // ≥1 ghost, or ≥2 ghosts to consolidate into a new profile.
+  if ((hasTarget && selCount >= 1) || selCount >= 2) {
     const selectedNames = [..._clubsSelectedGhostProfiles]
       .map(id => members.find(p => p.profile_id === id)?.name || id)
       .filter(Boolean);
     const suggestedName = selectedNames[0] || '';
+    const targetOptions = hubMembers
+      .map(p => `<option value="${escAttr(p.profile_id)}"${p.profile_id === _clubsMergeTargetId ? ' selected' : ''}>${esc(p.name || p.profile_id)}</option>`)
+      .join('');
+    const label = hasTarget
+      ? t('txt_clubs_merge_into_member_info', { n: selCount, name: hubMembers.find(p => p.profile_id === _clubsMergeTargetId)?.name || _clubsMergeTargetId })
+      : t('txt_ph_ghosts_selected', { n: selCount });
     html += `
       <div class="clubs-ghost-merge-bar">
-        <span class="clubs-ghost-merge-bar-label">${t('txt_ph_ghosts_selected', { n: _clubsSelectedGhostProfiles.size })}</span>
-        <input type="text" id="clubs-ghost-manual-name" value="${escAttr(suggestedName)}"
+        <span class="clubs-ghost-merge-bar-label">${label}</span>
+        <label class="muted-tiny" style="display:flex;align-items:center;gap:0.35rem">
+          ${t('txt_clubs_merge_target_label')}
+          <select onchange="clubsSetMergeTarget(this.value)" class="clubs-ghost-merge-bar-input" aria-label="${t('txt_clubs_merge_target_label')}">
+            <option value="">${t('txt_clubs_merge_target_none')}</option>
+            ${targetOptions}
+          </select>
+        </label>
+        ${hasTarget ? '' : `<input type="text" id="clubs-ghost-manual-name" value="${escAttr(suggestedName)}"
           placeholder="${t('txt_ph_consolidate_name_placeholder')}"
           class="clubs-ghost-merge-bar-input"
-          aria-label="${t('txt_ph_consolidate_name_label')}">
-        <button type="button" class="btn btn-primary btn-sm" onclick="clubsConsolidateSelectedGhosts()">${t('txt_ph_consolidate_ghosts')}</button>
+          aria-label="${t('txt_ph_consolidate_name_label')}">`}
+        <button type="button" class="btn btn-primary btn-sm" onclick="clubsConsolidateSelectedGhosts()">${hasTarget ? t('txt_ph_merge_into_hub') : t('txt_ph_consolidate_ghosts')}</button>
         <button type="button" class="btn btn-sm btn-muted" onclick="clubsClearGhostMergeSelection()">${t('txt_txt_clear')}</button>
       </div>
       <div id="clubs-ghost-manual-msg" class="clubs-ghost-merge-bar-msg"></div>`;

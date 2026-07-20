@@ -863,3 +863,54 @@ class TestMyEntry:
         r = client.get(f"/api/registrations/{seed_lobby}/my-entry", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 200, r.text
         assert r.json()["player_id"] == seed["player_id"]
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Auto-provisioning: any registrant email gets a durable Hub profile
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _profile_id_for_email(email: str) -> str | None:
+    with db_mod.get_db() as conn:
+        row = conn.execute(
+            "SELECT id FROM player_profiles WHERE LOWER(email) = LOWER(?) AND is_ghost = 0",
+            (email,),
+        ).fetchone()
+    return row["id"] if row else None
+
+
+class TestAutoProvisionHubProfile:
+    def test_registering_with_email_creates_hub_profile(self, client, auth_headers):
+        rid = _make_lobby(client, auth_headers)
+        _register(client, rid, "Auto Amy", email="amy-auto@example.com")
+        # A durable, non-ghost profile now exists for the email.
+        assert _profile_id_for_email("amy-auto@example.com") is not None
+
+    def test_provisioning_does_not_link_participation_until_verified(self, client, auth_headers):
+        rid = _make_lobby(client, auth_headers)
+        entry = _register(client, rid, "Unlinked Uma", email="uma-auto@example.com")
+        # Identity exists, but the unverified email must not auto-claim the entry.
+        assert _profile_id_for_email("uma-auto@example.com") is not None
+        assert _registrant_profile_id(rid, entry["player_id"]) is None
+
+    def test_provisioning_is_idempotent(self, client, auth_headers):
+        rid1 = _make_lobby(client, auth_headers, name="L1")
+        rid2 = _make_lobby(client, auth_headers, name="L2")
+        _register(client, rid1, "Dup Dan", email="dan-auto@example.com")
+        _register(client, rid2, "Dan Again", email="dan-auto@example.com")
+        with db_mod.get_db() as conn:
+            n = conn.execute(
+                "SELECT COUNT(*) AS n FROM player_profiles WHERE LOWER(email) = 'dan-auto@example.com'"
+            ).fetchone()["n"]
+        assert n == 1
+
+    def test_no_email_creates_no_profile(self, client, auth_headers):
+        rid = _make_lobby(client, auth_headers)
+        before = _count_profiles()
+        _register(client, rid, "Anon Ann")
+        assert _count_profiles() == before
+
+
+def _count_profiles() -> int:
+    with db_mod.get_db() as conn:
+        return conn.execute("SELECT COUNT(*) AS n FROM player_profiles").fetchone()["n"]

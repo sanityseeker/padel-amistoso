@@ -42,6 +42,12 @@ from .db import (
     remove_club_co_editor,
 )
 from .elo_store import consolidate_ghost_elos, get_profile_recent_elo_logs, retroactive_transfer_elo
+from .player_merge import (
+    combined_player_ids,
+    materialize_participants,
+    normalize_name,
+    reassign_profile_data,
+)
 from .leaderboard_cache import (
     _SYNC_VERSION_CACHE,
     club_sync_version as _club_sync_version,
@@ -1802,9 +1808,16 @@ class GhostDuplicateGroup(BaseModel):
 
 
 class ClubGhostConsolidateRequest(BaseModel):
-    """Request body for consolidating ghost profiles within a club."""
+    """Request body for consolidating profiles/participants within a club.
 
-    source_ids: list[str] = Field(min_length=2)
+    ``source_ids`` are existing profile ids (ghosts, or at most one Hub profile
+    used as the merge target).  ``source_player_ids`` are raw past-participant
+    ``player_id``s (no profile row yet) that are materialized into ghosts and
+    merged in.  At least 2 distinct sources total are required.
+    """
+
+    source_ids: list[str] = Field(default_factory=list)
+    source_player_ids: list[str] = Field(default_factory=list)
     name: str | None = Field(default=None, max_length=128)
 
 
@@ -1865,6 +1878,77 @@ def list_possible_members(
     return list(players.values())
 
 
+@router.get("/{club_id}/players/past-participants")
+def search_club_past_participants(
+    club_id: str,
+    q: str = "",
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    """Search raw past-participants (no profile) who played in this club.
+
+    Mirrors the admin ``/past-participants`` search but scoped to ``club_id`` via
+    the denormalized ``player_history.club_id`` / the tournament's club, so a
+    club editor can only surface players who actually competed in their club.
+    Ghost/Hub-linked rows are excluded (``profile_id IS NULL``); these are the
+    entries that can be materialized and merged into a registered player.
+
+    Args:
+        q: Name substring (case-insensitive). Empty returns up to 50 recents.
+
+    Returns:
+        List of ``{player_id, name, last_tournament_id, last_tournament_name,
+        last_seen_at}``.
+    """
+    club = _get_club(club_id)
+    _require_club_editor(club, user)
+
+    pattern = f"%{q.strip()}%" if q.strip() else "%"
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT player_id, player_name AS name,
+                   tournament_id AS last_tournament_id,
+                   COALESCE(tournament_name, '') AS last_tournament_name,
+                   updated_at AS last_seen_at
+            FROM (
+                SELECT ps.player_id, ps.player_name, ps.tournament_id,
+                       COALESCE(t.name, '') AS tournament_name,
+                       COALESCE(ps.finished_at, datetime('now')) AS updated_at
+                FROM player_secrets ps
+                JOIN tournaments t ON t.id = ps.tournament_id
+                WHERE ps.profile_id IS NULL
+                  AND t.club_id = ?
+                  AND ps.player_name LIKE ?
+                UNION ALL
+                SELECT ph.player_id, ph.player_name, ph.entity_id AS tournament_id,
+                       ph.entity_name AS tournament_name,
+                       ph.finished_at AS updated_at
+                FROM player_history ph
+                WHERE ph.profile_id IS NULL
+                  AND ph.entity_type = 'tournament'
+                  AND ph.club_id = ?
+                  AND ph.player_name LIKE ?
+            ) combined
+            GROUP BY player_id
+            HAVING updated_at = MAX(updated_at)
+            ORDER BY updated_at DESC
+            LIMIT 50
+            """,
+            (club_id, pattern, club_id, pattern),
+        ).fetchall()
+
+    return [
+        {
+            "player_id": r["player_id"],
+            "name": r["name"],
+            "last_tournament_id": r["last_tournament_id"],
+            "last_tournament_name": r["last_tournament_name"],
+            "last_seen_at": r["last_seen_at"],
+        }
+        for r in rows
+    ]
+
+
 @router.get("/{club_id}/players/ghost-duplicates", response_model=list[GhostDuplicateGroup])
 def list_ghost_duplicates(
     club_id: str,
@@ -1920,14 +2004,69 @@ def list_ghost_duplicates(
             p.tier_id_tennis = r["tier_id"]
             p.tier_name_tennis = r["tier_name"]
 
-    name_groups: dict[str, list[ClubPlayerOut]] = {}
-    for p in players.values():
-        key = p.name.lower().strip()
-        name_groups.setdefault(key, []).append(p)
+    # Conservative suggestions only: union profiles that share a
+    # normalized name (accent/case/punctuation-insensitive) OR a non-empty
+    # email. Never merges automatically — the admin confirms every group.
+    parent: dict[str, str] = {pid: pid for pid in players}
 
-    return [
-        GhostDuplicateGroup(name=group[0].name, profiles=group) for group in name_groups.values() if len(group) >= 2
-    ]
+    def _find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def _union(a: str, b: str) -> None:
+        parent[_find(a)] = _find(b)
+
+    by_name: dict[str, str] = {}
+    by_email: dict[str, str] = {}
+    for pid, p in players.items():
+        name_key = normalize_name(p.name)
+        if name_key:
+            if name_key in by_name:
+                _union(pid, by_name[name_key])
+            else:
+                by_name[name_key] = pid
+        email_key = (p.email or "").strip().lower()
+        if email_key:
+            if email_key in by_email:
+                _union(pid, by_email[email_key])
+            else:
+                by_email[email_key] = pid
+
+    groups: dict[str, list[ClubPlayerOut]] = {}
+    for pid, p in players.items():
+        groups.setdefault(_find(pid), []).append(p)
+
+    return [GhostDuplicateGroup(name=group[0].name, profiles=group) for group in groups.values() if len(group) >= 2]
+
+
+def _filter_club_participant_ids(player_ids: list[str], club_id: str) -> list[str]:
+    """Keep only ``player_id``s that actually participated in ``club_id``.
+
+    Scoping guard for club-scoped merges: a club editor may only pull in raw
+    past-participants whose history/secrets are denormalized to their own club,
+    never arbitrary global players.
+    """
+    ids = [pid for pid in dict.fromkeys(player_ids) if pid]
+    if not ids:
+        return []
+    placeholders = ",".join("?" for _ in ids)
+    with get_db() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT DISTINCT player_id FROM (
+                SELECT player_id FROM player_history
+                 WHERE club_id = ? AND player_id IN ({placeholders})
+                UNION
+                SELECT ps.player_id FROM player_secrets ps
+                  JOIN tournaments t ON t.id = ps.tournament_id
+                 WHERE t.club_id = ? AND ps.player_id IN ({placeholders})
+            )
+            """,
+            [club_id, *ids, club_id, *ids],
+        ).fetchall()
+    return [r["player_id"] for r in rows]
 
 
 @router.post("/{club_id}/players/consolidate-ghosts", response_model=ClubPlayerOut)
@@ -1961,12 +2100,15 @@ async def consolidate_club_ghost_profiles(
     club = _get_club(club_id)
     _require_club_editor(club, user)
 
-    unique_ids: list[str] = list(dict.fromkeys(req.source_ids))
+    # Raw past-participants (no profile) become ghost profiles and join the
+    # merge — but only if they actually played in this club (scope guard).
+    club_participant_ids = _filter_club_participant_ids(req.source_player_ids, club_id)
+    materialized = materialize_participants(club_participant_ids)
+    unique_ids: list[str] = list(dict.fromkeys([*req.source_ids, *materialized]))
     if len(unique_ids) < 2:
-        raise HTTPException(422, "At least 2 distinct profile IDs are required")
+        raise HTTPException(422, "At least 2 distinct profiles/participants are required")
 
     primary_id = unique_ids[0]
-    secondary_ids = unique_ids[1:]
 
     with get_db() as conn:
         placeholders = ",".join("?" for _ in unique_ids)
@@ -1981,11 +2123,40 @@ async def consolidate_club_ghost_profiles(
             raise HTTPException(404, f"Profiles not found: {', '.join(sorted(missing))}")
 
         non_ghost = [r["id"] for r in profiles if not r["is_ghost"]]
-        if non_ghost:
+        if len(non_ghost) > 1:
             raise HTTPException(
                 422,
-                f"Only ghost profiles can be consolidated. Non-ghost profiles: {', '.join(sorted(non_ghost))}",
+                f"At most one non-ghost (Hub) profile may be the merge target. "
+                f"Non-ghost profiles: {', '.join(sorted(non_ghost))}",
             )
+        ghost_only = [r["id"] for r in profiles if r["is_ghost"]]
+        if not ghost_only:
+            raise HTTPException(422, "At least one ghost profile must be included in the merge")
+
+        # A Hub (non-ghost) profile, if present, becomes the primary target.
+        target_is_hub = bool(non_ghost)
+        if target_is_hub and primary_id != non_ghost[0]:
+            primary_id = non_ghost[0]
+        secondary_ids = [i for i in unique_ids if i != primary_id]
+
+        # Scope guard: every ghost source (and a ghost primary) must belong to
+        # this club, so an editor can't vacuum unrelated global ghosts. The Hub
+        # target is exempt — attaching club history to it is the whole point.
+        # Freshly materialized club participants are exempt too (their club ELO
+        # row is created by the recompute below).
+        materialized_set = set(materialized)
+        club_member_ids = {
+            r["profile_id"]
+            for r in conn.execute(
+                f"SELECT DISTINCT profile_id FROM profile_club_elo "
+                f"WHERE club_id = ? AND profile_id IN ({placeholders})",
+                [club_id, *unique_ids],
+            ).fetchall()
+        }
+        to_check = [pid for pid in unique_ids if not (target_is_hub and pid == primary_id)]
+        outside = [pid for pid in to_check if pid not in club_member_ids and pid not in materialized_set]
+        if outside:
+            raise HTTPException(422, f"Profiles are not members of this club: {', '.join(sorted(outside))}")
 
         if req.name:
             conn.execute(
@@ -1994,44 +2165,9 @@ async def consolidate_club_ghost_profiles(
             )
 
         for secondary_id in secondary_ids:
-            conn.execute(
-                "UPDATE player_secrets SET profile_id = ? WHERE profile_id = ?",
-                (primary_id, secondary_id),
-            )
-            conn.execute(
-                """DELETE FROM player_history
-                   WHERE profile_id = ?
-                     AND entity_type = 'tournament'
-                     AND entity_id IN (
-                         SELECT entity_id FROM player_history
-                          WHERE profile_id = ? AND entity_type = 'tournament'
-                     )""",
-                (secondary_id, primary_id),
-            )
-            conn.execute(
-                "UPDATE player_history SET profile_id = ? WHERE profile_id = ?",
-                (primary_id, secondary_id),
-            )
-            conn.execute("DELETE FROM profile_community_elo WHERE profile_id = ?", (secondary_id,))
-            conn.execute("DELETE FROM profile_club_elo WHERE profile_id = ?", (secondary_id,))
-            conn.execute("DELETE FROM player_profiles WHERE id = ?", (secondary_id,))
+            reassign_profile_data(conn, primary_id, secondary_id)
 
-        all_player_ids = [
-            r["player_id"]
-            for r in conn.execute(
-                """
-                SELECT DISTINCT player_id FROM (
-                    SELECT player_id FROM player_secrets
-                     WHERE profile_id = ? AND player_id IS NOT NULL
-                    UNION
-                    SELECT player_id FROM player_history
-                     WHERE profile_id = ? AND entity_type = 'tournament'
-                       AND player_id IS NOT NULL
-                )
-                """,
-                (primary_id, primary_id),
-            ).fetchall()
-        ]
+        all_player_ids = combined_player_ids(conn, primary_id)
 
     consolidate_ghost_elos(primary_id, all_player_ids)
 
@@ -2054,7 +2190,7 @@ async def consolidate_club_ghost_profiles(
     player = ClubPlayerOut(
         profile_id=primary_id,
         name=profile_name_row["name"] if profile_name_row else primary_id,
-        has_hub_profile=False,
+        has_hub_profile=target_is_hub,
     )
     for r in rows:
         if r["sport"] == "padel":

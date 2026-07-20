@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import secrets
 import sqlite3
 import unicodedata
@@ -39,6 +40,8 @@ from ..models import Court, GPPhase, Player, QuestionType, Sport, TournamentType
 from ..tournaments import GroupPlayoffTournament, MexicanoTournament, PlayoffTournament
 from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .db import add_co_editor, get_db, get_registration_co_editors, get_shared_registration_ids
+from .elo_integration import elo_init_tournament
+from .elo_store import get_profile_starting_elos
 from .helpers import _store_tournament, get_scope_branding as _get_scope_branding, revalidate_scope_for_community
 from .player_secret_store import (
     lookup_registrant_by_passphrase,
@@ -74,6 +77,8 @@ from .schemas import (
 from .state import allocate_tournament_id, _tournaments
 
 router = APIRouter(prefix="/api/registrations", tags=["registrations"])
+
+logger = logging.getLogger(__name__)
 
 _CREATE_MAX_ATTEMPTS = 20
 _CREATE_WINDOW_SECONDS = 60
@@ -910,6 +915,9 @@ async def admin_add_registrant(rid: str, req: RegistrantIn, user: User = Depends
                 (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now, lang),
             )
 
+    # Eagerly give any emailed player a durable Hub identity (background).
+    _schedule_hub_provision(email, lang)
+
     # Auto-send confirmation email if the lobby has auto_send_email enabled
     if email and is_valid_email(email) and reg.get("auto_send_email"):
         es = _get_reg_email_settings(reg)
@@ -1156,6 +1164,11 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
                 (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now, profile_id, lang),
             )
 
+    # Eagerly give any emailed player a durable Hub identity (background). Skip
+    # when this registrant was already linked to an existing profile above.
+    if profile_id is None:
+        _schedule_hub_provision(email, lang)
+
     # Auto-send confirmation email if the lobby has auto_send_email enabled
     if email and is_valid_email(email) and reg.get("auto_send_email"):
         es = _get_reg_email_settings(reg)
@@ -1307,13 +1320,26 @@ async def convert_registration(
 
         tournament_name = req.name or registration["name"]
 
-        # Build initial_strength mapping (player name → score → player_id → score)
+        # Build initial_strength mapping (player_id → strength score) used to
+        # pre-seed group/bracket ordering.  Admin-entered strengths win; players
+        # without a manual value fall back to their linked profile ELO so a known
+        # player's cross-tournament rating drives seeding (ELO continuity).
         initial_strength: dict[str, float] | None = None
+        manual_strengths: dict[str, float] = {}
         if req.player_strengths:
-            initial_strength = {}
             for name, pid in player_entries:
                 if name in req.player_strengths:
-                    initial_strength[pid] = req.player_strengths[name]
+                    manual_strengths[pid] = req.player_strengths[name]
+
+        pid_to_profile = {pid: prof for (prof, pid, *_rest) in secret_rows if prof}
+        elo_strengths = get_profile_starting_elos(
+            pid_to_profile,
+            registration.get("community_id", "open"),
+            req.sport.value,
+        )
+        if manual_strengths or elo_strengths:
+            # Manual entries override the ELO fallback per player.
+            initial_strength = {**elo_strengths, **manual_strengths}
 
         tid = await allocate_tournament_id()
 
@@ -1525,6 +1551,11 @@ async def convert_registration(
                     for (profile_id_val, pid, name, pp, tok, lang_val) in secret_rows
                 ],
             )
+
+        # Seed ELO rows now that player_secrets (and their profile links) exist, so
+        # linked players carry their profile ELO into this tournament instead of
+        # silently starting from the 1000 default on the first scored match.
+        elo_init_tournament(tid, [row[1] for row in secret_rows], req.sport.value)
 
         # Grant all current registration co-editors access to the new tournament so
         # they can continue managing it without the owner having to re-share manually.
@@ -2080,6 +2111,27 @@ def _name_matches(query: str, candidate: str) -> bool:
     """
     candidate_tokens = candidate.split()
     return all(any(ct.startswith(qt) for ct in candidate_tokens) for qt in query.split())
+
+
+def _schedule_hub_provision(email: str, lang: str = "en") -> None:
+    """Eagerly provision a durable Hub profile for a captured registrant email.
+
+    Any player recorded with a valid email gets a (non-ghost) Hub profile —
+    whether or not they ever set one up — so a durable identity exists and they
+    can log in by email (magic link).  Only the identity is created here:
+    participations are NOT linked, so an unverified email never auto-claims past
+    participations (linking happens on email verification).  This is a cheap
+    SELECT+INSERT, run inline; best-effort so it never fails the request.
+    """
+    clean = (email or "").strip()
+    if not clean or not is_valid_email(clean):
+        return
+    try:
+        from .routes_player_space import _find_or_create_profile_for_email  # noqa: PLC0415
+
+        _find_or_create_profile_for_email(clean, lang, link_participations=False)
+    except Exception:  # pragma: no cover - best-effort; never affect registration
+        logger.warning("hub provisioning failed for a registrant email", exc_info=True)
 
 
 def _hub_login_token_for_email(email: str, lang: str = "en") -> str | None:

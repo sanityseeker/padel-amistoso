@@ -4,7 +4,13 @@ Tests for registration → tournament conversion with composite teams and initia
 
 from __future__ import annotations
 
+import uuid
+from datetime import datetime, timezone
+
 from fastapi.testclient import TestClient
+
+import backend.api.db as db_mod
+from backend.api.elo_store import get_tournament_elos, get_tournament_match_counts
 
 
 class TestConvertWithTeams:
@@ -863,3 +869,100 @@ class TestConvertClosedRegistration:
         )
         assert r.status_code == 400
         assert "archived" in r.json()["detail"].lower()
+
+
+class TestConvertEloContinuity:
+    """A known player's profile ELO must carry into a converted tournament and
+    pre-seed ordering, rather than resetting to the 1000 default."""
+
+    def _register(self, client, auth_headers, names):
+        r = client.post("/api/registrations", json={"name": "ELO Tourney"}, headers=auth_headers)
+        rid = r.json()["id"]
+        for name in names:
+            assert client.post(f"/api/registrations/{rid}/register", json={"player_name": name}).status_code == 200
+        return rid
+
+    def _link_profile_with_elo(self, rid, player_name, elo, matches, community_id="open"):
+        """Link a registrant to a fresh profile carrying a prior community ELO.
+
+        Returns the registrant's ``player_id``.
+        """
+        profile_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "INSERT INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost)"
+                " VALUES (?, ?, ?, ?, '', ?, 0)",
+                (profile_id, f"pp-{uuid.uuid4().hex[:12]}", player_name, f"{player_name}@ex.com", now),
+            )
+            conn.execute(
+                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)"
+                " VALUES (?, ?, 'padel', ?, ?)",
+                (profile_id, community_id, elo, matches),
+            )
+            conn.execute(
+                "UPDATE registrants SET profile_id = ? WHERE registration_id = ? AND player_name = ?",
+                (profile_id, rid, player_name),
+            )
+            row = conn.execute(
+                "SELECT player_id FROM registrants WHERE registration_id = ? AND player_name = ?",
+                (rid, player_name),
+            ).fetchone()
+        return row["player_id"]
+
+    def _pid_of(self, rid, player_name):
+        with db_mod.get_db() as conn:
+            row = conn.execute(
+                "SELECT player_id FROM registrants WHERE registration_id = ? AND player_name = ?",
+                (rid, player_name),
+            ).fetchone()
+        return row["player_id"]
+
+    def test_converted_mexicano_carries_profile_elo(self, client, auth_headers):
+        """Converting a lobby seeds each linked player's profile ELO + match count."""
+        names = ["Nadal", "Bob", "Charlie", "Dave"]
+        rid = self._register(client, auth_headers, names)
+        nadal_pid = self._link_profile_with_elo(rid, "Nadal", elo=1300, matches=20)
+
+        r = client.post(
+            f"/api/registrations/{rid}/convert",
+            json={"tournament_type": "mexicano", "player_names": names, "num_rounds": 1},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        tid = r.json()["tournament_id"]
+
+        elos = get_tournament_elos(tid)
+        counts = get_tournament_match_counts(tid)
+        # Known player keeps their rating and cumulative match count (continuity).
+        assert round(elos[nadal_pid]) == 1300
+        assert counts[nadal_pid] == 20
+        # An unknown player starts from the default.
+        bob_pid = self._pid_of(rid, "Bob")
+        assert round(elos[bob_pid]) == 1000
+        assert counts[bob_pid] == 0
+
+    def test_converted_gp_seeds_groups_by_profile_elo(self, client, auth_headers):
+        """Highest-ELO players are snake-drafted into different groups (pre-seeding).
+
+        Individual GP mode needs >=4 players per group, so use 8 players across
+        2 groups with the two top seeds carrying a high profile ELO.
+        """
+        names = ["Nadal", "Federer", "R1", "R2", "R3", "R4", "R5", "R6"]
+        rid = self._register(client, auth_headers, names)
+        self._link_profile_with_elo(rid, "Nadal", elo=1400, matches=30)
+        self._link_profile_with_elo(rid, "Federer", elo=1350, matches=30)
+
+        r = client.post(
+            f"/api/registrations/{rid}/convert",
+            json={"tournament_type": "group_playoff", "player_names": names, "num_groups": 2},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        tid = r.json()["tournament_id"]
+
+        groups = client.get(f"/api/tournaments/{tid}/gp/groups").json()
+        group_members = [set(s["player"] for s in standings) for standings in groups["standings"].values()]
+        # Snake-draft on ELO puts the two top seeds in separate groups.
+        nadal_group = next(g for g in group_members if "Nadal" in g)
+        assert "Federer" not in nadal_group

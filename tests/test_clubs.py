@@ -1639,8 +1639,8 @@ class TestClubGhostConsolidation:
         assert res.status_code == 200
         assert res.json()["name"] == "Anna New"
 
-    def test_consolidate_rejects_non_ghost_profiles(self, client, auth_headers) -> None:
-        """Consolidation of a non-ghost profile must return 422."""
+    def test_consolidate_merges_ghost_into_hub_target(self, client, auth_headers) -> None:
+        """A single non-ghost (Hub) profile is allowed as the merge target."""
         comm = _create_community(client, auth_headers)
         club = _create_club(client, auth_headers, comm["id"])
         now = datetime.now(timezone.utc).isoformat()
@@ -1658,6 +1658,126 @@ class TestClubGhostConsolidation:
         res = client.post(
             f"/api/clubs/{club['id']}/players/consolidate-ghosts",
             json={"source_ids": ["real_pr1", gid]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        # The Hub profile is the survivor; the ghost is gone.
+        assert body["profile_id"] == "real_pr1"
+        assert body["has_hub_profile"] is True
+        with get_db() as conn:
+            assert conn.execute("SELECT 1 FROM player_profiles WHERE id = ?", (gid,)).fetchone() is None
+
+    def test_consolidate_rejects_multiple_hub_targets(self, client, auth_headers) -> None:
+        """More than one non-ghost profile in a merge must return 422."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        now = datetime.now(timezone.utc).isoformat()
+        with get_db() as conn:
+            for pid in ("real_a", "real_b"):
+                conn.execute(
+                    "INSERT OR IGNORE INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost) VALUES (?, ?, ?, '', '', ?, 0)",
+                    (pid, _secrets.token_hex(16), "Dup Player", now),
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden) VALUES (?, ?, 'padel', 1000.0, 0, 0)",
+                    (pid, club["id"]),
+                )
+            gid = _insert_club_ghost(conn, club["id"], "Dup Player", "dup_g")
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/consolidate-ghosts",
+            json={"source_ids": ["real_a", "real_b", gid]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 422
+
+    def test_ghost_duplicates_groups_by_normalized_name_and_email(self, client, auth_headers) -> None:
+        """Cross-name aliases surface via accent/case-normalized name and shared email."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        with get_db() as conn:
+            # Accent/case variants of the same name → one group.
+            a1 = _insert_club_ghost(conn, club["id"], "José Núñez", "jn1")
+            a2 = _insert_club_ghost(conn, club["id"], "jose nunez", "jn2")
+            # Different names but a shared email → a second group.
+            b1 = _insert_club_ghost(conn, club["id"], "Bob One", "b1")
+            b2 = _insert_club_ghost(conn, club["id"], "Robert Uno", "b2")
+            conn.execute("UPDATE player_profiles SET email = 'bob@example.com' WHERE id IN (?, ?)", (b1, b2))
+
+        res = client.get(f"/api/clubs/{club['id']}/players/ghost-duplicates", headers=auth_headers)
+        assert res.status_code == 200
+        groups = [frozenset(p["profile_id"] for p in g["profiles"]) for g in res.json()]
+        assert frozenset({a1, a2}) in groups
+        assert frozenset({b1, b2}) in groups
+
+    def test_past_participants_search_is_club_scoped(self, client, auth_headers) -> None:
+        """A raw participant from another club must not be returned."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        other = _create_club(client, auth_headers, comm["id"], name="Other Club")
+        now = datetime.now(timezone.utc).isoformat()
+        with get_db() as conn:
+            for pid, name, cid in (("mine1", "Court Regular", club["id"]), ("theirs1", "Court Regular", other["id"])):
+                conn.execute(
+                    """INSERT OR IGNORE INTO player_history
+                       (profile_id, entity_type, entity_id, entity_name, player_id, player_name,
+                        finished_at, sport, club_id, top_partners, top_rivals, all_partners, all_rivals)
+                       VALUES (NULL, 'tournament', ?, 'T', ?, ?, ?, 'padel', ?, '[]', '[]', '[]', '[]')""",
+                    (f"t-{pid}", pid, name, now, cid),
+                )
+
+        res = client.get(f"/api/clubs/{club['id']}/players/past-participants", headers=auth_headers)
+        assert res.status_code == 200
+        found = {r["player_id"] for r in res.json()}
+        assert "mine1" in found
+        assert "theirs1" not in found
+
+    def test_consolidate_merges_raw_participant_into_club_member(self, client, auth_headers) -> None:
+        """A club-scoped raw participant folds into a registered member via source_player_ids."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        now = datetime.now(timezone.utc).isoformat()
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost) VALUES (?, ?, ?, '', '', ?, 0)",
+                ("club_hub", _secrets.token_hex(16), "Registered Rita", now),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden) VALUES (?, ?, 'padel', 1000.0, 0, 0)",
+                ("club_hub", club["id"]),
+            )
+            conn.execute(
+                """INSERT OR IGNORE INTO player_history
+                   (profile_id, entity_type, entity_id, entity_name, player_id, player_name,
+                    finished_at, sport, club_id, top_partners, top_rivals, all_partners, all_rivals)
+                   VALUES (NULL, 'tournament', 't-rita', 'T', 'rita_alias', 'R. Alias', ?, 'padel', ?, '[]', '[]', '[]', '[]')""",
+                (now, club["id"]),
+            )
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/consolidate-ghosts",
+            json={"source_ids": ["club_hub"], "source_player_ids": ["rita_alias"]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["profile_id"] == "club_hub"
+        with get_db() as conn:
+            hist = conn.execute("SELECT profile_id FROM player_history WHERE player_id = 'rita_alias'").fetchone()
+        assert hist["profile_id"] == "club_hub"
+
+    def test_consolidate_rejects_ghost_from_another_club(self, client, auth_headers) -> None:
+        """A ghost that is not a member of this club cannot be merged here."""
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        other = _create_club(client, auth_headers, comm["id"], name="Other Club")
+        with get_db() as conn:
+            mine = _insert_club_ghost(conn, club["id"], "Local Ghost", "loc_g")
+            theirs = _insert_club_ghost(conn, other["id"], "Foreign Ghost", "for_g")
+
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/consolidate-ghosts",
+            json={"source_ids": [mine, theirs]},
             headers=auth_headers,
         )
         assert res.status_code == 422

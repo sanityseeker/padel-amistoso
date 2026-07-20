@@ -413,7 +413,9 @@ def _link_email_participations(profile_id: str, email: str) -> None:
     retroactive_transfer_all_elos(profile_id)
 
 
-def _find_or_create_profile_for_email(email: str, lang: EmailLang = "en") -> str | None:
+def _find_or_create_profile_for_email(
+    email: str, lang: EmailLang = "en", *, link_participations: bool = True
+) -> str | None:
     """Return the id of a non-ghost profile owning ``email``, creating one if needed.
 
     Used by the email-based recovery flows to connect a returning player — who
@@ -423,9 +425,16 @@ def _find_or_create_profile_for_email(email: str, lang: EmailLang = "en") -> str
 
     - If a non-ghost profile already exists for the email, its id is returned.
     - Otherwise a new profile is created (email unverified), a display name is
-      seeded from the most recent matching participation, and all matching
-      participations plus their history/ELO are swept in via
-      ``_link_email_participations`` / the history backfills.
+      seeded from the most recent matching participation, and — unless
+      ``link_participations`` is False — all matching participations plus their
+      history/ELO are swept in via ``_link_email_participations`` / the history
+      backfills.
+
+    ``link_participations=False`` is used by eager registration-time provisioning
+    (``routes_registration._schedule_hub_provision``): it materializes the
+    durable identity so the player can log in by email, but leaves participations
+    unlinked until the email is verified — preserving the invariant that an
+    unverified email never auto-claims past participations.
 
     Returns ``None`` only on an unexpected DB error.
     """
@@ -444,43 +453,46 @@ def _find_or_create_profile_for_email(email: str, lang: EmailLang = "en") -> str
                 (clean_email,),
             ).fetchone()
             if existing is not None:
-                return existing["id"]
+                profile_id = existing["id"]
+            else:
+                # Seed a display name from the most recent matching participation.
+                name_row = conn.execute(
+                    """
+                    SELECT player_name FROM (
+                        SELECT player_name, registered_at AS ts FROM registrants
+                         WHERE LOWER(email) = LOWER(?) AND player_name != ''
+                        UNION ALL
+                        SELECT player_name, '' AS ts FROM player_secrets
+                         WHERE LOWER(email) = LOWER(?) AND player_name != ''
+                    )
+                    ORDER BY ts DESC LIMIT 1
+                    """,
+                    (clean_email, clean_email),
+                ).fetchone()
+                seed_name = (name_row["player_name"] if name_row else "") or ""
 
-            # Seed a display name from the most recent matching participation.
-            name_row = conn.execute(
-                """
-                SELECT player_name FROM (
-                    SELECT player_name, registered_at AS ts FROM registrants
-                     WHERE LOWER(email) = LOWER(?) AND player_name != ''
-                    UNION ALL
-                    SELECT player_name, '' AS ts FROM player_secrets
-                     WHERE LOWER(email) = LOWER(?) AND player_name != ''
+                profile_id = str(uuid.uuid4())
+                passphrase = _generate_unique_passphrase()
+                now = datetime.now(timezone.utc).isoformat()
+                conn.execute(
+                    """
+                    INSERT INTO player_profiles
+                        (id, passphrase, name, email, email_verified_at, contact, lang, created_at)
+                    VALUES (?, ?, ?, ?, NULL, '', ?, ?)
+                    """,
+                    (profile_id, passphrase, seed_name, clean_email, lang, now),
                 )
-                ORDER BY ts DESC LIMIT 1
-                """,
-                (clean_email, clean_email),
-            ).fetchone()
-            seed_name = (name_row["player_name"] if name_row else "") or ""
-
-            profile_id = str(uuid.uuid4())
-            passphrase = _generate_unique_passphrase()
-            now = datetime.now(timezone.utc).isoformat()
-            conn.execute(
-                """
-                INSERT INTO player_profiles
-                    (id, passphrase, name, email, email_verified_at, contact, lang, created_at)
-                VALUES (?, ?, ?, ?, NULL, '', ?, ?)
-                """,
-                (profile_id, passphrase, seed_name, clean_email, lang, now),
-            )
     except sqlite3.Error as exc:
         logger.warning("find-or-create profile for email failed: %s", exc)
         return None
 
-    # Sweep in every matching participation and backfill history + ELO.
-    _link_email_participations(profile_id, clean_email)
-    _backfill_history_for_profile(profile_id)
-    _backfill_finished_secrets(profile_id)
+    # Sweep in every matching participation and backfill history + ELO, unless
+    # the caller only wants the durable identity created (linking deferred to
+    # email verification).
+    if link_participations:
+        _link_email_participations(profile_id, clean_email)
+        _backfill_history_for_profile(profile_id)
+        _backfill_finished_secrets(profile_id)
     return profile_id
 
 
