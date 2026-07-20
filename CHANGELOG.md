@@ -1,3 +1,10 @@
+## v1.16.0 (2026-07-20)
+
+### Feat
+
+- **admin-ux**: refine ux; fix elo calculation for returning players; fix merging players profiles
+- streamline admin login UX and trim verbose interface copy
+
 ## v1.15.0 (2026-07-13)
 
 
