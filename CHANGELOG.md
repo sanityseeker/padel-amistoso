@@ -1,3 +1,9 @@
+## v1.16.2 (2026-07-21)
+
+### Fix
+
+- **player-hub**: fix merged players stats
+
 ## v1.16.1 (2026-07-20)
 
 ### Fix
