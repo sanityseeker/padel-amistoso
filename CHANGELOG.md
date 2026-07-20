@@ -1,3 +1,9 @@
+## v1.16.1 (2026-07-20)
+
+### Fix
+
+- **elo**: fix elo recalculation accross tournaments
+
 ## v1.16.0 (2026-07-20)
 
 ### Feat
