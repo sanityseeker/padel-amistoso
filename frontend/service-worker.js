@@ -1,5 +1,5 @@
 // Service worker — optimal caching for performance + freshness.
-const CACHE_NAME = 'amistoso-v46';
+const CACHE_NAME = 'amistoso-v47';
 const STATIC_ASSETS = [
   '/shared.js', '/auth.js', '/i18n.js', '/manifest.json',
   '/admin-utils.js', '/admin-tournaments.js', '/admin-create.js',

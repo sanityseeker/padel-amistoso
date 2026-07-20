@@ -27,6 +27,22 @@ DEFAULT_COMMUNITY_ID = "open"
 # ---------------------------------------------------------------------------
 
 
+def _match_timestamp(match: object) -> str:
+    """ISO timestamp for a match's ELO rows, from the match's real scored time.
+
+    Deriving the ``updated_at`` written to ``player_elo`` / ``player_elo_log``
+    from the match's own ``scored_at`` (a unix epoch) — rather than
+    ``datetime.now()`` — means a recalculation reproduces the *same* timestamps
+    instead of stamping every replayed row with the moment of the recalc.  That
+    keeps the ELO history and the chronological ordering keys (used to pick a
+    profile's "latest" rating) faithful to when matches were actually played.
+    """
+    scored_at = getattr(match, "scored_at", None)
+    if isinstance(scored_at, (int, float)) and scored_at > 0:
+        return datetime.fromtimestamp(scored_at, tz=timezone.utc).isoformat()
+    return datetime.now(timezone.utc).isoformat()
+
+
 def _get_tournament_community_id(tournament_id: str, conn=None) -> str:
     """Return the community_id for a tournament, defaulting to 'open'."""
 
@@ -192,9 +208,15 @@ def upsert_tournament_elo(
     tournament_id: str,
     updates: list[EloUpdate],
     sport: str = Sport.PADEL,
+    updated_at: str | None = None,
 ) -> None:
-    """Write ELO updates for players after a match."""
-    now = datetime.now(timezone.utc).isoformat()
+    """Write ELO updates for players after a match.
+
+    *updated_at* should be the match's real scored time (see
+    :func:`_match_timestamp`) so a recalculation preserves the original
+    chronology instead of overwriting it with the recalc moment.
+    """
+    now = updated_at or datetime.now(timezone.utc).isoformat()
     with get_db() as conn:
         conn.executemany(
             """INSERT INTO player_elo
@@ -219,14 +241,45 @@ def upsert_tournament_elo(
         )
 
 
+def get_tournament_elo_timestamps(
+    tournament_id: str,
+    sport: str = Sport.PADEL,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Return ``({match_id: updated_at}, {player_id: updated_at})`` for existing rows.
+
+    Captured before a recalculation wipes the rows so the original per-match
+    timestamps can be carried over, keeping the ELO history's chronology intact
+    (a recalc must not restamp matches with the moment it ran).
+    """
+    with get_db() as conn:
+        log_rows = conn.execute(
+            "SELECT match_id, MIN(updated_at) AS updated_at FROM player_elo_log"
+            " WHERE tournament_id = ? AND sport = ? GROUP BY match_id",
+            (tournament_id, sport),
+        ).fetchall()
+        elo_rows = conn.execute(
+            "SELECT player_id, updated_at FROM player_elo WHERE tournament_id = ? AND sport = ?",
+            (tournament_id, sport),
+        ).fetchall()
+    return (
+        {r["match_id"]: r["updated_at"] for r in log_rows},
+        {r["player_id"]: r["updated_at"] for r in elo_rows},
+    )
+
+
 def upsert_tournament_elo_log(
     tournament_id: str,
     match: object,
     updates: list[EloUpdate],
     sport: str = Sport.PADEL,
     match_order: int = 0,
+    updated_at: str | None = None,
 ) -> None:
-    """Write per-match ELO logs for every participant in a completed match."""
+    """Write per-match ELO logs for every participant in a completed match.
+
+    *updated_at* pins the row timestamp (e.g. the value preserved from before a
+    recalculation); when omitted it is derived from the match's real scored time.
+    """
 
     updates_by_player = {u.player_id: u for u in updates}
 
@@ -260,7 +313,9 @@ def upsert_tournament_elo_log(
     }
     payload_json = json.dumps(payload)
 
-    now = datetime.now(timezone.utc).isoformat()
+    # Prefer a caller-pinned timestamp (preserved across recalculation); else the
+    # match's real scored time — never the recalc moment.
+    now = updated_at or _match_timestamp(match)
     with get_db() as conn:
         conn.executemany(
             """INSERT INTO player_elo_log
@@ -676,6 +731,211 @@ def get_tournament_elo_snapshots(
             (tournament_id, sport),
         ).fetchall()
     return {r["player_id"]: (r["elo_before"], r["matches_played"] - r["log_count"]) for r in rows}
+
+
+def get_pretournament_seed(
+    tournament_id: str,
+    sport: str = Sport.PADEL,
+) -> dict[str, tuple[float, int]]:
+    """Return ``{player_id: (elo, matches)}`` seeds derived from *earlier* tournaments.
+
+    For each player linked to a profile, the seed is the ``elo_after`` /
+    ``matches_played`` of that profile's most recent tournament which finished
+    *before* this one — preferring the same community and falling back to any
+    community (the global chain), mirroring how :func:`initialize_tournament_elos`
+    resolves a community-specific rating with a global fallback.
+
+    This is what makes a per-tournament ELO recalculation *composable*: replaying
+    every tournament in chronological (``finished_at``) order reproduces the same
+    cumulative ratings a single global re-run would, because each tournament is
+    re-seeded from the corrected results of the tournaments before it rather than
+    from a frozen (and possibly wrong, e.g. baked-in 1000) snapshot.
+
+    Players with no linked profile, or with no earlier tournament, are omitted so
+    the caller can fall back to the tournament's own stored starting values.
+    """
+    with get_db() as conn:
+        community_id = _get_tournament_community_id(tournament_id, conn)
+        linked = _get_linked_profiles(tournament_id, conn)
+        if not linked:
+            return {}
+        # A profile may map to multiple player_ids here only across tournaments;
+        # within THIS tournament each profile has one player_id.
+        player_by_profile: dict[str, str] = {r["profile_id"]: r["player_id"] for r in linked}
+        profile_ids = list(player_by_profile)
+
+        # This tournament's chronological position.  A finished tournament carries
+        # player_history.finished_at rows; an in-progress one sorts last (seed from
+        # the latest finished tournament) via a "now" sentinel.
+        fin_row = conn.execute(
+            "SELECT MIN(finished_at) AS fin FROM player_history WHERE entity_type = 'tournament' AND entity_id = ?",
+            (tournament_id,),
+        ).fetchone()
+        this_fin = fin_row["fin"] if fin_row and fin_row["fin"] else datetime.now(timezone.utc).isoformat()
+
+        placeholders = ",".join("?" for _ in profile_ids)
+        rows = conn.execute(
+            f"""
+            SELECT ph.profile_id                AS profile_id,
+                   pe.elo_after                 AS elo_after,
+                   pe.matches_played            AS matches_played,
+                   COALESCE(t.community_id, ?)  AS community_id
+              FROM player_history ph
+              JOIN player_elo pe
+                ON pe.tournament_id = ph.entity_id
+               AND pe.player_id = ph.player_id
+               AND pe.sport = ph.sport
+         LEFT JOIN tournaments t ON t.id = ph.entity_id
+             WHERE ph.entity_type = 'tournament'
+               AND ph.sport = ?
+               AND ph.entity_id != ?
+               AND ph.finished_at < ?
+               AND ph.profile_id IN ({placeholders})
+          ORDER BY ph.finished_at ASC
+            """,
+            (DEFAULT_COMMUNITY_ID, sport, tournament_id, this_fin, *profile_ids),
+        ).fetchall()
+
+    # Walk chronologically: later rows overwrite, so each dict ends holding the
+    # latest seed.  Community-specific wins over the global (any-community) chain.
+    community_seed: dict[str, tuple[float, int]] = {}
+    global_seed: dict[str, tuple[float, int]] = {}
+    for r in rows:
+        prof = r["profile_id"]
+        global_seed[prof] = (r["elo_after"], r["matches_played"])
+        if r["community_id"] == community_id:
+            community_seed[prof] = (r["elo_after"], r["matches_played"])
+
+    seed: dict[str, tuple[float, int]] = {}
+    for prof, player_id in player_by_profile.items():
+        if prof in community_seed:
+            seed[player_id] = community_seed[prof]
+        elif prof in global_seed:
+            seed[player_id] = global_seed[prof]
+    return seed
+
+
+def _latest_tournament_result(
+    conn,
+    player_ids: list[str],
+    sport: str,
+    community_id: str | None,
+    now: str,
+) -> tuple[float, int] | None:
+    """Return ``(elo_after, matches_played)`` from a profile's most recent tournament.
+
+    ``community_id`` scopes to tournaments in that community; ``None`` (or the
+    default 'open' community) considers all tournaments (the global chain).
+    "Most recent" orders by ``player_history.finished_at`` (in-progress
+    tournaments sort last via *now*), breaking ties on ``player_elo.updated_at``.
+    """
+    if not player_ids:
+        return None
+    ph = ",".join("?" for _ in player_ids)
+    fin_expr = (
+        "(SELECT MIN(h.finished_at) FROM player_history h"
+        "  WHERE h.entity_type = 'tournament' AND h.entity_id = pe.tournament_id)"
+    )
+    if community_id is not None and community_id != DEFAULT_COMMUNITY_ID:
+        sql = (
+            f"SELECT pe.elo_after AS elo_after, pe.matches_played AS matches_played,"
+            f"       {fin_expr} AS fin, pe.updated_at AS updated_at"
+            f"  FROM player_elo pe"
+            f"  JOIN tournaments t ON t.id = pe.tournament_id"
+            f" WHERE pe.sport = ? AND pe.player_id IN ({ph}) AND t.community_id = ?"
+            f" ORDER BY COALESCE(fin, ?) DESC, pe.updated_at DESC LIMIT 1"
+        )
+        params = [sport, *player_ids, community_id, now]
+    else:
+        sql = (
+            f"SELECT pe.elo_after AS elo_after, pe.matches_played AS matches_played,"
+            f"       {fin_expr} AS fin, pe.updated_at AS updated_at"
+            f"  FROM player_elo pe"
+            f" WHERE pe.sport = ? AND pe.player_id IN ({ph})"
+            f" ORDER BY COALESCE(fin, ?) DESC, pe.updated_at DESC LIMIT 1"
+        )
+        params = [sport, *player_ids, now]
+    row = conn.execute(sql, params).fetchone()
+    return (row["elo_after"], row["matches_played"]) if row else None
+
+
+def _profile_player_ids(conn, profile_id: str) -> list[str]:
+    """All ``player_id`` values ever linked to *profile_id* (secrets + history)."""
+    rows = conn.execute(
+        "SELECT player_id FROM player_secrets WHERE profile_id = ? AND player_id IS NOT NULL"
+        " UNION"
+        " SELECT player_id FROM player_history"
+        "  WHERE profile_id = ? AND entity_type = 'tournament' AND player_id IS NOT NULL",
+        (profile_id, profile_id),
+    ).fetchall()
+    return [r["player_id"] for r in rows]
+
+
+def refresh_profiles_after_tournament(
+    tournament_id: str,
+    sport: str = Sport.PADEL,
+) -> None:
+    """Rebuild linked players' profile ELO from their chronologically-latest tournament.
+
+    Called after (re)computing a tournament's ELO.  For each linked player the
+    community-scoped and global ('open') profile ratings are set from that
+    player's most recent tournament (by ``finished_at``), so recalculating an
+    *older* tournament can never leave the profile showing an older result than a
+    newer tournament — the root cause of "the second tournament overwrites the
+    first."  The per-tournament ``player_history`` ELO snapshot for *this*
+    tournament is refreshed too.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    elo_col = "elo_padel" if sport == Sport.PADEL else "elo_tennis"
+    matches_col = "elo_padel_matches" if sport == Sport.PADEL else "elo_tennis_matches"
+
+    with get_db() as conn:
+        community_id = _get_tournament_community_id(tournament_id, conn)
+        linked = _get_linked_profiles(tournament_id, conn)
+        for r in linked:
+            profile_id, player_id = r["profile_id"], r["player_id"]
+
+            # Refresh this tournament's history snapshot with the recomputed values.
+            elo_row = conn.execute(
+                "SELECT elo_before, elo_after FROM player_elo WHERE tournament_id = ? AND player_id = ? AND sport = ?",
+                (tournament_id, player_id, sport),
+            ).fetchone()
+            if elo_row is not None:
+                conn.execute(
+                    "UPDATE player_history SET elo_before = ?, elo_after = ?"
+                    " WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
+                    (elo_row["elo_before"], elo_row["elo_after"], profile_id, tournament_id),
+                )
+
+            player_ids = _profile_player_ids(conn, profile_id)
+            if not player_ids:
+                continue
+
+            # Community-scoped rating = the profile's latest tournament in this community.
+            comm = _latest_tournament_result(conn, player_ids, sport, community_id, now)
+            if comm is not None:
+                conn.execute(
+                    """INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)
+                       VALUES (?, ?, ?, ?, ?)
+                       ON CONFLICT (profile_id, community_id, sport) DO UPDATE SET
+                         elo = excluded.elo, matches = excluded.matches""",
+                    (profile_id, community_id, sport, comm[0], comm[1]),
+                )
+
+            # Global ('open') rating + flat columns = the profile's globally-latest tournament.
+            glob = _latest_tournament_result(conn, player_ids, sport, None, now)
+            if glob is not None:
+                conn.execute(
+                    """INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)
+                       VALUES (?, ?, ?, ?, ?)
+                       ON CONFLICT (profile_id, community_id, sport) DO UPDATE SET
+                         elo = excluded.elo, matches = excluded.matches""",
+                    (profile_id, DEFAULT_COMMUNITY_ID, sport, glob[0], glob[1]),
+                )
+                conn.execute(
+                    f"UPDATE player_profiles SET {elo_col} = ?, {matches_col} = ? WHERE id = ?",
+                    (glob[0], glob[1], profile_id),
+                )
 
 
 def safe_transfer_elos_to_profiles(

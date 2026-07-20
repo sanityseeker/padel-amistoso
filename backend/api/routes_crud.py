@@ -52,7 +52,6 @@ from .schemas import (
 from . import state
 from .state import _delete_tournament, _tournaments, save_tournament
 from .elo_integration import elo_recalculate_tournament
-from .elo_store import safe_transfer_elos_to_profiles
 from .elo_store import delete_tournament_elos
 from .leaderboard_cache import etag_for, get_mini_card_cached
 from .routes_admin_players import (
@@ -330,9 +329,12 @@ async def set_public(tid: str, req: SetPublicRequest, user: User = Depends(get_c
 
 @router.post("/{tid}/elo/recalculate")
 async def recalculate_elo(tid: str, user: User = Depends(get_current_user)) -> dict:
-    """Recalculate tournament ELO from all completed matches.
+    """Recalculate one tournament's ELO from all completed matches.
 
-    Restricted to the tournament owner or site admins.
+    Linked players are re-seeded from the cumulative result of their earlier
+    tournaments (ELO continuity), and each profile is then rebuilt from its
+    chronologically-latest tournament, so recalculating an older event never
+    overwrites a newer one.  Restricted to the tournament owner or site admins.
     """
     _require_owner_or_admin(tid, user)
     async with state.get_tournament_lock(tid):
@@ -340,11 +342,10 @@ async def recalculate_elo(tid: str, user: User = Depends(get_current_user)) -> d
         if data is None:
             raise HTTPException(404, "Tournament not found")
 
-        elo_recalculate_tournament(tid)
-        # Sync profiles safely: only updates a profile when this tournament is
-        # the player's chronologically latest, so later results aren't clobbered.
         sport = data.get("sport", "padel")
-        safe_transfer_elos_to_profiles(tid, sport)
+        # elo_recalculate_tournament re-seeds from earlier tournaments and rebuilds
+        # the affected profiles from their latest tournament internally.
+        elo_recalculate_tournament(tid)
 
         # Return diagnostic counts so the admin can verify completeness
         from .elo_store import get_tournament_elos
@@ -352,6 +353,50 @@ async def recalculate_elo(tid: str, user: User = Depends(get_current_user)) -> d
         elos = get_tournament_elos(tid, sport)
 
     return {"ok": True, "recalculated": True, "players_with_elo": len(elos)}
+
+
+@router.post("/elo/recalculate-all")
+async def recalculate_all_elo(user: User = Depends(get_current_user)) -> dict:
+    """Recalculate ELO for every tournament in chronological order.
+
+    Replays each tournament in ``finished_at`` order through the composable
+    per-tournament recalculation, so profile ratings converge to the exact
+    cumulative result of a single global re-run.  Site-admin only.
+    """
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(403, "Admin only")
+
+    ordered_tids = await asyncio.to_thread(_tournaments_in_chronological_order)
+
+    recalculated = 0
+    for tid in ordered_tids:
+        async with state.get_tournament_lock(tid):
+            if tid not in _tournaments:
+                continue
+            await asyncio.to_thread(elo_recalculate_tournament, tid)
+            recalculated += 1
+
+    return {"ok": True, "recalculated_tournaments": recalculated, "total": len(ordered_tids)}
+
+
+def _tournaments_in_chronological_order() -> list[str]:
+    """Return all tournament ids ordered by when they finished (then created).
+
+    In-progress tournaments (no ``player_history`` rows yet) sort last so their
+    live ratings are applied on top of the finished chain.
+    """
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT t.id AS id,
+                   (SELECT MIN(ph.finished_at) FROM player_history ph
+                     WHERE ph.entity_type = 'tournament' AND ph.entity_id = t.id) AS fin,
+                   t.created_at AS created_at
+              FROM tournaments t
+          ORDER BY (fin IS NULL) ASC, fin ASC, created_at ASC
+            """
+        ).fetchall()
+    return [r["id"] for r in rows]
 
 
 @router.put("/{tid}/alias")

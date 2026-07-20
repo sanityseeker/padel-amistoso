@@ -382,6 +382,10 @@ function _renderAccessScopeBody(collaborators) {
   html += `<div class="settings-inline-row">`;
   html += `<button type="button" class="btn btn-warning btn-sm" onclick="withLoading(this,_recalculateTournamentElo)">${_antIc('sync')} ${t('txt_txt_recalculate_elo')}</button>`;
   html += `</div>`;
+  html += `<p class="settings-help">${t('txt_admin_settings_recalc_all_help')}</p>`;
+  html += `<div class="settings-inline-row">`;
+  html += `<button type="button" class="btn btn-warning btn-sm" onclick="withLoading(this,_recalculateAllElo)">${_antIc('sync')} ${t('txt_admin_recalculate_all_elo')}</button>`;
+  html += `</div>`;
   html += `</div>`;
   html += `</div>`;
 
@@ -409,6 +413,18 @@ async function _recalculateTournamentElo() {
     await api(`/api/tournaments/${currentTid}/elo/recalculate`, { method: 'POST' });
     await _rerenderCurrentViewPreserveDrafts();
     _showToast(t('txt_txt_elo_recalculated'));
+  } catch (e) {
+    _showToast(t('txt_txt_elo_recalc_failed_value', { value: e.message }));
+  }
+}
+
+/** Replay every tournament's ELO in chronological order (cumulative rebuild). */
+async function _recalculateAllElo() {
+  if (!confirm(t('txt_admin_confirm_recalculate_all_elo'))) return;
+  try {
+    const res = await api('/api/tournaments/elo/recalculate-all', { method: 'POST' });
+    await _rerenderCurrentViewPreserveDrafts();
+    _showToast(t('txt_admin_elo_recalculated_all_value', { value: res.recalculated_tournaments }));
   } catch (e) {
     _showToast(t('txt_txt_elo_recalc_failed_value', { value: e.message }));
   }

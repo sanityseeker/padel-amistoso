@@ -14,13 +14,17 @@ from backend.models import Match, MatchStatus, TournamentType
 from backend.tournaments.elo import compute_match_elo_updates, get_k_factor
 
 from .elo_store import (
+    _match_timestamp,
     bulk_transfer_elos_to_profiles,
     get_k_factor_overrides,
     get_tournament_elo_snapshots,
+    get_tournament_elo_timestamps,
     upsert_tournament_elo_log,
+    get_pretournament_seed,
     get_tournament_elos,
     get_tournament_match_counts,
     initialize_tournament_elos,
+    refresh_profiles_after_tournament,
     reset_tournament_elos,
     reset_tournament_elo_logs,
     sync_live_elos_to_profiles,
@@ -62,13 +66,17 @@ def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
 
         effective_k_overrides = _build_effective_k_overrides(match, counts, k_overrides, mex_k_multiplier)
         updates = compute_match_elo_updates(match, ratings, counts, team_mode, effective_k_overrides)
-        upsert_tournament_elo(tid, updates, sport)
+        # One timestamp for both rows, so a later recalculation (which restores the
+        # log's timestamp onto both) reproduces exactly what was written here.
+        match_ts = _match_timestamp(match)
+        upsert_tournament_elo(tid, updates, sport, updated_at=match_ts)
         upsert_tournament_elo_log(
             tid,
             match,
             updates,
             sport,
             match_order=max((u.matches_after for u in updates), default=0),
+            updated_at=match_ts,
         )
         sync_live_elos_to_profiles(tid, sport)
     except Exception:
@@ -97,12 +105,27 @@ def elo_recalculate_tournament(tournament_id: str) -> None:
     player_ids = _extract_player_ids(tournament, ttype)
 
     try:
-        # Snapshot original starting state before wiping rows
+        # Starting seed for each player.  Start from the tournament's own stored
+        # pre-tournament snapshot (covers unlinked players, tier/manual seeds, and
+        # a player's first-ever tournament)...
         snapshots = get_tournament_elo_snapshots(tournament_id, sport)
         saved_elos = {pid: elo for pid, (elo, _cnt) in snapshots.items()}
         saved_counts = {pid: cnt for pid, (_elo, cnt) in snapshots.items()}
 
-        # Reset and re-seed with the saved pre-tournament values
+        # ...then override linked players with the cumulative result of their
+        # *earlier* tournaments so ELO continues across tournaments (rather than
+        # restarting from a stale/1000 snapshot) and recalculation composes: run
+        # every tournament in chronological order and the ratings converge to the
+        # same values a single global re-run would produce.
+        for pid, (elo, cnt) in get_pretournament_seed(tournament_id, sport).items():
+            saved_elos[pid] = elo
+            saved_counts[pid] = cnt
+
+        # Preserve the original per-match timestamps so the recalculation does not
+        # rewrite the ELO history's chronology with the moment it ran.
+        log_ts, _elo_ts = get_tournament_elo_timestamps(tournament_id, sport)
+
+        # Reset and re-seed with those pre-tournament values
         reset_tournament_elos(tournament_id, sport)
         reset_tournament_elo_logs(tournament_id, sport)
         initialize_tournament_elos(
@@ -121,9 +144,12 @@ def elo_recalculate_tournament(tournament_id: str) -> None:
             counts = get_tournament_match_counts(tournament_id, sport)
             effective_k_overrides = _build_effective_k_overrides(match, counts, k_overrides, mex_k_multiplier)
             updates = compute_match_elo_updates(match, ratings, counts, team_mode, effective_k_overrides)
-            upsert_tournament_elo(tournament_id, updates, sport)
-            upsert_tournament_elo_log(tournament_id, match, updates, sport, match_order=idx)
-        sync_live_elos_to_profiles(tournament_id, sport)
+            match_ts = log_ts.get(getattr(match, "id", "")) or _match_timestamp(match)
+            upsert_tournament_elo(tournament_id, updates, sport, updated_at=match_ts)
+            upsert_tournament_elo_log(tournament_id, match, updates, sport, match_order=idx, updated_at=match_ts)
+        # Rebuild each linked profile from its chronologically-latest tournament so
+        # recalculating an older event never clobbers a newer one.
+        refresh_profiles_after_tournament(tournament_id, sport)
     except Exception:
         logger.exception("Failed to recalculate ELO for tournament %s", tournament_id)
 

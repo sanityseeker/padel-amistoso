@@ -2126,13 +2126,71 @@ def _leaderboard_for_sport(sport: str, community_id: str = "", club_id: str | No
                 (sport,),
             ).fetchall()
         else:
+            # Live-derive matches + latest ELO from player_elo_log filtered by
+            # community, mirroring the club-scoped branch above, so a community's
+            # match counts stay consistent with (and never smaller than) the club
+            # rosters nested inside it.  The snapshot ``pce.elo`` is only a
+            # fallback for players with no logged matches (tier/manual seeds).
             profile_rows = conn.execute(
-                "SELECT pp.name, pp.is_ghost, pce.elo, pce.matches, ct.name AS tier_name"
-                " FROM profile_community_elo pce"
-                " JOIN player_profiles pp ON pp.id = pce.profile_id"
-                " LEFT JOIN club_tiers ct ON ct.id = pce.tier_id"
-                " WHERE pce.community_id = ? AND pce.sport = ? AND pce.matches > 0",
-                (community_id, sport),
+                """
+                WITH linked_tournament_players AS (
+                    SELECT ps.profile_id AS profile_id,
+                           ps.tournament_id AS tournament_id,
+                           ps.player_id AS player_id
+                      FROM player_secrets ps
+                     WHERE ps.profile_id IS NOT NULL
+                    UNION
+                    SELECT ph.profile_id AS profile_id,
+                           ph.entity_id AS tournament_id,
+                           ph.player_id AS player_id
+                      FROM player_history ph
+                     WHERE ph.entity_type = 'tournament'
+                       AND ph.profile_id IS NOT NULL
+                ),
+                scoped AS (
+                    SELECT lp.profile_id AS profile_id,
+                           l.elo_after   AS elo_after,
+                           l.is_manual   AS is_manual,
+                           l.updated_at  AS updated_at,
+                           l.match_order AS match_order
+                      FROM player_elo_log l
+                      JOIN linked_tournament_players lp
+                        ON lp.tournament_id = l.tournament_id
+                       AND lp.player_id = l.player_id
+                      JOIN tournaments t ON t.id = l.tournament_id
+                     WHERE t.community_id = ?
+                       AND l.sport = ?
+                ),
+                matches_agg AS (
+                    SELECT s.profile_id,
+                           SUM(CASE WHEN s.is_manual = 0 THEN 1 ELSE 0 END) AS matches
+                      FROM scoped s
+                  GROUP BY s.profile_id
+                ),
+                latest AS (
+                    SELECT s.profile_id,
+                           s.elo_after,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY s.profile_id
+                               ORDER BY s.updated_at DESC, s.match_order DESC
+                           ) AS rn
+                      FROM scoped s
+                )
+                SELECT pp.name      AS name,
+                       pp.is_ghost  AS is_ghost,
+                       ct.name      AS tier_name,
+                       COALESCE(m.matches, 0) AS matches,
+                       COALESCE(lt.elo_after, pce.elo) AS elo
+                  FROM profile_community_elo pce
+                  JOIN player_profiles pp ON pp.id = pce.profile_id
+             LEFT JOIN club_tiers ct ON ct.id = pce.tier_id
+             LEFT JOIN matches_agg m ON m.profile_id = pce.profile_id
+             LEFT JOIN latest lt ON lt.profile_id = pce.profile_id AND lt.rn = 1
+                 WHERE pce.community_id = ?
+                   AND pce.sport = ?
+                   AND COALESCE(m.matches, 0) > 0
+                """,
+                (community_id, sport, community_id, sport),
             ).fetchall()
 
         # 2) Unlinked tournament participants: aggregate from player_elo + player_secrets
