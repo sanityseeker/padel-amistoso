@@ -1,4 +1,9 @@
 /* ── Player Hub styles (base theme/layout from tv.css) ── */
+/* Player-facing UI text uses the brand body font (Cabinet Grotesk); tv.css
+   sets the base to --font-data (Roboto) for admin data density, so override
+   it here. Roboto / Roboto Mono are reserved for tabular data surfaces below
+   (leaderboard, participant stats, score/ELO figures). */
+body { font-family: var(--font-body); }
 .container { max-width: 600px; width: 100%; margin: 0 auto; flex: 1; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
 
@@ -1021,6 +1026,8 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
 }
 
 .player-participant-row {
@@ -1792,7 +1799,7 @@ h1 { font-family: var(--font-display); font-size: var(--text-xl); font-weight: 7
 .leaderboard-sport:last-child { margin-bottom: 0; }
 .leaderboard-sport-label { font-size: 0.82rem; font-weight: 600; margin-bottom: 0.35rem; color: var(--text-muted); }
 .leaderboard-empty { font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 0.75rem 0; }
-.leaderboard-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; table-layout: fixed; }
+.leaderboard-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; table-layout: fixed; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 .leaderboard-sport-toggle + .leaderboard-table { margin-top: 0.5rem; }
 .leaderboard-table th { text-align: left; font-weight: 600; color: var(--text-muted); font-size: 0.78rem; padding: 0.3rem 0.4rem; border-bottom: 1px solid var(--border); }
 .leaderboard-table td { padding: 0.35rem 0.4rem; border-bottom: 1px solid var(--border); }
