@@ -1,11 +1,16 @@
 /* ── Player Hub styles (base theme/layout from tv.css) ── */
+/* Player-facing UI text uses the brand body font (Cabinet Grotesk); tv.css
+   sets the base to --font-data (Roboto) for admin data density, so override
+   it here. Roboto / Roboto Mono are reserved for tabular data surfaces below
+   (leaderboard, participant stats, score/ELO figures). */
+body { font-family: var(--font-body); }
 .container { max-width: 600px; width: 100%; margin: 0 auto; flex: 1; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
 
 /* Auth panel */
 .auth-tabs { display: none; } /* Legacy — no longer rendered */
 .auth-tab { flex: 1; padding: 0.65rem 0.5rem; background: var(--bg); border: none; color: var(--text-muted); font-size: 0.88rem; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; }
-.auth-tab.active { background: var(--accent); color: #fff; }
+.auth-tab.active { background: var(--accent); color: var(--color-on-primary); }
 .auth-tab:first-child { border-radius: 9px 0 0 9px; }
 .auth-tab:last-child  { border-radius: 0 9px 9px 0; }
 
@@ -92,8 +97,10 @@
 }
 
 .profile-bar-name {
+  font-family: var(--font-display);
   font-weight: 700;
-  font-size: 1.15rem;
+  font-size: 1.25rem;
+  letter-spacing: var(--tracking-display);
   word-break: break-word;
 }
 
@@ -124,7 +131,7 @@
 .elo-chip--rated {
   color: var(--text);
   background: var(--bg);
-  border: 1px solid var(--accent, #0078d4);
+  border: 1px solid var(--accent);
 }
 
 .elo-chip--rated strong {
@@ -703,6 +710,8 @@
   text-align: center;
 }
 .global-stats-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 1.3rem;
   font-weight: 700;
   color: var(--accent);
@@ -890,7 +899,7 @@
 
 .elo-sport-pill--active {
   background: var(--accent);
-  color: #fff;
+  color: var(--color-on-primary);
   font-weight: 600;
 }
 
@@ -1017,6 +1026,8 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
 }
 
 .player-participant-row {
@@ -1069,14 +1080,25 @@ input[type="text"], input[type="email"], input[type="password"], select {
   width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: 8px;
   background: var(--bg); color: var(--text); font-size: 0.95rem; box-sizing: border-box;
 }
-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(59,130,246,0.25); }
-.btn { padding: 0.6rem 1.2rem; border-radius: 8px; border: none; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+  padding: 0.6rem 1.2rem; min-height: 44px; border-radius: 8px; border: 1px solid transparent;
+  font-family: inherit; font-size: 0.9rem; font-weight: 600; line-height: 1.2; cursor: pointer;
+  transition: background var(--transition-interactive), border-color var(--transition-interactive),
+              color var(--transition-interactive), opacity var(--transition-interactive);
+}
 .btn:disabled { opacity: 0.5; cursor: default; }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
-.btn-sm { padding: 0.35rem 0.8rem; font-size: 0.82rem; border-radius: 6px; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn-primary { background: var(--accent); color: var(--color-on-primary); }
+.btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
+.btn-primary:active:not(:disabled) { background: var(--color-primary-active); }
+.btn-secondary { background: var(--surface); border-color: var(--border); color: var(--text); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-sm { padding: 0.35rem 0.8rem; min-height: 36px; font-size: 0.82rem; border-radius: 6px; }
 .btn-block { width: 100%; }
-.btn-danger-outline { border: 1px solid var(--red, #ef4444); color: var(--red, #ef4444); background: transparent; }
+.btn-danger-outline { border-color: var(--red); color: var(--red); background: transparent; }
+.btn-danger-outline:hover:not(:disabled) { background: var(--color-error-highlight); }
 .error-msg { color: var(--red, #ef4444); font-size: 0.83rem; margin-top: 0.4rem; }
 .success-msg { color: var(--green); font-size: 0.83rem; margin-top: 0.4rem; }
 
@@ -1246,7 +1268,7 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
 }
 
 .elo-log-row--manual {
-  background-color: rgba(59, 130, 246, 0.05);
+  background-color: var(--color-primary-highlight);
   border-left: 3px solid var(--accent);
   padding: 0.4rem 0.5rem;
   margin: 0.2rem 0;
@@ -1260,7 +1282,7 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
   font-size: 0.72rem;
   font-weight: 600;
   color: var(--accent);
-  background: rgba(59, 130, 246, 0.12);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   padding: 0.15rem 0.45rem;
   border-radius: 999px;
   white-space: nowrap;
@@ -1327,15 +1349,15 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
 }
 
 .elo-transition--gain {
-  color: #22863a;
-  border-color: rgba(34, 134, 58, 0.35);
-  background: rgba(34, 134, 58, 0.1);
+  color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 35%, transparent);
+  background: var(--color-success-highlight);
 }
 
 .elo-transition--loss {
-  color: #cb2431;
-  border-color: rgba(203, 36, 49, 0.35);
-  background: rgba(203, 36, 49, 0.1);
+  color: var(--color-error);
+  border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
+  background: var(--color-error-highlight);
 }
 
 .elo-transition--neutral {
@@ -1426,12 +1448,12 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
 }
 
 .elo-delta--gain {
-  color: #22863a;
+  color: var(--color-success);
   font-weight: 600;
 }
 
 .elo-delta--loss {
-  color: #cb2431;
+  color: var(--color-error);
   font-weight: 600;
 }
 
@@ -1721,7 +1743,7 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
 
 /* Modal (link existing) */
 .modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 100;
+  position: fixed; inset: 0; background: var(--color-overlay-backdrop); z-index: 100;
   display: flex; align-items: center; justify-content: center; padding: 1rem;
 }
 .modal-box {
@@ -1734,7 +1756,7 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px 
 .edit-row { display: flex; gap: 0.5rem; align-items: center; }
 .edit-row input { flex: 1; }
 
-h1 { font-size: 1.5rem; margin-bottom: 0.3rem; text-align: center; }
+h1 { font-family: var(--font-display); font-size: var(--text-xl); font-weight: 700; letter-spacing: var(--tracking-display); margin-bottom: 0.3rem; text-align: center; }
 .subtitle { font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 1.5rem; }
 
 /* Hub info panel (benefits) */
@@ -1771,13 +1793,13 @@ h1 { font-size: 1.5rem; margin-bottom: 0.3rem; text-align: center; }
 .leaderboard-controls-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
 .leaderboard-pill { background: transparent; border: none; padding: 0.3rem 0.75rem; font-size: 0.8rem; cursor: pointer; color: var(--text-muted); transition: background 0.15s, color 0.15s; }
 .leaderboard-pill:not(:last-child) { border-right: 1px solid var(--border); }
-.leaderboard-pill--active { background: var(--accent); color: #fff; font-weight: 600; }
+.leaderboard-pill--active { background: var(--accent); color: var(--color-on-primary); font-weight: 600; }
 .leaderboard-pill--active[data-sport="tennis"] { background: var(--sport-tennis); }
 .leaderboard-sport { margin-bottom: 0.75rem; }
 .leaderboard-sport:last-child { margin-bottom: 0; }
 .leaderboard-sport-label { font-size: 0.82rem; font-weight: 600; margin-bottom: 0.35rem; color: var(--text-muted); }
 .leaderboard-empty { font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 0.75rem 0; }
-.leaderboard-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; table-layout: fixed; }
+.leaderboard-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; table-layout: fixed; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 .leaderboard-sport-toggle + .leaderboard-table { margin-top: 0.5rem; }
 .leaderboard-table th { text-align: left; font-weight: 600; color: var(--text-muted); font-size: 0.78rem; padding: 0.3rem 0.4rem; border-bottom: 1px solid var(--border); }
 .leaderboard-table td { padding: 0.35rem 0.4rem; border-bottom: 1px solid var(--border); }
@@ -1795,7 +1817,7 @@ h1 { font-size: 1.5rem; margin-bottom: 0.3rem; text-align: center; }
 #elo-info-overlay {
   display: none;
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(0,0,0,0.6);
+  background: var(--color-overlay-backdrop);
   z-index: 9990;
 }
 #elo-info-dialog {
@@ -1809,7 +1831,7 @@ h1 { font-size: 1.5rem; margin-bottom: 0.3rem; text-align: center; }
   max-height: calc(100vh - 3rem);
   overflow-y: auto;
   z-index: 9991;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  box-shadow: var(--shadow-overlay);
 }
 #elo-info-dialog h3 { color: var(--accent); font-size: 1rem; margin: 0 0 0.4rem; }
 #elo-info-dialog p { font-size: 0.86rem; color: var(--text-muted); line-height: 1.55; margin-bottom: 0.5rem; }
