@@ -7,7 +7,10 @@
  *   - GET /api/clubs/{id}/public-tournaments    → contextual action buttons
  *   - GET /api/clubs/{id}/public-leaderboard    → ELO leaderboard (per sport)
  *
- * No authentication is required.
+ * The page itself is public. Rating data (leaderboard, season standings,
+ * player mini-cards) is members-only: it is fetched with the Player Hub
+ * profile JWT that player.js keeps in localStorage on this same origin, and
+ * anonymous visitors see a sign-in prompt instead.
  */
 
 // ── Theme + language (mirrors tv.js / player.js pattern) ──────────────────
@@ -45,8 +48,23 @@ let _clubSeasons = [];                  // SeasonOut[]
 let _clubLeaderboardScope = 'global';   // 'global' | season id
 let _clubCurrentSport = null;           // null = both, 'padel', or 'tennis'
 
+// Same key player.js uses to persist the Player Hub session.
+const _CLUB_PROFILE_JWT_KEY = 'padel-player-profile';
+
+/** Return the Player Hub profile JWT for this origin, or null when signed out. */
+function _clubProfileJwt() {
+  try {
+    return localStorage.getItem(_CLUB_PROFILE_JWT_KEY) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function _clubFetchJson(url) {
-  const res = await fetch(url, { credentials: 'same-origin' });
+  const headers = {};
+  const jwt = _clubProfileJwt();
+  if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
+  const res = await fetch(url, { credentials: 'same-origin', headers });
   if (!res.ok) {
     const err = new Error(`HTTP ${res.status}`);
     err.status = res.status;
@@ -408,8 +426,45 @@ function _clubRenderScopeBar() {
   bar.hidden = false;
 }
 
+/** Members-only notice shown instead of the leaderboard to signed-out visitors. */
+function _clubRenderLeaderboardLoginPrompt() {
+  const bar = document.getElementById('club-leaderboard-scope-bar');
+  if (bar) {
+    bar.innerHTML = '';
+    bar.hidden = true;
+  }
+  const body = document.getElementById('club-leaderboard-body');
+  if (!body) return;
+  body.innerHTML = `
+    <div class="club-leaderboard-locked">
+      <p class="club-leaderboard-empty">${esc(t('txt_club_leaderboard_login_required', {}) || 'The leaderboard is visible to signed-in players only.')}</p>
+      <a class="club-login-btn club-login-btn--player" href="/player">
+        <span class="club-login-label">${esc(t('txt_club_leaderboard_login_cta', {}) || 'Sign in to Player hub')}</span>
+      </a>
+    </div>`;
+}
+
 async function _clubLoadLeaderboard(sport) {
   if (!_clubData) return;
+  if (!_clubProfileJwt()) {
+    _clubRenderLeaderboardLoginPrompt();
+    return;
+  }
+  try {
+    await _clubLoadLeaderboardData(sport);
+  } catch (e) {
+    // Expired / revoked session: fall back to the sign-in prompt.
+    if (e && e.status === 401) {
+      _clubLeaderboardCache = {};
+      _clubSeasonStandingsCache = {};
+      _clubRenderLeaderboardLoginPrompt();
+      return;
+    }
+    throw e;
+  }
+}
+
+async function _clubLoadLeaderboardData(sport) {
   if (_clubLeaderboardScope === 'global') {
     if (sport === null) {
       // Both sports — use cached 'all' entry or fetch
@@ -422,7 +477,8 @@ async function _clubLoadLeaderboard(sport) {
         const data = await _clubFetchJson(`/api/clubs/${encodeURIComponent(_clubData.club_id)}/public-leaderboard?sport=all`);
         _clubLeaderboardCache['all'] = data;
         _clubRenderDualLeaderboard(data.padel, data.tennis);
-      } catch (_) {
+      } catch (e) {
+        if (e && e.status === 401) throw e;
         _clubRenderDualLeaderboard([], []);
       }
     } else {
@@ -435,7 +491,8 @@ async function _clubLoadLeaderboard(sport) {
         const data = await _clubFetchJson(`/api/clubs/${encodeURIComponent(_clubData.club_id)}/public-leaderboard?sport=${encodeURIComponent(sport)}`);
         _clubLeaderboardCache[sport] = data;
         _clubRenderGlobalLeaderboard(data);
-      } catch (_) {
+      } catch (e) {
+        if (e && e.status === 401) throw e;
         _clubRenderGlobalLeaderboard([]);
       }
     }
@@ -450,7 +507,8 @@ async function _clubLoadLeaderboard(sport) {
     try {
       data = await _clubFetchJson(`/api/seasons/${encodeURIComponent(seasonId)}/standings`);
       _clubSeasonStandingsCache[seasonId] = data;
-    } catch (_) {
+    } catch (e) {
+      if (e && e.status === 401) throw e;
       if (sport === null) {
         _clubRenderDualSeasonLeaderboard([], []);
       } else {
@@ -601,7 +659,7 @@ async function _clubInit() {
   }
 
   _clubShow('club-leaderboard');
-  _clubRenderScopeBar();
+  if (_clubProfileJwt()) _clubRenderScopeBar();
   _clubLoadLeaderboard(_clubCurrentSport);
 
   // Always show search and login sections

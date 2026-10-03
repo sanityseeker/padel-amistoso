@@ -12,6 +12,13 @@ from backend.api import state as _state
 from backend.api.db import get_db
 
 
+def _member_headers() -> dict[str, str]:
+    """Auth headers of a signed-in Player Hub profile (members-only rating data)."""
+    from backend.auth.security import create_profile_token
+
+    return {"Authorization": f"Bearer {create_profile_token('member-viewer')}"}
+
+
 @pytest.fixture()
 def client():
     return TestClient(app)
@@ -302,7 +309,7 @@ class TestSeasonStandings:
     def test_empty_standings(self, client, auth_headers) -> None:
         club, _ = _setup_club(client, auth_headers)
         season = _create_season(client, auth_headers, club["id"])
-        res = client.get(f"/api/seasons/{season['id']}/standings")
+        res = client.get(f"/api/seasons/{season['id']}/standings", headers=_member_headers())
         assert res.status_code == 200
         data = res.json()
         assert data == {"padel": [], "tennis": []}
@@ -326,7 +333,7 @@ class TestSeasonStandings:
             headers=auth_headers,
         )
         assert res.status_code == 200
-        res = client.get(f"/api/seasons/{season['id']}/standings")
+        res = client.get(f"/api/seasons/{season['id']}/standings", headers=_member_headers())
         assert res.status_code == 200
         data = res.json()
         assert "padel" in data
@@ -334,8 +341,20 @@ class TestSeasonStandings:
         assert isinstance(data["padel"], list)
         assert isinstance(data["tennis"], list)
 
+    def test_standings_anonymous_gets_401(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        season = _create_season(client, auth_headers, club["id"], name="Anon Season")
+        res = client.get(f"/api/seasons/{season['id']}/standings")
+        assert res.status_code == 401
+
+    def test_standings_organizer_jwt_allowed(self, client, auth_headers) -> None:
+        res = client.get("/api/seasons/sn_nonexist/standings", headers=auth_headers)
+        # Auth passes; the unknown season then yields 404.
+        assert res.status_code == 404
+
     def test_standings_nonexistent_season_404(self, client, auth_headers) -> None:
-        res = client.get("/api/seasons/sn_nonexist/standings")
+        res = client.get("/api/seasons/sn_nonexist/standings", headers=_member_headers())
         assert res.status_code == 404
 
     def test_standings_resolve_elo_start_end_across_multiple_player_ids(self, client, auth_headers) -> None:
@@ -400,7 +419,7 @@ class TestSeasonStandings:
                 (tids[1], "pid-multi-1", (base + timedelta(hours=1)).isoformat()),
             )
 
-        res = client.get(f"/api/seasons/{season['id']}/standings")
+        res = client.get(f"/api/seasons/{season['id']}/standings", headers=_member_headers())
         assert res.status_code == 200
         padel = res.json()["padel"]
         entry = next((e for e in padel if e["profile_id"] == profile_id), None)
@@ -462,7 +481,7 @@ class TestSeasonArchiveSnapshot:
         tid, profile_id = self._seed_one_match(club, comm, season, client, auth_headers)
 
         # Sanity: live standings show 1100.
-        live = client.get(f"/api/seasons/{season['id']}/standings").json()
+        live = client.get(f"/api/seasons/{season['id']}/standings", headers=_member_headers()).json()
         entry = next(e for e in live["padel"] if e["profile_id"] == profile_id)
         assert entry["elo_end"] == 1100.0
 
@@ -480,7 +499,7 @@ class TestSeasonArchiveSnapshot:
                 (tid, "pid-snap", datetime.now(timezone.utc).isoformat()),
             )
 
-        frozen = client.get(f"/api/seasons/{season['id']}/standings").json()
+        frozen = client.get(f"/api/seasons/{season['id']}/standings", headers=_member_headers()).json()
         entry = next(e for e in frozen["padel"] if e["profile_id"] == profile_id)
         assert entry["elo_end"] == 1100.0  # still the snapshot value
 
@@ -501,7 +520,7 @@ class TestSeasonArchiveSnapshot:
         # Reactivate — snapshot dropped, live aggregation resumes.
         res = client.patch(f"/api/seasons/{season['id']}", json={"active": True}, headers=auth_headers)
         assert res.status_code == 200
-        live = client.get(f"/api/seasons/{season['id']}/standings").json()
+        live = client.get(f"/api/seasons/{season['id']}/standings", headers=_member_headers()).json()
         entry = next(e for e in live["padel"] if e["profile_id"] == profile_id)
         assert entry["elo_end"] == 1500.0
 

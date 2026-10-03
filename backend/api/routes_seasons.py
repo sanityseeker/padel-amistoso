@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from ..auth.deps import get_current_user
+from ..auth.deps import get_current_user, require_profile_or_user
 from ..auth.models import User
 from .db import get_db
 from .routes_clubs import _get_club, _require_club_admin
@@ -375,9 +375,15 @@ async def set_registration_club(rid: str, req: SetClubRequest, user: User = Depe
 # ---------------------------------------------------------------------------
 
 
-@router.get("/api/seasons/{season_id}/standings", response_model=SeasonStandingsResponse)
+@router.get(
+    "/api/seasons/{season_id}/standings",
+    response_model=SeasonStandingsResponse,
+    dependencies=[Depends(require_profile_or_user)],
+)
 def get_season_standings(season_id: str) -> SeasonStandingsResponse:
     """Cumulative standings for a season, split by sport.
+
+    Requires a signed-in Player Hub profile or an organizer/admin account.
 
     For archived seasons returns the frozen snapshot taken at archive time.
     For active seasons aggregates ELO progression (from ``player_elo_log``)

@@ -306,6 +306,19 @@ body {
   padding: 0.75rem 0.25rem;
 }
 
+/* Members-only notice shown to signed-out visitors instead of the table. */
+.club-leaderboard-locked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.club-leaderboard-locked .club-login-btn {
+  flex: 0 0 auto;
+  min-height: 44px;
+}
+
 .club-empty {
   text-align: center;
   color: var(--text-muted);

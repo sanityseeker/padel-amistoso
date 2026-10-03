@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
 
-from ..auth.deps import get_current_user, require_not_demo
+from ..auth.deps import get_current_user, require_not_demo, require_profile_or_user
 from ..auth.models import User, UserRole
 from ..auth.security import create_profile_email_verify_token, create_profile_token
 from ..auth.store import user_store
@@ -1000,14 +1000,21 @@ def _compute_club_leaderboard_rows_uncached(conn, club_id: str) -> list[dict]:
     return out
 
 
-@router.get("/{club_id}/public-leaderboard", response_model=None)
+@router.get(
+    "/{club_id}/public-leaderboard",
+    response_model=None,
+    dependencies=[Depends(require_profile_or_user)],
+)
 def get_club_public_leaderboard(
     club_id: str,
     request: Request,
     response: Response,
     sport: str = Query(default="all", pattern=r"^(padel|tennis|all)$"),
 ) -> dict | list[dict] | Response:
-    """Public ELO leaderboard for a club. No emails are exposed.
+    """ELO leaderboard for a club, shown on the club landing page. No emails are exposed.
+
+    Requires a signed-in Player Hub profile or an organizer/admin account
+    (401 for anonymous visitors).
 
     When ``sport=all`` (default) returns ``{padel: [...], tennis: [...]}``,
     each list being ``[{rank, name, elo, tier_name, matches}]`` sorted by ELO desc.
@@ -1015,8 +1022,9 @@ def get_club_public_leaderboard(
     Mirrors the admin leaderboard so both views show the same players, ELO,
     and match counts.
 
-    Sets ``ETag`` + ``Cache-Control: public, max-age=30`` so well-behaved
-    clients (and reverse proxies) can short-circuit repeat requests.
+    Sets ``ETag`` + ``Cache-Control: private, max-age=30`` so the browser can
+    short-circuit repeat requests (``private`` because the response is
+    auth-gated and must not be stored by shared proxies).
     """
     _get_club(club_id)
 
@@ -1046,9 +1054,9 @@ def get_club_public_leaderboard(
 
     tag = etag_for(payload)
     if request.headers.get("if-none-match") == tag:
-        return Response(status_code=304, headers={"ETag": tag, "Cache-Control": "public, max-age=30"})
+        return Response(status_code=304, headers={"ETag": tag, "Cache-Control": "private, max-age=30"})
     response.headers["ETag"] = tag
-    response.headers["Cache-Control"] = "public, max-age=30"
+    response.headers["Cache-Control"] = "private, max-age=30"
     return payload
 
 
@@ -1070,20 +1078,24 @@ class ClubPlayerMiniCard(BaseModel):
     elo_history_tennis: list[float]
 
 
-@router.get("/{club_id}/players/{profile_id}/public-card", response_model=None)
+@router.get(
+    "/{club_id}/players/{profile_id}/public-card",
+    response_model=None,
+    dependencies=[Depends(require_profile_or_user)],
+)
 def get_club_player_public_card(
     club_id: str,
     profile_id: str,
     request: Request,
     response: Response,
 ) -> ClubPlayerMiniCard | Response:
-    """Public mini-card for a player at a club.
+    """Mini-card for a player at a club (signed-in profiles / organizers only).
 
     Returns club-scoped ELO/tier/rank for both sports plus the most recent
     matches and a short ELO sparkline history. No emails or other PII.
 
     Cached in-memory for ``MINI_CARD_TTL_S`` to absorb repeat clicks, and
-    served with ``ETag`` + ``Cache-Control: public, max-age=30``.
+    served with ``ETag`` + ``Cache-Control: private, max-age=30``.
     """
     _get_club(club_id)
 
@@ -1094,9 +1106,9 @@ def get_club_player_public_card(
     payload = card.model_dump()
     tag = etag_for(payload)
     if request.headers.get("if-none-match") == tag:
-        return Response(status_code=304, headers={"ETag": tag, "Cache-Control": "public, max-age=30"})
+        return Response(status_code=304, headers={"ETag": tag, "Cache-Control": "private, max-age=30"})
     response.headers["ETag"] = tag
-    response.headers["Cache-Control"] = "public, max-age=30"
+    response.headers["Cache-Control"] = "private, max-age=30"
     return card
 
 
