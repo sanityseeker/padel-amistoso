@@ -2009,10 +2009,14 @@ def _backfill_finished_secrets(profile_id: str) -> None:
 
 @router.get("/leaderboard", response_model=LeaderboardResponse)
 def get_leaderboard(
+    identity: ProfileIdentity | None = Depends(get_current_profile),
     community_id: str | None = Query(default=None, max_length=64),
     club_id: str | None = Query(default=None, max_length=64),
 ) -> LeaderboardResponse:
-    """Public ELO leaderboard — no authentication required.
+    """ELO leaderboard for signed-in Player Hub members.
+
+    Requires a valid profile JWT (``Authorization: Bearer <token>``); anonymous
+    visitors get 401 so ratings of other players are not publicly exposed.
 
     Returns rated players for each sport, sorted by ELO descending.
     Includes both Player Hub members and unlinked tournament participants.
@@ -2020,6 +2024,8 @@ def get_leaderboard(
     provided — the global aggregate view).  ``community_id`` accepts both
     ``None`` and the empty string for the all-communities view.
     """
+    if identity is None:
+        raise HTTPException(401, "Profile authentication required")
     scope_community = community_id or ""
     padel = _leaderboard_for_sport("padel", scope_community, club_id=club_id)
     tennis = _leaderboard_for_sport("tennis", scope_community, club_id=club_id)

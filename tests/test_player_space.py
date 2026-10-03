@@ -23,6 +23,13 @@ from backend.api.state import maybe_update_live_stats, _tournaments
 from backend.auth.security import create_profile_email_verify_token, create_profile_token
 
 
+def _lb_headers() -> dict[str, str]:
+    """Auth headers for the members-only leaderboard (any valid profile JWT)."""
+    from backend.auth.security import create_profile_token
+
+    return {"Authorization": f"Bearer {create_profile_token('lb-viewer')}"}
+
+
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)
@@ -3514,15 +3521,15 @@ class TestResolvePassphrase:
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Leaderboard (public, no auth)
+# Leaderboard (members only, profile JWT required)
 # ────────────────────────────────────────────────────────────────────────────
 
 
 class TestLeaderboard:
-    """GET /api/player-profile/leaderboard — public ELO leaderboard."""
+    """GET /api/player-profile/leaderboard — members-only ELO leaderboard."""
 
     def test_leaderboard_empty_when_no_rated_profiles(self, client: TestClient) -> None:
-        res = client.get("/api/player-profile/leaderboard")
+        res = client.get("/api/player-profile/leaderboard", headers=_lb_headers())
         assert res.status_code == 200
         data = res.json()
         assert data["padel"] == []
@@ -3549,7 +3556,7 @@ class TestLeaderboard:
                 (p2["profile"]["id"],),
             )
 
-        res = client.get("/api/player-profile/leaderboard")
+        res = client.get("/api/player-profile/leaderboard", headers=_lb_headers())
         assert res.status_code == 200
         padel = res.json()["padel"]
         assert len(padel) >= 2
@@ -3563,7 +3570,7 @@ class TestLeaderboard:
 
     def test_leaderboard_excludes_unrated_players(self, client: TestClient) -> None:
         _create_profile(client, name="Unrated Player", email="unrated-lb@example.com")
-        res = client.get("/api/player-profile/leaderboard")
+        res = client.get("/api/player-profile/leaderboard", headers=_lb_headers())
         assert res.status_code == 200
         names = [e["name"] for e in res.json()["padel"]]
         assert "Unrated Player" not in names
@@ -3580,16 +3587,25 @@ class TestLeaderboard:
                 (p1["profile"]["id"],),
             )
 
-        res = client.get("/api/player-profile/leaderboard")
+        res = client.get("/api/player-profile/leaderboard", headers=_lb_headers())
         assert res.status_code == 200
         tennis = res.json()["tennis"]
         tennis_names = [e["name"] for e in tennis]
         assert "Tennis Player" in tennis_names
 
-    def test_leaderboard_no_auth_required(self, client: TestClient) -> None:
-        """Ensure endpoint works without any Authorization header."""
+    def test_leaderboard_requires_auth(self, client: TestClient) -> None:
+        """Anonymous visitors must not see the leaderboard."""
         res = client.get("/api/player-profile/leaderboard")
-        assert res.status_code == 200
+        assert res.status_code == 401
+
+    def test_leaderboard_rejects_invalid_token(self, client: TestClient) -> None:
+        res = client.get("/api/player-profile/leaderboard", headers=_headers("bad.token.here"))
+        assert res.status_code == 401
+
+    def test_leaderboard_rejects_admin_jwt(self, client: TestClient, auth_headers: dict[str, str]) -> None:
+        """An organizer/admin JWT is not a profile token and must not grant access."""
+        res = client.get("/api/player-profile/leaderboard", headers=auth_headers)
+        assert res.status_code == 401
 
     def test_leaderboard_includes_unlinked_players(self, client: TestClient) -> None:
         """Unlinked tournament participants should appear with has_profile=False."""
@@ -3604,7 +3620,7 @@ class TestLeaderboard:
                 (tid, "p-unlinked", now),
             )
 
-        res = client.get("/api/player-profile/leaderboard")
+        res = client.get("/api/player-profile/leaderboard", headers=_lb_headers())
         assert res.status_code == 200
         padel = res.json()["padel"]
         entry = next((e for e in padel if e["name"] == "Unlinked Player"), None)
@@ -3648,7 +3664,7 @@ class TestLeaderboard:
                 (tid_new, "p-det-new", now),
             )
 
-        res = client.get(f"/api/player-profile/leaderboard?community_id={community_id}")
+        res = client.get(f"/api/player-profile/leaderboard?community_id={community_id}", headers=_lb_headers())
         assert res.status_code == 200
         padel = res.json()["padel"]
         entry = next((e for e in padel if e["name"] == "Shared Name"), None)
@@ -3668,7 +3684,7 @@ class TestLeaderboard:
                 (p1["profile"]["id"],),
             )
 
-        res = client.get("/api/player-profile/leaderboard")
+        res = client.get("/api/player-profile/leaderboard", headers=_lb_headers())
         assert res.status_code == 200
         entry = next((e for e in res.json()["padel"] if e["name"] == "Profiled Player"), None)
         assert entry is not None
@@ -3760,7 +3776,7 @@ class TestLeaderboard:
                     (tid_other, f"ao-{idx}", pid_alice_other, idx + 1, elo, elo - 1000.0, now),
                 )
 
-        res = client.get(f"/api/player-profile/leaderboard?club_id={club_id}")
+        res = client.get(f"/api/player-profile/leaderboard?club_id={club_id}", headers=_lb_headers())
         assert res.status_code == 200
         padel = res.json()["padel"]
         names = [entry["name"] for entry in padel]
@@ -3826,7 +3842,7 @@ class TestLeaderboard:
                     (tid_tier, f"h-{idx}", pid_hidden, idx + 1, elo, elo - 1000.0, now),
                 )
 
-        res = client.get(f"/api/player-profile/leaderboard?club_id={club_id}")
+        res = client.get(f"/api/player-profile/leaderboard?club_id={club_id}", headers=_lb_headers())
         assert res.status_code == 200
         padel = res.json()["padel"]
         assert [entry["name"] for entry in padel] == ["Visible Tier"]
@@ -3862,7 +3878,7 @@ class TestLeaderboard:
                 (tid, "p-active", now),
             )
 
-        res = client.get("/api/player-profile/leaderboard")
+        res = client.get("/api/player-profile/leaderboard", headers=_lb_headers())
         assert res.status_code == 200
         available = res.json()["available_communities"]
         ids = [c["id"] for c in available]
@@ -3901,8 +3917,8 @@ class TestLeaderboard:
                     (tid, pid, now),
                 )
 
-        global_res = client.get("/api/player-profile/leaderboard")
-        scoped_res = client.get(f"/api/player-profile/leaderboard?community_id={first_id}")
+        global_res = client.get("/api/player-profile/leaderboard", headers=_lb_headers())
+        scoped_res = client.get(f"/api/player-profile/leaderboard?community_id={first_id}", headers=_lb_headers())
         assert global_res.status_code == 200 and scoped_res.status_code == 200
         global_ids = {c["id"] for c in global_res.json()["available_communities"]}
         scoped_ids = {c["id"] for c in scoped_res.json()["available_communities"]}
