@@ -17,6 +17,13 @@ from backend.api.elo_store import (
 from backend.tournaments.elo import EloUpdate
 
 
+def _lb_headers() -> dict[str, str]:
+    """Auth headers for the members-only leaderboard (any valid profile JWT)."""
+    from backend.auth.security import create_profile_token
+
+    return {"Authorization": f"Bearer {create_profile_token('lb-viewer')}"}
+
+
 @pytest.fixture()
 def client():
     return TestClient(app)
@@ -432,14 +439,14 @@ class TestLeaderboardCommunityFilter:
     """Verify the leaderboard respects community_id query parameter."""
 
     def test_leaderboard_default_returns_open_community(self, client) -> None:
-        res = client.get("/api/player-profile/leaderboard")
+        res = client.get("/api/player-profile/leaderboard", headers=_lb_headers())
         assert res.status_code == 200
         data = res.json()
         assert "padel" in data
         assert "tennis" in data
 
     def test_leaderboard_with_community_id(self, client) -> None:
-        res = client.get("/api/player-profile/leaderboard?community_id=open")
+        res = client.get("/api/player-profile/leaderboard?community_id=open", headers=_lb_headers())
         assert res.status_code == 200
         data = res.json()
         assert "padel" in data

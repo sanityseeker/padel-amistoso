@@ -26,8 +26,8 @@ let _jwt = null;
 let _profile = null;
 let _entries = [];
 let _eloHistory = [];
-let _leaderboard = null; // { padel: [], tennis: [] } or null
-let _leaderboardSport = 'padel'; // 'padel' | 'tennis'
+let _leaderboard = null; // { padel: [], tennis: [] } or null (members only)
+let _leaderboardLoading = false;
 let _eloHistorySport = 'padel'; // 'padel' | 'tennis'
 let _eloChart = null; // Chart.js instance for ELO trend
 let _communities = []; // [{id, name, is_builtin}] — all communities from the server
@@ -244,7 +244,8 @@ function _init() {
   // club-scoped ones for first-time visitors on a club subdomain.
   const _subdomainReady = _resolveSubdomainContext();
   _subdomainReady.then(() => {
-    // Fetch communities and leaderboard (public, no auth) — fire-and-forget, re-renders when ready
+    // Fetch communities (public) and the leaderboard (members only — no-op
+    // without a session) — fire-and-forget, re-renders when ready
     _fetchCommunities().then(() => _fetchLeaderboard()).then(() => _render()).catch(() => {});
   }).catch(() => {
     _fetchCommunities().then(() => _fetchLeaderboard()).then(() => _render()).catch(() => {});
@@ -493,9 +494,20 @@ async function _fetchSpace() {
   _eloHistory = data.elo_history || [];
   _prunePathState();
   _saveSession();
+  // First successful auth in this page session: load the members-only
+  // leaderboard once (polling refreshes _fetchSpace but not the leaderboard).
+  if (_leaderboard === null && !_leaderboardLoading) {
+    _leaderboardLoading = true;
+    _fetchLeaderboard().then(() => _render()).catch(() => {}).finally(() => { _leaderboardLoading = false; });
+  }
 }
 
 async function _fetchLeaderboard() {
+  // The leaderboard is only available to signed-in Player Hub members.
+  if (!_jwt) {
+    _leaderboard = null;
+    return;
+  }
   try {
     _selectedCommunityId = _scopeToCommunityId(_selectedStatsScope);
     _selectedClubId = _scopeToClubId(_selectedStatsScope);
@@ -505,8 +517,11 @@ async function _fetchLeaderboard() {
     if (_selectedClubId) params.set('club_id', _selectedClubId);
     const qs = params.toString();
     if (qs) url += `?${qs}`;
-    const res = await fetch(url);
-    if (!res.ok) return;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${_jwt}` } });
+    if (!res.ok) {
+      _leaderboard = null;
+      return;
+    }
     _leaderboard = await res.json();
   } catch (_) {
     // Silently ignore — leaderboard is non-critical
@@ -528,6 +543,7 @@ function _clearSession() {
   _playerClubs = [];
   _entries = [];
   _eloHistory = [];
+  _leaderboard = null;
   _pathPanelOpen = {};
   _pathCache = {};
   _pathLoading = {};
@@ -998,11 +1014,6 @@ function _buildCommunitySelect(eleId) {
 
 // ── Leaderboard ───────────────────────────────────────────
 
-function _setLeaderboardSport(sport) {
-  _leaderboardSport = sport;
-  _render();
-}
-
 function _buildLeaderboardTable(entries) {
   if (!entries || entries.length === 0) {
     return `<div class="leaderboard-empty">${esc(t('txt_player_leaderboard_empty'))}</div>`;
@@ -1025,49 +1036,6 @@ function _buildLeaderboardTable(entries) {
     html += `</tr>`;
   }
   html += `</tbody></table>`;
-  return html;
-}
-
-function _buildLeaderboardPanel() {
-  if (!_leaderboard) return '';
-  const hasPadel = _leaderboard.padel && _leaderboard.padel.length > 0;
-  const hasTennis = _leaderboard.tennis && _leaderboard.tennis.length > 0;
-
-  // Only hide the entire panel if there are neither players nor any community
-  // filters to interact with — otherwise keep it visible with empty results so
-  // unlogged users can switch between communities even when one has no players.
-  const availableCommunities = (_leaderboard && Array.isArray(_leaderboard.available_communities))
-    ? _leaderboard.available_communities
-    : (_communities || []).filter(c => !c.is_builtin && c.id !== 'open');
-  const hasCommunityFilter = availableCommunities.length > 0;
-  if (!hasPadel && !hasTennis && !hasCommunityFilter) return '';
-
-  const openAttr = (_isLeaderboardPanelOpen() || sessionStorage.getItem(STORAGE_LEADERBOARD_PANEL_KEY) == null) ? ' open' : '';
-
-  let html = `<details class="player-leaderboard-panel" ontoggle="_rememberLeaderboardPanelOpen(this)"${openAttr}>`;
-  html += `<summary class="player-leaderboard-summary"><span class="player-history-chevron">▶</span><span class="section-heading section-heading-inline">${esc(t('txt_player_leaderboard_title'))}</span> <button type="button" class="format-info-btn" style="margin-left:auto" onclick="event.stopPropagation(); _showEloInfoPopup(event)" aria-label="${esc(t('txt_player_elo_info_btn'))}" title="${esc(t('txt_player_elo_info_btn'))}">i</button></summary>`;
-  html += `<div class="player-leaderboard-body">`;
-
-  // Controls row: community selector + sport toggle pills — same flex row.
-  // When only one sport has data, auto-select that sport and hide the toggle.
-  const communitySelectHtml = _buildCommunitySelect('leaderboard-community');
-  const bothSports = hasPadel && hasTennis;
-  const activeSportPill = bothSports ? _leaderboardSport : (hasTennis ? 'tennis' : 'padel');
-  const sportToggleHtml = bothSports
-    ? (`<div class="leaderboard-sport-toggle">`
-      + `<button type="button" class="leaderboard-pill${activeSportPill === 'padel' ? ' leaderboard-pill--active' : ''}" data-sport="padel" onclick="event.stopPropagation(); _setLeaderboardSport('padel')">${esc(t('txt_player_sport_padel'))}</button>`
-      + `<button type="button" class="leaderboard-pill${activeSportPill === 'tennis' ? ' leaderboard-pill--active' : ''}" data-sport="tennis" onclick="event.stopPropagation(); _setLeaderboardSport('tennis')">${esc(t('txt_player_sport_tennis'))}</button>`
-      + `</div>`)
-    : '';
-  if (communitySelectHtml || sportToggleHtml) {
-    html += `<div class="leaderboard-controls-row">${communitySelectHtml}${sportToggleHtml}</div>`;
-  }
-
-  const entries = activeSportPill === 'tennis' ? (_leaderboard.tennis || []) : (_leaderboard.padel || []);
-  html += _buildLeaderboardTable(entries);
-
-  html += `</div>`;
-  html += `</details>`;
   return html;
 }
 
@@ -1123,10 +1091,8 @@ function _render() {
   } else {
     html += _buildAuthPanel();
   }
-  // Standalone leaderboard only for non-logged-in users (logged-in gets it inside ELO card)
-  if (!(_jwt && _profile)) {
-    html += _buildLeaderboardPanel();
-  }
+  // The leaderboard is members-only: logged-in users see it inside the ELO card,
+  // anonymous visitors don't see it at all.
   if (_showLinkModal) html += _buildLinkModal();
   root.innerHTML = html;
   _initEloChart();

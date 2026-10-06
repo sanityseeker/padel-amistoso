@@ -5,6 +5,7 @@ Provides:
 - ``get_current_user`` — validates the JWT and returns the authenticated user (401 if missing/invalid).
 - ``get_current_user_optional`` — same but returns ``None`` for unauthenticated requests.
 - ``require_admin`` — like ``get_current_user`` but also enforces the ADMIN role (403 otherwise).
+- ``require_profile_or_user`` — 401 unless a Player Hub profile or organizer/admin JWT is present.
 """
 
 from __future__ import annotations
@@ -168,3 +169,27 @@ async def get_current_profile(
     if profile_id is None:
         return None
     return ProfileIdentity(profile_id=profile_id)
+
+
+async def require_profile_or_user(
+    creds: HTTPAuthorizationCredentials | None = Depends(_profile_bearer_scheme),
+) -> None:
+    """Require a signed-in Player Hub profile *or* an organizer/admin account.
+
+    Used to gate rating data (club leaderboards, season standings, player
+    mini-cards) that should not be visible to anonymous visitors.  Raises 401
+    when neither a valid profile JWT nor a valid, enabled user JWT is present.
+    """
+    if creds is not None:
+        if decode_profile_token(creds.credentials) is not None:
+            return
+        username = decode_access_token(creds.credentials)
+        if username is not None:
+            user = user_store.get(username)
+            if user is not None and not user.disabled:
+                return
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Sign in to view ratings",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
