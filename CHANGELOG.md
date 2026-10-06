@@ -1,3 +1,10 @@
+## v1.17.0 (2026-10-06)
+
+### Feat
+
+- **clubs**: make club leaderboard members-only
+- **player-hub**: make ELO leaderboard members-only
+
 ## v1.16.2 (2026-07-21)
 
 ### Fix
