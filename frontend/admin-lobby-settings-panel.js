@@ -151,7 +151,7 @@ function _renderLobbyStatusBar(rid, r) {
   if (archived) {
     actions += `<button type="button" class="btn btn-sm btn-secondary" onclick="withLoading(this,()=>_archiveRegistration('${esc(rid)}',false))">${t('txt_reg_unarchive')}</button>`;
   } else if (open) {
-    actions += `<button type="button" class="btn btn-sm" style="background:var(--red);color:#fff" onclick="withLoading(this,()=>_toggleRegOpen('${esc(rid)}',true))">${t('txt_reg_close_registration')}</button>`;
+    actions += `<button type="button" class="btn btn-sm btn-danger" onclick="withLoading(this,()=>_toggleRegOpen('${esc(rid)}',true))">${t('txt_reg_close_registration')}</button>`;
   } else {
     actions += `<button type="button" class="btn btn-sm btn-primary" onclick="withLoading(this,()=>_toggleRegOpen('${esc(rid)}',false))">${t('txt_reg_open_registration')}</button>`;
     actions += `<button type="button" class="btn btn-sm btn-secondary" onclick="withLoading(this,()=>_archiveRegistration('${esc(rid)}',true))">${t('txt_reg_archive')}</button>`;
@@ -162,12 +162,12 @@ function _renderLobbyStatusBar(rid, r) {
   return `
     <div class="card lobby-status-bar tournament-status-bar" id="lobby-status-bar-${esc(rid)}">
       <div class="gp-ops-header-top">
-        <h3 style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+        <h3 class="d-flex items-center gap-2 flex-wrap">
           <span>${esc(r.name || rid)}</span>
           ${statusPill}
           <span class="badge badge-count">${count} ${t(count === 1 ? 'txt_reg_player_singular' : 'txt_reg_players_plural')}</span>
-          ${hasQuestions && answeredCount > 0 ? `<span class="badge badge-count" title="${escAttr(t('txt_reg_answers_title'))}" style="cursor:pointer" onclick="_jumpToLobbyAnswers('${esc(rid)}')">${answeredCount} ${t('txt_reg_answers_badge')}</span>` : ''}
-          ${hasFilter ? `<span class="badge badge-eligible" title="${escAttr(t('txt_reg_filter_title'))}" style="cursor:pointer" onclick="_jumpToLobbyFilter('${esc(rid)}')">${eligibleCount} / ${count} ${t('txt_reg_filter_eligible')}</span>` : ''}
+          ${hasQuestions && answeredCount > 0 ? `<span class="badge badge-count cursor-pointer" title="${escAttr(t('txt_reg_answers_title'))}" onclick="_jumpToLobbyAnswers('${esc(rid)}')">${answeredCount} ${t('txt_reg_answers_badge')}</span>` : ''}
+          ${hasFilter ? `<span class="badge badge-eligible cursor-pointer" title="${escAttr(t('txt_reg_filter_title'))}" onclick="_jumpToLobbyFilter('${esc(rid)}')">${eligibleCount} / ${count} ${t('txt_reg_filter_eligible')}</span>` : ''}
         </h3>
         <div class="gp-ops-next-action">
           ${actions}
@@ -203,7 +203,7 @@ function _renderLobbyDetailsBody(rid, r) {
   html += `<div class="settings-url-preview">`;
   html += `<div class="settings-url-preview-row">`;
   html += `<span class="settings-url-preview-hint">${t('txt_reg_public_url')}</span>`;
-  html += `<a href="${regUrl}" target="_blank" rel="noopener" style="color:var(--accent);font-size:0.85rem;word-break:break-all;flex:1;min-width:200px">${regUrl}</a>`;
+  html += `<a href="${regUrl}" target="_blank" rel="noopener" class="lobby-reg-link">${regUrl}</a>`;
   html += `<button type="button" class="settings-url-copy-btn" onclick="_copyRegLink('${esc(rid)}', this)">${t('txt_reg_copy_link')}</button>`;
   html += `</div>`;
   html += `</div>`;
@@ -215,8 +215,8 @@ function _renderLobbyDetailsBody(rid, r) {
 
   html += `<div class="form-group"><label class="settings-label">${t('txt_reg_description')}</label>`;
   html += `<textarea id="reg-edit-desc-${esc(rid)}" class="reg-desc-textarea" rows="3" oninput="_autoResizeTextarea(this)">${esc(r.description || '')}</textarea>`;
-  html += `<div id="reg-desc-preview-${esc(rid)}" style="display:none;margin-top:0.5rem;padding:0.5rem;border:1px solid var(--border);border-radius:6px;font-size:0.9rem"></div>`;
-  html += `<button type="button" class="btn btn-sm" style="margin-top:0.3rem;font-size:0.75rem" onclick="_toggleRegDescPreview('${esc(rid)}')">${t('txt_reg_preview')}</button>`;
+  html += `<div id="reg-desc-preview-${esc(rid)}" class="lobby-desc-preview" style="display:none"></div>`;
+  html += `<button type="button" class="btn btn-sm mt-1 fs-xs" onclick="_toggleRegDescPreview('${esc(rid)}')">${t('txt_reg_preview')}</button>`;
   html += `</div>`;
 
   html += `<div class="form-group"><label class="settings-label">${t('txt_email_requirement')}</label>`;
@@ -230,17 +230,17 @@ function _renderLobbyDetailsBody(rid, r) {
   html += `<div class="form-group"><label class="settings-label">${t('txt_reg_join_code')}</label>`;
   html += `<input type="text" id="reg-edit-joincode-${esc(rid)}" value="${escAttr(r.join_code || '')}" placeholder="${t('txt_reg_join_code_placeholder')}"></div>`;
 
-  html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.5rem">`;
-  html += `<input type="checkbox" id="reg-edit-listed-${esc(rid)}" ${r.listed ? 'checked' : ''} style="width:1rem;height:1rem;cursor:pointer">`;
-  html += `<label for="reg-edit-listed-${esc(rid)}" style="font-size:0.85rem;cursor:pointer">${t('txt_reg_listed')}</label></div>`;
+  html += `<div class="d-flex items-center gap-2 mt-2 mb-2">`;
+  html += `<input type="checkbox" id="reg-edit-listed-${esc(rid)}" ${r.listed ? 'checked' : ''} class="cursor-pointer">`;
+  html += `<label for="reg-edit-listed-${esc(rid)}" class="fs-md cursor-pointer">${t('txt_reg_listed')}</label></div>`;
 
   if (window._emailConfigured) {
-    html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.5rem">`;
-    html += `<input type="checkbox" id="reg-edit-autoemail-${esc(rid)}" ${r.auto_send_email ? 'checked' : ''} style="width:1rem;height:1rem;cursor:pointer">`;
-    html += `<label for="reg-edit-autoemail-${esc(rid)}" style="font-size:0.85rem;cursor:pointer">${t('txt_email_auto_send')}</label></div>`;
+    html += `<div class="d-flex items-center gap-2 mt-2 mb-2">`;
+    html += `<input type="checkbox" id="reg-edit-autoemail-${esc(rid)}" ${r.auto_send_email ? 'checked' : ''} class="cursor-pointer">`;
+    html += `<label for="reg-edit-autoemail-${esc(rid)}" class="fs-md cursor-pointer">${t('txt_email_auto_send')}</label></div>`;
   }
 
-  html += `<div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.5rem">`;
+  html += `<div class="lobby-settings-actions">`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegSettings('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
   html += `</div>`;
   html += `</div>`;
@@ -258,17 +258,17 @@ function _renderLobbyQuestionsBody(rid, r) {
   let html = `<div class="settings-block">`;
   if (hasQuestions && hasRegistrants) {
     const answered = _countLobbyAnswered(r);
-    html += `<div class="reg-questions-jump-row" style="display:flex;justify-content:flex-end;margin-bottom:0.45rem">`;
+    html += `<div class="reg-questions-jump-row reg-questions-jump-row--end">`;
     html += `<button type="button" class="btn btn-sm btn-muted" onclick="_jumpToLobbyAnswers('${esc(rid)}')">${t('txt_reg_view_answers')} (${answered})</button>`;
     html += `</div>`;
   }
-  html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.55rem">`;
-  html += `<input type="checkbox" id="reg-contact-toggle-${esc(rid)}" style="width:1rem;height:1rem;cursor:pointer" ${hasContactQ ? 'checked' : ''} onchange="_toggleRegContactQuestion('${esc(rid)}', this.checked, '${editQContainer}')">`;
-  html += `<label for="reg-contact-toggle-${esc(rid)}" style="font-size:0.85rem;cursor:pointer">${t('txt_reg_request_contact')}</label>`;
+  html += `<div class="d-flex items-center gap-2 mb-2">`;
+  html += `<input type="checkbox" id="reg-contact-toggle-${esc(rid)}" class="cursor-pointer" ${hasContactQ ? 'checked' : ''} onchange="_toggleRegContactQuestion('${esc(rid)}', this.checked, '${editQContainer}')">`;
+  html += `<label for="reg-contact-toggle-${esc(rid)}" class="fs-md cursor-pointer">${t('txt_reg_request_contact')}</label>`;
   html += `</div>`;
   html += `<div id="${editQContainer}"><div class="reg-q-empty" id="${editQContainer}-empty">${t('txt_reg_q_no_questions')}</div></div>`;
-  html += `<div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap;align-items:center">`;
-  html += `<button type="button" class="add-participant-btn" onclick="_addRegQuestion('${editQContainer}')" style="flex:1">${t('txt_reg_add_question')}</button>`;
+  html += `<div class="d-flex gap-2 mt-2 flex-wrap items-center">`;
+  html += `<button type="button" class="add-participant-btn flex-1" onclick="_addRegQuestion('${editQContainer}')">${t('txt_reg_add_question')}</button>`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegQuestions('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
   html += `</div>`;
   html += `</div>`;
@@ -286,7 +286,7 @@ function _renderLobbyCommsBody(rid, r, emailSettings) {
   html += `<label class="settings-label">${t('txt_reg_admin_message')}</label>`;
   html += `<p class="settings-help">${t('txt_reg_message_placeholder')}</p>`;
   html += `<textarea id="reg-edit-message-${esc(rid)}" class="reg-desc-textarea" rows="3" placeholder="${t('txt_reg_message_placeholder')}" oninput="_autoResizeTextarea(this)">${esc(r.message || '')}</textarea>`;
-  html += `<div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;flex-wrap:wrap">`;
+  html += `<div class="d-flex gap-2 mt-2 flex-wrap items-center">`;
   if (window._emailConfigured) {
     html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendRegMessageEmails('${esc(rid)}'))" title="${t('txt_email_confirm_send_message_all')}">${_ic('mail')} ${t('txt_email_send_message_all')}</button>`;
     if ((r.participant_filter?.length || 0) > 0) {
@@ -294,7 +294,7 @@ function _renderLobbyCommsBody(rid, r, emailSettings) {
       html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendRegMessageEmails('${esc(rid)}',true))" title="${escAttr(t('txt_email_confirm_send_message_eligible'))}">${_ic('mail')} ${t('txt_email_send_message_eligible')} (${eligibleCount})</button>`;
     }
   }
-  html += `<button type="button" id="reg-message-save-btn-${esc(rid)}" class="btn btn-primary btn-sm" style="margin-left:auto" onclick="withLoading(this,()=>_saveRegMessage('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
+  html += `<button type="button" id="reg-message-save-btn-${esc(rid)}" class="btn btn-primary btn-sm ml-auto" onclick="withLoading(this,()=>_saveRegMessage('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
   html += `</div>`;
   html += `</div>`;
 
@@ -307,16 +307,16 @@ function _renderLobbyCommsBody(rid, r, emailSettings) {
   html += `<div class="settings-block">`;
   html += `<label class="settings-label">${t('txt_email_sender_name')}</label>`;
   html += `<p class="settings-help">${t('txt_email_sender_name_help')}</p>`;
-  html += `<input type="text" id="reg-email-settings-sender-name-${esc(rid)}" value="${escAttr(senderName)}" maxlength="100" placeholder="${t('txt_email_sender_placeholder')}" style="width:100%;font-size:0.85rem">`;
+  html += `<input type="text" id="reg-email-settings-sender-name-${esc(rid)}" value="${escAttr(senderName)}" maxlength="100" placeholder="${t('txt_email_sender_placeholder')}" class="w-full fs-md">`;
   html += `</div>`;
 
   html += `<div class="settings-block">`;
   html += `<label class="settings-label">${t('txt_email_reply_to')}</label>`;
   html += `<p class="settings-help">${t('txt_email_reply_to_help')}</p>`;
-  html += `<input type="email" id="reg-email-settings-reply-to-${esc(rid)}" value="${escAttr(replyTo)}" placeholder="${t('txt_email_reply_to_placeholder')}" style="width:100%;font-size:0.85rem">`;
+  html += `<input type="email" id="reg-email-settings-reply-to-${esc(rid)}" value="${escAttr(replyTo)}" placeholder="${t('txt_email_reply_to_placeholder')}" class="w-full fs-md">`;
   html += `</div>`;
 
-  html += `<div class="settings-section-actions" style="justify-content:flex-end;gap:0.5rem;align-items:center">`;
+  html += `<div class="settings-section-actions settings-section-actions--end">`;
   html += `<button type="button" id="reg-email-settings-save-btn-${esc(rid)}" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegEmailSettings('${esc(rid)}'))">${t('txt_email_save_email')}</button>`;
   html += `</div>`;
   return html;
@@ -364,7 +364,7 @@ function _renderLobbySettingsPage(rid, ctx) {
 
   let html = `<div class="card lobby-status-bar tournament-status-bar lobby-settings-page-bar">`;
   html += `<div class="gp-ops-header-top">`;
-  html += `<h3 style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">`;
+  html += `<h3 class="d-flex items-center gap-2 flex-wrap">`;
   html += `<span>${esc(r.name || rid)}</span>`;
   html += `<span class="badge badge-count">${t('txt_lobby_settings_title')}</span>`;
   html += `</h3>`;

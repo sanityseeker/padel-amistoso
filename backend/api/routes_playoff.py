@@ -292,6 +292,9 @@ async def po_playoffs_schema(
         elimination=elim,
         match_labels=match_labels,
         title=auto_title,
+        # Espejo already picked the per-side bracket above; plain double
+        # elimination splits one combined layout into winners/losers views.
+        side=None if t.espejo else side,
         fmt=fmt,
         box_scale=box_scale,
         line_width=line_width,

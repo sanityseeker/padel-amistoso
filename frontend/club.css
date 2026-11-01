@@ -247,6 +247,7 @@ body {
   cursor: pointer;
 }
 
+.club-leaderboard-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .club-leaderboard-table {
   width: 100%;
   border-collapse: collapse;

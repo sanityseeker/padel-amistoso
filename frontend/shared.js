@@ -87,6 +87,19 @@ function _sortTbdLast(matches) {
   });
 }
 
+// ── Demo instance ────────────────────────────────────────
+
+/**
+ * True on the demo sandbox instance. The server stamps
+ * ``<html class="demo-instance">`` there, so this is synchronous and never
+ * true on the core site. Use it to skip community/club UI in string-built
+ * views; static markup uses the ``core-only`` class (theme.css) instead.
+ * @returns {boolean}
+ */
+function isDemoInstance() {
+  return document.documentElement.classList.contains('demo-instance');
+}
+
 // ── Subdomain detection ──────────────────────────────────
 
 /**
@@ -463,29 +476,149 @@ function setLanguage(lang) {
 }
 
 // ── Bracket image lightbox ─────────────────────────────────────────────────────
+// Zoom is relative to the fit-to-screen width (100% = whole bracket visible),
+// so every step is a visible change. Touch: two-finger pinch and double-tap
+// zoom around the finger; one-finger drag scrolls natively. Mouse: drag-to-pan.
 let _lbZoom = 1.0;
 let _lbSrc  = '';
 let _lbDrag = { active: false, moved: false, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 };
+let _lbPinch = null;          // { dist, zoom } while a two-finger pinch is active
+let _lbHistoryPushed = false; // a history entry exists so Back closes the lightbox
+
+const _LB_MIN_ZOOM = 0.5;
+const _LB_STEP = 1.25;
+const _LB_DOUBLE_TAP_ZOOM = 2.5;
+
+function _lbEls() {
+  const lb = document.getElementById('bracket-lightbox');
+  return {
+    lb,
+    img: document.getElementById('bracket-lightbox-img'),
+    scroll: lb ? lb.querySelector('.bracket-lightbox-scroll') : null,
+  };
+}
+
+/** Width at which the whole image fits the lightbox (never upscaled). */
+function _lbFitWidth() {
+  const { img, scroll } = _lbEls();
+  const natural = (img && img.naturalWidth) || 800;
+  if (!scroll) return natural;
+  const cs = getComputedStyle(scroll);
+  const avail = scroll.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  return Math.max(1, Math.min(natural, avail));
+}
+
+/** Max zoom: native resolution (sharpest available), but at least 4x. */
+function _lbMaxZoom() {
+  const { img } = _lbEls();
+  const natural = (img && img.naturalWidth) || 800;
+  return Math.max(4, natural / _lbFitWidth());
+}
+
+/**
+ * Set the zoom level, keeping the image point under (clientX, clientY) fixed
+ * on screen. Without an anchor, zooms around the centre of the viewport.
+ */
+function _lbSetZoom(zoom, clientX, clientY) {
+  const { img, scroll } = _lbEls();
+  _lbZoom = Math.min(_lbMaxZoom(), Math.max(_LB_MIN_ZOOM, zoom));
+  const label = document.getElementById('bracket-lb-zoom-level');
+  if (label) label.textContent = Math.round(_lbZoom * 100) + '%';
+  if (!img || !scroll) return;
+
+  const sRect = scroll.getBoundingClientRect();
+  if (clientX === undefined) {
+    clientX = sRect.left + sRect.width / 2;
+    clientY = sRect.top + sRect.height / 2;
+  }
+  const before = img.getBoundingClientRect();
+  const fx = before.width ? (clientX - before.left) / before.width : 0.5;
+  const fy = before.height ? (clientY - before.top) / before.height : 0.5;
+
+  if (_lbZoom === 1.0) {
+    img.style.width    = '';
+    img.style.maxWidth = '';
+  } else {
+    img.style.maxWidth = 'none';
+    img.style.width    = Math.round(_lbFitWidth() * _lbZoom) + 'px';
+  }
+
+  const after = img.getBoundingClientRect();
+  const imgLeft = after.left - sRect.left + scroll.scrollLeft;
+  const imgTop  = after.top  - sRect.top  + scroll.scrollTop;
+  scroll.scrollLeft = imgLeft + fx * after.width  - (clientX - sRect.left);
+  scroll.scrollTop  = imgTop  + fy * after.height - (clientY - sRect.top);
+}
+
+function _lbTouchDist(touches) {
+  return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+}
+
+function _lbOnTouchStart(e) {
+  if (e.touches.length === 2) {
+    _lbPinch = { dist: _lbTouchDist(e.touches), zoom: _lbZoom };
+  }
+}
+
+function _lbOnTouchMove(e) {
+  if (!_lbPinch || e.touches.length !== 2) return;
+  e.preventDefault(); // keep the browser from zooming the page underneath
+  const [a, b] = e.touches;
+  _lbSetZoom(
+    _lbPinch.zoom * (_lbTouchDist(e.touches) / _lbPinch.dist),
+    (a.clientX + b.clientX) / 2,
+    (a.clientY + b.clientY) / 2,
+  );
+}
+
+function _lbOnTouchEnd(e) {
+  if (e.touches.length < 2) _lbPinch = null;
+}
+
+function _lbOnDoubleClick(e) {
+  e.preventDefault();
+  _lbSetZoom(_lbZoom > 1.0 ? 1.0 : _LB_DOUBLE_TAP_ZOOM, e.clientX, e.clientY);
+}
+
+function _lbOnPopState() {
+  // Back gesture/button while open: close without navigating away.
+  _lbHistoryPushed = false;
+  _closeBracketLightbox();
+}
 
 function _openBracketLightbox(src) {
-  const lb  = document.getElementById('bracket-lightbox');
-  const img = document.getElementById('bracket-lightbox-img');
+  const { lb, img, scroll } = _lbEls();
   if (!lb || !img) return;
   _lbZoom = 1.0;
   _lbSrc  = src;
   _lbDrag.active = false;
   _lbDrag.moved  = false;
+  _lbPinch = null;
   img.style.width    = '';
   img.style.maxWidth = '';
   img.src = src;
   lb.classList.add('open');
+  document.documentElement.classList.add('bracket-lb-open');
   _bracketLightboxUpdateZoom();
   document.addEventListener('keydown', _bracketLightboxKeyHandler);
 
-  // Mouse drag-to-pan — listeners attached to document so dragging outside the
-  // scroll container still works across the whole bracket lightbox.
-  const scroll = lb.querySelector('.bracket-lightbox-scroll');
+  if (!_lbHistoryPushed) {
+    history.pushState({ bracketLightbox: true }, '');
+    _lbHistoryPushed = true;
+    window.addEventListener('popstate', _lbOnPopState);
+  }
+
   if (scroll) {
+    scroll.scrollLeft = 0;
+    scroll.scrollTop  = 0;
+    scroll.addEventListener('touchstart', _lbOnTouchStart, { passive: true });
+    scroll.addEventListener('touchmove', _lbOnTouchMove, { passive: false });
+    scroll.addEventListener('touchend', _lbOnTouchEnd, { passive: true });
+    scroll.addEventListener('touchcancel', _lbOnTouchEnd, { passive: true });
+    img.addEventListener('dblclick', _lbOnDoubleClick);
+
+    // Mouse drag-to-pan — listeners attached to document so dragging outside the
+    // scroll container still works across the whole bracket lightbox.
     scroll.style.cursor = 'grab';
 
     const onMouseMove = (e) => {
@@ -528,13 +661,25 @@ function _closeBracketLightbox(e) {
   if (e && e.target && e.target.tagName === 'IMG') return;
   // Don't close if this click was the end of a drag gesture
   if (e && _lbDrag.moved) { _lbDrag.moved = false; return; }
-  const lb = document.getElementById('bracket-lightbox');
-  if (!lb) return;
+  const { lb, img, scroll } = _lbEls();
+  if (!lb || !lb.classList.contains('open')) return;
   lb.classList.remove('open');
+  document.documentElement.classList.remove('bracket-lb-open');
   _lbDrag.active = false; // cancel any in-progress drag
+  _lbPinch = null;
   document.removeEventListener('keydown', _bracketLightboxKeyHandler);
-  const scroll = lb.querySelector('.bracket-lightbox-scroll');
+  window.removeEventListener('popstate', _lbOnPopState);
+  // Closed via button/Esc/backdrop: drop the history entry pushed on open.
+  if (_lbHistoryPushed) {
+    _lbHistoryPushed = false;
+    if (history.state && history.state.bracketLightbox) history.back();
+  }
+  if (img) img.removeEventListener('dblclick', _lbOnDoubleClick);
   if (scroll) {
+    scroll.removeEventListener('touchstart', _lbOnTouchStart);
+    scroll.removeEventListener('touchmove', _lbOnTouchMove);
+    scroll.removeEventListener('touchend', _lbOnTouchEnd);
+    scroll.removeEventListener('touchcancel', _lbOnTouchEnd);
     scroll.style.cursor     = '';
     scroll.style.userSelect = '';
     scroll.onmousedown = null;
@@ -543,33 +688,19 @@ function _closeBracketLightbox(e) {
 }
 
 function _bracketLightboxUpdateZoom() {
-  const label = document.getElementById('bracket-lb-zoom-level');
-  if (label) label.textContent = Math.round(_lbZoom * 100) + '%';
-  const img = document.getElementById('bracket-lightbox-img');
-  if (!img) return;
-  if (_lbZoom === 1.0) {
-    img.style.width    = '';
-    img.style.maxWidth = '';
-  } else {
-    const w = img.naturalWidth || 800;
-    img.style.maxWidth = 'none';
-    img.style.width    = Math.round(w * _lbZoom) + 'px';
-  }
+  _lbSetZoom(_lbZoom);
 }
 
 function _bracketLightboxZoomIn() {
-  _lbZoom = Math.min(4.0, +(_lbZoom * 1.25).toFixed(3));
-  _bracketLightboxUpdateZoom();
+  _lbSetZoom(_lbZoom * _LB_STEP);
 }
 
 function _bracketLightboxZoomOut() {
-  _lbZoom = Math.max(0.25, +(_lbZoom / 1.25).toFixed(3));
-  _bracketLightboxUpdateZoom();
+  _lbSetZoom(_lbZoom / _LB_STEP);
 }
 
 function _bracketLightboxZoomReset() {
-  _lbZoom = 1.0;
-  _bracketLightboxUpdateZoom();
+  _lbSetZoom(1.0);
 }
 
 function _bracketLightboxOpenFull() {
@@ -619,7 +750,7 @@ function buildPageSelectorHtml(currentPage) {
   const isPinned = homePage === currentPage;
   let html = `<div class="tv-page-selector" id="page-selector">`;
   html += `<button type="button" class="tv-page-selector-btn" onclick="togglePageSelectorDropdown()">`;
-  html += `<span>${current.icon}</span> <span>${esc(current.label)}</span> <span style="font-size:0.7rem;color:var(--text-muted)">▾</span>`;
+  html += `<span>${current.icon}</span> <span>${esc(current.label)}</span> <span class="fs-2xs text-muted">▾</span>`;
   html += `</button>`;
   html += `<div class="tv-page-selector-menu" id="page-selector-menu">`;
   for (const p of pages) {
@@ -639,7 +770,7 @@ function buildPageSelectorHtml(currentPage) {
 }
 
 function buildCompactRefreshButtonHtml(onclickHandler, title) {
-  return `<button type="button" onclick="${escAttr(onclickHandler)}" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;font-size:0.8rem;line-height:1" title="${escAttr(title)}">↻</button>`;
+  return `<button type="button" onclick="${escAttr(onclickHandler)}" class="btn-refresh" title="${escAttr(title)}">↻</button>`;
 }
 
 function togglePageSelectorDropdown() {
@@ -1008,8 +1139,7 @@ async function copyTextToClipboard(text) {
     const ta = document.createElement('textarea');
     ta.value = text;
     ta.setAttribute('readonly', '');
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
+    ta.className = 'clipboard-shim';
     document.body.appendChild(ta);
     ta.select();
     const ok = document.execCommand('copy');

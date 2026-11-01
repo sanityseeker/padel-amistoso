@@ -1094,9 +1094,9 @@ function _buildCommunitySelect(eleId) {
   const specialized = fromLeaderboard !== null ? fromLeaderboard : fallback;
   if (specialized.length === 0 && fallback.length === 0) {
     // Hint for logged-in players so they know communities can be created.
-    if (_profile) {
+    if (_profile && !(typeof isDemoInstance === 'function' && isDemoInstance())) {
       const hint = t('txt_player_community_hint');
-      return hint ? `<p class="leaderboard-community-hint" style="font-size:0.8rem;color:var(--text-muted);margin:0.25rem 0 0.5rem">${esc(hint)}</p>` : '';
+      return hint ? `<p class="leaderboard-community-hint fs-sm text-muted m-0 mt-1 mb-2">${esc(hint)}</p>` : '';
     }
     return '';
   }
@@ -2154,7 +2154,7 @@ function _buildEloRatingsCard() {
   const tennisLatest = hasTennisFromHistory ? _findCurrentPlayerEloChange(tennisHistory[0]) : null;
 
   let html = `<div class="card global-stats-card">`;
-  html += `<div class="section-heading section-heading-card" style="display:flex;align-items:center;gap:0.4rem">${esc(t('txt_player_elo_ratings'))}${_buildScopeBadge()} <button type="button" class="format-info-btn" style="margin-left:auto" onclick="_showEloInfoPopup(event)" aria-label="${esc(t('txt_player_elo_info_btn'))}" title="${esc(t('txt_player_elo_info_btn'))}">i</button></div>`;
+  html += `<div class="section-heading section-heading-card d-flex items-center gap-1-5">${esc(t('txt_player_elo_ratings'))}${_buildScopeBadge()} <button type="button" class="format-info-btn ml-auto" onclick="_showEloInfoPopup(event)" aria-label="${esc(t('txt_player_elo_info_btn'))}" title="${esc(t('txt_player_elo_info_btn'))}">i</button></div>`;
 
   if (showPadel || showTennis) {
     html += `<div class="global-stats-grid elo-ratings-grid">`;
@@ -2701,8 +2701,8 @@ async function _doLink() {
 
 function _buildEloInfoHtml() {
   let html = `<h3>${esc(t('txt_txt_info_elo_title'))}</h3>`;
-  html += `<p style="background:var(--bg-alt,#f5f5f5);border:1px solid var(--border);border-radius:6px;padding:0.6rem 0.8rem;margin-bottom:0.75rem;font-size:0.9rem">${esc(t('txt_txt_info_elo_quick_summary'))}</p>`;
-  html += `<p style="color:var(--text-muted);font-size:0.84rem">${esc(t('txt_txt_info_elo_subtitle'))}</p>`;
+  html += `<p class="elo-summary-box">${esc(t('txt_txt_info_elo_quick_summary'))}</p>`;
+  html += `<p class="text-muted fs-md">${esc(t('txt_txt_info_elo_subtitle'))}</p>`;
 
   html += `<div class="info-block">`;
   html += `<strong>${esc(t('txt_txt_info_elo_formula_title'))}</strong>`;

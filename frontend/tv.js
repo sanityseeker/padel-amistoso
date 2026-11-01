@@ -314,6 +314,7 @@ async function _playerAuth(passphrase, token) {
   tvState.hubPassphrase = data.hub_passphrase || null;
   tvState.hubAccessToken = data.hub_access_token || null;
   _savePlayerSession();
+  _setNoProfileAutoLogin(false);
   return data;
 }
 
@@ -352,9 +353,22 @@ async function _handleTokenAutoLogin() {
   }
 }
 
+// After an explicit logout, don't silently log back in from the stored Hub
+// profile on the next load. Cleared by any successful login (_playerAuth).
+function _noProfileAutoLoginKey() { return `padel-tv-no-autologin-${TID}`; }
+function _noProfileAutoLogin() {
+  try { return localStorage.getItem(_noProfileAutoLoginKey()) === '1'; } catch (_) { return false; }
+}
+function _setNoProfileAutoLogin(on) {
+  try {
+    if (on) localStorage.setItem(_noProfileAutoLoginKey(), '1');
+    else localStorage.removeItem(_noProfileAutoLoginKey());
+  } catch (_) {}
+}
+
 /** Try auto-login via Player Hub profile passphrase stored in localStorage */
 async function _tryProfileAutoLogin() {
-  if (!TID || _isPlayerLoggedIn()) return;
+  if (!TID || _isPlayerLoggedIn() || _noProfileAutoLogin()) return;
   try {
     const raw = localStorage.getItem('padel-player-profile-data');
     if (!raw) return;
@@ -382,7 +396,7 @@ function _showPlayerLoginModal() {
       <div class="login-error" id="player-login-error"></div>
       <input type="text" id="player-passphrase-input" placeholder="${t('txt_txt_enter_passphrase')}" autocomplete="off" spellcheck="false">
       <p class="login-passphrase-hint">${t('txt_txt_passphrase_hint')}</p>
-      <div style="display:flex;justify-content:center;margin-top:0.4rem">
+      <div class="d-flex justify-center mt-1-5">
         <button class="btn btn-primary" onclick="_doPlayerLogin()">${t('txt_txt_login')}</button>
       </div>
       <div class="player-login-separator"><span>${t('txt_txt_or_separator')}</span></div>
@@ -441,6 +455,7 @@ async function _doPlayerHubLogin() {
 /** Logout player */
 function _playerLogout() {
   _clearPlayerSession();
+  _setNoProfileAutoLogin(true);
   loadTV(); // re-render without score inputs
 }
 
@@ -863,7 +878,7 @@ function _tvRenderSetRows(idPrefix1, idPrefix2, decider) {
     html += `<div class="player-set-row">`;
     html += `<span class="player-set-label${isTb ? ' is-tb' : ''}"${title}>${label}</span>`;
     html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="${idPrefix1}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
-    html += `<span style="color:var(--text-muted)">-</span>`;
+    html += `<span class="text-muted">-</span>`;
     html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="${idPrefix2}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
     html += `</div>`;
   }
@@ -1656,11 +1671,13 @@ async function loadTV() {
       _captureOpenState();
       _renderGP(tvSettings, status, groups, playoffs);
       _applyOpenState();
+      _swapPendingBracketImages();
     } else if (tvState.tournamentType === 'playoff') {
       const [status, playoffs] = dataResults;
       _captureOpenState();
       _renderPO(tvSettings, status, playoffs);
       _applyOpenState();
+      _swapPendingBracketImages();
     } else {
       const [status, matches, playoffs] = dataResults;
       tvState.breakdowns = matches.breakdowns || {};
@@ -1674,6 +1691,7 @@ async function loadTV() {
       _captureOpenState();
       _renderMex(tvSettings, status, matches, playoffs);
       _applyOpenState();
+      _swapPendingBracketImages();
     }
   } catch (e) {
     if (e?.status === 404) {
@@ -1738,13 +1756,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
     }
 
   if (tvSettings.show_bracket) {
-      const bs = tvSettings.schema_box_scale   || 1.0;
-      const lw = tvSettings.schema_line_width  || 1.0;
-      const as_ = tvSettings.schema_arrow_scale || 1.0;
-      const tfs = tvSettings.schema_title_font_scale || 1.0;
-      const os  = tvSettings.schema_output_scale || 1.0;
-      const fmt = tvSettings.schema_format || 'svg';
-      const imgUrl = `/api/tournaments/${TID}/gp/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&output_scale=${os}&_t=${Date.now()}`;
+      const imgUrl = _bracketImgUrl('gp', tvSettings, playoffs);
       html += _buildBracketSection(imgUrl, status.double_elimination === true);
     }
 
@@ -1818,13 +1830,7 @@ function _renderPO(tvSettings, status, playoffs) {
   html += _buildCourts(pending, t('txt_txt_court_assignments_play_offs'), hasCourts && tvSettings.show_courts !== false, tvSettings.show_pending_matches === true, 'po-playoff');
 
   if (tvSettings.show_bracket) {
-    const bs  = tvSettings.schema_box_scale        || 1.0;
-    const lw  = tvSettings.schema_line_width       || 1.0;
-    const as_ = tvSettings.schema_arrow_scale      || 1.0;
-    const tfs = tvSettings.schema_title_font_scale || 1.0;
-    const os  = tvSettings.schema_output_scale     || 1.0;
-    const fmt = tvSettings.schema_format || 'svg';
-    const imgUrl = `/api/tournaments/${TID}/po/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&output_scale=${os}&_t=${Date.now()}`;
+    const imgUrl = _bracketImgUrl('po', tvSettings, playoffs);
     html += _buildBracketSection(imgUrl, status.double_elimination === true, status.espejo === true);
   }
 
@@ -1868,13 +1874,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
     }
 
     if (tvSettings.show_bracket) {
-      const bs = tvSettings.schema_box_scale   || 1.0;
-      const lw = tvSettings.schema_line_width  || 1.0;
-      const as_ = tvSettings.schema_arrow_scale || 1.0;
-      const tfs = tvSettings.schema_title_font_scale || 1.0;
-      const os  = tvSettings.schema_output_scale || 1.0;
-      const fmt = tvSettings.schema_format || 'svg';
-      const imgUrl = `/api/tournaments/${TID}/mex/playoffs-schema?fmt=${fmt}&box_scale=${bs}&line_width=${lw}&arrow_scale=${as_}&title_font_scale=${tfs}&output_scale=${os}&_t=${Date.now()}`;
+      const imgUrl = _bracketImgUrl('mex', tvSettings, playoffs);
       html += _buildBracketSection(imgUrl, status.double_elimination === true);
     }
 
@@ -1963,12 +1963,12 @@ function _tvRenderMexLeaderboard() {
 
   for (const r of rows) {
     const isMe = tvState.playerId && r.player_id === tvState.playerId;
-    const removedStyle = r.removed ? 'opacity:0.45' : '';
-    const rankCell = r.removed ? `<span style="color:var(--text-muted)">—</span>` : r.rank;
+    const rowClasses = [isMe ? 'my-row' : '', r.removed ? 'is-removed' : ''].filter(Boolean).join(' ');
+    const rankCell = r.removed ? `<span class="text-muted">—</span>` : r.rank;
     const nameCell = r.removed
-      ? `${esc(r.player)} <span style="font-size:0.7em;opacity:0.7">(${t('txt_txt_removed')})</span>`
+      ? `${esc(r.player)} <span class="tv-removed-tag">(${t('txt_txt_removed')})</span>`
       : _tvPlayerNameCell(r.player_id, r.player) + (r.elo ? ` <span class="elo-badge">${Math.round(r.elo)}</span>` : '');
-    html += `<tr${isMe ? ' class="my-row"' : ''}${removedStyle ? ` style="${removedStyle}"` : ''}><td class="rank-cell">${rankCell}</td><td class="player-cell">${nameCell}</td>`;
+    html += `<tr${rowClasses ? ` class="${rowClasses}"` : ''}><td class="rank-cell">${rankCell}</td><td class="player-cell">${nameCell}</td>`;
     const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
     const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
     html += `<td class="${byAvg ? '' : 'pts-cell'}">${totalCell}</td>`;
@@ -2004,7 +2004,7 @@ function _buildAbbrevLegend(type) {
     [t('txt_txt_avg_pts_abbrev'),   t('txt_txt_abbrev_avg_pts_full')],
   ];
   const tiebreakerKey = type === 'standings' ? 'txt_txt_abbrev_tiebreaker_standings' : 'txt_txt_abbrev_tiebreaker_leaderboard';
-  const tiebreakerHtml = `<p style="margin:0.6rem 0 0;padding-top:0.5rem;border-top:1px solid var(--border);font-size:0.78rem;color:var(--text-muted)"><strong>${esc(t('txt_txt_abbrev_tiebreaker_title'))}</strong><br>${esc(t(tiebreakerKey))}</p>`;
+  const tiebreakerHtml = `<p class="tiebreaker-note"><strong>${esc(t('txt_txt_abbrev_tiebreaker_title'))}</strong><br>${esc(t(tiebreakerKey))}</p>`;
   return `<table>${rows.map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table>${tiebreakerHtml}`;
 }
 
@@ -2063,10 +2063,10 @@ function _buildHeader(name, phase, champion) {
   const _slug = tvState.tournamentAlias || TID || '';
   const identityLabel = _tvIdentityLabel();
   const logoHtml = tvState.clubLogoUrl
-    ? `<img src="${escAttr(_tvLogoSrc(tvState.clubLogoUrl))}" alt="" style="height:28px;width:28px;object-fit:cover;border-radius:4px;margin-right:0.4rem;vertical-align:middle;flex-shrink:0">`
+    ? `<img src="${escAttr(_tvLogoSrc(tvState.clubLogoUrl))}" alt="" class="club-logo-inline club-logo-inline--lg">`
     : '';
   const brandingHtml = identityLabel
-    ? `<div style="display:flex;justify-content:center;margin-top:0.1rem;color:var(--text-muted);font-size:0.82rem">${esc(identityLabel)}</div>`
+    ? `<div class="tv-identity-label">${esc(identityLabel)}</div>`
     : '';
   return `
     <div class="tv-header" id="tv-header-main">
@@ -2078,28 +2078,87 @@ function _buildHeader(name, phase, champion) {
         </div>
       </div>
       <div class="tv-title-center">
-        <h1 class="tv-tournament-name" style="display:flex;align-items:center;justify-content:center;gap:0">${logoHtml}${esc(name)}</h1>
+        <h1 class="tv-tournament-name tv-tournament-name--branded">${logoHtml}${esc(name)}</h1>
       </div>
       ${brandingHtml}
-      <div style="display:flex;justify-content:center;gap:0.5rem;flex-wrap:wrap;margin-top:0.15rem">
+      <div class="tv-header-badges">
         ${phaseLabel && phase !== 'finished' ? `<span class="tv-badge tv-badge-phase">${esc(phaseLabel)}</span>` : ''}
         ${champion || phase === 'finished' ? `<span class="tv-badge tv-badge-champion">🏆 ${t('txt_txt_finished')}</span>` : ''}
       </div>
-      ${_slug ? `<div style="display:flex;justify-content:center;margin-top:0.25rem"><span id="tv-slug-chip" onclick="_copyTournamentSlug()" title="${escAttr(t('txt_tv_slug_copy_hint'))}" style="font-size:0.7rem;color:var(--text-muted);opacity:0.65;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:0.08rem 0.55rem;cursor:pointer;font-family:monospace;user-select:none;">${esc(_slug)}</span></div>` : ''}
+      ${_slug ? `<div class="d-flex justify-center mt-1"><span id="tv-slug-chip" onclick="_copyTournamentSlug()" title="${escAttr(t('txt_tv_slug_copy_hint'))}" class="tv-slug-chip">${esc(_slug)}</span></div>` : ''}
       <div class="tv-header-row">
         <div class="tv-title">
-          <button type="button" onclick="_backToTournaments()" style="background:var(--border);border:none;color:var(--text-muted);border-radius:999px;padding:0.3rem 0.8rem;cursor:pointer;font-size:0.78rem;font-weight:500;line-height:1;white-space:nowrap" title="${t('txt_txt_back_to_tournaments')}">← ${t('txt_txt_tournaments')}</button>
+          <button type="button" onclick="_backToTournaments()" class="tv-back-btn" title="${t('txt_txt_back_to_tournaments')}">← ${t('txt_txt_tournaments')}</button>
         </div>
         <div class="tv-meta">
           <div id="player-login-slot"></div>
           <div class="refresh-indicator">
             <div class="refresh-dot" id="refresh-dot"></div>
             <span id="tv-countdown">↻ ${tvState.refreshIntervalSecs}s</span>
-            <button type="button" onclick="loadTV()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;font-size:0.8rem;line-height:1" title="${t('txt_txt_refresh_now')}">↻</button>
+            <button type="button" onclick="loadTV()" class="btn-refresh" title="${t('txt_txt_refresh_now')}">↻</button>
           </div>
         </div>
       </div>
     </div>`;
+}
+
+/** Bracket schema URL. The `_k` key is derived from the play-off data, so the
+ *  URL (and the multi-hundred-KB image download) only changes when the bracket
+ *  does — unchanged refreshes are served from the browser cache. */
+function _bracketImgUrl(kind, tvSettings, playoffs) {
+  const q = new URLSearchParams({
+    fmt:              tvSettings.schema_format || 'svg',
+    box_scale:        tvSettings.schema_box_scale || 1.0,
+    line_width:       tvSettings.schema_line_width || 1.0,
+    arrow_scale:      tvSettings.schema_arrow_scale || 1.0,
+    title_font_scale: tvSettings.schema_title_font_scale || 1.0,
+    output_scale:     tvSettings.schema_output_scale || 1.0,
+    _k:               _hashString(JSON.stringify(playoffs || {})),
+  });
+  return `/api/tournaments/${TID}/${kind}/playoffs-schema?${q}`;
+}
+
+/** Small non-cryptographic FNV-1a string hash, base-36 encoded. */
+function _hashString(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+// Last successfully loaded bracket URL per bracket (URL minus its `_k` key).
+// When the bracket changes, the re-rendered <img> keeps showing that image
+// until the new one has loaded, instead of collapsing to zero height for the
+// ~1s the server needs to render it (which made the page jump on phones).
+const _bracketShown = new Map();
+
+function _bracketBaseUrl(url) {
+  return url.replace(/([?&])_k=[^&]*&?/, '$1').replace(/[?&]$/, '');
+}
+
+/** `src` attributes for a bracket <img>: current image + pending next one. */
+function _bracketSrcAttrs(url) {
+  url = new URL(url, location.href).href; // match the absolute `this.src` in onload
+  const shown = _bracketShown.get(_bracketBaseUrl(url));
+  const loaded = `onload="_bracketShown.set(_bracketBaseUrl(this.src), this.src)"`;
+  if (shown && shown !== url) {
+    return `src="${escAttr(shown)}" data-next-src="${escAttr(url)}" ${loaded}`;
+  }
+  return `src="${escAttr(url)}" ${loaded}`;
+}
+
+/** Swap bracket images rendered with a pending `data-next-src` once it loads. */
+function _swapPendingBracketImages() {
+  document.querySelectorAll('#tv-root img.bracket-img[data-next-src]').forEach(img => {
+    const next = img.dataset.nextSrc;
+    img.removeAttribute('data-next-src');
+    const pre = new Image();
+    // On error too, so the <img>'s own onerror (hide / "pending" note) runs.
+    pre.onload = pre.onerror = () => { if (img.isConnected) img.src = next; };
+    pre.src = next;
+  });
 }
 
 /** Build bracket section HTML with scrollable wrapper for mobile */
@@ -2121,23 +2180,23 @@ function _buildBracketSection(imgUrl, isDouble = false, isEspejo = false) {
     html += `<div class="espejo-brackets-row">`;
     html += `<div class="espejo-bracket-half">`;
     html += `<div class="espejo-bracket-label">${esc(t('txt_txt_espejo_winners_bracket'))}</div>`;
-    html += `<div class="bracket-scroll-wrapper"><img class="bracket-img" src="${imgUrl}&side=winners" alt="Winners" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'"></div>`;
+    html += `<div class="bracket-scroll-wrapper"><img class="bracket-img" ${_bracketSrcAttrs(`${imgUrl}&side=winners`)} alt="Winners" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'"></div>`;
     html += `</div>`;
     html += `<div class="espejo-bracket-half">`;
     html += `<div class="espejo-bracket-label">${esc(t('txt_txt_espejo_losers_bracket'))}</div>`;
     if (isEspejo) {
       html += `<div class="bracket-scroll-wrapper">` +
-        `<img class="bracket-img" src="${imgUrl}&side=losers" alt="Losers" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
-        `<div style="display:none;align-items:center;justify-content:center;padding:1.5rem;color:var(--text-muted);font-size:0.84rem;text-align:center;border:1px dashed var(--border);border-radius:8px">${t('txt_espejo_lb_pending')}</div>` +
+        `<img class="bracket-img" ${_bracketSrcAttrs(`${imgUrl}&side=losers`)} alt="Losers" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
+        `<div class="bracket-pending-note" style="display:none">${t('txt_espejo_lb_pending')}</div>` +
         `</div>`;
     } else {
-      html += `<div class="bracket-scroll-wrapper"><img class="bracket-img" src="${imgUrl}&side=losers" alt="Losers" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'"></div>`;
+      html += `<div class="bracket-scroll-wrapper"><img class="bracket-img" ${_bracketSrcAttrs(`${imgUrl}&side=losers`)} alt="Losers" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'"></div>`;
     }
     html += `</div>`;
     html += `</div>`;
   } else {
     html += `<div class="bracket-scroll-wrapper">`;
-    html += `<img class="bracket-img" src="${imgUrl}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'">`;
+    html += `<img class="bracket-img" ${_bracketSrcAttrs(imgUrl)} alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'">`;
     html += `</div>`;
   }
   html += `<p class="bracket-tap-hint">${t('txt_txt_tap_to_expand_bracket')}</p>`;
@@ -2174,7 +2233,7 @@ function _buildPendingGroupCollapsibles(pendingByGroup, _tl, _hasTbd, _commentHt
       if (key) html += `<div class="court-name">${esc(trl(key))}</div>`;
       for (const m of byRound[key]) {
         const tbd = _hasTbd(m);
-        html += `<div class="court-match"${tbd ? ' style="opacity:0.5"' : ''}>`;
+        html += `<div class="court-match opacity-50"${tbd ? '' : ''}>`;
         html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl(m.team2))}</div>`;
         html += _commentHtml(m);
         html += `</div>`;
@@ -2225,7 +2284,7 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
         if (key) html += `<div class="court-name">${esc(trl(key))}</div>`;
         for (const m of _byRound[key]) {
           const tbd = _hasTbd(m);
-          html += `<div class="court-match"${tbd ? ' style="opacity:0.5"' : ''}>`;
+          html += `<div class="court-match opacity-50"${tbd ? '' : ''}>`;
           html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl(m.team2))}</div>`;
           html += _commentHtml(m);
           html += `</div>`;
@@ -2318,7 +2377,7 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
       if (key) html += `<div class="court-name">${esc(key)}</div>`;
       for (const m of byRound2[key]) {
         const tbd = _hasTbd2(m);
-        html += `<div class="court-match"${tbd ? ' style="opacity:0.5"' : ''}>`;
+        html += `<div class="court-match opacity-50"${tbd ? '' : ''}>`;
         html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl2(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl2(m.team2))}</div>`;
         html += _commentHtml(m);
         html += `</div>`;
@@ -2396,7 +2455,7 @@ function _buildHistoryMatch(m, tvSettings, isMex, scoreCtx = null) {
       scoreHtml = `<span class="history-score">${m.score[0]} – ${m.score[1]}</span>`;
     }
   } else {
-    scoreHtml = `<span class="history-score" style="color:var(--text-muted)">—</span>`;
+    scoreHtml = `<span class="history-score text-muted">—</span>`;
   }
 
   let html = `<div class="history-match">`;
@@ -2414,7 +2473,7 @@ function _buildHistoryMatch(m, tvSettings, isMex, scoreCtx = null) {
   if (isMex && tvSettings.show_score_breakdown) {
     const bd = tvState.breakdowns[m.id];
     if (bd && Object.keys(bd).length > 0) {
-      html += `<details style="margin-top:-0.3rem;margin-bottom:0.4rem">`;
+      html += `<details class="tv-breakdown-details">`;
       html += `<summary class="breakdown-toggle">📊 ${t('txt_txt_score_breakdown')}</summary>`;
       html += `<div class="breakdown-panel">`;
       html += `<table class="breakdown-table"><thead><tr>`;
@@ -2471,16 +2530,16 @@ async function _resolveAlias() {
 // #tpl-tv-picker-item <template> in public.html.
 const _PICKER_ISLAND_HTML = `
 <div id="tv-picker-island" v-scope class="tv-picker">
-  <div class="tv-header-title-row" style="margin-bottom:1rem">
+  <div class="tv-header-title-row mb-4">
     <div class="tv-lang-cell">
       <button type="button" class="theme-btn" @click="toggleLanguage()"
               :title="langToggle.label" :aria-label="langToggle.label">{{ langToggle.icon }}</button>
     </div>
     <div v-html="pageSelectorHtml"></div>
     <div class="tv-toggle-btns">
-      <button type="button" class="theme-btn" @click="refresh()"
+      <button type="button" class="theme-btn btn-refresh" @click="refresh()"
               :title="t('txt_txt_refresh_now')"
-              style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;font-size:0.8rem;line-height:1">↻</button>
+             >↻</button>
       <button type="button" data-theme-toggle-icon="1" class="theme-btn" @click="toggleTheme()"
               :title="toggleThemeTitle">{{ themeIcon }}</button>
     </div>
@@ -2504,7 +2563,7 @@ const _PICKER_ISLAND_HTML = `
         <li v-for="tv in finishedTournaments" :key="tv.id" v-scope="{ $template: '#tpl-tv-picker-item', it: item(tv) }"></li>
       </ul>
     </div>
-    <div style="color:var(--text-muted);font-size:0.85rem;margin-top:1.5rem;margin-bottom:0.5rem">{{ t('txt_txt_or_enter_a_tournament_id_alias_directly') }}</div>
+    <div class="text-muted fs-md mt-6 mb-2">{{ t('txt_txt_or_enter_a_tournament_id_alias_directly') }}</div>
   </div>
   <form class="tv-picker-form" @submit="submitGoTo($event)">
     <input type="text" id="picker-input" :placeholder="t('txt_txt_tournament_id_or_alias')">
@@ -2584,7 +2643,7 @@ async function _goToTournament(e) {
     if (form) {
       const errDiv = document.createElement('div');
       errDiv.className = 'tv-error picker-inline-error';
-      errDiv.style.marginTop = '0.75rem';
+      errDiv.classList.add('mt-3');
       errDiv.innerHTML = `${t('txt_txt_no_tournament_found_with_alias')} <strong>${esc(val)}</strong>`;
       form.after(errDiv);
     }

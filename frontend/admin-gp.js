@@ -1775,9 +1775,9 @@ function _renderGpPlayoffEditor() {
   html += `<div class="gp-format-row">`;
   html += `<div class="form-group"><label>${t('txt_txt_format')}</label><select id="gp-playoff-format" onchange="_gpPlayoffFormatChanged()"><option value="single">${t('txt_txt_single_elimination')}</option><option value="double">${t('txt_txt_double_elimination')}</option><option value="espejo">${t('txt_txt_espejo_format')}</option></select></div>`;
   html += `</div>`;
-  html += `<div id="gp-espejo-options" style="display:none;margin-top:0.35rem;padding:0.4rem 0.6rem;border-left:2px solid var(--border)">`;
-  html += `<label style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;cursor:pointer">`;
-  html += `<input type="checkbox" id="gp-espejo-super-final" style="width:1rem;height:1rem" onchange="_gpUpdatePlayoffMatchCount()"> ${t('txt_txt_espejo_super_final')}`;
+  html += `<div id="gp-espejo-options" class="espejo-options" style="display:none">`;
+  html += `<label class="d-flex items-center gap-2 fs-sm cursor-pointer">`;
+  html += `<input type="checkbox" id="gp-espejo-super-final" onchange="_gpUpdatePlayoffMatchCount()"> ${t('txt_txt_espejo_super_final')}`;
   html += `</label></div>`;
   html += `<div class="gp-playoff-match-estimate" id="gp-playoff-match-estimate"></div>`;
   setTimeout(_gpUpdatePlayoffMatchCount, 0);
@@ -1785,18 +1785,18 @@ function _renderGpPlayoffEditor() {
   // Playoff team mode toggle — shown for tennis individual tournaments
   const _gpIsIndividualTennis = _gpSport === 'tennis' && (!_gpTeamRoster || Object.keys(_gpTeamRoster).length === 0);
   if (_gpIsIndividualTennis) {
-    html += `<div class="gp-format-row" style="margin-top:0.5rem">`;
+    html += `<div class="gp-format-row mt-2">`;
     html += `<div class="form-group"><label>${t('txt_txt_playoff_mode')}</label>`;
     html += `<div class="score-mode-toggle" id="gp-playoff-team-toggle">`;
     html += `<button type="button" class="${!_gpPlayoffTeamMode ? 'active' : ''}" onclick="_gpSetPlayoffTeamMode(false)">${t('txt_txt_individual_mode')}</button>`;
     html += `<button type="button" class="${_gpPlayoffTeamMode ? 'active' : ''}" onclick="_gpSetPlayoffTeamMode(true)">${t('txt_txt_team_mode_short')}</button>`;
     html += `</div></div>`;
     html += `</div>`;
-    html += `<div id="gp-playoff-teams-section" style="display:${_gpPlayoffTeamMode ? '' : 'none'};margin-top:0.5rem">`;
+    html += `<div id="gp-playoff-teams-section" class="mt-2" style="display:${_gpPlayoffTeamMode ? '' : 'none'}">`;
     html += `<div id="gp-playoff-teams-container"></div>`;
-    html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem">`;
-    html += `<button type="button" class="add-participant-btn" style="flex:1" onclick="_gpAddPlayoffTeam()">+ ${t('txt_txt_add_team')}</button>`;
-    html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_gpAutoPlayoffTeams()">${t('txt_conv_auto_pair')}</button>`;
+    html += `<div class="d-flex gap-2 flex-wrap mt-1-5">`;
+    html += `<button type="button" class="add-participant-btn flex-1" onclick="_gpAddPlayoffTeam()">+ ${t('txt_txt_add_team')}</button>`;
+    html += `<button type="button" class="btn btn-sm btn-muted" onclick="_gpAutoPlayoffTeams()">${t('txt_conv_auto_pair')}</button>`;
     html += `</div>`;
     html += `</div>`;
   }
@@ -2004,18 +2004,18 @@ function _gpRenderPlayoffTeams() {
 
   let html = '';
   _gpPlayoffTeams.forEach((team, idx) => {
-    html += `<div class="conv-team-row" style="margin-bottom:0.5rem;padding:0.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg)">`;
-    html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem">`;
-    html += `<span style="font-size:0.78rem;font-weight:700;color:var(--text-muted)">${t('txt_conv_team')} ${idx + 1}</span>`;
+    html += `<div class="conv-team-row">`;
+    html += `<div class="d-flex items-center gap-2 mb-1-5">`;
+    html += `<span class="fs-sm fw-700 text-muted">${t('txt_conv_team')} ${idx + 1}</span>`;
     html += `<button type="button" class="participant-remove-btn" onclick="_gpRemovePlayoffTeam(${idx})" title="${t('txt_txt_remove')}">×</button>`;
     html += `</div>`;
-    html += `<div style="display:flex;gap:0.4rem;flex-wrap:wrap">`;
+    html += `<div class="d-flex gap-1-5 flex-wrap">`;
     team.forEach((pid, mi) => {
-      html += `<select data-team="${idx}" data-slot="${mi}" onchange="_gpPlayoffTeams[${idx}][${mi}]=this.value;_gpRenderPlayoffTeams()" style="flex:1;min-width:120px;font-size:0.85rem;padding:0.3rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">`;
+      html += `<select data-team="${idx}" data-slot="${mi}" onchange="_gpPlayoffTeams[${idx}][${mi}]=this.value;_gpRenderPlayoffTeams()" class="playoff-team-select">`;
       html += `<option value="">—</option>`;
       for (const id of allIds) {
         const taken = assigned.has(id) && id !== pid;
-        html += `<option value="${esc(id)}" ${id === pid ? 'selected' : ''} ${taken ? 'disabled style="color:var(--text-muted)"' : ''}>${esc(nameMap[id] || id)}</option>`;
+        html += `<option value="${esc(id)}" ${id === pid ? 'selected' : ''} ${taken ? 'disabled class="text-muted"' : ''}>${esc(nameMap[id] || id)}</option>`;
       }
       html += `</select>`;
     });
@@ -2025,7 +2025,7 @@ function _gpRenderPlayoffTeams() {
 
   const unassigned = allIds.filter(id => !assigned.has(id));
   if (unassigned.length > 0) {
-    html += `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.3rem">${t('txt_conv_unassigned')}: ${unassigned.map(id => `<span style="font-weight:600">${esc(nameMap[id] || id)}</span>`).join(', ')}</div>`;
+    html += `<div class="fs-sm text-muted mt-1">${t('txt_conv_unassigned')}: ${unassigned.map(id => `<span class="fw-600">${esc(nameMap[id] || id)}</span>`).join(', ')}</div>`;
   }
   container.innerHTML = html;
 }

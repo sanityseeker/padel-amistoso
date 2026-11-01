@@ -101,37 +101,37 @@ function _renderConvertPanel(rid, preserveState = false) {
 
   let html = `<div class="card">`;
   // Header
-  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">`;
-  html += `<h2 style="margin:0">${t('txt_reg_convert_title')}</h2>`;
-  html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_cancelConvert('${esc(rid)}')">${t('txt_txt_cancel')}</button>`;
+  html += `<div class="d-flex items-center justify-between mb-3">`;
+  html += `<h2 class="m-0">${t('txt_reg_convert_title')}</h2>`;
+  html += `<button type="button" class="btn btn-sm btn-muted" onclick="_cancelConvert('${esc(rid)}')">${t('txt_txt_cancel')}</button>`;
   html += `</div>`;
 
   // Player selection section
-  html += `<div class="field-section" style="margin-bottom:0.75rem">`;
-  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;flex-wrap:wrap;gap:0.3rem">`;
-  html += `<div class="field-section-title" style="margin-bottom:0">${t('txt_conv_select_players')}</div>`;
-  html += `<div style="display:flex;gap:0.4rem;align-items:center">`;
+  html += `<div class="field-section mb-3">`;
+  html += `<div class="d-flex items-center justify-between mb-2 flex-wrap gap-1">`;
+  html += `<div class="field-section-title mb-0">${t('txt_conv_select_players')}</div>`;
+  html += `<div class="d-flex gap-1-5 items-center">`;
   html += `<span class="participant-count" id="conv-selected-count">(${_convSelectedPlayers.size}/${r.registrants.length})</span>`;
-  html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.15rem 0.4rem" onclick="_convSelectAll()">${t('txt_conv_select_all')}</button>`;
-  html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.15rem 0.4rem;background:var(--border);color:var(--text)" onclick="_convDeselectAll()">${t('txt_conv_deselect_all')}</button>`;
+  html += `<button type="button" class="btn btn-sm btn-chip fs-2xs" onclick="_convSelectAll()">${t('txt_conv_select_all')}</button>`;
+  html += `<button type="button" class="btn btn-sm btn-chip fs-2xs btn-muted" onclick="_convDeselectAll()">${t('txt_conv_deselect_all')}</button>`;
   html += `</div></div>`;
   html += `<div id="conv-player-list" class="conv-player-list"></div>`;
   html += `</div>`;
 
   // Tournament name
-  html += `<div class="field-section" style="margin-bottom:0.75rem">`;
-  html += `<input id="conv-name" value="${esc(r.name)}" class="tournament-name-input" placeholder="${t('txt_txt_my_tournament_placeholder')}" style="width:100%">`;
+  html += `<div class="field-section mb-3">`;
+  html += `<input id="conv-name" value="${esc(r.name)}" class="tournament-name-input w-full" placeholder="${t('txt_txt_my_tournament_placeholder')}">`;
   html += `</div>`;
 
   // Tournament type + team mode
-  html += `<div class="field-section" style="margin-bottom:0.75rem">`;
+  html += `<div class="field-section mb-3">`;
   html += `<div class="field-section-title">${t('txt_txt_format')}</div>`;
-  html += `<div class="score-mode-toggle" id="conv-type-toggle" style="margin-bottom:0.5rem">`;
+  html += `<div class="score-mode-toggle mb-2" id="conv-type-toggle">`;
   html += `<button type="button" class="active" onclick="_setConvType('group_playoff')">${t('txt_txt_group_play_off')}</button>`;
   html += `<button type="button" onclick="_setConvType('mexicano')">${t('txt_txt_mexicano_play_offs')}</button>`;
   html += `<button type="button" onclick="_setConvType('playoff')">${t('txt_txt_play_offs_only')}</button>`;
   html += `</div>`;
-  html += `<div style="margin-top:0.5rem">`;
+  html += `<div class="mt-2">`;
   html += `<div class="score-mode-toggle" id="conv-team-toggle">`;
   html += `<button type="button" class="active" onclick="_setConvTeamMode(false)">${t('txt_txt_individual_mode')}</button>`;
   html += `<button type="button" onclick="_setConvTeamMode(true)">${t('txt_txt_team_mode_short')}</button>`;
@@ -140,26 +140,26 @@ function _renderConvertPanel(rid, preserveState = false) {
   html += `</div>`;
 
   // Extra players (individual mode only)
-  html += `<div id="conv-extra-players-section" class="field-section" style="margin-bottom:0.75rem">`;
+  html += `<div id="conv-extra-players-section" class="field-section mb-3">`;
   html += `<div class="field-section-title">${t('txt_conv_extra_players')}</div>`;
   html += `<div id="conv-extra-players-container"></div>`;
-  html += `<button type="button" class="add-participant-btn" style="width:100%;margin-top:0.4rem" onclick="_addConvExtraPlayer()">${t('txt_txt_add_player')}</button>`;
+  html += `<button type="button" class="add-participant-btn w-full mt-1-5" onclick="_addConvExtraPlayer()">${t('txt_txt_add_player')}</button>`;
   html += `</div>`;
 
   // Team formation (hidden unless team mode)
-  html += `<div id="conv-teams-section" class="field-section" style="margin-bottom:0.75rem;display:none">`;
+  html += `<div id="conv-teams-section" class="field-section mb-3" style="display:none">`;
   html += `<div class="field-section-title">${t('txt_conv_team_formation')}</div>`;
   html += `<div id="conv-teams-container"></div>`;
-  html += `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem">`;
-  html += `<button type="button" class="add-participant-btn" style="flex:1" onclick="_addConvTeam()">${t('txt_txt_add_team')}</button>`;
-  html += `<button type="button" class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="_autoConvTeams()">${t('txt_conv_auto_pair')}</button>`;
+  html += `<div class="d-flex gap-2 flex-wrap mt-1-5">`;
+  html += `<button type="button" class="add-participant-btn flex-1" onclick="_addConvTeam()">${t('txt_txt_add_team')}</button>`;
+  html += `<button type="button" class="btn btn-sm btn-muted" onclick="_autoConvTeams()">${t('txt_conv_auto_pair')}</button>`;
   html += `</div>`;
   html += `</div>`;
 
   // Strength (collapsible)
-  html += `<details class="field-section" style="margin-bottom:0.75rem" id="conv-strength-section">`;
-  html += `<summary style="cursor:pointer;font-weight:700;font-size:0.85rem">${t('txt_conv_initial_strength')}</summary>`;
-  html += `<p style="font-size:0.78rem;color:var(--text-muted);margin:0.3rem 0 0.5rem">${t('txt_conv_strength_help')}</p>`;
+  html += `<details class="field-section mb-3" id="conv-strength-section">`;
+  html += `<summary class="cursor-pointer fw-700 fs-md">${t('txt_conv_initial_strength')}</summary>`;
+  html += `<p class="fs-sm text-muted m-0 mt-1 mb-2">${t('txt_conv_strength_help')}</p>`;
   html += `<div id="conv-strength-container"></div>`;
   html += `</details>`;
 
@@ -167,12 +167,12 @@ function _renderConvertPanel(rid, preserveState = false) {
   html += `<div id="conv-settings"></div>`;
 
   // Group preview (GP only, hidden initially)
-  html += `<div id="conv-group-preview" class="field-section" style="display:none;margin-top:0.75rem"></div>`;
+  html += `<div id="conv-group-preview" class="field-section mt-3" style="display:none"></div>`;
 
   // Message area + submit
-  html += `<div id="conv-msg" class="alert alert-error hidden" style="margin-top:0.75rem"></div>`;
-  html += `<div id="conv-create-buttons" style="text-align:center;margin-top:1rem">`;
-  html += `<button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,()=>_previewOrSubmitConvert('${esc(rid)}'))">${t('txt_reg_convert_to_tournament')}</button>`;
+  html += `<div id="conv-msg" class="alert alert-error hidden mt-3"></div>`;
+  html += `<div id="conv-create-buttons" class="ta-center mt-4">`;
+  html += `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,()=>_previewOrSubmitConvert('${esc(rid)}'))">${t('txt_reg_convert_to_tournament')}</button>`;
   html += `</div>`;
 
   html += `</div>`;
@@ -413,9 +413,9 @@ function _renderConvExtraPlayers() {
   });
   let html = '';
   _convExtraPlayers.forEach((name, i) => {
-    html += `<div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.35rem">`;
-    html += `<input type="text" class="conv-extra-player-input" data-idx="${i}" value="${esc(name)}" placeholder="${t('txt_reg_name_placeholder')}" style="flex:1" oninput="_convExtraPlayers[${i}]=this.value;_debouncedConvStrength()">`;
-    html += `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem" onclick="_removeConvExtraPlayer(${i})">✕</button>`;
+    html += `<div class="d-flex gap-1-5 items-center mb-1-5">`;
+    html += `<input type="text" class="conv-extra-player-input flex-1" data-idx="${i}" value="${esc(name)}" placeholder="${t('txt_reg_name_placeholder')}" oninput="_convExtraPlayers[${i}]=this.value;_debouncedConvStrength()">`;
+    html += `<button type="button" class="btn btn-danger btn-sm btn-row-action" onclick="_removeConvExtraPlayer(${i})">✕</button>`;
     html += `</div>`;
   });
   container.innerHTML = html;
@@ -455,19 +455,19 @@ function _renderConvTeams(rid) {
 
   let html = '';
   _convTeams.forEach((team, idx) => {
-    html += `<div class="conv-team-row" style="margin-bottom:0.5rem;padding:0.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg)">`;
-    html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem">`;
-    html += `<span style="font-size:0.78rem;font-weight:700;color:var(--text-muted)">${t('txt_conv_team')} ${idx + 1}</span>`;
-    html += `<input type="text" class="conv-team-name-input" data-idx="${idx}" value="${esc(_convTeamNames[idx] || '')}" placeholder="${team.join(' & ')}" style="flex:1;font-size:0.85rem;padding:0.25rem 0.4rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">`;
+    html += `<div class="conv-team-row">`;
+    html += `<div class="d-flex items-center gap-2 mb-1-5">`;
+    html += `<span class="fs-sm fw-700 text-muted">${t('txt_conv_team')} ${idx + 1}</span>`;
+    html += `<input type="text" class="conv-team-name-input" data-idx="${idx}" value="${esc(_convTeamNames[idx] || '')}" placeholder="${team.join(' & ')}">`;
     html += `<button type="button" class="participant-remove-btn" onclick="_removeConvTeam(${idx})" title="${t('txt_txt_remove')}">×</button>`;
     html += `</div>`;
-    html += `<div style="display:flex;gap:0.4rem;flex-wrap:wrap">`;
+    html += `<div class="d-flex gap-1-5 flex-wrap">`;
     team.forEach((member, mi) => {
-      html += `<select class="conv-team-select" data-team="${idx}" data-slot="${mi}" onchange="_onConvTeamSelect(${idx},${mi},this.value)" style="flex:1;min-width:120px;font-size:0.85rem;padding:0.3rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">`;
+      html += `<select class="conv-team-select playoff-team-select" data-team="${idx}" data-slot="${mi}" onchange="_onConvTeamSelect(${idx},${mi},this.value)">`;
       html += `<option value="">—</option>`;
       for (const name of allNames) {
         const taken = assignedNames.has(name) && name !== member;
-        html += `<option value="${esc(name)}" ${name === member ? 'selected' : ''} ${taken ? 'disabled style="color:var(--text-muted)"' : ''}>${esc(name)}</option>`;
+        html += `<option value="${esc(name)}" ${name === member ? 'selected' : ''} ${taken ? 'disabled class="text-muted"' : ''}>${esc(name)}</option>`;
       }
       html += `</select>`;
     });
@@ -478,7 +478,7 @@ function _renderConvTeams(rid) {
   // Show unassigned players
   const unassigned = allNames.filter(n => !assignedNames.has(n));
   if (unassigned.length > 0) {
-    html += `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.3rem">${t('txt_conv_unassigned')}: ${unassigned.map(n => `<span style="font-weight:600">${esc(n)}</span>`).join(', ')}</div>`;
+    html += `<div class="fs-sm text-muted mt-1">${t('txt_conv_unassigned')}: ${unassigned.map(n => `<span class="fw-600">${esc(n)}</span>`).join(', ')}</div>`;
   }
   container.innerHTML = html;
 }
@@ -588,38 +588,38 @@ function _renderConvSettings(rid) {
   let html = '';
 
   // Courts (common to all types)
-  html += `<div class="field-section" style="margin-bottom:0.75rem">`;
-  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.55rem">`;
-  html += `<div class="field-section-title" style="margin-bottom:0">${t('txt_txt_courts')}</div>`;
+  html += `<div class="field-section mb-3">`;
+  html += `<div class="d-flex items-center justify-between mb-2">`;
+  html += `<div class="field-section-title mb-0">${t('txt_txt_courts')}</div>`;
   html += `<label class="switch-label"><input type="checkbox" id="conv-assign-courts" checked onchange="_toggleConvCourts()"><span class="switch-track"></span><span>${t('txt_txt_assign_courts')}</span></label>`;
   html += `</div>`;
   html += `<div id="conv-courts-detail">`;
-  html += `<div class="num-field" style="margin-bottom:0.55rem"><label>${t('txt_txt_number_of_courts')}</label><input id="conv-court-count" type="number" value="2" min="1" max="20" oninput="_renderConvCourtNames()"></div>`;
+  html += `<div class="num-field mb-2"><label>${t('txt_txt_number_of_courts')}</label><input id="conv-court-count" type="number" value="2" min="1" max="20" oninput="_renderConvCourtNames()"></div>`;
   html += `<div class="court-names-grid" id="conv-court-names"></div>`;
   html += `</div>`;
   html += `</div>`;
 
   // Type-specific settings
   if (_convType === 'group_playoff') {
-    html += `<div class="field-section" style="margin-bottom:0.75rem">`;
+    html += `<div class="field-section mb-3">`;
     html += `<div class="field-section-title">${t('txt_txt_groups')}</div>`;
-    html += `<div class="num-field" style="margin-bottom:0.55rem"><label>${t('txt_txt_number_of_groups')}</label><input id="conv-num-groups" type="number" value="2" min="1"></div>`;
+    html += `<div class="num-field mb-2"><label>${t('txt_txt_number_of_groups')}</label><input id="conv-num-groups" type="number" value="2" min="1"></div>`;
     html += `</div>`;
   } else if (_convType === 'mexicano') {
-    html += `<div class="field-section" style="margin-bottom:0.75rem">`;
+    html += `<div class="field-section mb-3">`;
     html += `<div class="field-section-title">${t('txt_txt_parameters')}</div>`;
-    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem 1.25rem">`;
-    html += `<div style="display:flex;flex-direction:column;gap:0.3rem"><label style="font-size:0.8rem;color:var(--text-muted)">${t('txt_txt_total_points_per_match')}</label><input id="conv-mex-pts" type="number" value="26" min="1" style="width:80px"></div>`;
-    html += `<div style="display:flex;flex-direction:column;gap:0.3rem"><label style="font-size:0.8rem;color:var(--text-muted)">${t('txt_txt_number_of_rounds')}</label>`;
-    html += `<div style="display:flex;align-items:center;gap:0.6rem">`;
-    html += `<div class="score-mode-toggle" id="conv-mex-rounds-toggle" style="flex-shrink:0">`;
+    html += `<div class="mex-settings-grid">`;
+    html += `<div class="d-flex flex-col gap-1"><label class="fs-sm text-muted">${t('txt_txt_total_points_per_match')}</label><input id="conv-mex-pts" type="number" value="26" min="1" class="mex-points-input"></div>`;
+    html += `<div class="d-flex flex-col gap-1"><label class="fs-sm text-muted">${t('txt_txt_number_of_rounds')}</label>`;
+    html += `<div class="d-flex items-center gap-2-5">`;
+    html += `<div class="score-mode-toggle shrink-0" id="conv-mex-rounds-toggle">`;
     html += `<button type="button" class="active" onclick="_setConvMexRounds('unlimited')">∞</button>`;
     html += `<button type="button" onclick="_setConvMexRounds('fixed')">${t('txt_txt_fixed')}</button>`;
     html += `</div>`;
-    html += `<input id="conv-mex-rounds" type="number" value="8" min="1" style="width:64px;display:none">`;
+    html += `<input id="conv-mex-rounds" type="number" value="8" min="1" class="mex-rounds-input" style="display:none">`;
     html += `</div></div>`;
     html += `</div>`;
-    html += `<details class="advanced-section" style="margin-top:0.5rem;margin-bottom:0;border-radius:6px">`;
+    html += `<details class="advanced-section advanced-section--flush mt-2">`;
     html += `<summary>${t('txt_txt_advanced_settings')}</summary>`;
     html += `<div class="advanced-grid">`;
     html += `<div class="adv-field"><label>${t('txt_txt_skill_gap_label')}</label><input id="conv-mex-skill-gap" type="number" placeholder="${t('txt_txt_skill_gap_placeholder')}" min="0"></div>`;
@@ -640,23 +640,23 @@ function _renderConvSettings(rid) {
     html += `</div></details>`;
     html += `</div>`;
   } else if (_convType === 'playoff') {
-    html += `<div class="field-section" style="margin-bottom:0.75rem">`;
+    html += `<div class="field-section mb-3">`;
     html += `<div class="field-section-title">${t('txt_txt_play_off_format')}</div>`;
-    html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.2rem">`;
-    html += `<input type="checkbox" id="conv-double-elim" style="width:1rem;height:1rem;cursor:pointer">`;
-    html += `<label for="conv-double-elim" style="font-size:0.85rem;cursor:pointer">${t('txt_txt_double_elimination')}</label>`;
+    html += `<div class="d-flex items-center gap-2 mt-1">`;
+    html += `<input type="checkbox" id="conv-double-elim" class="cursor-pointer">`;
+    html += `<label for="conv-double-elim" class="fs-md cursor-pointer">${t('txt_txt_double_elimination')}</label>`;
     html += `</div></div>`;
   }
 
   // Public checkbox
-  html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.25rem">`;
-  html += `<input type="checkbox" id="conv-public" checked style="width:1rem;height:1rem;cursor:pointer">`;
-  html += `<label for="conv-public" style="font-size:0.85rem;cursor:pointer">${t('txt_txt_public_tournament')}</label>`;
+  html += `<div class="d-flex items-center gap-2 mt-2 mb-1">`;
+  html += `<input type="checkbox" id="conv-public" checked class="cursor-pointer">`;
+  html += `<label for="conv-public" class="fs-md cursor-pointer">${t('txt_txt_public_tournament')}</label>`;
   html += `</div>`;
   if (window._emailConfigured) {
-    html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.25rem">`;
-    html += `<input type="checkbox" id="conv-notify-players" checked style="width:1rem;height:1rem;cursor:pointer">`;
-    html += `<label for="conv-notify-players" style="font-size:0.85rem;cursor:pointer">${t('txt_email_notify_players')}</label>`;
+    html += `<div class="d-flex items-center gap-2 mt-2 mb-1">`;
+    html += `<input type="checkbox" id="conv-notify-players" checked class="cursor-pointer">`;
+    html += `<label for="conv-notify-players" class="fs-md cursor-pointer">${t('txt_email_notify_players')}</label>`;
     html += `</div>`;
   }
 
@@ -734,7 +734,7 @@ function _renderConvGroupPreview(rid) {
   const canAdjustGroups = groups.length > 1;
   const str = _convGroupPreview.strengths;
   let html = `<div class="gp-group-preview-title-row">`;
-  html += `<div class="field-section-title" style="margin:0">${t('txt_gp_group_assignments')}</div>`;
+  html += `<div class="field-section-title m-0">${t('txt_gp_group_assignments')}</div>`;
   html += `<button type="button" class="gp-preview-close" onclick="_cancelConvGroupPreview('${esc(rid)}')" title="${t('txt_txt_back')}">&times;</button>`;
   html += `</div>`;
   html += `<div class="gp-group-preview-grid">`;
@@ -767,7 +767,7 @@ function _renderConvGroupPreview(rid) {
 
   if (buttonsEl) {
     buttonsEl.innerHTML = `<div class="gp-preview-actions">`
-      + `<button type="button" class="btn btn-success" style="padding:0.65rem 1.4rem;font-size:1.05rem" onclick="withLoading(this,()=>_submitConvert('${esc(rid)}'))">${t('txt_gp_confirm_create')}</button>`
+      + `<button type="button" class="btn btn-success btn-convert-confirm" onclick="withLoading(this,()=>_submitConvert('${esc(rid)}'))">${t('txt_gp_confirm_create')}</button>`
       + `</div>`;
   }
 }
@@ -797,7 +797,7 @@ function _cancelConvGroupPreview(rid) {
   const buttonsEl = document.getElementById('conv-create-buttons');
   if (container) { container.innerHTML = ''; container.style.display = 'none'; }
   if (buttonsEl) {
-    buttonsEl.innerHTML = `<button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" onclick="withLoading(this,()=>_previewOrSubmitConvert('${esc(rid)}'))">${t('txt_reg_convert_to_tournament')}</button>`;
+    buttonsEl.innerHTML = `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,()=>_previewOrSubmitConvert('${esc(rid)}'))">${t('txt_reg_convert_to_tournament')}</button>`;
   }
 }
 

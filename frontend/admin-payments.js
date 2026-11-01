@@ -228,34 +228,36 @@ function _payRenderSettingsEditor() {
   html += `<p class="settings-help">${t('txt_pay_settings_help')}</p>`;
   html += `<div class="pay-settings-grid">`;
   html += `<label class="pay-field"><span class="settings-label">${t('txt_pay_fee')}</span>`;
-  html += `<input type="text" inputmode="decimal" class="player-codes-input" v-model="draft.fee" placeholder="15.00"></label>`;
+  html += `<input type="text" inputmode="decimal" v-model="draft.fee" placeholder="15.00"></label>`;
   html += `<label class="pay-field"><span class="settings-label">${t('txt_pay_currency')}</span>`;
-  html += `<input type="text" class="player-codes-input pay-currency-input" maxlength="3" v-model="draft.currency" placeholder="EUR"></label>`;
-  html += `<label class="pay-field"><span class="settings-label">${t('txt_pay_due')}</span>`;
-  html += `<input type="date" class="player-codes-input" v-model="draft.due_at"></label>`;
+  html += `<input type="text" class="pay-currency-input" maxlength="3" v-model="draft.currency" placeholder="EUR"></label>`;
+  html += `<label class="pay-field pay-field--due"><span class="settings-label">${t('txt_pay_due')}</span>`;
+  html += `<input type="date" v-model="draft.due_at"></label>`;
   html += `</div>`;
   html += `<label class="pay-field"><span class="settings-label">${t('txt_pay_instructions')}</span>`;
-  html += `<textarea class="reg-desc-textarea" rows="2" maxlength="2000" v-model="draft.instructions" placeholder="${escAttr(t('txt_pay_instructions_placeholder'))}"></textarea></label>`;
+  html += `<textarea rows="2" maxlength="2000" v-model="draft.instructions" placeholder="${escAttr(t('txt_pay_instructions_placeholder'))}"></textarea></label>`;
 
   html += `<div class="pay-methods-editor">`;
   html += `<span class="settings-label">${t('txt_pay_methods')}</span>`;
   html += `<p class="settings-help pay-visibility-warning">${t('txt_pay_methods_visibility_warning')}</p>`;
   html += `<div class="pay-method-row" v-for="(m, i) in draft.methods" :key="i">`;
-  html += `<select class="player-codes-input" v-model="m.kind" :aria-label="t('txt_pay_method_kind')">`;
+  html += `<select v-model="m.kind" :aria-label="t('txt_pay_method_kind')">`;
   html += `<option v-for="k in kinds" :value="k" :selected="k === m.kind">{{ kindLabel(k) }}</option>`;
   html += `</select>`;
-  html += `<input type="text" class="player-codes-input pay-method-value" maxlength="512" v-model="m.value" :placeholder="t('txt_pay_method_value')">`;
-  html += `<input type="text" class="player-codes-input pay-method-label" maxlength="80" v-model="m.label" :placeholder="t('txt_pay_method_label')">`;
+  html += `<input type="text" class="pay-method-value" maxlength="512" v-model="m.value" :placeholder="t('txt_pay_method_value')">`;
+  html += `<input type="text" class="pay-method-label" maxlength="80" v-model="m.label" :placeholder="t('txt_pay_method_label')">`;
   html += `<button type="button" class="btn btn-sm btn-muted" @click="removeMethod(i)">${t('txt_pay_method_remove')}</button>`;
   html += `</div>`;
   html += `<button type="button" class="btn btn-sm" @click="addMethod()">+ ${t('txt_pay_method_add')}</button>`;
   html += `</div>`;
 
-  html += `<div class="pay-show-methods">`;
-  html += `<span class="settings-label">${t('txt_pay_show_methods')}</span>`;
-  html += `<label class="pay-radio"><input type="radio" value="after_register" v-model="draft.show_methods"> ${t('txt_pay_show_after_register')}</label>`;
-  html += `<label class="pay-radio"><input type="radio" value="always" v-model="draft.show_methods"> ${t('txt_pay_show_always')}</label>`;
-  html += `</div>`;
+  // No radio `name`: this editor renders in two places bound to one store, and
+  // v-model alone keeps the pair mutually exclusive.
+  html += `<fieldset class="pay-show-methods choice-group">`;
+  html += `<legend class="settings-label">${t('txt_pay_show_methods')}</legend>`;
+  html += `<label class="choice-row"><input type="radio" value="after_register" v-model="draft.show_methods"> <span>${t('txt_pay_show_after_register')}</span></label>`;
+  html += `<label class="choice-row"><input type="radio" value="always" v-model="draft.show_methods"> <span>${t('txt_pay_show_always')}</span></label>`;
+  html += `</fieldset>`;
 
   html += `<div class="settings-section-actions pay-settings-actions">`;
   html += `<span class="pay-saved-hint" v-if="settingsSaved">${t('txt_txt_saved')}</span>`;

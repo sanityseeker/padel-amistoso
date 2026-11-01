@@ -152,7 +152,7 @@ function _clubsRenderOverview() {
 
   // Club list
   if (!_clubsList.length) {
-    html += `<p class="muted-note">${t('txt_clubs_no_clubs')} <button type="button" class="btn btn-sm btn-link" style="vertical-align:baseline" onclick="openContextInfo('clubs')">${_antIc('info-circle')} ${esc(t('txt_txt_learn_more'))}</button></p>`;
+    html += `<p class="muted-note">${t('txt_clubs_no_clubs')} <button type="button" class="btn btn-sm btn-link btn-link--inline" onclick="openContextInfo('clubs')">${_antIc('info-circle')} ${esc(t('txt_txt_learn_more'))}</button></p>`;
   } else {
     // Hide the Community column when every club lives in the same community
     // (the most common single-community deployment) — it's pure noise then.
@@ -162,7 +162,7 @@ function _clubsRenderOverview() {
       <thead>
         <tr class="player-codes-head-row">
           <th class="player-codes-th">${t('txt_clubs_name')}</th>
-          ${showCommColumn ? `<th class="player-codes-th" style="color:var(--text-muted)">${t('txt_clubs_community')}</th>` : ''}
+          ${showCommColumn ? `<th class="player-codes-th text-muted">${t('txt_clubs_community')}</th>` : ''}
           <th class="player-codes-th"></th>
         </tr>
       </thead>
@@ -171,13 +171,13 @@ function _clubsRenderOverview() {
           const comm = _clubsCommunities.find(c => c.id === cl.community_id);
           return `
           <tr class="player-codes-row">
-            <td class="player-codes-name" style="font-weight:normal">
-              ${cl.has_logo ? `<img src="/api/clubs/${esc(cl.id)}/logo" alt="" style="height:20px;width:20px;object-fit:cover;border-radius:3px;margin-right:0.35rem;vertical-align:middle">` : ''}
-              <strong style="cursor:pointer;color:var(--accent)" onclick="clubsOpenDetail('${esc(cl.id)}')">${esc(cl.name)}</strong>
-              ${cl.shared ? `<span class="badge badge-shared" style="margin-left:0.35rem">${t('txt_clubs_badge_shared')}</span>` : ''}
+            <td class="player-codes-name fw-normal">
+              ${cl.has_logo ? `<img src="/api/clubs/${esc(cl.id)}/logo" alt="" class="clubs-row-logo">` : ''}
+              <strong class="clubs-row-name" onclick="clubsOpenDetail('${esc(cl.id)}')">${esc(cl.name)}</strong>
+              ${cl.shared ? `<span class="badge badge-shared ml-1-5">${t('txt_clubs_badge_shared')}</span>` : ''}
             </td>
-            ${showCommColumn ? `<td class="player-codes-cell" style="color:var(--text-muted);font-size:0.82rem">${comm ? esc(comm.name) : esc(cl.community_id)}</td>` : ''}
-            <td class="player-codes-cell-center" style="white-space:nowrap">
+            ${showCommColumn ? `<td class="player-codes-cell text-muted fs-sm">${comm ? esc(comm.name) : esc(cl.community_id)}</td>` : ''}
+            <td class="player-codes-cell-center nowrap">
               ${!cl.shared || isAdmin() ? `<button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsDelete('${esc(cl.id)}')" title="${t('txt_txt_remove')}" aria-label="${t('txt_txt_remove')} ${esc(cl.name)}">${_ic('trash')}</button>` : ''}
             </td>
           </tr>`;
@@ -187,22 +187,22 @@ function _clubsRenderOverview() {
   }
 
   // Create form
-  html += `<div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">`;
+  html += `<div class="d-flex gap-2 mt-3 flex-wrap items-center">`;
   const canCreate = isAdmin() || (typeof canCreateClubs === 'function' && canCreateClubs());
   if (!canCreate) {
     html += `<p class="muted-note">${t('txt_clubs_creation_disabled_for_user')}</p>`;
   } else if (eligible.length) {
     html += `
-      <select id="clubs-create-community" style="padding:0.4rem 0.6rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);min-width:160px">
+      <select id="clubs-create-community" class="clubs-create-community-select">
         ${eligible.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}
       </select>
-      <input type="text" id="clubs-create-name" placeholder="${t('txt_clubs_name_placeholder')}" style="flex:1;min-width:140px;padding:0.4rem 0.6rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
+      <input type="text" id="clubs-create-name" placeholder="${t('txt_clubs_name_placeholder')}" class="clubs-create-name-input" autocomplete="off">
       <button type="button" id="clubs-create-btn" class="btn btn-success btn-sm" onclick="clubsCreate()">+ ${t('txt_clubs_create')}</button>`;
   } else {
     html += `<p class="muted-note">${t('txt_clubs_no_eligible')}</p>`;
   }
   html += `</div>
-    <div id="clubs-msg" style="margin-top:0.5rem;font-size:0.84rem"></div>`;
+    <div id="clubs-msg" class="mt-2 fs-md"></div>`;
 
   container.innerHTML = html;
 
@@ -564,7 +564,7 @@ function _clubsRenderTiers() {
       <thead>
         <tr class="player-codes-head-row">
           <th class="player-codes-th">${t('txt_clubs_tier_name')}</th>
-          <th style="text-align:right;padding:0.3rem 0.5rem">${t('txt_clubs_tier_base_elo')}</th>
+          <th class="clubs-th-elo">${t('txt_clubs_tier_base_elo')}</th>
           <th class="player-codes-th"></th>
         </tr>
       </thead>
@@ -573,7 +573,7 @@ function _clubsRenderTiers() {
           <tr class="player-codes-row">
             <td class="player-codes-name">${esc(tier.name)}</td>
             <td class="player-codes-cell-center">${tier.base_elo}</td>
-            <td class="player-codes-cell-center" style="white-space:nowrap">
+            <td class="player-codes-cell-center nowrap">
               <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsDeleteTier('${esc(tier.id)}')" title="${t('txt_txt_remove')}" aria-label="${t('txt_txt_remove')} ${esc(tier.name)}">X</button>
             </td>
           </tr>
@@ -649,7 +649,7 @@ function _clubsRenderSeasons() {
                 ? `<span class="badge badge-open">${t('txt_clubs_season_active')}</span>`
                 : `<span class="badge badge-closed">${t('txt_clubs_season_archived')}</span>`}
             </td>
-            <td class="player-codes-cell-center" style="white-space:nowrap">
+            <td class="player-codes-cell-center nowrap">
               <button id="clubs-season-toggle-${esc(s.id)}" class="btn btn-sm player-codes-icon-btn" onclick="clubsToggleSeason('${esc(s.id)}', ${!s.active})" title="${s.active ? t('txt_clubs_season_archive') : t('txt_clubs_season_activate')}" aria-label="${s.active ? t('txt_clubs_season_archive') : t('txt_clubs_season_activate')}">
                 ${s.active ? _ic('lock') : _ic('unlock')}
               </button>
@@ -772,22 +772,22 @@ function _clubsRenderSeasonAssignment() {
 
     html += `<section class="clubs-assign-section">
       <h4 class="clubs-assign-section-title">${_antIc('plus')} ${t('txt_clubs_attach_tournaments')}</h4>
-      <p class="player-codes-help" style="margin:0 0 0.5rem">${t('txt_clubs_attach_tournaments_help')}</p>
+      <p class="player-codes-help m-0 mb-2">${t('txt_clubs_attach_tournaments_help')}</p>
       <input type="text" id="clubs-attach-search" value="${escAttr(_clubsAttachSearch)}"
         placeholder="${escAttr(t('txt_clubs_attach_search_placeholder'))}"
         oninput="clubsSetAttachTournamentSearch(this.value)"
         class="clubs-assign-search-input">
       ${filtered.length ? `
-      <div class="player-codes-table-wrap" style="margin-bottom:0.5rem"><table class="player-codes-table">
+      <div class="player-codes-table-wrap mb-2"><table class="player-codes-table">
         <tbody>
           ${filtered.map(t_ => {
             const comm = _clubsCommunities.find(c => c.id === (t_.community_id || 'open'));
             return `<tr class="player-codes-row">
-              <td class="player-codes-name">${esc(t_.name)}<span class="muted-note" style="margin-left:0.4rem;font-size:0.8rem">${comm ? esc(comm.name) : ''}</span></td>
-              <td class="player-codes-cell" style="white-space:nowrap;color:var(--text-muted);font-size:0.8rem">${_clubsFormatDate(t_.created_at)}</td>
-              <td class="player-codes-cell" style="white-space:nowrap">
+              <td class="player-codes-name">${esc(t_.name)}<span class="muted-note ml-1-5 fs-sm">${comm ? esc(comm.name) : ''}</span></td>
+              <td class="player-codes-cell nowrap text-muted fs-sm">${_clubsFormatDate(t_.created_at)}</td>
+              <td class="player-codes-cell nowrap">
                 <button type="button" id="clubs-tattach-btn-${esc(t_.id)}" class="btn btn-sm btn-primary" onclick="clubsAttachTournamentToClub('${esc(t_.id)}', this)">${t('txt_clubs_attach_to_club')}</button>
-                <span id="clubs-tattach-msg-${esc(t_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
+                <span id="clubs-tattach-msg-${esc(t_.id)}" class="fs-sm ml-1"></span>
               </td>
             </tr>`;
           }).join('')}
@@ -815,21 +815,21 @@ function _clubsRenderSeasonAssignment() {
             const clubBtnLabel = inThisClub ? t('txt_clubs_remove_from_club') : t('txt_clubs_attach_to_club');
             const clubBtnClass = inThisClub ? 'btn btn-sm btn-muted' : 'btn btn-sm btn-primary';
             const otherTag = otherClubLabel
-              ? `<span class="muted-note" style="margin-left:0.4rem;font-size:0.78rem">${t('txt_clubs_currently_in_club')}: ${esc(otherClubLabel)}</span>`
+              ? `<span class="muted-note ml-1-5 fs-sm">${t('txt_clubs_currently_in_club')}: ${esc(otherClubLabel)}</span>`
               : '';
             return `
             <tr class="player-codes-row">
               <td class="player-codes-name">${esc(t_.name)}${otherTag}</td>
-              <td class="player-codes-cell" style="white-space:nowrap">
+              <td class="player-codes-cell nowrap">
                 <button type="button" id="clubs-tclub-btn-${esc(t_.id)}" class="${clubBtnClass}" onclick="clubsToggleTournamentClub('${esc(t_.id)}', this)">${clubBtnLabel}</button>
-                <span id="clubs-tclub-msg-${esc(t_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
+                <span id="clubs-tclub-msg-${esc(t_.id)}" class="fs-sm ml-1"></span>
               </td>
               <td class="player-codes-cell">
                 <select id="clubs-tsn-sel-${esc(t_.id)}" class="admin-sel" onchange="clubsAssignTournamentSeason('${esc(t_.id)}')">
                   <option value="">— ${t('txt_txt_none_selected')} —</option>
                   ${seasonOptions}
                 </select>
-                <span id="clubs-tsn-msg-${esc(t_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
+                <span id="clubs-tsn-msg-${esc(t_.id)}" class="fs-sm ml-1"></span>
               </td>
             </tr>
           `;
@@ -855,7 +855,7 @@ function _clubsRenderSeasonAssignment() {
                   <option value="">— ${t('txt_txt_none_selected')} —</option>
                   ${seasonOptions}
                 </select>
-                <span id="clubs-rsn-msg-${esc(r_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
+                <span id="clubs-rsn-msg-${esc(r_.id)}" class="fs-sm ml-1"></span>
               </td>
             </tr>
           `).join('')}
@@ -1038,8 +1038,6 @@ function _clubsRenderPlayers() {
     .map(tier => `<option value="${esc(tier.id)}">${esc(tier.name)} (${tier.base_elo})</option>`)
     .join('');
 
-  const eloInputStyle = 'width:4.5rem;padding:0.15rem 0.3rem;font-size:0.82rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);text-align:right';
-  const selStyle = 'padding:0.2rem 0.3rem;font-size:0.82rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);max-width:120px';
   const sportLabel = sport === 'padel' ? t('txt_txt_sport_padel') : t('txt_txt_sport_tennis');
 
   // Filtered players for the table (applied to both visible and hidden-from-sport sections)
@@ -1061,7 +1059,7 @@ function _clubsRenderPlayers() {
     <div class="clubs-players-toolbar">
       <div class="clubs-players-filter-wrap">
         <input type="search" id="clubs-player-filter-input" value="${esc(_clubsPlayerFilter)}" placeholder="${t('txt_clubs_player_filter_placeholder')}"
-          style="flex:1;min-width:180px;padding:0.3rem 0.5rem;font-size:0.88rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)"
+          class="clubs-player-filter"
           oninput="clubsSetPlayerFilter(this.value)">
         ${_clubsPlayerFilter ? `<button class="btn btn-sm btn-muted" type="button" onclick="clubsSetPlayerFilter('')">${t('txt_txt_clear')}</button>` : ''}
       </div>
@@ -1100,32 +1098,32 @@ function _clubsRenderPlayers() {
             <tr class="player-codes-row">
               <td class="player-codes-name">
                 ${esc(p.name)}
-                ${noGames ? `<span class="muted-tiny" style="margin-left:0.3rem">(${t('txt_txt_no_matches')})</span>` : ''}
+                ${noGames ? `<span class="muted-tiny ml-1">(${t('txt_txt_no_matches')})</span>` : ''}
               </td>
               <td class="player-codes-cell">${hasHub
-                ? `<span class="muted-tiny" style="color:var(--green)">${t('txt_clubs_hub_yes')}</span>`
-                : `<span class="muted-tiny" style="color:var(--text-muted)">${t('txt_clubs_hub_no')}</span>`}</td>
+                ? `<span class="muted-tiny text-success">${t('txt_clubs_hub_yes')}</span>`
+                : `<span class="muted-tiny text-muted">${t('txt_clubs_hub_no')}</span>`}</td>
               <td class="player-codes-cell">${hasEmail ? esc(p.email) : `<span class="muted-tiny">${t('txt_clubs_player_no_email')}</span>`}</td>
               <td class="player-codes-cell-center">
                 <input type="number" id="clubs-elo-${sport}-${esc(p.profile_id)}" min="0" max="4000" step="1"
                   value="${eloVal != null ? eloVal : ''}" placeholder="—"
-                  style="${eloInputStyle}"
+                  class="clubs-elo-input"
                   oninput="_clubsDebouncedSaveElo('${esc(p.profile_id)}', '${sport}')">
-                <span id="clubs-elo-${sport}-msg-${esc(p.profile_id)}" style="font-size:0.78rem;margin-left:0.15rem"></span>
+                <span id="clubs-elo-${sport}-msg-${esc(p.profile_id)}" class="clubs-inline-msg"></span>
               </td>
               <td class="player-codes-cell-center">
                 <span class="muted-tiny">${matchCount != null ? matchCount : '—'}</span>
               </td>
-              <td class="player-codes-cell" style="white-space:nowrap">
-                <select id="clubs-ptier-${sport}-${esc(p.profile_id)}" style="${selStyle}"
+              <td class="player-codes-cell nowrap">
+                <select id="clubs-ptier-${sport}-${esc(p.profile_id)}" class="clubs-tier-select"
                   onchange="clubsAssignTier('${esc(p.profile_id)}', '${sport}')">
                   <option value="">— ${t('txt_txt_none_selected')} —</option>
                   ${tierOptions}
                 </select>
-                <span id="clubs-ptier-${sport}-msg-${esc(p.profile_id)}" style="font-size:0.78rem;margin-left:0.15rem"></span>
+                <span id="clubs-ptier-${sport}-msg-${esc(p.profile_id)}" class="clubs-inline-msg"></span>
               </td>
-              <td class="player-codes-cell-center" style="white-space:nowrap">
-                <button class="btn btn-sm player-codes-icon-btn" onclick="clubsTogglePlayerSport('${esc(p.profile_id)}', '${sport}', false)" title="${esc(hideTip)}" aria-label="${esc(hideTip)} ${esc(p.name)}" style="color:var(--text-muted)">&#x2296;</button>
+              <td class="player-codes-cell-center nowrap">
+                <button class="btn btn-sm player-codes-icon-btn text-muted" onclick="clubsTogglePlayerSport('${esc(p.profile_id)}', '${sport}', false)" title="${esc(hideTip)}" aria-label="${esc(hideTip)} ${esc(p.name)}">&#x2296;</button>
                 <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsRemovePlayer('${esc(p.profile_id)}', '${esc(p.name)}')" title="${esc(removeTip)}" aria-label="${esc(removeTip)} ${esc(p.name)}">&#x2715;</button>
               </td>
             </tr>`;
@@ -1135,17 +1133,17 @@ function _clubsRenderPlayers() {
     </div>`;
 
     if (!visibleForSport.length && hiddenFromSport.length) {
-      html += `<p class="muted-note" style="margin-top:0.5rem">${t('txt_txt_no_results')}</p>`;
+      html += `<p class="muted-note mt-2">${t('txt_txt_no_results')}</p>`;
     }
 
     if (hiddenFromSport.length) {
       html += `
-    <details style="margin-top:0.75rem;border:1px solid var(--border);border-radius:6px;padding:0 0.75rem">
-      <summary style="cursor:pointer;user-select:none;padding:0.5rem 0;font-size:0.85rem;font-weight:600;list-style:none;display:flex;align-items:center;gap:0.4rem">
-        <span class="tv-chevron" style="font-size:0.65em;color:var(--text-muted)">&#9658;</span>
+    <details class="clubs-collapsible">
+      <summary class="summary-toggle summary-toggle--club">
+        <span class="tv-chevron">&#9658;</span>
         ${t('txt_clubs_hidden_from_sport_title').replace('{sport}', sportLabel).replace('{n}', String(hiddenFromSport.length))}
       </summary>
-      <div style="padding:0.4rem 0 0.75rem">
+      <div class="clubs-collapsible-body">
         <div class="player-codes-table-wrap">
           <table class="player-codes-table">
             <thead><tr class="player-codes-head-row">
@@ -1161,11 +1159,11 @@ function _clubsRenderPlayers() {
                 const restoreTip = t('txt_clubs_restore_for_sport').replace('{sport}', sportLabel);
                 const removeTip = t('txt_clubs_remove_all_sports');
                 return `
-              <tr class="player-codes-row" style="opacity:0.65">
+              <tr class="player-codes-row player-codes-row--dimmed">
                 <td class="player-codes-name">${esc(p.name)}</td>
                 <td class="player-codes-cell-center"><span class="muted-tiny">${eloVal != null ? Math.round(eloVal) : '—'}</span></td>
                 <td class="player-codes-cell-center"><span class="muted-tiny">${matchCount != null ? matchCount : '—'}</span></td>
-                <td class="player-codes-cell-center" style="white-space:nowrap">
+                <td class="player-codes-cell-center nowrap">
                   <button class="btn btn-sm btn-success player-codes-icon-btn" onclick="clubsTogglePlayerSport('${esc(p.profile_id)}', '${sport}', true)" title="${esc(restoreTip)}" aria-label="${esc(restoreTip)} ${esc(p.name)}">&#x2295;</button>
                   <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsRemovePlayer('${esc(p.profile_id)}', '${esc(p.name)}')" title="${esc(removeTip)}" aria-label="${esc(removeTip)} ${esc(p.name)}">&#x2715;</button>
                 </td>
@@ -1209,26 +1207,26 @@ function clubsShowConvertGhostForm(profileId, currentName) {
   if (!container) return;
 
   const formHtml = `
-    <div id="clubs-convert-ghost-form" style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface)">
-      <p style="margin:0 0 0.4rem;font-size:0.88rem;font-weight:600">${t('txt_ph_convert_ghost_title')} — <em>${esc(currentName)}</em></p>
-      <p style="margin:0 0 0.6rem;font-size:0.82rem;color:var(--text-muted)">${t('txt_ph_convert_ghost_help')}</p>
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end">
-        <label style="font-size:0.84rem;display:flex;flex-direction:column;gap:0.2rem;flex:1;min-width:130px">
+    <div id="clubs-convert-ghost-form" class="ghost-convert-form">
+      <p class="m-0 mb-1-5 fs-lg fw-600">${t('txt_ph_convert_ghost_title')} — <em>${esc(currentName)}</em></p>
+      <p class="m-0 mb-2-5 fs-sm text-muted">${t('txt_ph_convert_ghost_help')}</p>
+      <div class="d-flex gap-2 flex-wrap items-end">
+        <label class="ghost-field">
           ${t('txt_txt_name')}
           <input type="text" id="clubs-convert-name" value="${escAttr(currentName)}"
-            style="padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"
+            class="hub-input"
             aria-label="${t('txt_txt_name')}">
         </label>
-        <label style="font-size:0.84rem;display:flex;flex-direction:column;gap:0.2rem;flex:2;min-width:160px">
-          ${t('txt_txt_email')} <span style="font-weight:400;color:var(--text-muted)">(${t('txt_txt_optional')})</span>
+        <label class="ghost-field ghost-field--wide">
+          ${t('txt_txt_email')} <span class="fw-normal text-muted">(${t('txt_txt_optional')})</span>
           <input type="email" id="clubs-convert-email" placeholder="${t('txt_ph_convert_email_placeholder')}"
-            style="padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"
+            class="hub-input"
             aria-label="${t('txt_txt_email')}">
         </label>
         <button type="button" class="btn btn-success btn-sm" onclick="clubsConvertGhost('${escAttr(profileId)}')">${t('txt_ph_convert_confirm')}</button>
         <button type="button" class="btn btn-sm btn-muted" onclick="document.getElementById('clubs-convert-ghost-form')?.remove()">${t('txt_txt_cancel')}</button>
       </div>
-      <div id="clubs-convert-msg" style="margin-top:0.4rem;font-size:0.82rem"></div>
+      <div id="clubs-convert-msg" class="mt-1-5 fs-sm"></div>
     </div>`;
 
   document.getElementById('clubs-convert-ghost-form')?.remove();
@@ -1266,16 +1264,16 @@ async function clubsConvertGhost(profileId) {
     if (area) {
       const banner = document.createElement('div');
       banner.className = 'alert alert-info';
-      banner.style.marginTop = '0.5rem';
+      banner.classList.add('mt-2');
       banner.innerHTML = `<strong>${t('txt_ph_convert_ok', { name: esc(result.name) })}</strong><br>
-        <span style="font-size:0.84rem">${t('txt_ph_convert_passphrase_label')}: </span>
+        <span class="fs-md">${t('txt_ph_convert_passphrase_label')}: </span>
         <code class="player-codes-passphrase" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(result.passphrase)}</code>
-        ${result.email ? `<br><span style="font-size:0.8rem;color:var(--text-muted)">${t('txt_ph_convert_email_sent', { email: esc(result.email) })}</span>` : ''}`;
+        ${result.email ? `<br><span class="fs-sm text-muted">${t('txt_ph_convert_email_sent', { email: esc(result.email) })}</span>` : ''}`;
       area.prepend(banner);
       setTimeout(() => banner.remove(), 14000);
     }
   } catch (e) {
-    if (msgEl) msgEl.innerHTML = `<span style="color:var(--error)">${esc(e.message)}</span>`;
+    if (msgEl) msgEl.innerHTML = `<span class="text-error">${esc(e.message)}</span>`;
   }
 }
 
@@ -1299,7 +1297,7 @@ async function clubsAddGhostToRoster(profileId) {
     const area = document.getElementById('clubs-ghost-duplicates');
     if (area) {
       const err = document.createElement('div');
-      err.style.cssText = 'color:var(--error);font-size:0.82rem;margin-top:0.3rem';
+      err.className = 'text-error fs-sm mt-1-5';
       err.textContent = e.message;
       area.prepend(err);
       setTimeout(() => err.remove(), 5000);
@@ -1413,13 +1411,13 @@ async function clubsConsolidateSelectedGhosts() {
     if (area) {
       const banner = document.createElement('div');
       banner.className = 'alert alert-info';
-      banner.style.marginTop = '0.5rem';
+      banner.classList.add('mt-2');
       banner.textContent = t('txt_ph_consolidate_ok', { name: esc(result.name || name || '') });
       area.prepend(banner);
       setTimeout(() => banner.remove(), 4000);
     }
   } catch (e) {
-    if (msgEl) msgEl.innerHTML = `<span style="color:var(--error)">${esc(e.message)}</span>`;
+    if (msgEl) msgEl.innerHTML = `<span class="text-error">${esc(e.message)}</span>`;
   }
 }
 
@@ -1482,7 +1480,7 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
         <div class="player-codes-table-wrap">
           <table class="player-codes-table">
             <thead><tr class="player-codes-head-row">
-              <th class="player-codes-th-center" style="width:2rem"></th>
+              <th class="player-codes-th-center player-codes-th-narrow"></th>
               <th class="player-codes-th">${t('txt_player_leaderboard_name')}</th>
               <th class="player-codes-th-center">${sport === 'padel' ? t('txt_ph_padel_elo') : t('txt_ph_tennis_elo')}</th>
               <th class="player-codes-th-center">${t('txt_clubs_player_matches')}</th>
@@ -1500,16 +1498,16 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
           <input type="checkbox" ${isSelected ? 'checked' : ''}
             onchange="clubsToggleGhostMergeSelect('${escAttr(p.profile_id)}', this.checked)"
             aria-label="${t('txt_ph_select_for_merge')} ${escAttr(p.name)}"
-            style="cursor:pointer">
+            class="cursor-pointer">
         </td>
         <td class="player-codes-name">${esc(p.name)}</td>
         <td class="player-codes-cell-center">${elo != null ? Math.round(elo) : '—'}</td>
         <td class="player-codes-cell-center">${matches != null ? matches : '—'}</td>
-        <td class="player-codes-cell-center" style="white-space:nowrap">
-          <button class="btn btn-sm btn-success"
+        <td class="player-codes-cell-center nowrap">
+          <button class="btn btn-sm btn-success fs-sm"
             onclick="clubsShowConvertGhostForm('${esc(p.profile_id)}', '${escAttr(p.name)}')"
             title="${t('txt_ph_convert_ghost_hint')}"
-            style="font-size:0.78rem">${t('txt_ph_convert_ghost')}</button>
+           >${t('txt_ph_convert_ghost')}</button>
         </td>
       </tr>`;
   }
@@ -1517,7 +1515,7 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
   html += `</tbody></table></div>`;
 
   if (!filteredMembers.length) {
-    html += `<p class="muted-note" style="margin-top:0.5rem">${t('txt_txt_no_results')}</p>`;
+    html += `<p class="muted-note mt-2">${t('txt_txt_no_results')}</p>`;
   }
 
   // Registered (Hub) members that can be a merge target.
@@ -1540,7 +1538,7 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
     html += `
       <div class="clubs-ghost-merge-bar">
         <span class="clubs-ghost-merge-bar-label">${label}</span>
-        <label class="muted-tiny" style="display:flex;align-items:center;gap:0.35rem">
+        <label class="muted-tiny d-flex items-center gap-1-5">
           ${t('txt_clubs_merge_target_label')}
           <select onchange="clubsSetMergeTarget(this.value)" class="clubs-ghost-merge-bar-input" aria-label="${t('txt_clubs_merge_target_label')}">
             <option value="">${t('txt_clubs_merge_target_none')}</option>
@@ -1574,9 +1572,9 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
         <div class="clubs-ghost-group-card">
           <div class="clubs-ghost-group-name">${esc(group.name)}</div>
           <div class="player-codes-table-wrap clubs-ghost-group-table-wrap">
-            <table class="player-codes-table" style="font-size:0.82rem">
+            <table class="player-codes-table fs-sm">
               <thead><tr class="player-codes-head-row">
-                <th class="player-codes-th-center" style="width:2rem">#</th>
+                <th class="player-codes-th-center player-codes-th-narrow">#</th>
                 <th class="player-codes-th">${t('txt_ph_padel_elo')}</th>
                 <th class="player-codes-th-center">${t('txt_clubs_player_matches')}</th>
               </tr></thead><tbody>`;
@@ -1584,7 +1582,7 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
         const elo = p.elo_padel != null ? `${Math.round(p.elo_padel)}` : '—';
         const matches = p.matches_padel != null ? p.matches_padel : 0;
         html += `<tr class="player-codes-row">
-          <td class="player-codes-cell-center"><span style="font-size:0.76rem;color:var(--text-muted)">${pi + 1}</span></td>
+          <td class="player-codes-cell-center"><span class="fs-xs text-muted">${pi + 1}</span></td>
           <td class="player-codes-cell">${elo}</td>
           <td class="player-codes-cell-center">${matches}</td>
         </tr>`;
@@ -1639,13 +1637,13 @@ async function clubsConsolidateGhostGroup(groupIndex) {
     if (area) {
       const banner = document.createElement('div');
       banner.className = 'alert alert-info';
-      banner.style.marginTop = '0.5rem';
+      banner.classList.add('mt-2');
       banner.textContent = t('txt_ph_consolidate_ok', { name: esc(name) });
       area.prepend(banner);
       setTimeout(() => banner.remove(), 4000);
     }
   } catch (e) {
-    if (msgEl) msgEl.innerHTML = `<span style="color:var(--error)">${esc(e.message)}</span>`;
+    if (msgEl) msgEl.innerHTML = `<span class="text-error">${esc(e.message)}</span>`;
   }
 }
 
@@ -1762,7 +1760,7 @@ function _clubsRenderGlobalLeaderboard() {
             const matches = sport === 'padel' ? p.matches_padel : p.matches_tennis;
             return `
             <tr class="player-codes-row">
-              <td class="player-codes-cell-center" style="color:var(--text-muted)">${i + 1}</td>
+              <td class="player-codes-cell-center text-muted">${i + 1}</td>
               <td class="player-codes-name">${esc(p.name)}</td>
               <td class="player-codes-cell-center">${elo != null ? Math.round(elo) : '—'}</td>
               <td class="player-codes-cell-center">${matches != null ? matches : '—'}</td>
@@ -1789,7 +1787,7 @@ async function _clubsRenderSeasonLeaderboard(seasonId) {
       const data = await apiAuth(`/api/seasons/${encodeURIComponent(seasonId)}/standings`);
       _clubsSeasonStandingsCache[seasonId] = data;
     } catch (e) {
-      container.innerHTML = `<p class="muted-note" style="color:var(--red)">${esc(e.message)}</p>`;
+      container.innerHTML = `<p class="muted-note text-error">${esc(e.message)}</p>`;
       return;
     }
   }
@@ -1840,7 +1838,7 @@ async function _clubsRenderSeasonLeaderboard(seasonId) {
         <tbody>
           ${rows.map((s, i) => `
             <tr class="player-codes-row">
-              <td class="player-codes-cell-center" style="color:var(--text-muted)">${i + 1}</td>
+              <td class="player-codes-cell-center text-muted">${i + 1}</td>
               <td class="player-codes-name">${esc(s.player_name)}</td>
               <td class="player-codes-cell-center">${s.elo_end != null ? Math.round(s.elo_end) : '—'}</td>
               <td class="player-codes-cell-center" style="color:${s.elo_change > 0 ? 'var(--green)' : s.elo_change < 0 ? 'var(--red)' : 'var(--text-muted)'}">${s.elo_change != null ? (s.elo_change > 0 ? '+' : '') + s.elo_change.toFixed(1) : '—'}</td>
@@ -2127,8 +2125,8 @@ function _clubsRenderMessagingPanelInto() {
   }
 
   const lobbyContent = `
-    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
-      <select id="clubs-messaging-lobby-select" style="flex:1;min-width:180px;padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
+    <div class="d-flex gap-2 flex-wrap items-center">
+      <select id="clubs-messaging-lobby-select" class="clubs-msg-field clubs-msg-field--lobby">
         ${communityLobbies.length
           ? communityLobbies.map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')
           : `<option value="" disabled selected>${t('txt_clubs_messaging_no_lobbies')}</option>`}
@@ -2142,11 +2140,11 @@ function _clubsRenderMessagingPanelInto() {
     : '';
 
   const announceContent = `
-    <div style="display:flex;flex-direction:column;gap:0.4rem">
+    <div class="d-flex flex-col gap-1-5">
       <input type="text" id="clubs-messaging-subject" placeholder="${t('txt_clubs_messaging_subject')}"
-        style="padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
+        class="clubs-msg-field">
       <textarea id="clubs-messaging-message" rows="4" placeholder="${t('txt_clubs_messaging_message')}"
-        style="padding:0.35rem 0.5rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);resize:vertical"></textarea>
+        class="clubs-msg-field clubs-msg-field--body"></textarea>
       ${noEmailWarning}
       <div>
         <button id="clubs-send-announce-btn" class="btn btn-sm btn-primary" type="button" onclick="clubsSendAnnouncement()"
@@ -2155,7 +2153,7 @@ function _clubsRenderMessagingPanelInto() {
     </div>`;
 
   const composeHint = selectedCount === 0
-    ? `<p class="muted-tiny" style="margin:0 0 0.4rem 0">${t('txt_clubs_messaging_select_recipients_first')}</p>`
+    ? `<p class="muted-tiny m-0 mb-1-5">${t('txt_clubs_messaging_select_recipients_first')}</p>`
     : '';
 
   container.innerHTML = `
@@ -2166,13 +2164,13 @@ function _clubsRenderMessagingPanelInto() {
     </div>
     <div class="clubs-compose-block">
       ${composeHint}
-      <div style="display:flex;gap:0.5rem;margin-bottom:0.65rem">
+      <div class="d-flex gap-2 mb-2-5">
         <button class="${tabBtnStyle(_clubsMessagingTab === 'lobby')}" type="button"
           onclick="clubsMessagingTab('lobby')">${t('txt_clubs_messaging_tab_lobby')}</button>
         <button class="${tabBtnStyle(_clubsMessagingTab === 'announce')}" type="button"
           onclick="clubsMessagingTab('announce')">${t('txt_clubs_messaging_tab_announce')}</button>
       </div>
-      <span id="clubs-messaging-msg" style="font-size:0.84rem;display:block;margin-bottom:0.4rem"></span>
+      <span id="clubs-messaging-msg" class="clubs-msg-status"></span>
       ${_clubsMessagingTab === 'lobby' ? lobbyContent : announceContent}
     </div>`;
 
@@ -2328,11 +2326,11 @@ function _clubsRenderCollaborators() {
     listEl.innerHTML = `<p class="muted-note">${t('txt_clubs_no_collaborators')}</p>`;
     return;
   }
-  listEl.innerHTML = `<ul style="list-style:none;padding:0;margin:0 0 0.25rem">`
+  listEl.innerHTML = `<ul class="clubs-collab-list">`
     + _clubCollaborators.map(u => `
-      <li style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0;border-bottom:1px solid var(--border-light,#eee)">
-        <span style="flex:1;font-size:0.9rem">${esc(u)}</span>
-        <button class="btn btn-sm btn-danger" style="padding:0.15rem 0.4rem" onclick="clubsRemoveCollaborator('${esc(u)}')">${t('txt_txt_remove')}</button>
+      <li class="clubs-collab-item">
+        <span class="flex-1 fs-lg">${esc(u)}</span>
+        <button class="btn btn-sm btn-danger btn-chip" onclick="clubsRemoveCollaborator('${esc(u)}')">${t('txt_txt_remove')}</button>
       </li>`
     ).join('')
     + `</ul>`;
@@ -2417,8 +2415,8 @@ async function clubsSaveEmailSettings() {
 
 function _clubsMsg(el, text, isError) {
   if (!el) return;
-  el.style.color = isError ? 'var(--red)' : 'var(--green)';
-  el.style.fontSize = isError ? '0.78rem' : '0.72rem';
+  el.classList.remove('text-error', 'text-success', 'fs-sm', 'fs-2xs');
+  el.classList.add(...(isError ? ['text-error', 'fs-sm'] : ['text-success', 'fs-2xs']));
   el.textContent = text;
   if (!isError) setTimeout(() => { if (el) el.textContent = ''; }, 1800);
 }

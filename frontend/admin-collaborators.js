@@ -6,33 +6,33 @@ function _renderRegCollaboratorsSection(rid, collaborators) {
 
   const list = collaborators || [];
 
-  let html = `<div style="margin-top:0.9rem;padding-top:0.75rem;border-top:1px solid var(--border)">`;
-  html += `<div style="font-weight:700;display:flex;align-items:center;gap:0.45rem;margin-bottom:0.55rem">`;
+  let html = `<div class="collab-add-section">`;
+  html += `<div class="fw-700 d-flex items-center gap-2 mb-2">`;
   html += `${_antIc('team')} ${t('txt_txt_collaborators')}`;
-  if (list.length > 0) html += ` <span style="font-size:0.75rem;font-weight:400;color:var(--text-muted)">(${list.length})</span>`;
+  if (list.length > 0) html += ` <span class="fs-xs fw-normal text-muted">(${list.length})</span>`;
   html += `</div>`;
-  html += `<p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:0.75rem">${t('txt_txt_collaborators_help')}</p>`;
+  html += `<p class="text-muted fs-sm mb-3">${t('txt_txt_collaborators_help')}</p>`;
 
   // Add co-editor input row
-  html += `<div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap">`;
+  html += `<div class="d-flex gap-2 mb-3 flex-wrap">`;
   html += `<input type="text" id="reg-collab-username-input-${esc(rid)}" placeholder="${t('txt_txt_add_collaborator_placeholder')}"`;
   html += ` list="reg-collab-username-suggestions-${esc(rid)}" autocomplete="off"`;
-  html += ` style="flex:1;min-width:180px;font-size:0.85rem"`;
+  html += ` class="collab-add-input"`;
   html += ` oninput="_onRegCollabInput('${esc(rid)}', this.value)" onkeydown="if(event.key==='Enter')_addRegCollaborator('${esc(rid)}')">`;
   html += `<datalist id="reg-collab-username-suggestions-${esc(rid)}"></datalist>`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="_addRegCollaborator('${esc(rid)}')">+ ${t('txt_txt_add_collaborator_btn')}</button>`;
   html += `</div>`;
-  html += `<div id="reg-collab-error-${esc(rid)}" style="color:var(--danger,#ef4444);font-size:0.82rem;margin-bottom:0.5rem;display:none"></div>`;
+  html += `<div id="reg-collab-error-${esc(rid)}" class="text-error fs-sm mb-2" style="display:none"></div>`;
 
   // Current co-editors list
   html += `<div id="reg-collab-list-${esc(rid)}">`;
   if (list.length === 0) {
-    html += `<p style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem 0">${t('txt_txt_no_collaborators')}</p>`;
+    html += `<p class="empty-list-note">${t('txt_txt_no_collaborators')}</p>`;
   } else {
     for (const username of list) {
-      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--border)">`;
-      html += `<span style="font-size:0.9rem">${_antIc('user')} ${esc(username)}</span>`;
-      html += `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem"`;
+      html += `<div class="collab-row">`;
+      html += `<span class="fs-lg">${_antIc('user')} ${esc(username)}</span>`;
+      html += `<button type="button" class="btn btn-danger btn-sm btn-compact fs-2xs"`;
       html += ` onclick="_removeRegCollaborator('${esc(rid)}', '${escAttr(username)}')">✕ ${t('txt_txt_remove')}</button>`;
       html += `</div>`;
     }
@@ -103,26 +103,26 @@ function _renderCollaboratorsBody(collaborators) {
 
   const list = collaborators || [];
   let html = '';
-  html += `<p class="settings-help" style="margin-top:0">${t('txt_txt_collaborators_help')}</p>`;
+  html += `<p class="settings-help mt-0">${t('txt_txt_collaborators_help')}</p>`;
 
-  html += `<div class="settings-inline-row" style="margin-bottom:0.5rem">`;
+  html += `<div class="settings-inline-row mb-2">`;
   html += `<input type="text" id="collab-username-input" placeholder="${t('txt_txt_add_collaborator_placeholder')}"`;
   html += ` list="collab-username-suggestions" autocomplete="off"`;
-  html += ` style="flex:1;min-width:180px;font-size:0.85rem"`;
+  html += ` class="collab-add-input"`;
   html += ` oninput="_onCollabInput(this.value)" onkeydown="if(event.key==='Enter')_addCollaborator()">`;
   html += `<datalist id="collab-username-suggestions"></datalist>`;
   html += `<button type="button" class="btn btn-primary btn-sm" onclick="_addCollaborator()">+ ${t('txt_txt_add_collaborator_btn')}</button>`;
   html += `</div>`;
-  html += `<div id="collab-error" style="color:var(--danger,#ef4444);font-size:0.82rem;margin-bottom:0.5rem;display:none"></div>`;
+  html += `<div id="collab-error" class="text-error fs-sm mb-2" style="display:none"></div>`;
 
   html += `<div id="collaborators-list">`;
   if (list.length === 0) {
-    html += `<p style="color:var(--text-muted);font-size:0.85rem;padding:0.4rem 0;margin:0">${t('txt_txt_no_collaborators')}</p>`;
+    html += `<p class="empty-list-note empty-list-note--tight">${t('txt_txt_no_collaborators')}</p>`;
   } else {
     for (const username of list) {
-      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.35rem 0;border-bottom:1px solid var(--border)">`;
-      html += `<span style="font-size:0.88rem">${_antIc('user')} ${esc(username)}</span>`;
-      html += `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.5rem"`;
+      html += `<div class="collab-row">`;
+      html += `<span class="fs-lg">${_antIc('user')} ${esc(username)}</span>`;
+      html += `<button type="button" class="btn btn-danger btn-sm btn-compact fs-2xs"`;
       html += ` onclick="_removeCollaborator('${escAttr(username)}')">✕ ${t('txt_txt_remove')}</button>`;
       html += `</div>`;
     }

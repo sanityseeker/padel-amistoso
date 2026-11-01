@@ -23,6 +23,9 @@ from .helpers import (
     _serialize_match,
     _build_match_labels,
     _prepare_set_score,
+    _schema_cache_get,
+    _schema_cache_key,
+    _schema_cache_put,
     _schema_image_response,
     _require_demo_can_create_tournament,
     _require_editor_access,
@@ -44,7 +47,13 @@ from .schemas import (
     StartMexicanoPlayoffsRequest,
     UpdateCourtsRequest,
 )
-from .state import allocate_tournament_id, get_tournament_lock, save_tournament, update_live_stats
+from .state import (
+    _tournament_versions,
+    allocate_tournament_id,
+    get_tournament_lock,
+    save_tournament,
+    update_live_stats,
+)
 from .player_secret_store import create_secrets_for_tournament
 from .push_events import notify_matches_ready, notify_champion, notify_score_submitted
 from .elo_integration import elo_after_score, elo_finish_tournament, elo_init_tournament
@@ -510,6 +519,7 @@ async def mex_playoffs_schema(
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(1.0, ge=0.5, le=3.0),
+    side: Literal["winners", "losers"] | None = Query(None),
 ) -> Response:
     """Generate a schema image/document for the active Mexicano play-off bracket."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
@@ -520,11 +530,33 @@ async def mex_playoffs_schema(
     if len(participant_names) < 2:
         raise HTTPException(400, "Need at least 2 participants for play-off schema")
 
+    elim = EliminationType.DOUBLE if hasattr(t.playoff_bracket, "all_matches") else EliminationType.SINGLE
+    version = _tournament_versions.get(tid, 0)
+    key = _schema_cache_key(
+        "mex",
+        tid,
+        version,
+        side or "default",
+        tuple(participant_names),
+        elim,
+        title,
+        fmt,
+        box_scale,
+        line_width,
+        arrow_scale,
+        title_font_scale,
+        output_scale,
+    )
+    cached = _schema_cache_get(key)
+    if cached:
+        return _schema_image_response(cached[0], cached[1], etag=key[:16])
+
     img = render_playoff_schema(
         participant_names=participant_names,
-        elimination=EliminationType.DOUBLE if hasattr(t.playoff_bracket, "all_matches") else EliminationType.SINGLE,
+        elimination=elim,
         match_labels=_build_match_labels(t.playoff_bracket),
         title=title,
+        side=side,
         fmt=fmt,
         box_scale=box_scale,
         line_width=line_width,
@@ -532,7 +564,8 @@ async def mex_playoffs_schema(
         title_font_scale=title_font_scale,
         output_scale=output_scale,
     )
-    return _schema_image_response(img, fmt)
+    _schema_cache_put(key, img, fmt)
+    return _schema_image_response(img, fmt, etag=key[:16])
 
 
 @router.post("/{tid}/mex/record-playoff")

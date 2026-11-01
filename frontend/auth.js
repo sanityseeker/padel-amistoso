@@ -16,8 +16,6 @@ const AUTH_DEMO_EXPIRES_KEY = 'padel-auth-demo-expires';
 // clearAuth(), so the login dialog can offer "Welcome back" (or explain that
 // the sandbox expired) after the session ends.
 const DEMO_LAST_KEY = 'padel-demo-last';
-// sessionStorage guard so a #start-demo link mints at most once per tab.
-const DEMO_AUTOSTART_KEY = 'padel-demo-autostart';
 
 function _persistAuthValue(key, value) {
   try {
@@ -381,16 +379,9 @@ const _loginStore = reactiveStore({
       if (el) el.focus();
     });
   },
-  /** Core instance: demo URL with #start-demo so the demo site auto-mints. */
+  /** Core instance: plain demo URL (the visitor starts the sandbox themselves). */
   demoHref() {
-    if (!this.demoUrl) return '';
-    try {
-      const u = new URL(this.demoUrl);
-      u.hash = 'start-demo';
-      return u.toString();
-    } catch (_) {
-      return this.demoUrl;
-    }
+    return this.demoUrl || '';
   },
   /** Host of the demo site (for the "Opens {host}" note), or '' if unparsable. */
   demoHost() {
@@ -526,30 +517,6 @@ function _focusLoginDialog() {
   });
 }
 
-/**
- * Demo instance: a link carrying #start-demo (the core site's "Open the demo
- * sandbox" button) mints a sandbox right away, once per tab. Called by
- * checkDemoMode after isDemoInstance is known. On the core instance the hash
- * is simply stripped.
- */
-function maybeAutoStartDemo() {
-  if (window.location.hash !== '#start-demo') return;
-  try {
-    history.replaceState(null, '', window.location.pathname + window.location.search);
-  } catch (_) {}
-  if (!_loginStore.isDemoInstance) return;
-  try {
-    if (sessionStorage.getItem(DEMO_AUTOSTART_KEY)) return;
-    sessionStorage.setItem(DEMO_AUTOSTART_KEY, '1');
-  } catch (_) {}
-  if (isAuthenticated()) {
-    hideLoginDialog();
-    if (typeof setActiveTab === 'function') setActiveTab('create');
-    return;
-  }
-  _loginStore.startDemo();
-}
-
 function showLoginDialog() {
   return new Promise((resolve) => {
     _loginResolve = resolve;
@@ -607,24 +574,26 @@ function updateAuthUI() {
   if (authStatus) {
     if (username) {
       const _onSubdomain = !!(typeof window !== 'undefined' && window.__ADMIN_SUBDOMAIN_CLUB__);
+      // Communities and clubs are core-site features: never offered on the demo instance.
+      const _demoInstance = typeof isDemoInstance === 'function' && isDemoInstance();
       const adminBtn = isAdmin()
-        ? `<button class="btn btn-sm" onclick="setActiveTab('players-hub')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_nav_player_space')}">${_ic('user')} <span class="nav-btn-label">${t('txt_nav_player_space')}</span></button>`
-          + `<button class="btn btn-sm" onclick="setActiveTab('user-mgmt')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_user_management')}">${_ic('users')} <span class="nav-btn-label">${t('txt_txt_users_tab')}</span></button>`
-          + (_onSubdomain ? '' : `<button class="btn btn-sm" onclick="setActiveTab('communities')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="Communities">${_ic('grid')} <span class="nav-btn-label">${t('txt_comm_title')}</span></button>`)
+        ? `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('players-hub')" title="${t('txt_nav_player_space')}">${_ic('user')} <span class="nav-btn-label">${t('txt_nav_player_space')}</span></button>`
+          + `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('user-mgmt')" title="${t('txt_txt_user_management')}">${_ic('users')} <span class="nav-btn-label">${t('txt_txt_users_tab')}</span></button>`
+          + ((_onSubdomain || _demoInstance) ? '' : `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('communities')" title="Communities">${_ic('grid')} <span class="nav-btn-label">${t('txt_comm_title')}</span></button>`)
         : '';
       // Demo accounts get the minimal surface: no Clubs (Player Space /
       // Users / Communities are already admin-only above).
-      const clubsBtn = isDemoUser()
+      const clubsBtn = (isDemoUser() || _demoInstance)
         ? ''
-        : `<button class="btn btn-sm" onclick="setActiveTab('clubs')" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_clubs_title')}">${_ic('building')} <span class="nav-btn-label">${t('txt_clubs_title')}</span></button>`;
-      const changePwdBtn = `<button class="btn btn-sm" onclick="showChangePasswordDialog()" style="padding:0.3rem 0.6rem;margin-right:0.25rem" title="${t('txt_txt_change_password')}">${_ic('shield')}</button>`;
+        : `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('clubs')" title="${t('txt_clubs_title')}">${_ic('building')} <span class="nav-btn-label">${t('txt_clubs_title')}</span></button>`;
+      const changePwdBtn = `<button class="btn btn-sm auth-nav-btn mr-1" onclick="showChangePasswordDialog()" title="${t('txt_txt_change_password')}">${_ic('shield')}</button>`;
       authStatus.innerHTML = `
-        ${adminBtn}${clubsBtn}${changePwdBtn}<strong style="margin-right:0.5rem">${esc(username)}</strong>
-        <button class="btn btn-sm" onclick="logout()" style="padding:0.3rem 0.6rem">${t('txt_txt_logout')}</button>
+        ${adminBtn}${clubsBtn}${changePwdBtn}<strong class="mr-2">${esc(username)}</strong>
+        <button class="btn btn-sm auth-nav-btn" onclick="logout()">${t('txt_txt_logout')}</button>
       `;
     } else {
       authStatus.innerHTML = `
-        <button class="btn btn-sm" onclick="showLoginDialog()" style="background:var(--green);color:#fff;border:none;padding:0.4rem 0.8rem;font-weight:600">${_ic('unlock')} ${t('txt_txt_login')}</button>
+        <button class="btn btn-sm auth-login-btn" onclick="showLoginDialog()">${_ic('unlock')} ${t('txt_txt_login')}</button>
       `;
     }
   }
@@ -684,7 +653,7 @@ async function loadUserMgmtList() {
     const el = document.getElementById(id);
     if (el) el.textContent = '';
   }
-  list.innerHTML = `<li style="opacity:.5">${t('txt_txt_loading')}</li>`;
+  list.innerHTML = `<li class="opacity-50">${t('txt_txt_loading')}</li>`;
   try {
     const [users, communities] = await Promise.all([
       apiAuth('/api/auth/users'),
@@ -696,7 +665,7 @@ async function loadUserMgmtList() {
     const search = document.getElementById('user-mgmt-search');
     filterUserMgmtList(search ? search.value : '');
   } catch (e) {
-    list.innerHTML = `<li style="color:var(--red)">${e.message}</li>`;
+    list.innerHTML = `<li class="text-error">${e.message}</li>`;
   }
 }
 
@@ -779,7 +748,8 @@ async function saveUserSettings(username) {
   const canCreateClubsEl = document.getElementById(`${rowId}-can-create-clubs`);
   const msgEl = document.getElementById(`${rowId}-msg`);
   if (!communitySel || !msgEl) return;
-  msgEl.style.color = 'var(--text-muted)';
+  msgEl.classList.remove('text-error');
+  msgEl.classList.add('text-muted');
   msgEl.textContent = '...';
   const user = _allUsers.find(u => u.username === username);
   const payload = { default_community_id: communitySel.value };
@@ -795,7 +765,8 @@ async function saveUserSettings(username) {
     msgEl.textContent = '';
     flashSuccess(communitySel, t('txt_txt_saved'));
   } catch (e) {
-    msgEl.style.color = 'var(--red)';
+    msgEl.classList.remove('text-muted');
+    msgEl.classList.add('text-error');
     msgEl.textContent = e.message;
   }
 }

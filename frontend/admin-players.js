@@ -248,48 +248,48 @@ function _phRenderDetail(data) {
   const finished = data.participations.filter(p => p.status === 'finished');
 
   let html = '<div class="card">';
-  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem">';
-  html += `<h2 style="margin:0">🎾 ${esc(data.name || t('txt_ph_unnamed_profile'))}</h2>`;
-  html += '<div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap">';
+  html += '<div class="d-flex items-center justify-between mb-3 flex-wrap gap-2">';
+  html += `<h2 class="m-0">🎾 ${esc(data.name || t('txt_ph_unnamed_profile'))}</h2>`;
+  html += '<div class="d-flex items-center gap-1-5 flex-wrap">';
   html += `<button type="button" class="btn btn-danger btn-sm" onclick="phDeleteProfile('${escAttr(data.id)}')">${t('txt_ph_delete_profile')}</button>`;
   html += `<button type="button" class="btn btn-sm" onclick="phCloseDetail()">✕ ${t('txt_txt_close')}</button>`;
   html += '</div>';
   html += '</div>';
 
   // Profile info
-  html += '<div style="display:grid;grid-template-columns:auto 1fr;gap:0.3rem 1rem;font-size:0.88rem;margin-bottom:1rem">';
+  html += '<div class="ph-detail-grid">';
   const passDisplay = data.is_ghost
-    ? `<span style="color:var(--text-muted)" title="${t('txt_ph_ghost_no_passphrase')}">—</span>`
-    : `<code class="player-codes-passphrase" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(data.passphrase)}</code> <button type="button" class="btn btn-sm btn-muted" onclick="phResetPassphrase('${escAttr(data.id)}')" style="font-size:0.76rem;padding:0.15rem 0.4rem">${_ic('reset')} ${t('txt_ph_reset')}</button>`;
+    ? `<span class="text-muted" title="${t('txt_ph_ghost_no_passphrase')}">—</span>`
+    : `<code class="player-codes-passphrase" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(data.passphrase)}</code> <button type="button" class="btn btn-sm btn-muted btn-chip fs-xs" onclick="phResetPassphrase('${escAttr(data.id)}')">${_ic('reset')} ${t('txt_ph_reset')}</button>`;
   html += `<strong>${t('txt_txt_passphrase')}:</strong><span>${passDisplay}</span>`;
-  html += `<strong>${t('txt_ph_name')}:</strong><span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap"><input type="text" id="ph-name-input" value="${escAttr(data.name || '')}" style="flex:1;min-width:180px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" onclick="phUpdateName('${escAttr(data.id)}')" id="ph-name-save-btn">${t('txt_txt_save')}</button></span>`;
-  html += `<strong>${t('txt_txt_email')}:</strong><span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap"><input type="email" id="ph-email-input" value="${escAttr(data.email || '')}" style="flex:1;min-width:180px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" onclick="phUpdateEmail('${escAttr(data.id)}')" id="ph-email-save-btn">${t('txt_txt_save')}</button></span>`;
+  html += `<strong>${t('txt_ph_name')}:</strong><span class="d-flex gap-1-5 items-center flex-wrap"><input type="text" id="ph-name-input" value="${escAttr(data.name || '')}" class="hub-input hub-input--grow"><button type="button" class="btn btn-sm" onclick="phUpdateName('${escAttr(data.id)}')" id="ph-name-save-btn">${t('txt_txt_save')}</button></span>`;
+  html += `<strong>${t('txt_txt_email')}:</strong><span class="d-flex gap-1-5 items-center flex-wrap"><input type="email" id="ph-email-input" value="${escAttr(data.email || '')}" class="hub-input hub-input--grow"><button type="button" class="btn btn-sm" onclick="phUpdateEmail('${escAttr(data.id)}')" id="ph-email-save-btn">${t('txt_txt_save')}</button></span>`;
   html += `<strong>${t('txt_txt_contact')}:</strong><span>${esc(data.contact || t('txt_txt_contact_not_set'))}</span>`;
   html += `<strong>${t('txt_ph_created')}:</strong><span>${_phFormatDate(data.created_at)}</span>`;
   html += '</div>';
 
   // ELO ratings
-  html += '<div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1rem">';
+  html += '<div class="d-flex gap-6 flex-wrap mb-4">';
   if (data.elo_padel_matches > 0) {
-    html += `<div style="padding:0.5rem 0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:0.88rem">`;
-    html += `<strong>${t('txt_ph_padel_elo')}:</strong> ${Math.round(data.elo_padel)} <span style="color:var(--text-muted)">(${data.elo_padel_matches} ${t('txt_txt_matches').toLowerCase()})</span></div>`;
+    html += `<div class="ph-detail-box">`;
+    html += `<strong>${t('txt_ph_padel_elo')}:</strong> ${Math.round(data.elo_padel)} <span class="text-muted">(${data.elo_padel_matches} ${t('txt_txt_matches').toLowerCase()})</span></div>`;
   }
   if (data.elo_tennis_matches > 0) {
-    html += `<div style="padding:0.5rem 0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:0.88rem">`;
-    html += `<strong>${t('txt_ph_tennis_elo')}:</strong> ${Math.round(data.elo_tennis)} <span style="color:var(--text-muted)">(${data.elo_tennis_matches} ${t('txt_txt_matches').toLowerCase()})</span></div>`;
+    html += `<div class="ph-detail-box">`;
+    html += `<strong>${t('txt_ph_tennis_elo')}:</strong> ${Math.round(data.elo_tennis)} <span class="text-muted">(${data.elo_tennis_matches} ${t('txt_txt_matches').toLowerCase()})</span></div>`;
   }
   if (data.elo_padel_matches === 0 && data.elo_tennis_matches === 0) {
-    html += `<span style="color:var(--text-muted);font-size:0.84rem">${t('txt_ph_no_elo')}</span>`;
+    html += `<span class="text-muted fs-md">${t('txt_ph_no_elo')}</span>`;
   }
   html += '</div>';
 
   // K-factor override
   const kVal = data.k_factor_override != null ? data.k_factor_override : '';
-  html += '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;font-size:0.88rem">';
+  html += '<div class="d-flex items-center gap-2 mb-4 fs-lg">';
   html += `<strong>${t('txt_ph_kfactor_override')}:</strong>`;
-  html += `<input type="number" id="ph-kfactor-input" value="${escAttr(String(kVal))}" placeholder="${t('txt_ph_auto')}" min="1" max="200" style="width:80px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">`;
+  html += `<input type="number" id="ph-kfactor-input" value="${escAttr(String(kVal))}" placeholder="${t('txt_ph_auto')}" min="1" max="200" class="hub-input hub-input--kfactor">`;
   html += `<button type="button" class="btn btn-sm" onclick="phUpdateKFactor('${escAttr(data.id)}')" id="ph-kfactor-save-btn">${t('txt_txt_save')}</button>`;
-  html += `<span style="color:var(--text-muted);font-size:0.8rem">${t('txt_ph_kfactor_auto_help')}</span>`;
+  html += `<span class="text-muted fs-sm">${t('txt_ph_kfactor_auto_help')}</span>`;
   html += '</div>';
 
   // New passphrase result area
@@ -297,23 +297,23 @@ function _phRenderDetail(data) {
   html += '<div id="ph-inline-msg"></div>';
 
   // Active participations
-  html += `<h3 style="margin:1rem 0 0.5rem;font-size:0.95rem">${t('txt_ph_active_participations_n', { n: active.length })}</h3>`;
+  html += `<h3 class="m-0 mt-4 mb-2 fs-lg">${t('txt_ph_active_participations_n', { n: active.length })}</h3>`;
   if (active.length === 0) {
-    html += `<p style="color:var(--text-muted);font-size:0.84rem">${t('txt_ph_no_active_links')}</p>`;
+    html += `<p class="text-muted fs-md">${t('txt_ph_no_active_links')}</p>`;
   } else {
     html += _phParticipationTable(active, data.id, false);
   }
 
   // Finished participations
-  html += `<h3 style="margin:1rem 0 0.5rem;font-size:0.95rem">${t('txt_ph_finished_participations_n', { n: finished.length })}</h3>`;
+  html += `<h3 class="m-0 mt-4 mb-2 fs-lg">${t('txt_ph_finished_participations_n', { n: finished.length })}</h3>`;
   if (finished.length === 0) {
-    html += `<p style="color:var(--text-muted);font-size:0.84rem">${t('txt_ph_no_finished_history')}</p>`;
+    html += `<p class="text-muted fs-md">${t('txt_ph_no_finished_history')}</p>`;
   } else {
     html += _phParticipationTable(finished, data.id, true);
   }
 
   // Link new participation
-  html += '<div style="margin-top:1rem">';
+  html += '<div class="mt-4">';
   html += `<button type="button" class="add-participant-btn" onclick="phStartLink('${escAttr(data.id)}')">＋ ${t('txt_ph_link_participation')}</button>`;
   html += '</div>';
   html += '<div id="ph-link-area"></div>';
@@ -347,7 +347,7 @@ function _phParticipationTable(participations, profileId, isFinished) {
     }
     const unlinkLabel = isFinished ? `${_antIc('warning')} ${t('txt_ph_unlink')}` : t('txt_ph_unlink');
     const btnClass = isFinished ? 'btn btn-danger btn-sm' : 'btn btn-sm btn-muted';
-    html += `<td class="player-codes-cell-center"><button type="button" class="${btnClass}" onclick="phUnlink('${escAttr(p.tournament_id)}','${escAttr(p.player_id)}',${isFinished})" style="font-size:0.78rem">${unlinkLabel}</button></td>`;
+    html += `<td class="player-codes-cell-center"><button type="button" class="${btnClass} fs-sm" onclick="phUnlink('${escAttr(p.tournament_id)}','${escAttr(p.player_id)}',${isFinished})">${unlinkLabel}</button></td>`;
     html += '</tr>';
   }
   html += '</tbody></table></div>';
@@ -363,25 +363,25 @@ function phShowConvertForm(profileId) {
   detail.style.display = '';
   detail.innerHTML = `
     <div class="card" id="ph-convert-form">
-      <p style="margin:0 0 0.5rem;font-size:0.88rem;font-weight:600">${t('txt_ph_convert_ghost_title')}</p>
-      <p style="margin:0 0 0.65rem;font-size:0.82rem;color:var(--text-muted)">${t('txt_ph_convert_ghost_help')}</p>
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end">
-        <label style="font-size:0.84rem;display:flex;flex-direction:column;gap:0.2rem;flex:1;min-width:140px">
+      <p class="m-0 mb-2 fs-lg fw-600">${t('txt_ph_convert_ghost_title')}</p>
+      <p class="m-0 mb-2-5 fs-sm text-muted">${t('txt_ph_convert_ghost_help')}</p>
+      <div class="d-flex gap-2 flex-wrap items-end">
+        <label class="ghost-field ghost-field--hub">
           ${t('txt_txt_name')}
           <input type="text" id="ph-convert-name" value="${escAttr(suggestedName)}"
-            style="padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"
+            class="hub-input"
             aria-label="${t('txt_txt_name')}">
         </label>
-        <label style="font-size:0.84rem;display:flex;flex-direction:column;gap:0.2rem;flex:2;min-width:180px">
-          ${t('txt_txt_email')} <span style="font-weight:400;color:var(--text-muted)">(${t('txt_txt_optional')})</span>
+        <label class="ghost-field ghost-field--wide ghost-field--hub">
+          ${t('txt_txt_email')} <span class="fw-normal text-muted">(${t('txt_txt_optional')})</span>
           <input type="email" id="ph-convert-email" placeholder="${t('txt_ph_convert_email_placeholder')}"
-            style="padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"
+            class="hub-input"
             aria-label="${t('txt_txt_email')}">
         </label>
         <button type="button" class="btn btn-success btn-sm" onclick="phConvertGhost('${escAttr(profileId)}')">${t('txt_ph_convert_confirm')}</button>
         <button type="button" class="btn btn-sm btn-muted" onclick="phCloseDetail()">${t('txt_txt_cancel')}</button>
       </div>
-      <div id="ph-convert-msg" style="margin-top:0.5rem;font-size:0.82rem"></div>
+      <div id="ph-convert-msg" class="mt-2 fs-sm"></div>
     </div>`;
   detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -407,16 +407,16 @@ async function phConvertGhost(profileId) {
     const detail = document.getElementById('ph-detail');
     if (detail) {
       detail.innerHTML = `
-        <div class="card alert alert-info" style="margin-top:0.5rem">
+        <div class="card alert alert-info mt-2">
           <strong>${t('txt_ph_convert_ok', { name: esc(result.name) })}</strong><br>
-          <span style="font-size:0.84rem">${t('txt_ph_convert_passphrase_label')}: </span>
+          <span class="fs-md">${t('txt_ph_convert_passphrase_label')}: </span>
           <code class="player-codes-passphrase" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(result.passphrase)}</code>
-          ${result.email ? `<br><span style="font-size:0.8rem;color:var(--text-muted)">${t('txt_ph_convert_email_sent', { email: esc(result.email) })}</span>` : ''}
+          ${result.email ? `<br><span class="fs-sm text-muted">${t('txt_ph_convert_email_sent', { email: esc(result.email) })}</span>` : ''}
         </div>`;
       setTimeout(() => { const d = document.getElementById('ph-detail'); if (d) { d.style.display = 'none'; d.innerHTML = ''; } }, 12000);
     }
   } catch (e) {
-    if (msgEl) msgEl.innerHTML = `<span style="color:var(--error)">${esc(e.message)}</span>`;
+    if (msgEl) msgEl.innerHTML = `<span class="text-error">${esc(e.message)}</span>`;
   }
 }
 
@@ -431,7 +431,7 @@ function phCloseDetail() {
 function phShowInlineNotice(message, isError = false) {
   const area = document.getElementById('ph-inline-msg') || document.getElementById('ph-passphrase-result');
   if (!area) return;
-  area.innerHTML = `<div class="alert ${isError ? 'alert-error' : 'alert-info'}" style="margin-bottom:0.75rem">${esc(message)}</div>`;
+  area.innerHTML = `<div class="alert ${isError ? 'alert-error' : 'alert-info'} mb-3">${esc(message)}</div>`;
 }
 
 /** Reset a profile's passphrase */
@@ -441,7 +441,7 @@ async function phResetPassphrase(profileId) {
     const result = await api(`/api/admin/player-profiles/${profileId}/reset-passphrase`, { method: 'POST' });
     const area = document.getElementById('ph-passphrase-result');
     if (area) {
-      area.innerHTML = `<div class="alert alert-info" style="margin-bottom:0.75rem">${t('txt_ph_new_passphrase')}: <code class="player-codes-passphrase" style="font-size:1.05rem" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(result.passphrase)}</code></div>`;
+      area.innerHTML = `<div class="alert alert-info mb-3">${t('txt_ph_new_passphrase')}: <code class="player-codes-passphrase player-codes-passphrase--lg" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(result.passphrase)}</code></div>`;
     }
     // Refresh the detail to show updated passphrase
     phLoadProfile(profileId);
@@ -553,19 +553,19 @@ async function phUnlink(tid, playerId, isFinished) {
 async function phStartLink(profileId) {
   const area = document.getElementById('ph-link-area');
   if (!area) return;
-  area.innerHTML = `<div style="margin-top:0.75rem"><em>${t('txt_ph_loading_tournaments')}</em></div>`;
+  area.innerHTML = `<div class="mt-3"><em>${t('txt_ph_loading_tournaments')}</em></div>`;
   try {
     const tournaments = await api('/api/tournaments');
     if (tournaments.length === 0) {
-      area.innerHTML = `<div style="margin-top:0.75rem"><p style="color:var(--text-muted)">${t('txt_txt_no_tournaments_available')}.</p></div>`;
+      area.innerHTML = `<div class="mt-3"><p class="text-muted">${t('txt_txt_no_tournaments_available')}.</p></div>`;
       return;
     }
-    let html = '<div style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface)">';
-    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem"><strong style="font-size:0.88rem">${t('txt_ph_link_participation')}</strong>`;
+    let html = '<div class="ghost-convert-form">';
+    html += `<div class="d-flex items-center justify-between mb-2"><strong class="fs-lg">${t('txt_ph_link_participation')}</strong>`;
     html += `<button type="button" class="btn btn-sm" onclick="document.getElementById('ph-link-area').innerHTML=''">✕</button></div>`;
-    html += '<div style="margin-bottom:0.5rem">';
-    html += `<label style="font-size:0.84rem;color:var(--text-muted)">${t('txt_ph_select_tournament')}</label>`;
-    html += `<select id="ph-link-tid" style="width:100%;padding:0.35rem 0.5rem;font-size:0.88rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);margin-top:0.25rem" onchange="phLoadUnlinkedPlayers('${escAttr(profileId)}')">`;
+    html += '<div class="mb-2">';
+    html += `<label class="fs-md text-muted">${t('txt_ph_select_tournament')}</label>`;
+    html += `<select id="ph-link-tid" class="ph-link-select mt-1" onchange="phLoadUnlinkedPlayers('${escAttr(profileId)}')">`;
     html += `<option value="">${t('txt_ph_choose')}</option>`;
     for (const tour of tournaments) {
       html += `<option value="${escAttr(tour.id)}">${esc(tour.name)} (${esc(tour.phase || tour.type)})</option>`;
@@ -575,7 +575,7 @@ async function phStartLink(profileId) {
     html += '</div>';
     area.innerHTML = html;
   } catch (e) {
-    area.innerHTML = `<div class="alert alert-error" style="margin-top:0.75rem">${esc(e.message)}</div>`;
+    area.innerHTML = `<div class="alert alert-error mt-3">${esc(e.message)}</div>`;
   }
 }
 
@@ -590,11 +590,11 @@ async function phLoadUnlinkedPlayers(profileId) {
   try {
     const players = await api(`/api/admin/player-profiles/unlinked/${tid}`);
     if (players.length === 0) {
-      container.innerHTML = `<p style="color:var(--text-muted);font-size:0.84rem">${t('txt_ph_all_players_already_linked')}</p>`;
+      container.innerHTML = `<p class="text-muted fs-md">${t('txt_ph_all_players_already_linked')}</p>`;
       return;
     }
-    let html = `<label style="font-size:0.84rem;color:var(--text-muted)">${t('txt_ph_select_player')}</label>`;
-    html += `<select id="ph-link-pid" style="width:100%;padding:0.35rem 0.5rem;font-size:0.88rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);margin:0.25rem 0 0.5rem">`;
+    let html = `<label class="fs-md text-muted">${t('txt_ph_select_player')}</label>`;
+    html += `<select id="ph-link-pid" class="ph-link-select m-0 mt-1 mb-2">`;
     for (const p of players) {
       html += `<option value="${escAttr(p.player_id)}">${esc(p.player_name)} (${esc(p.player_id.slice(0, 6))}…)</option>`;
     }

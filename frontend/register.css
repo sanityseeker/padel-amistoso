@@ -363,3 +363,27 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 .pay-report-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 0.6rem; }
 .pay-report-row input { flex: 1 1 180px; min-height: 40px; }
 .pay-report-btn { min-height: 44px; }
+
+/* ── Registration: component classes ───
+   Extracted from former inline style="" attributes. */
+.lobby-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1-5);
+  margin-bottom: var(--space-1);
+}
+.lobby-logo {
+  height: 24px;
+  width: 24px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+.lobby-logo--lg {
+  height: 28px;
+  width: 28px;
+}
+.support-links--tight {
+  padding-top: var(--space-4);
+}

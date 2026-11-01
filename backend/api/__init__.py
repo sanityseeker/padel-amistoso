@@ -493,24 +493,29 @@ def _serve_png_file(filename: str, request: Request | None = None) -> Response:
     return Response(content=_read_frontend_bytes(filename), media_type="image/png", headers=headers)
 
 
+def _html_page(filename: str, fallback: str) -> Response:
+    """Serve a frontend HTML page uncached.
+
+    On the demo instance the root ``<html>`` element gets a ``demo-instance``
+    class so CSS can hide core-only surfaces (communities, clubs) from the
+    first paint, without waiting for ``/api/config``.
+    """
+    content = _read_frontend_text(filename) or fallback
+    if config.DEMO_INSTANCE:
+        content = content.replace('<html lang="en">', '<html lang="en" class="demo-instance">', 1)
+    return Response(content=content, media_type="text/html", headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/")
 @app.get("/admin")
 async def serve_frontend() -> Response:
-    return Response(
-        content=_read_frontend_text("index.html") or "<h1>Frontend not found</h1>",
-        media_type="text/html",
-        headers={"Cache-Control": "no-cache"},
-    )
+    return _html_page("index.html", "<h1>Frontend not found</h1>")
 
 
 @app.get("/tv")
 @app.get("/tv/{slug}")
 async def serve_tv(slug: str | None = None) -> Response:
-    return Response(
-        content=_read_frontend_text("public.html") or "<h1>TV page not found</h1>",
-        media_type="text/html",
-        headers={"Cache-Control": "no-cache"},
-    )
+    return _html_page("public.html", "<h1>TV page not found</h1>")
 
 
 @app.get("/t")
@@ -525,20 +530,12 @@ async def serve_tv_legacy(slug: str) -> Response:
 
 @app.get("/register")
 async def serve_register() -> Response:
-    return Response(
-        content=_read_frontend_text("register.html") or "<h1>Registration page not found</h1>",
-        media_type="text/html",
-        headers={"Cache-Control": "no-cache"},
-    )
+    return _html_page("register.html", "<h1>Registration page not found</h1>")
 
 
 @app.get("/register/{alias}")
 async def serve_register_alias(alias: str) -> Response:
-    return Response(
-        content=_read_frontend_text("register.html") or "<h1>Registration page not found</h1>",
-        media_type="text/html",
-        headers={"Cache-Control": "no-cache"},
-    )
+    return _html_page("register.html", "<h1>Registration page not found</h1>")
 
 
 @app.get("/r")
@@ -553,11 +550,7 @@ async def serve_register_legacy(slug: str) -> Response:
 
 @app.get("/player")
 async def serve_player() -> Response:
-    return Response(
-        content=_read_frontend_text("player.html") or "<h1>Player Hub not found</h1>",
-        media_type="text/html",
-        headers={"Cache-Control": "no-cache"},
-    )
+    return _html_page("player.html", "<h1>Player Hub not found</h1>")
 
 
 @app.get("/shared.js")

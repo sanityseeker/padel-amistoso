@@ -34,6 +34,12 @@ dev = [
     "pillow>=11.0",
 ]
 
+[tool.pytest.ini_options]
+# Every test gets its own SQLite DB under tmp_path (~800 MB per full run).
+# Only keep the directories of failed tests, and only for the latest run.
+tmp_path_retention_policy = "failed"
+tmp_path_retention_count = 1
+
 [tool.commitizen]
 name = "cz_conventional_commits"
 version_provider = "pep621"

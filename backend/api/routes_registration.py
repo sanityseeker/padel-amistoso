@@ -50,6 +50,7 @@ from .player_secret_store import (
     lookup_profile_by_passphrase,
 )
 from .schemas import (
+    AdminRegistrantIn,
     ClaimParticipationRequest,
     ConvertRegistrationRequest,
     EmailSettings,
@@ -689,6 +690,7 @@ def get_registration(rid: str, user: User = Depends(get_current_user)) -> Regist
         alias=reg.get("alias"),
         auto_send_email=bool(reg.get("auto_send_email", 0)),
         email_requirement=_email_requirement(reg),
+        club_id=reg.get("club_id"),
         converted_to_tid=tids[0] if tids else None,
         converted_to_tids=tids,
         linked_tournaments=linked_tournaments,
@@ -708,6 +710,7 @@ def get_registration(rid: str, user: User = Depends(get_current_user)) -> Regist
                 email=r.get("email", ""),
                 registered_at=r["registered_at"],
                 lang=r.get("lang", "en"),
+                profile_id=r.get("profile_id"),
             )
             for r in registrants
         ],
@@ -876,12 +879,16 @@ async def delete_registration(rid: str, user: User = Depends(get_current_user)) 
 
 
 @router.post("/{rid}/registrant")
-async def admin_add_registrant(rid: str, req: RegistrantIn, user: User = Depends(get_current_user)) -> dict:
+async def admin_add_registrant(rid: str, req: AdminRegistrantIn, user: User = Depends(get_current_user)) -> dict:
     """Admin: add a player directly to a registration lobby.
 
     Bypasses the open-lobby, join-code and rate-limit checks that apply to
     the public self-registration endpoint.  Useful for manually enrolling
     late entries or players who cannot use the public form.
+
+    With ``profile_id`` (e.g. a club member picked from the roster) the entry
+    is linked to that Player Hub profile and reuses its passphrase when free,
+    mirroring the public endpoint's profile-link behaviour.
     """
     reg = _get_registration(rid)
     _require_registration_editor(reg, user)
@@ -894,14 +901,17 @@ async def admin_add_registrant(rid: str, req: RegistrantIn, user: User = Depends
     async with _get_registration_lock(reg_id):
         existing_passphrases: set[str] = set()
         existing_names: set[str] = set()
+        existing_profile_ids: set[str] = set()
         with get_db() as conn:
             rows = conn.execute(
-                "SELECT player_name, passphrase FROM registrants WHERE registration_id = ?",
+                "SELECT player_name, passphrase, profile_id FROM registrants WHERE registration_id = ?",
                 (reg_id,),
             ).fetchall()
             for r in rows:
                 existing_passphrases.add(r["passphrase"])
                 existing_names.add(r["player_name"].strip().lower())
+                if r["profile_id"]:
+                    existing_profile_ids.add(r["profile_id"])
 
         if req.player_name.strip().lower() in existing_names:
             raise HTTPException(409, "A player with this name is already registered")
@@ -909,6 +919,21 @@ async def admin_add_registrant(rid: str, req: RegistrantIn, user: User = Depends
         passphrase = generate_passphrase()
         while passphrase in existing_passphrases:
             passphrase = generate_passphrase()
+
+        profile_id: str | None = None
+        if req.profile_id:
+            if req.profile_id in existing_profile_ids:
+                raise HTTPException(409, "This player is already registered")
+            with get_db() as conn:
+                profile_row = conn.execute(
+                    "SELECT id, passphrase FROM player_profiles WHERE id = ?",
+                    (req.profile_id,),
+                ).fetchone()
+            if profile_row is None:
+                raise HTTPException(404, "Player profile not found")
+            profile_id = profile_row["id"]
+            if profile_row["passphrase"] not in existing_passphrases:
+                passphrase = profile_row["passphrase"]
 
         token = generate_token()
 
@@ -918,13 +943,15 @@ async def admin_add_registrant(rid: str, req: RegistrantIn, user: User = Depends
         with get_db() as conn:
             conn.execute(
                 """INSERT INTO registrants
-                   (registration_id, player_id, player_name, passphrase, token, answers, email, registered_at, lang)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now, lang),
+                   (registration_id, player_id, player_name, passphrase, token, answers, email, registered_at, profile_id, lang)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now, profile_id, lang),
             )
 
     # Eagerly give any emailed player a durable Hub identity (background).
-    _schedule_hub_provision(email, lang)
+    # Skip when the entry is already linked to an existing profile.
+    if profile_id is None:
+        _schedule_hub_provision(email, lang)
 
     # Auto-send confirmation email if the lobby has auto_send_email enabled
     if email and is_valid_email(email) and reg.get("auto_send_email"):

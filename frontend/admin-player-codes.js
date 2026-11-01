@@ -47,7 +47,7 @@ function _renderPlayerCodesBody(secrets) {
   html += `<p class="player-codes-help">${t('txt_txt_player_codes_help')}</p>`;
 
   if (entries.length > 0) {
-    html += `<div class="settings-inline-row" style="margin-bottom:0.5rem">`;
+    html += `<div class="settings-inline-row mb-2">`;
     html += `<button type="button" class="btn btn-sm player-codes-btn" onclick="_copyAllPlayerCodes(this)">${_ic('copy')} ${t('txt_txt_copy_all_codes')}</button>`;
     html += `<button type="button" class="btn btn-sm player-codes-btn" onclick="_printPlayerCodes()">${_ic('print')} ${t('txt_txt_print_all_codes')}</button>`;
     html += `</div>`;
@@ -112,13 +112,13 @@ async function _showPlayerQr(playerId, playerName) {
 
     // Build modal
     const modal = document.createElement('div');
-    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:1rem';
+    modal.className = 'codes-modal-backdrop';
     modal.onclick = (e) => { if (e.target === modal) { modal.remove(); URL.revokeObjectURL(objectUrl); } };
-    modal.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.5rem;text-align:center;max-width:340px;width:100%">
-      <h3 style="margin:0 0 0.5rem;font-size:1rem">${esc(playerName)}</h3>
-      <img src="${objectUrl}" alt="${t('txt_txt_qr_code')}" style="width:100%;max-width:260px;image-rendering:pixelated;border-radius:4px;background:#fff;padding:0.5rem">
-      <p style="margin:0.75rem 0 0;color:var(--text-muted);font-size:0.8rem">${t('txt_txt_player_codes_help')}</p>
-      <button type="button" class="btn btn-primary btn-sm" style="margin-top:0.75rem" onclick="this.closest('div[style*=fixed]').remove()">✕ ${t('txt_txt_close')}</button>
+    modal.innerHTML = `<div class="codes-qr-card">
+      <h3 class="codes-qr-title">${esc(playerName)}</h3>
+      <img src="${objectUrl}" alt="${t('txt_txt_qr_code')}" class="codes-qr-img">
+      <p class="m-0 mt-3 fs-sm text-muted">${t('txt_txt_player_codes_help')}</p>
+      <button type="button" class="btn btn-primary btn-sm mt-3" onclick="this.closest('.codes-modal-backdrop').remove()">✕ ${t('txt_txt_close')}</button>
     </div>`;
     document.body.appendChild(modal);
   } catch (e) {
@@ -156,7 +156,7 @@ function _addTournamentPlayer() {
     if (noMsg) noMsg.remove();
     const wrapper = document.createElement('div');
     wrapper.className = 'player-codes-table-wrap';
-    wrapper.innerHTML = `<table class="player-codes-table"><thead><tr><th>${t('txt_txt_player')}</th><th>${t('txt_txt_passphrase')}</th><th>${t('txt_txt_contact')}</th><th style="text-align:center">${t('txt_txt_qr_code')}</th><th></th><th></th></tr></thead><tbody></tbody></table>`;
+    wrapper.innerHTML = `<table class="player-codes-table"><thead><tr><th>${t('txt_txt_player')}</th><th>${t('txt_txt_passphrase')}</th><th>${t('txt_txt_contact')}</th><th class="ta-center">${t('txt_txt_qr_code')}</th><th></th><th></th></tr></thead><tbody></tbody></table>`;
     const addBtnDiv = codesBody?.querySelector('.add-participant-btn')?.parentElement;
     if (addBtnDiv) addBtnDiv.before(wrapper);
     else codesBody?.appendChild(wrapper);
@@ -165,25 +165,25 @@ function _addTournamentPlayer() {
 
   const isGP = currentType === 'group_playoff';
   const groupSelectHtml = isGP && _gpGroupNames.length
-    ? `<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.82rem;white-space:nowrap;color:var(--text-muted)">${t('txt_txt_select_group')}
-        <select id="pc-new-group" style="font-size:0.88rem;padding:0.28rem 0.4rem;border:2px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--text)">
+    ? `<label class="d-flex items-center gap-1 fs-sm nowrap text-muted">${t('txt_txt_select_group')}
+        <select id="pc-new-group" class="codes-new-group-select">
           ${_gpGroupNames.map(g => `<option value="${escAttr(g)}">${esc(g)}</option>`).join('')}
         </select></label>`
     : '';
 
   const newRow = document.createElement('tr');
   newRow.id = 'pc-new-row';
-  newRow.style.borderBottom = '1px solid var(--border)';
-  newRow.innerHTML = `<td style="padding:0.4rem 0.6rem" colspan="6">
-    <span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">
+  newRow.className = 'row-divider';
+  newRow.innerHTML = `<td class="codes-new-cell" colspan="6">
+    <span class="d-flex gap-1-5 items-center flex-wrap">
       <input type="text" id="pc-new-name" list="pc-new-suggestions" autocomplete="off"
         placeholder="${escAttr(t('txt_txt_add_player_prompt'))}"
-        style="flex:1;min-width:150px;font-size:0.88rem;padding:0.3rem 0.5rem;border:2px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--text)"
+        class="codes-new-name-input"
         maxlength="128">
       <datalist id="pc-new-suggestions"></datalist>
       ${groupSelectHtml}
-      <button type="button" class="btn btn-primary btn-sm" style="font-size:0.78rem;padding:0.25rem 0.6rem;white-space:nowrap" onclick="_submitNewPlayer()">✓</button>
-      <button type="button" class="btn btn-sm" style="font-size:0.78rem;padding:0.25rem 0.5rem" onclick="_pcNewPlayerPastId=null;document.getElementById('pc-new-row')?.remove()">✕</button>
+      <button type="button" class="btn btn-primary btn-sm codes-new-save" onclick="_submitNewPlayer()">✓</button>
+      <button type="button" class="btn btn-sm btn-compact fs-sm" onclick="_pcNewPlayerPastId=null;document.getElementById('pc-new-row')?.remove()">✕</button>
     </span></td>`;
   tbody.appendChild(newRow);
 
@@ -547,7 +547,7 @@ async function _hubDoSearch() {
   const results = document.getElementById('pc-hub-modal-results');
   if (!input || !results) return;
   const q = input.value.trim();
-  results.innerHTML = '<em style="font-size:0.8rem;color:var(--text-muted)">…</em>';
+  results.innerHTML = '<em class="fs-sm text-muted">…</em>';
   const params = new URLSearchParams({ q });
   const meta = (typeof _tournamentMeta !== 'undefined' && _tournamentMeta[currentTid]) || {};
   if (_hubSearchScope === 'club' && meta.club_id) {
@@ -560,7 +560,7 @@ async function _hubDoSearch() {
     const realProfiles = profiles.filter(p => !p.is_ghost);
     if (realProfiles.length === 0) {
       const noResultsKey = _hubSearchScope === 'all' ? 'txt_hub_no_results' : 'txt_hub_no_results_scoped';
-      results.innerHTML = `<div style="font-size:0.8rem;color:var(--text-muted);padding:0.3rem 0">${esc(t(noResultsKey))}</div>`;
+      results.innerHTML = `<div class="empty-results-note">${esc(t(noResultsKey))}</div>`;
       return;
     }
     let html = '';
@@ -572,7 +572,7 @@ async function _hubDoSearch() {
     }
     results.innerHTML = html;
   } catch (e) {
-    results.innerHTML = `<div style="font-size:0.8rem;color:var(--danger)">${esc(e.message)}</div>`;
+    results.innerHTML = `<div class="fs-sm text-error">${esc(e.message)}</div>`;
   }
 }
 

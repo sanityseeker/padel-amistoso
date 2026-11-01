@@ -365,6 +365,26 @@ class TestDemoNoindex:
         assert "X-Robots-Tag" not in r.headers
 
 
+DEMO_PAGES = ["/", "/admin", "/tv", "/register", "/player"]
+
+
+class TestDemoInstanceHtmlClass:
+    """The demo instance stamps <html class="demo-instance"> so CSS hides
+    community/club UI from first paint; the core site never gets it."""
+
+    @pytest.mark.parametrize("path", DEMO_PAGES)
+    def test_demo_instance_pages_get_class(self, client, demo_instance, path):
+        r = client.get(path)
+        assert r.status_code == 200
+        assert '<html lang="en" class="demo-instance">' in r.text
+
+    @pytest.mark.parametrize("path", DEMO_PAGES)
+    def test_core_instance_pages_have_no_class(self, client, path):
+        r = client.get(path)
+        assert r.status_code == 200
+        assert "demo-instance" not in r.text.split("<head>", 1)[0]
+
+
 class TestDemoClubSubdomains:
     """Club subdomains are a core-instance feature; the demo instance refuses them."""
 

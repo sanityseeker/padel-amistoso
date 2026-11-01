@@ -379,7 +379,7 @@ function _renderDirectory(lobbies) {
 
       html += `<a class="tv-picker-item" href="${esc(url)}">`;
       if (lobby.club_logo_url) {
-        html += `<img src="${lobby.club_logo_url}" alt="" style="height:18px;width:18px;object-fit:cover;border-radius:3px;margin-right:0.35rem;vertical-align:middle;flex-shrink:0">`;
+        html += `<img src="${lobby.club_logo_url}" alt="" class="club-logo-inline">`;
       }
       html += esc(lobby.name);
       html += `<span class="picker-badge picker-badge-sport">${esc(sportLabel)}</span>`;
@@ -388,7 +388,7 @@ function _renderDirectory(lobbies) {
         html += `<span class="picker-badge picker-badge-type">${t('txt_reg_join_code_badge')}</span>`;
       }
       if (identityLabel) {
-        html += `<span style="display:block;margin-top:0.2rem;color:var(--text-muted);font-size:0.78rem">${esc(identityLabel)}</span>`;
+        html += `<span class="branding-label">${esc(identityLabel)}</span>`;
       }
       html += `</a>`;
     }
@@ -517,9 +517,9 @@ function _showClosed(converted) {
   const identityLabel = _registrationIdentityLabel(_regData);
   let html = '';
   if (_regData.club_logo_url) {
-    html += `<div style="display:flex;align-items:center;justify-content:center;gap:0.4rem;margin-bottom:0.2rem">`;
-    html += `<img src="${_regData.club_logo_url}" alt="" style="height:24px;width:24px;object-fit:cover;border-radius:4px;flex-shrink:0">`;
-    html += `<h2 style="margin:0">${esc(_regData.name)}</h2></div>`;
+    html += `<div class="lobby-title-row">`;
+    html += `<img src="${_regData.club_logo_url}" alt="" class="lobby-logo">`;
+    html += `<h2 class="m-0">${esc(_regData.name)}</h2></div>`;
   } else {
     html += `<h2>${esc(_regData.name)}</h2>`;
   }
@@ -581,9 +581,9 @@ function _showForm() {
   const identityLabel = _registrationIdentityLabel(_regData);
   let html = '';
   if (_regData.club_logo_url) {
-    html += `<div style="display:flex;align-items:center;justify-content:center;gap:0.4rem;margin-bottom:0.2rem">`;
-    html += `<img src="${_regData.club_logo_url}" alt="" style="height:28px;width:28px;object-fit:cover;border-radius:4px;flex-shrink:0">`;
-    html += `<h1 style="margin:0">${esc(_regData.name)}</h1></div>`;
+    html += `<div class="lobby-title-row">`;
+    html += `<img src="${_regData.club_logo_url}" alt="" class="lobby-logo lobby-logo--lg">`;
+    html += `<h1 class="m-0">${esc(_regData.name)}</h1></div>`;
   } else {
     html += `<h1>${esc(_regData.name)}</h1>`;
   }
@@ -1383,7 +1383,7 @@ function _renderHubSections(r, profileLinked, hasProfileSession) {
     html += `<summary class="reg-ps-create-summary">${t('txt_reg_ps_save_help')}</summary>`;
     html += `<div class="reg-ps-create-body">`;
     if (needsEmail) {
-      html += `<div class="reg-ps-create-email"><label style="font-size:0.8rem;color:var(--text-muted)">${t('txt_reg_ps_email_needed')}</label>`;
+      html += `<div class="reg-ps-create-email"><label class="fs-sm text-muted">${t('txt_reg_ps_email_needed')}</label>`;
       html += `<input type="email" id="reg-ps-create-email-input" maxlength="320" placeholder="${esc(t('txt_email_placeholder'))}"></div>`;
     }
     html += `<button type="button" class="reg-ps-create-btn" id="reg-ps-create-btn" onclick="_createPlayerSpace()">${t('txt_reg_ps_save')}</button>`;

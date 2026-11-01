@@ -628,6 +628,21 @@ class RegistrantIn(BaseModel):
     lang: EmailLang = "en"
 
 
+class AdminRegistrantIn(BaseModel):
+    """Admin request to add a player to a registration lobby.
+
+    ``profile_id`` links the entry to an existing Player Hub profile (e.g. a
+    club member picked from the roster); name/email still come from the body so
+    the organizer can adjust them.
+    """
+
+    player_name: str = Field(min_length=1, max_length=128)
+    answers: dict[str, str] = Field(default_factory=dict)
+    email: OptionalEmailStr = Field(default="")
+    profile_id: str | None = Field(default=None, max_length=64)
+    lang: EmailLang = "en"
+
+
 class RegistrantOut(BaseModel):
     """Public view of a registrant (no secrets)."""
 
@@ -657,6 +672,7 @@ class RegistrantAdminOut(BaseModel):
     email: str = ""
     registered_at: str
     lang: EmailLang = "en"
+    profile_id: str | None = None
 
 
 class RegistrantLoginIn(BaseModel):
@@ -811,6 +827,7 @@ class RegistrationAdminOut(BaseModel):
     alias: str | None = None
     auto_send_email: bool = False
     email_requirement: EmailRequirement = "optional"
+    club_id: str | None = None
     converted_to_tid: str | None = None
     converted_to_tids: list[str] = Field(default_factory=list)
     linked_tournaments: list[LinkedTournamentOut] = Field(default_factory=list)

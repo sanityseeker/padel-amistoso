@@ -533,8 +533,8 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true, scoreC
       if (key) html += `<div class="pending-round-label">${esc(key)}</div>`;
       for (const m of _byRound[key]) {
         const tbd = _hasTbd(m);
-        const _cmt = m.comment ? `<div class="match-comment-text match-comment-static">${_antIc('message')} ${esc(m.comment)}</div>` : '';
-        const _jumpAttr = m.id ? ` role="button" tabindex="0" style="cursor:pointer" onclick="_scrollToMatch('${m.id}', true)" onkeydown="if(event.key==='Enter')_scrollToMatch('${m.id}', true)"` : '';
+        const _cmt = m.comment ? `<div class="match-comment-text match-comment-static cursor-pointer">${_antIc('message')} ${esc(m.comment)}</div>` : '';
+        const _jumpAttr = m.id ? ` role="button" tabindex="0" onclick="_scrollToMatch('${m.id}', true)" onkeydown="if(event.key==='Enter')_scrollToMatch('${m.id}', true)"` : '';
         html += `<div class="match-card pending-match-card${tbd ? ' match-tbd-disabled' : ''}"${_jumpAttr}><div class="match-teams">${esc(_tl(m.team1))} <span class="vs">vs</span> ${esc(_tl(m.team2))}</div>${_cmt}</div>`;
       }
       html += `</div>`;
@@ -1803,7 +1803,7 @@ function _renderPlayoffEditor() {
 
   // Playoff team mode toggle — shown for all tennis mexicano tournaments
   if (_isTennisMex()) {
-    html += `<div style="margin-bottom:0.75rem">`;
+    html += `<div class="mb-3">`;
     html += `<div class="form-group"><label>${t('txt_txt_playoff_mode')}</label>`;
     html += `<div class="score-mode-toggle" id="mex-playoff-team-toggle">`;
     html += `<button type="button" class="${!_mexPlayoffTeamToggle ? 'active' : ''}" onclick="_mexSetPlayoffTeamToggle(false)">${t('txt_txt_individual_mode')}</button>`;
@@ -2282,7 +2282,7 @@ async function exportTournamentOutcome(format) {
       // ── Play-offs (above group content) ───────────────────────
       if (schemaSrc) {
         body += `<h2>${t('txt_txt_play_off_bracket')}</h2>`;
-        body += `<img src="${schemaSrc}" alt="${t('txt_txt_play_off_bracket')}" style="max-width:100%;height:auto;margin:8px 0 18px">`;
+        body += `<img src="${schemaSrc}" alt="${t('txt_txt_play_off_bracket')}" class="mex-bracket-img">`;
       }
 
       if (includeHistory) {
@@ -2343,7 +2343,7 @@ async function exportTournamentOutcome(format) {
 
       if (schemaSrc) {
         body += `<h2>${t('txt_txt_play_off_bracket')}</h2>`;
-        body += `<img src="${schemaSrc}" alt="${t('txt_txt_play_off_bracket')}" style="max-width:100%;height:auto;margin:8px 0 18px">`;
+        body += `<img src="${schemaSrc}" alt="${t('txt_txt_play_off_bracket')}" class="mex-bracket-img">`;
       }
 
       if (includeHistory) {
@@ -2376,7 +2376,7 @@ async function exportTournamentOutcome(format) {
       // ── Play-offs (above leaderboard/rounds) ──────────────────
       if (schemaSrc) {
         body += `<h2>${t('txt_txt_play_off_bracket')}</h2>`;
-        body += `<img src="${schemaSrc}" alt="${t('txt_txt_play_off_bracket')}" style="max-width:100%;height:auto;margin:8px 0 18px">`;
+        body += `<img src="${schemaSrc}" alt="${t('txt_txt_play_off_bracket')}" class="mex-bracket-img">`;
       }
 
       if (includeHistory) {

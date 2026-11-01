@@ -389,6 +389,29 @@ class TestMexicanoAPI:
         r = client.post("/api/tournaments/mexicano", json=body, headers=auth_headers)
         assert r.status_code == 422
 
+    def test_playoffs_schema_double_elim_splits_by_side(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
+        for m in client.get(f"/api/tournaments/{tid}/mex/matches").json()["current_matches"]:
+            client.post(
+                f"/api/tournaments/{tid}/mex/record",
+                json={"match_id": m["id"], "score1": 20, "score2": 12},
+                headers=auth_headers,
+            )
+        assert client.post(f"/api/tournaments/{tid}/mex/end", headers=auth_headers).status_code == 200
+        r = client.post(
+            f"/api/tournaments/{tid}/mex/start-playoffs",
+            json={"n_teams": 8, "double_elimination": True},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        base = f"/api/tournaments/{tid}/mex/playoffs-schema?fmt=png"
+        combined = client.get(base)
+        assert combined.headers.get("etag")
+        winners = client.get(f"{base}&side=winners").content
+        losers = client.get(f"{base}&side=losers").content
+        assert len({combined.content, winners, losers}) == 3
+
     def test_status_shows_leaderboard(self, client, auth_headers):
         tid = self._create(client, auth_headers)
         r = client.get(f"/api/tournaments/{tid}/mex/status")
@@ -758,6 +781,19 @@ class TestPlayoffAPI:
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("image/png")
         assert len(r.content) > 0
+
+    def test_schema_double_elim_splits_by_side(self, client, auth_headers):
+        r = client.post(
+            "/api/tournaments/playoff",
+            json={**self.PO_BODY, "double_elimination": True},
+            headers=auth_headers,
+        )
+        tid = r.json()["id"]
+        base = f"/api/tournaments/{tid}/po/playoffs-schema?fmt=png"
+        combined = client.get(base).content
+        winners = client.get(f"{base}&side=winners").content
+        losers = client.get(f"{base}&side=losers").content
+        assert len({combined, winners, losers}) == 3
 
     def test_too_few_participants_rejected(self, client, auth_headers):
         body = {**self.PO_BODY, "participant_names": ["Solo"]}

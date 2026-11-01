@@ -1612,11 +1612,11 @@ async function _createHubDoSearch() {
   const results = document.getElementById('create-hub-results');
   if (!input || !results) return;
   const q = input.value.trim();
-  results.innerHTML = '<em style="font-size:0.8rem;color:var(--text-muted)">…</em>';
+  results.innerHTML = '<em class="fs-sm text-muted">…</em>';
   try {
     const profiles = await api(`/api/admin/player-profiles?q=${encodeURIComponent(q)}`);
     if (profiles.length === 0) {
-      results.innerHTML = `<div style="font-size:0.8rem;color:var(--text-muted);padding:0.3rem 0">${t('txt_hub_no_results')}</div>`;
+      results.innerHTML = `<div class="empty-results-note">${t('txt_hub_no_results')}</div>`;
       return;
     }
     let html = '';
@@ -1629,7 +1629,7 @@ async function _createHubDoSearch() {
     }
     results.innerHTML = html;
   } catch (e) {
-    results.innerHTML = `<div style="font-size:0.8rem;color:var(--danger)">${esc(e.message)}</div>`;
+    results.innerHTML = `<div class="fs-sm text-error">${esc(e.message)}</div>`;
   }
 }
 

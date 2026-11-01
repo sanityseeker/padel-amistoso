@@ -10,6 +10,7 @@ httpx transport transparently decodes compressed bodies).
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -151,27 +152,18 @@ def test_login_dialog_returning_view_offers_new_sandbox(client):
     assert "txt_demo_start_new_instead" in after_form
 
 
-def test_head_redirect_skips_start_demo_hash(client):
-    """The pinned-home redirect in <head> must not swallow #start-demo."""
-    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
-    head = html[: html.index("</head>")]
-    assert "window.location.hash === '#start-demo'" in head
-
-
-def test_auth_js_handles_start_demo_hash(client):
-    """auth.js auto-mints on #start-demo once per tab and strips the hash."""
+def test_auth_js_never_auto_mints_demo(client):
+    """Demo sandboxes are only minted by an explicit click, never from a URL hash."""
     js = client.get("/auth.js", headers={"Accept-Encoding": "identity"}).text
-    assert "function maybeAutoStartDemo()" in js
-    assert "'#start-demo'" in js
-    assert "replaceState" in js
-    assert "'padel-demo-autostart'" in js
+    assert "maybeAutoStartDemo" not in js
+    assert "start-demo" not in js
     # Only the username is remembered, and clearAuth() must not drop it.
     assert "'padel-demo-last'" in js
     clear_auth = js[js.index("function clearAuth()") :]
     clear_auth = clear_auth[: clear_auth.index("\n}\n")]
     assert "DEMO_LAST_KEY" not in clear_auth
     utils = client.get("/admin-utils.js", headers={"Accept-Encoding": "identity"}).text
-    assert "maybeAutoStartDemo()" in utils
+    assert "maybeAutoStartDemo" not in utils
     assert "configLoaded = true" in utils
 
 
@@ -318,6 +310,20 @@ def test_admin_players_js_mounts_search_island(client):
     assert "function _phRenderProfileList" not in js
     assert "function _phUpdateMergeBar" not in js
     assert 'onchange="_phToggleGhostSelect' not in js
+
+
+def test_form_control_baseline_guards(client):
+    """Radios/checkboxes must not inherit the admin text-input box styling, and the
+    shared theme keeps its form baseline (font inheritance + .choice-row)."""
+    admin = client.get("/admin.css", headers={"Accept-Encoding": "identity"}).text
+    scoped = 'input:where(:not([type="radio"], [type="checkbox"])), select, textarea {'
+    assert scoped in admin
+    assert "\ninput, select, textarea {" not in admin
+    assert "\n  input, select, textarea {" not in admin
+    theme = client.get("/theme.css", headers={"Accept-Encoding": "identity"}).text
+    assert ".choice-row" in theme
+    assert ".choice-group" in theme
+    assert "font-family: inherit" in theme
 
 
 def test_flash_success_is_pulse_only(client):
@@ -632,3 +638,26 @@ def test_payment_i18n_keys_in_both_languages(client):
         "txt_admin_settings_help_payments",
     ):
         assert js.count(f'"{key}"') == 2, key
+
+
+def _read_frontend(name: str) -> str:
+    return (Path(__file__).resolve().parent.parent / "frontend" / name).read_text()
+
+
+def test_demo_instance_hides_community_and_club_ui():
+    """Demo instance: community/club surfaces are tagged core-only (hidden via
+    theme.css) or skipped in JS through isDemoInstance()."""
+    theme = _read_frontend("theme.css")
+    assert ".demo-instance .core-only" in theme
+    assert "html:not(.demo-instance) .demo-only" in theme
+
+    html = _read_frontend("index.html")
+    assert html.count('class="create-meta-row core-only') == 4
+    assert html.count('class="paste-list-btn core-only" onclick="addPlayersFromClub(') == 3
+    assert '<div class="card core-only" id="info-communities-clubs">' in html
+    assert '<li class="core-only"><a href="#info-communities-clubs"' in html
+    assert 'class="demo-only" data-i18n-html="txt_txt_info_demo_sandbox_desc_instance"' in html
+
+    assert "function isDemoInstance()" in _read_frontend("shared.js")
+    assert "_demoInstance" in _read_frontend("auth.js")
+    assert "isDemoInstance()) ? '' : _renderScopeGroup()" in _read_frontend("admin-tv-email.js")

@@ -671,14 +671,14 @@ Demo mode is a second, fully isolated instance that hands out throwaway
 sandbox accounts. The flow:
 
 1. On the core instance's login dialog, "Open the demo sandbox" links to
-   `AMISTOSO_DEMO_URL` with a `#start-demo` hash (and a note naming the
-   separate host, so it's clear nothing on the core site is touched).
-2. The demo instance sees `#start-demo`, strips it from the URL, and mints a
-   `demo-xxxxxx` account straight away (once per browser tab), dropping the
-   visitor on the Create tab. A banner shows the generated passphrase, which
-   is the account password — usable to log in from other devices.
-3. Visiting the demo instance directly shows a short "Your demo sandbox"
-   explainer with a "Start a N-day sandbox" button. Returning demo users and
+   `AMISTOSO_DEMO_URL` (and a note naming the separate host, so it's clear
+   nothing on the core site is touched). There is no auto-login, so logging
+   out and in again on the demo instance always works.
+2. Visiting the demo instance shows a short "Your demo sandbox"
+   explainer with a "Start a N-day sandbox" button; clicking it mints a
+   `demo-xxxxxx` account and drops the visitor on the Create tab. A banner shows
+   the generated passphrase, which is the account password — usable to log in
+   from other devices. Returning demo users and
    the instance admin open the username/password form with "Already have a
    demo login? Log in". On a device that minted (or logged into) a sandbox,
    the dialog greets the visitor by username with the password field focused,

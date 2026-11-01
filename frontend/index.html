@@ -21,9 +21,6 @@
       // those flows must stay on the admin SPA so initAuth() can handle them.
       var qs = window.location.search;
       if (qs.indexOf('invite_token') !== -1 || qs.indexOf('reset_token') !== -1) return;
-      // Same for the core site's "Open the demo sandbox" link: #start-demo must
-      // reach the admin SPA so maybeAutoStartDemo() can mint the sandbox.
-      if (window.location.hash === '#start-demo') return;
       // Explicit /admin URL always stays on the admin page — skip page selection.
       if (window.location.pathname === '/admin') return;
       var PAGE_MAP = { tv: '/tv', register: '/register', player: '/player' };
@@ -84,7 +81,7 @@
     </div>
     <div class="page-header-row">
       <button type="button" class="tab-btn tab-btn--info" data-tab="info" role="tab" aria-selected="false">ℹ <span data-i18n="txt_txt_info">Info</span></button>
-      <div id="auth-status" class="page-header-right" style="margin-left:auto"></div>
+      <div id="auth-status" class="page-header-right ml-auto"></div>
     </div>
   </div>
 
@@ -118,7 +115,7 @@
        defined exactly once. -->
   <div class="tab-panel active" id="panel-home" role="tabpanel">
     <div class="card" id="home-island" v-scope>
-      <h2 style="margin:0 0 1rem" data-i18n="txt_txt_tournaments">Tournaments</h2>
+      <h2 class="m-0 mb-4" data-i18n="txt_txt_tournaments">Tournaments</h2>
       <div id="home-tournament-toolbar" class="home-tournament-toolbar" v-cloak>
         <div class="home-search-row">
           <input id="home-tournament-search" class="home-search-input" type="search"
@@ -185,7 +182,7 @@
           <span class="badge badge-type">{{ entry.item.has_team_roster ? t('txt_txt_team_mode_short') : t('txt_txt_individual_mode') }}</span>
           <span class="badge badge-phase">{{ phaseLabel(entry.item.phase) }}</span>
           <span v-if="entry.item.shared" class="badge badge-shared">{{ t('txt_badge_shared') }}</span>
-          <span v-if="identityLabel(entry.item)" class="badge" style="background:var(--bg-alt,#eee);color:var(--text-muted);font-size:0.72rem;border:1px solid var(--border);font-weight:500">{{ identityLabel(entry.item) }}</span>
+          <span v-if="identityLabel(entry.item)" class="badge badge--identity">{{ identityLabel(entry.item) }}</span>
         </div>
         <div class="tournament-actions">
           <button v-if="canEditTournament(entry.item)" type="button" class="btn btn-sm btn-visibility" :title="t('txt_txt_visibility')"
@@ -201,7 +198,7 @@
         <div class="match-teams">
           <a class="tournament-name-link" href="#" @click.prevent="openRegistration(entry.item.id, entry.item.name)">{{ entry.item.name }}</a>
           <span class="badge badge-sport">{{ sportLabel(entry.item) }}</span>
-          <span v-if="identityLabel(entry.item)" class="badge" style="background:var(--bg-alt,#eee);color:var(--text-muted);font-size:0.72rem;border:1px solid var(--border);font-weight:500">{{ identityLabel(entry.item) }}</span>
+          <span v-if="identityLabel(entry.item)" class="badge badge--identity">{{ identityLabel(entry.item) }}</span>
           <span v-if="entry.item.open" class="badge badge-lobby-open">{{ t('txt_reg_registration_open') }}</span>
           <span v-else class="badge badge-lobby-closed">{{ entry.item.archived ? t('txt_reg_registration_archived') : t('txt_reg_registration_closed') }}</span>
           <span class="reg-lobby-count">({{ entry.item.registrant_count || 0 }})</span>
@@ -220,31 +217,31 @@
   <!-- ─── CREATE ─────────────────────────────────────────── -->
   <div class="tab-panel" id="panel-create" role="tabpanel">
     <div class="card">
-      <div style="display:flex;align-items:center;margin-bottom:0.5rem">
-        <h2 style="margin:0" data-i18n="txt_txt_create_tournament">Create Tournament</h2>
-        <button type="button" class="format-info-btn" id="create-format-info-btn" data-action="openFormatInfo" aria-label="About this format" data-i18n-aria-label="txt_txt_about_this_format" data-i18n-title="txt_txt_about_this_format" title="About this format" style="margin-left:auto">i</button>
+      <div class="d-flex items-center mb-2">
+        <h2 class="m-0" data-i18n="txt_txt_create_tournament">Create Tournament</h2>
+        <button type="button" class="format-info-btn ml-auto" id="create-format-info-btn" data-action="openFormatInfo" aria-label="About this format" data-i18n-aria-label="txt_txt_about_this_format" data-i18n-title="txt_txt_about_this_format" title="About this format">i</button>
       </div>
-      <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.85rem;flex-wrap:wrap">
-        <div class="subtabs" role="tablist" aria-label="Create tournament type" data-i18n-aria-label="txt_txt_create_tournament_type" style="margin-bottom:0">
+      <div class="d-flex items-center gap-2-5 mb-3-5 flex-wrap">
+        <div class="subtabs mb-0" role="tablist" aria-label="Create tournament type" data-i18n-aria-label="txt_txt_create_tournament_type">
           <button type="button" class="subtab-btn active" id="create-tab-gp" data-action="setCreateMode" data-tab="gp" data-i18n="txt_txt_group_play_off">Group + Play‑off</button>
           <button type="button" class="subtab-btn" id="create-tab-mex" data-action="setCreateMode" data-tab="mex" data-i18n="txt_txt_mexicano_play_offs">Mexicano + Play‑offs</button>
           <button type="button" class="subtab-btn" id="create-tab-po" data-action="setCreateMode" data-tab="po" data-i18n="txt_txt_play_offs_only">Play-offs</button>
         </div>
-        <div style="flex:1"></div>
-        <div class="subtabs" style="margin-bottom:0">
+        <div class="flex-1"></div>
+        <div class="subtabs mb-0">
           <button type="button" class="subtab-btn" id="create-tab-lobby" data-action="setCreateMode" data-tab="lobby" data-i18n="txt_reg_lobby">Lobby</button>
         </div>
       </div>
-      <div class="create-meta-row" style="margin-bottom:0.85rem">
-        <div class="field-section create-meta-card create-sport-card" style="margin-bottom:0">
-          <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_txt_sport">Sport</div>
-          <div class="score-mode-toggle create-meta-toggle" id="sport-toggle" style="margin-bottom:0">
+      <div class="create-meta-row mb-3-5">
+        <div class="field-section create-meta-card create-sport-card mb-0">
+          <div class="field-section-title mb-2" data-i18n="txt_txt_sport">Sport</div>
+          <div class="score-mode-toggle create-meta-toggle mb-0" id="sport-toggle">
             <button type="button" data-sport="padel" class="active" data-action="setSport"><span data-i18n="txt_txt_sport_padel">Padel</span></button>
             <button type="button" data-sport="tennis" data-action="setSport"><span data-i18n="txt_txt_sport_tennis">Tennis</span></button>
           </div>
         </div>
-        <div class="field-section create-meta-card create-entry-card" id="create-entry-card" style="margin-bottom:0">
-          <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_txt_mode">Mode</div>
+        <div class="field-section create-meta-card create-entry-card mb-0" id="create-entry-card">
+          <div class="field-section-title mb-2" data-i18n="txt_txt_mode">Mode</div>
           <div id="entry-toggle-gp-wrap">
             <div class="score-mode-toggle entry-mode-toggle create-meta-toggle" id="gp-entry-mode-toggle">
               <button type="button" data-mode="individual" data-action="setEntryMode" data-entry-ctx="gp" data-entry-mode="individual" data-i18n="txt_txt_individual_mode">Individual</button>
@@ -267,31 +264,31 @@
       </div>
 
       <div class="subtab-panel active" id="create-panel-gp">
-        <div class="field-section" style="margin-bottom:0.75rem">
-          <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_txt_title">Title</div>
-          <input id="gp-name" value="" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
+        <div class="field-section mb-3">
+          <div class="field-section-title mb-2" data-i18n="txt_txt_title">Title</div>
+          <input id="gp-name" value="" class="tournament-name-input field-grow" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name">
         </div>
-        <div class="create-meta-row" style="margin-bottom:0.85rem">
-          <div class="field-section create-meta-card" style="margin-bottom:0">
-            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_comm_col_community">Community</div>
-            <select id="create-community-gp" class="tournament-name-input create-community-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Community" data-i18n-aria-label="txt_comm_col_community" title="Community" data-i18n-title="txt_comm_col_community">
+        <div class="create-meta-row core-only mb-3-5">
+          <div class="field-section create-meta-card mb-0">
+            <div class="field-section-title mb-2" data-i18n="txt_comm_col_community">Community</div>
+            <select id="create-community-gp" class="tournament-name-input create-community-select create-affiliation-select" aria-label="Community" data-i18n-aria-label="txt_comm_col_community" title="Community" data-i18n-title="txt_comm_col_community">
               <option value="open" data-i18n="txt_comm_global_default">Global (default)</option>
             </select>
           </div>
-          <div class="field-section create-meta-card create-club-wrapper" style="margin-bottom:0;display:none">
-            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_create_club">Club</div>
-            <select id="create-club-gp" class="tournament-name-input create-club-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Club" data-i18n-aria-label="txt_create_club" title="Club" data-i18n-title="txt_create_club"></select>
+          <div class="field-section create-meta-card create-club-wrapper mb-0" style="display:none">
+            <div class="field-section-title mb-2" data-i18n="txt_create_club">Club</div>
+            <select id="create-club-gp" class="tournament-name-input create-club-select create-affiliation-select" aria-label="Club" data-i18n-aria-label="txt_create_club" title="Club" data-i18n-title="txt_create_club"></select>
           </div>
         </div>
         <div class="field-section">
           <div class="participants-header">
-            <div style="display:flex;align-items:center;gap:0.5rem">
-              <span class="field-section-title" style="margin-bottom:0" id="gp-players-label" data-i18n="txt_txt_participants">Participants</span>
+            <div class="d-flex items-center gap-2">
+              <span class="field-section-title mb-0" id="gp-players-label" data-i18n="txt_txt_participants">Participants</span>
               <span class="participant-count" id="gp-participant-count"></span>
             </div>
-            <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+            <div class="d-flex gap-1-5 flex-wrap">
               <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="gp" data-i18n="txt_txt_clear_all">Clear all</button>
-              <button type="button" class="paste-list-btn" onclick="addPlayersFromClub('gp')" data-i18n="txt_create_add_from_club">Add from club</button>
+              <button type="button" class="paste-list-btn core-only" onclick="addPlayersFromClub('gp')" data-i18n="txt_create_add_from_club">Add from club</button>
               <button type="button" class="paste-list-btn" id="gp-paste-toggle" data-action="togglePasteMode" data-ctx="gp"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
@@ -303,20 +300,20 @@
             <textarea id="gp-players" placeholder="One per line, e.g. Alice &amp; Bob"></textarea>
           </div>
         </div>
-        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="gp-contact-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
-          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Optional contact info — used for notifications and shared with co-players.</p>
+        <details class="field-section mt-2 mb-2" id="gp-contact-section">
+          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <p class="text-muted fs-sm m-0 mt-1-5 mb-2" data-i18n="txt_contact_help">Optional contact info — used for notifications and shared with co-players.</p>
           <div id="gp-contact-container"></div>
         </details>
-        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="gp-strength-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
-          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Used for initial seeding only — real scores take over after round 1.</p>
+        <details class="field-section mt-2 mb-2" id="gp-strength-section">
+          <summary class="cursor-pointer fw-700 fs-lg">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
+          <p class="text-muted fs-sm m-0 mt-1-5 mb-2" data-i18n="txt_conv_strength_help">Used for initial seeding only — real scores take over after round 1.</p>
           <div id="gp-strength-container"></div>
         </details>
-        <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start;margin-top:0.5rem">
-          <div class="field-section" style="flex:1;min-width:220px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.55rem">
-              <div class="field-section-title" style="margin-bottom:0" data-i18n="txt_txt_courts">Courts</div>
+        <div class="create-sections-row">
+          <div class="field-section field-section--courts">
+            <div class="d-flex items-center justify-between mb-2">
+              <div class="field-section-title mb-0" data-i18n="txt_txt_courts">Courts</div>
               <label class="switch-label">
                 <input type="checkbox" id="gp-assign-courts" checked onchange="toggleCourtSection('gp')">
                 <span class="switch-track"></span>
@@ -324,57 +321,57 @@
               </label>
             </div>
             <div id="gp-courts-detail">
-              <div class="num-field" style="margin-bottom:0.55rem">
+              <div class="num-field mb-2">
                 <label data-i18n="txt_txt_number_of_courts">Number of courts</label>
                 <input id="gp-court-count" type="number" value="2" min="1" max="20" oninput="renderCourtInputs('gp')">
               </div>
               <div class="court-names-grid" id="gp-court-names-container"></div>
             </div>
           </div>
-          <div class="field-section" style="flex:1;min-width:180px">
+          <div class="field-section field-section--groups">
             <div class="field-section-title" data-i18n="txt_txt_groups">Groups</div>
-            <div class="num-field" style="margin-bottom:0.55rem">
+            <div class="num-field mb-2">
               <label data-i18n="txt_txt_number_of_groups">Number of groups</label>
               <input id="gp-num-groups" type="number" value="2" min="1" oninput="renderGroupInputs()">
             </div>
             <div class="court-names-grid" id="gp-group-names-container"></div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.25rem">
-          <input type="checkbox" id="gp-public" checked style="width:1rem;height:1rem;cursor:pointer">
-          <label for="gp-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
+        <div class="d-flex items-center gap-2 mt-2 mb-1">
+          <input type="checkbox" id="gp-public" checked class="cursor-pointer">
+          <label for="gp-public" class="fs-md cursor-pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
-        <div id="gp-group-preview" class="field-section" style="display:none;margin-top:0.75rem"></div>
-        <div id="gp-create-buttons" style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" data-action="withLoading" data-handler="previewGPGroups" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
-        <div id="gp-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
+        <div id="gp-group-preview" class="field-section mt-3" style="display:none"></div>
+        <div id="gp-create-buttons" class="ta-center mt-3"><button type="button" class="btn btn-success btn-lg-action" data-action="withLoading" data-handler="previewGPGroups" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
+        <div id="gp-msg" class="alert alert-info hidden mt-3"></div>
       </div>
 
       <div class="subtab-panel" id="create-panel-mex">
-        <div class="field-section" style="margin-bottom:0.75rem">
-          <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_txt_title">Title</div>
-          <input id="mex-name" value="" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
+        <div class="field-section mb-3">
+          <div class="field-section-title mb-2" data-i18n="txt_txt_title">Title</div>
+          <input id="mex-name" value="" class="tournament-name-input field-grow" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name">
         </div>
-        <div class="create-meta-row" style="margin-bottom:0.85rem">
-          <div class="field-section create-meta-card" style="margin-bottom:0">
-            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_comm_col_community">Community</div>
-            <select id="create-community-mex" class="tournament-name-input create-community-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Community" data-i18n-aria-label="txt_comm_col_community" title="Community" data-i18n-title="txt_comm_col_community">
+        <div class="create-meta-row core-only mb-3-5">
+          <div class="field-section create-meta-card mb-0">
+            <div class="field-section-title mb-2" data-i18n="txt_comm_col_community">Community</div>
+            <select id="create-community-mex" class="tournament-name-input create-community-select create-affiliation-select" aria-label="Community" data-i18n-aria-label="txt_comm_col_community" title="Community" data-i18n-title="txt_comm_col_community">
               <option value="open" data-i18n="txt_comm_global_default">Global (default)</option>
             </select>
           </div>
-          <div class="field-section create-meta-card create-club-wrapper" style="margin-bottom:0;display:none">
-            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_create_club">Club</div>
-            <select id="create-club-mex" class="tournament-name-input create-club-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Club" data-i18n-aria-label="txt_create_club" title="Club" data-i18n-title="txt_create_club"></select>
+          <div class="field-section create-meta-card create-club-wrapper mb-0" style="display:none">
+            <div class="field-section-title mb-2" data-i18n="txt_create_club">Club</div>
+            <select id="create-club-mex" class="tournament-name-input create-club-select create-affiliation-select" aria-label="Club" data-i18n-aria-label="txt_create_club" title="Club" data-i18n-title="txt_create_club"></select>
           </div>
         </div>
         <div class="field-section">
           <div class="participants-header">
-            <div style="display:flex;align-items:center;gap:0.5rem">
-              <span class="field-section-title" style="margin-bottom:0" id="mex-players-label" data-i18n="txt_txt_participants">Participants</span>
+            <div class="d-flex items-center gap-2">
+              <span class="field-section-title mb-0" id="mex-players-label" data-i18n="txt_txt_participants">Participants</span>
               <span class="participant-count" id="mex-participant-count"></span>
             </div>
-            <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+            <div class="d-flex gap-1-5 flex-wrap">
               <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="mex" data-i18n="txt_txt_clear_all">Clear all</button>
-              <button type="button" class="paste-list-btn" onclick="addPlayersFromClub('mex')" data-i18n="txt_create_add_from_club">Add from club</button>
+              <button type="button" class="paste-list-btn core-only" onclick="addPlayersFromClub('mex')" data-i18n="txt_create_add_from_club">Add from club</button>
               <button type="button" class="paste-list-btn" id="mex-paste-toggle" data-action="togglePasteMode" data-ctx="mex"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
@@ -386,19 +383,19 @@
             <textarea id="mex-players" placeholder="One per line"></textarea>
           </div>
         </div>
-        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="mex-contact-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
-          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Optional contact info — used for notifications and shared with co-players.</p>
+        <details class="field-section mt-2 mb-2" id="mex-contact-section">
+          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <p class="text-muted fs-sm m-0 mt-1-5 mb-2" data-i18n="txt_contact_help">Optional contact info — used for notifications and shared with co-players.</p>
           <div id="mex-contact-container"></div>
         </details>
-        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="mex-strength-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
-          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Used for initial seeding only — real scores take over after round 1.</p>
+        <details class="field-section mt-2 mb-2" id="mex-strength-section">
+          <summary class="cursor-pointer fw-700 fs-lg">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
+          <p class="text-muted fs-sm m-0 mt-1-5 mb-2" data-i18n="txt_conv_strength_help">Used for initial seeding only — real scores take over after round 1.</p>
           <div id="mex-strength-container"></div>
         </details>
-        <div class="field-section" style="margin-top:0.5rem">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.55rem">
-            <div class="field-section-title" style="margin-bottom:0" data-i18n="txt_txt_courts">Courts</div>
+        <div class="field-section mt-2">
+          <div class="d-flex items-center justify-between mb-2">
+            <div class="field-section-title mb-0" data-i18n="txt_txt_courts">Courts</div>
             <label class="switch-label">
               <input type="checkbox" id="mex-assign-courts" checked onchange="toggleCourtSection('mex')">
               <span class="switch-track"></span>
@@ -406,32 +403,32 @@
             </label>
           </div>
           <div id="mex-courts-detail">
-            <div class="num-field" style="margin-bottom:0.55rem">
+            <div class="num-field mb-2">
               <label data-i18n="txt_txt_number_of_courts">Number of courts</label>
               <input id="mex-court-count" type="number" value="2" min="1" max="20" oninput="renderCourtInputs('mex')">
             </div>
             <div class="court-names-grid" id="mex-court-names-container"></div>
           </div>
         </div>
-        <div class="field-section" style="margin-top:0.5rem">
+        <div class="field-section mt-2">
           <div class="field-section-title" data-i18n="txt_txt_parameters">Parameters</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem 1.25rem;margin-bottom:0.85rem">
-            <div style="display:flex;flex-direction:column;gap:0.3rem">
-              <label style="font-size:0.8rem;color:var(--text-muted)" data-i18n="txt_txt_total_points_per_match">Total points per match</label>
-              <input id="mex-pts" type="number" value="26" min="1" style="width:80px">
+          <div class="mex-settings-grid mb-3-5">
+            <div class="d-flex flex-col gap-1">
+              <label class="fs-sm text-muted" data-i18n="txt_txt_total_points_per_match">Total points per match</label>
+              <input id="mex-pts" type="number" value="26" min="1" class="mex-points-input">
             </div>
-            <div style="display:flex;flex-direction:column;gap:0.3rem">
-              <label style="font-size:0.8rem;color:var(--text-muted)" data-i18n="txt_txt_number_of_rounds">Number of rounds</label>
-              <div style="display:flex;align-items:center;gap:0.6rem">
-                <div class="score-mode-toggle" id="mex-rounds-toggle" style="flex-shrink:0">
+            <div class="d-flex flex-col gap-1">
+              <label class="fs-sm text-muted" data-i18n="txt_txt_number_of_rounds">Number of rounds</label>
+              <div class="d-flex items-center gap-2-5">
+                <div class="score-mode-toggle shrink-0" id="mex-rounds-toggle">
                   <button type="button" class="active" data-action="setMexRoundsMode" data-rounds-mode="unlimited" data-i18n="txt_txt_unlimited">∞ Unlimited</button>
                   <button type="button" data-action="setMexRoundsMode" data-rounds-mode="fixed" data-i18n="txt_txt_fixed">Fixed</button>
                 </div>
-                <input id="mex-rounds" type="number" value="8" min="1" style="width:64px;display:none" aria-label="Number of rounds">
+                <input id="mex-rounds" type="number" value="8" min="1" class="mex-rounds-input" style="display:none" aria-label="Number of rounds">
               </div>
             </div>
           </div>
-          <details class="advanced-section" id="mex-advanced" style="margin-bottom:0;border-radius:6px">
+          <details class="advanced-section advanced-section--flush" id="mex-advanced">
             <summary data-i18n="txt_txt_advanced_settings">Advanced Settings</summary>
             <div class="advanced-grid">
               <div class="adv-field">
@@ -440,12 +437,12 @@
                 <small>Max rating diff to share a group. Blank = snake-draft.</small>
               </div>
               <div class="adv-field">
-                <label data-i18n="txt_txt_win_bonus_label">Win bonus <small style="font-weight:400">(0 = off)</small></label>
+                <label data-i18n="txt_txt_win_bonus_label">Win bonus <small class="fw-normal">(0 = off)</small></label>
                 <input id="mex-win-bonus" type="number" value="0" min="0">
                 <small data-i18n="txt_txt_win_bonus_help">Extra points for the winner. E.g. <em>5</em>: winning 20–12 credits 25 pts.</small>
               </div>
               <div class="adv-field">
-                <label data-i18n="txt_txt_rival_strength_label">Rival strength <small style="font-weight:400">(0–1)</small></label>
+                <label data-i18n="txt_txt_rival_strength_label">Rival strength <small class="fw-normal">(0–1)</small></label>
                 <input id="mex-strength-weight" type="number" value="0" min="0" max="1" step="0.05">
                 <small data-i18n="txt_txt_rival_strength_help">Boosts points for beating strong opponents. Higher weight = stronger effect.</small>
               </div>
@@ -470,56 +467,56 @@
                 <small data-i18n="txt_txt_strength_loss_factor_help">Fraction applied to the losing team.</small>
               </div>
               <div class="adv-field">
-                <label data-i18n="txt_txt_loss_discount_label">Loss discount <small style="font-weight:400">(1 = none)</small></label>
+                <label data-i18n="txt_txt_loss_discount_label">Loss discount <small class="fw-normal">(1 = none)</small></label>
                 <input id="mex-loss-discount" type="number" value="1" min="0" max="1" step="0.05">
                 <small data-i18n="txt_txt_loss_discount_help">Multiplier on the loser’s scored pts. E.g. <em>0.75</em>: losing 12–20 credits 9 pts.</small>
               </div>
               <div class="adv-field">
-                <label data-i18n="txt_txt_balance_tolerance_label">Balance tolerance <small style="font-weight:400">(0 = strict)</small></label>
+                <label data-i18n="txt_txt_balance_tolerance_label">Balance tolerance <small class="fw-normal">(0 = strict)</small></label>
                 <input id="mex-balance-tol" type="number" value="0.2" min="0" max="2" step="0.1">
                 <small data-i18n="txt_txt_balance_tolerance_help">Imbalance the optimiser may accept to avoid repeat matchups. <em>0.2</em> = 20% looser.</small>
               </div>              <div class="adv-field">
-                <label data-i18n="txt_txt_teammate_repeat_weight_label">Teammate repeat weight <small style="font-weight:400">(&ge; 0)</small></label>
+                <label data-i18n="txt_txt_teammate_repeat_weight_label">Teammate repeat weight <small class="fw-normal">(&ge; 0)</small></label>
                 <input id="mex-teammate-repeat-wt" type="number" value="2" min="0" step="0.1">
                 <small data-i18n="txt_txt_teammate_repeat_weight_help">How strongly repeated partners are penalised. Higher = more varied pairings.</small>
               </div>
               <div class="adv-field">
-                <label data-i18n="txt_txt_opponent_repeat_weight_label">Opponent repeat weight <small style="font-weight:400">(&ge; 0)</small></label>
+                <label data-i18n="txt_txt_opponent_repeat_weight_label">Opponent repeat weight <small class="fw-normal">(&ge; 0)</small></label>
                 <input id="mex-opponent-repeat-wt" type="number" value="1" min="0" step="0.1">
                 <small data-i18n="txt_txt_opponent_repeat_weight_help">How strongly repeated opponents are penalised. Higher = more varied matchups.</small>
               </div>
               <div class="adv-field">
-                <label data-i18n="txt_txt_repeat_decay_label">Repeat decay <small style="font-weight:400">(0 = off)</small></label>
+                <label data-i18n="txt_txt_repeat_decay_label">Repeat decay <small class="fw-normal">(0 = off)</small></label>
                 <input id="mex-repeat-decay" type="number" value="0.5" min="0" step="0.1">
                 <small data-i18n="txt_txt_repeat_decay_help">Time-decay for repeat penalties. Recent repeats hurt more. Higher = faster fade of old repeats.</small>
               </div>
               <div class="adv-field" id="mex-partner-balance-wt-field">
-                <label data-i18n="txt_txt_partner_balance_weight_label">Partner balance weight <small style="font-weight:400">(0 = off)</small></label>
+                <label data-i18n="txt_txt_partner_balance_weight_label">Partner balance weight <small class="fw-normal">(0 = off)</small></label>
                 <input id="mex-partner-balance-wt" type="number" value="0" min="0" step="0.1">
                 <small data-i18n="txt_txt_partner_balance_weight_help">Penalises pairings where partners have very different skill levels. Higher = more evenly matched partners preferred.</small>
               </div>            </div>
           </details>
         </div>
-        <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.25rem">
-          <input type="checkbox" id="mex-public" checked style="width:1rem;height:1rem;cursor:pointer">
-          <label for="mex-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
+        <div class="d-flex items-center gap-2 mt-2 mb-1">
+          <input type="checkbox" id="mex-public" checked class="cursor-pointer">
+          <label for="mex-public" class="fs-md cursor-pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
-        <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" data-action="withLoading" data-handler="createMex" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
-        <div id="mex-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
+        <div class="ta-center mt-3"><button type="button" class="btn btn-success btn-lg-action" data-action="withLoading" data-handler="createMex" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
+        <div id="mex-msg" class="alert alert-info hidden mt-3"></div>
       </div>
 
       <!-- ─── CREATE LOBBY ────────────────────────────────── -->
       <div class="subtab-panel" id="create-panel-lobby">
-        <div class="create-meta-row" style="margin-bottom:0.85rem">
-          <div class="field-section create-meta-card" style="margin-bottom:0">
-            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_comm_col_community">Community</div>
-            <select id="create-community-lobby" class="tournament-name-input create-community-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Community" data-i18n-aria-label="txt_comm_col_community" title="Community" data-i18n-title="txt_comm_col_community">
+        <div class="create-meta-row core-only mb-3-5">
+          <div class="field-section create-meta-card mb-0">
+            <div class="field-section-title mb-2" data-i18n="txt_comm_col_community">Community</div>
+            <select id="create-community-lobby" class="tournament-name-input create-community-select create-affiliation-select" aria-label="Community" data-i18n-aria-label="txt_comm_col_community" title="Community" data-i18n-title="txt_comm_col_community">
               <option value="open" data-i18n="txt_comm_global_default">Global (default)</option>
             </select>
           </div>
-          <div class="field-section create-meta-card create-club-wrapper" style="margin-bottom:0;display:none">
-            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_create_club">Club</div>
-            <select id="create-club-lobby" class="tournament-name-input create-club-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Club" data-i18n-aria-label="txt_create_club" title="Club" data-i18n-title="txt_create_club"></select>
+          <div class="field-section create-meta-card create-club-wrapper mb-0" style="display:none">
+            <div class="field-section-title mb-2" data-i18n="txt_create_club">Club</div>
+            <select id="create-club-lobby" class="tournament-name-input create-club-select create-affiliation-select" aria-label="Club" data-i18n-aria-label="txt_create_club" title="Club" data-i18n-title="txt_create_club"></select>
           </div>
         </div>
         <div id="reg-create-form"></div>
@@ -527,31 +524,31 @@
 
       <!-- ─── CREATE PLAY-OFFS ONLY ──────────────────────── -->
       <div class="subtab-panel" id="create-panel-po">
-        <div class="field-section" style="margin-bottom:0.75rem">
-          <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_txt_title">Title</div>
-          <input id="po-name" value="" class="tournament-name-input" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name" style="flex:1;min-width:160px">
+        <div class="field-section mb-3">
+          <div class="field-section-title mb-2" data-i18n="txt_txt_title">Title</div>
+          <input id="po-name" value="" class="tournament-name-input field-grow" data-i18n-placeholder="txt_txt_tournament_name" placeholder="Tournament name">
         </div>
-        <div class="create-meta-row" style="margin-bottom:0.85rem">
-          <div class="field-section create-meta-card" style="margin-bottom:0">
-            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_comm_col_community">Community</div>
-            <select id="create-community-po" class="tournament-name-input create-community-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Community" data-i18n-aria-label="txt_comm_col_community" title="Community" data-i18n-title="txt_comm_col_community">
+        <div class="create-meta-row core-only mb-3-5">
+          <div class="field-section create-meta-card mb-0">
+            <div class="field-section-title mb-2" data-i18n="txt_comm_col_community">Community</div>
+            <select id="create-community-po" class="tournament-name-input create-community-select create-affiliation-select" aria-label="Community" data-i18n-aria-label="txt_comm_col_community" title="Community" data-i18n-title="txt_comm_col_community">
               <option value="open" data-i18n="txt_comm_global_default">Global (default)</option>
             </select>
           </div>
-          <div class="field-section create-meta-card create-club-wrapper" style="margin-bottom:0;display:none">
-            <div class="field-section-title" style="margin-bottom:0.5rem" data-i18n="txt_create_club">Club</div>
-            <select id="create-club-po" class="tournament-name-input create-club-select" style="width:100%;padding:0.35rem 0.5rem;font-size:0.85rem" aria-label="Club" data-i18n-aria-label="txt_create_club" title="Club" data-i18n-title="txt_create_club"></select>
+          <div class="field-section create-meta-card create-club-wrapper mb-0" style="display:none">
+            <div class="field-section-title mb-2" data-i18n="txt_create_club">Club</div>
+            <select id="create-club-po" class="tournament-name-input create-club-select create-affiliation-select" aria-label="Club" data-i18n-aria-label="txt_create_club" title="Club" data-i18n-title="txt_create_club"></select>
           </div>
         </div>
         <div class="field-section">
           <div class="participants-header">
-            <div style="display:flex;align-items:center;gap:0.5rem">
-              <span class="field-section-title" style="margin-bottom:0" id="po-players-label" data-i18n="txt_txt_participants">Participants</span>
+            <div class="d-flex items-center gap-2">
+              <span class="field-section-title mb-0" id="po-players-label" data-i18n="txt_txt_participants">Participants</span>
               <span class="participant-count" id="po-participant-count"></span>
             </div>
-            <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+            <div class="d-flex gap-1-5 flex-wrap">
               <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="po" data-i18n="txt_txt_clear_all">Clear all</button>
-              <button type="button" class="paste-list-btn" onclick="addPlayersFromClub('po')" data-i18n="txt_create_add_from_club">Add from club</button>
+              <button type="button" class="paste-list-btn core-only" onclick="addPlayersFromClub('po')" data-i18n="txt_create_add_from_club">Add from club</button>
               <button type="button" class="paste-list-btn" id="po-paste-toggle" data-action="togglePasteMode" data-ctx="po"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
@@ -563,19 +560,19 @@
             <textarea id="po-players" placeholder="One per line"></textarea>
           </div>
         </div>
-        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="po-contact-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
-          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_contact_help">Optional contact info — used for notifications and shared with co-players.</p>
+        <details class="field-section mt-2 mb-2" id="po-contact-section">
+          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <p class="text-muted fs-sm m-0 mt-1-5 mb-2" data-i18n="txt_contact_help">Optional contact info — used for notifications and shared with co-players.</p>
           <div id="po-contact-container"></div>
         </details>
-        <details class="field-section" style="margin-top:0.5rem;margin-bottom:0.5rem" id="po-strength-section">
-          <summary style="cursor:pointer;font-weight:700;font-size:0.88rem">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
-          <p style="color:var(--text-muted);font-size:0.78rem;margin:0.35rem 0 0.5rem" data-i18n="txt_conv_strength_help">Used for initial seeding only — real scores take over after round 1.</p>
+        <details class="field-section mt-2 mb-2" id="po-strength-section">
+          <summary class="cursor-pointer fw-700 fs-lg">💪 <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
+          <p class="text-muted fs-sm m-0 mt-1-5 mb-2" data-i18n="txt_conv_strength_help">Used for initial seeding only — real scores take over after round 1.</p>
           <div id="po-strength-container"></div>
         </details>
-        <div class="field-section" style="margin-top:0.5rem">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.55rem">
-            <div class="field-section-title" style="margin-bottom:0" data-i18n="txt_txt_courts">Courts</div>
+        <div class="field-section mt-2">
+          <div class="d-flex items-center justify-between mb-2">
+            <div class="field-section-title mb-0" data-i18n="txt_txt_courts">Courts</div>
             <label class="switch-label">
               <input type="checkbox" id="po-assign-courts" checked onchange="toggleCourtSection('po')">
               <span class="switch-track"></span>
@@ -583,42 +580,42 @@
             </label>
           </div>
           <div id="po-courts-detail">
-            <div class="num-field" style="margin-bottom:0.55rem">
+            <div class="num-field mb-2">
               <label data-i18n="txt_txt_number_of_courts">Number of courts</label>
               <input id="po-court-count" type="number" value="2" min="1" max="20" oninput="renderCourtInputs('po')">
             </div>
             <div class="court-names-grid" id="po-court-names-container"></div>
           </div>
         </div>
-        <div class="field-section" style="margin-top:0.5rem">
+        <div class="field-section mt-2">
           <div class="field-section-title" data-i18n="txt_txt_play_off_format">Play-off format</div>
-          <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.2rem">
-            <input type="checkbox" id="po-double-elim" style="width:1rem;height:1rem;cursor:pointer" onchange="_updatePoMatchEstimate()">
-            <label for="po-double-elim" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_double_elimination">Double elimination</label>
+          <div class="d-flex items-center gap-2 mt-1">
+            <input type="checkbox" id="po-double-elim" class="cursor-pointer" onchange="_updatePoMatchEstimate()">
+            <label for="po-double-elim" class="fs-md cursor-pointer" data-i18n="txt_txt_double_elimination">Double elimination</label>
           </div>
-          <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.35rem">
-            <input type="checkbox" id="po-espejo" style="width:1rem;height:1rem;cursor:pointer" onchange="_poToggleEspejo()">
-            <label for="po-espejo" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_espejo_format">Espejo (parallel losers bracket)</label>
+          <div class="d-flex items-center gap-2 mt-1-5">
+            <input type="checkbox" id="po-espejo" class="cursor-pointer" onchange="_poToggleEspejo()">
+            <label for="po-espejo" class="fs-md cursor-pointer" data-i18n="txt_txt_espejo_format">Espejo (parallel losers bracket)</label>
           </div>
-          <div id="po-espejo-options" style="display:none;margin-top:0.3rem;padding:0.4rem 0.6rem;border-left:2px solid var(--border);margin-left:1.4rem">
-            <div style="display:flex;align-items:center;gap:0.5rem">
-              <input type="checkbox" id="po-espejo-super-final" style="width:1rem;height:1rem;cursor:pointer" onchange="_updatePoMatchEstimate()">
-              <label for="po-espejo-super-final" style="font-size:0.82rem;cursor:pointer" data-i18n="txt_txt_espejo_super_final">Super Final (WB winner vs LB winner)</label>
+          <div id="po-espejo-options" class="espejo-options espejo-options--indented" style="display:none">
+            <div class="d-flex items-center gap-2">
+              <input type="checkbox" id="po-espejo-super-final" class="cursor-pointer" onchange="_updatePoMatchEstimate()">
+              <label for="po-espejo-super-final" class="fs-sm cursor-pointer" data-i18n="txt_txt_espejo_super_final">Super Final (WB winner vs LB winner)</label>
             </div>
           </div>
-          <div id="po-match-estimate" class="gp-playoff-match-estimate" style="margin-top:0.4rem"></div>
+          <div id="po-match-estimate" class="gp-playoff-match-estimate mt-1-5"></div>
         </div>
-        <div class="field-section" style="margin-top:0.5rem">
+        <div class="field-section mt-2">
           <button type="button" class="btn" data-action="generatePoPreviewSchema" data-i18n="txt_txt_preview_bracket">Preview bracket</button>
-          <div id="po-preview-msg" class="alert alert-error hidden" style="margin-top:0.5rem"></div>
-          <div id="po-preview-result" style="margin-top:0.75rem;text-align:center"></div>
+          <div id="po-preview-msg" class="alert alert-error hidden mt-2"></div>
+          <div id="po-preview-result" class="mt-3 ta-center"></div>
         </div>
-        <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;margin-bottom:0.25rem">
-          <input type="checkbox" id="po-public" checked style="width:1rem;height:1rem;cursor:pointer">
-          <label for="po-public" style="font-size:0.85rem;cursor:pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
+        <div class="d-flex items-center gap-2 mt-2 mb-1">
+          <input type="checkbox" id="po-public" checked class="cursor-pointer">
+          <label for="po-public" class="fs-md cursor-pointer" data-i18n="txt_txt_public_tournament">Public tournament</label>
         </div>
-        <div style="text-align:center;margin-top:0.75rem"><button type="button" class="btn btn-success" style="padding:0.75rem 1.5rem;font-size:1.1rem" data-action="withLoading" data-handler="createPO" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
-        <div id="po-msg" class="alert alert-info hidden" style="margin-top:0.75rem"></div>
+        <div class="ta-center mt-3"><button type="button" class="btn btn-success btn-lg-action" data-action="withLoading" data-handler="createPO" data-i18n="txt_txt_create_tournament">Create Tournament</button></div>
+        <div id="po-msg" class="alert alert-info hidden mt-3"></div>
       </div>
     </div>
   </div>
@@ -633,30 +630,30 @@
        (admin-players.js). The #ph-detail sibling below stays legacy innerHTML. -->
   <div class="tab-panel" id="panel-players-hub" role="tabpanel">
     <div class="card" id="ph-search-island" v-scope>
-      <h2 style="margin:0 0 0.75rem" data-i18n="txt_ph_admin_title">Players Hub</h2>
-      <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
-        <input type="text" id="ph-search-input" v-model="query" @keydown.enter="search()" placeholder="Search by name or email…" data-i18n-placeholder="txt_hub_search_placeholder" style="flex:1;min-width:200px;padding:0.45rem 0.65rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
+      <h2 class="m-0 mb-3" data-i18n="txt_ph_admin_title">Players Hub</h2>
+      <div class="d-flex gap-2 mb-4 flex-wrap">
+        <input type="text" id="ph-search-input" v-model="query" @keydown.enter="search()" placeholder="Search by name or email…" data-i18n-placeholder="txt_hub_search_placeholder" class="admin-search-input" autocomplete="off">
         <button type="button" class="btn btn-primary btn-sm" id="ph-search-btn" @click="search()"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M909.6 854.5L649.9 594.8C690.2 542.7 712 479 712 412c0-80.2-31.3-155.4-87.9-212.1-56.6-56.7-132-87.9-212.1-87.9s-155.5 31.3-212.1 87.9C143.2 256.5 112 331.8 112 412c0 80.1 31.3 155.5 87.9 212.1C256.5 680.8 331.8 712 412 712c67 0 130.6-21.8 182.7-62l259.7 259.6a8.2 8.2 0 0011.6 0l43.6-43.5a8.2 8.2 0 000-11.6zM570.4 570.4C528 612.7 471.8 636 412 636s-116-23.3-158.4-65.6C211.3 528 188 471.8 188 412s23.3-116.1 65.6-158.4C296 211.3 352.2 188 412 188s116.1 23.2 158.4 65.6S636 352.2 636 412s-23.3 116.1-65.6 158.4z"/></svg> <span data-i18n="txt_ph_search_btn">Search</span></button>
       </div>
       <div id="ph-results">
         <p v-if="searching"><em>{{ t('txt_ph_searching') }}</em></p>
         <div v-else-if="error" class="alert alert-error">{{ error }}</div>
-        <p v-else-if="searched && !profiles.length" style="color:var(--text-muted)">{{ query ? t('txt_ph_no_profiles_matching_q', { q: query }) : (t('txt_hub_no_results') + '.') }}</p>
+        <p v-else-if="searched && !profiles.length" class="text-muted">{{ query ? t('txt_ph_no_profiles_matching_q', { q: query }) : (t('txt_hub_no_results') + '.') }}</p>
         <template v-else-if="profiles.length">
-          <details class="ph-profiles-collapse" id="ph-profiles-details" style="margin-top:0.25rem" :open="profilesOpen" @toggle="persistOpen($event)">
-            <summary style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:0.4rem;list-style:none;font-size:0.95rem;font-weight:700;padding:0.3rem 0">
-              <span class="tv-chevron" style="font-size:0.65em;color:var(--text-muted)">&#9658;</span>
+          <details class="ph-profiles-collapse mt-1" id="ph-profiles-details" :open="profilesOpen" @toggle="persistOpen($event)">
+            <summary class="summary-toggle summary-toggle--profiles">
+              <span class="tv-chevron">&#9658;</span>
               {{ t('txt_ph_all_profiles_n', { n: profiles.length }) }}
               <template v-if="ghostCount > 0">
-                <span style="font-size:0.78rem;font-weight:400;color:var(--text-muted)">({{ ghostCount }} {{ t('txt_ph_ghost_badge') }})</span>
+                <span class="fs-sm fw-normal text-muted">({{ ghostCount }} {{ t('txt_ph_ghost_badge') }})</span>
                 <button type="button" @click="$event.preventDefault(); $event.stopPropagation(); toggleShowGhosts()"
-                  style="font-size:0.72rem;padding:0.1rem 0.45rem;background:var(--surface-hover);border:1px solid var(--border);border-radius:3px;cursor:pointer;color:var(--text-muted);line-height:1.4"
+                  class="ph-ghost-toggle"
                   :aria-label="showGhosts ? t('txt_ph_hide_ghosts') : t('txt_ph_show_ghosts')">{{ showGhosts ? t('txt_ph_hide_ghosts') : t('txt_ph_show_ghosts') }}</button>
               </template>
             </summary>
-            <div class="player-codes-table-wrap" style="margin-top:0.5rem"><table class="player-codes-table">
+            <div class="player-codes-table-wrap mt-2"><table class="player-codes-table">
               <thead><tr class="player-codes-head-row">
-                <th class="player-codes-th-center" style="width:2rem"></th>
+                <th class="player-codes-th-center player-codes-th-narrow"></th>
                 <th class="player-codes-th">{{ t('txt_ph_name') }}</th>
                 <th class="player-codes-th">{{ t('txt_txt_email') }}</th>
                 <th class="player-codes-th-center">{{ t('txt_ph_padel_elo') }}</th>
@@ -668,18 +665,18 @@
               <tbody>
                 <tr v-for="p in visibleProfiles" :key="p.id" class="player-codes-row">
                   <td class="player-codes-cell-center">
-                    <input v-if="p.is_ghost" type="checkbox" class="ph-ghost-check" :checked="!!selectedGhosts[p.id]" :aria-label="t('txt_ph_select_for_merge')" @change="toggleGhost(p.id, $event.target.checked)" style="cursor:pointer">
-                    <input v-else type="checkbox" class="ph-hub-check" :checked="selectedHub === p.id" :aria-label="t('txt_ph_select_as_hub_target')" @change="toggleHub(p.id, $event.target.checked)" style="cursor:pointer">
+                    <input v-if="p.is_ghost" type="checkbox" class="ph-ghost-check cursor-pointer" :checked="!!selectedGhosts[p.id]" :aria-label="t('txt_ph_select_for_merge')" @change="toggleGhost(p.id, $event.target.checked)">
+                    <input v-else type="checkbox" class="ph-hub-check cursor-pointer" :checked="selectedHub === p.id" :aria-label="t('txt_ph_select_as_hub_target')" @change="toggleHub(p.id, $event.target.checked)">
                   </td>
-                  <td class="player-codes-name">{{ p.name || '—' }}<span v-if="p.is_ghost" style="font-size:0.7rem;background:var(--surface-hover);color:var(--text-muted);border:1px solid var(--border);border-radius:3px;padding:0 0.3em;vertical-align:middle;margin-left:0.3em">{{ t('txt_ph_ghost_badge') }}</span></td>
+                  <td class="player-codes-name">{{ p.name || '—' }}<span v-if="p.is_ghost" class="ph-ghost-badge">{{ t('txt_ph_ghost_badge') }}</span></td>
                   <td class="player-codes-cell">{{ p.email || '—' }}</td>
-                  <td class="player-codes-cell-center"><span v-if="padelEloMatches(p)">{{ padelElo(p) }} <span style="font-size:0.75rem;color:var(--text-muted)">({{ padelEloMatches(p) }})</span></span><span v-else style="color:var(--text-muted)">—</span></td>
-                  <td class="player-codes-cell-center"><span v-if="tennisEloMatches(p)">{{ tennisElo(p) }} <span style="font-size:0.75rem;color:var(--text-muted)">({{ tennisEloMatches(p) }})</span></span><span v-else style="color:var(--text-muted)">—</span></td>
+                  <td class="player-codes-cell-center"><span v-if="padelEloMatches(p)">{{ padelElo(p) }} <span class="fs-xs text-muted">({{ padelEloMatches(p) }})</span></span><span v-else class="text-muted">—</span></td>
+                  <td class="player-codes-cell-center"><span v-if="tennisEloMatches(p)">{{ tennisElo(p) }} <span class="fs-xs text-muted">({{ tennisEloMatches(p) }})</span></span><span v-else class="text-muted">—</span></td>
                   <td class="player-codes-cell">
-                    <span v-if="p.is_ghost" style="color:var(--text-muted)" :title="t('txt_ph_ghost_no_passphrase')">—</span>
+                    <span v-if="p.is_ghost" class="text-muted" :title="t('txt_ph_ghost_no_passphrase')">—</span>
                     <code v-else class="player-codes-passphrase" @click="copyText($event)" :title="t('txt_txt_click_to_copy')">{{ p.passphrase }}</code>
                   </td>
-                  <td class="player-codes-cell" style="font-size:0.8rem;color:var(--text-muted)">{{ fmtDate(p.created_at) }}</td>
+                  <td class="player-codes-cell fs-sm text-muted">{{ fmtDate(p.created_at) }}</td>
                   <td class="player-codes-cell-center">
                     <button type="button" class="btn btn-primary btn-sm" @click="manage(p.id)">{{ t('txt_ph_manage') }}</button>
                     <button v-if="p.is_ghost" type="button" class="btn btn-sm btn-success" @click="showConvert(p.id)" :title="t('txt_ph_convert_ghost_hint')">{{ t('txt_ph_convert_ghost') }}</button>
@@ -690,34 +687,34 @@
           </details>
           <!-- Past participants (played but never got a profile) — selectable
                as merge sources so their history can be folded into a player. -->
-          <details class="ph-profiles-collapse" style="margin-top:0.5rem" :open="pastOpen" @toggle="pastOpen = $event.target.open">
-            <summary style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:0.4rem;list-style:none;font-size:0.95rem;font-weight:700;padding:0.3rem 0">
-              <span class="tv-chevron" style="font-size:0.65em;color:var(--text-muted)">&#9658;</span>
+          <details class="ph-profiles-collapse mt-2" :open="pastOpen" @toggle="pastOpen = $event.target.open">
+            <summary class="summary-toggle summary-toggle--profiles">
+              <span class="tv-chevron">&#9658;</span>
               {{ t('txt_ph_past_participants_title') }}
-              <span v-if="selectedPastCount" style="font-size:0.78rem;font-weight:400;color:var(--text-muted)">({{ selectedPastCount }} {{ t('txt_ph_selected_badge') }})</span>
+              <span v-if="selectedPastCount" class="fs-sm fw-normal text-muted">({{ selectedPastCount }} {{ t('txt_ph_selected_badge') }})</span>
             </summary>
-            <div style="margin-top:0.5rem">
-              <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 0.5rem">{{ t('txt_ph_past_participants_hint') }}</p>
-              <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap">
+            <div class="mt-2">
+              <p class="fs-sm text-muted m-0 mb-2">{{ t('txt_ph_past_participants_hint') }}</p>
+              <div class="d-flex gap-2 mb-2 flex-wrap">
                 <input type="text" v-model="pastQuery" @keydown.enter="searchPast()" :placeholder="t('txt_ph_past_search_placeholder')" :aria-label="t('txt_ph_past_search_placeholder')"
-                  style="flex:1;min-width:180px;padding:0.4rem 0.6rem;font-size:0.88rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
+                  class="ph-past-search-input" autocomplete="off">
                 <button type="button" class="btn btn-sm btn-primary" @click="searchPast()">{{ t('txt_ph_search_btn') }}</button>
               </div>
               <p v-if="pastSearching"><em>{{ t('txt_ph_searching') }}</em></p>
-              <p v-else-if="pastSearched && !pastResults.length" style="color:var(--text-muted);font-size:0.86rem">{{ t('txt_txt_no_results') }}</p>
+              <p v-else-if="pastSearched && !pastResults.length" class="text-muted fs-md">{{ t('txt_txt_no_results') }}</p>
               <div v-else-if="pastResults.length" class="player-codes-table-wrap"><table class="player-codes-table">
                 <thead><tr class="player-codes-head-row">
-                  <th class="player-codes-th-center" style="width:2rem"></th>
+                  <th class="player-codes-th-center player-codes-th-narrow"></th>
                   <th class="player-codes-th">{{ t('txt_ph_name') }}</th>
                   <th class="player-codes-th">{{ t('txt_ph_past_last_tournament') }}</th>
                 </tr></thead>
                 <tbody>
                   <tr v-for="r in pastResults" :key="r.player_id" class="player-codes-row">
                     <td class="player-codes-cell-center">
-                      <input type="checkbox" :checked="!!selectedPast[r.player_id]" :aria-label="t('txt_ph_select_for_merge')" @change="togglePast(r.player_id, r.name, $event.target.checked)" style="cursor:pointer">
+                      <input type="checkbox" :checked="!!selectedPast[r.player_id]" :aria-label="t('txt_ph_select_for_merge')" @change="togglePast(r.player_id, r.name, $event.target.checked)" class="cursor-pointer">
                     </td>
                     <td class="player-codes-name">{{ r.name || '—' }}</td>
-                    <td class="player-codes-cell" style="font-size:0.82rem;color:var(--text-muted)">{{ r.last_tournament_name || '—' }}</td>
+                    <td class="player-codes-cell fs-sm text-muted">{{ r.last_tournament_name || '—' }}</td>
                   </tr>
                 </tbody>
               </table></div>
@@ -725,22 +722,22 @@
           </details>
           <!-- Merge / consolidate action bar (reactive on selection) -->
           <div id="ph-merge-bar">
-            <div v-if="mergeMode === 'msg'" class="alert" :class="mergeMsgError ? 'alert-error' : 'alert-info'" style="margin-top:0.5rem">{{ mergeMsg }}</div>
-            <div v-else-if="mergeMode === 'busy'" style="margin-top:0.75rem;font-size:0.88rem;color:var(--text-muted)"><em>{{ t('txt_ph_merging') }}</em></div>
-            <div v-else-if="mergeMode === 'hub'" style="margin-top:0.75rem;padding:0.65rem 0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
-              <span style="font-size:0.85rem;color:var(--text-muted)">{{ t('txt_ph_hub_selected_hint', { hub: hubProfile ? (hubProfile.name || selectedHub) : selectedHub }) }}</span>
+            <div v-if="mergeMode === 'msg'" class="alert mt-2" :class="mergeMsgError ? 'alert-error' : 'alert-info'">{{ mergeMsg }}</div>
+            <div v-else-if="mergeMode === 'busy'" class="mt-3 fs-lg text-muted"><em>{{ t('txt_ph_merging') }}</em></div>
+            <div v-else-if="mergeMode === 'hub'" class="merge-bar merge-bar--hub">
+              <span class="fs-md text-muted">{{ t('txt_ph_hub_selected_hint', { hub: hubProfile ? (hubProfile.name || selectedHub) : selectedHub }) }}</span>
               <button type="button" class="btn btn-sm btn-muted" @click="suggestForHub()" :disabled="suggesting">{{ suggesting ? t('txt_ph_searching') : t('txt_ph_suggest_matches') }}</button>
               <button type="button" class="btn btn-sm btn-muted" @click="clearSelection()">{{ t('txt_txt_clear') }}</button>
             </div>
-            <div v-else-if="mergeMode === 'hub-ghosts'" style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
-              <span style="font-size:0.88rem">{{ t('txt_ph_merge_into_hub_info', { n: sourceCount, hub: hubProfile ? (hubProfile.name || selectedHub) : selectedHub }) }}</span>
+            <div v-else-if="mergeMode === 'hub-ghosts'" class="merge-bar">
+              <span class="fs-lg">{{ t('txt_ph_merge_into_hub_info', { n: sourceCount, hub: hubProfile ? (hubProfile.name || selectedHub) : selectedHub }) }}</span>
               <button type="button" class="btn btn-primary btn-sm" @click="consolidate(true)">{{ t('txt_ph_merge_into_hub') }}</button>
               <button type="button" class="btn btn-sm btn-muted" @click="clearSelection()">{{ t('txt_txt_clear') }}</button>
             </div>
-            <div v-else-if="mergeMode === 'ghosts'" style="margin-top:0.75rem;padding:0.75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem">
-              <span style="font-size:0.88rem">{{ t('txt_ph_ghosts_selected', { n: sourceCount }) }}</span>
+            <div v-else-if="mergeMode === 'ghosts'" class="merge-bar">
+              <span class="fs-lg">{{ t('txt_ph_ghosts_selected', { n: sourceCount }) }}</span>
               <input type="text" v-model="mergeName" :placeholder="t('txt_ph_consolidate_name_placeholder')" :aria-label="t('txt_ph_consolidate_name_label')"
-                style="flex:1;min-width:160px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
+                class="hub-input hub-input--merge-name">
               <button type="button" class="btn btn-primary btn-sm" @click="consolidate(false)">{{ t('txt_ph_consolidate_ghosts') }}</button>
               <button type="button" class="btn btn-sm btn-muted" @click="clearSelection()">{{ t('txt_txt_clear') }}</button>
             </div>
@@ -754,11 +751,11 @@
   <!-- ─── USER MANAGEMENT (admin only) ──────────────────── -->
   <div class="tab-panel" id="panel-user-mgmt" role="tabpanel">
     <div class="card">
-      <h2 style="margin:0 0 0.75rem" data-i18n="txt_txt_user_management"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> User Management</h2>
-      <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap">
-        <input type="search" id="user-mgmt-search" placeholder="Search users…" data-i18n-placeholder="txt_txt_search_users" autocomplete="off" oninput="filterUserMgmtList(this.value)" style="flex:1;min-width:200px;padding:0.45rem 0.65rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
+      <h2 class="m-0 mb-3" data-i18n="txt_txt_user_management"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> User Management</h2>
+      <div class="d-flex gap-2 mb-3 flex-wrap">
+        <input type="search" id="user-mgmt-search" placeholder="Search users…" data-i18n-placeholder="txt_txt_search_users" autocomplete="off" oninput="filterUserMgmtList(this.value)" class="admin-search-input">
       </div>
-      <div class="subtabs" style="margin-bottom:0.75rem" role="tablist">
+      <div class="subtabs mb-3" role="tablist">
         <button type="button" class="subtab-btn active" id="umgmt-tab-all" onclick="setUserMgmtRoleFilter('all')" data-i18n="txt_txt_all_users">All</button>
         <button type="button" class="subtab-btn" id="umgmt-tab-admin" onclick="setUserMgmtRoleFilter('admin')" data-i18n="txt_txt_admins_tab">Admins</button>
         <button type="button" class="subtab-btn" id="umgmt-tab-user" onclick="setUserMgmtRoleFilter('user')" data-i18n="txt_txt_users_tab">Users</button>
@@ -784,15 +781,15 @@
             <label for="new-user-email" data-i18n="txt_txt_email_optional_placeholder">Email (optional)</label>
             <input id="new-user-email" type="email" placeholder="Email (optional)" data-i18n-placeholder="txt_txt_email_optional_placeholder" autocomplete="email">
           </div>
-          <div class="umgmt-form-grid umgmt-form-grid--community umgmt-form-group">
+          <div class="umgmt-form-grid umgmt-form-grid--community umgmt-form-group core-only">
             <div>
               <label for="new-user-default-community" data-i18n="txt_txt_default_community">Default Community</label>
               <select id="new-user-default-community">
                 <option value="open" data-i18n="txt_comm_global_default">Global</option>
               </select>
             </div>
-            <div style="display:flex;align-items:flex-end">
-              <label style="display:flex;align-items:center;gap:0.4rem;margin:0.15rem 0;white-space:nowrap">
+            <div class="d-flex items-end">
+              <label class="user-mgmt-checkbox-label">
                 <input id="new-user-can-create-clubs" type="checkbox" checked>
                 <span data-i18n="txt_txt_allow_club_creation">Allow club creation</span>
               </label>
@@ -848,11 +845,11 @@
       <div>
         <!-- My default community (hidden until specialized communities exist) -->
         <div class="card" id="comm-my-default-card" v-if="hasSpecialized">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;gap:0.5rem">
-            <h2 style="margin:0">⭐ <span data-i18n="txt_comm_default_title">My Default Community</span></h2>
+          <div class="d-flex items-center justify-between mb-2 gap-2">
+            <h2 class="m-0">⭐ <span data-i18n="txt_comm_default_title">My Default Community</span></h2>
             <button type="button" class="format-info-btn" data-action="openContextInfo" data-context="communities" aria-label="About communities" data-i18n-aria-label="txt_comm_info_panel_title" data-i18n-title="txt_comm_info_panel_title" title="About communities">i</button>
           </div>
-          <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_default_help">The community pre-selected when you create a new tournament or lobby.</p>
+          <p class="text-muted fs-md mb-3" data-i18n="txt_comm_default_help">The community pre-selected when you create a new tournament or lobby.</p>
           <div class="comm-default-form-row">
             <select id="comm-my-default-select" class="comm-default-select" v-model="defaultSelection">
               <option v-for="c in specialized" :key="c.id" :value="c.id">{{ c.name }}</option>
@@ -864,62 +861,62 @@
 
         <!-- Community list management -->
         <div class="card">
-          <h2 style="margin:0 0 0.5rem"><span data-i18n="txt_comm_title">Communities</span></h2>
+          <h2 class="m-0 mb-2"><span data-i18n="txt_comm_title">Communities</span></h2>
           <div id="comm-list">
             <!-- Global default — read-only card, always shown when present -->
-            <div v-if="global" style="display:flex;align-items:center;gap:0.6rem;padding:0.5rem 0.6rem;margin-bottom:0.75rem;background:var(--bg-alt,#f5f5f5);border:1px solid var(--border);border-radius:6px">
-              <span style="font-weight:600;font-size:0.9rem">🌐 {{ t('txt_comm_global') }}</span>
-              <span style="font-size:0.78rem;color:var(--text-muted)">— {{ t('txt_comm_global_desc') }}</span>
-              <span style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);padding:0.15rem 0.4rem;border:1px solid var(--border);border-radius:4px;white-space:nowrap">{{ t('txt_comm_builtin_badge') }}</span>
+            <div v-if="global" class="comm-global-card">
+              <span class="fw-600 fs-lg">🌐 {{ t('txt_comm_global') }}</span>
+              <span class="fs-sm text-muted">— {{ t('txt_comm_global_desc') }}</span>
+              <span class="comm-builtin-badge">{{ t('txt_comm_builtin_badge') }}</span>
             </div>
-            <p v-if="!hasSpecialized" class="muted-note" style="margin-top:0.25rem">
+            <p v-if="!hasSpecialized" class="muted-note mt-1">
               {{ t('txt_comm_no_communities') }}
-              <button type="button" class="btn btn-sm btn-link" style="vertical-align:baseline" @click="openInfo()"><span v-html="icInfo()"></span> {{ t('txt_txt_learn_more') }}</button>
+              <button type="button" class="btn btn-sm btn-link btn-link--inline" @click="openInfo()"><span v-html="icInfo()"></span> {{ t('txt_txt_learn_more') }}</button>
             </p>
             <div v-else class="player-codes-table-wrap"><table class="player-codes-table">
               <thead>
                 <tr class="player-codes-head-row">
                   <th class="player-codes-th">{{ t('txt_comm_col_name') }}</th>
-                  <th class="player-codes-th" style="color:var(--text-muted)">{{ t('txt_comm_col_id') }}</th>
+                  <th class="player-codes-th text-muted">{{ t('txt_comm_col_id') }}</th>
                   <th class="player-codes-th"></th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="c in specialized" :key="c.id" class="player-codes-row">
-                  <td class="player-codes-name" style="font-weight:normal">
+                  <td class="player-codes-name fw-normal">
                     <span v-if="renamingId !== c.id">{{ c.name }}</span>
                     <input v-else type="text" v-model="renameDraft"
                            @keydown.enter="confirmRename(c.id)" @keydown.escape="cancelRename()"
-                           style="padding:0.2rem 0.4rem;font-size:0.88rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);width:100%;max-width:200px">
+                           class="comm-rename-input">
                   </td>
-                  <td class="player-codes-cell" style="color:var(--text-muted);font-size:0.8rem;font-family:monospace">{{ c.id }}</td>
-                  <td class="player-codes-cell-center" style="white-space:nowrap">
+                  <td class="player-codes-cell player-codes-cell--id">{{ c.id }}</td>
+                  <td class="player-codes-cell-center nowrap">
                     <template v-if="renamingId !== c.id">
-                      <button class="btn btn-sm player-codes-icon-btn" @click="startRename(c.id)" style="margin-right:0.25rem" :title="t('txt_comm_rename')"><span v-html="icEdit()"></span></button>
+                      <button class="btn btn-sm player-codes-icon-btn mr-1" @click="startRename(c.id)" :title="t('txt_comm_rename')"><span v-html="icEdit()"></span></button>
                       <button class="btn btn-sm btn-danger player-codes-icon-btn" @click="remove(c.id)" :title="t('txt_txt_remove')"><span v-html="icTrash()"></span></button>
                     </template>
                     <template v-else>
-                      <button class="btn btn-sm btn-primary" @click="confirmRename(c.id)" style="padding:0.2rem 0.5rem;margin-right:0.25rem" :title="t('txt_txt_save')">✓</button>
-                      <button class="btn btn-sm" @click="cancelRename()" style="padding:0.2rem 0.5rem" :title="t('txt_txt_cancel')">✕</button>
+                      <button class="btn btn-sm btn-primary btn-compact mr-1" @click="confirmRename(c.id)" :title="t('txt_txt_save')">✓</button>
+                      <button class="btn btn-sm btn-compact" @click="cancelRename()" :title="t('txt_txt_cancel')">✕</button>
                     </template>
                   </td>
                 </tr>
               </tbody>
             </table></div>
           </div>
-          <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap">
-            <input type="text" v-model="newName" @keydown.enter="create()" data-i18n-placeholder="txt_comm_new_name_placeholder" placeholder="New community name…" style="flex:1;min-width:160px;padding:0.4rem 0.6rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
+          <div class="d-flex gap-2 mt-3 flex-wrap">
+            <input type="text" v-model="newName" @keydown.enter="create()" data-i18n-placeholder="txt_comm_new_name_placeholder" placeholder="New community name…" class="comm-create-name-input" autocomplete="off">
             <button type="button" id="comm-add-btn" class="btn btn-success btn-sm" @click="create()" data-i18n="txt_comm_add">+ Add</button>
           </div>
-          <div id="comm-msg" style="margin-top:0.5rem;font-size:0.84rem" :style="{ color: msgOk ? 'var(--green)' : 'var(--red)' }">{{ msg }}</div>
+          <div id="comm-msg" class="mt-2 fs-md" :style="{ color: msgOk ? 'var(--green)' : 'var(--red)' }">{{ msg }}</div>
         </div>
 
         <!-- Tournament assignment -->
         <div class="card">
-          <h2 style="margin:0 0 0.5rem">🏆 <span data-i18n="txt_comm_tournament_title">Tournament Community Assignment</span></h2>
+          <h2 class="m-0 mb-2">🏆 <span data-i18n="txt_comm_tournament_title">Tournament Community Assignment</span></h2>
           <div id="comm-tournament-list">
             <div v-if="!loaded" class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div>
-            <p v-else-if="!tournaments.length" style="color:var(--text-muted);font-size:0.85rem">{{ t('txt_comm_no_tournaments') }}</p>
+            <p v-else-if="!tournaments.length" class="text-muted fs-md">{{ t('txt_comm_no_tournaments') }}</p>
             <div v-else class="player-codes-table-wrap"><table class="player-codes-table">
               <thead>
                 <tr class="player-codes-head-row">
@@ -929,15 +926,15 @@
               </thead>
               <tbody>
                 <tr v-for="tour in sortedTournaments" :key="tour.id" class="player-codes-row">
-                  <td class="player-codes-name" style="font-weight:normal">
+                  <td class="player-codes-name fw-normal">
                     <strong>{{ tour.name }}</strong>
-                    <span style="font-size:0.78rem;color:var(--text-muted);margin-left:0.4rem">{{ tour.type }}</span>
+                    <span class="fs-sm text-muted ml-1-5">{{ tour.type }}</span>
                   </td>
                   <td class="player-codes-cell">
                     <select class="admin-sel" :value="tour.community_id || 'open'" @change="assignTournament(tour.id, $event.target.value, $event.target)">
                       <option v-for="c in communities" :key="c.id" :value="c.id">{{ optionLabel(c) }}</option>
                     </select>
-                    <span v-if="rowMsg('t', tour.id)" style="font-size:0.78rem;margin-left:0.3rem" :style="{ color: rowMsg('t', tour.id).ok ? 'var(--green)' : 'var(--red)' }">{{ rowMsg('t', tour.id).text }}</span>
+                    <span v-if="rowMsg('t', tour.id)" class="fs-sm ml-1" :style="{ color: rowMsg('t', tour.id).ok ? 'var(--green)' : 'var(--red)' }">{{ rowMsg('t', tour.id).text }}</span>
                   </td>
                 </tr>
               </tbody>
@@ -947,11 +944,11 @@
 
         <!-- Registration assignment -->
         <div class="card">
-          <h2 style="margin:0 0 0.5rem"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_comm_lobby_title">Lobby Community Assignment</span></h2>
-          <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_comm_lobby_help">Reassign registration lobbies to different communities.</p>
+          <h2 class="m-0 mb-2"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_comm_lobby_title">Lobby Community Assignment</span></h2>
+          <p class="text-muted fs-md mb-3" data-i18n="txt_comm_lobby_help">Reassign registration lobbies to different communities.</p>
           <div id="comm-registration-list">
             <div v-if="!loaded" class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div>
-            <p v-else-if="!registrations.length" style="color:var(--text-muted);font-size:0.85rem">{{ t('txt_comm_no_registrations') }}</p>
+            <p v-else-if="!registrations.length" class="text-muted fs-md">{{ t('txt_comm_no_registrations') }}</p>
             <div v-else class="player-codes-table-wrap"><table class="player-codes-table">
               <thead>
                 <tr class="player-codes-head-row">
@@ -961,15 +958,15 @@
               </thead>
               <tbody>
                 <tr v-for="r in sortedRegistrations" :key="r.id" class="player-codes-row">
-                  <td class="player-codes-name" style="font-weight:normal">
+                  <td class="player-codes-name fw-normal">
                     <strong>{{ r.name }}</strong>
-                    <span v-if="r.archived" style="font-size:0.75rem;color:var(--text-muted);margin-left:0.3rem">{{ t('txt_comm_archived') }}</span>
+                    <span v-if="r.archived" class="fs-xs text-muted ml-1">{{ t('txt_comm_archived') }}</span>
                   </td>
                   <td class="player-codes-cell">
                     <select class="admin-sel" :value="r.community_id || 'open'" @change="assignRegistration(r.id, $event.target.value, $event.target)">
                       <option v-for="c in communities" :key="c.id" :value="c.id">{{ optionLabel(c) }}</option>
                     </select>
-                    <span v-if="rowMsg('r', r.id)" style="font-size:0.78rem;margin-left:0.3rem" :style="{ color: rowMsg('r', r.id).ok ? 'var(--green)' : 'var(--red)' }">{{ rowMsg('r', r.id).text }}</span>
+                    <span v-if="rowMsg('r', r.id)" class="fs-sm ml-1" :style="{ color: rowMsg('r', r.id).ok ? 'var(--green)' : 'var(--red)' }">{{ rowMsg('r', r.id).text }}</span>
                   </td>
                 </tr>
               </tbody>
@@ -983,11 +980,11 @@
   <div class="tab-panel" id="panel-clubs" role="tabpanel">
       <div>
         <div class="card" id="clubs-overview-card">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;gap:0.5rem">
-            <h2 style="margin:0"><span data-i18n="txt_clubs_title">Clubs</span></h2>
+          <div class="d-flex items-center justify-between mb-2 gap-2">
+            <h2 class="m-0"><span data-i18n="txt_clubs_title">Clubs</span></h2>
             <button type="button" class="format-info-btn" data-action="openContextInfo" data-context="clubs" aria-label="About clubs" data-i18n-aria-label="txt_clubs_info_panel_title" data-i18n-title="txt_clubs_info_panel_title" title="About clubs">i</button>
           </div>
-          <p style="color:var(--text-muted);font-size:0.84rem;margin-bottom:0.75rem" data-i18n="txt_clubs_panel_help">Upgrade a community to a club to add branding, player tiers, and seasons.</p>
+          <p class="text-muted fs-md mb-3" data-i18n="txt_clubs_panel_help">Upgrade a community to a club to add branding, player tiers, and seasons.</p>
           <div id="clubs-overview"><div class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div></div>
         </div>
         <div id="clubs-detail" style="display:none"></div>
@@ -998,17 +995,17 @@
   <div class="tab-panel" id="panel-info" role="tabpanel">
     <div class="card">
       <h2 data-i18n="txt_txt_info">Info</h2>
-      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_info_tab_desc">What this app does and how to find your way around it. Use the sections below to understand the four pages, the player and organizer flows, the tournament formats, and the rating system.</p>
+      <p class="text-muted fs-md" data-i18n="txt_txt_info_tab_desc">What this app does and how to find your way around it. Use the sections below to understand the four pages, the player and organizer flows, the tournament formats, and the rating system.</p>
       <hr class="info-divider">
-      <h3 style="margin-top:0" id="info-toc" data-i18n="txt_txt_info_toc_title">Table of contents</h3>
-      <ol style="margin:0.25rem 0 0 1.1rem;color:var(--text-muted);font-size:0.85rem;line-height:1.7">
+      <h3 class="mt-0" id="info-toc" data-i18n="txt_txt_info_toc_title">Table of contents</h3>
+      <ol class="info-list">
         <li><a href="#info-at-a-glance" class="github-link" data-i18n="txt_txt_info_toc_glance">At a glance</a></li>
         <li><a href="#info-quickstart" class="github-link" data-i18n="txt_txt_info_toc_quickstart">Getting started</a></li>
         <li><a href="#info-demo" class="github-link" data-i18n="txt_txt_info_toc_demo">Demo mode</a></li>
         <li><a href="#info-player-flow" class="github-link" data-i18n="txt_txt_info_toc_player_flow">Player flow</a></li>
         <li><a href="#info-admin-flow" class="github-link" data-i18n="txt_txt_info_toc_admin_flow">Admin flow</a></li>
         <li><a href="#info-main-features" class="github-link" data-i18n="txt_txt_info_toc_main_features">Main features</a></li>
-        <li><a href="#info-communities-clubs" class="github-link" data-i18n="txt_txt_info_toc_communities_clubs">Communities &amp; clubs</a></li>
+        <li class="core-only"><a href="#info-communities-clubs" class="github-link" data-i18n="txt_txt_info_toc_communities_clubs">Communities &amp; clubs</a></li>
         <li><a href="#info-formats" class="github-link" data-i18n="txt_txt_info_toc_formats">Tournament formats</a></li>
         <li><a href="#info-elo" class="github-link" data-i18n="txt_txt_info_toc_elo">ELO rating system</a></li>
         <li><a href="#info-po-transition" class="github-link" data-i18n="txt_txt_info_toc_po_transition">Starting play-offs</a></li>
@@ -1056,7 +1053,7 @@
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_qs_where_title">Where things live</strong>
-        <ul style="margin:0.3rem 0 0 1.1rem;font-size:0.84rem;color:var(--text-muted);line-height:1.7" data-i18n-html="txt_txt_info_qs_where_list">
+        <ul class="info-list" data-i18n-html="txt_txt_info_qs_where_list">
           <li><strong>Mexicano tuning</strong> — Advanced Settings in the create form, or Admin → Settings after the tournament exists.</li>
           <li><strong>Player passphrases &amp; QR codes</strong> — the Player Codes panel.</li>
           <li><strong>Public-view sections &amp; self-scoring</strong> — the TV Settings panel.</li>
@@ -1066,13 +1063,14 @@
 
     <div class="card" id="info-demo">
       <h2 data-i18n="txt_txt_info_demo_title">Demo mode</h2>
-      <div class="info-block">
+      <div class="info-block core-only">
         <strong data-i18n="txt_txt_info_demo_full_title">Full demo (shared admin login)</strong>
         <p data-i18n="txt_txt_info_demo_full_desc">The public demo site runs the complete app. Log in with the shared admin account to use every feature — registration lobbies, clubs, communities, the Player Hub, custom addresses, and more. Data is shared between visitors and reset periodically, so don't use it for real events.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_demo_sandbox_title">Throwaway demo account</strong>
-        <p data-i18n-html="txt_txt_info_demo_sandbox_desc">On the main site, &ldquo;Open the demo sandbox&rdquo; in the login dialog takes you to a separate practice site, which creates a personal <code>demo-xxxxxx</code> account for you straight away — no sign-up. Its generated passphrase is the password: save it to log in again from this or another device (on this device the demo site&rsquo;s login dialog welcomes you back by name). A sandbox has a minimal admin surface: one active tournament at a time, and no registration lobbies, clubs, communities, custom addresses, or Player Hub profiles. The account and everything it creates are deleted automatically a few days after sign-up (3 by default).</p>
+        <p class="core-only" data-i18n-html="txt_txt_info_demo_sandbox_desc">On the main site, &ldquo;Open the demo sandbox&rdquo; in the login dialog takes you to a separate practice site, which creates a personal <code>demo-xxxxxx</code> account for you straight away — no sign-up. Its generated passphrase is the password: save it to log in again from this or another device (on this device the demo site&rsquo;s login dialog welcomes you back by name). A sandbox has a minimal admin surface: one active tournament at a time, and no registration lobbies, clubs, communities, custom addresses, or Player Hub profiles. The account and everything it creates are deleted automatically a few days after sign-up (3 by default).</p>
+        <p class="demo-only" data-i18n-html="txt_txt_info_demo_sandbox_desc_instance">On the main site, &ldquo;Open the demo sandbox&rdquo; in the login dialog takes you to a separate practice site, which creates a personal <code>demo-xxxxxx</code> account for you straight away — no sign-up. Its generated passphrase is the password: save it to log in again from this or another device (on this device the demo site&rsquo;s login dialog welcomes you back by name). A sandbox has a minimal admin surface: one active tournament at a time, and no registration lobbies, custom addresses, or Player Hub profiles. The account and everything it creates are deleted automatically a few days after sign-up (3 by default).</p>
       </div>
     </div>
 
@@ -1097,8 +1095,8 @@
       <div class="info-block">
         <strong data-i18n="txt_txt_info_player_flow_hub_title">5) Player Hub — one passphrase for everything</strong>
         <p data-i18n-html="txt_txt_info_player_flow_hub_desc1">Players can set up a Player Hub profile at <a href="/player" class="github-link">/player</a> with just an email. This gives them a single persistent passphrase that works across all events: registering for a lobby pre-fills name, email, and contact automatically; once a tournament starts it appears in the Hub dashboard alongside all other active and past events.</p>
-        <p style="margin-top:0.35rem" data-i18n="txt_txt_info_player_flow_hub_desc2">The Hub also tracks career stats — matches played, win rate, best rank — and lets you browse your history with any specific participant across all tournaments (who you played with, who you played against, and your win rate in each combination).</p>
-        <p style="margin-top:0.35rem" data-i18n="txt_txt_info_player_flow_hub_desc3">Players who don't have a Hub profile yet can still link individual events retroactively by entering the passphrase they received for that event.</p>
+        <p class="mt-1-5" data-i18n="txt_txt_info_player_flow_hub_desc2">The Hub also tracks career stats — matches played, win rate, best rank — and lets you browse your history with any specific participant across all tournaments (who you played with, who you played against, and your win rate in each combination).</p>
+        <p class="mt-1-5" data-i18n="txt_txt_info_player_flow_hub_desc3">Players who don't have a Hub profile yet can still link individual events retroactively by entering the passphrase they received for that event.</p>
       </div>
     </div>
 
@@ -1150,9 +1148,9 @@
       </div>
     </div>
 
-    <div class="card" id="info-communities-clubs">
+    <div class="card core-only" id="info-communities-clubs">
       <h2 data-i18n="txt_txt_info_comm_clubs_title">Communities and clubs</h2>
-      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_info_comm_clubs_subtitle">Use communities as your base scope, then layer clubs when you need branding, season tracking, and richer club operations.</p>
+      <p class="text-muted fs-md" data-i18n="txt_txt_info_comm_clubs_subtitle">Use communities as your base scope, then layer clubs when you need branding, season tracking, and richer club operations.</p>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_comm_clubs_scope_title">Communities define operational scope</strong>
         <p data-i18n="txt_txt_info_comm_clubs_scope_desc">A community is where tournaments and registration lobbies live. It controls default assignment, keeps operations separated by league or venue, and defines the scope where ELO and rankings are computed (global, community, or club context).</p>
@@ -1188,13 +1186,13 @@
       <div class="info-block">
         <strong data-i18n="txt_txt_info_formats_gp_title">Group + Play-off</strong>
         <p data-i18n="txt_txt_info_formats_gp_desc1">Participants are divided into groups for a round-robin stage, then top finishers advance to a knockout bracket. Supports both Padel and Tennis scoring.</p>
-        <p style="margin-top:0.35rem" data-i18n-html="txt_txt_info_formats_gp_desc2"><em>Team mode:</em> fixed pairs play every other pair in their group — a complete round-robin. <em>Player (Americano) mode:</em> partners rotate each round so players pair with all others at least once; matchups are formed dynamically to keep each round competitive relative to current group standings.</p>
+        <p class="mt-1-5" data-i18n-html="txt_txt_info_formats_gp_desc2"><em>Team mode:</em> fixed pairs play every other pair in their group — a complete round-robin. <em>Player (Americano) mode:</em> partners rotate each round so players pair with all others at least once; matchups are formed dynamically to keep each round competitive relative to current group standings.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_formats_mex_title">Mexicano + Play-offs</strong>
         <p data-i18n="txt_txt_info_formats_mex_desc1">Pairings are generated each round based on current standings: leaders play against leaders, weaker players against similarly ranked ones. Each round the admin can browse several proposed pairing sets and pick the best balance. Rounds can be unlimited (stop whenever you like) or set to a fixed count.</p>
-        <p style="margin-top:0.35rem" data-i18n-html="txt_txt_info_formats_mex_desc2">The <em>Advanced Settings</em> expose fine-grained control over scoring and pairing behaviour:</p>
-        <ul style="margin:0.3rem 0 0 1.1rem;font-size:0.84rem;color:var(--text-muted);line-height:1.7" data-i18n-html="txt_txt_info_formats_mex_list">
+        <p class="mt-1-5" data-i18n-html="txt_txt_info_formats_mex_desc2">The <em>Advanced Settings</em> expose fine-grained control over scoring and pairing behaviour:</p>
+        <ul class="info-list" data-i18n-html="txt_txt_info_formats_mex_list">
           <li><strong>Skill gap</strong> — max rating difference allowed within a group; blank falls back to snake-draft ordering.</li>
           <li><strong>Win bonus</strong> — extra points added to a winner's leaderboard score on top of raw game points.</li>
           <li><strong>Rival strength (0–1)</strong> — bonus that rewards facing strong opponents (based on their average score); higher weight = bigger effect.</li>
@@ -1221,7 +1219,7 @@
 
     <div class="card" id="info-elo">
       <h2 data-i18n="txt_txt_info_elo_title">ELO rating system</h2>
-      <p style="color:var(--text-muted);font-size:0.86rem" data-i18n="txt_txt_info_elo_subtitle">A margin-aware ELO engine tracks player skill across tournaments. Ratings update after every completed match and appear in the Player Hub.</p>
+      <p class="text-muted fs-md" data-i18n="txt_txt_info_elo_subtitle">A margin-aware ELO engine tracks player skill across tournaments. Ratings update after every completed match and appear in the Player Hub.</p>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_elo_formula_title">Blended outcome</strong>
         <p data-i18n-html="txt_txt_info_elo_formula_desc">Instead of pure win/loss, the actual score blends a binary component <em>W</em> (1 | 0.5 | 0) with a continuous margin ratio <em>R</em>. Close wins and blowouts produce different rating changes.</p>
@@ -1283,7 +1281,7 @@
 
     <div class="card">
       <h2 data-i18n="txt_txt_tournament_bracket_schema">Tournament Bracket Schema</h2>
-      <p style="color:var(--text-muted);font-size:0.84rem;margin:0 0 0.75rem" data-i18n="txt_txt_generate_a_visual_diagram_of_the_tournament_structure_before_creating_it">Generate a visual diagram of the tournament structure before creating it.</p>
+      <p class="text-muted fs-md m-0 mb-3" data-i18n="txt_txt_generate_a_visual_diagram_of_the_tournament_structure_before_creating_it">Generate a visual diagram of the tournament structure before creating it.</p>
       <div class="schema-builder">
         <div class="schema-presets">
           <button type="button" class="schema-preset-btn" data-preset="2×4" data-action="applySchemaPreset">2×4</button>
@@ -1294,31 +1292,31 @@
           <button type="button" class="schema-preset-btn" data-preset="4×6" data-action="applySchemaPreset">4×6</button>
         </div>
         <div class="schema-builder-fields">
-          <div class="schema-row" style="align-items:flex-end">
-            <div class="form-group" style="flex:1;min-width:160px">
-              <label for="schema-groups"><span data-i18n="txt_txt_group_sizes">Group sizes</span> <small style="color:var(--text-muted)" data-i18n="txt_txt_comma_separated">(comma-separated)</small></label>
+          <div class="schema-row items-end">
+            <div class="form-group field-grow">
+              <label for="schema-groups"><span data-i18n="txt_txt_group_sizes">Group sizes</span> <small class="text-muted" data-i18n="txt_txt_comma_separated">(comma-separated)</small></label>
               <input id="schema-groups" type="text" value="4,4" placeholder="e.g. 4,4,4"
                      oninput="_updateSchemaSummary()"
                      onkeydown="if(event.key==='Enter'){generateSchema()}">
             </div>
-            <div class="num-field" style="margin-bottom:0.75rem">
+            <div class="num-field mb-3">
               <label for="schema-advance" data-i18n="txt_txt_advance_per_group">Advance per group</label>
               <input id="schema-advance" type="number" value="2" min="1" max="8" oninput="_updateSchemaSummary()">
             </div>
           </div>
           <div class="schema-row">
-            <div class="form-group" style="flex:1;min-width:140px">
+            <div class="form-group schema-field">
               <label for="schema-elim" data-i18n="txt_txt_elimination">Elimination</label>
               <select id="schema-elim" data-persist-id="schema-elim" onchange="_updateSchemaSummary()">
                 <option value="single" selected data-i18n="txt_txt_single_elimination">Single Elimination</option>
                 <option value="double" data-i18n="txt_txt_double_elimination">Double Elimination</option>
               </select>
             </div>
-            <div class="form-group" style="flex:1;min-width:140px">
-              <label for="schema-title"><span data-i18n="txt_txt_title">Title</span> <small style="color:var(--text-muted)" data-i18n="txt_txt_optional">(optional)</small></label>
+            <div class="form-group schema-field">
+              <label for="schema-title"><span data-i18n="txt_txt_title">Title</span> <small class="text-muted" data-i18n="txt_txt_optional">(optional)</small></label>
               <input id="schema-title" type="text" data-i18n-placeholder="txt_txt_my_tournament_placeholder" placeholder="My Tournament">
             </div>
-            <div class="form-group" style="flex:0 0 auto;min-width:110px">
+            <div class="form-group schema-field--fixed">
               <label for="schema-fmt" data-i18n="txt_txt_format">Format</label>
               <select id="schema-fmt" data-persist-id="schema-fmt">
                 <option value="png" selected>PNG</option>
@@ -1364,30 +1362,30 @@
         <div class="schema-actions">
           <button type="button" class="btn btn-primary" data-action="generateSchema" data-i18n="txt_txt_generate_schema">Generate Schema</button>
         </div>
-        <div id="schema-msg" class="alert alert-error hidden" style="margin-top:0.75rem"></div>
-        <div id="schema-result" style="margin-top:1rem;text-align:center"></div>
+        <div id="schema-msg" class="alert alert-error hidden mt-3"></div>
+        <div id="schema-result" class="mt-4 ta-center"></div>
       </div>
     </div>
 
     <div class="card" id="info-help">
       <h2 data-i18n="txt_txt_info_help_title">Docs &amp; support</h2>
-      <p style="margin-top:0.2rem;font-size:0.85rem">
+      <p class="mt-1 fs-md">
         <a href="https://github.com/sanityseeker/padel-amistoso" target="_blank" rel="noopener" class="github-link" data-i18n="txt_txt_info_github_link">Full documentation on GitHub →</a>
       </p>
-      <p style="margin-top:0.4rem;font-size:0.82rem;color:var(--text-muted)">
+      <p class="mt-1-5 fs-sm text-muted">
         <span data-i18n="txt_txt_info_issue_prefix">Found a bug, weird behavior, or have a suggestion?</span>
         <a href="https://github.com/sanityseeker/padel-amistoso/issues/new" target="_blank" rel="noopener" class="github-link" data-i18n="txt_txt_info_issue_link">Open an issue on GitHub</a>.
       </p>
     </div>
   </div>
 </div>
-<div style="padding:3rem 0 2.5rem;display:flex;align-items:center;justify-content:center;gap:1rem;flex-wrap:wrap">
-  <a href="https://ko-fi.com/torneosamistosos" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:0.4rem;background:#FFDD00;color:#1a1a1a;padding:0 0.8rem;border-radius:20px;font-size:0.78rem;text-decoration:none;font-weight:700;height:28px;box-sizing:border-box">
-    <svg width="16" height="16" viewBox="0 0 24 24" style="fill:#ff5e5b;flex-shrink:0" aria-hidden="true"><path d="M23.881 8.948c-.773-4.085-4.859-4.593-4.859-4.593H.723c-.604 0-.679.798-.679.798s-.082 7.324-.022 11.822c.164 2.424 2.586 2.672 2.586 2.672s8.267-.023 11.966-.049c2.438-.426 2.683-2.566 2.658-3.734 4.352.24 7.422-2.831 6.649-6.916zm-11.062 3.511c-1.246 1.453-4.011 3.976-4.011 3.976s-.121.119-.31.023c-.076-.057-.108-.09-.108-.09-.443-.441-3.368-3.049-4.034-3.954-.709-.965-1.041-2.7-.091-3.71.951-1.01 3.005-1.086 4.363.407 0 0 1.565-1.782 3.468-.963 1.904.82 2.058 3.034.556 4.303zm6.173.478c-.928.116-1.682.028-1.682.028V7.284h1.77s1.971.551 1.971 2.638c0 1.913-.985 2.667-2.059 3.015z"/></svg>
+<div class="support-links">
+  <a href="https://ko-fi.com/torneosamistosos" target="_blank" rel="noopener" class="support-link support-link--coffee">
+    <svg width="16" height="16" viewBox="0 0 24 24" class="support-link__heart" aria-hidden="true"><path d="M23.881 8.948c-.773-4.085-4.859-4.593-4.859-4.593H.723c-.604 0-.679.798-.679.798s-.082 7.324-.022 11.822c.164 2.424 2.586 2.672 2.586 2.672s8.267-.023 11.966-.049c2.438-.426 2.683-2.566 2.658-3.734 4.352.24 7.422-2.831 6.649-6.916zm-11.062 3.511c-1.246 1.453-4.011 3.976-4.011 3.976s-.121.119-.31.023c-.076-.057-.108-.09-.108-.09-.443-.441-3.368-3.049-4.034-3.954-.709-.965-1.041-2.7-.091-3.71.951-1.01 3.005-1.086 4.363.407 0 0 1.565-1.782 3.468-.963 1.904.82 2.058 3.034.556 4.303zm6.173.478c-.928.116-1.682.028-1.682.028V7.284h1.77s1.971.551 1.971 2.638c0 1.913-.985 2.667-2.059 3.015z"/></svg>
     Buy me a coffee
   </a>
-  <a href="https://github.com/sanityseeker/padel-amistoso" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:0.4rem;background:#24292f;color:#fff;padding:0 0.8rem;border-radius:20px;font-size:0.78rem;text-decoration:none;font-weight:700;height:28px;box-sizing:border-box">
-    <svg width="16" height="16" viewBox="0 0 16 16" style="fill:currentColor;flex-shrink:0" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.67 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
+  <a href="https://github.com/sanityseeker/padel-amistoso" target="_blank" rel="noopener" class="support-link support-link--github">
+    <svg width="16" height="16" viewBox="0 0 16 16" class="support-link__icon" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.67 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
     Contribute on GitHub
   </a>
 </div>
@@ -1426,7 +1424,7 @@
   </div>
 
   <!-- Core instance: link out to the separate demo site (shown when AMISTOSO_DEMO_URL
-       is configured). #start-demo makes the demo site mint a sandbox on arrival. -->
+       is configured). -->
   <div v-if="configLoaded && demoView() === 'core' && demoUrl" class="demo-entry" v-cloak>
     <a :href="demoHref()" rel="nofollow" class="btn btn-primary demo-try-btn"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M888.3 757.4h-53.8c-4.2 0-7.7 3.5-7.7 7.7v61.8H197.1V197.1h629.8v61.8c0 4.2 3.5 7.7 7.7 7.7h53.8c4.2 0 7.7-3.4 7.7-7.7V158.7c0-17-13.7-30.7-30.7-30.7H158.7c-17 0-30.7 13.7-30.7 30.7v706.6c0 17 13.7 30.7 30.7 30.7h706.6c17 0 30.7-13.7 30.7-30.7V765.1c0-4.3-3.5-7.7-7.7-7.7zm18.6-251.7L765 393.7c-5.3-4.2-13-.4-13 6.3v76H438c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h314v76c0 6.7 7.8 10.5 13 6.3l141.9-112a8 8 0 000-12.6z"/></svg> {{ t('txt_demo_open_sandbox') }}</a>
     <p v-if="demoHost()" class="demo-entry-note">{{ t('txt_demo_opens_separate_site', { host: demoHost() }) }}</p>
@@ -1465,16 +1463,16 @@
       <label class="modal-label" for="auth-username" data-i18n="txt_txt_username">Username</label>
       <input type="text" id="auth-username" v-model="username" class="modal-input" placeholder="admin" :placeholder="isDemoInstance ? 'demo-xxxxxx' : t('txt_txt_admin_username_placeholder')" autocomplete="username">
     </div>
-    <div class="modal-field" style="margin-bottom:0.25rem">
+    <div class="modal-field mb-1">
       <label class="modal-label" for="auth-password" data-i18n="txt_txt_password">Password</label>
       <input type="password" id="auth-password" v-model="password" @keyup.enter="submit()" class="modal-input" placeholder="••••••••" autocomplete="current-password">
     </div>
     <p v-if="demoView() === 'start'" class="demo-admin-hint">{{ t('txt_demo_admin_hint') }}</p>
-    <div v-show="!isDemoInstance" style="text-align:right;margin-bottom:1rem">
-      <a href="#" class="modal-link" style="font-size:0.85rem" onclick="showForgotPasswordDialog();return false"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5l-41.1 41.1-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-44.9 44.9-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-65.3 65.3a8.03 8.03 0 000 11.3l42.3 42.3c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6A304.06 304.06 0 00608 720c167.9 0 304-136.1 304-304S775.9 112 608 112z"/></svg> <span data-i18n="txt_txt_forgot_password">Forgot password?</span></a>
+    <div v-show="!isDemoInstance" class="auth-forgot-row">
+      <a href="#" class="modal-link fs-md" onclick="showForgotPasswordDialog();return false"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5l-41.1 41.1-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-44.9 44.9-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-65.3 65.3a8.03 8.03 0 000 11.3l42.3 42.3c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6A304.06 304.06 0 00608 720c167.9 0 304-136.1 304-304S775.9 112 608 112z"/></svg> <span data-i18n="txt_txt_forgot_password">Forgot password?</span></a>
     </div>
     <div class="modal-error" id="auth-error" v-text="error"></div>
-    <button type="submit" id="auth-login-btn" class="btn btn-primary" style="width:100%" :disabled="submitting" data-i18n="txt_txt_login">Login</button>
+    <button type="submit" id="auth-login-btn" class="btn btn-primary w-full" :disabled="submitting" data-i18n="txt_txt_login">Login</button>
   </form>
 
   <!-- Returning view: escape hatch to mint a fresh sandbox instead -->
@@ -1492,23 +1490,23 @@
 <!-- Change Password Modal (all authenticated users) -->
 <div id="change-pwd-overlay" class="modal-overlay">
   <div class="modal-dialog modal-sm" v-scope>
-    <div class="modal-header" style="margin-bottom:0.5rem">
+    <div class="modal-header mb-2">
       <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5l-41.1 41.1-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-44.9 44.9-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-65.3 65.3a8.03 8.03 0 000 11.3l42.3 42.3c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6A304.06 304.06 0 00608 720c167.9 0 304-136.1 304-304S775.9 112 608 112z"/></svg> <span data-i18n="txt_txt_change_password">Change Password</span></h2>
       <button type="button" class="modal-close-btn" data-action="hideChangePasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
     </div>
-    <p id="change-pwd-for" class="modal-subtitle" style="margin-bottom:1rem" v-text="targetLabel"></p>
+    <p id="change-pwd-for" class="modal-subtitle mb-4" v-text="targetLabel"></p>
     <form @submit.prevent="submit()">
       <div class="modal-field">
         <label class="modal-label" data-i18n="txt_txt_new_password">New Password</label>
         <input type="password" id="change-pwd-new" v-model="newPwd" class="modal-input" placeholder="••••••••" autocomplete="new-password">
       </div>
-      <div class="modal-field" style="margin-bottom:1rem">
+      <div class="modal-field mb-4">
         <label class="modal-label" data-i18n="txt_txt_confirm_new_password">Confirm New Password</label>
         <input type="password" id="change-pwd-confirm" v-model="confirmPwd" class="modal-input" placeholder="••••••••" autocomplete="new-password">
       </div>
       <div class="modal-success" id="change-pwd-success" v-text="success"></div>
       <div class="modal-error" id="change-pwd-error" v-text="error"></div>
-      <button type="submit" id="change-pwd-btn" class="btn btn-primary" style="width:100%" :disabled="submitting" data-i18n="txt_txt_change_password">Change Password</button>
+      <button type="submit" id="change-pwd-btn" class="btn btn-primary w-full" :disabled="submitting" data-i18n="txt_txt_change_password">Change Password</button>
     </form>
   </div>
 </div>
@@ -1522,13 +1520,13 @@
   </div>
   <p class="modal-subtitle" data-i18n="txt_txt_forgot_password_subtitle">Enter your email address and we'll send you a password reset link.</p>
   <form onsubmit="handleForgotPassword(event)">
-    <div class="modal-field" style="margin-bottom:1rem">
+    <div class="modal-field mb-4">
       <label class="modal-label" data-i18n="txt_txt_email">Email</label>
       <input type="email" id="forgot-pwd-email" class="modal-input" placeholder="you@example.com" data-i18n-placeholder="txt_txt_email_placeholder" autocomplete="email">
     </div>
     <div class="modal-success" id="forgot-pwd-success"></div>
     <div class="modal-error" id="forgot-pwd-error"></div>
-    <button type="submit" id="forgot-pwd-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_send_reset_link">Send Reset Link</button>
+    <button type="submit" id="forgot-pwd-btn" class="btn btn-primary w-full" data-i18n="txt_txt_send_reset_link">Send Reset Link</button>
   </form>
 </div>
 
@@ -1549,13 +1547,13 @@
       <label class="modal-label" data-i18n="txt_txt_password">Password</label>
       <input type="password" id="accept-invite-password" class="modal-input" placeholder="••••••••" data-i18n-placeholder="txt_txt_password" autocomplete="new-password">
     </div>
-    <div class="modal-field" style="margin-bottom:1rem">
+    <div class="modal-field mb-4">
       <label class="modal-label" data-i18n="txt_txt_confirm_password">Confirm Password</label>
       <input type="password" id="accept-invite-confirm" class="modal-input" placeholder="••••••••" data-i18n-placeholder="txt_txt_confirm_password" autocomplete="new-password">
     </div>
     <div class="modal-success" id="accept-invite-success"></div>
     <div class="modal-error" id="accept-invite-error"></div>
-    <button type="submit" id="accept-invite-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_create_account">Create Account</button>
+    <button type="submit" id="accept-invite-btn" class="btn btn-primary w-full" data-i18n="txt_txt_create_account">Create Account</button>
   </form>
 </div>
 
@@ -1572,13 +1570,13 @@
       <label class="modal-label" data-i18n="txt_txt_new_password">New Password</label>
       <input type="password" id="reset-pwd-new" class="modal-input" placeholder="••••••••" data-i18n-placeholder="txt_txt_new_password" autocomplete="new-password">
     </div>
-    <div class="modal-field" style="margin-bottom:1rem">
+    <div class="modal-field mb-4">
       <label class="modal-label" data-i18n="txt_txt_confirm_new_password">Confirm New Password</label>
       <input type="password" id="reset-pwd-confirm" class="modal-input" placeholder="••••••••" data-i18n-placeholder="txt_txt_confirm_new_password" autocomplete="new-password">
     </div>
     <div class="modal-success" id="reset-pwd-success"></div>
     <div class="modal-error" id="reset-pwd-error"></div>
-    <button type="submit" id="reset-pwd-btn" class="btn btn-primary" style="width:100%" data-i18n="txt_txt_reset_password">Reset Password</button>
+    <button type="submit" id="reset-pwd-btn" class="btn btn-primary w-full" data-i18n="txt_txt_reset_password">Reset Password</button>
   </form>
 </div>
 

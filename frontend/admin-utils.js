@@ -138,9 +138,6 @@ function _antIc(name) {
       _loginStore.isDemoInstance = !!config.demo_instance;
       if (config.demo_ttl_days) _loginStore.demoTtlDays = config.demo_ttl_days;
       _loginStore.configLoaded = true;
-      // Must run after isDemoInstance is set: #start-demo mints on the demo
-      // instance and is merely stripped on the core instance.
-      if (typeof maybeAutoStartDemo === 'function') maybeAutoStartDemo();
       if (typeof _focusLoginDialog === 'function') _focusLoginDialog();
     }
     initDemoCountdown();
@@ -401,25 +398,11 @@ function _showToast(message, type) {
   const isError = type === 'error';
   const toast = document.createElement('div');
   toast.textContent = message;
-  toast.style.position = 'fixed';
-  toast.style.top = '1rem';
-  toast.style.left = '50%';
-  toast.style.transform = 'translateX(-50%)';
-  toast.style.background = isError ? 'var(--danger, #d9534f)' : 'var(--green)';
-  toast.style.color = '#fff';
-  toast.style.padding = '0.7rem 1.2rem';
-  toast.style.borderRadius = '8px';
-  toast.style.fontWeight = '600';
-  toast.style.fontSize = '0.9rem';
-  toast.style.zIndex = '9999';
-  toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
-  toast.style.maxWidth = '90vw';
-  toast.style.textAlign = 'center';
+  toast.className = 'flash-toast' + (isError ? ' flash-toast--error' : '');
   document.body.appendChild(toast);
   const duration = isError ? 3000 : 1800;
   setTimeout(() => {
-    toast.style.transition = 'opacity 0.2s ease';
-    toast.style.opacity = '0';
+    toast.classList.add('flash-toast--out');
     setTimeout(() => toast.remove(), 220);
   }, duration);
 }
@@ -454,7 +437,7 @@ function _buildAbbrevLegend(type) {
     [t('txt_txt_buchholz_abbrev'),  t('txt_txt_abbrev_buchholz_full')],
   ];
   const tiebreakerKey = type === 'standings' ? 'txt_txt_abbrev_tiebreaker_standings' : 'txt_txt_abbrev_tiebreaker_leaderboard';
-  const tiebreakerHtml = `<p style="margin:0.6rem 0 0;padding-top:0.5rem;border-top:1px solid var(--border);font-size:0.78rem;color:var(--text-muted)"><strong>${esc(t('txt_txt_abbrev_tiebreaker_title'))}</strong><br>${esc(t(tiebreakerKey))}</p>`;
+  const tiebreakerHtml = `<p class="tiebreaker-note"><strong>${esc(t('txt_txt_abbrev_tiebreaker_title'))}</strong><br>${esc(t(tiebreakerKey))}</p>`;
   return `<table>${rows.map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table>${tiebreakerHtml}`;
 }
 
@@ -823,7 +806,7 @@ async function _fetchSchema(prefix, apiUrl, defaultFilename) {
         svgEl.classList.add('bracket-svg');
         // Allow tap/click to open the lightbox — serialize SVG back to a blob
         // URL so the shared _openBracketLightbox machinery works unchanged.
-        svgEl.style.cursor = 'zoom-in';
+        svgEl.classList.add('cursor-zoom-in');
         svgEl.title = t('txt_txt_click_to_expand');
         svgEl.addEventListener('click', () => {
           const blob = new Blob([svgEl.outerHTML], { type: 'image/svg+xml' });
@@ -972,7 +955,7 @@ function _renderAdminBracketCard(apiBase, tvSettings, opts = {}) {
     }
     h += `>`;
     if (isEspejo) {
-      h += `<div id="admin-bracket-losers-pending" style="display:none;align-items:center;justify-content:center;padding:1.5rem;color:var(--text-muted);font-size:0.84rem;text-align:center;border:1px dashed var(--border);border-radius:8px">${esc(t('txt_espejo_lb_pending'))}</div>`;
+      h += `<div id="admin-bracket-losers-pending" class="bracket-pending-note" style="display:none">${esc(t('txt_espejo_lb_pending'))}</div>`;
     }
     h += `</div>`;
     h += `</div>`;
@@ -1118,7 +1101,7 @@ async function generatePoPreviewSchema() {
       if (lbRes && !lbRes.ok) throw new Error((await lbRes.json().catch(() => ({}))).detail || 'Error');
 
       const _renderBracketResponse = async (res, altText) => {
-        if (!res) return `<p class="settings-help" style="margin:0.5rem 0">${t('txt_txt_espejo_approx_losers')}: ${t('txt_txt_need_at_least_2_participants')}</p>`;
+        if (!res) return `<p class="settings-help m-0 mt-2 mb-2">${t('txt_txt_espejo_approx_losers')}: ${t('txt_txt_need_at_least_2_participants')}</p>`;
         if (fmt === 'svg') {
           const wrap = document.createElement('div');
           wrap.innerHTML = await res.text();
@@ -1126,7 +1109,7 @@ async function generatePoPreviewSchema() {
           if (svgEl) {
             svgEl.removeAttribute('width'); svgEl.removeAttribute('height');
             svgEl.classList.add('bracket-svg');
-            svgEl.style.cursor = 'zoom-in';
+            svgEl.classList.add('cursor-zoom-in');
             svgEl.title = t('txt_txt_click_to_expand');
             svgEl.addEventListener('click', () => {
               const blob = new Blob([svgEl.outerHTML], { type: 'image/svg+xml' });
@@ -1146,7 +1129,7 @@ async function generatePoPreviewSchema() {
       resultEl.innerHTML =
         `<div class="espejo-brackets-row">` +
         `<div class="espejo-bracket-half"><div class="espejo-bracket-label">${esc(t('txt_txt_espejo_winners_bracket'))}</div>${wbHtml}</div>` +
-        `<div class="espejo-bracket-half"><div class="espejo-bracket-label">${esc(t('txt_txt_espejo_losers_bracket'))}${lbCount >= 2 ? ` <small style="font-weight:400;text-transform:none;letter-spacing:0">(~${lbCount} ${t('txt_txt_espejo_approx_losers')})</small>` : ''}</div>${lbHtml}</div>` +
+        `<div class="espejo-bracket-half"><div class="espejo-bracket-label">${esc(t('txt_txt_espejo_losers_bracket'))}${lbCount >= 2 ? ` <small class="espejo-label-hint">(~${lbCount} ${t('txt_txt_espejo_approx_losers')})</small>` : ''}</div>${lbHtml}</div>` +
         `</div>`;
       return;
     }
@@ -1171,7 +1154,7 @@ async function generatePoPreviewSchema() {
         svgEl.removeAttribute('width');
         svgEl.removeAttribute('height');
         svgEl.classList.add('bracket-svg');
-        svgEl.style.cursor = 'zoom-in';
+        svgEl.classList.add('cursor-zoom-in');
         svgEl.title = t('txt_txt_click_to_expand');
         svgEl.addEventListener('click', () => {
           const blob = new Blob([svgEl.outerHTML], { type: 'image/svg+xml' });
@@ -1209,15 +1192,12 @@ async function generatePoPreviewSchema() {
  */
 function _langToggle(parentId, playerId, currentLang, context) {
   const isEn = currentLang === 'en';
-  const btnBase = 'display:inline-block;padding:0.08rem 0.35rem;font-size:0.7rem;font-weight:600;cursor:pointer;border:1px solid var(--border);line-height:1.3;';
-  const activeStyle = 'background:var(--accent);color:#fff;border-color:var(--accent);';
-  const inactiveStyle = 'background:var(--surface);color:var(--text-muted);';
-  const enStyle = btnBase + (isEn ? activeStyle : inactiveStyle) + 'border-radius:4px 0 0 4px;border-right:none;';
-  const esStyle = btnBase + (!isEn ? activeStyle : inactiveStyle) + 'border-radius:0 4px 4px 0;';
+  const enClass = 'lang-toggle-opt lang-toggle-opt--first' + (isEn ? ' lang-toggle-opt--active' : '');
+  const esClass = 'lang-toggle-opt lang-toggle-opt--last' + (!isEn ? ' lang-toggle-opt--active' : '');
   const handler = context === 'reg' ? '_setRegLang' : '_setSecLang';
-  return `<span style="display:inline-flex;white-space:nowrap">`
-    + `<span style="${enStyle}" onclick="${handler}('${esc(parentId)}','${esc(playerId)}','en',this.parentElement)" title="${t('txt_txt_english')}">EN</span>`
-    + `<span style="${esStyle}" onclick="${handler}('${esc(parentId)}','${esc(playerId)}','es',this.parentElement)" title="${t('txt_txt_spanish')}">ES</span>`
+  return `<span class="lang-toggle">`
+    + `<span class="${enClass}" onclick="${handler}('${esc(parentId)}','${esc(playerId)}','en',this.parentElement)" title="${t('txt_txt_english')}">EN</span>`
+    + `<span class="${esClass}" onclick="${handler}('${esc(parentId)}','${esc(playerId)}','es',this.parentElement)" title="${t('txt_txt_spanish')}">ES</span>`
     + `</span>`;
 }
 
