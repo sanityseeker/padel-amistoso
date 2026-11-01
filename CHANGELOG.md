@@ -1,3 +1,9 @@
+## v1.18.0 (2026-11-01)
+
+### Feat
+
+- add payments tracking, per-match set format override, and registration notes
+
 ## v1.17.0 (2026-10-06)
 
 ### Feat
