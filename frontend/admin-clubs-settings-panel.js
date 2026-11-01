@@ -142,7 +142,7 @@ function _renderClubGeneralBody(club) {
   html += `<label class="settings-label">${t('txt_clubs_name')}</label>`;
   html += `<div class="settings-inline-row">`;
   html += `<input type="text" id="clubs-rename-input" class="settings-input settings-input--grow" value="${escAttr(club.name)}" placeholder="${escAttr(t('txt_clubs_name'))}">`;
-  html += `<button class="btn btn-sm btn-primary" onclick="clubsRename()">${t('txt_txt_save')}</button>`;
+  html += `<button id="clubs-rename-btn" class="btn btn-sm btn-primary" onclick="clubsRename()">${t('txt_txt_save')}</button>`;
   html += `</div>`;
   html += `<div id="clubs-rename-msg" class="settings-inline-msg"></div>`;
   html += `</div>`;
@@ -156,7 +156,7 @@ function _renderClubGeneralBody(club) {
   } else {
     html += `<span class="clubs-logo-preview clubs-logo-preview--empty" aria-hidden="true">${_antIc('camera')}</span>`;
   }
-  html += `<label class="btn btn-sm" style="cursor:pointer;margin:0">${_antIc('camera')} ${t('txt_clubs_upload_logo')}`;
+  html += `<label id="clubs-logo-upload-label" class="btn btn-sm" style="cursor:pointer;margin:0">${_antIc('camera')} ${t('txt_clubs_upload_logo')}`;
   html += `<input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="clubsUploadLogo(this)">`;
   html += `</label>`;
   if (club.has_logo) {
@@ -166,7 +166,17 @@ function _renderClubGeneralBody(club) {
   html += `</div>`;
   html += `</div>`;
 
-  // Web address (subdomain slug)
+  // Web address (subdomain slug) + landing page. Club subdomains are a
+  // core-instance feature: the demo backend refuses slug and landing changes
+  // and never serves club landing pages, so show one hint instead of forms
+  // that can only fail. Everything below this point is subdomain-only.
+  if (typeof window !== 'undefined' && window.__DEMO_INSTANCE__) {
+    html += `<div class="settings-block">`;
+    html += `<label class="settings-label">${t('txt_clubs_slug_label')} / ${t('txt_clubs_landing_section')}</label>`;
+    html += `<p class="demo-disabled-hint">${t('txt_demo_not_available')}</p>`;
+    html += `</div>`;
+    return html;
+  }
   const slug = club.slug || '';
   // Prefer the server-configured base domain (from /api/config). Fall back
   // to inferring from window.location, then to the canonical production
@@ -185,7 +195,7 @@ function _renderClubGeneralBody(club) {
   html += `<input type="text" id="clubs-slug-input" class="settings-input settings-input--mono settings-input--grow" `
         + `value="${escAttr(slug)}" placeholder="${escAttr(t('txt_clubs_slug_placeholder'))}" `
         + `pattern="[a-z0-9-]{2,30}" maxlength="30" autocomplete="off" spellcheck="false">`;
-  html += `<button class="btn btn-sm btn-primary" onclick="clubsSaveSlug()">${t('txt_clubs_slug_save')}</button>`;
+  html += `<button id="clubs-slug-save-btn" class="btn btn-sm btn-primary" onclick="clubsSaveSlug()">${t('txt_clubs_slug_save')}</button>`;
   if (slug) {
     html += `<button class="btn btn-sm btn-danger" onclick="clubsClearSlug()">${t('txt_clubs_slug_clear')}</button>`;
   }
@@ -194,7 +204,7 @@ function _renderClubGeneralBody(club) {
     html += `<div class="settings-inline-row" style="margin-top:0.4rem">`;
     html += `<a href="${escAttr(fullUrl)}" target="_blank" rel="noopener" class="settings-input settings-input--mono settings-input--grow" `
           + `style="text-decoration:none">${esc(fullUrl)}</a>`;
-    html += `<button class="btn btn-sm" onclick="clubsCopySlugUrl('${escAttr(fullUrl)}')">${t('txt_clubs_slug_copy')}</button>`;
+    html += `<button id="clubs-slug-copy-btn" class="btn btn-sm" onclick="clubsCopySlugUrl('${escAttr(fullUrl)}')">${t('txt_clubs_slug_copy')}</button>`;
     html += `</div>`;
   }
   html += `<div id="clubs-slug-msg" class="settings-inline-msg"></div>`;
@@ -207,7 +217,7 @@ function _renderClubGeneralBody(club) {
   html += `<div class="settings-inline-row">`;
   html += `<input type="text" id="clubs-landing-desc-input" class="settings-input settings-input--grow" `
         + `value="${escAttr(club.description || '')}" placeholder="${escAttr(t('txt_clubs_landing_description_placeholder'))}" maxlength="500">`;
-  html += `<button class="btn btn-sm btn-primary" onclick="clubsSaveLandingDescription()">${t('txt_txt_save')}</button>`;
+  html += `<button id="clubs-landing-desc-btn" class="btn btn-sm btn-primary" onclick="clubsSaveLandingDescription()">${t('txt_txt_save')}</button>`;
   html += `</div>`;
   html += `<div id="clubs-landing-desc-msg" class="settings-inline-msg"></div>`;
   html += `</div>`;
@@ -238,7 +248,7 @@ function _renderClubTiersBody() {
   html += `<label style="font-size:0.82rem;display:flex;align-items:center;gap:0.25rem">${t('txt_clubs_tier_base_elo')}`;
   html += `<input type="number" id="clubs-tier-elo" class="settings-input" value="1000" min="0" max="3000" step="50" style="width:70px;text-align:center">`;
   html += `</label>`;
-  html += `<button class="btn btn-sm btn-success" onclick="clubsCreateTier()">+ ${t('txt_txt_add')}</button>`;
+  html += `<button id="clubs-tier-add-btn" class="btn btn-sm btn-success" onclick="clubsCreateTier()">+ ${t('txt_txt_add')}</button>`;
   html += `</div>`;
   html += `<div id="clubs-tiers-msg" class="settings-inline-msg"></div>`;
   html += `</div>`;
@@ -255,7 +265,7 @@ function _renderClubSeasonsBody() {
   html += `<div id="clubs-seasons-list"></div>`;
   html += `<div class="settings-inline-row" style="margin-top:0.6rem">`;
   html += `<input type="text" id="clubs-season-name" class="settings-input settings-input--grow" placeholder="${escAttr(t('txt_clubs_season_name_placeholder'))}" autocomplete="off">`;
-  html += `<button class="btn btn-sm btn-success" onclick="clubsCreateSeason()">+ ${t('txt_txt_add')}</button>`;
+  html += `<button id="clubs-season-add-btn" class="btn btn-sm btn-success" onclick="clubsCreateSeason()">+ ${t('txt_txt_add')}</button>`;
   html += `</div>`;
   html += `<div id="clubs-seasons-msg" class="settings-inline-msg"></div>`;
   html += `</div>`;
@@ -292,7 +302,7 @@ function _renderClubCommsBody(club) {
   html += `<label class="settings-label">${t('txt_clubs_email_sender_name')}</label>`;
   html += `<input type="text" id="clubs-email-sender-name" class="settings-input" value="${escAttr(sender)}" placeholder="${escAttr(club.name)}" style="width:100%;max-width:420px;margin-bottom:0.6rem">`;
   html += `<div class="settings-inline-row">`;
-  html += `<button class="btn btn-sm btn-primary" onclick="clubsSaveEmailSettings()">${t('txt_txt_save')}</button>`;
+  html += `<button id="clubs-email-save-btn" class="btn btn-sm btn-primary" onclick="clubsSaveEmailSettings()">${t('txt_txt_save')}</button>`;
   html += `</div>`;
   html += `<div id="clubs-email-settings-msg" class="settings-inline-msg"></div>`;
   html += `</div>`;
@@ -318,7 +328,7 @@ function _renderClubAccessBody(club) {
   html += `<div class="settings-inline-row" style="margin-top:0.6rem">`;
   html += `<input type="text" id="clubs-collab-input" class="settings-input settings-input--grow" placeholder="${escAttr(t('txt_clubs_add_collab_placeholder'))}" autocomplete="off" oninput="_clubsCollabInputChange(this.value)" list="clubs-collab-suggestions">`;
   html += `<datalist id="clubs-collab-suggestions"></datalist>`;
-  html += `<button class="btn btn-sm btn-primary" onclick="clubsAddCollaborator()">${t('txt_clubs_add_collab_btn')}</button>`;
+  html += `<button id="clubs-collab-add-btn" class="btn btn-sm btn-primary" onclick="clubsAddCollaborator()">${t('txt_clubs_add_collab_btn')}</button>`;
   html += `</div>`;
   html += `<div id="clubs-collab-msg" class="settings-inline-msg"></div>`;
   html += `</div>`;

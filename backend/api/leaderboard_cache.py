@@ -55,10 +55,11 @@ def club_leaderboard_version(conn, club_id: str) -> str:
         SELECT COALESCE(MAX(l.updated_at), '') AS m_log,
                COUNT(*) AS c_log
           FROM player_elo_log l
-          JOIN tournaments t ON t.id = l.tournament_id
+     LEFT JOIN tournaments t ON t.id = l.tournament_id
          WHERE t.club_id = ?
+            OR (l.is_manual = 1 AND l.tournament_id = ?)
         """,
-        (club_id,),
+        (club_id, club_id),
     ).fetchone()
     snap_row = conn.execute(
         """

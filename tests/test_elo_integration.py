@@ -136,6 +136,88 @@ class TestMexicanoEloIntegration:
         assert max(small_deltas) < max(full_deltas)
 
 
+class TestMexicanoPerMatchTargetElo:
+    """The Mexicano K multiplier follows a match's own points target."""
+
+    BODY = {
+        "name": "ELO Mex Override",
+        "player_names": ["Alice", "Bob", "Carol", "Dave", "Eve", "Frank", "Gina", "Hugo"],
+        "court_names": ["Court 1", "Court 2"],
+        "total_points_per_match": 32,
+        "num_rounds": 2,
+    }
+
+    def test_k_multiplier_uses_match_target(self):
+        from backend.api.elo_integration import _mexicano_k_multiplier
+        from backend.models import Match, MatchFormatOverride, Player, TournamentType
+
+        class _T:
+            total_points_per_match = 32
+
+        data = {"type": TournamentType.MEXICANO, "tournament": _T()}
+        m = Match(team1=[Player(name="A")], team2=[Player(name="B")])
+        assert _mexicano_k_multiplier(data, m) == 1.0
+        m.format_override = MatchFormatOverride(points_target=16)
+        assert _mexicano_k_multiplier(data, m) == 0.5
+        assert _mexicano_k_multiplier(data) == 1.0
+
+    def test_overridden_match_moves_elo_less(self, client, auth_headers):
+        r = client.post("/api/tournaments/mexicano", json=self.BODY, headers=auth_headers)
+        tid = r.json()["id"]
+        client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
+        m_full, m_short = client.get(f"/api/tournaments/{tid}/mex/matches").json()["current_matches"][:2]
+        client.patch(
+            f"/api/tournaments/{tid}/matches/{m_short['id']}/format",
+            json={"override": {"points_target": 16}},
+            headers=auth_headers,
+        )
+        # Same winning share (20/32 vs 10/16), so only K differs.
+        client.post(
+            f"/api/tournaments/{tid}/mex/record",
+            json={"match_id": m_full["id"], "score1": 20, "score2": 12},
+            headers=auth_headers,
+        )
+        client.post(
+            f"/api/tournaments/{tid}/mex/record",
+            json={"match_id": m_short["id"], "score1": 10, "score2": 6},
+            headers=auth_headers,
+        )
+        elos = get_tournament_elos(tid, "padel")
+        full_delta = abs(elos[m_full["team1_ids"][0]] - DEFAULT_RATING)
+        short_delta = abs(elos[m_short["team1_ids"][0]] - DEFAULT_RATING)
+        assert 0 < short_delta < full_delta
+
+    def test_recalculation_matches_incremental_for_mixed_targets(self, client, auth_headers):
+        from backend.api.elo_integration import elo_recalculate_tournament
+
+        r = client.post("/api/tournaments/mexicano", json=self.BODY, headers=auth_headers)
+        tid = r.json()["id"]
+        for rnd in range(2):
+            client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
+            matches = client.get(f"/api/tournaments/{tid}/mex/matches").json()["current_matches"]
+            for idx, m in enumerate(matches):
+                if idx == 0:
+                    client.patch(
+                        f"/api/tournaments/{tid}/matches/{m['id']}/format",
+                        json={"override": {"points_target": 24}},
+                        headers=auth_headers,
+                    )
+                    score = (15, 9)
+                else:
+                    score = (20, 12)
+                client.post(
+                    f"/api/tournaments/{tid}/mex/record",
+                    json={"match_id": m["id"], "score1": score[0], "score2": score[1]},
+                    headers=auth_headers,
+                )
+        incremental = get_tournament_elos(tid, "padel")
+        elo_recalculate_tournament(tid)
+        recalculated = get_tournament_elos(tid, "padel")
+        assert incremental.keys() == recalculated.keys()
+        for pid, elo in incremental.items():
+            assert abs(elo - recalculated[pid]) < 1e-6
+
+
 class TestGroupPlayoffEloIntegration:
     """ELO flows through a Group-Playoff tournament lifecycle."""
 

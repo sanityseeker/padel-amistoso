@@ -19,7 +19,7 @@ from __future__ import annotations
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..auth.deps import (
     PlayerIdentity,
@@ -27,17 +27,39 @@ from ..auth.deps import (
     get_current_user,
 )
 from ..auth.models import User
-from ..models import Match, MatchStatus, TournamentType, DisputeChoice, ScoreConfirmation
+from ..models import (
+    DisputeChoice,
+    InputFormat,
+    Match,
+    MatchFormatOverride,
+    MatchStatus,
+    ScoreConfirmation,
+    SetDecider,
+    TournamentType,
+)
 from ..tournaments import GroupPlayoffTournament
+from ..tournaments.set_format import match_decider, validate_decider_sets
 from .helpers import (
+    _effective_decider,
     _find_match_full,
     _is_player_in_match,
     _is_player_in_opposing_team,
     _is_player_in_submitter_team,
+    _mark_admin_score,
+    _prepare_set_score,
     _require_editor_access,
+    _serialize_format_override,
+    _serialize_match,
     _tennis_sets_to_scores,
+    _tv_default_decider,
 )
-from .schemas import RecordScoreRequest, RecordTennisScoreRequest
+from .schemas import (
+    MatchFormatResponse,
+    RecordScoreRequest,
+    RecordTennisScoreRequest,
+    SetMatchFormatRequest,
+    validate_set_scores,
+)
 from .state import _tournaments, get_tournament_lock, save_tournament, update_live_stats
 from .push_events import notify_score_accepted, notify_score_disputed, notify_champion
 from .elo_integration import elo_after_score, elo_recalculate_tournament
@@ -56,8 +78,14 @@ class ResolveDisputeRequest(BaseModel):
     # Required when chosen == "custom".
     score1: int | None = Field(default=None, ge=0)
     score2: int | None = Field(default=None, ge=0)
-    # Optional custom tennis sets.
+    # Optional custom tennis sets.  When given, the server derives the match
+    # score from them and ignores score1/score2.
     sets: list[list[int]] | None = None
+
+    @field_validator("sets")
+    @classmethod
+    def _validate_sets(cls, v: list[list[int]] | None) -> list[list[int]] | None:
+        return validate_set_scores(v) if v else None
 
 
 # ---------------------------------------------------------------------------
@@ -96,20 +124,48 @@ def _apply_score_to_tournament(
     score: tuple[int, int],
     sets: list[tuple[int, int]] | None = None,
     third_set_loss: bool = False,
-) -> None:
+) -> tuple[int, int]:
     """Apply a score to the underlying tournament engine (by type).
 
-    This is used when accepting a score in 'required' mode or when resolving
-    a dispute with a correction / custom score.  For playoff matches the score
-    is re-recorded via the bracket engine (bracket advancement already occurred
+    This is used when accepting a score in 'required' mode, when resolving a
+    dispute with a correction / custom score, and when an organiser changes
+    the decider of a finished match.  For playoff matches (Group+Playoff,
+    stand-alone play-offs and Mexicano play-offs alike) the score is
+    re-recorded via the bracket engine (bracket advancement already occurred
     on first record; re-recording updates the displayed score only).
+
+    When *sets* are given the game totals are derived from them under the
+    match's effective third-set decider (a match tie-break counts as one
+    game), the third set is validated against that decider, and the decider
+    is stamped on the match once the engine accepted the score.  A three-set
+    result always counts as a third-set decision (``third_set_loss``), so
+    re-applying a stored set score (accept, accept-correction,
+    resolve-dispute) never silently clears the flag.
+
+    Returns:
+        The score actually recorded (recomputed from *sets* when given).
+
+    Raises:
+        ValueError / RuntimeError / KeyError: from the engine or the decider
+            validation; callers map these to HTTP 400.
     """
+    decider: SetDecider | None = None
+    if sets is not None:
+        decider = _effective_decider(data, match)
+        validate_decider_sets(sets, decider)
+        total1, total2, sets, _ = _tennis_sets_to_scores([list(s) for s in sets], decider)
+        score = (total1, total2)
+        if len(sets) == 3:
+            third_set_loss = True
     t = data["tournament"]
     tournament_type = data.get("type", "")
 
     if tournament_type == TournamentType.MEXICANO.value:
-        # record_result handles both first-time and re-recording.
-        t.record_result(match.id, score)
+        if _is_mexicano_round_match(data, match):
+            # record_result handles both first-time and re-recording.
+            t.record_result(match.id, score)
+        else:
+            t.record_playoff_result(match.id, score, sets=sets)
     elif tournament_type == TournamentType.GROUP_PLAYOFF.value:
         # Determine whether this is a group or playoff match.
         in_playoff = match.id not in _collect_group_match_ids(t)
@@ -119,6 +175,9 @@ def _apply_score_to_tournament(
             t.record_group_result(match.id, score, sets=sets, third_set_loss=third_set_loss)
     elif tournament_type == TournamentType.PLAYOFF.value:
         t.record_result(match.id, score, sets=sets)
+    if sets is not None:
+        match.decider = decider
+    return score
 
 
 def _collect_group_match_ids(t: GroupPlayoffTournament) -> set[str]:
@@ -127,6 +186,23 @@ def _collect_group_match_ids(t: GroupPlayoffTournament) -> set[str]:
     for group in getattr(t, "groups", []):
         ids.update(m.id for m in getattr(group, "matches", []))
     return ids
+
+
+def _is_mexicano_round_match(data: dict, match: Match) -> bool:
+    """Return True for a Mexicano round match (not a Mexicano play-off match)."""
+    if data.get("type") != TournamentType.MEXICANO.value:
+        return False
+    t = data["tournament"]
+    return any(m.id == match.id for m in t.all_matches())
+
+
+def _check_mexicano_round_sum(data: dict, match: Match, score1: int, score2: int) -> None:
+    """Raise 400 unless a Mexicano round score sums to the match's points target."""
+    if not _is_mexicano_round_match(data, match):
+        return
+    target = data["tournament"]._points_target_for(match)
+    if score1 + score2 != target:
+        raise HTTPException(400, f"Scores must sum to {target}, got {score1} + {score2} = {score1 + score2}")
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +325,8 @@ async def correct_score(
         if not _is_player_in_opposing_team(match, player.player_id, t):
             raise HTTPException(403, "Only an opposing team member may correct this score")
 
+        _check_mexicano_round_sum(data, match, req.score1, req.score2)
+
         now = time.time()
         match.disputed = True
         match.dispute_score = (req.score1, req.score2)
@@ -277,11 +355,14 @@ async def correct_score_tennis(
     req: RecordTennisScoreRequest,
     player: PlayerIdentity = Depends(get_current_player),
 ) -> dict:
-    """Submit a tennis-format score correction on behalf of the opposing team."""
+    """Submit a tennis-format score correction on behalf of the opposing team.
+
+    The third set is validated against the match's effective decider right
+    away (a match tie-break must be e.g. 10-8), so the player gets a clear
+    400 instead of a failure at resolution time.
+    """
     if player is None or player.tournament_id != tid:
         raise HTTPException(403, "Player authentication required")
-
-    total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
 
     async with get_tournament_lock(tid):
         data = _get_any_tournament(tid)
@@ -289,6 +370,8 @@ async def correct_score_tennis(
         match = _find_match_full(t, mid)
         if match is None:
             raise HTTPException(404, "Match not found")
+
+        total1, total2, sets_tuples, _, _decider = _prepare_set_score(data, match, req.sets)
 
         if match.score is None:
             raise HTTPException(409, "Match has no score to correct")
@@ -375,7 +458,7 @@ async def accept_correction(
         final_score = match.dispute_score
         final_sets = list(match.dispute_sets) if match.dispute_sets else None
         try:
-            _apply_score_to_tournament(tid, data, match, final_score, final_sets)
+            final_score = _apply_score_to_tournament(tid, data, match, final_score, final_sets)
         except (ValueError, RuntimeError, KeyError) as e:
             raise HTTPException(400, str(e))
 
@@ -400,6 +483,7 @@ async def accept_correction(
         )
         await save_tournament(tid)
         await update_live_stats(tid)
+        elo_after_score(tid, data, match)
 
     notify_score_accepted(tid, data, match, player.player_id)
     champ = getattr(t, "champion", lambda: None)()
@@ -495,21 +579,25 @@ async def resolve_dispute(
             final_score = match.dispute_score
             final_sets = list(match.dispute_sets) if match.dispute_sets else None
         else:  # "custom"
-            if req.score1 is None or req.score2 is None:
-                raise HTTPException(400, "score1 and score2 are required for custom resolution")
-            final_score = (req.score1, req.score2)
-            final_sets_raw = req.sets
-            if final_sets_raw:
-                _, _, sets_tuples, _ = _tennis_sets_to_scores(final_sets_raw)
+            if req.sets:
+                # Set scores: the server derives the match score (game totals
+                # under the effective decider, adjusted so the set winner
+                # always wins) and ignores any client-supplied score1/score2,
+                # which may be raw game sums.
+                total1, total2, sets_tuples, _, _decider = _prepare_set_score(data, match, req.sets)
+                final_score = (total1, total2)
                 final_sets = list(sets_tuples)
             else:
+                if req.score1 is None or req.score2 is None:
+                    raise HTTPException(400, "score1 and score2 are required for custom resolution")
+                final_score = (req.score1, req.score2)
                 final_sets = None
 
         # Apply the resolved score to the tournament engine so standings / credits
         # reflect the final decision.  'original' re-applies the same score which
         # is safe (record_result reverses previous credits for Mexicano).
         try:
-            _apply_score_to_tournament(tid, data, match, final_score, final_sets)
+            final_score = _apply_score_to_tournament(tid, data, match, final_score, final_sets)
         except (ValueError, RuntimeError, KeyError) as e:
             raise HTTPException(400, str(e))
 
@@ -539,6 +627,137 @@ async def resolve_dispute(
     if champ:
         notify_champion(tid, data, [p.name for p in champ])
     return {"ok": True}
+
+
+@router.patch("/{tid}/matches/{mid}/format", response_model=MatchFormatResponse)
+async def set_match_format(
+    tid: str,
+    mid: str,
+    req: SetMatchFormatRequest,
+    user: User = Depends(get_current_user),
+) -> MatchFormatResponse:
+    """Set or clear the scoring-format override of one match (organiser only).
+
+    - ``mode`` (points / sets) only changes which inputs the score forms show;
+      it is allowed on any match, including completed ones, and never touches a
+      stored score.  ``sets`` is rejected for Mexicano round matches.
+    - ``points_target`` applies to Mexicano round matches only.  Changing the
+      effective target of a match that already holds a score (completed, or a
+      pending player score) requires a replacement ``score1``/``score2`` in the
+      same request; the score is re-recorded against the new target as an
+      organiser correction.
+    - ``decider`` (full set / match tie-break) applies to set-capable matches
+      only.  Changing the decider of a match whose stored score went to a
+      third set requires replacement ``sets`` in the same request (409
+      otherwise); the sets are re-recorded under the new decider.  Two-set
+      and points scores are unaffected, so the change is applied freely.
+    - Disputed matches are rejected (409) until the dispute is resolved.
+
+    Players never reach this endpoint: it requires an organiser JWT
+    (``get_current_user``) with editor access to the tournament.
+    """
+    _require_editor_access(tid, user)
+
+    async with get_tournament_lock(tid):
+        data = _get_any_tournament(tid)
+        t = data["tournament"]
+        match = _find_match_full(t, mid)
+        if match is None:
+            raise HTTPException(404, "Match not found")
+
+        if match.disputed:
+            raise HTTPException(409, "Resolve the dispute before changing the format")
+
+        is_mex_round = _is_mexicano_round_match(data, match)
+        body = req.override
+        new_mode = InputFormat(body.mode) if body and body.mode else None
+        new_target = body.points_target if body else None
+        new_decider = SetDecider(body.decider) if body and body.decider else None
+
+        if new_mode == InputFormat.SETS and is_mex_round:
+            raise HTTPException(400, "Mexicano round matches are scored in points only")
+        if new_target is not None and not is_mex_round:
+            raise HTTPException(400, "A points target only applies to Mexicano round matches")
+        if new_decider is not None and is_mex_round:
+            raise HTTPException(400, "A third-set decider only applies to matches scored in sets")
+
+        # A target equal to the tournament total is the default, not an override.
+        if is_mex_round and new_target == t.total_points_per_match:
+            new_target = None
+
+        new_override: MatchFormatOverride | None = None
+        if new_mode is not None or new_target is not None or new_decider is not None:
+            new_override = MatchFormatOverride(
+                mode=new_mode,
+                points_target=new_target,
+                decider=new_decider,
+                set_by=user.username,
+                set_at=time.time(),
+            )
+
+        rescore = False
+        rescore_sets = False
+        restamp_decider: SetDecider | None = None
+        if not is_mex_round and match.sets and match.score is not None:
+            # The stored set score keeps the decider it was recorded under;
+            # compare that with what the match would use after this change.
+            decider_after = new_decider or _tv_default_decider(data)
+            if match_decider(match) != decider_after:
+                if len(match.sets) == 3:
+                    if not req.sets:
+                        raise HTTPException(409, "Re-enter the score to change this match's format")
+                    rescore_sets = True
+                else:
+                    restamp_decider = decider_after
+        if is_mex_round:
+            old_target = t._points_target_for(match)
+            target_after = new_target or t.total_points_per_match
+            has_score = match.score is not None and match.status in (MatchStatus.COMPLETED, MatchStatus.IN_PROGRESS)
+            if has_score and old_target != target_after:
+                if req.sets:
+                    raise HTTPException(400, "Mexicano round matches are scored in points only")
+                if req.score1 is None or req.score2 is None:
+                    raise HTTPException(409, "Re-enter the score to change this match's format")
+                rescore = True
+
+        previous_override = match.format_override
+        match.format_override = new_override
+        if rescore:
+            try:
+                t.record_result(match.id, (req.score1, req.score2))
+            except (ValueError, RuntimeError, KeyError) as e:
+                match.format_override = previous_override
+                raise HTTPException(400, str(e))
+            _mark_admin_score(match, user.username)
+        elif rescore_sets:
+            try:
+                _apply_score_to_tournament(tid, data, match, (0, 0), [tuple(s) for s in req.sets])
+            except (ValueError, RuntimeError, KeyError) as e:
+                match.format_override = previous_override
+                raise HTTPException(400, str(e))
+            _mark_admin_score(match, user.username)
+            rescore = True
+        elif restamp_decider is not None:
+            match.decider = restamp_decider
+
+        match.score_history.append(
+            {
+                "player_id": user.username,
+                "action": "format_override",
+                "score": list(match.score) if match.score else None,
+                "sets": [list(s) for s in match.sets] if match.sets else None,
+                "timestamp": time.time(),
+                "override": _serialize_format_override(match),
+            }
+        )
+        await save_tournament(tid)
+        await update_live_stats(tid)
+        if rescore:
+            elo_recalculate_tournament(tid)
+
+        payload = _serialize_match(match, t._points_target_for(match) if is_mex_round else None)
+
+    return MatchFormatResponse(ok=True, match=payload)
 
 
 @router.get("/{tid}/matches/{mid}/history")

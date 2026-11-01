@@ -76,6 +76,10 @@ function _antIc(name) {
     'notification': `<path fill="currentColor" d="M880 112c-3.8 0-7.7.7-11.6 2.3L292 345.9H128c-8.8 0-16 7.4-16 16.6v299c0 9.2 7.2 16.6 16 16.6h101.7c-3.7 11.6-5.7 23.9-5.7 36.4 0 65.9 53.8 119.5 120 119.5 55.4 0 102.1-37.6 115.9-88.4l408.6 164.2c3.9 1.5 7.8 2.3 11.6 2.3 16.9 0 32-14.2 32-33.2V145.2C912 126.2 897 112 880 112zM344 762.3c-26.5 0-48-21.4-48-47.8 0-11.2 3.9-21.9 11-30.4l84.9 34.1c-2 24.6-22.7 44.1-47.9 44.1zm496 58.4L318.8 611.3l-12.9-5.2H184V417.9h121.9l12.9-5.2L840 203.3v617.4z"/>`,
     // ThunderboltOutlined
     'thunderbolt': `<path fill="currentColor" d="M848 359.3H627.7L825.8 109c4.1-5.3.4-13-6.3-13H436c-2.8 0-5.5 1.5-6.9 4L170 547.5c-3.1 5.3.7 12 6.9 12h174.4l-89.4 357.6c-1.9 7.8 7.5 13.3 13.3 7.7L853.5 373c5.2-4.9 1.7-13.7-5.5-13.7zM378.2 732.5l60.3-241H281.1l189.6-327.4h224.6L487 427.4h211L378.2 732.5z"/>`,
+    // CheckOutlined — completed match badge
+    'check': `<path fill="currentColor" d="M912 190h-69.9c-9.8 0-19.1 4.5-25.1 12.2L404.7 724.5 207 474a32 32 0 00-25.1-12.2H112c-6.7 0-10.4 7.7-6.3 12.9l273.9 347c12.8 16.2 37.4 16.2 50.3 0l488.4-618.9c4.1-5.1.4-12.8-6.3-12.8z"/>`,
+    // ClockCircleOutlined — score awaiting confirmation
+    'clock-circle': `<path fill="currentColor" d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z"/><path fill="currentColor" d="M686.7 638.6L544.1 535.5V288c0-4.4-3.6-8-8-8H488c-4.4 0-8 3.6-8 8v275.4c0 2.6 1.2 5 3.3 6.5l165.4 120.6c3.6 2.6 8.6 1.8 11.2-1.7l28.6-39c2.6-3.7 1.8-8.7-1.8-11.2z"/>`,
     // StopOutlined
     'stop': `<path fill="currentColor" d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372 0-89 31.3-170.8 83.5-234.8l523.3 523.3C682.8 852.7 601 884 512 884zm288.5-137.2L277.2 223.5C341.2 171.3 423 140 512 140c205.4 0 372 166.6 372 372 0 89-31.3 170.8-83.5 234.8z"/>`,
     // RetweetOutlined
@@ -121,6 +125,9 @@ function _antIc(name) {
     if (config && config.amistoso_domain) {
       window.__AMISTOSO_DOMAIN__ = String(config.amistoso_domain).toLowerCase();
     }
+    // Lets legacy (string-built) panels hide core-only features such as club
+    // subdomains without reaching into the login island.
+    window.__DEMO_INSTANCE__ = !!(config && config.demo_instance);
     const demoBanner = document.getElementById('demo-banner');
     if (config.demo_mode && demoBanner) {
       demoBanner.style.display = 'block';
@@ -129,11 +136,22 @@ function _antIc(name) {
     if (typeof _loginStore !== 'undefined') {
       _loginStore.demoUrl = config.demo_url || null;
       _loginStore.isDemoInstance = !!config.demo_instance;
+      if (config.demo_ttl_days) _loginStore.demoTtlDays = config.demo_ttl_days;
+      _loginStore.configLoaded = true;
+      // Must run after isDemoInstance is set: #start-demo mints on the demo
+      // instance and is merely stripped on the core instance.
+      if (typeof maybeAutoStartDemo === 'function') maybeAutoStartDemo();
+      if (typeof _focusLoginDialog === 'function') _focusLoginDialog();
     }
     initDemoCountdown();
     restoreDemoCredsBanner();
   } catch (err) {
     console.warn('Could not fetch config:', err);
+    // Fall back to the core login layout rather than an empty dialog.
+    if (typeof _loginStore !== 'undefined' && !_loginStore.configLoaded) {
+      _loginStore.configLoaded = true;
+      if (typeof _focusLoginDialog === 'function') _focusLoginDialog();
+    }
   }
 })();
 
@@ -199,7 +217,7 @@ function _renderDemoCredsBanner(username, passphrase) {
   const banner = document.getElementById('demo-creds-banner');
   if (!banner) return;
   banner.innerHTML = `
-    <strong>${esc(t('txt_demo_creds_title'))}</strong>
+    <strong>${esc(t('txt_demo_creds_ready'))}</strong>
     <code class="demo-banner-code">${esc(username)}</code> / <code class="demo-banner-code">${esc(passphrase)}</code>
     <button type="button" class="btn btn-sm" onclick="copyDemoCredsBanner(this)">${esc(t('txt_demo_creds_copy'))}</button>
     <span class="demo-creds-note">${esc(t('txt_demo_creds_save_hint'))}</span>
@@ -216,9 +234,7 @@ async function copyDemoCredsBanner(btn) {
   if (!creds) return;
   try {
     await navigator.clipboard.writeText(`${creds.u} / ${creds.p}`);
-    const original = btn.textContent;
-    btn.textContent = t('txt_txt_copied');
-    setTimeout(() => { btn.textContent = original; }, 1800);
+    flashSuccess(btn, t('txt_txt_copied'));
   } catch (_) {}
 }
 

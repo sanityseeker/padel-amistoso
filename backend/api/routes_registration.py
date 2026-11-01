@@ -43,6 +43,7 @@ from .db import add_co_editor, get_db, get_registration_co_editors, get_shared_r
 from .elo_integration import elo_init_tournament
 from .elo_store import get_profile_starting_elos
 from .helpers import _store_tournament, get_scope_branding as _get_scope_branding, revalidate_scope_for_community
+from . import payments_store as _payments
 from .player_secret_store import (
     lookup_registrant_by_passphrase,
     lookup_registrant_by_token,
@@ -571,6 +572,7 @@ def list_registrations(
     branding_cache: dict[tuple[str, str | None], dict[str, str | None]] = {}
     for row in rows:
         r = dict(row)
+        r.pop("admin_notes", None)
         community_id = r.get("community_id", "open")
         branding = _get_scope_branding(community_id, r.get("club_id"), branding_cache)
         r["registrant_count"] = registrant_counts.get(r["id"], 0)
@@ -693,6 +695,7 @@ def get_registration(rid: str, user: User = Depends(get_current_user)) -> Regist
         assigned_player_ids=assigned_ids,
         player_tournament_map=player_tournament_map,
         participant_filter=_parse_participant_filter(reg.get("participant_filter")),
+        admin_notes=reg.get("admin_notes"),
         eligible_player_ids=_eligible_player_ids(reg, registrants),
         created_at=reg["created_at"],
         registrants=[
@@ -775,6 +778,9 @@ async def update_registration(rid: str, req: RegistrationUpdate, user: User = De
     elif req.message is not None:
         updates.append("message = ?")
         params.append(req.message)
+    if req.admin_notes is not None:
+        updates.append("admin_notes = ?")
+        params.append(req.admin_notes if req.admin_notes.strip() else None)
     if req.listed is not None:
         updates.append("listed = ?")
         params.append(1 if req.listed else 0)
@@ -860,6 +866,8 @@ async def delete_registration(rid: str, user: User = Depends(get_current_user)) 
         conn.execute("DELETE FROM registration_shares WHERE registration_id = ?", (reg_id,))
         conn.execute("DELETE FROM registrants WHERE registration_id = ?", (reg_id,))
         conn.execute("DELETE FROM registrations WHERE id = ?", (reg_id,))
+    # Payment rows outlive the lobby: paid -> refund_due, unpaid dropped, rest kept.
+    _payments.on_registration_deleted(reg_id, actor=user.username)
     _registration_locks.pop(reg_id, None)
     from .db import invalidate_reg_co_editor_cache  # noqa: PLC0415
 
@@ -991,6 +999,7 @@ async def delete_registrant(rid: str, player_id: str, user: User = Depends(get_c
         )
         if cur.rowcount == 0:
             raise HTTPException(404, "Registrant not found")
+    _payments.on_participant_removed("registration", reg_id, player_id, actor=user.username)
     return {"ok": True}
 
 
@@ -1049,6 +1058,7 @@ def get_registration_public(rid: str) -> RegistrationPublicOut:
         community_name=branding["community_name"],
         club_name=branding["club_name"],
         club_logo_url=branding["club_logo_url"],
+        payment=_payments.public_payment_info(_payments.get_registration_payment_settings(reg)),
     )
 
 
@@ -1205,6 +1215,7 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
         "passphrase_differs_from_profile": (
             profile_id is not None and profile_passphrase_linked is not None and passphrase != profile_passphrase_linked
         ),
+        "payment": _payment_info_for(reg, player_id, req.player_name),
     }
 
 
@@ -1557,6 +1568,15 @@ async def convert_registration(
         # silently starting from the 1000 default on the first scored match.
         elo_init_tournament(tid, [row[1] for row in secret_rows], req.sport.value)
 
+        # Payment rows follow the players into the tournament; lobby fee settings
+        # are copied so the tournament admin view shows the same configuration.
+        _payments.on_registration_converted(
+            reg_id,
+            tid,
+            [pid for name, pid in player_entries if name in registrant_by_name],
+            registration.get("payment_settings"),
+        )
+
         # Grant all current registration co-editors access to the new tournament so
         # they can continue managing it without the owner having to re-share manually.
         for co_editor in get_registration_co_editors(reg_id):
@@ -1626,6 +1646,19 @@ async def set_registration_alias(rid: str, req: SetAliasRequest, user: User = De
     return {"ok": True, "alias": req.alias}
 
 
+def _payment_info_for(reg: dict, player_id: str, player_name: str) -> dict | None:
+    """Player-facing payment block for login/my-entry/register responses (None when no fee)."""
+    info = _payments.player_payment_info(
+        "registration",
+        reg["id"],
+        entity_name=reg["name"],
+        player_id=player_id,
+        player_name=player_name,
+        settings=_payments.get_registration_payment_settings(reg),
+    )
+    return info.model_dump() if info is not None else None
+
+
 @router.post("/{rid}/player-login", response_model=RegistrantLoginOut)
 def player_login(rid: str, req: RegistrantLoginIn, request: Request) -> RegistrantLoginOut:
     """Allow a returning player to retrieve their registration data by passphrase or token.
@@ -1650,7 +1683,7 @@ def player_login(rid: str, req: RegistrantLoginIn, request: Request) -> Registra
         result = lookup_registrant_by_token(reg["id"], req.token)  # type: ignore[arg-type]
     if result is None:
         raise HTTPException(401, "Passphrase or token not found")
-    return RegistrantLoginOut(**result)
+    return RegistrantLoginOut(**result, payment=_payment_info_for(reg, result["player_id"], result["player_name"]))
 
 
 @router.get("/{rid}/my-entry", response_model=RegistrantLoginOut)
@@ -1717,6 +1750,7 @@ def get_my_entry(rid: str, identity: ProfileIdentity | None = Depends(get_curren
         token=row["token"],
         answers=answers,
         registered_at=row["registered_at"],
+        payment=_payment_info_for(reg, row["player_id"], row["player_name"]),
     )
 
 
@@ -1760,7 +1794,7 @@ async def player_update_answers(rid: str, req: RegistrantAnswersUpdateIn, reques
     result = lookup_registrant_by_passphrase(reg_id, req.passphrase)
     if result is None:
         raise HTTPException(401, "Passphrase not found")
-    return RegistrantLoginOut(**result)
+    return RegistrantLoginOut(**result, payment=_payment_info_for(reg, result["player_id"], result["player_name"]))
 
 
 @router.post("/{rid}/player-cancel")
@@ -1789,12 +1823,18 @@ async def player_cancel_registration(rid: str, req: RegistrantLoginIn, request: 
             raise HTTPException(400, "You have already been assigned to a tournament and cannot cancel")
 
     with get_db() as conn:
+        cancelled = conn.execute(
+            "SELECT player_id FROM registrants WHERE registration_id = ? AND passphrase = ?",
+            (reg_id, req.passphrase),
+        ).fetchone()
         cur = conn.execute(
             "DELETE FROM registrants WHERE registration_id = ? AND passphrase = ?",
             (reg_id, req.passphrase),
         )
         if cur.rowcount == 0:
             raise HTTPException(401, "Passphrase not found")
+    if cancelled is not None:
+        _payments.on_participant_removed("registration", reg_id, cancelled["player_id"], actor="player")
     return {"ok": True}
 
 

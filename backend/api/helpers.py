@@ -14,7 +14,8 @@ from fastapi.responses import Response
 
 from ..auth.deps import PlayerIdentity
 from ..auth.models import User, UserRole
-from ..models import Match, MatchStatus
+from ..models import Match, MatchStatus, SetDecider
+from ..tournaments.set_format import format_sets, games_from_sets, match_decider, validate_decider_sets
 from .db import get_co_editors
 from .state import _tournaments, _save_tournament
 
@@ -190,9 +191,29 @@ def _is_bye_match(m: Match) -> bool:
     return m.status == MatchStatus.COMPLETED and m.score is None
 
 
-def _serialize_match(m: Match) -> dict:
-    """Convert a Match dataclass to a JSON-friendly dict."""
+def _serialize_format_override(m: Match) -> dict | None:
+    """Return the public view of a match's format override (no audit fields)."""
+    fo = getattr(m, "format_override", None)
+    if fo is None:
+        return None
     return {
+        "mode": fo.mode.value if fo.mode else None,
+        "points_target": fo.points_target,
+        "decider": fo.decider.value if fo.decider else None,
+    }
+
+
+def _serialize_match(m: Match, points_target: int | None = None) -> dict:
+    """Convert a Match dataclass to a JSON-friendly dict.
+
+    Args:
+        m: The match to serialise.
+        points_target: For Mexicano round matches, the effective points the
+            score must sum to (override or tournament total).  When given it
+            is emitted as ``effective_points_target`` so clients never have
+            to re-derive it.
+    """
+    out = {
         "id": m.id,
         "team1": [p.name for p in m.team1],
         "team2": [p.name for p in m.team2],
@@ -217,7 +238,12 @@ def _serialize_match(m: Match) -> dict:
         "dispute_by": getattr(m, "dispute_by", None),
         "dispute_at": getattr(m, "dispute_at", None),
         "dispute_escalated": getattr(m, "dispute_escalated", False),
+        "format_override": _serialize_format_override(m),
+        "effective_decider": _effective_decider_value(m),
     }
+    if points_target is not None:
+        out["effective_points_target"] = points_target
+    return out
 
 
 def _get_tournament(tid: str, expected_type: str) -> dict:
@@ -387,6 +413,7 @@ def _check_read_access(tid: str, user: User | None) -> None:
 
 def _tennis_sets_to_scores(
     sets: list[list[int]],
+    decider: SetDecider | None = None,
 ) -> tuple[int, int, list[tuple[int, int]], bool]:
     """Convert raw set scores to total game counts and typed tuples.
 
@@ -396,13 +423,16 @@ def _tennis_sets_to_scores(
     three sets were played (i.e. the match went to a deciding 3rd set),
     regardless of whether the total-game adjustment was needed.
 
+    With a match tie-break *decider* the third set counts as one game
+    (``set_format.games_from_sets``), so ``6-4 3-6 [10-8]`` totals 10-10
+    before the winner adjustment, not 19-18.
+
     Returns:
         Tuple of (total_games_team1, total_games_team2, sets_as_tuples,
         decided_by_third_set).
     """
     sets_tuples = [tuple(s) for s in sets]
-    total1 = sum(s[0] for s in sets_tuples)
-    total2 = sum(s[1] for s in sets_tuples)
+    total1, total2 = games_from_sets(sets_tuples, decider)
     sets1_won = sum(1 for s in sets_tuples if s[0] > s[1])
     sets2_won = sum(1 for s in sets_tuples if s[1] > s[0])
     decided_by_third_set = len(sets_tuples) == 3
@@ -415,6 +445,70 @@ def _tennis_sets_to_scores(
     elif sets2_won > sets1_won and total2 <= total1:
         total2 = total1 + 1
     return total1, total2, sets_tuples, decided_by_third_set
+
+
+def _effective_decider(data: dict, match: Match) -> SetDecider:
+    """Resolve the third-set decider for *match*: override, else tournament setting.
+
+    ``format_override.decider`` wins; otherwise ``tv_settings.set_decider``
+    (default full set).  This is the value a *new* set score is validated and
+    recorded under; a stored score keeps the decider it was recorded with
+    (``Match.decider``), so changing the tournament setting later never
+    reinterprets existing results.
+    """
+    override = getattr(match, "format_override", None)
+    if override is not None and override.decider:
+        return override.decider
+    return _tv_default_decider(data)
+
+
+def _tv_default_decider(data: dict) -> SetDecider:
+    """Tournament-wide third-set decider from ``tv_settings`` (default full set)."""
+    raw = (data.get("tv_settings") or {}).get("set_decider")
+    try:
+        return SetDecider(raw) if raw else SetDecider.FULL_SET
+    except ValueError:
+        return SetDecider.FULL_SET
+
+
+def _prepare_set_score(
+    data: dict,
+    match: Match,
+    sets: list[list[int]],
+) -> tuple[int, int, list[tuple[int, int]], bool, SetDecider]:
+    """Validate *sets* against the match's effective decider and total the games.
+
+    Raises ``HTTPException(400)`` when the third set does not fit a match
+    tie-break decider (see ``set_format.validate_decider_sets``).
+
+    Returns:
+        ``(total1, total2, sets_tuples, decided_by_third_set, decider)``; the
+        caller stamps ``match.decider = decider`` once the engine accepted
+        the score.
+    """
+    decider = _effective_decider(data, match)
+    try:
+        validate_decider_sets(sets, decider)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    total1, total2, sets_tuples, decided = _tennis_sets_to_scores(sets, decider)
+    return total1, total2, sets_tuples, decided, decider
+
+
+def _effective_decider_value(m: Match) -> str | None:
+    """Public ``effective_decider`` for a serialised match.
+
+    A scored set match reports the decider it was recorded under (legacy
+    records: full set).  A pending match reports its override, or ``None``
+    when it inherits ``tv_settings.set_decider`` (clients fall back to that).
+    """
+    decider = getattr(m, "decider", None)
+    if decider:
+        return decider.value if isinstance(decider, SetDecider) else str(decider)
+    if m.sets:
+        return SetDecider.FULL_SET.value
+    fo = getattr(m, "format_override", None)
+    return fo.decider.value if fo is not None and fo.decider else None
 
 
 def _build_match_labels(bracket: object) -> dict[str, dict]:
@@ -438,7 +532,7 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
 
     def _fmt_score(m: object) -> str | None:
         if m.sets:
-            return "  ".join(f"{s[0]}-{s[1]}" for s in m.sets)
+            return format_sets(m.sets, match_decider(m), sep="  ")
         return f"{m.score[0]}–{m.score[1]}" if m.score else None
 
     def _label_round_matches(match_list: list, prefix: str) -> None:

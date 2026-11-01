@@ -64,7 +64,7 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
   html += `<span style="color:var(--text-muted)">${t('txt_txt_tv_url')}</span> <code>/tv/${esc(_tvSlug)}</code>`;
   html += `</div>`;
   html += `<div class="settings-url-actions">`;
-  html += `<button type="button" class="settings-url-copy-btn" onclick="navigator.clipboard.writeText(window.location.origin+'/tv/${escAttr(_tvSlug)}');alert('${escAttr(t('txt_txt_url_copied'))}')">${_ic('copy')} ${t('txt_txt_copy')}</button>`;
+  html += `<button type="button" class="settings-url-copy-btn" onclick="const b=this;navigator.clipboard.writeText(window.location.origin+'/tv/${escAttr(_tvSlug)}').then(()=>flashSuccess(b,'${escAttr(t('txt_txt_copied'))}'))">${_ic('copy')} ${t('txt_txt_copy')}</button>`;
   html += `<button type="button" class="settings-url-copy-btn" onclick="window.open('/tv/${escAttr(_tvSlug)}','padel_tv_${escAttr(currentTid)}','noopener noreferrer')">${_antIc('desktop')} ${t('txt_txt_tv_mode_controls')} ↗</button>`;
   html += `</div>`;
   html += `</div>`;
@@ -234,6 +234,17 @@ html += `<h4 class="settings-group-title">${_antIc('setting')} ${t('txt_admin_se
       html += `</div>`;
     }
     html += `</div>`;
+
+    // Third-set decider (tournament default; per-match overrides keep their own).
+    const decider = def('set_decider', 'full_set');
+    html += `<div class="settings-block">`;
+    html += `<label class="settings-label">${t('txt_admin_settings_decider')}</label>`;
+    html += `<p class="settings-help">${t('txt_admin_settings_decider_help')}</p>`;
+    html += `<div class="score-mode-toggle" id="set-decider-toggle" role="group" aria-label="${escAttr(t('txt_admin_settings_decider'))}">`;
+    html += `<button type="button" class="${decider === 'full_set' ? 'active' : ''}" aria-pressed="${decider === 'full_set'}" onclick="_setDefaultDecider('full_set')">${t('txt_match_format_decider_full_set')}</button>`;
+    html += `<button type="button" class="${decider === 'match_tiebreak' ? 'active' : ''}" aria-pressed="${decider === 'match_tiebreak'}" onclick="_setDefaultDecider('match_tiebreak')">${t('txt_match_format_decider_tiebreak')}</button>`;
+    html += `</div>`;
+    html += `</div>`;
     html += `</div>`;
   }
 
@@ -274,8 +285,7 @@ function _renderCommsBody(emailSettings) {
 
   html += `<div class="settings-block">`;
   html += `<div class="settings-inline-row">`;
-  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveEmailSettings())">${t('txt_email_save_email')}</button>`;
-  html += `<span id="email-settings-saved-msg" style="color:var(--success,#22c55e);font-size:0.82rem;display:none">${t('txt_email_settings_saved')}</span>`;
+  html += `<button type="button" id="email-settings-save-btn" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveEmailSettings())">${t('txt_email_save_email')}</button>`;
   html += `</div>`;
   html += `</div>`;
   html += `</div>`;
@@ -380,7 +390,7 @@ function _renderAccessScopeBody(collaborators) {
   html += `<div class="settings-block">`;
   html += `<p class="settings-help">${t('txt_admin_settings_recalc_help')}</p>`;
   html += `<div class="settings-inline-row">`;
-  html += `<button type="button" class="btn btn-warning btn-sm" onclick="withLoading(this,_recalculateTournamentElo)">${_antIc('sync')} ${t('txt_txt_recalculate_elo')}</button>`;
+  html += `<button type="button" id="recalc-elo-btn" class="btn btn-warning btn-sm" onclick="withLoading(this,_recalculateTournamentElo)">${_antIc('sync')} ${t('txt_txt_recalculate_elo')}</button>`;
   html += `</div>`;
   html += `<p class="settings-help">${t('txt_admin_settings_recalc_all_help')}</p>`;
   html += `<div class="settings-inline-row">`;
@@ -412,7 +422,7 @@ async function _recalculateTournamentElo() {
   try {
     await api(`/api/tournaments/${currentTid}/elo/recalculate`, { method: 'POST' });
     await _rerenderCurrentViewPreserveDrafts();
-    _showToast(t('txt_txt_elo_recalculated'));
+    flashSuccess('recalc-elo-btn', t('txt_txt_saved'));
   } catch (e) {
     _showToast(t('txt_txt_elo_recalc_failed_value', { value: e.message }));
   }
@@ -451,11 +461,7 @@ async function _saveEmailSettings() {
       method: 'PATCH',
       body: JSON.stringify({ sender_name: senderName, reply_to: replyTo || null }),
     });
-    const msg = document.getElementById('email-settings-saved-msg');
-    if (msg) {
-      msg.style.display = 'inline';
-      setTimeout(() => { msg.style.display = 'none'; }, 2500);
-    }
+    flashSuccess('email-settings-save-btn', t('txt_txt_saved'));
   } catch (e) {
     console.error('Email settings save failed:', e.message);
   }
@@ -485,17 +491,14 @@ async function _adminResolveDispute(matchId, ctx) {
         if (v1 === 0 && v2 === 0) continue;
         sets.push([v1, v2]);
       }
-      if (sets.length === 0) { _showToast(t('txt_txt_enter_at_least_one_set_score')); return; }
-      // Compute totals from sets
-      let t1 = 0, t2 = 0;
-      for (const s of sets) { t1 += s[0]; t2 += s[1]; }
-      payload.score1 = t1;
-      payload.score2 = t2;
+      if (sets.length === 0) { _showToast(t('txt_txt_enter_at_least_one_set_score'), 'error'); return; }
+      // Send only the sets: the server derives the match score (and the
+      // third-set flag) so the set winner is always recorded as the winner.
       payload.sets = sets;
     } else {
       const s1 = +(document.getElementById('drs1-' + matchId)?.value) || 0;
       const s2 = +(document.getElementById('drs2-' + matchId)?.value) || 0;
-      if (s1 === 0 && s2 === 0) { _showToast(t('txt_txt_enter_custom_score')); return; }
+      if (s1 === 0 && s2 === 0) { _showToast(t('txt_txt_enter_custom_score'), 'error'); return; }
       payload.score1 = s1;
       payload.score2 = s2;
     }
@@ -508,7 +511,7 @@ async function _adminResolveDispute(matchId, ctx) {
     });
     await _rerenderCurrentViewPreserveDrafts();
   } catch (e) {
-    _showToast(t('txt_txt_resolve_dispute_failed_value', { value: e.message }));
+    _showToast(t('txt_txt_resolve_dispute_failed_value', { value: e.message }), 'error');
   }
 }
 
@@ -638,7 +641,6 @@ async function _deleteTournamentAlias() {
     await loadTournaments();
     // Re-render current view to show updated alias section
     await _rerenderCurrentViewPreserveDrafts();
-    alert(t('txt_txt_alias_removed_successfully'));
   } catch (e) {
     alert(t('txt_txt_failed_to_remove_alias_value', { value: e.message }));
   }
@@ -657,12 +659,8 @@ async function _setTournamentCommunity() {
     });
     await loadTournaments();
     await _rerenderCurrentViewPreserveDrafts();
-    flashSuccess(sel);
-    if (msgEl) {
-      msgEl.style.color = 'var(--green)';
-      msgEl.textContent = t('txt_tv_attach_updated');
-      setTimeout(() => { msgEl.textContent = ''; }, 2200);
-    }
+    if (msgEl) msgEl.textContent = '';
+    flashSuccess('tournament-community-select', t('txt_txt_saved'));
   } catch (e) {
     if (msgEl) {
       msgEl.style.color = 'var(--red)';
@@ -684,12 +682,8 @@ async function _setTournamentClub() {
     });
     await loadTournaments();
     await _rerenderCurrentViewPreserveDrafts();
-    flashSuccess(sel);
-    if (msgEl) {
-      msgEl.style.color = 'var(--green)';
-      msgEl.textContent = t('txt_tv_attach_updated');
-      setTimeout(() => { msgEl.textContent = ''; }, 2200);
-    }
+    if (msgEl) msgEl.textContent = '';
+    flashSuccess('tournament-club-select', t('txt_txt_saved'));
   } catch (e) {
     if (msgEl) {
       msgEl.style.color = 'var(--red)';

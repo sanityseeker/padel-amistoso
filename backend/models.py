@@ -63,8 +63,30 @@ class EliminationType(StrEnum):
 
 
 class ScoreMode(StrEnum):
+    # Note: ``TENNIS`` is stored as ``"sets"`` in ``tv_settings.score_mode`` and
+    # on the frontend.  Per-match overrides use ``InputFormat`` (``"sets"``) so
+    # they compare directly against the stored global without translation.
     POINTS = "points"
     TENNIS = "tennis"
+
+
+class InputFormat(StrEnum):
+    """Score input format; values match ``tv_settings.score_mode``."""
+
+    POINTS = "points"
+    SETS = "sets"
+
+
+class SetDecider(StrEnum):
+    """How a deciding third set is played.
+
+    ``MATCH_TIEBREAK`` (super tie-break to 10, win by 2, entered in the
+    third-set boxes) counts as one game wherever games are summed — see
+    ``backend/tournaments/set_format.py``.
+    """
+
+    FULL_SET = "full_set"
+    MATCH_TIEBREAK = "match_tiebreak"
 
 
 class ScoreConfirmation(StrEnum):
@@ -116,7 +138,6 @@ class BracketNodeKind(StrEnum):
     LOSERS_MATCH = "losers_match"
     LOSERS_BLOCK = "losers_block"
     GRAND_FINAL = "grand_final"
-    GF_RESET = "gf_reset"
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +167,41 @@ class Player:
 class Court:
     name: str
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
+
+
+@dataclass
+class MatchFormatOverride:
+    """Organiser-set scoring format for one match.
+
+    Every field is optional; ``None`` means "inherit the tournament setting".
+    An override with every format field ``None`` is never stored: the match's
+    ``format_override`` is set to ``None`` instead.
+    """
+
+    # Input mode (points / sets).  ``None`` = inherit the stage's score mode.
+    mode: InputFormat | None = None
+    # Points per match for Mexicano round matches.  ``None`` = tournament total.
+    points_target: int | None = None
+    # Third-set decider.  ``None`` = inherit ``tv_settings.set_decider``.
+    decider: SetDecider | None = None
+    # Audit only; never serialised to public payloads.
+    set_by: str | None = None
+    set_at: float | None = None
+
+    def is_empty(self) -> bool:
+        """Return True when no format field is set."""
+        return self.mode is None and self.points_target is None and self.decider is None
+
+    def __getstate__(self) -> dict:
+        return self.__dict__.copy()
+
+    def __setstate__(self, state: dict) -> None:
+        state.setdefault("mode", None)
+        state.setdefault("points_target", None)
+        state.setdefault("decider", None)
+        state.setdefault("set_by", None)
+        state.setdefault("set_at", None)
+        self.__dict__.update(state)
 
 
 @dataclass
@@ -204,6 +260,12 @@ class Match:
     # Append-only audit log; each entry is a plain dict with keys:
     # player_id, action, score, sets, timestamp.
     score_history: list[dict[str, Any]] = field(default_factory=list)
+    # Organiser-set per-match scoring format; ``None`` = tournament defaults.
+    format_override: MatchFormatOverride | None = None
+    # Decider the stored set score was recorded under (stamped by the API from
+    # ``format_override.decider`` or the tournament setting at record time).
+    # ``None`` for points scores and for legacy set scores (= full set).
+    decider: SetDecider | None = None
 
     def __getstate__(self) -> dict:
         return self.__dict__.copy()
@@ -220,6 +282,8 @@ class Match:
         state.setdefault("dispute_at", None)
         state.setdefault("dispute_escalated", False)
         state.setdefault("score_history", [])
+        state.setdefault("format_override", None)
+        state.setdefault("decider", None)
         self.__dict__.update(state)
 
     @property

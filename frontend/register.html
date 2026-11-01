@@ -24,9 +24,109 @@
 <div class="container" id="reg-root">
   <div class="loading" data-i18n="txt_txt_loading">Loading…</div>
 </div>
+<!-- Post-registration success view. Cloned once into #state-success (a v-scope
+     root) by _showSuccess() in register.js and bound to `_successStore`. The
+     Player Hub sections render into #reg-ps-host, which is v-pre (legacy). -->
+<template id="tpl-success">
+  <h2 class="reg-success-title"><span class="reg-success-check"><svg class="ic" viewBox="64 64 896 896" fill="currentColor" aria-hidden="true"><path d="M912 190h-69.9c-9.8 0-19.1 4.5-25.1 12.2L404.7 724.5 207 474a32 32 0 00-25.1-12.2H112c-6.7 0-10.4 7.7-6.3 12.9l273.9 347c12.8 16.2 37.4 16.2 50.3 0l488.4-618.9c4.1-5.1.4-12.8-6.3-12.8z"/></svg></span>{{ t('txt_reg_registered', { name: result.player_name }) }}</h2>
+  <p class="subtitle subtitle-strong" v-if="subtitle">{{ subtitle }}</p>
+  <div v-if="identityHtml" v-html="identityHtml"></div>
+
+  <div class="passphrase-label">{{ t('txt_reg_your_passphrase') }}</div>
+  <div class="passphrase-copy-row">
+    <div class="passphrase-box" id="reg-passphrase-box">{{ result.passphrase }}</div>
+    <button type="button" class="btn btn-primary passphrase-copy-btn" id="reg-copy-btn" @click="_copyPassphrase()">{{ t('txt_txt_copy') }}</button>
+  </div>
+  <p class="reg-ps-passphrase-differs" v-if="result.passphrase_differs_from_profile">{{ t('txt_reg_ps_passphrase_differs') }}</p>
+  <p class="keep-note">{{ t('txt_reg_keep_code') }}</p>
+
+  <div class="reg-entry-actions-wrap" id="reg-entry-actions-wrap" v-if="canManage()">
+    <div class="reg-entry-actions">
+      <button type="button" class="btn-outline" id="reg-edit-btn" v-if="hasQuestions()" :aria-expanded="String(editOpen)" aria-controls="reg-edit-panel" @click="toggleEdit()">{{ t('txt_reg_edit_answers') }}</button>
+      <button type="button" class="btn-outline-danger" id="reg-withdraw-btn" @click="askWithdraw()">{{ t('txt_reg_withdraw') }}</button>
+    </div>
+
+    <div class="reg-edit-panel" id="reg-edit-panel" v-if="hasQuestions() && editOpen" @input="persistDraft()" @change="persistDraft()">
+      <div class="form-group" v-for="q in lobby.questions" :key="q.key">
+        <label>{{ q.label }} <small class="reg-optional-hint" v-if="!q.required">({{ t('txt_txt_optional') }})</small></label>
+        <select class="returning-answer" v-if="kind(q) === 'choice'" v-model="draft[q.key]">
+          <option value="">{{ t('txt_reg_select_option') }}</option>
+          <option v-for="c in q.choices" :value="c" :selected="draft[q.key] === c">{{ c }}</option>
+        </select>
+        <div class="returning-multichoice" v-else-if="kind(q) === 'multi'">
+          <label class="reg-multichoice-option" v-for="c in q.choices"><input type="checkbox" :value="c" v-model="draft[q.key]"><span>{{ c }}</span></label>
+        </div>
+        <input type="number" class="returning-answer" step="any" v-else-if="kind(q) === 'number'" v-model="draft[q.key]">
+        <textarea class="returning-answer reg-text-expand" maxlength="512" rows="1" v-else v-model="draft[q.key]" @input="_regAutoResize($el)"></textarea>
+      </div>
+      <div class="error-msg" id="reg-returning-action-error">{{ error }}</div>
+      <button type="button" class="btn-outline" id="reg-returning-save-btn" :disabled="saving" @click="save()">{{ t('txt_reg_save_answers') }}</button>
+    </div>
+    <div class="error-msg" id="reg-returning-action-error" v-else>{{ error }}</div>
+
+    <div class="reg-withdraw-confirm" id="reg-withdraw-confirm" role="alertdialog" aria-live="polite" v-if="confirmingWithdraw">
+      <p>{{ t('txt_reg_withdraw_confirm') }}</p>
+      <div class="reg-withdraw-confirm-actions">
+        <button type="button" class="btn-outline" id="reg-withdraw-keep-btn" @click="keepSpot()">{{ t('txt_reg_withdraw_keep') }}</button>
+        <button type="button" class="btn-danger" id="reg-withdraw-yes-btn" :disabled="withdrawing" @click="withdraw()">{{ t('txt_reg_withdraw_yes') }}</button>
+      </div>
+    </div>
+  </div>
+  <div class="pay-block" id="reg-pay-block" v-if="result.payment">
+    <div class="pay-block-title"><span>{{ t('txt_pay_player_title') }}</span><span class="pay-block-amount">{{ payAmount() }}</span></div>
+    <p class="pay-block-due" v-if="result.payment.due_at">{{ t('txt_pay_player_due', { date: result.payment.due_at }) }}</p>
+    <p class="pay-block-instructions" v-if="result.payment.instructions">{{ result.payment.instructions }}</p>
+    <div :class="'pay-status-line pay-status-' + result.payment.status" v-if="result.payment.status !== 'unpaid'" role="status">{{ t('txt_pay_player_' + result.payment.status) }}</div>
+    <div v-if="payPending()">
+      <div class="pay-methods" v-if="result.payment.methods.length">
+        <div class="pay-method" v-for="(m, i) in result.payment.methods" :key="i">
+          <span class="pay-method-kind">{{ paymentMethodLabel(m) }}</span>
+          <a class="pay-method-value" v-if="payHref(m)" :href="payHref(m)" target="_blank" rel="noopener">{{ m.value }}</a>
+          <span class="pay-method-value" v-else-if="m.value">{{ m.value }}</span>
+          <button type="button" class="btn-outline pay-copy-btn" v-if="m.value" @click="payCopy(m.value, $el)">{{ payCopied === m.value ? t('txt_pay_player_copied') : t('txt_pay_player_copy') }}</button>
+        </div>
+      </div>
+      <div class="pay-concept-row">
+        <span class="pay-concept-label">{{ t('txt_pay_player_concept') }}</span>
+        <code class="pay-concept" id="reg-pay-concept">{{ result.payment.concept }}</code>
+        <button type="button" class="btn-outline pay-copy-btn" @click="payCopy(result.payment.concept, $el)">{{ payCopied === result.payment.concept ? t('txt_pay_player_copied') : t('txt_pay_player_copy') }}</button>
+      </div>
+      <div class="pay-report-row" v-if="result.payment.status === 'unpaid' && (result.passphrase || result.token)">
+        <input type="text" maxlength="120" v-model="payReference" :placeholder="t('txt_pay_player_reference_placeholder')" :aria-label="t('txt_pay_player_reference_placeholder')">
+        <button type="button" class="btn btn-primary pay-report-btn" id="reg-pay-report-btn" :disabled="payReporting" @click="reportPayment()">{{ t('txt_pay_player_i_paid') }}</button>
+      </div>
+    </div>
+    <div class="error-msg" v-if="payError">{{ payError }}</div>
+  </div>
+  <div class="success-actions"><a href="/register" class="btn btn-primary success-back-btn">{{ t('txt_reg_back_home') }}</a></div>
+
+  <template v-if="lobby.message">
+    <div class="reg-message-label">{{ t('txt_reg_admin_message') }}</div>
+    <div class="reg-message" v-html="messageHtml()"></div>
+  </template>
+
+  <details class="player-list" v-if="(lobby.registrants || []).length > 0" :open="playersOpen" @toggle="playersOpen = $el.open">
+    <summary><svg class="ic player-list-chevron" viewBox="64 64 896 896" fill="currentColor" aria-hidden="true"><path d="M517.6 273.5L230.2 499.3a16.14 16.14 0 000 25.4l287.4 225.8c10.7 8.4 26.4.8 26.4-12.7V286.2c0-13.5-15.7-21.1-26.4-12.7z"/></svg><span>{{ t('txt_reg_registered_players') }} ({{ lobby.registrants.length }})</span></summary>
+    <div class="player-list-items"><span class="player-chip" v-for="p in lobby.registrants" :key="p.player_id">{{ p.player_name }}</span></div>
+  </details>
+
+  <div class="linked-tournaments" v-if="hasLinked()">
+    <div class="linked-tournaments-title">{{ t('txt_reg_linked_tournaments') }}</div>
+    <template v-if="linked().active.length > 0">
+      <div class="linked-tournaments-section-title">{{ t('txt_txt_active_tournaments') }}</div>
+      <div class="linked-tournaments-list"><a class="linked-tournament-link" v-for="e in linked().active" :href="e.href" :title="e.tid">{{ e.label }}</a></div>
+    </template>
+    <template v-if="linked().finished.length > 0">
+      <div class="linked-tournaments-section-title">{{ t('txt_txt_finished_tournaments') }}</div>
+      <div class="linked-tournaments-list"><a class="linked-tournament-link" v-for="e in linked().finished" :href="e.href" :title="e.tid">{{ e.label }}</a></div>
+    </template>
+  </div>
+
+  <div id="reg-ps-host" v-pre></div>
+</template>
 <div style="padding:1rem 0 2.5rem;display:flex;align-items:center;justify-content:center;gap:1rem;flex-wrap:wrap">
   <a href="https://ko-fi.com/torneosamistosos" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:0.4rem;background:#FFDD00;color:#1a1a1a;padding:0 0.8rem;border-radius:20px;font-size:0.78rem;text-decoration:none;font-weight:700;height:28px;box-sizing:border-box">
-    <svg width="16" height="16" viewBox="0 0 24 24" style="fill:#ff5e5b;flex-shrink:0" aria-hidden="true"><path d="M23.881 8.948c-.773-4.085-4.859-4.593-4.859-4.593H.723c-.604 0-.679.798-.679.798s-.082 7.324-.022 11.822c.164 2.424 2.586 2.672 2.586 2.672s8.267-.023 11.966-.049c2.438-.426 2.683-2.566 2.658-3.734 4.352.24 7.422-2.831 6.649-6.916zm-11.062 3.511c-1.246 1.453-4.011 3.976-4.011 3.976s-.121.119-.31.023c-.076-.057-.108-.09-.108-.09-.443-.441-3.368-3.049-4.034-3.954-.709-.965-1.041-2.7-.091-3.71.951-1.01 3.005-1.086 4.038.963.0.0-.292-.808-.292-.808-.292-.808z"/></svg>
+    <svg width="16" height="16" viewBox="0 0 24 24" style="fill:#ff5e5b;flex-shrink:0" aria-hidden="true"><path d="M23.881 8.948c-.773-4.085-4.859-4.593-4.859-4.593H.723c-.604 0-.679.798-.679.798s-.082 7.324-.022 11.822c.164 2.424 2.586 2.672 2.586 2.672s8.267-.023 11.966-.049c2.438-.426 2.683-2.566 2.658-3.734 4.352.24 7.422-2.831 6.649-6.916zm-11.062 3.511c-1.246 1.453-4.011 3.976-4.011 3.976s-.121.119-.31.023c-.076-.057-.108-.09-.108-.09-.443-.441-3.368-3.049-4.034-3.954-.709-.965-1.041-2.7-.091-3.71.951-1.01 3.005-1.086 4.363.407 0 0 1.565-1.782 3.468-.963 1.904.82 2.058 3.034.556 4.303zm6.173.478c-.928.116-1.682.028-1.682.028V7.284h1.77s1.971.551 1.971 2.638c0 1.913-.985 2.667-2.059 3.015z"/></svg>
     Buy me a coffee
   </a>
   <a href="https://github.com/sanityseeker/padel-amistoso" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:0.4rem;background:#24292f;color:#fff;padding:0 0.8rem;border-radius:20px;font-size:0.78rem;text-decoration:none;font-weight:700;height:28px;box-sizing:border-box">

@@ -197,7 +197,7 @@ function _clubsRenderOverview() {
         ${eligible.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}
       </select>
       <input type="text" id="clubs-create-name" placeholder="${t('txt_clubs_name_placeholder')}" style="flex:1;min-width:140px;padding:0.4rem 0.6rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
-      <button type="button" class="btn btn-success btn-sm" onclick="clubsCreate()">+ ${t('txt_clubs_create')}</button>`;
+      <button type="button" id="clubs-create-btn" class="btn btn-success btn-sm" onclick="clubsCreate()">+ ${t('txt_clubs_create')}</button>`;
   } else {
     html += `<p class="muted-note">${t('txt_clubs_no_eligible')}</p>`;
   }
@@ -229,9 +229,9 @@ async function clubsCreate() {
       body: JSON.stringify({ community_id, name }),
     });
     nameInput.value = '';
-    _clubsMsg(msgEl, t('txt_clubs_created'), false);
     await _clubsLoadClubs();
     _clubsRenderOverview();
+    _clubsOk(msgEl, 'clubs-create-btn');
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -251,7 +251,7 @@ async function clubsDelete(clubId) {
   }
   try {
     await apiAuth(`/api/clubs/${encodeURIComponent(clubId)}`, { method: 'DELETE' });
-    _clubsMsg(msgEl, t('txt_clubs_deleted'), false);
+    _clubsOk(msgEl);
     _activeClubId = null;
     await _clubsLoadClubs();
     _clubsRenderOverview();
@@ -378,7 +378,7 @@ async function clubsRename() {
       method: 'PATCH',
       body: JSON.stringify({ name }),
     });
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
+    _clubsOk(msgEl, 'clubs-rename-btn');
     const club = _clubsList.find(c => c.id === _activeClubId);
     if (club) club.name = name;
   } catch (e) {
@@ -429,7 +429,7 @@ async function clubsSaveLandingDescription() {
       method: 'PATCH',
       body: JSON.stringify({ description }),
     });
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
+    _clubsOk(msgEl, 'clubs-landing-desc-btn');
     const club = _clubsList.find(c => c.id === _activeClubId);
     if (club) club.description = updated.description;
   } catch (e) {
@@ -456,7 +456,7 @@ async function clubsSavePinnedTournaments() {
       method: 'PATCH',
       body: JSON.stringify({ pinned_tournament_ids }),
     });
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
+    _clubsOk(msgEl, 'clubs-landing-pinned-list');
     const club = _clubsList.find(c => c.id === _activeClubId);
     if (club) club.pinned_tournament_ids = updated.pinned_tournament_ids;
   } catch (e) {
@@ -476,8 +476,8 @@ async function _clubsSetSlug(rawSlug) {
     });
     const club = _clubsList.find(c => c.id === _activeClubId);
     if (club) club.slug = updated.slug;
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     _clubsRenderDetail();
+    _clubsOk(msgEl, 'clubs-slug-save-btn');
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -506,7 +506,7 @@ async function clubsCopySlugUrl(url) {
   const msgEl = document.getElementById('clubs-slug-msg');
   try {
     await navigator.clipboard.writeText(url);
-    _clubsMsg(msgEl, t('txt_clubs_slug_copied'), false);
+    _clubsOk(msgEl, 'clubs-slug-copy-btn');
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -527,10 +527,10 @@ async function clubsUploadLogo(fileInput) {
       body: formData,
     });
     if (!resp.ok) { const d = await resp.json().catch(() => ({})); throw new Error(d.detail || t('txt_clubs_upload_failed')); }
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     const club = _clubsList.find(c => c.id === _activeClubId);
     if (club) club.has_logo = true;
     _clubsRenderDetail();
+    _clubsOk(msgEl, 'clubs-logo-upload-label');
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -541,7 +541,6 @@ async function clubsDeleteLogo() {
   if (!_activeClubId) return;
   try {
     await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/logo`, { method: 'DELETE' });
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     const club = _clubsList.find(c => c.id === _activeClubId);
     if (club) club.has_logo = false;
     _clubsRenderDetail();
@@ -599,10 +598,10 @@ async function clubsCreateTier() {
       body: JSON.stringify({ name, sport, base_elo, position }),
     });
     nameInput.value = '';
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
-    _clubTiers = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/tiers`).catch(() => []);
+        _clubTiers = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/tiers`).catch(() => []);
     _clubsRenderTiers();
     _clubsRenderPlayers(); // refresh tier dropdowns
+    _clubsOk(msgEl, 'clubs-tier-add-btn');
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -613,10 +612,11 @@ async function clubsDeleteTier(tierId) {
   const msgEl = document.getElementById('clubs-tiers-msg');
   try {
     await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/tiers/${encodeURIComponent(tierId)}`, { method: 'DELETE' });
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
+    
     _clubTiers = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/tiers`).catch(() => []);
     _clubsRenderTiers();
     _clubsRenderPlayers();
+    _clubsOk(msgEl);
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -650,7 +650,7 @@ function _clubsRenderSeasons() {
                 : `<span class="badge badge-closed">${t('txt_clubs_season_archived')}</span>`}
             </td>
             <td class="player-codes-cell-center" style="white-space:nowrap">
-              <button class="btn btn-sm player-codes-icon-btn" onclick="clubsToggleSeason('${esc(s.id)}', ${!s.active})" title="${s.active ? t('txt_clubs_season_archive') : t('txt_clubs_season_activate')}" aria-label="${s.active ? t('txt_clubs_season_archive') : t('txt_clubs_season_activate')}">
+              <button id="clubs-season-toggle-${esc(s.id)}" class="btn btn-sm player-codes-icon-btn" onclick="clubsToggleSeason('${esc(s.id)}', ${!s.active})" title="${s.active ? t('txt_clubs_season_archive') : t('txt_clubs_season_activate')}" aria-label="${s.active ? t('txt_clubs_season_archive') : t('txt_clubs_season_activate')}">
                 ${s.active ? _ic('lock') : _ic('unlock')}
               </button>
               <button class="btn btn-sm player-codes-icon-btn" onclick="clubsViewSeasonInLeaderboard('${esc(s.id)}')" title="${t('txt_clubs_season_view_in_leaderboard')}" aria-label="${t('txt_clubs_season_view_in_leaderboard')} ${esc(s.name)}">${_ic('chart')}</button>
@@ -674,10 +674,10 @@ async function clubsCreateSeason() {
       body: JSON.stringify({ name }),
     });
     nameInput.value = '';
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
-    _clubSeasons = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/seasons`).catch(() => []);
+        _clubSeasons = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/seasons`).catch(() => []);
     _clubsRenderSeasons();
     _clubsRenderSeasonAssignment();
+    _clubsOk(msgEl, 'clubs-season-add-btn');
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -690,12 +690,12 @@ async function clubsToggleSeason(seasonId, active) {
       method: 'PATCH',
       body: JSON.stringify({ active }),
     });
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
-    delete _clubsSeasonStandingsCache[seasonId];
+        delete _clubsSeasonStandingsCache[seasonId];
     _clubSeasons = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/seasons`).catch(() => []);
     _clubsRenderSeasons();
     _clubsRenderSeasonAssignment();
     _clubsRenderLeaderboard();
+    _clubsOk(msgEl, `clubs-season-toggle-${seasonId}`);
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -706,12 +706,12 @@ async function clubsDeleteSeason(seasonId) {
   const msgEl = document.getElementById('clubs-seasons-msg');
   try {
     await apiAuth(`/api/seasons/${encodeURIComponent(seasonId)}`, { method: 'DELETE' });
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
-    delete _clubsSeasonStandingsCache[seasonId];
+        delete _clubsSeasonStandingsCache[seasonId];
     _clubSeasons = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/seasons`).catch(() => []);
     _clubsRenderSeasons();
     _clubsRenderSeasonAssignment();
     _clubsRenderLeaderboard();
+    _clubsOk(msgEl);
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -786,7 +786,7 @@ function _clubsRenderSeasonAssignment() {
               <td class="player-codes-name">${esc(t_.name)}<span class="muted-note" style="margin-left:0.4rem;font-size:0.8rem">${comm ? esc(comm.name) : ''}</span></td>
               <td class="player-codes-cell" style="white-space:nowrap;color:var(--text-muted);font-size:0.8rem">${_clubsFormatDate(t_.created_at)}</td>
               <td class="player-codes-cell" style="white-space:nowrap">
-                <button type="button" class="btn btn-sm btn-primary" onclick="clubsAttachTournamentToClub('${esc(t_.id)}', this)">${t('txt_clubs_attach_to_club')}</button>
+                <button type="button" id="clubs-tattach-btn-${esc(t_.id)}" class="btn btn-sm btn-primary" onclick="clubsAttachTournamentToClub('${esc(t_.id)}', this)">${t('txt_clubs_attach_to_club')}</button>
                 <span id="clubs-tattach-msg-${esc(t_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
               </td>
             </tr>`;
@@ -821,7 +821,7 @@ function _clubsRenderSeasonAssignment() {
             <tr class="player-codes-row">
               <td class="player-codes-name">${esc(t_.name)}${otherTag}</td>
               <td class="player-codes-cell" style="white-space:nowrap">
-                <button type="button" class="${clubBtnClass}" onclick="clubsToggleTournamentClub('${esc(t_.id)}', this)">${clubBtnLabel}</button>
+                <button type="button" id="clubs-tclub-btn-${esc(t_.id)}" class="${clubBtnClass}" onclick="clubsToggleTournamentClub('${esc(t_.id)}', this)">${clubBtnLabel}</button>
                 <span id="clubs-tclub-msg-${esc(t_.id)}" style="font-size:0.78rem;margin-left:0.3rem"></span>
               </td>
               <td class="player-codes-cell">
@@ -907,8 +907,8 @@ async function clubsAttachTournamentToClub(tid, btn) {
       if (clubRes && 'season_id' in clubRes) t_.season_id = clubRes.season_id;
       t_.club_name = club.name;
     }
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     _clubsRenderSeasonAssignment();
+    _clubsOk(msgEl, `clubs-tattach-btn-${tid}`);
     if (typeof loadTournaments === 'function') {
       loadTournaments().catch(() => {});
     }
@@ -946,8 +946,8 @@ async function clubsToggleTournamentClub(tid, btn) {
     } else {
       t_.club_name = null;
     }
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
     _clubsRenderSeasonAssignment();
+    _clubsOk(msgEl, `clubs-tclub-btn-${tid}`);
     if (typeof loadTournaments === 'function') {
       loadTournaments().catch(() => {});
     }
@@ -977,7 +977,7 @@ async function clubsAssignTournamentSeason(tid) {
     });
     const t_ = _clubsTournaments.find(t => t.id === tid);
     if (t_) t_.season_id = season_id;
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
+    _clubsOk(msgEl, sel);
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -995,7 +995,7 @@ async function clubsAssignRegistrationSeason(rid) {
     });
     const r_ = _clubsRegistrations.find(r => r.id === rid);
     if (r_) r_.season_id = season_id;
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
+    _clubsOk(msgEl, sel);
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -1269,7 +1269,7 @@ async function clubsConvertGhost(profileId) {
       banner.style.marginTop = '0.5rem';
       banner.innerHTML = `<strong>${t('txt_ph_convert_ok', { name: esc(result.name) })}</strong><br>
         <span style="font-size:0.84rem">${t('txt_ph_convert_passphrase_label')}: </span>
-        <code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(result.passphrase)}</code>
+        <code class="player-codes-passphrase" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(result.passphrase)}</code>
         ${result.email ? `<br><span style="font-size:0.8rem;color:var(--text-muted)">${t('txt_ph_convert_email_sent', { email: esc(result.email) })}</span>` : ''}`;
       area.prepend(banner);
       setTimeout(() => banner.remove(), 14000);
@@ -2000,9 +2000,10 @@ async function clubsAddPlayer() {
     });
     input.value = '';
     _clubsPlayerSearchSelected = null;
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
+    
     _clubPlayers = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players`).catch(() => []);
     _clubsRenderPlayers();
+    _clubsOk(msgEl, 'clubs-add-player-btn');
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -2253,12 +2254,7 @@ async function clubsSendAnnouncement() {
     _clubsMsg(msgEl, t('txt_clubs_messaging_result').replace('{sent}', String(sent)).replace('{failed}', String(failed)), failed > 0 && sent === 0);
     if (sent > 0) {
       const sendBtn = document.getElementById('clubs-send-announce-btn');
-      if (sendBtn) {
-        sendBtn.classList.remove('btn-primary');
-        sendBtn.classList.add('btn-success');
-        sendBtn.textContent = '\u2713 ' + t('txt_clubs_messaging_send_announce');
-        sendBtn.disabled = true;
-      }
+      flashSuccess(sendBtn);
       _clubsInviteSelectedIds.clear();
       setTimeout(() => _clubsRenderPlayers(), 2500);
     }
@@ -2279,7 +2275,7 @@ async function clubsSaveElo(profileId, sport) {
       method: 'PATCH',
       body: JSON.stringify({ elo, sport }),
     });
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
+    _clubsOk(msgEl, input);
     // Update local cache
     const p = _clubPlayers.find(x => x.profile_id === profileId);
     if (p) {
@@ -2313,12 +2309,12 @@ async function clubsAssignTier(profileId, sport) {
       method: 'PATCH',
       body: JSON.stringify({ sport, tier_id, apply_base_elo }),
     });
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
-    // Refresh player list to show updated ELO
+        // Refresh player list to show updated ELO
     if (apply_base_elo) {
       _clubPlayers = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players`).catch(() => []);
       _clubsRenderPlayers();
     }
+    _clubsOk(msgEl, `clubs-ptier-${sport}-${profileId}`);
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -2370,7 +2366,7 @@ async function clubsAddCollaborator() {
     input.value = '';
     _clubCollaborators = res.collaborators || [];
     _clubsRenderCollaborators();
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
+    _clubsOk(msgEl, 'clubs-collab-add-btn');
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -2383,7 +2379,7 @@ async function clubsRemoveCollaborator(username) {
     const res = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/collaborators/${encodeURIComponent(username)}`, { method: 'DELETE' });
     _clubCollaborators = res.collaborators || [];
     _clubsRenderCollaborators();
-    _clubsMsg(msgEl, t('txt_txt_saved'), false);
+    _clubsOk(msgEl);
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -2412,7 +2408,7 @@ async function clubsSaveEmailSettings() {
         sender_name: senderName?.value?.trim() || null,
       };
     }
-    _clubsMsg(msgEl, t('txt_clubs_email_saved'), false);
+    _clubsOk(msgEl, 'clubs-email-save-btn');
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -2425,6 +2421,16 @@ function _clubsMsg(el, text, isError) {
   el.style.fontSize = isError ? '0.78rem' : '0.72rem';
   el.textContent = text;
   if (!isError) setTimeout(() => { if (el) el.textContent = ''; }, 1800);
+}
+
+/**
+ * Success feedback for a club action: clear the message line (wipes stale
+ * errors and '...' progress) and pulse the control. Call AFTER any re-render;
+ * `target` may be an element id (re-queried now) or an element.
+ */
+function _clubsOk(msgEl, target) {
+  if (msgEl) msgEl.textContent = '';
+  if (target) flashSuccess(target, t('txt_txt_saved'));
 }
 
 function _clubsSetRosterNotice(text, isError = false) {

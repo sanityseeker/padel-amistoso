@@ -401,7 +401,7 @@ def _playoff_stage_rank(round_label: str) -> int:
     label = (round_label or "").strip()
     if label == "Champion":
         return 0
-    if label == "Grand Final Reset":
+    if label == "Grand Final Reset":  # legacy: no longer created, may exist in old tournaments
         return 1
     if label in {"Grand Final", "Final"}:
         return 2

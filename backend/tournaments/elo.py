@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from backend.models import Match, MatchStatus
+from backend.models import Match, MatchStatus, SetDecider
+
+from .set_format import games_from_sets, match_decider
 
 # ---------------------------------------------------------------------------
 # Constants (tunable)
@@ -169,18 +171,21 @@ def compute_blended_outcome(
     return alpha * w + (1.0 - alpha) * r
 
 
-def tennis_sets_to_score(sets: list[tuple[int, int]]) -> tuple[int, int]:
+def tennis_sets_to_score(
+    sets: list[tuple[int, int]],
+    decider: SetDecider | None = None,
+) -> tuple[int, int]:
     """Sum games across tennis sets to produce a single score pair.
 
     Args:
         sets: List of ``(games_a, games_b)`` per set.
+        decider: Third-set decider; a match tie-break counts as one game
+            (see ``set_format.games_from_sets``).
 
     Returns:
         ``(total_games_a, total_games_b)``.
     """
-    games_a = sum(s[0] for s in sets)
-    games_b = sum(s[1] for s in sets)
-    return games_a, games_b
+    return games_from_sets(sets, decider)
 
 
 # ---------------------------------------------------------------------------
@@ -373,7 +378,7 @@ def compute_match_elo_updates(
     # (e.g. winning 2 sets to 1 while losing the total game count), so
     # `result` (not `score`) is what decides win/loss downstream.
     if match.sets:
-        score = tennis_sets_to_score(match.sets)
+        score = tennis_sets_to_score(match.sets, match_decider(match))
 
     updates: list[EloUpdate] = []
 

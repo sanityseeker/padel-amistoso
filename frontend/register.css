@@ -111,7 +111,10 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 
 /* Player list */
 .player-list { margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
-.player-list summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); user-select: none; }
+.player-list summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); user-select: none; list-style: none; display: flex; align-items: center; gap: 0.4rem; min-height: 44px; }
+.player-list summary::-webkit-details-marker { display: none; }
+.player-list-chevron { width: 0.8em; height: 0.8em; flex-shrink: 0; transition: transform 0.15s; }
+.player-list[open] > summary .player-list-chevron { transform: rotate(90deg); }
 .player-list-items { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; padding: 0; list-style: none; }
 .player-chip { display: inline-block; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 0.2rem 0.6rem; font-size: 0.78rem; color: var(--text); }
 
@@ -207,21 +210,23 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 .returning-player-passphrase { font-family: var(--font-mono); }
 .returning-player-panel .btn-secondary { width: 100%; text-align: center; margin-top: 0.25rem; }
 
-/* Manage registration panel (returning player self-service) */
-.manage-reg { margin-top: 1.25rem; border: 1px solid var(--border); border-radius: 10px; text-align: left; }
-.manage-reg summary { cursor: pointer; padding: 0.75rem 1rem; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); list-style: none; display: flex; align-items: center; gap: 0.4rem; user-select: none; }
-.manage-reg summary::-webkit-details-marker { display: none; }
-.manage-reg[open] summary .manage-reg-arrow { transform: rotate(90deg); }
-.manage-reg-arrow { display: inline-block; font-size: 0.7em; transition: transform 0.15s; }
-.manage-reg-body { padding: 0 1rem 1rem; }
-.manage-reg-actions { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.25rem; }
-.manage-reg-actions-left { display: flex; align-items: center; gap: 0.5rem; }
-.manage-reg-success { color: var(--green); font-size: 0.82rem; }
+/* Entry actions (edit answers / withdraw) on the success view */
 .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); border-radius: 8px; cursor: pointer; font-size: 0.82rem; padding: 0.45rem 0.9rem; font-weight: 600; transition: background 0.15s, border-color 0.15s; }
 .btn-outline:hover { background: var(--bg); border-color: var(--text-muted); }
 .btn-outline:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-outline-danger { background: transparent; border: 1px solid var(--red); color: var(--red); border-radius: 8px; cursor: pointer; font-size: 0.82rem; padding: 0.45rem 0.9rem; font-weight: 600; transition: background 0.15s, color 0.15s; }
-.btn-outline-danger:hover { background: var(--red); color: #fff; }
+.btn-outline-danger { background: transparent; border: 1px solid var(--color-error); color: var(--color-error); border-radius: 8px; cursor: pointer; font-size: 0.82rem; padding: 0.45rem 0.9rem; font-weight: 600; transition: background 0.15s, color 0.15s; }
+.btn-outline-danger:hover { background: var(--color-error-highlight); }
+.btn-danger { background: var(--color-error); border: 1px solid var(--color-error); color: #fff; border-radius: 8px; cursor: pointer; font-size: 0.82rem; padding: 0.45rem 0.9rem; font-weight: 600; transition: filter 0.15s; }
+.btn-danger:hover { filter: brightness(0.92); }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+.reg-entry-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: 1rem; }
+.reg-entry-actions .btn-outline, .reg-entry-actions .btn-outline-danger { flex: 1 1 0; min-height: 44px; font-size: 0.9rem; }
+.reg-edit-panel { margin-top: var(--space-2); padding: 0.85rem 1rem; border: 1px solid var(--border); border-radius: 10px; text-align: left; }
+.reg-edit-panel .btn-outline { min-height: 44px; }
+.reg-withdraw-confirm { margin-top: var(--space-2); padding: 0.85rem 1rem; background: var(--color-error-highlight); border: 1px solid var(--color-error); border-radius: 10px; text-align: left; }
+.reg-withdraw-confirm p { margin: 0 0 0.75rem; font-size: 0.9rem; line-height: 1.4; }
+.reg-withdraw-confirm-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.reg-withdraw-confirm-actions button { flex: 1 1 0; min-height: 44px; font-size: 0.9rem; }
 .btn-outline-danger:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Waiting animation */
@@ -296,7 +301,6 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 .reg-identity-actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-left: auto; }
 .reg-entry-chip { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; font-weight: 600; padding: 0.3rem 0.7rem; border-radius: 20px; line-height: 1.2; white-space: nowrap; }
 .reg-entry-chip.pending { color: var(--text-muted); border: 1px solid var(--border); background: var(--surface); }
-.reg-entry-chip.done { color: var(--color-success); border: 1px solid color-mix(in srgb, var(--color-success) 40%, transparent); background: var(--color-success-highlight); }
 .reg-identity-actions .reg-ps-logout-link { font-size: 0.74rem; color: var(--text-muted); cursor: pointer; text-decoration: underline; background: none; border: none; padding: 0; font-family: inherit; }
 .reg-identity-actions .reg-ps-logout-link:hover { color: var(--red); }
 
@@ -332,11 +336,30 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 .reg-claim-past { margin-top: 0.75rem; text-align: left; }
 
 /* Success: auto-linked-to-profile confirmation */
-.reg-ps-auto-linked { display: flex; align-items: center; gap: 0.45rem; font-size: 0.85rem; color: var(--color-success); background: var(--color-success-highlight); border: 1px solid color-mix(in srgb, var(--color-success) 35%, transparent); border-radius: 8px; padding: 0.5rem 0.75rem; margin: 0 0 0.85rem; line-height: 1.5; }
-.reg-ps-auto-linked .ic { flex-shrink: 0; }
 
 /* Success heading + error icon (inline SVG, no emoji) */
 .reg-success-title { display: flex; align-items: center; justify-content: center; gap: 0.45rem; }
 .reg-success-check { display: inline-flex; color: var(--color-success); }
 .reg-error-icon { color: var(--color-warning, var(--red)); font-size: 2rem; line-height: 1; margin-bottom: 0.35rem; }
 .reg-ps-passphrase-differs { font-size: 0.82rem; color: var(--color-warning, var(--text-muted)); background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 0.5rem 0.75rem; margin: 0.5rem 0 0; line-height: 1.5; }
+
+/* ─── Entry fee / payment block (success view + public fee notice) ─────── */
+.pay-block { margin: 1rem 0; padding: 0.9rem 1rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+.pay-block-title { font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.pay-block-amount { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 1.1rem; font-weight: 700; }
+.pay-block-due, .pay-block-instructions { color: var(--text-muted); font-size: 0.83rem; margin: 0.2rem 0; white-space: pre-wrap; }
+.pay-status-line { font-size: 0.85rem; margin: 0.5rem 0; padding: 0.45rem 0.6rem; border-radius: 6px; }
+.pay-status-reported { background: var(--color-warning-bg); color: var(--color-warning-text); border: 1px solid var(--color-warning-border); }
+.pay-status-paid, .pay-status-waived, .pay-status-refunded { background: var(--color-success-highlight); color: var(--color-success); }
+.pay-status-refund_due { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.pay-methods { display: flex; flex-direction: column; gap: 0.35rem; margin: 0.5rem 0; }
+.pay-method { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.86rem; }
+.pay-method-kind { font-weight: 600; min-width: 5.5rem; }
+.pay-method-value { font-family: var(--font-mono); word-break: break-all; }
+.pay-copy-btn { min-height: 32px; padding: 0.2rem 0.6rem; }
+.pay-concept-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0.4rem 0; }
+.pay-concept-label { font-size: 0.8rem; color: var(--text-muted); }
+.pay-concept { font-family: var(--font-mono); font-size: 0.86rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.5rem; }
+.pay-report-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 0.6rem; }
+.pay-report-row input { flex: 1 1 180px; min-height: 40px; }
+.pay-report-btn { min-height: 44px; }

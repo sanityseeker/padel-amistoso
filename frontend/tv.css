@@ -1354,6 +1354,11 @@ html[data-theme="light"] .court-card--yours {
 .correct-score-panel .player-set-label {
   font-size: 0.7rem; font-weight: 600; color: var(--text-muted); width: 22px; text-align: right;
 }
+/* Third set entered as a match tie-break (super tie-break to 10). */
+.player-score-form .player-set-label.is-tb,
+.correct-score-panel .player-set-label.is-tb {
+  width: auto; min-width: 22px; font-size: 0.62rem; letter-spacing: 0.03em; text-transform: uppercase; color: var(--color-override);
+}
 .hidden { display: none !important; }
 
 /* ── Score lifecycle UI ───────────────────────────────────────────────── */
@@ -1777,4 +1782,20 @@ html[data-theme="light"] .court-card--yours {
   .tv-player-card { padding: 1rem 0.85rem 0.85rem; }
   .tv-player-card-stats { grid-template-columns: repeat(2, 1fr); }
   .tv-player-card-name { font-size: 1.1rem; }
+}
+
+/* Per-match format note ("Played to 24" / "Sets") — set by the organiser for
+   this match only; large and high-contrast so it reads on a venue TV. */
+.tv-format-note {
+  display: inline-block;
+  margin: 0.2rem 0 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--color-override);
+  border-radius: var(--radius-md);
+  background: var(--color-override-bg);
+  color: var(--color-override);
+  font-family: var(--font-data);
+  font-weight: 700;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
 }

@@ -6,7 +6,7 @@
 // localStorage under `adminSettingsSubtab:<tid>`.
 
 const SETTINGS_SUBTAB_DEFAULT = 'tv';
-const SETTINGS_SUBTABS = ['tv', 'scoring', 'comms', 'codes', 'access'];
+const SETTINGS_SUBTABS = ['tv', 'scoring', 'comms', 'codes', 'payments', 'access'];
 
 function _settingsSubtabStorageKey(tid) {
   return `adminSettingsSubtab:${tid}`;
@@ -109,6 +109,7 @@ function _renderSettingsCard(ctx) {
     { key: 'scoring', label: t('txt_admin_settings_tab_scoring'), icon: '🎯', body: _renderScoringRulesBody(tvSettings, scoringStages) },
     { key: 'comms',   label: t('txt_admin_settings_tab_comms'),   icon: '📧', body: commsBody },
     { key: 'codes',   label: t('txt_admin_settings_tab_codes'),   icon: '🔑', body: codesBody },
+    { key: 'payments', label: t('txt_pay_tab'),                   icon: '€',  body: _renderPaymentsIsland('tournament', currentTid) },
     { key: 'access',  label: t('txt_admin_settings_tab_access'),  icon: '🛡', body: accessBody },
   ].filter(st => st.body && st.body.trim());
 
@@ -165,6 +166,7 @@ function _renderSubtabHelpCard(st) {
     scoring: 'txt_admin_settings_help_scoring',
     comms: 'txt_admin_settings_help_comms',
     codes: 'txt_admin_settings_help_codes',
+    payments: 'txt_admin_settings_help_payments',
     access: 'txt_admin_settings_help_access',
   };
   const descKey = descKeyByTab[st.key];
@@ -228,6 +230,7 @@ function _renderSettingsHelpBlock(subtabs) {
     scoring: t('txt_admin_settings_help_scoring'),
     comms: t('txt_admin_settings_help_comms'),
     codes: t('txt_admin_settings_help_codes'),
+    payments: t('txt_admin_settings_help_payments'),
     access: t('txt_admin_settings_help_access'),
   };
   let html = `<details class="settings-help-block">`;

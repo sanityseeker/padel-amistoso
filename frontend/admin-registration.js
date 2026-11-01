@@ -32,11 +32,7 @@ async function _saveRegEmailSettings(rid) {
       body: JSON.stringify({ sender_name: senderName, reply_to: replyTo || null }),
     });
     _regEmailSettings[rid] = result;
-    const msg = document.getElementById(`reg-email-settings-saved-msg-${rid}`);
-    if (msg) {
-      msg.style.display = 'inline';
-      setTimeout(() => { msg.style.display = 'none'; }, 2500);
-    }
+    flashSuccess(`reg-email-settings-save-btn-${rid}`, t('txt_txt_saved'));
   } catch (e) {
     console.error('Reg email settings save failed:', e.message);
   }
@@ -91,6 +87,9 @@ function _startRegDetailPoll() {
 }
 
 function _stopRegDetailPoll() {
+  if (typeof currentTid !== 'undefined' && currentTid && document.getElementById(`reg-notes-${currentTid}`)) {
+    _regNotesFlush(currentTid);
+  }
   if (_regDetailPollTimer) { clearInterval(_regDetailPollTimer); _regDetailPollTimer = null; }
   _regDetailFetching = false;
   _regDetailLastCount = null;
@@ -184,7 +183,7 @@ function _renderRegDetailInline(rid) {
   html += `</summary>`;
   if (r.registrants.length > 0) {
     html += `<div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.65rem;margin-bottom:0.25rem">`;
-    html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="_copyAllRegCodes('${esc(rid)}')">${t('txt_txt_copy_all_codes')}</button>`;
+    html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="_copyAllRegCodes('${esc(rid)}', this)">${t('txt_txt_copy_all_codes')}</button>`;
     if (window._emailConfigured) {
       html += `<button type="button" class="btn btn-sm" style="font-size:0.75rem" onclick="_sendAllRegEmails('${esc(rid)}')">${t('txt_email_send_all')}</button>`;
     }
@@ -230,11 +229,11 @@ function _renderRegDetailInline(rid) {
       html += `<td style="padding:0.4rem 0.5rem;font-weight:600" class="${_hasSavedFilter && !_eligibleSet.has(reg.player_id) ? 'reg-row-not-eligible' : ''}">${eligibleMark}${isDup ? _antIc('warning')+' ' : ''}${esc(reg.player_name)}</td>`;
       html += `<td style="padding:0.4rem 0.5rem;font-size:0.82em;color:var(--text-muted)">${reg.email ? esc(reg.email) : '—'}</td>`;
       html += `<td style="padding:0.4rem 0.3rem;text-align:center">${_langToggle(rid, reg.player_id, reg.lang || 'en', 'reg')}</td>`;
-      html += `<td style="padding:0.4rem 0.5rem"><code style="font-size:0.9em;color:var(--accent);user-select:all;cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(reg.passphrase)}</code></td>`;
+      html += `<td style="padding:0.4rem 0.5rem"><code style="font-size:0.9em;color:var(--accent);user-select:all;cursor:pointer" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(reg.passphrase)}</code></td>`;
       html += `<td style="padding:0.4rem 0.5rem;text-align:center;white-space:nowrap">`;
       html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem;margin-right:0.25rem" onclick="_editRegistrant('${esc(r.id)}','${esc(reg.player_id)}','${esc(reg.player_name)}','${esc(reg.email||'')}')" title="${t('txt_reg_edit_player')}">${_ic('edit')}</button>`;
       if (window._emailConfigured && reg.email) {
-        html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem;margin-right:0.25rem" onclick="_sendRegEmail('${esc(r.id)}','${esc(reg.player_id)}')" title="${t('txt_email_send')}">${_antIc('mail')}</button>`;
+        html += `<button type="button" class="btn btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem;margin-right:0.25rem" onclick="_sendRegEmail('${esc(r.id)}','${esc(reg.player_id)}', this)" title="${t('txt_email_send')}">${_antIc('mail')}</button>`;
       }
       html += `<button type="button" class="btn btn-danger btn-sm" style="font-size:0.72rem;padding:0.2rem 0.4rem" onclick="_removeRegistrant('${esc(r.id)}','${esc(reg.player_id)}')" title="${t('txt_reg_confirm_remove')}">✕</button>`;
       html += `</td></tr>`;
@@ -269,6 +268,14 @@ function _renderRegDetailInline(rid) {
     html += `</details>`;
   }
 
+  // Payments panel (Petite-Vue island; mounted after the innerHTML swap below)
+  html += `<details class="reg-section reg-section-payments" open style="margin-bottom:0.75rem">`;
+  html += `<summary class="reg-section-summary" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:0.4rem;list-style:none">`;
+  html += `<span style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_pay_tab')}</span>`;
+  html += `</summary>`;
+  html += _renderPaymentsIsland('registration', rid);
+  html += `</details>`;
+
   // Question Answers panel (separate, only shown when questions exist)
   if (questions.length > 0 && r.registrants.length > 0) {
     html += _renderAnswersPanel(rid, r, questions);
@@ -278,6 +285,9 @@ function _renderRegDetailInline(rid) {
   if (questions.length > 0 && r.registrants.length > 0) {
     html += _renderRegFilterPanel(rid, r, questions);
   }
+
+  // Private organizer notepad (always shown)
+  html += _renderRegNotesPanel(rid, r);
 
   html += `</div>`;
 
@@ -316,7 +326,11 @@ function _renderRegDetailInline(rid) {
 
   // ── Save UI state before replacing DOM ────────────────────────────
   const openDetails = new Set();
-  el.querySelectorAll('details.reg-section').forEach((d, i) => { if (d.open) openDetails.add(i); });
+  el.querySelectorAll('details.reg-section').forEach((d, i) => { if (d.open) openDetails.add(d.id || i); });
+  const activeEl = document.activeElement;
+  const savedFocus = (activeEl && el.contains(activeEl) && activeEl.id && /^(TEXTAREA|INPUT)$/.test(activeEl.tagName))
+    ? { id: activeEl.id, start: activeEl.selectionStart, end: activeEl.selectionEnd }
+    : null;
   const savedInputs = {};
   el.querySelectorAll('input[id], textarea[id], select[id]').forEach(inp => {
     if (inp.type === 'checkbox') savedInputs[inp.id] = { checked: inp.checked };
@@ -331,8 +345,8 @@ function _renderRegDetailInline(rid) {
   const savedSpoilerOpen = new Set();
   const savedSortedCards = new Set();
   el.querySelectorAll('.reg-answer-card').forEach((card, i) => {
-    const activeBar = card.querySelector('.reg-answer-bar-row.active');
-    if (activeBar) savedActiveChoices[i] = activeBar.dataset.choice ?? '';
+    const activeBars = [...card.querySelectorAll('.reg-answer-bar-row.active')];
+    if (activeBars.length) savedActiveChoices[i] = activeBars.map(b => b.dataset.choice ?? '');
     const search = card.querySelector('.reg-answer-text-search');
     if (search?.value) savedTextSearches[i] = search.value;
     if (card.querySelector('.reg-answer-spoiler')?.open) savedSpoilerOpen.add(i);
@@ -340,23 +354,33 @@ function _renderRegDetailInline(rid) {
   });
 
   el.innerHTML = html;
+  _mountPaymentsPanel('registration', rid);
 
   // ── Restore UI state after replacing DOM ──────────────────────────
-  el.querySelectorAll('details.reg-section').forEach((d, i) => { if (openDetails.has(i)) d.open = true; });
+  el.querySelectorAll('details.reg-section').forEach((d, i) => { if (openDetails.has(d.id || i)) d.open = true; });
   for (const [id, state] of Object.entries(savedInputs)) {
     const inp = document.getElementById(id);
     if (!inp) continue;
     if ('checked' in state) inp.checked = state.checked;
     else inp.value = state.value;
   }
+  const notesEl = document.getElementById(`reg-notes-${rid}`);
+  if (notesEl) _autoResizeTextarea(notesEl);
+  if (savedFocus) {
+    const fe = document.getElementById(savedFocus.id);
+    if (fe) {
+      fe.focus({ preventScroll: true });
+      try { if (savedFocus.start != null) fe.setSelectionRange(savedFocus.start, savedFocus.end); } catch (_) {}
+    }
+  }
   window.scrollTo({ top: scrollY });
 
   // Restore answers-panel filter state: active choices, spoilers, sort, text searches
   el.querySelectorAll('.reg-answer-card').forEach((card, i) => {
     if (i in savedActiveChoices) {
-      const barRow = Array.from(card.querySelectorAll('.reg-answer-bar-row'))
-        .find(r => r.dataset.choice === savedActiveChoices[i]);
-      if (barRow) barRow.classList.add('active');
+      card.querySelectorAll('.reg-answer-bar-row').forEach(barRow => {
+        if (savedActiveChoices[i].includes(barRow.dataset.choice)) barRow.classList.add('active');
+      });
     }
     if (savedTextSearches[i]) {
       const search = card.querySelector('.reg-answer-text-search');
@@ -415,6 +439,7 @@ function _renderRegSettingsPageInline(rid, el) {
     regDetail: r,
     emailSettings: _regEmailSettings[rid] || null,
   });
+  _mountPaymentSettingsPanel('registration', rid);
 
   for (const [id, state] of Object.entries(savedInputs)) {
     const inp = document.getElementById(id);
@@ -434,13 +459,13 @@ function _renderRegSettingsPageInline(rid, el) {
   }
 }
 
-function _copyRegLink(rid) {
+function _copyRegLink(rid, btn) {
   const alias = _regDetails[rid]?.alias;
   const url = alias
     ? `${window.location.origin}/register/${alias}`
     : `${window.location.origin}/register/${rid}`;
   navigator.clipboard.writeText(url).then(() => {
-    if (event?.target) flashSuccess(event.target, t('txt_txt_copied'));
+    flashSuccess(btn, t('txt_txt_copied'));
   });
 }
 
@@ -453,7 +478,7 @@ async function _setRegAlias(rid) {
     await api(`/api/registrations/${rid}/alias`, { method: 'PUT', body: JSON.stringify({ alias }) });
     if (_regDetails[rid]) _regDetails[rid].alias = alias;
     _renderRegDetailInline(rid);
-    _showToast(t('txt_txt_alias_value_set_successfully', { value: alias }));
+    flashSuccess(`reg-alias-save-btn-${rid}`, t('txt_txt_saved'));
   } catch (e) { alert(t('txt_txt_failed_to_set_alias_value', { value: e.message })); }
 }
 
@@ -463,7 +488,6 @@ async function _deleteRegAlias(rid) {
     await api(`/api/registrations/${rid}/alias`, { method: 'DELETE' });
     if (_regDetails[rid]) delete _regDetails[rid].alias;
     _renderRegDetailInline(rid);
-    _showToast(t('txt_txt_alias_removed_successfully'));
   } catch (e) { alert(t('txt_txt_failed_to_remove_alias_value', { value: e.message })); }
 }
 
@@ -860,13 +884,13 @@ function _collectRegQuestions(containerId = 'reg-new-questions') {
 
 // ─── Registration detail helpers ──────────────────────────
 
-async function _copyAllRegCodes(rid) {
+async function _copyAllRegCodes(rid, btn) {
   const r = _regDetails[rid];
   if (!r?.registrants) return;
   const lines = r.registrants.map(reg => `${reg.player_name}: ${reg.passphrase}`).join('\n');
   try {
     await navigator.clipboard.writeText(lines);
-    _showToast(t('txt_txt_codes_copied'));
+    flashSuccess(btn, t('txt_txt_copied'));
   } catch { /* clipboard access denied */ }
 }
 
@@ -999,17 +1023,20 @@ function _renderAnswersPanel(rid, r, questions) {
       for (let i = 0; i < r.registrants.length; i++) {
         const reg = r.registrants[i];
         const raw = reg.answers?.[q.key];
-        let display = '—', sortKey = '';
+        let display = '—', sortKey = '', choiceList = [];
         if (raw && q.type === 'multichoice') {
           let selected = [];
           try { selected = JSON.parse(raw) || []; } catch (_) {}
+          if (!Array.isArray(selected)) selected = [];
+          choiceList = selected;
           display = selected.map(s => useDictionary ? (choiceToLetter[s] ?? esc(s)) : esc(s)).join(', ') || '—';
           sortKey = selected.join(',');
         } else if (raw) {
           display = useDictionary ? (choiceToLetter[raw] ?? esc(raw)) : esc(raw);
           sortKey = raw;
+          choiceList = [raw];
         }
-        h += `<div class="reg-answer-row" data-name="${esc(reg.player_name)}" data-choice="${esc(sortKey)}" data-answered="${raw ? 'true' : 'false'}" data-idx="${i}">`;
+        h += `<div class="reg-answer-row" data-name="${esc(reg.player_name)}" data-choice="${esc(sortKey)}" data-choices='${escAttr(JSON.stringify(choiceList))}' data-answered="${raw ? 'true' : 'false'}" data-idx="${i}">`;
         h += `<span class="reg-answer-name">${esc(reg.player_name)}</span>`;
         h += `<span class="reg-answer-value">${display}</span>`;
         h += `</div>`;
@@ -1080,7 +1107,7 @@ function _regFilterByParticipant(selectEl) {
 
 function _regApplyRowFilters(card) {
   const hideEmpty = card.classList.contains('hide-empty');
-  const activeChoice = card.querySelector('.reg-answer-bar-row.active')?.dataset.choice ?? null;
+  const activeChoices = [...card.querySelectorAll('.reg-answer-bar-row.active')].map(b => b.dataset.choice);
   const searchInput = card.querySelector('.reg-answer-text-search');
   const nameQuery = searchInput ? searchInput.value.toLowerCase() : '';
   const participantFilter = card.closest('.reg-answers-grid')?.dataset.participant ?? '';
@@ -1097,7 +1124,9 @@ function _regApplyRowFilters(card) {
   // Choice individual answer rows
   card.querySelectorAll('.reg-answer-row').forEach(row => {
     const answered = row.dataset.answered === 'true';
-    const choiceMatch = activeChoice === null || row.dataset.choice === activeChoice;
+    let rowChoices = [];
+    try { rowChoices = JSON.parse(row.dataset.choices || '[]') || []; } catch (_) { rowChoices = []; }
+    const choiceMatch = !activeChoices.length || rowChoices.some(c => activeChoices.includes(c));
     const participantMatch = !participantFilter || row.dataset.name === participantFilter;
     row.style.display = (hideEmpty && !answered) || !choiceMatch || !participantMatch ? 'none' : '';
   });
@@ -1117,13 +1146,8 @@ function _regFilterByChoice(barRow) {
   const spoiler = card.querySelector('.reg-answer-spoiler');
   if (!spoiler) return;
 
-  const wasActive = barRow.classList.contains('active');
-  card.querySelectorAll('.reg-answer-bar-row').forEach(r => r.classList.remove('active'));
-
-  if (!wasActive) {
-    barRow.classList.add('active');
-    spoiler.open = true;
-  }
+  barRow.classList.toggle('active');
+  if (card.querySelector('.reg-answer-bar-row.active')) spoiler.open = true;
 
   _regApplyRowFilters(card);
 }
@@ -1307,7 +1331,7 @@ function _renderRegFilterPanel(rid, r, questions) {
     h += `<button type="button" class="btn btn-sm reg-filter-email-btn" id="reg-filter-email-${esc(rid)}" onclick="withLoading(this,()=>_regFilterEmailEligible('${esc(rid)}'))">${_ic('mail')} ${t('txt_email_send_message_eligible')}</button>`;
   }
   h += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_clearRegFilter('${esc(rid)}'))">${t('txt_reg_filter_clear')}</button>`;
-  h += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegFilter('${esc(rid)}'))">${t('txt_reg_filter_save')}</button>`;
+  h += `<button type="button" id="reg-filter-save-btn-${esc(rid)}" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegFilter('${esc(rid)}'))">${t('txt_reg_filter_save')}</button>`;
   h += `</div>`;
 
   h += `</details>`;
@@ -1403,7 +1427,7 @@ async function _saveRegFilter(rid) {
     await api(`/api/registrations/${rid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     delete _regFilterDraft[rid];
     await _loadRegDetail(rid);
-    _showToast(t('txt_reg_filter_saved'));
+    flashSuccess(`reg-filter-save-btn-${rid}`, t('txt_txt_saved'));
   } catch (e) { alert(e.message || t('txt_reg_error')); }
 }
 
@@ -1469,6 +1493,76 @@ function _downloadAnswersCSV(rid) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ── Organizer notepad (private, debounced autosave) ───────────────
+const _REG_NOTES_DEBOUNCE_MS = 1200;
+const _regNotesTimers = {};     // rid → pending debounce timer id
+const _regNotesLastSaved = {};  // rid → last value known to be persisted
+const _regNotesInFlight = {};   // rid → true while a PATCH is running
+
+function _renderRegNotesPanel(rid, r) {
+  const notes = r.admin_notes || '';
+  let h = `<details class="reg-section" id="reg-notes-panel-${esc(rid)}"${notes ? ' open' : ''} style="margin-bottom:0.75rem">`;
+  h += `<summary class="reg-section-summary" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;list-style:none">`;
+  h += `<span style="font-size:1rem;font-weight:700;display:flex;align-items:center;gap:0.4rem"><span class="tv-chevron" style="font-size:0.7em;color:var(--text-muted)">&#9658;</span>${t('txt_reg_notes_title')}</span>`;
+  h += `<span id="reg-notes-status-${esc(rid)}" class="reg-notes-status" aria-live="polite"></span>`;
+  h += `</summary>`;
+  h += `<p style="color:var(--text-muted);font-size:0.82rem;margin:0.6rem 0 0.5rem;line-height:1.5">${t('txt_reg_notes_help')}</p>`;
+  h += `<textarea id="reg-notes-${esc(rid)}" class="reg-desc-textarea" rows="4" maxlength="10000" placeholder="${escAttr(t('txt_reg_notes_placeholder'))}" oninput="_autoResizeTextarea(this);_regNotesOnInput('${esc(rid)}')" onblur="_regNotesFlush('${esc(rid)}')">${esc(notes)}</textarea>`;
+  h += `</details>`;
+  return h;
+}
+
+function _regNotesSetStatus(rid, key) {
+  const el = document.getElementById(`reg-notes-status-${rid}`);
+  if (el) el.textContent = key ? t(key) : '';
+}
+
+function _regNotesOnInput(rid) {
+  clearTimeout(_regNotesTimers[rid]);
+  _regNotesSetStatus(rid, 'txt_reg_notes_unsaved');
+  _regNotesTimers[rid] = setTimeout(() => _regNotesFlush(rid), _REG_NOTES_DEBOUNCE_MS);
+}
+
+async function _regNotesFlush(rid) {
+  clearTimeout(_regNotesTimers[rid]);
+  delete _regNotesTimers[rid];
+  const ta = document.getElementById(`reg-notes-${rid}`);
+  if (!ta || _regNotesInFlight[rid]) return;
+  const value = ta.value;
+  const lastSaved = rid in _regNotesLastSaved ? _regNotesLastSaved[rid] : (_regDetails[rid]?.admin_notes || '');
+  if (value === lastSaved) return;
+  _regNotesInFlight[rid] = true;
+  _regNotesSetStatus(rid, 'txt_reg_notes_saving');
+  let ok = false;
+  try {
+    await api(`/api/registrations/${rid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ admin_notes: value }),
+    });
+    ok = true;
+    if (_regDetails[rid]) _regDetails[rid].admin_notes = value.trim() ? value : null;
+    _regNotesLastSaved[rid] = value;
+    _regNotesSetStatus(rid, 'txt_reg_notes_saved');
+  } catch (e) {
+    console.error('Notes save failed:', e.message);
+    _regNotesSetStatus(rid, 'txt_reg_notes_save_failed');
+  } finally {
+    _regNotesInFlight[rid] = false;
+  }
+  // Text changed while saving: save again
+  const cur = document.getElementById(`reg-notes-${rid}`);
+  if (ok && cur && cur.value !== value) _regNotesOnInput(rid);
+}
+
+function _regNotesHasUnsaved() {
+  return Object.keys(_regNotesTimers).length > 0 || Object.values(_regNotesInFlight).some(Boolean);
+}
+
+window.addEventListener('beforeunload', (e) => {
+  if (_regNotesHasUnsaved()) { e.preventDefault(); e.returnValue = ''; }
+});
 
 function _autoResizeTextarea(el) {
   el.style.overflow = 'hidden';
@@ -1673,7 +1767,7 @@ function _editRegistrant(rid, pid, currentName, currentEmail) {
         body: JSON.stringify(patch),
       });
       modal.remove();
-      _showToast(t('txt_reg_saved'));
+      _srAnnounce(t('txt_reg_saved'));
       await _loadRegDetail(rid);
       await loadRegistrations();
     } catch (e) { alert(e.message || t('txt_reg_error')); }
@@ -1727,7 +1821,7 @@ function _adminAddRegistrant(rid) {
         body: JSON.stringify(body),
       });
       modal.remove();
-      _showToast(t('txt_reg_saved'));
+      _srAnnounce(t('txt_reg_saved'));
       await _loadRegDetail(rid);
       await loadRegistrations();
     } catch (e) { alert(e.message || t('txt_reg_error')); }
@@ -1742,13 +1836,13 @@ async function _saveRegMessage(rid) {
   const body = msg ? { message: msg } : { clear_message: true };
   await api(`/api/registrations/${rid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   await _loadRegDetail(rid);
-  _showToast(t('txt_reg_saved'));
+  flashSuccess(`reg-message-save-btn-${rid}`, t('txt_reg_saved'));
 }
 
-async function _sendRegEmail(rid, pid) {
+async function _sendRegEmail(rid, pid, btn) {
   try {
     await api(`/api/registrations/${rid}/send-email/${pid}`, { method: 'POST' });
-    _showToast(t('txt_email_sent'));
+    flashSuccess(btn, t('txt_email_sent'));
   } catch (e) {
     alert(e.message || t('txt_email_failed'));
   }

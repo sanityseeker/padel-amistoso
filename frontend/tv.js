@@ -66,7 +66,10 @@ const tvState = {
   sectionOpenState: {},     // {data-tv-key: boolean} — persisted across refreshes
   lastKnownVersion: null,   // for on-update mode
   scoreMode: {},            // {ctx: 'points'|'sets'} from admin TV settings
+  setDecider: 'full_set',   // tournament default third-set decider (tv_settings.set_decider)
   totalPts: 0,              // total_points_per_match for Mexicano auto-fill
+  matchTargets: {},         // match id → effective points target (per-match override)
+  matchDeciders: {},        // match id → third-set decider in effect ('full_set' | 'match_tiebreak')
   versionPollTimer: null,   // setInterval handle for version polling
   pickerPollTimer: null,    // setInterval handle for picker auto-refresh
   // Player auth state
@@ -821,6 +824,76 @@ const _PLAYER_SCORE_ENDPOINTS = {
 };
 
 /**
+ * Points a Mexicano round score must sum to: the match's own target when an
+ * organiser overrode it, else the tournament total.  0 = no sum rule.
+ */
+function _tvMatchTarget(m, scoreCtx) {
+  if (scoreCtx !== 'mex') return 0;
+  const target = m.effective_points_target || m.format_override?.points_target || tvState.totalPts || 0;
+  if (m.id) tvState.matchTargets[m.id] = target;
+  return target;
+}
+
+/** Same as _tvMatchTarget, for handlers that only know the match id. */
+function _tvMatchTargetById(matchId, scoreCtx) {
+  if (scoreCtx !== 'mex') return 0;
+  return tvState.matchTargets[matchId] || tvState.totalPts || 0;
+}
+
+/** Third-set decider in effect for a match: its own (or recorded) value, else the tournament default. */
+function _tvMatchDecider(m) {
+  const decider = (m && m.effective_decider) || tvState.setDecider || 'full_set';
+  if (m && m.id) tvState.matchDeciders[m.id] = decider;
+  return decider;
+}
+
+/** Same as _tvMatchDecider, for handlers that only know the match id. */
+function _tvMatchDeciderById(matchId) {
+  return tvState.matchDeciders[matchId] || tvState.setDecider || 'full_set';
+}
+
+/** Three set-input rows; the third is labelled "Match TB" under a match tie-break decider. */
+function _tvRenderSetRows(idPrefix1, idPrefix2, decider) {
+  let html = '';
+  for (let i = 0; i < 3; i++) {
+    const isTb = i === 2 && decider === 'match_tiebreak';
+    const maxAttr = i < 2 ? 'max="7"' : '';
+    const label = isTb ? esc(t('txt_match_tb_label')) : `S${i + 1}`;
+    const title = isTb ? ` title="${escAttr(t('txt_match_tb_rule'))}"` : '';
+    html += `<div class="player-set-row">`;
+    html += `<span class="player-set-label${isTb ? ' is-tb' : ''}"${title}>${label}</span>`;
+    html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="${idPrefix1}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
+    html += `<span style="color:var(--text-muted)">-</span>`;
+    html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="${idPrefix2}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
+    html += `</div>`;
+  }
+  return html;
+}
+
+/** Input mode a player form opens in: the match's own format, else the stage default. */
+function _tvDefaultScoreMode(m, scoreCtx, hasTennis) {
+  if (!hasTennis) return 'points';
+  const mode = m.format_override?.mode || tvState.scoreMode[scoreCtx];
+  return mode === 'sets' ? 'sets' : 'points';
+}
+
+/**
+ * Large-type note on matches whose format differs from the tournament
+ * default ("Played to 24", or "Sets" when this match alone is in sets).
+ */
+function _tvFormatNote(m, scoreCtx) {
+  const fo = m.format_override;
+  if (!fo || !scoreCtx) return '';
+  if (scoreCtx === 'mex' && fo.points_target && fo.points_target !== tvState.totalPts) {
+    return `<div class="tv-format-note">${esc(t('txt_match_format_played_to', { n: fo.points_target }))}</div>`;
+  }
+  if (fo.mode && fo.mode !== (tvState.scoreMode[scoreCtx] || 'points')) {
+    return `<div class="tv-format-note">${esc(fo.mode === 'sets' ? t('txt_txt_sets') : t('txt_txt_points_label'))}</div>`;
+  }
+  return '';
+}
+
+/**
  * Validate score inputs and return { body, path, displayScore } or null on error.
  * Purely reads from the DOM — no side effects.
  */
@@ -856,14 +929,14 @@ function _validatePlayerScore(matchId, scoreCtx) {
       const w2 = sets[1][0] > sets[1][1] ? 'a' : 'b';
       if (w1 === w2) { _showErr(t('txt_txt_third_set_needs_split')); return null; }
     }
-    const display = sets.map(s => `${s[0]}-${s[1]}`).join(' / ');
+    const display = formatSetScore(sets, _tvMatchDeciderById(matchId), ' / ');
     return { body: JSON.stringify({ match_id: matchId, sets }), path: entry.tennis, displayScore: display };
   } else {
     const s1 = +(document.getElementById('ps1-' + matchId)?.value) || 0;
     const s2 = +(document.getElementById('ps2-' + matchId)?.value) || 0;
-    const autoCalc = tvState.totalPts > 0 && scoreCtx === 'mex';
-    if (autoCalc && s1 + s2 !== tvState.totalPts) {
-      _showErr(t('txt_txt_score_must_sum', { n: tvState.totalPts }));
+    const target = _tvMatchTargetById(matchId, scoreCtx);
+    if (target > 0 && s1 + s2 !== target) {
+      _showErr(t('txt_txt_score_must_sum', { n: target }));
       return null;
     }
     if (s1 === 0 && s2 === 0 && !saveBtn?.dataset.zeroWarned) {
@@ -926,8 +999,11 @@ async function _doPlayerSubmit(matchId, path, body) {
   if (errDiv) errDiv.textContent = '';
   try {
     await _playerApi(`/api/tournaments/${TID}/${path}`, { method: 'POST', body });
-    if (saveBtn) saveBtn.textContent = t('txt_txt_score_saved');
-    setTimeout(() => loadTV(), 800);
+    if (saveBtn) {
+      saveBtn.textContent = t('txt_txt_save');
+      flashSuccess(saveBtn, t('txt_txt_saved'));
+    }
+    setTimeout(() => loadTV(), 900);
   } catch (e) {
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = t('txt_txt_save'); }
     if (errDiv) errDiv.textContent = e.message;
@@ -956,10 +1032,10 @@ function _buildPlayerScoreForm(m, scoreCtx) {
 
   const entry = _PLAYER_SCORE_ENDPOINTS[scoreCtx];
   const hasTennis = !!(entry && entry.tennis);
-  const defaultMode = (tvState.scoreMode[scoreCtx] === 'sets' && hasTennis) ? 'sets' : 'points';
-  const isMex = scoreCtx === 'mex' || scoreCtx === 'mex-playoff';
-  const autoCalc = tvState.totalPts > 0 && scoreCtx === 'mex';
-  const onInput = autoCalc ? `oninput="_playerAutoFillScore('${m.id}', ${tvState.totalPts})"` : '';
+  const defaultMode = _tvDefaultScoreMode(m, scoreCtx, hasTennis);
+  const target = _tvMatchTarget(m, scoreCtx);
+  const autoCalc = target > 0;
+  const onInput = autoCalc ? `oninput="_playerAutoFillScore('${m.id}', ${target})"` : '';
 
   let html = '<div class="player-score-form">';
   html += `<button type="button" class="score-toggle-btn" id="ps-toggle-${m.id}" onclick="_toggleScoreForm('${m.id}')">${t('txt_txt_submit_score')}</button>`;
@@ -969,7 +1045,7 @@ function _buildPlayerScoreForm(m, scoreCtx) {
   if (hasTennis) {
     html += `<div class="player-score-mode-toggle" data-match="${m.id}">`;
     html += `<button type="button" class="${defaultMode === 'points' ? 'active' : ''}" onclick="_setPlayerScoreMode('${m.id}','points')">${t('txt_txt_points_label')}</button>`;
-    html += `<button type="button" class="${defaultMode === 'sets' ? 'active' : ''}" onclick="_setPlayerScoreMode('${m.id}','sets')">🎾 ${t('txt_txt_sets')}</button>`;
+    html += `<button type="button" class="${defaultMode === 'sets' ? 'active' : ''}" onclick="_setPlayerScoreMode('${m.id}','sets')">${t('txt_txt_sets')}</button>`;
     html += `</div>`;
   }
 
@@ -985,15 +1061,7 @@ function _buildPlayerScoreForm(m, scoreCtx) {
   // S1 and S2: standard sets capped at 7; S3: uncapped (super tie-break can go beyond 7)
   if (hasTennis) {
     html += `<div id="ps-sets-${m.id}"${defaultMode === 'sets' ? '' : ' class="hidden"'}><div class="player-sets-grid">`;
-    for (let i = 0; i < 3; i++) {
-      const maxAttr = i < 2 ? 'max="7"' : '';
-      html += `<div class="player-set-row">`;
-      html += `<span class="player-set-label">S${i + 1}</span>`;
-      html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="pts1-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
-      html += `<span style="color:var(--text-muted)">-</span>`;
-      html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="pts2-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
-      html += `</div>`;
-    }
+    html += _tvRenderSetRows(`pts1-${m.id}`, `pts2-${m.id}`, _tvMatchDecider(m));
     html += `</div></div>`;
   }
 
@@ -1083,8 +1151,8 @@ function _buildScoreLifecyclePanel(m, scoreCtx) {
     // Opponent sees accept / correct buttons
     const entry = _PLAYER_SCORE_ENDPOINTS[scoreCtx];
     const hasTennis = !!(entry && entry.tennis);
-    const isMex = scoreCtx === 'mex' || scoreCtx === 'mex-playoff';
-    const autoCalc = tvState.totalPts > 0 && scoreCtx === 'mex';
+    const target = _tvMatchTarget(m, scoreCtx);
+    const autoCalc = target > 0;
 
     let html = '<div class="player-score-pending">';
     html += `<div class="pending-score-label">${t('txt_txt_pending_score')}</div>`;
@@ -1098,34 +1166,26 @@ function _buildScoreLifecyclePanel(m, scoreCtx) {
     html += `<div class="correct-score-panel hidden" id="ps-correct-panel-${m.id}">`;
 
     // Points / Sets toggle for correction (only when tennis scoring is available)
-    const defaultCorrMode = (tvState.scoreMode[scoreCtx] === 'sets' && hasTennis) ? 'sets' : 'points';
+    const defaultCorrMode = _tvDefaultScoreMode(m, scoreCtx, hasTennis);
     if (hasTennis) {
       html += `<div class="player-score-mode-toggle" data-match="${m.id}-corr">`;
       html += `<button type="button" class="${defaultCorrMode === 'points' ? 'active' : ''}" onclick="_setCorrectionScoreMode('${m.id}','points')">${t('txt_txt_points_label')}</button>`;
-      html += `<button type="button" class="${defaultCorrMode === 'sets' ? 'active' : ''}" onclick="_setCorrectionScoreMode('${m.id}','sets')">🎾 ${t('txt_txt_sets')}</button>`;
+      html += `<button type="button" class="${defaultCorrMode === 'sets' ? 'active' : ''}" onclick="_setCorrectionScoreMode('${m.id}','sets')">${t('txt_txt_sets')}</button>`;
       html += `</div>`;
     }
 
     // Points correction inputs
     html += `<div class="correct-score-inputs${defaultCorrMode === 'sets' ? ' hidden' : ''}" id="pc-points-${m.id}">`;
-    const onInput = autoCalc ? `oninput="_playerAutoFillCorrection('${m.id}', ${tvState.totalPts})"` : '';
+    const onInput = autoCalc ? `oninput="_playerAutoFillCorrection('${m.id}', ${target})"` : '';
     html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="pc1-${m.id}" min="0" value="" placeholder="0" ${onInput}>`;
     html += `<span class="score-dash">–</span>`;
-    html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="pc2-${m.id}" min="0" value="" placeholder="${autoCalc ? tvState.totalPts : 0}" ${onInput}>`;
+    html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="pc2-${m.id}" min="0" value="" placeholder="${autoCalc ? target : 0}" ${onInput}>`;
     html += `</div>`;
 
     // Sets correction inputs (hidden by default unless mode=sets)
     if (hasTennis) {
       html += `<div id="pc-sets-${m.id}"${defaultCorrMode === 'sets' ? '' : ' class="hidden"'}><div class="player-sets-grid">`;
-      for (let i = 0; i < 3; i++) {
-        const maxAttr = i < 2 ? 'max="7"' : '';
-        html += `<div class="player-set-row">`;
-        html += `<span class="player-set-label">S${i + 1}</span>`;
-        html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="pcs1-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
-        html += `<span style="color:var(--text-muted)">-</span>`;
-        html += `<input type="number" inputmode="numeric" pattern="[0-9]*" id="pcs2-${m.id}-${i}" min="0" ${maxAttr} value="" placeholder="0">`;
-        html += `</div>`;
-      }
+      html += _tvRenderSetRows(`pcs1-${m.id}`, `pcs2-${m.id}`, _tvMatchDecider(m));
       html += `</div></div>`;
     }
 
@@ -1217,7 +1277,7 @@ function _expandTeamIds(ids, roster) {
 function _formatMatchScore(m) {
   if (!m.score) return '—';
   if (m.sets && m.sets.length > 0) {
-    return m.sets.map(s => `${s[0]}-${s[1]}`).join(' / ');
+    return formatSetScore(m.sets, _tvMatchDecider(m), ' / ');
   }
   return `${m.score[0]} – ${m.score[1]}`;
 }
@@ -1226,7 +1286,7 @@ function _formatMatchScore(m) {
 function _formatDisputeScore(m) {
   if (!m.dispute_score) return '—';
   if (m.dispute_sets && m.dispute_sets.length > 0) {
-    return m.dispute_sets.map(s => `${s[0]}-${s[1]}`).join(' / ');
+    return formatSetScore(m.dispute_sets, _tvMatchDecider(m), ' / ');
   }
   return `${m.dispute_score[0]} – ${m.dispute_score[1]}`;
 }
@@ -1316,9 +1376,9 @@ async function _playerSubmitCorrection(matchId, scoreCtx) {
     const s1 = +(document.getElementById('pc1-' + matchId)?.value) || 0;
     const s2 = +(document.getElementById('pc2-' + matchId)?.value) || 0;
     // Mexicano sum validation
-    const isMex = scoreCtx === 'mex';
-    if (isMex && tvState.totalPts > 0 && s1 + s2 !== tvState.totalPts) {
-      _showErr(t('txt_txt_score_must_sum', { n: tvState.totalPts }));
+    const target = _tvMatchTargetById(matchId, scoreCtx);
+    if (target > 0 && s1 + s2 !== target) {
+      _showErr(t('txt_txt_score_must_sum', { n: target }));
       return;
     }
     body = JSON.stringify({ match_id: matchId, score1: s1, score2: s2 });
@@ -1579,6 +1639,7 @@ async function loadTV() {
 
     tvState.refreshIntervalSecs = tvSettings.refresh_interval ?? 15;
     tvState.scoreMode = tvSettings.score_mode || {};
+    tvState.setDecider = tvSettings.set_decider || 'full_set';
     tvState.allowPlayerScoring = tvSettings.allow_player_scoring !== false;
     tvState.scoreConfirmationMode = tvSettings.score_confirmation || 'immediate';
     tvState.correctionWindowSecs = tvSettings.correction_window_seconds ?? 0;
@@ -1992,7 +2053,7 @@ function _copyTournamentSlug() {
   const slug = tvState.tournamentAlias || TID;
   if (!slug) return;
   navigator.clipboard.writeText(slug).then(() => {
-    flashSuccess(document.getElementById('tv-slug-chip'), t('txt_txt_url_copied'));
+    flashSuccess('tv-slug-chip', t('txt_txt_copied'));
   });
 }
 
@@ -2117,6 +2178,7 @@ function _buildPendingGroupCollapsibles(pendingByGroup, _tl, _hasTbd, _commentHt
         html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl(m.team2))}</div>`;
         html += _commentHtml(m);
         html += `</div>`;
+        html += _tvFormatNote(m, scoreCtx);
         if (scoreCtx) html += _buildPlayerScoreForm(m, scoreCtx);
         html += `</div>`;
       }
@@ -2167,6 +2229,7 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
           html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl(m.team2))}</div>`;
           html += _commentHtml(m);
           html += `</div>`;
+          html += _tvFormatNote(m, scoreCtx);
           if (scoreCtx) html += _buildPlayerScoreForm(m, scoreCtx);
           html += `</div>`;
         }
@@ -2221,6 +2284,7 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
     if (m.round_label) html += `<div class="court-match-meta">${esc(trl(m.round_label))}</div>`;
     html += _commentHtml(m);
     html += `</div>`;
+    html += _tvFormatNote(m, scoreCtx);
     if (scoreCtx) html += _buildPlayerScoreForm(m, scoreCtx);
     html += `</div>`;
     html += `</div>`;
@@ -2258,6 +2322,7 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
         html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl2(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl2(m.team2))}</div>`;
         html += _commentHtml(m);
         html += `</div>`;
+        html += _tvFormatNote(m, scoreCtx);
         if (scoreCtx) html += _buildPlayerScoreForm(m, scoreCtx);
         html += `</div>`;
       }
@@ -2325,7 +2390,7 @@ function _buildHistoryMatch(m, tvSettings, isMex, scoreCtx = null) {
   if (m.score) {
     if (m.sets && m.sets.length > 0) {
       scoreHtml = `<span class="history-score sets-stack">`;
-      scoreHtml += m.sets.map(s => `<span>${s[0]}-${s[1]}</span>`).join('');
+      scoreHtml += formatSetScore(m.sets, _tvMatchDecider(m), '|').split('|').map(x => `<span>${x}</span>`).join('');
       scoreHtml += `</span>`;
     } else {
       scoreHtml = `<span class="history-score">${m.score[0]} – ${m.score[1]}</span>`;
@@ -2342,6 +2407,7 @@ function _buildHistoryMatch(m, tvSettings, isMex, scoreCtx = null) {
   html += `</div>`;
 
   // Score lifecycle panel for unconfirmed matches in history view
+  html += _tvFormatNote(m, scoreCtx);
   if (scoreCtx) html += _buildPlayerScoreForm(m, scoreCtx);
 
   // Score breakdown for Mexicano matches
@@ -2655,7 +2721,7 @@ function _tvRenderPlayerCard(overlay, card) {
         const dStr = d == null ? '' : (d > 0 ? '+' : '') + Number(d).toFixed(1);
         const hasSets = Array.isArray(m.sets) && m.sets.length > 0;
         const score = hasSets
-          ? m.sets.map(s => `${s[0]}-${s[1]}`).join(' · ')
+          ? formatSetScore(m.sets, m.decider, ' · ')
           : (Array.isArray(m.score) && m.score.length >= 2 ? `${m.score[0]} – ${m.score[1]}` : '');
         const t1 = Array.isArray(m.team1) ? m.team1.join(' / ') : '';
         const t2 = Array.isArray(m.team2) ? m.team2.join(' / ') : '';

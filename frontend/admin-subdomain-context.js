@@ -23,9 +23,18 @@
   // Re-render the nav bar so the communities button is hidden immediately.
   if (typeof updateAuthUI === 'function') updateAuthUI();
 
-  const _apexUrl = new URL(location.href);
-  _apexUrl.hostname = location.hostname.split('.').slice(1).join('.') || location.hostname;
-  _apexUrl.port = location.port;
+  // Prefer the server's notion of the apex (``apex_origin`` from /api/config,
+  // which honours AMISTOSO_DOMAIN); fall back to stripping one label.
+  let apexOrigin = null;
+  try {
+    const cfg = await fetch('/api/config').then((r) => (r.ok ? r.json() : null));
+    if (cfg && typeof cfg.apex_origin === 'string' && /^https?:\/\//.test(cfg.apex_origin)) apexOrigin = cfg.apex_origin;
+  } catch (_) { /* ignore */ }
+  const _apexUrl = new URL(apexOrigin || location.origin);
+  if (!apexOrigin) {
+    _apexUrl.hostname = location.hostname.split('.').slice(1).join('.') || location.hostname;
+    _apexUrl.port = location.port;
+  }
   _apexUrl.pathname = '/admin';
   _apexUrl.search = '';
   _apexUrl.hash = '';

@@ -260,7 +260,7 @@ function _phRenderDetail(data) {
   html += '<div style="display:grid;grid-template-columns:auto 1fr;gap:0.3rem 1rem;font-size:0.88rem;margin-bottom:1rem">';
   const passDisplay = data.is_ghost
     ? `<span style="color:var(--text-muted)" title="${t('txt_ph_ghost_no_passphrase')}">—</span>`
-    : `<code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(data.passphrase)}</code> <button type="button" class="btn btn-sm btn-muted" onclick="phResetPassphrase('${escAttr(data.id)}')" style="font-size:0.76rem;padding:0.15rem 0.4rem">${_ic('reset')} ${t('txt_ph_reset')}</button>`;
+    : `<code class="player-codes-passphrase" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(data.passphrase)}</code> <button type="button" class="btn btn-sm btn-muted" onclick="phResetPassphrase('${escAttr(data.id)}')" style="font-size:0.76rem;padding:0.15rem 0.4rem">${_ic('reset')} ${t('txt_ph_reset')}</button>`;
   html += `<strong>${t('txt_txt_passphrase')}:</strong><span>${passDisplay}</span>`;
   html += `<strong>${t('txt_ph_name')}:</strong><span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap"><input type="text" id="ph-name-input" value="${escAttr(data.name || '')}" style="flex:1;min-width:180px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" onclick="phUpdateName('${escAttr(data.id)}')" id="ph-name-save-btn">${t('txt_txt_save')}</button></span>`;
   html += `<strong>${t('txt_txt_email')}:</strong><span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap"><input type="email" id="ph-email-input" value="${escAttr(data.email || '')}" style="flex:1;min-width:180px;padding:0.3rem 0.5rem;font-size:0.86rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><button type="button" class="btn btn-sm" onclick="phUpdateEmail('${escAttr(data.id)}')" id="ph-email-save-btn">${t('txt_txt_save')}</button></span>`;
@@ -410,7 +410,7 @@ async function phConvertGhost(profileId) {
         <div class="card alert alert-info" style="margin-top:0.5rem">
           <strong>${t('txt_ph_convert_ok', { name: esc(result.name) })}</strong><br>
           <span style="font-size:0.84rem">${t('txt_ph_convert_passphrase_label')}: </span>
-          <code class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(result.passphrase)}</code>
+          <code class="player-codes-passphrase" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(result.passphrase)}</code>
           ${result.email ? `<br><span style="font-size:0.8rem;color:var(--text-muted)">${t('txt_ph_convert_email_sent', { email: esc(result.email) })}</span>` : ''}
         </div>`;
       setTimeout(() => { const d = document.getElementById('ph-detail'); if (d) { d.style.display = 'none'; d.innerHTML = ''; } }, 12000);
@@ -441,7 +441,7 @@ async function phResetPassphrase(profileId) {
     const result = await api(`/api/admin/player-profiles/${profileId}/reset-passphrase`, { method: 'POST' });
     const area = document.getElementById('ph-passphrase-result');
     if (area) {
-      area.innerHTML = `<div class="alert alert-info" style="margin-bottom:0.75rem">${t('txt_ph_new_passphrase')}: <code class="player-codes-passphrase" style="font-size:1.05rem" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(result.passphrase)}</code></div>`;
+      area.innerHTML = `<div class="alert alert-info" style="margin-bottom:0.75rem">${t('txt_ph_new_passphrase')}: <code class="player-codes-passphrase" style="font-size:1.05rem" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(result.passphrase)}</code></div>`;
     }
     // Refresh the detail to show updated passphrase
     phLoadProfile(profileId);

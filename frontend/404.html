@@ -4,115 +4,124 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title data-i18n="txt_txt_404_page_title">404 – Page Not Found</title>
+<!-- Injected by the server: the right "home" for the host this page was served on
+     (club landing page on a club subdomain, the platform apex otherwise). -->
+<meta name="amistoso-home" content="__HOME_URL__">
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#3b82f6" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#3b82f6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a5fa3">
 <link rel="apple-touch-icon" href="/icon-192.png">
-<!-- Apply saved theme before first paint to avoid flash -->
-<script>
-  (function () {
-    var osDefault = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-    var t = 'dark';
-    try { t = localStorage.getItem('amistoso-theme') || osDefault; } catch (_) { t = osDefault; }
-    document.documentElement.setAttribute('data-theme', t);
-  }());
-</script>
+<script>(function(){try{var t=localStorage.getItem('amistoso-theme')||localStorage.getItem('padel-theme');if(!t)t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(_){}})();</script>
+<link rel="preconnect" href="https://api.fontshare.com">
+<link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=cabinet-grotesk@400,500,700,800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  :root { color-scheme: dark; }
-  :root[data-theme="light"] { color-scheme: light; }
   body {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    font-family: system-ui, -apple-system, sans-serif;
+    gap: var(--space-5);
+    padding: var(--space-8) var(--space-4);
     text-align: center;
-    padding: 2rem;
-    gap: 1.5rem;
-    background: #0f172a;
-    color: #e2e8f0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-body);
   }
-  [data-theme="light"] body {
-    background: #f1f5f9;
-    color: #1e293b;
-  }
-  [data-theme="light"] .countdown { color: #64748b; }
   img#error-img {
     max-width: min(320px, 80vw);
     height: auto;
-    border-radius: 1rem;
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-md);
   }
-  .countdown {
-    font-size: 1rem;
-    color: #94a3b8;
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: clamp(1.5rem, 4vw, 2.25rem);
+    letter-spacing: -0.01em;
+    color: var(--color-text);
   }
   .context-msg {
+    max-width: 40rem;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--color-warning-border);
+    border-radius: var(--radius-card);
+    background: var(--color-warning-bg);
+    color: var(--color-warning-text);
     font-size: 0.95rem;
-    color: #f59e0b;
-    max-width: 48rem;
   }
-  [data-theme="light"] .context-msg { color: #b45309; }
-  .countdown span {
+  .countdown {
+    font-size: 0.95rem;
+    color: var(--color-text-muted);
+  }
+  .countdown span#counter {
+    font-family: var(--font-data);
     font-weight: 700;
-    color: #3b82f6;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-primary);
   }
   a.home-link {
     display: inline-block;
-    background: #3b82f6;
-    color: #fff;
-    text-decoration: none;
-    padding: 0.6rem 1.6rem;
-    border-radius: 0.5rem;
+    padding: var(--space-3) var(--space-6);
+    border-radius: var(--radius-full);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    font-family: var(--font-display);
     font-weight: 600;
     font-size: 0.95rem;
-    transition: background 0.2s;
+    text-decoration: none;
+    transition: background 0.15s ease;
   }
-  a.home-link:hover { background: #2563eb; }
+  a.home-link:hover { background: var(--color-primary-hover); }
+  a.home-link:active { background: var(--color-primary-active); }
 </style>
 </head>
 <body>
-  <img id="error-img" src="" alt="404 – Page not found" data-i18n-alt="txt_txt_404_image_alt">
-  <p id="context-msg" class="context-msg" style="display:none"></p>
-  <p class="countdown"><span data-i18n="txt_txt_redirecting_home_in">Redirecting to home in</span> <span id="counter">5</span> <span data-i18n="txt_txt_seconds_ellipsis">seconds…</span></p>
+  <img id="error-img" src="/404.png" alt="404 – Page not found" data-i18n-alt="txt_txt_404_image_alt">
+  <h1 data-i18n="txt_txt_404_page_title">404 – Page Not Found</h1>
+  <p id="context-msg" class="context-msg" hidden></p>
+  <p id="countdown" class="countdown" hidden><span data-i18n="txt_txt_redirecting_home_in">Redirecting to home in</span> <span id="counter">5</span> <span data-i18n="txt_txt_seconds_ellipsis">seconds…</span></p>
   <a id="home-link" class="home-link" href="/" data-i18n="txt_txt_go_home_now">Go home now</a>
 
 <script>
-  // Always strip the leftmost label so any subdomain redirects to its parent.
-  // e.g. wrongclub.localhost → localhost, wrongclub.amistoso.app → amistoso.app
-  function _rootHomeUrl() {
-    const parts = window.location.hostname.split('.');
-    const apex = parts.length > 1 ? parts.slice(1).join('.') : parts[0];
-    return window.location.protocol + '//' + apex
-      + (window.location.port ? ':' + window.location.port : '') + '/';
+  // The server injects the correct home for this hostname (see
+  // ``_home_url_for`` in backend/api/__init__.py): a club subdomain goes back
+  // to the club landing page, anything else to the platform apex. Only fall
+  // back to this origin's root when the page was served without injection.
+  function _serverHomeUrl() {
+    var meta = document.querySelector('meta[name="amistoso-home"]');
+    var v = meta && meta.getAttribute('content') || '';
+    if (!v || v.indexOf('__HOME_URL__') !== -1 || !/^https?:\/\//.test(v)) return null;
+    return v;
   }
-
-  // Point static assets at the apex domain so they load on unknown subdomains.
-  const _rootOrigin = _rootHomeUrl().replace(/\/$/, '');
-  document.getElementById('error-img').src = _rootOrigin + '/404.png';
-
-  const params = new URLSearchParams(window.location.search);
-  const context = params.get('m');
-  const redirectTarget = params.get('to') || _rootHomeUrl();
+  var _home = _serverHomeUrl();
+  var params = new URLSearchParams(window.location.search);
+  var context = params.get('m');
+  var redirectTarget = params.get('to') || _home || (window.location.origin + '/');
   if (context) {
-    const contextEl = document.getElementById('context-msg');
+    var contextEl = document.getElementById('context-msg');
     contextEl.textContent = context;
-    contextEl.style.display = '';
+    contextEl.hidden = false;
   }
-  const homeLink = document.getElementById('home-link');
-  if (homeLink) homeLink.setAttribute('href', redirectTarget);
+  document.getElementById('home-link').setAttribute('href', redirectTarget);
 
-  let seconds = 5;
-  const el = document.getElementById('counter');
-  const timer = setInterval(() => {
-    seconds -= 1;
-    el.textContent = seconds;
-    if (seconds <= 0) {
-      clearInterval(timer);
-      window.location.replace(redirectTarget);
-    }
-  }, 1000);
+  // Auto-redirect only when we know where home is and it is not this very
+  // page — otherwise we would loop on an unknown subdomain's root.
+  var _here = window.location.origin + window.location.pathname;
+  if ((params.get('to') || _home) && redirectTarget !== _here) {
+    document.getElementById('countdown').hidden = false;
+    var seconds = 5;
+    var el = document.getElementById('counter');
+    var timer = setInterval(function () {
+      seconds -= 1;
+      el.textContent = seconds;
+      if (seconds <= 0) {
+        clearInterval(timer);
+        window.location.replace(redirectTarget);
+      }
+    }, 1000);
+  }
 </script>
 <script src="/i18n.js"></script>
 <script src="/shared.js"></script>

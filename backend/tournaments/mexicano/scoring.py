@@ -14,9 +14,11 @@ class ScoringMixin:
         """Normalize a credit entry to the full breakdown dict format."""
         if isinstance(detail, dict):
             detail.setdefault("relative_strength", 0.0)
+            detail.setdefault("scale", 1.0)
             return detail
         return {
             "raw": detail,
+            "scale": 1.0,
             "relative_strength": 0.0,
             "strength_mult": 1.0,
             "loss_disc": 1.0,
@@ -264,18 +266,40 @@ class ScoringMixin:
     # Record results
     # ------------------------------------------------------------------ #
 
+    def _points_target_for(self, match) -> int:
+        """Return the points a round match must sum to.
+
+        An organiser-set ``format_override.points_target`` wins; otherwise the
+        tournament-wide ``total_points_per_match`` applies.
+        """
+        override = getattr(match, "format_override", None)
+        if override is not None and override.points_target:
+            return override.points_target
+        return self.total_points_per_match
+
+    def _check_points_sum(self, match, score: tuple[int, int]) -> None:
+        """Raise ValueError unless *score* sums to the match's points target."""
+        target = self._points_target_for(match)
+        s1, s2 = score
+        if s1 + s2 != target:
+            raise ValueError(f"Scores must sum to {target}, got {s1} + {s2} = {s1 + s2}")
+
     def record_result(self, match_id: str, score: tuple[int, int]):
         """Record (or re-record) a match result.
 
-        Both scores should sum to total_points_per_match.  If the match
-        was already completed, the previous credits are reversed first
-        so that re-recording is safe.
+        Both scores must sum to the match's points target
+        (``_points_target_for``).  When that target differs from the
+        tournament total, credited points are scaled to the tournament total
+        (``raw * total / target``) so standings stay comparable; ``m.score``
+        keeps the score as played.  If the match was already completed, the
+        previous credits are reversed first so that re-recording is safe.
         """
         self._est_cache = None  # scores are about to change
         m = self._find_match_by_id(match_id)
         s1, s2 = score
-        if s1 + s2 != self.total_points_per_match:
-            raise ValueError(f"Scores must sum to {self.total_points_per_match}, got {s1} + {s2} = {s1 + s2}")
+        self._check_points_sum(m, score)
+        target = self._points_target_for(m)
+        scale = self.total_points_per_match / target if target != self.total_points_per_match else 1.0
 
         # ── Undo previous result if re-recording ──
         was_completed = m.status == MatchStatus.COMPLETED
@@ -318,8 +342,8 @@ class ScoringMixin:
         disc2 = self.loss_discount if s2 < s1 else 1.0
 
         credits: dict[str, dict] = {}
-        self._credit_team(m.team1, s1, rs1, mult1, disc1, bonus1, was_completed, credits)
-        self._credit_team(m.team2, s2, rs2, mult2, disc2, bonus2, was_completed, credits)
+        self._credit_team(m.team1, s1, rs1, mult1, disc1, bonus1, was_completed, credits, scale)
+        self._credit_team(m.team2, s2, rs2, mult2, disc2, bonus2, was_completed, credits, scale)
         self._match_credits[m.id] = credits
 
         self._update_wdl(m.team1, s1, s2)
@@ -336,11 +360,8 @@ class ScoringMixin:
         ``record_result`` treats IN_PROGRESS as "not yet completed", so no reversal
         is needed — it simply finalises the pending result.
         """
-        if score[0] + score[1] != self.total_points_per_match:
-            raise ValueError(
-                f"Scores must sum to {self.total_points_per_match}, got {score[0]} + {score[1]} = {score[0] + score[1]}"
-            )
         m = self._find_match_by_id(match_id)
+        self._check_points_sum(m, score)
         if m.status == MatchStatus.COMPLETED:
             raise RuntimeError("Match is already completed — use record_result to re-record")
         m.score = score
@@ -356,20 +377,32 @@ class ScoringMixin:
         win_bonus: int,
         was_completed: bool,
         credits: dict[str, dict],
+        scale: float = 1.0,
     ) -> None:
-        """Apply score credits to a team and record breakdown."""
+        """Apply score credits to a team and record breakdown.
+
+        *scale* converts a score played to a non-default points target into
+        tournament-total terms.  The scaled value is what feeds ``_raw_scores``
+        and the credit ``raw`` field (so reversal stays exact); the score as
+        played is kept in ``played`` when scaling applies.
+        """
+        scaled = raw_score * scale
+        credited_raw = round(scaled)
         for p in team:
-            c = round(raw_score * strength_mult * loss_disc) + win_bonus
+            c = round(scaled * strength_mult * loss_disc) + win_bonus
             self.scores[p.id] += c
-            self._raw_scores[p.id] = self._raw_scores.get(p.id, 0) + raw_score
+            self._raw_scores[p.id] = self._raw_scores.get(p.id, 0) + credited_raw
             credits[p.id] = {
-                "raw": raw_score,
+                "raw": credited_raw,
+                "scale": round(scale, 4),
                 "relative_strength": round(relative_strength, 4),
                 "strength_mult": round(strength_mult, 4),
                 "loss_disc": round(loss_disc, 4),
                 "win_bonus": win_bonus,
                 "final": c,
             }
+            if scale != 1.0:
+                credits[p.id]["played"] = raw_score
             if not was_completed:
                 self._matches_played[p.id] += 1
 

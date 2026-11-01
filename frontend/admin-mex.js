@@ -252,6 +252,7 @@ async function renderMex() {
 
     if (currentTid !== _renderTid) return;
     el.innerHTML = html;
+    _mountPaymentsPanel('tournament', currentTid);
     _renderMexLeaderboard();
     _mexApplyReviewQueueFilter();
     if (isPlayoffs || hasPlayoffBracket) {
@@ -408,7 +409,7 @@ function _mexFocusNextAction(action) {
   if (action === 'record') {
     const firstPending = document.querySelector('.match-card-wrap[data-status="pending"]');
     if (firstPending?.id?.startsWith('mcard-')) {
-      _scrollToMatch(firstPending.id.slice(6));
+      _scrollToMatch(firstPending.id.slice(6), true);
     }
     return;
   }
@@ -533,7 +534,7 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true, scoreC
       for (const m of _byRound[key]) {
         const tbd = _hasTbd(m);
         const _cmt = m.comment ? `<div class="match-comment-text match-comment-static">${_antIc('message')} ${esc(m.comment)}</div>` : '';
-        const _jumpAttr = m.id ? ` role="button" tabindex="0" style="cursor:pointer" onclick="_scrollToMatch('${m.id}')" onkeydown="if(event.key==='Enter')_scrollToMatch('${m.id}')"` : '';
+        const _jumpAttr = m.id ? ` role="button" tabindex="0" style="cursor:pointer" onclick="_scrollToMatch('${m.id}', true)" onkeydown="if(event.key==='Enter')_scrollToMatch('${m.id}', true)"` : '';
         html += `<div class="match-card pending-match-card${tbd ? ' match-tbd-disabled' : ''}"${_jumpAttr}><div class="match-teams">${esc(_tl(m.team1))} <span class="vs">vs</span> ${esc(_tl(m.team2))}</div>${_cmt}</div>`;
       }
       html += `</div>`;
@@ -582,7 +583,10 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true, scoreC
       const r = m.round_label ? `<span class="court-round">${esc(m.round_label)}</span>` : '';
       const jumpLabel = `${t('txt_txt_go_to_match')}: ${t1} vs ${t2}`;
       const upcomingCls = i > 0 ? ' court-match-upcoming' : '';
-      html += `<div class="court-match-item${upcomingCls}" role="button" tabindex="0" data-match-id="${m.id}" aria-label="${esc(jumpLabel)}" onclick="_scrollToMatch('${m.id}')" onkeydown="if(event.key==='Enter')_scrollToMatch('${m.id}')">${esc(t1)} <span class="muted-text">vs</span> ${esc(t2)}${r}</div>`;
+      const fmtMark = m.format_override
+        ? `<span class="court-match-override" title="${escAttr(t('txt_match_format_overridden'))}" aria-label="${escAttr(t('txt_match_format_overridden'))}"></span>`
+        : '';
+      html += `<div class="court-match-item${upcomingCls}" role="button" tabindex="0" data-match-id="${m.id}" aria-label="${esc(jumpLabel)}" onclick="_scrollToMatch('${m.id}', true)" onkeydown="if(event.key==='Enter')_scrollToMatch('${m.id}', true)">${esc(t1)} <span class="muted-text">vs</span> ${esc(t2)}${r}${fmtMark}</div>`;
       if (m.comment && !isCompact) html += `<div class="court-match-item court-match-item-no-top"><span class="match-comment-text match-comment-static">${_antIc('message')} ${esc(m.comment)}</span></div>`;
     }
     html += `</div>`;
@@ -728,6 +732,7 @@ function _toggleEditMatch(matchId, ctx, s1, s2) {
 
   if (scoreSpan) scoreSpan.classList.add('hidden');
   if (editBtn) editBtn.classList.add('hidden');
+  _focusFirstScoreInput(editDiv);
 }
 
 function _cancelEditMatch(matchId) {
@@ -2175,7 +2180,7 @@ function _export_include_history() {
 
 function _format_match_score(m) {
   if (m.sets && m.sets.length > 0) {
-    return m.sets.map(s => `${s[0]}-${s[1]}`).join(', ');
+    return formatSetScore(m.sets, m.effective_decider, ', ');
   }
   if (m.score && m.score.length === 2) {
     return `${m.score[0]}-${m.score[1]}`;

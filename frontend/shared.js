@@ -47,6 +47,34 @@ function _is_tbd_team(team) {
 }
 
 /**
+ * True when set *index* of *sets* is a match tie-break (super tie-break)
+ * under *decider*: only the third set of a three-set result can be one.
+ * @param {number[][]} sets
+ * @param {number} index
+ * @param {string|null|undefined} decider  'full_set' | 'match_tiebreak'
+ * @returns {boolean}
+ */
+function isMatchTiebreakSet(sets, index, decider) {
+  return decider === 'match_tiebreak' && Array.isArray(sets) && sets.length === 3 && index === 2;
+}
+
+/**
+ * Format set scores as text, bracketing a match tie-break: "6-4 3-6 [10-8]".
+ * Shared by admin, TV, Player Hub and club pages — do not re-implement.
+ * @param {number[][]} sets
+ * @param {string|null|undefined} decider  'full_set' | 'match_tiebreak'
+ * @param {string} [sep]  Separator between sets.
+ * @returns {string}
+ */
+function formatSetScore(sets, decider, sep = ' / ') {
+  if (!Array.isArray(sets) || sets.length === 0) return '';
+  return sets.map((s, i) => {
+    const text = `${s[0]}-${s[1]}`;
+    return isMatchTiebreakSet(sets, i, decider) ? `[${text}]` : text;
+  }).join(sep);
+}
+
+/**
  * Return a copy of *matches* sorted so TBD-team matches come last.
  * @param {object[]} matches
  * @returns {object[]}
@@ -388,45 +416,41 @@ function setTournamentLink({ id, alias }) {
 }
 
 /**
- * Transient success feedback on the control the user just acted on.
+ * Transient success feedback: a non-text pulse on the control the user acted on
+ * (theme.css `.flash-success`). No label swap, no disabled toggling.
  *
- * Plays the shared `flash-success` animation (theme.css) and optionally swaps
- * the element's label for a short moment (plain text — no ✓/✗ glyphs; the
- * animation itself is the success signal). Safe on any element.
- *
- * @param {HTMLElement|null} el
- * @param {string} [tempLabel] optional temporary label, e.g. t('txt_txt_copied')
+ * @param {HTMLElement|string|null} target element, or an element id re-queried now.
+ *   Call AFTER any re-render, otherwise the node may be detached.
+ * @param {string} [announce] screen-reader-only text, never rendered visibly
  */
-function flashSuccess(el, tempLabel) {
-  if (!el) return;
-  el.classList.remove('flash-success');
-  void el.offsetWidth; // restart the animation when re-triggered quickly
-  el.classList.add('flash-success');
-  let originalLabel = null;
-  const isButton = el.tagName === 'BUTTON';
-  if (tempLabel !== undefined && tempLabel !== null) {
-    originalLabel = el.textContent;
-    el.textContent = tempLabel;
-    if (isButton) el.disabled = true;
-  }
-  setTimeout(() => {
+function flashSuccess(target, announce) {
+  const el = typeof target === 'string' ? document.getElementById(target) : target;
+  if (el && el.isConnected) {
+    clearTimeout(el._flashT);
     el.classList.remove('flash-success');
-    if (originalLabel !== null) {
-      el.textContent = originalLabel;
-      if (isButton) el.disabled = false;
-    }
-  }, 1400);
+    void el.offsetWidth; // restart the animation when re-triggered quickly
+    el.classList.add('flash-success');
+    el._flashT = setTimeout(() => el.classList.remove('flash-success'), 900);
+  }
+  if (announce) _srAnnounce(announce);
 }
 
-/**
- * Copies the tournament URL to the clipboard.
- */
-function copyTournamentUrl() {
-  const { id: tournamentId, alias } = getTournamentIdFromUrl();
-  const link = alias ? `/${alias}` : `/tv/${encodeURIComponent(tournamentId)}`;
-  const fullUrl = window.location.origin + link;
-  navigator.clipboard.writeText(fullUrl).then(() => {
-    flashSuccess(document.getElementById('copy-tv-url-button'), t('txt_tv_url_copied'));
+/** Announce text to screen readers via a lazily created polite live region. */
+function _srAnnounce(text) {
+  let live = document.getElementById('sr-status');
+  if (!live) {
+    live = document.createElement('div');
+    live.id = 'sr-status';
+    live.className = 'sr-only';
+    live.setAttribute('role', 'status');
+    live.setAttribute('aria-live', 'polite');
+    document.body.appendChild(live);
+  }
+  live.textContent = '';
+  requestAnimationFrame(() => {
+    live.textContent = text;
+    clearTimeout(live._clearT);
+    live._clearT = setTimeout(() => { live.textContent = ''; }, 2000);
   });
 }
 
@@ -903,4 +927,95 @@ function mountIsland(rootSelector, scope) {
   root._petiteVueMounted = true;
   root._petiteVueScope = resolved;
   return resolved;
+}
+
+// ─── Payments (shared by admin, register and Player Hub views) ───────────
+
+/**
+ * Format an amount in minor units as a localized currency string.
+ * @param {number} cents
+ * @param {string} currency  ISO-4217 code (e.g. "EUR")
+ * @returns {string}
+ */
+function formatMoney(cents, currency) {
+  const amount = (Number(cents) || 0) / 100;
+  const code = (currency || 'EUR').toUpperCase();
+  const locale = _currentLang === 'es' ? 'es-ES' : 'en-GB';
+  try {
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: code }).format(amount);
+  } catch (_) {
+    return `${amount.toFixed(2)} ${code}`;
+  }
+}
+
+/**
+ * Human label for a payment method (custom label wins over the kind name).
+ * @param {{kind: string, label?: string|null}} m
+ * @returns {string}
+ */
+function paymentMethodLabel(m) {
+  if (!m) return '';
+  if (m.label) return m.label;
+  return t(`txt_pay_kind_${m.kind}`);
+}
+
+/**
+ * For link-type methods (Revolut, PayPal.me) return an absolute URL, optionally
+ * with the amount embedded the way each service accepts it; otherwise null.
+ * @param {{kind: string, value: string}} m
+ * @param {number} [cents]
+ * @param {string} [currency]
+ * @returns {string|null}
+ */
+function paymentMethodHref(m, cents, currency) {
+  if (!m || !m.value) return null;
+  if (m.kind !== 'revolut' && m.kind !== 'paypal_me') return null;
+  let url = String(m.value).trim();
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  if (!cents) return url;
+  const amount = (Number(cents) / 100).toFixed(2);
+  const code = (currency || 'EUR').toUpperCase();
+  try {
+    const u = new URL(url);
+    if (m.kind === 'paypal_me') {
+      // paypal.me/<user>/<amount><CUR>
+      if (!/\/\d+(\.\d+)?[A-Za-z]{3}$/.test(u.pathname)) {
+        u.pathname = `${u.pathname.replace(/\/$/, '')}/${amount}${code}`;
+      }
+    } else if (!u.searchParams.has('amount')) {
+      u.searchParams.set('amount', amount);
+      u.searchParams.set('currency', code);
+    }
+    return u.toString();
+  } catch (_) {
+    return url;
+  }
+}
+
+/**
+ * Copy text to the clipboard (with a textarea fallback). Resolves true on success.
+ * @param {string} text
+ * @returns {Promise<boolean>}
+ */
+async function copyTextToClipboard(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (_) { /* fall through */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (_) {
+    return false;
+  }
 }

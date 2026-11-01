@@ -24,7 +24,7 @@ from ..email import (
 )
 from ..models import GPPhase, MatchStatus, Sport
 from .helpers import (
-    _find_match,
+    _find_match_full,
     _require_editor_access,
     _require_owner_or_admin,
     get_scope_branding as _get_tournament_branding,
@@ -623,6 +623,7 @@ def _build_tournament_player_card(tid: str, player_id: str) -> dict:
                 "match_id": r["match_id"],
                 "score": score,
                 "sets": sets,
+                "decider": payload.get("decider") or ("full_set" if sets else None),
                 "team1": [p.get("player_name", "") for p in team1],
                 "team2": [p.get("player_name", "") for p in team2],
                 "elo_before": r["elo_before"],
@@ -672,7 +673,9 @@ async def set_match_comment(tid: str, req: SetMatchCommentRequest, user: User = 
         if tid not in _tournaments:
             raise HTTPException(404, "Tournament not found")
         tournament = _tournaments[tid]["tournament"]
-        match = _find_match(tournament, req.match_id)
+        # _find_match_full also reaches completed bracket matches, which the
+        # basic finder skips for GP / play-off tournaments.
+        match = _find_match_full(tournament, req.match_id)
         if match is None:
             raise HTTPException(404, "Match not found")
         match.comment = req.comment.strip()

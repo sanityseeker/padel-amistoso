@@ -15,10 +15,10 @@ from backend.tournaments.elo import compute_match_elo_updates, get_k_factor
 
 from .elo_store import (
     _match_timestamp,
-    bulk_transfer_elos_to_profiles,
     get_k_factor_overrides,
     get_tournament_elo_snapshots,
     get_tournament_elo_timestamps,
+    has_match_elo_log,
     upsert_tournament_elo_log,
     get_pretournament_seed,
     get_tournament_elos,
@@ -54,13 +54,13 @@ def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
         ratings = get_tournament_elos(tid, sport)
         counts = get_tournament_match_counts(tid, sport)
         k_overrides = get_k_factor_overrides(tid)
-        mex_k_multiplier = _mexicano_k_multiplier(data)
+        mex_k_multiplier = _mexicano_k_multiplier(data, match)
 
-        # If this player already has a match counted, it's a re-recording -> recalculate
-        all_player_ids = [p.id for p in match.team1 + match.team2]
-        if any(counts.get(pid, 0) > 0 for pid in all_player_ids):
-            # Check if this match was already processed (re-recording scenario)
-            # by seeing if any player's count increased already for this match
+        # A match that already has log rows is being re-recorded (score
+        # correction): replay the whole tournament so later matches pick up the
+        # change.  A brand-new result only needs an incremental update — even
+        # for linked players whose counts are seeded > 0 from earlier events.
+        if has_match_elo_log(tid, match.id, sport):
             elo_recalculate_tournament(tid)
             return
 
@@ -95,7 +95,6 @@ def elo_recalculate_tournament(tournament_id: str) -> None:
     tournament = data["tournament"]
     sport = data.get("sport", "padel")
     ttype = data.get("type", "")
-    mex_k_multiplier = _mexicano_k_multiplier(data)
 
     all_matches = _extract_completed_matches(tournament, ttype)
     if not all_matches:
@@ -142,6 +141,7 @@ def elo_recalculate_tournament(tournament_id: str) -> None:
         for idx, match in enumerate(all_matches, start=1):
             ratings = get_tournament_elos(tournament_id, sport)
             counts = get_tournament_match_counts(tournament_id, sport)
+            mex_k_multiplier = _mexicano_k_multiplier(data, match)
             effective_k_overrides = _build_effective_k_overrides(match, counts, k_overrides, mex_k_multiplier)
             updates = compute_match_elo_updates(match, ratings, counts, team_mode, effective_k_overrides)
             match_ts = log_ts.get(getattr(match, "id", "")) or _match_timestamp(match)
@@ -163,13 +163,19 @@ def elo_init_tournament(tournament_id: str, player_ids: list[str], sport: str) -
 
 
 def elo_finish_tournament(tournament_id: str) -> None:
-    """Transfer final ELO ratings to player profiles when a tournament finishes."""
+    """Transfer final ELO ratings to player profiles when a tournament finishes.
+
+    Goes through :func:`refresh_profiles_after_tournament` so each linked profile
+    is rebuilt from its chronologically-latest tournament: finishing an older
+    (long-running) event after a newer one already synced can never roll the
+    profile back to the older chain.
+    """
     data = _tournaments.get(tournament_id)
     if data is None:
         return
     sport = data.get("sport", "padel")
     try:
-        bulk_transfer_elos_to_profiles(tournament_id, sport)
+        refresh_profiles_after_tournament(tournament_id, sport)
     except Exception:
         logger.exception("Failed to transfer ELO to profiles for tournament %s", tournament_id)
 
@@ -256,17 +262,22 @@ def _extract_player_ids(tournament: object, ttype: str) -> list[str]:
     return list(seen)
 
 
-def _mexicano_k_multiplier(data: dict[str, Any]) -> float:
+def _mexicano_k_multiplier(data: dict[str, Any], match: Match | None = None) -> float:
     """Return a Mexicano-only K multiplier based on match length.
 
     Smaller Mexicano matches (fewer total points) should move ELO less.
-    Uses ``total_points_per_match / 32`` capped to ``[0, 1]``.
+    Uses ``points / 32`` capped to ``[0, 1]``, where ``points`` is the match's
+    organiser-set ``format_override.points_target`` when present, otherwise the
+    tournament's ``total_points_per_match``.
     """
     if data.get("type") != TournamentType.MEXICANO:
         return 1.0
 
     tournament = data.get("tournament")
     total_points = getattr(tournament, "total_points_per_match", _MEX_ELO_POINTS_BASELINE)
+    override = getattr(match, "format_override", None) if match is not None else None
+    if override is not None and override.points_target:
+        total_points = override.points_target
     if not isinstance(total_points, int) or total_points <= 0:
         return 1.0
 

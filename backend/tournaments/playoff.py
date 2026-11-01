@@ -263,8 +263,8 @@ class DoubleEliminationBracket:
     Double‑elimination: a team must lose twice to be eliminated.
 
     Internally this manages a *winners bracket* and a *losers bracket*,
-    with a grand final (and potential reset if the losers-bracket winner
-    beats the winners-bracket winner).
+    with a single grand final. The grand final is played exactly once; its
+    winner is the champion regardless of which bracket they came from.
 
     The losers bracket is built **dynamically** at construction time so
     that its structure adapts to the actual number of real matches per
@@ -294,10 +294,7 @@ class DoubleEliminationBracket:
         self.winners_matches: list[Match] = []
         self.losers_matches: list[Match] = []
         self.grand_final: Match | None = None
-        self.grand_final_reset: Match | None = None
         self._match_map: dict[str, Match] = {}
-        # Tracking losses: team key -> loss count
-        self._losses: dict[str, int] = {}
         self._all_matches: list[Match] = []
         # Advancement bookkeeping
         self._advancement: defaultdict[str, list[tuple[str, int, bool]]] = defaultdict(list)
@@ -313,9 +310,6 @@ class DoubleEliminationBracket:
         court = self.courts[self._court_cursor % len(self.courts)]
         self._court_cursor += 1
         return court
-
-    def _team_key(self, team: list[Player]) -> str:
-        return ",".join(sorted(p.id for p in team))
 
     def _generate(self):
         teams = self.original_teams
@@ -702,7 +696,7 @@ class DoubleEliminationBracket:
         - Losers  R1 → (1.5, 1)   (between Winners R1 and R2)
         - Winners R2 → (2, 0)
         - Losers  R2 → (2.5, 1)
-        - Grand Final / Reset → very high
+        - Grand Final → very high
         """
         label = m.round_label or ""
         if label.startswith("Winners"):
@@ -711,18 +705,19 @@ class DoubleEliminationBracket:
             return (m.round_number + 0.5, 1)
         if label == "Grand Final":
             return (9998.0, 0)
-        if label == "Grand Final Reset":
+        if label == "Grand Final Reset":  # legacy: only present in previously persisted brackets
             return (9999.0, 0)
         return (float(m.round_number), 0)
 
     @property
     def all_matches(self) -> list[Match]:
         matches = (
-            list(self.winners_matches)
-            + list(self.losers_matches)
-            + ([self.grand_final] if self.grand_final else [])
-            + ([self.grand_final_reset] if self.grand_final_reset else [])
+            list(self.winners_matches) + list(self.losers_matches) + ([self.grand_final] if self.grand_final else [])
         )
+        # Legacy: older persisted brackets may carry a played "Grand Final Reset" match.
+        legacy_reset = getattr(self, "grand_final_reset", None)
+        if legacy_reset is not None:
+            matches.append(legacy_reset)
         matches.sort(key=self._interleave_key)
         return matches
 
@@ -732,7 +727,7 @@ class DoubleEliminationBracket:
         self._court_cursor = 0
         # Clear and reassign courts only for pending (not-yet-played) matches
         # that already have both teams known (are actionable right now).
-        for m in self.all_matches():
+        for m in self.all_matches:
             m.court = None
             if m.status != MatchStatus.COMPLETED and m.team1 and m.team2:
                 m.court = self._next_court()
@@ -753,9 +748,6 @@ class DoubleEliminationBracket:
         if winner is None or loser is None:
             raise ValueError("Play-off matches cannot end in a draw")
 
-        loser_key = self._team_key(loser)
-        self._losses[loser_key] = self._losses.get(loser_key, 0) + 1
-
         # Advance winner/loser via pre-wired edges
         if match_id in self._advancement:
             for next_id, slot, is_loser_path in self._advancement[match_id]:
@@ -768,32 +760,17 @@ class DoubleEliminationBracket:
                 # Check if the target match is a bye and can be auto-resolved
                 self._try_resolve_bye(next_id)
 
-        # Grand final logic
-        if match_id == self.grand_final.id:
-            winner_key = self._team_key(winner)
-            # If the losers-bracket team wins the grand final, play a reset
-            if self._losses.get(winner_key, 0) > 0 and self.grand_final_reset is None:
-                self.grand_final_reset = Match(
-                    team1=winner,
-                    team2=loser,
-                    court=None,
-                    round_label="Grand Final Reset",
-                    round_number=m.round_number + 1,
-                )
-                self._match_map[self.grand_final_reset.id] = self.grand_final_reset
-
     def pending_matches(self) -> list[Match]:
         return [m for m in self.all_matches if m.status != MatchStatus.COMPLETED and m.team1 and m.team2]
 
     def champion(self) -> list[Player] | None:
-        if self.grand_final_reset and self.grand_final_reset.status == MatchStatus.COMPLETED:
-            return self.grand_final_reset.winner_team
+        """Winner of the (single) Grand Final, or ``None`` until it is played."""
+        # Legacy: older persisted brackets may carry a completed "Grand Final Reset".
+        legacy_reset = getattr(self, "grand_final_reset", None)
+        if legacy_reset is not None and legacy_reset.status == MatchStatus.COMPLETED:
+            return legacy_reset.winner_team
         if self.grand_final and self.grand_final.status == MatchStatus.COMPLETED:
-            w = self.grand_final.winner_team
-            if w:
-                wk = self._team_key(w)
-                if self._losses.get(wk, 0) == 0:
-                    return w
+            return self.grand_final.winner_team
         return None
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from collections import OrderedDict
@@ -26,7 +27,11 @@ class BoundedRateLimiter:
         self._lock = threading.Lock()
 
     def check(self, ip: str, error_message: str) -> None:
-        """Raise HTTP 429 when *ip* exceeds allowed attempts in the window."""
+        """Raise HTTP 429 when *ip* exceeds allowed attempts in the window.
+
+        The 429 carries a ``Retry-After`` header with the seconds until the
+        oldest attempt in the window expires and a slot frees up.
+        """
         now = time.monotonic()
         with self._lock:
             attempts = self._attempts_by_ip.get(ip, [])
@@ -34,8 +39,9 @@ class BoundedRateLimiter:
             self._attempts_by_ip[ip] = attempts
             self._attempts_by_ip.move_to_end(ip)
             over_limit = len(attempts) >= self._max_attempts
+            retry_after = self._window_seconds - (now - attempts[0]) if over_limit and attempts else 0.0
         if over_limit:
-            raise HTTPException(429, error_message)
+            raise HTTPException(429, error_message, headers={"Retry-After": str(max(1, math.ceil(retry_after)))})
 
     def record(self, ip: str) -> None:
         """Record one attempt for *ip* and evict old keys when needed."""

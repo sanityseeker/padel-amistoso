@@ -622,7 +622,7 @@ def _build_double_elim_bracket(
     The diagram shows:
       - Winners bracket (upper half)
       - Losers bracket (lower half)
-      - Grand Final + potential reset
+      - Single Grand Final
     """
     bracket_size = _next_power_of_two(n_teams)
     num_rounds_w = int(math.log2(bracket_size)) if bracket_size > 1 else 1
@@ -960,7 +960,6 @@ _STYLE: dict[str, dict] = {
     BracketNodeKind.LOSERS_MATCH: {"fc": "#D07050", "ec": "#A04830", "tc": "white"},
     BracketNodeKind.LOSERS_BLOCK: {"fc": "#D04545", "ec": "#992D2D", "tc": "white"},
     BracketNodeKind.GRAND_FINAL: {"fc": "#8B5CF6", "ec": "#6D3FCC", "tc": "white"},
-    BracketNodeKind.GF_RESET: {"fc": "#8B5CF6", "ec": "#6D3FCC", "tc": "white"},
     BracketNodeKind.CHAMPION: {"fc": "#FFD700", "ec": "#B8960F", "tc": "#333333"},
 }
 
@@ -1061,7 +1060,7 @@ def _draw(
             return 1.8 * box_scale, 0.9 * box_scale
         if kind == BracketNodeKind.CHAMPION:
             return 1.8 * box_scale, 0.7 * box_scale
-        if kind in (BracketNodeKind.GRAND_FINAL, BracketNodeKind.GF_RESET):
+        if kind == BracketNodeKind.GRAND_FINAL:
             return 1.8 * box_scale, 0.7 * box_scale
         if kind == BracketNodeKind.ADVANCE:
             return 1.3 * box_scale, 0.5 * box_scale
