@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from backend.api.helpers import _tennis_sets_to_scores
+from backend.models import SetDecider
+from backend.tournaments.set_format import format_sets, games_from_sets, validate_decider_sets
 
 
 class TestTennisSetsToScores:
@@ -79,3 +81,49 @@ class TestTennisSetsToScores:
         assert total1 == expected_total1
         assert total2 == expected_total2
         assert decided is expected_decided
+
+
+class TestTennisSetsToScoresWithDecider:
+    def test_match_tiebreak_counts_one_game(self):
+        total1, total2, sets, decided = _tennis_sets_to_scores([[6, 4], [3, 6], [10, 8]], SetDecider.MATCH_TIEBREAK)
+        # 10-10 raw, then the set winner is bumped above the loser.
+        assert (total1, total2) == (11, 10)
+        assert decided is True
+        assert sets == [(6, 4), (3, 6), (10, 8)]
+
+    def test_full_set_decider_unchanged(self):
+        total1, total2, _, _ = _tennis_sets_to_scores([[6, 4], [3, 6], [10, 8]], SetDecider.FULL_SET)
+        assert (total1, total2) == (19, 18)
+
+
+class TestSetFormat:
+    def test_games_from_sets(self):
+        assert games_from_sets([(6, 4), (3, 6), (10, 8)]) == (19, 18)
+        assert games_from_sets([(6, 4), (3, 6), (10, 8)], SetDecider.MATCH_TIEBREAK) == (10, 10)
+        assert games_from_sets([(6, 4), (3, 6), (8, 10)], SetDecider.MATCH_TIEBREAK) == (9, 11)
+        assert games_from_sets([(6, 4), (6, 3)], SetDecider.MATCH_TIEBREAK) == (12, 7)
+        assert games_from_sets([], SetDecider.MATCH_TIEBREAK) == (0, 0)
+
+    def test_string_decider_accepted(self):
+        assert games_from_sets([(6, 4), (3, 6), (10, 8)], "match_tiebreak") == (10, 10)
+
+    @pytest.mark.parametrize("third", [(10, 8), (12, 10), (10, 0), (8, 10)])
+    def test_validate_accepts_tiebreak_results(self, third):
+        validate_decider_sets([(6, 4), (3, 6), third], SetDecider.MATCH_TIEBREAK)
+
+    @pytest.mark.parametrize("third", [(7, 5), (10, 9), (9, 7), (6, 0)])
+    def test_validate_rejects_non_tiebreak_results(self, third):
+        with pytest.raises(ValueError):
+            validate_decider_sets([(6, 4), (3, 6), third], SetDecider.MATCH_TIEBREAK)
+
+    def test_validate_ignores_full_set_and_two_sets(self):
+        validate_decider_sets([(6, 4), (3, 6), (7, 5)], SetDecider.FULL_SET)
+        validate_decider_sets([(6, 4), (3, 6), (10, 8)], None)
+        validate_decider_sets([(6, 4), (6, 3)], SetDecider.MATCH_TIEBREAK)
+
+    def test_format_sets(self):
+        sets = [(6, 4), (3, 6), (10, 8)]
+        assert format_sets(sets, SetDecider.MATCH_TIEBREAK) == "6-4 3-6 [10-8]"
+        assert format_sets(sets, SetDecider.FULL_SET) == "6-4 3-6 10-8"
+        assert format_sets(sets, SetDecider.MATCH_TIEBREAK, sep=", ", swap=True) == "4-6, 6-3, [8-10]"
+        assert format_sets([(6, 4), (6, 3)], SetDecider.MATCH_TIEBREAK, sep=" / ") == "6-4 / 6-3"

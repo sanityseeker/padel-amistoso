@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from backend.models import Court, MatchStatus, MexPhase, Player
+from backend.models import Court, MatchFormatOverride, MatchStatus, MexPhase, Player
 from backend.tournaments import MexicanoTournament
 
 
@@ -2466,3 +2466,84 @@ class TestPartnerBalanceWeight:
         object.__delattr__(t, "partner_balance_weight")
         # Should not raise; must return 0.0
         assert t.partner_balance_weight == pytest.approx(0.0)
+
+
+class TestPerMatchPointsTarget:
+    """Per-match ``format_override.points_target`` on Mexicano round matches."""
+
+    @staticmethod
+    def _round_one(total: int = 32) -> tuple[MexicanoTournament, object]:
+        t = MexicanoTournament(_make_players(4), _make_courts(1), total_points_per_match=total)
+        m = t.generate_next_round()[0]
+        return t, m
+
+    def test_points_target_for_defaults_to_tournament_total(self):
+        t, m = self._round_one()
+        assert t._points_target_for(m) == 32
+
+    def test_points_target_for_uses_override(self):
+        t, m = self._round_one()
+        m.format_override = MatchFormatOverride(points_target=24)
+        assert t._points_target_for(m) == 24
+
+    def test_record_result_validates_against_override(self):
+        t, m = self._round_one()
+        m.format_override = MatchFormatOverride(points_target=24)
+        with pytest.raises(ValueError, match="sum to 24"):
+            t.record_result(m.id, (20, 12))
+        t.record_result(m.id, (15, 9))
+        assert m.score == (15, 9)
+        assert m.status == MatchStatus.COMPLETED
+
+    def test_store_pending_score_validates_against_override(self):
+        t, m = self._round_one()
+        m.format_override = MatchFormatOverride(points_target=24)
+        with pytest.raises(ValueError, match="sum to 24"):
+            t.store_pending_score(m.id, (20, 12))
+        t.store_pending_score(m.id, (15, 9))
+        assert m.status == MatchStatus.IN_PROGRESS
+
+    def test_credits_scaled_to_tournament_total(self):
+        t, m = self._round_one()
+        m.format_override = MatchFormatOverride(points_target=24)
+        t.record_result(m.id, (15, 9))
+        # 15 * 32/24 = 20, 9 * 32/24 = 12; the match keeps the score as played.
+        for p in m.team1:
+            assert t.scores[p.id] == 20
+        for p in m.team2:
+            assert t.scores[p.id] == 12
+        assert m.score == (15, 9)
+        breakdown = t.get_match_breakdown(m.id)
+        p1 = m.team1[0].id
+        assert breakdown[p1]["scale"] == pytest.approx(32 / 24, rel=1e-3)
+        assert breakdown[p1]["played"] == 15
+        assert breakdown[p1]["raw"] == 20
+
+    def test_unscaled_breakdown_has_unit_scale(self):
+        t, m = self._round_one()
+        t.record_result(m.id, (20, 12))
+        breakdown = t.get_match_breakdown(m.id)
+        entry = breakdown[m.team1[0].id]
+        assert entry["scale"] == 1.0
+        assert "played" not in entry
+
+    def test_rerecord_after_target_change_reverses_exactly(self):
+        t, m = self._round_one()
+        baseline_scores = dict(t.scores)
+        baseline_raw = dict(t._raw_scores)
+        t.record_result(m.id, (20, 12))
+        m.format_override = MatchFormatOverride(points_target=24)
+        t.record_result(m.id, (15, 9))
+        # Same result in tournament terms: credits equal the unscaled 20-12.
+        for p in m.team1:
+            assert t.scores[p.id] == 20
+        # Back to the default target: still reverses the scaled credits exactly.
+        m.format_override = None
+        t.record_result(m.id, (16, 16))
+        for pid in baseline_scores:
+            played = any(pid == p.id for p in m.team1 + m.team2)
+            expected = 16 if played else baseline_scores[pid]
+            assert t.scores[pid] == expected
+            assert t._raw_scores.get(pid, 0) == (16 if played else baseline_raw.get(pid, 0))
+            if played:
+                assert t._matches_played[pid] == 1

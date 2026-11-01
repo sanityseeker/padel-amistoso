@@ -22,7 +22,7 @@ from .helpers import (
     _get_tournament,
     _serialize_match,
     _build_match_labels,
-    _tennis_sets_to_scores,
+    _prepare_set_score,
     _schema_image_response,
     _require_demo_can_create_tournament,
     _require_editor_access,
@@ -231,9 +231,9 @@ async def mex_matches(tid: str) -> dict:
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
     return {
         "current_round": t.current_round,
-        "current_matches": [_serialize_match(m) for m in t.current_round_matches()],
-        "pending": [_serialize_match(m) for m in t.pending_matches()],
-        "all_matches": [_serialize_match(m) for m in t.all_matches()],
+        "current_matches": [_serialize_match(m, t._points_target_for(m)) for m in t.current_round_matches()],
+        "pending": [_serialize_match(m, t._points_target_for(m)) for m in t.pending_matches()],
+        "all_matches": [_serialize_match(m, t._points_target_for(m)) for m in t.all_matches()],
         "breakdowns": t.all_match_breakdowns(),
     }
 
@@ -576,7 +576,6 @@ async def mex_record_playoff_tennis(
     player: PlayerIdentity | None = Depends(get_current_player),
 ) -> dict:
     """Record a Mexicano play-off match using tennis-style set scores."""
-    total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
     async with get_tournament_lock(tid):
         data = _get_tournament(tid, _MEX)
         t: MexicanoTournament = data["tournament"]
@@ -584,10 +583,12 @@ async def mex_record_playoff_tennis(
         if match is None:
             raise HTTPException(404, "Match not found")
         _require_score_permission(tid, match, user, player)
+        total1, total2, sets_tuples, _, decider = _prepare_set_score(data, match, req.sets)
         try:
             t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)
         except (KeyError, RuntimeError, ValueError) as e:
             raise HTTPException(400, str(e))
+        match.decider = decider
         if player is not None and user is None:
             _apply_player_score_metadata(
                 match, player.player_id, score=[total1, total2], sets=[list(s) for s in sets_tuples], confirmed=True

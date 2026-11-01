@@ -6,7 +6,7 @@ from collections import defaultdict
 
 import pytest
 
-from backend.models import Court, MatchStatus, Player
+from backend.models import Court, MatchStatus, Player, SetDecider
 from backend.tournaments import Group, assign_courts, distribute_players_to_groups
 from backend.tournaments.group_stage import _schedule_round_robin
 
@@ -855,3 +855,43 @@ class TestGroupAddPlayer:
             ids_t1 = {p.id for p in m.team1}
             ids_t2 = {p.id for p in m.team2}
             assert ids_t1.isdisjoint(ids_t2)
+
+
+class TestMatchTiebreakDeciderStandings:
+    """A match tie-break third set counts as one game in points for / against."""
+
+    def test_tiebreak_counts_as_one_game(self):
+        players = _make_players(4)
+        group = Group("A", players)
+        matches = group.generate_round_robin()
+        m = matches[0]
+        m.sets = [(6, 4), (3, 6), (10, 8)]
+        m.score = (11, 10)
+        m.third_set_loss = True
+        m.decider = SetDecider.MATCH_TIEBREAK
+        m.status = MatchStatus.COMPLETED
+
+        rows = {row.player.id: row for row in group.standings()}
+        for p in m.team1:
+            assert rows[p.id].wins == 1
+            assert rows[p.id].points_for == 10  # 6 + 3 + 1
+            assert rows[p.id].points_against == 10  # 4 + 6 + 0
+            assert rows[p.id].sets_won == 2
+            assert rows[p.id].sets_lost == 1
+        for p in m.team2:
+            assert rows[p.id].losses == 1
+            assert rows[p.id].points_for == 10
+            assert rows[p.id].sets_won == 1
+
+    def test_full_set_decider_counts_all_games(self):
+        players = _make_players(4)
+        group = Group("A", players)
+        m = group.generate_round_robin()[0]
+        m.sets = [(6, 4), (3, 6), (10, 8)]
+        m.score = (19, 18)
+        m.third_set_loss = True
+        m.status = MatchStatus.COMPLETED  # decider unset = legacy full set
+
+        rows = {row.player.id: row for row in group.standings()}
+        assert rows[m.team1[0].id].points_for == 19
+        assert rows[m.team2[0].id].points_for == 18

@@ -48,7 +48,7 @@ function _renderPlayerCodesBody(secrets) {
 
   if (entries.length > 0) {
     html += `<div class="settings-inline-row" style="margin-bottom:0.5rem">`;
-    html += `<button type="button" class="btn btn-sm player-codes-btn" onclick="_copyAllPlayerCodes()">${_ic('copy')} ${t('txt_txt_copy_all_codes')}</button>`;
+    html += `<button type="button" class="btn btn-sm player-codes-btn" onclick="_copyAllPlayerCodes(this)">${_ic('copy')} ${t('txt_txt_copy_all_codes')}</button>`;
     html += `<button type="button" class="btn btn-sm player-codes-btn" onclick="_printPlayerCodes()">${_ic('print')} ${t('txt_txt_print_all_codes')}</button>`;
     html += `</div>`;
   }
@@ -72,12 +72,12 @@ function _renderPlayerCodesBody(secrets) {
     for (const [pid, info] of entries) {
       html += `<tr class="player-codes-row" id="pc-row-${pid}">`;
       html += `<td class="player-codes-name" id="pc-name-${pid}">${esc(info.name)}</td>`;
-      html += `<td class="player-codes-cell"><code id="pc-pass-${pid}" class="player-codes-passphrase" onclick="navigator.clipboard.writeText(this.textContent)" title="${t('txt_txt_click_to_copy')}">${esc(info.passphrase)}</code></td>`;
+      html += `<td class="player-codes-cell"><code id="pc-pass-${pid}" class="player-codes-passphrase" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(info.passphrase)}</code></td>`;
       html += `<td class="player-codes-cell"><input type="text" id="pc-contact-${pid}" value="${escAttr(info.contact || '')}" data-orig="${escAttr(info.contact || '')}" placeholder="${t('txt_reg_contact_placeholder')}" class="player-codes-input" onblur="_savePlayerContact('${pid}')"></td>`;
       html += `<td class="player-codes-cell-center">${_renderHubLinkCellInner(pid, info)}</td>`;
       if (_showEmail) {
         html += `<td class="player-codes-cell"><span class="player-codes-edit-wrap"><input type="email" id="pc-email-${pid}" value="${escAttr(info.email || '')}" data-orig="${escAttr(info.email || '')}" placeholder="${t('txt_email_placeholder')}" class="player-codes-input player-codes-input-email" onblur="_savePlayerEmail('${pid}')">`;
-        if (info.email) html += `<button type="button" class="btn btn-sm player-codes-icon-btn" onclick="_sendPlayerEmail('${pid}')" title="${t('txt_email_send')}">${_ic('mail')}</button>`;
+        if (info.email) html += `<button type="button" class="btn btn-sm player-codes-icon-btn" onclick="_sendPlayerEmail('${pid}', this)" title="${t('txt_email_send')}">${_ic('mail')}</button>`;
         html += `</span></td>`;
       }
       html += `<td class="player-codes-cell-center">${_langToggle(currentTid, pid, info.lang || 'en', 'sec')}</td>`;
@@ -324,20 +324,14 @@ async function _regeneratePlayerCode(playerId) {
 }
 
 /** Copy all player + passphrase pairs to clipboard */
-async function _copyAllPlayerCodes() {
+async function _copyAllPlayerCodes(btn) {
   const lines = Object.values(_playerSecrets)
     .map(p => `${p.name}: ${p.passphrase}`)
     .join('\n');
   try {
     await navigator.clipboard.writeText(lines);
-    alert(t('txt_txt_codes_copied'));
+    flashSuccess(btn, t('txt_txt_copied'));
   } catch { /* ignore */ }
-}
-
-/** Flash a green border on an input to confirm a save */
-function _flashSaved(input) {
-  input.classList.add('player-codes-input-saved');
-  setTimeout(() => input.classList.remove('player-codes-input-saved'), 1200);
 }
 
 /** Auto-save the contact string for a single player on blur */
@@ -352,7 +346,7 @@ async function _savePlayerContact(playerId) {
     });
     if (_playerSecrets[playerId]) _playerSecrets[playerId].contact = input.value;
     input.dataset.orig = input.value;
-    _flashSaved(input);
+    flashSuccess(input, t('txt_txt_saved'));
   } catch (e) {
     alert(e.message);
   }
@@ -390,20 +384,20 @@ async function _savePlayerEmail(playerId) {
       cell.innerHTML = _renderHubLinkCellInner(playerId, _playerSecrets[playerId] || { profile_id: result.profile_linked ? 'linked' : null });
     }
     input.dataset.orig = input.value;
-    _flashSaved(input);
+    flashSuccess(input, t('txt_txt_saved'));
   } catch (e) {
     alert(e.message);
   }
 }
 
 /** Send credentials email to a single tournament player */
-async function _sendPlayerEmail(playerId) {
+async function _sendPlayerEmail(playerId, btn) {
   try {
     await api(`/api/tournaments/${currentTid}/send-email/${playerId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
-    alert(t('txt_email_sent'));
+    flashSuccess(btn, t('txt_email_sent'));
   } catch (e) {
     alert(t('txt_email_failed') + ': ' + e.message);
   }

@@ -26,7 +26,7 @@ from ..email import is_valid_email, render_player_space_welcome, send_email_back
 from ..models import ParticipationStatus, Sport
 from ..tournaments.player_secrets import generate_passphrase
 from .db import get_db
-from .elo_store import consolidate_ghost_elos, retroactive_transfer_elo
+from .elo_store import consolidate_ghost_elos, get_live_profile_elo_stats, retroactive_transfer_elo
 from .player_merge import (
     combined_player_ids,
     materialize_participants,
@@ -122,6 +122,7 @@ def list_profiles(
     params.append(max(1, min(limit, 2000)))
     with get_db() as conn:
         rows = conn.execute(sql, params).fetchall()
+        live = get_live_profile_elo_stats([r["id"] for r in rows], conn=conn)
 
     return [
         AdminPlayerProfileSummary(
@@ -130,15 +131,35 @@ def list_profiles(
             email=r["email"],
             passphrase=r["passphrase"],
             created_at=r["created_at"],
-            elo_padel=r["elo_padel"],
-            elo_padel_matches=r["elo_padel_matches"],
-            elo_tennis=r["elo_tennis"],
-            elo_tennis_matches=r["elo_tennis_matches"],
             k_factor_override=r["k_factor_override"],
             is_ghost=bool(r["is_ghost"]),
+            **_live_elo_fields(r, live.get(r["id"], {})),
         )
         for r in rows
     ]
+
+
+def _live_elo_fields(row, live: dict[str, dict]) -> dict[str, float | int | None]:
+    """ELO / match-count fields for an admin profile payload.
+
+    Prefers the log-derived values (shared with the Player Hub header and the
+    leaderboards) and falls back to the flat ``player_profiles`` snapshot for a
+    sport with no logged matches.
+    """
+    out: dict[str, float | int | None] = {
+        "elo_padel": row["elo_padel"],
+        "elo_padel_matches": row["elo_padel_matches"],
+        "elo_tennis": row["elo_tennis"],
+        "elo_tennis_matches": row["elo_tennis_matches"],
+    }
+    for sport in ("padel", "tennis"):
+        stats = live.get(sport)
+        if stats is None:
+            continue
+        out[f"elo_{sport}_matches"] = int(stats["matches"] or 0)
+        if stats["elo"] is not None:
+            out[f"elo_{sport}"] = stats["elo"]
+    return out
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -521,6 +542,7 @@ def get_profile_detail(
             raise HTTPException(404, "Profile not found")
 
         participations = _build_participations(conn, profile_id)
+        live = get_live_profile_elo_stats([profile_id], conn=conn).get(profile_id, {})
 
     return AdminPlayerProfileDetail(
         id=profile["id"],
@@ -529,13 +551,10 @@ def get_profile_detail(
         contact=profile["contact"],
         passphrase=profile["passphrase"],
         created_at=profile["created_at"],
-        elo_padel=profile["elo_padel"],
-        elo_padel_matches=profile["elo_padel_matches"],
-        elo_tennis=profile["elo_tennis"],
-        elo_tennis_matches=profile["elo_tennis_matches"],
         k_factor_override=profile["k_factor_override"],
         is_ghost=bool(profile["is_ghost"]),
         participations=participations,
+        **_live_elo_fields(profile, live),
     )
 
 

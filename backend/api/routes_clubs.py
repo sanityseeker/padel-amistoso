@@ -26,6 +26,7 @@ from ..auth.deps import get_current_user, require_not_demo, require_profile_or_u
 from ..auth.models import User, UserRole
 from ..auth.security import create_profile_email_verify_token, create_profile_token
 from ..auth.store import user_store
+from .. import config
 from ..config import DATA_DIR
 from ..email import (
     is_valid_email,
@@ -41,7 +42,13 @@ from .db import (
     get_shared_club_ids,
     remove_club_co_editor,
 )
-from .elo_store import consolidate_ghost_elos, get_profile_recent_elo_logs, retroactive_transfer_elo
+from .elo_store import (
+    _profile_player_ids,
+    consolidate_ghost_elos,
+    get_profile_recent_elo_logs,
+    log_manual_elo_adjustment,
+    retroactive_transfer_elo,
+)
 from .player_merge import (
     combined_player_ids,
     materialize_participants,
@@ -54,6 +61,7 @@ from .leaderboard_cache import (
     etag_for,
     get_cached_leaderboard_rows,
     get_mini_card_cached,
+    invalidate_leaderboard_cache,
 )
 from .routes_communities import DEFAULT_COMMUNITY_ID
 from .schemas import AddCollaboratorRequest, CollaboratorListResponse, EmailLang
@@ -732,6 +740,8 @@ def _validate_slug(raw: str | None) -> str | None:
 @router.patch("/{club_id}/slug", response_model=ClubOut)
 async def set_club_slug(club_id: str, req: ClubSlugUpdate, user: User = Depends(get_current_user)) -> ClubOut:
     """Set or clear the public subdomain slug for a club."""
+    if config.DEMO_INSTANCE:
+        raise HTTPException(403, "Not available in demo mode")
     club = _get_club(club_id)
     _require_club_editor(club, user)
     new_slug = _validate_slug(req.slug)
@@ -748,6 +758,8 @@ async def set_club_slug(club_id: str, req: ClubSlugUpdate, user: User = Depends(
 @router.get("/by-slug/{slug}", response_model=None)
 def get_club_by_slug(slug: str, request: Request, response: Response) -> dict | Response:
     """Public — resolve a slug to its club's minimal public info."""
+    if config.DEMO_INSTANCE:
+        raise HTTPException(404, "Club not found")
     candidate = (slug or "").strip().lower()
     if not candidate or candidate in _RESERVED_SLUGS:
         raise HTTPException(404, "Club not found")
@@ -922,6 +934,18 @@ def _compute_club_leaderboard_rows_uncached(conn, club_id: str) -> list[dict]:
                AND ph.profile_id IN (
                    SELECT profile_id FROM profile_club_elo WHERE club_id = ?
                )
+            UNION
+            SELECT lp2.profile_id  AS profile_id,
+                   l.tournament_id AS tournament_id,
+                   l.player_id     AS player_id
+              FROM player_elo_log l
+              JOIN (
+                   SELECT profile_id, player_id FROM player_secrets WHERE profile_id IS NOT NULL
+                   UNION
+                   SELECT profile_id, player_id FROM player_history
+                    WHERE entity_type = 'tournament' AND profile_id IS NOT NULL
+              ) lp2 ON lp2.player_id = l.player_id
+             WHERE l.is_manual = 1 AND l.tournament_id = ?
         ),
         scoped AS (
             SELECT lp.profile_id  AS profile_id,
@@ -934,9 +958,10 @@ def _compute_club_leaderboard_rows_uncached(conn, club_id: str) -> list[dict]:
               JOIN linked_tournament_players lp
                 ON lp.tournament_id = l.tournament_id
                AND lp.player_id = l.player_id
-              JOIN tournaments t
+         LEFT JOIN tournaments t
                 ON t.id = l.tournament_id
              WHERE t.club_id = ?
+                OR (l.is_manual = 1 AND l.tournament_id = ?)
         ),
         matches_agg AS (
             SELECT s.profile_id,
@@ -965,7 +990,7 @@ def _compute_club_leaderboard_rows_uncached(conn, club_id: str) -> list[dict]:
            AND lt.sport = m.sport
            AND lt.rn = 1
         """,
-        (club_id, club_id, club_id),
+        (club_id, club_id, club_id, club_id, club_id),
     ).fetchall()
     live_by_key: dict[tuple[str, str], dict] = {
         (r["profile_id"], r["sport"]): {
@@ -1302,6 +1327,8 @@ async def update_club(club_id: str, req: ClubUpdate, user: User = Depends(get_cu
 @router.patch("/{club_id}/landing", response_model=ClubOut)
 async def update_club_landing(club_id: str, req: ClubLandingUpdate, user: User = Depends(get_current_user)) -> ClubOut:
     """Update landing-page customisation: tagline description and pinned tournaments."""
+    if config.DEMO_INSTANCE:
+        raise HTTPException(403, "Not available in demo mode")
     club = _get_club(club_id)
     _require_club_editor(club, user)
     updates: list[str] = []
@@ -2457,6 +2484,54 @@ async def announce_to_players(
     return BulkOperationResponse(requested=len(unique_profile_ids), sent=sent, failed=failures)
 
 
+def _record_club_elo_override(
+    club_id: str,
+    profile_id: str,
+    sport: str,
+    new_elo: float,
+    user: User,
+    reason: str | None,
+) -> None:
+    """Make a manual club ELO change visible everywhere the club rating is shown.
+
+    All club views (admin roster, public leaderboard, Player Hub club header and
+    chips) prefer the latest ``player_elo_log`` row over the ``profile_club_elo``
+    snapshot, so updating the snapshot alone has no visible effect once the
+    player has any logged match.  Writing an ``is_manual`` log row (keyed on the
+    club id) makes the override the latest rating in club scope without touching
+    the match count, and lists it in the player's ELO history.
+
+    Players with no linked tournament player id cannot be logged (nothing to
+    join on); they also have no logged matches, so the snapshot is what shows.
+    """
+    with get_db() as conn:
+        current = next(
+            (
+                r["elo"]
+                for r in _compute_club_leaderboard_rows_uncached(conn, club_id)
+                if r["profile_id"] == profile_id and r["sport"] == sport
+            ),
+            None,
+        )
+        player_ids = _profile_player_ids(conn, profile_id)
+    if not player_ids:
+        return
+    before = float(current) if current is not None else float(new_elo)
+    if abs(before - float(new_elo)) < 1e-9:
+        return
+    log_manual_elo_adjustment(
+        player_id=player_ids[0],
+        profile_id=profile_id,
+        sport=sport,
+        elo_before=before,
+        elo_after=float(new_elo),
+        adjustment_reason=reason,
+        adjusted_by=user.username,
+        club_id=club_id,
+    )
+    invalidate_leaderboard_cache(club_id)
+
+
 @router.patch("/{club_id}/players/{profile_id}/elo")
 async def set_player_elo(
     club_id: str, profile_id: str, req: PlayerEloUpdate, user: User = Depends(get_current_user)
@@ -2479,6 +2554,7 @@ async def set_player_elo(
                 "UPDATE profile_club_elo SET elo = ? WHERE profile_id = ? AND club_id = ? AND sport = ?",
                 (req.elo, profile_id, club_id, req.sport),
             )
+    _record_club_elo_override(club_id, profile_id, req.sport, req.elo, user, None)
     return {"ok": True, "elo": req.elo}
 
 
@@ -2531,6 +2607,8 @@ async def assign_player_tier(
                 "UPDATE profile_club_elo SET tier_id = ? WHERE profile_id = ? AND club_id = ? AND sport = ?",
                 (req.tier_id, profile_id, club_id, sport),
             )
+    if req.apply_base_elo and tier is not None:
+        _record_club_elo_override(club_id, profile_id, sport, elo_val, user, f"Tier: {tier['name']}")
     return {
         "ok": True,
         "sport": sport,

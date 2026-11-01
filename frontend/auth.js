@@ -11,6 +11,13 @@ const AUTH_DEFAULT_COMMUNITY_KEY = 'padel-auth-default-community';
 const AUTH_CAN_CREATE_CLUBS_KEY = 'padel-auth-can-create-clubs';
 const AUTH_IS_DEMO_KEY = 'padel-auth-is-demo';
 const AUTH_DEMO_EXPIRES_KEY = 'padel-auth-demo-expires';
+// Last demo sandbox minted/used on this device: {u: username, expiresAt}.
+// Username only — never the passphrase. Deliberately NOT cleared by
+// clearAuth(), so the login dialog can offer "Welcome back" (or explain that
+// the sandbox expired) after the session ends.
+const DEMO_LAST_KEY = 'padel-demo-last';
+// sessionStorage guard so a #start-demo link mints at most once per tab.
+const DEMO_AUTOSTART_KEY = 'padel-demo-autostart';
 
 function _persistAuthValue(key, value) {
   try {
@@ -189,6 +196,7 @@ async function login(username, password) {
         } else {
           _removeAuthValue(AUTH_DEMO_EXPIRES_KEY);
         }
+        if (me.is_demo) _rememberDemoLogin(me.username || data.username, me.demo_expires_at);
       }
     } catch (_) {}
     return { success: true, username: data.username };
@@ -237,7 +245,19 @@ async function apiAuth(path, opts = {}) {
 
   // Handle 401 - show login dialog (max 2 retries to prevent infinite loop)
   if (res.status === 401) {
+    // Read the demo flag BEFORE clearAuth() wipes it: a 401 for a demo
+    // session means the sandbox (and its token) has expired.
+    const wasDemo = isDemoUser();
+    const demoName = wasDemo ? getAuthUsername() : null;
+    const demoExpires = wasDemo ? getDemoExpiresAt() : null;
     clearAuth();
+    if (wasDemo) {
+      const prev = _loginStore.returningUser;
+      if (demoName && (!prev || prev.u !== demoName || !prev.expiresAt)) {
+        _loginStore.returningUser = { u: demoName, expiresAt: demoExpires || (prev && prev.expiresAt) || null };
+      }
+      _loginStore.returningExpired = true;
+    }
     if (retries >= 2) {
       throw new Error('Authentication failed after multiple attempts');
     }
@@ -265,6 +285,36 @@ async function apiAuth(path, opts = {}) {
 
 let _loginResolve = null;
 
+/** Read the remembered demo sandbox ({u, expiresAt}) or null. */
+function _readDemoLast() {
+  try {
+    const v = JSON.parse(localStorage.getItem(DEMO_LAST_KEY));
+    if (v && typeof v.u === 'string' && v.u) return { u: v.u, expiresAt: v.expiresAt || null };
+  } catch (_) {}
+  return null;
+}
+
+/** Remember the demo sandbox username (+ expiry) for the returning view. */
+function _rememberDemoLogin(username, expiresAt) {
+  if (!username) return;
+  try {
+    localStorage.setItem(DEMO_LAST_KEY, JSON.stringify({ u: username, expiresAt: expiresAt || null }));
+  } catch (_) {}
+  if (typeof _loginStore !== 'undefined') {
+    _loginStore.returningUser = { u: username, expiresAt: expiresAt || null };
+    _loginStore.returningExpired = false;
+  }
+}
+
+/** Run *fn* after Petite-Vue has flushed pending DOM updates. */
+function _afterIslandRender(fn) {
+  if (typeof PetiteVue !== 'undefined' && typeof PetiteVue.nextTick === 'function') {
+    PetiteVue.nextTick(fn);
+  } else {
+    setTimeout(fn, 0);
+  }
+}
+
 /**
  * Show the login dialog and wait for user to log in.
  * @returns {Promise<void>}
@@ -280,7 +330,107 @@ const _loginStore = reactiveStore({
   // Demo mode: set from /api/config (checkDemoMode in admin-utils.js).
   demoUrl: null,
   isDemoInstance: false,
-  demoBusy: false,
+  demoTtlDays: 3,
+  // True once /api/config answered (or failed) — instance-dependent parts of
+  // the dialog stay hidden until then so the core form never flashes on the
+  // demo instance (and vice versa).
+  configLoaded: false,
+  // Demo instance only: 'idle' | 'minting' | 'error'.
+  demoPhase: 'idle',
+  // Mint error text (localised; never the backend detail).
+  demoNotice: '',
+  // Demo instance: whether the username/password form is revealed on the
+  // start view. (The core instance always shows the form.)
+  showCredsForm: false,
+  // Remembered sandbox on this device ({u, expiresAt}) and whether it expired.
+  returningUser: _readDemoLast(),
+  returningExpired: false,
+  /**
+   * Which dialog layout to render:
+   * - 'core'      regular login (core instance, or config not loaded / failed)
+   * - 'start'     demo instance, first visit (or expired / fallback)
+   * - 'returning' demo instance, remembered unexpired sandbox on this device
+   * - 'minting'   demo instance, sandbox being created
+   */
+  demoView() {
+    if (!this.configLoaded || !this.isDemoInstance) return 'core';
+    if (this.demoPhase === 'minting') return 'minting';
+    if (this.returningUser && !this.isReturningExpired()) return 'returning';
+    return 'start';
+  },
+  /** True when the remembered sandbox is known (or presumed) deleted. */
+  isReturningExpired() {
+    if (this.returningExpired) return true;
+    const exp = this.returningUser && this.returningUser.expiresAt;
+    if (!exp) return false;
+    const ms = Date.parse(exp);
+    return Number.isFinite(ms) && ms < Date.now();
+  },
+  /** Whether the username/password form is visible in the current view. */
+  credsFormVisible() {
+    if (!this.configLoaded) return false;
+    const view = this.demoView();
+    if (view === 'core' || view === 'returning') return true;
+    return view === 'start' && this.showCredsForm;
+  },
+  /** Reveal the credentials form on the demo start view and focus it. */
+  openCredsForm() {
+    this.showCredsForm = true;
+    _afterIslandRender(() => {
+      const el = document.getElementById('auth-username');
+      if (el) el.focus();
+    });
+  },
+  /** Core instance: demo URL with #start-demo so the demo site auto-mints. */
+  demoHref() {
+    if (!this.demoUrl) return '';
+    try {
+      const u = new URL(this.demoUrl);
+      u.hash = 'start-demo';
+      return u.toString();
+    } catch (_) {
+      return this.demoUrl;
+    }
+  },
+  /** Host of the demo site (for the "Opens {host}" note), or '' if unparsable. */
+  demoHost() {
+    if (!this.demoUrl) return '';
+    try {
+      return new URL(this.demoUrl).host;
+    } catch (_) {
+      return '';
+    }
+  },
+  /** Sandbox lifetime in days, as an integer when whole. */
+  demoDays() {
+    const d = Number(this.demoTtlDays);
+    if (!Number.isFinite(d) || d <= 0) return 3;
+    return Number.isInteger(d) ? d : Math.round(d * 10) / 10;
+  },
+  /** Short localised date for a sandbox expiry timestamp. */
+  demoDate(iso) {
+    const ms = iso ? Date.parse(iso) : NaN;
+    const d = Number.isFinite(ms) ? new Date(ms) : new Date();
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  },
+  /** Dialog title for the current view. */
+  dialogTitle() {
+    const view = this.demoView();
+    if (view === 'core') return t('txt_txt_login_required');
+    if (view === 'returning') return t('txt_demo_welcome_back');
+    return t('txt_demo_dialog_title');
+  },
+  /** Notice line on the start view: a mint error, else the expired-sandbox note. */
+  demoNoticeText() {
+    if (this.demoNotice) return this.demoNotice;
+    if (this.returningUser && this.isReturningExpired()) {
+      return t('txt_demo_expired_text', {
+        user: this.returningUser.u,
+        date: this.demoDate(this.returningUser.expiresAt),
+      });
+    }
+    return '';
+  },
   async submit() {
     const username = this.username.trim();
     const password = this.password;
@@ -310,19 +460,31 @@ const _loginStore = reactiveStore({
    * in from another device.
    */
   async startDemo() {
-    this.demoBusy = true;
+    if (this.demoPhase === 'minting') return;
+    this.demoPhase = 'minting';
+    this.demoNotice = '';
     this.error = '';
     try {
       const res = await fetch('/api/auth/demo', { method: 'POST' });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        this.error = err.detail || t('txt_demo_mint_failed');
+        // Map status to our own copy — never surface backend detail text.
+        if (res.status === 429) {
+          this.demoNotice = t('txt_demo_rate_limited');
+          this.showCredsForm = true;
+        } else if (res.status === 404) {
+          this.demoNotice = t('txt_demo_unavailable');
+        } else {
+          this.demoNotice = t('txt_demo_mint_failed');
+        }
+        this.demoPhase = 'error';
         return;
       }
       const data = await res.json();
       _saveAuthToken(data.access_token, data.username, data.role);
       _persistAuthValue(AUTH_IS_DEMO_KEY, '1');
       _persistAuthValue(AUTH_DEMO_EXPIRES_KEY, data.expires_at);
+      _rememberDemoLogin(data.username, data.expires_at);
+      this.demoPhase = 'idle';
       hideLoginDialog();
       if (_loginResolve) {
         _loginResolve();
@@ -335,12 +497,58 @@ const _loginStore = reactiveStore({
       }
       if (typeof setActiveTab === 'function') setActiveTab('create');
     } catch (e) {
-      this.error = t('txt_demo_mint_failed');
-    } finally {
-      this.demoBusy = false;
+      this.demoNotice = t('txt_demo_mint_failed');
+      this.demoPhase = 'error';
     }
   },
 });
+
+/**
+ * Focus the right control for the current dialog view (no-op when the
+ * dialog is closed): username on the core form, password on the returning
+ * view (username pre-filled), the primary "Start" button on the demo start
+ * view. Re-run by checkDemoMode once /api/config has answered.
+ */
+function _focusLoginDialog() {
+  const dialog = document.getElementById('auth-dialog');
+  if (!dialog || dialog.style.display !== 'block') return;
+  const view = _loginStore.demoView();
+  if (view === 'returning' && !_loginStore.username && _loginStore.returningUser) {
+    _loginStore.username = _loginStore.returningUser.u;
+  }
+  _afterIslandRender(() => {
+    let id = null;
+    if (view === 'core') id = 'auth-username';
+    else if (view === 'returning') id = 'auth-password';
+    else if (view === 'start') id = _loginStore.showCredsForm ? 'auth-username' : 'auth-demo-start-btn';
+    const el = id ? document.getElementById(id) : null;
+    if (el) el.focus();
+  });
+}
+
+/**
+ * Demo instance: a link carrying #start-demo (the core site's "Open the demo
+ * sandbox" button) mints a sandbox right away, once per tab. Called by
+ * checkDemoMode after isDemoInstance is known. On the core instance the hash
+ * is simply stripped.
+ */
+function maybeAutoStartDemo() {
+  if (window.location.hash !== '#start-demo') return;
+  try {
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+  } catch (_) {}
+  if (!_loginStore.isDemoInstance) return;
+  try {
+    if (sessionStorage.getItem(DEMO_AUTOSTART_KEY)) return;
+    sessionStorage.setItem(DEMO_AUTOSTART_KEY, '1');
+  } catch (_) {}
+  if (isAuthenticated()) {
+    hideLoginDialog();
+    if (typeof setActiveTab === 'function') setActiveTab('create');
+    return;
+  }
+  _loginStore.startDemo();
+}
 
 function showLoginDialog() {
   return new Promise((resolve) => {
@@ -351,9 +559,7 @@ function showLoginDialog() {
       overlay.style.display = 'block';
       dialog.style.display = 'block';
       document.body.classList.add('login-dialog-open');
-      // Focus username input
-      const usernameInput = document.getElementById('auth-username');
-      if (usernameInput) usernameInput.focus();
+      _focusLoginDialog();
     }
   });
 }
@@ -374,7 +580,8 @@ function hideLoginDialog() {
   _loginStore.password = '';
   _loginStore.error = '';
   _loginStore.submitting = false;
-  _loginStore.demoBusy = false;
+  if (_loginStore.demoPhase !== 'minting') _loginStore.demoPhase = 'idle';
+  _loginStore.demoNotice = '';
   // If the user dismissed without logging in, redirect to the info tab
   if (!isAuthenticated() && typeof setActiveTab === 'function') {
     setActiveTab('info');
@@ -585,10 +792,8 @@ async function saveUserSettings(username) {
     });
     const ix = _allUsers.findIndex(u => u.username === username);
     if (ix >= 0) _allUsers[ix] = updated;
-    flashSuccess(communitySel);
-    msgEl.style.color = 'var(--green)';
-    msgEl.textContent = t('txt_txt_saved');
-    setTimeout(() => { if (msgEl) msgEl.textContent = ''; }, 1800);
+    msgEl.textContent = '';
+    flashSuccess(communitySel, t('txt_txt_saved'));
   } catch (e) {
     msgEl.style.color = 'var(--red)';
     msgEl.textContent = e.message;
@@ -638,7 +843,8 @@ async function handleCreateUser(event) {
     const userRadio = document.querySelector('input[name="new-user-role"][value="user"]');
     if (userRadio) userRadio.checked = true;
     const successDiv = document.getElementById('user-mgmt-success');
-    if (successDiv) { successDiv.textContent = t('txt_txt_user_created_successfully'); setTimeout(() => { successDiv.textContent = ''; }, 3000); }
+    if (successDiv) successDiv.textContent = '';
+    flashSuccess('create-user-btn', t('txt_txt_saved'));
     await loadUserMgmtList();
   } catch (e) {
     if (errDiv) errDiv.textContent = e.message;

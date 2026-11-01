@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from backend.api import state as state_mod
+from backend.api.elo_store import get_tournament_elos
+from backend.api.helpers import _find_match_full
+
 
 # ── Tournament bodies ─────────────────────────────────────────────────────────
 
@@ -812,3 +816,419 @@ class TestEscalateDispute:
         assert match.get("score") == [3, 6]
         assert match.get("disputed") is False
         assert match.get("dispute_escalated") is False
+
+
+# ── Test: custom set-score dispute resolution (QW3 regression) ───────────────
+
+
+def _get_gp_match(client: TestClient, tid: str, mid: str, auth_headers: dict) -> dict:
+    """Return the serialised GP group match *mid*."""
+    groups = client.get(f"/api/tournaments/{tid}/gp/groups", headers=auth_headers).json()
+    match = next((m for ms in groups["matches"].values() for m in ms if m["id"] == mid), None)
+    assert match is not None
+    return match
+
+
+class TestResolveDisputeCustomSets:
+    """Custom set scores in resolve-dispute are recorded as set results with the right winner."""
+
+    def test_custom_sets_give_set_winner_the_match(self, client: TestClient, auth_headers: dict) -> None:
+        """6-4 / 0-6 / 7-5: team 1 wins on sets although games are 13-15."""
+        tid, mid, _secrets, _groups = _setup_dispute(client, auth_headers)
+        r = client.post(
+            f"/api/tournaments/{tid}/matches/{mid}/resolve-dispute",
+            json={"chosen": "custom", "sets": [[6, 4], [0, 6], [7, 5]]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+
+        match = _get_gp_match(client, tid, mid, auth_headers)
+        assert match["sets"] == [[6, 4], [0, 6], [7, 5]]
+        assert match["score"][0] > match["score"][1]
+        assert match["third_set_loss"] is True
+        assert match["disputed"] is False
+
+    def test_custom_sets_ignore_client_game_sums(self, client: TestClient, auth_headers: dict) -> None:
+        """Legacy clients that also send raw game sums cannot flip the winner."""
+        tid, mid, _secrets, _groups = _setup_dispute(client, auth_headers)
+        r = client.post(
+            f"/api/tournaments/{tid}/matches/{mid}/resolve-dispute",
+            json={"chosen": "custom", "score1": 13, "score2": 15, "sets": [[6, 4], [0, 6], [7, 5]]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        match = _get_gp_match(client, tid, mid, auth_headers)
+        assert match["score"][0] > match["score"][1]
+
+    def test_custom_sets_update_standings_winner(self, client: TestClient, auth_headers: dict) -> None:
+        """The set winner is credited with the win in the group standings."""
+        tid, mid, _secrets, groups = _setup_dispute(client, auth_headers)
+        match_before = _get_gp_match(client, tid, mid, auth_headers)
+        client.post(
+            f"/api/tournaments/{tid}/matches/{mid}/resolve-dispute",
+            json={"chosen": "custom", "sets": [[6, 4], [0, 6], [7, 5]]},
+            headers=auth_headers,
+        )
+        standings = client.get(f"/api/tournaments/{tid}/gp/groups", headers=auth_headers).json()["standings"]
+        rows = {row["player_id"]: row for entries in standings.values() for row in entries}
+        t1_id = match_before["team1_ids"][0]
+        t2_id = match_before["team2_ids"][0]
+        assert rows[t1_id]["wins"] == 1
+        assert rows[t2_id]["wins"] == 0
+
+    def test_custom_sets_two_set_match_has_no_third_set_flag(self, client: TestClient, auth_headers: dict) -> None:
+        """A straight-sets custom score leaves third_set_loss False."""
+        tid, mid, _secrets, _groups = _setup_dispute(client, auth_headers)
+        client.post(
+            f"/api/tournaments/{tid}/matches/{mid}/resolve-dispute",
+            json={"chosen": "custom", "sets": [[4, 6], [3, 6]]},
+            headers=auth_headers,
+        )
+        match = _get_gp_match(client, tid, mid, auth_headers)
+        assert match["score"][1] > match["score"][0]
+        assert match["third_set_loss"] is False
+
+    def test_custom_sets_invalid_returns_422(self, client: TestClient, auth_headers: dict) -> None:
+        """Tied sets are rejected by request validation."""
+        tid, mid, _secrets, _groups = _setup_dispute(client, auth_headers)
+        r = client.post(
+            f"/api/tournaments/{tid}/matches/{mid}/resolve-dispute",
+            json={"chosen": "custom", "sets": [[6, 4], [4, 6]]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 422
+
+
+# ── Test: per-match points target on the player / dispute paths ──────────────
+
+
+def _setup_mex_override(client: TestClient, auth_headers: dict, target: int = 24) -> tuple[str, dict, dict]:
+    """Mexicano (4 players, 32 pts) in required mode with one round-1 match set to *target*."""
+    r = client.post(
+        "/api/tournaments/mexicano",
+        json={**_MEX_BODY, "total_points_per_match": 32},
+        headers=auth_headers,
+    )
+    tid = r.json()["id"]
+    client.patch(f"/api/tournaments/{tid}/tv-settings", json={"score_confirmation": "required"}, headers=auth_headers)
+    client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
+    match = client.get(f"/api/tournaments/{tid}/mex/matches").json()["current_matches"][0]
+    r = client.patch(
+        f"/api/tournaments/{tid}/matches/{match['id']}/format",
+        json={"override": {"points_target": target}},
+        headers=auth_headers,
+    )
+    assert r.status_code == 200
+    secrets = _get_secrets(client, tid, auth_headers)
+    return tid, match, secrets
+
+
+class TestMexicanoOverrideOnPlayerPaths:
+    """Player submissions, corrections and dispute resolution honour the per-match target."""
+
+    def test_player_submit_validated_against_override(self, client: TestClient, auth_headers: dict) -> None:
+        tid, m, secrets = _setup_mex_override(client, auth_headers)
+        h1 = _player_headers(client, tid, secrets[m["team1_ids"][0]]["passphrase"])
+        bad = client.post(
+            f"/api/tournaments/{tid}/mex/record",
+            json={"match_id": m["id"], "score1": 20, "score2": 12},
+            headers=h1,
+        )
+        assert bad.status_code == 400
+        ok = client.post(
+            f"/api/tournaments/{tid}/mex/record",
+            json={"match_id": m["id"], "score1": 15, "score2": 9},
+            headers=h1,
+        )
+        assert ok.status_code == 200
+
+    def test_correct_with_wrong_sum_returns_400(self, client: TestClient, auth_headers: dict) -> None:
+        tid, m, secrets = _setup_mex_override(client, auth_headers)
+        h1 = _player_headers(client, tid, secrets[m["team1_ids"][0]]["passphrase"])
+        h2 = _player_headers(client, tid, secrets[m["team2_ids"][0]]["passphrase"])
+        client.post(
+            f"/api/tournaments/{tid}/mex/record",
+            json={"match_id": m["id"], "score1": 15, "score2": 9},
+            headers=h1,
+        )
+        r = client.post(
+            f"/api/tournaments/{tid}/matches/{m['id']}/correct",
+            json={"match_id": m["id"], "score1": 20, "score2": 12},
+            headers=h2,
+        )
+        assert r.status_code == 400
+        assert "24" in r.json()["detail"]
+        r = client.post(
+            f"/api/tournaments/{tid}/matches/{m['id']}/correct",
+            json={"match_id": m["id"], "score1": 9, "score2": 15},
+            headers=h2,
+        )
+        assert r.status_code == 200
+
+    def test_resolve_custom_uses_effective_target(self, client: TestClient, auth_headers: dict) -> None:
+        tid, m, secrets = _setup_mex_override(client, auth_headers)
+        h1 = _player_headers(client, tid, secrets[m["team1_ids"][0]]["passphrase"])
+        h2 = _player_headers(client, tid, secrets[m["team2_ids"][0]]["passphrase"])
+        client.post(
+            f"/api/tournaments/{tid}/mex/record",
+            json={"match_id": m["id"], "score1": 15, "score2": 9},
+            headers=h1,
+        )
+        client.post(
+            f"/api/tournaments/{tid}/matches/{m['id']}/correct",
+            json={"match_id": m["id"], "score1": 9, "score2": 15},
+            headers=h2,
+        )
+        url = f"/api/tournaments/{tid}/matches/{m['id']}/resolve-dispute"
+        bad = client.post(url, json={"chosen": "custom", "score1": 20, "score2": 12}, headers=auth_headers)
+        assert bad.status_code == 400
+        ok = client.post(url, json={"chosen": "custom", "score1": 12, "score2": 12}, headers=auth_headers)
+        assert ok.status_code == 200
+        match = next(
+            x for x in client.get(f"/api/tournaments/{tid}/mex/matches").json()["all_matches"] if x["id"] == m["id"]
+        )
+        assert match["score"] == [12, 12]
+        assert match["disputed"] is False
+
+
+# ── Mexicano play-off disputes ───────────────────────────────────────────────
+
+
+def _setup_mex_playoff_dispute(client: TestClient, auth_headers: dict) -> tuple[str, dict, dict, dict]:
+    """Mexicano (4 players) in required mode with one disputed play-off final.
+
+    Round 1 is recorded by the organiser, the Mexicano is ended, a 2-team
+    play-off is started and the final's score is submitted by team 1 and
+    corrected by team 2.  Returns (tid, final match, team-1 headers,
+    team-2 headers).
+
+    Play-off submissions are confirmed on submit (the bracket advances at
+    once), so the stored score is reopened in memory before the correction;
+    the correction and every resolution path then run through the real API.
+    """
+    tid = _create_mex(client, auth_headers)
+    client.patch(f"/api/tournaments/{tid}/tv-settings", json={"score_confirmation": "required"}, headers=auth_headers)
+    client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
+    for m in client.get(f"/api/tournaments/{tid}/mex/matches").json()["current_matches"]:
+        r = client.post(
+            f"/api/tournaments/{tid}/mex/record",
+            json={"match_id": m["id"], "score1": 20, "score2": 12},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+    assert client.post(f"/api/tournaments/{tid}/mex/end", headers=auth_headers).status_code == 200
+    r = client.post(f"/api/tournaments/{tid}/mex/start-playoffs", json={"n_teams": 4}, headers=auth_headers)
+    assert r.status_code == 200, r.text
+    final = client.get(f"/api/tournaments/{tid}/mex/playoffs").json()["pending"][0]
+    secrets = _get_secrets(client, tid, auth_headers)
+    h1 = _player_headers(client, tid, secrets[final["team1_ids"][0]]["passphrase"])
+    h2 = _player_headers(client, tid, secrets[final["team2_ids"][0]]["passphrase"])
+    r = client.post(
+        f"/api/tournaments/{tid}/mex/record-playoff",
+        json={"match_id": final["id"], "score1": 6, "score2": 3},
+        headers=h1,
+    )
+    assert r.status_code == 200
+    _find_match_full(state_mod._tournaments[tid]["tournament"], final["id"]).score_confirmed = False
+    r = client.post(
+        f"/api/tournaments/{tid}/matches/{final['id']}/correct",
+        json={"match_id": final["id"], "score1": 3, "score2": 6},
+        headers=h2,
+    )
+    assert r.status_code == 200, r.text
+    return tid, final, h1, h2
+
+
+def _mex_playoff_match(client: TestClient, tid: str, mid: str) -> dict:
+    data = client.get(f"/api/tournaments/{tid}/mex/playoffs").json()
+    return next(m for m in data["matches"] if m["id"] == mid)
+
+
+class TestMexicanoPlayoffDisputes:
+    """Dispute actions on a Mexicano play-off match go through the bracket, not the rounds."""
+
+    def test_resolve_original(self, client: TestClient, auth_headers: dict) -> None:
+        tid, final, _h1, _h2 = _setup_mex_playoff_dispute(client, auth_headers)
+        r = client.post(
+            f"/api/tournaments/{tid}/matches/{final['id']}/resolve-dispute",
+            json={"chosen": "original"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        m = _mex_playoff_match(client, tid, final["id"])
+        assert m["score"] == [6, 3]
+        assert m["disputed"] is False
+        assert m["score_confirmed"] is True
+        assert m["status"] == "completed"
+
+    def test_resolve_correction_changes_bracket_winner(self, client: TestClient, auth_headers: dict) -> None:
+        tid, final, _h1, _h2 = _setup_mex_playoff_dispute(client, auth_headers)
+        r = client.post(
+            f"/api/tournaments/{tid}/matches/{final['id']}/resolve-dispute",
+            json={"chosen": "correction"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        m = _mex_playoff_match(client, tid, final["id"])
+        assert m["score"] == [3, 6]
+        status = client.get(f"/api/tournaments/{tid}/mex/status").json()
+        assert status["champion"] == final["team2"]
+
+    def test_resolve_custom_sets(self, client: TestClient, auth_headers: dict) -> None:
+        tid, final, _h1, _h2 = _setup_mex_playoff_dispute(client, auth_headers)
+        r = client.post(
+            f"/api/tournaments/{tid}/matches/{final['id']}/resolve-dispute",
+            json={"chosen": "custom", "sets": [[6, 4], [0, 6], [7, 5]]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        m = _mex_playoff_match(client, tid, final["id"])
+        assert m["sets"] == [[6, 4], [0, 6], [7, 5]]
+        assert m["score"][0] > m["score"][1]
+        assert m["effective_decider"] == "full_set"
+
+    def test_accept_correction(self, client: TestClient, auth_headers: dict) -> None:
+        tid, final, h1, _h2 = _setup_mex_playoff_dispute(client, auth_headers)
+        r = client.post(f"/api/tournaments/{tid}/matches/{final['id']}/accept-correction", headers=h1)
+        assert r.status_code == 200, r.text
+        m = _mex_playoff_match(client, tid, final["id"])
+        assert m["score"] == [3, 6]
+        assert m["disputed"] is False
+        assert m["score_confirmed"] is True
+
+    def test_resolve_recalculates_elo(self, client: TestClient, auth_headers: dict) -> None:
+        tid, final, _h1, _h2 = _setup_mex_playoff_dispute(client, auth_headers)
+        loser_id = final["team2_ids"][0]
+        before = get_tournament_elos(tid, "padel")[loser_id]
+        r = client.post(
+            f"/api/tournaments/{tid}/matches/{final['id']}/resolve-dispute",
+            json={"chosen": "correction"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        after = get_tournament_elos(tid, "padel")[loser_id]
+        assert after > before
+
+
+class TestMatchCommentOnCompletedBracketMatch:
+    """``PATCH /match-comment`` finds completed play-off matches (``_find_match_full``)."""
+
+    def test_comment_on_completed_playoff_match(self, client: TestClient, auth_headers: dict) -> None:
+        body = {
+            "name": "Quick Play-off",
+            "participant_names": ["Alice", "Bob", "Carol", "Dave"],
+            "court_names": ["Court 1"],
+            "double_elimination": False,
+        }
+        tid = client.post("/api/tournaments/playoff", json=body, headers=auth_headers).json()["id"]
+        m = client.get(f"/api/tournaments/{tid}/po/playoffs").json()["pending"][0]
+        r = client.post(
+            f"/api/tournaments/{tid}/po/record",
+            json={"match_id": m["id"], "score1": 6, "score2": 3},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        r = client.patch(
+            f"/api/tournaments/{tid}/match-comment",
+            json={"match_id": m["id"], "comment": "Rain delay"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        matches = client.get(f"/api/tournaments/{tid}/po/playoffs").json()["matches"]
+        assert next(x for x in matches if x["id"] == m["id"])["comment"] == "Rain delay"
+
+
+# ── Match tie-break decider on the player path ───────────────────────────────
+
+
+def _submit_gp_sets(client: TestClient, tid: str, headers: dict, match_id: str, sets: list[list[int]]):
+    return client.post(
+        f"/api/tournaments/{tid}/gp/record-group-tennis",
+        json={"match_id": match_id, "sets": sets},
+        headers=headers,
+    )
+
+
+class TestMatchTiebreakDeciderPlayerPath:
+    """Player submissions honour the tournament / per-match third-set decider."""
+
+    def test_tournament_default_tiebreak_counts_one_game(self, client: TestClient, auth_headers: dict) -> None:
+        tid, secrets, groups = _setup_gp(client, auth_headers, required=True)
+        client.patch(
+            f"/api/tournaments/{tid}/tv-settings", json={"set_decider": "match_tiebreak"}, headers=auth_headers
+        )
+        mid, pid1, pid2 = _find_match_with_two_players(groups["matches"], secrets)
+        h1 = _player_headers(client, tid, secrets[pid1]["passphrase"])
+        r = _submit_gp_sets(client, tid, h1, mid, [[6, 4], [3, 6], [10, 8]])
+        assert r.status_code == 200, r.text
+        # 6+3+1 vs 4+6+0, then the set winner is bumped above the loser.
+        assert r.json()["score"] == [11, 10]
+        h2 = _player_headers(client, tid, secrets[pid2]["passphrase"])
+        assert client.post(f"/api/tournaments/{tid}/matches/{mid}/accept", headers=h2).status_code == 200
+
+        match = _get_gp_match(client, tid, mid, auth_headers)
+        assert match["effective_decider"] == "match_tiebreak"
+        assert match["third_set_loss"] is True
+        standings = client.get(f"/api/tournaments/{tid}/gp/groups", headers=auth_headers).json()["standings"]
+        rows = {row["player_id"]: row for entries in standings.values() for row in entries}
+        assert rows[pid1]["points_for"] == 10
+        assert rows[pid1]["points_against"] == 10
+        assert rows[pid1]["wins"] == 1
+
+    def test_full_set_under_tiebreak_decider_returns_400(self, client: TestClient, auth_headers: dict) -> None:
+        tid, secrets, groups = _setup_gp(client, auth_headers, required=True)
+        client.patch(
+            f"/api/tournaments/{tid}/tv-settings", json={"set_decider": "match_tiebreak"}, headers=auth_headers
+        )
+        mid, pid1, _pid2 = _find_match_with_two_players(groups["matches"], secrets)
+        h1 = _player_headers(client, tid, secrets[pid1]["passphrase"])
+        r = _submit_gp_sets(client, tid, h1, mid, [[6, 4], [3, 6], [7, 5]])
+        assert r.status_code == 400
+        assert "tie-break" in r.json()["detail"]
+        # Two-set results are never checked against the decider.
+        r = _submit_gp_sets(client, tid, h1, mid, [[6, 4], [6, 3]])
+        assert r.status_code == 200
+
+    def test_per_match_override_wins_over_tournament_default(self, client: TestClient, auth_headers: dict) -> None:
+        tid, secrets, groups = _setup_gp(client, auth_headers, required=True)
+        mid, pid1, _pid2 = _find_match_with_two_players(groups["matches"], secrets)
+        r = client.patch(
+            f"/api/tournaments/{tid}/matches/{mid}/format",
+            json={"override": {"mode": "sets", "decider": "match_tiebreak"}},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        h1 = _player_headers(client, tid, secrets[pid1]["passphrase"])
+        assert _submit_gp_sets(client, tid, h1, mid, [[6, 4], [3, 6], [7, 5]]).status_code == 400
+        assert _submit_gp_sets(client, tid, h1, mid, [[6, 4], [3, 6], [10, 8]]).status_code == 200
+
+    def test_correct_tennis_validates_decider(self, client: TestClient, auth_headers: dict) -> None:
+        tid, secrets, groups = _setup_gp(client, auth_headers, required=True)
+        client.patch(
+            f"/api/tournaments/{tid}/tv-settings", json={"set_decider": "match_tiebreak"}, headers=auth_headers
+        )
+        mid, pid1, pid2 = _find_match_with_two_players(groups["matches"], secrets)
+        h1 = _player_headers(client, tid, secrets[pid1]["passphrase"])
+        assert _submit_gp_sets(client, tid, h1, mid, [[6, 4], [3, 6], [10, 8]]).status_code == 200
+        h2 = _player_headers(client, tid, secrets[pid2]["passphrase"])
+        r = client.post(
+            f"/api/tournaments/{tid}/matches/{mid}/correct-tennis",
+            json={"match_id": mid, "sets": [[4, 6], [6, 3], [5, 7]]},
+            headers=h2,
+        )
+        assert r.status_code == 400
+        r = client.post(
+            f"/api/tournaments/{tid}/matches/{mid}/correct-tennis",
+            json={"match_id": mid, "sets": [[4, 6], [6, 3], [8, 10]]},
+            headers=h2,
+        )
+        assert r.status_code == 200
+        r = client.post(
+            f"/api/tournaments/{tid}/matches/{mid}/resolve-dispute",
+            json={"chosen": "correction"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        match = _get_gp_match(client, tid, mid, auth_headers)
+        assert match["sets"] == [[4, 6], [6, 3], [8, 10]]
+        assert match["score"] == [10, 11]

@@ -59,7 +59,8 @@ const _commStore = reactiveStore({
   },
 
   // ── My default community ──
-  async saveMyDefault() {
+  async saveMyDefault(ev) {
+    const btn = ev?.currentTarget || null;
     const community_id = this.defaultSelection;
     try {
       const result = await apiAuth('/api/auth/me/settings', {
@@ -68,15 +69,15 @@ const _commStore = reactiveStore({
       });
       try { localStorage.setItem('padel-auth-default-community', result.default_community_id); } catch (_) {}
       _refreshCreateCommunityDropdown(community_id);
-      this._flashDefault(true, window.t('txt_comm_saved'));
+      this._flashDefault(true, '');
+      flashSuccess(btn, window.t('txt_comm_saved'));
     } catch (e) {
       this._flashDefault(false, e.message);
     }
   },
   _flashDefault(ok, text) {
     this.defaultMsgOk = ok;
-    this.defaultMsg = text;
-    if (ok) setTimeout(() => { this.defaultMsg = ''; }, 2500);
+    this.defaultMsg = ok ? '' : text; // success is a pulse on the button; only errors show text
   },
 
   // ── Community CRUD ──
@@ -86,9 +87,10 @@ const _commStore = reactiveStore({
     try {
       await apiAuth('/api/communities', { method: 'POST', body: JSON.stringify({ name }) });
       this.newName = '';
-      this._flash(true, window.t('txt_comm_created').replace('{name}', name));
+      this._flash(true, '');
       await _commLoadCommunities();
       if (typeof _loadCommunities === 'function') _loadCommunities();
+      flashSuccess('comm-add-btn', window.t('txt_txt_saved'));
     } catch (e) {
       this._flash(false, e.message);
     }
@@ -108,7 +110,7 @@ const _commStore = reactiveStore({
       await apiAuth(`/api/communities/${encodeURIComponent(id)}`, {
         method: 'PUT', body: JSON.stringify({ name: newName }),
       });
-      this._flash(true, window.t('txt_comm_renamed').replace('{name}', newName));
+      this._flash(true, '');
       this.cancelRename();
       await _commLoadCommunities();
       if (typeof _loadCommunities === 'function') _loadCommunities();
@@ -123,7 +125,7 @@ const _commStore = reactiveStore({
     if (!confirm(window.t('txt_comm_delete_confirm').replace('{name}', community.name))) return;
     try {
       await apiAuth(`/api/communities/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      this._flash(true, window.t('txt_comm_deleted'));
+      this._flash(true, '');
       await Promise.all([_commLoadCommunities(), _commLoadTournaments(), _commLoadRegistrations()]);
       if (typeof _loadCommunities === 'function') _loadCommunities();
     } catch (e) {
@@ -132,12 +134,11 @@ const _commStore = reactiveStore({
   },
   _flash(ok, text) {
     this.msgOk = ok;
-    this.msg = text;
-    if (ok) setTimeout(() => { this.msg = ''; }, 2500);
+    this.msg = ok ? '' : text; // success is a pulse; only errors show text
   },
 
   // ── Assignment (tournaments + lobbies) ──
-  async assignTournament(tid, community_id) {
+  async assignTournament(tid, community_id, el) {
     const item = this.tournaments.find(x => x.id === tid);
     try {
       const res = await apiAuth(`/api/tournaments/${encodeURIComponent(tid)}/community`, {
@@ -148,12 +149,13 @@ const _commStore = reactiveStore({
         if (res && 'club_id' in res) item.club_id = res.club_id;
         if (res && 'season_id' in res) item.season_id = res.season_id;
       }
-      this._flashRow('t', tid, true, window.t('txt_txt_saved'));
+      this._flashRow('t', tid, true, '');
+      flashSuccess(el, window.t('txt_txt_saved'));
     } catch (e) {
       this._flashRow('t', tid, false, e.message);
     }
   },
-  async assignRegistration(rid, community_id) {
+  async assignRegistration(rid, community_id, el) {
     const item = this.registrations.find(x => x.id === rid);
     try {
       const res = await apiAuth(`/api/registrations/${encodeURIComponent(rid)}/community`, {
@@ -164,7 +166,8 @@ const _commStore = reactiveStore({
         if (res && 'club_id' in res) item.club_id = res.club_id;
         if (res && 'season_id' in res) item.season_id = res.season_id;
       }
-      this._flashRow('r', rid, true, window.t('txt_txt_saved'));
+      this._flashRow('r', rid, true, '');
+      flashSuccess(el, window.t('txt_txt_saved'));
     } catch (e) {
       this._flashRow('r', rid, false, e.message);
     }
@@ -174,8 +177,9 @@ const _commStore = reactiveStore({
   rowMsgs: {},
   rowMsg(kind, id) { return this.rowMsgs[`${kind}:${id}`] || null; },
   _flashRow(kind, id, ok, text) {
-    this.rowMsgs[`${kind}:${id}`] = { ok, text };
-    if (ok) setTimeout(() => { delete this.rowMsgs[`${kind}:${id}`]; }, 2000);
+    // Success is a pulse on the select; rowMsgs holds errors only.
+    if (ok) delete this.rowMsgs[`${kind}:${id}`];
+    else this.rowMsgs[`${kind}:${id}`] = { ok, text };
   },
 
   // Icon SVG strings (static, rendered via v-html on the rename/delete buttons).

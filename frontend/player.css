@@ -1886,3 +1886,25 @@ h1 { font-family: var(--font-display); font-size: var(--text-xl); font-weight: 7
   margin-top: 0.45rem;
   margin-bottom: 0;
 }
+
+/* ─── Pending payments card (Player Hub) ───────────────────────────────── */
+.pay-hub-help { color: var(--text-muted); font-size: 0.83rem; margin: 0 0 0.6rem; }
+.pay-hub-item { padding: 0.7rem 0; border-top: 1px solid var(--border); }
+.pay-hub-item:first-of-type { border-top: none; padding-top: 0; }
+.pay-hub-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+.pay-hub-name { font-weight: 700; }
+.pay-block-amount { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-weight: 700; }
+.pay-block-due, .pay-block-instructions { color: var(--text-muted); font-size: 0.83rem; margin: 0.2rem 0; white-space: pre-wrap; }
+.pay-status-line { font-size: 0.85rem; margin: 0.5rem 0; padding: 0.45rem 0.6rem; border-radius: 6px; }
+.pay-status-reported { background: var(--color-warning-bg); color: var(--color-warning-text); border: 1px solid var(--color-warning-border); }
+.pay-methods { display: flex; flex-direction: column; gap: 0.35rem; margin: 0.5rem 0; }
+.pay-method { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.86rem; }
+.pay-method-kind { font-weight: 600; min-width: 5.5rem; }
+.pay-method-value { font-family: var(--font-mono); word-break: break-all; }
+.pay-copy-btn { min-height: 32px; padding: 0.2rem 0.6rem; }
+.pay-concept-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0.4rem 0; }
+.pay-concept-label { font-size: 0.8rem; color: var(--text-muted); }
+.pay-concept { font-family: var(--font-mono); font-size: 0.86rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.5rem; }
+.pay-report-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 0.6rem; }
+.pay-report-row input { flex: 1 1 180px; min-height: 40px; }
+.pay-report-btn { min-height: 44px; }

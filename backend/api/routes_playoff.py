@@ -31,7 +31,7 @@ from .helpers import (
     _schema_cache_put,
     _schema_image_response,
     _serialize_match,
-    _tennis_sets_to_scores,
+    _prepare_set_score,
     _store_tournament,
     _apply_player_score_metadata,
     _mark_admin_score,
@@ -343,7 +343,6 @@ async def po_record_tennis(
     player: PlayerIdentity | None = Depends(get_current_player),
 ) -> dict:
     """Record a play-off match using tennis-style set scores."""
-    total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
     async with get_tournament_lock(tid):
         data = _get_tournament(tid, _PO)
         t: PlayoffTournament = data["tournament"]
@@ -351,10 +350,12 @@ async def po_record_tennis(
         if match is None:
             raise HTTPException(404, "Match not found")
         _require_score_permission(tid, match, user, player)
+        total1, total2, sets_tuples, _, decider = _prepare_set_score(data, match, req.sets)
         try:
             t.record_result(req.match_id, (total1, total2), sets=sets_tuples)
         except (KeyError, RuntimeError, ValueError) as e:
             raise HTTPException(400, str(e))
+        match.decider = decider
         if player is not None and user is None:
             _apply_player_score_metadata(
                 match, player.player_id, score=[total1, total2], sets=[list(s) for s in sets_tuples], confirmed=True

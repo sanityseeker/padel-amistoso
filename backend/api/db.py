@@ -143,6 +143,8 @@ CREATE TABLE IF NOT EXISTS registrations (
     auto_send_email   INTEGER NOT NULL DEFAULT 0,
     email_requirement TEXT    NOT NULL DEFAULT 'optional',
     participant_filter TEXT,
+    admin_notes       TEXT,
+    payment_settings  TEXT,
     community_id      TEXT    NOT NULL DEFAULT 'open' REFERENCES communities(id),
     club_id           TEXT    REFERENCES clubs(id) ON DELETE SET NULL,
     created_at        TEXT    NOT NULL
@@ -394,6 +396,54 @@ CREATE INDEX IF NOT EXISTS idx_participation_claims_registration
 
 CREATE INDEX IF NOT EXISTS idx_participation_claims_profile
     ON participation_claims (profile_id, status);
+
+-- Player payment tracking (phase 1). Rows are created lazily: a participant
+-- without a row counts as "unpaid" while the lobby/tournament has a fee.
+-- No FK cascade from registrants on purpose: payment state must survive
+-- registrant removal, lobby deletion and lobby -> tournament conversion.
+CREATE TABLE IF NOT EXISTS registrant_payments (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    registration_id TEXT,
+    tournament_id   TEXT,
+    player_id       TEXT NOT NULL,
+    player_name     TEXT,
+    email           TEXT,
+    status          TEXT NOT NULL CHECK (status IN ('unpaid','reported','paid','waived','refund_due','refunded')),
+    amount_cents    INTEGER,
+    currency        TEXT,
+    method          TEXT,
+    reference       TEXT,
+    note            TEXT,
+    updated_by      TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_registrant_payments_reg
+    ON registrant_payments (registration_id, player_id) WHERE registration_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_registrant_payments_tid
+    ON registrant_payments (tournament_id, player_id) WHERE tournament_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS payment_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    payment_id  INTEGER NOT NULL,
+    from_status TEXT,
+    to_status   TEXT NOT NULL,
+    actor       TEXT,
+    at          TEXT NOT NULL,
+    note        TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_events_payment
+    ON payment_events (payment_id);
+
+-- Tournament-level fee settings live outside the pickled tournament blob so
+-- the in-memory state module stays untouched (see payments_store.py).
+CREATE TABLE IF NOT EXISTS tournament_payment_settings (
+    tournament_id TEXT PRIMARY KEY,
+    settings      TEXT NOT NULL
+);
 """
 
 
@@ -454,6 +504,10 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE registrations ADD COLUMN email_settings TEXT")
             if "participant_filter" not in reg_cols:
                 conn.execute("ALTER TABLE registrations ADD COLUMN participant_filter TEXT")
+            if "admin_notes" not in reg_cols:
+                conn.execute("ALTER TABLE registrations ADD COLUMN admin_notes TEXT")
+            if "payment_settings" not in reg_cols:
+                conn.execute("ALTER TABLE registrations ADD COLUMN payment_settings TEXT")
             if "converted_to_tids" not in reg_cols:
                 conn.execute("ALTER TABLE registrations ADD COLUMN converted_to_tids TEXT NOT NULL DEFAULT '[]'")
                 # Back-fill from the legacy single converted_to_tid column

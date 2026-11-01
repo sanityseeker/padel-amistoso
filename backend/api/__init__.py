@@ -15,6 +15,7 @@ import os
 import re
 from contextlib import asynccontextmanager
 from functools import lru_cache
+from html import escape
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -43,6 +44,7 @@ from .routes_mex import router as mex_router
 from .routes_player_auth import router as player_auth_router
 from .routes_player_space import router as player_space_router
 from .routes_playoff import router as playoff_router
+from .routes_payments import router as payments_router
 from .routes_registration import router as registration_router
 from .routes_schema import router as schema_router
 from .routes_score_actions import router as score_actions_router
@@ -184,6 +186,10 @@ async def csrf_origin_protection(request: Request, call_next):
     response = await call_next(request)
     if _persist_failed.get():
         response.headers["X-Persist-Warning"] = "true"
+    # The demo instance is a throwaway sandbox: keep its pages out of search
+    # indexes so visitors land on the core site, not the practice copy.
+    if config.DEMO_INSTANCE and response.headers.get("content-type", "").startswith("text/html"):
+        response.headers["X-Robots-Tag"] = "noindex"
     return response
 
 
@@ -246,6 +252,50 @@ def _extract_subdomain_label(host: str) -> str | None:
     return label
 
 
+def _request_scheme(request: Request) -> str:
+    """Scheme the visitor used, honouring the reverse proxy's forwarded header."""
+    return request.headers.get("x-forwarded-proto", request.url.scheme) or "https"
+
+
+def _apex_host(host: str) -> str:
+    """Return the platform (apex) host for ``host``.
+
+    Strict mode (``AMISTOSO_DOMAIN`` set) always answers with the configured
+    domain. Heuristic mode strips the leftmost label only when it looks like a
+    club subdomain — a two-part host such as ``example.com`` is already the apex.
+    """
+    h = (host or "").strip()
+    if _AMISTOSO_DOMAIN:
+        port = h.split(":")[1] if ":" in h and not h.startswith("[") else ""
+        return f"{_AMISTOSO_DOMAIN}:{port}" if port else _AMISTOSO_DOMAIN
+    label = _extract_subdomain_label(h)
+    if label is None or label == "__invalid__" or label in _SUBDOMAIN_RESERVED:
+        return h
+    return h.split(".", 1)[1]
+
+
+def _home_url_for(request: Request) -> str:
+    """Where "go home" should send a visitor who hit an error page on this host.
+
+    - Known club subdomain → that club's landing page (stay on the club).
+    - Unknown club subdomain → the platform apex.
+    - Apex / reserved / plain host → the root of the host they are already on.
+    """
+    host = request.headers.get("host", "")
+    if not host:
+        return "/"
+    if getattr(request.state, "club_subdomain", None):
+        return f"{_request_scheme(request)}://{host}/"
+    return f"{_request_scheme(request)}://{_apex_host(host)}/"
+
+
+def _serve_404_page(request: Request) -> HTMLResponse:
+    """Return the custom 404 page with the host-aware home URL injected."""
+    html = _read_frontend_text("404.html") or "<h1>404 Not Found</h1>"
+    html = html.replace("__HOME_URL__", escape(_home_url_for(request), quote=True))
+    return HTMLResponse(content=html, status_code=404, headers={"Cache-Control": "no-cache"})
+
+
 @app.middleware("http")
 async def subdomain_router(request: Request, call_next):
     """Handle ``admin.`` redirects and ``{slug}.`` landing pages."""
@@ -263,6 +313,17 @@ async def subdomain_router(request: Request, call_next):
         return RedirectResponse(url=f"{scheme}://{apex}/", status_code=302)
     if label in _SUBDOMAIN_RESERVED:
         return await call_next(request)
+    if config.DEMO_INSTANCE:
+        # Club subdomains are a core-instance feature. On the demo instance a
+        # club landing page would leak sandbox data under a shareable hostname,
+        # so send visitors back to the apex and refuse everything else.
+        if request.url.path == "/" and request.method == "GET":
+            scheme = request.headers.get("x-forwarded-proto", request.url.scheme) or "https"
+            apex_host = host.split(":")[0][len(label) + 1 :]
+            port = request.url.port
+            apex = f"{apex_host}:{port}" if port else apex_host
+            return RedirectResponse(url=f"{scheme}://{apex}/", status_code=302)
+        return JSONResponse(status_code=404, content={"detail": "Club subdomains are not available in demo mode"})
     # Resolve the label as a club slug. Unknown subdomains 404 entirely so we
     # don't leak the apex content under arbitrary hostnames.
     from .db import get_db  # noqa: PLC0415
@@ -275,17 +336,16 @@ async def subdomain_router(request: Request, call_next):
     # subdomain (assets and API calls included), so a blocking read here
     # would stall all concurrent requests.
     row = await asyncio.to_thread(_resolve_slug)
+    # Remember what the host resolved to so downstream handlers (the 404
+    # catch-all in particular) can pick the right "home" for this visitor.
+    request.state.club_subdomain = label if row is not None else None
     if row is None:
-        # Only intercept the root path so that assets (/404.png, /i18n.js, etc.)
-        # can still be served by the apex routes.
+        # Only the root path is intercepted: every other path (assets, /api/*,
+        # /tv, /register, …) falls through to the apex routes, so the 404 page
+        # can load its assets and shared links keep working from any hostname.
         if request.url.path != "/" or request.method != "GET":
             return await call_next(request)
-        return Response(
-            content=_read_frontend_text("404.html") or "<h1>Not found</h1>",
-            media_type="text/html",
-            status_code=404,
-            headers={"Cache-Control": "no-cache"},
-        )
+        return _serve_404_page(request)
     # Known club: serve club.html only on the root GET; let everything else
     # (API calls, /admin, /tv, static assets) fall through to the apex routes.
     if request.url.path != "/" or request.method != "GET":
@@ -309,6 +369,7 @@ app.include_router(mex_router)
 app.include_router(player_auth_router)
 app.include_router(player_space_router)
 app.include_router(playoff_router)
+app.include_router(payments_router)
 app.include_router(registration_router)
 app.include_router(schema_router)
 app.include_router(score_actions_router)
@@ -323,14 +384,23 @@ app.include_router(sse_router)
 # ────────────────────────────────────────────────────────────────────────────
 
 
+def _demo_ttl_days() -> int | float:
+    """Return ``DEMO_TTL_DAYS`` as an int when whole (``3`` rather than ``3.0``)."""
+    days = float(config.DEMO_TTL_DAYS)
+    return int(days) if days.is_integer() else days
+
+
 @app.get("/api/config")
-async def get_config(response: Response) -> dict:
+async def get_config(request: Request, response: Response) -> dict:
     """Return application configuration for frontend."""
     response.headers["Cache-Control"] = "public, max-age=60"
+    host = request.headers.get("host", "")
     return {
+        "apex_origin": f"{_request_scheme(request)}://{_apex_host(host)}" if host else None,
         "demo_mode": os.environ.get("DEMO_MODE", "").lower() in ("true", "1", "yes"),
         "demo_instance": config.DEMO_INSTANCE,
         "demo_url": config.DEMO_URL,
+        "demo_ttl_days": _demo_ttl_days(),
         "amistoso_domain": _AMISTOSO_DOMAIN or None,
     }
 
@@ -574,6 +644,12 @@ async def serve_admin_lobby_settings_panel_js(request: Request) -> Response:
     return _serve_js_file("admin-lobby-settings-panel.js", request)
 
 
+@app.get("/admin-payments.js")
+async def serve_admin_payments_js(request: Request) -> Response:
+    """Serve the shared payments panel island (lobbies + tournaments)."""
+    return _serve_js_file("admin-payments.js", request)
+
+
 @app.get("/admin-players.js")
 async def serve_admin_players_js(request: Request) -> Response:
     """Serve Player Hub admin management."""
@@ -734,17 +810,9 @@ async def serve_404_image(request: Request) -> Response:
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def _serve_404_page() -> HTMLResponse:
-    """Return the 404 HTML page with HTTP 404 status."""
-    return HTMLResponse(
-        content=_read_frontend_text("404.html") or "<h1>404 Not Found</h1>",
-        status_code=404,
-    )
-
-
 @app.get("/{path:path}")
 async def catch_all(path: str, request: Request) -> Response:
     """Serve the custom 404 page for every unmatched frontend path."""
     if request.url.path.startswith("/api/"):
         return JSONResponse(status_code=404, content={"detail": "Not found"})
-    return _serve_404_page()
+    return _serve_404_page(request)

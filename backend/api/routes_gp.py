@@ -23,7 +23,7 @@ from .helpers import (
     _get_tv_settings,
     _is_bye_match,
     _serialize_match,
-    _tennis_sets_to_scores,
+    _prepare_set_score,
     _build_match_labels,
     _schema_cache_get,
     _schema_cache_key,
@@ -260,7 +260,6 @@ async def gp_record_group_tennis(
 ) -> dict:
     """Record a group match using tennis-style set scores.
     Score = sum of game differences across all sets."""
-    total1, total2, sets_tuples, third_set_decided = _tennis_sets_to_scores(req.sets)
     async with get_tournament_lock(tid):
         data = _get_tournament(tid, _GP)
         t: GroupPlayoffTournament = data["tournament"]
@@ -268,6 +267,7 @@ async def gp_record_group_tennis(
         if match is None:
             raise HTTPException(404, "Match not found")
         _require_score_permission(tid, match, user, player)
+        total1, total2, sets_tuples, third_set_decided, decider = _prepare_set_score(data, match, req.sets)
         try:
             t.record_group_result(
                 req.match_id,
@@ -277,6 +277,7 @@ async def gp_record_group_tennis(
             )
         except (KeyError, RuntimeError) as e:
             raise HTTPException(400, str(e))
+        match.decider = decider
         is_player_action = player is not None and user is None
         is_required = False
         if is_player_action:
@@ -493,7 +494,6 @@ async def gp_record_playoff_tennis(
     player: PlayerIdentity | None = Depends(get_current_player),
 ) -> dict:
     """Record a playoff match using tennis-style set scores."""
-    total1, total2, sets_tuples, _ = _tennis_sets_to_scores(req.sets)
     async with get_tournament_lock(tid):
         data = _get_tournament(tid, _GP)
         t: GroupPlayoffTournament = data["tournament"]
@@ -501,10 +501,12 @@ async def gp_record_playoff_tennis(
         if match is None:
             raise HTTPException(404, "Match not found")
         _require_score_permission(tid, match, user, player)
+        total1, total2, sets_tuples, _, decider = _prepare_set_score(data, match, req.sets)
         try:
             t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)
         except (KeyError, RuntimeError, ValueError) as e:
             raise HTTPException(400, str(e))
+        match.decider = decider
         if player is not None and user is None:
             _apply_player_score_metadata(
                 match, player.player_id, score=[total1, total2], sets=[list(s) for s in sets_tuples], confirmed=True

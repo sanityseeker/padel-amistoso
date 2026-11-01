@@ -478,6 +478,104 @@ async function _apiDelete(path, body, auth) {
   return res.json();
 }
 
+// ─── Pending payments card (Petite-Vue island) ───────────────────────────
+// Entry fees the organizer has not confirmed yet, across every lobby and
+// tournament linked to this profile. Hidden when there is nothing pending.
+
+const _payHubStore = reactiveStore({
+  rows: [],
+  loaded: false,
+  loading: false,
+  busyKey: null,
+  copied: '',
+  error: '',
+  reference: {},   // key -> optional note typed next to "I've paid"
+
+  fmt(cents, currency) { return formatMoney(cents, currency); },
+  href(row, m) { return paymentMethodHref(m, row.amount_cents, row.currency); },
+  methodLabel(m) { return paymentMethodLabel(m); },
+
+  async load() {
+    if (!_jwt || _payHubStore.loading) return;
+    _payHubStore.loading = true;
+    try {
+      _payHubStore.rows = await _apiGet('/payments', _jwt);
+      _payHubStore.loaded = true;
+      _payHubStore.error = '';
+    } catch (e) {
+      _payHubStore.error = e.message || t('txt_pay_error');
+    } finally {
+      _payHubStore.loading = false;
+    }
+  },
+  async copy(text, btn) {
+    const ok = await copyTextToClipboard(text);
+    if (!ok) return;
+    _payHubStore.copied = text;
+    if (btn) flashSuccess(btn, t('txt_pay_player_copied'));
+    setTimeout(() => { if (_payHubStore.copied === text) _payHubStore.copied = ''; }, 1800);
+  },
+  async report(row) {
+    const S = _payHubStore;
+    if (!_jwt || S.busyKey) return;
+    S.busyKey = row.key;
+    S.error = '';
+    try {
+      const body = {};
+      const ref = (S.reference[row.key] || '').trim();
+      if (ref) body.reference = ref;
+      S.rows = await _apiPost(`/payments/${encodeURIComponent(row.key)}/report`, body, _jwt);
+      delete S.reference[row.key];
+    } catch (e) {
+      S.error = e.message || t('txt_pay_error');
+    } finally {
+      S.busyKey = null;
+    }
+  },
+});
+
+/** Island root + template; rendered inside the dashboard string, mounted in `_render`. */
+function _buildPendingPaymentsIsland() {
+  let html = `<div id="player-payments-island" v-scope>`;
+  html += `<div class="card pay-hub-card" v-if="rows.length">`;
+  html += `<div class="section-heading section-heading-card">${esc(t('txt_pay_hub_title'))}</div>`;
+  html += `<p class="pay-hub-help">${esc(t('txt_pay_hub_help'))}</p>`;
+  html += `<div class="error-msg" v-if="error">{{ error }}</div>`;
+  html += `<div class="pay-hub-item" v-for="row in rows" :key="row.key">`;
+  html += `<div class="pay-hub-head"><span class="pay-hub-name">{{ row.entity_name }}</span><span class="pay-block-amount">{{ fmt(row.amount_cents, row.currency) }}</span></div>`;
+  html += `<p class="pay-block-due" v-if="row.due_at">{{ t('txt_pay_player_due', { date: row.due_at }) }}</p>`;
+  html += `<p class="pay-block-instructions" v-if="row.instructions">{{ row.instructions }}</p>`;
+  html += `<div class="pay-status-line pay-status-reported" v-if="row.status === 'reported'" role="status">{{ t('txt_pay_player_reported') }}</div>`;
+  html += `<div class="pay-methods" v-if="row.methods.length">`;
+  html += `<div class="pay-method" v-for="(m, i) in row.methods" :key="i">`;
+  html += `<span class="pay-method-kind">{{ methodLabel(m) }}</span>`;
+  html += `<a class="pay-method-value" v-if="href(row, m)" :href="href(row, m)" target="_blank" rel="noopener">{{ m.value }}</a>`;
+  html += `<span class="pay-method-value" v-else-if="m.value">{{ m.value }}</span>`;
+  html += `<button type="button" class="btn btn-sm btn-secondary pay-copy-btn" v-if="m.value" @click="copy(m.value, $el)">{{ copied === m.value ? t('txt_pay_player_copied') : t('txt_pay_player_copy') }}</button>`;
+  html += `</div>`;
+  html += `</div>`;
+  html += `<div class="pay-concept-row">`;
+  html += `<span class="pay-concept-label">{{ t('txt_pay_player_concept') }}</span>`;
+  html += `<code class="pay-concept">{{ row.concept }}</code>`;
+  html += `<button type="button" class="btn btn-sm btn-secondary pay-copy-btn" @click="copy(row.concept, $el)">{{ copied === row.concept ? t('txt_pay_player_copied') : t('txt_pay_player_copy') }}</button>`;
+  html += `</div>`;
+  html += `<div class="pay-report-row" v-if="row.status === 'unpaid'">`;
+  html += `<input type="text" maxlength="120" v-model="reference[row.key]" :placeholder="t('txt_pay_player_reference_placeholder')" :aria-label="t('txt_pay_player_reference_placeholder')">`;
+  html += `<button type="button" class="btn btn-primary pay-report-btn" :disabled="busyKey === row.key" @click="report(row)">{{ t('txt_pay_player_i_paid') }}</button>`;
+  html += `</div>`;
+  html += `</div>`;
+  html += `</div>`;
+  html += `</div>`;
+  return html;
+}
+
+function _mountPendingPayments() {
+  const root = document.getElementById('player-payments-island');
+  if (!root) return;
+  if (!mountIsland(root, _payHubStore)) return;
+  if (!_payHubStore.loaded) _payHubStore.load();
+}
+
 async function _fetchSpace() {
   _selectedCommunityId = _scopeToCommunityId(_selectedStatsScope);
   _selectedClubId = _scopeToClubId(_selectedStatsScope);
@@ -494,6 +592,7 @@ async function _fetchSpace() {
   _eloHistory = data.elo_history || [];
   _prunePathState();
   _saveSession();
+  _payHubStore.load();
   // First successful auth in this page session: load the members-only
   // leaderboard once (polling refreshes _fetchSpace but not the leaderboard).
   if (_leaderboard === null && !_leaderboardLoading) {
@@ -1095,6 +1194,7 @@ function _render() {
   // anonymous visitors don't see it at all.
   if (_showLinkModal) html += _buildLinkModal();
   root.innerHTML = html;
+  if (_jwt && _profile) _mountPendingPayments();
   _initEloChart();
   _initScopeStickyObserver();
 }
@@ -1273,6 +1373,9 @@ function _buildDashboard() {
     html += `</div>`;
     html += `</div>`;
   }
+
+  // ── Pending payments (island; hidden when empty) ──
+  html += _buildPendingPaymentsIsland();
 
   // ── Tournaments card (active + past) ──
   html += `<div class="player-tournaments-card">`;
@@ -1779,7 +1882,7 @@ function _buildGlobalStatsCard() {
 
 function _formatEloHistoryScore(match) {
   if (Array.isArray(match.sets) && match.sets.length > 0) {
-    return match.sets.map(s => `${s[0]}-${s[1]}`).join(', ');
+    return formatSetScore(match.sets, match.decider, ', ');
   }
   if (Array.isArray(match.score) && match.score.length === 2) {
     return `${match.score[0]}-${match.score[1]}`;

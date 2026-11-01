@@ -265,6 +265,8 @@ class TvSettingsRequest(BaseModel):
     schema_output_scale: float | None = Field(default=None, ge=0.5, le=3.0)
     schema_format: Literal["svg", "png"] | None = None
     score_mode: dict[str, str] | None = None
+    # Tournament-wide third-set decider for set scores (per-match overrides win).
+    set_decider: Literal["full_set", "match_tiebreak"] | None = None
     banner_text: str | None = None
     score_confirmation: ScoreConfirmation | None = None
     # Seconds the opposing team has to submit a correction after the score is
@@ -292,6 +294,9 @@ class TvSettings(BaseModel):
     # SVG is vector and stays crisp at any zoom; PNG is the legacy raster fallback.
     schema_format: Literal["svg", "png"] = "svg"
     score_mode: dict[str, str] = Field(default_factory=dict)
+    # How a deciding third set is played by default: a full set, or a match
+    # tie-break (to 10, win by 2) that counts as one game in standings / ELO.
+    set_decider: Literal["full_set", "match_tiebreak"] = "full_set"
     banner_text: str = ""
     # "immediate": score counts on submit (good for fast Mexicano rounds).
     # "required": score stays pending until accepted/auto-finalised by opposing team.
@@ -375,6 +380,31 @@ class RecordScoreRequest(BaseModel):
     score2: int = Field(ge=0)
 
 
+def validate_set_scores(v: list[list[int]]) -> list[list[int]]:
+    """Validate a list of tennis-style set scores (shared by several requests).
+
+    Raises:
+        ValueError: when the list is empty or too long, a set is malformed or
+            tied, or neither team won more sets.
+    """
+    if len(v) == 0:
+        raise ValueError("Must provide at least one set")
+    if len(v) > 5:
+        raise ValueError("Cannot have more than 5 sets")
+    for i, s in enumerate(v):
+        if len(s) != 2:
+            raise ValueError(f"Set {i + 1} must have exactly 2 scores")
+        if s[0] < 0 or s[1] < 0:
+            raise ValueError(f"Set {i + 1} scores must be non-negative")
+        if s[0] == s[1]:
+            raise ValueError(f"Set {i + 1} cannot be a tie ({s[0]}-{s[1]})")
+    sets1 = sum(1 for s in v if s[0] > s[1])
+    sets2 = sum(1 for s in v if s[1] > s[0])
+    if sets1 == sets2:
+        raise ValueError("Match must have a winner (equal sets won)")
+    return v
+
+
 class RecordTennisScoreRequest(BaseModel):
     """Record a match result using tennis-style set scores."""
 
@@ -384,22 +414,47 @@ class RecordTennisScoreRequest(BaseModel):
     @field_validator("sets")
     @classmethod
     def validate_sets(cls, v: list[list[int]]) -> list[list[int]]:
-        if len(v) == 0:
-            raise ValueError("Must provide at least one set")
-        if len(v) > 5:
-            raise ValueError("Cannot have more than 5 sets")
-        for i, s in enumerate(v):
-            if len(s) != 2:
-                raise ValueError(f"Set {i + 1} must have exactly 2 scores")
-            if s[0] < 0 or s[1] < 0:
-                raise ValueError(f"Set {i + 1} scores must be non-negative")
-            if s[0] == s[1]:
-                raise ValueError(f"Set {i + 1} cannot be a tie ({s[0]}-{s[1]})")
-        sets1 = sum(1 for s in v if s[0] > s[1])
-        sets2 = sum(1 for s in v if s[1] > s[0])
-        if sets1 == sets2:
-            raise ValueError("Match must have a winner (equal sets won)")
-        return v
+        return validate_set_scores(v)
+
+
+class MatchFormatOverrideBody(BaseModel):
+    """Per-match scoring format chosen by an organiser.
+
+    ``None`` fields inherit the tournament setting.  ``decider`` picks how a
+    deciding third set is played (full set or match tie-break) for matches
+    scored in sets; it is rejected for Mexicano round matches.
+    """
+
+    mode: Literal["points", "sets"] | None = None
+    points_target: int | None = Field(default=None, ge=2, le=200)
+    decider: Literal["full_set", "match_tiebreak"] | None = None
+
+
+class SetMatchFormatRequest(BaseModel):
+    """Body for ``PATCH /api/tournaments/{tid}/matches/{mid}/format``.
+
+    ``override = null`` resets the match to the tournament defaults.  A
+    replacement score is required when the change alters what an existing
+    score means (a Mexicano points target on a scored match, or the decider
+    of a match that went to a third set).
+    """
+
+    override: MatchFormatOverrideBody | None = None
+    score1: int | None = Field(default=None, ge=0)
+    score2: int | None = Field(default=None, ge=0)
+    sets: list[list[int]] | None = None
+
+    @field_validator("sets")
+    @classmethod
+    def _validate_sets(cls, v: list[list[int]] | None) -> list[list[int]] | None:
+        return validate_set_scores(v) if v else None
+
+
+class MatchFormatResponse(BaseModel):
+    """Result of a per-match format change."""
+
+    ok: bool
+    match: dict
 
 
 class UpdateCourtsRequest(BaseModel):
@@ -545,6 +600,7 @@ class RegistrationUpdate(BaseModel):
     questions: list[QuestionDef] | None = None
     description: str | None = Field(default=None, max_length=5000)
     message: str | None = Field(default=None, max_length=5000)
+    admin_notes: str | None = Field(default=None, max_length=10000)
     listed: bool | None = None
     archived: bool | None = None
     sport: Sport | None = None
@@ -622,6 +678,8 @@ class RegistrantLoginOut(BaseModel):
     token: str
     answers: dict[str, str] = Field(default_factory=dict)
     registered_at: str
+    # Present only when the lobby has a fee configured (see routes_payments).
+    payment: PaymentInfoOut | None = None
 
 
 class RegistrantAnswersUpdateIn(BaseModel):
@@ -733,6 +791,8 @@ class RegistrationPublicOut(BaseModel):
     club_id: str | None = None
     club_name: str | None = None
     club_logo_url: str | None = None
+    # Fee info (never per-player state); methods only when show_methods=always.
+    payment: PaymentPublicOut | None = None
 
 
 class RegistrationAdminOut(BaseModel):
@@ -757,6 +817,7 @@ class RegistrationAdminOut(BaseModel):
     assigned_player_ids: list[str] = Field(default_factory=list)
     player_tournament_map: dict[str, list[str]] = Field(default_factory=dict)
     participant_filter: list[FilterConditionDef] = Field(default_factory=list)
+    admin_notes: str | None = None
     # Registrants passing every participant-filter condition (all registrants
     # when no filter is set) — the "final set" eligible for the event.
     eligible_player_ids: list[str] = Field(default_factory=list)
@@ -941,3 +1002,159 @@ class AdminKFactorUpdate(BaseModel):
     """Request body for updating a profile's K-factor override."""
 
     k_factor_override: int | None = Field(default=None, ge=1, le=200)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Player payment tracking (phase 1: display-only methods, manual confirmation)
+# ────────────────────────────────────────────────────────────────────────────
+
+PaymentMethodKind = Literal["bizum", "iban", "revolut", "paypal_me", "cash", "other"]
+PaymentStatus = Literal["unpaid", "reported", "paid", "waived", "refund_due", "refunded"]
+PAYMENT_STATUSES: tuple[str, ...] = ("unpaid", "reported", "paid", "waived", "refund_due", "refunded")
+
+
+class PaymentMethod(BaseModel):
+    """One way to pay the organizer — displayed instructions only, never processed."""
+
+    kind: PaymentMethodKind
+    value: str = Field(default="", max_length=512)
+    label: str | None = Field(default=None, max_length=80)
+
+
+class PaymentSettings(BaseModel):
+    """Per-lobby / per-tournament fee configuration (flat fee per player)."""
+
+    fee_cents: int = Field(default=0, ge=0, le=100_000_000)
+    currency: str = Field(default="EUR", min_length=3, max_length=3, pattern=r"^[A-Za-z]{3}$")
+    due_at: str | None = Field(default=None, max_length=32)
+    instructions: str | None = Field(default=None, max_length=2000)
+    methods: list[PaymentMethod] = Field(default_factory=list, max_length=12)
+    show_methods: Literal["always", "after_register"] = "after_register"
+
+
+class PaymentSettingsPatch(BaseModel):
+    """Partial update for :class:`PaymentSettings` — only supplied fields change."""
+
+    fee_cents: int | None = Field(default=None, ge=0, le=100_000_000)
+    currency: str | None = Field(default=None, min_length=3, max_length=3, pattern=r"^[A-Za-z]{3}$")
+    due_at: str | None = Field(default=None, max_length=32)
+    instructions: str | None = Field(default=None, max_length=2000)
+    methods: list[PaymentMethod] | None = Field(default=None, max_length=12)
+    show_methods: Literal["always", "after_register"] | None = None
+
+
+class PaymentPublicOut(BaseModel):
+    """Fee information safe for the public lobby page (no per-player state).
+
+    ``methods`` is only populated when the organizer chose ``show_methods=always``.
+    """
+
+    fee_cents: int
+    currency: str
+    due_at: str | None = None
+    instructions: str | None = None
+    methods: list[PaymentMethod] = Field(default_factory=list)
+
+
+class PaymentInfoOut(BaseModel):
+    """A player's own payment state plus everything needed to pay."""
+
+    status: PaymentStatus
+    amount_cents: int
+    currency: str
+    due_at: str | None = None
+    instructions: str | None = None
+    methods: list[PaymentMethod] = Field(default_factory=list)
+    concept: str
+    reference: str | None = None
+    method: str | None = None
+
+
+class PaymentRowOut(BaseModel):
+    """Admin view of one participant's payment state."""
+
+    id: int | None = None
+    player_id: str
+    player_name: str
+    email: str = ""
+    status: PaymentStatus = "unpaid"
+    amount_cents: int
+    currency: str
+    method: str | None = None
+    reference: str | None = None
+    note: str | None = None
+    concept: str
+    updated_by: str | None = None
+    updated_at: str | None = None
+    synthesized: bool = False
+
+
+class PaymentSummaryOut(BaseModel):
+    total: int = 0
+    paid: int = 0
+    reported: int = 0
+    unpaid: int = 0
+    waived: int = 0
+    refund_due: int = 0
+    refunded: int = 0
+    collected_cents: int = 0
+
+
+class PaymentsListOut(BaseModel):
+    settings: PaymentSettings
+    rows: list[PaymentRowOut]
+    summary: PaymentSummaryOut
+    entity_name: str = ""
+
+
+class PaymentPatchIn(BaseModel):
+    """Editor-side status change for one participant."""
+
+    status: PaymentStatus
+    method: str | None = Field(default=None, max_length=40)
+    amount_cents: int | None = Field(default=None, ge=0, le=100_000_000)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class PlayerPaymentReportIn(BaseModel):
+    """Player self-report ("I've paid"), authenticated by passphrase or token."""
+
+    passphrase: str | None = Field(default=None, min_length=1, max_length=128)
+    token: str | None = Field(default=None, min_length=1, max_length=256)
+    reference: str | None = Field(default=None, max_length=120)
+    method: str | None = Field(default=None, max_length=40)
+
+
+class HubPaymentReportIn(BaseModel):
+    reference: str | None = Field(default=None, max_length=120)
+    method: str | None = Field(default=None, max_length=40)
+
+
+class HubPaymentOut(BaseModel):
+    """One pending payment shown in the Player Hub."""
+
+    key: str
+    entity_type: Literal["registration", "tournament"]
+    entity_id: str
+    entity_name: str
+    player_id: str
+    status: PaymentStatus
+    amount_cents: int
+    currency: str
+    due_at: str | None = None
+    instructions: str | None = None
+    methods: list[PaymentMethod] = Field(default_factory=list)
+    concept: str
+    reference: str | None = None
+
+
+class RemindUnpaidIn(BaseModel):
+    subject: str | None = Field(default=None, max_length=200)
+    message: str | None = Field(default=None, max_length=4000)
+
+
+class RemindUnpaidOut(BaseModel):
+    sent: int = 0
+    failed: int = 0
+    skipped: int = 0
+    unreachable: list[str] = Field(default_factory=list)

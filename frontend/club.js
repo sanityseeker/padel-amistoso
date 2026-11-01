@@ -618,19 +618,47 @@ async function _clubSearchSubmit(e) {
   }
 }
 
+/**
+ * Replace the loading line with a real failure state.
+ *
+ * ``not_found`` — the slug does not resolve: say so and offer the platform
+ * home (the apex comes from ``/api/config`` so it is right on any domain).
+ * ``load_error`` — the club probably exists but the request failed (network,
+ * 5xx, rate limit): say that instead of "not found" and offer a retry.
+ */
+async function _clubShowFatal(kind) {
+  const el = document.getElementById('club-loading');
+  if (!el) return;
+  let apex = null;
+  if (kind === 'not_found') {
+    try {
+      const cfg = await fetch('/api/config').then((r) => (r.ok ? r.json() : null));
+      if (cfg && typeof cfg.apex_origin === 'string' && /^https?:\/\//.test(cfg.apex_origin)) apex = cfg.apex_origin + '/';
+    } catch (_) { /* fall back to no link */ }
+  }
+  const msg = kind === 'not_found'
+    ? (t('txt_club_not_found', {}) || 'Club not found.')
+    : (t('txt_club_load_error', {}) || 'Could not load this club right now.');
+  const action = kind === 'not_found'
+    ? (apex ? `<a class="btn btn-primary club-fatal-action" href="${escAttr(apex)}">${esc(t('txt_club_go_to_site', {}) || 'Go to the main site')}</a>` : '')
+    : `<button type="button" class="btn btn-primary club-fatal-action" onclick="window.location.reload()">${esc(t('txt_club_retry', {}) || 'Try again')}</button>`;
+  el.classList.add('club-fatal');
+  el.innerHTML = `<p class="club-fatal-msg">${esc(msg)}</p>${action}`;
+}
+
 async function _clubInit() {
   if (typeof initLanguage === 'function') initLanguage();
   _clubLang = getAppLanguage();
   _clubRefreshTopbarButtons();
   const slug = (typeof getClubSubdomain === 'function') ? getClubSubdomain() : null;
   if (!slug) {
-    document.getElementById('club-loading').textContent = t('txt_club_not_found', {}) || 'Club not found.';
+    await _clubShowFatal('not_found');
     return;
   }
   try {
     _clubData = await _clubFetchJson(`/api/clubs/by-slug/${encodeURIComponent(slug)}`);
-  } catch (_) {
-    document.getElementById('club-loading').textContent = t('txt_club_not_found', {}) || 'Club not found.';
+  } catch (e) {
+    await _clubShowFatal(e && e.status === 404 ? 'not_found' : 'load_error');
     return;
   }
   _clubHide('club-loading');
@@ -801,7 +829,7 @@ function _clubRenderMiniCard(overlay, card) {
         const deltaStr = delta == null ? '' : (delta > 0 ? '+' : '') + Number(delta).toFixed(1);
         const hasSets = Array.isArray(m.sets) && m.sets.length > 0;
         const score = hasSets
-          ? m.sets.map(s => `${s[0]}-${s[1]}`).join(' · ')
+          ? formatSetScore(m.sets, m.decider, ' · ')
           : (Array.isArray(m.score) && m.score.length >= 2 ? `${m.score[0]} – ${m.score[1]}` : '');
         const team1 = Array.isArray(m.team1) ? m.team1.join(' / ') : '';
         const team2 = Array.isArray(m.team2) ? m.team2.join(' / ') : '';

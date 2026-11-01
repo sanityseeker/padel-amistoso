@@ -61,6 +61,11 @@ let _urlToken = null; // token passed via email link for auto-login
 let _linkedProfilePassphrase = null; // set when Player Hub session is active
 let _submittedEmail = ''; // email entered in the form, captured on submit
 let _skipProfileAutoLoginOnce = false;
+// Success-view UI state lives in `_successStore` (Petite-Vue island, defined
+// below next to the success-view logic).
+function _resetSuccessUi() {
+  _successStore.resetUi();
+}
 
 function _registrationIdentityLabel(data) {
   if (!data) return '';
@@ -81,6 +86,7 @@ function _isValidEmail(value) {
 // ── Inline SVG icons (no emoji/unicode glyphs in padel-facing UI) ──────────
 const _IC_CHECK = 'M912 190h-69.9c-9.8 0-19.1 4.5-25.1 12.2L404.7 724.5 207 474a32 32 0 00-25.1-12.2H112c-6.7 0-10.4 7.7-6.3 12.9l273.9 347c12.8 16.2 37.4 16.2 50.3 0l488.4-618.9c4.1-5.1.4-12.8-6.3-12.8z';
 const _IC_USER = 'M858.5 763.6a374 374 0 00-80.6-119.5 375.63 375.63 0 00-119.5-80.6c-.4-.2-.8-.3-1.2-.5C719.5 518 760 444.7 760 362c0-137-111-248-248-248S264 225 264 362c0 82.7 40.5 156 102.8 201.1-.4.2-.8.3-1.2.5-44.8 18.9-85 46-119.5 80.6a375.63 375.63 0 00-80.6 119.5A371.7 371.7 0 00136 901.8a8 8 0 008 8.2h60c4.4 0 7.9-3.5 8-7.8 2-77.2 33-149.5 87.8-204.3 56.7-56.7 132-87.9 212.2-87.9s155.5 31.2 212.2 87.9C779 752.7 810 825 812 902.2c.1 4.4 3.6 7.8 8 7.8h60a8 8 0 008-8.2c-1-47.8-10.9-94.3-29.5-138.2z';
+const _IC_CHEVRON = 'M517.6 273.5L230.2 499.3a16.14 16.14 0 000 25.4l287.4 225.8c10.7 8.4 26.4.8 26.4-12.7V286.2c0-13.5-15.7-21.1-26.4-12.7z';
 const _IC_WARN = 'M955.7 856l-416-720c-6.2-10.7-16.9-16-27.7-16s-21.6 5.3-27.7 16l-416 720C56 877.4 71.4 904 96 904h832c24.6 0 40-26.6 27.7-48zM480 416c0-4.4 3.6-8 8-8h48c4.4 0 8 3.6 8 8v184c0 4.4-3.6 8-8 8h-48c-4.4 0-8-3.6-8-8V416zm32 352a48.01 48.01 0 010-96 48.01 48.01 0 010 96z';
 
 function _svgIcon(path) {
@@ -104,7 +110,8 @@ function _nameInitials(name) {
 function _renderIdentityStrip(opts) {
   const loggedIn = !!opts.loggedIn;
   const name = opts.name || '';
-  const registered = !!opts.registered;
+  const showEntryChip = opts.showEntryChip !== false;
+  const caption = opts.caption || t('txt_reg_identity_hub_in');
 
   let html = `<div class="reg-identity-strip">`;
   html += `<div class="reg-identity-who">`;
@@ -113,7 +120,7 @@ function _renderIdentityStrip(opts) {
     html += `<span class="reg-avatar in" aria-hidden="true">${initials ? esc(initials) : _svgIcon(_IC_USER)}</span>`;
     html += `<span class="reg-identity-text">`;
     html += `<span class="reg-identity-name">${esc(name)}</span>`;
-    html += `<span class="reg-identity-caption">${t('txt_reg_identity_hub_in')}</span>`;
+    html += `<span class="reg-identity-caption">${esc(caption)}</span>`;
     html += `</span>`;
   } else {
     html += `<span class="reg-avatar out" aria-hidden="true">${_svgIcon(_IC_USER)}</span>`;
@@ -124,9 +131,7 @@ function _renderIdentityStrip(opts) {
   }
   html += `</div>`;
   html += `<div class="reg-identity-actions">`;
-  if (registered) {
-    html += `<span class="reg-entry-chip done">${_svgIcon(_IC_CHECK)}<span>${t('txt_reg_chip_registered')}</span></span>`;
-  } else {
+  if (showEntryChip) {
     html += `<span class="reg-entry-chip pending">${t('txt_reg_chip_not_registered')}</span>`;
   }
   if (loggedIn) {
@@ -212,7 +217,7 @@ function _fullRender() {
   html += `<div id="state-directory" class="reg-hidden"></div>`;
   html += `<div id="state-closed" class="card state-msg reg-hidden"></div>`;
   html += `<div id="state-form" class="card reg-hidden"></div>`;
-  html += `<div id="state-success" class="card success-card reg-hidden"></div>`;
+  html += `<div id="state-success" class="card success-card reg-hidden" v-scope></div>`;
   html += `<div id="state-error" class="card state-msg reg-hidden"></div>`;
   root.innerHTML = html;
 
@@ -474,12 +479,14 @@ async function _tryProfileAutoLogin() {
     if (!data) return false;
 
     _linkedProfilePassphrase = passphrase;
+    _resetSuccessUi();
     _lastResult = {
       player_id: data.player_id,
       player_name: data.player_name,
       passphrase: data.passphrase,
       answers: data.answers || {},
       token: data.token || null,
+      payment: data.payment || null,
       from_login: true,
     };
     if (data.token) _setRegToken(data.token);
@@ -535,15 +542,6 @@ function _showClosed(converted) {
   el.style.display = 'block';
 }
 
-function _getLinkedTournamentIds() {
-  const tids = Array.isArray(_regData?.converted_to_tids)
-    ? _regData.converted_to_tids.filter(Boolean)
-    : [];
-  if (tids.length > 0) return tids;
-  if (_regData?.converted_to_tid) return [_regData.converted_to_tid];
-  return [];
-}
-
 function _buildTournamentUrl(tid) {
   let tvUrl = `/tv/${encodeURIComponent(tid)}`;
   try {
@@ -554,38 +552,19 @@ function _buildTournamentUrl(tid) {
 }
 
 function _renderLinkedTournaments() {
-  const tids = _getLinkedTournamentIds();
-  if (tids.length === 0) return '';
-
-  const linkedById = new Map(
-    ((_regData?.linked_tournaments || []).filter((item) => item?.id))
-      .map((item) => [item.id, item]),
-  );
-  const activeLinks = [];
-  const finishedLinks = [];
-
-  tids.forEach(function(tid) {
-    const linked = linkedById.get(tid);
-    if (!linked) return; // skip deleted tournaments
-    const name = linked.name;
-    const label = `${t('txt_reg_view_tournament_btn')} · ${name}`;
-    const linkHtml = `<a href="${_buildTournamentUrl(tid)}" class="linked-tournament-link" title="${esc(tid)}">${esc(label)}</a>`;
-    if (linked.finished) {
-      finishedLinks.push(linkHtml);
-    } else {
-      activeLinks.push(linkHtml);
-    }
-  });
+  const groups = _linkedTournamentGroups(_regData);
+  if (groups.active.length + groups.finished.length === 0) return '';
+  const link = (e) => `<a href="${e.href}" class="linked-tournament-link" title="${esc(e.tid)}">${esc(e.label)}</a>`;
 
   let html = `<div class="linked-tournaments">`;
   html += `<div class="linked-tournaments-title">${t('txt_reg_linked_tournaments')}</div>`;
-  if (activeLinks.length > 0) {
+  if (groups.active.length > 0) {
     html += `<div class="linked-tournaments-section-title">${t('txt_txt_active_tournaments')}</div>`;
-    html += `<div class="linked-tournaments-list">${activeLinks.join('')}</div>`;
+    html += `<div class="linked-tournaments-list">${groups.active.map(link).join('')}</div>`;
   }
-  if (finishedLinks.length > 0) {
+  if (groups.finished.length > 0) {
     html += `<div class="linked-tournaments-section-title">${t('txt_txt_finished_tournaments')}</div>`;
-    html += `<div class="linked-tournaments-list">${finishedLinks.join('')}</div>`;
+    html += `<div class="linked-tournaments-list">${groups.finished.map(link).join('')}</div>`;
   }
   html += `</div>`;
 
@@ -618,6 +597,7 @@ function _showForm() {
   }
 
   html += _renderMessage();
+  html += _renderFeeNotice();
   html += _renderPlayerList();
   html += _renderLinkedTournaments();
 
@@ -644,7 +624,6 @@ function _showForm() {
   html += _renderIdentityStrip({
     loggedIn: isLoggedIn,
     name: prefillName || _regPrefill?.email || '',
-    registered: false,
   });
 
   // ── Unified "Returning player?" section: code / email / name ──
@@ -719,6 +698,7 @@ function _showForm() {
 }
 
 function _logoutPlayerSpace() {
+  _resetSuccessUi();
   _linkedProfilePassphrase = null;
   try {
     localStorage.removeItem('padel-player-profile');
@@ -882,12 +862,14 @@ async function _returningCodeLogin() {
     });
     if (lobby.ok) {
       const data = await lobby.json();
+      _resetSuccessUi();
       _lastResult = {
         player_id: data.player_id,
         player_name: data.player_name,
         passphrase: data.passphrase,
         answers: data.answers || {},
         token: data.token || null,
+        payment: data.payment || null,
         from_login: true,
       };
       if (data.token) _setRegToken(data.token);
@@ -1048,12 +1030,14 @@ async function _autoLoginWithToken(token) {
     });
     if (res.ok) {
       const data = await res.json();
+      _resetSuccessUi();
       _lastResult = {
         player_id: data.player_id,
         player_name: data.player_name,
         passphrase: data.passphrase,
         answers: data.answers || {},
         token: data.token || null,
+        payment: data.payment || null,
         from_login: true,
       };
       // Persist the token so refreshing the page keeps the session
@@ -1066,228 +1050,331 @@ async function _autoLoginWithToken(token) {
   _render();
 }
 
-function _renderReturningPlayerEditor() {
-  if (!_lastResult?.from_login || !_regData?.open) return '';
+/**
+ * Post-registration actions for the visitor's own entry: edit answers and
+ * withdraw, with an inline confirm strip instead of a native confirm().
+ */
+// ── Success view: Petite-Vue island (#state-success) ─────────────────────
+//
+// Markup lives in register.html (`<template id="tpl-success">`) and is cloned
+// into #state-success once per DOM root, then bound to `_successStore`. The
+// store survives `_fullRender()` (language toggle), so UI flags and, above
+// all, the "Edit answers" draft are never lost: the draft lives here, not in
+// the DOM, and is mirrored to sessionStorage so a reload keeps it too.
+// Player Hub sections stay legacy innerHTML inside `#reg-ps-host` (v-pre).
 
-  const hasQuestions = _regData.questions && _regData.questions.length > 0;
+const _DRAFT_STORAGE_PREFIX = 'amistoso-reg-draft:';
 
-  let html = `<details class="manage-reg">`;
-  html += `<summary><span class="manage-reg-arrow">▸</span> ${t('txt_reg_manage_registration')}</summary>`;
-  html += `<div class="manage-reg-body">`;
-
-  if (hasQuestions) {
-    for (const q of _regData.questions) {
-      const reqAttr = q.required ? 'required' : '';
-      const existingValue = _lastResult.answers?.[q.key] || '';
-      const optHint = q.required ? '' : ` <small class="reg-optional-hint">(${t('txt_txt_optional')})</small>`;
-      html += `<div class="form-group"><label>${esc(q.label)}${optHint}</label>`;
-      if (q.type === 'choice' && q.choices && q.choices.length) {
-        html += `<select class="returning-answer" data-key="${esc(q.key)}" ${reqAttr}>`;
-        html += `<option value="">${t('txt_reg_select_option')}</option>`;
-        for (const c of q.choices) {
-          const selected = c === existingValue ? 'selected' : '';
-          html += `<option value="${esc(c)}" ${selected}>${esc(c)}</option>`;
-        }
-        html += `</select>`;
-      } else if (q.type === 'multichoice' && q.choices && q.choices.length) {
-        let existingSelected = [];
-        try { existingSelected = JSON.parse(existingValue) || []; } catch (_) {}
-        html += `<div class="returning-multichoice" data-key="${esc(q.key)}" ${reqAttr}>`;
-        for (const c of q.choices) {
-          const checked = existingSelected.includes(c) ? 'checked' : '';
-          html += `<label class="reg-multichoice-option"><input type="checkbox" value="${esc(c)}" ${checked}><span>${esc(c)}</span></label>`;
-        }
-        html += `</div>`;
-      } else if (q.type === 'number') {
-        html += `<input type="number" class="returning-answer" data-key="${esc(q.key)}" step="any" value="${esc(existingValue)}" ${reqAttr}>`;
-      } else {
-        html += `<textarea class="returning-answer reg-text-expand" data-key="${esc(q.key)}" maxlength="512" rows="1" ${reqAttr} oninput="_regAutoResize(this)">${esc(existingValue)}</textarea>`;
-      }
-      html += `</div>`;
-    }
-  }
-
-  html += `<div class="error-msg" id="reg-returning-action-error"></div>`;
-  html += `<div class="manage-reg-actions">`;
-  html += `<div class="manage-reg-actions-left">`;
-  if (hasQuestions) {
-    html += `<button type="button" class="btn-outline" id="reg-returning-save-btn" onclick="_saveReturningAnswers()">${t('txt_reg_update_answers')}</button>`;
-    html += `<span class="manage-reg-success" id="reg-returning-save-ok"></span>`;
-  }
-  html += `</div>`;
-  html += `<button type="button" class="btn-outline-danger" id="reg-returning-cancel-btn" onclick="_cancelReturningRegistration()">${t('txt_reg_cancel_registration')}</button>`;
-  html += `</div></div></details>`;
-  return html;
+/** Which input widget a question renders as (unknown/empty-choice types fall back to text). */
+function _questionKind(q) {
+  const hasChoices = Array.isArray(q?.choices) && q.choices.length > 0;
+  if (q?.type === 'choice' && hasChoices) return 'choice';
+  if (q?.type === 'multichoice' && hasChoices) return 'multi';
+  if (q?.type === 'number') return 'number';
+  return 'text';
 }
 
-async function _saveReturningAnswers() {
-  if (!_lastResult?.from_login || !_rid) return;
-  const errorEl = document.getElementById('reg-returning-action-error');
-  const saveBtn = document.getElementById('reg-returning-save-btn');
-  if (errorEl) errorEl.textContent = '';
-
-  const answers = {};
-  const answerEls = document.querySelectorAll('.returning-answer');
-  for (const el of answerEls) {
-    const key = el.getAttribute('data-key');
-    const val = el.value?.trim();
-    if (el.hasAttribute('required') && !val) {
-      if (errorEl) errorEl.textContent = t('txt_reg_answer_required');
-      return;
-    }
-    if (val) answers[key] = val;
-  }
-  // Collect multichoice answers (checkboxes)
-  const multichoiceEls = document.querySelectorAll('.returning-multichoice');
-  for (const container of multichoiceEls) {
-    const key = container.getAttribute('data-key');
-    const selected = Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
-    if (container.hasAttribute('required') && selected.length === 0) {
-      if (errorEl) errorEl.textContent = t('txt_reg_answer_required');
-      return;
-    }
-    if (selected.length > 0) answers[key] = JSON.stringify(selected);
-  }
-
-  if (saveBtn) saveBtn.disabled = true;
-  try {
-    const res = await fetch(`${API}/${encodeURIComponent(_rid)}/player-answers`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passphrase: _lastResult.passphrase, answers }),
-    });
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      if (errorEl) errorEl.textContent = data.detail || t('txt_reg_error');
-      return;
-    }
-
-    const updated = await res.json();
-    _lastResult.answers = updated.answers || {};
-    if (_regData?.registrants) {
-      const idx = _regData.registrants.findIndex((p) => p.player_id === updated.player_id);
-      if (idx >= 0) _regData.registrants[idx].answers = updated.answers || {};
-    }
-    const okEl = document.getElementById('reg-returning-save-ok');
-    if (okEl) {
-      okEl.textContent = t('txt_reg_saved');
-      setTimeout(() => { okEl.textContent = ''; }, 3000);
-    }
-  } catch (_) {
-    if (errorEl) errorEl.textContent = t('txt_reg_error');
-  } finally {
-    if (saveBtn) saveBtn.disabled = false;
-  }
-}
-
-async function _cancelReturningRegistration() {
-  if (!_lastResult?.from_login || !_rid) return;
-  const errorEl = document.getElementById('reg-returning-action-error');
-  const cancelBtn = document.getElementById('reg-returning-cancel-btn');
-  if (errorEl) errorEl.textContent = '';
-  if (!confirm(t('txt_reg_confirm_cancel_registration'))) return;
-
-  if (cancelBtn) cancelBtn.disabled = true;
-  try {
-    const res = await fetch(`${API}/${encodeURIComponent(_rid)}/player-cancel`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passphrase: _lastResult.passphrase }),
-    });
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      if (errorEl) errorEl.textContent = data.detail || t('txt_reg_error');
-      return;
-    }
-
-    if (_regData) {
-      _regData.registrant_count = Math.max(0, (_regData.registrant_count || 1) - 1);
-    }
-    _lastResult = null;
-    _render();
-    const toast = document.createElement('div');
-    toast.className = 'reg-toast';
-    toast.textContent = t('txt_reg_cancelled');
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2500);
-  } catch (_) {
-    if (errorEl) errorEl.textContent = t('txt_reg_error');
-  } finally {
-    if (cancelBtn) cancelBtn.disabled = false;
-  }
-}
-
-function _showSuccess() {
-  _hideAll();
-  const el = document.getElementById('state-success');
-  // Clear the form container so its input ids don't shadow the success
-  // screen's (both live in #reg-root; only one is visible at a time).
-  const formEl = document.getElementById('state-form');
-  if (formEl) formEl.innerHTML = '';
-  const r = _lastResult;
-  const identityLabel = _registrationIdentityLabel(_regData);
-
-  // Store token early so _buildTournamentUrl can embed it in linked tournament links
-  if (_rid && r.token) {
-    _setRegToken(r.token);
-  }
-
-  let html = `<h2 class="reg-success-title"><span class="reg-success-check">${_svgIcon(_IC_CHECK)}</span>${t('txt_reg_registered', { name: r.player_name })}</h2>`;
-  if (identityLabel) {
-    html += `<p class="subtitle subtitle-strong">${esc(identityLabel)}</p>`;
-  }
-
-  // Identity strip: the this-tournament chip is now "registered".
-  let _sessProfile = null;
-  try {
-    const rawData = localStorage.getItem('padel-player-profile-data');
-    const rawJwt = localStorage.getItem('padel-player-profile');
-    if (rawData && rawJwt) _sessProfile = JSON.parse(rawData);
-  } catch (_) {}
-  html += _renderIdentityStrip({
-    loggedIn: !!_sessProfile,
-    name: _sessProfile?.name || _sessProfile?.email || '',
-    registered: true,
-  });
-
-  // If the registration was linked to an existing Hub profile server-side,
-  // confirm it instead of offering to create a new profile.
-  const _profileLinked = !!r.profile_linked;
-  if (_profileLinked) {
-    html += `<p class="reg-ps-auto-linked">${_svgIcon(_IC_CHECK)} ${t('txt_reg_ps_auto_linked')}</p>`;
-  }
-
-  html += `<div class="passphrase-label">${t('txt_reg_your_passphrase')}</div>`;
-  html += `<div class="passphrase-copy-row">`;
-  html += `<div class="passphrase-box" id="reg-passphrase-box">${esc(r.passphrase)}</div>`;
-  html += `<button type="button" class="btn btn-primary passphrase-copy-btn" id="reg-copy-btn" onclick="_copyPassphrase()">${t('txt_txt_copy')}</button>`;
-  html += `</div>`;
-  // Linked to a profile but the profile's code was already taken in this lobby:
-  // this entry has its own code — say so, or the player tries the profile code
-  // at the door and concludes "my code doesn't work".
-  if (r.passphrase_differs_from_profile) {
-    html += `<p class="reg-ps-passphrase-differs">${t('txt_reg_ps_passphrase_differs')}</p>`;
-  }
-  html += `<p class="keep-note">${t('txt_reg_keep_code')}</p>`;
-  html += `<div class="success-actions"><a href="/register" class="btn btn-primary success-back-btn">${t('txt_reg_back_home')}</a></div>`;
-
-  html += _renderMessage();
-
-  html += _renderPlayerList();
-
-  html += _renderLinkedTournaments();
-
-  html += _renderReturningPlayerEditor();
-
-  // Player Hub: show create section only if no profile is linked and no existing session
-  const _hasProfileSession = (() => {
+/** Initial draft value for a question from a saved (string) answer. */
+function _draftValueFor(q, saved) {
+  if (_questionKind(q) === 'multi') {
     try {
-      return !!(localStorage.getItem('padel-player-profile') && localStorage.getItem('padel-player-profile-data'));
-    } catch (_) { return false; }
-  })();
-  if (!_profileLinked && !_linkedProfilePassphrase && !_hasProfileSession) {
+      const arr = JSON.parse(saved || '[]');
+      return Array.isArray(arr) ? arr : [];
+    } catch (_) { return []; }
+  }
+  return saved == null ? '' : String(saved);
+}
+
+function _draftStorageKey(playerId) {
+  return `${_DRAFT_STORAGE_PREFIX}${_rid || ''}:${playerId}`;
+}
+
+function _loadStoredDraft(playerId) {
+  try {
+    const raw = sessionStorage.getItem(_draftStorageKey(playerId));
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (_) { return null; }
+}
+
+function _clearStoredDraft(playerId) {
+  try { sessionStorage.removeItem(_draftStorageKey(playerId)); } catch (_) {}
+}
+
+/** Active/finished linked-tournament links for a lobby payload. */
+function _linkedTournamentGroups(data) {
+  let tids = Array.isArray(data?.converted_to_tids) ? data.converted_to_tids.filter(Boolean) : [];
+  if (tids.length === 0 && data?.converted_to_tid) tids = [data.converted_to_tid];
+  const linkedById = new Map(
+    ((data?.linked_tournaments || []).filter((item) => item?.id)).map((item) => [item.id, item]),
+  );
+  const groups = { active: [], finished: [] };
+  tids.forEach((tid) => {
+    const linked = linkedById.get(tid);
+    if (!linked) return; // skip deleted tournaments
+    const entry = {
+      tid,
+      href: _buildTournamentUrl(tid),
+      label: `${t('txt_reg_view_tournament_btn')} · ${linked.name}`,
+    };
+    (linked.finished ? groups.finished : groups.active).push(entry);
+  });
+  return groups;
+}
+
+const _successStore = reactiveStore({
+  result: null,       // registration result (player_name, passphrase, answers, ...)
+  lobby: null,        // public lobby payload (name, open, questions, registrants, message, ...)
+  subtitle: '',
+  identityHtml: '',   // identity strip (legacy builder, only when signed in)
+  editOpen: false,
+  confirmingWithdraw: false,
+  playersOpen: false,
+  draft: {},          // answer key -> string | string[]; survives close/reopen, polls, failed saves
+  draftFor: null,     // player_id the draft belongs to
+  saving: false,
+  withdrawing: false,
+  error: '',
+  payReference: '',   // optional note sent with "I've paid"
+  payReporting: false,
+  payCopied: '',      // last copied value (drives the "Copied" label)
+  payError: '',
+
+  // ── derived ──
+  kind(q) { return _questionKind(q); },
+  payAmount() {
+    const p = _successStore.result?.payment;
+    return p ? formatMoney(p.amount_cents, p.currency) : '';
+  },
+  payPending() {
+    const st = _successStore.result?.payment?.status;
+    return st === 'unpaid' || st === 'reported';
+  },
+  payHref(m) {
+    const p = _successStore.result?.payment;
+    return p ? paymentMethodHref(m, p.amount_cents, p.currency) : null;
+  },
+  hasQuestions() { return (_successStore.lobby?.questions || []).length > 0; },
+  canManage() { return !!(_successStore.result?.passphrase && _successStore.lobby?.open); },
+  messageHtml() { return _renderMarkdown(_successStore.lobby?.message || ''); },
+  linked() { return _linkedTournamentGroups(_successStore.lobby); },
+  hasLinked() {
+    const g = _successStore.linked();
+    return g.active.length + g.finished.length > 0;
+  },
+
+  // ── data in ──
+  setResult(result, lobby, extras) {
+    const S = _successStore;
+    S.result = result;
+    S.lobby = lobby;
+    S.subtitle = extras?.subtitle || '';
+    S.identityHtml = extras?.identityHtml || '';
+    if (S.draftFor !== result.player_id) S.seedDraft(true);
+    else S.syncDraftKeys();
+  },
+  /** Lobby poll: patch lobby data in place; never touches the draft values. */
+  setLobby(lobby) {
+    const S = _successStore;
+    S.lobby = lobby;
+    S.syncDraftKeys();
+  },
+  /** Seed the draft from the saved answers (and, on first sight, any stored unsaved draft). */
+  seedDraft(useStored) {
+    const S = _successStore;
+    const answers = S.result?.answers || {};
+    const stored = useStored ? _loadStoredDraft(S.result.player_id) : null;
+    const draft = {};
+    for (const q of S.lobby?.questions || []) {
+      draft[q.key] = stored && q.key in stored
+        ? stored[q.key]
+        : _draftValueFor(q, answers[q.key]);
+    }
+    S.draft = draft;
+    S.draftFor = S.result.player_id;
+  },
+  /** New questions appear in the draft; existing typed values are kept as-is. */
+  syncDraftKeys() {
+    const S = _successStore;
+    for (const q of S.lobby?.questions || []) {
+      if (!(q.key in S.draft)) S.draft[q.key] = _draftValueFor(q, S.result?.answers?.[q.key]);
+    }
+  },
+  persistDraft() {
+    const S = _successStore;
+    if (S.draftFor == null) return;
+    try { sessionStorage.setItem(_draftStorageKey(S.draftFor), JSON.stringify(S.draft)); } catch (_) {}
+  },
+  resetUi() {
+    const S = _successStore;
+    S.editOpen = false;
+    S.confirmingWithdraw = false;
+    S.playersOpen = false;
+    S.error = '';
+  },
+
+  // ── actions ──
+  toggleEdit() {
+    const S = _successStore;
+    S.editOpen = !S.editOpen;
+    S.error = '';
+    if (S.editOpen) {
+      setTimeout(() => {
+        document.querySelectorAll('#reg-edit-panel textarea.reg-text-expand').forEach(_regAutoResize);
+        document.querySelector('#reg-edit-panel .returning-answer, #reg-edit-panel input')?.focus();
+      }, 0);
+    }
+  },
+  askWithdraw() {
+    const S = _successStore;
+    S.error = '';
+    S.confirmingWithdraw = true;
+  },
+  keepSpot() {
+    _successStore.confirmingWithdraw = false;
+    setTimeout(() => document.getElementById('reg-withdraw-btn')?.focus(), 0);
+  },
+
+  async save() {
+    const S = _successStore;
+    if (S.saving || !S.result?.passphrase || !_rid) return;
+    S.error = '';
+
+    const answers = {};
+    for (const q of S.lobby?.questions || []) {
+      const v = S.draft[q.key];
+      if (_questionKind(q) === 'multi') {
+        // Keep the option order (checkbox click order is arbitrary).
+        const selected = (q.choices || []).filter((c) => Array.isArray(v) && v.includes(c));
+        if (selected.length) answers[q.key] = JSON.stringify(selected);
+        else if (q.required) { S.error = t('txt_reg_answer_required'); return; }
+      } else {
+        const val = (v == null ? '' : String(v)).trim();
+        if (val) answers[q.key] = val;
+        else if (q.required) { S.error = t('txt_reg_answer_required'); return; }
+      }
+    }
+
+    S.saving = true;
+    try {
+      const res = await fetch(`${API}/${encodeURIComponent(_rid)}/player-answers`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passphrase: S.result.passphrase, answers }),
+      });
+      if (!res.ok) {
+        // Failed save: keep the draft and the open panel exactly as typed.
+        const data = await res.json().catch(() => ({}));
+        S.error = data.detail || t('txt_reg_error');
+        return;
+      }
+      const updated = await res.json();
+      const saved = updated.answers || {};
+      S.result.answers = saved;
+      if (_lastResult) _lastResult.answers = saved;
+      const regs = S.lobby?.registrants;
+      const idx = Array.isArray(regs) ? regs.findIndex((p) => p.player_id === updated.player_id) : -1;
+      if (idx >= 0) regs[idx].answers = saved;
+      // Saved: the draft now equals the saved answers; drop the stored copy and re-seed.
+      _clearStoredDraft(S.draftFor);
+      S.seedDraft(false);
+      S.editOpen = false;
+      setTimeout(() => flashSuccess(document.getElementById('reg-edit-btn'), t('txt_reg_saved')), 0);
+    } catch (_) {
+      S.error = t('txt_reg_error');
+    } finally {
+      S.saving = false;
+    }
+  },
+
+  async payCopy(text, btn) {
+    const S = _successStore;
+    const ok = await copyTextToClipboard(text);
+    if (!ok) return;
+    S.payCopied = text;
+    if (btn) flashSuccess(btn, t('txt_pay_player_copied'));
+    setTimeout(() => { if (S.payCopied === text) S.payCopied = ''; }, 1800);
+  },
+
+  /** "I've paid": unpaid -> reported; the server never downgrades a confirmed row. */
+  async reportPayment() {
+    const S = _successStore;
+    const r = S.result;
+    if (S.payReporting || !r?.payment || !_rid || !(r.passphrase || r.token)) return;
+    S.payError = '';
+    S.payReporting = true;
+    try {
+      const body = r.passphrase ? { passphrase: r.passphrase } : { token: r.token };
+      const ref = (S.payReference || '').trim();
+      if (ref) body.reference = ref;
+      const res = await fetch(`${API}/${encodeURIComponent(_rid)}/player-payment-report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        S.payError = data.detail || t('txt_pay_error');
+        return;
+      }
+      const info = await res.json();
+      r.payment = info;
+      if (_lastResult) _lastResult.payment = info;
+      S.payReference = '';
+    } catch (_) {
+      S.payError = t('txt_pay_error');
+    } finally {
+      S.payReporting = false;
+    }
+  },
+
+  async withdraw() {
+    const S = _successStore;
+    if (S.withdrawing || !S.result?.passphrase || !_rid) return;
+    S.error = '';
+    S.withdrawing = true;
+    try {
+      const res = await fetch(`${API}/${encodeURIComponent(_rid)}/player-cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passphrase: S.result.passphrase }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        S.error = data.detail || t('txt_reg_error');
+        return;
+      }
+      if (_regData) {
+        _regData.registrant_count = Math.max(0, (_regData.registrant_count || 1) - 1);
+      }
+      if (Array.isArray(_regData?.registrants)) {
+        const pid = S.result.player_id;
+        _regData.registrants = _regData.registrants.filter((p) => p.player_id !== pid);
+      }
+      // Withdrawn: the one case (besides a successful save) where the draft is discarded.
+      _clearStoredDraft(S.draftFor);
+      S.draftFor = null;
+      S.draft = {};
+      S.resetUi();
+      _lastResult = null;
+      _render();
+      const toast = document.createElement('div');
+      toast.className = 'reg-toast';
+      toast.textContent = t('txt_reg_withdrawn');
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2500);
+    } catch (_) {
+      S.error = t('txt_reg_error');
+    } finally {
+      S.withdrawing = false;
+    }
+  },
+});
+
+/** Player Hub create / past-claim sections: legacy innerHTML rendered into the v-pre host. */
+function _renderHubSections(r, profileLinked, hasProfileSession) {
+  let html = '';
+  if (!profileLinked && !_linkedProfilePassphrase && !hasProfileSession) {
     const emailMode = _regData?.email_requirement || 'optional';
     const hasEmail = !!_submittedEmail;
     const needsEmail = emailMode === 'disabled' || !hasEmail;
@@ -1303,19 +1390,71 @@ function _showSuccess() {
     html += `<div class="reg-ps-create-error" id="reg-ps-create-error"></div>`;
     html += `<p class="reg-ps-already-have">${t('txt_reg_ps_already_have')} <a href="/player">${t('txt_player_login')}</a></p>`;
     html += `</div>`;
-    html += `</div>`;
+    html += `</details>`;
   }
-
   // With a profile session, past participations can be found and claimed
   // right here — the claim precondition (a profile) is now satisfied.
-  if (_hasProfileSession) {
-    html += _renderPastClaimSection();
+  if (hasProfileSession) html += _renderPastClaimSection();
+  return html;
+}
+
+function _showSuccess() {
+  _hideAll();
+  const el = document.getElementById('state-success');
+  // Clear the form container so its input ids don't shadow the success
+  // screen's (both live in #reg-root; only one is visible at a time).
+  const formEl = document.getElementById('state-form');
+  if (formEl) formEl.innerHTML = '';
+  const r = _lastResult;
+
+  // Store token early so _buildTournamentUrl can embed it in linked tournament links
+  if (_rid && r.token) {
+    _setRegToken(r.token);
   }
 
-  el.innerHTML = html;
-  el.style.display = 'block';
-  el.querySelectorAll('textarea.reg-text-expand').forEach(_regAutoResize);
+  // Identity strip only when signed in to the Player Hub (no "registered"
+  // chip: the heading already says so).
+  let sessProfile = null;
+  try {
+    const rawData = localStorage.getItem('padel-player-profile-data');
+    const rawJwt = localStorage.getItem('padel-player-profile');
+    if (rawData && rawJwt) sessProfile = JSON.parse(rawData);
+  } catch (_) {}
+  // If the registration was linked to an existing Hub profile server-side,
+  // say so instead of offering to create a new profile.
+  const profileLinked = !!r.profile_linked;
+  const identityHtml = sessProfile
+    ? _renderIdentityStrip({
+      loggedIn: true,
+      name: sessProfile.name || sessProfile.email || '',
+      showEntryChip: false,
+      caption: profileLinked ? t('txt_reg_identity_hub_linked') : '',
+    })
+    : '';
+  const subtitle = [_regData?.name, _registrationIdentityLabel(_regData)].filter(Boolean).join(' · ');
 
+  // Feed the store first so the very first bind already sees real data.
+  _successStore.setResult(r, _regData, { subtitle, identityHtml });
+
+  // Mount exactly once per DOM root (_fullRender creates a fresh root).
+  if (!el._petiteVueMounted) {
+    const tpl = document.getElementById('tpl-success');
+    el.innerHTML = tpl ? tpl.innerHTML : '';
+    if (!mountIsland('#state-success', _successStore)) {
+      _showError(t('txt_reg_error'));
+      return;
+    }
+  }
+
+  const hasProfileSession = (() => {
+    try {
+      return !!(localStorage.getItem('padel-player-profile') && localStorage.getItem('padel-player-profile-data'));
+    } catch (_) { return false; }
+  })();
+  const host = document.getElementById('reg-ps-host');
+  if (host) host.innerHTML = _renderHubSections(r, profileLinked, hasProfileSession);
+
+  el.style.display = 'block';
   _startPolling();
 }
 
@@ -1423,11 +1562,15 @@ async function _handleSubmit(e) {
       submitBtn.disabled = false;
       return;
     }
+    _resetSuccessUi();
     _lastResult = await res.json();
     // Backend response doesn't include answers; attach them so
     // _createPlayerSpace can access the contact answer.
     _lastResult.answers = answers;
     _regData.registrant_count++;
+    if (Array.isArray(_regData.registrants) && !_regData.registrants.some((p) => p.player_id === _lastResult.player_id)) {
+      _regData.registrants.push({ player_id: _lastResult.player_id, player_name: _lastResult.player_name });
+    }
     _showSuccess();
   } catch (err) {
     errorEl.textContent = t('txt_reg_error');
@@ -1488,9 +1631,13 @@ async function _pollLobby() {
 
     const questionsChanged = JSON.stringify(data.questions ?? []) !== JSON.stringify(_regData.questions ?? []);
     const messageChanged = (data.message || '') !== (_regData.message || '');
-    if (questionsChanged || messageChanged || data.registrant_count !== _regData.registrant_count) {
+    const playersChanged = JSON.stringify((data.registrants ?? []).map((p) => p.player_id))
+      !== JSON.stringify((_regData.registrants ?? []).map((p) => p.player_id));
+    if (questionsChanged || messageChanged || playersChanged || data.registrant_count !== _regData.registrant_count) {
       _regData = data;
-      if (_lastResult) _showSuccess();
+      // Patch the island's store; the open edit panel, draft and withdraw
+      // strip are untouched (no innerHTML rebuild).
+      if (_lastResult) _successStore.setLobby(_regData);
     }
   } catch (_) { /* network blip */ }
   finally { _lobbyFetching = false; }
@@ -1513,12 +1660,45 @@ function _showRedirectToast(tid) {
 
 // ── Message + player list rendering ──────────────────────
 
+/**
+ * Public entry-fee notice (form / closed views). Methods only appear when the
+ * organizer chose "show always"; otherwise the player sees them after
+ * registering (success view). Legacy string builder, matches its siblings.
+ */
+function _renderFeeNotice() {
+  const p = _regData?.payment;
+  if (!p || !p.fee_cents) return '';
+  let html = `<div class="pay-block">`;
+  html += `<div class="pay-block-title"><span>${t('txt_pay_player_title')}</span><span class="pay-block-amount">${esc(formatMoney(p.fee_cents, p.currency))}</span></div>`;
+  if (p.due_at) html += `<p class="pay-block-due">${esc(t('txt_pay_player_due', { date: p.due_at }))}</p>`;
+  if (p.instructions) html += `<p class="pay-block-instructions">${esc(p.instructions)}</p>`;
+  if (Array.isArray(p.methods) && p.methods.length) {
+    html += `<div class="pay-methods">`;
+    for (const m of p.methods) {
+      const href = paymentMethodHref(m, p.fee_cents, p.currency);
+      html += `<div class="pay-method"><span class="pay-method-kind">${esc(paymentMethodLabel(m))}</span>`;
+      if (href) html += `<a class="pay-method-value" href="${escAttr(href)}" target="_blank" rel="noopener">${esc(m.value)}</a>`;
+      else if (m.value) html += `<span class="pay-method-value">${esc(m.value)}</span>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+  } else {
+    html += `<p class="pay-block-due">${t('txt_pay_player_methods_after')}</p>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
 function _renderMessage() {
   if (!_regData?.message) return '';
   return `<div class="reg-message-label">${t('txt_reg_admin_message')}</div>
     <div class="reg-message">${_renderMarkdown(_regData.message)}</div>`;
 }
 
+/**
+ * Registered-players disclosure for the form / closed views (always open).
+ * The success view renders its own collapsed variant inside the island.
+ */
 function _renderPlayerList() {
   const players = _regData?.registrants;
   if (!players || players.length === 0) return '';
@@ -1527,7 +1707,7 @@ function _renderPlayerList() {
     chips += `<span class="player-chip">${esc(p.player_name)}</span>`;
   }
   return `<details class="player-list" open>
-    <summary>${t('txt_reg_registered_players')} (${players.length})</summary>
+    <summary><svg class="ic player-list-chevron" viewBox="64 64 896 896" fill="currentColor" aria-hidden="true"><path d="${_IC_CHEVRON}"/></svg><span>${t('txt_reg_registered_players')} (${players.length})</span></summary>
     <div class="player-list-items">${chips}</div>
   </details>`;
 }

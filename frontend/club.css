@@ -834,3 +834,8 @@ body {
   .club-mini-sports { grid-template-columns: 1fr; }
   .club-mini-card-name { font-size: 1.1rem; }
 }
+
+/* ── Fatal state (club not found / failed to load) ── */
+.club-fatal { display: flex; flex-direction: column; align-items: center; gap: var(--space-4); }
+.club-fatal-msg { margin: 0; font-size: 1.1rem; color: var(--color-text-muted); }
+.club-fatal-action { text-decoration: none; }

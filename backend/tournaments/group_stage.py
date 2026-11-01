@@ -21,6 +21,7 @@ from collections import defaultdict
 
 from ..models import Court, GroupStanding, Match, MatchStatus, Player
 from . import pairing as pairing_mod
+from .set_format import games_from_sets, match_decider
 
 
 def _schedule_round_robin(players: list) -> list[list[tuple]]:
@@ -285,10 +286,10 @@ class Group:
 
             if m.sets:
                 uses_sets = True
-                # Sets format: use actual game totals for points, but
-                # determine wins/losses by sets won (not total games).
-                games1 = sum(s[0] for s in m.sets)
-                games2 = sum(s[1] for s in m.sets)
+                # Sets format: use actual game totals for points (a match
+                # tie-break decider counts as one game), but determine
+                # wins/losses by sets won (not total games).
+                games1, games2 = games_from_sets(m.sets, match_decider(m))
                 sets1 = sum(1 for s in m.sets if s[0] > s[1])
                 sets2 = sum(1 for s in m.sets if s[1] > s[0])
                 if sets1 > sets2:

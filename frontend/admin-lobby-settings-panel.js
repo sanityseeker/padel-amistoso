@@ -9,7 +9,7 @@
 // `adminLobbySettingsSubtab:<rid>`.
 
 const LOBBY_SUBTAB_DEFAULT = 'details';
-const LOBBY_SUBTABS = ['details', 'questions', 'comms', 'access'];
+const LOBBY_SUBTABS = ['details', 'questions', 'comms', 'payments', 'access'];
 
 // rids whose settings page (instead of the lobby overview) is currently shown
 const _lobbySettingsPageRids = new Set();
@@ -156,7 +156,7 @@ function _renderLobbyStatusBar(rid, r) {
     actions += `<button type="button" class="btn btn-sm btn-primary" onclick="withLoading(this,()=>_toggleRegOpen('${esc(rid)}',false))">${t('txt_reg_open_registration')}</button>`;
     actions += `<button type="button" class="btn btn-sm btn-secondary" onclick="withLoading(this,()=>_archiveRegistration('${esc(rid)}',true))">${t('txt_reg_archive')}</button>`;
   }
-  actions += `<button type="button" class="btn btn-sm" onclick="_copyRegLink('${esc(rid)}')">${t('txt_reg_copy_link')}</button>`;
+  actions += `<button type="button" class="btn btn-sm" onclick="_copyRegLink('${esc(rid)}', this)">${t('txt_reg_copy_link')}</button>`;
   actions += `<button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToLobbySettings('${esc(rid)}','details')" title="${escAttr(t('txt_admin_status_jump_settings'))}">${_ic('settings')} ${t('txt_admin_status_jump_settings')}</button>`;
 
   return `
@@ -195,7 +195,7 @@ function _renderLobbyDetailsBody(rid, r) {
   html += `<p class="settings-help">${t('txt_reg_alias_help')}</p>`;
   html += `<div class="settings-inline-row">`;
   html += `<input type="text" id="reg-alias-input-${esc(rid)}" class="settings-input settings-input--mono settings-input--grow" placeholder="${t('txt_tv_alias_placeholder')}" value="${escAttr(regAlias)}" pattern="[a-zA-Z0-9_-]+" maxlength="64">`;
-  html += `<button type="button" class="btn btn-sm btn-primary" onclick="withLoading(this,()=>_setRegAlias('${esc(rid)}'))">${t('txt_txt_save')}</button>`;
+  html += `<button type="button" id="reg-alias-save-btn-${esc(rid)}" class="btn btn-sm btn-primary" onclick="withLoading(this,()=>_setRegAlias('${esc(rid)}'))">${t('txt_txt_save')}</button>`;
   if (regAlias) {
     html += `<button type="button" class="btn btn-sm btn-danger" onclick="withLoading(this,()=>_deleteRegAlias('${esc(rid)}'))">✕ ${t('txt_txt_remove')}</button>`;
   }
@@ -204,7 +204,7 @@ function _renderLobbyDetailsBody(rid, r) {
   html += `<div class="settings-url-preview-row">`;
   html += `<span class="settings-url-preview-hint">${t('txt_reg_public_url')}</span>`;
   html += `<a href="${regUrl}" target="_blank" rel="noopener" style="color:var(--accent);font-size:0.85rem;word-break:break-all;flex:1;min-width:200px">${regUrl}</a>`;
-  html += `<button type="button" class="settings-url-copy-btn" onclick="_copyRegLink('${esc(rid)}')">${t('txt_reg_copy_link')}</button>`;
+  html += `<button type="button" class="settings-url-copy-btn" onclick="_copyRegLink('${esc(rid)}', this)">${t('txt_reg_copy_link')}</button>`;
   html += `</div>`;
   html += `</div>`;
   html += `</div>`;
@@ -294,7 +294,7 @@ function _renderLobbyCommsBody(rid, r, emailSettings) {
       html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendRegMessageEmails('${esc(rid)}',true))" title="${escAttr(t('txt_email_confirm_send_message_eligible'))}">${_ic('mail')} ${t('txt_email_send_message_eligible')} (${eligibleCount})</button>`;
     }
   }
-  html += `<button type="button" class="btn btn-primary btn-sm" style="margin-left:auto" onclick="withLoading(this,()=>_saveRegMessage('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
+  html += `<button type="button" id="reg-message-save-btn-${esc(rid)}" class="btn btn-primary btn-sm" style="margin-left:auto" onclick="withLoading(this,()=>_saveRegMessage('${esc(rid)}'))">${t('txt_reg_save')}</button>`;
   html += `</div>`;
   html += `</div>`;
 
@@ -317,8 +317,7 @@ function _renderLobbyCommsBody(rid, r, emailSettings) {
   html += `</div>`;
 
   html += `<div class="settings-section-actions" style="justify-content:flex-end;gap:0.5rem;align-items:center">`;
-  html += `<span id="reg-email-settings-saved-msg-${esc(rid)}" style="color:var(--success,#22c55e);font-size:0.82rem;display:none">${t('txt_email_settings_saved')}</span>`;
-  html += `<button type="button" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegEmailSettings('${esc(rid)}'))">${t('txt_email_save_email')}</button>`;
+  html += `<button type="button" id="reg-email-settings-save-btn-${esc(rid)}" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveRegEmailSettings('${esc(rid)}'))">${t('txt_email_save_email')}</button>`;
   html += `</div>`;
   return html;
 }
@@ -356,6 +355,7 @@ function _renderLobbySettingsPage(rid, ctx) {
     { key: 'details',   label: t('txt_lobby_settings_tab_details'),   icon: '⚙',  body: _renderLobbyDetailsBody(rid, r) },
     { key: 'questions', label: t('txt_lobby_settings_tab_questions'), icon: '❓', body: _renderLobbyQuestionsBody(rid, r) },
     { key: 'comms',     label: t('txt_lobby_settings_tab_comms'),     icon: '📧', body: commsBody },
+    { key: 'payments',  label: t('txt_pay_tab'),                      icon: '€',  body: _renderPaymentSettingsIsland('registration', rid) },
     { key: 'access',    label: t('txt_lobby_settings_tab_access'),    icon: '🛡', body: accessBody },
   ].filter(st => st.body && st.body.trim());
 

@@ -12,7 +12,7 @@ Three tournament formats are supported:
 | **Mexicano** | Rating-based pairing each round, fixed total points per match, with optional seeded play-offs |
 | **Direct Play-offs** | Skip the group stage — seed participants and play a bracket immediately |
 
-**Live demo:** [padel-amistoso.onrender.com](https://padel-amistoso.onrender.com) — login with `admin` / `admin` for the full feature set (lobbies, clubs, communities, Player Hub, custom addresses, ...). From that same login screen you can also mint a **throwaway demo account**: no signup, but it's capped to **one active tournament** and a minimal admin surface, and the account plus all its data is **automatically deleted after 3 days**.
+**Live demo:** [padel-amistoso.onrender.com](https://padel-amistoso.onrender.com) — login with `admin` / `admin` for the full feature set (lobbies, clubs, communities, Player Hub, custom addresses, ...). On instances configured with a demo site, the login screen's **Open the demo sandbox** button takes you to a separate practice site that mints a **throwaway demo account** for you on arrival: no signup, but it's capped to **one active tournament** and a minimal admin surface, and the account plus all its data is **automatically deleted after 3 days**.
 > Free tier — app may take ~30 s to wake up after inactivity. **Don't use for real tournaments!**
 
 ## Project status
@@ -132,6 +132,19 @@ You can also add **co-editors** (collaborators) to a registration lobby so multi
 
 Tip for organizers: encourage players to link registrations to their **Player Hub** profile passphrase (or use matching email) so events appear automatically in their `/player` dashboard.
 
+### Collecting payments
+
+The platform never handles money. Instead, it keeps track of who has paid the organizer or club directly.
+
+1. **Set the fee** on a lobby (Settings > Payments) or on a tournament created without a lobby (Settings > Payments). The fee is per player and the same for everyone; you can override the amount on a single row for a discount or waiver.
+2. **Add payment methods** players should use: Bizum phone number, IBAN, Revolut or PayPal.me link, cash at the court, or free text. By default methods are shown only after a player has registered, since a phone number or IBAN is otherwise visible to anyone with the lobby link. Switch to "always" if you want them on the public page.
+3. **Track status** from the Payments panel: each player shows as unpaid, reported, paid, waived, refund due or refunded. Use the "Mark paid" chips (cash, Bizum, transfer, other) or the status dropdown. A summary badge shows how many have paid and the total collected, and every change is written to an audit log with the organizer's name.
+4. **Remind unpaid players** by email with one click. The message includes the amount, the methods and the player's transfer concept. Players without an email are listed as unreachable.
+
+Each player gets a short **transfer concept** such as `PADEL-SUMMER-ANA` to write on their Bizum or bank transfer, so the lines on your statement match the names in the panel.
+
+Payments survive the whole lifecycle of an event. Converting a lobby to a tournament carries the fee and all statuses over, and the same list is reachable from both views. Deleting a registrant, a player cancelling, or deleting the lobby flips paid rows to **refund due** instead of losing them, and they appear in a "Refunds pending" section. Because many groups settle after the event, players can still see and report payments from their Player Hub long after the registration link has gone stale.
+
 ### Communities and clubs
 
 The app separates organizational scope into two layers:
@@ -158,6 +171,14 @@ Every player automatically gets a unique **passphrase** (e.g. `brave-little-tige
 ### During the tournament
 
 - **Record scores** as points or best-of-3 sets (where the format supports it).
+- **Per-match scoring format**: each match row has a format chip that opens a popover to set
+  that match's input mode (points / sets), its points target (Mexicano rounds, standings are
+  scaled to the tournament total) and its **third-set decider**: a full set, or a **match
+  tie-break** (super tie-break to 10, win by 2, entered in the third-set boxes and shown as
+  `6-4 3-6 [10-8]`). A match tie-break counts as one game in standings, ELO margins and the
+  Player Hub instead of its raw points. The tournament-wide default decider lives in Admin →
+  Settings → Scoring; matches with their own format keep it. Changing the target or decider
+  of a finished match requires re-entering its score.
 - **Player score confirmation flow**: choose how player-submitted scores are handled:
   - **Immediate**: submitted score is applied right away.
   - **Required**: submitted score stays pending until the opposing team accepts it, sends a correction, or escalates to the organizer.
@@ -182,6 +203,10 @@ Once a champion is determined, export a self-contained HTML or PDF summary with 
 If the organizer opened a registration lobby, visit the shared link and fill in your name to sign up.
 
 **Played before but forgot your code?** The registration page's "Played before?" section offers three ways back in: your passphrase/QR code, an email-based magic-link recovery, or — if you have neither — searching by name among past participants at the same club/community. A name match can't auto-link (names aren't unique or secret), so it raises a claim that the organizer approves from the lobby's admin panel; once approved, the participation (and its ELO/history) is merged into your Player Hub profile.
+
+### Paying for an event
+
+If the organizer set a fee, the registration confirmation and your returning-player view show the amount, the due date, the accepted methods with copy buttons, and your personal transfer concept. Pay the organizer directly, then press **I've paid**; your entry shows as reported until the organizer confirms it. Outstanding payments also appear in a "Pending payments" card in your Player Hub, so you can settle up after the event.
 
 ### Public TV view
 
@@ -415,6 +440,21 @@ Winners always gain at least **+1** ELO and losers always lose at least **−1**
 
 For tennis (set-based scoring), total games across all sets are summed into a single score pair before the ELO calculation.
 
+#### Where the displayed numbers come from
+
+Match counts and current ratings shown in the admin **Players** tab, the Player Hub
+headers and chips, and every leaderboard are derived from the per-match ELO log, so
+they always agree with each other:
+
+- **Global** is the total across all communities and clubs, with the rating from the
+  most recent rated match anywhere.
+- **Community** and **club** scopes only count matches played in tournaments of that
+  scope.
+- A manual club ELO override (or applying a tier's base ELO) becomes the player's current
+  club rating immediately and is listed in their ELO history as a manual adjustment. It
+  does not count as a match, and the next rated match continues from the player's
+  tournament rating.
+
 ### Authentication & API
 
 All tournament mutations (creating tournaments, recording scores, advancing
@@ -537,6 +577,16 @@ Reset links are single-use and expire automatically.
     - `PADEL_SQLITE_BUSY_TIMEOUT_MS` (default: `15000`)
     - `PADEL_SQLITE_SYNCHRONOUS` (`NORMAL` by default)
 
+#### Payment endpoints
+
+Organizer endpoints (JWT, lobby editor or tournament owner), available under both `/api/registrations/{rid}` and `/api/tournaments/{tid}`:
+
+- `GET`/`PATCH .../payment-settings` — fee, currency, due date, instructions, methods, visibility.
+- `GET .../payments` — rows with status plus a summary; `PATCH .../payments/{player_id}` — set status, method, amount override, note.
+- `POST .../payments/remind-unpaid` — email everyone who is unpaid or reported.
+
+Player endpoints: `POST /api/registrations/{rid}/player-payment-report` (lobby passphrase or token, moves unpaid to reported) and `GET`/`POST /api/player-profile/payments[/{key}/report]` (Player Hub profile JWT). Per-player payment data never appears in public or TV payloads.
+
 ---
 
 ## Deployment & operations
@@ -618,14 +668,33 @@ Each instance saves and restores its own tournaments independently.
 ### Running a demo instance
 
 Demo mode is a second, fully isolated instance that hands out throwaway
-sandbox accounts. A visitor clicks "Try demo mode" on the core instance's
-login dialog, gets a `demo-xxxxxx` account with a generated passphrase
-(usable to log in from other devices), and can run one tournament at a time
-with a minimal admin surface — no lobbies, clubs, communities, custom
-addresses, or Player Hub profiles. The demo account and everything it created
-are permanently purged 3 days after the account was minted
-(`AMISTOSO_DEMO_TTL_DAYS`). Because the demo instance has its own data
-directory, the purge job never touches the core database.
+sandbox accounts. The flow:
+
+1. On the core instance's login dialog, "Open the demo sandbox" links to
+   `AMISTOSO_DEMO_URL` with a `#start-demo` hash (and a note naming the
+   separate host, so it's clear nothing on the core site is touched).
+2. The demo instance sees `#start-demo`, strips it from the URL, and mints a
+   `demo-xxxxxx` account straight away (once per browser tab), dropping the
+   visitor on the Create tab. A banner shows the generated passphrase, which
+   is the account password — usable to log in from other devices.
+3. Visiting the demo instance directly shows a short "Your demo sandbox"
+   explainer with a "Start a N-day sandbox" button. Returning demo users and
+   the instance admin open the username/password form with "Already have a
+   demo login? Log in". On a device that minted (or logged into) a sandbox,
+   the dialog greets the visitor by username with the password field focused,
+   or explains that the sandbox expired. Only the username is remembered
+   locally, never the passphrase.
+
+A sandbox can run one tournament at a time with a minimal admin surface — no
+lobbies, clubs, communities, custom addresses, or Player Hub profiles. The demo
+account and everything it created are permanently purged 3 days after the
+account was minted (`AMISTOSO_DEMO_TTL_DAYS`, exposed to the frontend as
+`demo_ttl_days` in `/api/config`). Because the demo instance has its own data
+directory, the purge job never touches the core database. The demo instance
+also sends `X-Robots-Tag: noindex` on its HTML pages, and club subdomains are
+disabled entirely there: slug and landing-page edits return 403, `by-slug`
+lookups 404, and any `{slug}.{domain}` request is redirected to the apex (root
+page) or refused with 404 (everything else).
 
 ```bash
 # Core — port 8000; the login dialog links to the demo instance
@@ -637,9 +706,10 @@ AMISTOSO_DATA_DIR=data/demo AMISTOSO_DEMO_INSTANCE=1 PADEL_ADMIN_PASSWORD=... \
   uv run python -m uvicorn backend.api:app --port 8001
 ```
 
-Note: the demo mint endpoint rate-limits by client IP; behind a reverse proxy
-the client address is the proxy's unless forwarded headers are handled
-upstream (same caveat as the login rate limit).
+Note: the demo mint endpoint rate-limits by client IP (5 sandboxes per hour;
+a 429 carries `Retry-After`); behind a reverse proxy the client address is the
+proxy's unless forwarded headers are handled upstream (same caveat as the
+login rate limit).
 
 Then open <http://localhost:8000>.
 

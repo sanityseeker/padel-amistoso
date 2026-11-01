@@ -21,6 +21,9 @@
       // those flows must stay on the admin SPA so initAuth() can handle them.
       var qs = window.location.search;
       if (qs.indexOf('invite_token') !== -1 || qs.indexOf('reset_token') !== -1) return;
+      // Same for the core site's "Open the demo sandbox" link: #start-demo must
+      // reach the admin SPA so maybeAutoStartDemo() can mint the sandbox.
+      if (window.location.hash === '#start-demo') return;
       // Explicit /admin URL always stays on the admin page — skip page selection.
       if (window.location.pathname === '/admin') return;
       var PAGE_MAP = { tv: '/tv', register: '/register', player: '/player' };
@@ -854,7 +857,7 @@
             <select id="comm-my-default-select" class="comm-default-select" v-model="defaultSelection">
               <option v-for="c in specialized" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
-            <button type="button" class="btn btn-primary comm-default-save-btn" @click="saveMyDefault()" data-i18n="txt_txt_save">Save</button>
+            <button type="button" class="btn btn-primary comm-default-save-btn" @click="saveMyDefault($event)" data-i18n="txt_txt_save">Save</button>
           </div>
           <span class="comm-default-msg" :style="{ color: defaultMsgOk ? 'var(--green)' : 'var(--red)' }">{{ defaultMsg }}</span>
         </div>
@@ -906,7 +909,7 @@
           </div>
           <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap">
             <input type="text" v-model="newName" @keydown.enter="create()" data-i18n-placeholder="txt_comm_new_name_placeholder" placeholder="New community name…" style="flex:1;min-width:160px;padding:0.4rem 0.6rem;font-size:0.9rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)" autocomplete="off">
-            <button type="button" class="btn btn-success btn-sm" @click="create()" data-i18n="txt_comm_add">+ Add</button>
+            <button type="button" id="comm-add-btn" class="btn btn-success btn-sm" @click="create()" data-i18n="txt_comm_add">+ Add</button>
           </div>
           <div id="comm-msg" style="margin-top:0.5rem;font-size:0.84rem" :style="{ color: msgOk ? 'var(--green)' : 'var(--red)' }">{{ msg }}</div>
         </div>
@@ -931,7 +934,7 @@
                     <span style="font-size:0.78rem;color:var(--text-muted);margin-left:0.4rem">{{ tour.type }}</span>
                   </td>
                   <td class="player-codes-cell">
-                    <select class="admin-sel" :value="tour.community_id || 'open'" @change="assignTournament(tour.id, $event.target.value)">
+                    <select class="admin-sel" :value="tour.community_id || 'open'" @change="assignTournament(tour.id, $event.target.value, $event.target)">
                       <option v-for="c in communities" :key="c.id" :value="c.id">{{ optionLabel(c) }}</option>
                     </select>
                     <span v-if="rowMsg('t', tour.id)" style="font-size:0.78rem;margin-left:0.3rem" :style="{ color: rowMsg('t', tour.id).ok ? 'var(--green)' : 'var(--red)' }">{{ rowMsg('t', tour.id).text }}</span>
@@ -963,7 +966,7 @@
                     <span v-if="r.archived" style="font-size:0.75rem;color:var(--text-muted);margin-left:0.3rem">{{ t('txt_comm_archived') }}</span>
                   </td>
                   <td class="player-codes-cell">
-                    <select class="admin-sel" :value="r.community_id || 'open'" @change="assignRegistration(r.id, $event.target.value)">
+                    <select class="admin-sel" :value="r.community_id || 'open'" @change="assignRegistration(r.id, $event.target.value, $event.target)">
                       <option v-for="c in communities" :key="c.id" :value="c.id">{{ optionLabel(c) }}</option>
                     </select>
                     <span v-if="rowMsg('r', r.id)" style="font-size:0.78rem;margin-left:0.3rem" :style="{ color: rowMsg('r', r.id).ok ? 'var(--green)' : 'var(--red)' }">{{ rowMsg('r', r.id).text }}</span>
@@ -1069,7 +1072,7 @@
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_demo_sandbox_title">Throwaway demo account</strong>
-        <p data-i18n-html="txt_txt_info_demo_sandbox_desc">From the login dialog you can also mint a personal <code>demo-xxxxxx</code> account with its own generated passphrase (usable to log in from other devices). It has a minimal admin surface: one active tournament at a time, and no registration lobbies, clubs, communities, custom addresses, or Player Hub profiles. The account and everything it creates are automatically deleted 3 days after sign-up.</p>
+        <p data-i18n-html="txt_txt_info_demo_sandbox_desc">On the main site, &ldquo;Open the demo sandbox&rdquo; in the login dialog takes you to a separate practice site, which creates a personal <code>demo-xxxxxx</code> account for you straight away — no sign-up. Its generated passphrase is the password: save it to log in again from this or another device (on this device the demo site&rsquo;s login dialog welcomes you back by name). A sandbox has a minimal admin surface: one active tournament at a time, and no registration lobbies, clubs, communities, custom addresses, or Player Hub profiles. The account and everything it creates are deleted automatically a few days after sign-up (3 by default).</p>
       </div>
     </div>
 
@@ -1380,7 +1383,7 @@
 </div>
 <div style="padding:3rem 0 2.5rem;display:flex;align-items:center;justify-content:center;gap:1rem;flex-wrap:wrap">
   <a href="https://ko-fi.com/torneosamistosos" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:0.4rem;background:#FFDD00;color:#1a1a1a;padding:0 0.8rem;border-radius:20px;font-size:0.78rem;text-decoration:none;font-weight:700;height:28px;box-sizing:border-box">
-    <svg width="16" height="16" viewBox="0 0 24 24" style="fill:#ff5e5b;flex-shrink:0" aria-hidden="true"><path d="M23.881 8.948c-.773-4.085-4.859-4.593-4.859-4.593H.723c-.604 0-.679.798-.679.798s-.082 7.324-.022 11.822c.164 2.424 2.586 2.672 2.586 2.672s8.267-.023 11.966-.049c2.438-.426 2.683-2.566 2.658-3.734 4.352.24 7.422-2.831 6.649-6.916zm-11.062 3.511c-1.246 1.453-4.011 3.976-4.011 3.976s-.121.119-.31.023c-.076-.057-.108-.09-.108-.09-.443-.441-3.368-3.049-4.034-3.954-.709-.965-1.041-2.7-.091-3.71.951-1.01 3.005-1.086 4.038.963.0.0-.292-.808-.292-.808-.292-.808z"/></svg>
+    <svg width="16" height="16" viewBox="0 0 24 24" style="fill:#ff5e5b;flex-shrink:0" aria-hidden="true"><path d="M23.881 8.948c-.773-4.085-4.859-4.593-4.859-4.593H.723c-.604 0-.679.798-.679.798s-.082 7.324-.022 11.822c.164 2.424 2.586 2.672 2.586 2.672s8.267-.023 11.966-.049c2.438-.426 2.683-2.566 2.658-3.734 4.352.24 7.422-2.831 6.649-6.916zm-11.062 3.511c-1.246 1.453-4.011 3.976-4.011 3.976s-.121.119-.31.023c-.076-.057-.108-.09-.108-.09-.443-.441-3.368-3.049-4.034-3.954-.709-.965-1.041-2.7-.091-3.71.951-1.01 3.005-1.086 4.363.407 0 0 1.565-1.782 3.468-.963 1.904.82 2.058 3.034.556 4.303zm6.173.478c-.928.116-1.682.028-1.682.028V7.284h1.77s1.971.551 1.971 2.638c0 1.913-.985 2.667-2.059 3.015z"/></svg>
     Buy me a coffee
   </a>
   <a href="https://github.com/sanityseeker/padel-amistoso" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:0.4rem;background:#24292f;color:#fff;padding:0 0.8rem;border-radius:20px;font-size:0.78rem;text-decoration:none;font-weight:700;height:28px;box-sizing:border-box">
@@ -1418,37 +1421,67 @@
 <div id="auth-overlay" class="modal-overlay" data-action="hideLoginDialog"></div>
 <div id="auth-dialog" class="modal-dialog modal-sm" v-scope>
   <div class="modal-header">
-    <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 464h-68V240c0-70.7-57.3-128-128-128H388c-70.7 0-128 57.3-128 128v224h-68c-17.7 0-32 14.3-32 32v384c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V496c0-17.7-14.3-32-32-32zM332 240c0-30.9 25.1-56 56-56h248c30.9 0 56 25.1 56 56v224H332V240zm460 600H232V536h560v304z"/></svg> <span data-i18n="txt_txt_login_required">Log in</span></h2>
+    <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 464h-68V240c0-70.7-57.3-128-128-128H388c-70.7 0-128 57.3-128 128v224h-68c-17.7 0-32 14.3-32 32v384c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V496c0-17.7-14.3-32-32-32zM332 240c0-30.9 25.1-56 56-56h248c30.9 0 56 25.1 56 56v224H332V240zm460 600H232V536h560v304z"/></svg> <span v-cloak>{{ dialogTitle() }}</span></h2>
     <button type="button" class="modal-close-btn" data-action="hideLoginDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
   </div>
 
-  <!-- Core instance: link out to the demo instance (shown when AMISTOSO_DEMO_URL is configured) -->
-  <div v-if="demoUrl && !isDemoInstance" class="demo-entry" v-cloak>
-    <a :href="demoUrl" class="btn btn-primary demo-try-btn">{{ t('txt_demo_try_button') }}</a>
-    <div class="demo-or-divider"><span>{{ t('txt_demo_or_login') }}</span></div>
+  <!-- Core instance: link out to the separate demo site (shown when AMISTOSO_DEMO_URL
+       is configured). #start-demo makes the demo site mint a sandbox on arrival. -->
+  <div v-if="configLoaded && demoView() === 'core' && demoUrl" class="demo-entry" v-cloak>
+    <a :href="demoHref()" rel="nofollow" class="btn btn-primary demo-try-btn"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M888.3 757.4h-53.8c-4.2 0-7.7 3.5-7.7 7.7v61.8H197.1V197.1h629.8v61.8c0 4.2 3.5 7.7 7.7 7.7h53.8c4.2 0 7.7-3.4 7.7-7.7V158.7c0-17-13.7-30.7-30.7-30.7H158.7c-17 0-30.7 13.7-30.7 30.7v706.6c0 17 13.7 30.7 30.7 30.7h706.6c17 0 30.7-13.7 30.7-30.7V765.1c0-4.3-3.5-7.7-7.7-7.7zm18.6-251.7L765 393.7c-5.3-4.2-13-.4-13 6.3v76H438c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h314v76c0 6.7 7.8 10.5 13 6.3l141.9-112a8 8 0 000-12.6z"/></svg> {{ t('txt_demo_open_sandbox') }}</a>
+    <p v-if="demoHost()" class="demo-entry-note">{{ t('txt_demo_opens_separate_site', { host: demoHost() }) }}</p>
+    <div class="demo-or-divider"><span>{{ t('txt_demo_or_login_account') }}</span></div>
   </div>
 
-  <!-- Demo instance: one click mints a throwaway sandbox account and enters the app -->
-  <div v-if="isDemoInstance" class="demo-entry" v-cloak>
-    <button type="button" class="btn btn-primary demo-try-btn" :disabled="demoBusy" @click="startDemo()">{{ t('txt_demo_continue_button') }}</button>
-    <div class="demo-or-divider"><span>{{ t('txt_demo_or_login') }}</span></div>
+  <!-- Demo instance, first visit: explain the sandbox, one click mints it.
+       Returning demo users / the instance admin reveal the form below. -->
+  <div v-if="demoView() === 'start'" class="demo-entry demo-start" v-cloak>
+    <p class="demo-intro">{{ t('txt_demo_intro') }}</p>
+    <ul class="demo-points">
+      <li>{{ t('txt_demo_point_private') }}</li>
+      <li>{{ t('txt_demo_point_one_tournament') }}</li>
+      <li>{{ t('txt_demo_point_ttl', { days: demoDays() }) }}</li>
+    </ul>
+    <button type="button" id="auth-demo-start-btn" class="btn btn-primary demo-try-btn" @click="startDemo()">{{ t('txt_demo_start_button', { days: demoDays() }) }}</button>
+    <p class="demo-notice" role="status" v-show="demoNoticeText()" v-text="demoNoticeText()"></p>
+    <button type="button" class="demo-link-btn" v-show="!showCredsForm" aria-controls="auth-form" :aria-expanded="showCredsForm ? 'true' : 'false'" @click="openCredsForm()">{{ t('txt_demo_returning_toggle') }}</button>
   </div>
 
-  <form @submit.prevent="submit()">
+  <!-- Demo instance: sandbox being created -->
+  <div v-show="demoView() === 'minting'" class="demo-entry demo-minting" v-cloak>
+    <p class="demo-minting-text" aria-live="polite" v-text="demoView() === 'minting' ? t('txt_demo_minting') : ''"></p>
+    <div class="proposal-progress-bar-container" aria-hidden="true"><div class="proposal-progress-bar"></div></div>
+  </div>
+
+  <!-- Demo instance, remembered sandbox on this device -->
+  <div v-if="demoView() === 'returning'" class="demo-entry demo-returning" v-cloak>
+    <p class="demo-intro">{{ t('txt_demo_returning_text', { user: returningUser.u, date: demoDate(returningUser.expiresAt) }) }}</p>
+    <p class="demo-notice" role="status" v-show="demoNotice" v-text="demoNotice"></p>
+  </div>
+
+  <!-- v-show (not v-if): the inputs stay in the DOM so password managers keep working. -->
+  <form id="auth-form" v-show="credsFormVisible()" @submit.prevent="submit()">
     <div class="modal-field">
-      <label class="modal-label" data-i18n="txt_txt_username">Username</label>
-      <input type="text" id="auth-username" v-model="username" class="modal-input" placeholder="admin" data-i18n-placeholder="txt_txt_admin_username_placeholder" autocomplete="username">
+      <label class="modal-label" for="auth-username" data-i18n="txt_txt_username">Username</label>
+      <input type="text" id="auth-username" v-model="username" class="modal-input" placeholder="admin" :placeholder="isDemoInstance ? 'demo-xxxxxx' : t('txt_txt_admin_username_placeholder')" autocomplete="username">
     </div>
     <div class="modal-field" style="margin-bottom:0.25rem">
-      <label class="modal-label" data-i18n="txt_txt_password">Password</label>
+      <label class="modal-label" for="auth-password" data-i18n="txt_txt_password">Password</label>
       <input type="password" id="auth-password" v-model="password" @keyup.enter="submit()" class="modal-input" placeholder="••••••••" autocomplete="current-password">
     </div>
-    <div style="text-align:right;margin-bottom:1rem">
+    <p v-if="demoView() === 'start'" class="demo-admin-hint">{{ t('txt_demo_admin_hint') }}</p>
+    <div v-show="!isDemoInstance" style="text-align:right;margin-bottom:1rem">
       <a href="#" class="modal-link" style="font-size:0.85rem" onclick="showForgotPasswordDialog();return false"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5l-41.1 41.1-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-44.9 44.9-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-65.3 65.3a8.03 8.03 0 000 11.3l42.3 42.3c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6A304.06 304.06 0 00608 720c167.9 0 304-136.1 304-304S775.9 112 608 112z"/></svg> <span data-i18n="txt_txt_forgot_password">Forgot password?</span></a>
     </div>
     <div class="modal-error" id="auth-error" v-text="error"></div>
     <button type="submit" id="auth-login-btn" class="btn btn-primary" style="width:100%" :disabled="submitting" data-i18n="txt_txt_login">Login</button>
   </form>
+
+  <!-- Returning view: escape hatch to mint a fresh sandbox instead -->
+  <div v-if="demoView() === 'returning'" class="demo-entry demo-entry-after" v-cloak>
+    <div class="demo-or-divider"><span>{{ t('txt_txt_or_separator') }}</span></div>
+    <button type="button" class="btn demo-try-btn demo-secondary-btn" @click="startDemo()">{{ t('txt_demo_start_new_instead') }}</button>
+  </div>
   <p class="modal-footer-links">
     <a href="/tv" class="modal-link"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M928 140H96c-17.7 0-32 14.3-32 32v496c0 17.7 14.3 32 32 32h380v112H304c-8.8 0-16 7.2-16 16v48c0 4.4 3.6 8 8 8h432c4.4 0 8-3.6 8-8v-48c0-8.8-7.2-16-16-16H548V700h380c17.7 0 32-14.3 32-32V172c0-17.7-14.3-32-32-32zm-40 488H136V212h752v416z"/></svg> <span data-i18n="txt_nav_tv_view">Tournaments</span></a>
     <a href="/register" class="modal-link"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_nav_registrations">Registrations</span></a>
@@ -1549,6 +1582,64 @@
   </form>
 </div>
 
+<!-- Per-match scoring format popover: Petite-Vue island (_mfStore in admin-gp.js).
+     It sits outside #view-content so match-list re-renders never destroy it;
+     legacy match rows open it with _openMatchFormatPopover(). -->
+<div id="match-format-popover" class="match-format-popover" v-scope hidden :hidden="!open"
+     role="dialog" :aria-label="t('txt_match_format_btn_label')"
+     :style="{ top: top + 'px', left: left + 'px' }" @keydown="onKeydown($event)">
+  <div class="mf-head">
+    <span class="mf-title">{{ t('txt_match_format_btn_label') }}</span>
+    <button type="button" class="mf-close" :aria-label="t('txt_txt_cancel')" @click="close()">✕</button>
+  </div>
+  <p class="mf-line">{{ defaultLabel }}</p>
+  <p v-if="isOverride" class="mf-line mf-line-override">{{ t('txt_match_format_overridden') }}</p>
+  <p v-if="notice" class="mf-notice" role="status">{{ notice }}</p>
+  <p v-if="disputed" class="mf-error">{{ t('txt_match_format_disputed') }}</p>
+  <div v-if="!isMexRound" class="score-mode-toggle mf-mode" role="group" :aria-label="t('txt_match_format_btn_label')">
+    <button type="button" :class="{ active: draft.mode === 'points' }" :aria-pressed="draft.mode === 'points'" @click="setMode('points')">{{ t('txt_txt_points_label') }}</button>
+    <button type="button" :class="{ active: draft.mode === 'sets' }" :aria-pressed="draft.mode === 'sets'" @click="setMode('sets')">{{ t('txt_txt_sets') }}</button>
+  </div>
+  <div v-if="!isMexRound && draft.mode === 'sets'" class="mf-field mf-decider">
+    <span>{{ t('txt_match_format_decider_label') }}</span>
+    <div class="score-mode-toggle" role="group" :aria-label="t('txt_match_format_decider_label')">
+      <button type="button" :class="{ active: draft.decider === 'full_set' }" :aria-pressed="draft.decider === 'full_set'" @click="setDecider('full_set')">{{ t('txt_match_format_decider_full_set') }}</button>
+      <button type="button" :class="{ active: draft.decider === 'match_tiebreak' }" :aria-pressed="draft.decider === 'match_tiebreak'" @click="setDecider('match_tiebreak')">{{ t('txt_match_format_decider_tiebreak') }}</button>
+    </div>
+  </div>
+  <p v-if="!isMexRound && draft.mode === 'sets'" class="mf-hint">{{ t('txt_match_format_default_value', { value: globalDecider === 'match_tiebreak' ? t('txt_match_format_decider_tiebreak') : t('txt_match_format_decider_full_set') }) }}<template v-if="deciderIsTb"> · {{ t('txt_match_tb_rule') }}</template></p>
+  <label v-if="isMexRound" class="mf-field">
+    <span>{{ t('txt_match_format_points_target') }}</span>
+    <input type="number" class="mf-target" inputmode="numeric" min="2" max="200" v-model="draft.points_target" :placeholder="globalTarget">
+  </label>
+  <p v-if="isMexRound && draftTarget !== globalTarget" class="mf-hint">{{ t('txt_match_format_scaled_note', { n: globalTarget }) }}</p>
+  <div v-if="needsScore" class="mf-score">
+    <p class="mf-hint">{{ t('txt_match_format_completed_needs_score') }}</p>
+    <div class="mf-score-row">
+      <input type="number" inputmode="numeric" min="0" placeholder="0" :value="score.s1" @input="setScore(1, $event.target.value)">
+      <span>–</span>
+      <input type="number" inputmode="numeric" min="0" :placeholder="draftTarget" :value="score.s2" @input="setScore(2, $event.target.value)">
+    </div>
+    <p class="mf-hint">{{ t('txt_txt_score_must_sum', { n: draftTarget }) }}</p>
+  </div>
+  <div v-if="needsSets" class="mf-score">
+    <p class="mf-hint">{{ t('txt_match_format_completed_needs_sets') }}</p>
+    <div v-for="(row, i) in score.sets" :key="i" class="mf-score-row mf-set-row">
+      <span class="mf-set-label">{{ i === 2 && deciderIsTb ? t('txt_match_tb_label') : 'S' + (i + 1) }}</span>
+      <input type="number" inputmode="numeric" min="0" placeholder="0" :value="row[0]" @input="setSetScore(i, 0, $event.target.value)">
+      <span>–</span>
+      <input type="number" inputmode="numeric" min="0" placeholder="0" :value="row[1]" @input="setSetScore(i, 1, $event.target.value)">
+    </div>
+  </div>
+  <p v-if="error" class="mf-error" role="alert">{{ error }}</p>
+  <div class="mf-actions">
+    <button type="button" class="mf-reset" :disabled="!isOverride || saving" @click="reset()">{{ t('txt_match_format_reset') }}</button>
+    <span class="mf-actions-spacer"></span>
+    <button type="button" class="btn btn-sm btn-muted" @click="close()">{{ t('txt_txt_cancel') }}</button>
+    <button type="button" class="btn btn-sm btn-primary" :disabled="!canApply" @click="apply()">{{ t('txt_match_format_apply') }}</button>
+  </div>
+</div>
+
 
 <script src="/i18n.js" defer></script>
 <script src="/shared.js" defer></script>
@@ -1565,6 +1656,7 @@
 <script src="/admin-collaborators.js" defer></script>
 <script src="/admin-settings-panel.js" defer></script>
 <script src="/admin-lobby-settings-panel.js" defer></script>
+<script src="/admin-payments.js" defer></script>
 <script src="/admin-players.js" defer></script>
 <script src="/admin-communities.js" defer></script>
 <script src="/admin-clubs-settings-panel.js" defer></script>

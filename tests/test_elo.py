@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from backend.models import Match, MatchStatus, Player
+from backend.models import Match, MatchStatus, Player, SetDecider
 from backend.tournaments.elo import (
     DEFAULT_RATING,
     MIN_DELTA_WIN,
@@ -171,6 +171,16 @@ class TestTennisSetsToScore:
 
     def test_empty(self) -> None:
         assert tennis_sets_to_score([]) == (0, 0)
+
+    def test_match_tiebreak_counts_as_one_game(self) -> None:
+        sets = [(6, 4), (3, 6), (10, 8)]
+        assert tennis_sets_to_score(sets) == (19, 18)
+        assert tennis_sets_to_score(sets, SetDecider.FULL_SET) == (19, 18)
+        assert tennis_sets_to_score(sets, SetDecider.MATCH_TIEBREAK) == (10, 10)
+        assert tennis_sets_to_score([(4, 6), (6, 3), (8, 10)], SetDecider.MATCH_TIEBREAK) == (10, 10)
+
+    def test_two_set_result_ignores_decider(self) -> None:
+        assert tennis_sets_to_score([(6, 4), (6, 3)], SetDecider.MATCH_TIEBREAK) == (12, 7)
 
 
 # ---------------------------------------------------------------------------
@@ -457,3 +467,23 @@ class TestComputeMatchEloUpdates:
             assert by_id[p.id].elo_after > 1000, "winning team must gain ELO"
         for p in players[2:]:
             assert by_id[p.id].elo_after < 1000, "losing team must lose ELO"
+
+
+class TestMatchTiebreakDeciderMargin:
+    """ELO margin treats a match tie-break as one game, not as 18."""
+
+    def test_tiebreak_margin_equals_one_game_margin(self) -> None:
+        p1, p2 = Player(name="A"), Player(name="B")
+        ratings = {p1.id: 1000.0, p2.id: 1000.0}
+        counts = {p1.id: 20, p2.id: 20}
+
+        tb = _make_match([p1], [p2], (11, 10), sets=[(6, 4), (3, 6), (10, 8)])
+        tb.decider = SetDecider.MATCH_TIEBREAK
+        full = _make_match([p1], [p2], (19, 18), sets=[(6, 4), (3, 6), (10, 8)])
+        one_game = _make_match([p1], [p2], (10, 9), sets=[(6, 4), (3, 6), (1, 0)])
+
+        gain = lambda m: {u.player_id: u for u in compute_match_elo_updates(m, ratings, counts, team_mode=False)}[p1.id]  # noqa: E731
+        assert gain(tb).elo_after == pytest.approx(gain(one_game).elo_after)
+        assert gain(tb).elo_after > 1000
+        # 10-8 as a full set would add a much bigger margin.
+        assert gain(full).elo_after > gain(tb).elo_after

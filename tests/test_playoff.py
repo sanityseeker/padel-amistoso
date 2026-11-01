@@ -160,7 +160,7 @@ class TestDoubleElimination:
         assert gf.team2, "Grand Final team2 was never assigned — losers bracket was skipped"
 
     def test_full_double_elim_2_teams(self):
-        """2-team double elimination: W Final → loser plays Grand Final → possible reset."""
+        """2-team double elimination: W Final → loser plays Grand Final (played once)."""
         bracket = DoubleEliminationBracket(_teams(2))
         # Winners final
         wf = bracket.pending_matches()[0]
@@ -168,7 +168,7 @@ class TestDoubleElimination:
         # Grand Final should now be pending: T1 vs T2
         gf = bracket.grand_final
         assert gf.team1 and gf.team2, "Grand Final must have both teams after Winners Final"
-        bracket.record_result(gf.id, (10, 0))  # T1 wins again → no reset needed
+        bracket.record_result(gf.id, (10, 0))  # T1 wins the single Grand Final
         assert bracket.champion() == gf.team1
 
     def test_full_double_elim_4_teams_champion_found(self):
@@ -180,6 +180,95 @@ class TestDoubleElimination:
                 break
             bracket.record_result(pending[0].id, (10, 0))
         assert bracket.champion() is not None
+
+    # ── Single Grand Final (no reset) ──────────────────────
+
+    @staticmethod
+    def _drain(bracket: DoubleEliminationBracket, *, lb_team_wins_gf: bool = False, rng=None) -> None:
+        """Play every pending match. Optionally force the losers-bracket team to win the GF."""
+        for _ in range(100):
+            pending = bracket.pending_matches()
+            if not pending:
+                return
+            m = pending[0]
+            if m is bracket.grand_final and lb_team_wins_gf:
+                wb_champ = bracket.winners_matches[-1].winner_team
+                team1_wins = m.team1 != wb_champ
+            elif rng is not None:
+                team1_wins = rng.random() < 0.5
+            else:
+                team1_wins = True
+            bracket.record_result(m.id, (10, 0) if team1_wins else (0, 10))
+        raise AssertionError("bracket did not drain")
+
+    @staticmethod
+    def _assert_no_reset(bracket: DoubleEliminationBracket) -> None:
+        assert not [m for m in bracket.all_matches if m.round_label == "Grand Final Reset"]
+        assert [m.round_label for m in bracket.all_matches].count("Grand Final") == 1
+
+    @pytest.mark.parametrize("n", [2, 4])
+    def test_losers_bracket_team_wins_grand_final(self, n):
+        bracket = DoubleEliminationBracket(_teams(n))
+        if n == 2:
+            # Only two teams: the "losers-bracket" team is the WF loser.
+            wf = bracket.pending_matches()[0]
+            bracket.record_result(wf.id, (10, 0))
+            gf = bracket.grand_final
+            bracket.record_result(gf.id, (0, 10))
+            wb_champ = wf.winner_team
+            expected = gf.team2
+            assert expected != wb_champ
+        else:
+            self._drain(bracket, lb_team_wins_gf=True)
+            wb_champ = bracket.winners_matches[-1].winner_team
+            expected = bracket.grand_final.winner_team
+            assert expected != wb_champ
+        assert bracket.champion() == expected
+        self._assert_no_reset(bracket)
+        assert bracket.pending_matches() == []
+
+    def test_rerecording_grand_final_changes_champion_without_new_match(self):
+        bracket = DoubleEliminationBracket(_teams(4))
+        self._drain(bracket, lb_team_wins_gf=True)
+        gf = bracket.grand_final
+        n_matches = len(bracket.all_matches)
+        first = bracket.champion()
+        assert first == gf.team1 or first == gf.team2
+
+        other = gf.team2 if first == gf.team1 else gf.team1
+        bracket.record_result(gf.id, (0, 10) if first == gf.team1 else (10, 0))
+        assert bracket.champion() == other
+        assert len(bracket.all_matches) == n_matches
+        self._assert_no_reset(bracket)
+        assert bracket.pending_matches() == []
+
+    @pytest.mark.parametrize("n", [2, 3, 4, 5, 8])
+    def test_random_results_always_single_grand_final(self, n):
+        import random
+
+        for seed in range(10):
+            bracket = DoubleEliminationBracket(_teams(n))
+            self._drain(bracket, rng=random.Random(seed))
+            self._assert_no_reset(bracket)
+            assert bracket.champion() is not None
+            assert bracket.pending_matches() == []
+
+    def test_legacy_completed_reset_decides_champion(self):
+        """Old persisted brackets may carry a completed 'Grand Final Reset' match."""
+        from backend.models import Match
+
+        bracket = DoubleEliminationBracket(_teams(2))
+        wf = bracket.pending_matches()[0]
+        bracket.record_result(wf.id, (10, 0))
+        gf = bracket.grand_final
+        bracket.record_result(gf.id, (0, 10))
+        reset = Match(team1=gf.team2, team2=gf.team1, round_label="Grand Final Reset", round_number=99)
+        reset.score = (0, 10)
+        reset.status = MatchStatus.COMPLETED
+        bracket.grand_final_reset = reset
+        assert bracket.champion() == reset.winner_team
+        assert reset in bracket.all_matches
+        assert bracket.all_matches[-1] is reset
 
 
 class TestDoubleEliminationTopology:

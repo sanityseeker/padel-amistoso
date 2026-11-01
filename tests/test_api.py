@@ -711,6 +711,47 @@ class TestPlayoffAPI:
         assert status["phase"] == "finished"
         assert status["champion"] is not None
 
+    def test_double_elim_losers_bracket_team_wins_grand_final(self, client, auth_headers):
+        body = {**self.PO_BODY, "double_elimination": True}
+        r = client.post("/api/tournaments/playoff", json=body, headers=auth_headers)
+        assert r.status_code == 200
+        tid = r.json()["id"]
+
+        wb_champ: list[str] | None = None
+        for _ in range(30):
+            data = client.get(f"/api/tournaments/{tid}/po/playoffs").json()
+            if not data["pending"]:
+                break
+            m = data["pending"][0]
+            if m["round_label"] == "Grand Final":
+                # The winners-bracket final is the last winners-round match played.
+                wb_final = max(
+                    (x for x in data["matches"] if x["round_label"].startswith("Winners")),
+                    key=lambda x: x["round_number"],
+                )
+                wb_champ = wb_final["team1"] if wb_final["score"][0] > wb_final["score"][1] else wb_final["team2"]
+                # Let the team that is NOT the winners-bracket champion win.
+                score = (3, 6) if m["team1"] == wb_champ else (6, 3)
+            else:
+                score = (6, 3)
+            client.post(
+                f"/api/tournaments/{tid}/po/record",
+                json={"match_id": m["id"], "score1": score[0], "score2": score[1]},
+                headers=auth_headers,
+            )
+
+        data = client.get(f"/api/tournaments/{tid}/po/playoffs").json()
+        labels = [m["round_label"] for m in data["matches"]]
+        assert labels.count("Grand Final") == 1
+        assert "Grand Final Reset" not in labels
+        assert data["pending"] == []
+        assert data["champion"] is not None
+        assert wb_champ is not None
+        assert data["champion"] != wb_champ
+        status = client.get(f"/api/tournaments/{tid}/po/status").json()
+        assert status["phase"] == "finished"
+        assert status["champion"] is not None
+
     def test_schema_endpoint_returns_image(self, client, auth_headers):
         tid = self._create(client, auth_headers)
         r = client.get(f"/api/tournaments/{tid}/po/playoffs-schema?fmt=png")

@@ -98,7 +98,10 @@ class TestDemoMint:
     def test_mint_rate_limited(self, client, demo_instance):
         for _ in range(5):
             assert client.post("/api/auth/demo").status_code == 200
-        assert client.post("/api/auth/demo").status_code == 429
+        r = client.post("/api/auth/demo")
+        assert r.status_code == 429
+        retry_after = int(r.headers["Retry-After"])
+        assert 1 <= retry_after <= 3600
 
 
 # ── Feature gates ──────────────────────────────────────────
@@ -325,6 +328,15 @@ class TestDemoConfigEndpoint:
         cfg = client.get("/api/config").json()
         assert cfg["demo_instance"] is False
         assert cfg["demo_url"] is None
+        assert cfg["demo_ttl_days"] == config.DEMO_TTL_DAYS
+
+    def test_demo_ttl_days_whole_number_is_int(self, client, monkeypatch):
+        monkeypatch.setattr(config, "DEMO_TTL_DAYS", 3.0)
+        cfg = client.get("/api/config").json()
+        assert cfg["demo_ttl_days"] == 3
+        assert isinstance(cfg["demo_ttl_days"], int)
+        monkeypatch.setattr(config, "DEMO_TTL_DAYS", 1.5)
+        assert client.get("/api/config").json()["demo_ttl_days"] == 1.5
 
     def test_demo_url_and_instance_exposed(self, client, monkeypatch):
         monkeypatch.setattr(config, "DEMO_INSTANCE", True)
@@ -334,3 +346,62 @@ class TestDemoConfigEndpoint:
         assert cfg["demo_url"] == "http://localhost:8001"
         # The legacy whole-server banner flag is untouched by demo instance mode.
         assert cfg["demo_mode"] is False
+        assert "demo_ttl_days" in cfg
+
+
+class TestDemoNoindex:
+    def test_demo_instance_html_is_noindex(self, client, demo_instance):
+        r = client.get("/")
+        assert r.status_code == 200
+        assert r.headers.get("X-Robots-Tag") == "noindex"
+
+    def test_demo_instance_api_not_tagged(self, client, demo_instance):
+        r = client.get("/api/config")
+        assert "X-Robots-Tag" not in r.headers
+
+    def test_core_instance_html_is_indexable(self, client):
+        r = client.get("/")
+        assert r.status_code == 200
+        assert "X-Robots-Tag" not in r.headers
+
+
+class TestDemoClubSubdomains:
+    """Club subdomains are a core-instance feature; the demo instance refuses them."""
+
+    def test_slug_update_refused_on_demo_instance(self, client, auth_headers, demo_instance):
+        comm = client.post("/api/communities", json={"name": "C"}, headers=auth_headers).json()
+        club = client.post("/api/clubs", json={"name": "Club", "community_id": comm["id"]}, headers=auth_headers).json()
+        r = client.patch(f"/api/clubs/{club['id']}/slug", json={"slug": "myclub"}, headers=auth_headers)
+        assert r.status_code == 403
+        assert r.json()["detail"] == "Not available in demo mode"
+
+    def test_landing_update_refused_on_demo_instance(self, client, auth_headers, demo_instance):
+        comm = client.post("/api/communities", json={"name": "C"}, headers=auth_headers).json()
+        club = client.post("/api/clubs", json={"name": "Club", "community_id": comm["id"]}, headers=auth_headers).json()
+        r = client.patch(f"/api/clubs/{club['id']}/landing", json={"description": "x"}, headers=auth_headers)
+        assert r.status_code == 403
+
+    def test_by_slug_lookup_404_on_demo_instance(self, client, auth_headers, demo_instance):
+        comm = client.post("/api/communities", json={"name": "C"}, headers=auth_headers).json()
+        club = client.post("/api/clubs", json={"name": "Club", "community_id": comm["id"]}, headers=auth_headers).json()
+        from backend.api.db import get_db
+
+        with get_db() as conn:
+            conn.execute("UPDATE clubs SET slug = ? WHERE id = ?", ("found", club["id"]))
+        assert client.get("/api/clubs/by-slug/found").status_code == 404
+
+    def test_subdomain_root_redirects_to_apex_on_demo_instance(self, client, auth_headers, demo_instance):
+        comm = client.post("/api/communities", json={"name": "C"}, headers=auth_headers).json()
+        club = client.post("/api/clubs", json={"name": "Club", "community_id": comm["id"]}, headers=auth_headers).json()
+        from backend.api.db import get_db
+
+        with get_db() as conn:
+            conn.execute("UPDATE clubs SET slug = ? WHERE id = ?", ("myclub", club["id"]))
+        res = client.get("/", headers={"host": "myclub.example.com"}, follow_redirects=False)
+        assert res.status_code == 302
+        assert res.headers["location"].endswith("://example.com/")
+
+    def test_subdomain_other_paths_404_on_demo_instance(self, client, demo_instance):
+        res = client.get("/api/config", headers={"host": "anyclub.example.com"})
+        assert res.status_code == 404
+        assert "demo mode" in res.json()["detail"]

@@ -2121,6 +2121,64 @@ class TestSubdomainRouter:
         assert res.status_code == 200
 
 
+class TestErrorPageHomeUrl:
+    """The 404 page and ``/api/config`` tell each host where "home" is."""
+
+    @staticmethod
+    def _home(res) -> str:
+        import re as _re
+
+        m = _re.search(r'<meta name="amistoso-home" content="([^"]*)"', res.text)
+        assert m, "home meta tag missing from 404 page"
+        return m.group(1)
+
+    def test_apex_404_points_at_itself(self, client) -> None:
+        # Two-part apex host: stripping a label would yield ``https://com/``.
+        res = client.get("/nonexistent", headers={"host": "example.com"})
+        assert res.status_code == 404
+        assert self._home(res) == "http://example.com/"
+        assert "__HOME_URL__" not in res.text
+
+    def test_unknown_subdomain_404_points_at_apex(self, client) -> None:
+        res = client.get("/", headers={"host": "nosuchclub.example.com"})
+        assert res.status_code == 404
+        assert self._home(res) == "http://nosuchclub.example.com/".replace("nosuchclub.", "")
+
+    def test_known_club_subdomain_404_stays_on_club(self, client, auth_headers) -> None:
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        client.patch(f"/api/clubs/{club['id']}/slug", json={"slug": "homeclub"}, headers=auth_headers)
+        res = client.get("/typo", headers={"host": "homeclub.example.com"})
+        assert res.status_code == 404
+        assert self._home(res) == "http://homeclub.example.com/"
+
+    def test_forwarded_proto_is_honoured(self, client) -> None:
+        res = client.get("/typo", headers={"host": "example.com", "x-forwarded-proto": "https"})
+        assert self._home(res) == "https://example.com/"
+
+    def test_config_apex_origin(self, client) -> None:
+        assert client.get("/api/config", headers={"host": "example.com"}).json()["apex_origin"] == "http://example.com"
+        assert (
+            client.get("/api/config", headers={"host": "someclub.example.com"}).json()["apex_origin"]
+            == "http://example.com"
+        )
+        assert (
+            client.get("/api/config", headers={"host": "localhost:8000"}).json()["apex_origin"]
+            == "http://localhost:8000"
+        )
+
+    def test_strict_mode_apex(self, monkeypatch, client) -> None:
+        import backend.api as api_mod
+
+        monkeypatch.setattr(api_mod, "_AMISTOSO_DOMAIN", "amistoso.club")
+        res = client.get("/", headers={"host": "nosuch.amistoso.club"})
+        assert res.status_code == 404
+        assert self._home(res) == "http://amistoso.club/"
+        assert client.get("/api/config", headers={"host": "x.amistoso.club:8443"}).json()["apex_origin"] == (
+            "http://amistoso.club:8443"
+        )
+
+
 class TestPublicLeaderboard:
     """GET /api/clubs/{id}/public-leaderboard — members only, no email."""
 
