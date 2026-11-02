@@ -1,3 +1,9 @@
+## v1.19.1 (2026-11-02)
+
+### Fix
+
+- **playoffs**: make Espejo a consolation bracket and drop the Super Final
+
 ## v1.19.0 (2026-11-01)
 
 ## v1.18.0 (2026-11-01)
