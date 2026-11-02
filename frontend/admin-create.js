@@ -1525,7 +1525,6 @@ async function createPO() {
       team_mode: _currentSport === 'tennis' ? _entryModeIsTeam('po') : true,
       double_elimination: document.getElementById('po-double-elim').checked,
       espejo: document.getElementById('po-espejo')?.checked || false,
-      espejo_super_final: document.getElementById('po-espejo-super-final')?.checked || false,
       public: document.getElementById('po-public').checked,
       sport: _currentSport,
       community_id: _getSelectedCommunityId(),
@@ -1659,15 +1658,12 @@ async function _createHubSelect(profileId) {
 // ─── Community + Club list bootstrap ─────────────────────
 _loadCommunities().then(() => _loadClubs().then(() => _refreshDefaultTitles()));
 
-/** Toggle Espejo sub-options and mutually exclude Double Elimination. */
+/** Mutually exclude Espejo and Double Elimination. */
 function _poToggleEspejo() {
   const espejoBox = document.getElementById('po-espejo');
-  const optionsDiv = document.getElementById('po-espejo-options');
   const dblElimBox = document.getElementById('po-double-elim');
-  if (!espejoBox || !optionsDiv) return;
-  const checked = espejoBox.checked;
-  optionsDiv.style.display = checked ? '' : 'none';
-  if (checked && dblElimBox) dblElimBox.checked = false;
+  if (!espejoBox) return;
+  if (espejoBox.checked && dblElimBox) dblElimBox.checked = false;
   _updatePoMatchEstimate();
 }
 
@@ -1678,9 +1674,8 @@ function _updatePoMatchEstimate() {
   if (n < 2) { el.innerHTML = ''; return; }
   const isEspejo = document.getElementById('po-espejo')?.checked || false;
   const isDouble = !isEspejo && (document.getElementById('po-double-elim')?.checked || false);
-  const superFinal = document.getElementById('po-espejo-super-final')?.checked || false;
   const format = isEspejo ? 'espejo' : (isDouble ? 'double' : 'single');
-  const count = _gpEstimatePlayoffMatches(n, format, superFinal);
+  const count = _gpEstimatePlayoffMatches(n, format);
   const matchText = `~${count} ${t('txt_txt_matches')}`;
   function branchRow(label, seq, suffix) {
     return `<div class="gp-playoff-branch">` +
@@ -1702,7 +1697,7 @@ function _updatePoMatchEstimate() {
     el.innerHTML = `<span class="gp-playoff-estimate-count">${matchText}</span>` +
       `<div class="gp-playoff-branches">` +
       branchRow('WB', wbSeq, '') +
-      (lbSeq.length ? branchRow('LB', lbSeq, superFinal ? 'SF' : '') : '') +
+      (lbSeq.length ? branchRow('LB', lbSeq, '') : '') +
       `</div>`;
   }
 }

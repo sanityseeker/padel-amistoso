@@ -7,7 +7,7 @@ from __future__ import annotations
 import hashlib
 import time
 from collections import OrderedDict, defaultdict
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from fastapi import HTTPException
 from fastapi.responses import Response
@@ -15,6 +15,7 @@ from fastapi.responses import Response
 from ..auth.deps import PlayerIdentity
 from ..auth.models import User, UserRole
 from ..models import Match, MatchStatus, SetDecider
+from ..tournaments.playoff import EspejoParallelBracket
 from ..tournaments.set_format import format_sets, games_from_sets, match_decider, validate_decider_sets
 from .db import get_co_editors
 from .state import _tournaments, _save_tournament
@@ -593,6 +594,66 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
         _label_round_matches(bracket.matches, "match")
 
     return labels
+
+
+def _is_espejo_bracket(bracket: object) -> bool:
+    """Return True when *bracket* is an :class:`EspejoParallelBracket`."""
+    return isinstance(bracket, EspejoParallelBracket)
+
+
+def _espejo_side_of(bracket: object) -> Callable[[Match], str | None]:
+    """Return a function mapping a match to its Espejo bracket side.
+
+    The result is ``"winners"``, ``"losers"`` or ``"super_final"`` (legacy
+    tournaments only).  For any non-Espejo bracket the function always
+    returns ``None`` so callers can use it unconditionally.
+    """
+    if not isinstance(bracket, EspejoParallelBracket):
+        return lambda _m: None
+    wb_ids = {m.id for m in bracket.winners_bracket.matches}
+    lb_ids = {m.id for m in bracket.losers_bracket.matches} if bracket.losers_bracket else set()
+    sf_id = bracket.super_final_match.id if bracket.super_final_match else None
+
+    def _side(m: Match) -> str | None:
+        if m.id in wb_ids:
+            return "winners"
+        if m.id in lb_ids:
+            return "losers"
+        if m.id == sf_id:
+            return "super_final"
+        return None
+
+    return _side
+
+
+def _serialize_playoff_matches(bracket: object, matches: list[Match]) -> list[dict]:
+    """Serialise play-off *matches*, tagging each with ``bracket_side`` for Espejo.
+
+    Without the tag, Winners and Losers matches that share a round name
+    (e.g. both "Semi-Final") would be merged into one card by the clients.
+    """
+    side_of = _espejo_side_of(bracket)
+    out: list[dict] = []
+    for m in matches:
+        d = _serialize_match(m)
+        side = side_of(m)
+        if side:
+            d["bracket_side"] = side
+        out.append(d)
+    return out
+
+
+def _espejo_schema_target(bracket: EspejoParallelBracket, side: str | None, title: str | None) -> tuple[Any, str]:
+    """Pick the single-elimination bracket (and its default title) to draw for *side*.
+
+    Raises:
+        HTTPException: 425 when the Losers Bracket is requested before it is seeded.
+    """
+    if side == "losers":
+        if bracket.losers_bracket is None:
+            raise HTTPException(425, "Losers bracket not yet seeded — wait for all Round-1 winners matches to complete")
+        return bracket.losers_bracket, title or "Losers Bracket"
+    return bracket.winners_bracket, title or "Winners Bracket"
 
 
 # ---------------------------------------------------------------------------

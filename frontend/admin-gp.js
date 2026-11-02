@@ -56,9 +56,7 @@ async function renderGP() {
     }
 
     const groupFormatLabel = _gpScoreMode['gp-group'] === 'sets' ? `🎾 ${t('txt_txt_sets')}` : t('txt_txt_points_label');
-    if (status.champion) {
-      html += `<div class="alert alert-success">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
-    }
+    html += _renderChampionAlerts(status);
 
     if (status.phase === 'finished') {
       html += `<div class="card">`;
@@ -157,8 +155,17 @@ async function renderGP() {
 
     // Playoff bracket
     if (status.phase === 'playoffs' || status.phase === 'finished') {
-      html += _renderAdminBracketCard(`/api/tournaments/${currentTid}/gp/playoffs-schema`, tvSettings, { isDouble: status.double_elimination === true });
-      html += _renderPlayoffMatchesByRound(playoffs?.matches || [], 'gp-playoff');
+      const gpEspejo = status.espejo === true;
+      html += _renderAdminBracketCard(`/api/tournaments/${currentTid}/gp/playoffs-schema`, tvSettings, {
+        isDouble: status.double_elimination === true && !gpEspejo,
+        isEspejo: gpEspejo,
+      });
+      html += _renderPlayoffMatchesByRound(
+        playoffs?.matches || [],
+        'gp-playoff',
+        gpEspejo ? 'gp-espejo-losers' : 'gp-playoff',
+        status.espejo_super_final ? 'gp-espejo-super-final' : (gpEspejo ? 'gp-espejo-losers' : 'gp-playoff'),
+      );
     }
 
     // Unified Settings card at the bottom of the page.
@@ -168,6 +175,13 @@ async function renderGP() {
     }
     if (status.phase === 'playoffs' || status.phase === 'finished') {
       scoringStages.push({ key: 'gp-playoff', label: t('txt_txt_play_offs') });
+      if (status.espejo) {
+        scoringStages.push({ key: 'gp-espejo-losers', label: t('txt_txt_espejo_losers_bracket') });
+      }
+      if (status.espejo_super_final) {
+        // Legacy: only tournaments created before the Super Final was removed.
+        scoringStages.push({ key: 'gp-espejo-super-final', label: t('txt_txt_espejo_super_final') });
+      }
     }
     html += _renderSettingsCard({
       tvSettings,
@@ -407,9 +421,7 @@ async function renderPO() {
       html += _renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/po/courts`);
     }
 
-    if (status.champion) {
-      html += `<div class="alert alert-success">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
-    }
+    html += _renderChampionAlerts(status);
 
     if (status.phase === 'finished') {
       html += `<div class="card">`;
@@ -435,6 +447,7 @@ async function renderPO() {
       poScoringStages.push({ key: 'po-espejo-losers', label: t('txt_txt_espejo_losers_bracket') });
     }
     if (status.espejo_super_final) {
+      // Legacy: only tournaments created before the Super Final was removed.
       poScoringStages.push({ key: 'po-espejo-super-final', label: t('txt_txt_espejo_super_final') });
     }
     html += _renderSettingsCard({
@@ -579,7 +592,7 @@ function _poFocusNextAction(action) {
 // helpers below build its pieces; per-match format logic lives here only.
 
 /** Scoring contexts that accept both points and set scores. */
-const _SET_SCORE_CTXS = new Set(['gp-group', 'gp-playoff', 'mex-playoff', 'po-playoff', 'po-espejo-losers', 'po-espejo-super-final']);
+const _SET_SCORE_CTXS = new Set(['gp-group', 'gp-playoff', 'gp-espejo-losers', 'gp-espejo-super-final', 'mex-playoff', 'po-playoff', 'po-espejo-losers', 'po-espejo-super-final']);
 
 /** Client-only Points/Sets choice per row (key: match id, or `dr-<id>` for the
  *  dispute custom form).  Survives re-renders; never sent to the server. */
@@ -638,41 +651,48 @@ function _matchFormatIsOverridden(m, ctx) {
   return (!!fo.mode && fo.mode !== _stageScoreMode(ctx)) || (!!fo.decider && fo.decider !== _gpSetDecider);
 }
 
+/** Label inside the format button: the input mode plus a TB tag (set contexts). */
+function _matchFormatModeLabel(m, mode) {
+  let label = `<span class="match-format-mode">${esc(mode === 'sets' ? t('txt_txt_sets') : t('txt_txt_points_label'))}</span>`;
+  if (mode === 'sets' && _matchDecider(m) === 'match_tiebreak') {
+    label += ` <span class="match-format-tb" title="${escAttr(t('txt_match_tb_rule'))}">${esc(t('txt_match_tb_label'))}</span>`;
+  }
+  return label;
+}
+
 /**
- * Chip-button showing the effective format; opens the shared format popover.
+ * The single per-match format button: shows the current entry mode (or the
+ * Mexicano points target) and opens the shared format popover, where the
+ * scorer switches Points/Sets and adjusts the match's saved format.
  * With `onlyIfOverride`, renders nothing unless the match has an override.
+ *
+ * @param {object} m        Serialised match.
+ * @param {string} ctx      Scoring context.
+ * @param {object} [opts]
+ * @param {boolean} [opts.onlyIfOverride]  Indicator-only use on scored rows.
+ * @param {string|null} [opts.mode]        Input mode to show (defaults to the row's).
+ * @param {string|null} [opts.modeKey]     `_matchModeLocal` key (`dr-<id>` in dispute panels).
+ * @param {string} [opts.idPrefix]         Element id prefix; keeps ids unique per form.
  */
-function _renderMatchFormatChip(m, ctx, { onlyIfOverride = false } = {}) {
+function _renderMatchFormatChip(m, ctx, { onlyIfOverride = false, mode = null, modeKey = null, idPrefix = 'mfmt-btn-' } = {}) {
   if (ctx !== 'mex' && !_isSetCtx(ctx)) return '';
-  const overridden = _matchFormatIsOverridden(m, ctx);
   if (onlyIfOverride && !m.format_override) return '';
+  const key = modeKey || m.id;
+  const overridden = _matchFormatIsOverridden(m, ctx);
   let label;
   let defaultValue;
   if (ctx === 'mex') {
     label = `<span class="match-format-num">${_matchPointsTarget(m, ctx)}</span>`;
     defaultValue = String(_totalPts);
   } else {
-    const mode = m.format_override?.mode || _stageScoreMode(ctx);
-    label = esc(mode === 'sets' ? t('txt_txt_sets') : t('txt_txt_points_label'));
-    if (mode === 'sets' && _matchDecider(m) === 'match_tiebreak') {
-      label += ` <span class="match-format-tb" title="${escAttr(t('txt_match_tb_rule'))}">${esc(t('txt_match_tb_label'))}</span>`;
-    }
+    label = _matchFormatModeLabel(m, mode || _matchInputMode(m, ctx, null, modeKey));
     defaultValue = _stageScoreMode(ctx) === 'sets' ? t('txt_txt_sets') : t('txt_txt_points_label');
   }
   const title = m.format_override
     ? t('txt_match_format_overridden')
     : t('txt_match_format_default_value', { value: defaultValue });
   const cls = `match-format-btn${overridden ? ' is-override' : ''}`;
-  return `<button type="button" class="${cls}" id="mfmt-btn-${m.id}" aria-haspopup="dialog" aria-label="${escAttr(t('txt_match_format_btn_label'))}" title="${escAttr(title)}" onclick="_openMatchFormatPopover('${m.id}','${ctx}', this)">${_antIc('profile')} ${label}</button>`;
-}
-
-/** Segmented Points/Sets toggle for one score form (client-only). */
-function _renderMatchModeToggle(key, mode) {
-  const btn = (value, label) => `<button type="button" class="${mode === value ? 'active' : ''}" aria-pressed="${mode === value}" onclick="_setMatchRowMode('${key}','${value}')">${esc(label)}</button>`;
-  return `<div class="score-mode-toggle match-mode-toggle" role="group" aria-label="${escAttr(t('txt_match_format_btn_label'))}" data-mode-key="${key}">`
-    + btn('points', t('txt_txt_points_label'))
-    + btn('sets', t('txt_txt_sets'))
-    + `</div>`;
+  return `<button type="button" class="${cls}" id="${idPrefix}${m.id}" data-mode-key="${key}" aria-haspopup="dialog" aria-label="${escAttr(t('txt_match_format_btn_label'))}" title="${escAttr(title)}" onclick="_openMatchFormatPopover('${m.id}','${ctx}', this, '${key}')">${_antIc('profile')} ${label}<span class="match-format-caret" aria-hidden="true"></span></button>`;
 }
 
 /** Show the points or sets inputs of one form without re-rendering the row. */
@@ -683,17 +703,22 @@ function _applyMatchRowMode(key, mode) {
   const sets = document.getElementById(isDispute ? `dr-custom-sets-${id}` : `score-tennis-${id}`);
   if (pts) pts.classList.toggle('hidden', mode === 'sets');
   if (sets) sets.classList.toggle('hidden', mode !== 'sets');
-  document.querySelectorAll(`[data-mode-key="${key}"] button`).forEach((b, i) => {
-    const active = (i === 1) === (mode === 'sets');
-    b.classList.toggle('active', active);
-    b.setAttribute('aria-pressed', String(active));
+  const m = _matchRowCache.get(id)?.m;
+  document.querySelectorAll(`.match-format-btn[data-mode-key="${key}"]`).forEach(btn => {
+    const modeEl = btn.querySelector('.match-format-mode');
+    if (!modeEl) return;
+    btn.querySelector('.match-format-tb')?.remove();
+    const tmp = document.createElement('span');
+    tmp.innerHTML = m ? _matchFormatModeLabel(m, mode) : '';
+    modeEl.replaceWith(...tmp.childNodes);
   });
 }
 
-/** Row toggle handler: remember the choice locally and swap the inputs. */
-function _setMatchRowMode(key, mode) {
+/** Remember a row's entry mode locally and swap its inputs. */
+function _setMatchRowMode(key, mode, { focus = true } = {}) {
   _matchModeLocal.set(key, mode);
   _applyMatchRowMode(key, mode);
+  if (!focus) return;
   const scopeId = key.startsWith('dr-')
     ? (mode === 'sets' ? `dr-custom-sets-${key.slice(3)}` : `dr-custom-pts-${key.slice(3)}`)
     : (mode === 'sets' ? `score-tennis-${key}` : `score-normal-${key}`);
@@ -753,8 +778,8 @@ function _scoreKeydown(event) {
 }
 
 /**
- * Score inputs for one form: an optional Points/Sets toggle (set-capable
- * contexts) plus the points row and the sets row, one of them hidden.
+ * Score inputs for one form: the per-match format button (set-capable and
+ * Mexicano contexts) plus the points row and the sets row, one of them hidden.
  *
  * @param {object} m       Serialised match.
  * @param {string} ctx     Scoring context.
@@ -763,15 +788,16 @@ function _scoreKeydown(event) {
  * @param {number[]|null} opts.prefill  Score to pre-fill (edit form) or null.
  * @param {string} [opts.saveClass]  Save button classes.
  * @param {string} [opts.tbdAttr]    Extra attributes for the save buttons.
+ * @param {string} [opts.idPrefix]   Id prefix for the format button.
  */
-function _renderScoreInputs(m, ctx, { mode, prefill = null, saveClass = 'btn btn-success btn-sm', tbdAttr = '' }) {
+function _renderScoreInputs(m, ctx, { mode, prefill = null, saveClass = 'btn btn-success btn-sm', tbdAttr = '', idPrefix = 'mfmt-btn-' }) {
   const target = _matchPointsTarget(m, ctx);
   const onInput = target > 0 ? ` oninput="_autoFillScore('${m.id}', ${target})"` : '';
   const keys = ` onkeydown="_scoreKeydown(event)"`;
   const v1 = prefill ? `value="${prefill[0]}"` : `value="" placeholder="0"`;
   const v2 = prefill ? `value="${prefill[1]}"` : `value="" placeholder="${target > 0 ? target : 0}"`;
   const setCtx = _isSetCtx(ctx);
-  let html = setCtx ? _renderMatchModeToggle(m.id, mode) : '';
+  let html = _renderMatchFormatChip(m, ctx, { mode: setCtx ? mode : null, idPrefix });
   html += `<div id="score-normal-${m.id}" class="score-entry${setCtx && mode === 'sets' ? ' hidden' : ''}" data-score-scope>`;
   html += `<input type="number" id="s1-${m.id}" class="score-input-narrow" inputmode="numeric" pattern="[0-9]*" min="0" ${v1}${onInput}${keys}>`;
   html += `<span>–</span>`;
@@ -779,7 +805,7 @@ function _renderScoreInputs(m, ctx, { mode, prefill = null, saveClass = 'btn btn
   html += `<button type="button" class="${saveClass}"${tbdAttr} data-score-save onclick="submitScore('${m.id}','${ctx}')">${t('txt_txt_save')}</button>`;
   html += `</div>`;
   if (setCtx) {
-    html += `<div id="score-tennis-${m.id}" class="score-entry${mode === 'sets' ? '' : ' hidden'}" data-score-scope>`;
+    html += `<div id="score-tennis-${m.id}" class="score-entry score-entry-sets${mode === 'sets' ? '' : ' hidden'}" data-score-scope>`;
     html += `<div class="tennis-sets" id="tennis-sets-${m.id}">`;
     html += _renderTennisSetInputs(m.id, 3, _matchDecider(m));
     html += `</div>`;
@@ -794,8 +820,7 @@ function _renderEditForm(m, ctx) {
   const sc = m.score || [0, 0];
   const saved = m.sets && m.sets.length > 0 ? 'sets' : 'points';
   let html = `<div class="match-actions hidden" id="medit-${m.id}">`;
-  html += _renderMatchFormatChip(m, ctx);
-  html += _renderScoreInputs(m, ctx, { mode: _matchInputMode(m, ctx, saved), prefill: sc });
+  html += _renderScoreInputs(m, ctx, { mode: _matchInputMode(m, ctx, saved), prefill: sc, idPrefix: 'mfmt-edit-' });
   html += `<button type="button" class="btn btn-sm btn-muted" aria-label="${escAttr(t('txt_txt_cancel'))}" onclick="_cancelEditMatch('${m.id}')">✕</button>`;
   html += `</div>`;
   return html;
@@ -828,7 +853,7 @@ function _renderDisputePanel(m, ctx) {
   if (_isSetCtx(ctx)) {
     const saved = (m.dispute_sets && m.dispute_sets.length > 0) || (m.sets && m.sets.length > 0) ? 'sets' : 'points';
     const custMode = _matchInputMode(m, ctx, saved, `dr-${m.id}`);
-    html += _renderMatchModeToggle(`dr-${m.id}`, custMode);
+    html += _renderMatchFormatChip(m, ctx, { mode: custMode, modeKey: `dr-${m.id}`, idPrefix: 'mfmt-dr-' });
     html += `<div id="dr-custom-pts-${m.id}" class="custom-score-row ${custMode === 'sets' ? 'hidden' : ''}" data-score-scope>`;
     html += `<input type="number" id="drs1-${m.id}" min="0" placeholder="0"${keys}>`;
     html += `<span>–</span>`;
@@ -984,7 +1009,6 @@ function matchRow(m, ctx) {
 
   let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap${tbdClass}" data-status="pending" data-disputed="0">${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
   html += `<div class="match-actions" id="score-input-${m.id}">`;
-  html += _renderMatchFormatChip(m, ctx);
   html += _renderScoreInputs(m, ctx, { mode: _matchInputMode(m, ctx), saveClass, tbdAttr });
   html += `</div>`;
   html += _renderCommentBanner(m);
@@ -1003,6 +1027,7 @@ let _mfTrigger = null;
 const _mfStore = reactiveStore({
   open: false,
   matchId: '',
+  modeKey: '',           // _matchModeLocal key of the form that opened it
   ctx: '',
   isMexRound: false,
   completed: false,
@@ -1070,7 +1095,15 @@ const _mfStore = reactiveStore({
     }
     return true;
   },
-  setMode(mode) { this.draft.mode = mode; },
+  /** Switches the row's score boxes right away; Apply also saves it. */
+  setMode(mode) {
+    this.draft.mode = mode;
+    if (!this.isMexRound) {
+      _setMatchRowMode(this.modeKey, mode, { focus: false });
+      // The row reflows (sets boxes are wider), so follow the trigger.
+      _mfPositionAt(_mfTrigger);
+    }
+  },
   setDecider(decider) { this.draft.decider = decider; },
   setSetScore(row, which, value) { this.score.sets[row][which] = value; },
   setScore(which, value) {
@@ -1107,7 +1140,7 @@ function _mfOverrideBody(resetToDefault) {
 }
 
 /** Open the format popover for a match row, anchored under *trigger*. */
-function _openMatchFormatPopover(matchId, ctx, trigger) {
+function _openMatchFormatPopover(matchId, ctx, trigger, modeKey = matchId) {
   const entry = _matchRowCache.get(matchId);
   if (!entry) return;
   const m = entry.m;
@@ -1115,6 +1148,7 @@ function _openMatchFormatPopover(matchId, ctx, trigger) {
   _mfTrigger = trigger || null;
   if (typeof _currentLang !== 'undefined') _mfStore.lang = _currentLang;
   _mfStore.matchId = matchId;
+  _mfStore.modeKey = modeKey;
   _mfStore.ctx = ctx;
   _mfStore.isMexRound = isMexRound;
   _mfStore.completed = !!m.score && (m.status === 'completed' || !!m.scored_by);
@@ -1126,7 +1160,9 @@ function _openMatchFormatPopover(matchId, ctx, trigger) {
   _mfStore.originalTarget = isMexRound ? _matchPointsTarget(m, ctx) : 0;
   _mfStore.originalDecider = _matchDecider(m);
   _mfStore.threeSets = Array.isArray(m.sets) && m.sets.length === 3;
-  _mfStore.draft.mode = _matchInputMode(m, ctx, m.sets && m.sets.length ? 'sets' : null);
+  const isDisputeForm = modeKey !== matchId;
+  const savedSets = (m.sets && m.sets.length) || (isDisputeForm && m.dispute_sets && m.dispute_sets.length);
+  _mfStore.draft.mode = _matchInputMode(m, ctx, savedSets ? 'sets' : null, modeKey);
   _mfStore.draft.points_target = isMexRound && m.format_override?.points_target ? String(m.format_override.points_target) : '';
   _mfStore.draft.decider = _matchDecider(m);
   _mfStore.score.s1 = '';
@@ -1136,12 +1172,7 @@ function _openMatchFormatPopover(matchId, ctx, trigger) {
   _mfStore.error = '';
   _mfStore.notice = '';
   _mfStore.saving = false;
-  if (trigger) {
-    const r = trigger.getBoundingClientRect();
-    const width = Math.min(320, window.innerWidth - 32);
-    _mfStore.top = Math.round(r.bottom + window.scrollY + 6);
-    _mfStore.left = Math.round(Math.max(16, Math.min(r.left + window.scrollX, window.scrollX + window.innerWidth - width - 16)));
-  }
+  _mfPositionAt(trigger);
   _mfStore.open = true;
   const root = document.getElementById('match-format-popover');
   if (root) root.hidden = false;
@@ -1149,6 +1180,15 @@ function _openMatchFormatPopover(matchId, ctx, trigger) {
     const first = root?.querySelector('input:not([disabled]), button:not([disabled])');
     first?.focus();
   });
+}
+
+/** Anchor the popover under *trigger*, clamped to the viewport. */
+function _mfPositionAt(trigger) {
+  if (!trigger || !document.body.contains(trigger)) return;
+  const r = trigger.getBoundingClientRect();
+  const width = Math.min(320, window.innerWidth - 32);
+  _mfStore.top = Math.round(r.bottom + window.scrollY + 6);
+  _mfStore.left = Math.round(Math.max(16, Math.min(r.left + window.scrollX, window.scrollX + window.innerWidth - width - 16)));
 }
 
 /** Close the popover; by default focus returns to its trigger. */
@@ -1159,7 +1199,7 @@ function _closeMatchFormatPopover(returnFocus = true) {
   if (returnFocus) {
     const back = _mfTrigger && document.body.contains(_mfTrigger)
       ? _mfTrigger
-      : document.getElementById('mfmt-btn-' + _mfStore.matchId);
+      : document.querySelector(`.match-format-btn[data-mode-key="${_mfStore.modeKey}"]`);
     back?.focus();
   }
   _mfTrigger = null;
@@ -1194,7 +1234,7 @@ function _mfSyncFromRow(m) {
   _mfStore.originalTarget = _mfStore.isMexRound ? _matchPointsTarget(m, _mfStore.ctx) : 0;
   _mfStore.originalDecider = _matchDecider(m);
   _mfStore.threeSets = Array.isArray(m.sets) && m.sets.length === 3;
-  _mfStore.draft.mode = m.format_override?.mode || _mfStore.globalMode;
+  _mfStore.draft.mode = _matchInputMode(m, _mfStore.ctx, null, _mfStore.modeKey);
   _mfStore.draft.points_target = m.format_override?.points_target ? String(m.format_override.points_target) : '';
   _mfStore.draft.decider = _matchDecider(m);
   _mfStore.notice = t('txt_match_format_changed_elsewhere');
@@ -1219,6 +1259,7 @@ function _replaceMatchCard(m, ctx) {
  */
 async function _mfApply(resetToDefault) {
   const matchId = _mfStore.matchId;
+  const modeKey = _mfStore.modeKey || matchId;
   const ctx = _mfStore.ctx;
   const entry = _matchRowCache.get(matchId);
   if (!entry || !currentTid) return;
@@ -1246,13 +1287,13 @@ async function _mfApply(resetToDefault) {
   }
 
   // Optimistic: show the new input mode on the row right away.
-  const prevLocal = _matchModeLocal.get(matchId);
-  const prevMode = _matchInputMode(entry.m, ctx);
+  // The live mode switch already set a local mode; drop it so the saved
+  // override drives the row, and restore it if the save fails.
+  const prevLocal = _matchModeLocal.get(modeKey);
+  _matchModeLocal.delete(modeKey);
+  const prevMode = prevLocal || _matchInputMode(entry.m, ctx, null, modeKey);
   const nextMode = resetToDefault ? _stageScoreMode(ctx) : (override?.mode || _stageScoreMode(ctx));
-  if (_isSetCtx(ctx)) {
-    _matchModeLocal.delete(matchId);
-    _applyMatchRowMode(matchId, nextMode);
-  }
+  if (_isSetCtx(ctx)) _applyMatchRowMode(modeKey, nextMode);
 
   _mfStore.saving = true;
   _mfStore.error = '';
@@ -1280,8 +1321,8 @@ async function _mfApply(resetToDefault) {
   } catch (e) {
     _mfStore.saving = false;
     if (_isSetCtx(ctx)) {
-      if (prevLocal) _matchModeLocal.set(matchId, prevLocal);
-      _applyMatchRowMode(matchId, prevMode);
+      if (prevLocal) _matchModeLocal.set(modeKey, prevLocal);
+      _applyMatchRowMode(modeKey, prevMode);
     }
     _mfStore.error = e.message;
     _showToast(e.message, 'error');
@@ -1432,7 +1473,8 @@ async function _surgicalScoreUpdate(matchId, ctx) {
         api(`/api/tournaments/${currentTid}/gp/playoffs`),
         api(`/api/tournaments/${currentTid}/gp/status`),
       ]);
-      if (status.phase !== _gpCurrentPhase) {
+      // Espejo: a result can seed the Losers Bracket (new cards) or finish the tournament.
+      if (status.phase !== _gpCurrentPhase || status.espejo) {
         needsFullRender = true;
       } else {
         updatedMatch = playoffs.matches?.find(m => m.id === matchId) ?? null;
@@ -1510,7 +1552,7 @@ async function _surgicalScoreUpdate(matchId, ctx) {
         api(`/api/tournaments/${currentTid}/po/playoffs`),
         api(`/api/tournaments/${currentTid}/po/status`),
       ]);
-      if (status.phase !== _poCurrentPhase) {
+      if (status.phase !== _poCurrentPhase || status.espejo) {
         needsFullRender = true;
       } else {
         updatedMatch = playoffs.matches?.find(m => m.id === matchId) ?? null;
@@ -1556,6 +1598,9 @@ async function _surgicalScoreUpdate(matchId, ctx) {
 const _SCORE_ENDPOINTS = {
   'gp-group':        { points: 'gp/record-group',           tennis: 'gp/record-group-tennis' },
   'gp-playoff':      { points: 'gp/record-playoff',         tennis: 'gp/record-playoff-tennis' },
+  // Espejo: the engine routes by match id, so Losers (and legacy Super Final) matches use the same endpoints.
+  'gp-espejo-losers':{ points: 'gp/record-playoff',         tennis: 'gp/record-playoff-tennis' },
+  'gp-espejo-super-final':{ points: 'gp/record-playoff',    tennis: 'gp/record-playoff-tennis' },
   'mex-playoff':     { points: 'mex/record-playoff',        tennis: 'mex/record-playoff-tennis' },
   'mex':             { points: 'mex/record',                 tennis: null },
   'po-playoff':      { points: 'po/record',                  tennis: 'po/record-tennis' },
@@ -1775,10 +1820,6 @@ function _renderGpPlayoffEditor() {
   html += `<div class="gp-format-row">`;
   html += `<div class="form-group"><label>${t('txt_txt_format')}</label><select id="gp-playoff-format" onchange="_gpPlayoffFormatChanged()"><option value="single">${t('txt_txt_single_elimination')}</option><option value="double">${t('txt_txt_double_elimination')}</option><option value="espejo">${t('txt_txt_espejo_format')}</option></select></div>`;
   html += `</div>`;
-  html += `<div id="gp-espejo-options" class="espejo-options" style="display:none">`;
-  html += `<label class="d-flex items-center gap-2 fs-sm cursor-pointer">`;
-  html += `<input type="checkbox" id="gp-espejo-super-final" onchange="_gpUpdatePlayoffMatchCount()"> ${t('txt_txt_espejo_super_final')}`;
-  html += `</label></div>`;
   html += `<div class="gp-playoff-match-estimate" id="gp-playoff-match-estimate"></div>`;
   setTimeout(_gpUpdatePlayoffMatchCount, 0);
 
@@ -1818,9 +1859,6 @@ function _gpToggleAdvancing(cb) {
 }
 
 function _gpPlayoffFormatChanged() {
-  const fmt = document.getElementById('gp-playoff-format')?.value;
-  const opts = document.getElementById('gp-espejo-options');
-  if (opts) opts.style.display = fmt === 'espejo' ? '' : 'none';
   _gpUpdatePlayoffMatchCount();
 }
 
@@ -1880,13 +1918,13 @@ function _gpFormatConcurrencySeq(seq) {
   return seq.join(' → ');
 }
 
-function _gpEstimatePlayoffMatches(n, format, superFinal) {
+function _gpEstimatePlayoffMatches(n, format) {
   if (n < 2) return 0;
   if (format === 'single') return n - 1;
   if (format === 'double') return 2 * (n - 1);
   if (format === 'espejo') {
     const lbTeams = n - _gpNextPowerOfTwo(n) / 2;
-    return (n - 1) + Math.max(0, lbTeams - 1) + (superFinal ? 1 : 0);
+    return (n - 1) + Math.max(0, lbTeams - 1);
   }
   return n - 1;
 }
@@ -1896,10 +1934,9 @@ function _gpUpdatePlayoffMatchCount() {
   if (!el) return;
   const n = _gpAdvancingIds.size + _gpExternalParticipants.length;
   const format = document.getElementById('gp-playoff-format')?.value || 'single';
-  const superFinal = document.getElementById('gp-espejo-super-final')?.checked || false;
   if (n < 2) { el.innerHTML = ''; return; }
 
-  const count = _gpEstimatePlayoffMatches(n, format, superFinal);
+  const count = _gpEstimatePlayoffMatches(n, format);
   const matchText = `~${count} ${t('txt_txt_matches')}`;
 
   function branchRow(label, seq, suffix) {
@@ -1922,11 +1959,10 @@ function _gpUpdatePlayoffMatchCount() {
       `</div>`;
   } else {
     const { wbSeq, lbSeq } = _gpEspejoSequences(n);
-    const sfSuffix = superFinal ? 'SF' : '';
     el.innerHTML = `<span class="gp-playoff-estimate-count">${matchText}</span>` +
       `<div class="gp-playoff-branches">` +
       branchRow('WB', wbSeq, '') +
-      (lbSeq.length ? branchRow('LB', lbSeq, sfSuffix) : '') +
+      (lbSeq.length ? branchRow('LB', lbSeq, '') : '') +
       `</div>`;
   }
 }
@@ -2046,7 +2082,6 @@ async function _confirmGpPlayoffs() {
     extra_participants: extra,
     double_elimination: fmt === 'double',
     espejo: fmt === 'espejo',
-    espejo_super_final: fmt === 'espejo' && (document.getElementById('gp-espejo-super-final')?.checked || false),
   };
   if (_gpPlayoffTeamMode && _gpPlayoffTeams.length > 0) {
     const validTeams = _gpPlayoffTeams.filter(team => team.every(pid => pid));
@@ -2096,6 +2131,33 @@ function _scrollToPlayoffRound(roundKey) {
   card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+/** Display name of an Espejo bracket side (a match's `bracket_side`). */
+function _espejoSideLabel(side) {
+  if (side === 'losers') return t('txt_txt_espejo_losers_bracket');
+  if (side === 'super_final') return t('txt_txt_espejo_super_final');
+  return t('txt_txt_espejo_winners_bracket');
+}
+
+/**
+ * Champion banners for the GP and standalone play-off views.
+ * Espejo: the champion is the Winners-bracket champion (shown as soon as the
+ * Winners final is played); the Losers-bracket winner is the consolation winner.
+ * Legacy tournaments with a Super Final keep its winner as champion.
+ */
+function _renderChampionAlerts(status) {
+  const espejo = status.espejo === true;
+  const legacySuperFinal = espejo && status.espejo_super_final === true;
+  const champion = status.champion || (espejo && !legacySuperFinal ? status.winners_champion : null);
+  let h = '';
+  if (champion) {
+    h += `<div class="alert alert-success">🏆 ${t('txt_txt_champion')}: <strong>${esc(champion.join(', '))}</strong></div>`;
+  }
+  if (espejo && !legacySuperFinal && status.losers_champion) {
+    h += `<div class="alert alert-info">${t('txt_txt_consolation_winner')}: <strong>${esc(status.losers_champion.join(', '))}</strong></div>`;
+  }
+  return h;
+}
+
 /**
  * Render playoff matches grouped by round_label, mirroring the group-stage
  * pattern: a sticky round nav bar at the top + one collapsible card per round.
@@ -2110,10 +2172,14 @@ function _renderPlayoffMatchesByRound(matches, ctx, losersCtx = ctx, superFinalC
   if (!matches || matches.length === 0) return '';
 
   // Group by round_label, preserving first-seen order (which follows bracket round order).
+  // Espejo matches carry bracket_side: Winners and Losers rounds share names
+  // ("Semi-Final"), so the side is part of the key and shown as a prefix.
   const roundOrder = [];
   const byRound = {};
+  const isEspejoList = matches.some(m => m.bracket_side);
   for (const m of matches) {
-    const key = m.round_label || t('txt_txt_match');
+    const label = m.round_label || t('txt_txt_match');
+    const key = isEspejoList ? `${_espejoSideLabel(m.bracket_side)}: ${label}` : label;
     if (!byRound[key]) { byRound[key] = []; roundOrder.push(key); }
     byRound[key].push(m);
   }

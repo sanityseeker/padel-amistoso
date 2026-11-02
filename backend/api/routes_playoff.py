@@ -26,11 +26,12 @@ from .helpers import (
     _require_score_permission,
     _sanitize_demo_create_request,
     _find_match,
+    _espejo_schema_target,
+    _serialize_playoff_matches,
     _schema_cache_get,
     _schema_cache_key,
     _schema_cache_put,
     _schema_image_response,
-    _serialize_match,
     _prepare_set_score,
     _store_tournament,
     _apply_player_score_metadata,
@@ -102,7 +103,6 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
         courts=courts,
         double_elimination=req.double_elimination,
         espejo=req.espejo,
-        espejo_super_final=req.espejo_super_final,
         team_mode=req.team_mode,
         initial_strength=initial_strength,
     )
@@ -156,27 +156,25 @@ async def po_status(tid: str) -> dict:
     """Return high-level status (phase, champion, bracket type) for a standalone Play-off tournament."""
     data = _get_tournament(tid, _PO)
     t: PlayoffTournament = data["tournament"]
+    espejo = bool(getattr(t, "espejo", False))
     return {
         "phase": t.phase,
         "team_mode": t.team_mode,
         "double_elimination": t.double_elimination,
-        "espejo": getattr(t, "espejo", False),
-        "espejo_super_final": getattr(t, "espejo_super_final", False),
-        "espejo_losers_bracket_seeded": (
-            t.bracket.losers_bracket is not None if getattr(t, "espejo", False) else False
-        ),
+        "espejo": espejo,
+        # True only for tournaments persisted before the Super Final was removed.
+        "espejo_super_final": bool(espejo and getattr(t.bracket, "super_final_enabled", False)),
+        "espejo_losers_bracket_seeded": (t.bracket.losers_bracket is not None if espejo else False),
         "assign_courts": data.get("assign_courts", True),
         "courts": [{"id": c.id, "name": c.name} for c in t.courts],
         "champion": [p.name for p in t.champion()] if t.champion() else None,
+        # Known as soon as the Winners final is played (before the tournament ends).
         "winners_champion": (
-            [p.name for p in t.bracket.winners_champion()]
-            if getattr(t, "espejo", False) and t.bracket.winners_champion()
-            else None
+            [p.name for p in t.bracket.winners_champion()] if espejo and t.bracket.winners_champion() else None
         ),
+        # Consolation winner: the Losers Bracket champion.
         "losers_champion": (
-            [p.name for p in t.bracket.losers_champion()]
-            if getattr(t, "espejo", False) and t.bracket.losers_champion()
-            else None
+            [p.name for p in t.bracket.losers_champion()] if espejo and t.bracket.losers_champion() else None
         ),
         "sport": data.get("sport", "padel"),
     }
@@ -187,32 +185,8 @@ async def po_playoffs(tid: str) -> dict:
     """Return all play-off matches, pending matches, and the champion (if decided)."""
     t: PlayoffTournament = _get_tournament(tid, _PO)["tournament"]
 
-    def _serialize_with_side(m, side: str | None) -> dict:
-        d = _serialize_match(m)
-        if side:
-            d["bracket_side"] = side
-        return d
-
-    if getattr(t, "espejo", False):
-        bracket = t.bracket
-        wb_ids = {m.id for m in bracket.winners_bracket.matches}
-        lb_ids = {m.id for m in bracket.losers_bracket.matches} if bracket.losers_bracket else set()
-        sf_id = bracket.super_final_match.id if bracket.super_final_match else None
-
-        def _side(m):
-            if m.id in wb_ids:
-                return "winners"
-            if m.id in lb_ids:
-                return "losers"
-            if m.id == sf_id:
-                return "super_final"
-            return None
-
-        matches = [_serialize_with_side(m, _side(m)) for m in t.all_matches() if not _is_bye_match(m)]
-        pending = [_serialize_with_side(m, _side(m)) for m in t.pending_matches()]
-    else:
-        matches = [_serialize_match(m) for m in t.all_matches() if not _is_bye_match(m)]
-        pending = [_serialize_match(m) for m in t.pending_matches()]
+    matches = _serialize_playoff_matches(t.bracket, [m for m in t.all_matches() if not _is_bye_match(m)])
+    pending = _serialize_playoff_matches(t.bracket, t.pending_matches())
 
     return {
         "matches": matches,
@@ -243,26 +217,14 @@ async def po_playoffs_schema(
 
     # Pick the right bracket object and names.
     if t.espejo:
-        bracket = t.bracket
-        if side == "losers":
-            if bracket.losers_bracket is None:
-                raise HTTPException(
-                    425, "Losers bracket not yet seeded — wait for all Round-1 winners matches to complete"
-                )
-            active_bracket = bracket.losers_bracket
-            auto_title = title or "Losers Bracket"
-        else:
-            active_bracket = bracket.winners_bracket
-            auto_title = title or "Winners Bracket"
-        participant_names = [" & ".join(p.name for p in team) for team in active_bracket.original_teams]
+        active_bracket, auto_title = _espejo_schema_target(t.bracket, side, title)
         elim = EliminationType.SINGLE
-        match_labels = _build_match_labels(active_bracket)
     else:
         active_bracket = t.bracket
-        participant_names = [" & ".join(p.name for p in team) for team in active_bracket.original_teams]
         elim = EliminationType.DOUBLE if t.double_elimination else EliminationType.SINGLE
-        match_labels = _build_match_labels(active_bracket)
         auto_title = title
+    participant_names = [" & ".join(p.name for p in team) for team in active_bracket.original_teams]
+    match_labels = _build_match_labels(active_bracket)
 
     if len(participant_names) < 2:
         raise HTTPException(400, "Need at least 2 participants for play-off schema")

@@ -18,6 +18,7 @@ from ..models import EntityType
 
 from ..models import Sport, TournamentType
 from ..tournaments.player_secrets import PlayerSecret, generate_secrets_for_players
+from ..tournaments.playoff import bracket_matches
 from .db import get_db
 
 logger = logging.getLogger(__name__)
@@ -383,10 +384,9 @@ def _collect_all_completed_matches(t: object) -> list:
         raw.extend(t.all_matches())
     pb = getattr(t, "playoff_bracket", None)
     if pb is not None:
-        if hasattr(pb, "all_matches"):
-            raw.extend(pb.all_matches())
-        elif hasattr(pb, "matches"):
-            raw.extend(pb.matches)
+        # ``all_matches`` is a property on double-elim / Espejo brackets but
+        # absent on single-elim; bracket_matches() normalises both.
+        raw.extend(bracket_matches(pb))
     seen: set[str] = set()
     result: list = []
     for m in raw:

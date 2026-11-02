@@ -597,12 +597,6 @@
             <input type="checkbox" id="po-espejo" class="cursor-pointer" onchange="_poToggleEspejo()">
             <label for="po-espejo" class="fs-md cursor-pointer" data-i18n="txt_txt_espejo_format">Espejo (parallel losers bracket)</label>
           </div>
-          <div id="po-espejo-options" class="espejo-options espejo-options--indented" style="display:none">
-            <div class="d-flex items-center gap-2">
-              <input type="checkbox" id="po-espejo-super-final" class="cursor-pointer" onchange="_updatePoMatchEstimate()">
-              <label for="po-espejo-super-final" class="fs-sm cursor-pointer" data-i18n="txt_txt_espejo_super_final">Super Final (WB winner vs LB winner)</label>
-            </div>
-          </div>
           <div id="po-match-estimate" class="gp-playoff-match-estimate mt-1-5"></div>
         </div>
         <div class="field-section mt-2">
@@ -1209,7 +1203,7 @@
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_formats_elim_title">Single and double elimination</strong>
-        <p data-i18n-html="txt_txt_info_formats_elim_desc">Available in every format that includes play-offs. <em>Single elimination (knockout):</em> lose once and you're out. <em>Double elimination (Espejo):</em> a parallel losers' bracket gives everyone a second chance — the finalist must be beaten twice to be knocked out, rewarding consistency across the whole draw.</p>
+        <p data-i18n-html="txt_txt_info_formats_elim_desc">Single and double elimination are available in every format that includes play-offs; Espejo is available in Group + Play-off and standalone Play-off events (not Mexicano). <em>Single elimination (knockout):</em> lose once and you're out. <em>Double elimination:</em> a parallel losers' bracket gives everyone a second chance — the finalist must be beaten twice to be knocked out, rewarding consistency across the whole draw. <em>Espejo:</em> a consolation bracket seeded from the Round-1 losers — both brackets run separately. The winners' bracket champion is the tournament champion and the consolation bracket winner is the consolation winner; the event finishes when both brackets are done.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_formats_schema_title">Bracket schema preview</strong>
@@ -1588,7 +1582,7 @@
      :style="{ top: top + 'px', left: left + 'px' }" @keydown="onKeydown($event)">
   <div class="mf-head">
     <span class="mf-title">{{ t('txt_match_format_btn_label') }}</span>
-    <button type="button" class="mf-close" :aria-label="t('txt_txt_cancel')" @click="close()">✕</button>
+    <button type="button" class="mf-close" :aria-label="t('txt_txt_close')" @click="close()">✕</button>
   </div>
   <p class="mf-line">{{ defaultLabel }}</p>
   <p v-if="isOverride" class="mf-line mf-line-override">{{ t('txt_match_format_overridden') }}</p>
@@ -1598,6 +1592,7 @@
     <button type="button" :class="{ active: draft.mode === 'points' }" :aria-pressed="draft.mode === 'points'" @click="setMode('points')">{{ t('txt_txt_points_label') }}</button>
     <button type="button" :class="{ active: draft.mode === 'sets' }" :aria-pressed="draft.mode === 'sets'" @click="setMode('sets')">{{ t('txt_txt_sets') }}</button>
   </div>
+  <p v-if="!isMexRound" class="mf-hint">{{ t('txt_match_format_mode_hint') }}</p>
   <div v-if="!isMexRound && draft.mode === 'sets'" class="mf-field mf-decider">
     <span>{{ t('txt_match_format_decider_label') }}</span>
     <div class="score-mode-toggle" role="group" :aria-label="t('txt_match_format_decider_label')">
@@ -1631,9 +1626,8 @@
   </div>
   <p v-if="error" class="mf-error" role="alert">{{ error }}</p>
   <div class="mf-actions">
-    <button type="button" class="mf-reset" :disabled="!isOverride || saving" @click="reset()">{{ t('txt_match_format_reset') }}</button>
+    <button v-if="isOverride" type="button" class="btn btn-sm btn-muted" :disabled="saving" @click="reset()">{{ t('txt_match_format_reset') }}</button>
     <span class="mf-actions-spacer"></span>
-    <button type="button" class="btn btn-sm btn-muted" @click="close()">{{ t('txt_txt_cancel') }}</button>
     <button type="button" class="btn btn-sm btn-primary" :disabled="!canApply" @click="apply()">{{ t('txt_match_format_apply') }}</button>
   </div>
 </div>

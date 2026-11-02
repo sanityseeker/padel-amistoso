@@ -200,7 +200,10 @@ class CreatePlayoffRequest(BaseModel):
     club_id: str | None = Field(default=None, max_length=64)
     double_elimination: bool = False
     espejo: bool = False
-    espejo_super_final: bool = False
+    espejo_super_final: bool = Field(
+        default=False,
+        description="Deprecated and ignored: the Espejo Super Final was removed. Accepted so old clients keep working.",
+    )
     public: bool = True
     assign_courts: bool = True
     player_strengths: dict[str, float] = Field(default_factory=dict)
@@ -515,7 +518,10 @@ class StartGroupPlayoffsRequest(BaseModel):
     extra_participants: list[ExternalParticipant] | None = None
     double_elimination: bool | None = None
     espejo: bool = False
-    espejo_super_final: bool = False
+    espejo_super_final: bool = Field(
+        default=False,
+        description="Deprecated and ignored: the Espejo Super Final was removed. Accepted so old clients keep working.",
+    )
     playoff_teams: list[list[str]] | None = None
 
 

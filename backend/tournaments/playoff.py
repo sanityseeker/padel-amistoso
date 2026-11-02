@@ -787,26 +787,34 @@ class EspejoParallelBracket:
     Losers Bracket (LB) using mirror seeding (``_make_seed_order``), so that
     the strongest Round-1 loser gets the most favourable LB draw.
 
+    The LB is a **consolation** bracket: the overall champion is always the
+    WB champion, and the LB winner is the *consolation winner*.  The
+    tournament is finished only once **both** brackets are decided (or the
+    LB never exists because fewer than two teams lost a played Round-1
+    match, e.g. with 2-3 teams).
+
     Teams that receive a bye in Round 1 of the WB do **not** drop into the LB
     (they never played, so they never lost).
 
-    Optionally, when both bracket champions are decided a **Super Final**
-    match is created: WB champion vs LB champion.  Without the Super Final
-    the two champions are co-champions.
+    Legacy: tournaments persisted while the (now removed) Super Final option
+    existed carry ``super_final_enabled=True`` and may hold a
+    ``super_final_match`` (WB champion vs LB champion).  Those are still
+    loaded and played to completion; for them the Super Final winner is the
+    champion.  New brackets can never enable it.
 
     Parameters
     ----------
     teams:
         Ordered list of teams by seed (index 0 = top seed).
-    super_final:
-        Whether to create a Super Final once both bracket champions are known.
     """
 
-    def __init__(self, teams: list[list[Player]], *, super_final: bool = False):
+    # Class-level default so pickles from before the attribute existed load.
+    super_final_enabled: bool = False
+
+    def __init__(self, teams: list[list[Player]]):
         if len(teams) < 2:
             raise ValueError("Need at least 2 teams")
 
-        self.super_final_enabled = super_final
         self.winners_bracket = SingleEliminationBracket(teams)
         self.losers_bracket: SingleEliminationBracket | None = None
         self.super_final_match: Match | None = None
@@ -826,7 +834,7 @@ class EspejoParallelBracket:
 
     @property
     def all_matches(self) -> list[Match]:
-        """All matches across both brackets, then super final (if any)."""
+        """All matches across both brackets, then the legacy super final (if any)."""
         wb = [m for m in self.winners_bracket.matches if not (m.team1 == [] and m.team2 == [])]
         lb = list(self.losers_bracket.matches) if self.losers_bracket else []
         sf = [self.super_final_match] if self.super_final_match else []
@@ -842,7 +850,7 @@ class EspejoParallelBracket:
         score: tuple[int, int],
         sets: list[tuple[int, int]] | None = None,
     ) -> None:
-        """Record the result of a match in either bracket or the super final."""
+        """Record the result of a match in either bracket (or the legacy super final)."""
         if self.super_final_match and self.super_final_match.id == match_id:
             m = self.super_final_match
             m.score = score
@@ -865,23 +873,42 @@ class EspejoParallelBracket:
 
         raise KeyError(f"Match {match_id!r} not found in Espejo bracket")
 
-    def champion(self) -> list[Player] | None:
-        """Return the overall champion.
+    def is_finished(self) -> bool:
+        """Whether both brackets are decided (the whole Espejo is over).
 
-        With super final enabled: winner of super final match.
-        Without super final: WB champion only (both champions are returned
-        individually via ``winners_champion`` / ``losers_champion``).
+        The WB champion alone is not enough while consolation (LB) matches are
+        still to be played.  If the LB was never seeded when the WB final is
+        done it can never be (seeding happens as soon as Round 1 completes),
+        so the Espejo finishes with the WB.
         """
-        if self.super_final_enabled:
-            if self.super_final_match and self.super_final_match.status == MatchStatus.COMPLETED:
-                return self.super_final_match.winner_team
+        if self.winners_bracket.champion() is None:
+            return False
+        if self.losers_bracket is not None and self.losers_bracket.champion() is None:
+            return False
+        # Legacy Super Final: must be played once it exists.
+        if self.super_final_match is not None:
+            return self.super_final_match.status == MatchStatus.COMPLETED
+        return True
+
+    def champion(self) -> list[Player] | None:
+        """Return the overall champion once the Espejo is finished, else ``None``.
+
+        The champion is the WB champion (or, for legacy tournaments that
+        have a Super Final, its winner).  It is deliberately ``None`` while
+        consolation matches remain so the tournament does not finish early;
+        use :meth:`winners_champion` for the WB champion as soon as it is known.
+        """
+        if not self.is_finished():
             return None
+        if self.super_final_match is not None:
+            return self.super_final_match.winner_team
         return self.winners_bracket.champion()
 
     def winners_champion(self) -> list[Player] | None:
         return self.winners_bracket.champion()
 
     def losers_champion(self) -> list[Player] | None:
+        """Consolation (LB) winner, or ``None`` if the LB does not exist / is undecided."""
         return self.losers_bracket.champion() if self.losers_bracket else None
 
     # ------------------------------------------------------------------ #
@@ -924,7 +951,10 @@ class EspejoParallelBracket:
             self._match_map[m.id] = m
 
     def _try_create_super_final(self) -> None:
-        """Create the Super Final match once both bracket champions are decided."""
+        """Legacy: create the Super Final once both champions are decided.
+
+        Only runs for brackets persisted with ``super_final_enabled=True``.
+        """
         if not self.super_final_enabled:
             return
         if self.super_final_match is not None:
@@ -941,3 +971,18 @@ class EspejoParallelBracket:
             round_number=999,
         )
         self._match_map[self.super_final_match.id] = self.super_final_match
+
+
+def bracket_matches(bracket: object) -> list[Match]:
+    """Return every match of *bracket*, whatever its class.
+
+    ``all_matches`` is a property on :class:`DoubleEliminationBracket` and
+    :class:`EspejoParallelBracket`, while :class:`SingleEliminationBracket`
+    only exposes a ``matches`` list.  This accessor hides the difference (and
+    tolerates ``all_matches`` being a plain method) so callers never have to
+    guess whether to call it.
+    """
+    accessor = getattr(bracket, "all_matches", None)
+    if accessor is not None:
+        return list(accessor() if callable(accessor) else accessor)
+    return list(getattr(bracket, "matches", []))

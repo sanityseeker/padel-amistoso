@@ -397,8 +397,8 @@ def test_admin_registration_js_ships_notes_and_multichoice_filter(client):
     assert "data-choices" in resp.text
 
 
-def test_match_row_emits_format_chip_and_row_toggle(client):
-    """matchRow renders the per-match format chip and the client-only Points/Sets toggle."""
+def test_match_row_emits_single_format_button(client):
+    """Each score form has one format button; Points/Sets lives in its popover."""
     js = client.get("/admin-gp.js", headers={"Accept-Encoding": "identity"}).text
     assert "match-format-btn" in js
     assert "_openMatchFormatPopover(" in js
@@ -406,7 +406,11 @@ def test_match_row_emits_format_chip_and_row_toggle(client):
     assert "function _renderDisputePanel(" in js
     assert "function _renderCommentBanner(" in js
     assert "function _isSetCtx(" in js
-    assert "_renderMatchModeToggle(" in js
+    assert "_renderMatchModeToggle(" not in js
+    assert "match-format-mode" in js
+    assert "data-mode-key" in js
+    dispute = js[js.index("function _renderDisputePanel(") : js.index("function _renderBreakdown(")]
+    assert "modeKey: `dr-${m.id}`" in dispute
     # Edit and dispute forms follow the stored format, not only the stage default.
     edit = js[js.index("function _renderEditForm(") : js.index("function _renderDisputePanel(")]
     assert "m.sets && m.sets.length > 0 ? 'sets' : 'points'" in edit
@@ -661,3 +665,36 @@ def test_demo_instance_hides_community_and_club_ui():
     assert "function isDemoInstance()" in _read_frontend("shared.js")
     assert "_demoInstance" in _read_frontend("auth.js")
     assert "isDemoInstance()) ? '' : _renderScopeGroup()" in _read_frontend("admin-tv-email.js")
+
+
+def test_tv_double_elim_explainer_behind_info_button(client):
+    """The double-elimination explainer opens from an info button, not inline."""
+    js = client.get("/tv.js", headers={"Accept-Encoding": "identity"}).text
+    assert "showAbbrevPopup(event,'double_elim')" in js
+    assert "double-elim-explainer" not in js
+
+
+def test_espejo_has_no_super_final_in_setup_and_shows_consolation_winner():
+    """Espejo = Winners bracket + consolation bracket: no Super Final option, consolation winner shown."""
+    html = _read_frontend("index.html")
+    assert "po-espejo-super-final" not in html
+    for name in ("admin-create.js", "admin-gp.js"):
+        js = _read_frontend(name)
+        assert "espejo_super_final:" not in js, f"{name} still sends espejo_super_final"
+        assert "getElementById('po-espejo-super-final')" not in js
+        assert "getElementById('gp-espejo-super-final')" not in js
+
+    i18n = _read_frontend("i18n.js")
+    assert i18n.count('"txt_txt_consolation_winner"') == 2  # en + es
+    # Both GP and standalone play-off admin views and the TV share the consolation banner.
+    assert "_renderChampionAlerts(status)" in _read_frontend("admin-gp.js")
+    assert "_buildChampionBanners(status)" in _read_frontend("tv.js")
+
+
+def test_gp_views_are_espejo_aware():
+    """GP admin + TV pass isEspejo to the bracket card and score Losers matches through GP endpoints."""
+    admin_gp = _read_frontend("admin-gp.js")
+    assert "isEspejo: gpEspejo" in admin_gp
+    assert "'gp-espejo-losers':{ points: 'gp/record-playoff'" in admin_gp
+    assert "'gp-espejo-losers'" in _read_frontend("admin-tournaments.js")
+    assert "status.espejo === true)" in _read_frontend("tv.js")

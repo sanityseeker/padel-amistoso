@@ -8,7 +8,7 @@ Each participant name becomes a single bracket entry (team of one entry).
 from __future__ import annotations
 
 from ..models import Court, Match, MatchStatus, POPhase, Player
-from .playoff import DoubleEliminationBracket, EspejoParallelBracket, SingleEliminationBracket
+from .playoff import DoubleEliminationBracket, EspejoParallelBracket, SingleEliminationBracket, bracket_matches
 
 
 class PlayoffTournament:
@@ -35,7 +35,6 @@ class PlayoffTournament:
         courts: list[Court] | None = None,
         double_elimination: bool = False,
         espejo: bool = False,
-        espejo_super_final: bool = False,
         team_mode: bool = True,
         initial_strength: dict[str, float] | None = None,
     ):
@@ -43,7 +42,6 @@ class PlayoffTournament:
         self.courts = courts or []
         self.double_elimination = double_elimination
         self.espejo = espejo
-        self.espejo_super_final = espejo_super_final
         self.team_mode = team_mode
         self.initial_strength = initial_strength
 
@@ -60,7 +58,7 @@ class PlayoffTournament:
         # court assignment so the bracket never internally pre-assigns anything.
         if espejo:
             self.bracket: SingleEliminationBracket | DoubleEliminationBracket | EspejoParallelBracket = (
-                EspejoParallelBracket(teams, super_final=espejo_super_final)
+                EspejoParallelBracket(teams)
             )
         elif double_elimination:
             self.bracket = DoubleEliminationBracket(teams)
@@ -79,11 +77,7 @@ class PlayoffTournament:
 
     def all_matches(self) -> list[Match]:
         """Return all bracket matches (including future TBD matches)."""
-        if self.espejo:
-            return self.bracket.all_matches  # type: ignore[return-value]
-        if self.double_elimination:
-            return self.bracket.all_matches  # type: ignore[return-value]
-        return list(self.bracket.matches)
+        return bracket_matches(self.bracket)
 
     def pending_matches(self) -> list[Match]:
         """Return matches that are ready to be played (both teams known, not yet completed)."""
@@ -102,7 +96,11 @@ class PlayoffTournament:
         self._assign_courts_greedily()
 
     def champion(self) -> list[Player] | None:
-        """Return the winning team once the bracket is complete, else ``None``."""
+        """Return the winning team once the whole tournament is complete, else ``None``.
+
+        For Espejo this is the Winners-Bracket champion, but only after the
+        consolation (Losers) bracket has been decided too.
+        """
         return self.bracket.champion()
 
     # ------------------------------------------------------------------ #

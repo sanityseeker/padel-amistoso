@@ -25,6 +25,8 @@ from .helpers import (
     _serialize_match,
     _prepare_set_score,
     _build_match_labels,
+    _espejo_schema_target,
+    _serialize_playoff_matches,
     _schema_cache_get,
     _schema_cache_key,
     _schema_cache_put,
@@ -176,14 +178,28 @@ async def gp_status(tid: str) -> dict:
     """Return high-level status (phase, number of groups, team mode, champion) for a GP tournament."""
     data = _get_tournament(tid, _GP)
     t: GroupPlayoffTournament = data["tournament"]
+    espejo = t.espejo and t.playoff_bracket is not None
+    bracket = t.playoff_bracket
     return {
         "phase": t.phase,
         "num_groups": len(t.groups),
         "team_mode": t.team_mode,
         "double_elimination": t.double_elimination,
+        "espejo": t.espejo,
+        # True only for tournaments persisted before the Super Final was removed.
+        "espejo_super_final": bool(espejo and getattr(bracket, "super_final_enabled", False)),
+        "espejo_losers_bracket_seeded": bool(espejo and bracket.losers_bracket is not None),
         "assign_courts": data.get("assign_courts", True),
         "courts": [{"id": c.id, "name": c.name} for c in t.courts],
         "champion": [p.name for p in t.champion()] if t.champion() else None,
+        # Known as soon as the Winners final is played (before the tournament ends).
+        "winners_champion": [p.name for p in bracket.winners_champion()]
+        if espejo and bracket.winners_champion()
+        else None,
+        # Consolation winner: the Losers Bracket champion.
+        "losers_champion": [p.name for p in bracket.losers_champion()]
+        if espejo and bracket.losers_champion()
+        else None,
         "team_roster": getattr(t, "team_roster", None) or {},
         "sport": data.get("sport", "padel"),
     }
@@ -374,7 +390,6 @@ async def gp_start_playoffs(
                 else None,
                 double_elimination=req.double_elimination,
                 espejo=req.espejo,
-                espejo_super_final=req.espejo_super_final,
                 playoff_teams=req.playoff_teams,
             )
         except (RuntimeError, KeyError, ValueError) as e:
@@ -389,8 +404,10 @@ async def gp_playoffs(tid: str) -> dict:
     """Return all play-off matches, pending matches, and the champion (if decided)."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
     return {
-        "matches": [_serialize_match(m) for m in t.playoff_matches() if not _is_bye_match(m)],
-        "pending": [_serialize_match(m) for m in t.pending_playoff_matches()],
+        "matches": _serialize_playoff_matches(
+            t.playoff_bracket, [m for m in t.playoff_matches() if not _is_bye_match(m)]
+        ),
+        "pending": _serialize_playoff_matches(t.playoff_bracket, t.pending_playoff_matches()),
         "champion": [p.name for p in t.champion()] if t.champion() else None,
     }
 
@@ -412,7 +429,15 @@ async def gp_playoffs_schema(
     if t.playoff_bracket is None:
         raise HTTPException(400, "Play-offs have not started")
 
-    participant_names = [" & ".join(p.name for p in team) for team in t.playoff_bracket.original_teams]
+    if t.espejo:
+        # Espejo is two independent single-elimination brackets: draw one per ``side``.
+        active_bracket, title = _espejo_schema_target(t.playoff_bracket, side, title)
+        elim = EliminationType.SINGLE
+    else:
+        active_bracket = t.playoff_bracket
+        elim = EliminationType.DOUBLE if t.double_elimination else EliminationType.SINGLE
+
+    participant_names = [" & ".join(p.name for p in team) for team in active_bracket.original_teams]
     if len(participant_names) < 2:
         raise HTTPException(400, "Need at least 2 participants for play-off schema")
 
@@ -423,7 +448,7 @@ async def gp_playoffs_schema(
         version,
         side or "default",
         tuple(participant_names),
-        EliminationType.DOUBLE if t.double_elimination else EliminationType.SINGLE,
+        elim,
         title,
         fmt,
         box_scale,
@@ -438,10 +463,12 @@ async def gp_playoffs_schema(
 
     img = render_playoff_schema(
         participant_names=participant_names,
-        elimination=EliminationType.DOUBLE if t.double_elimination else EliminationType.SINGLE,
-        match_labels=_build_match_labels(t.playoff_bracket),
+        elimination=elim,
+        match_labels=_build_match_labels(active_bracket),
         title=title,
-        side=side,
+        # Espejo already picked the per-side bracket above; plain double
+        # elimination splits one combined layout into winners/losers views.
+        side=None if t.espejo else side,
         fmt=fmt,
         box_scale=box_scale,
         line_width=line_width,

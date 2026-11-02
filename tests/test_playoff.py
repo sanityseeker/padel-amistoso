@@ -776,43 +776,118 @@ class TestEspejoParallelBracket:
         # With only 1 R1 loser, the LB is not seeded (need ≥2 losers).
         assert b.losers_bracket is None
 
-    def test_no_super_final_without_flag(self):
+    def _play_all(self, b):
+        """Play every ready match in both brackets until nothing is pending."""
+        while True:
+            pending = b.pending_matches()
+            if not pending:
+                return
+            b.record_result(pending[0].id, (6, 3))
+
+    def test_no_super_final_is_ever_created(self):
         from backend.tournaments.playoff import EspejoParallelBracket
 
-        b = EspejoParallelBracket(_teams(4), super_final=False)
-        self._play_r1(b)
-        for m in b.winners_bracket.pending_matches():
-            b.record_result(m.id, (6, 3))
-        for m in b.losers_bracket.pending_matches():
-            b.record_result(m.id, (6, 3))
+        b = EspejoParallelBracket(_teams(4))
+        self._play_all(b)
+        assert b.super_final_enabled is False
         assert b.super_final_match is None
+        assert b.is_finished()
         assert b.champion() == b.winners_champion()
+        assert b.losers_champion() is not None
 
-    def test_super_final_created_when_both_done(self):
+    def test_super_final_kwarg_removed(self):
         from backend.tournaments.playoff import EspejoParallelBracket
 
-        b = EspejoParallelBracket(_teams(4), super_final=True)
+        with pytest.raises(TypeError):
+            EspejoParallelBracket(_teams(4), super_final=True)
+
+    def test_not_finished_after_wb_final_while_lb_pending(self):
+        """WB champion is known, but the bracket only finishes after the LB final."""
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(8))
         self._play_r1(b)
-        for m in b.winners_bracket.pending_matches():
+        # Play only the WB to its final.
+        while b.winners_bracket.pending_matches():
+            m = b.winners_bracket.pending_matches()[0]
+            b.record_result(m.id, (6, 3))
+        assert b.winners_champion() is not None
+        assert b.losers_bracket.pending_matches()  # LB still has matches
+        assert not b.is_finished()
+        assert b.champion() is None
+        # Finish the LB.
+        while b.losers_bracket.pending_matches():
+            m = b.losers_bracket.pending_matches()[0]
+            assert not b.is_finished()
+            b.record_result(m.id, (6, 3))
+        assert b.is_finished()
+        assert b.champion() == b.winners_champion()
+        assert b.losers_champion() is not None
+        assert b.losers_champion() != b.champion()
+
+    def test_lb_finished_before_wb_still_waits_for_wb(self):
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(8))
+        self._play_r1(b)
+        while b.losers_bracket.pending_matches():
+            b.record_result(b.losers_bracket.pending_matches()[0].id, (6, 3))
+        assert b.losers_champion() is not None
+        assert not b.is_finished()
+        assert b.champion() is None
+        while b.winners_bracket.pending_matches():
+            b.record_result(b.winners_bracket.pending_matches()[0].id, (6, 3))
+        assert b.is_finished()
+
+    @pytest.mark.parametrize("n", [2, 3])
+    def test_small_brackets_finish_with_wb_only(self, n):
+        """<2 played R1 losers means no LB; the Espejo must never get stuck."""
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(n))
+        self._play_all(b)
+        assert b.losers_bracket is None
+        assert b.is_finished()
+        assert b.champion() == b.winners_champion()
+        assert b.losers_champion() is None
+
+    def test_legacy_super_final_bracket_still_plays_to_completion(self):
+        """A bracket persisted with a Super Final (old flag) loads and finishes."""
+        import pickle
+
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(4))
+        b.super_final_enabled = True  # what an old persisted instance carries
+        self._play_r1(b)
+        b = pickle.loads(pickle.dumps(b))  # survives persistence round-trip
+        for m in list(b.winners_bracket.pending_matches()):
             b.record_result(m.id, (6, 3))
         assert b.super_final_match is None  # LB not done yet
-        for m in b.losers_bracket.pending_matches():
-            b.record_result(m.id, (6, 3))
-        assert b.super_final_match is not None
-
-    def test_super_final_winner_is_champion(self):
-        from backend.tournaments.playoff import EspejoParallelBracket
-
-        b = EspejoParallelBracket(_teams(4), super_final=True)
-        self._play_r1(b)
-        for m in b.winners_bracket.pending_matches():
-            b.record_result(m.id, (6, 3))
-        for m in b.losers_bracket.pending_matches():
+        assert not b.is_finished()
+        for m in list(b.losers_bracket.pending_matches()):
             b.record_result(m.id, (6, 3))
         sf = b.super_final_match
+        assert sf is not None
+        assert not b.is_finished()
         assert b.champion() is None  # SF not played
-        b.record_result(sf.id, (6, 3))
+        b.record_result(sf.id, (3, 6))
+        assert b.is_finished()
         assert b.champion() == sf.winner_team
+        assert b.champion() == b.losers_champion()  # LB champ won the SF
+
+    def test_legacy_pickle_without_super_final_attribute_loads(self):
+        """Instances pickled before ``super_final_enabled`` existed fall back to the class default."""
+        import pickle
+
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(4))
+        b.__dict__.pop("super_final_enabled", None)
+        b2 = pickle.loads(pickle.dumps(b))
+        assert b2.super_final_enabled is False
+        self._play_all(b2)
+        assert b2.is_finished()
 
     def test_record_unknown_match_raises(self):
         from backend.tournaments.playoff import EspejoParallelBracket
@@ -822,7 +897,7 @@ class TestEspejoParallelBracket:
             b.record_result("nonexistent-id", (6, 3))
 
     def test_playoff_tournament_espejo_flag(self):
-        t = PlayoffTournament(teams=_teams(4), espejo=True, espejo_super_final=False)
+        t = PlayoffTournament(teams=_teams(4), espejo=True)
         assert t.espejo is True
         assert len(t.all_matches()) > 0
 
@@ -832,3 +907,32 @@ class TestEspejoParallelBracket:
         for m in r1:
             t.record_result(m.id, (6, 3))
         assert t.bracket.losers_bracket is not None
+
+    def test_playoff_tournament_not_finished_until_lb_done(self):
+        from backend.models import POPhase
+
+        t = PlayoffTournament(teams=_teams(8), espejo=True)
+        # Play the whole WB, leaving the LB untouched.
+        while True:
+            pending = [m for m in t.pending_matches() if m in t.bracket.winners_bracket.matches]
+            if not pending:
+                break
+            t.record_result(pending[0].id, (6, 3))
+        assert t.bracket.winners_champion() is not None
+        assert t.phase == POPhase.PLAYOFFS
+        assert t.champion() is None
+        # Now the LB.
+        while t.pending_matches():
+            assert t.phase == POPhase.PLAYOFFS
+            t.record_result(t.pending_matches()[0].id, (6, 3))
+        assert t.phase == POPhase.FINISHED
+        assert t.champion() == t.bracket.winners_champion()
+
+    @pytest.mark.parametrize("n", [2, 3])
+    def test_playoff_tournament_small_espejo_finishes(self, n):
+        from backend.models import POPhase
+
+        t = PlayoffTournament(teams=_teams(n), espejo=True)
+        while t.pending_matches():
+            t.record_result(t.pending_matches()[0].id, (6, 3))
+        assert t.phase == POPhase.FINISHED

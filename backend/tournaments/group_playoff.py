@@ -21,7 +21,7 @@ from collections import defaultdict
 from ..models import Court, GPPhase, Match, MatchStatus, Player
 from .group_stage import Group, assign_courts, distribute_players_to_groups
 from . import pairing as pairing_mod
-from .playoff import DoubleEliminationBracket, SingleEliminationBracket
+from .playoff import DoubleEliminationBracket, EspejoParallelBracket, SingleEliminationBracket, bracket_matches
 
 
 class GroupPlayoffTournament:
@@ -52,9 +52,8 @@ class GroupPlayoffTournament:
         self.group_assignments = group_assignments or {}
 
         self.groups: list[Group] = []
-        self.playoff_bracket: SingleEliminationBracket | DoubleEliminationBracket | None = None
+        self.playoff_bracket: SingleEliminationBracket | DoubleEliminationBracket | EspejoParallelBracket | None = None
         self._espejo: bool = False
-        self._espejo_super_final: bool = False
 
         self._phase: GPPhase = GPPhase.SETUP
 
@@ -65,6 +64,11 @@ class GroupPlayoffTournament:
     @property
     def phase(self) -> GPPhase:
         return self._phase
+
+    @property
+    def espejo(self) -> bool:
+        """Whether the play-offs run as an Espejo (Winners + consolation Losers bracket)."""
+        return bool(getattr(self, "_espejo", False))
 
     def generate(self) -> None:
         """Create groups and generate matches.
@@ -165,11 +169,13 @@ class GroupPlayoffTournament:
             m.slot_number = None
         self._assign_group_courts()
         if self.playoff_bracket is not None:
-            all_po = self.playoff_bracket.all_matches()
+            all_po = bracket_matches(self.playoff_bracket)
             for m in all_po:
                 m.court = None
                 m.slot_number = None
-            if all_po:
+            # Espejo matches are assigned lazily in pending_playoff_matches()
+            # (the Losers Bracket does not exist yet), so skip the bulk pass.
+            if all_po and not self.espejo:
                 assign_courts(all_po, self.courts)
 
     def add_player_to_group(self, player: Player, group_name: str) -> list[Match]:
@@ -346,7 +352,6 @@ class GroupPlayoffTournament:
         extra_players: list[tuple[str, float]] | None = None,
         double_elimination: bool | None = None,
         espejo: bool = False,
-        espejo_super_final: bool = False,
         playoff_teams: list[list[str]] | None = None,
     ) -> None:
         """Seed the play‑off bracket from group results.
@@ -394,7 +399,6 @@ class GroupPlayoffTournament:
         if double_elimination is not None:
             self.double_elimination = double_elimination
         self._espejo = espejo
-        self._espejo_super_final = espejo_super_final
 
         # Build player lookup from group-stage participants
         player_map: dict[str, Player] = {p.id: p for p in self.players}
@@ -508,34 +512,21 @@ class GroupPlayoffTournament:
                 teams.sort(key=lambda t: tuple(-x for x in _seed_key(t)))
 
         if espejo:
-            from .playoff import EspejoParallelBracket
-
-            self.playoff_bracket = EspejoParallelBracket(teams, super_final=espejo_super_final)
+            self.playoff_bracket = EspejoParallelBracket(teams)
         elif self.double_elimination:
             self.playoff_bracket = DoubleEliminationBracket(teams, courts=self.courts)
         else:
             self.playoff_bracket = SingleEliminationBracket(teams)
 
         if self.courts and not espejo:
-            all_matches = (
-                self.playoff_bracket.all_matches
-                if isinstance(self.playoff_bracket, DoubleEliminationBracket)
-                else self.playoff_bracket.matches
-            )
-            assign_courts(all_matches, self.courts)
+            assign_courts(bracket_matches(self.playoff_bracket), self.courts)
 
         self._phase = GPPhase.PLAYOFFS
 
     def playoff_matches(self) -> list[Match]:
         if self.playoff_bracket is None:
             return []
-        from .playoff import EspejoParallelBracket
-
-        if isinstance(self.playoff_bracket, EspejoParallelBracket):
-            return self.playoff_bracket.all_matches
-        if isinstance(self.playoff_bracket, DoubleEliminationBracket):
-            return self.playoff_bracket.all_matches
-        return self.playoff_bracket.matches
+        return bracket_matches(self.playoff_bracket)
 
     def pending_playoff_matches(self) -> list[Match]:
         if self.playoff_bracket is None:
@@ -565,9 +556,10 @@ class GroupPlayoffTournament:
             raise RuntimeError("Play‑offs have not started")
         self.playoff_bracket.record_result(match_id, score, sets=sets)
 
-        # Check for champion
-        champ = self.playoff_bracket.champion()
-        if champ is not None:
+        # Finished only when the whole bracket is decided.  For Espejo the
+        # bracket champion stays ``None`` until the consolation (Losers)
+        # bracket is done as well, so the phase does not flip early.
+        if self.playoff_bracket.champion() is not None:
             self._phase = GPPhase.FINISHED
 
     def champion(self) -> list[Player] | None:

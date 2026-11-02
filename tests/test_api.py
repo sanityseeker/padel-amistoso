@@ -229,6 +229,265 @@ class TestGroupPlayoffAPI:
         assert r.headers["content-type"].startswith("image/png")
         assert len(r.content) > 0
 
+    # ── Espejo (Winners bracket + consolation Losers bracket) ──
+
+    def _start_espejo(self, client, auth_headers, *, teams=8, top_per_group=4, num_groups=2, body_extra=None):
+        """Create a team-mode GP tournament, finish the groups and start Espejo play-offs."""
+        body = {
+            **self.GP_BODY,
+            "team_mode": True,
+            "player_names": [f"T{i} & U{i}" for i in range(teams)],
+            "num_groups": num_groups,
+            "top_per_group": top_per_group,
+        }
+        r = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers)
+        assert r.status_code == 200, r.text
+        tid = r.json()["id"]
+        self._complete_all_group_rounds(client, auth_headers, tid)
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/start-playoffs",
+            json={"espejo": True, **(body_extra or {})},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["phase"] == "playoffs"
+        return tid
+
+    def _play_espejo_matches(self, client, auth_headers, tid, side):
+        """Record every currently-pending match of *side* (and any it unlocks) until none remain."""
+        played = 0
+        while True:
+            pending = [
+                m
+                for m in client.get(f"/api/tournaments/{tid}/gp/playoffs").json()["pending"]
+                if m["bracket_side"] == side
+            ]
+            if not pending:
+                return played
+            r = client.post(
+                f"/api/tournaments/{tid}/gp/record-playoff",
+                json={"match_id": pending[0]["id"], "score1": 6, "score2": 3},
+                headers=auth_headers,
+            )
+            assert r.status_code == 200, r.text
+            played += 1
+
+    def test_espejo_status_fields_and_bracket_side(self, client, auth_headers):
+        tid = self._start_espejo(client, auth_headers)
+        st = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert st["espejo"] is True
+        assert st["espejo_super_final"] is False
+        assert st["espejo_losers_bracket_seeded"] is False
+        assert st["winners_champion"] is None
+        assert st["losers_champion"] is None
+        po = client.get(f"/api/tournaments/{tid}/gp/playoffs").json()
+        assert po["matches"]
+        assert {m["bracket_side"] for m in po["matches"]} == {"winners"}
+
+    def test_non_espejo_status_and_matches_have_no_espejo_data(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        self._complete_all_group_rounds(client, auth_headers, tid)
+        client.post(f"/api/tournaments/{tid}/gp/start-playoffs", headers=auth_headers)
+        st = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert st["espejo"] is False
+        assert st["espejo_losers_bracket_seeded"] is False
+        assert st["winners_champion"] is None
+        po = client.get(f"/api/tournaments/{tid}/gp/playoffs").json()
+        assert all("bracket_side" not in m for m in po["matches"])
+
+    def test_espejo_schema_sides(self, client, auth_headers):
+        tid = self._start_espejo(client, auth_headers)
+        base = f"/api/tournaments/{tid}/gp/playoffs-schema?fmt=png"
+        for url in (base, f"{base}&side=winners"):
+            r = client.get(url)
+            assert r.status_code == 200, r.text
+            assert r.headers["content-type"].startswith("image/png")
+        # LB is not seeded until every Winners Round-1 match is done.
+        assert client.get(f"{base}&side=losers").status_code == 425
+
+        # Play only Round 1 of the Winners bracket.
+        r1 = [m for m in client.get(f"/api/tournaments/{tid}/gp/playoffs").json()["pending"]]
+        for m in r1:
+            assert m["round_label"] == "Quarter-Final"
+            client.post(
+                f"/api/tournaments/{tid}/gp/record-playoff",
+                json={"match_id": m["id"], "score1": 6, "score2": 3},
+                headers=auth_headers,
+            )
+        losers = client.get(f"{base}&side=losers")
+        assert losers.status_code == 200
+        winners = client.get(f"{base}&side=winners")
+        assert losers.content != winners.content
+        assert client.get(f"/api/tournaments/{tid}/gp/status").json()["espejo_losers_bracket_seeded"] is True
+
+    def test_espejo_tags_losers_matches_separately(self, client, auth_headers):
+        tid = self._start_espejo(client, auth_headers)
+        for m in client.get(f"/api/tournaments/{tid}/gp/playoffs").json()["pending"]:
+            client.post(
+                f"/api/tournaments/{tid}/gp/record-playoff",
+                json={"match_id": m["id"], "score1": 6, "score2": 3},
+                headers=auth_headers,
+            )
+        matches = client.get(f"/api/tournaments/{tid}/gp/playoffs").json()["matches"]
+        by_side = {s: {m["round_label"] for m in matches if m["bracket_side"] == s} for s in ("winners", "losers")}
+        assert by_side["winners"] and by_side["losers"]
+        # Both brackets have a "Semi-Final" -> only the side tag tells them apart.
+        assert "Semi-Final" in by_side["winners"] and "Semi-Final" in by_side["losers"]
+
+    def test_espejo_finishes_only_when_both_brackets_done(self, client, auth_headers, monkeypatch):
+        import backend.api.routes_gp as gp_mod
+
+        finished_calls: list[str] = []
+        champion_pushes: list[list[str]] = []
+        monkeypatch.setattr(gp_mod, "elo_finish_tournament", lambda tid: finished_calls.append(tid))
+        monkeypatch.setattr(gp_mod, "notify_champion", lambda tid, data, names: champion_pushes.append(names))
+
+        tid = self._start_espejo(client, auth_headers)
+        status = f"/api/tournaments/{tid}/gp/status"
+
+        # Play the whole Winners bracket first; the LB is seeded after Round 1.
+        r1 = client.get(f"/api/tournaments/{tid}/gp/playoffs").json()["pending"]
+        for m in r1:
+            client.post(
+                f"/api/tournaments/{tid}/gp/record-playoff",
+                json={"match_id": m["id"], "score1": 6, "score2": 3},
+                headers=auth_headers,
+            )
+        self._play_espejo_matches(client, auth_headers, tid, "winners")
+
+        st = client.get(status).json()
+        assert st["winners_champion"] is not None
+        assert st["losers_champion"] is None
+        # LB matches remain -> not finished, no ELO transfer, no champion push.
+        assert st["phase"] == "playoffs"
+        assert st["champion"] is None
+        assert finished_calls == []
+        assert champion_pushes == []
+        assert any(
+            m["bracket_side"] == "losers" for m in client.get(f"/api/tournaments/{tid}/gp/playoffs").json()["pending"]
+        )
+
+        # Finish the consolation bracket.
+        assert self._play_espejo_matches(client, auth_headers, tid, "losers") > 0
+        st = client.get(status).json()
+        assert st["phase"] == "finished"
+        assert st["champion"] == st["winners_champion"]
+        assert st["losers_champion"] is not None
+        assert st["losers_champion"] != st["champion"]
+        assert finished_calls == [tid]
+        assert len(champion_pushes) == 1
+        assert champion_pushes[0] == st["winners_champion"]
+
+    def test_espejo_finishes_when_lb_done_before_wb(self, client, auth_headers):
+        tid = self._start_espejo(client, auth_headers)
+        for m in client.get(f"/api/tournaments/{tid}/gp/playoffs").json()["pending"]:
+            client.post(
+                f"/api/tournaments/{tid}/gp/record-playoff",
+                json={"match_id": m["id"], "score1": 6, "score2": 3},
+                headers=auth_headers,
+            )
+        self._play_espejo_matches(client, auth_headers, tid, "losers")
+        st = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert st["losers_champion"] is not None
+        assert st["phase"] == "playoffs"
+        self._play_espejo_matches(client, auth_headers, tid, "winners")
+        assert client.get(f"/api/tournaments/{tid}/gp/status").json()["phase"] == "finished"
+
+    def test_espejo_tennis_scoring_reaches_losers_matches(self, client, auth_headers):
+        """The tennis endpoint routes LB matches by id too."""
+        tid = self._start_espejo(client, auth_headers, teams=8, top_per_group=2)
+        for m in client.get(f"/api/tournaments/{tid}/gp/playoffs").json()["pending"]:
+            r = client.post(
+                f"/api/tournaments/{tid}/gp/record-playoff-tennis",
+                json={"match_id": m["id"], "sets": [[6, 3], [6, 4]]},
+                headers=auth_headers,
+            )
+            assert r.status_code == 200, r.text
+        lb = [
+            m
+            for m in client.get(f"/api/tournaments/{tid}/gp/playoffs").json()["pending"]
+            if m["bracket_side"] == "losers"
+        ]
+        assert len(lb) == 1
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/record-playoff-tennis",
+            json={"match_id": lb[0]["id"], "sets": [[6, 3], [6, 4]]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+
+    def test_espejo_two_teams_finishes_with_winners_final(self, client, auth_headers):
+        """Fewer than two played R1 losers -> no LB; the tournament still finishes."""
+        tid = self._start_espejo(client, auth_headers, teams=4, top_per_group=1)
+        st = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert st["phase"] == "playoffs"
+        self._play_espejo_matches(client, auth_headers, tid, "winners")
+        st = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert st["espejo_losers_bracket_seeded"] is False
+        assert st["phase"] == "finished"
+        assert st["champion"] == st["winners_champion"]
+        assert st["losers_champion"] is None
+
+    def test_espejo_three_teams_finishes_with_winners_final(self, client, auth_headers):
+        """3 teams: one real R1 match -> one loser -> no LB; must not get stuck."""
+        tid = self._start_espejo(client, auth_headers, teams=4, top_per_group=3, num_groups=1)
+        self._play_espejo_matches(client, auth_headers, tid, "winners")
+        st = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert st["espejo_losers_bracket_seeded"] is False
+        assert st["phase"] == "finished"
+        assert st["champion"] == st["winners_champion"]
+
+    def test_espejo_ignores_deprecated_super_final_flag(self, client, auth_headers):
+        tid = self._start_espejo(client, auth_headers, body_extra={"espejo_super_final": True})
+        st = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert st["espejo_super_final"] is False
+        for m in client.get(f"/api/tournaments/{tid}/gp/playoffs").json()["pending"]:
+            client.post(
+                f"/api/tournaments/{tid}/gp/record-playoff",
+                json={"match_id": m["id"], "score1": 6, "score2": 3},
+                headers=auth_headers,
+            )
+        self._play_espejo_matches(client, auth_headers, tid, "winners")
+        self._play_espejo_matches(client, auth_headers, tid, "losers")
+        matches = client.get(f"/api/tournaments/{tid}/gp/playoffs").json()["matches"]
+        assert "super_final" not in {m["bracket_side"] for m in matches}
+        assert client.get(f"/api/tournaments/{tid}/gp/status").json()["phase"] == "finished"
+
+    def test_espejo_legacy_super_final_tournament_still_completes(self, client, auth_headers):
+        """A tournament persisted with a Super Final keeps working and exposes it."""
+        import backend.api.state as state_mod
+
+        tid = self._start_espejo(client, auth_headers, teams=8, top_per_group=2)
+        # Simulate a pre-removal tournament by flipping the persisted flag.
+        state_mod._tournaments[tid]["tournament"].playoff_bracket.super_final_enabled = True
+        assert client.get(f"/api/tournaments/{tid}/gp/status").json()["espejo_super_final"] is True
+        for m in client.get(f"/api/tournaments/{tid}/gp/playoffs").json()["pending"]:
+            client.post(
+                f"/api/tournaments/{tid}/gp/record-playoff",
+                json={"match_id": m["id"], "score1": 6, "score2": 3},
+                headers=auth_headers,
+            )
+        self._play_espejo_matches(client, auth_headers, tid, "winners")
+        self._play_espejo_matches(client, auth_headers, tid, "losers")
+        # Both champions are known and the Super Final is waiting.
+        st = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert st["phase"] == "playoffs"
+        sf = [
+            m
+            for m in client.get(f"/api/tournaments/{tid}/gp/playoffs").json()["pending"]
+            if m["bracket_side"] == "super_final"
+        ]
+        assert len(sf) == 1
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/record-playoff",
+            json={"match_id": sf[0]["id"], "score1": 3, "score2": 6},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        st = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert st["phase"] == "finished"
+        assert st["champion"] == st["losers_champion"]  # legacy: Super Final winner
+
     def test_delete_tournament(self, client, auth_headers):
         tid = self._create(client, auth_headers)
         r = client.delete(f"/api/tournaments/{tid}", headers=auth_headers)
@@ -654,6 +913,81 @@ class TestPlayoffAPI:
         r = client.post("/api/tournaments/playoff", json=self.PO_BODY, headers=auth_headers)
         assert r.status_code == 200
         return r.json()["id"]
+
+    def _create_espejo(self, client, auth_headers, n=8, **extra):
+        body = {
+            **self.PO_BODY,
+            "participant_names": [f"P{i}" for i in range(n)],
+            "team_mode": True,
+            "espejo": True,
+            **extra,
+        }
+        r = client.post("/api/tournaments/playoff", json=body, headers=auth_headers)
+        assert r.status_code == 200, r.text
+        return r.json()["id"]
+
+    def _play_po_side(self, client, auth_headers, tid, side):
+        while True:
+            pending = [
+                m
+                for m in client.get(f"/api/tournaments/{tid}/po/playoffs").json()["pending"]
+                if m["bracket_side"] == side
+            ]
+            if not pending:
+                return
+            r = client.post(
+                f"/api/tournaments/{tid}/po/record",
+                json={"match_id": pending[0]["id"], "score1": 6, "score2": 3},
+                headers=auth_headers,
+            )
+            assert r.status_code == 200, r.text
+
+    def test_espejo_finishes_only_when_both_brackets_done(self, client, auth_headers, monkeypatch):
+        import backend.api.routes_playoff as po_mod
+
+        finished: list[str] = []
+        pushes: list[list[str]] = []
+        monkeypatch.setattr(po_mod, "elo_finish_tournament", lambda tid: finished.append(tid))
+        monkeypatch.setattr(po_mod, "notify_champion", lambda tid, data, names: pushes.append(names))
+
+        tid = self._create_espejo(client, auth_headers)
+        # Round 1 first so the LB is seeded, then the rest of the Winners bracket.
+        for m in client.get(f"/api/tournaments/{tid}/po/playoffs").json()["pending"]:
+            client.post(
+                f"/api/tournaments/{tid}/po/record",
+                json={"match_id": m["id"], "score1": 6, "score2": 3},
+                headers=auth_headers,
+            )
+        self._play_po_side(client, auth_headers, tid, "winners")
+        st = client.get(f"/api/tournaments/{tid}/po/status").json()
+        assert st["winners_champion"] is not None
+        assert st["phase"] == "playoffs"
+        assert st["champion"] is None
+        assert finished == [] and pushes == []
+
+        self._play_po_side(client, auth_headers, tid, "losers")
+        st = client.get(f"/api/tournaments/{tid}/po/status").json()
+        assert st["phase"] == "finished"
+        assert st["champion"] == st["winners_champion"]
+        assert st["losers_champion"] is not None
+        assert finished == [tid]
+        assert pushes == [st["winners_champion"]]
+
+    def test_espejo_small_bracket_finishes_without_losers_bracket(self, client, auth_headers):
+        tid = self._create_espejo(client, auth_headers, n=3)
+        self._play_po_side(client, auth_headers, tid, "winners")
+        st = client.get(f"/api/tournaments/{tid}/po/status").json()
+        assert st["espejo_losers_bracket_seeded"] is False
+        assert st["phase"] == "finished"
+
+    def test_espejo_ignores_deprecated_super_final_flag(self, client, auth_headers):
+        tid = self._create_espejo(client, auth_headers, n=4, espejo_super_final=True)
+        assert client.get(f"/api/tournaments/{tid}/po/status").json()["espejo_super_final"] is False
+        self._play_po_side(client, auth_headers, tid, "winners")
+        self._play_po_side(client, auth_headers, tid, "losers")
+        matches = client.get(f"/api/tournaments/{tid}/po/playoffs").json()["matches"]
+        assert "super_final" not in {m["bracket_side"] for m in matches}
+        assert client.get(f"/api/tournaments/{tid}/po/status").json()["phase"] == "finished"
 
     def test_create(self, client, auth_headers):
         r = client.post("/api/tournaments/playoff", json=self.PO_BODY, headers=auth_headers)

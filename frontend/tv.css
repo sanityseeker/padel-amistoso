@@ -424,37 +424,6 @@ details[open] > .breakdown-toggle { color: var(--accent); }
   .espejo-brackets-row { grid-template-columns: 1fr; }
 }
 
-/* ── Double-elimination explainer ── */
-.double-elim-explainer {
-  background: color-mix(in srgb, var(--accent, #f5a623) 8%, var(--bg-card, #fff));
-  border: 1px solid color-mix(in srgb, var(--accent, #f5a623) 30%, transparent);
-  border-radius: 8px;
-  padding: 0.65rem 1rem;
-  margin-bottom: 0.85rem;
-  font-size: 0.85rem;
-  line-height: 1.5;
-}
-.double-elim-explainer strong {
-  display: block;
-  font-size: 0.9rem;
-  margin-bottom: 0.35rem;
-  color: var(--text);
-}
-.double-elim-explainer ul {
-  margin: 0 0 0.4rem 1.1rem;
-  padding: 0;
-}
-.double-elim-explainer ul li {
-  margin-bottom: 0.2rem;
-  color: var(--text);
-}
-.double-elim-legend {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin-top: 0.25rem;
-}
-
 /* ── Bracket image lightbox ── */
 #bracket-lightbox {
   display: none;
@@ -773,7 +742,7 @@ summary.tv-collapsible-header {
 }
 summary.tv-collapsible-header::-webkit-details-marker { display: none; }
 summary.tv-collapsible-header h2 { font-size: var(--text-lg); font-family: var(--font-display); font-weight: 700; color: var(--text); letter-spacing: var(--tracking-display); }
-summary.tv-collapsible-header .format-info-btn { margin-left: auto; }
+summary.tv-collapsible-header .format-info-btn { margin: 0 0 0 auto; }
 /* The info button's padded 44px hit area would poke past the page gutter on phones. */
 summary.tv-collapsible-header { overflow-x: clip; }
 summary.tv-collapsible-header .chevron { color: var(--text-muted); font-size: 0.9rem; transition: transform 0.2s; }
@@ -800,9 +769,10 @@ details.tv-collapsible[open] summary.tv-collapsible-header .chevron { transform:
   padding: 0.75rem 1rem;
   margin-bottom: 1rem;
 }
-.champion-banner--half:first-of-type { margin-right: 0.5rem; }
+.champion-banner--half + .champion-banner--half { margin-left: 0.75rem; }
 @media (max-width: 600px) {
   .champion-banner--half { display: block; width: 100%; margin-right: 0; }
+  .champion-banner--half + .champion-banner--half { margin-left: 0; }
 }
 
 /* ── Admin announcement banner ── */
@@ -984,6 +954,22 @@ html[data-theme="light"] .court-card--yours {
   pointer-events: none;
 }
 #abbrev-popup table { border-collapse: collapse; }
+#abbrev-popup.abbrev-popup-prose {
+  max-width: min(340px, calc(100vw - 16px));
+  line-height: 1.5;
+}
+.de-explainer strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--text);
+}
+.de-explainer ul { margin: 0 0 0.4rem 1.1rem; padding: 0; }
+.de-explainer li { margin-bottom: 0.2rem; color: var(--text); }
+.de-legend {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
 #abbrev-popup td {
   padding: 0.12rem 0.5rem 0.12rem 0;
   color: var(--text-muted);

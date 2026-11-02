@@ -23,6 +23,7 @@ from ..email import (
     send_email,
 )
 from ..models import GPPhase, MatchStatus, Sport
+from ..tournaments.playoff import bracket_matches
 from .helpers import (
     _find_match_full,
     _require_editor_access,
@@ -524,9 +525,8 @@ def _collect_tournament_match_round_info(tournament: object) -> dict[str, tuple[
     for g in getattr(tournament, "groups", []) or []:
         _ingest(getattr(g, "matches", []))
     bracket = getattr(tournament, "playoff_bracket", None)
-    bracket_all_fn = getattr(bracket, "all_matches", None) if bracket is not None else None
-    if callable(bracket_all_fn):
-        _ingest(bracket_all_fn())
+    if bracket is not None:
+        _ingest(bracket_matches(bracket))
     return info
 
 

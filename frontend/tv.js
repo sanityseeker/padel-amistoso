@@ -1739,9 +1739,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
   let html = _buildHeader(tvState.tournamentName, phase, champion);
   html += _buildBanner(tvSettings);
 
-  if (champion) {
-    html += `<div class="champion-banner">🏆 ${t('txt_txt_champion')}: ${esc(champion.join(' & '))}</div>`;
-  }
+  html += _buildChampionBanners(status);
 
   const hasCourts = status.assign_courts !== false;
   const _gpScoreCtx = isPlayoffs ? 'gp-playoff' : 'gp-group';
@@ -1757,7 +1755,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
 
   if (tvSettings.show_bracket) {
       const imgUrl = _bracketImgUrl('gp', tvSettings, playoffs);
-      html += _buildBracketSection(imgUrl, status.double_elimination === true);
+      html += _buildBracketSection(imgUrl, status.double_elimination === true && status.espejo !== true, status.espejo === true);
     }
 
     if (tvSettings.show_past_matches) {
@@ -1808,23 +1806,13 @@ function _renderGP(tvSettings, status, groups, playoffs) {
 function _renderPO(tvSettings, status, playoffs) {
   const phase = status.phase || '';
   const champion = status.champion;
-  const isEspejo = status.espejo === true;
-  const hasSuperFinal = status.espejo_super_final === true;
 
   const pending = _sortTbdLast((playoffs?.pending || []).filter(m => m.status !== 'completed'));
 
   let html = _buildHeader(tvState.tournamentName, phase, champion);
   html += _buildBanner(tvSettings);
 
-  if (champion) {
-    html += `<div class="champion-banner">🏆 ${t('txt_txt_champion')}: ${esc(champion.join(' & '))}</div>`;
-  } else if (isEspejo && !hasSuperFinal) {
-    // No super final: show each bracket's champion independently once decided.
-    const wc = status.winners_champion;
-    const lc = status.losers_champion;
-    if (wc) html += `<div class="champion-banner champion-banner--half">🏆 ${esc(t('txt_txt_espejo_winners_bracket'))}: ${esc(wc.join(' & '))}</div>`;
-    if (lc) html += `<div class="champion-banner champion-banner--half">🥈 ${esc(t('txt_txt_espejo_losers_bracket'))}: ${esc(lc.join(' & '))}</div>`;
-  }
+  html += _buildChampionBanners(status);
 
   const hasCourts = status.assign_courts !== false;
   html += _buildCourts(pending, t('txt_txt_court_assignments_play_offs'), hasCourts && tvSettings.show_courts !== false, tvSettings.show_pending_matches === true, 'po-playoff');
@@ -1984,6 +1972,12 @@ function _tvRenderMexLeaderboard() {
 // ── Abbreviation legend popup ──────────────────────────────
 
 function _buildAbbrevLegend(type) {
+  if (type === 'double_elim') {
+    // i18n strings carry trusted inline markup (<b>, <em>), so no esc() here.
+    return `<div class="de-explainer"><strong>${t('txt_double_elim_explain_title')}</strong>`
+      + `<ul><li>${t('txt_double_elim_explain_purpose')}</li><li>${t('txt_double_elim_explain_loss')}</li></ul>`
+      + `<span class="de-legend">${t('txt_double_elim_explain_colors')}</span></div>`;
+  }
   const rows = type === 'standings' ? [
     [t('txt_txt_p_abbrev'),    t('txt_txt_abbrev_mp_full')],
     [t('txt_txt_w_abbrev'),    t('txt_txt_abbrev_w_full')],
@@ -2009,6 +2003,7 @@ function _buildAbbrevLegend(type) {
 }
 
 function showAbbrevPopup(event, type) {
+  event.preventDefault();
   event.stopPropagation();
   const popup = document.getElementById('abbrev-popup');
   const btn = event.currentTarget;
@@ -2018,13 +2013,17 @@ function showAbbrevPopup(event, type) {
     return;
   }
   tvState.abbrevPopupBtn = btn;
+  popup.classList.toggle('abbrev-popup-prose', type === 'double_elim');
   popup.innerHTML = _buildAbbrevLegend(type);
   popup.style.display = 'block';
   const rect = btn.getBoundingClientRect();
   const pw = popup.offsetWidth || 210;
+  const ph = popup.offsetHeight || 200;
   const left = Math.max(8, Math.min(rect.left, window.innerWidth - pw - 8));
+  // Clamp vertically so the popup stays on screen near the bottom of a phone.
+  const top = Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - ph - 8));
   popup.style.left = left + 'px';
-  popup.style.top = (rect.bottom + 6) + 'px';
+  popup.style.top = top + 'px';
 }
 
 document.addEventListener('click', (e) => {
@@ -2161,21 +2160,37 @@ function _swapPendingBracketImages() {
   });
 }
 
+/**
+ * Champion banner(s) for GP and standalone play-off views.
+ * Espejo: the champion is the Winners-bracket champion (shown as soon as the
+ * Winners final is played) and the Losers-bracket winner is the consolation
+ * winner, shown side by side.  Legacy tournaments with a Super Final keep its
+ * winner (status.champion) as the only champion.
+ */
+function _buildChampionBanners(status) {
+  const espejo = status.espejo === true;
+  const legacySuperFinal = espejo && status.espejo_super_final === true;
+  const champion = status.champion || (espejo && !legacySuperFinal ? status.winners_champion : null);
+  const consolation = espejo && !legacySuperFinal ? status.losers_champion : null;
+  const half = champion && consolation ? ' champion-banner--half' : '';
+  let html = '';
+  if (champion) {
+    html += `<div class="champion-banner${half}">🏆 ${t('txt_txt_champion')}: ${esc(champion.join(' & '))}</div>`;
+  }
+  if (consolation) {
+    html += `<div class="champion-banner champion-banner--consolation${half}">${t('txt_txt_consolation_winner')}: ${esc(consolation.join(' & '))}</div>`;
+  }
+  return html;
+}
+
 /** Build bracket section HTML with scrollable wrapper for mobile */
 function _buildBracketSection(imgUrl, isDouble = false, isEspejo = false) {
   let html = `<details class="tv-collapsible" data-tv-key="bracket" open>`;
-  html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2></summary>`;
+  const infoBtn = isDouble && !isEspejo
+    ? ` <button type="button" class="format-info-btn" onclick="showAbbrevPopup(event,'double_elim')" aria-label="${escAttr(t('txt_double_elim_info_btn'))}" title="${escAttr(t('txt_double_elim_info_btn'))}">i</button>`
+    : '';
+  html += `<summary class="tv-collapsible-header"><span class="chevron">▶</span><h2>${t('txt_txt_play_off_bracket')}</h2>${infoBtn}</summary>`;
   html += `<div class="tv-section bracket-section">`;
-  if (isDouble && !isEspejo) {
-    html += `<div class="double-elim-explainer">`;
-    html += `<strong>${t('txt_double_elim_explain_title')}</strong>`;
-    html += `<ul>`;
-    html += `<li>${t('txt_double_elim_explain_purpose')}</li>`;
-    html += `<li>${t('txt_double_elim_explain_loss')}</li>`;
-    html += `</ul>`;
-    html += `<span class="double-elim-legend">${t('txt_double_elim_explain_colors')}</span>`;
-    html += `</div>`;
-  }
   if (isEspejo || isDouble) {
     html += `<div class="espejo-brackets-row">`;
     html += `<div class="espejo-bracket-half">`;

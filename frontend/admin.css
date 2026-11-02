@@ -1909,7 +1909,7 @@ html.bracket-lb-open body { overflow: hidden; }
 .match-score.sets-stack .set-row {
   white-space: nowrap;
 }
-.match-actions { display: flex; gap: 0.3rem; align-items: center; }
+.match-actions { display: flex; flex-wrap: wrap; gap: 0.3rem; row-gap: 0.4rem; align-items: center; }
 .match-actions input { width: 50px; text-align: center; }
 .court-board {
   display: flex;
@@ -2660,8 +2660,19 @@ html[data-theme="light"] .badge-lobby-closed { background: var(--color-error-hig
   background: var(--color-override);
 }
 .match-format-num { font-family: var(--font-data); font-weight: 700; font-variant-numeric: tabular-nums; }
-.match-mode-toggle { margin-right: 0.25rem; }
-.score-entry { display: inline-flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+/* Caret marks the format chip as a menu trigger. */
+.match-format-caret {
+  width: 0;
+  height: 0;
+  margin-left: 0.15rem;
+  border-left: 0.25rem solid transparent;
+  border-right: 0.25rem solid transparent;
+  border-top: 0.3rem solid currentColor;
+  opacity: 0.7;
+}
+.match-format-mode { color: var(--color-text); font-weight: 600; }
+.match-format-btn.is-override .match-format-mode { color: inherit; }
+.score-entry { display: inline-flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; min-width: 0; }
 .court-match-override {
   display: inline-block;
   width: 6px;
@@ -2719,8 +2730,7 @@ html[data-theme="light"] .badge-lobby-closed { background: var(--color-error-hig
 .mf-set-label { min-width: 3.6rem; font-size: 0.78rem; font-weight: 600; color: var(--color-text-muted); }
 .mf-actions { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.6rem; flex-wrap: wrap; }
 .mf-actions-spacer { flex: 1; }
-.mf-reset { background: none; border: none; padding: 0.2rem 0; color: var(--color-primary); cursor: pointer; font-size: 0.8rem; text-decoration: underline; }
-.mf-reset:disabled { color: var(--color-text-faint); cursor: default; text-decoration: none; }
+/* Reset link gets its own line so Close/Apply stay together. */
 
 /* Score breakdown panel */
 .breakdown-panel { overflow-x: auto; margin-top: 0.4rem; padding: 0.4rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
@@ -3797,8 +3807,33 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   .match-edit-btn { min-height: 40px; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
   .match-format-btn { min-height: 40px; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
   .match-format-btn.is-override { padding-right: 0.9rem; }
+  /* Score entry: format chip on its own line, set boxes full width, then Save. */
+  .match-actions { width: 100%; }
+  .score-entry-sets { flex: 1 1 100%; }
+  /* Sets side by side like a scoreboard: label on top, "x – y" below. */
+  .score-entry-sets .tennis-sets {
+    flex: 1 1 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.35rem;
+  }
+  .score-entry-sets .tennis-set-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.3rem;
+  }
+  .score-entry-sets .tennis-set-label {
+    grid-column: 1 / -1;
+    min-width: 0;
+    text-align: center;
+  }
+  .score-entry-sets .tennis-set-input { width: 100% !important; min-width: 0; padding: 0; text-align: center; }
+  .score-entry-sets [data-score-save] { width: 100%; }
   .mf-field input, .mf-score-row input { min-height: 44px; font-size: 1rem; }
   .mf-actions .btn { flex: 1; }
+  .mf-actions-spacer { display: none; }
   .admin-dispute-scores label { padding: 0.45rem 0.55rem; font-size: 0.9rem; }
   .admin-dispute-scores input[type="radio"] { width: 18px; height: 18px; }
   .admin-dispute-custom input[type="number"] { width: 60px; min-height: 44px; font-size: 1rem; }
@@ -6410,16 +6445,6 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
 details.advanced-section.advanced-section--flush {
   margin-bottom: 0;
   border-radius: var(--radius-lg);
-}
-/* Espejo (mirror) bracket options revealed under a checkbox */
-.espejo-options {
-  margin-top: var(--space-1-5);
-  padding: var(--space-1-5) var(--space-2-5);
-  border-left: 2px solid var(--color-border);
-}
-.espejo-options--indented {
-  margin-top: var(--space-1);
-  margin-left: 1.4rem;
 }
 .admin-search-input {
   flex: 1;

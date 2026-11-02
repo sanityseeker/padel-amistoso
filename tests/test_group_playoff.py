@@ -842,6 +842,26 @@ class TestUpdateCourts:
         t.update_courts([])
         assert t.courts == []
 
+    @pytest.mark.parametrize(
+        "start_kwargs",
+        [{}, {"double_elimination": True}, {"espejo": True}],
+        ids=["single-elim", "double-elim", "espejo"],
+    )
+    def test_update_courts_after_playoffs_started(self, start_kwargs):
+        """Re-assigning courts once play-offs exist must work for every bracket type."""
+        t = GroupPlayoffTournament(
+            _make_players(8), num_groups=2, courts=_make_courts(2), top_per_group=2, team_mode=True
+        )
+        t.generate()
+        for m in t.pending_group_matches():
+            t.record_group_result(m.id, (10, 6))
+        t.start_playoffs(**start_kwargs)
+
+        t.update_courts([Court(name="NewCourt")])
+        assert [c.name for c in t.courts] == ["NewCourt"]
+        for m in t.pending_playoff_matches():
+            assert m.court is not None and m.court.name == "NewCourt"
+
 
 # ── GroupPlayoffTournament.add_player_to_group ────────────────────────────────
 
