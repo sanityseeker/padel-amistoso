@@ -1,3 +1,15 @@
+## v2.0.0 (2026-11-03)
+
+### BREAKING CHANGE
+
+- GET /api/admin/player-profiles/unlinked/{tid} is removed;
+use GET /api/admin/player-profiles/participants/{tid}, which returns every
+participant with profile_id / profile_name / is_ghost.
+
+### Feat
+
+- recalculate ELO on every Hub link change, add Hub-profile merge, refresh admin UI
+
 ## v1.20.2 (2026-11-03)
 
 ### Fix
