@@ -98,7 +98,7 @@ async function renderMex() {
     }
 
     if (status.champion) {
-      html += `<div class="alert alert-success">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
+      html += `<div class="alert alert-success">${_ic('trophy')} ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
     }
 
     if (isFinished) {
@@ -153,7 +153,7 @@ async function renderMex() {
         // to generate the next round.
         if (pending === 0 && canGenerateRound && status.sit_out_count > 0 && status.missed_games) {
           html += `<div class="card" id="mex-sitout-panel">`;
-          html += `<h3>🪑 ${t('txt_txt_missed_games_sitout')}</h3>`;
+          html += `<h3>${_ic('bench')} ${t('txt_txt_missed_games_sitout')}</h3>`;
           html += `<p class="muted-note-sm">${t('txt_txt_sitout_instructions', { n: status.sit_out_count })}</p>`;
           html += `<div class="sitout-grid">`;
           // Sort by most missed first
@@ -861,12 +861,12 @@ function _renderProposalPicker(proposals) {
     if (p.strategy === 'seeded') {
       card += `<span class="badge badge-scheduled">${t('txt_txt_seeded')}</span>`;
     }
-    if (p.recommended) card += `<span class="badge badge-best">★ ${t('txt_txt_best')}</span>`;
+    if (p.recommended) card += `<span class="badge badge-best">${_ic('star')} ${t('txt_txt_best')}</span>`;
     card += `</div>`;
     card += `<div class="proposal-metrics">`;
     card += `${_antIc('bar-chart')} ${t('txt_txt_score_gap')}: <strong>${fmt2(p.score_imbalance)} pts</strong><br>`;
     const repLabel = p.repeat_count === 0
-      ? `✅ ${t('txt_txt_no_repeated_matchups')}`
+      ? `${_antIc('check')} ${t('txt_txt_no_repeated_matchups')}`
       : `${_antIc('warning')} ${t('txt_txt_n_repeats', { n: fmt2(p.repeat_count) })}`;  
     card += `${repLabel}`;
     if ((p.exact_prev_round_repeats || 0) > 0) {
@@ -877,7 +877,7 @@ function _renderProposalPicker(proposals) {
       card += `<br>${_antIc('stop')} ${t('txt_txt_skill_gap_violation', { n: p.skill_gap_violations, excess })}`;
     }
     if (p.sit_out_names && p.sit_out_names.length > 0) {
-      card += `<br>🪑 ${t('txt_txt_sitting_out')}: <em>${esc(p.sit_out_names.join(', '))}</em>`;
+      card += `<br>${_ic('bench')} ${t('txt_txt_sitting_out')}: <em>${esc(p.sit_out_names.join(', '))}</em>`;
     }
     card += `</div>`;
 
@@ -1109,7 +1109,7 @@ function _courtsInnerHtml(names, patchUrl) {
     ? names.map(n => esc(n)).join(', ')
     : `<em>${t('txt_txt_no_courts')}</em>`;
   const namesAttr = JSON.stringify(names).replace(/"/g, '&quot;');
-  return `\uD83C\uDFDF\uFE0F ${t('txt_txt_courts')}: <span class="courts-summary-names">${label}</span>&ensp;<button type="button" class="btn-outline-muted" onclick="_openCourtEditor(${namesAttr}, '${patchUrl}')">${t('txt_txt_edit')}</button>`;
+  return `${_ic('court')} ${t('txt_txt_courts')}: <span class="courts-summary-names">${label}</span>&ensp;<button type="button" class="btn-outline-muted" onclick="_openCourtEditor(${namesAttr}, '${patchUrl}')">${t('txt_txt_edit')}</button>`;
 }
 
 function _openCourtEditor(names, patchUrl) {
@@ -1295,9 +1295,9 @@ function _renderManualMatch(idx) {
   card += `<div class="manual-match-header">`;
   card += `<div class="manual-match-title">${t('txt_txt_match_n', { n: idx + 1 })}</div>`;
   if (isLocked) {
-    card += `<button type="button" class="btn btn-sm manual-lock-btn locked" onclick="_manualUnlockMatch(${idx})">&#x1F513; ${t('txt_txt_manual_unlock_match')}</button>`;
+    card += `<button type="button" class="btn btn-sm manual-lock-btn locked" onclick="_manualUnlockMatch(${idx})">${_antIc('unlock')} ${t('txt_txt_manual_unlock_match')}</button>`;
   } else {
-    card += `<button type="button" class="btn btn-sm manual-lock-btn" onclick="_manualLockMatch(${idx})">&#x1F512; ${t('txt_txt_manual_lock_match')}</button>`;
+    card += `<button type="button" class="btn btn-sm manual-lock-btn" onclick="_manualLockMatch(${idx})">${_antIc('lock')} ${t('txt_txt_manual_lock_match')}</button>`;
   }
   card += `</div>`;
 
@@ -1425,7 +1425,7 @@ function _updateManualSitout() {
         const stats = lb ? ` (${t('txt_txt_manual_avg_pts')} ${lb.avg_points.toFixed(1)})` : '';
         return `${esc(p.name)}${stats}`;
       }).join(', ');
-      el.innerHTML = `🪑 ${t('txt_txt_sitting_out')}: <em>${names}</em>`;
+      el.innerHTML = `${_ic('bench')} ${t('txt_txt_sitting_out')}: <em>${names}</em>`;
     } else {
       el.innerHTML = t('txt_txt_all_players_assigned');
     }
@@ -1589,7 +1589,7 @@ function _updateManualRoundStats() {
   html += `${_antIc('bar-chart')} ${t('txt_txt_score_gap')}: <strong>${fmt2(stats.score_imbalance)} pts</strong><br>`;
 
   if (stats.repeat_count === 0) {
-    html += `✅ ${t('txt_txt_no_repeated_matchups')}`;
+    html += `${_antIc('check')} ${t('txt_txt_no_repeated_matchups')}`;
   } else {
     html += `${_antIc('warning')} ${t('txt_txt_n_repeats', { n: fmt2(stats.repeat_count) })}`;
   }
@@ -2194,6 +2194,19 @@ function _report_table(headers, rows) {
   return `<table><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
 }
 
+/**
+ * Trophy icon for the standalone HTML/PDF export. The export document does not
+ * load theme.css, so the `.ic` sizing rule is absent: the SVG carries its own
+ * width/height, fill and stroke (dark green to match the `.champ` box).
+ */
+const _REPORT_TROPHY_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"'
+  + ' fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
+  + ' style="vertical-align:-3px" aria-hidden="true">'
+  + '<path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/>'
+  + '<path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>'
+  + '<path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>'
+  + '<path d="M18 2H6v7a6 6 0 0012 0V2z"/></svg>';
+
 function _build_report_document(title, bodyHtml) {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -2210,6 +2223,7 @@ function _build_report_document(title, bodyHtml) {
     table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; }
     th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; font-size: 0.9rem; }
     th { background: #f3f4f6; }
+    img { max-width: 100%; height: auto; }
   </style>
 </head>
 <body>${bodyHtml}</body>
@@ -2276,7 +2290,7 @@ async function exportTournamentOutcome(format) {
       ]);
 
       if (status.champion) {
-        body += `<div class="champ">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
+        body += `<div class="champ">${_REPORT_TROPHY_SVG} ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
       }
 
       // ── Play-offs (above group content) ───────────────────────
@@ -2338,7 +2352,7 @@ async function exportTournamentOutcome(format) {
       ]);
 
       if (status.champion) {
-        body += `<div class="champ">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
+        body += `<div class="champ">${_REPORT_TROPHY_SVG} ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
       }
 
       if (schemaSrc) {
@@ -2370,7 +2384,7 @@ async function exportTournamentOutcome(format) {
       ]);
 
       if (status.champion) {
-        body += `<div class="champ">🏆 ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
+        body += `<div class="champ">${_REPORT_TROPHY_SVG} ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
       }
 
       // ── Play-offs (above leaderboard/rounds) ──────────────────

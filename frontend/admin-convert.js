@@ -255,10 +255,10 @@ function _renderConvPlayerList(rid) {
     h += `</label>`;
     h += `<span class="conv-player-name">${esc(reg.player_name)}</span>`;
     if (isAssigned) {
-      h += `<span class="conv-player-overlap-dot" title="${esc(overlapTooltip)}">⚠</span>`;
+      h += `<span class="conv-player-overlap-dot" role="img" title="${esc(overlapTooltip)}" aria-label="${esc(overlapTooltip)}">${_antIc('warning')}</span>`;
     }
     if (hasQuestions) {
-      h += `<button type="button" class="conv-answers-btn${wasOpen ? ' active' : ''}" onclick="event.stopPropagation();_toggleConvAnswers('${pid}')" title="${t('txt_conv_show_answers')}">\ud83d\udccb</button>`;
+      h += `<button type="button" class="conv-answers-btn${wasOpen ? ' active' : ''}" onclick="event.stopPropagation();_toggleConvAnswers('${pid}')" title="${t('txt_conv_show_answers')}" aria-label="${t('txt_conv_show_answers')}">${_ic('clipboard')}</button>`;
     }
     h += `</div>`;
     if (isAssigned && overlapTooltip) {

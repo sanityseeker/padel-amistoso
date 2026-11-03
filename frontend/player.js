@@ -1,14 +1,14 @@
 /* ── Player Hub page ──────────────────────────────────── */
 'use strict';
 
-// ── Remember this page for the page selector ──────────────
+// ── Remember this page for the root redirect ──────────────
 try { localStorage.setItem('amistoso-last-page', 'player'); } catch (_) {}
 
 // ── Theme & language (early, before render) ───────────────
-let _theme = _loadSavedTheme();
-_applyTheme(_theme);
-let _lang = _loadSavedLanguage();
-setAppLanguage(_lang);
+// The shared public header (shared.js) owns the language/theme controls; the
+// page re-renders on `app-language-changed` (listener near _render below).
+_applyTheme(_loadSavedTheme());
+setAppLanguage(_loadSavedLanguage());
 
 // ── State ─────────────────────────────────────────────────
 const API = '/api/player-profile';
@@ -862,21 +862,6 @@ function _buildPathPanel(entry) {
   return html;
 }
 
-function _toggleTheme() {
-  _theme = _theme === 'dark' ? 'light' : 'dark';
-  _applyTheme(_theme);
-  _saveTheme(_theme);
-  document.querySelectorAll('[data-theme-toggle-icon]').forEach(btn => {
-    btn.textContent = _theme === 'dark' ? '🌙' : '☀️';
-  });
-}
-
-function _toggleLanguage() {
-  _lang = _lang === 'es' ? 'en' : 'es';
-  setAppLanguage(_lang);
-  _render();
-}
-
 // ── Communities ───────────────────────────────────────────
 
 function _scopeToClubId(scopeValue) {
@@ -905,9 +890,6 @@ function _setSelectedStatsScope(scopeValue) {
   _selectedCommunityId = _scopeToCommunityId(_selectedStatsScope);
   _selectedClubId = _scopeToClubId(_selectedStatsScope);
   try { localStorage.setItem(STORAGE_COMMUNITY_KEY, _selectedStatsScope || ''); } catch (_) {}
-  // Mark that the user has explicitly chosen a scope this session so the
-  // subdomain auto-scope won't override their choice on the next render.
-  try { sessionStorage.setItem('player-subdomain-override', '1'); } catch (_) {}
   // Re-fetch scope-aware data then re-render.
   Promise.all([
     _fetchLeaderboard(),
@@ -948,6 +930,8 @@ function _formatScopeMiniStat(sportCode, eloValue, matchCount) {
 
 function _buildStatsScopeCard() {
   if (!_profile) return '';
+  // On a club subdomain stats are locked to that club — no selector.
+  if (_subdomainClub) return '';
   const hasCommunities = _playerCommunities.length > 0;
   const hasClubs = _playerClubs.length > 0;
   if (!hasCommunities && !hasClubs) return '';
@@ -1020,55 +1004,36 @@ function _buildStatsScopeCard() {
 
 async function _resolveSubdomainContext() {
   // When the page is loaded on ``{slug}.amistoso.club``, resolve the slug to a
-  // club and (only if the user has no explicit scope yet) auto-select that
-  // club so the leaderboard / space queries are pre-filtered.
+  // club and lock the stats scope to it: the Hub on a club subdomain is the
+  // club's Hub, so the scope selector is hidden and the header "Club" tab is
+  // the way back to the club page.
   const slug = (typeof getClubSubdomain === 'function') ? getClubSubdomain() : null;
   if (!slug) return;
   try {
-    const res = await fetch(`/api/clubs/by-slug/${encodeURIComponent(slug)}`);
-    if (!res.ok) return;
-    const data = await res.json();
+    const data = await resolveClubSubdomainContext();
     if (!data || !data.club_id) return;
     _subdomainClub = data;
-    // Apply the club scope on every page load unless the user explicitly opted
-    // out via the "Show all" button (or the scope selector) during this session.
-    // This ensures the club page always shows club-scoped stats by default,
-    // regardless of any scope the user saved from a previous visit elsewhere.
-    let overridden = false;
-    try { overridden = sessionStorage.getItem('player-subdomain-override') === '1'; } catch (_) {}
-    if (!overridden) {
-      _selectedStatsScope = `club:${data.club_id}`;
-      _selectedClubId = data.club_id;
-      _selectedCommunityId = null;
-    }
+    _selectedStatsScope = `club:${data.club_id}`;
+    _selectedClubId = data.club_id;
+    _selectedCommunityId = null;
   } catch (_) {
-    // Silently ignore \u2014 subdomain context is optional
+    // Silently ignore — subdomain context is optional
   }
 }
 
-function _clearSubdomainScope() {
-  // Lets the user opt out of the subdomain-imposed default scope. The choice
-  // is remembered for this browser session only — a fresh tab on the same
-  // subdomain will once again default to the club scope.
-  try { sessionStorage.setItem('player-subdomain-override', '1'); } catch (_) {}
-  _setSelectedStatsScope('');
-}
-
-function _buildSubdomainBanner() {
-  if (!_subdomainClub) return '';
+/**
+ * Club-subdomain empty state: the player has no matches in this club yet.
+ * Stats cards filter by the locked club scope, so without this the dashboard
+ * would simply show nothing below the tournaments card.
+ */
+function _buildClubEmptyState() {
+  if (!_subdomainClub || !_profile) return '';
+  const clubId = _subdomainClub.club_id;
+  const played = (_entries || []).some(e => e.club_id === clubId
+    && (e.status === 'finished' || (e.wins || 0) + (e.losses || 0) + (e.draws || 0) > 0));
+  if (played) return '';
   const name = _subdomainClub.name || _subdomainClub.slug || '';
-  const showingClubScope = _selectedClubId === _subdomainClub.club_id;
-  const label = (t('txt_player_subdomain_banner') || 'Stats scoped to {club}').replace('{club}', name);
-  let html = `<div class="player-subdomain-banner" role="status">`;
-  if (_subdomainClub.logo_url) {
-    html += `<img class="player-subdomain-logo" src="${esc(_subdomainClub.logo_url)}" alt="${esc(t('txt_club_logo_alt') || 'Club logo')}">`;
-  }
-  html += `<span class="player-subdomain-text">${esc(label)}</span>`;
-  if (showingClubScope) {
-    html += `<button type="button" class="player-subdomain-clear" onclick="_clearSubdomainScope()">${esc(t('txt_player_subdomain_show_all') || 'Show all')}</button>`;
-  }
-  html += `</div>`;
-  return html;
+  return `<div class="card empty-state player-club-empty">${esc(t('txt_player_club_no_matches', { club: name }))}</div>`;
 }
 
 async function _fetchCommunities() {
@@ -1184,7 +1149,6 @@ function _render() {
   if (_jwt && _profile) _startSpacePolling();
   else _stopSpacePolling();
   let html = _buildHeader();
-  html += _buildSubdomainBanner();
   if (_jwt && _profile) {
     html += _buildDashboard();
   } else {
@@ -1200,20 +1164,10 @@ function _render() {
 }
 
 function _buildHeader() {
-  const langMeta = { icon: _lang === 'es' ? '🇪🇸' : '🇬🇧', label: _lang === 'es' ? t('txt_txt_spanish') : t('txt_txt_english') };
-  const themeIcon = _theme === 'dark' ? '🌙' : '☀️';
-  let html = `<div class="tv-header"><div class="tv-header-title-row">`;
-  html += `<div class="tv-lang-cell"><button type="button" class="theme-btn" onclick="_toggleLanguage()" title="${esc(langMeta.label)}">${langMeta.icon}</button></div>`;
-  html += buildPageSelectorHtml('player');
-  html += `<div class="tv-toggle-btns">`;
-  if (_jwt && _profile) {
-    html += buildCompactRefreshButtonHtml('_refreshSpaceNow()', t('txt_txt_refresh_now'));
-  }
-  html += `<button type="button" class="theme-btn" onclick="_toggleTheme()" data-theme-toggle-icon>${themeIcon}</button>`;
-  html += `</div>`;
-  html += `</div></div>`;
-  return html;
+  return buildPublicHeaderHtml('player');
 }
+
+document.addEventListener('app-language-changed', () => _render());
 
 function _buildAuthPanel() {
   let html = `<div class="card">`;
@@ -1316,7 +1270,7 @@ function _buildDashboard() {
   if (_profile.email) {
     html += `<span class="profile-bar-email">${esc(_profile.email)}</span>`;
     if (emailUnverified) {
-      html += `<span class="badge badge-verify-pending">⚠ ${esc(t('txt_player_email_unverified_badge'))}</span>`;
+      html += `<span class="badge badge-verify-pending">${_ic('alert')} ${esc(t('txt_player_email_unverified_badge'))}</span>`;
     }
   }
   html += `</div>`;
@@ -1414,6 +1368,7 @@ function _buildDashboard() {
   html += `</div>`;
 
   // ── Career stats & ELO ──
+  html += _buildClubEmptyState();
   html += _buildGlobalStatsCard();
   html += _buildEloRatingsCard();
 
@@ -1552,9 +1507,7 @@ function _buildStatsCardForEntries(entries, heading) {
 
 function _formatRankLabel(rank) {
   if (!rank) return null;
-  if (rank === 1) return '🥇';
-  if (rank === 2) return '🥈';
-  if (rank === 3) return '🥉';
+  if (rank <= 3) return `<span class="rank-medal rank-medal--${rank}">${_ic('medal')}</span>`;
   return `#${rank}`;
 }
 
@@ -1612,7 +1565,7 @@ function _buildBestResultsListHtml(bestGroupRank, bestGroupRankTournament, bestP
     html += `</div>`;
   }
   if (bestPlayoffStage) {
-    const icon = bestPlayoffStage === 'Champion' ? '🏆' : '🏅';
+    const icon = _ic(bestPlayoffStage === 'Champion' ? 'trophy' : 'medal');
     html += `<div class="best-results-row">`;
     html += `<span class="best-results-icon">${icon}</span>`;
     html += `<span class="best-results-detail">`;
@@ -1932,7 +1885,7 @@ function _formatManualAdjustmentRow(match) {
     : '';
 
   let html = `<div class="elo-log-main">`;
-  html += `<span class="elo-manual-badge" ${tooltip}>⚙ ${esc(t('txt_player_elo_manual_adjustment'))}</span>`;
+  html += `<span class="elo-manual-badge" ${tooltip}>${_ic('settings')} ${esc(t('txt_player_elo_manual_adjustment'))}</span>`;
   if (adminInfo) html += adminInfo;
   html += `<span class="elo-transition ${changeClass}">${esc(changeText)} <span class="elo-manual-delta">(${esc(deltaText)})</span></span>`;
   html += `</div>`;
@@ -2416,7 +2369,9 @@ function _buildStatsLine(entry) {
   const hasWL = (entry.wins || 0) + (entry.losses || 0) + (entry.draws || 0) > 0;
   const parts = [];
   if (hasRank) {
-    const suffix = entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `#${entry.rank}`;
+    const suffix = entry.rank <= 3
+      ? `<span class="rank-medal rank-medal--${entry.rank}">${_ic('medal')}</span> #${entry.rank}`
+      : `#${entry.rank}`;
     const of = entry.total_players ? ` ${t('txt_player_stats_of')} ${entry.total_players}` : '';
     parts.push(`${suffix}${of}`);
   } else if (hasPlayoffStage) {

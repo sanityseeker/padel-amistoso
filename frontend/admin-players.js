@@ -249,7 +249,7 @@ function _phRenderDetail(data) {
 
   let html = '<div class="card">';
   html += '<div class="d-flex items-center justify-between mb-3 flex-wrap gap-2">';
-  html += `<h2 class="m-0">🎾 ${esc(data.name || t('txt_ph_unnamed_profile'))}</h2>`;
+  html += `<h2 class="m-0">${_antIc('user')} ${esc(data.name || t('txt_ph_unnamed_profile'))}</h2>`;
   html += '<div class="d-flex items-center gap-1-5 flex-wrap">';
   html += `<button type="button" class="btn btn-danger btn-sm" onclick="phDeleteProfile('${escAttr(data.id)}')">${t('txt_ph_delete_profile')}</button>`;
   html += `<button type="button" class="btn btn-sm" onclick="phCloseDetail()">✕ ${t('txt_txt_close')}</button>`;

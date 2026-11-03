@@ -365,7 +365,7 @@ class TestDemoNoindex:
         assert "X-Robots-Tag" not in r.headers
 
 
-DEMO_PAGES = ["/", "/admin", "/tv", "/register", "/player"]
+DEMO_PAGES = ["/", "/admin", "/events", "/tv/some-alias", "/register/some-alias", "/player"]
 
 
 class TestDemoInstanceHtmlClass:

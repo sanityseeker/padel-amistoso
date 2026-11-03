@@ -653,6 +653,7 @@ function openTournament(id, type, name = null) {
   }
   updateActiveTournamentUI();
   setActiveTab('view');
+  if (typeof _renderViewClubReturn === 'function') _renderViewClubReturn();
   if (type === 'group_playoff') renderGP();
   else if (type === 'playoff') renderPO();
   else renderMex();
@@ -676,6 +677,7 @@ function openRegistration(rid, name) {
   }
   updateActiveTournamentUI();
   setActiveTab('view');
+  if (typeof _renderViewClubReturn === 'function') _renderViewClubReturn();
   renderRegistration();
   _stopAdminVersionPoll();
   _startRegDetailPoll();

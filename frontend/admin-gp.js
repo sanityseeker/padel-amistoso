@@ -55,7 +55,7 @@ async function renderGP() {
       html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${t('txt_txt_play_offs')}</span></div>`;
     }
 
-    const groupFormatLabel = _gpScoreMode['gp-group'] === 'sets' ? `🎾 ${t('txt_txt_sets')}` : t('txt_txt_points_label');
+    const groupFormatLabel = _gpScoreMode['gp-group'] === 'sets' ? t('txt_txt_sets') : t('txt_txt_points_label');
     html += _renderChampionAlerts(status);
 
     if (status.phase === 'finished') {
@@ -2150,7 +2150,7 @@ function _renderChampionAlerts(status) {
   const champion = status.champion || (espejo && !legacySuperFinal ? status.winners_champion : null);
   let h = '';
   if (champion) {
-    h += `<div class="alert alert-success">🏆 ${t('txt_txt_champion')}: <strong>${esc(champion.join(', '))}</strong></div>`;
+    h += `<div class="alert alert-success">${_ic('trophy')} ${t('txt_txt_champion')}: <strong>${esc(champion.join(', '))}</strong></div>`;
   }
   if (espejo && !legacySuperFinal && status.losers_champion) {
     h += `<div class="alert alert-info">${t('txt_txt_consolation_winner')}: <strong>${esc(status.losers_champion.join(', '))}</strong></div>`;

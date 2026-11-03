@@ -6,7 +6,7 @@
  *  - Club logo upload/delete
  *  - Player tiers CRUD (per club)
  *  - Season CRUD (per club)
- *  - Tournament/registration season assignment
+ *  - Events card: every tournament + lobby in the club (pins, seasons, attach)
  *  - Season standings view
  *  - Club player list with ELO & tier management
  */
@@ -16,20 +16,19 @@
 let _clubsList = [];         // ClubOut[]
 let _clubsCommunities = [];  // from GET /api/communities
 let _clubsTournaments = [];  // from GET /api/tournaments
-let _clubsRegistrations = []; // from GET /api/registrations
+let _clubsRegistrations = []; // from GET /api/registrations?include_archived=1
 let _activeClubId = null;    // currently selected club
 let _clubTiers = [];         // TierOut[] for active club
 let _clubSeasons = [];       // SeasonOut[] for active club
 let _clubPlayers = [];       // ClubPlayerOut[] for active club
 let _clubCollaborators = []; // collaborators for active club
-let _clubPublicTournaments = []; // public-tournaments for active club (used by landing settings)
+let _clubPublicTournaments = []; // public-tournaments for active club (read-only rows in the Events card)
 let _clubsInviteSelectedIds = new Set();
 let _clubsRecipientFilter = '';
 let _clubsMessagingTab = 'lobby'; // 'lobby' | 'announce'
 let _clubsPlayerSearchTimer = null;
 let _clubsPlayerSearchSelected = null;
 let _clubsCollabSearchTimer = null;
-let _clubsAttachSearch = '';
 let _clubsPlayerFilter = '';
 let _clubsEloDebounceTimers = {}; // keyed by `${profileId}-${sport}`
 let _clubsLeaderboardSort = { col: 'elo', dir: 'desc' };
@@ -40,7 +39,6 @@ try { _clubsLeaderboardScope = sessionStorage.getItem(_CLUBS_LB_SCOPE_KEY) || 'g
 let _clubsRosterNoticeText = '';
 let _clubsRosterNoticeError = false;
 let _clubsRosterNoticeTimer = null;
-let _clubsPinnedSaveTimer = null;
 const _CLUBS_SPORT_KEY = 'amistoso-clubs-sport';
 const _CLUBS_GHOST_SEARCH_KEY = 'amistoso-clubs-ghost-search';
 let _clubsSport = 'padel';
@@ -67,6 +65,12 @@ async function loadClubsPanel() {
   // Ensure the global is set before any render so _renderClubStatusBar sees it.
   if (subdomainClub && subdomainClub.club_id) {
     window.__ADMIN_SUBDOMAIN_CLUB__ = subdomainClub;
+  }
+  // Coming back from an event opened from a club's Events card: reopen that
+  // club instead of dropping the user on the overview.
+  if (_activeClubId && (_clubsList || []).some(c => c && c.id === _activeClubId)) {
+    await clubsOpenDetail(_activeClubId);
+    return;
   }
   // When opened on a club subdomain, jump straight to that club's detail view
   // (only if the user hasn't already drilled into another club this session).
@@ -118,7 +122,7 @@ async function _clubsLoadTournaments() {
 
 async function _clubsLoadRegistrations() {
   try {
-    _clubsRegistrations = await apiAuth('/api/registrations');
+    _clubsRegistrations = await apiAuth('/api/registrations?include_archived=1');
   } catch (e) {
     _clubsRegistrations = [];
   }
@@ -265,7 +269,10 @@ async function clubsDelete(clubId) {
 async function clubsOpenDetail(clubId) {
   _activeClubId = clubId;
   _clubsPlayerFilter = '';  // reset filter when switching clubs
-  _clubsAttachSearch = '';  // reset attach search when switching clubs
+  _clubEventsStore.attachQuery = '';
+  _clubEventsStore.showDismissed = false;
+  _clubEventsStore.attachNoneMsg = false;
+  _clubEventsStore.menuKey = null;
   const overviewCard = document.getElementById('clubs-overview-card');
   const detail = document.getElementById('clubs-detail');
   if (overviewCard) overviewCard.style.display = 'none';
@@ -313,9 +320,12 @@ function _clubsRenderDetail() {
   // Status bar (back, name + logo, sport toggle, settings shortcut).
   html += _renderClubStatusBar(club, comm);
 
+  // Events (primary content, Petite-Vue island mounted after injection).
+  html += `<div id="club-events-slot"></div>`;
+
   html += `
-    <!-- Players (primary content) -->
-    <details class="card" open id="clubs-players-card">
+    <!-- Players (collapsed by default; sessionStorage restores the last choice) -->
+    <details class="card" id="clubs-players-card">
       <summary class="player-codes-summary">
         <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> ${_antIc('team')} ${t('txt_clubs_players')}</span>
         <span class="clubs-card-badge">${_clubPlayers.length}</span>
@@ -357,12 +367,11 @@ function _clubsRenderDetail() {
   });
 
   // Render sub-sections (containers live inside Settings sub-panels + main cards).
+  _clubsMountEventsIsland();
   _clubsRenderTiers();
   _clubsRenderSeasons();
-  _clubsRenderSeasonAssignment();
   _clubsRenderPlayers();  // also calls _clubsRenderLeaderboard
   _clubsRenderCollaborators();
-  _clubsRenderLandingPinnedList();
 }
 
 // ─── Club rename ─────────────────────────────────────────
@@ -386,38 +395,7 @@ async function clubsRename() {
   }
 }
 
-// ─── Landing page (description + pinned) ─────────────────
-
-function _clubsRenderLandingPinnedList() {
-  const container = document.getElementById('clubs-landing-pinned-list');
-  if (!container) return;
-  const club = _clubsList.find(c => c.id === _activeClubId);
-  const pinnedIds = new Set(club?.pinned_tournament_ids || []);
-  if (!_clubPublicTournaments.length) {
-    container.innerHTML = `<p class="muted-note">${t('txt_clubs_landing_pinned_none')}</p>`;
-    return;
-  }
-  const items = _clubPublicTournaments.map(item => {
-    const pinId = item.pin_key || item.id;
-    const checked = (item.pinned || pinnedIds.has(pinId) || pinnedIds.has(item.id)) ? ' checked' : '';
-    const kindIcon = item.kind === 'registration' ? _ic('link') : _ic('trophy');
-    const statusKey = item.status === 'in_progress' ? 'txt_club_status_live' : ('txt_club_status_' + item.status);
-    return `
-      <label class="clubs-landing-pin-row">
-        <input type="checkbox" class="clubs-landing-pin-cb" data-pin-id="${escAttr(pinId)}" data-item-id="${escAttr(item.id)}"${checked} onchange="clubsQueuePinnedTournamentsSave()">
-        <span class="clubs-landing-pin-name">${kindIcon} ${esc(item.alias || item.name)}</span>
-        <span class="badge badge-${item.status === 'finished' ? 'closed' : 'open'} clubs-landing-pin-status">${esc(t(statusKey) || item.status)}</span>
-      </label>`;
-  }).join('');
-  container.innerHTML = `<div class="clubs-landing-pin-list">${items}</div>`;
-}
-
-function clubsQueuePinnedTournamentsSave() {
-  if (_clubsPinnedSaveTimer) clearTimeout(_clubsPinnedSaveTimer);
-  _clubsPinnedSaveTimer = setTimeout(() => {
-    clubsSavePinnedTournaments();
-  }, 180);
-}
+// ─── Landing page (description) ──────────────────────────
 
 async function clubsSaveLandingDescription() {
   const input = document.getElementById('clubs-landing-desc-input');
@@ -432,33 +410,6 @@ async function clubsSaveLandingDescription() {
     _clubsOk(msgEl, 'clubs-landing-desc-btn');
     const club = _clubsList.find(c => c.id === _activeClubId);
     if (club) club.description = updated.description;
-  } catch (e) {
-    _clubsMsg(msgEl, e.message, true);
-  }
-}
-
-async function clubsSavePinnedTournaments() {
-  const msgEl = document.getElementById('clubs-landing-pinned-msg');
-  if (!_activeClubId) return;
-  if (_clubsPinnedSaveTimer) {
-    clearTimeout(_clubsPinnedSaveTimer);
-    _clubsPinnedSaveTimer = null;
-  }
-  const list = document.getElementById('clubs-landing-pinned-list');
-  if (!list) return;
-  const cbs = list.querySelectorAll('.clubs-landing-pin-cb');
-  const pinned_tournament_ids = [...cbs]
-    .filter(cb => cb.checked)
-    .map(cb => cb.dataset.pinId || cb.dataset.itemId)
-    .filter(Boolean);
-  try {
-    const updated = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/landing`, {
-      method: 'PATCH',
-      body: JSON.stringify({ pinned_tournament_ids }),
-    });
-    _clubsOk(msgEl, 'clubs-landing-pinned-list');
-    const club = _clubsList.find(c => c.id === _activeClubId);
-    if (club) club.pinned_tournament_ids = updated.pinned_tournament_ids;
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
   }
@@ -574,7 +525,7 @@ function _clubsRenderTiers() {
             <td class="player-codes-name">${esc(tier.name)}</td>
             <td class="player-codes-cell-center">${tier.base_elo}</td>
             <td class="player-codes-cell-center nowrap">
-              <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsDeleteTier('${esc(tier.id)}')" title="${t('txt_txt_remove')}" aria-label="${t('txt_txt_remove')} ${esc(tier.name)}">X</button>
+              <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsDeleteTier('${esc(tier.id)}')" title="${t('txt_txt_remove')}" aria-label="${t('txt_txt_remove')} ${esc(tier.name)}">${_ic('trash')}</button>
             </td>
           </tr>
         `).join('')}
@@ -674,9 +625,9 @@ async function clubsCreateSeason() {
       body: JSON.stringify({ name }),
     });
     nameInput.value = '';
-        _clubSeasons = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/seasons`).catch(() => []);
+    _clubSeasons = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/seasons`).catch(() => []);
     _clubsRenderSeasons();
-    _clubsRenderSeasonAssignment();
+    _clubEventsRefresh();
     _clubsOk(msgEl, 'clubs-season-add-btn');
   } catch (e) {
     _clubsMsg(msgEl, e.message, true);
@@ -690,10 +641,10 @@ async function clubsToggleSeason(seasonId, active) {
       method: 'PATCH',
       body: JSON.stringify({ active }),
     });
-        delete _clubsSeasonStandingsCache[seasonId];
+    delete _clubsSeasonStandingsCache[seasonId];
     _clubSeasons = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/seasons`).catch(() => []);
     _clubsRenderSeasons();
-    _clubsRenderSeasonAssignment();
+    _clubEventsRefresh();
     _clubsRenderLeaderboard();
     _clubsOk(msgEl, `clubs-season-toggle-${seasonId}`);
   } catch (e) {
@@ -702,14 +653,14 @@ async function clubsToggleSeason(seasonId, active) {
 }
 
 async function clubsDeleteSeason(seasonId) {
-  if (!confirm(t('txt_clubs_season_delete_confirm'))) return;
+  if (!(await uiConfirm(t('txt_clubs_season_delete_confirm'), { danger: true }))) return;
   const msgEl = document.getElementById('clubs-seasons-msg');
   try {
     await apiAuth(`/api/seasons/${encodeURIComponent(seasonId)}`, { method: 'DELETE' });
-        delete _clubsSeasonStandingsCache[seasonId];
+    delete _clubsSeasonStandingsCache[seasonId];
     _clubSeasons = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/seasons`).catch(() => []);
     _clubsRenderSeasons();
-    _clubsRenderSeasonAssignment();
+    _clubEventsRefresh();
     _clubsRenderLeaderboard();
     _clubsOk(msgEl);
   } catch (e) {
@@ -733,272 +684,597 @@ function clubsViewSeasonInLeaderboard(seasonId) {
   }
 }
 
-// ─── Season assignment ───────────────────────────────────
+// ─── Attach a tournament to the active club ──────────────
 
-function _clubsRenderSeasonAssignment() {
-  const container = document.getElementById('clubs-season-assign');
-  if (!container || !_activeClubId) return;
-
-  const club = _clubsList.find(c => c.id === _activeClubId);
-  if (!club) return;
-
-  const clubCommunity = club.community_id;
-  const matchingT = _clubsTournaments.filter(t => (t.community_id || 'open') === clubCommunity);
-  const attachableT = _clubsTournaments.filter(t => (t.community_id || 'open') === clubCommunity && t.club_id !== _activeClubId);
-  const matchingR = _clubsRegistrations.filter(r => (r.community_id || 'open') === clubCommunity);
-
-  const allSeasons = _clubSeasons;
-  const hasSeasons = allSeasons.length > 0;
-
-  const seasonOptions = allSeasons.map(s =>
-    `<option value="${esc(s.id)}">${esc(s.name)}${s.active ? '' : ` (${t('txt_clubs_season_archived')})`}</option>`
-  ).join('');
-
-  let html = '';
-
-  // Attach section — only shown when there are candidates. Flat <section>
-  // (no nested <details>) so users don't need to expand it to reach the search.
-  if (attachableT.length) {
-    const attachFilter = _clubsAttachSearch.trim().toLowerCase();
-    const filtered = [...attachableT].filter(t_ => {
-      if (!attachFilter) return true;
-      const comm = _clubsCommunities.find(c => c.id === (t_.community_id || 'open'));
-      const haystack = `${t_.name || ''} ${comm ? comm.name : ''} ${_clubsFormatDate(t_.created_at) || ''}`.toLowerCase();
-      return haystack.includes(attachFilter);
-    }).sort((a, b) => {
-      const d = (b.created_at || '').localeCompare(a.created_at || '');
-      return d !== 0 ? d : (a.name || '').localeCompare(b.name || '');
-    });
-
-    html += `<section class="clubs-assign-section">
-      <h4 class="clubs-assign-section-title">${_antIc('plus')} ${t('txt_clubs_attach_tournaments')}</h4>
-      <p class="player-codes-help m-0 mb-2">${t('txt_clubs_attach_tournaments_help')}</p>
-      <input type="text" id="clubs-attach-search" value="${escAttr(_clubsAttachSearch)}"
-        placeholder="${escAttr(t('txt_clubs_attach_search_placeholder'))}"
-        oninput="clubsSetAttachTournamentSearch(this.value)"
-        class="clubs-assign-search-input">
-      ${filtered.length ? `
-      <div class="player-codes-table-wrap mb-2"><table class="player-codes-table">
-        <tbody>
-          ${filtered.map(t_ => {
-            const comm = _clubsCommunities.find(c => c.id === (t_.community_id || 'open'));
-            return `<tr class="player-codes-row">
-              <td class="player-codes-name">${esc(t_.name)}<span class="muted-note ml-1-5 fs-sm">${comm ? esc(comm.name) : ''}</span></td>
-              <td class="player-codes-cell nowrap text-muted fs-sm">${_clubsFormatDate(t_.created_at)}</td>
-              <td class="player-codes-cell nowrap">
-                <button type="button" id="clubs-tattach-btn-${esc(t_.id)}" class="btn btn-sm btn-primary" onclick="clubsAttachTournamentToClub('${esc(t_.id)}', this)">${t('txt_clubs_attach_to_club')}</button>
-                <span id="clubs-tattach-msg-${esc(t_.id)}" class="fs-sm ml-1"></span>
-              </td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table></div>` : `<p class="muted-note">${t('txt_clubs_no_attachable_tournaments')}</p>`}
-    </section>`;
-  }
-
-  if (!hasSeasons) {
-    html += `<p class="muted-note">${t('txt_clubs_create_season_first')}</p>`;
-    container.innerHTML = html;
-    return;
-  }
-
-  // Tournaments (flat section)
-  if (matchingT.length) {
-    const inClubCount = matchingT.filter(t_ => t_.club_id === _activeClubId).length;
-    html += `<section class="clubs-assign-section" id="clubs-season-assign-tournaments">
-      <h4 class="clubs-assign-section-title">🏆 ${t('txt_clubs_tournaments_in_club')} <span class="clubs-card-badge">${inClubCount}/${matchingT.length}</span></h4>
-      <div class="player-codes-table-wrap"><table class="player-codes-table">
-        <tbody>
-          ${matchingT.map(t_ => {
-            const inThisClub = t_.club_id === _activeClubId;
-            const otherClubLabel = (t_.club_id && !inThisClub) ? (t_.club_name || t_.club_id) : '';
-            const clubBtnLabel = inThisClub ? t('txt_clubs_remove_from_club') : t('txt_clubs_attach_to_club');
-            const clubBtnClass = inThisClub ? 'btn btn-sm btn-muted' : 'btn btn-sm btn-primary';
-            const otherTag = otherClubLabel
-              ? `<span class="muted-note ml-1-5 fs-sm">${t('txt_clubs_currently_in_club')}: ${esc(otherClubLabel)}</span>`
-              : '';
-            return `
-            <tr class="player-codes-row">
-              <td class="player-codes-name">${esc(t_.name)}${otherTag}</td>
-              <td class="player-codes-cell nowrap">
-                <button type="button" id="clubs-tclub-btn-${esc(t_.id)}" class="${clubBtnClass}" onclick="clubsToggleTournamentClub('${esc(t_.id)}', this)">${clubBtnLabel}</button>
-                <span id="clubs-tclub-msg-${esc(t_.id)}" class="fs-sm ml-1"></span>
-              </td>
-              <td class="player-codes-cell">
-                <select id="clubs-tsn-sel-${esc(t_.id)}" class="admin-sel" onchange="clubsAssignTournamentSeason('${esc(t_.id)}')">
-                  <option value="">— ${t('txt_txt_none_selected')} —</option>
-                  ${seasonOptions}
-                </select>
-                <span id="clubs-tsn-msg-${esc(t_.id)}" class="fs-sm ml-1"></span>
-              </td>
-            </tr>
-          `;
-          }).join('')}
-        </tbody>
-      </table></div>
-    </section>`;
-  } else {
-    html += `<p class="muted-note">${t('txt_clubs_no_matching_tournaments')}</p>`;
-  }
-
-  // Lobbies / Registrations (flat section)
-  if (matchingR.length) {
-    html += `<section class="clubs-assign-section" id="clubs-season-assign-registrations">
-      <h4 class="clubs-assign-section-title">${_antIc('file-text')} ${t('txt_clubs_lobbies_in_club')} <span class="clubs-card-badge">${matchingR.length}</span></h4>
-      <div class="player-codes-table-wrap"><table class="player-codes-table">
-        <tbody>
-          ${matchingR.map(r_ => `
-            <tr class="player-codes-row">
-              <td class="player-codes-name">${esc(r_.name)}</td>
-              <td class="player-codes-cell">
-                <select id="clubs-rsn-sel-${esc(r_.id)}" class="admin-sel" onchange="clubsAssignRegistrationSeason('${esc(r_.id)}')">
-                  <option value="">— ${t('txt_txt_none_selected')} —</option>
-                  ${seasonOptions}
-                </select>
-                <span id="clubs-rsn-msg-${esc(r_.id)}" class="fs-sm ml-1"></span>
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table></div>
-    </section>`;
-  }
-
-  container.innerHTML = html;
-
-  matchingT.forEach(t_ => {
-    const sel = document.getElementById(`clubs-tsn-sel-${t_.id}`);
-    if (sel && t_.season_id) sel.value = t_.season_id;
-  });
-  matchingR.forEach(r_ => {
-    const sel = document.getElementById(`clubs-rsn-sel-${r_.id}`);
-    if (sel && r_.season_id) sel.value = r_.season_id;
-  });
-  _clubsMarkScrollableTables(container);
-}
-
-async function clubsAttachTournamentToClub(tid, btn) {
+/**
+ * Attach a tournament the user edits to the active club, moving it to the
+ * club's community first when needed. Throws on failure (callers surface
+ * the message); the Events card calls this from its Attach panel.
+ */
+async function clubsAttachTournamentToClub(tid) {
   if (!_activeClubId) return;
-  const msgEl = document.getElementById(`clubs-tattach-msg-${tid}`);
   const club = _clubsList.find(c => c.id === _activeClubId);
   if (!club) return;
-  if (btn) btn.disabled = true;
-  _clubsMsg(msgEl, '...', false);
-  try {
-    const t_ = _clubsTournaments.find(t => t.id === tid);
-    const needsCommunityMove = !t_ || (t_.community_id || 'open') !== club.community_id;
-    if (needsCommunityMove) {
-      const res = await apiAuth(`/api/tournaments/${encodeURIComponent(tid)}/community`, {
-        method: 'PATCH',
-        body: JSON.stringify({ community_id: club.community_id }),
-      });
-      if (t_) {
-        t_.community_id = res?.community_id ?? club.community_id;
-        if (res && 'club_id' in res) t_.club_id = res.club_id;
-        if (res && 'season_id' in res) t_.season_id = res.season_id;
-      }
-    }
-    const clubRes = await apiAuth(`/api/tournaments/${encodeURIComponent(tid)}/club`, {
+  const t_ = _clubsTournaments.find(t => t.id === tid);
+  const needsCommunityMove = !t_ || (t_.community_id || 'open') !== club.community_id;
+  if (needsCommunityMove) {
+    const res = await apiAuth(`/api/tournaments/${encodeURIComponent(tid)}/community`, {
       method: 'PATCH',
-      body: JSON.stringify({ club_id: _activeClubId }),
+      body: JSON.stringify({ community_id: club.community_id }),
     });
     if (t_) {
-      t_.club_id = clubRes?.club_id ?? _activeClubId;
-      if (clubRes && 'season_id' in clubRes) t_.season_id = clubRes.season_id;
-      t_.club_name = club.name;
+      t_.community_id = res?.community_id ?? club.community_id;
+      if (res && 'club_id' in res) t_.club_id = res.club_id;
+      if (res && 'season_id' in res) t_.season_id = res.season_id;
     }
-    _clubsRenderSeasonAssignment();
-    _clubsOk(msgEl, `clubs-tattach-btn-${tid}`);
-    if (typeof loadTournaments === 'function') {
-      loadTournaments().catch(() => {});
-    }
-  } catch (e) {
-    _clubsMsg(msgEl, e.message, true);
-  } finally {
-    if (btn && btn.isConnected) btn.disabled = false;
+  }
+  const clubRes = await apiAuth(`/api/tournaments/${encodeURIComponent(tid)}/club`, {
+    method: 'PATCH',
+    body: JSON.stringify({ club_id: _activeClubId }),
+  });
+  if (t_) {
+    t_.club_id = clubRes?.club_id ?? _activeClubId;
+    if (clubRes && 'season_id' in clubRes) t_.season_id = clubRes.season_id;
+    t_.club_name = club.name;
+  }
+  if (typeof loadTournaments === 'function') {
+    loadTournaments().catch(() => {});
   }
 }
 
-function clubsSetAttachTournamentSearch(query) {
-  _clubsAttachSearch = query || '';
-  _clubsRenderSeasonAssignment();
+// ─── Events card (Petite-Vue island) ─────────────────────
+//
+// One list of every event in this club (tournaments + sign-up lobbies) with
+// lifecycle states, pins (orderable, saved one id at a time against the stored
+// `pinned_tournament_ids`), season assignment, attach/detach and the main
+// action per state. Rows are derived by the pure `deriveEventRows`
+// (admin-utils.js); this store only holds UI state and the mutations.
+//
+// The island shell is re-injected into #clubs-detail on each
+// `_clubsRenderDetail()` and mounted via mountIsland() — same pattern as the
+// TV picker: fresh element each render, persistent store.
+
+const _CLUB_EVENTS_TAB_KEY = 'amistoso-club-events-tab';
+const _CLUB_EVENTS_TABS = ['active', 'finished', 'archived'];
+const _CLUB_EVENTS_ATTACH_OPEN_KEY = 'amistoso-club-attach-open';
+const _CLUB_EVENTS_DISMISSED_KEY = 'amistoso-club-attach-dismissed';
+
+/** Club id to return to from the event view ("← Back to {club}"), see _renderViewClubReturn. */
+let _clubsReturnTo = null;
+let _clubsReturnToPending = null;
+
+function _savedClubEventsTab() {
+  try {
+    const v = sessionStorage.getItem(_CLUB_EVENTS_TAB_KEY);
+    if (_CLUB_EVENTS_TABS.includes(v)) return v;
+  } catch (_) {}
+  return 'active';
 }
 
-async function clubsToggleTournamentClub(tid, btn) {
+const _clubEventsStore = reactiveStore({
+  clubId: null,
+  rows: [],
+  seasons: [],
+  pinnedIds: [],        // club.pinned_tournament_ids (stored order)
+  tab: _savedClubEventsTab(),
+  menuKey: null,        // row key whose overflow menu is open
+  attachOpen: false,     // collapsible suggestions section (remembered per club in sessionStorage)
+  attachQuery: '',
+  dismissedKeys: [],     // suggestion keys hidden for this club (localStorage per club)
+  showDismissed: false,
+  attachNoneMsg: false,  // "nothing to attach" notice after pressing Attach existing with no suggestions
+  busyKey: null,
+  msgKey: null,
+  msgText: '',
+  msgError: false,
+  lang: 'en',
+
+  t(key, params) { void this.lang; return window.t(key, params); },
+
+  // ── Derived lists ──
+  rowsForTab(tab) { return this.rows.filter(r => r.tab === tab); },
+  tabCount(tab) { return this.rowsForTab(tab).length; },
+  get tabRows() { return this.rowsForTab(this.tab); },
+  get hasEditable() { return this.rows.some(r => r.canEdit); },
+  get hasAnyRows() { return this.rows.length > 0; },
+  pinIndex(row) {
+    const i = this.pinnedIds.indexOf(row.key);
+    return i >= 0 ? i : this.pinnedIds.indexOf(row.id);
+  },
+  isPinned(row) { return this.pinIndex(row) >= 0; },
+  /** Active-tab rows that are pinned, in stored pin order. */
+  get pinnedRows() {
+    return this.rowsForTab('active')
+      .filter(r => this.isPinned(r))
+      .sort((a, b) => this.pinIndex(a) - this.pinIndex(b));
+  },
+  get unpinnedActive() { return this.rowsForTab('active').filter(r => !this.isPinned(r)); },
+  get editableSeasonsMissing() { return this.seasons.length === 0; },
+
+  // ── Labels ──
+  sportLabel(row) {
+    return (row.sport || 'padel') === 'tennis' ? this.t('txt_txt_sport_tennis') : this.t('txt_txt_sport_padel');
+  },
+  stateLabel(row) {
+    const keys = {
+      live: 'txt_club_events_state_live',
+      ready_to_convert: 'txt_club_events_state_ready',
+      open_registration: 'txt_club_events_state_open',
+      upcoming: 'txt_club_status_not_started',
+      finished: 'txt_txt_finished',
+      closed: 'txt_club_events_state_closed',
+      archived: 'txt_club_events_tab_archived',
+    };
+    return this.t(keys[row.state] || 'txt_club_events_state_live');
+  },
+  stateBadgeClass(row) {
+    return {
+      live: 'badge-lobby-open',
+      ready_to_convert: 'badge-type',
+      open_registration: 'badge-lobby-open',
+      upcoming: 'badge-phase',
+      finished: 'badge-closed',
+      closed: 'badge-lobby-closed',
+      archived: 'badge-lobby-closed',
+    }[row.state] || 'badge-phase';
+  },
+  publicHref(row) {
+    const slug = encodeURIComponent(row.alias || row.id);
+    return row.kind === 'lobby' ? `/register/${slug}` : `/tv/${slug}`;
+  },
+  canPin(row) {
+    return row.canEdit && row.isPublic && row.state !== 'closed' && row.state !== 'archived';
+  },
+  pinTitle(row) {
+    if (this.isPinned(row)) return this.t('txt_club_events_unpin');
+    if (!this.canPin(row)) {
+      return row.kind === 'lobby' && !row.isPublic && row.state !== 'open_registration'
+        ? this.t('txt_club_events_pin_blocked_closed')
+        : this.t('txt_club_events_pin_blocked_private');
+    }
+    return this.t('txt_club_events_pin');
+  },
+  mainAction(row) {
+    const store = this;
+    switch (row.state) {
+      case 'open_registration':
+      case 'closed':
+      case 'archived':
+        return { label: this.t('txt_club_events_action_manage'), disabled: false, run() { store.openLobby(row); } };
+      case 'ready_to_convert':
+        return {
+          label: this.t('txt_club_events_action_convert'),
+          disabled: (row.registrantCount || 0) < 2,
+          run() { store.convert(row); },
+        };
+      case 'finished':
+        return { label: this.t('txt_club_events_action_results'), disabled: false, run() { store.openTournamentRow(row); } };
+      default:
+        return { label: this.t('txt_club_events_action_run'), disabled: false, run() { store.openTournamentRow(row); } };
+    }
+  },
+
+  // ── UI state ──
+  setTab(tab) {
+    if (!_CLUB_EVENTS_TABS.includes(tab)) return;
+    this.tab = tab;
+    this.menuKey = null;
+    try { sessionStorage.setItem(_CLUB_EVENTS_TAB_KEY, tab); } catch (_) {}
+  },
+  toggleMenu(key) { this.menuKey = this.menuKey === key ? null : key; },
+  closeMenu() { this.menuKey = null; },
+  toggleAttach() {
+    this.attachOpen = !this.attachOpen;
+    this.attachNoneMsg = false;
+    try { sessionStorage.setItem(`${_CLUB_EVENTS_ATTACH_OPEN_KEY}:${this.clubId}`, this.attachOpen ? '1' : '0'); } catch (_) {}
+  },
+  /** Header "Attach existing": expand the suggestions and focus the search box. */
+  openAttach() {
+    if (!this.attachSection.length && !this.attachDismissedAll.length) {
+      this.attachNoneMsg = true;
+      return;
+    }
+    if (!this.attachOpen) this.toggleAttach();
+    requestAnimationFrame(() => {
+      const el = document.getElementById('club-events-attach-search');
+      if (el) el.focus();
+    });
+  },
+  _flash(row, text, isError) {
+    this.msgKey = row ? row.key : null;
+    this.msgText = text || '';
+    this.msgError = Boolean(isError);
+    if (!isError) setTimeout(() => { if (this.msgKey === (row ? row.key : null)) { this.msgKey = null; this.msgText = ''; } }, 1800);
+  },
+
+  // ── Navigation ──
+  openTournamentRow(row) {
+    const meta = _clubsTournaments.find(t_ => t_.id === row.id);
+    _clubsReturnToPending = this.clubId;
+    openTournament(row.id, meta ? meta.type : row.type, row.name);
+  },
+  openLobby(rowOrRef) {
+    _clubsReturnToPending = this.clubId;
+    openRegistration(rowOrRef.id, rowOrRef.name);
+  },
+  async convert(row) {
+    if ((row.registrantCount || 0) < 2) return;
+    this.openLobby(row);
+    // openRegistration renders the lobby asynchronously; wait for its detail
+    // to land so the conversion panel is not overwritten by the lobby view.
+    const deadline = Date.now() + 4000;
+    while (Date.now() < deadline) {
+      if (typeof _regDetails !== 'undefined' && _regDetails[row.id] && currentTid === row.id) break;
+      await new Promise(r => setTimeout(r, 60));
+    }
+    if (currentTid === row.id) _startConvertFromReg(row.id);
+  },
+  newEvent() { clubsNewEventInClub(); },
+  createSeason() { _jumpToClubSettings(this.clubId, 'seasons'); },
+
+  // ── Mutations ──
+  async togglePin(row) {
+    if (!this.clubId) return;
+    const pinned = this.isPinned(row);
+    if (!pinned && !this.canPin(row)) return;
+    const next = pinned
+      ? this.pinnedIds.filter(id => id !== row.key && id !== row.id)
+      : [...this.pinnedIds, row.key];
+    await this._savePins(next, row);
+  },
+  async movePin(row, delta) {
+    const order = this.pinnedRows.map(r => r.key);
+    const i = order.indexOf(row.key);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    // Keep pinned ids that are not visible in the Active tab (finished) at their relative place after the visible ones.
+    const rest = this.pinnedIds.filter(id => !order.includes(id));
+    await this._savePins([...order, ...rest], row);
+    this.menuKey = null;
+  },
+  async _savePins(pinned_tournament_ids, row) {
+    this.busyKey = row.key;
+    try {
+      const updated = await apiAuth(`/api/clubs/${encodeURIComponent(this.clubId)}/landing`, {
+        method: 'PATCH',
+        body: JSON.stringify({ pinned_tournament_ids }),
+      });
+      const club = _clubsList.find(c => c.id === this.clubId);
+      if (club) club.pinned_tournament_ids = updated.pinned_tournament_ids;
+      this.pinnedIds = Array.isArray(updated.pinned_tournament_ids) ? updated.pinned_tournament_ids : [];
+      this._flash(row, this.t('txt_txt_saved'), false);
+    } catch (e) {
+      this._flash(row, e.message, true);
+    } finally {
+      this.busyKey = null;
+    }
+  },
+  async setSeason(row, seasonId) {
+    const season_id = seasonId || null;
+    const path = row.kind === 'lobby'
+      ? `/api/registrations/${encodeURIComponent(row.id)}/season`
+      : `/api/tournaments/${encodeURIComponent(row.id)}/season`;
+    try {
+      await apiAuth(path, { method: 'PATCH', body: JSON.stringify({ season_id }) });
+      const item = row.kind === 'lobby'
+        ? _clubsRegistrations.find(r => r.id === row.id)
+        : _clubsTournaments.find(t_ => t_.id === row.id);
+      if (item) item.season_id = season_id;
+      row.seasonId = season_id;
+      this._flash(row, this.t('txt_txt_saved'), false);
+    } catch (e) {
+      this._flash(row, e.message, true);
+    }
+  },
+  async copyLink(row) {
+    this.menuKey = null;
+    const url = `${location.origin}${this.publicHref(row)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      this._flash(row, this.t('txt_txt_copied'), false);
+    } catch (_) {
+      this._flash(row, url, false);
+    }
+  },
+  async removeFromClub(row) {
+    this.menuKey = null;
+    const ok = await uiConfirm(this.t('txt_club_events_remove_confirm', { name: row.name }), {
+      danger: true,
+      confirmLabel: this.t('txt_clubs_remove_from_club'),
+    });
+    if (!ok) return;
+    this.busyKey = row.key;
+    try {
+      const path = row.kind === 'lobby'
+        ? `/api/registrations/${encodeURIComponent(row.id)}/club`
+        : `/api/tournaments/${encodeURIComponent(row.id)}/club`;
+      await apiAuth(path, { method: 'PATCH', body: JSON.stringify({ club_id: null }) });
+      if (this.isPinned(row)) {
+        await this._savePins(this.pinnedIds.filter(id => id !== row.key && id !== row.id), row);
+      }
+      const item = row.kind === 'lobby'
+        ? _clubsRegistrations.find(r => r.id === row.id)
+        : _clubsTournaments.find(t_ => t_.id === row.id);
+      if (item) {
+        item.club_id = null;
+        item.season_id = null;
+        if ('club_name' in item) item.club_name = null;
+      }
+      _clubEventsRefresh();
+      if (typeof loadTournaments === 'function') loadTournaments().catch(() => {});
+    } catch (e) {
+      this._flash(row, e.message, true);
+    } finally {
+      this.busyKey = null;
+    }
+  },
+
+  // ── Attach existing ──
+  _attachDerive(query) {
+    const club = _clubsList.find(c => c.id === this.clubId);
+    if (!club) return { candidates: [], dismissed: [] };
+    return deriveAttachCandidates(_clubsTournaments, _clubsRegistrations, {
+      clubId: this.clubId,
+      clubCommunityId: club.community_id,
+      authUser: getAuthUsername(),
+      admin: isAdmin(),
+      dismissed: this.dismissedKeys,
+      query,
+      communityName: (id) => {
+        if (!id || id === 'open') return ''; // built-in community: no label
+        const c = _clubsCommunities.find(cm => cm.id === id);
+        return c ? c.name : '';
+      },
+    });
+  },
+  /** All non-dismissed suggestions (no search filter) — the section count. */
+  get attachSection() { return this._attachDerive('').candidates; },
+  get attachDismissedAll() { return this._attachDerive('').dismissed; },
+  get attachCandidates() { return this._attachDerive(this.attachQuery).candidates.slice(0, 30); },
+  get attachDismissed() { return this._attachDerive(this.attachQuery).dismissed; },
+  get attachSectionVisible() { return this.attachSection.length > 0 || this.attachDismissedAll.length > 0; },
+  _saveDismissed() {
+    try { localStorage.setItem(`${_CLUB_EVENTS_DISMISSED_KEY}:${this.clubId}`, JSON.stringify(this.dismissedKeys)); } catch (_) {}
+  },
+  dismiss(item) {
+    if (!this.dismissedKeys.includes(item.key)) this.dismissedKeys = [...this.dismissedKeys, item.key];
+    this._saveDismissed();
+  },
+  restore(item) {
+    this.dismissedKeys = this.dismissedKeys.filter(k => k !== item.key);
+    this._saveDismissed();
+    if (!this.dismissedKeys.length) this.showDismissed = false;
+  },
+  toggleShowDismissed() { this.showDismissed = !this.showDismissed; },
+  attachHint(item) {
+    const club = _clubsList.find(c => c.id === this.clubId);
+    const comm = club ? _clubsCommunities.find(cm => cm.id === club.community_id) : null;
+    return this.t('txt_club_events_attach_moves_community', { community: comm ? comm.name : '' });
+  },
+  async attach(item) {
+    this.busyKey = item.key;
+    try {
+      if (item.kind === 'tournament') {
+        await clubsAttachTournamentToClub(item.id);
+      } else {
+        await _clubsAttachRegistrationToClub(item.id);
+      }
+      _clubEventsRefresh();
+    } catch (e) {
+      this._flash({ key: item.key }, e.message, true);
+    } finally {
+      this.busyKey = null;
+    }
+  },
+});
+
+// Close an open row menu when clicking outside it / pressing Escape.
+document.addEventListener('click', (ev) => {
+  if (_clubEventsStore.menuKey === null) return;
+  if (ev.target.closest('.club-events-menu-wrap')) return;
+  _clubEventsStore.menuKey = null;
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') _clubEventsStore.menuKey = null;
+});
+
+/** Recompute the Events rows from the module-level data into the store. */
+function _clubEventsRefresh() {
+  const club = _clubsList.find(c => c.id === _activeClubId);
+  _clubEventsStore.clubId = _activeClubId;
+  _clubEventsStore.lang = getAppLanguage();
+  _clubEventsStore.seasons = Array.isArray(_clubSeasons) ? _clubSeasons : [];
+  _clubEventsStore.pinnedIds = (club && Array.isArray(club.pinned_tournament_ids)) ? club.pinned_tournament_ids : [];
+  _clubEventsStore.rows = deriveEventRows(_clubsTournaments, _clubsRegistrations, {
+    clubId: _activeClubId,
+    publicItems: _clubPublicTournaments,
+    authUser: getAuthUsername(),
+    admin: isAdmin(),
+  });
+  // Attach suggestions: remembered open state + dismissed keys (pruned to
+  // events that still exist so the list never fills with dead ids).
+  let open = false;
+  try { open = sessionStorage.getItem(`${_CLUB_EVENTS_ATTACH_OPEN_KEY}:${_activeClubId}`) === '1'; } catch (_) {}
+  _clubEventsStore.attachOpen = open;
+  let dismissed = [];
+  try {
+    const raw = localStorage.getItem(`${_CLUB_EVENTS_DISMISSED_KEY}:${_activeClubId}`);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(parsed)) dismissed = parsed.filter(k => typeof k === 'string');
+  } catch (_) {}
+  const existing = new Set([
+    ..._clubsTournaments.map(t_ => 'tn:' + t_.id),
+    ..._clubsRegistrations.map(r => 'reg:' + r.id),
+  ]);
+  const pruned = dismissed.filter(k => existing.has(k));
+  _clubEventsStore.dismissedKeys = pruned;
+  if (pruned.length !== dismissed.length) _clubEventsStore._saveDismissed();
+}
+
+// Static shell for the Events island. Row markup lives in #tpl-club-event-row (index.html).
+const _CLUB_EVENTS_ISLAND_HTML = `
+<div class="card club-events-card" id="club-events-island" v-scope>
+  <div class="club-events-head">
+    <h3 class="club-events-title">${_antIc('calendar')} {{ t('txt_club_events_title') }}</h3>
+    <div class="club-events-head-actions">
+      <button type="button" class="btn btn-sm btn-primary" @click="newEvent()">+ {{ t('txt_club_events_new') }}</button>
+      <button type="button" class="btn btn-sm" :aria-expanded="attachOpen" aria-controls="club-events-attach-body" @click="openAttach()">{{ t('txt_club_events_attach') }}</button>
+    </div>
+  </div>
+  <p v-if="attachNoneMsg" class="muted-note club-events-attach-none" role="status">{{ t('txt_club_events_attach_none') }}</p>
+  <section v-if="attachSectionVisible" class="club-events-attach" :class="{ 'is-open': attachOpen }">
+    <button type="button" class="player-codes-summary club-events-attach-summary" :aria-expanded="attachOpen"
+            aria-controls="club-events-attach-body" @click="toggleAttach()">
+      <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> {{ t('txt_club_events_attach_suggestions', { n: attachSection.length }) }}</span>
+    </button>
+    <div v-if="attachOpen" id="club-events-attach-body" class="club-events-attach-body">
+      <p class="player-codes-help m-0 mb-2">{{ t('txt_club_events_attach_help') }}</p>
+      <input type="search" id="club-events-attach-search" class="clubs-assign-search-input" v-model="attachQuery"
+             :placeholder="t('txt_club_events_attach_search')" :aria-label="t('txt_club_events_attach_search')" autocomplete="off">
+      <ul v-if="attachCandidates.length" class="club-events-attach-list">
+        <li v-for="item in attachCandidates" :key="item.key" class="club-events-attach-row">
+          <span class="club-events-attach-name">
+            {{ item.name }}
+            <span class="badge badge-type">{{ item.kind === 'lobby' ? t('txt_reg_lobby') : t('txt_comm_col_tournament') }}</span>
+            <span v-if="item.communityName" class="muted-note fs-sm">{{ item.communityName }}</span>
+            <span v-if="item.movesCommunity" class="club-events-attach-hint">{{ attachHint(item) }}</span>
+          </span>
+          <span class="club-events-attach-actions">
+            <button type="button" class="btn btn-sm btn-muted" @click="dismiss(item)">{{ t('txt_club_events_attach_dismiss') }}</button>
+            <button type="button" class="btn btn-sm btn-primary" :disabled="busyKey === item.key" @click="attach(item)">{{ t('txt_clubs_attach_to_club') }}</button>
+          </span>
+          <span v-if="msgKey === item.key" class="fs-sm text-error club-events-attach-msg">{{ msgText }}</span>
+        </li>
+      </ul>
+      <p v-else class="muted-note m-0">{{ t('txt_club_events_attach_none') }}</p>
+      <div v-if="attachDismissedAll.length" class="club-events-attach-dismissed">
+        <button type="button" class="btn btn-sm btn-muted" :aria-expanded="showDismissed" @click="toggleShowDismissed()">
+          {{ showDismissed ? t('txt_club_events_attach_hide_dismissed') : t('txt_club_events_attach_show_dismissed', { n: attachDismissedAll.length }) }}
+        </button>
+        <ul v-if="showDismissed" class="club-events-attach-list">
+          <li v-for="item in attachDismissed" :key="item.key" class="club-events-attach-row club-events-attach-row--dismissed">
+            <span class="club-events-attach-name">
+              {{ item.name }}
+              <span class="badge badge-type">{{ item.kind === 'lobby' ? t('txt_reg_lobby') : t('txt_comm_col_tournament') }}</span>
+              <span v-if="item.communityName" class="muted-note fs-sm">{{ item.communityName }}</span>
+            </span>
+            <span class="club-events-attach-actions">
+              <button type="button" class="btn btn-sm" @click="restore(item)">{{ t('txt_club_events_attach_restore') }}</button>
+            </span>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+  <div class="club-events-toolbar">
+    <div class="home-filter-row" role="tablist" :aria-label="t('txt_txt_filter_dim_status')">
+      <button type="button" class="home-filter-chip" :class="{ active: tab === 'active' }" role="tab" :aria-selected="tab === 'active'" @click="setTab('active')">
+        <span>{{ t('txt_txt_filter_active') }}</span><span class="home-filter-chip-count">{{ tabCount('active') }}</span>
+      </button>
+      <button type="button" class="home-filter-chip" :class="{ active: tab === 'finished' }" role="tab" :aria-selected="tab === 'finished'" @click="setTab('finished')">
+        <span>{{ t('txt_txt_finished') }}</span><span class="home-filter-chip-count">{{ tabCount('finished') }}</span>
+      </button>
+      <button type="button" class="home-filter-chip" :class="{ active: tab === 'archived' }" role="tab" :aria-selected="tab === 'archived'" @click="setTab('archived')">
+        <span>{{ t('txt_club_events_tab_archived') }}</span><span class="home-filter-chip-count">{{ tabCount('archived') }}</span>
+      </button>
+    </div>
+  </div>
+  <p v-if="!hasAnyRows && !hasEditable" class="muted-note club-events-empty">{{ t('txt_club_events_empty_readonly') }}</p>
+  <div v-else-if="tab === 'active'">
+    <div v-if="pinnedRows.length" class="club-events-group">
+      <h4 class="club-events-group-title">${_ic('star')} {{ t('txt_club_events_pinned_group') }}</h4>
+      <div v-for="row in pinnedRows" :key="row.key" v-scope="{ $template: '#tpl-club-event-row', row }"></div>
+    </div>
+    <div v-if="unpinnedActive.length" class="club-events-group">
+      <div v-for="row in unpinnedActive" :key="row.key" v-scope="{ $template: '#tpl-club-event-row', row }"></div>
+    </div>
+    <div v-if="!tabRows.length" class="club-events-empty">
+      <p class="muted-note m-0">{{ t('txt_club_events_empty_active') }}</p>
+      <div class="club-events-head-actions mt-2">
+        <button type="button" class="btn btn-sm btn-primary" @click="newEvent()">+ {{ t('txt_club_events_new') }}</button>
+        <button type="button" class="btn btn-sm" @click="openAttach()">{{ t('txt_club_events_attach') }}</button>
+      </div>
+    </div>
+  </div>
+  <div v-else-if="tab === 'finished'">
+    <div v-if="tabRows.length" class="club-events-group">
+      <div v-for="row in tabRows" :key="row.key" v-scope="{ $template: '#tpl-club-event-row', row }"></div>
+    </div>
+    <p v-else class="muted-note club-events-empty">{{ t('txt_club_events_empty_finished') }}</p>
+  </div>
+  <div v-else>
+    <div v-if="tabRows.length" class="club-events-group">
+      <div v-for="row in tabRows" :key="row.key" v-scope="{ $template: '#tpl-club-event-row', row }"></div>
+    </div>
+    <p v-else class="muted-note club-events-empty">{{ t('txt_club_events_empty_archived') }}</p>
+  </div>
+</div>`;
+
+/** Inject the Events island shell into its slot and mount the store on it. */
+function _clubsMountEventsIsland() {
+  const slot = document.getElementById('club-events-slot');
+  if (!slot) return;
+  _clubEventsRefresh();
+  slot.innerHTML = _CLUB_EVENTS_ISLAND_HTML;
+  mountIsland('#club-events-island', _clubEventsStore);
+}
+
+/** "New event in this club": preset the create form to this club, then open it. */
+function clubsNewEventInClub() {
   if (!_activeClubId) return;
-  const msgEl = document.getElementById(`clubs-tclub-msg-${tid}`);
-  const t_ = _clubsTournaments.find(t => t.id === tid);
-  if (!t_) return;
-  const attaching = t_.club_id !== _activeClubId;
-  const targetClubId = attaching ? _activeClubId : null;
-  if (btn) btn.disabled = true;
-  _clubsMsg(msgEl, '...', false);
-  try {
-    const res = await apiAuth(`/api/tournaments/${encodeURIComponent(tid)}/club`, {
-      method: 'PATCH',
-      body: JSON.stringify({ club_id: targetClubId }),
-    });
-    t_.club_id = res?.club_id ?? targetClubId;
-    if (res && 'season_id' in res) t_.season_id = res.season_id;
-    if (attaching) {
-      const club = _clubsList.find(c => c.id === _activeClubId);
-      t_.club_name = club ? club.name : t_.club_name;
-    } else {
-      t_.club_name = null;
-    }
-    _clubsRenderSeasonAssignment();
-    _clubsOk(msgEl, `clubs-tclub-btn-${tid}`);
-    if (typeof loadTournaments === 'function') {
-      loadTournaments().catch(() => {});
-    }
-  } catch (e) {
-    _clubsMsg(msgEl, e.message, true);
-  } finally {
-    if (btn && btn.isConnected) btn.disabled = false;
-  }
+  if (typeof _applyCreateClubPreset === 'function') _applyCreateClubPreset(_activeClubId, { lock: false });
+  setActiveTab('create');
 }
 
-function _clubsFormatDate(value) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString();
+/** Attach a lobby the user edits to the active club (moving its community first when needed). */
+async function _clubsAttachRegistrationToClub(rid) {
+  const club = _clubsList.find(c => c.id === _activeClubId);
+  const r_ = _clubsRegistrations.find(r => r.id === rid);
+  if (!club || !r_) return;
+  if ((r_.community_id || 'open') !== club.community_id) {
+    const res = await apiAuth(`/api/registrations/${encodeURIComponent(rid)}/community`, {
+      method: 'PATCH',
+      body: JSON.stringify({ community_id: club.community_id }),
+    });
+    r_.community_id = res?.community_id ?? club.community_id;
+    if (res && 'club_id' in res) r_.club_id = res.club_id;
+    if (res && 'season_id' in res) r_.season_id = res.season_id;
+  }
+  const clubRes = await apiAuth(`/api/registrations/${encodeURIComponent(rid)}/club`, {
+    method: 'PATCH',
+    body: JSON.stringify({ club_id: _activeClubId }),
+  });
+  r_.club_id = clubRes?.club_id ?? _activeClubId;
+  if (clubRes && 'season_id' in clubRes) r_.season_id = clubRes.season_id;
+  r_.club_name = club.name;
+  if (typeof loadTournaments === 'function') loadTournaments().catch(() => {});
 }
 
-async function clubsAssignTournamentSeason(tid) {
-  const sel = document.getElementById(`clubs-tsn-sel-${tid}`);
-  const msgEl = document.getElementById(`clubs-tsn-msg-${tid}`);
-  if (!sel) return;
-  const season_id = sel.value || null;
-  try {
-    await apiAuth(`/api/tournaments/${encodeURIComponent(tid)}/season`, {
-      method: 'PATCH',
-      body: JSON.stringify({ season_id }),
-    });
-    const t_ = _clubsTournaments.find(t => t.id === tid);
-    if (t_) t_.season_id = season_id;
-    _clubsOk(msgEl, sel);
-  } catch (e) {
-    _clubsMsg(msgEl, e.message, true);
+/**
+ * "← Back to {club}" strip above the event view. Consumes the pending club id
+ * set by the Events card right before openTournament/openRegistration; any
+ * other entry point (home list, chips) clears it.
+ */
+function _renderViewClubReturn() {
+  _clubsReturnTo = _clubsReturnToPending;
+  _clubsReturnToPending = null;
+  const el = document.getElementById('view-club-return');
+  if (!el) return;
+  const club = _clubsReturnTo ? (_clubsList || []).find(c => c.id === _clubsReturnTo) : null;
+  if (!club) {
+    el.hidden = true;
+    el.innerHTML = '';
+    return;
   }
+  el.hidden = false;
+  el.innerHTML = `<button type="button" class="btn btn-sm view-club-return-btn" onclick="clubsReturnToClub()">← ${esc(t('txt_club_events_back_to_club', { club: club.name }))}</button>`;
 }
 
-async function clubsAssignRegistrationSeason(rid) {
-  const sel = document.getElementById(`clubs-rsn-sel-${rid}`);
-  const msgEl = document.getElementById(`clubs-rsn-msg-${rid}`);
-  if (!sel) return;
-  const season_id = sel.value || null;
-  try {
-    await apiAuth(`/api/registrations/${encodeURIComponent(rid)}/season`, {
-      method: 'PATCH',
-      body: JSON.stringify({ season_id }),
-    });
-    const r_ = _clubsRegistrations.find(r => r.id === rid);
-    if (r_) r_.season_id = season_id;
-    _clubsOk(msgEl, sel);
-  } catch (e) {
-    _clubsMsg(msgEl, e.message, true);
-  }
+/** Return to the club detail the current event was opened from. */
+function clubsReturnToClub() {
+  if (_clubsReturnTo) _activeClubId = _clubsReturnTo;
+  setActiveTab('clubs');
 }
 
 // ─── Players ─────────────────────────────────────────────
@@ -1073,7 +1349,7 @@ function _clubsRenderPlayers() {
   } else {
     html += `
     <div class="player-codes-table-wrap">
-      <table class="player-codes-table">
+      <table class="player-codes-table table-stack">
         <thead>
           <tr class="player-codes-head-row">
             <th class="player-codes-th">${t('txt_player_leaderboard_name')}</th>
@@ -1096,25 +1372,25 @@ function _clubsRenderPlayers() {
             const removeTip = t('txt_clubs_remove_all_sports');
             return `
             <tr class="player-codes-row">
-              <td class="player-codes-name">
+              <td class="player-codes-name stack-title">
                 ${esc(p.name)}
                 ${noGames ? `<span class="muted-tiny ml-1">(${t('txt_txt_no_matches')})</span>` : ''}
               </td>
-              <td class="player-codes-cell">${hasHub
+              <td class="player-codes-cell stack-pri" data-label="${escAttr(t('txt_clubs_hub_status'))}">${hasHub
                 ? `<span class="muted-tiny text-success">${t('txt_clubs_hub_yes')}</span>`
                 : `<span class="muted-tiny text-muted">${t('txt_clubs_hub_no')}</span>`}</td>
-              <td class="player-codes-cell">${hasEmail ? esc(p.email) : `<span class="muted-tiny">${t('txt_clubs_player_no_email')}</span>`}</td>
-              <td class="player-codes-cell-center">
+              <td class="player-codes-cell stack-full stack-ellipsis" data-label="${escAttr(t('txt_txt_email'))}">${hasEmail ? `<span title="${escAttr(p.email)}">${esc(p.email)}</span>` : `<span class="muted-tiny">${t('txt_clubs_player_no_email')}</span>`}</td>
+              <td class="player-codes-cell-center" data-label="${escAttr(`${sportLabel} ELO`)}">
                 <input type="number" id="clubs-elo-${sport}-${esc(p.profile_id)}" min="0" max="4000" step="1"
                   value="${eloVal != null ? eloVal : ''}" placeholder="—"
                   class="clubs-elo-input"
                   oninput="_clubsDebouncedSaveElo('${esc(p.profile_id)}', '${sport}')">
                 <span id="clubs-elo-${sport}-msg-${esc(p.profile_id)}" class="clubs-inline-msg"></span>
               </td>
-              <td class="player-codes-cell-center">
+              <td class="player-codes-cell-center stack-pri" data-label="${escAttr(t('txt_clubs_player_matches'))}">
                 <span class="muted-tiny">${matchCount != null ? matchCount : '—'}</span>
               </td>
-              <td class="player-codes-cell nowrap">
+              <td class="player-codes-cell nowrap" data-label="${escAttr(`${sportLabel} ${t('txt_clubs_tier')}`)}">
                 <select id="clubs-ptier-${sport}-${esc(p.profile_id)}" class="clubs-tier-select"
                   onchange="clubsAssignTier('${esc(p.profile_id)}', '${sport}')">
                   <option value="">— ${t('txt_txt_none_selected')} —</option>
@@ -1122,9 +1398,9 @@ function _clubsRenderPlayers() {
                 </select>
                 <span id="clubs-ptier-${sport}-msg-${esc(p.profile_id)}" class="clubs-inline-msg"></span>
               </td>
-              <td class="player-codes-cell-center nowrap">
-                <button class="btn btn-sm player-codes-icon-btn text-muted" onclick="clubsTogglePlayerSport('${esc(p.profile_id)}', '${sport}', false)" title="${esc(hideTip)}" aria-label="${esc(hideTip)} ${esc(p.name)}">&#x2296;</button>
-                <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsRemovePlayer('${esc(p.profile_id)}', '${esc(p.name)}')" title="${esc(removeTip)}" aria-label="${esc(removeTip)} ${esc(p.name)}">&#x2715;</button>
+              <td class="player-codes-cell-center nowrap stack-actions">
+                <button class="btn btn-sm player-codes-icon-btn text-muted" onclick="clubsTogglePlayerSport('${esc(p.profile_id)}', '${sport}', false)" title="${esc(hideTip)}" aria-label="${esc(hideTip)} ${esc(p.name)}">${_ic('eyeoff')}</button>
+                <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsRemovePlayer('${esc(p.profile_id)}', '${esc(p.name)}')" title="${esc(removeTip)}" aria-label="${esc(removeTip)} ${esc(p.name)}">${_ic('trash')}</button>
               </td>
             </tr>`;
           }).join('')}
@@ -1145,7 +1421,7 @@ function _clubsRenderPlayers() {
       </summary>
       <div class="clubs-collapsible-body">
         <div class="player-codes-table-wrap">
-          <table class="player-codes-table">
+          <table class="player-codes-table table-stack">
             <thead><tr class="player-codes-head-row">
               <th class="player-codes-th">${t('txt_player_leaderboard_name')}</th>
               <th class="player-codes-th-center">${sportLabel} ELO</th>
@@ -1160,12 +1436,12 @@ function _clubsRenderPlayers() {
                 const removeTip = t('txt_clubs_remove_all_sports');
                 return `
               <tr class="player-codes-row player-codes-row--dimmed">
-                <td class="player-codes-name">${esc(p.name)}</td>
-                <td class="player-codes-cell-center"><span class="muted-tiny">${eloVal != null ? Math.round(eloVal) : '—'}</span></td>
-                <td class="player-codes-cell-center"><span class="muted-tiny">${matchCount != null ? matchCount : '—'}</span></td>
-                <td class="player-codes-cell-center nowrap">
-                  <button class="btn btn-sm btn-success player-codes-icon-btn" onclick="clubsTogglePlayerSport('${esc(p.profile_id)}', '${sport}', true)" title="${esc(restoreTip)}" aria-label="${esc(restoreTip)} ${esc(p.name)}">&#x2295;</button>
-                  <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsRemovePlayer('${esc(p.profile_id)}', '${esc(p.name)}')" title="${esc(removeTip)}" aria-label="${esc(removeTip)} ${esc(p.name)}">&#x2715;</button>
+                <td class="player-codes-name stack-title">${esc(p.name)}</td>
+                <td class="player-codes-cell-center stack-pri" data-label="${escAttr(`${sportLabel} ELO`)}"><span class="muted-tiny">${eloVal != null ? Math.round(eloVal) : '—'}</span></td>
+                <td class="player-codes-cell-center stack-pri" data-label="${escAttr(t('txt_clubs_player_matches'))}"><span class="muted-tiny">${matchCount != null ? matchCount : '—'}</span></td>
+                <td class="player-codes-cell-center nowrap stack-actions">
+                  <button class="btn btn-sm btn-success player-codes-icon-btn" onclick="clubsTogglePlayerSport('${esc(p.profile_id)}', '${sport}', true)" title="${esc(restoreTip)}" aria-label="${esc(restoreTip)} ${esc(p.name)}">${_ic('eye')}</button>
+                  <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsRemovePlayer('${esc(p.profile_id)}', '${esc(p.name)}')" title="${esc(removeTip)}" aria-label="${esc(removeTip)} ${esc(p.name)}">${_ic('trash')}</button>
                 </td>
               </tr>`;
               }).join('')}
@@ -1478,7 +1754,7 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
           <span class="muted-tiny">${filteredMembers.length}/${members.length}</span>
         </div>
         <div class="player-codes-table-wrap">
-          <table class="player-codes-table">
+          <table class="player-codes-table table-stack">
             <thead><tr class="player-codes-head-row">
               <th class="player-codes-th-center player-codes-th-narrow"></th>
               <th class="player-codes-th">${t('txt_player_leaderboard_name')}</th>
@@ -1494,16 +1770,16 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
     const isSelected = _clubsSelectedGhostProfiles.has(p.profile_id);
     html += `
       <tr class="player-codes-row">
-        <td class="player-codes-cell-center">
+        <td class="player-codes-cell-center stack-check">
           <input type="checkbox" ${isSelected ? 'checked' : ''}
             onchange="clubsToggleGhostMergeSelect('${escAttr(p.profile_id)}', this.checked)"
             aria-label="${t('txt_ph_select_for_merge')} ${escAttr(p.name)}"
             class="cursor-pointer">
         </td>
-        <td class="player-codes-name">${esc(p.name)}</td>
-        <td class="player-codes-cell-center">${elo != null ? Math.round(elo) : '—'}</td>
-        <td class="player-codes-cell-center">${matches != null ? matches : '—'}</td>
-        <td class="player-codes-cell-center nowrap">
+        <td class="player-codes-name stack-title">${esc(p.name)}</td>
+        <td class="player-codes-cell-center stack-pri" data-label="${escAttr(sport === 'padel' ? t('txt_ph_padel_elo') : t('txt_ph_tennis_elo'))}">${elo != null ? Math.round(elo) : '—'}</td>
+        <td class="player-codes-cell-center stack-pri" data-label="${escAttr(t('txt_clubs_player_matches'))}">${matches != null ? matches : '—'}</td>
+        <td class="player-codes-cell-center nowrap stack-actions">
           <button class="btn btn-sm btn-success fs-sm"
             onclick="clubsShowConvertGhostForm('${esc(p.profile_id)}', '${escAttr(p.name)}')"
             title="${t('txt_ph_convert_ghost_hint')}"

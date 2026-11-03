@@ -759,6 +759,11 @@ body { font-family: var(--font-body); }
   flex-shrink: 0;
   line-height: 1;
 }
+/* Podium places: one medal icon, tinted by place. */
+.rank-medal { display: inline-flex; vertical-align: -0.125em; }
+.rank-medal--1 { color: var(--color-yellow); }
+.rank-medal--2 { color: var(--color-text-muted); }
+.rank-medal--3 { color: var(--color-amber); }
 .best-results-detail {
   flex: 1;
   min-width: 0;

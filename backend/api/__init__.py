@@ -35,6 +35,7 @@ from ..auth.store import user_store
 from .db import init_db
 from .state import persist_failed as _persist_failed
 from .routes_admin_players import router as admin_players_router
+from .routes_clubs import public_events_router
 from .routes_clubs import router as clubs_router
 from .routes_communities import router as communities_router
 from .routes_seasons import club_seasons_router, router as seasons_router
@@ -202,13 +203,18 @@ async def csrf_origin_protection(request: Request, call_next):
 # - ``admin.amistoso.club``   → 301 redirect to the apex (admin lives at ``/``)
 # - ``{slug}.amistoso.club`` + path ``/`` → ``club.html`` if the slug resolves
 #
-# All other paths (``/api/*``, ``/tv``, ``/register``, static assets, …) are
-# left untouched so they keep working from any subdomain.
+# - ``{slug}.amistoso.club`` + ``/events`` (or bare ``/tv`` / ``/register``)
+#   → 302 to ``/`` — the club page already is that club's event directory
+#
+# All other paths (``/api/*``, ``/tv/{slug}``, ``/register/{alias}``, static
+# assets, …) are left untouched so they keep working from any subdomain.
 
 _SUBDOMAIN_RESERVED: frozenset[str] = frozenset(
     {"admin", "tv", "player", "register", "api", "www", "app", "mail", "ftp", "static", "assets", "demo"}
 )
 _SLUG_LABEL_RE = re.compile(r"^[a-z0-9-]{2,30}$")
+# Public directory paths that collapse onto the club page on a club subdomain.
+_CLUB_DIRECTORY_PATHS: frozenset[str] = frozenset({"/events", "/tv", "/register"})
 
 
 def _extract_subdomain_label(host: str) -> str | None:
@@ -346,8 +352,13 @@ async def subdomain_router(request: Request, call_next):
         if request.url.path != "/" or request.method != "GET":
             return await call_next(request)
         return _serve_404_page(request)
-    # Known club: serve club.html only on the root GET; let everything else
-    # (API calls, /admin, /tv, static assets) fall through to the apex routes.
+    # Known club: the club page already is that club's event directory, so the
+    # generic directories (/events and the legacy bare /tv, /register) go to
+    # the root. Serve club.html only on the root GET; let everything else
+    # (API calls, /admin, /tv/{slug}, static assets) fall through to the apex
+    # routes.
+    if request.method == "GET" and request.url.path in _CLUB_DIRECTORY_PATHS:
+        return RedirectResponse(url="/", status_code=302)
     if request.url.path != "/" or request.method != "GET":
         return await call_next(request)
     return Response(
@@ -361,6 +372,7 @@ async def subdomain_router(request: Request, call_next):
 app.include_router(admin_players_router)
 app.include_router(auth_router)
 app.include_router(clubs_router)
+app.include_router(public_events_router)
 app.include_router(club_seasons_router)
 app.include_router(communities_router)
 app.include_router(crud_router)
@@ -512,9 +524,28 @@ async def serve_frontend() -> Response:
     return _html_page("index.html", "<h1>Frontend not found</h1>")
 
 
+def _redirect_to_events(request: Request) -> RedirectResponse:
+    """302 to the public Events directory, preserving the query string."""
+    target = "/events"
+    if request.url.query:
+        target += f"?{request.url.query}"
+    return RedirectResponse(url=target, status_code=302)
+
+
+@app.get("/events")
+async def serve_events() -> Response:
+    """Public Events directory (tournaments + open sign-ups across all clubs)."""
+    return _html_page("public.html", "<h1>Events page not found</h1>")
+
+
 @app.get("/tv")
+async def serve_tv_root(request: Request) -> Response:
+    """The bare TV picker merged into /events — keep old links working."""
+    return _redirect_to_events(request)
+
+
 @app.get("/tv/{slug}")
-async def serve_tv(slug: str | None = None) -> Response:
+async def serve_tv(slug: str) -> Response:
     return _html_page("public.html", "<h1>TV page not found</h1>")
 
 
@@ -529,8 +560,9 @@ async def serve_tv_legacy(slug: str) -> Response:
 
 
 @app.get("/register")
-async def serve_register() -> Response:
-    return _html_page("register.html", "<h1>Registration page not found</h1>")
+async def serve_register(request: Request) -> Response:
+    """The bare registration directory merged into /events — keep old links working."""
+    return _redirect_to_events(request)
 
 
 @app.get("/register/{alias}")

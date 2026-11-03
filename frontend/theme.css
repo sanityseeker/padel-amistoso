@@ -359,6 +359,15 @@ html[data-theme="dark"] {
   flex-shrink: 0;
 }
 
+/* Language toggle: a two-letter code (EN / ES) instead of a flag emoji. */
+.lang-code {
+  font-family: var(--font-data);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
 /* ── Form-control baseline (all pages) ──────────────────────────────
    Zero-specificity so every component rule still wins. */
 :where(button, input, select, textarea) { font-family: inherit; letter-spacing: inherit; }

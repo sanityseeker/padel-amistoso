@@ -430,10 +430,18 @@ async def delete_alias(tid: str, user: User = Depends(require_not_demo)) -> dict
 
 @router.get("/resolve-alias/{alias}")
 async def resolve_alias(alias: str) -> dict:
-    """Resolve a tournament alias to its ID. Public (used by TV page)."""
+    """Resolve a tournament alias to its ID. Public (used by TV page).
+
+    A plain tournament ID resolves to itself when no alias matches, so
+    ``/tv/<tid>`` links (push notifications, shared links) don't produce a
+    404 round-trip before the TV page falls back to the ID.
+    """
     for tid, data in _tournaments.items():
         if data.get("alias") == alias:
             return {"id": tid, "name": data["name"], "type": data["type"], "sport": data.get("sport", Sport.PADEL)}
+    data = _tournaments.get(alias)
+    if data is not None:
+        return {"id": alias, "name": data["name"], "type": data["type"], "sport": data.get("sport", Sport.PADEL)}
     raise HTTPException(404, f"No tournament with alias '{alias}'")
 
 

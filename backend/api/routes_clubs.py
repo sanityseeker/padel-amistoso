@@ -798,6 +798,153 @@ def _tournament_public_status(t_obj) -> str:
     return "in_progress"
 
 
+_PUBLIC_EVENTS_CACHE_CONTROL = "public, max-age=15"
+
+
+def _pinned_order_for_club(club_row: dict | None) -> dict[str, int]:
+    """Map every pin key (prefixed and raw) of a club to its stored index."""
+    if not club_row:
+        return {}
+    raw_pinned = _safe_json_loads(club_row.get("pinned_tournament_ids"), [])
+    if not isinstance(raw_pinned, list):
+        return {}
+    order: dict[str, int] = {}
+    for idx, pid in enumerate(raw_pinned):
+        if isinstance(pid, str) and pid not in order:
+            order[pid] = idx
+    return order
+
+
+async def build_public_event_items(club_id: str | None, club_row: dict | None = None) -> list[dict]:
+    """Shared builder for the public event directories (club page + /events).
+
+    Returns one item per public tournament and per open, listed, non-archived
+    lobby. Scoped to ``club_id`` when given, platform-wide otherwise.
+    Exposure is identical to the anonymous ``GET /api/tournaments`` and
+    ``GET /api/registrations/public`` lists: tournaments with ``public=False``
+    and lobbies that are closed, unlisted or archived are never returned, and
+    no registrant names, join codes, owners or emails leave the server.
+
+    Each item has: ``id``, ``pin_key``, ``name``, ``alias``, ``status``
+    (``in_progress`` / ``open_registration`` / ``upcoming`` / ``finished``),
+    ``kind`` (``tournament`` / ``registration``), ``sport``, ``type``,
+    ``pinned``, ``club_id``, ``club_name``, ``club_logo_url``,
+    ``community_id``, ``community_name``, ``registrant_count`` and
+    ``join_code_required``. Pinned items come first, in the order stored in
+    the club's ``pinned_tournament_ids``.
+    """
+    from .helpers import get_scope_branding  # noqa: PLC0415
+    from .routes_registration import _get_registrant_counts  # noqa: PLC0415
+    from .state import _tournaments  # noqa: PLC0415
+
+    pinned_order = _pinned_order_for_club(club_row) if club_id else {}
+    branding_cache: dict[tuple[str, str | None], dict[str, str | None]] = {}
+
+    def _branding(community_id: str, item_club_id: str | None) -> dict[str, str | None]:
+        return get_scope_branding(community_id or "open", item_club_id, branding_cache)
+
+    def _pin_index(pin_key: str, raw_id: str) -> int | None:
+        if pin_key in pinned_order:
+            return pinned_order[pin_key]
+        return pinned_order.get(raw_id)
+
+    # The live-tournament scan stays on the event loop: iterating the shared
+    # _tournaments dict from a thread could race a concurrent create/delete.
+    out: list[tuple[int | None, dict]] = []
+    for tid, data in _tournaments.items():
+        if club_id is not None and data.get("club_id") != club_id:
+            continue
+        if not data.get("public", True):
+            continue
+        t_obj = data.get("tournament")
+        pin_key = _pin_key("tournament", tid)
+        branding = _branding(data.get("community_id", "open"), data.get("club_id"))
+        pin_idx = _pin_index(pin_key, tid)
+        out.append(
+            (
+                pin_idx,
+                {
+                    "id": tid,
+                    "pin_key": pin_key,
+                    "name": data.get("name", ""),
+                    "alias": data.get("alias"),
+                    "status": _tournament_public_status(t_obj),
+                    "kind": "tournament",
+                    "sport": data.get("sport", "padel"),
+                    "type": data.get("type", "group_playoff"),
+                    "pinned": pin_idx is not None,
+                    "club_id": data.get("club_id"),
+                    "club_name": branding["club_name"],
+                    "club_logo_url": branding["club_logo_url"],
+                    "community_id": data.get("community_id", "open"),
+                    "community_name": branding["community_name"],
+                    "registrant_count": None,
+                    "join_code_required": False,
+                },
+            )
+        )
+
+    def _fetch_reg_rows() -> list:
+        sql = (
+            "SELECT id, name, alias, sport, club_id, community_id, join_code FROM registrations "
+            "WHERE open = 1 AND archived = 0 AND listed = 1"
+        )
+        params: tuple = ()
+        if club_id is not None:
+            sql += " AND club_id = ?"
+            params = (club_id,)
+        sql += " ORDER BY created_at DESC"
+        with get_db() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        counts = _get_registrant_counts([r["id"] for r in rows])
+        return [(dict(r), counts.get(r["id"], 0)) for r in rows]
+
+    reg_rows = await asyncio.to_thread(_fetch_reg_rows)
+    for r, count in reg_rows:
+        pin_key = _pin_key("registration", r["id"])
+        branding = _branding(r.get("community_id") or "open", r.get("club_id"))
+        pin_idx = _pin_index(pin_key, r["id"])
+        out.append(
+            (
+                pin_idx,
+                {
+                    "id": r["id"],
+                    "pin_key": pin_key,
+                    "name": r["name"],
+                    "alias": r["alias"],
+                    "status": "open_registration",
+                    "kind": "registration",
+                    "sport": r["sport"] or "padel",
+                    "type": "registration",
+                    "pinned": pin_idx is not None,
+                    "club_id": r.get("club_id"),
+                    "club_name": branding["club_name"],
+                    "club_logo_url": branding["club_logo_url"],
+                    "community_id": r.get("community_id") or "open",
+                    "community_name": branding["community_name"],
+                    "registrant_count": count,
+                    # Boolean only — the code itself never leaves the server.
+                    "join_code_required": r.get("join_code") is not None,
+                },
+            )
+        )
+    # Pinned items first, in their stored order; everything else keeps its
+    # relative order (tournaments, then lobbies newest-first).
+    pinned = sorted((entry for entry in out if entry[0] is not None), key=lambda e: e[0])
+    unpinned = [entry for entry in out if entry[0] is None]
+    return [item for _, item in pinned] + [item for _, item in unpinned]
+
+
+def _public_events_response(items: list[dict], request: Request, response: Response) -> list[dict] | Response:
+    """Attach ETag + short public cache headers; answer 304 on a matching tag."""
+    tag = etag_for(items)
+    if request.headers.get("if-none-match") == tag:
+        return Response(status_code=304, headers={"ETag": tag, "Cache-Control": _PUBLIC_EVENTS_CACHE_CONTROL})
+    response.headers["ETag"] = tag
+    response.headers["Cache-Control"] = _PUBLIC_EVENTS_CACHE_CONTROL
+    return items
+
+
 @router.get("/{club_id}/public-tournaments", response_model=None)
 async def get_club_public_tournaments(
     club_id: str,
@@ -806,80 +953,28 @@ async def get_club_public_tournaments(
 ) -> list[dict] | Response:
     """Public — list a club's public tournaments + open registrations.
 
-    Each entry has: ``id``, ``pin_key``, ``name``, ``alias``, ``status`` (one of
-    ``in_progress`` / ``open_registration`` / ``upcoming`` / ``finished``),
-    ``kind`` (``tournament`` or ``registration``), ``sport``, ``type``
-    (tournament format or ``"registration"``), and ``pinned``.
-
-    Sets ``ETag`` + ``Cache-Control: public, max-age=15`` so repeat requests
-    within the same page session are cheap.
+    Club-filtered call of :func:`build_public_event_items`; see it for the
+    item shape and exposure rules. Sets ``ETag`` + ``Cache-Control: public,
+    max-age=15`` so repeat requests within the same page session are cheap.
     """
     club_row = await asyncio.to_thread(_get_club, club_id)  # 404 if club doesn't exist
-    raw_pinned = _safe_json_loads(club_row.get("pinned_tournament_ids"), [])
-    pinned_set: set[str] = (
-        {pid for pid in raw_pinned if isinstance(pid, str)} if isinstance(raw_pinned, list) else set()
-    )
-    from .state import _tournaments  # noqa: PLC0415
+    items = await build_public_event_items(club_id, club_row)
+    return _public_events_response(items, request, response)
 
-    # The live-tournament scan stays on the event loop: iterating the shared
-    # _tournaments dict from a thread could race a concurrent create/delete.
-    out: list[dict] = []
-    for tid, data in _tournaments.items():
-        if data.get("club_id") != club_id:
-            continue
-        if not data.get("public", True):
-            continue
-        t_obj = data.get("tournament")
-        tournament_pin_key = _pin_key("tournament", tid)
-        out.append(
-            {
-                "id": tid,
-                "pin_key": tournament_pin_key,
-                "name": data.get("name", ""),
-                "alias": data.get("alias"),
-                "status": _tournament_public_status(t_obj),
-                "kind": "tournament",
-                "sport": data.get("sport", "padel"),
-                "type": data.get("type", "group_playoff"),
-                "pinned": tournament_pin_key in pinned_set or tid in pinned_set,
-            }
-        )
 
-    def _fetch_reg_rows() -> list:
-        with get_db() as conn:
-            return conn.execute(
-                "SELECT id, name, alias, open, sport FROM registrations "
-                "WHERE club_id = ? AND archived = 0 AND listed = 1 ORDER BY created_at DESC",
-                (club_id,),
-            ).fetchall()
+public_events_router = APIRouter(prefix="/api/public-events", tags=["public-events"])
 
-    reg_rows = await asyncio.to_thread(_fetch_reg_rows)
-    for r in reg_rows:
-        if not r["open"]:
-            continue
-        reg_pin_key = _pin_key("registration", r["id"])
-        out.append(
-            {
-                "id": r["id"],
-                "pin_key": reg_pin_key,
-                "name": r["name"],
-                "alias": r["alias"],
-                "status": "open_registration",
-                "kind": "registration",
-                "sport": r["sport"] or "padel",
-                "type": "registration",
-                "pinned": reg_pin_key in pinned_set or r["id"] in pinned_set,
-            }
-        )
-    # Pinned items float to the top, preserving relative order within each group.
-    out.sort(key=lambda x: 0 if x["pinned"] else 1)
 
-    tag = etag_for(out)
-    if request.headers.get("if-none-match") == tag:
-        return Response(status_code=304, headers={"ETag": tag, "Cache-Control": "public, max-age=15"})
-    response.headers["ETag"] = tag
-    response.headers["Cache-Control"] = "public, max-age=15"
-    return out
+@public_events_router.get("", response_model=None)
+async def list_public_events(request: Request, response: Response) -> list[dict] | Response:
+    """Public — every club's and community's public tournaments + open lobbies.
+
+    Same item shape and exposure as ``GET /api/clubs/{id}/public-tournaments``
+    (see :func:`build_public_event_items`), without the club filter. Pins are
+    a per-club concept, so ``pinned`` is always ``False`` here.
+    """
+    items = await build_public_event_items(None)
+    return _public_events_response(items, request, response)
 
 
 def _compute_club_leaderboard_rows(conn, club_id: str) -> list[dict]:

@@ -87,16 +87,6 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 
 .subtitle-strong { font-weight: 700; }
 
-.reg-directory-header-row { margin-bottom: 1rem; }
-
-.reg-directory-enter-id-hint {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  margin: 1.5rem 0 0.5rem;
-}
-
-.picker-inline-error-spaced { margin-top: 0.75rem; }
-
 .reg-optional-hint {
   font-weight: 400;
   color: var(--text-muted);

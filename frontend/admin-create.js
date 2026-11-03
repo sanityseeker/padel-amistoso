@@ -187,29 +187,50 @@ async function _loadClubs() {
   _refreshDefaultTitles();
 }
 
+/**
+ * Preset the create form to a club: select its community + club in every
+ * create-mode select and remember the choice. With `lock: true` (club
+ * subdomain) the selects are disabled so the operator can't create items
+ * under another club; without it the preset is just a starting point
+ * ("New event in this club" from the club admin Events card).
+ * @param {string} clubId
+ * @param {{lock?: boolean}} [opts]
+ */
+function _applyCreateClubPreset(clubId, opts = {}) {
+  const club = (_clubs || []).find(c => c && c.id === clubId);
+  if (!club) return false;
+  const lock = Boolean(opts.lock);
+  const lockTitle = lock ? ((typeof t === 'function' && t('txt_create_locked_to_subdomain')) || '') : '';
+  for (const commEl of _getCommunitySelects()) {
+    commEl.value = club.community_id;
+    if (lock) {
+      commEl.disabled = true;
+      commEl.title = lockTitle;
+    }
+  }
+  if (typeof _onCommunityChange === 'function') _onCommunityChange(club.community_id);
+  for (const el of _getClubSelects()) {
+    el.value = club.id;
+    if (lock) {
+      el.disabled = true;
+      el.title = lockTitle;
+    }
+  }
+  try {
+    localStorage.setItem(COMMUNITY_KEY, club.community_id);
+    localStorage.setItem(CLUB_KEY, club.id);
+  } catch (_) {}
+  if (typeof _refreshDefaultTitles === 'function') _refreshDefaultTitles();
+  return true;
+}
+
 // When the admin SPA is loaded on a club subdomain, force the create panel to
 // use that club + its parent community and lock the selects so the operator
 // can't accidentally create items under another club.
 function _applySubdomainClubLock() {
   const subdomainClub = (typeof window !== 'undefined' && window.__ADMIN_SUBDOMAIN_CLUB__) || null;
   if (!subdomainClub || !subdomainClub.club_id) return;
-  const club = (_clubs || []).find(c => c && c.id === subdomainClub.club_id);
-  if (!club) return;
-  // Force community + club selection.
-  for (const commEl of _getCommunitySelects()) {
-    commEl.value = club.community_id;
-    commEl.disabled = true;
-    commEl.title = (typeof t === 'function' && t('txt_create_locked_to_subdomain')) || '';
-  }
-  for (const el of _getClubSelects()) {
-    el.value = club.id;
-    el.disabled = true;
-    el.title = (typeof t === 'function' && t('txt_create_locked_to_subdomain')) || '';
-  }
-  try {
-    localStorage.setItem(COMMUNITY_KEY, club.community_id);
-    localStorage.setItem(CLUB_KEY, club.id);
-  } catch (_) {}
+  _applyCreateClubPreset(subdomainClub.club_id, { lock: true });
 }
 
 // Demo accounts: community/club scoping is server-forced to the open

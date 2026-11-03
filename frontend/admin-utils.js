@@ -1,41 +1,5 @@
 const API = '';  // same origin
 
-// ─── Icon helper ───────────────────────────────────────────
-/**
- * Return an inline SVG icon element for use inside button labels.
- * Icons are stroke-based Lucide-style, inherit currentColor.
- * Usage: `${_ic('trash')} ${t('txt_txt_remove')}`
- */
-function _ic(name) {
-  const paths = {
-    trash:    `<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>`,
-    edit:     `<path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>`,
-    link:     `<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>`,
-    reset:    `<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>`,
-    mail:     `<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/>`,
-    print:    `<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>`,
-    copy:     `<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>`,
-    key:      `<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>`,
-    shield:   `<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>`,
-    settings: `<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>`,
-    qr:       `<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="5" y="5" width="3" height="3" fill="currentColor" stroke="none"/><rect x="16" y="5" width="3" height="3" fill="currentColor" stroke="none"/><rect x="5" y="16" width="3" height="3" fill="currentColor" stroke="none"/><line x1="14" y1="14" x2="14" y2="14"/><line x1="17" y1="14" x2="17" y2="14"/><line x1="20" y1="14" x2="20" y2="14"/><line x1="14" y1="17" x2="14" y2="17"/><line x1="17" y1="17" x2="17" y2="17"/><line x1="20" y1="17" x2="20" y2="17"/>`,
-    trophy:   `<path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2z"/>`,
-    chevdown: `<polyline points="6 9 12 15 18 9"/>`,
-    lock:     `<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>`,
-    unlock:   `<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 019.9-1"/>`,
-    chart:    `<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>`,
-    shuffle:  `<polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/>`,
-    monitor:  `<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>`,
-    globe:    `<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>`,
-    users:    `<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>`,
-    user:     `<path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>`,
-    grid:     `<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>`,
-    building: `<rect x="2" y="7" width="20" height="14" rx="1"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/>`,
-  };
-  const p = paths[name] || '';
-  return `<svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
-}
-
 // ─── Ant Design icon helper ────────────────────────────────
 /**
  * Return an inline SVG icon using Ant Design Outlined icon paths.
@@ -110,6 +74,8 @@ function _antIc(name) {
     'safety': `<path fill="currentColor" d="M512 64L128 192v384c0 212.1 171.9 384 384 384s384-171.9 384-384V192L512 64zm312 512c0 172.3-139.7 312-312 312S200 748.3 200 576V246l312-110 312 110v330z"/><path fill="currentColor" d="M378.4 475.1a35.91 35.91 0 00-50.9 0 35.91 35.91 0 000 50.9l129.4 129.4 2.1 2.1a33.98 33.98 0 0048.1 0L730.6 434a33.98 33.98 0 000-48.1l-2.8-2.8a33.98 33.98 0 00-48.1 0L483 579.7 378.4 475.1z"/>`,
     // ContainerOutlined
     'container': `<path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/>`,
+    // QuestionCircleOutlined — lobby questionnaire tab
+    'question-circle': `<path fill="currentColor" d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z"/><path fill="currentColor" d="M623.6 316.7C593.6 290.4 554 276 512 276s-81.6 14.5-111.6 40.7C369.2 344 352 380.7 352 420v7.6c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8V420c0-44.1 43.1-80 96-80s96 35.9 96 80c0 31.1-22 59.6-56.1 72.7-21.2 8.1-39.2 22.3-52.1 40.9-13.1 19-19.9 41.8-19.9 64.9V620c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8v-22.7a48.3 48.3 0 0130.9-44.8c59-22.7 97.1-74.7 97.1-132.5.1-39.3-17.1-76-48.3-103.3zM472 732a40 40 0 1080 0 40 40 0 10-80 0z"/>`,
     // ContactsOutlined
     'contacts': `<path fill="currentColor" d="M594.3 601.5a111.8 111.8 0 0029.1-75.5c0-61.9-49.9-112-111.4-112s-111.4 50.1-111.4 112c0 29.1 11 55.5 29.1 75.5a158.09 158.09 0 00-74.6 126.1 8 8 0 008 8.4H407c4.2 0 7.6-3.3 7.9-7.5 3.8-50.6 46-90.5 97.2-90.5s93.4 40 97.2 90.5c.3 4.2 3.7 7.5 7.9 7.5H661a8 8 0 008-8.4c-2.8-53.3-32-99.7-74.7-126.1zM512 578c-28.5 0-51.7-23.3-51.7-52s23.2-52 51.7-52 51.7 23.3 51.7 52-23.2 52-51.7 52zm416-354H768v-56c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v56H548v-56c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v56H328v-56c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v56H96c-17.7 0-32 14.3-32 32v576c0 17.7 14.3 32 32 32h832c17.7 0 32-14.3 32-32V256c0-17.7-14.3-32-32-32zm-40 568H136V296h120v56c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8v-56h148v56c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8v-56h148v56c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8v-56h120v496z"/>`,
   };
@@ -267,6 +233,73 @@ function applyDemoUiRestrictions() {
   if (lobbyTab) lobbyTab.style.display = demo ? 'none' : '';
   if (typeof _applyDemoCreateLock === 'function') _applyDemoCreateLock();
   initDemoCountdown();
+}
+
+// ─── Pinned header stack (sticky status bars) ─────────────
+/**
+ * Per-view status bars that pin to the top of the page: club detail,
+ * Mexicano ops header, Group+Playoff group quick-nav. At most one is
+ * visible at a time (the others sit in hidden tab panels).
+ */
+const _ADMIN_STICKY_BAR_SELECTOR = '.club-status-bar, #mex-ops-header, .group-nav-bar';
+
+/**
+ * Publish the pinned header stack's real height as CSS custom properties:
+ *   --admin-sticky-top     club-subdomain banner height (the bars pin below it)
+ *   --admin-sticky-offset  banner + the visible sticky status bar
+ * admin.css turns them into `top:` for the bars and `scroll-padding-top` on
+ * <html>, so scrollIntoView() jumps and focus scrolling land below the bar
+ * instead of underneath it.
+ */
+function _syncAdminStickyOffset() {
+  const visibleHeight = (el) => {
+    if (!el || !el.getClientRects().length) return 0;
+    if (getComputedStyle(el).position !== 'sticky') return 0;
+    return el.getBoundingClientRect().height;
+  };
+  const banner = visibleHeight(document.querySelector('.admin-subdomain-banner'));
+  let bar = 0;
+  document.querySelectorAll(_ADMIN_STICKY_BAR_SELECTOR).forEach(el => {
+    bar = Math.max(bar, visibleHeight(el));
+  });
+  const rootStyle = document.documentElement.style;
+  rootStyle.setProperty('--admin-sticky-top', `${Math.ceil(banner)}px`);
+  rootStyle.setProperty('--admin-sticky-offset', `${Math.ceil(banner + bar)}px`);
+}
+
+/**
+ * Keep the sticky offset current: views re-render their bars via innerHTML
+ * (MutationObserver re-binds), and bars change height when they wrap,
+ * collapse or get hidden with their tab panel (ResizeObserver).
+ */
+function _initAdminStickyOffset() {
+  let frame = 0;
+  const schedule = () => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => { frame = 0; _syncAdminStickyOffset(); });
+  };
+  const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
+  let observed = [];
+  const rebind = () => {
+    const bars = Array.from(document.querySelectorAll(`${_ADMIN_STICKY_BAR_SELECTOR}, .admin-subdomain-banner`));
+    if (bars.length === observed.length && bars.every((el, i) => el === observed[i])) return;
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      bars.forEach(el => resizeObserver.observe(el));
+    }
+    observed = bars;
+  };
+  new MutationObserver(() => { rebind(); schedule(); })
+    .observe(document.body, { childList: true, subtree: true });
+  window.addEventListener('resize', schedule);
+  rebind();
+  schedule();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _initAdminStickyOffset);
+} else {
+  _initAdminStickyOffset();
 }
 
 // ─── Tab switching ─────────────────────────────────────────
@@ -587,7 +620,7 @@ function setTheme(theme) {
   _saveTheme(themeValue);
   const btn = document.getElementById('theme-toggle-btn');
   if (btn) {
-    btn.textContent = themeValue === 'dark' ? '🌙' : '☀️';
+    btn.innerHTML = _ic(themeValue === 'dark' ? 'moon' : 'sun');
     btn.title = t('txt_txt_toggle_light_dark_mode');
     btn.setAttribute('aria-label', themeValue === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
     btn.setAttribute('data-active-theme', themeValue);
@@ -599,7 +632,7 @@ function initTheme() {
   _applyTheme(theme);
   const btn = document.getElementById('theme-toggle-btn');
   if (btn) {
-    btn.textContent = theme === 'dark' ? '🌙' : '☀️';
+    btn.innerHTML = _ic(theme === 'dark' ? 'moon' : 'sun');
     btn.title = t('txt_txt_toggle_light_dark_mode');
     btn.setAttribute('aria-label', theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
     btn.setAttribute('data-active-theme', theme);
@@ -654,7 +687,7 @@ function _refreshLanguageToggleButton() {
   if (!btn) return;
   const current = getAppLanguage();
   const currentLabel = current === 'es' ? t('txt_txt_spanish') : t('txt_txt_english');
-  btn.textContent = current === 'es' ? '🇪🇸' : '🇬🇧';
+  btn.innerHTML = `<span class="lang-code" aria-hidden="true">${current === 'es' ? 'ES' : 'EN'}</span>`;
   btn.title = `${t('txt_txt_language')}: ${currentLabel}`;
   btn.setAttribute('aria-label', `${t('txt_txt_language')}: ${currentLabel}`);
 }
@@ -664,11 +697,12 @@ function initLanguageSelector() {
   _refreshLanguageToggleButton();
 }
 
-// ─── Page selector (Admin / TV / Registrations) ───────────
+// ─── Page selector (Admin / Player Hub / Events) ───────────
 const PAGE_SELECTOR_KEY = 'amistoso-last-page';
 
 function togglePageSelector() {
-  togglePageSelectorDropdown();
+  const el = document.getElementById('page-selector');
+  if (el) el.classList.toggle('open');
 }
 
 function _closePageSelector() {
@@ -693,50 +727,6 @@ function _initPageSelector() {
       }
     });
   });
-  // Refresh pin indicators and pin button state
-  _refreshAdminPinState();
-}
-
-function _refreshAdminPinState() {
-  const homePage = getHomePage();
-  const isPinned = homePage === 'admin';
-  // Update pin indicators on menu items
-  document.querySelectorAll('.page-selector-item').forEach(a => {
-    const page = a.getAttribute('data-page');
-    const label = a.querySelector('[data-i18n]');
-    if (label) {
-      // Remove existing pin indicator
-      const existing = a.querySelector('.pin-indicator');
-      if (existing) existing.remove();
-      // Add pin indicator if this is the home page
-      if (page === homePage) {
-        const pin = document.createElement('span');
-        pin.className = 'pin-indicator';
-        pin.textContent = ' 📌';
-        label.after(pin);
-      }
-    }
-  });
-  // Update the pin button
-  const btn = document.getElementById('admin-pin-home-btn');
-  if (btn) {
-    const icon = btn.querySelector('.pin-icon');
-    const label = btn.querySelector('.pin-label');
-    if (icon) icon.textContent = isPinned ? '📌' : '📍';
-    if (label) {
-      label.textContent = isPinned ? t('txt_nav_unset_home') : t('txt_nav_set_home');
-      label.setAttribute('data-i18n', isPinned ? 'txt_nav_unset_home' : 'txt_nav_set_home');
-    }
-  }
-}
-
-function _toggleAdminHomePin() {
-  if (getHomePage() === 'admin') {
-    clearHomePage();
-  } else {
-    setHomePage('admin');
-  }
-  _refreshAdminPinState();
 }
 
 // ─── Schema preview ────────────────────────────────────────
@@ -1470,3 +1460,192 @@ function uiConfirm(message, opts = {}) {
     dialog.querySelector('[data-action="cancel"]').focus();
   });
 }
+
+
+// ─── Club admin Events card: pure row derivation ──────────
+// BEGIN deriveEventRows (kept dependency-free: scripts/verify_club_events_logic.mjs
+// extracts this block and runs it under node).
+
+/** Tabs of the club admin Events card, keyed by row state. */
+const CLUB_EVENT_TAB_OF_STATE = {
+  live: 'active',
+  ready_to_convert: 'active',
+  open_registration: 'active',
+  upcoming: 'active',
+  finished: 'finished',
+  closed: 'finished',
+  archived: 'archived',
+};
+
+/**
+ * Derive the rows of the club admin "Events" card from the browser-side data.
+ *
+ * Filters by `club_id === clubId` (never by community). One row per
+ * tournament; a closed lobby whose converted tournaments are all visible gets
+ * no row of its own (its tournaments carry `fromLobby`). A lobby still open
+ * after a partial conversion keeps its row. A closed lobby with no visible
+ * converted tournament (never converted, or the tournament was deleted) is
+ * `ready_to_convert` with 2+ registrants, else a plain `closed` row. Public
+ * items the user cannot edit (from the club's public list) are appended as
+ * read-only rows.
+ *
+ * @param {object[]} tournaments   /api/tournaments items
+ * @param {object[]} registrations /api/registrations?include_archived=1 items
+ * @param {{clubId: string, publicItems?: object[], authUser?: string|null, admin?: boolean}} opts
+ * @returns {object[]} rows: {key, kind, id, name, sport, type, alias, state, tab,
+ *   isPublic, canEdit, seasonId, communityId, fromLobby, registrantCount, createdAt}
+ */
+function deriveEventRows(tournaments, registrations, opts = {}) {
+  const clubId = opts.clubId;
+  const publicItems = Array.isArray(opts.publicItems) ? opts.publicItems : [];
+  const authUser = opts.authUser || null;
+  const admin = Boolean(opts.admin);
+  const T = (Array.isArray(tournaments) ? tournaments : []).filter(t => t && t.club_id === clubId);
+  const R = (Array.isArray(registrations) ? registrations : []).filter(r => r && r.club_id === clubId);
+  const tIds = new Set(T.map(t => t.id));
+  const lobbyByTid = new Map();
+  for (const r of R) {
+    for (const tid of (Array.isArray(r.converted_to_tids) ? r.converted_to_tids : [])) {
+      if (!lobbyByTid.has(tid)) lobbyByTid.set(tid, r);
+    }
+  }
+  const rows = [];
+  for (const t of T) {
+    const phase = String(t.phase || '');
+    let state = 'live';
+    if (phase === 'finished') state = 'finished';
+    else if (phase === 'setup' && t.type === 'group_playoff') state = 'upcoming';
+    const lobby = lobbyByTid.get(t.id) || null;
+    rows.push({
+      key: 'tn:' + t.id,
+      kind: 'tournament',
+      id: t.id,
+      name: t.name || '',
+      sport: t.sport || 'padel',
+      type: t.type || 'group_playoff',
+      alias: t.alias || null,
+      state,
+      tab: CLUB_EVENT_TAB_OF_STATE[state],
+      isPublic: t.public !== false,
+      canEdit: admin || (authUser !== null && t.owner === authUser) || t.shared === true,
+      seasonId: t.season_id || null,
+      communityId: t.community_id || 'open',
+      fromLobby: lobby ? { id: lobby.id, name: lobby.name || '' } : null,
+      registrantCount: null,
+      createdAt: t.created_at || '',
+    });
+  }
+  for (const r of R) {
+    const tids = Array.isArray(r.converted_to_tids) ? r.converted_to_tids : [];
+    const visibleConverted = tids.filter(tid => tIds.has(tid));
+    const count = Number(r.registrant_count) || 0;
+    let state;
+    if (r.archived) state = 'archived';
+    else if (r.open) state = 'open_registration';
+    else if (visibleConverted.length) continue; // represented by its tournament rows
+    else state = count >= 2 ? 'ready_to_convert' : 'closed';
+    rows.push({
+      key: 'reg:' + r.id,
+      kind: 'lobby',
+      id: r.id,
+      name: r.name || '',
+      sport: r.sport || 'padel',
+      type: 'registration',
+      alias: r.alias || null,
+      state,
+      tab: CLUB_EVENT_TAB_OF_STATE[state],
+      // A lobby is "public" on the club page only while it is open and listed.
+      isPublic: Boolean(r.open) && r.listed !== false && r.listed !== 0 && !r.archived,
+      canEdit: true, // /api/registrations only returns own + shared lobbies
+      seasonId: r.season_id || null,
+      communityId: r.community_id || 'open',
+      fromLobby: null,
+      registrantCount: count,
+      createdAt: r.created_at || '',
+    });
+  }
+  const seen = new Set(rows.map(r => r.key));
+  const publicState = { in_progress: 'live', upcoming: 'upcoming', finished: 'finished', open_registration: 'open_registration' };
+  for (const it of publicItems) {
+    if (!it || !it.id) continue;
+    const isLobby = it.kind === 'registration';
+    const key = it.pin_key || ((isLobby ? 'reg:' : 'tn:') + it.id);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const state = publicState[it.status] || 'live';
+    rows.push({
+      key,
+      kind: isLobby ? 'lobby' : 'tournament',
+      id: it.id,
+      name: it.name || '',
+      sport: it.sport || 'padel',
+      type: it.type || (isLobby ? 'registration' : 'group_playoff'),
+      alias: it.alias || null,
+      state,
+      tab: CLUB_EVENT_TAB_OF_STATE[state],
+      isPublic: true,
+      canEdit: false,
+      seasonId: null,
+      communityId: null,
+      fromLobby: null,
+      registrantCount: isLobby ? (Number(it.registrant_count) || 0) : null,
+      createdAt: '',
+    });
+  }
+  return rows;
+}
+// END deriveEventRows
+
+// BEGIN deriveAttachCandidates (dependency-free, exercised by scripts/verify_club_events_logic.mjs)
+/**
+ * Suggestions for the club admin "Attach existing" panel.
+ *
+ * Only events the user can edit that belong to NO club yet are suggested —
+ * an event in another club has to be removed there first ("Remove from
+ * club"), so clubs never silently steal each other's events. Dismissed keys
+ * are split out so the UI can offer "Show dismissed" + Restore.
+ *
+ * @param {object[]} tournaments   /api/tournaments items
+ * @param {object[]} registrations /api/registrations?include_archived=1 items
+ * @param {{clubId: string, clubCommunityId?: string, authUser?: string|null, admin?: boolean,
+ *          dismissed?: string[], query?: string, communityName?: (id: string) => string}} opts
+ * @returns {{candidates: object[], dismissed: object[]}} both sorted newest first; items are
+ *   {key, kind, id, name, communityId, communityName, createdAt, movesCommunity, dismissed}
+ */
+function deriveAttachCandidates(tournaments, registrations, opts = {}) {
+  const clubId = opts.clubId;
+  const clubCommunityId = opts.clubCommunityId || 'open';
+  const authUser = opts.authUser || null;
+  const admin = Boolean(opts.admin);
+  const dismissedKeys = new Set(Array.isArray(opts.dismissed) ? opts.dismissed : []);
+  const q = (opts.query || '').trim().toLowerCase();
+  const commName = typeof opts.communityName === 'function' ? opts.communityName : () => '';
+  const canEdit = (t) => admin || (authUser !== null && t.owner === authUser) || t.shared === true;
+  const item = (key, kind, src) => {
+    const communityId = src.community_id || 'open';
+    return {
+      key, kind, id: src.id, name: src.name || '', communityId,
+      communityName: commName(communityId) || '',
+      createdAt: src.created_at || '',
+      movesCommunity: communityId !== clubCommunityId,
+      dismissed: dismissedKeys.has(key),
+    };
+  };
+  const all = [];
+  for (const t of (Array.isArray(tournaments) ? tournaments : [])) {
+    if (!t || t.club_id || t.club_id === clubId) continue; // already in a club (this or another)
+    if (!canEdit(t)) continue;
+    all.push(item('tn:' + t.id, 'tournament', t));
+  }
+  for (const r of (Array.isArray(registrations) ? registrations : [])) {
+    if (!r || r.club_id || r.archived) continue;
+    all.push(item('reg:' + r.id, 'lobby', r));
+  }
+  const matches = (it) => !q || `${it.name} ${it.communityName}`.toLowerCase().includes(q);
+  all.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || (a.name || '').localeCompare(b.name || ''));
+  return {
+    candidates: all.filter(it => !it.dismissed && matches(it)),
+    dismissed: all.filter(it => it.dismissed && matches(it)),
+  };
+}
+// END deriveAttachCandidates

@@ -1,57 +1,24 @@
 /* ── Registration page ─────────────────────────────────── */
 'use strict';
 
-// ── Remember this page for the page selector ──────────────
+// ── Remember this page for the root redirect ──────────────
 try { localStorage.setItem('amistoso-last-page', 'register'); } catch (_) {}
 
 // ── Theme & language (early, before render) ───────────────
-let _theme = _loadSavedTheme();
-_applyTheme(_theme);
-let _lang = _loadSavedLanguage();
-setAppLanguage(_lang);
+// The shared public header (shared.js) owns the language/theme controls; the
+// page re-renders on `app-language-changed`.
+_applyTheme(_loadSavedTheme());
+setAppLanguage(_loadSavedLanguage());
 
 // ── Build header into #reg-root ───────────────────────────
 function _buildHeader() {
-  const langMeta = _languageToggleMeta();
-  const themeIcon = _theme === 'dark' ? '🌙' : '☀️';
-
-  let html = `<div class="tv-header"><div class="tv-header-title-row">`;
-  html += `<div class="tv-lang-cell"><button type="button" class="theme-btn" onclick="_regToggleLanguage()" title="${esc(langMeta.label)}" aria-label="${esc(langMeta.label)}">${langMeta.icon}</button></div>`;
-  html += buildPageSelectorHtml('register');
-  html += `<div class="tv-toggle-btns">`;
-  html += `<button type="button" class="theme-btn" onclick="_regToggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}" data-theme-toggle-icon>${themeIcon}</button>`;
-  html += `</div></div>`;
-  html += `</div>`;
-  return html;
+  return buildPublicHeaderHtml('register');
 }
 
-function _languageToggleMeta() {
-  const current = getAppLanguage();
-  const currentLabel = current === 'es' ? t('txt_txt_spanish') : t('txt_txt_english');
-  return {
-    icon: current === 'es' ? '🇪🇸' : '🇬🇧',
-    label: `${t('txt_txt_language')}: ${currentLabel}`,
-  };
-}
-
-function _regToggleTheme() {
-  _theme = _theme === 'dark' ? 'light' : 'dark';
-  _applyTheme(_theme);
-  _saveTheme(_theme);
-  // Patch only the theme icon buttons — CSS handles the rest via data-theme
-  const themeIcon = _theme === 'dark' ? '🌙' : '☀️';
-  document.querySelectorAll('[data-theme-toggle-icon]').forEach(btn => { btn.textContent = themeIcon; });
-}
-
-function _regToggleLanguage() {
-  _lang = _lang === 'es' ? 'en' : 'es';
-  setAppLanguage(_lang);
-  _fullRender();
-}
+document.addEventListener('app-language-changed', () => _fullRender());
 
 // ── Registration page logic ──────────────────────────────
 const API = '/api/registrations';
-let _subdomainClub = null; // {club_id, name, ...} when on a club subdomain
 let _regData = null;
 let _lastResult = null;
 let _pollTimer = null;
@@ -72,7 +39,7 @@ function _registrationIdentityLabel(data) {
   return data.club_name || data.community_name || '';
 }
 
-function _redirectToNotFoundPage(message, redirectTo = '/register') {
+function _redirectToNotFoundPage(message, redirectTo = '/events') {
   const params = new URLSearchParams();
   if (message) params.set('m', message);
   if (redirectTo) params.set('to', redirectTo);
@@ -211,10 +178,14 @@ function _setRegToken(token) {
 
 function _fullRender() {
   const root = document.getElementById('reg-root');
-  const isDirectory = !_lastResult && !_regData && !_rid;
-  let html = isDirectory ? '' : _buildHeader();
+  if (!_lastResult && !_regData && !_rid) {
+    // No lobby in the URL: the sign-up directory now lives on /events (the
+    // server redirects bare /register there too; this covers ?id= misses).
+    location.replace('/events');
+    return;
+  }
+  let html = _buildHeader();
   html += `<div id="state-loading" class="loading">${t('txt_txt_loading')}</div>`;
-  html += `<div id="state-directory" class="reg-hidden"></div>`;
   html += `<div id="state-closed" class="card state-msg reg-hidden"></div>`;
   html += `<div id="state-form" class="card reg-hidden"></div>`;
   html += `<div id="state-success" class="card success-card reg-hidden" v-scope></div>`;
@@ -223,8 +194,7 @@ function _fullRender() {
 
   if (_lastResult) { _showSuccess(); }
   else if (_regData) { _render(); }
-  else if (_rid) { _fetchRegistration(_rid); }
-  else { _showDirectory(); }
+  else { _fetchRegistration(_rid); }
 }
 
 // ── Initialisation ───────────────────────────────────────
@@ -298,7 +268,7 @@ async function _fetchRegistration(rid) {
     const res = await fetch(`${API}/${encodeURIComponent(rid)}/public`);
     if (!res.ok) {
       if (res.status === 404) {
-        _redirectToNotFoundPage(t('txt_reg_not_found_deleted_hint'), '/register');
+        _redirectToNotFoundPage(t('txt_reg_not_found_deleted_hint'), '/events');
       } else {
         _showError(t('txt_reg_error'));
       }
@@ -313,119 +283,6 @@ async function _fetchRegistration(rid) {
   } catch (e) {
     _showError(t('txt_reg_error'));
   }
-}
-
-// ── Directory view (no ID provided) ──────────────────────
-
-async function _showDirectory() {
-  _hideAll();
-  const el = document.getElementById('state-directory');
-  el.innerHTML = `<div class="loading">${t('txt_txt_loading')}</div>`;
-  el.style.display = 'block';
-
-  try {
-    // Resolve subdomain context and fetch lobby list in parallel.
-    const [subdomainCtx, res] = await Promise.all([
-      resolveClubSubdomainContext().catch(() => null),
-      fetch(`${API}/public`),
-    ]);
-    _subdomainClub = subdomainCtx;
-    if (!res.ok) throw new Error();
-    const lobbies = await res.json();
-    _renderDirectory(lobbies);
-  } catch (e) {
-    el.innerHTML = `<div class="card state-msg"><div class="reg-error-icon">${_svgIcon(_IC_WARN)}</div><p>${t('txt_reg_error')}</p></div>`;
-  }
-}
-
-function _renderDirectory(lobbies) {
-  const visibleLobbies = _subdomainClub
-    ? lobbies.filter(item => item && item.club_id === _subdomainClub.club_id && item.community_id === _subdomainClub.community_id)
-    : lobbies;
-  const el = document.getElementById('state-directory');
-  const langMeta = _languageToggleMeta();
-  const themeIcon = _theme === 'dark' ? '🌙' : '☀️';
-
-  let html = `<div class="tv-picker">`;
-  html += `<div class="tv-header-title-row reg-directory-header-row">`;
-  html += `<div class="tv-lang-cell"><button type="button" class="theme-btn" onclick="_regToggleLanguage()" title="${esc(langMeta.label)}" aria-label="${esc(langMeta.label)}">${langMeta.icon}</button></div>`;
-  html += buildPageSelectorHtml('register');
-  html += `<div class="tv-toggle-btns">`;
-  html += buildCompactRefreshButtonHtml('_showDirectory()', t('txt_txt_refresh_now'));
-  html += `<button type="button" data-theme-toggle-icon="1" class="theme-btn" onclick="_regToggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${themeIcon}</button>`;
-  html += `</div>`;
-  html += `</div>`;
-  if (_subdomainClub) {
-    const label = (t('txt_picker_subdomain_banner') || '{club}').replace('{club}', _subdomainClub.name || _subdomainClub.slug || '');
-    html += `<div class="player-subdomain-banner" role="status">`;
-    if (_subdomainClub.logo_url) {
-      html += `<img class="player-subdomain-logo" src="${escAttr(_subdomainClub.logo_url)}" alt="">`;
-    }
-    html += `<span class="player-subdomain-text">${esc(label)}</span>`;
-    html += `</div>`;
-  }
-  if (visibleLobbies.length > 0) {
-    html += `<div class="subtitle">${t('txt_reg_directory_subtitle')}</div>`;
-    html += `<ul class="tv-picker-list">`;
-    for (const lobby of visibleLobbies) {
-      const url = lobby.alias
-        ? `/register/${encodeURIComponent(lobby.alias)}`
-        : `/register/${encodeURIComponent(lobby.id)}`;
-      const count = lobby.registrant_count || 0;
-      const countText = `${count} ${t(count === 1 ? 'txt_reg_player_singular' : 'txt_reg_players_plural')}`;
-      const isTennis = lobby.sport === 'tennis';
-      const sportLabel = isTennis ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
-      const identityLabel = _registrationIdentityLabel(lobby);
-
-      html += `<a class="tv-picker-item" href="${esc(url)}">`;
-      if (lobby.club_logo_url) {
-        html += `<img src="${lobby.club_logo_url}" alt="" class="club-logo-inline">`;
-      }
-      html += esc(lobby.name);
-      html += `<span class="picker-badge picker-badge-sport">${esc(sportLabel)}</span>`;
-      html += `<span class="picker-badge picker-badge-phase">${countText}</span>`;
-      if (lobby.join_code_required) {
-        html += `<span class="picker-badge picker-badge-type">${t('txt_reg_join_code_badge')}</span>`;
-      }
-      if (identityLabel) {
-        html += `<span class="branding-label">${esc(identityLabel)}</span>`;
-      }
-      html += `</a>`;
-    }
-    html += `</ul>`;
-    html += `<div class="reg-directory-enter-id-hint">${t('txt_reg_or_enter_id')}</div>`;
-  }
-  html += `<form class="tv-picker-form" onsubmit="return _goToLobby(event)">`;
-  html += `<input type="text" id="reg-picker-input" placeholder="${t('txt_reg_id_or_alias')}">`;
-  html += `<button type="submit">${t('txt_txt_go')}</button>`;
-  html += `</form>`;
-  html += `</div>`;
-
-  el.innerHTML = html;
-}
-
-async function _goToLobby(e) {
-  e.preventDefault();
-  const val = document.getElementById('reg-picker-input').value.trim();
-  if (!val) return false;
-
-  document.querySelector('.picker-inline-error')?.remove();
-
-  try {
-    const res = await fetch(`${API}/${encodeURIComponent(val)}/public`);
-    if (!res.ok) throw new Error(res.status === 404 ? 'not_found' : 'error');
-    location.href = `/register/${encodeURIComponent(val)}`;
-  } catch (err) {
-    const form = document.querySelector('.tv-picker-form');
-    if (form) {
-      const errDiv = document.createElement('div');
-      errDiv.className = 'tv-error picker-inline-error';
-      errDiv.classList.add('picker-inline-error-spaced');
-      errDiv.textContent = err.message === 'not_found' ? t('txt_reg_not_found') : t('txt_reg_error');
-      form.after(errDiv);
-    }
-  }
-  return false;
 }
 
 // ── Rendering ────────────────────────────────────────────
@@ -498,7 +355,7 @@ async function _tryProfileAutoLogin() {
 }
 
 function _hideAll() {
-  for (const id of ['state-loading', 'state-directory', 'state-closed', 'state-form', 'state-success', 'state-error']) {
+  for (const id of ['state-loading', 'state-closed', 'state-form', 'state-success', 'state-error']) {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   }

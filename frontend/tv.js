@@ -1,7 +1,7 @@
 const API = '';
 
-// ── Remember this page for the page selector ──────────────
-try { localStorage.setItem('amistoso-last-page', 'tv'); } catch (_) {}
+// ── Remember this page for the root redirect ──────────────
+try { localStorage.setItem('amistoso-last-page', 'events'); } catch (_) {}
 
 // ── Theme ─────────────────────────────────────────────────
 let _theme = _loadSavedTheme();
@@ -10,32 +10,40 @@ let _lang = _loadSavedLanguage();
 setAppLanguage(_lang);
 
 function _refreshThemeToggleButtons() {
-  const icon = _theme === 'dark' ? '🌙' : '☀️';
+  const icon = _ic(_theme === 'dark' ? 'moon' : 'sun');
   document.querySelectorAll('[data-theme-toggle-icon]').forEach((btn) => {
-    btn.textContent = icon;
+    btn.innerHTML = icon;
   });
 }
 
+// The live board (venue screens) keeps its own compact theme/language
+// buttons; the Events page uses the shared public header. Both funnel through
+// shared.js so the `app-theme-changed` / `app-language-changed` listeners
+// below keep this module's state in sync whichever control was used.
 function _toggleTheme() {
-  _theme = _theme === 'dark' ? 'light' : 'dark';
-  _applyTheme(_theme);
-  _saveTheme(_theme);
-  _refreshThemeToggleButtons();
-  if (typeof _pickerStore !== 'undefined') _pickerStore.theme = _theme;
+  setDisplayTheme(_theme === 'dark' ? 'light' : 'dark');
 }
 
 function _toggleLanguage() {
-  _lang = _lang === 'es' ? 'en' : 'es';
-  setAppLanguage(_lang);
+  setDisplayLanguage(_lang === 'es' ? 'en' : 'es');
+}
+
+document.addEventListener('app-theme-changed', (ev) => {
+  _theme = (ev.detail && ev.detail.theme) || _loadSavedTheme();
+  _refreshThemeToggleButtons();
+});
+
+document.addEventListener('app-language-changed', () => {
+  _lang = getAppLanguage();
   if (TID) loadTV();
   else if (typeof _pickerStore !== 'undefined') _pickerStore.lang = _lang;
-}
+});
 
 function _languageToggleMeta() {
   const current = getAppLanguage();
   const currentLabel = current === 'es' ? t('txt_txt_spanish') : t('txt_txt_english');
   return {
-    icon: current === 'es' ? '🇪🇸' : '🇬🇧',
+    icon: `<span class="lang-code" aria-hidden="true">${current === 'es' ? 'ES' : 'EN'}</span>`,
     label: `${t('txt_txt_language')}: ${currentLabel}`,
   };
 }
@@ -108,73 +116,101 @@ const _TV_PICKER_POLL_INTERVAL_MS = 3000;
 // SSE stream controllers — closed on teardown / navigation.
 let _tvVersionStream = null;
 let _pickerVersionStream = null;
-let _subdomainClub = null; // {club_id, name, ...} when on a club subdomain
-// ── Picker reactive island (Phase 2b, slice 1) ────────────
-// The tournament picker (shown when no tournament is selected) is a Petite-Vue
-// island: `_pickerStore` holds the raw list + UI state, the header/list markup
-// is bound in `#tv-picker-island` (injected into #tv-root by _renderPickerHtml,
-// template in public.html). SSE (_showPicker's onVersion) and the archive toggle
-// mutate the store instead of rebuilding an HTML string. The live panel still
-// owns #tv-root via innerHTML when a tournament is selected — the two views are
-// mutually exclusive, so the island shell is re-injected+re-mounted each time
-// the picker is shown (a fresh element, so mountIsland's double-mount guard is a
-// no-op) while the store itself persists across mounts.
+// ── Events directory island (public /events page) ─────────
+// Shown when no tournament is selected. `_pickerStore` holds the raw list from
+// /api/public-events + UI state (tab, sport); the markup is bound in
+// `#tv-picker-island` (injected into #tv-root by _renderPickerHtml, card
+// template #tpl-tv-picker-item in public.html). SSE/polling (_showPicker's
+// onVersion) and the tab/sport controls mutate the store instead of
+// rebuilding HTML. The live panel still owns #tv-root via innerHTML when a
+// tournament is selected — the two views are mutually exclusive, so the island
+// shell is re-injected + re-mounted each time the directory is shown (a fresh
+// element, so mountIsland's double-mount guard is a no-op) while the store
+// itself persists across mounts.
+const _EVENTS_TAB_KEY = 'amistoso-events-tab';
+const _EVENTS_SPORT_KEY = 'amistoso-events-sport';
+const _EVENTS_LIVE_STATUSES = new Set(['in_progress', 'open_registration', 'upcoming']);
+
+function _savedEventsTab() {
+  try {
+    const v = localStorage.getItem(_EVENTS_TAB_KEY);
+    if (v === 'live' || v === 'finished') return v;
+  } catch (_) {}
+  return 'live';
+}
+
+function _savedEventsSport() {
+  try {
+    const v = localStorage.getItem(_EVENTS_SPORT_KEY);
+    if (v === 'padel' || v === 'tennis') return v;
+  } catch (_) {}
+  return null;
+}
+
 const _pickerStore = reactiveStore({
-  tournaments: [],       // raw list from /api/tournaments
-  subdomainClub: null,   // {club_id, community_id, name, slug, logo_url} or null
-  showArchive: false,    // false = hide finished tournaments
-  theme: 'light',        // mirrors _theme so the toggle icon is reactive
+  events: [],            // raw list from /api/public-events
+  tab: _savedEventsTab(),      // 'live' | 'finished'
+  sport: _savedEventsSport(),  // null = both, 'padel' | 'tennis'
+  findValue: '',
+  findError: '',         // inline not-found / error message under the find box
+  finding: false,
   lang: 'en',            // tracked so t() bindings re-render on language switch
 
   // Lang-tracking t() wrapper (petite-vue only re-renders on reactive reads).
-  t(key) { void this.lang; return window.t(key); },
+  t(key, params) { void this.lang; return window.t(key, params); },
 
-  get _visible() {
-    const sub = this.subdomainClub;
-    if (!sub) return this.tournaments;
-    return this.tournaments.filter(item =>
-      item && item.club_id === sub.club_id && item.community_id === sub.community_id);
+  get headerHtml() { void this.lang; return buildPublicHeaderHtml('events'); },
+
+  _forTab(tab) {
+    return this.events.filter(it => {
+      const isLive = _EVENTS_LIVE_STATUSES.has(it.status);
+      const tabMatch = tab === 'live' ? isLive : !isLive;
+      const sportMatch = !this.sport || !it.sport || it.sport === this.sport;
+      return tabMatch && sportMatch;
+    });
   },
-  get activeTournaments() { return this._visible.filter(x => x.phase !== 'finished'); },
-  get finishedTournaments() { return this._visible.filter(x => x.phase === 'finished'); },
-  get hasAny() { return this.activeTournaments.length > 0 || this.finishedTournaments.length > 0; },
-
-  get langToggle() { void this.lang; return _languageToggleMeta(); },
-  get themeIcon() { return this.theme === 'dark' ? '🌙' : '☀️'; },
-  get toggleThemeTitle() { return this.t('txt_txt_toggle_light_dark_mode'); },
-  get pageSelectorHtml() { void this.lang; return buildPageSelectorHtml('tv'); },
-
-  get subdomainBannerLabel() {
-    const sub = this.subdomainClub;
-    if (!sub) return '';
-    return (this.t('txt_picker_subdomain_banner') || '{club}')
-      .replace('{club}', sub.name || sub.slug || '');
-  },
-  get archiveBtnLabel() {
-    return this.showArchive ? this.t('txt_tv_hide_archive') : this.t('txt_tv_show_archive');
+  get liveCount() { return this._forTab('live').length; },
+  get finishedCount() { return this._forTab('finished').length; },
+  get visible() { return this._forTab(this.tab); },
+  // Live tab: "Tournaments" + "Sign-ups open" groups (shared rule with the club page).
+  get groups() { void this.lang; return publicEventGroups(this.visible); },
+  get emptyLabel() {
+    return this.t(this.tab === 'live' ? 'txt_events_empty_live' : 'txt_events_empty_finished');
   },
 
-  // Per-item view-model for the picker template.
-  item(tournament) {
+  setTab(tab) {
+    if (tab !== 'live' && tab !== 'finished') return;
+    this.tab = tab;
+    try { localStorage.setItem(_EVENTS_TAB_KEY, tab); } catch (_) {}
+  },
+  toggleSport(sport) {
+    this.sport = this.sport === sport ? null : sport;
+    try {
+      if (this.sport) localStorage.setItem(_EVENTS_SPORT_KEY, this.sport);
+      else localStorage.removeItem(_EVENTS_SPORT_KEY);
+    } catch (_) {}
+  },
+  // Never land on an empty tab when the other one has items.
+  _settleTab() {
+    if (this.tab === 'live' && this.liveCount === 0 && this.finishedCount > 0) this.tab = 'finished';
+    else if (this.tab === 'finished' && this.finishedCount === 0 && this.liveCount > 0) this.tab = 'live';
+  },
+
+  // Per-item view-model for the card template.
+  item(it) {
+    void this.lang;
     return {
-      name: tournament.name,
-      slug: tournament.alias || tournament.id,
-      alias: tournament.alias || '',
-      modeLabel: tournament.has_team_roster
-        ? this.t('txt_txt_team_mode_short') : this.t('txt_txt_individual_mode'),
-      sportLabel: tournament.sport === 'tennis'
-        ? this.t('txt_txt_sport_tennis') : this.t('txt_txt_sport_padel'),
-      phaseLabel: _phaseLabel(tournament.phase),
-      brandingLabel: tournament.club_name || tournament.community_name || '',
-      logoUrl: tournament.club_logo_url || '',
+      name: it.name,
+      status: it.status,
+      pinned: false, // pins are a per-club concept; the directory lists every club
+      href: publicEventHref(it),
+      badges: publicEventBadges(it, { hideSport: Boolean(this.sport) }),
+      origin: it.club_name || ((it.community_id && it.community_id !== 'open') ? (it.community_name || '') : ''),
     };
   },
 
-  toggleArchive() { this.showArchive = !this.showArchive; },
-  toggleTheme() { _toggleTheme(); this.theme = _theme; },
-  toggleLanguage() { _toggleLanguage(); },
   refresh() { _showPicker(); },
-  submitGoTo(e) { return _goToTournament(e); },
+  submitFind(e) { return _findEventById(e); },
 });
 
 function _tvLabel() {
@@ -366,6 +402,42 @@ function _setNoProfileAutoLogin(on) {
   } catch (_) {}
 }
 
+/** True when a JWT's `exp` claim is still in the future (unverified client-side read). */
+function _jwtStillValid(token) {
+  try {
+    const part = String(token).split('.')[1] || '';
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (part.length % 4)) % 4);
+    const payload = JSON.parse(atob(b64));
+    return typeof payload.exp !== 'number' || payload.exp * 1000 > Date.now();
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Does the stored Player Hub session take part in this tournament? Asks the
+ * Hub dashboard (`/api/player-profile/space`, the profile's own data) so the
+ * common "hub player opens someone else's TV page" case never sends a
+ * player-auth request that is bound to fail — a failed fetch is logged to the
+ * console by the browser and counts against the player-auth rate limit.
+ * Any doubt (no / expired Hub token, network error) answers false.
+ */
+async function _hubSessionInTournament() {
+  let jwt = null;
+  try { jwt = localStorage.getItem('padel-player-profile'); } catch (_) { return false; }
+  if (!jwt || !_jwtStillValid(jwt)) return false;
+  try {
+    const res = await fetch(`${API}/api/player-profile/space`, {
+      headers: { Authorization: `Bearer ${jwt}` },
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return (data.entries || []).some(e => e.entity_type === 'tournament' && e.entity_id === TID);
+  } catch (_) {
+    return false;
+  }
+}
+
 /** Try auto-login via Player Hub profile passphrase stored in localStorage */
 async function _tryProfileAutoLogin() {
   if (!TID || _isPlayerLoggedIn() || _noProfileAutoLogin()) return;
@@ -374,6 +446,8 @@ async function _tryProfileAutoLogin() {
     if (!raw) return;
     const profile = JSON.parse(raw);
     if (!profile.passphrase) return;
+    // Not a participant: stay silent instead of a 401 from player-auth.
+    if (!(await _hubSessionInTournament())) return;
     await _playerAuth(profile.passphrase, null);
   } catch {
     // Profile passphrase doesn't match this tournament — ignore silently
@@ -392,7 +466,7 @@ function _showPlayerLoginModal() {
   overlay.innerHTML = `
     <div class="player-login-modal">
       <button class="player-login-modal-close" onclick="document.getElementById('player-login-overlay').remove()" title="${t('txt_txt_close')}">✕</button>
-      <h3>🔑 ${t('txt_txt_player_login')}</h3>
+      <h3>${_ic('key')} ${t('txt_txt_player_login')}</h3>
       <div class="login-error" id="player-login-error"></div>
       <input type="text" id="player-passphrase-input" placeholder="${t('txt_txt_enter_passphrase')}" autocomplete="off" spellcheck="false">
       <p class="login-passphrase-hint">${t('txt_txt_passphrase_hint')}</p>
@@ -401,7 +475,7 @@ function _showPlayerLoginModal() {
       </div>
       <div class="player-login-separator"><span>${t('txt_txt_or_separator')}</span></div>
       <button class="btn btn-player-hub" onclick="_doPlayerHubLogin()">
-        <span class="player-hub-icon">👤</span> ${t('txt_txt_login_player_hub')}
+        <span class="player-hub-icon">${_ic('user')}</span> ${t('txt_txt_login_player_hub')}
       </button>
     </div>`;
   document.body.appendChild(overlay);
@@ -558,8 +632,8 @@ function _updatePushToggleUI() {
   if (!btn) return;
   const subscribed = _isPushSubscribed();
   btn.innerHTML = subscribed
-    ? `<span class="push-toggle-icon">🔔</span> ${t('txt_txt_notifications_on')}`
-    : `<span class="push-toggle-icon">🔕</span> ${t('txt_txt_notifications_off')}`;
+    ? `<span class="push-toggle-icon">${_ic('bell')}</span> ${t('txt_txt_notifications_on')}`
+    : `<span class="push-toggle-icon">${_ic('belloff')}</span> ${t('txt_txt_notifications_off')}`;
   btn.classList.toggle('push-toggle-btn--active', subscribed);
 }
 
@@ -770,7 +844,7 @@ function _renderPlayerBar() {
     triggerBtn.id = 'player-session-trigger';
     triggerBtn.className = 'player-session-trigger';
     triggerBtn.setAttribute('onclick', '_togglePlayerPanel()');
-    triggerBtn.innerHTML = `🔑 <span class="player-name">${esc(tvState.playerName || tvState.playerId)}</span> <span class="player-session-chevron">▾</span>`;
+    triggerBtn.innerHTML = `${_ic('key')} <span class="player-name">${esc(tvState.playerName || tvState.playerId)}</span> <span class="player-session-chevron">▾</span>`;
 
     widget.appendChild(triggerBtn);
     slot.appendChild(widget);
@@ -794,7 +868,7 @@ function _renderPlayerBar() {
       btn.id = 'player-login-fab';
       btn.className = 'player-login-btn';
       btn.title = t('txt_txt_player_login');
-      btn.innerHTML = '🔑 ' + t('txt_txt_player_login');
+      btn.innerHTML = `${_ic('key')} ${t('txt_txt_player_login')}`;
       btn.onclick = _showPlayerLoginModal;
       slot.appendChild(btn);
       if (_tokenLoginFailed) {
@@ -1113,13 +1187,13 @@ function _buildScoreLifecyclePanel(m, scoreCtx) {
 
     if (m.dispute_escalated) {
       // Both teams have seen it — awaiting admin
-      html += `<div class="dispute-header">⚠️ ${t('txt_txt_dispute_escalated')}</div>`;
+      html += `<div class="dispute-header">${_ic('alert')} ${t('txt_txt_dispute_escalated')}</div>`;
       html += `<p class="dispute-admin-help">${t('txt_tv_dispute_admin_help')}</p>`;
       html += `<div class="dispute-row"><span>${t('txt_txt_submitted')}:</span> <strong>${scoreDisplay}</strong></div>`;
       html += `<div class="dispute-row"><span>${t('txt_txt_correction')}:</span> <strong>${corrDisplay}</strong></div>`;
     } else if (isSubmitter) {
       // Submitter can accept correction or escalate
-      html += `<div class="dispute-header">✏️ ${t('txt_txt_opponent_proposes_correction')}</div>`;
+      html += `<div class="dispute-header">${_ic('edit')} ${t('txt_txt_opponent_proposes_correction')}</div>`;
       html += `<div class="dispute-row"><span>${t('txt_txt_your_score')}:</span> <strong>${scoreDisplay}</strong></div>`;
       html += `<div class="dispute-row"><span>${t('txt_txt_proposed')}:</span> <strong>${corrDisplay}</strong></div>`;
       html += `<div class="pending-score-actions">`;
@@ -1129,7 +1203,7 @@ function _buildScoreLifecyclePanel(m, scoreCtx) {
       html += `<div id="ps-err-${m.id}" class="score-error-msg"></div>`;
     } else {
       // Opponent sees waiting for submitter response
-      html += `<div class="dispute-header">✏️ ${t('txt_txt_correction_sent')}</div>`;
+      html += `<div class="dispute-header">${_ic('edit')} ${t('txt_txt_correction_sent')}</div>`;
       html += `<div class="dispute-row"><span>${t('txt_txt_original')}:</span> <strong>${scoreDisplay}</strong></div>`;
       html += `<div class="dispute-row"><span>${t('txt_txt_your_correction')}:</span> <strong>${corrDisplay}</strong></div>`;
       html += `<div class="submitted-waiting">${t('txt_txt_waiting_for_response')}</div>`;
@@ -1846,7 +1920,7 @@ function _renderMex(tvSettings, status, matches, playoffs) {
   html += _buildBanner(tvSettings);
 
   if (champion) {
-    html += `<div class="champion-banner">🏆 ${t('txt_txt_champion')}: ${esc(champion.join(' & '))}</div>`;
+    html += `<div class="champion-banner">${_ic('trophy')} ${t('txt_txt_champion')}: ${esc(champion.join(' & '))}</div>`;
   }
 
   const hasCourts = status.assign_courts !== false;
@@ -2071,9 +2145,9 @@ function _buildHeader(name, phase, champion) {
     <div class="tv-header" id="tv-header-main">
       <div class="tv-header-title-row">
         <div class="tv-lang-cell"><button type="button" id="lang-toggle-btn" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button></div>
-        ${buildPageSelectorHtml('tv')}
+        <div></div>
         <div class="tv-toggle-btns">
-          <button type="button" id="theme-toggle-btn" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}">${_theme === 'dark' ? '🌙' : '☀️'}</button>
+          <button type="button" id="theme-toggle-btn" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}" aria-label="${t('txt_txt_toggle_light_dark_mode')}">${_ic(_theme === 'dark' ? 'moon' : 'sun')}</button>
         </div>
       </div>
       <div class="tv-title-center">
@@ -2082,12 +2156,12 @@ function _buildHeader(name, phase, champion) {
       ${brandingHtml}
       <div class="tv-header-badges">
         ${phaseLabel && phase !== 'finished' ? `<span class="tv-badge tv-badge-phase">${esc(phaseLabel)}</span>` : ''}
-        ${champion || phase === 'finished' ? `<span class="tv-badge tv-badge-champion">🏆 ${t('txt_txt_finished')}</span>` : ''}
+        ${champion || phase === 'finished' ? `<span class="tv-badge tv-badge-champion">${_ic('trophy')} ${t('txt_txt_finished')}</span>` : ''}
       </div>
       ${_slug ? `<div class="d-flex justify-center mt-1"><span id="tv-slug-chip" onclick="_copyTournamentSlug()" title="${escAttr(t('txt_tv_slug_copy_hint'))}" class="tv-slug-chip">${esc(_slug)}</span></div>` : ''}
       <div class="tv-header-row">
         <div class="tv-title">
-          <button type="button" onclick="_backToTournaments()" class="tv-back-btn" title="${t('txt_txt_back_to_tournaments')}">← ${t('txt_txt_tournaments')}</button>
+          <button type="button" onclick="_backToTournaments()" class="tv-back-btn" title="${t('txt_txt_back_to_tournaments')}">← ${t('txt_nav_events')}</button>
         </div>
         <div class="tv-meta">
           <div id="player-login-slot"></div>
@@ -2175,7 +2249,7 @@ function _buildChampionBanners(status) {
   const half = champion && consolation ? ' champion-banner--half' : '';
   let html = '';
   if (champion) {
-    html += `<div class="champion-banner${half}">🏆 ${t('txt_txt_champion')}: ${esc(champion.join(' & '))}</div>`;
+    html += `<div class="champion-banner${half}">${_ic('trophy')} ${t('txt_txt_champion')}: ${esc(champion.join(' & '))}</div>`;
   }
   if (consolation) {
     html += `<div class="champion-banner champion-banner--consolation${half}">${t('txt_txt_consolation_winner')}: ${esc(consolation.join(' & '))}</div>`;
@@ -2222,7 +2296,7 @@ function _buildBracketSection(imgUrl, isDouble = false, isEspejo = false) {
 function _buildBanner(tvSettings) {
   const text = (tvSettings && tvSettings.banner_text) ? tvSettings.banner_text.trim() : '';
   if (!text) return '';
-  return `<div class="admin-banner">📢 ${esc(text)}</div>`;
+  return `<div class="admin-banner">${_ic('megaphone')} ${esc(text)}</div>`;
 }
 
 // Render a list of pending matches grouped by group name as collapsible <details> blocks.
@@ -2455,9 +2529,9 @@ function _buildHistoryMatch(m, tvSettings, isMex, scoreCtx = null) {
   let pendingBadge = '';
   if (m.scored_by && !m.score_confirmed && m.score) {
     if (m.disputed) {
-      pendingBadge = `<span class="history-badge history-badge-dispute">⚠️</span>`;
+      pendingBadge = `<span class="history-badge history-badge-dispute" role="img" aria-label="${escAttr(t('txt_txt_dispute_label'))}">${_ic('alert')}</span>`;
     } else if (tvState.scoreConfirmationMode !== 'immediate') {
-      pendingBadge = `<span class="history-badge history-badge-pending">⏳</span>`;
+      pendingBadge = `<span class="history-badge history-badge-pending" role="img" aria-label="${escAttr(t('txt_txt_pending_confirmation'))}">${_ic('clock')}</span>`;
     }
   }
   let scoreHtml;
@@ -2489,7 +2563,7 @@ function _buildHistoryMatch(m, tvSettings, isMex, scoreCtx = null) {
     const bd = tvState.breakdowns[m.id];
     if (bd && Object.keys(bd).length > 0) {
       html += `<details class="tv-breakdown-details">`;
-      html += `<summary class="breakdown-toggle">📊 ${t('txt_txt_score_breakdown')}</summary>`;
+      html += `<summary class="breakdown-toggle">${_ic('chart')} ${t('txt_txt_score_breakdown')}</summary>`;
       html += `<div class="breakdown-panel">`;
       html += `<table class="breakdown-table"><thead><tr>`;
       html += `<th>${t('txt_txt_player')}</th><th>${t('txt_txt_raw')}</th><th>${t('txt_txt_relative_strength')}</th><th>${t('txt_txt_strength_weight')}</th><th>${t('txt_txt_strength_multiplier')}</th><th>${t('txt_txt_loss_disc_multiplier')}</th><th>${t('txt_txt_win_bonus_header')}</th><th>${t('txt_txt_final')}</th>`;
@@ -2539,58 +2613,67 @@ async function _resolveAlias() {
   return true;
 }
 
-// Static shell for the picker island. Re-injected into #tv-root on each
+// Static shell for the Events island. Re-injected into #tv-root on each
 // _showPicker() (the live panel clobbers #tv-root when a tournament is shown),
 // then mounted via mountIsland(). The per-item card markup lives in the
 // #tpl-tv-picker-item <template> in public.html.
 const _PICKER_ISLAND_HTML = `
-<div id="tv-picker-island" v-scope class="tv-picker">
-  <div class="tv-header-title-row mb-4">
-    <div class="tv-lang-cell">
-      <button type="button" class="theme-btn" @click="toggleLanguage()"
-              :title="langToggle.label" :aria-label="langToggle.label">{{ langToggle.icon }}</button>
-    </div>
-    <div v-html="pageSelectorHtml"></div>
-    <div class="tv-toggle-btns">
-      <button type="button" class="theme-btn btn-refresh" @click="refresh()"
-              :title="t('txt_txt_refresh_now')"
-             >↻</button>
-      <button type="button" data-theme-toggle-icon="1" class="theme-btn" @click="toggleTheme()"
-              :title="toggleThemeTitle">{{ themeIcon }}</button>
-    </div>
+<div id="tv-picker-island" v-scope class="tv-picker events-page">
+  <div v-html="headerHtml"></div>
+  <div class="events-title-row">
+    <h1 class="events-title">{{ t('txt_events_title') }}</h1>
+    <button type="button" class="theme-btn btn-refresh" @click="refresh()"
+            :title="t('txt_txt_refresh_now')" :aria-label="t('txt_txt_refresh_now')">↻</button>
   </div>
-  <div v-if="subdomainClub" class="player-subdomain-banner" role="status">
-    <img v-if="subdomainClub.logo_url" class="player-subdomain-logo" :src="subdomainClub.logo_url" alt="">
-    <span class="player-subdomain-text">{{ subdomainBannerLabel }}</span>
+  <div class="club-sport-selector" role="group" :aria-label="t('txt_txt_sport')">
+    <button type="button" class="club-sport-pill" data-sport="padel" :class="{ active: sport === 'padel' }"
+            :aria-pressed="sport === 'padel'" @click="toggleSport('padel')">{{ t('txt_txt_sport_padel') }}</button>
+    <button type="button" class="club-sport-pill" data-sport="tennis" :class="{ active: sport === 'tennis' }"
+            :aria-pressed="sport === 'tennis'" @click="toggleSport('tennis')">{{ t('txt_txt_sport_tennis') }}</button>
   </div>
-  <div v-if="hasAny">
-    <div class="subtitle">{{ t('txt_txt_select_a_tournament_to_display') }}</div>
-    <ul v-if="activeTournaments.length" class="tv-picker-list">
-      <li v-for="tv in activeTournaments" :key="tv.id" v-scope="{ $template: '#tpl-tv-picker-item', it: item(tv) }"></li>
-    </ul>
-    <p v-else-if="!showArchive" class="tv-picker-empty">{{ t('txt_txt_finished_tournaments') }}</p>
-    <div v-if="finishedTournaments.length">
-      <button type="button" class="tv-picker-archive-btn" @click="toggleArchive()" :aria-expanded="showArchive">
-        <span class="tv-picker-archive-icon">{{ showArchive ? '▲' : '▼' }}</span> {{ archiveBtnLabel }}
-        <span class="tv-picker-archive-count">{{ finishedTournaments.length }}</span>
-      </button>
-      <ul v-if="showArchive" class="tv-picker-list tv-picker-list--archive">
-        <li v-for="tv in finishedTournaments" :key="tv.id" v-scope="{ $template: '#tpl-tv-picker-item', it: item(tv) }"></li>
-      </ul>
+  <section class="club-items-section">
+    <header class="club-items-header">
+      <div class="home-filter-row" role="tablist" :aria-label="t('txt_txt_filter_dim_status')">
+        <button type="button" class="home-filter-chip" :class="{ active: tab === 'live' }" role="tab"
+                :aria-selected="tab === 'live'" @click="setTab('live')">
+          <span>{{ t('txt_club_items_tab_live') }}</span>
+          <span v-if="liveCount" class="home-filter-chip-count">{{ liveCount }}</span>
+        </button>
+        <button type="button" class="home-filter-chip" :class="{ active: tab === 'finished' }" role="tab"
+                :aria-selected="tab === 'finished'" @click="setTab('finished')">
+          <span>{{ t('txt_club_items_tab_finished') }}</span>
+          <span v-if="finishedCount" class="home-filter-chip-count">{{ finishedCount }}</span>
+        </button>
+      </div>
+    </header>
+    <div class="club-items-body">
+      <div v-if="!visible.length" class="club-items-empty">{{ emptyLabel }}</div>
+      <div v-else-if="tab === 'live'">
+        <div v-for="g in groups" :key="g.key" class="club-items-group">
+          <h3 class="club-items-group-title">{{ t(g.labelKey) }}</h3>
+          <div v-for="ev in g.items" :key="ev.kind + ':' + ev.id" v-scope="{ $template: '#tpl-tv-picker-item', it: item(ev) }"></div>
+        </div>
+      </div>
+      <div v-else>
+        <div v-for="ev in visible" :key="ev.kind + ':' + ev.id" v-scope="{ $template: '#tpl-tv-picker-item', it: item(ev) }"></div>
+      </div>
     </div>
-    <div class="text-muted fs-md mt-6 mb-2">{{ t('txt_txt_or_enter_a_tournament_id_alias_directly') }}</div>
-  </div>
-  <form class="tv-picker-form" @submit="submitGoTo($event)">
-    <input type="text" id="picker-input" :placeholder="t('txt_txt_tournament_id_or_alias')">
-    <button type="submit">{{ t('txt_txt_go') }}</button>
-  </form>
+  </section>
+  <section class="club-search-section">
+    <form class="home-search-row club-search-form" @submit="submitFind($event)">
+      <label class="sr-only" for="picker-input">{{ t('txt_events_find_label') }}</label>
+      <input id="picker-input" type="search" class="home-search-input" v-model="findValue"
+             :placeholder="t('txt_events_find_placeholder')" autocomplete="off" spellcheck="false">
+      <button type="submit" class="btn btn-sm btn-primary" :disabled="finding">{{ t('txt_club_search_btn') }}</button>
+    </form>
+    <div v-if="findError" class="club-search-result tv-error" role="alert">{{ findError }}</div>
+  </section>
 </div>`;
 
-function _renderPickerHtml(tournaments) {
-  _pickerStore.tournaments = tournaments || [];
-  _pickerStore.subdomainClub = _subdomainClub;
-  _pickerStore.theme = _theme;
+function _renderPickerHtml(events) {
+  _pickerStore.events = Array.isArray(events) ? events : [];
   _pickerStore.lang = getAppLanguage();
+  _pickerStore._settleTab();
   const root = document.getElementById('tv-root');
   // The live panel owns #tv-root via innerHTML; re-inject the island shell so
   // it exists as a fresh element, then mount the persistent store onto it.
@@ -2599,19 +2682,17 @@ function _renderPickerHtml(tournaments) {
 }
 
 async function _showPicker() {
-  // Resolve subdomain context and fetch tournament list in parallel.
-  let tournaments = [];
-  try {
-    [_subdomainClub, tournaments] = await Promise.all([
-      resolveClubSubdomainContext().catch(() => null),
-      api('/api/tournaments').catch(() => []),
-    ]);
-  } catch (_) {
-    _subdomainClub = null;
+  // On a club subdomain the club page is the directory (the server also
+  // redirects /events there; this covers in-page "back" navigation).
+  if (getClubSubdomain()) {
+    location.replace('/');
+    return;
   }
-  _renderPickerHtml(tournaments);
+  let events = [];
+  try { events = await api('/api/public-events'); } catch (_) { events = []; }
+  _renderPickerHtml(events);
 
-  // Use SSE (with polling fallback) to detect tournament list changes instantly.
+  // Use SSE (with polling fallback) to detect list changes instantly.
   if (_pickerVersionStream) return; // already running
   let _pickerVersion = null;
   _pickerVersionStream = createVersionStream({
@@ -2622,8 +2703,10 @@ async function _showPicker() {
       if (_pickerVersion !== null && data.version !== _pickerVersion) {
         _pickerVersion = data.version;
         let list = [];
-        try { list = await api('/api/tournaments'); } catch (_) {}
-        _renderPickerHtml(list);
+        try { list = await api('/api/public-events'); } catch (_) {}
+        // Island already mounted: assign into the store, Petite-Vue patches the DOM.
+        _pickerStore.events = Array.isArray(list) ? list : [];
+        _pickerStore._settleTab();
       } else {
         _pickerVersion = data.version;
       }
@@ -2634,34 +2717,47 @@ async function _showPicker() {
 function _backToTournaments() {
   _stopAllSchedules();
   TID = null;
-  history.replaceState(null, '', '/tv');
+  history.replaceState(null, '', '/events');
   _showPicker();
 }
 
-async function _goToTournament(e) {
+/**
+ * "Find by ID or alias": exact match only (no name search, to avoid
+ * enumeration). Tries a tournament first, then a sign-up lobby.
+ */
+async function _findEventById(e) {
   e.preventDefault();
-  const val = document.getElementById('picker-input').value.trim();
+  const val = (_pickerStore.findValue || '').trim();
   if (!val) return false;
-
-  document.querySelector('.picker-inline-error')?.remove();
-
+  _pickerStore.findError = '';
+  _pickerStore.finding = true;
+  const enc = encodeURIComponent(val);
   try {
     try {
-      await api(`/api/tournaments/resolve-alias/${encodeURIComponent(val)}`);
+      await api(`/api/tournaments/resolve-alias/${enc}`);
+      location.href = `/tv/${enc}`;
+      return false;
     } catch (aliasErr) {
       if (aliasErr?.status !== 404) throw aliasErr;
-      await api(`/api/tournaments/${encodeURIComponent(val)}/meta`);
     }
-    location.href = `/tv/${encodeURIComponent(val)}`;
+    try {
+      await api(`/api/tournaments/${enc}/meta`);
+      location.href = `/tv/${enc}`;
+      return false;
+    } catch (metaErr) {
+      if (metaErr?.status !== 404) throw metaErr;
+    }
+    const res = await fetch(`/api/registrations/${enc}/public`);
+    if (res.ok) {
+      location.href = `/register/${enc}`;
+      return false;
+    }
+    if (res.status !== 404) throw new Error(`HTTP ${res.status}`);
+    _pickerStore.findError = t('txt_events_not_found', { val });
   } catch (_) {
-    const form = document.querySelector('.tv-picker-form');
-    if (form) {
-      const errDiv = document.createElement('div');
-      errDiv.className = 'tv-error picker-inline-error';
-      errDiv.classList.add('mt-3');
-      errDiv.innerHTML = `${t('txt_txt_no_tournament_found_with_alias')} <strong>${esc(val)}</strong>`;
-      form.after(errDiv);
-    }
+    _pickerStore.findError = t('txt_reg_error');
+  } finally {
+    _pickerStore.finding = false;
   }
   return false;
 }

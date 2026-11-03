@@ -1,5 +1,5 @@
 // Service worker — optimal caching for performance + freshness.
-const CACHE_NAME = 'amistoso-v68';
+const CACHE_NAME = 'amistoso-v71';
 const STATIC_ASSETS = [
   '/shared.js', '/auth.js', '/i18n.js', '/manifest.json',
   '/admin-utils.js', '/admin-tournaments.js', '/admin-create.js',
@@ -19,7 +19,7 @@ const STATIC_ASSETS = [
   'https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js',
   'https://cdn.jsdelivr.net/npm/dompurify@3.3.3/dist/purify.min.js',
 ];
-const SHELL = ['/'];
+const SHELL = ['/', '/events'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

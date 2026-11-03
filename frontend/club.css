@@ -65,34 +65,6 @@ body {
   content: none;
 }
 
-/* Admin landing pin checklist */
-.clubs-landing-pin-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  max-height: 260px;
-  overflow-y: auto;
-}
-
-.clubs-landing-pin-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.9rem;
-  cursor: pointer;
-  padding: 0.25rem 0.4rem;
-  border-radius: 6px;
-}
-
-.clubs-landing-pin-row:hover {
-  background: var(--bg-muted, #f1f5f9);
-}
-
-.clubs-landing-pin-status {
-  margin-left: auto;
-  font-size: 0.72rem;
-}
-
 .club-page {
   width: 100%;
   max-width: min(1200px, 95vw);
@@ -103,32 +75,10 @@ body {
   gap: 2rem;
 }
 
-.club-topbar-row {
-  min-height: 3rem;
-}
-
-.club-topbar-logo {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.club-topbar-logo img {
-  max-width: 140px;
-  max-height: 52px;
-  border-radius: 10px;
-  display: block;
-}
-
 @media (max-width: 600px) {
   .club-page {
     padding: 1rem 1rem 3rem;
     gap: 1.5rem;
-  }
-
-  .club-topbar-logo img {
-    max-width: 110px;
-    max-height: 44px;
   }
 }
 
@@ -307,19 +257,6 @@ body {
   padding: 0.75rem 0.25rem;
 }
 
-/* Members-only notice shown to signed-out visitors instead of the table. */
-.club-leaderboard-locked {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.5rem;
-}
-
-.club-leaderboard-locked .club-login-btn {
-  flex: 0 0 auto;
-  min-height: 44px;
-}
-
 .club-empty {
   text-align: center;
   color: var(--text-muted);
@@ -457,6 +394,45 @@ body {
   color: var(--accent, #3b82f6);
 }
 
+.club-item-badge--count {
+  background: var(--color-success-highlight);
+  color: var(--color-success);
+}
+
+.club-item-badge--code {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  border: 1px solid var(--color-warning-border);
+}
+
+.club-item-badge--status {
+  background: var(--bg-muted, var(--surface2));
+  color: var(--text-muted);
+}
+
+/* Live-tab groups: "Tournaments" / "Sign-ups open" */
+.club-items-group + .club-items-group { margin-top: 0.85rem; }
+.club-items-group-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--text-muted);
+}
+.club-items-group .club-item-card + .club-item-card { margin-top: 0.5rem; }
+
+/* Small muted club / community line under a card name (Events directory). */
+.club-item-origin {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Status filter chips — reuse admin home-filter-chip look */
 .home-filter-row {
   display: flex;
@@ -551,49 +527,6 @@ body {
   font-size: 0.82rem;
 }
 
-/* Login section — two cards side-by-side on wider screens, stacked on mobile */
-.club-login-section {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.75rem;
-}
-
-.club-login-btn {
-  flex: 1 1 200px;
-  max-width: 300px;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  padding: 0.7rem 1rem;
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 12px;
-  background: var(--card-bg, var(--bg, #fff));
-  color: var(--text);
-  text-decoration: none;
-  font-weight: 600;
-  font-size: 0.9rem;
-  transition: border-color 0.15s, background 0.15s, transform 0.1s;
-}
-
-.club-login-btn:hover {
-  border-color: var(--accent, #3b82f6);
-  background: color-mix(in srgb, var(--accent, #3b82f6) 5%, transparent);
-  transform: translateY(-1px);
-}
-
-.club-login-icon {
-  font-size: 1.3rem;
-  line-height: 1;
-}
-
-.club-login-label {
-  font-size: 0.9rem;
-}
-
-.club-login-btn--admin .club-login-icon { font-size: 1.25rem; }
 .club-items-section {
   background: var(--card-bg, var(--bg, #fff));
   border: 1px solid var(--border-color, #e2e8f0);
@@ -668,7 +601,12 @@ body {
 }
 
 @media (max-width: 560px) {
-  .club-item-card { font-size: 0.9rem; padding: 0.6rem 0.7rem; }
+  .club-item-card { font-size: 0.9rem; padding: 0.6rem 0.7rem; flex-wrap: wrap; }
+  /* Badges drop under the name instead of squeezing it to an ellipsis. */
+  /* Always stack on phones: name block on its own line, badges below it,
+     so every card in a list has the same shape. */
+  .club-item-name { flex: 1 1 100%; white-space: normal; }
+  .club-item-badges { flex-wrap: wrap; margin-left: 0; }
 }
 
 /* -------------------------------------------------------------------------
@@ -840,3 +778,28 @@ body {
 .club-fatal { display: flex; flex-direction: column; align-items: center; gap: var(--space-4); }
 .club-fatal-msg { margin: 0; font-size: 1.1rem; color: var(--color-text-muted); }
 .club-fatal-action { text-decoration: none; }
+
+/* -------------------------------------------------------------------------
+ * /events directory (public.html, tv.js island) — reuses the club card styles
+ * ------------------------------------------------------------------------- */
+.tv-picker.events-page {
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  box-shadow: none;
+  text-align: left;
+}
+.events-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.events-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  letter-spacing: var(--tracking-display);
+}

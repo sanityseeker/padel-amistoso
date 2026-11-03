@@ -34,6 +34,62 @@ function escAttr(s) {
   return esc(s);
 }
 
+// ── Icon helper ───────────────────────────────────────────
+/**
+ * Return an inline SVG icon element for use inside button labels.
+ * Shared by every page (admin, TV / Events, Player Hub); decorative, so it
+ * carries aria-hidden — pair it with visible text or an aria-label.
+ * Icons are stroke-based Lucide-style, inherit currentColor.
+ * Usage: `${_ic('trash')} ${t('txt_txt_remove')}`
+ */
+function _ic(name) {
+  const paths = {
+    trash:    `<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>`,
+    edit:     `<path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>`,
+    link:     `<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>`,
+    reset:    `<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>`,
+    mail:     `<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/>`,
+    print:    `<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>`,
+    copy:     `<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>`,
+    key:      `<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>`,
+    shield:   `<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>`,
+    settings: `<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>`,
+    qr:       `<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="5" y="5" width="3" height="3" fill="currentColor" stroke="none"/><rect x="16" y="5" width="3" height="3" fill="currentColor" stroke="none"/><rect x="5" y="16" width="3" height="3" fill="currentColor" stroke="none"/><line x1="14" y1="14" x2="14" y2="14"/><line x1="17" y1="14" x2="17" y2="14"/><line x1="20" y1="14" x2="20" y2="14"/><line x1="14" y1="17" x2="14" y2="17"/><line x1="17" y1="17" x2="17" y2="17"/><line x1="20" y1="17" x2="20" y2="17"/>`,
+    trophy:   `<path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2z"/>`,
+    chevdown: `<polyline points="6 9 12 15 18 9"/>`,
+    lock:     `<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>`,
+    unlock:   `<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 019.9-1"/>`,
+    chart:    `<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>`,
+    shuffle:  `<polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/>`,
+    monitor:  `<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>`,
+    globe:    `<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>`,
+    users:    `<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>`,
+    user:     `<path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>`,
+    grid:     `<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>`,
+    building: `<rect x="2" y="7" width="20" height="14" rx="1"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/>`,
+    star:     `<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>`,
+    more:     `<circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/><circle cx="5" cy="12" r="1.5" fill="currentColor"/>`,
+    sun:      `<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>`,
+    moon:     `<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>`,
+    info:     `<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>`,
+    alert:    `<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>`,
+    checkcircle: `<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>`,
+    court:    `<rect x="4" y="2" width="16" height="20" rx="1"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="17" x2="20" y2="17"/><line x1="12" y1="7" x2="12" y2="17"/>`,
+    ball:     `<circle cx="12" cy="12" r="10"/><path d="M5.6 4.9a10 10 0 010 14.2"/><path d="M18.4 4.9a10 10 0 000 14.2"/>`,
+    bench:    `<path d="M19 9V6a2 2 0 00-2-2H7a2 2 0 00-2 2v3"/><path d="M3 16a2 2 0 002 2h14a2 2 0 002-2v-5a2 2 0 00-4 0v2H7v-2a2 2 0 00-4 0z"/><path d="M5 18v2M19 18v2"/>`,
+    medal:    `<circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>`,
+    bell:     `<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>`,
+    belloff:  `<path d="M13.73 21a2 2 0 01-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0118 8"/><path d="M6.26 6.26A5.86 5.86 0 006 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 00-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/>`,
+    megaphone: `<path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 11-5.8-1.6"/>`,
+    clock:    `<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>`,
+    clipboard: `<path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>`,
+    eye:      `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,
+    eyeoff:   `<path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>`,
+  };
+  const p = paths[name] || '';
+  return `<svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+}
+
 // ── TBD helpers ───────────────────────────────────────────
 
 /**
@@ -736,89 +792,347 @@ function _bracketLightboxKeyHandler(e) {
   else if (e.key === '0')                  _bracketLightboxZoomReset();
 }
 
-// ── Page selector (shared across all pages) ───────────────
+// ── Public header (club page, Player Hub, registration form, Events) ──────
+//
+// One shared header for every public surface: a thin "Display" line (current
+// language · theme, opens a sheet/popover with both controls) above a
+// segmented tab bar [Club|Events] [Sign in|My Hub] (+ Admin). The admin entry
+// is cosmetic only — it just shows up when a `padel-auth-token` exists on this
+// origin; server auth is unchanged. Pages re-render their own content on
+// language change; the header re-renders itself via `app-language-changed`.
 
-function buildPageSelectorHtml(currentPage) {
-  const pages = [
-    { key: 'admin', href: '/admin', icon: '🛠️', label: t('txt_nav_admin') },
-    { key: 'player', href: '/player', icon: '🎾', label: t('txt_nav_player_space') },
-    { key: 'tv', href: '/tv', icon: '📺', label: t('txt_nav_tv_view') },
-    { key: 'register', href: '/register', icon: '📋', label: t('txt_nav_registrations') },
-  ];
-  const current = pages.find(p => p.key === currentPage) || pages[0];
-  const homePage = getHomePage();
-  const isPinned = homePage === currentPage;
-  let html = `<div class="tv-page-selector" id="page-selector">`;
-  html += `<button type="button" class="tv-page-selector-btn" onclick="togglePageSelectorDropdown()">`;
-  html += `<span>${current.icon}</span> <span>${esc(current.label)}</span> <span class="fs-2xs text-muted">▾</span>`;
-  html += `</button>`;
-  html += `<div class="tv-page-selector-menu" id="page-selector-menu">`;
-  for (const p of pages) {
-    const active = p.key === currentPage ? ' active' : '';
-    const pinIndicator = p.key === homePage ? ' 📌' : '';
-    html += `<a href="${p.href}" class="tv-page-selector-item${active}" onclick="savePageChoice('${p.key}')">`;
-    html += `<span>${p.icon}</span> <span>${esc(p.label)}${pinIndicator}</span></a>`;
+/** localStorage key of the Player Hub profile JWT (player.js keeps it there). */
+const _HUB_JWT_KEY = 'padel-player-profile';
+/** localStorage key of the cached Player Hub profile object. */
+const _HUB_PROFILE_DATA_KEY = 'padel-player-profile-data';
+/** localStorage key of the organizer (admin SPA) JWT (auth.js keeps it there). */
+const _ADMIN_TOKEN_KEY = 'padel-auth-token';
+
+/** @type {string|null} key of the page the header was last built for. */
+let _publicHeaderCurrent = null;
+
+/**
+ * Theme as the user chose it: 'light' | 'dark' | 'auto' (= follow the OS).
+ * @returns {'light'|'dark'|'auto'}
+ */
+function getThemePreference() {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch (_) {}
+  return 'auto';
+}
+
+/**
+ * Apply + persist a theme preference. 'auto' clears the saved key so the OS
+ * `prefers-color-scheme` applies again (see `_loadSavedTheme`). Dispatches
+ * `app-theme-changed` with the effective theme so pages can sync their state.
+ * @param {'light'|'dark'|'auto'} mode
+ * @returns {'light'|'dark'} the theme now applied
+ */
+function setDisplayTheme(mode) {
+  let effective;
+  if (mode === 'auto') {
+    try { localStorage.removeItem(THEME_KEY); } catch (_) {}
+    effective = _applyTheme(_loadSavedTheme());
+  } else {
+    effective = _applyTheme(mode);
+    _saveTheme(effective);
   }
-  html += `<div class="page-selector-divider"></div>`;
-  html += `<button type="button" class="page-selector-pin-btn" onclick="toggleHomePage('${currentPage}')">`;
-  html += isPinned
-    ? `<span>📌</span> <span>${esc(t('txt_nav_unset_home'))}</span>`
-    : `<span>📍</span> <span>${esc(t('txt_nav_set_home'))}</span>`;
-  html += `</button>`;
-  html += `</div></div>`;
+  document.dispatchEvent(new CustomEvent('app-theme-changed', { detail: { theme: effective, preference: mode } }));
+  refreshPublicHeader();
+  _renderDisplaySheetContent();
+  return effective;
+}
+
+/**
+ * Switch the UI language. Pages listen to `app-language-changed` (dispatched
+ * by setAppLanguage) and re-render; the header does the same.
+ * @param {'en'|'es'} lang
+ */
+function setDisplayLanguage(lang) {
+  setAppLanguage(lang);
+}
+
+/** Player Hub session present on this origin? */
+function hasHubSession() {
+  try { return Boolean(localStorage.getItem(_HUB_JWT_KEY)); } catch (_) { return false; }
+}
+
+/** Organizer token present on this origin? (cosmetic check only) */
+function hasAdminToken() {
+  try { return Boolean(localStorage.getItem(_ADMIN_TOKEN_KEY)); } catch (_) { return false; }
+}
+
+/**
+ * Up to two initials from the cached Hub profile name. Never exposes the
+ * full name in the header.
+ * @returns {string}
+ */
+function hubProfileInitials() {
+  try {
+    const raw = localStorage.getItem(_HUB_PROFILE_DATA_KEY);
+    const profile = raw ? JSON.parse(raw) : null;
+    const name = (profile && typeof profile.name === 'string') ? profile.name.trim() : '';
+    if (!name) return '';
+    const parts = name.split(/\s+/).filter(Boolean);
+    const first = parts[0] ? parts[0][0] : '';
+    const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+    return (first + last).toUpperCase();
+  } catch (_) {
+    return '';
+  }
+}
+
+/** "English · Dark" — the current values shown on the Display line. */
+function _displayLineValue() {
+  const lang = getAppLanguage() === 'es' ? 'Español' : 'English';
+  const pref = getThemePreference();
+  const themeLabel = pref === 'auto'
+    ? t('txt_display_theme_auto')
+    : (pref === 'light' ? t('txt_display_theme_light') : t('txt_display_theme_dark'));
+  return `${lang} · ${themeLabel}`;
+}
+
+/**
+ * Build the shared public header.
+ * @param {'club'|'events'|'player'|'register'} current  Page key (marks the active tab).
+ * @returns {string} HTML
+ */
+function buildPublicHeaderHtml(current) {
+  _publicHeaderCurrent = current;
+  const onClubSubdomain = Boolean(getClubSubdomain());
+  const tabs = [];
+  if (onClubSubdomain) {
+    tabs.push({ key: 'club', href: '/', label: t('txt_nav_club'), cls: 'public-tab--club' });
+  } else {
+    tabs.push({ key: 'events', href: '/events', label: t('txt_nav_events'), cls: '' });
+  }
+  if (hasHubSession()) {
+    const initials = hubProfileInitials();
+    const avatar = initials
+      ? `<span class="public-avatar" aria-hidden="true">${esc(initials)}</span>`
+      : '';
+    tabs.push({ key: 'player', href: '/player', label: t('txt_nav_my_hub'), cls: 'public-tab--hub', prefix: avatar });
+  } else {
+    tabs.push({ key: 'player', href: '/player', label: t('txt_nav_sign_in'), cls: '' });
+  }
+  const adminIn = hasAdminToken();
+  if (adminIn) tabs.push({ key: 'admin', href: '/admin', label: t('txt_nav_admin'), cls: '' });
+
+  const activeKey = current === 'register' ? null : current;
+  let html = `<header class="public-header" id="public-header">`;
+  html += `<div class="public-display-line">`;
+  html += `<button type="button" class="public-display-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="display-sheet" onclick="openDisplaySheet(this)">`;
+  html += `<span class="public-display-label">${esc(t('txt_display_label'))}:</span> `;
+  html += `<span class="public-display-value">${esc(_displayLineValue())}</span>`;
+  html += `</button></div>`;
+  html += `<nav class="public-tabs-row" aria-label="${escAttr(t('txt_nav_pages'))}">`;
+  html += `<div class="public-tabs${tabs.length > 2 ? ' public-tabs--three' : ''}">`;
+  for (const tab of tabs) {
+    const active = tab.key === activeKey;
+    html += `<a class="public-tab${tab.cls ? ' ' + tab.cls : ''}${active ? ' is-active' : ''}" href="${tab.href}"`;
+    if (active) html += ` aria-current="page"`;
+    html += ` onclick="savePageChoice('${tab.key}')">${tab.prefix || ''}<span class="public-tab-label">${esc(tab.label)}</span></a>`;
+  }
+  html += `</div>`;
+  if (!adminIn) {
+    html += `<a class="public-admin-link" href="/admin" onclick="savePageChoice('admin')">${esc(t('txt_nav_admin_sign_in'))}</a>`;
+  }
+  html += `</nav></header>`;
+  if (onClubSubdomain) _patchPublicHeaderClubName();
   return html;
 }
 
-function buildCompactRefreshButtonHtml(onclickHandler, title) {
-  return `<button type="button" onclick="${escAttr(onclickHandler)}" class="btn-refresh" title="${escAttr(title)}">↻</button>`;
+/**
+ * The club tab is rendered as "Club" immediately; once the subdomain resolves
+ * the full club name is set as its tooltip/accessible name.
+ */
+function _patchPublicHeaderClubName() {
+  resolveClubSubdomainContext().then(club => {
+    if (!club || !club.name) return;
+    document.querySelectorAll('.public-tab--club').forEach(el => {
+      el.setAttribute('title', club.name);
+      el.setAttribute('aria-label', club.name);
+    });
+  }).catch(() => {});
 }
 
-function togglePageSelectorDropdown() {
-  const el = document.getElementById('page-selector');
-  if (el) el.classList.toggle('open');
+/** Re-render the header in place (session/language/theme changes). */
+function refreshPublicHeader() {
+  const el = document.getElementById('public-header');
+  if (!el || !_publicHeaderCurrent) return;
+  el.outerHTML = buildPublicHeaderHtml(_publicHeaderCurrent);
 }
 
+// ── Display sheet (language + theme) ─────────────────────
+
+let _displaySheetTrigger = null;
+
+function _displaySheetMarkup() {
+  const lang = getAppLanguage();
+  const pref = getThemePreference();
+  const seg = (group, value, current, label) => {
+    const on = value === current;
+    return `<button type="button" role="radio" aria-checked="${on ? 'true' : 'false'}" class="display-seg-btn${on ? ' is-active' : ''}" `
+      + `onclick="${group === 'lang' ? `setDisplayLanguage('${value}')` : `setDisplayTheme('${value}')`}">${esc(label)}</button>`;
+  };
+  return `
+    <div class="display-sheet-head">
+      <h2 class="display-sheet-title" id="display-sheet-title">${esc(t('txt_display_label'))}</h2>
+      <button type="button" class="display-sheet-close" aria-label="${escAttr(t('txt_txt_close'))}" onclick="closeDisplaySheet()">×</button>
+    </div>
+    <div class="display-sheet-group">
+      <div class="display-sheet-group-label" id="display-lang-label">${esc(t('txt_txt_language'))}</div>
+      <div class="display-seg" role="radiogroup" aria-labelledby="display-lang-label">
+        ${seg('lang', 'en', lang, 'English')}${seg('lang', 'es', lang, 'Español')}
+      </div>
+    </div>
+    <div class="display-sheet-group">
+      <div class="display-sheet-group-label" id="display-theme-label">${esc(t('txt_display_theme'))}</div>
+      <div class="display-seg" role="radiogroup" aria-labelledby="display-theme-label">
+        ${seg('theme', 'light', pref, t('txt_display_theme_light'))}${seg('theme', 'dark', pref, t('txt_display_theme_dark'))}${seg('theme', 'auto', pref, t('txt_display_theme_auto'))}
+      </div>
+    </div>`;
+}
+
+/** Re-render the sheet body while it is open (after a language/theme change). */
+function _renderDisplaySheetContent() {
+  const sheet = document.getElementById('display-sheet');
+  if (!sheet) return;
+  const focused = document.activeElement;
+  const focusedLabel = focused && sheet.contains(focused) ? focused.textContent : null;
+  sheet.innerHTML = _displaySheetMarkup();
+  if (focusedLabel !== null) {
+    const again = [...sheet.querySelectorAll('button')].find(b => b.textContent === focusedLabel);
+    if (again) again.focus();
+  }
+}
+
+/**
+ * Open the Display sheet (bottom sheet on phones, popover on desktop).
+ * @param {HTMLElement} [trigger] the Display button, focus returns to it on close
+ */
+function openDisplaySheet(trigger) {
+  if (document.getElementById('display-sheet-backdrop')) return;
+  _displaySheetTrigger = trigger || document.querySelector('.public-display-btn');
+  const backdrop = document.createElement('div');
+  backdrop.id = 'display-sheet-backdrop';
+  backdrop.className = 'display-sheet-backdrop';
+  backdrop.addEventListener('click', (ev) => { if (ev.target === backdrop) closeDisplaySheet(); });
+  const sheet = document.createElement('div');
+  sheet.id = 'display-sheet';
+  sheet.className = 'display-sheet';
+  sheet.setAttribute('role', 'dialog');
+  sheet.setAttribute('aria-modal', 'true');
+  sheet.setAttribute('aria-labelledby', 'display-sheet-title');
+  sheet.innerHTML = _displaySheetMarkup();
+  backdrop.appendChild(sheet);
+  document.body.appendChild(backdrop);
+  document.querySelectorAll('.public-display-btn').forEach(b => b.setAttribute('aria-expanded', 'true'));
+  document.addEventListener('keydown', _displaySheetKeyHandler);
+  const first = sheet.querySelector('.display-seg-btn.is-active') || sheet.querySelector('button');
+  if (first) first.focus();
+}
+
+function closeDisplaySheet() {
+  const backdrop = document.getElementById('display-sheet-backdrop');
+  if (backdrop) backdrop.remove();
+  document.removeEventListener('keydown', _displaySheetKeyHandler);
+  document.querySelectorAll('.public-display-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
+  const trigger = _displaySheetTrigger && _displaySheetTrigger.isConnected
+    ? _displaySheetTrigger
+    : document.querySelector('.public-display-btn');
+  _displaySheetTrigger = null;
+  if (trigger) trigger.focus();
+}
+
+function _displaySheetKeyHandler(ev) {
+  if (ev.key === 'Escape') { closeDisplaySheet(); return; }
+  if (ev.key !== 'Tab') return;
+  // Keep focus inside the dialog.
+  const sheet = document.getElementById('display-sheet');
+  if (!sheet) return;
+  const focusable = [...sheet.querySelectorAll('button')];
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+  else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+}
+
+document.addEventListener('app-language-changed', () => {
+  refreshPublicHeader();
+  _renderDisplaySheetContent();
+});
+
+/** Remember the page the visitor navigated to (read by the root redirect). */
 function savePageChoice(page) {
   try { localStorage.setItem('amistoso-last-page', page); } catch (_) {}
 }
 
-const HOME_PAGE_KEY = 'amistoso-home-page';
 
-function getHomePage() {
-  try { return localStorage.getItem(HOME_PAGE_KEY); } catch (_) { return null; }
+// ── Public event directory helpers (club page + /events) ─────────────────
+// Both directories render the same card: name + badges, whole card is the
+// link. Keeping badge + grouping rules here means a status rule changes in
+// one place for both surfaces.
+
+/** Public page for a directory item: live board for tournaments, sign-up form for lobbies. */
+function publicEventHref(it) {
+  const slug = encodeURIComponent(it.alias || it.id);
+  return it.kind === 'registration' ? `/register/${slug}` : `/tv/${slug}`;
 }
 
-function setHomePage(page) {
-  try { localStorage.setItem(HOME_PAGE_KEY, page); } catch (_) {}
-}
+const _PUBLIC_EVENT_TYPE_KEY = {
+  group_playoff: 'txt_club_type_gp',
+  mexicano: 'txt_club_type_mex',
+  playoff: 'txt_club_type_po',
+};
 
-function clearHomePage() {
-  try { localStorage.removeItem(HOME_PAGE_KEY); } catch (_) {}
-}
-
-function toggleHomePage(currentPage) {
-  if (getHomePage() === currentPage) {
-    clearHomePage();
-  } else {
-    setHomePage(currentPage);
+/**
+ * Badges for a public directory item (text labels, never colour alone).
+ * @param {object} it directory item from /api/public-events or /public-tournaments
+ * @param {{hideSport?: boolean}} [opts] hide the sport badge when a sport filter already implies it
+ * @returns {{cls: string, label: string}[]}
+ */
+function publicEventBadges(it, opts = {}) {
+  const out = [];
+  if (it.sport && !opts.hideSport) {
+    out.push({
+      cls: `club-item-badge--sport club-item-badge--${it.sport}`,
+      label: it.sport === 'tennis' ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel'),
+    });
   }
-  // Re-render the dropdown to reflect the new state
-  const sel = document.getElementById('page-selector');
-  if (sel) {
-    const parent = sel.parentNode;
-    const newHtml = buildPageSelectorHtml(currentPage);
-    sel.outerHTML = newHtml;
-    // Re-open the dropdown so the user sees the change
-    const newSel = document.getElementById('page-selector');
-    if (newSel) newSel.classList.add('open');
+  if (it.kind === 'registration') {
+    const n = Number(it.registrant_count) || 0;
+    out.push({ cls: 'club-item-badge--count', label: t(n === 1 ? 'txt_club_signed_up_one' : 'txt_club_signed_up_many', { n }) });
+    if (it.join_code_required) out.push({ cls: 'club-item-badge--code', label: t('txt_reg_join_code_badge') });
+    return out;
   }
+  const typeKey = _PUBLIC_EVENT_TYPE_KEY[it.type];
+  if (typeKey) out.push({ cls: 'club-item-badge--type', label: t(typeKey) });
+  if (it.status === 'upcoming') out.push({ cls: 'club-item-badge--status', label: t('txt_club_status_not_started') });
+  return out;
 }
 
-// Close page selector when clicking outside
-document.addEventListener('click', (e) => {
-  const sel = document.getElementById('page-selector');
-  if (sel && !sel.contains(e.target)) sel.classList.remove('open');
-});
+/**
+ * Group live-tab items: "Tournaments" (live first, then not started) and
+ * "Sign-ups open". Server order is kept inside each bucket (pinned first).
+ * @param {object[]} items
+ * @returns {{key: string, labelKey: string, items: object[]}[]} non-empty groups only
+ */
+function publicEventGroups(items) {
+  const list = Array.isArray(items) ? items : [];
+  const tournaments = [
+    ...list.filter(it => it.kind !== 'registration' && it.status === 'in_progress'),
+    ...list.filter(it => it.kind !== 'registration' && it.status === 'upcoming'),
+  ];
+  const signups = list.filter(it => it.kind === 'registration' && it.status === 'open_registration');
+  return [
+    { key: 'tournaments', labelKey: 'txt_club_group_tournaments', items: tournaments },
+    { key: 'signups', labelKey: 'txt_club_group_signups', items: signups },
+  ].filter(g => g.items.length > 0);
+}
 
 // ── SSE (Server-Sent Events) helper ─────────────────────────────────────
 

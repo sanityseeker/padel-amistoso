@@ -105,12 +105,12 @@ function _renderSettingsCard(ctx) {
 
   // Sub-tab definitions; entries with empty body are skipped.
   const subtabs = [
-    { key: 'tv',      label: t('txt_admin_settings_tab_tv'),      icon: '📺', body: _renderTvSharingBody(tvSettings, hasCourts, isMexicano, scoringStages.some(s => /playoff/i.test(s.key))) },
-    { key: 'scoring', label: t('txt_admin_settings_tab_scoring'), icon: '🎯', body: _renderScoringRulesBody(tvSettings, scoringStages) },
-    { key: 'comms',   label: t('txt_admin_settings_tab_comms'),   icon: '📧', body: commsBody },
-    { key: 'codes',   label: t('txt_admin_settings_tab_codes'),   icon: '🔑', body: codesBody },
+    { key: 'tv',      label: t('txt_admin_settings_tab_tv'),      icon: _antIc('desktop'), body: _renderTvSharingBody(tvSettings, hasCourts, isMexicano, scoringStages.some(s => /playoff/i.test(s.key))) },
+    { key: 'scoring', label: t('txt_admin_settings_tab_scoring'), icon: _antIc('profile'), body: _renderScoringRulesBody(tvSettings, scoringStages) },
+    { key: 'comms',   label: t('txt_admin_settings_tab_comms'),   icon: _antIc('mail'), body: commsBody },
+    { key: 'codes',   label: t('txt_admin_settings_tab_codes'),   icon: _antIc('key'), body: codesBody },
     { key: 'payments', label: t('txt_pay_tab'),                   icon: '€',  body: _renderPaymentsIsland('tournament', currentTid) },
-    { key: 'access',  label: t('txt_admin_settings_tab_access'),  icon: '🛡', body: accessBody },
+    { key: 'access',  label: t('txt_admin_settings_tab_access'),  icon: _antIc('safety'), body: accessBody },
   ].filter(st => st.body && st.body.trim());
 
   if (subtabs.length === 0) return '';
@@ -122,7 +122,7 @@ function _renderSettingsCard(ctx) {
   const isOpen = _getSettingsOpen(currentTid);
   html += `<details class="admin-settings-details"${isOpen ? ' open' : ''} ontoggle="_setSettingsOpen(currentTid, this.open)">`;
   html += `<summary class="admin-settings-summary">`;
-  html += `<span class="admin-settings-title"><span class="tv-chevron admin-settings-chevron">▸</span> ⚙ ${t('txt_admin_settings_title')}</span>`;
+  html += `<span class="admin-settings-title"><span class="tv-chevron admin-settings-chevron">▸</span> ${_antIc('setting')} ${t('txt_admin_settings_title')}</span>`;
   html += _renderSettingsHelpToggle();
   html += `</summary>`;
 

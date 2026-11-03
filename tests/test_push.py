@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.api.push import (
@@ -20,6 +22,11 @@ from backend.api.push_events import (
     _match_player_ids,
     _opponent_player_ids,
     _tv_url,
+    notify_champion,
+    notify_matches_ready,
+    notify_score_accepted,
+    notify_score_disputed,
+    notify_score_submitted,
 )
 from backend.models import Match, Player
 
@@ -192,6 +199,41 @@ class TestPushEventHelpers:
 
     def test_tv_url_without_alias(self):
         assert _tv_url("t123", None) == "/tv/t123"
+
+
+# Pictographic emoji + dingbat/symbol ranges + variation selector 16. Push
+# notification titles and bodies must be plain text (no emoji).
+_EMOJI_RE = re.compile("[\U0001f000-\U0001faff\u2600-\u27bf\ufe0f]")
+
+
+def _push_match() -> tuple[Match, Player, Player]:
+    p1, p2, p3, p4 = Player(name="A"), Player(name="B"), Player(name="C"), Player(name="D")
+    match = Match(team1=[p1, p2], team2=[p3, p4])
+    match.score = (6, 4)
+    return match, p1, p3
+
+
+@pytest.mark.parametrize(
+    ("target", "call"),
+    [
+        ("send_push_to_players", lambda data, m, a, b: notify_matches_ready("t1", data, [m])),
+        ("send_push_to_players", lambda data, m, a, b: notify_score_submitted("t1", data, m, a.id)),
+        ("send_push_to_players", lambda data, m, a, b: notify_score_accepted("t1", data, m, b.id)),
+        ("send_push_to_players", lambda data, m, a, b: notify_score_disputed("t1", data, m, b.id)),
+        ("send_push_to_tournament", lambda data, m, a, b: notify_champion("t1", data, ["A & B"])),
+    ],
+    ids=["matches_ready", "score_submitted", "score_accepted", "score_disputed", "champion"],
+)
+def test_push_notification_text_is_plain(target, call):
+    """Notification titles are the bare tournament name; no emoji in title or body."""
+    match, team1_player, team2_player = _push_match()
+    with patch(f"backend.api.push_events.{target}") as mock_send:
+        call({"name": "Friday Americano"}, match, team1_player, team2_player)
+    mock_send.assert_called_once()
+    kwargs = mock_send.call_args.kwargs
+    assert kwargs["title"] == "Friday Americano"
+    assert not _EMOJI_RE.search(kwargs["title"])
+    assert not _EMOJI_RE.search(kwargs["body"])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -390,4 +432,4 @@ class TestPushNotificationsOnMutations:
             call_kwargs = mock_push.call_args
             args = call_kwargs[1] if call_kwargs[1] else {}
             if "title" in args:
-                assert "🏆" in args["title"]
+                assert not _EMOJI_RE.search(args["title"])

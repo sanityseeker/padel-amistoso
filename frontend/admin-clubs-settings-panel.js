@@ -6,12 +6,13 @@
 // (Players + Leaderboard) stays in primary cards above the Settings card.
 //
 // Sub-tabs: general | tiers | seasons | comms | access
+// (a stored value for the removed Assignments sub-tab falls back to general)
 // Active sub-tab persists per-clubId in `adminClubSettingsSubtab:<clubId>`,
 // open/closed state in `adminClubSettingsOpen:<clubId>`. Empty bodies are
 // skipped (e.g. comms/access for non-owners).
 
 const CLUB_SUBTAB_DEFAULT = 'general';
-const CLUB_SUBTABS = ['general', 'tiers', 'seasons', 'assignments', 'comms', 'access'];
+const CLUB_SUBTABS = ['general', 'tiers', 'seasons', 'comms', 'access'];
 
 function _clubSubtabStorageKey(clubId) {
   return `adminClubSettingsSubtab:${clubId}`;
@@ -210,7 +211,7 @@ function _renderClubGeneralBody(club) {
   html += `<div id="clubs-slug-msg" class="settings-inline-msg"></div>`;
   html += `</div>`;
 
-  // Landing page customisation: description (tagline) + pinned tournaments
+  // Landing page customisation: description (tagline). Pins live in the Events card.
   html += `<div class="settings-block">`;
   html += `<label class="settings-label">${t('txt_clubs_landing_section')}</label>`;
   html += `<p class="settings-help">${t('txt_clubs_landing_description_help')}</p>`;
@@ -220,15 +221,7 @@ function _renderClubGeneralBody(club) {
   html += `<button id="clubs-landing-desc-btn" class="btn btn-sm btn-primary" onclick="clubsSaveLandingDescription()">${t('txt_txt_save')}</button>`;
   html += `</div>`;
   html += `<div id="clubs-landing-desc-msg" class="settings-inline-msg"></div>`;
-  html += `</div>`;
-
-  html += `<div class="settings-block clubs-landing-pinned-block">`;
-  html += `<details class="clubs-landing-pinned-details" open>`;
-  html += `<summary class="clubs-landing-pinned-summary">${t('txt_clubs_landing_pinned_label')}</summary>`;
-  html += `<p class="settings-help">${t('txt_clubs_landing_pinned_help')}</p>`;
-  html += `<div id="clubs-landing-pinned-list" class="clubs-landing-pinned-list"></div>`;
-  html += `</details>`;
-  html += `<div id="clubs-landing-pinned-msg" class="settings-inline-msg"></div>`;
+  html += `<p class="settings-help m-0">${t('txt_clubs_landing_pinned_moved')}</p>`;
   html += `</div>`;
 
   return html;
@@ -268,19 +261,6 @@ function _renderClubSeasonsBody() {
   html += `<button id="clubs-season-add-btn" class="btn btn-sm btn-success" onclick="clubsCreateSeason()">+ ${t('txt_txt_add')}</button>`;
   html += `</div>`;
   html += `<div id="clubs-seasons-msg" class="settings-inline-msg"></div>`;
-  html += `</div>`;
-  return html;
-}
-
-/**
- * Assignments sub-tab: tournament-to-season + lobby-to-season assignment
- * tables. Container reuses the same `clubs-season-assign` id so
- * `_clubsRenderSeasonAssignment` keeps working unchanged.
- */
-function _renderClubAssignmentsBody() {
-  let html = `<div class="settings-block">`;
-  html += `<p class="settings-help">${t('txt_clubs_assignments_help')}</p>`;
-  html += `<div id="clubs-season-assign"></div>`;
   html += `</div>`;
   return html;
 }
@@ -349,7 +329,6 @@ function _renderClubSettingsCard(club) {
     { key: 'general',     label: t('txt_club_settings_tab_general'),     icon: _antIc('setting'),   body: _renderClubGeneralBody(club) },
     { key: 'tiers',       label: t('txt_club_settings_tab_tiers'),       icon: _antIc('tag'),       body: _renderClubTiersBody() },
     { key: 'seasons',     label: t('txt_club_settings_tab_seasons'),     icon: _antIc('calendar'),  body: _renderClubSeasonsBody() },
-    { key: 'assignments', label: t('txt_club_settings_tab_assignments'), icon: _antIc('link'),      body: _renderClubAssignmentsBody() },
     { key: 'comms',       label: t('txt_club_settings_tab_comms'),       icon: _antIc('mail'),      body: _renderClubCommsBody(club) },
     { key: 'access',      label: t('txt_club_settings_tab_access'),      icon: _antIc('safety'),    body: _renderClubAccessBody(club) },
   ].filter(st => st.body && st.body.trim());

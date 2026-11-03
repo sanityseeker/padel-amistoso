@@ -9,34 +9,19 @@
  *
  * The page itself is public. Rating data (leaderboard, season standings,
  * player mini-cards) is members-only: it is fetched with the Player Hub
- * profile JWT that player.js keeps in localStorage on this same origin, and
- * anonymous visitors see a sign-in prompt instead.
+ * profile JWT that player.js keeps in localStorage on this same origin; the
+ * whole leaderboard section stays hidden for anonymous visitors.
  */
 
-// ── Theme + language (mirrors tv.js / player.js pattern) ──────────────────
-let _clubTheme = _loadSavedTheme();
-_applyTheme(_clubTheme);
-let _clubLang = _loadSavedLanguage();
-setAppLanguage(_clubLang);
+// ── Theme + language ──────────────────────────────────────────────────────
+// The shared public header (shared.js buildPublicHeaderHtml) owns the
+// language/theme controls; this page only applies the saved values early.
+_applyTheme(_loadSavedTheme());
+setAppLanguage(_loadSavedLanguage());
 
-function _clubRefreshTopbarButtons() {
-  const themeBtn = document.getElementById('club-theme-btn');
-  if (themeBtn) themeBtn.textContent = _clubTheme === 'dark' ? '🌙' : '☀️';
-  const langBtn = document.getElementById('club-lang-btn');
-  if (langBtn) langBtn.textContent = _clubLang === 'es' ? '🇪🇸' : '🇬🇧';
-}
-
-function _clubToggleTheme() {
-  _clubTheme = _clubTheme === 'dark' ? 'light' : 'dark';
-  _applyTheme(_clubTheme);
-  _saveTheme(_clubTheme);
-  _clubRefreshTopbarButtons();
-}
-
-function _clubToggleLanguage() {
-  _clubLang = _clubLang === 'es' ? 'en' : 'es';
-  setAppLanguage(_clubLang);
-  _clubRefreshTopbarButtons();
+function _clubRenderPublicHeader() {
+  const slot = document.getElementById('club-public-header');
+  if (slot) slot.innerHTML = buildPublicHeaderHtml('club');
 }
 
 const _CLUB_LB_SPORT_KEY = 'amistoso-club-landing-sport';
@@ -104,19 +89,6 @@ function _clubRenderHeader(club) {
   _clubShow('club-header');
 }
 
-const _CLUB_STATUS_ORDER = ['in_progress', 'open_registration', 'upcoming', 'finished'];
-const _CLUB_STATUS_LABEL_KEY = {
-  in_progress: 'txt_club_status_live',
-  open_registration: 'txt_club_status_open_registration',
-  upcoming: 'txt_club_status_upcoming',
-  finished: 'txt_club_status_finished',
-};
-const _CLUB_STATUS_FALLBACK = {
-  in_progress: 'Live',
-  open_registration: 'Sign up',
-  upcoming: 'Upcoming',
-  finished: 'Finished',
-};
 const _CLUB_ITEMS_TAB_KEY = 'amistoso-club-landing-items-tab';
 const _CLUB_ITEMS_LIVE_STATUSES = new Set(['in_progress', 'open_registration', 'upcoming']);
 let _clubItems = [];
@@ -153,37 +125,19 @@ function _clubUpdateItemsTabUI() {
   if (finishedEl) finishedEl.textContent = finishedCount ? String(finishedCount) : '';
 }
 
-// ── Item badges: sport + type ─────────────────────────────────────────────
-const _CLUB_TYPE_LABEL_KEY = {
-  group_playoff: 'txt_club_type_gp',
-  mexicano: 'txt_club_type_mex',
-  playoff: 'txt_club_type_po',
-  registration: 'txt_club_type_registration',
-};
-const _CLUB_TYPE_FALLBACK = {
-  group_playoff: 'GP',
-  mexicano: 'Mex',
-  playoff: 'PO',
-  registration: 'Reg',
-};
-const _CLUB_SPORT_LABEL_KEY = {
-  padel: 'txt_txt_sport_padel',
-  tennis: 'txt_txt_sport_tennis',
-};
+// ── Item cards ────────────────────────────────────────────────────────────
+// Badge + grouping rules are shared with the /events page (shared.js
+// publicEventBadges / publicEventGroups) so both directories stay identical.
 
-function _clubItemBadges(it) {
-  const parts = [];
-  // Sport badge — suppress when a sport is already selected (it's implied)
-  if (it.sport && !_clubCurrentSport) {
-    const sLabel = t(_CLUB_SPORT_LABEL_KEY[it.sport] || '', {}) || it.sport;
-    parts.push(`<span class="club-item-badge club-item-badge--sport club-item-badge--${esc(it.sport)}">${esc(sLabel)}</span>`);
-  }
-  // Type badge
-  if (it.type) {
-    const tLabel = t(_CLUB_TYPE_LABEL_KEY[it.type] || '', {}) || _CLUB_TYPE_FALLBACK[it.type] || it.type;
-    parts.push(`<span class="club-item-badge club-item-badge--type">${esc(tLabel)}</span>`);
-  }
-  return parts.join('');
+function _clubItemCardHtml(it) {
+  const badgesHtml = publicEventBadges(it, { hideSport: Boolean(_clubCurrentSport) })
+    .map(b => `<span class="club-item-badge ${esc(b.cls)}">${esc(b.label)}</span>`)
+    .join('');
+  return `
+      <a class="club-item-card club-item-card--${esc(it.status)}${it.pinned ? ' club-item-card--pinned' : ''}" href="${esc(publicEventHref(it))}">
+        <span class="club-item-name">${esc(it.name || '')}</span>
+        <span class="club-item-badges">${badgesHtml}</span>
+      </a>`;
 }
 
 function _clubRenderItemsBody() {
@@ -192,31 +146,19 @@ function _clubRenderItemsBody() {
   const visible = _clubItemsForTab(_clubItemsTab);
   if (visible.length === 0) {
     const emptyKey = _clubItemsTab === 'live' ? 'txt_club_items_empty_live' : 'txt_club_items_empty_finished';
-    const fallback = _clubItemsTab === 'live' ? 'No live activity right now.' : 'No finished events yet.';
-    body.innerHTML = `<div class="club-items-empty">${esc(t(emptyKey, {}) || fallback)}</div>`;
+    body.innerHTML = `<div class="club-items-empty">${esc(t(emptyKey))}</div>`;
     return;
   }
-  // Sort by status priority, then keep server order within each group.
-  const sorted = visible.slice().sort((a, b) => {
-    const ai = _CLUB_STATUS_ORDER.indexOf(a.status);
-    const bi = _CLUB_STATUS_ORDER.indexOf(b.status);
-    if (ai === bi) return 0;
-    if (ai === -1) return 1;
-    if (bi === -1) return -1;
-    return ai - bi;
-  });
-  body.innerHTML = sorted.map(it => {
-    const slug = it.alias || it.id;
-    const path = it.kind === 'registration'
-      ? `/register/${encodeURIComponent(slug)}`
-      : `/tv/${encodeURIComponent(slug)}`;
-    const badgesHtml = _clubItemBadges(it);
-    return `
-      <a class="club-item-card club-item-card--${esc(it.status)}${it.pinned ? ' club-item-card--pinned' : ''}" href="${esc(path)}">
-        <span class="club-item-name">${esc(it.name || '')}</span>
-        <span class="club-item-badges">${badgesHtml}</span>
-      </a>`;
-  }).join('');
+  if (_clubItemsTab === 'finished') {
+    body.innerHTML = visible.map(_clubItemCardHtml).join('');
+    return;
+  }
+  // Live tab: "Tournaments" (live first, then not started) and "Sign-ups open".
+  body.innerHTML = publicEventGroups(visible).map(group => `
+      <div class="club-items-group">
+        <h3 class="club-items-group-title">${esc(t(group.labelKey))}</h3>
+        ${group.items.map(_clubItemCardHtml).join('')}
+      </div>`).join('');
 }
 
 function _clubSetItemsTab(tab) {
@@ -426,38 +368,31 @@ function _clubRenderScopeBar() {
   bar.hidden = false;
 }
 
-/** Members-only notice shown instead of the leaderboard to signed-out visitors. */
-function _clubRenderLeaderboardLoginPrompt() {
+/** The leaderboard is members-only: without a Hub session the whole section is hidden. */
+function _clubHideLeaderboard() {
+  _clubHide('club-leaderboard');
   const bar = document.getElementById('club-leaderboard-scope-bar');
   if (bar) {
     bar.innerHTML = '';
     bar.hidden = true;
   }
-  const body = document.getElementById('club-leaderboard-body');
-  if (!body) return;
-  body.innerHTML = `
-    <div class="club-leaderboard-locked">
-      <p class="club-leaderboard-empty">${esc(t('txt_club_leaderboard_login_required', {}) || 'The leaderboard is visible to signed-in players only.')}</p>
-      <a class="club-login-btn club-login-btn--player" href="/player">
-        <span class="club-login-label">${esc(t('txt_club_leaderboard_login_cta', {}) || 'Sign in to Player hub')}</span>
-      </a>
-    </div>`;
 }
 
 async function _clubLoadLeaderboard(sport) {
   if (!_clubData) return;
   if (!_clubProfileJwt()) {
-    _clubRenderLeaderboardLoginPrompt();
+    _clubHideLeaderboard();
     return;
   }
   try {
+    _clubShow('club-leaderboard');
     await _clubLoadLeaderboardData(sport);
   } catch (e) {
-    // Expired / revoked session: fall back to the sign-in prompt.
+    // Expired / revoked session: behave like a signed-out visitor.
     if (e && e.status === 401) {
       _clubLeaderboardCache = {};
       _clubSeasonStandingsCache = {};
-      _clubRenderLeaderboardLoginPrompt();
+      _clubHideLeaderboard();
       return;
     }
     throw e;
@@ -648,8 +583,7 @@ async function _clubShowFatal(kind) {
 
 async function _clubInit() {
   if (typeof initLanguage === 'function') initLanguage();
-  _clubLang = getAppLanguage();
-  _clubRefreshTopbarButtons();
+  _clubRenderPublicHeader();
   const slug = (typeof getClubSubdomain === 'function') ? getClubSubdomain() : null;
   if (!slug) {
     await _clubShowFatal('not_found');
@@ -686,20 +620,25 @@ async function _clubInit() {
     _clubRenderItemsBody();
   }
 
-  _clubShow('club-leaderboard');
   if (_clubProfileJwt()) _clubRenderScopeBar();
   _clubLoadLeaderboard(_clubCurrentSport);
 
-  // Always show search and login sections
+  // The ID / alias search is always available.
   _clubShow('club-search');
-  _clubShow('club-login');
 
   if (typeof applyI18n === 'function') applyI18n(document);
 }
 
 document.addEventListener('app-language-changed', () => {
-  _clubLang = getAppLanguage();
-  _clubRefreshTopbarButtons();
+  // Static markup is re-translated by setAppLanguage; rebuild the rendered lists.
+  if (_clubItems.length > 0) {
+    _clubUpdateItemsTabUI();
+    _clubRenderItemsBody();
+  }
+  if (_clubData && _clubProfileJwt()) {
+    _clubRenderScopeBar();
+    _clubLoadLeaderboard(_clubCurrentSport).catch(() => {});
+  }
 });
 
 // ---------------------------------------------------------------------------

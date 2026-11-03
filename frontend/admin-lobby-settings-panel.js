@@ -352,11 +352,11 @@ function _renderLobbySettingsPage(rid, ctx) {
   const commsBody = _renderLobbyCommsBody(rid, r, emailSettings);
 
   const subtabs = [
-    { key: 'details',   label: t('txt_lobby_settings_tab_details'),   icon: '⚙',  body: _renderLobbyDetailsBody(rid, r) },
-    { key: 'questions', label: t('txt_lobby_settings_tab_questions'), icon: '❓', body: _renderLobbyQuestionsBody(rid, r) },
-    { key: 'comms',     label: t('txt_lobby_settings_tab_comms'),     icon: '📧', body: commsBody },
+    { key: 'details',   label: t('txt_lobby_settings_tab_details'),   icon: _antIc('setting'), body: _renderLobbyDetailsBody(rid, r) },
+    { key: 'questions', label: t('txt_lobby_settings_tab_questions'), icon: _antIc('question-circle'), body: _renderLobbyQuestionsBody(rid, r) },
+    { key: 'comms',     label: t('txt_lobby_settings_tab_comms'),     icon: _antIc('mail'), body: commsBody },
     { key: 'payments',  label: t('txt_pay_tab'),                      icon: '€',  body: _renderPaymentSettingsIsland('registration', rid) },
-    { key: 'access',    label: t('txt_lobby_settings_tab_access'),    icon: '🛡', body: accessBody },
+    { key: 'access',    label: t('txt_lobby_settings_tab_access'),    icon: _antIc('safety'), body: accessBody },
   ].filter(st => st.body && st.body.trim());
 
   if (subtabs.length === 0) return '';

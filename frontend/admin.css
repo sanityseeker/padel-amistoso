@@ -96,14 +96,6 @@ body.login-dialog-open .container { filter: blur(3px); pointer-events: none; tra
 .page-selector-item:hover { background: var(--bg); }
 .page-selector-item.active { color: var(--accent); font-weight: 600; }
 .page-selector-item-icon { font-size: 1rem; flex-shrink: 0; }
-.page-selector-divider { height: 1px; background: var(--border); margin: 0.3rem 0; }
-.page-selector-pin-btn {
-  display: flex; align-items: center; gap: 0.5rem;
-  width: 100%; padding: 0.55rem 0.85rem; font-size: 0.8rem; font-weight: 500;
-  color: var(--text-muted); background: none; border: none; cursor: pointer;
-  font-family: inherit; transition: background 0.1s;
-}
-.page-selector-pin-btn:hover { background: var(--bg); color: var(--text); }
 .tab-btn {
   padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 6px;
   background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.9rem;
@@ -3014,68 +3006,6 @@ html[data-theme="light"] .badge-lobby-closed { background: var(--color-error-hig
 .clubs-compose-block { padding-top: 0.2rem; }
 
 /* Clubs landing pinned checklist (Settings > General) */
-.clubs-landing-pinned-block {
-  margin-top: 0.25rem;
-}
-
-.clubs-landing-pinned-details {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.55rem 0.6rem;
-  background: var(--surface-alt, var(--surface));
-}
-
-.clubs-landing-pinned-summary {
-  cursor: pointer;
-  font-size: 0.86rem;
-  font-weight: 600;
-  color: var(--text);
-  user-select: none;
-}
-
-.clubs-landing-pinned-details > .settings-help {
-  margin-top: 0.45rem;
-}
-
-.clubs-landing-pinned-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.42rem;
-  max-height: 260px;
-  overflow-y: auto;
-  padding-right: 0.15rem;
-}
-
-.clubs-landing-pin-row {
-  display: grid;
-  grid-template-columns: 18px 1fr auto;
-  align-items: center;
-  gap: 0.45rem;
-  font-size: 0.9rem;
-  cursor: pointer;
-  padding: 0.28rem 0.38rem;
-  border-radius: 6px;
-}
-
-.clubs-landing-pin-row:hover {
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-}
-
-.clubs-landing-pin-cb {
-  margin: 0;
-  width: 16px;
-  height: 16px;
-}
-
-.clubs-landing-pin-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.clubs-landing-pin-status {
-  font-size: 0.72rem;
-}
 
 .clubs-players-toolbar {
   display: flex;
@@ -3230,7 +3160,13 @@ details.advanced-section summary {
   padding: 0.6rem 0.9rem;
   font-size: 0.83rem; font-weight: 600; color: var(--text-muted);
 }
-details.advanced-section summary::before { content: '⚙\FE0F\200D'; }
+details.advanced-section summary::before {
+  content: '';
+  width: 1.05em; height: 1.05em; flex-shrink: 0;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
 details.advanced-section summary::after { content: '▸'; margin-left: auto; transition: transform 0.18s; }
 details.advanced-section[open] summary::after { transform: rotate(90deg); }
 details.advanced-section summary::marker { display: none; }
@@ -3717,7 +3653,9 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   #auth-status { display: flex; align-items: center; gap: 0.3rem; }
   #auth-status strong { display: none; }
   #auth-status .nav-btn-label { display: none; }
-  #auth-status .btn.btn-sm { min-height: 34px; padding: 0.25rem 0.55rem; font-size: 0.82rem; }
+  #auth-status .btn.btn-sm { min-height: 44px; padding: 0.25rem 0.6rem; font-size: 0.82rem; justify-content: center; }
+  #auth-status .auth-nav-btn { min-width: 44px; }
+  .tab-btn--info { min-height: 44px; display: inline-flex; align-items: center; gap: 0.3rem; }
 
   /* Tabs: scroll horizontally instead of wrapping awkwardly */
   .tabs {
@@ -3739,13 +3677,13 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
     min-width: 0;
   }
   .home-search-row .btn {
-    min-height: 40px;
+    min-height: 44px;
     padding: 0.35rem 0.55rem;
     font-size: 0.82rem;
     flex-shrink: 0;
   }
   .home-filter-chip {
-    min-height: 38px;
+    min-height: 44px;
     display: inline-flex;
     align-items: center;
     font-size: 0.8rem;
@@ -3803,9 +3741,9 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   .match-actions input { width: 56px !important; height: 44px; font-size: 1rem; }
   .btn { min-height: 44px; }
   .btn-sm { min-height: 44px; padding: 0.5rem 0.8rem; font-size: 0.85rem; }
-  .tournament-actions .btn-sm { min-height: unset; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
-  .match-edit-btn { min-height: 40px; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
-  .match-format-btn { min-height: 40px; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
+  .tournament-actions .btn-sm { min-height: 44px; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+  .match-edit-btn { min-height: 44px; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
+  .match-format-btn { min-height: 44px; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
   .match-format-btn.is-override { padding-right: 0.9rem; }
   /* Score entry: format chip on its own line, set boxes full width, then Save. */
   .match-actions { width: 100%; }
@@ -5791,6 +5729,7 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   padding: 0.2rem 0.55rem;
   cursor: pointer;
   font-size: 0.78rem;
+  gap: 0.35rem; /* icon / label spacing once the button turns inline-flex (touch widths) */
 }
 .settings-url-copy-btn:hover { color: var(--accent); border-color: var(--accent); }
 .settings-label {
@@ -5825,6 +5764,9 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
 }
 .settings-input--mono { font-family: var(--font-mono); }
 .settings-input--grow { flex: 1; min-width: 180px; }
+/* Read-only URL shown in input style (club web address): theme link colour
+   instead of the browser's default visited/unvisited blue. */
+a.settings-input { color: var(--color-primary); }
 /* Inline message slot rendered below a settings-inline-row (success / error
    feedback). Reserves vertical space so layout doesn't jump when text appears. */
 .settings-inline-msg {
@@ -6009,17 +5951,6 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
 .clubs-lb-frozen-badge { font-size: 0.78rem; }
 
 /* Assignments sub-tab — flat sections (no nested <details>). */
-.clubs-assign-section { margin-bottom: 1rem; }
-.clubs-assign-section .player-codes-table-wrap {
-  max-height: 18rem;
-  overflow-y: auto;
-}
-.clubs-assign-section-title {
-  margin: 0 0 0.4rem;
-  font-size: 0.92rem; font-weight: 600;
-  display: flex; align-items: center; gap: 0.4rem;
-  color: var(--text);
-}
 .clubs-assign-search-input {
   width: 100%; max-width: 320px;
   margin-bottom: 0.4rem;
@@ -6108,19 +6039,39 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
 .clubs-ghost-group-msg { margin-top: 0.3rem; font-size: 0.82rem; }
 
 @media (max-width: 720px) {
+  /* Phones: the sub-tab strip (club / tournament / lobby settings) wraps into
+     balanced rows of equal cells instead of scrolling sideways — three per row
+     on a 6-column grid; 2 tabs → 1 × 2, 4 → 2 × 2, 5 → 3 + 2. It stops being
+     sticky: a two-row strip pinned under the status bar costs too much height. */
   .settings-subtabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 0.2rem;
     padding: 0.2rem;
+    position: static;
   }
-  .settings-subtabs::-webkit-scrollbar { display: none; }
-  .settings-subtab-btn { flex-shrink: 0; padding: 0.4rem 0.55rem; font-size: 0.8rem; }
-  /* Keep labels visible — no longer icon-only */
-  .settings-subtab-label { display: inline; }
-  .settings-subtab-icon { font-size: 1rem; }
+  .settings-subtab-btn {
+    grid-column: span 2;
+    gap: 0.25rem;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0.35rem 0.3rem;
+    font-size: 0.8rem;
+  }
+  .settings-subtab-label {
+    display: inline;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .settings-subtab-icon { flex-shrink: 0; font-size: 1rem; }
+  /* A lone cell on the last row spans it; a pair splits it in half. */
+  .settings-subtab-btn:nth-child(3n+1):last-child { grid-column: 1 / -1; }
+  .settings-subtab-btn:nth-child(3n+1):nth-last-child(2),
+  .settings-subtab-btn:nth-child(3n+2):last-child { grid-column: span 3; }
+  /* Exactly four tabs: 2 × 2 rather than 3 + 1. */
+  .settings-subtab-btn:first-child:nth-last-child(4),
+  .settings-subtab-btn:first-child:nth-last-child(4) ~ .settings-subtab-btn { grid-column: span 3; }
   .settings-stage-label { min-width: 0; flex: 1 1 auto; }
 }
 
@@ -6483,9 +6434,11 @@ details.advanced-section.advanced-section--flush {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   cursor: pointer;
+  background: var(--color-surface);
   color: var(--color-text-muted);
   line-height: 1.4;
 }
+.ph-ghost-toggle:hover { color: var(--color-text); border-color: var(--color-primary); }
 .player-codes-th-narrow {
   width: 2rem;
 }
@@ -7111,4 +7064,400 @@ label.user-mgmt-checkbox-label {
   justify-content: center;
   padding: var(--space-4);
   background: var(--color-overlay-backdrop);
+}
+
+/* ── Club admin Events card (admin-clubs.js _clubEventsStore island) ── */
+.club-events-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.club-events-title {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1.05rem;
+}
+.club-events-head-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.club-events-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.club-events-group + .club-events-group { margin-top: 0.75rem; }
+.club-events-group-title {
+  margin: 0 0 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--text-muted);
+}
+.club-events-group-title .ic { width: 0.85em; height: 0.85em; }
+.club-events-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.1rem;
+  border-bottom: 1px solid var(--border);
+}
+.club-events-row:last-child { border-bottom: none; }
+.club-events-main { flex: 1 1 240px; min-width: 0; }
+.club-events-name-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.club-events-name { font-weight: 600; }
+.club-events-row--readonly .club-events-name { color: var(--text-muted); }
+.club-events-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem; }
+.club-events-lobby-link { color: var(--accent); }
+.club-events-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+.club-events-season { max-width: 11rem; font-size: 0.82rem; }
+.club-events-primary { white-space: nowrap; min-width: 8.5rem; justify-content: center; text-align: center; }
+.club-events-season-link { font-size: 0.8rem; color: var(--accent); white-space: nowrap; }
+.club-events-pin { padding: 0.25rem 0.45rem; color: var(--text-muted); }
+.club-events-pin .ic { width: 1.05em; height: 1.05em; }
+.club-events-pin.is-pinned { color: var(--color-yellow); }
+.club-events-pin.is-pinned .ic { fill: currentColor; }
+.club-events-pin:disabled { opacity: 0.45; cursor: not-allowed; }
+.club-events-more { padding: 0.25rem 0.45rem; }
+.club-events-menu-wrap { position: relative; }
+.club-events-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 200px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-md);
+  padding: 0.3rem 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+}
+.club-events-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.85rem;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+.club-events-menu-item:hover:not(:disabled) { background: var(--bg); }
+.club-events-menu-item:disabled { opacity: 0.45; cursor: not-allowed; }
+.club-events-menu-item--danger { color: var(--color-error); }
+.club-events-season--menu { display: none; }
+.club-events-row-msg { flex-basis: 100%; font-size: 0.8rem; }
+.club-events-empty { padding: 0.75rem 0; }
+.club-events-attach {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-card);
+  padding: 0 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.club-events-attach-summary {
+  width: 100%;
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  padding: 0.6rem 0;
+  min-height: 44px;
+}
+.club-events-attach.is-open .player-codes-chevron { transform: rotate(90deg); }
+.club-events-attach-body { padding: 0 0 0.75rem; }
+.club-events-attach-actions { display: inline-flex; gap: 0.4rem; flex-shrink: 0; }
+.club-events-attach-dismissed { margin-top: 0.6rem; }
+.club-events-attach-row--dismissed .club-events-attach-name { color: var(--text-muted); }
+.club-events-attach-msg { flex-basis: 100%; }
+.club-events-attach-none { margin: 0 0 0.75rem; }
+.club-events-attach-list { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.club-events-attach-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--border);
+}
+.club-events-attach-name { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; min-width: 0; }
+.club-events-attach-hint { font-size: 0.78rem; color: var(--color-warning-text); }
+.view-club-return { margin-bottom: 0.5rem; }
+.view-club-return-btn { font-weight: 600; }
+@media (max-width: 640px) {
+  .club-events-row { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+  .club-events-main { flex: 0 0 auto; }
+  .club-events-actions { justify-content: stretch; flex-wrap: wrap; }
+  .club-events-primary { flex: 1 1 auto; min-height: 44px; }
+  .club-events-pin, .club-events-more { min-height: 44px; min-width: 44px; }
+  .club-events-season--inline { display: none; }
+  .club-events-season--menu { display: flex; flex-direction: column; align-items: stretch; gap: 0.3rem; }
+  .club-events-menu-item { min-height: 44px; }
+}
+
+/* ── Touch widths (phones + tablets): 44px targets, rows that line up ──
+   Every control that shares a row gets the same height; icon-only buttons
+   are square. Desktop (> 900px) keeps the compact sizes. */
+@media (max-width: 900px) {
+  .btn,
+  .tab-btn,
+  .subtab-btn,
+  .compact-icon-btn,
+  .home-filter-chip,
+  .settings-subtab-btn,
+  .paste-list-btn,
+  .clubs-sport-pill,
+  .ph-ghost-toggle { min-height: 44px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; }
+  .paste-list-btn { display: inline-flex; align-items: center; }
+
+  /* Icon-only buttons: square. */
+  .compact-icon-btn,
+  .club-status-bar-back,
+  .status-bar-settings-btn,
+  .umgmt-col-actions .btn,
+  .club-events-pin,
+  .club-events-more,
+  .tournament-actions .btn-danger,
+  .participant-remove-btn { min-width: 44px; min-height: 44px; padding-left: 0.5rem; padding-right: 0.5rem; justify-content: center; }
+
+  /* Club status bar: back arrow, sport toggle and the settings gear share one height. */
+  .club-status-bar-back { padding: 0; }
+  .clubs-sport-toggle--inline { align-self: stretch; display: inline-flex; }
+  .clubs-sport-pill { padding: 0.35rem 1rem; }
+  .tournament-status-bar .status-bar-settings-btn { margin-left: 0; }
+
+  /* Ops header (GP / Mexicano / Play-off): the two action buttons match heights
+     even when one label wraps. */
+  .gp-ops-next-action { align-items: stretch; }
+  /* ...while the "Next action:" label stays vertically centred on them. */
+  .gp-ops-next-action > span { align-self: center; }
+  .gp-ops-next-action .btn { white-space: normal; }
+  .gp-ops-next-action .btn { text-align: center; }
+
+  /* Inline settings rows: inputs match the 44px buttons; long links truncate
+     instead of running under the Copy button. */
+  .settings-inline-row > .settings-input,
+  .settings-inline-row > select,
+  .settings-inline-row > input { min-height: 44px; }
+  .settings-input--grow { min-width: 0; flex: 1 1 10rem; }
+  .settings-inline-row > a.settings-input {
+    display: inline-flex;
+    align-items: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Club Players: the add-player input and button line up. */
+  .clubs-add-player-row input[type="text"] { min-height: 44px; min-width: 0; }
+  .clubs-add-player-row .btn { flex: 0 0 auto; }
+
+  /* Form controls: one 44px height in every admin view. Textareas keep their
+     own taller minimum; sliders, checkboxes and radios keep native sizes. */
+  input:where(:not([type="radio"], [type="checkbox"], [type="range"], [type="color"], [type="file"], [type="hidden"])),
+  select { min-height: 44px; }
+  /* Components that reset min-height for the compact desktop look. */
+  .settings-input,
+  .tvmail-compact-field,
+  .clubs-players-filter-wrap input,
+  .clubs-players-filter-wrap .btn,
+  .clubs-players-actions .btn { min-height: 44px; }
+  .team-builder-members input,
+  .participant-entry input { min-height: 44px !important; }
+
+  /* Small text buttons and segmented toggles. */
+  .page-selector-btn,
+  .score-mode-toggle button,
+  .match-filter-toggle button,
+  .gp-review-filter button,
+  .group-nav-btn,
+  .reg-q-type-toggle button,
+  .add-participant-btn,
+  .reg-q-add-choice-btn,
+  .btn-outline-muted,
+  .settings-url-copy-btn,
+  .match-format-btn,
+  .reg-section-summary-btn { min-height: 44px; }
+  .settings-url-copy-btn,
+  .btn-outline-muted { display: inline-flex; align-items: center; justify-content: center; }
+  .reg-q-remove,
+  #clubs-players-list .player-codes-icon-btn { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+
+  /* The "i" format-info circle keeps its small look; an invisible ring
+     brings its tap area to 44px. */
+  .format-info-btn { position: relative; }
+  .format-info-btn::after { content: ''; position: absolute; inset: -8px; }
+}
+@media (max-width: 600px) {
+  /* Phones: label on its own line, input + Add share the next one. */
+  .clubs-add-player-label { flex: 1 1 100%; }
+  .clubs-add-player-row input[type="text"] { flex: 1 1 0; min-width: 0; }
+
+  /* Home list cards: Public/Private + delete share a height. */
+  .tournament-actions { align-items: center; }
+  .home-search-row .home-search-input { min-height: 44px; }
+  .club-events-season { min-height: 44px; }
+  .tab-btn--info { gap: 0.3rem; }
+
+  /* Participants header: the small text buttons wrap as one group with one gap. */
+  .participants-header { align-items: center; flex-wrap: wrap; }
+
+  /* Header row 2: Info, the nav icons and Logout share one line. Info drops
+     its text label (the title attribute still names it). */
+  .page-header-row--nav { flex-wrap: nowrap; gap: 0.3rem; }
+  .page-header-row--nav .tab-btn--info { min-width: 44px; padding: 0; justify-content: center; font-size: 1.05rem; }
+  .page-header-row--nav .tab-btn-label { display: none; }
+  #auth-status { flex-wrap: nowrap; min-width: 0; }
+  #auth-status .mr-1,
+  #auth-status .mr-2 { margin-right: 0; }
+
+  /* Create: the four format tabs form one 2 x 2 segmented control. */
+  .create-mode-strip {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .create-mode-strip > .subtabs { display: contents; }
+  .create-mode-strip > .flex-1 { display: none; }
+  .create-mode-strip .subtab-btn {
+    min-height: 44px;
+    padding: 0.4rem 0.5rem;
+    border-right: none;
+    border-bottom: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #create-tab-gp,
+  #create-tab-po { border-right: 1px solid var(--color-border); }
+  #create-tab-gp,
+  #create-tab-mex { border-bottom: 1px solid var(--color-border); }
+}
+@media (max-width: 420px) {
+  /* Narrow phones: six header controls fit at 360px as 40px squares. */
+  .page-header-row--nav .tab-btn--info,
+  #auth-status .auth-nav-btn { min-width: 40px; min-height: 40px; }
+  #auth-status .btn.btn-sm { min-height: 40px; padding-left: 0.5rem; padding-right: 0.5rem; }
+}
+
+/* Club detail already has a sticky status bar at top:0 — a second sticky
+   element (the Settings sub-tab strip) would slide underneath it. */
+@media (max-width: 900px) {
+  .club-settings-card .settings-subtabs { position: static; }
+}
+
+/* ── Pinned header stack ──────────────────────────────────────────────────
+   `_syncAdminStickyOffset()` (admin-utils.js) publishes the real height of the
+   club-subdomain banner (--admin-sticky-top) and of banner + the visible
+   sticky status bar (--admin-sticky-offset). The bars pin just below the
+   banner, and scroll-padding keeps every scrollIntoView() jump (club settings
+   gear, season → leaderboard, Mexicano / GP shortcuts) and focus scroll clear
+   of the bar instead of landing underneath it. */
+html { scroll-padding-top: calc(var(--admin-sticky-offset, 0px) + 0.5rem); }
+.club-status-bar,
+#mex-ops-header,
+.group-nav-bar { top: var(--admin-sticky-top, 0px); }
+/* A pinned settings sub-tab strip stacks under the bar, not beneath it. */
+.settings-subtabs { top: var(--admin-sticky-offset, 0px); }
+
+/* ── Stacked tables (phones) ──────────────────────────────────────────────
+   `table.table-stack` rows turn into compact cards: the title cell (with an
+   optional selection checkbox) on top, key stats (`.stack-pri`) next, the other
+   cells two per line with their `data-label` as a caption, and the action
+   buttons (`.stack-actions`) in a row at the bottom. Markup and sorting are
+   unchanged; only the layout switches. */
+@media (max-width: 600px) {
+  .table-stack,
+  .table-stack tbody { display: block; width: 100%; }
+  .table-stack thead { display: none; }
+  .table-stack tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.4rem 0.75rem;
+    padding: 0.65rem 0.1rem;
+  }
+  .table-stack td {
+    display: block;
+    order: 2;
+    flex: 1 1 calc(50% - 0.75rem);
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    text-align: left;
+  }
+  /* Stacked rows never scroll sideways: drop the "more columns" edge fade. */
+  .player-codes-table-wrap:has(> .table-stack)::after { display: none; }
+  .table-stack td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.15rem;
+    color: var(--color-text-muted);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  .table-stack .stack-check {
+    order: 0;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    min-height: 1.5rem;
+  }
+  .table-stack .stack-title {
+    order: 0;
+    flex: 1 1 calc(100% - 3rem);
+    align-self: center;
+    font-size: 0.95rem;
+  }
+  .table-stack .stack-pri { order: 1; }
+  .table-stack .stack-full { flex-basis: 100%; }
+  .table-stack .stack-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .table-stack .stack-actions {
+    order: 3;
+    flex-basis: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.4rem;
+  }
+  .table-stack td select,
+  .table-stack td input:not([type="checkbox"]) { max-width: 100%; }
 }

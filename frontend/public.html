@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title data-i18n="txt_txt_app_title">Torneos</title>
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#3b82f6">
+<meta name="theme-color" content="#1a5fa3">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');</script>
 <script>(function(){try{var t=localStorage.getItem('amistoso-theme')||localStorage.getItem('padel-theme');if(!t)t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(_){}})();</script>
@@ -16,20 +16,22 @@
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/theme.css">
 <link rel="stylesheet" href="/tv.css">
+<link rel="stylesheet" href="/club.css">
 <script src="https://cdn.jsdelivr.net/npm/petite-vue@0.4.1/dist/petite-vue.iife.js" integrity="sha384-G3VE2R9nao/dKH0R46Bvk6qIVBAeImWjeTj+SwWOJzJ4N0vQ2RKWuC/cp36l4Iba" crossorigin="anonymous" defer></script>
 </head>
 <body>
 <div id="tv-root">
   <div class="tv-loading" data-i18n="txt_txt_loading_tournament_display">Loading tournament display…</div>
 </div>
-<!-- Picker island card template (inert until instantiated per tournament by
+<!-- Events directory card template (inert until instantiated per item by
      _renderPickerHtml → #tv-picker-island, tv.js). `it` is the per-item
-     view-model from _pickerStore.item(). -->
+     view-model from _pickerStore.item(). Same card as the club page. -->
 <template id="tpl-tv-picker-item">
-  <a class="tv-picker-item" :href="'/tv/' + encodeURIComponent(it.slug)">
-    <img v-if="it.logoUrl" :src="it.logoUrl" alt=""
-         class="club-logo-inline">{{ it.name }}<span class="picker-badge picker-badge-sport">{{ it.sportLabel }}</span><span class="picker-badge picker-badge-type">{{ it.modeLabel }}</span><span class="picker-badge picker-badge-phase">{{ it.phaseLabel }}</span><span v-if="it.alias" class="picker-alias">{{ it.alias }}</span>
-    <span v-if="it.brandingLabel" class="branding-label">{{ it.brandingLabel }}</span>
+  <a class="club-item-card" :class="['club-item-card--' + it.status, it.pinned ? 'club-item-card--pinned' : '']" :href="it.href">
+    <span class="club-item-name">{{ it.name }}<span v-if="it.origin" class="club-item-origin">{{ it.origin }}</span></span>
+    <span class="club-item-badges">
+      <span v-for="b in it.badges" :key="b.cls" class="club-item-badge" :class="b.cls">{{ b.label }}</span>
+    </span>
   </a>
 </template>
 <div class="support-links">

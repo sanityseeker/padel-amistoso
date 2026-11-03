@@ -75,7 +75,7 @@ def notify_matches_ready(tid: str, data: dict, matches: list[Match]) -> None:
     send_push_to_players(
         tournament_id=tid,
         player_ids=player_ids,
-        title=f"🏸 {name}",
+        title=name,
         body="Your match is ready! Check the TV display for court assignments.",
         url=_tv_url(tid, alias),
         tag=f"{tid}-match-ready",
@@ -102,7 +102,7 @@ def notify_score_submitted(tid: str, data: dict, match: Match, submitter_id: str
     send_push_to_players(
         tournament_id=tid,
         player_ids=opponents,
-        title=f"📋 {name}",
+        title=name,
         body=f"Score submitted ({score_text}) — tap to review.",
         url=_tv_url(tid, alias),
         tag=f"{tid}-score-{match.id}",
@@ -120,7 +120,7 @@ def notify_score_accepted(tid: str, data: dict, match: Match, accepter_id: str) 
     send_push_to_players(
         tournament_id=tid,
         player_ids=submitter_team_ids,
-        title=f"✅ {name}",
+        title=name,
         body="Your score has been confirmed!",
         url=_tv_url(tid, alias),
         tag=f"{tid}-score-{match.id}",
@@ -138,7 +138,7 @@ def notify_score_disputed(tid: str, data: dict, match: Match, disputer_id: str) 
     send_push_to_players(
         tournament_id=tid,
         player_ids=submitter_team_ids,
-        title=f"⚠️ {name}",
+        title=name,
         body="Your opponent proposes a different score — check the TV display.",
         url=_tv_url(tid, alias),
         tag=f"{tid}-score-{match.id}",
@@ -157,7 +157,7 @@ def notify_champion(tid: str, data: dict, champion_names: list[str]) -> None:
     champ = " & ".join(champion_names) if champion_names else "the champions"
     send_push_to_tournament(
         tournament_id=tid,
-        title=f"🏆 {name}",
+        title=name,
         body=f"Tournament finished! Champion: {champ}",
         url=_tv_url(tid, alias),
         tag=f"{tid}-champion",

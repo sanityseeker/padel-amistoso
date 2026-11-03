@@ -77,7 +77,7 @@ def test_js_content_type_and_cache_control(client):
 PETITE_VUE_SRC = "cdn.jsdelivr.net/npm/petite-vue@0.4.1/dist/petite-vue.iife.js"
 PETITE_VUE_SRI = "sha384-G3VE2R9nao/dKH0R46Bvk6qIVBAeImWjeTj+SwWOJzJ4N0vQ2RKWuC/cp36l4Iba"
 
-PETITE_VUE_PAGES = ["/", "/player", "/tv", "/register"]
+PETITE_VUE_PAGES = ["/", "/player", "/events", "/tv/some-alias", "/register/some-alias"]
 
 
 @pytest.mark.parametrize("path", PETITE_VUE_PAGES)
@@ -237,26 +237,292 @@ def test_admin_tournaments_js_mounts_home_island(client):
 
 
 def test_tv_picker_item_template_shipped(client):
-    """public.html (TV view) ships the picker island's per-item card template."""
-    html = client.get("/tv", headers={"Accept-Encoding": "identity"}).text
+    """public.html (Events page + TV view) ships the directory card template —
+    the same club-card markup the club page renders."""
+    html = client.get("/events", headers={"Accept-Encoding": "identity"}).text
     assert 'id="tpl-tv-picker-item"' in html
-    assert 'class="tv-picker-item"' in html
+    assert 'class="club-item-card"' in html
     assert "{{ it.name }}" in html
+    assert 'v-for="b in it.badges"' in html
+    assert 'class="club-item-origin"' in html
+    # Shared card styles come from club.css on both pages.
+    assert '<link rel="stylesheet" href="/club.css">' in html
 
 
 def test_tv_js_mounts_picker_island(client):
-    """tv.js builds the picker store, binds the island shell, mounts it, and no
-    longer rebuilds the picker as an HTML string with inline handlers."""
+    """tv.js builds the Events store, binds the island shell (header, chips,
+    sport pills, groups, find box) and mounts it."""
     js = client.get("/tv.js", headers={"Accept-Encoding": "identity"}).text
     assert "const _pickerStore = reactiveStore(" in js
     assert "mountIsland('#tv-picker-island', _pickerStore)" in js
-    # Reactive bindings replace the old inline onclick / string list.
-    assert '@click="toggleArchive()"' in js
-    assert 'v-for="tv in activeTournaments"' in js
+    assert "api('/api/public-events')" in js
+    assert '<div v-html="headerHtml"></div>' in js
+    assert "buildPublicHeaderHtml('events')" in js
+    assert "@click=\"setTab('live')\"" in js
+    assert "@click=\"toggleSport('padel')\"" in js
+    assert 'v-for="g in groups"' in js
     assert "v-scope=\"{ $template: '#tpl-tv-picker-item'" in js
-    # Legacy string-builder and its inline handler must be gone.
-    assert "function _renderPickerItem" not in js
-    assert 'onclick="togglePickerArchive()"' not in js
+    assert 'v-model="findValue"' in js
+    # v-for + external $template must sit inside <div>, never <template v-else>.
+    assert "<template v-else" not in js
+    # The old picker (archive toggle, subdomain banner, page selector) is gone.
+    assert "toggleArchive" not in js
+    assert "buildPageSelectorHtml" not in js
+    assert "player-subdomain-banner" not in js
+    assert "localStorage.setItem('amistoso-last-page', 'events')" in js
+
+
+# ── Shared public header + Display sheet ─────────────────────────────────────
+
+
+def test_shared_public_header_shipped(client):
+    """shared.js ships the segmented public header and the Display sheet, and
+    the old page-selector dropdown / home-page pin are gone."""
+    js = client.get("/shared.js", headers={"Accept-Encoding": "identity"}).text
+    assert "function buildPublicHeaderHtml(current)" in js
+    assert 'class="public-display-btn" aria-haspopup="dialog" aria-expanded="false"' in js
+    assert "function openDisplaySheet(" in js
+    assert "function setDisplayTheme(mode)" in js
+    assert "localStorage.removeItem(THEME_KEY)" in js  # Auto theme clears the saved key
+    assert 'role="radiogroup"' in js
+    assert 'aria-current="page"' in js
+    assert "function hubProfileInitials()" in js
+    for gone in (
+        "buildPageSelectorHtml",
+        "toggleHomePage",
+        "getHomePage",
+        "setHomePage",
+        "clearHomePage",
+        "amistoso-home-page",
+    ):
+        assert gone not in js, gone
+
+
+@pytest.mark.parametrize("path", ["/player.js", "/register.js", "/club.js"])
+def test_public_pages_use_shared_header(client, path):
+    js = client.get(path, headers={"Accept-Encoding": "identity"}).text
+    assert "buildPublicHeaderHtml(" in js
+    assert "buildPageSelectorHtml" not in js
+
+
+def test_tv_live_board_keeps_own_toggles_without_tab_bar(client):
+    js = client.get("/tv.js", headers={"Accept-Encoding": "identity"}).text
+    header = js[js.index("function _buildHeader(name, phase, champion)") :]
+    header = header[: header.index("\n}\n")]
+    assert 'onclick="_toggleLanguage()"' in header
+    assert 'onclick="_toggleTheme()"' in header
+    assert "buildPublicHeaderHtml" not in header
+
+
+def test_admin_header_has_single_events_link_and_no_pin(client):
+    html = client.get("/admin", headers={"Accept-Encoding": "identity"}).text
+    assert 'href="/events" class="page-selector-item" data-page="events"' in html
+    assert 'data-page="tv"' not in html
+    assert 'data-page="register"' not in html
+    assert "toggleHomePin" not in html
+    assert "amistoso-home-page" not in html
+    # Root redirect: anonymous visitors go to /player or /events, organizers stay.
+    assert "localStorage.getItem('padel-auth-token')" in html
+    assert "last === 'player' ? '/player' : '/events'" in html
+
+
+def test_club_page_has_header_slot_logo_above_name_and_no_login_section(client):
+    html = client.get("/", headers={"host": "myclub.example.com", "Accept-Encoding": "identity"})
+    # Unknown slug → 404 page; the club.html asset itself is read from disk.
+    assert html.status_code == 404
+    club_html = Path("frontend/club.html").read_text(encoding="utf-8")
+    assert 'id="club-public-header"' in club_html
+    assert "club-login" not in club_html
+    assert club_html.index('id="club-logo"') < club_html.index('id="club-name"')
+    assert 'data-i18n="txt_club_items_title">Events<' in club_html
+    club_js = client.get("/club.js", headers={"Accept-Encoding": "identity"}).text
+    assert "_clubRenderLeaderboardLoginPrompt" not in club_js
+    assert "publicEventGroups(" in club_js
+    css = client.get("/club.css", headers={"Accept-Encoding": "identity"}).text
+    assert "club-leaderboard-locked" not in css
+    assert "club-login-section" not in css
+
+
+def test_player_hub_locks_scope_on_club_subdomain(client):
+    js = client.get("/player.js", headers={"Accept-Encoding": "identity"}).text
+    for gone in ("_buildSubdomainBanner", "_clearSubdomainScope", "player-subdomain-override"):
+        assert gone not in js, gone
+    assert "if (_subdomainClub) return '';" in js  # scope selector hidden
+    assert "txt_player_club_no_matches" in js
+
+
+def test_register_directory_removed(client):
+    js = client.get("/register.js", headers={"Accept-Encoding": "identity"}).text
+    for gone in ("_showDirectory", "_renderDirectory", "_goToLobby", "state-directory"):
+        assert gone not in js, gone
+    assert "location.replace('/events')" in js
+
+
+def test_public_header_i18n_keys_in_both_languages(client):
+    js = client.get("/i18n.js", headers={"Accept-Encoding": "identity"}).text
+    keys = [
+        "txt_display_label",
+        "txt_display_theme",
+        "txt_display_theme_light",
+        "txt_display_theme_dark",
+        "txt_display_theme_auto",
+        "txt_nav_pages",
+        "txt_nav_events",
+        "txt_nav_club",
+        "txt_nav_sign_in",
+        "txt_nav_my_hub",
+        "txt_nav_admin_sign_in",
+        "txt_club_group_tournaments",
+        "txt_club_group_signups",
+        "txt_club_status_not_started",
+        "txt_club_signed_up_one",
+        "txt_club_signed_up_many",
+        "txt_player_club_no_matches",
+        "txt_events_title",
+        "txt_events_find_label",
+        "txt_events_find_placeholder",
+        "txt_events_not_found",
+        "txt_events_empty_live",
+        "txt_events_empty_finished",
+    ]
+    for key in keys:
+        assert js.count(f'"{key}"') == 2, key
+    for gone in (
+        "txt_nav_set_home",
+        "txt_nav_tv_view",
+        "txt_nav_registrations",
+        "txt_club_login_admin",
+        "txt_club_leaderboard_login_required",
+        "txt_player_subdomain_banner",
+        "txt_picker_subdomain_banner",
+    ):
+        assert f'"{gone}"' not in js, gone
+
+
+def test_service_worker_caches_events_shell_and_bumped(client):
+    sw = client.get("/service-worker.js", headers={"Accept-Encoding": "identity"}).text
+    assert "'/events'" in sw
+    version = re.search(r"CACHE_NAME = 'amistoso-v(\d+)'", sw)
+    assert version and int(version.group(1)) >= 69
+
+
+# ── Club admin Events card ───────────────────────────────────────────────────
+
+
+def test_club_events_row_template_shipped(client):
+    html = client.get("/admin", headers={"Accept-Encoding": "identity"}).text
+    block = html[html.index('<template id="tpl-club-event-row">') :]
+    block = block[: block.index("</template>")]
+    assert "{{ row.name }}" in block
+    assert '@click="mainAction(row).run()"' in block
+    assert '@click="togglePin(row)"' in block
+    assert '@change="setSeason(row, $event.target.value)"' in block
+    assert '@click="movePin(row, -1)"' in block
+    assert '@click="removeFromClub(row)"' in block
+    assert "v-html=\"_ic('star')\"" in block  # SVG pin icon, not an emoji
+    assert 'id="view-club-return"' in html
+
+
+def test_admin_clubs_js_mounts_events_island(client):
+    js = client.get("/admin-clubs.js", headers={"Accept-Encoding": "identity"}).text
+    assert "const _clubEventsStore = reactiveStore(" in js
+    assert "mountIsland('#club-events-island', _clubEventsStore)" in js
+    assert "deriveEventRows(_clubsTournaments, _clubsRegistrations, {" in js
+    assert "apiAuth('/api/registrations?include_archived=1')" in js
+    assert "v-scope=\"{ $template: '#tpl-club-event-row', row }\"" in js
+    assert "<template v-else" not in js
+    # Card order: Events slot before Players; Players collapsed by default.
+    assert js.index('id="club-events-slot"') < js.index('id="clubs-players-card"')
+    assert '<details class="card" open id="clubs-players-card">' not in js
+    assert '<details class="card" id="clubs-players-card">' in js
+    # Removed legacy blocks.
+    for gone in (
+        "_clubsRenderSeasonAssignment",
+        "_clubsRenderLandingPinnedList",
+        "clubsSavePinnedTournaments",
+        "clubsToggleTournamentClub",
+        "clubsAssignTournamentSeason",
+    ):
+        assert gone not in js, gone
+    assert "uiConfirm(" in js
+    utils = client.get("/admin-utils.js", headers={"Accept-Encoding": "identity"}).text
+    assert "function deriveEventRows(tournaments, registrations, opts = {})" in utils
+
+
+def test_club_events_attach_panel_is_collapsible_with_dismiss(client):
+    """Attach suggestions: collapsible summary, Dismiss / Restore / Show dismissed,
+    candidate filtering in a pure helper."""
+    js = client.get("/admin-clubs.js", headers={"Accept-Encoding": "identity"}).text
+    assert 'class="player-codes-summary club-events-attach-summary"' in js
+    assert "txt_club_events_attach_suggestions', { n: attachSection.length }" in js
+    assert '@click="dismiss(item)"' in js
+    assert '@click="restore(item)"' in js
+    assert '@click="toggleShowDismissed()"' in js
+    assert 'id="club-events-attach-search"' in js
+    assert "sessionStorage.setItem(`${_CLUB_EVENTS_ATTACH_OPEN_KEY}:${this.clubId}`" in js
+    assert "'amistoso-club-attach-dismissed'" in js
+    assert "deriveAttachCandidates(_clubsTournaments, _clubsRegistrations, {" in js
+    utils = client.get("/admin-utils.js", headers={"Accept-Encoding": "identity"}).text
+    assert "function deriveAttachCandidates(tournaments, registrations, opts = {})" in utils
+    assert "if (!t || t.club_id || t.club_id === clubId) continue;" in utils
+    i18n = client.get("/i18n.js", headers={"Accept-Encoding": "identity"}).text
+    for key in (
+        "txt_club_events_attach_suggestions",
+        "txt_club_events_attach_dismiss",
+        "txt_club_events_attach_restore",
+        "txt_club_events_attach_show_dismissed",
+        "txt_club_events_attach_hide_dismissed",
+    ):
+        assert i18n.count(f'"{key}"') == 2, key
+
+
+def test_club_settings_assignments_subtab_removed(client):
+    js = client.get("/admin-clubs-settings-panel.js", headers={"Accept-Encoding": "identity"}).text
+    assert "'assignments'" not in js
+    assert "_renderClubAssignmentsBody" not in js
+    assert "clubs-landing-pinned-list" not in js
+    assert "txt_clubs_landing_pinned_moved" in js
+    create = client.get("/admin-create.js", headers={"Accept-Encoding": "identity"}).text
+    assert "function _applyCreateClubPreset(clubId, opts = {})" in create
+
+
+def test_club_events_i18n_keys_in_both_languages(client):
+    js = client.get("/i18n.js", headers={"Accept-Encoding": "identity"}).text
+    keys = [
+        "txt_club_events_title",
+        "txt_club_events_new",
+        "txt_club_events_attach",
+        "txt_club_events_pinned_group",
+        "txt_club_events_state_live",
+        "txt_club_events_state_ready",
+        "txt_club_events_state_open",
+        "txt_club_events_from_lobby",
+        "txt_club_events_action_run",
+        "txt_club_events_action_manage",
+        "txt_club_events_action_convert",
+        "txt_club_events_action_results",
+        "txt_club_events_view",
+        "txt_club_events_more",
+        "txt_club_events_public_view",
+        "txt_club_events_copy_link",
+        "txt_club_events_move_up",
+        "txt_club_events_move_down",
+        "txt_club_events_pin",
+        "txt_club_events_unpin",
+        "txt_club_events_create_season",
+        "txt_club_events_remove_confirm",
+        "txt_club_events_empty_active",
+        "txt_club_events_empty_finished",
+        "txt_club_events_empty_archived",
+        "txt_club_events_empty_readonly",
+        "txt_club_events_back_to_club",
+        "txt_clubs_landing_pinned_moved",
+        "txt_club_events_tab_archived",
+        "txt_club_events_state_closed",
+    ]
+    for key in keys:
+        assert js.count(f'"{key}"') == 2, key
+    assert '"txt_club_settings_tab_assignments"' not in js
 
 
 def test_communities_panel_has_reactive_bindings(client):
@@ -341,7 +607,7 @@ def test_flash_success_is_pulse_only(client):
 def test_register_success_view_is_island(client):
     """The registration success card is a v-scope island: v-model draft answers,
     v-if edit panel / withdraw strip, v-for player chips, mounted once."""
-    html = client.get("/register", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/register/some-alias", headers={"Accept-Encoding": "identity"}).text
     block = html[html.index('<template id="tpl-success">') :]
     block = block[: block.index("</template>\n<div")]
     # Ids that handlers/tests rely on survive the conversion.
@@ -598,7 +864,7 @@ def test_admin_payments_island_is_reactive_and_mounted(client):
 
 
 def test_register_success_template_has_payment_block(client):
-    html = client.get("/register", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/register/some-alias", headers={"Accept-Encoding": "identity"}).text
     block = html[html.index('<template id="tpl-success">') :]
     block = block[: block.index("</template>\n<div")]
     assert 'id="reg-pay-block" v-if="result.payment"' in block
@@ -698,3 +964,157 @@ def test_gp_views_are_espejo_aware():
     assert "'gp-espejo-losers':{ points: 'gp/record-playoff'" in admin_gp
     assert "'gp-espejo-losers'" in _read_frontend("admin-tournaments.js")
     assert "status.espejo === true)" in _read_frontend("tv.js")
+
+
+# ── Admin mobile polish: icons, header row, Create format strip ─────────────
+
+# Pictographic emoji (colour glyphs that render differently per platform).
+# Text dingbats such as ✓ ✕ ★ ▸ stay allowed.
+_EMOJI_RE = re.compile(
+    "[\U0001f300-\U0001faff\U0001f1e6-\U0001f1ff☀-☄☆-⛿ℹ✅⏳⭐]"
+    "|✏️"
+    r"|\\u[dD]83[cdeCDE]|&#x1F[0-9A-Fa-f]{3};"
+)
+_EMOJI_FREE_FILES = [
+    "index.html",
+    "admin.css",
+    "player.js",
+    "tv.js",
+    "i18n.js",
+    "admin-utils.js",
+    "admin-mex.js",
+    "admin-gp.js",
+    "admin-players.js",
+    "admin-convert.js",
+    "admin-settings-panel.js",
+    "admin-lobby-settings-panel.js",
+    "admin-clubs.js",
+    "admin-clubs-settings-panel.js",
+]
+
+
+@pytest.mark.parametrize("name", _EMOJI_FREE_FILES)
+def test_ui_uses_svg_icons_not_emoji(name):
+    """Admin, Player Hub and TV views draw icons with _ic()/_antIc(), not emoji
+    (including the exported HTML/PDF results document built in admin-mex.js)."""
+    offenders = [line.strip()[:80] for line in _read_frontend(name).splitlines() if _EMOJI_RE.search(line)]
+    assert offenders == []
+
+
+def test_icon_helper_shared_by_every_page():
+    shared = _read_frontend("shared.js")
+    assert "function _ic(name)" in shared
+    assert "function _ic(name)" not in _read_frontend("admin-utils.js")
+    for icon in ("sun:", "moon:", "trophy:", "bench:", "court:", "medal:", "bell:", "belloff:", "alert:", "clock:"):
+        assert f"    {icon}" in shared, icon
+    assert "'question-circle':" in _read_frontend("admin-utils.js")
+    assert "btn.innerHTML = _ic(theme === 'dark' ? 'moon' : 'sun');" in _read_frontend("admin-utils.js")
+    assert ".lang-code {" in _read_frontend("theme.css")
+
+
+def test_admin_header_row_and_create_strip_fit_phones(client):
+    html = client.get("/admin", headers={"Accept-Encoding": "identity"}).text
+    assert '<div class="page-header-row page-header-row--nav">' in html
+    assert '<span class="tab-btn-label" data-i18n="txt_txt_info">Info</span>' in html
+    assert '<div class="create-mode-strip d-flex' in html
+    css = _read_frontend("admin.css")
+    assert ".page-header-row--nav .tab-btn-label { display: none; }" in css
+    assert ".create-mode-strip > .subtabs { display: contents; }" in css
+    assert ".participant-entry input { min-height: 44px !important; }" in css
+    sw = client.get("/service-worker.js", headers={"Accept-Encoding": "identity"}).text
+    version = re.search(r"CACHE_NAME = 'amistoso-v(\d+)'", sw)
+    assert version and int(version.group(1)) >= 70
+
+
+def test_unused_reg_manage_key_removed():
+    assert '"txt_reg_manage"' not in _read_frontend("i18n.js")
+
+
+# ── Admin pass 3: sticky offsets, tab strips, stacked tables, export, TV ────
+
+
+def test_sticky_status_bars_publish_their_height_for_in_page_jumps():
+    """Jumps (club settings gear, season -> leaderboard, GP/Mexicano shortcuts)
+    land below the pinned status bar: JS measures it, CSS pads the scroller."""
+    utils = _read_frontend("admin-utils.js")
+    assert "const _ADMIN_STICKY_BAR_SELECTOR = '.club-status-bar, #mex-ops-header, .group-nav-bar';" in utils
+    assert "function _syncAdminStickyOffset()" in utils
+    assert "rootStyle.setProperty('--admin-sticky-offset'" in utils
+    assert "new MutationObserver(" in utils and "new ResizeObserver(schedule)" in utils
+    css = _read_frontend("admin.css")
+    assert "html { scroll-padding-top: calc(var(--admin-sticky-offset, 0px) + 0.5rem); }" in css
+    assert ".group-nav-bar { top: var(--admin-sticky-top, 0px); }" in css
+    assert ".settings-subtabs { top: var(--admin-sticky-offset, 0px); }" in css
+
+
+def _phone_block(css: str, marker: str) -> str:
+    start = css.index(marker)
+    return css[start : css.index("\n}\n", start)]
+
+
+def test_settings_subtab_strips_wrap_into_rows_on_phones():
+    """Club / tournament / lobby settings tabs: balanced grid rows, no sideways scroll."""
+    css = _read_frontend("admin.css")
+    block = _phone_block(css, "@media (max-width: 720px) {\n  /* Phones: the sub-tab strip")
+    assert "grid-template-columns: repeat(6, minmax(0, 1fr));" in block
+    assert "overflow-x" not in block and "nowrap" not in block.split(".settings-subtab-btn {")[0]
+    assert ".settings-subtab-btn:nth-child(3n+1):last-child { grid-column: 1 / -1; }" in block
+    assert ".settings-subtab-btn:first-child:nth-last-child(4) ~ .settings-subtab-btn { grid-column: span 3; }" in block
+    assert "text-overflow: ellipsis;" in block
+    for name in ("admin-clubs-settings-panel.js", "admin-settings-panel.js", "admin-lobby-settings-panel.js"):
+        js = _read_frontend(name)
+        assert '<div class="settings-subtabs" role="tablist"' in js, name
+        assert '<span class="settings-subtab-label">' in js, name
+
+
+def test_admin_player_tables_stack_into_cards_on_phones():
+    """Club Players (+ hidden-from-sport, possible members) and the Players Hub
+    list render as stacked rows on phones via data-label cells."""
+    css = _read_frontend("admin.css")
+    block = _phone_block(css, "@media (max-width: 600px) {\n  .table-stack,")
+    assert ".table-stack thead { display: none; }" in block
+    assert ".table-stack td[data-label]::before {" in block and "content: attr(data-label);" in block
+    assert ".table-stack .stack-actions {" in block
+    clubs = _read_frontend("admin-clubs.js")
+    assert clubs.count('<table class="player-codes-table table-stack">') == 3
+    assert 'class="player-codes-cell stack-pri" data-label="${escAttr(t(\'txt_clubs_hub_status\'))}"' in clubs
+    assert 'class="player-codes-cell-center nowrap stack-actions"' in clubs
+    assert "&#x2715;" not in clubs and "&#x2296;" not in clubs and "&#x2295;" not in clubs
+    assert "${_ic('eyeoff')}" in clubs and "${_ic('eye')}" in clubs
+    shared = _read_frontend("shared.js")
+    assert "    eye:" in shared and "    eyeoff:" in shared
+    html = _read_frontend("index.html")
+    assert '<div class="player-codes-table-wrap mt-2"><table class="player-codes-table table-stack">' in html
+    assert ":data-label=\"t('txt_ph_padel_elo')\"" in html
+    assert '<td class="player-codes-cell-center stack-actions">' in html
+
+
+def test_results_export_trophy_is_self_sized_svg():
+    """The standalone HTML/PDF export has no theme.css, so the trophy SVG sizes
+    and colours itself instead of relying on the `.ic` rule."""
+    mex = _read_frontend("admin-mex.js")
+    assert "\U0001f3c6" not in mex
+    assert mex.count("<div class=\"champ\">${_REPORT_TROPHY_SVG} ${t('txt_txt_champion')}") == 3
+    start = mex.index("const _REPORT_TROPHY_SVG")
+    svg = mex[start : mex.index("</svg>';", start)]
+    for attr in ('width="18"', 'height="18"', 'viewBox="0 0 24 24"', 'fill="none"', 'stroke="#166534"'):
+        assert attr in svg, attr
+    assert 'class="ic"' not in svg
+
+
+def test_tv_profile_auto_login_checks_participation_first():
+    """A Hub player opening a TV page they don't play in sends no player-auth
+    request (no 401 console noise, no rate-limit strike)."""
+    tv = _read_frontend("tv.js")
+    start = tv.index("async function _tryProfileAutoLogin()")
+    body = tv[start : tv.index("\n}\n", start)]
+    assert "if (!(await _hubSessionInTournament())) return;" in body
+    assert body.index("_hubSessionInTournament") < body.index("_playerAuth(profile.passphrase, null)")
+    assert "fetch(`${API}/api/player-profile/space`" in tv
+    assert "function _jwtStillValid(token)" in tv
+
+
+def test_service_worker_cache_bumped_for_pass_three(client):
+    sw = client.get("/service-worker.js", headers={"Accept-Encoding": "identity"}).text
+    version = re.search(r"CACHE_NAME = 'amistoso-v(\d+)'", sw)
+    assert version and int(version.group(1)) >= 71

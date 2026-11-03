@@ -230,6 +230,20 @@ class TestTournamentAlias:
         r = client.get("/api/tournaments/resolve-alias/nope")
         assert r.status_code == 404
 
+    def test_resolve_plain_tournament_id(self, client, auth_headers):
+        """/tv/<tid> links resolve without a 404 round-trip; aliases still win."""
+        r = client.post("/api/tournaments/group-playoff", json=self.GP_BODY, headers=auth_headers)
+        tid = r.json()["id"]
+        r = client.get(f"/api/tournaments/resolve-alias/{tid}")
+        assert r.status_code == 200
+        assert r.json()["id"] == tid
+
+        r2 = client.post("/api/tournaments/group-playoff", json=self.GP_BODY, headers=auth_headers)
+        other = r2.json()["id"]
+        client.put(f"/api/tournaments/{other}/alias", json={"alias": tid}, headers=auth_headers)
+        r = client.get(f"/api/tournaments/resolve-alias/{tid}")
+        assert r.json()["id"] == other
+
     def test_alias_uniqueness(self, client, auth_headers):
         r1 = client.post("/api/tournaments/group-playoff", json=self.GP_BODY, headers=auth_headers)
         tid1 = r1.json()["id"]
