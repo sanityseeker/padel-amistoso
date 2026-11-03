@@ -1,3 +1,9 @@
+## v1.20.2 (2026-11-03)
+
+### Fix
+
+- **scoring**: lock player score entry to the match format; off-format scores go to organiser review
+
 ## v1.20.1 (2026-11-03)
 
 ### Fix
