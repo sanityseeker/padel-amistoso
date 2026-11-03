@@ -19,7 +19,9 @@
 
    Add to every HTML <head> before theme.css:
    <link rel="preconnect" href="https://api.fontshare.com">
-   <link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=cabinet-grotesk@400,500,700,800&display=swap" rel="stylesheet">
+   (one request per family: Fontshare only returns the first family of a combined f[] query)
+   <link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&display=swap" rel="stylesheet">
+   <link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800&display=swap" rel="stylesheet">
    <link rel="preconnect" href="https://fonts.googleapis.com">
    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -144,7 +146,7 @@
   --radius-full:   9999px;
 
   /* Semantic radius tokens — use these on components */
-  --radius-card:   0.5rem;    /* 8px  — cards, inputs, table wrappers */
+  --radius-card:   0.75rem;   /* 12px — cards, inputs, table wrappers */
   --radius-dialog: 0.75rem;   /* 12px — dialogs, floating panels, lightbox */
 
   /* Shadows — cool blue-gray tinted, never warm or pure black */
@@ -348,7 +350,7 @@ html[data-theme="dark"] {
   --bg-soft:      color-mix(in srgb, var(--color-text) 4%, transparent); /* subtle tint (passphrase pills) */
 
   /* Semantic radius aliases — same values in both modes */
-  --radius-card:   0.5rem;
+  --radius-card:   0.75rem;
   --radius-dialog: 0.75rem;
 }
 
@@ -362,15 +364,6 @@ html[data-theme="dark"] {
   flex-shrink: 0;
 }
 
-/* Language toggle: a two-letter code (EN / ES) instead of a flag emoji. */
-.lang-code {
-  font-family: var(--font-data);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1;
-}
-
 /* ── Form-control baseline (all pages) ──────────────────────────────
    Zero-specificity so every component rule still wins. */
 :where(button, input, select, textarea) { font-family: inherit; letter-spacing: inherit; }
@@ -378,6 +371,95 @@ html[data-theme="dark"] {
   accent-color: var(--color-primary); margin: 0; flex: none;
   width: 1rem; height: 1rem; cursor: pointer;
 }
+
+/* Text fields, selects, textareas — one look on every page. Element-level
+   specificity (0,0,1): beats the per-page `* { padding: 0 }` resets, while any
+   component class (score inputs, search boxes, …) still wins. admin.css only
+   tightens density. */
+input:where(:not([type="radio"], [type="checkbox"])), select, textarea {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.95rem;
+  line-height: 1.3;
+  transition: border-color var(--transition-interactive), box-shadow var(--transition-interactive);
+}
+input:where(:not([type="radio"], [type="checkbox"])):focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+input:where(:not([type="radio"], [type="checkbox"])):focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+:where(textarea) { resize: vertical; }
+
+/* Data face for numbers. Body text is --font-body; scores, ratings, standings
+   and numeric inputs keep Roboto with tabular figures so columns line up. */
+:where(table, input[type="number"], .match-score, .history-score, .sets-stack,
+       .score-entry, .playoff-team-score, .dispute-score-value, .submitted-score-value,
+       .pending-score-value, .confirm-score-value, .rank-cell, .elo-badge,
+       .elo-transition, .elo-player-rating, .elo-rating-cell, .elo-log-score,
+       .elo-log-delta, .leaderboard-col-elo, .leaderboard-col-rank,
+       .tv-player-stat-value, .correction-window-countdown) {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Buttons (all pages) ─────────────────────────────────────────────
+   One base + shared variants. Public pages keep the 44px touch floor
+   (36px for .btn-sm); admin.css relaxes it above its mobile breakpoint. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--transition-interactive), border-color var(--transition-interactive),
+              color var(--transition-interactive), opacity var(--transition-interactive);
+}
+.btn:hover { background: var(--color-hover-overlay, var(--color-surface-2)); border-color: var(--color-text-muted); }
+.btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+.btn-sm { min-height: 36px; padding: 0.35rem 0.75rem; font-size: var(--fs-sm); }
+.btn-block { width: 100%; }
+
+.btn-primary { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
+.btn-primary:hover { background: var(--color-primary-hover); border-color: var(--color-primary-hover); }
+.btn-primary:active { background: var(--color-primary-active); border-color: var(--color-primary-active); }
+.btn-secondary { background: var(--color-surface); border-color: var(--color-border); color: var(--color-text); }
+.btn-secondary:hover { background: var(--color-surface); border-color: var(--color-primary); color: var(--color-primary); }
+.btn-outline { background: transparent; border-color: var(--color-border); color: var(--color-text); }
+.btn-outline:hover { background: var(--color-hover-overlay, transparent); border-color: var(--color-text-muted); }
+.btn-success { background: var(--color-success); border-color: var(--color-success); color: var(--color-on-success); }
+.btn-danger { background: var(--color-error); border-color: var(--color-error); color: var(--color-on-error); }
+.btn-warning { background: var(--color-amber); border-color: var(--color-amber); color: var(--color-on-primary); }
+.btn-success:hover, .btn-danger:hover, .btn-warning:hover { opacity: 0.9; }
+.btn-success:hover { background: var(--color-success); border-color: var(--color-success); }
+.btn-danger:hover { background: var(--color-error); border-color: var(--color-error); }
+.btn-warning:hover { background: var(--color-amber); border-color: var(--color-amber); }
+.btn-success:active, .btn-danger:active, .btn-warning:active { opacity: 0.8; }
+.btn-outline-danger,
+.btn-danger-outline { background: transparent; border-color: var(--color-error); color: var(--color-error); }
+.btn-outline-danger:hover,
+.btn-danger-outline:hover { background: var(--color-error-highlight); border-color: var(--color-error); }
+.btn:disabled:hover { opacity: 0.5; }
 
 /* Radio / checkbox + text row. The label is the tap target. */
 .choice-group { display: flex; flex-direction: column; gap: var(--space-1); border: 0; padding: 0; margin: 0; min-width: 0; }
@@ -591,6 +673,232 @@ html:not(.demo-instance) .demo-only {
   gap: var(--space-4);
   flex-wrap: wrap;
 }
+/* ── Shared page header (club page, Player Hub, sign-up form, Events, Admin) ──
+   A centred [current page ▾] dropdown with the language/theme button at the
+   left end and (club subdomains) the admin sign-in link at the right end.
+   Built by shared.js buildPublicHeaderHtml(). */
+.public-header {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+}
+/* Club subdomains: low-emphasis organizer entry point at the right end of the
+   header row; absolutely placed so the page dropdown stays centred. */
+.public-admin-link {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 44px;
+  padding: 0 0.25rem;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+.public-admin-link:hover,
+.public-admin-link:focus-visible { color: var(--color-text); text-decoration: underline; outline: none; }
+.public-admin-link:focus-visible { box-shadow: 0 0 0 2px var(--color-primary); }
+.public-admin-link .ic { width: 1.1em; height: 1.1em; }
+.public-page-selector { position: relative; }
+.public-page-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 44px;
+  padding: 0.3rem 0.75rem;
+  font-family: var(--font-body);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.public-page-btn:hover { border-color: var(--color-border); }
+.public-page-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.public-page-btn > .ic { width: 0.9em; height: 0.9em; color: var(--color-text-muted); }
+.public-page-btn[aria-expanded="true"] > .ic { transform: rotate(180deg); }
+.public-page-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary);
+}
+.public-page-icon .ic { width: 1em; height: 1em; }
+.public-page-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 200px;
+  padding: 0.3rem 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+}
+.public-page-menu[hidden] { display: none; }
+.public-page-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  padding: 0.5rem 0.9rem;
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--color-text);
+  text-decoration: none;
+}
+.public-page-item:hover,
+.public-page-item:focus-visible { background: var(--color-hover-overlay); outline: none; }
+.public-page-item.is-active { color: var(--color-primary); font-weight: 700; }
+.public-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-data);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: var(--color-primary-highlight);
+  color: var(--color-primary);
+}
+/* Language · theme button (opens the Display sheet): low-emphasis entry at
+   the left end of the header row, mirroring .public-admin-link on the right. */
+.public-display-btn {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-height: 44px;
+  padding: 0 0.25rem;
+  background: none;
+  border: none;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.public-display-btn .ic { width: 1em; height: 1em; flex-shrink: 0; }
+.public-display-btn:hover,
+.public-display-btn:focus-visible { color: var(--color-text); outline: none; }
+.public-display-btn:focus-visible { box-shadow: 0 0 0 2px var(--color-primary); }
+.public-display-value-short { display: none; }
+@media (max-width: 480px) {
+  .public-display-value { display: none; }
+  .public-display-value-short { display: inline; }
+}
+/* Page scroll lock while a modal is open (shared.js lockPageScroll). */
+html.scroll-locked { overflow: hidden; }
+/* Display sheet: bottom sheet on phones, a small card under the header
+   button on wider screens (openDisplaySheet sets the anchor variables). */
+.display-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--color-overlay-backdrop);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.display-sheet {
+  width: 100%;
+  max-width: 520px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-dialog) var(--radius-dialog) 0 0;
+  box-shadow: var(--shadow-overlay);
+  padding: 0.75rem 1rem 1.25rem;
+}
+.display-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.display-sheet-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.display-sheet-close {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  width: 44px;
+  height: 44px;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.display-sheet-close:hover { color: var(--color-text); border-color: var(--color-primary); }
+.display-sheet-group { margin-top: 0.75rem; }
+.display-sheet-group-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--color-text-muted);
+  margin-bottom: 0.35rem;
+}
+.display-seg {
+  display: flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.display-seg-btn {
+  flex: 1 1 0;
+  min-height: 44px;
+  background: none;
+  border: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.display-seg-btn + .display-seg-btn { border-left: 1px solid var(--color-border); }
+.display-seg-btn:hover { background: var(--color-hover-overlay); color: var(--color-text); }
+.display-seg-btn.is-active { background: var(--color-primary); color: var(--color-on-primary); }
+.display-seg-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+@media (min-width: 640px) {
+  .display-sheet-backdrop {
+    background: transparent;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+  .display-sheet {
+    width: 320px;
+    margin: var(--display-sheet-top, 4rem) 0 0 var(--display-sheet-left, 1rem);
+    border-radius: var(--radius-dialog);
+    box-shadow: var(--shadow-lg);
+  }
+}
 /* Tiebreaker explanation under standings legends (admin + TV) */
 .tiebreaker-note {
   margin: var(--space-2-5) 0 0;
@@ -612,3 +920,47 @@ html:not(.demo-instance) .demo-only {
 }
 .cursor-zoom-in { cursor: zoom-in !important; }
 .clipboard-shim { position: fixed; opacity: 0; }
+
+/* ── Filter chips — shared by admin Home/lists and the club page ── */
+.home-filter-row {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.home-filter-chip {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  border-radius: var(--radius-full);
+  padding: 0.28rem 0.65rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.home-filter-chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.home-filter-chip.active {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--text);
+}
+.home-filter-chip-count {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0 0.4rem;
+  min-width: 1.1rem;
+  border-radius: var(--radius-full);
+  background: var(--bg-alt);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+  text-align: center;
+}
+.home-filter-chip.active .home-filter-chip-count {
+  background: color-mix(in srgb, var(--accent) 28%, var(--surface));
+  color: var(--text);
+}

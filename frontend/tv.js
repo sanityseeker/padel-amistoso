@@ -4,49 +4,18 @@ const API = '';
 try { localStorage.setItem('amistoso-last-page', 'events'); } catch (_) {}
 
 // ── Theme ─────────────────────────────────────────────────
-let _theme = _loadSavedTheme();
-_applyTheme(_theme);
+_applyTheme(_loadSavedTheme());
 let _lang = _loadSavedLanguage();
 setAppLanguage(_lang);
 
-function _refreshThemeToggleButtons() {
-  const icon = _ic(_theme === 'dark' ? 'moon' : 'sun');
-  document.querySelectorAll('[data-theme-toggle-icon]').forEach((btn) => {
-    btn.innerHTML = icon;
-  });
-}
-
-// The live board (venue screens) keeps its own compact theme/language
-// buttons; the Events page uses the shared public header. Both funnel through
-// shared.js so the `app-theme-changed` / `app-language-changed` listeners
-// below keep this module's state in sync whichever control was used.
-function _toggleTheme() {
-  setDisplayTheme(_theme === 'dark' ? 'light' : 'dark');
-}
-
-function _toggleLanguage() {
-  setDisplayLanguage(_lang === 'es' ? 'en' : 'es');
-}
-
-document.addEventListener('app-theme-changed', (ev) => {
-  _theme = (ev.detail && ev.detail.theme) || _loadSavedTheme();
-  _refreshThemeToggleButtons();
-});
+// Both the Events page and the live board use the shared footer Display line
+// (shared.js); this keeps the module's language in sync with it.
 
 document.addEventListener('app-language-changed', () => {
   _lang = getAppLanguage();
   if (TID) loadTV();
   else if (typeof _pickerStore !== 'undefined') _pickerStore.lang = _lang;
 });
-
-function _languageToggleMeta() {
-  const current = getAppLanguage();
-  const currentLabel = current === 'es' ? t('txt_txt_spanish') : t('txt_txt_english');
-  return {
-    icon: `<span class="lang-code" aria-hidden="true">${current === 'es' ? 'ES' : 'EN'}</span>`,
-    label: `${t('txt_txt_language')}: ${currentLabel}`,
-  };
-}
 
 // ── URL params ────────────────────────────────────────────
 const _params = new URLSearchParams(location.search);
@@ -2252,7 +2221,6 @@ function _copyTournamentSlug() {
 
 function _buildHeader(name, phase, champion) {
   const phaseLabel = _phaseLabel(phase);
-  const langToggle = _languageToggleMeta();
   const _slug = tvState.tournamentAlias || TID || '';
   const identityLabel = _tvIdentityLabel();
   const logoHtml = tvState.clubLogoUrl
@@ -2263,13 +2231,7 @@ function _buildHeader(name, phase, champion) {
     : '';
   return `
     <div class="tv-header" id="tv-header-main">
-      <div class="tv-header-title-row">
-        <div class="tv-lang-cell"><button type="button" id="lang-toggle-btn" class="theme-btn" onclick="_toggleLanguage()" title="${langToggle.label}" aria-label="${langToggle.label}">${langToggle.icon}</button></div>
-        <div></div>
-        <div class="tv-toggle-btns">
-          <button type="button" id="theme-toggle-btn" data-theme-toggle-icon="1" class="theme-btn" onclick="_toggleTheme()" title="${t('txt_txt_toggle_light_dark_mode')}" aria-label="${t('txt_txt_toggle_light_dark_mode')}">${_ic(_theme === 'dark' ? 'moon' : 'sun')}</button>
-        </div>
-      </div>
+      ${buildDisplayButtonHtml()}
       <div class="tv-title-center">
         <h1 class="tv-tournament-name tv-tournament-name--branded">${logoHtml}${esc(name)}</h1>
       </div>

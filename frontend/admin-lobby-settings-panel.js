@@ -352,11 +352,11 @@ function _renderLobbySettingsPage(rid, ctx) {
   const commsBody = _renderLobbyCommsBody(rid, r, emailSettings);
 
   const subtabs = [
-    { key: 'details',   label: t('txt_lobby_settings_tab_details'),   icon: _antIc('setting'), body: _renderLobbyDetailsBody(rid, r) },
-    { key: 'questions', label: t('txt_lobby_settings_tab_questions'), icon: _antIc('question-circle'), body: _renderLobbyQuestionsBody(rid, r) },
-    { key: 'comms',     label: t('txt_lobby_settings_tab_comms'),     icon: _antIc('mail'), body: commsBody },
-    { key: 'payments',  label: t('txt_pay_tab'),                      icon: '€',  body: _renderPaymentSettingsIsland('registration', rid) },
-    { key: 'access',    label: t('txt_lobby_settings_tab_access'),    icon: _antIc('safety'), body: accessBody },
+    { key: 'details',   label: t('txt_lobby_settings_tab_details'),   icon: _ic('settings'), body: _renderLobbyDetailsBody(rid, r) },
+    { key: 'questions', label: t('txt_lobby_settings_tab_questions'), icon: _ic('help'), body: _renderLobbyQuestionsBody(rid, r) },
+    { key: 'comms',     label: t('txt_lobby_settings_tab_comms'),     icon: _ic('mail'), body: commsBody },
+    { key: 'payments',  label: t('txt_pay_tab'),                      icon: _ic('wallet'), body: _renderPaymentSettingsIsland('registration', rid) },
+    { key: 'access',    label: t('txt_lobby_settings_tab_access'),    icon: _ic('shield'), body: accessBody },
   ].filter(st => st.body && st.body.trim());
 
   if (subtabs.length === 0) return '';
@@ -381,7 +381,7 @@ function _renderLobbySettingsPage(rid, ctx) {
     const isActive = st.key === activeKey;
     html += `<button type="button" class="settings-subtab-btn${isActive ? ' active' : ''}" role="tab"`;
     html += ` aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? 0 : -1}"`;
-    html += ` data-subtab="${escAttr(st.key)}"`;
+    html += ` data-subtab="${escAttr(st.key)}" aria-label="${escAttr(st.label)}" title="${escAttr(st.label)}"`;
     html += ` onclick="setLobbySubtab('${esc(rid)}','${escAttr(st.key)}')">`;
     html += `<span class="settings-subtab-icon" aria-hidden="true">${st.icon}</span>`;
     html += `<span class="settings-subtab-label">${esc(st.label)}</span>`;
@@ -392,6 +392,8 @@ function _renderLobbySettingsPage(rid, ctx) {
   for (const st of subtabs) {
     const isActive = st.key === activeKey;
     html += `<div class="settings-subpanel${isActive ? '' : ' hidden'}" role="tabpanel" data-subtab="${escAttr(st.key)}">`;
+    // Phones show icon-only tabs; this heading names the open tab.
+    html += `<h4 class="settings-subpanel-title">${esc(st.label)}</h4>`;
     html += st.body;
     html += `</div>`;
   }

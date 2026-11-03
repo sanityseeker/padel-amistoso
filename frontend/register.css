@@ -1,7 +1,7 @@
 /* ── Register-specific styles (base theme/layout from tv.css) ── */
 /* Same column as every public page (club, Events, Player Hub). */
 .container { max-width: var(--content-public); width: 100%; margin: 0 auto; flex: 1; }
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 1.5rem; margin-bottom: 1rem; }
 h1 { font-size: 1.5rem; margin-bottom: 0.5rem; text-align: center; }
 .subtitle { font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 1rem; }
 .badge { display: inline-block; font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 999px; font-weight: 600; }
@@ -24,19 +24,12 @@ h1 { font-size: 1.5rem; margin-bottom: 0.5rem; text-align: center; }
 .form-group { margin-bottom: 1rem; }
 .form-group label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem; }
 .form-group small { display: block; font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; }
-input[type="text"], input[type="email"], input[type="number"], input[type="password"], select {
-  width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: 8px;
-  background: var(--bg); color: var(--text); font-size: 0.95rem;
-}
-input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+/* Field base look + focus ring come from theme.css. */
 textarea.reg-text-expand {
-  width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: 8px;
-  background: var(--bg); color: var(--text); font-size: 0.95rem;
-  resize: none; overflow: hidden; line-height: 1.5; font-family: inherit;
-  min-height: calc(1.5em + 1.2rem); box-sizing: border-box; display: block;
+  resize: none; overflow: hidden; line-height: 1.5;
+  min-height: calc(1.5em + 1.1rem); display: block;
   transition: height 0.1s ease;
 }
-textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
 
 /* Multichoice — pill chip toggles */
 .reg-multichoice, .returning-multichoice {
@@ -62,12 +55,9 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
   background: var(--accent); border-color: var(--accent); color: #fff;
 }
 
-.btn { display: inline-block; padding: 0.7rem 1.5rem; font-size: 1rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; text-align: center; transition: background 0.15s; }
-.btn-primary { background: var(--accent); color: #fff; width: 100%; }
-.btn-primary:hover { opacity: 0.85; }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); cursor: pointer; font-size: 0.85rem; padding: 0.5rem 1rem; border-radius: 8px; }
-.btn-secondary:hover { background: var(--bg); }
+/* .btn and its variants come from theme.css. The sign-up form's primary
+   actions are full-width, larger CTAs. */
+.btn-primary { width: 100%; padding: 0.7rem 1.5rem; font-size: 1rem; }
 .error-msg { color: var(--red); font-size: 0.85rem; margin-top: 0.5rem; min-height: 1.2rem; }
 
 /* Success view */
@@ -202,14 +192,6 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 .returning-player-panel .btn-secondary { width: 100%; text-align: center; margin-top: 0.25rem; }
 
 /* Entry actions (edit answers / withdraw) on the success view */
-.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); border-radius: 8px; cursor: pointer; font-size: 0.82rem; padding: 0.45rem 0.9rem; font-weight: 600; transition: background 0.15s, border-color 0.15s; }
-.btn-outline:hover { background: var(--bg); border-color: var(--text-muted); }
-.btn-outline:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-outline-danger { background: transparent; border: 1px solid var(--color-error); color: var(--color-error); border-radius: 8px; cursor: pointer; font-size: 0.82rem; padding: 0.45rem 0.9rem; font-weight: 600; transition: background 0.15s, color 0.15s; }
-.btn-outline-danger:hover { background: var(--color-error-highlight); }
-.btn-danger { background: var(--color-error); border: 1px solid var(--color-error); color: #fff; border-radius: 8px; cursor: pointer; font-size: 0.82rem; padding: 0.45rem 0.9rem; font-weight: 600; transition: filter 0.15s; }
-.btn-danger:hover { filter: brightness(0.92); }
-.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
 .reg-entry-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: 1rem; }
 .reg-entry-actions .btn-outline, .reg-entry-actions .btn-outline-danger { flex: 1 1 0; min-height: 44px; font-size: 0.9rem; }
 .reg-edit-panel { margin-top: var(--space-2); padding: 0.85rem 1rem; border: 1px solid var(--border); border-radius: 10px; text-align: left; }
@@ -218,7 +200,6 @@ textarea.reg-text-expand:focus { outline: none; border-color: var(--accent); box
 .reg-withdraw-confirm p { margin: 0 0 0.75rem; font-size: 0.9rem; line-height: 1.4; }
 .reg-withdraw-confirm-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .reg-withdraw-confirm-actions button { flex: 1 1 0; min-height: 44px; font-size: 0.9rem; }
-.btn-outline-danger:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Waiting animation */
 @keyframes waitPulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }

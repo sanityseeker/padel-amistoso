@@ -26,13 +26,17 @@ from ..email import is_valid_email, render_player_space_welcome, send_email_back
 from ..models import ParticipationStatus, Sport
 from ..tournaments.player_secrets import generate_passphrase
 from .db import get_db
-from .elo_store import consolidate_ghost_elos, get_live_profile_elo_stats, retroactive_transfer_elo
+from .elo_recalc import flush_elo_recalculation, mark_elo_dirty
+from .elo_store import get_live_profile_elo_stats
 from .player_merge import (
-    combined_player_ids,
     materialize_participants,
+    merge_hub_profile_data,
     normalize_name,
+    profile_tournament_ids,
     reassign_profile_data,
+    shared_tournaments,
 )
+from .leaderboard_cache import invalidate_leaderboard_cache
 from .player_secret_store import invalidate_secrets_cache
 from .state import rename_player_in_tournament
 from .schemas import (
@@ -42,7 +46,13 @@ from .schemas import (
     AdminParticipationLink,
     AdminPlayerProfileDetail,
     AdminPlayerProfileSummary,
+    AdminTournamentParticipant,
     EmailLang,
+    HubMergePreview,
+    HubMergeProfile,
+    HubMergeRequest,
+    HubMergeResult,
+    HubMergeSharedTournament,
 )
 
 logger = logging.getLogger(__name__)
@@ -238,13 +248,12 @@ def search_past_participants(
 
 
 # Merge primitives live in ``player_merge`` so the club endpoints share exactly
-# the same behavior; keep the private aliases for the existing call sites here.
+# the same behavior; keep the private alias for the existing call sites here.
 _reassign_profile_data = reassign_profile_data
-_combined_player_ids = combined_player_ids
 
 
 def merge_ghost_into_profile(primary_id: str, ghost_id: str) -> bool:
-    """Merge one ghost profile's data into ``primary_id`` and recompute ELO.
+    """Merge one ghost profile's data into ``primary_id``; ELO follows on the next flush.
 
     Used by organizer-approved participation claims (``entity_type="profile"``
     in ``routes_registration``).  Returns ``False`` — leaving everything
@@ -259,8 +268,7 @@ def merge_ghost_into_profile(primary_id: str, ghost_id: str) -> bool:
         if ghost is None or not ghost["is_ghost"] or target is None:
             return False
         _reassign_profile_data(conn, primary_id, ghost_id)
-        all_player_ids = _combined_player_ids(conn, primary_id)
-    consolidate_ghost_elos(primary_id, all_player_ids)
+    mark_elo_dirty([primary_id])
     return True
 
 
@@ -274,8 +282,8 @@ async def consolidate_ghost_profiles(
     The first id in ``source_ids`` becomes the primary profile.  All
     participations, history rows, and ELO data from the remaining (secondary)
     profiles are reassigned to the primary.  Secondary profiles are deleted.
-    ELO is recalculated chronologically across all combined player_ids so
-    the merged profile reflects the correct current rating.
+    ELO is replayed from the merged profile's earliest tournament (see
+    ``elo_recalc``) so the merged profile reflects the correct current rating.
 
     Args:
         req: Contains ``source_ids`` (profile ids), optional
@@ -338,9 +346,9 @@ async def consolidate_ghost_profiles(
         for secondary_id in secondary_ids:
             _reassign_profile_data(conn, primary_id, secondary_id)
 
-        all_player_ids = _combined_player_ids(conn, primary_id)
-
-    consolidate_ghost_elos(primary_id, all_player_ids)
+    # The response carries the merged rating, so recalculate before reading it.
+    mark_elo_dirty([primary_id])
+    await flush_elo_recalculation()
 
     with get_db() as conn:
         elo_cols = ", elo_padel, elo_padel_matches, elo_tennis, elo_tennis_matches, k_factor_override, is_ghost"
@@ -362,6 +370,105 @@ async def consolidate_ghost_profiles(
         k_factor_override=row["k_factor_override"],
         is_ghost=bool(row["is_ghost"]),
     )
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Merge two registered (Hub) profiles
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def hub_merge_preview(conn, primary_id: str, secondary_id: str) -> HubMergePreview:
+    """Describe merging Hub profile *secondary_id* into Hub profile *primary_id*.
+
+    Shared by the admin and club endpoints.  Raises 404/422 when the pair is
+    not two distinct registered profiles; a shared tournament does not raise
+    here, it sets ``can_merge = False`` so the UI can explain why.
+    """
+    if primary_id == secondary_id:
+        raise HTTPException(422, "Pick two different profiles to merge")
+    rows = {
+        r["id"]: r
+        for r in conn.execute(
+            "SELECT id, name, email, is_ghost FROM player_profiles WHERE id IN (?, ?)",
+            (primary_id, secondary_id),
+        ).fetchall()
+    }
+    missing = [pid for pid in (primary_id, secondary_id) if pid not in rows]
+    if missing:
+        raise HTTPException(404, f"Profiles not found: {', '.join(missing)}")
+    if any(rows[pid]["is_ghost"] for pid in (primary_id, secondary_id)):
+        raise HTTPException(422, "Both profiles must be registered Player Hub profiles")
+
+    def side(pid: str) -> HubMergeProfile:
+        return HubMergeProfile(
+            id=pid,
+            name=rows[pid]["name"] or "",
+            email=rows[pid]["email"] or "",
+            tournaments=len(profile_tournament_ids(conn, pid)),
+        )
+
+    shared = [
+        HubMergeSharedTournament(tournament_id=tid, tournament_name=name)
+        for tid, name in shared_tournaments(conn, primary_id, secondary_id)
+    ]
+    return HubMergePreview(
+        primary=side(primary_id),
+        secondary=side(secondary_id),
+        shared_tournaments=shared,
+        can_merge=not shared,
+    )
+
+
+async def merge_hub_profiles(primary_id: str, secondary_id: str) -> HubMergeResult:
+    """Merge Hub profile *secondary_id* into *primary_id* and recompute ELO.
+
+    Raises 409 when both played the same tournament: they were two different
+    participants there, so they cannot be one person.
+    """
+    with get_db() as conn:
+        preview = hub_merge_preview(conn, primary_id, secondary_id)
+        if not preview.can_merge:
+            names = ", ".join(t.tournament_name for t in preview.shared_tournaments)
+            raise HTTPException(
+                409,
+                f"These players both took part in: {names}. One person cannot be two participants "
+                "in the same tournament, so these profiles cannot be merged.",
+            )
+        moved_tournament_ids = profile_tournament_ids(conn, secondary_id)
+        merge_hub_profile_data(conn, primary_id, secondary_id)
+        name = conn.execute("SELECT name FROM player_profiles WHERE id = ?", (primary_id,)).fetchone()["name"]
+
+    for tid in moved_tournament_ids:
+        invalidate_secrets_cache(tid)
+    mark_elo_dirty([primary_id])
+    await flush_elo_recalculation()
+    # Club memberships and ratings of every club either profile is in changed.
+    invalidate_leaderboard_cache()
+    return HubMergeResult(profile_id=primary_id, name=name or "")
+
+
+@router.get("/merge-hub/preview", response_model=HubMergePreview)
+def admin_hub_merge_preview(
+    primary_id: str,
+    secondary_id: str,
+    _admin: User = Depends(require_admin),
+) -> HubMergePreview:
+    """Preview merging two registered profiles (see :func:`hub_merge_preview`)."""
+    with get_db() as conn:
+        return hub_merge_preview(conn, primary_id, secondary_id)
+
+
+@router.post("/merge-hub", response_model=HubMergeResult)
+async def admin_merge_hub_profiles(
+    req: HubMergeRequest,
+    _admin: User = Depends(require_admin),
+) -> HubMergeResult:
+    """Merge registered profile ``secondary_id`` into ``primary_id``.
+
+    The primary keeps its name, email and passphrase; the secondary is deleted
+    and its passphrase and sessions stop working.
+    """
+    return await merge_hub_profiles(req.primary_id, req.secondary_id)
 
 
 @router.get("/{profile_id}/merge-candidates", response_model=list[AdminPlayerProfileSummary])
@@ -642,89 +749,157 @@ async def admin_link_participation(
     already finished (``finished_at IS NOT NULL``), the stats snapshot is
     backfilled into ``player_history`` and the ``player_secrets`` row is
     cleaned up — exactly matching the self-service Player Hub flow.
+
+    A participation already linked to another profile (Hub or ghost) is
+    re-linked: the old link is dropped and the durable ``player_history``
+    row, if any, moves to ``profile_id``.  This also covers finished
+    participations whose ``player_secrets`` row is already gone (backfilled
+    by an earlier link, or purged), where only ``player_history`` remains.
+
+    A profile is one participant per tournament: any other participant of
+    ``tid`` linked to ``profile_id`` is unlinked.  Their ids are returned in
+    ``unlinked_player_ids``.
+
+    ELO is then recalculated from this tournament onward, and the profiles
+    that lost the participation are rebuilt from what they still own.
     """
+    populated: dict[str, str] = {}
     with get_db() as conn:
         # Verify the profile exists.
         profile = conn.execute("SELECT id FROM player_profiles WHERE id = ?", (profile_id,)).fetchone()
         if profile is None:
             raise HTTPException(404, "Profile not found")
 
-        # Verify the player_secrets row exists and is not already linked.
+        # Any 404 below rolls this back along with the rest of the transaction.
+        unlinked_player_ids = _unlink_profile_from_other_participants(conn, profile_id, tid, player_id)
+
         row = conn.execute(
-            "SELECT profile_id, finished_at, tournament_name, finished_sport,"
-            "       finished_stats, finished_top_partners, finished_top_rivals,"
-            "       finished_all_partners, finished_all_rivals, player_name"
-            " FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
+            "SELECT profile_id, finished_at FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
             (tid, player_id),
         ).fetchone()
+
         if row is None:
-            raise HTTPException(404, "Player secret not found for this tournament/player")
-
-        if row["profile_id"] is not None:
-            if row["profile_id"] == profile_id:
-                # Already linked to the same profile — idempotent success.
-                return {
-                    "ok": True,
-                    "status": ParticipationStatus.FINISHED if row["finished_at"] else ParticipationStatus.ACTIVE,
-                    "populated": {},
-                }
-            # Linked to a different profile — clear the old link first.
-            old_profile_id = row["profile_id"]
-            conn.execute(
-                "UPDATE player_secrets SET profile_id = NULL WHERE tournament_id = ? AND player_id = ?",
+            # Finished participation that only survives in player_history.
+            hist = conn.execute(
+                "SELECT profile_id FROM player_history"
+                " WHERE entity_type = 'tournament' AND entity_id = ? AND player_id = ?",
                 (tid, player_id),
-            )
-            if row["finished_at"] is not None:
+            ).fetchone()
+            if hist is None:
+                raise HTTPException(404, "Participation not found for this tournament/player")
+            is_finished = True
+            changed = hist["profile_id"] != profile_id
+            old_profile_ids = [hist["profile_id"]]
+            if changed:
                 conn.execute(
-                    "DELETE FROM player_history WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
-                    (old_profile_id, tid),
+                    "UPDATE player_history SET profile_id = ?"
+                    " WHERE entity_type = 'tournament' AND entity_id = ? AND player_id = ?",
+                    (profile_id, tid, player_id),
                 )
+        else:
+            is_finished = row["finished_at"] is not None
+            changed = row["profile_id"] != profile_id
+            old_profile_ids = [row["profile_id"]]
+            if changed and is_finished:
+                # Detach the durable history snapshot from whichever profile
+                # holds it (the previous link, or a claim made directly on the
+                # history row) so the backfill upsert below reassigns it.
+                hist = conn.execute(
+                    "SELECT profile_id FROM player_history"
+                    " WHERE entity_type = 'tournament' AND entity_id = ? AND player_id = ?",
+                    (tid, player_id),
+                ).fetchone()
+                if hist is not None:
+                    old_profile_ids.append(hist["profile_id"])
+                conn.execute(
+                    "UPDATE player_history SET profile_id = NULL"
+                    " WHERE entity_type = 'tournament' AND entity_id = ? AND player_id = ?",
+                    (tid, player_id),
+                )
+            if changed:
+                populated = _link_secret_row(conn, profile_id, tid, player_id)
+            if changed and is_finished:
+                # Backfill into player_history using the snapshot stored at finish time.
+                _backfill_single_finished_secret(conn, profile_id, tid, player_id)
 
-        # Fetch profile name/email/contact to populate empty fields.
-        prof = conn.execute("SELECT name, email, contact FROM player_profiles WHERE id = ?", (profile_id,)).fetchone()
-        populated = {}
-        sec_row = conn.execute(
-            "SELECT player_name, contact, email FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
-            (tid, player_id),
-        ).fetchone()
-        updates = []
-        if prof and prof["name"]:
-            updates.append("player_name = ?")
-            populated["name"] = prof["name"]
-        if prof and prof["email"] and not sec_row["email"]:
-            updates.append("email = ?")
-            populated["email"] = prof["email"]
-        if prof and prof["contact"] and not sec_row["contact"]:
-            updates.append("contact = ?")
-            populated["contact"] = prof["contact"]
+    # Rename the player in the live tournament object if name was populated.
+    if "name" in populated and not is_finished:
+        await asyncio.to_thread(rename_player_in_tournament, tid, player_id, populated["name"])
 
-        # Set the profile_id (and optionally email/contact).
-        set_clause = "profile_id = ?" + (", " + ", ".join(updates) if updates else "")
-        params = [profile_id] + list(populated.values()) + [tid, player_id]
-        conn.execute(
-            f"UPDATE player_secrets SET {set_clause} WHERE tournament_id = ? AND player_id = ?",
-            params,
-        )
-
-        is_finished = row["finished_at"] is not None
-
-        # Rename the player in the live tournament object if name was populated.
-        if "name" in populated and not is_finished:
-            await asyncio.to_thread(rename_player_in_tournament, tid, player_id, populated["name"])
-
-        if is_finished:
-            # Backfill into player_history using the snapshot stored at finish time.
-            _backfill_single_finished_secret(conn, profile_id, tid, player_id)
-
-    if is_finished:
-        retroactive_transfer_elo(profile_id, player_id)
+    # Ratings in this tournament (and those after it) depend on who is linked.
+    if changed or unlinked_player_ids:
+        mark_elo_dirty([*old_profile_ids, profile_id], [tid], [player_id, *unlinked_player_ids])
 
     invalidate_secrets_cache(tid)
     return {
         "ok": True,
         "status": ParticipationStatus.FINISHED if is_finished else ParticipationStatus.ACTIVE,
         "populated": populated,
+        "unlinked_player_ids": unlinked_player_ids,
     }
+
+
+def _unlink_profile_from_other_participants(conn, profile_id: str, tid: str, player_id: str) -> list[str]:
+    """Drop ``profile_id``'s links to participants of ``tid`` other than ``player_id``.
+
+    Finished participations keep their durable ``player_history`` row, just
+    detached (``profile_id = NULL``) so it can be linked again later.
+    Returns the unlinked ``player_id``s.
+    """
+    params = (profile_id, tid, player_id)
+    secret_ids = [
+        r["player_id"]
+        for r in conn.execute(
+            "SELECT player_id FROM player_secrets WHERE profile_id = ? AND tournament_id = ? AND player_id != ?",
+            params,
+        ).fetchall()
+    ]
+    history_ids = [
+        r["player_id"]
+        for r in conn.execute(
+            "SELECT player_id FROM player_history"
+            " WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ? AND player_id != ?",
+            params,
+        ).fetchall()
+    ]
+    conn.execute(
+        "UPDATE player_secrets SET profile_id = NULL WHERE profile_id = ? AND tournament_id = ? AND player_id != ?",
+        params,
+    )
+    conn.execute(
+        "UPDATE player_history SET profile_id = NULL"
+        " WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ? AND player_id != ?",
+        params,
+    )
+    return list(dict.fromkeys([*secret_ids, *history_ids]))
+
+
+def _link_secret_row(conn, profile_id: str, tid: str, player_id: str) -> dict[str, str]:
+    """Point a ``player_secrets`` row at ``profile_id``, replacing any old link.
+
+    The row's name is overwritten with the profile name; email/contact are
+    only filled when empty.  Returns the fields that were populated.
+    """
+    prof = conn.execute("SELECT name, email, contact FROM player_profiles WHERE id = ?", (profile_id,)).fetchone()
+    sec_row = conn.execute(
+        "SELECT contact, email FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
+        (tid, player_id),
+    ).fetchone()
+    populated: dict[str, str] = {}
+    if prof["name"]:
+        populated["name"] = prof["name"]
+    if prof["email"] and not sec_row["email"]:
+        populated["email"] = prof["email"]
+    if prof["contact"] and not sec_row["contact"]:
+        populated["contact"] = prof["contact"]
+
+    columns = {"name": "player_name", "email": "email", "contact": "contact"}
+    set_clause = ", ".join(["profile_id = ?", *(f"{columns[k]} = ?" for k in populated)])
+    conn.execute(
+        f"UPDATE player_secrets SET {set_clause} WHERE tournament_id = ? AND player_id = ?",
+        [profile_id, *populated.values(), tid, player_id],
+    )
+    return populated
 
 
 def _backfill_single_finished_secret(conn, profile_id: str, tid: str, player_id: str) -> None:
@@ -811,66 +986,44 @@ async def admin_unlink_participation(
 ) -> dict:
     """Unlink a tournament participation from a Player Hub profile.
 
-    For **active** tournaments the ``profile_id`` is simply set to NULL on
-    the ``player_secrets`` row.
-
-    For **finished** tournaments the ``player_history`` row is deleted — this
-    permanently removes the stats from the player's hub.  A warning is
-    included in the response so the frontend can surface it.
+    Clears ``profile_id`` on the ``player_secrets`` row and, for finished
+    tournaments, on the durable ``player_history`` row — the stats leave the
+    player's hub, but the record stays so it can be linked again later.  ELO
+    is recalculated from this tournament onward and the profile is rebuilt
+    from the participations it still owns.
     """
     with get_db() as conn:
-        # Try active first (player_secrets row still present).
-        row = conn.execute(
+        sec = conn.execute(
             "SELECT profile_id, finished_at FROM player_secrets WHERE tournament_id = ? AND player_id = ?",
             (tid, player_id),
         ).fetchone()
-
-        if row is not None and row["profile_id"] is not None:
-            if row["finished_at"] is None:
-                # Active tournament — just clear the link.
-                conn.execute(
-                    "UPDATE player_secrets SET profile_id = NULL WHERE tournament_id = ? AND player_id = ?",
-                    (tid, player_id),
-                )
-                invalidate_secrets_cache(tid)
-                return {"ok": True, "status": ParticipationStatus.ACTIVE, "warning": None}
-            else:
-                # Finished but player_secrets row still exists (edge case: finished
-                # but backfill hasn't run yet).  Clear profile_id and remove any
-                # history row.
-                old_profile_id = row["profile_id"]
-                conn.execute(
-                    "UPDATE player_secrets SET profile_id = NULL WHERE tournament_id = ? AND player_id = ?",
-                    (tid, player_id),
-                )
-                conn.execute(
-                    "DELETE FROM player_history WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
-                    (old_profile_id, tid),
-                )
-                invalidate_secrets_cache(tid)
-                return {
-                    "ok": True,
-                    "status": ParticipationStatus.FINISHED,
-                    "warning": "Stats have been permanently removed from this player's hub.",
-                }
-
-        # No player_secrets row — check player_history directly.
         hist = conn.execute(
             "SELECT profile_id FROM player_history WHERE entity_type = 'tournament' AND entity_id = ? AND player_id = ?",
             (tid, player_id),
         ).fetchone()
-        if hist is not None:
-            conn.execute(
-                "DELETE FROM player_history WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ? AND player_id = ?",
-                (hist["profile_id"], tid, player_id),
-            )
-            return {
-                "ok": True,
-                "status": ParticipationStatus.FINISHED,
-                "warning": "Stats have been permanently removed from this player's hub.",
-            }
+        old_profile_ids = [r["profile_id"] for r in (sec, hist) if r is not None and r["profile_id"] is not None]
+        if not old_profile_ids:
+            raise HTTPException(404, "Participation not found")
+        conn.execute(
+            "UPDATE player_secrets SET profile_id = NULL WHERE tournament_id = ? AND player_id = ?",
+            (tid, player_id),
+        )
+        conn.execute(
+            "UPDATE player_history SET profile_id = NULL"
+            " WHERE entity_type = 'tournament' AND entity_id = ? AND player_id = ?",
+            (tid, player_id),
+        )
+    is_finished = hist is not None or sec["finished_at"] is not None
 
-    raise HTTPException(404, "Participation not found")
+    mark_elo_dirty(old_profile_ids, [tid], [player_id])
+    invalidate_secrets_cache(tid)
+    if not is_finished:
+        return {"ok": True, "status": ParticipationStatus.ACTIVE, "warning": None}
+    return {
+        "ok": True,
+        "status": ParticipationStatus.FINISHED,
+        "warning": "Stats have been removed from this player's hub.",
+    }
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -1097,26 +1250,55 @@ async def admin_update_email(
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Unlinked players for a tournament (used by the link picker)
+# Tournament participants with their current link (used by the link picker)
 # ────────────────────────────────────────────────────────────────────────────
 
 
-@router.get("/unlinked/{tid}")
-def list_unlinked_players(
+@router.get("/participants/{tid}", response_model=list[AdminTournamentParticipant])
+def list_tournament_participants(
     tid: str,
     _admin: User = Depends(require_admin),
-) -> list[dict]:
-    """Return players in a tournament that are not linked to any profile.
+) -> list[AdminTournamentParticipant]:
+    """Return every participant of a tournament with the profile it is linked to.
 
-    Used by the admin UI to populate the "link" picker dropdown.
+    Used by the admin UI to populate the "link" picker dropdown.  Linked
+    participants are included so the admin can re-link them; finished
+    participations whose ``player_secrets`` row is gone come from
+    ``player_history``.
     """
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT player_id, player_name FROM player_secrets WHERE tournament_id = ? AND profile_id IS NULL",
-            (tid,),
+            """
+            SELECT p.player_id, p.player_name, p.profile_id,
+                   pp.name AS profile_name, COALESCE(pp.is_ghost, 0) AS is_ghost
+              FROM (
+                    SELECT player_id, player_name, profile_id
+                      FROM player_secrets WHERE tournament_id = ?
+                    UNION ALL
+                    SELECT ph.player_id, ph.player_name, ph.profile_id
+                      FROM player_history ph
+                     WHERE ph.entity_type = 'tournament' AND ph.entity_id = ?
+                       AND NOT EXISTS (
+                           SELECT 1 FROM player_secrets ps
+                            WHERE ps.tournament_id = ph.entity_id AND ps.player_id = ph.player_id
+                       )
+                   ) p
+              LEFT JOIN player_profiles pp ON pp.id = p.profile_id
+             ORDER BY p.profile_id IS NOT NULL, p.player_name COLLATE NOCASE
+            """,
+            (tid, tid),
         ).fetchall()
 
-    return [{"player_id": r["player_id"], "player_name": r["player_name"]} for r in rows]
+    return [
+        AdminTournamentParticipant(
+            player_id=r["player_id"],
+            player_name=r["player_name"] or "",
+            profile_id=r["profile_id"],
+            profile_name=r["profile_name"],
+            is_ghost=bool(r["is_ghost"]),
+        )
+        for r in rows
+    ]
 
 
 # ────────────────────────────────────────────────────────────────────────────

@@ -8,10 +8,11 @@ tournament creation, and tournament finish.
 from __future__ import annotations
 
 import logging
+from collections.abc import Collection
 from typing import Any
 
 from backend.models import Match, MatchStatus, TournamentType
-from backend.tournaments.elo import compute_match_elo_updates, get_k_factor
+from backend.tournaments.elo import DEFAULT_RATING, compute_match_elo_updates, get_k_factor
 
 from .elo_store import (
     _match_timestamp,
@@ -83,10 +84,15 @@ def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
         logger.exception("Failed to update ELO for match %s in tournament %s", match.id, tid)
 
 
-def elo_recalculate_tournament(tournament_id: str) -> None:
+def elo_recalculate_tournament(tournament_id: str, reseed_player_ids: Collection[str] = ()) -> None:
     """Full ELO recalculation from all completed matches in a tournament.
 
     Used after score corrections to ensure consistency.
+
+    ``reseed_player_ids`` are players whose stored starting rating is stale
+    because their Hub link changed: instead of the tournament's own snapshot
+    they start from their (new) profile's earlier tournaments, or
+    ``DEFAULT_RATING`` when unlinked or without earlier tournaments.
     """
     data = _tournaments.get(tournament_id)
     if data is None:
@@ -97,7 +103,7 @@ def elo_recalculate_tournament(tournament_id: str) -> None:
     ttype = data.get("type", "")
 
     all_matches = _extract_completed_matches(tournament, ttype)
-    if not all_matches:
+    if not all_matches and not reseed_player_ids:
         return
 
     team_mode = _is_team_mode(tournament, ttype)
@@ -110,6 +116,9 @@ def elo_recalculate_tournament(tournament_id: str) -> None:
         snapshots = get_tournament_elo_snapshots(tournament_id, sport)
         saved_elos = {pid: elo for pid, (elo, _cnt) in snapshots.items()}
         saved_counts = {pid: cnt for pid, (_elo, cnt) in snapshots.items()}
+        for pid in reseed_player_ids:
+            saved_elos[pid] = DEFAULT_RATING
+            saved_counts[pid] = 0
 
         # ...then override linked players with the cumulative result of their
         # *earlier* tournaments so ELO continues across tournaments (rather than

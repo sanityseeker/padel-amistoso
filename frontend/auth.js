@@ -577,18 +577,20 @@ function updateAuthUI() {
       // Communities and clubs are core-site features: never offered on the demo instance.
       const _demoInstance = typeof isDemoInstance === 'function' && isDemoInstance();
       const adminBtn = isAdmin()
-        ? `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('players-hub')" title="${t('txt_nav_player_space')}">${_ic('user')} <span class="nav-btn-label">${t('txt_nav_player_space')}</span></button>`
-          + `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('user-mgmt')" title="${t('txt_txt_user_management')}">${_ic('users')} <span class="nav-btn-label">${t('txt_txt_users_tab')}</span></button>`
-          + ((_onSubdomain || _demoInstance) ? '' : `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('communities')" title="Communities">${_ic('grid')} <span class="nav-btn-label">${t('txt_comm_title')}</span></button>`)
+        ? `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('players-hub')" title="${t('txt_admin_nav_players')}">${_ic('contact')} <span class="nav-btn-label">${t('txt_admin_nav_players')}</span></button>`
+          + `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('user-mgmt')" title="${t('txt_txt_user_management')}">${_ic('shield')} <span class="nav-btn-label">${t('txt_txt_users_tab')}</span></button>`
+          + ((_onSubdomain || _demoInstance) ? '' : `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('communities')" title="Communities">${_ic('users')} <span class="nav-btn-label">${t('txt_comm_title')}</span></button>`)
         : '';
       // Demo accounts get the minimal surface: no Clubs (Player Space /
       // Users / Communities are already admin-only above).
       const clubsBtn = (isDemoUser() || _demoInstance)
         ? ''
         : `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('clubs')" title="${t('txt_clubs_title')}">${_ic('building')} <span class="nav-btn-label">${t('txt_clubs_title')}</span></button>`;
-      const changePwdBtn = `<button class="btn btn-sm auth-nav-btn mr-1" onclick="showChangePasswordDialog()" title="${t('txt_txt_change_password')}">${_ic('shield')}</button>`;
+      const changePwdBtn = `<button class="btn btn-sm auth-nav-btn mr-1" onclick="showChangePasswordDialog()" title="${t('txt_txt_change_password')}">${_ic('lock')}</button>`;
+      // The icon group is its own element so phones can centre it on a line of
+      // its own above Tournaments / New, leaving Logout at the row end.
       authStatus.innerHTML = `
-        ${adminBtn}${clubsBtn}${changePwdBtn}<strong class="mr-2">${esc(username)}</strong>
+        <span class="auth-nav-icons">${adminBtn}${clubsBtn}${changePwdBtn}</span><strong class="mr-2">${esc(username)}</strong>
         <button class="btn btn-sm auth-nav-btn" onclick="logout()">${t('txt_txt_logout')}</button>
       `;
     } else {
@@ -733,7 +735,7 @@ function filterUserMgmtList(query) {
       <div class="umgmt-col-actions">
         ${u.username !== self
           ? `<button class="btn btn-sm" onclick="showChangePasswordDialog('${esc(u.username)}')" title="${t('txt_txt_change_password')}">${_ic('key')}</button><button class="btn btn-sm btn-danger" onclick="deleteUserWithConfirm('${esc(u.username)}')">${_ic('trash')}</button>`
-          : `<span class="umgmt-self-badge" title="${t('txt_txt_protected')}">${_antIc('lock')}</span>`}
+          : `<span class="umgmt-self-badge" title="${t('txt_txt_protected')}">${_ic('lock')}</span>`}
       </div>
     </li>`).join('');
 }

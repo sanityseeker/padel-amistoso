@@ -33,6 +33,7 @@ from .. import config
 from ..auth import auth_router
 from ..auth.store import user_store
 from .db import init_db
+from .elo_recalc import flush_elo_recalculation
 from .state import persist_failed as _persist_failed
 from .routes_admin_players import router as admin_players_router
 from .routes_clubs import public_events_router
@@ -191,6 +192,20 @@ async def csrf_origin_protection(request: Request, call_next):
     # indexes so visitors land on the core site, not the practice copy.
     if config.DEMO_INSTANCE and response.headers.get("content-type", "").startswith("text/html"):
         response.headers["X-Robots-Tag"] = "noindex"
+    return response
+
+
+@app.middleware("http")
+async def flush_elo_after_request(request: Request, call_next):
+    """Recalculate ELO for any Hub link changes the request made, before responding.
+
+    Link/unlink/merge code only calls ``elo_recalc.mark_elo_dirty`` (it may be
+    sync, deep in a helper); this awaits the replay so the response — and the
+    page the client reloads next — already shows the new ratings.  A no-op
+    when nothing was marked.
+    """
+    response = await call_next(request)
+    await flush_elo_recalculation()
     return response
 
 

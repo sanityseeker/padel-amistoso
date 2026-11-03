@@ -225,7 +225,7 @@ function _payGetStore(kind, id) {
 /** Fee settings editor markup (bound to `draft`; used inline and on the lobby settings page). */
 function _payRenderSettingsEditor() {
   let html = `<div class="pay-settings-editor">`;
-  html += `<p class="settings-help">${t('txt_pay_settings_help')}</p>`;
+  html += `<p class="settings-help settings-help--explain">${t('txt_pay_settings_help')}</p>`;
   html += `<div class="pay-settings-grid">`;
   html += `<label class="pay-field"><span class="settings-label">${t('txt_pay_fee')}</span>`;
   html += `<input type="text" inputmode="decimal" v-model="draft.fee" placeholder="15.00"></label>`;
@@ -353,7 +353,7 @@ function _renderPaymentsIsland(kind, id) {
   // Refunds pending
   html += `<div class="pay-refunds" v-if="refundRows().length">`;
   html += `<div class="settings-label">${t('txt_pay_refunds_title')}</div>`;
-  html += `<p class="settings-help">${t('txt_pay_refunds_help')}</p>`;
+  html += `<p class="settings-help settings-help--explain">${t('txt_pay_refunds_help')}</p>`;
   html += `<div class="pay-refund-row" v-for="r in refundRows()" :key="'rf-' + r.player_id">`;
   html += `<span><strong>{{ r.player_name }}</strong> · {{ fmt(r.amount_cents, r.currency) }}</span>`;
   html += `<span :class="'badge pay-chip pay-chip-' + r.status">{{ statusLabel(r.status) }}</span>`;

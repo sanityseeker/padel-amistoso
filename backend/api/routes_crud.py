@@ -53,7 +53,7 @@ from .schemas import (
 from . import state
 from .state import _delete_tournament, _tournaments, save_tournament
 from .elo_integration import elo_recalculate_tournament
-from .elo_store import delete_tournament_elos
+from .elo_store import delete_tournament_elos, tournaments_in_chronological_order
 from .leaderboard_cache import etag_for, get_mini_card_cached
 from .routes_admin_players import (
     _purge_profile_record,
@@ -367,7 +367,7 @@ async def recalculate_all_elo(user: User = Depends(get_current_user)) -> dict:
     if user.role != UserRole.ADMIN:
         raise HTTPException(403, "Admin only")
 
-    ordered_tids = await asyncio.to_thread(_tournaments_in_chronological_order)
+    ordered_tids = await asyncio.to_thread(tournaments_in_chronological_order)
 
     recalculated = 0
     for tid in ordered_tids:
@@ -378,26 +378,6 @@ async def recalculate_all_elo(user: User = Depends(get_current_user)) -> dict:
             recalculated += 1
 
     return {"ok": True, "recalculated_tournaments": recalculated, "total": len(ordered_tids)}
-
-
-def _tournaments_in_chronological_order() -> list[str]:
-    """Return all tournament ids ordered by when they finished (then created).
-
-    In-progress tournaments (no ``player_history`` rows yet) sort last so their
-    live ratings are applied on top of the finished chain.
-    """
-    with get_db() as conn:
-        rows = conn.execute(
-            """
-            SELECT t.id AS id,
-                   (SELECT MIN(ph.finished_at) FROM player_history ph
-                     WHERE ph.entity_type = 'tournament' AND ph.entity_id = t.id) AS fin,
-                   t.created_at AS created_at
-              FROM tournaments t
-          ORDER BY (fin IS NULL) ASC, fin ASC, created_at ASC
-            """
-        ).fetchall()
-    return [r["id"] for r in rows]
 
 
 @router.put("/{tid}/alias")

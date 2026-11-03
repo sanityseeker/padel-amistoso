@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title data-i18n="txt_txt_app_title">Torneos</title>
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#3b82f6">
+<meta name="theme-color" content="#1a5fa3">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');</script>
 <script>(function(){try{var t=localStorage.getItem('amistoso-theme')||localStorage.getItem('padel-theme');if(!t)t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(_){}})();</script>
@@ -33,7 +33,9 @@
   })();
 </script>
 <link rel="preconnect" href="https://api.fontshare.com">
-<link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=cabinet-grotesk@400,500,700,800&display=swap" rel="stylesheet">
+<!-- One request per family: the Fontshare API only returns the first family of a combined f[] query. -->
+<link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800&display=swap" rel="stylesheet">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -46,42 +48,20 @@
 <body>
 <div class="container">
   <div class="page-header">
-    <div class="page-header-title-bar">
-      <button type="button" id="lang-toggle-btn" class="compact-icon-btn" data-action="toggleLanguage" title="Language" data-i18n-title="txt_txt_language" aria-label="Language" data-i18n-aria-label="txt_txt_language"><span class="lang-code" aria-hidden="true">EN</span></button>
-      <div class="page-selector" id="page-selector">
-        <button type="button" class="page-selector-btn" id="page-selector-btn" data-action="togglePageSelector">
-          <span class="page-selector-icon"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M876.6 239.5c-.5-.9-1.2-1.8-2-2.5-5-5-13.1-5-18.1 0L684.2 409.3l-67.9-67.9L788.7 169c.8-.8 1.4-1.6 2-2.5 3.6-6.1 1.6-13.9-4.5-17.5-98.2-58-226.8-44.7-311.3 39.7-67 67-89.2 162-66.5 247.4l-293 293c-3 3-2.8 7.9.3 11l169.7 169.7c3.1 3.1 8.1 3.3 11 .3l292.9-292.9c85.5 22.8 180.5.7 247.6-66.4 84.4-84.5 97.7-213.1 39.7-311.3z"/></svg></span>
-          <span class="page-selector-label" data-i18n="txt_nav_admin">Admin</span>
-          <span class="page-selector-arrow">▾</span>
-        </button>
-        <div class="page-selector-menu" id="page-selector-menu">
-          <a href="/admin" class="page-selector-item active" data-page="admin">
-            <span class="page-selector-item-icon"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M876.6 239.5c-.5-.9-1.2-1.8-2-2.5-5-5-13.1-5-18.1 0L684.2 409.3l-67.9-67.9L788.7 169c.8-.8 1.4-1.6 2-2.5 3.6-6.1 1.6-13.9-4.5-17.5-98.2-58-226.8-44.7-311.3 39.7-67 67-89.2 162-66.5 247.4l-293 293c-3 3-2.8 7.9.3 11l169.7 169.7c3.1 3.1 8.1 3.3 11 .3l292.9-292.9c85.5 22.8 180.5.7 247.6-66.4 84.4-84.5 97.7-213.1 39.7-311.3z"/></svg></span>
-            <span data-i18n="txt_nav_admin">Admin</span>
-          </a>
-          <a href="/player" class="page-selector-item" data-page="player">
-            <span class="page-selector-item-icon"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M858.5 763.6a374 374 0 00-80.6-119.5 375.63 375.63 0 00-119.5-80.6c-.4-.2-.8-.3-1.2-.5C719.5 518 760 444.7 760 362c0-137-111-248-248-248S264 225 264 362c0 82.7 40.5 156 102.8 201.1-.4.2-.8.3-1.2.5-44.8 18.9-85 46-119.5 80.6a375.63 375.63 0 00-80.6 119.5A371.7 371.7 0 00136 901.8a8 8 0 008 8.2h60c4.4 0 7.9-3.5 8-7.8 2-77.2 33-149.5 87.8-204.3 56.7-56.7 132-87.9 212.2-87.9s155.5 31.2 212.2 87.9C779 752.7 810 825 812 902.2c.1 4.4 3.6 7.8 8 7.8h60a8 8 0 008-8.2c-1-47.8-10.9-94.3-29.5-138.2zM512 534c-45.9 0-89.1-17.9-121.6-50.4S340 407.9 340 362c0-45.9 17.9-89.1 50.4-121.6S466.1 190 512 190s89.1 17.9 121.6 50.4S684 316.1 684 362c0 45.9-17.9 89.1-50.4 121.6S557.9 534 512 534z"/></svg></span>
-            <span data-i18n="txt_nav_player_space">Player Hub</span>
-          </a>
-          <a href="/events" class="page-selector-item" data-page="events">
-            <span class="page-selector-item-icon"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M880 184H712v-64c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v64H384v-64c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v64H144c-17.7 0-32 14.3-32 32v664c0 17.7 14.3 32 32 32h736c17.7 0 32-14.3 32-32V216c0-17.7-14.3-32-32-32zm-40 656H184V460h656v380zM184 392V256h128v48c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8v-48h256v48c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8v-48h128v136H184z"/></svg></span>
-            <span data-i18n="txt_nav_events">Events</span>
-          </a>
-        </div>
-      </div>
-      <div class="header-toggle-btns">
-        <button type="button" id="theme-toggle-btn" class="compact-icon-btn" data-action="toggleTheme" title="Toggle light / dark mode" data-i18n-title="txt_txt_toggle_light_dark_mode" aria-label="Toggle light / dark mode" data-i18n-aria-label="txt_txt_toggle_light_dark_mode"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></button>
-      </div>
-    </div>
+    <div id="admin-public-header" class="admin-public-header-slot"></div>
     <div class="page-header-row page-header-row--nav">
-      <button type="button" class="tab-btn tab-btn--info" data-tab="info" role="tab" aria-selected="false" title="Info" data-i18n-title="txt_txt_info"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z"/><path fill="currentColor" d="M464 336a48 48 0 1096 0 48 48 0 10-96 0zm72 112h-48c-4.4 0-8 3.6-8 8v272c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8V456c0-4.4-3.6-8-8-8z"/></svg> <span class="tab-btn-label" data-i18n="txt_txt_info">Info</span></button>
+      <div class="admin-main-nav" role="tablist">
+        <button type="button" class="tab-btn tab-btn--info" data-tab="info" role="tab" aria-selected="false" title="Info" data-i18n-title="txt_txt_info"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> <span class="tab-btn-label" data-i18n="txt_txt_info">Info</span></button>
+        <button type="button" class="tab-btn tab-btn--nav active" data-tab="home" role="tab" aria-selected="true" title="Tournaments" data-i18n-title="txt_txt_tournaments" aria-label="Tournaments" data-i18n-aria-label="txt_txt_tournaments"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2z"/></svg> <span class="tab-btn-label" data-i18n="txt_txt_tournaments">Tournaments</span></button>
+        <button type="button" class="tab-btn tab-btn--nav" data-tab="create" role="tab" aria-selected="false" title="New Tournament" data-i18n-title="txt_txt_create" aria-label="New Tournament" data-i18n-aria-label="txt_txt_create"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> <span class="tab-btn-label" data-i18n="txt_txt_create">New Tournament</span></button>
+      </div>
       <div id="auth-status" class="page-header-right ml-auto"></div>
     </div>
   </div>
 
   <!-- Demo Site Banner (shown when DEMO_MODE=true on backend) -->
   <div id="demo-banner" class="demo-banner" style="display:none">
-    <svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M464 720a48 48 0 1096 0 48 48 0 10-96 0zm16-304v184c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8V416c0-4.4-3.6-8-8-8h-48c-4.4 0-8 3.6-8 8zm475.7 440l-416-720c-6.2-10.7-16.9-16-27.7-16s-21.6 5.3-27.7 16l-416 720C56 877.4 71.4 904 96 904h832c24.6 0 40-26.6 27.7-48zm-783.5-27.9L512 239.9l339.8 588.2H172.2z"/></svg> <strong data-i18n="txt_txt_demo_instance">Demo Instance</strong> — <span data-i18n="txt_txt_free_tier_sleeps_after">Free tier sleeps after</span> <strong>15 minutes</strong> <span data-i18n="txt_txt_of_inactivity_all_tournament_data_will_be_lost_when_the_app_restarts_login">of inactivity. All tournament data will be lost when the app restarts. Login:</span> <code class="demo-banner-code">admin / admin</code>
+    <svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> <strong data-i18n="txt_txt_demo_instance">Demo Instance</strong> — <span data-i18n="txt_txt_free_tier_sleeps_after">Free tier sleeps after</span> <strong>15 minutes</strong> <span data-i18n="txt_txt_of_inactivity_all_tournament_data_will_be_lost_when_the_app_restarts_login">of inactivity. All tournament data will be lost when the app restarts. Login:</span> <code class="demo-banner-code">admin / admin</code>
   </div>
 
   <!-- Demo sandbox countdown (shown for demo accounts; content set by initDemoCountdown) -->
@@ -89,17 +69,11 @@
   <!-- Demo account credentials (shown after minting until dismissed; content set by showDemoCredsBanner) -->
   <div id="demo-creds-banner" class="demo-banner" style="display:none"></div>
 
-  <!-- Navigation tabs -->
-  <div class="tabs" role="tablist">
-    <button type="button" class="tab-btn active" data-tab="home" data-i18n="txt_txt_tournaments" role="tab" aria-selected="true">Tournaments</button>
-    <button type="button" class="tab-btn" data-tab="create" data-i18n="txt_txt_create" role="tab" aria-selected="false">Create</button>
+  <!-- Open-tournament quick-switch chips (+ refresh). Collapsed while no
+       tournament is open: _renderTournamentChips() toggles .hidden. -->
+  <div class="tabs tournament-tabs hidden" id="tournament-tabs">
     <div id="tournament-chips" class="tournament-chips"></div>
-    <div class="compact-controls">
-      <button type="button" id="admin-refresh-btn" class="compact-icon-btn" data-action="refreshCurrentView" title="Refresh" data-i18n-title="txt_txt_refresh" style="display:none">↻</button>
-    </div>
-  </div>
-  <div class="active-tournament-indicator" id="active-tournament-indicator" style="display:none">
-    <span data-i18n="txt_txt_active_tournament">Active tournament:</span> <strong data-i18n="txt_txt_none_selected">None selected</strong>
+    <button type="button" id="admin-refresh-btn" class="compact-icon-btn" data-action="refreshCurrentView" title="Refresh" data-i18n-title="txt_txt_refresh" aria-label="Refresh" data-i18n-aria-label="txt_txt_refresh" style="display:none">↻</button>
   </div>
 
   <!-- ─── HOME ──────────────────────────────────────────── -->
@@ -283,7 +257,7 @@
             <div class="d-flex gap-1-5 flex-wrap">
               <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="gp" data-i18n="txt_txt_clear_all">Clear all</button>
               <button type="button" class="paste-list-btn core-only" onclick="addPlayersFromClub('gp')" data-i18n="txt_create_add_from_club">Add from club</button>
-              <button type="button" class="paste-list-btn" id="gp-paste-toggle" data-action="togglePasteMode" data-ctx="gp"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
+              <button type="button" class="paste-list-btn" id="gp-paste-toggle" data-action="togglePasteMode" data-ctx="gp"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg> <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
           <div id="gp-participant-fields">
@@ -295,12 +269,12 @@
           </div>
         </div>
         <details class="field-section mt-2 mb-2" id="gp-contact-section">
-          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
           <p class="text-muted fs-sm m-0 mt-1-5 mb-2" data-i18n="txt_contact_help">Optional contact info — used for notifications and shared with co-players.</p>
           <div id="gp-contact-container"></div>
         </details>
         <details class="field-section mt-2 mb-2" id="gp-strength-section">
-          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M848 359.3H627.7L825.8 109c4.1-5.3.4-13-6.3-13H436c-2.8 0-5.5 1.5-6.9 4L170 547.5c-3.1 5.3.7 12 6.9 12h174.4l-89.4 357.6c-1.9 7.8 7.5 13.3 13.3 7.7L853.5 373c5.2-4.9 1.7-13.7-5.5-13.7zM378.2 732.5l60.3-241H281.1l189.6-327.4h224.6L487 427.4h211L378.2 732.5z"/></svg> <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
+          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
           <p class="text-muted fs-sm m-0 mt-1-5 mb-2" data-i18n="txt_conv_strength_help">Used for initial seeding only — real scores take over after round 1.</p>
           <div id="gp-strength-container"></div>
         </details>
@@ -366,7 +340,7 @@
             <div class="d-flex gap-1-5 flex-wrap">
               <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="mex" data-i18n="txt_txt_clear_all">Clear all</button>
               <button type="button" class="paste-list-btn core-only" onclick="addPlayersFromClub('mex')" data-i18n="txt_create_add_from_club">Add from club</button>
-              <button type="button" class="paste-list-btn" id="mex-paste-toggle" data-action="togglePasteMode" data-ctx="mex"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
+              <button type="button" class="paste-list-btn" id="mex-paste-toggle" data-action="togglePasteMode" data-ctx="mex"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg> <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
           <div id="mex-participant-fields">
@@ -378,12 +352,12 @@
           </div>
         </div>
         <details class="field-section mt-2 mb-2" id="mex-contact-section">
-          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
           <p class="text-muted fs-sm m-0 mt-1-5 mb-2" data-i18n="txt_contact_help">Optional contact info — used for notifications and shared with co-players.</p>
           <div id="mex-contact-container"></div>
         </details>
         <details class="field-section mt-2 mb-2" id="mex-strength-section">
-          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M848 359.3H627.7L825.8 109c4.1-5.3.4-13-6.3-13H436c-2.8 0-5.5 1.5-6.9 4L170 547.5c-3.1 5.3.7 12 6.9 12h174.4l-89.4 357.6c-1.9 7.8 7.5 13.3 13.3 7.7L853.5 373c5.2-4.9 1.7-13.7-5.5-13.7zM378.2 732.5l60.3-241H281.1l189.6-327.4h224.6L487 427.4h211L378.2 732.5z"/></svg> <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
+          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
           <p class="text-muted fs-sm m-0 mt-1-5 mb-2" data-i18n="txt_conv_strength_help">Used for initial seeding only — real scores take over after round 1.</p>
           <div id="mex-strength-container"></div>
         </details>
@@ -543,7 +517,7 @@
             <div class="d-flex gap-1-5 flex-wrap">
               <button type="button" class="paste-list-btn clear-btn" data-action="clearParticipants" data-ctx="po" data-i18n="txt_txt_clear_all">Clear all</button>
               <button type="button" class="paste-list-btn core-only" onclick="addPlayersFromClub('po')" data-i18n="txt_create_add_from_club">Add from club</button>
-              <button type="button" class="paste-list-btn" id="po-paste-toggle" data-action="togglePasteMode" data-ctx="po"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
+              <button type="button" class="paste-list-btn" id="po-paste-toggle" data-action="togglePasteMode" data-ctx="po"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg> <span data-i18n="txt_txt_paste_a_list">Paste a list</span></button>
             </div>
           </div>
           <div id="po-participant-fields">
@@ -555,12 +529,12 @@
           </div>
         </div>
         <details class="field-section mt-2 mb-2" id="po-contact-section">
-          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
+          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> <span data-i18n="txt_contact_details">Contact Details (optional)</span></summary>
           <p class="text-muted fs-sm m-0 mt-1-5 mb-2" data-i18n="txt_contact_help">Optional contact info — used for notifications and shared with co-players.</p>
           <div id="po-contact-container"></div>
         </details>
         <details class="field-section mt-2 mb-2" id="po-strength-section">
-          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M848 359.3H627.7L825.8 109c4.1-5.3.4-13-6.3-13H436c-2.8 0-5.5 1.5-6.9 4L170 547.5c-3.1 5.3.7 12 6.9 12h174.4l-89.4 357.6c-1.9 7.8 7.5 13.3 13.3 7.7L853.5 373c5.2-4.9 1.7-13.7-5.5-13.7zM378.2 732.5l60.3-241H281.1l189.6-327.4h224.6L487 427.4h211L378.2 732.5z"/></svg> <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
+          <summary class="cursor-pointer fw-700 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> <span data-i18n="txt_conv_initial_strength">Initial Strength (optional)</span></summary>
           <p class="text-muted fs-sm m-0 mt-1-5 mb-2" data-i18n="txt_conv_strength_help">Used for initial seeding only — real scores take over after round 1.</p>
           <div id="po-strength-container"></div>
         </details>
@@ -631,10 +605,10 @@
        (admin-players.js). The #ph-detail sibling below stays legacy innerHTML. -->
   <div class="tab-panel" id="panel-players-hub" role="tabpanel">
     <div class="card" id="ph-search-island" v-scope>
-      <h2 class="m-0 mb-3" data-i18n="txt_ph_admin_title">Players Hub</h2>
+      <h2 class="m-0 mb-3" data-i18n="txt_ph_admin_title">Players</h2>
       <div class="d-flex gap-2 mb-4 flex-wrap">
         <input type="text" id="ph-search-input" v-model="query" @keydown.enter="search()" placeholder="Search by name or email…" data-i18n-placeholder="txt_hub_search_placeholder" class="admin-search-input" autocomplete="off">
-        <button type="button" class="btn btn-primary btn-sm" id="ph-search-btn" @click="search()"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M909.6 854.5L649.9 594.8C690.2 542.7 712 479 712 412c0-80.2-31.3-155.4-87.9-212.1-56.6-56.7-132-87.9-212.1-87.9s-155.5 31.3-212.1 87.9C143.2 256.5 112 331.8 112 412c0 80.1 31.3 155.5 87.9 212.1C256.5 680.8 331.8 712 412 712c67 0 130.6-21.8 182.7-62l259.7 259.6a8.2 8.2 0 0011.6 0l43.6-43.5a8.2 8.2 0 000-11.6zM570.4 570.4C528 612.7 471.8 636 412 636s-116-23.3-158.4-65.6C211.3 528 188 471.8 188 412s23.3-116.1 65.6-158.4C296 211.3 352.2 188 412 188s116.1 23.2 158.4 65.6S636 352.2 636 412s-23.3 116.1-65.6 158.4z"/></svg> <span data-i18n="txt_ph_search_btn">Search</span></button>
+        <button type="button" class="btn btn-primary btn-sm" id="ph-search-btn" @click="search()"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> <span data-i18n="txt_ph_search_btn">Search</span></button>
       </div>
       <div id="ph-results">
         <p v-if="searching"><em>{{ t('txt_ph_searching') }}</em></p>
@@ -667,7 +641,7 @@
                 <tr v-for="p in visibleProfiles" :key="p.id" class="player-codes-row">
                   <td class="player-codes-cell-center stack-check">
                     <input v-if="p.is_ghost" type="checkbox" class="ph-ghost-check cursor-pointer" :checked="!!selectedGhosts[p.id]" :aria-label="t('txt_ph_select_for_merge')" @change="toggleGhost(p.id, $event.target.checked)">
-                    <input v-else type="checkbox" class="ph-hub-check cursor-pointer" :checked="selectedHub === p.id" :aria-label="t('txt_ph_select_as_hub_target')" @change="toggleHub(p.id, $event.target.checked)">
+                    <input v-else type="checkbox" class="ph-hub-check cursor-pointer" :checked="selectedHub === p.id || selectedHub2 === p.id" :aria-label="t('txt_ph_select_as_hub_target')" @change="toggleHub(p.id, $event.target.checked)">
                   </td>
                   <td class="player-codes-name stack-title">{{ p.name || '—' }}<span v-if="p.is_ghost" class="ph-ghost-badge">{{ t('txt_ph_ghost_badge') }}</span></td>
                   <td class="player-codes-cell stack-full stack-ellipsis" :data-label="t('txt_txt_email')" :title="p.email || ''">{{ p.email || '—' }}</td>
@@ -730,6 +704,17 @@
               <button type="button" class="btn btn-sm btn-muted" @click="suggestForHub()" :disabled="suggesting">{{ suggesting ? t('txt_ph_searching') : t('txt_ph_suggest_matches') }}</button>
               <button type="button" class="btn btn-sm btn-muted" @click="clearSelection()">{{ t('txt_txt_clear') }}</button>
             </div>
+            <div v-else-if="mergeMode === 'hub-hub'">
+              <div class="merge-bar">
+                <span class="fs-lg">{{ t('txt_ph_merge_hub_info', { keep: hubName, remove: hubName2 }) }}</span>
+                <button type="button" class="btn btn-sm btn-muted" @click="swapHubs()">{{ t('txt_ph_merge_hub_swap') }}</button>
+                <button type="button" class="btn btn-primary btn-sm" @click="mergeHubs()" :disabled="!hubMergePreview || !hubMergePreview.can_merge">{{ t('txt_ph_merge_hub_btn') }}</button>
+                <button type="button" class="btn btn-sm btn-muted" @click="clearSelection()">{{ t('txt_txt_clear') }}</button>
+              </div>
+              <p v-if="hubMergeLoading" class="fs-sm text-muted mt-1"><em>{{ t('txt_ph_searching') }}</em></p>
+              <div v-else-if="hubMergePreview && !hubMergePreview.can_merge" class="alert alert-error mt-2" role="alert">{{ t('txt_ph_merge_hub_blocked', { a: hubName, b: hubName2, tournaments: hubSharedNames }) }}</div>
+              <p v-else-if="hubMergePreview" class="fs-sm text-muted mt-1">{{ t('txt_ph_merge_hub_hint', { keep: hubName, remove: hubName2, n: hubMergePreview?.secondary?.tournaments }) }}</p>
+            </div>
             <div v-else-if="mergeMode === 'hub-ghosts'" class="merge-bar">
               <span class="fs-lg">{{ t('txt_ph_merge_into_hub_info', { n: sourceCount, hub: hubProfile ? (hubProfile.name || selectedHub) : selectedHub }) }}</span>
               <button type="button" class="btn btn-primary btn-sm" @click="consolidate(true)">{{ t('txt_ph_merge_into_hub') }}</button>
@@ -752,7 +737,7 @@
   <!-- ─── USER MANAGEMENT (admin only) ──────────────────── -->
   <div class="tab-panel" id="panel-user-mgmt" role="tabpanel">
     <div class="card">
-      <h2 class="m-0 mb-3" data-i18n="txt_txt_user_management"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M824.2 699.9a301.55 301.55 0 00-86.4-60.4C783.1 602.8 812 546.8 812 484c0-110.8-92.4-201.7-203.2-200-109.1 1.7-197 90.6-197 200 0 62.8 29 118.8 74.2 155.5a300.95 300.95 0 00-86.4 60.4C345 754.6 314 826.8 312 903.8a8 8 0 008 8.2h56c4.3 0 7.9-3.4 8-7.7 1.9-58 25.4-112.3 66.7-153.5A226.62 226.62 0 01612 684c60.9 0 118.2 23.7 161.3 66.8C814.5 792 838 846.3 840 904.3c.1 4.3 3.7 7.7 8 7.7h56a8 8 0 008-8.2c-2-77-33-149.2-87.8-203.9zM612 612c-34.2 0-66.4-13.3-90.5-37.5a126.86 126.86 0 01-37.5-91.8c.3-32.8 13.4-64.5 36.3-88 24-24.6 56.1-38.3 90.4-38.7 33.9-.3 66.8 12.9 91 36.6 24.8 24.3 38.4 56.8 38.4 91.4 0 34.2-13.3 66.3-37.5 90.5A127.3 127.3 0 01612 612z"/></svg> User Management</h2>
+      <h2 class="m-0 mb-3" data-i18n="txt_txt_user_management"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> User Management</h2>
       <div class="d-flex gap-2 mb-3 flex-wrap">
         <input type="search" id="user-mgmt-search" placeholder="Search users…" data-i18n-placeholder="txt_txt_search_users" autocomplete="off" oninput="filterUserMgmtList(this.value)" class="admin-search-input">
       </div>
@@ -814,7 +799,7 @@
       </div>
 
       <div class="card" id="invite-section">
-        <h3 class="umgmt-card-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M928 160H96c-17.7 0-32 14.3-32 32v640c0 17.7 14.3 32 32 32h832c17.7 0 32-14.3 32-32V192c0-17.7-14.3-32-32-32zm-40 110.8V792H136V270.8l-27.6-21.5 39.3-50.5 42.8 33.3h643.1l42.8-33.3 39.3 50.5-27.7 21.5zM833.6 232L512 482 190.4 232l-42.8-33.3-39.3 50.5 27.6 21.5 341.6 265.6a55.99 55.99 0 0068.7 0L888 270.8l27.6-21.5-39.3-50.5-42.7 33.2z"/></svg> <span data-i18n="txt_txt_invite_by_email">Invite by Email</span></h3>
+        <h3 class="umgmt-card-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/></svg> <span data-i18n="txt_txt_invite_by_email">Invite by Email</span></h3>
         <p class="umgmt-card-desc" data-i18n="txt_txt_invite_help">The recipient sets their own password. Link expires in 48 hours.</p>
         <form onsubmit="handleInvite(event)">
           <div class="umgmt-form-group">
@@ -866,7 +851,7 @@
           <div id="comm-list">
             <!-- Global default — read-only card, always shown when present -->
             <div v-if="global" class="comm-global-card">
-              <span class="fw-600 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M854.4 800.9c.2-.3.5-.6.7-.9C920.6 722.1 960 621.7 960 512s-39.4-210.1-104.8-288c-.2-.3-.5-.5-.7-.8-1.1-1.3-2.1-2.5-3.2-3.7-.4-.5-.8-.9-1.2-1.4l-4.1-4.7-.1-.1c-1.5-1.7-3.1-3.4-4.6-5.1l-.1-.1c-3.2-3.4-6.4-6.8-9.7-10.1l-.1-.1-4.8-4.8-.3-.3c-1.5-1.5-3-2.9-4.5-4.3-.5-.5-1-1-1.6-1.5-1-1-2-1.9-3-2.8-.3-.3-.7-.6-1-1C736.4 109.2 629.5 64 512 64s-224.4 45.2-304.3 119.2c-.3.3-.7.6-1 1-1 .9-2 1.9-3 2.9-.5.5-1 1-1.6 1.5-1.5 1.4-3 2.9-4.5 4.3l-.3.3-4.8 4.8-.1.1c-3.3 3.3-6.5 6.7-9.7 10.1l-.1.1c-1.6 1.7-3.1 3.4-4.6 5.1l-.1.1c-1.4 1.5-2.8 3.1-4.1 4.7-.4.5-.8.9-1.2 1.4-1.1 1.2-2.1 2.5-3.2 3.7-.2.3-.5.5-.7.8C103.4 301.9 64 402.3 64 512s39.4 210.1 104.8 288c.2.3.5.6.7.9l3.1 3.7c.4.5.8.9 1.2 1.4l4.1 4.7c0 .1.1.1.1.2 1.5 1.7 3 3.4 4.6 5l.1.1c3.2 3.4 6.4 6.8 9.6 10.1l.1.1c1.6 1.6 3.1 3.2 4.7 4.7l.3.3c3.3 3.3 6.7 6.5 10.1 9.6 80.1 74 187 119.2 304.5 119.2s224.4-45.2 304.3-119.2a300 300 0 0010-9.6l.3-.3c1.6-1.6 3.2-3.1 4.7-4.7l.1-.1c3.3-3.3 6.5-6.7 9.6-10.1l.1-.1c1.5-1.7 3.1-3.3 4.6-5 0-.1.1-.1.1-.2 1.4-1.5 2.8-3.1 4.1-4.7.4-.5.8-.9 1.2-1.4a99 99 0 003.3-3.7zm4.1-142.6c-13.8 32.6-32 62.8-54.2 90.2a444.07 444.07 0 00-81.5-55.9c11.6-46.9 18.8-98.4 20.7-152.6H887c-3 40.9-12.6 80.6-28.5 118.3zM887 484H743.5c-1.9-54.2-9.1-105.7-20.7-152.6 29.3-15.6 56.6-34.4 81.5-55.9A373.86 373.86 0 01887 484zM658.3 165.5c39.7 16.8 75.8 40 107.6 69.2a394.72 394.72 0 01-59.4 41.8c-15.7-45-35.8-84.1-59.2-115.4 3.7 1.4 7.4 2.9 11 4.4zm-90.6 700.6c-9.2 7.2-18.4 12.7-27.7 16.4V697a389.1 389.1 0 01115.7 26.2c-8.3 24.6-17.9 47.3-29 67.8-17.4 32.4-37.8 58.3-59 75.1zm59-633.1c11 20.6 20.7 43.3 29 67.8A389.1 389.1 0 01540 327V141.6c9.2 3.7 18.5 9.1 27.7 16.4 21.2 16.7 41.6 42.6 59 75zM540 640.9V540h147.5c-1.6 44.2-7.1 87.1-16.3 127.8l-.3 1.2A445.02 445.02 0 00540 640.9zm0-156.9V383.1c45.8-2.8 89.8-12.5 130.9-28.1l.3 1.2c9.2 40.7 14.7 83.5 16.3 127.8H540zm-56 56v100.9c-45.8 2.8-89.8 12.5-130.9 28.1l-.3-1.2c-9.2-40.7-14.7-83.5-16.3-127.8H484zm-147.5-56c1.6-44.2 7.1-87.1 16.3-127.8l.3-1.2c41.1 15.6 85 25.3 130.9 28.1V484H336.5zM484 697v185.4c-9.2-3.7-18.5-9.1-27.7-16.4-21.2-16.7-41.7-42.7-59.1-75.1-11-20.6-20.7-43.3-29-67.8 37.2-14.6 75.9-23.3 115.8-26.1zm0-370a389.1 389.1 0 01-115.7-26.2c8.3-24.6 17.9-47.3 29-67.8 17.4-32.4 37.8-58.4 59.1-75.1 9.2-7.2 18.4-12.7 27.7-16.4V327zM365.7 165.5c3.7-1.5 7.3-3 11-4.4-23.4 31.3-43.5 70.4-59.2 115.4-21-12-40.9-26-59.4-41.8 31.8-29.2 67.9-52.4 107.6-69.2zM165.5 365.7c13.8-32.6 32-62.8 54.2-90.2 24.9 21.5 52.2 40.3 81.5 55.9-11.6 46.9-18.8 98.4-20.7 152.6H137c3-40.9 12.6-80.6 28.5-118.3zM137 540h143.5c1.9 54.2 9.1 105.7 20.7 152.6a444.07 444.07 0 00-81.5 55.9A373.86 373.86 0 01137 540zm228.7 318.5c-39.7-16.8-75.8-40-107.6-69.2 18.5-15.8 38.4-29.7 59.4-41.8 15.7 45 35.8 84.1 59.2 115.4-3.7-1.4-7.4-2.9-11-4.4zm292.6 0c-3.7 1.5-7.3 3-11 4.4 23.4-31.3 43.5-70.4 59.2-115.4 21 12 40.9 26 59.4 41.8a373.81 373.81 0 01-107.6 69.2z"/></svg> {{ t('txt_comm_global') }}</span>
+              <span class="fw-600 fs-lg"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg> {{ t('txt_comm_global') }}</span>
               <span class="fs-sm text-muted">— {{ t('txt_comm_global_desc') }}</span>
               <span class="comm-builtin-badge">{{ t('txt_comm_builtin_badge') }}</span>
             </div>
@@ -945,7 +930,7 @@
 
         <!-- Registration assignment -->
         <div class="card">
-          <h2 class="m-0 mb-2"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 64H192c-17.7 0-32 14.3-32 32v832c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-40 824H232V687h97.9c11.6 32.8 32 62.3 59.1 84.7 34.5 28.5 78.2 44.3 123 44.3s88.5-15.7 123-44.3c27.1-22.4 47.5-51.9 59.1-84.7H792v-63H643.6l-5.2 24.7C626.4 708.5 573.2 752 512 752s-114.4-43.5-126.5-103.3l-5.2-24.7H232V136h560v752zM320 341h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8zm0 160h384c4.4 0 8-3.6 8-8v-48c0-4.4-3.6-8-8-8H320c-4.4 0-8 3.6-8 8v48c0 4.4 3.6 8 8 8z"/></svg> <span data-i18n="txt_comm_lobby_title">Lobby Community Assignment</span></h2>
+          <h2 class="m-0 mb-2"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg> <span data-i18n="txt_comm_lobby_title">Lobby Community Assignment</span></h2>
           <p class="text-muted fs-md mb-3" data-i18n="txt_comm_lobby_help">Reassign registration lobbies to different communities.</p>
           <div id="comm-registration-list">
             <div v-if="!loaded" class="skeleton-loader"><div class="skeleton-line"></div><div class="skeleton-line"></div></div>
@@ -1051,15 +1036,15 @@
   <div class="tab-panel" id="panel-info" role="tabpanel">
     <div class="card">
       <h2 data-i18n="txt_txt_info">Info</h2>
-      <p class="text-muted fs-md" data-i18n="txt_txt_info_tab_desc">What this app does and how to find your way around it. Use the sections below to understand the four pages, the player and organizer flows, the tournament formats, and the rating system.</p>
+      <p class="text-muted fs-md" data-i18n="txt_txt_info_tab_desc">This tab tells you what the app does and where to find each function. The sections below describe the four pages, the steps for players and organizers, the tournament formats, and the rating system.</p>
       <hr class="info-divider">
       <h3 class="mt-0" id="info-toc" data-i18n="txt_txt_info_toc_title">Table of contents</h3>
       <ol class="info-list">
         <li><a href="#info-at-a-glance" class="github-link" data-i18n="txt_txt_info_toc_glance">At a glance</a></li>
         <li><a href="#info-quickstart" class="github-link" data-i18n="txt_txt_info_toc_quickstart">Getting started</a></li>
         <li><a href="#info-demo" class="github-link" data-i18n="txt_txt_info_toc_demo">Demo mode</a></li>
-        <li><a href="#info-player-flow" class="github-link" data-i18n="txt_txt_info_toc_player_flow">Player flow</a></li>
-        <li><a href="#info-admin-flow" class="github-link" data-i18n="txt_txt_info_toc_admin_flow">Admin flow</a></li>
+        <li><a href="#info-player-flow" class="github-link" data-i18n="txt_txt_info_toc_player_flow">Steps for players</a></li>
+        <li><a href="#info-admin-flow" class="github-link" data-i18n="txt_txt_info_toc_admin_flow">Steps for organizers</a></li>
         <li><a href="#info-main-features" class="github-link" data-i18n="txt_txt_info_toc_main_features">Main features</a></li>
         <li class="core-only"><a href="#info-communities-clubs" class="github-link" data-i18n="txt_txt_info_toc_communities_clubs">Communities &amp; clubs</a></li>
         <li><a href="#info-formats" class="github-link" data-i18n="txt_txt_info_toc_formats">Tournament formats</a></li>
@@ -1073,15 +1058,15 @@
       <h2 data-i18n="txt_txt_info_glance_title">At a glance</h2>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_glance_pages_title">The four pages</strong>
-        <p data-i18n-html="txt_txt_info_glance_pages_desc"><strong>Admin</strong> — the organizer's control panel for creating tournaments and lobbies, managing rounds and scores, and coordinating the team. <strong>TV View</strong> — a public read-only display at <code>/tv/&lt;id&gt;</code> showing live standings, results, and the bracket, designed to be shown on a big screen or shared with all participants. <strong>Registrations</strong> — a sign-up page where players self-register with custom questionnaires before an event starts. <strong>Player Hub</strong> — each participant's personal dashboard at <code>/player</code>, aggregating all their active and past events under one passphrase.</p>
+        <p data-i18n-html="txt_txt_info_glance_pages_desc"><strong>Admin</strong> — the control panel for organizers. Use it to create tournaments and lobbies, manage rounds and scores, and work with your team. <strong>TV View</strong> — a public page at <code>/tv/&lt;id&gt;</code> that shows live standings, results, and the bracket. Nobody can change data on this page. Show it on a large screen or send the link to all players. <strong>Registrations</strong> — a sign-up page. Players register themselves and answer your questions before the event starts. <strong>Player Hub</strong> — the personal dashboard of each player at <code>/player</code>. It shows all active and past events of the player under one passphrase.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_glance_no_accounts_title">No accounts needed for players</strong>
-        <p data-i18n="txt_txt_info_glance_no_accounts_desc">Participants never create a username or password. Each player is issued a unique passphrase — a short sequence of words — that gives access to their personal match view, score entry, and the Player Hub. The organizer can share it as a printed card, a QR code, or by email.</p>
+        <p data-i18n="txt_txt_info_glance_no_accounts_desc">Players do not create a username or a password. The app gives each player a unique passphrase: a short sequence of words. The passphrase opens the personal match view, score entry, and the Player Hub. The organizer can give the passphrase as a printed card, as a QR code, or by email.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_glance_designed_title">Formats and tools</strong>
-        <p data-i18n="txt_txt_info_glance_designed_desc">Multiple tournament formats (Group+Playoff, Mexicano, direct Playoffs), co-organizers, player self-scoring, announcements, and shareable links. Converting a registration lobby into a live tournament carries every player credential over unchanged.</p>
+        <p data-i18n="txt_txt_info_glance_designed_desc">The app has three tournament formats: Group + Play-off, Mexicano, and Direct Play-offs. It also has co-editors, score entry by players, announcements, and links that you can share. When you convert a registration lobby into a tournament, all player passphrases stay the same.</p>
       </div>
     </div>
 
@@ -1089,31 +1074,27 @@
       <h2 data-i18n="txt_txt_info_qs_title">Run your first tournament</h2>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_qs_step1_title">1) Create the event</strong>
-        <p data-i18n="txt_txt_info_qs_step1_desc">In the Create tab, pick a format (Group + Play-off, Mexicano, or Direct Play-offs) and sport, then enter player or team names, court names, and — for Mexicano — points per match. Format-specific scoring and pairing knobs live under the Advanced Settings drop-down in the same form. Press Create Tournament.</p>
+        <p data-i18n="txt_txt_info_qs_step1_desc">Open the Create tab. Select a format (Group + Play-off, Mexicano, or Direct Play-offs) and a sport. Enter the names of the players or teams and the names of the courts. For Mexicano, also enter the points per match. The scoring and pairing settings of each format are in the Advanced Settings section of the same form. Click Create Tournament.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_qs_step2_title">2) Give players their codes</strong>
-        <p data-i18n="txt_txt_info_qs_step2_desc">Open the Player Codes panel. Every player has a passphrase (e.g. brave-little-tiger) and a QR code — print the QR cards, copy a single code, or email them in bulk. That code is all a player needs to see their matches and enter scores; no account required.</p>
+        <p data-i18n="txt_txt_info_qs_step2_desc">Open the Player Codes panel. Each player has a passphrase (for example, brave-little-tiger) and a QR code. You can print the QR cards, copy one code, or send all codes by email. A player needs only this code to see their matches and enter scores. Players do not need an account.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_qs_step3_title">3) Put it on a screen</strong>
-        <p data-i18n-html="txt_txt_info_qs_step3_desc">Open <code>/tv/&lt;id&gt;</code> (or set a custom alias) on a big screen, or send players the link — it shows live standings, courts, and the bracket with no login. Choose which sections appear and whether players can self-score in the TV Settings panel.</p>
+        <p data-i18n-html="txt_txt_info_qs_step3_desc">Open <code>/tv/&lt;id&gt;</code> on a large screen, or send the link to the players. You can also set a custom alias for this address. The page shows live standings, courts, and the bracket. Nobody has to log in to see it. In the TV Settings panel, select the sections that the page shows. You can also select if players can enter their own scores.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_qs_step4_title">4) Run the rounds</strong>
-        <p data-i18n="txt_txt_info_qs_step4_desc">Enter scores as matches finish. In Mexicano, confirm each round’s proposed pairings to advance — browse the alternative pairing sets first if you want. You can add or remove players mid-event where the format allows.</p>
+        <p data-i18n="txt_txt_info_qs_step4_desc">Enter the scores when the matches finish. In Mexicano, confirm the proposed pairings of each round to go to the next round. Before you confirm, you can look at the alternative pairing sets. If the format allows it, you can add or remove players during the event.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_qs_step5_title">5) Finish</strong>
-        <p data-i18n="txt_txt_info_qs_step5_desc">When group or Mexicano play is done, press Start Play-offs to seed the bracket (add wildcards or late entries here). Once a champion is decided, export a self-contained HTML or PDF summary with the bracket and full match history.</p>
+        <p data-i18n="txt_txt_info_qs_step5_desc">When the group stage or the Mexicano rounds are complete, click Start Play-offs to seed the bracket. In this step, you can also add wildcards or late entries. When the tournament has a champion, export a self-contained summary as an HTML or PDF file. The summary contains the bracket and all match results.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_qs_where_title">Where things live</strong>
-        <ul class="info-list" data-i18n-html="txt_txt_info_qs_where_list">
-          <li><strong>Mexicano tuning</strong> — Advanced Settings in the create form, or Admin → Settings after the tournament exists.</li>
-          <li><strong>Player passphrases &amp; QR codes</strong> — the Player Codes panel.</li>
-          <li><strong>Public-view sections &amp; self-scoring</strong> — the TV Settings panel.</li>
-        </ul>
+        <ul class="info-list" data-i18n-html="txt_txt_info_qs_where_list"><li><strong>Mexicano settings</strong> — Advanced Settings in the Create form. After you create the tournament: Admin → Settings.</li><li><strong>Player passphrases and QR codes</strong> — the Player Codes panel.</li><li><strong>Sections of the public view, and score entry by players</strong> — the TV Settings panel.</li></ul>
       </div>
     </div>
 
@@ -1121,66 +1102,66 @@
       <h2 data-i18n="txt_txt_info_demo_title">Demo mode</h2>
       <div class="info-block core-only">
         <strong data-i18n="txt_txt_info_demo_full_title">Full demo (shared admin login)</strong>
-        <p data-i18n="txt_txt_info_demo_full_desc">The public demo site runs the complete app. Log in with the shared admin account to use every feature — registration lobbies, clubs, communities, the Player Hub, custom addresses, and more. Data is shared between visitors and reset periodically, so don't use it for real events.</p>
+        <p data-i18n="txt_txt_info_demo_full_desc">The public demo site runs the full app. Log in with the shared admin account to use all features: registration lobbies, clubs, communities, the Player Hub, custom addresses, and more. All visitors share the same data. The site deletes this data at regular intervals. Do not use the demo site for real events.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_demo_sandbox_title">Throwaway demo account</strong>
-        <p class="core-only" data-i18n-html="txt_txt_info_demo_sandbox_desc">On the main site, &ldquo;Open the demo sandbox&rdquo; in the login dialog takes you to a separate practice site, which creates a personal <code>demo-xxxxxx</code> account for you straight away — no sign-up. Its generated passphrase is the password: save it to log in again from this or another device (on this device the demo site&rsquo;s login dialog welcomes you back by name). A sandbox has a minimal admin surface: one active tournament at a time, and no registration lobbies, clubs, communities, custom addresses, or Player Hub profiles. The account and everything it creates are deleted automatically a few days after sign-up (3 by default).</p>
-        <p class="demo-only" data-i18n-html="txt_txt_info_demo_sandbox_desc_instance">On the main site, &ldquo;Open the demo sandbox&rdquo; in the login dialog takes you to a separate practice site, which creates a personal <code>demo-xxxxxx</code> account for you straight away — no sign-up. Its generated passphrase is the password: save it to log in again from this or another device (on this device the demo site&rsquo;s login dialog welcomes you back by name). A sandbox has a minimal admin surface: one active tournament at a time, and no registration lobbies, custom addresses, or Player Hub profiles. The account and everything it creates are deleted automatically a few days after sign-up (3 by default).</p>
+        <p class="core-only" data-i18n-html="txt_txt_info_demo_sandbox_desc">On the main site, the login dialog has the link “Open the demo sandbox”. This link opens a separate practice site, which immediately creates a personal <code>demo-xxxxxx</code> account for you. You do not have to sign up. The site generates a passphrase, which is the password of the account. Save the passphrase to log in again from this device or from a different device. On this device, the login dialog of the demo site shows your account name when you come back. A sandbox has a limited set of admin functions: one active tournament at a time, and no registration lobbies, clubs, communities, custom addresses, or Player Hub profiles. The app deletes the account and all its data a few days after you create it (3 days by default).</p>
+        <p class="demo-only" data-i18n-html="txt_txt_info_demo_sandbox_desc_instance">On the main site, the login dialog has the link “Open the demo sandbox”. This link opens a separate practice site, which immediately creates a personal <code>demo-xxxxxx</code> account for you. You do not have to sign up. The site generates a passphrase, which is the password of the account. Save the passphrase to log in again from this device or from a different device. On this device, the login dialog of the demo site shows your account name when you come back. A sandbox has a limited set of admin functions: one active tournament at a time, and no registration lobbies, custom addresses, or Player Hub profiles. The app deletes the account and all its data a few days after you create it (3 days by default).</p>
       </div>
     </div>
 
     <div class="card" id="info-player-flow">
-      <h2 data-i18n="txt_txt_info_player_flow_title">Player flow</h2>
+      <h2 data-i18n="txt_txt_info_player_flow_title">Steps for players</h2>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_player_flow_join_title">1) Join</strong>
-        <p data-i18n="txt_txt_info_player_flow_join_desc">Players register through a lobby (public list or join code) and submit answers to organizer-defined questions. On registration, each participant receives a unique passphrase — a short sequence of words that acts as their personal key throughout the app.</p>
+        <p data-i18n="txt_txt_info_player_flow_join_desc">Players register through a lobby. A lobby is on a public list, or it needs a join code. Players answer the questions that the organizer wrote. At registration, each player gets a unique passphrase: a short sequence of words. This passphrase is the personal key of the player in all parts of the app.</p>
       </div>
       <div class="info-block">
-        <strong data-i18n="txt_txt_info_player_flow_access_title">2) Access your personal area</strong>
-        <p data-i18n="txt_txt_info_player_flow_access_desc">When a tournament starts, players enter their passphrase (or scan a QR code) to reach their personal match view — pairings, courts, standings, and score entry, all scoped to them. The passphrase can be shared by the organizer as a printed card, a QR code, or by email.</p>
+        <strong data-i18n="txt_txt_info_player_flow_access_title">2) Open your personal area</strong>
+        <p data-i18n="txt_txt_info_player_flow_access_desc">When the tournament starts, players enter their passphrase or scan their QR code. This opens their personal match view. The view shows only their own pairings, courts, standings, and score entry. The organizer can give the passphrase as a printed card, as a QR code, or by email.</p>
       </div>
       <div class="info-block">
-        <strong data-i18n="txt_txt_info_player_flow_participate_title">3) Participate</strong>
-        <p data-i18n="txt_txt_info_player_flow_participate_desc">Players can follow live standings, see their upcoming pairings and assigned courts, and (if enabled by the organizer) submit or confirm scores directly from their own view, reducing the admin's workload mid-event.</p>
+        <strong data-i18n="txt_txt_info_player_flow_participate_title">3) Play</strong>
+        <p data-i18n="txt_txt_info_player_flow_participate_desc">Players can see the live standings, their next pairings, and their courts. If the organizer enables it, players can also enter or confirm scores from their own view. This decreases the work of the organizer during the event.</p>
       </div>
       <div class="info-block">
-        <strong data-i18n="txt_txt_info_player_flow_informed_title">4) Stay informed</strong>
-        <p data-i18n="txt_txt_info_player_flow_informed_desc">Announcements, match comments, and optional email updates keep everyone aligned during the event.</p>
+        <strong data-i18n="txt_txt_info_player_flow_informed_title">4) Get updates</strong>
+        <p data-i18n="txt_txt_info_player_flow_informed_desc">Announcements, match comments, and optional email updates give the same information to all players during the event.</p>
       </div>
       <div class="info-block">
-        <strong data-i18n="txt_txt_info_player_flow_hub_title">5) Player Hub — one passphrase for everything</strong>
-        <p data-i18n-html="txt_txt_info_player_flow_hub_desc1">Players can set up a Player Hub profile at <a href="/player" class="github-link">/player</a> with just an email. This gives them a single persistent passphrase that works across all events: registering for a lobby pre-fills name, email, and contact automatically; once a tournament starts it appears in the Hub dashboard alongside all other active and past events.</p>
-        <p class="mt-1-5" data-i18n="txt_txt_info_player_flow_hub_desc2">The Hub also tracks career stats — matches played, win rate, best rank — and lets you browse your history with any specific participant across all tournaments (who you played with, who you played against, and your win rate in each combination).</p>
-        <p class="mt-1-5" data-i18n="txt_txt_info_player_flow_hub_desc3">Players who don't have a Hub profile yet can still link individual events retroactively by entering the passphrase they received for that event.</p>
+        <strong data-i18n="txt_txt_info_player_flow_hub_title">5) Player Hub: one passphrase for all events</strong>
+        <p data-i18n-html="txt_txt_info_player_flow_hub_desc1">A player can create a Player Hub profile at <a href="/player" class="github-link">/player</a> with only an email address. The profile gives the player one permanent passphrase for all events. When the player registers for a lobby, the app fills in the name, email, and contact automatically. When the tournament starts, it shows on the Hub dashboard together with all other active and past events of the player.</p>
+        <p class="mt-1-5" data-i18n="txt_txt_info_player_flow_hub_desc2">The Hub also shows career statistics: matches played, win rate, and best rank. You can also see your history with one specific player across all tournaments: the matches as partners, the matches as opponents, and your win rate in each case.</p>
+        <p class="mt-1-5" data-i18n="txt_txt_info_player_flow_hub_desc3">A player without a Hub profile can still link past events. To link an event, enter the passphrase that you received for that event.</p>
       </div>
     </div>
 
     <div class="card" id="info-admin-flow">
-      <h2 data-i18n="txt_txt_info_admin_flow_title">Admin flow</h2>
+      <h2 data-i18n="txt_txt_info_admin_flow_title">Steps for organizers</h2>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_admin_flow_prepare_title">1) Prepare</strong>
-        <p data-i18n="txt_txt_info_admin_flow_prepare_desc">Create a tournament directly with a fixed roster, or open a registration lobby first to gather participants before the event. Lobbies support custom questionnaires (skill level, availability, etc.), optional join-code access to restrict who can sign up, a public participant list so players can see who else is in, and co-editors to help manage incoming registrations.</p>
+        <p data-i18n="txt_txt_info_admin_flow_prepare_desc">You can create a tournament directly with a fixed list of players. Or you can first open a registration lobby to collect players before the event. A lobby has these functions: custom questions (for example, skill level or availability), an optional join code that controls who can sign up, a public list of registered players, and co-editors who help you manage the registrations.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_admin_flow_launch_title">2) Launch</strong>
-        <p data-i18n="txt_txt_info_admin_flow_launch_desc">Convert a lobby into a live tournament with a single click — choose the format (Group+Playoff, Mexicano, or direct Playoffs), set group sizes, court names, and scoring rules. All registered players are pre-filled automatically and each player's passphrase carries over unchanged, so credentials printed or emailed before the event remain valid.</p>
+        <p data-i18n="txt_txt_info_admin_flow_launch_desc">Convert a lobby into a tournament with one click. Select the format (Group + Play-off, Mexicano, or Direct Play-offs). Set the group sizes, the court names, and the scoring rules. The app adds all registered players automatically. Each player keeps the same passphrase, so codes that you printed or sent by email before the event stay valid.</p>
       </div>
       <div class="info-block">
-        <strong data-i18n="txt_txt_info_admin_flow_creds_title">3) Distribute player credentials</strong>
-        <p data-i18n="txt_txt_info_admin_flow_creds_desc">Use the Player Codes panel to view, copy, download, or print all passphrases as QR-code cards ready to hand out. You can also email credentials individually or in bulk directly from the panel. Players can optionally link their passphrase to their Player Hub profile for cross-event access.</p>
+        <strong data-i18n="txt_txt_info_admin_flow_creds_title">3) Send the player passphrases</strong>
+        <p data-i18n="txt_txt_info_admin_flow_creds_desc">In the Player Codes panel, you can see, copy, download, or print all passphrases as QR-code cards. You can also send the passphrases by email, to one player or to all players. Players can link their passphrase to their Player Hub profile. Then they see all their events in one place.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_admin_flow_rounds_title">4) Run rounds</strong>
-        <p data-i18n="txt_txt_info_admin_flow_rounds_desc">Generate pairings, assign courts, and enter or edit scores as each round plays out. For Mexicano, browse multiple proposed pairing sets and pick the best balance before confirming. Mid-event roster tools allow substitutions where the format supports it. When group rounds finish, trigger play-offs and seed the bracket — adding wildcards or late entries if needed.</p>
+        <p data-i18n="txt_txt_info_admin_flow_rounds_desc">Generate pairings, assign courts, and enter or edit scores during each round. For Mexicano, compare the proposed pairing sets and select the best balance before you confirm. If the format allows it, you can replace players during the event. When the group rounds finish, start the play-offs and seed the bracket. At this step, you can add wildcards or late entries.</p>
       </div>
       <div class="info-block">
-        <strong data-i18n="txt_txt_info_admin_flow_team_title">5) Coordinate team</strong>
-        <p data-i18n="txt_txt_info_admin_flow_team_desc">Invite co-editors who gain full operational access (pairings, scores, announcements) while ownership-sensitive actions — deleting the tournament, managing credentials, changing core settings — stay restricted to the owner and platform admins.</p>
+        <strong data-i18n="txt_txt_info_admin_flow_team_title">5) Work with your team</strong>
+        <p data-i18n="txt_txt_info_admin_flow_team_desc">Invite co-editors. Co-editors have full access to the event operations: pairings, scores, and announcements. Some actions are only for the owner and the platform admins: delete the tournament, manage player passphrases, and change the core settings.</p>
       </div>
       <div class="info-block">
-        <strong data-i18n="txt_txt_info_admin_flow_comm_title">6) Communicate and close</strong>
-        <p data-i18n="txt_txt_info_admin_flow_comm_desc">Post announcements that appear on every player's view and the TV display. Send targeted email notifications to all players or selected individuals. Once the event is done, export a self-contained HTML or PDF summary with the full bracket and match history, then archive the tournament to keep the list tidy.</p>
+        <strong data-i18n="txt_txt_info_admin_flow_comm_title">6) Communicate and finish</strong>
+        <p data-i18n="txt_txt_info_admin_flow_comm_desc">Post announcements. They show on the view of each player and on the TV display. Send email notifications to all players or to selected players. When the event is complete, export a self-contained HTML or PDF summary with the full bracket and all match results. Then archive the tournament to keep your list short.</p>
       </div>
     </div>
 
@@ -1188,52 +1169,52 @@
       <h2 data-i18n="txt_txt_info_main_features_title">Main features</h2>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_main_features_reg_title">Registration lobbies</strong>
-        <p data-i18n="txt_txt_info_main_features_reg_desc">Custom questionnaires, participant review, co-editors, and one-click conversion into live tournaments.</p>
+        <p data-i18n="txt_txt_info_main_features_reg_desc">Custom questions, review of registrations, co-editors, and conversion into a tournament with one click.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_main_features_live_title">Live operations</strong>
-        <p data-i18n="txt_txt_info_main_features_live_desc">Round management, score tracking, match comments, announcements, and mid-event roster tools (where supported).</p>
+        <p data-i18n="txt_txt_info_main_features_live_desc">Round management, score entry, match comments, announcements, and changes to the player list during the event (in formats that support it).</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_main_features_access_title">Player access and self-scoring</strong>
-        <p data-i18n="txt_txt_info_main_features_access_desc">Per-player QR/passphrase login for personal match context and distributed score entry.</p>
+        <p data-i18n="txt_txt_info_main_features_access_desc">Each player logs in with a QR code or a passphrase. Then the player sees their own matches and can enter scores.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_main_features_tv_title">Public TV View</strong>
-        <p data-i18n="txt_txt_info_main_features_tv_desc">Shareable live display for standings, results, bracket, and selected sections with configurable refresh behavior.</p>
+        <p data-i18n="txt_txt_info_main_features_tv_desc">A live page that you can share. It shows standings, results, the bracket, and the other sections that you select. You can set how often the page refreshes.</p>
       </div>
     </div>
 
     <div class="card core-only" id="info-communities-clubs">
       <h2 data-i18n="txt_txt_info_comm_clubs_title">Communities and clubs</h2>
-      <p class="text-muted fs-md" data-i18n="txt_txt_info_comm_clubs_subtitle">Use communities as your base scope, then layer clubs when you need branding, season tracking, and richer club operations.</p>
+      <p class="text-muted fs-md" data-i18n="txt_txt_info_comm_clubs_subtitle">Use communities as the base level. Add a club when you need branding, seasons, and more club tools.</p>
       <div class="info-block">
-        <strong data-i18n="txt_txt_info_comm_clubs_scope_title">Communities define operational scope</strong>
-        <p data-i18n="txt_txt_info_comm_clubs_scope_desc">A community is where tournaments and registration lobbies live. It controls default assignment, keeps operations separated by league or venue, and defines the scope where ELO and rankings are computed (global, community, or club context).</p>
+        <strong data-i18n="txt_txt_info_comm_clubs_scope_title">Communities set the scope</strong>
+        <p data-i18n="txt_txt_info_comm_clubs_scope_desc">Tournaments and registration lobbies belong to a community. A community sets the default assignment of new events. It keeps the events of each league or venue separate. It also sets the scope of the ELO ratings and rankings: global, community, or club.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_comm_clubs_club_title">Clubs add identity and progression</strong>
-        <p data-i18n="txt_txt_info_comm_clubs_club_desc">A club sits on top of one community and adds logo branding, player tiers, season tracking, leaderboard views, tournament assignment tools, and co-editor workflows for recurring organizer teams.</p>
+        <p data-i18n="txt_txt_info_comm_clubs_club_desc">A club is built on one community. It adds a logo, player tiers, seasons, leaderboards, tools to assign tournaments, and co-editor tools for organizer teams that run regular events.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_comm_clubs_when_title">When to stay at community level</strong>
-        <p data-i18n="txt_txt_info_comm_clubs_when_desc">Use only communities when you run occasional events, temporary series, or lightweight sign-up flows. You still get full tournament operations, registration conversion, and TV/public sharing without maintaining club roster structures.</p>
+        <p data-i18n="txt_txt_info_comm_clubs_when_desc">Use only communities if you run occasional events, short series, or simple sign-ups. You still get all tournament functions, lobby conversion, and the TV and public pages. You do not have to maintain a club player list.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_comm_clubs_upgrade_title">When to upgrade to a club</strong>
-        <p data-i18n="txt_txt_info_comm_clubs_upgrade_desc">Create a club when the same organizer team runs recurring events and needs persistent identity, player roster governance, collaborator workflows, and season continuity. Clubs are also the right place for tier-based progression and club-specific leaderboards.</p>
+        <p data-i18n="txt_txt_info_comm_clubs_upgrade_desc">Create a club when the same organizer team runs regular events. A club gives a permanent identity, control of the player list, co-editor tools, and continuity across seasons. Also use a club for tier-based progression and for club leaderboards.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_comm_clubs_scope_change_title">Scope changes and data integrity</strong>
-        <p data-i18n="txt_txt_info_comm_clubs_scope_change_desc">You can reassign tournaments and lobbies to another community for cleanup or migration. If the new community is incompatible with the current club or season, those assignments are automatically cleared to keep scope relationships valid.</p>
+        <p data-i18n="txt_txt_info_comm_clubs_scope_change_desc">You can move tournaments and lobbies to a different community, for example to clean up or migrate data. If the new community does not match the current club or season, the app removes those assignments automatically. This keeps the scope data valid.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_comm_clubs_practice_title">Recommended setup pattern</strong>
-        <p data-i18n="txt_txt_info_comm_clubs_practice_desc">Create communities first (for structure), promote active ones to clubs, assign events to the right season, and keep default community + roster data up to date as your event calendar grows.</p>
+        <p data-i18n="txt_txt_info_comm_clubs_practice_desc">First, create communities to set the structure. Then change the active communities into clubs. Assign each event to the correct season. Keep the default community and the player lists up to date when you add more events.</p>
       </div>
       <div class="info-block">
-        <strong data-i18n="txt_txt_info_comm_clubs_ops_title">Operational checklist</strong>
-        <p data-i18n="txt_txt_info_comm_clubs_ops_desc">Set a default community for admins, keep tournament-to-club assignment aligned before opening registrations, review season assignment before each event starts, and use club branding only where long-term identity matters.</p>
+        <strong data-i18n="txt_txt_info_comm_clubs_ops_title">Checklist</strong>
+        <p data-i18n="txt_txt_info_comm_clubs_ops_desc">Set a default community for admins. Before you open registrations, make sure that each tournament has the correct club. Before each event starts, check its season. Use club branding only where a long-term identity is important.</p>
       </div>
     </div>
 
@@ -1241,81 +1222,72 @@
       <h2 data-i18n="txt_txt_info_formats_title">Tournament formats</h2>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_formats_gp_title">Group + Play-off</strong>
-        <p data-i18n="txt_txt_info_formats_gp_desc1">Participants are divided into groups for a round-robin stage, then top finishers advance to a knockout bracket. Supports both Padel and Tennis scoring.</p>
-        <p class="mt-1-5" data-i18n-html="txt_txt_info_formats_gp_desc2"><em>Team mode:</em> fixed pairs play every other pair in their group — a complete round-robin. <em>Player (Americano) mode:</em> partners rotate each round so players pair with all others at least once; matchups are formed dynamically to keep each round competitive relative to current group standings.</p>
+        <p data-i18n="txt_txt_info_formats_gp_desc1">The app puts the players into groups, and each group plays a round-robin. Then the best players or teams of each group go to a knockout bracket. This format supports padel scoring and tennis scoring.</p>
+        <p class="mt-1-5" data-i18n-html="txt_txt_info_formats_gp_desc2"><em>Team mode:</em> fixed pairs play against all other pairs in their group (a full round-robin). <em>Player (Americano) mode:</em> partners change each round, so each player plays with every other player at least once. The app makes the matchups of each round from the current group standings, so that each round stays competitive.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_formats_mex_title">Mexicano + Play-offs</strong>
-        <p data-i18n="txt_txt_info_formats_mex_desc1">Pairings are generated each round based on current standings: leaders play against leaders, weaker players against similarly ranked ones. Each round the admin can browse several proposed pairing sets and pick the best balance. Rounds can be unlimited (stop whenever you like) or set to a fixed count.</p>
-        <p class="mt-1-5" data-i18n-html="txt_txt_info_formats_mex_desc2">The <em>Advanced Settings</em> expose fine-grained control over scoring and pairing behaviour:</p>
-        <ul class="info-list" data-i18n-html="txt_txt_info_formats_mex_list">
-          <li><strong>Skill gap</strong> — max rating difference allowed within a group; blank falls back to snake-draft ordering.</li>
-          <li><strong>Win bonus</strong> — extra points added to a winner's leaderboard score on top of raw game points.</li>
-          <li><strong>Rival strength (0–1)</strong> — bonus that rewards facing strong opponents (based on their average score); higher weight = bigger effect.</li>
-          <li><strong>Loss discount (0–1)</strong> — multiplier applied to the loser's scored points (e.g. 0.75 means losing 12–20 credits 9 pts instead of 12).</li>
-          <li><strong>Balance tolerance</strong> — how much team-strength imbalance the pairing engine may accept in order to avoid repeat matchups.</li>
-          <li><strong>Teammate / opponent repeat weights</strong> — penalties for repeating the same partner or opponent; higher values push the engine towards more varied combinations.</li>
-          <li><strong>Repeat decay</strong> — time-decay on repeat penalties so that recent repeats are penalised more than older ones.</li>
-          <li><strong>Partner balance weight</strong> — penalises pairing players with very different skill levels as partners.</li>
-        </ul>
+        <p data-i18n="txt_txt_info_formats_mex_desc1">The app generates the pairings of each round from the current standings. Leaders play against leaders, and lower-ranked players play against players of a similar rank. In each round, the organizer can compare several proposed pairing sets and select the best balance. The number of rounds can be unlimited (you stop when you want) or fixed.</p>
+        <p class="mt-1-5" data-i18n-html="txt_txt_info_formats_mex_desc2">The <em>Advanced Settings</em> give detailed control of scoring and pairing:</p>
+        <ul class="info-list" data-i18n-html="txt_txt_info_formats_mex_list"><li><strong>Skill gap</strong> — the maximum rating difference in one group. If you leave it blank, the app uses snake-draft order.</li><li><strong>Win bonus</strong> — extra points for the winner on the leaderboard. The app adds them to the game points.</li><li><strong>Rival strength (0–1)</strong> — a bonus for playing against strong opponents, from their average score. A higher value gives a larger effect.</li><li><strong>Loss discount (0–1)</strong> — a multiplier for the points of the losing team. Example: with 0.75, a 12–20 loss gives 9 points, not 12.</li><li><strong>Balance tolerance</strong> — the difference in team strength that the pairing engine can accept to prevent repeated matchups.</li><li><strong>Teammate / opponent repeat weights</strong> — penalties when a player has the same partner or opponent again. Higher values give more varied combinations.</li><li><strong>Repeat decay</strong> — makes old repeats count less than recent repeats.</li><li><strong>Partner balance weight</strong> — a penalty for partners with very different skill levels.</li></ul>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_formats_po_title">Direct Play-offs</strong>
-        <p data-i18n="txt_txt_info_formats_po_desc">Start straight in a bracket — seed participants in the desired order and the bracket is generated immediately. No prior group stage needed. Useful for standalone knockout events or fully custom-seeded draws.</p>
+        <p data-i18n="txt_txt_info_formats_po_desc">Start directly with a bracket. Seed the players in the order that you want, and the app generates the bracket immediately. You do not need a group stage. Use this format for knockout events or for draws with fully custom seeding.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_formats_elim_title">Single and double elimination</strong>
-        <p data-i18n-html="txt_txt_info_formats_elim_desc">Single and double elimination are available in every format that includes play-offs; Espejo is available in Group + Play-off and standalone Play-off events (not Mexicano). <em>Single elimination (knockout):</em> lose once and you're out. <em>Double elimination:</em> a parallel losers' bracket gives everyone a second chance — the finalist must be beaten twice to be knocked out, rewarding consistency across the whole draw. <em>Espejo:</em> a consolation bracket seeded from the Round-1 losers — both brackets run separately. The winners' bracket champion is the tournament champion and the consolation bracket winner is the consolation winner; the event finishes when both brackets are done.</p>
+        <p data-i18n-html="txt_txt_info_formats_elim_desc">Single and double elimination are available in all formats with play-offs. Espejo is available in Group + Play-off and in Direct Play-offs, but not in Mexicano. <em>Single elimination (knockout):</em> a player or team that loses one match is out. <em>Double elimination:</em> a parallel losers’ bracket gives each player or team a second chance. A finalist must lose two times to be out, so consistency across the full draw is important. <em>Espejo:</em> a consolation bracket for the players who lost in round 1. The two brackets run separately. The champion of the winners’ bracket is the tournament champion. The winner of the consolation bracket is the consolation winner. The event finishes when both brackets are complete.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_formats_schema_title">Bracket schema preview</strong>
-        <p data-i18n="txt_txt_info_formats_schema_desc">Use the built-in schema generator below to visualise and export the full bracket structure (PNG, SVG, or PDF) before committing to creating an event.</p>
+        <p data-i18n="txt_txt_info_formats_schema_desc">Use the schema generator below to see the full bracket structure before you create an event. You can export the diagram as PNG, SVG, or PDF.</p>
       </div>
     </div>
 
     <div class="card" id="info-elo">
       <h2 data-i18n="txt_txt_info_elo_title">ELO rating system</h2>
-      <p class="text-muted fs-md" data-i18n="txt_txt_info_elo_subtitle">A margin-aware ELO engine tracks player skill across tournaments. Ratings update after every completed match and appear in the Player Hub.</p>
+      <p class="text-muted fs-md" data-i18n="txt_txt_info_elo_subtitle">An ELO engine measures the skill of each player across tournaments. The engine uses the score margin, not only the result. Ratings change after each completed match, and the Player Hub shows them.</p>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_elo_formula_title">Blended outcome</strong>
-        <p data-i18n-html="txt_txt_info_elo_formula_desc">Instead of pure win/loss, the actual score blends a binary component <em>W</em> (1 | 0.5 | 0) with a continuous margin ratio <em>R</em>. Close wins and blowouts produce different rating changes.</p>
+        <p data-i18n-html="txt_txt_info_elo_formula_desc">The actual score is not only a win or a loss. It combines a result value <em>W</em> with a margin ratio <em>R</em>. Thus a close win and a large win give different rating changes.</p>
         <div class="info-formulas">
           <code>R = 0.5 + (yours − opp) / (2 × (yours + opp))</code>
           <code>S = α · W + (1 − α) · R</code>
         </div>
-        <p class="info-formula-legend" data-i18n-html="txt_txt_info_elo_formula_legend"><em>yours</em> = your points, <em>opp</em> = opponent's points, <em>W</em> = win/draw/loss (1 | 0.5 | 0), <em>R</em> = margin ratio, <em>α</em> = blend weight (0.5). The 0.5 in the <em>R</em> formula is a centering constant (so a draw gives R = 0.5) — it is not related to <em>α</em>.</p>
-        <p class="info-formula-legend" data-i18n-html="txt_txt_info_elo_formula_s_note"><em>S</em> is the blended actual score that replaces the simple win/loss value in the classic ELO update formula. A higher <em>S</em> means a stronger result — the standard ELO calculation then compares <em>S</em> against the expected score to determine how much your rating changes.</p>
+        <p class="info-formula-legend" data-i18n-html="txt_txt_info_elo_formula_legend"><em>yours</em> = your points. <em>opp</em> = the points of your opponent. <em>W</em> = result: win, draw, or loss (1, 0.5, or 0). <em>R</em> = margin ratio. <em>α</em> = blend weight (0.5). The 0.5 in the <em>R</em> formula is a centering constant: a draw gives R = 0.5. This constant is not related to <em>α</em>.</p>
+        <p class="info-formula-legend" data-i18n-html="txt_txt_info_elo_formula_s_note"><em>S</em> is the blended actual score. It replaces the simple win/loss value in the classic ELO formula. A higher <em>S</em> means a better result. The ELO calculation compares <em>S</em> with the expected score. The difference sets how much your rating changes.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_elo_update_title">Rating update</strong>
-        <p data-i18n-html="txt_txt_info_elo_update_desc">After each match your rating changes based on how your blended result <em>S</em> compares to the expected score <em>E</em>. Outperform expectations and you gain ELO; underperform and you lose it.</p>
+        <p data-i18n-html="txt_txt_info_elo_update_desc">After each match, the app compares your blended result <em>S</em> with your expected score <em>E</em>. If your result is better than expected, your rating goes up. If your result is worse than expected, your rating goes down.</p>
         <div class="info-formulas">
           <code>E = 1 / (1 + 10<sup>(opp_rating − your_rating) / 400</sup>)</code>
           <code>Δ = K × (S − E)</code>
           <code>new_rating = old_rating + Δ</code>
         </div>
-        <p class="info-formula-legend" data-i18n-html="txt_txt_info_elo_update_legend"><em>E</em> = expected score (0–1) based on the rating gap — a higher-rated opponent yields a higher <em>E</em> for them and a lower one for you, so beating a stronger player is rewarded more. When <em>S</em>&thinsp;>&thinsp;<em>E</em> your rating rises; when <em>S</em>&thinsp;<&thinsp;<em>E</em> it drops. <em>K</em> controls the maximum change per match (see K-factor tiers below).</p>
+        <p class="info-formula-legend" data-i18n-html="txt_txt_info_elo_update_legend"><em>E</em> = expected score (0–1), from the rating difference. Against a higher-rated opponent, your <em>E</em> is lower, so a win against a stronger player gives more points. When <em>S</em> > <em>E</em>, your rating goes up. When <em>S</em> < <em>E</em>, your rating goes down. <em>K</em> sets the maximum change per match (see K-factor tiers below).</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_elo_kfactor_title">K-factor tiers</strong>
-        <p data-i18n="txt_txt_info_elo_kfactor_desc">New players move faster: K = 40 for the first 20 matches, K = 20 up to 40 matches, then K = 10. This lets newcomers find their level quickly while experienced players have stable ratings.</p>
+        <p data-i18n="txt_txt_info_elo_kfactor_desc">Ratings of new players change faster: K = 40 for the first 20 matches, K = 20 up to 40 matches, and K = 10 after that. New players get to their correct level quickly, and the ratings of experienced players stay stable.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_elo_reliability_title">Reliability dampener</strong>
-        <p data-i18n-html="txt_txt_info_elo_reliability_desc">When your opponent has very few matches, their rating is unreliable. To protect <em>established</em> players (≥20 matches) from large swings caused by provisional opponents, the rating change is scaled by a <em>reliability factor</em>. Provisional players always receive full deltas so their ratings converge quickly.</p>
+        <p data-i18n-html="txt_txt_info_elo_reliability_desc">The rating of an opponent with very few matches is not reliable. When an <em>established</em> player (20 or more matches) plays such an opponent, a <em>reliability factor</em> decreases the rating change. This prevents large rating changes that come from provisional opponents. Provisional players always get the full rating change, so their ratings settle quickly.</p>
         <div class="info-formulas">
           <code>reliability(n) = 0.3 + 0.7 × n / 20   (capped at 1.0)</code>
           <code>Δ<sub>adj</sub> = Δ × reliability(opponent_matches)</code>
         </div>
-        <p class="info-formula-legend" data-i18n-html="txt_txt_info_elo_reliability_legend"><em>n</em> = opponent’s completed match count. The dampener only activates for established players (≥20 matches). At 0 opponent matches the delta is 30% of normal; at 20 it reaches 100%. In doubles, the minimum reliability of the two opponents is used. Provisional players (&lt;20 matches) always get full rating changes for fast calibration.</p>
+        <p class="info-formula-legend" data-i18n-html="txt_txt_info_elo_reliability_legend"><em>n</em> = number of completed matches of the opponent. The factor applies only to established players (20 or more matches). With 0 opponent matches, the change is 30% of the normal value. With 20 opponent matches, the change is 100%. In doubles, the app uses the lower reliability of the two opponents. Provisional players (fewer than 20 matches) always get the full rating change, so that their ratings calibrate quickly.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_elo_doubles_title">Doubles (2v2) adjustment</strong>
-        <p data-i18n-html="txt_txt_info_elo_doubles_desc">Expected score uses <em>team-average</em> ratings. A partner-strength multiplier compensates for mismatched pairs: a strong player paired with a weaker partner gets amplified gains and softened losses, and vice versa. The multiplier ranges from 0.5× to 1.5×.</p>
+        <p data-i18n-html="txt_txt_info_elo_doubles_desc">The expected score uses the <em>average rating of each team</em>. A partner-strength multiplier corrects for pairs with different ratings. If a strong player has a weaker partner, wins give more points and losses cost fewer points. The opposite applies to a weaker player with a stronger partner. The multiplier is between 0.5× and 1.5×.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_elo_clamp_title">Minimum delta</strong>
-        <p data-i18n="txt_txt_info_elo_clamp_desc">Winners always gain at least +1 ELO and losers always lose at least −1, regardless of margin or expected score. Every match result is meaningful.</p>
+        <p data-i18n="txt_txt_info_elo_clamp_desc">A winner always gets at least +1 ELO. A loser always loses at least −1 ELO. This rule applies for all margins and expected scores, so each match result changes the rating.</p>
       </div>
     </div>
 
@@ -1323,21 +1295,21 @@
       <h2 data-i18n="txt_txt_info_po_trans_title">Starting play-offs from group stage or Mexicano</h2>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_po_trans_gp_title">From Group + Play-off</strong>
-        <p data-i18n-html="txt_txt_info_po_trans_gp_desc">When all pending group matches are completed a <em>Start Play-offs</em> button appears. Clicking it fetches a recommended list of advancing participants ranked by group standings. The admin can then tick or untick any participant to adjust the selection, add <em>external / seeded participants</em> by name and score (useful for wildcards or late entries that skip the group stage), choose single or double elimination, and confirm. The checked order determines bracket seeding.</p>
+        <p data-i18n-html="txt_txt_info_po_trans_gp_desc">When all group matches are complete, the <em>Start Play-offs</em> button shows. Click it to get a recommended list of qualified players, in the order of the group standings. Select or clear any player to change the list. You can add <em>external / seeded participants</em> with a name and a score, for example wildcards or late entries that did not play the group stage. Select single elimination, double elimination, or Espejo, and confirm. The order of the selected players sets the bracket seeding.</p>
       </div>
       <div class="info-block">
         <strong data-i18n="txt_txt_info_po_trans_mex_title">From Mexicano</strong>
-        <p data-i18n-html="txt_txt_info_po_trans_mex_desc">Play-offs are optional and can be triggered at any point after any Mexicano round. When started, the admin sees a team-builder where each bracket seed slot has player dropdowns pre-filled based on leaderboard rankings. In <em>individual mode</em>, the admin pairs two players per slot to form a bracket team — the combined leaderboard score is shown as a guide. In <em>team mode</em>, each slot holds one pre-formed team. Any slot can be replaced by an external participant. Once all slots are confirmed, choose single or double elimination and launch the bracket.</p>
+        <p data-i18n-html="txt_txt_info_po_trans_mex_desc">Play-offs are optional. You can start them after any Mexicano round. When you start them, a team builder opens. Each seed slot of the bracket has player drop-down lists, which the app fills in from the leaderboard ranking. In <em>individual mode</em>, select two players for each slot to make one bracket team. The app shows their combined leaderboard score to help you. In <em>team mode</em>, each slot contains one existing team. You can replace any slot with an external participant. When all slots are correct, select single elimination, double elimination, or Espejo, and start the bracket.</p>
       </div>
       <div class="info-block">
-        <strong data-i18n="txt_txt_info_po_trans_ext_title">External / late-entry participants</strong>
-        <p data-i18n="txt_txt_info_po_trans_ext_desc">Both formats support adding participants who were not in the qualifying stage directly into any bracket seed slot, with a manually assigned score. Useful for seeded wildcards, guests, or late registrations.</p>
+        <strong data-i18n="txt_txt_info_po_trans_ext_title">External and late-entry participants</strong>
+        <p data-i18n="txt_txt_info_po_trans_ext_desc">In both formats, you can add participants who did not play the qualifying stage. Put them directly into any seed slot of the bracket and give them a score manually. Use this for seeded wildcards, guests, or late registrations.</p>
       </div>
     </div>
 
     <div class="card">
       <h2 data-i18n="txt_txt_tournament_bracket_schema">Tournament Bracket Schema</h2>
-      <p class="text-muted fs-md m-0 mb-3" data-i18n="txt_txt_generate_a_visual_diagram_of_the_tournament_structure_before_creating_it">Generate a visual diagram of the tournament structure before creating it.</p>
+      <p class="text-muted fs-md m-0 mb-3" data-i18n="txt_txt_generate_a_visual_diagram_of_the_tournament_structure_before_creating_it">Generate a diagram of the tournament structure before you create the tournament.</p>
       <div class="schema-builder">
         <div class="schema-presets">
           <button type="button" class="schema-preset-btn" data-preset="2×4" data-action="applySchemaPreset">2×4</button>
@@ -1385,7 +1357,7 @@
         <div id="schema-summary" class="schema-summary"></div>
         <details class="schema-rendering-details">
           <summary>
-            <span data-i18n="txt_txt_rendering_options"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M924.8 625.7l-65.5-56c3.1-19 4.7-38.4 4.7-57.8s-1.6-38.8-4.7-57.8l65.5-56a32.03 32.03 0 009.3-35.2l-.9-2.6a443.74 443.74 0 00-79.7-137.9l-1.8-2.1a32.12 32.12 0 00-35.1-9.5l-81.3 28.9c-30-24.6-63.5-44-99.7-57.6l-15.7-85a32.05 32.05 0 00-25.8-25.7l-2.7-.5c-52.1-9.4-106.9-9.4-159 0l-2.7.5a32.05 32.05 0 00-25.8 25.7l-15.8 85.4a351.86 351.86 0 00-99 57.4l-81.9-29.1a32 32 0 00-35.1 9.5l-1.8 2.1a446.02 446.02 0 00-79.7 137.9l-.9 2.6c-4.5 12.5-.8 26.5 9.3 35.2l66.3 56.6c-3.1 18.8-4.6 38-4.6 57.1 0 19.2 1.5 38.4 4.6 57.1L99 625.5a32.03 32.03 0 00-9.3 35.2l.9 2.6c18.1 50.4 44.9 96.9 79.7 137.9l1.8 2.1a32.12 32.12 0 0035.1 9.5l81.9-29.1c29.8 24.5 63.1 43.9 99 57.4l15.8 85.4a32.05 32.05 0 0025.8 25.7l2.7.5a449.4 449.4 0 00159 0l2.7-.5a32.05 32.05 0 0025.8-25.7l15.7-85a350 350 0 0099.7-57.6l81.3 28.9a32 32 0 0035.1-9.5l1.8-2.1c34.8-41.1 61.6-87.5 79.7-137.9l.9-2.6c4.5-12.3.8-26.3-9.3-35zM512 326c-97.2 0-176 78.8-176 176s78.8 176 176 176 176-78.8 176-176-78.8-176-176-176z"/></svg> Rendering options</span>
+            <span data-i18n="txt_txt_rendering_options"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> Rendering options</span>
           </summary>
           <div class="schema-rendering-grid">
             <div class="form-group">
@@ -1429,7 +1401,7 @@
         <a href="https://github.com/sanityseeker/padel-amistoso" target="_blank" rel="noopener" class="github-link" data-i18n="txt_txt_info_github_link">Full documentation on GitHub →</a>
       </p>
       <p class="mt-1-5 fs-sm text-muted">
-        <span data-i18n="txt_txt_info_issue_prefix">Found a bug, weird behavior, or have a suggestion?</span>
+        <span data-i18n="txt_txt_info_issue_prefix">Did you find a bug or unexpected behavior, or do you have a suggestion?</span>
         <a href="https://github.com/sanityseeker/padel-amistoso/issues/new" target="_blank" rel="noopener" class="github-link" data-i18n="txt_txt_info_issue_link">Open an issue on GitHub</a>.
       </p>
     </div>
@@ -1475,14 +1447,14 @@
 <div id="auth-overlay" class="modal-overlay" data-action="hideLoginDialog"></div>
 <div id="auth-dialog" class="modal-dialog modal-sm" v-scope>
   <div class="modal-header">
-    <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M832 464h-68V240c0-70.7-57.3-128-128-128H388c-70.7 0-128 57.3-128 128v224h-68c-17.7 0-32 14.3-32 32v384c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V496c0-17.7-14.3-32-32-32zM332 240c0-30.9 25.1-56 56-56h248c30.9 0 56 25.1 56 56v224H332V240zm460 600H232V536h560v304z"/></svg> <span v-cloak>{{ dialogTitle() }}</span></h2>
+    <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg> <span v-cloak>{{ dialogTitle() }}</span></h2>
     <button type="button" class="modal-close-btn" data-action="hideLoginDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
   </div>
 
   <!-- Core instance: link out to the separate demo site (shown when AMISTOSO_DEMO_URL
        is configured). -->
   <div v-if="configLoaded && demoView() === 'core' && demoUrl" class="demo-entry" v-cloak>
-    <a :href="demoHref()" rel="nofollow" class="btn btn-primary demo-try-btn"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M888.3 757.4h-53.8c-4.2 0-7.7 3.5-7.7 7.7v61.8H197.1V197.1h629.8v61.8c0 4.2 3.5 7.7 7.7 7.7h53.8c4.2 0 7.7-3.4 7.7-7.7V158.7c0-17-13.7-30.7-30.7-30.7H158.7c-17 0-30.7 13.7-30.7 30.7v706.6c0 17 13.7 30.7 30.7 30.7h706.6c17 0 30.7-13.7 30.7-30.7V765.1c0-4.3-3.5-7.7-7.7-7.7zm18.6-251.7L765 393.7c-5.3-4.2-13-.4-13 6.3v76H438c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h314v76c0 6.7 7.8 10.5 13 6.3l141.9-112a8 8 0 000-12.6z"/></svg> {{ t('txt_demo_open_sandbox') }}</a>
+    <a :href="demoHref()" rel="nofollow" class="btn btn-primary demo-try-btn"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg> {{ t('txt_demo_open_sandbox') }}</a>
     <p v-if="demoHost()" class="demo-entry-note">{{ t('txt_demo_opens_separate_site', { host: demoHost() }) }}</p>
     <div class="demo-or-divider"><span>{{ t('txt_demo_or_login_account') }}</span></div>
   </div>
@@ -1525,7 +1497,7 @@
     </div>
     <p v-if="demoView() === 'start'" class="demo-admin-hint">{{ t('txt_demo_admin_hint') }}</p>
     <div v-show="!isDemoInstance" class="auth-forgot-row">
-      <a href="#" class="modal-link fs-md" onclick="showForgotPasswordDialog();return false"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5l-41.1 41.1-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-44.9 44.9-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-65.3 65.3a8.03 8.03 0 000 11.3l42.3 42.3c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6A304.06 304.06 0 00608 720c167.9 0 304-136.1 304-304S775.9 112 608 112z"/></svg> <span data-i18n="txt_txt_forgot_password">Forgot password?</span></a>
+      <a href="#" class="modal-link fs-md" onclick="showForgotPasswordDialog();return false"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 002 18.828V21a1 1 0 001 1h3a1 1 0 001-1v-1a1 1 0 011-1h1a1 1 0 001-1v-1a1 1 0 011-1h.172a2 2 0 001.414-.586l.814-.814a6.5 6.5 0 10-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg> <span data-i18n="txt_txt_forgot_password">Forgot password?</span></a>
     </div>
     <div class="modal-error" id="auth-error" v-text="error"></div>
     <button type="submit" id="auth-login-btn" class="btn btn-primary w-full" :disabled="submitting" data-i18n="txt_txt_login">Login</button>
@@ -1537,8 +1509,8 @@
     <button type="button" class="btn demo-try-btn demo-secondary-btn" @click="startDemo()">{{ t('txt_demo_start_new_instead') }}</button>
   </div>
   <p class="modal-footer-links">
-    <a href="/events" class="modal-link"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M880 184H712v-64c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v64H384v-64c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v64H144c-17.7 0-32 14.3-32 32v664c0 17.7 14.3 32 32 32h736c17.7 0 32-14.3 32-32V216c0-17.7-14.3-32-32-32zm-40 656H184V460h656v380zM184 392V256h128v48c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8v-48h256v48c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8v-48h128v136H184z"/></svg> <span data-i18n="txt_nav_events">Events</span></a>
-    <a href="/player" class="modal-link"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M858.5 763.6a374 374 0 00-80.6-119.5 375.63 375.63 0 00-119.5-80.6c-.4-.2-.8-.3-1.2-.5C719.5 518 760 444.7 760 362c0-137-111-248-248-248S264 225 264 362c0 82.7 40.5 156 102.8 201.1-.4.2-.8.3-1.2.5-44.8 18.9-85 46-119.5 80.6a375.63 375.63 0 00-80.6 119.5A371.7 371.7 0 00136 901.8a8 8 0 008 8.2h60c4.4 0 7.9-3.5 8-7.8 2-77.2 33-149.5 87.8-204.3 56.7-56.7 132-87.9 212.2-87.9s155.5 31.2 212.2 87.9C779 752.7 810 825 812 902.2c.1 4.4 3.6 7.8 8 7.8h60a8 8 0 008-8.2c-1-47.8-10.9-94.3-29.5-138.2zM512 534c-45.9 0-89.1-17.9-121.6-50.4S340 407.9 340 362c0-45.9 17.9-89.1 50.4-121.6S466.1 190 512 190s89.1 17.9 121.6 50.4S684 316.1 684 362c0 45.9-17.9 89.1-50.4 121.6S557.9 534 512 534z"/></svg> <span data-i18n="txt_nav_player_space">Player Hub</span></a>
+    <a href="/events" class="modal-link"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> <span data-i18n="txt_nav_events">Events</span></a>
+    <a href="/player" class="modal-link"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> <span data-i18n="txt_nav_player_space">Player Hub</span></a>
   </p>
 </div>
 
@@ -1546,7 +1518,7 @@
 <div id="change-pwd-overlay" class="modal-overlay">
   <div class="modal-dialog modal-sm" v-scope>
     <div class="modal-header mb-2">
-      <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5l-41.1 41.1-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-44.9 44.9-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-65.3 65.3a8.03 8.03 0 000 11.3l42.3 42.3c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6A304.06 304.06 0 00608 720c167.9 0 304-136.1 304-304S775.9 112 608 112z"/></svg> <span data-i18n="txt_txt_change_password">Change Password</span></h2>
+      <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 002 18.828V21a1 1 0 001 1h3a1 1 0 001-1v-1a1 1 0 011-1h1a1 1 0 001-1v-1a1 1 0 011-1h.172a2 2 0 001.414-.586l.814-.814a6.5 6.5 0 10-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg> <span data-i18n="txt_txt_change_password">Change Password</span></h2>
       <button type="button" class="modal-close-btn" data-action="hideChangePasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
     </div>
     <p id="change-pwd-for" class="modal-subtitle mb-4" v-text="targetLabel"></p>
@@ -1570,7 +1542,7 @@
 <div id="forgot-pwd-overlay" class="modal-overlay" data-action="hideForgotPasswordDialog"></div>
 <div id="forgot-pwd-dialog" class="modal-dialog modal-sm">
   <div class="modal-header">
-    <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5l-41.1 41.1-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-44.9 44.9-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-65.3 65.3a8.03 8.03 0 000 11.3l42.3 42.3c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6A304.06 304.06 0 00608 720c167.9 0 304-136.1 304-304S775.9 112 608 112zm161.2 465.2C726.2 620.3 668.9 644 608 644c-60.9 0-118.2-23.7-161.2-66.8-43.1-43-66.8-100.3-66.8-161.2 0-60.9 23.7-118.2 66.8-161.2 43-43.1 100.3-66.8 161.2-66.8 60.9 0 118.2 23.7 161.2 66.8 43.1 43 66.8 100.3 66.8 161.2 0 60.9-23.7 118.2-66.8 161.2z"/></svg> <span data-i18n="txt_txt_forgot_password_title">Forgot Password</span></h2>
+    <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 002 18.828V21a1 1 0 001 1h3a1 1 0 001-1v-1a1 1 0 011-1h1a1 1 0 001-1v-1a1 1 0 011-1h.172a2 2 0 001.414-.586l.814-.814a6.5 6.5 0 10-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg> <span data-i18n="txt_txt_forgot_password_title">Forgot Password</span></h2>
     <button type="button" class="modal-close-btn" data-action="hideForgotPasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
   </div>
   <p class="modal-subtitle" data-i18n="txt_txt_forgot_password_subtitle">Enter your email address and we'll send you a password reset link.</p>
@@ -1589,7 +1561,7 @@
 <div id="accept-invite-overlay" class="modal-overlay" data-action="hideAcceptInviteDialog"></div>
 <div id="accept-invite-dialog" class="modal-dialog modal-sm">
   <div class="modal-header">
-    <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M928 160H96c-17.7 0-32 14.3-32 32v640c0 17.7 14.3 32 32 32h832c17.7 0 32-14.3 32-32V192c0-17.7-14.3-32-32-32zm-40 110.8V792H136V270.8l-27.6-21.5 39.3-50.5 42.8 33.3h643.1l42.8-33.3 39.3 50.5-27.7 21.5zM833.6 232L512 482 190.4 232l-42.8-33.3-39.3 50.5 27.6 21.5 341.6 265.6a55.99 55.99 0 0068.7 0L888 270.8l27.6-21.5-39.3-50.5-42.7 33.2z"/></svg> <span data-i18n="txt_txt_accept_invitation">Accept Invitation</span></h2>
+    <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/></svg> <span data-i18n="txt_txt_accept_invitation">Accept Invitation</span></h2>
     <button type="button" class="modal-close-btn" data-action="hideAcceptInviteDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
   </div>
   <p class="modal-subtitle" id="accept-invite-subtitle"></p>
@@ -1616,7 +1588,7 @@
 <div id="reset-pwd-overlay" class="modal-overlay" data-action="hideResetPasswordDialog"></div>
 <div id="reset-pwd-dialog" class="modal-dialog modal-sm">
   <div class="modal-header">
-    <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="64 64 896 896" fill="currentColor"><path fill="currentColor" d="M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5l-41.1 41.1-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-44.9 44.9-62.3-62.3a8.15 8.15 0 00-11.4 0l-39.8 39.8a8.15 8.15 0 000 11.4l62.3 62.3-65.3 65.3a8.03 8.03 0 000 11.3l42.3 42.3c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6A304.06 304.06 0 00608 720c167.9 0 304-136.1 304-304S775.9 112 608 112zm161.2 465.2C726.2 620.3 668.9 644 608 644c-60.9 0-118.2-23.7-161.2-66.8-43.1-43-66.8-100.3-66.8-161.2 0-60.9 23.7-118.2 66.8-161.2 43-43.1 100.3-66.8 161.2-66.8 60.9 0 118.2 23.7 161.2 66.8 43.1 43 66.8 100.3 66.8 161.2 0 60.9-23.7 118.2-66.8 161.2z"/></svg> <span data-i18n="txt_txt_reset_password">Reset Password</span></h2>
+    <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 002 18.828V21a1 1 0 001 1h3a1 1 0 001-1v-1a1 1 0 011-1h1a1 1 0 001-1v-1a1 1 0 011-1h.172a2 2 0 001.414-.586l.814-.814a6.5 6.5 0 10-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg> <span data-i18n="txt_txt_reset_password">Reset Password</span></h2>
     <button type="button" class="modal-close-btn" data-action="hideResetPasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
   </div>
   <p class="modal-subtitle" data-i18n="txt_txt_choose_new_password_for_account">Choose a new password for your account.</p>

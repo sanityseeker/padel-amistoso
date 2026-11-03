@@ -2,8 +2,8 @@ let _playerSecrets = {};
 
 /**
  * Render the Hub link/unlink cell for a player row.
- * Three states collapse to two actions:
- *   - linked to a real Hub profile  -> grey "Unlink" button
+ * Three states:
+ *   - linked to a real Hub profile  -> "Change" (opens search to re-link) + grey "Unlink"
  *   - linked to a ghost profile     -> blue  "Link" button (opens search; tooltip explains ghost status)
  *   - not linked                    -> blue  "Link" button
  * The same helper is used by the initial render and by the in-place DOM updates
@@ -13,7 +13,10 @@ function _renderHubLinkCellInner(pid, info) {
   const _isLinked = Boolean(info && info.profile_id);
   const _isGhost  = _isLinked && String(info.profile_id).startsWith('ghost_');
   if (_isLinked && !_isGhost) {
-    return `<button type="button" class="btn btn-sm btn-muted player-codes-action-btn pc-hub-link-btn" onclick="_hubUnlink('${escAttr(pid)}')" title="${escAttr(t('txt_hub_linked'))}">${esc(t('txt_hub_unlink_btn'))}</button>`;
+    return `<span class="d-flex gap-1 justify-center">`
+      + `<button type="button" class="btn btn-sm player-codes-action-btn pc-hub-link-btn" onclick="_hubOpenSearch('${escAttr(pid)}')" title="${escAttr(t('txt_hub_relink_help'))}">${esc(t('txt_hub_relink_btn'))}</button>`
+      + `<button type="button" class="btn btn-sm btn-muted player-codes-action-btn" onclick="_hubUnlink('${escAttr(pid)}')" title="${escAttr(t('txt_hub_linked'))}">${esc(t('txt_hub_unlink_btn'))}</button>`
+      + `</span>`;
   }
   const _title = _isGhost ? t('txt_pc_past_participant_tooltip') : t('txt_hub_link_help');
   return `<button type="button" class="btn btn-sm btn-primary player-codes-action-btn pc-hub-link-btn" onclick="_hubOpenSearch('${escAttr(pid)}')" title="${escAttr(_title)}">${esc(t('txt_hub_link_btn'))}</button>`;
@@ -44,7 +47,7 @@ function _renderPlayerCodesBody(secrets) {
   const _isGP = currentType === 'group_playoff';
 
   let html = `<div class="player-codes-body">`;
-  html += `<p class="player-codes-help">${t('txt_txt_player_codes_help')}</p>`;
+  html += `<p class="player-codes-help settings-help--explain">${t('txt_txt_player_codes_help')}</p>`;
 
   if (entries.length > 0) {
     html += `<div class="settings-inline-row mb-2">`;
@@ -64,7 +67,7 @@ function _renderPlayerCodesBody(secrets) {
     html += `<th class="player-codes-th">${t('txt_txt_contact')}</th>`;
     html += `<th class="player-codes-th-center">${t('txt_hub_link')}</th>`;
     if (_showEmail) html += `<th class="player-codes-th">${t('txt_email')}</th>`;
-    html += `<th class="player-codes-th-center">${_antIc('global')}</th>`;
+    html += `<th class="player-codes-th-center">${_ic('globe')}</th>`;
     html += `<th class="player-codes-th-center">${t('txt_txt_qr_code')}</th>`;
     html += `<th class="player-codes-th-center"></th>`;
     html += `<th class="player-codes-th-center"></th>`;
@@ -476,7 +479,7 @@ function _hubEnsureModal() {
   overlay.className = 'pc-hub-modal-overlay';
   overlay.innerHTML = `<div class="pc-hub-modal-box">`
     + `<div class="pc-hub-modal-header">`
-    + `<span class="pc-hub-modal-title">${_antIc('link')} ${t('txt_hub_link')}</span>`
+    + `<span class="pc-hub-modal-title">${_ic('link')} ${t('txt_hub_link')}</span>`
     + `<button type="button" class="pc-hub-close-btn" onclick="_hubCloseModal()">✕</button>`
     + `</div>`
     + `<div id="pc-hub-modal-scope" class="pc-hub-scope-row" role="group" aria-label="${escAttr(t('txt_hub_scope_label'))}"></div>`
@@ -579,10 +582,22 @@ async function _hubDoSearch() {
 async function _hubLinkProfile(profileId) {
   const playerId = _hubCurrentPlayerId;
   if (!playerId) return;
+  // Re-linking a player owned by another real Hub profile moves the link away from it.
+  const currentProfileId = _playerSecrets[playerId]?.profile_id;
+  if (currentProfileId && currentProfileId !== profileId && !String(currentProfileId).startsWith('ghost_')
+      && !confirm(t('txt_hub_relink_confirm'))) return;
+  // A profile is one participant per tournament: its other link here gets removed.
+  const otherPid = Object.keys(_playerSecrets).find(pid => pid !== playerId && _playerSecrets[pid]?.profile_id === profileId);
+  if (otherPid && !confirm(t('txt_hub_profile_moves_confirm', { value: _playerSecrets[otherPid].name || otherPid }))) return;
   try {
     const res = await api(`/api/admin/player-profiles/${profileId}/link/${currentTid}/${playerId}`, { method: 'POST' });
     if (_playerSecrets[playerId]) _playerSecrets[playerId].profile_id = profileId;
     _hubCloseModal();
+    for (const pid of res.unlinked_player_ids || []) {
+      if (_playerSecrets[pid]) _playerSecrets[pid].profile_id = null;
+      const otherCell = document.getElementById(`pc-row-${pid}`)?.querySelector('.player-codes-cell-center');
+      if (otherCell) otherCell.innerHTML = _renderHubLinkCellInner(pid, _playerSecrets[pid] || { profile_id: null });
+    }
     // Update the cell to show the Unlink button (re-uses the shared renderer)
     const row = document.getElementById(`pc-row-${playerId}`);
     const cell = row?.querySelector('.player-codes-cell-center');

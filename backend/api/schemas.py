@@ -1015,6 +1015,55 @@ class AdminParticipationLink(BaseModel):
     points_against: int = 0
 
 
+class AdminTournamentParticipant(BaseModel):
+    """A tournament participant as offered by the admin link picker."""
+
+    player_id: str
+    player_name: str
+    profile_id: str | None = None  # profile currently linked, if any
+    profile_name: str | None = None
+    is_ghost: bool = False
+
+
+class HubMergeRequest(BaseModel):
+    """Merge registered profile ``secondary_id`` into registered profile ``primary_id``."""
+
+    primary_id: str
+    secondary_id: str
+
+
+class HubMergeProfile(BaseModel):
+    """One side of a Hub-profile merge, as shown in the preview."""
+
+    id: str
+    name: str
+    email: str
+    tournaments: int  # distinct tournaments taken part in
+
+
+class HubMergeSharedTournament(BaseModel):
+    """A tournament both profiles took part in — it blocks the merge."""
+
+    tournament_id: str
+    tournament_name: str
+
+
+class HubMergePreview(BaseModel):
+    """What merging two registered profiles would do, and whether it is allowed."""
+
+    primary: HubMergeProfile
+    secondary: HubMergeProfile
+    shared_tournaments: list[HubMergeSharedTournament]
+    can_merge: bool
+
+
+class HubMergeResult(BaseModel):
+    """The surviving profile after a Hub-profile merge."""
+
+    profile_id: str
+    name: str
+
+
 class AdminPlayerProfileDetail(BaseModel):
     """Full profile with all linked participations."""
 

@@ -44,13 +44,11 @@ from .db import (
 )
 from .elo_store import (
     _profile_player_ids,
-    consolidate_ghost_elos,
     get_profile_recent_elo_logs,
     log_manual_elo_adjustment,
-    retroactive_transfer_elo,
+    refresh_profile_elo,
 )
 from .player_merge import (
-    combined_player_ids,
     materialize_participants,
     normalize_name,
     reassign_profile_data,
@@ -64,7 +62,16 @@ from .leaderboard_cache import (
     invalidate_leaderboard_cache,
 )
 from .routes_communities import DEFAULT_COMMUNITY_ID
-from .schemas import AddCollaboratorRequest, CollaboratorListResponse, EmailLang
+from .elo_recalc import flush_elo_recalculation, mark_elo_dirty
+from .routes_admin_players import hub_merge_preview, merge_hub_profiles
+from .schemas import (
+    AddCollaboratorRequest,
+    CollaboratorListResponse,
+    EmailLang,
+    HubMergePreview,
+    HubMergeRequest,
+    HubMergeResult,
+)
 from ..tournaments.player_secrets import generate_passphrase
 
 router = APIRouter(prefix="/api/clubs", tags=["clubs"])
@@ -473,7 +480,7 @@ def _sync_club_players_from_community(conn, club_id: str, community_id: str) -> 
 
     Returns:
         List of ``(profile_id, player_id)`` tuples for ghost profiles that need
-        a retroactive ELO transfer (either newly created or missing community ELO).
+        an ELO rebuild (either newly created or missing community ELO).
     """
     # 1) Profiles already linked through tournament participation in this club.
     linked_profile_rows = conn.execute(
@@ -1700,11 +1707,13 @@ def list_club_players(
                     # Mark this version as fully reconciled so subsequent calls skip.
                     _SYNC_VERSION_CACHE[club_id] = version
 
-        # Call retroactive ELO transfer for ghost profiles outside the transaction
-        # to avoid nested DB connections.  After transfer, re-sync club ELO rows.
+        # Rebuild the ghosts' ratings outside the transaction (to avoid nested
+        # DB connections) so the club rows below seed from them; the flush after
+        # this request replays later tournaments if a ghost's chain moved seeds.
         if needs_elo_transfer:
-            for profile_id, player_id in needs_elo_transfer:
-                retroactive_transfer_elo(profile_id, player_id)
+            for profile_id, _player_id in needs_elo_transfer:
+                refresh_profile_elo(profile_id)
+            mark_elo_dirty([profile_id for profile_id, _ in needs_elo_transfer])
             with get_db() as conn:
                 for profile_id, _ in needs_elo_transfer:
                     _upsert_default_club_player_rows(
@@ -1804,9 +1813,11 @@ async def add_player_to_club(club_id: str, req: ClubPlayerAdd, user: User = Depe
             (profile_id, club_id),
         )
 
-    # Transfer retroactive ELO outside the transaction for newly-created ghost profiles.
+    # Recalculate ELO outside the transaction for newly-created ghost profiles,
+    # before the club rows seed from it.
     if ghost_player_id is not None:
-        retroactive_transfer_elo(profile_id, ghost_player_id)
+        mark_elo_dirty([profile_id])
+        await flush_elo_recalculation()
         with get_db() as conn:
             _upsert_default_club_player_rows(conn, profile_id, club_id, community_id)
 
@@ -2203,6 +2214,57 @@ def _filter_club_participant_ids(player_ids: list[str], club_id: str) -> list[st
     return [r["player_id"] for r in rows]
 
 
+def _require_club_members(conn, club_id: str, profile_ids: list[str]) -> None:
+    """Scope guard for club-editor merges: every profile must be on the club roster."""
+    placeholders = ",".join("?" for _ in profile_ids)
+    members = {
+        r["profile_id"]
+        for r in conn.execute(
+            f"SELECT DISTINCT profile_id FROM profile_club_elo WHERE club_id = ? AND profile_id IN ({placeholders})",
+            [club_id, *profile_ids],
+        ).fetchall()
+    }
+    outside = [pid for pid in profile_ids if pid not in members]
+    if outside:
+        raise HTTPException(422, f"Profiles are not members of this club: {', '.join(outside)}")
+
+
+@router.get("/{club_id}/players/merge-hub/preview", response_model=HubMergePreview)
+def club_hub_merge_preview(
+    club_id: str,
+    primary_id: str,
+    secondary_id: str,
+    user: User = Depends(get_current_user),
+) -> HubMergePreview:
+    """Preview merging two registered club members into one profile."""
+    _require_club_editor(_get_club(club_id), user)
+    with get_db() as conn:
+        _require_club_members(conn, club_id, [primary_id, secondary_id])
+        return hub_merge_preview(conn, primary_id, secondary_id)
+
+
+@router.post("/{club_id}/players/merge-hub", response_model=HubMergeResult)
+async def club_merge_hub_profiles(
+    club_id: str,
+    req: HubMergeRequest,
+    user: User = Depends(get_current_user),
+) -> HubMergeResult:
+    """Merge registered club member ``secondary_id`` into ``primary_id``.
+
+    Both must be on this club's roster.  The merge itself is global (the
+    secondary's other clubs and tournaments move too) — see
+    ``routes_admin_players.merge_hub_profiles``.
+    """
+    club = _get_club(club_id)
+    _require_club_editor(club, user)
+    with get_db() as conn:
+        _require_club_members(conn, club_id, [req.primary_id, req.secondary_id])
+    result = await merge_hub_profiles(req.primary_id, req.secondary_id)
+    with get_db() as conn:
+        _upsert_default_club_player_rows(conn, req.primary_id, club_id, club["community_id"])
+    return result
+
+
 @router.post("/{club_id}/players/consolidate-ghosts", response_model=ClubPlayerOut)
 async def consolidate_club_ghost_profiles(
     club_id: str,
@@ -2301,9 +2363,9 @@ async def consolidate_club_ghost_profiles(
         for secondary_id in secondary_ids:
             reassign_profile_data(conn, primary_id, secondary_id)
 
-        all_player_ids = combined_player_ids(conn, primary_id)
-
-    consolidate_ghost_elos(primary_id, all_player_ids)
+    # The club rows below seed from the merged rating, so recalculate first.
+    mark_elo_dirty([primary_id])
+    await flush_elo_recalculation()
 
     with get_db() as conn:
         _upsert_default_club_player_rows(conn, primary_id, club_id, club["community_id"])

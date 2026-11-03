@@ -16,7 +16,7 @@ from backend.api.elo_store import (
     get_tournament_match_counts,
     initialize_tournament_elos,
     reset_tournament_elos,
-    retroactive_transfer_elo,
+    refresh_profile_elo,
     sync_live_elos_to_profiles,
     transfer_elo_to_profile,
     upsert_tournament_elo,
@@ -258,12 +258,12 @@ class TestProfileElo:
 
 
 # ---------------------------------------------------------------------------
-# Retroactive transfer
+# Rebuilding a profile from its tournaments
 # ---------------------------------------------------------------------------
 
 
-class TestRetroactiveTransfer:
-    def test_retroactive_applies_chronologically(self, client) -> None:
+class TestRefreshProfileElo:
+    def test_profile_takes_latest_tournament_result(self, client) -> None:
         from backend.api.db import get_db
 
         with get_db() as conn:
@@ -295,7 +295,7 @@ class TestRetroactiveTransfer:
             ],
         )
 
-        retroactive_transfer_elo("prof_retro", "px")
+        refresh_profile_elo("prof_retro")
 
         elo = get_profile_elo("prof_retro")
         # Final ELO should be from the later tournament

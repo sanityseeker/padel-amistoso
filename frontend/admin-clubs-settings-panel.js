@@ -98,7 +98,7 @@ function _renderClubStatusBar(club, comm) {
   // Compact season chip: shown only when there are 2+ active seasons (the
   // single-active case is already obvious from the leaderboard scope dropdown).
   const seasonChip = activeSeasons.length > 1
-    ? `<span class="badge badge-open" title="${escAttr(activeSeasons.map(s => s.name).join(', '))}">${_antIc('calendar')} ${activeSeasons.length} ${esc(t('txt_clubs_status_seasons_active'))}</span>`
+    ? `<span class="badge badge-open" title="${escAttr(activeSeasons.map(s => s.name).join(', '))}">${_ic('calendar')} ${activeSeasons.length} ${esc(t('txt_clubs_status_seasons_active'))}</span>`
     : '';
 
   const sportToggle = `
@@ -155,9 +155,9 @@ function _renderClubGeneralBody(club) {
   if (club.has_logo) {
     html += `<img src="/api/clubs/${esc(club.id)}/logo?_=${Date.now()}" alt="" class="clubs-logo-preview">`;
   } else {
-    html += `<span class="clubs-logo-preview clubs-logo-preview--empty" aria-hidden="true">${_antIc('camera')}</span>`;
+    html += `<span class="clubs-logo-preview clubs-logo-preview--empty" aria-hidden="true">${_ic('camera')}</span>`;
   }
-  html += `<label id="clubs-logo-upload-label" class="btn btn-sm cursor-pointer m-0">${_antIc('camera')} ${t('txt_clubs_upload_logo')}`;
+  html += `<label id="clubs-logo-upload-label" class="btn btn-sm cursor-pointer m-0">${_ic('camera')} ${t('txt_clubs_upload_logo')}`;
   html += `<input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="clubsUploadLogo(this)">`;
   html += `</label>`;
   if (club.has_logo) {
@@ -326,11 +326,11 @@ function _renderClubSettingsCard(club) {
   const active = _getClubSubtab(club.id);
 
   const subtabs = [
-    { key: 'general',     label: t('txt_club_settings_tab_general'),     icon: _antIc('setting'),   body: _renderClubGeneralBody(club) },
-    { key: 'tiers',       label: t('txt_club_settings_tab_tiers'),       icon: _antIc('tag'),       body: _renderClubTiersBody() },
-    { key: 'seasons',     label: t('txt_club_settings_tab_seasons'),     icon: _antIc('calendar'),  body: _renderClubSeasonsBody() },
-    { key: 'comms',       label: t('txt_club_settings_tab_comms'),       icon: _antIc('mail'),      body: _renderClubCommsBody(club) },
-    { key: 'access',      label: t('txt_club_settings_tab_access'),      icon: _antIc('safety'),    body: _renderClubAccessBody(club) },
+    { key: 'general',     label: t('txt_club_settings_tab_general'),     icon: _ic('settings'),   body: _renderClubGeneralBody(club) },
+    { key: 'tiers',       label: t('txt_club_settings_tab_tiers'),       icon: _ic('tag'),       body: _renderClubTiersBody() },
+    { key: 'seasons',     label: t('txt_club_settings_tab_seasons'),     icon: _ic('calendar'),  body: _renderClubSeasonsBody() },
+    { key: 'comms',       label: t('txt_club_settings_tab_comms'),       icon: _ic('mail'),      body: _renderClubCommsBody(club) },
+    { key: 'access',      label: t('txt_club_settings_tab_access'),      icon: _ic('shield'),    body: _renderClubAccessBody(club) },
   ].filter(st => st.body && st.body.trim());
 
   if (subtabs.length === 0) return '';
@@ -340,7 +340,7 @@ function _renderClubSettingsCard(club) {
   const isOpen = _getClubSettingsOpen(club.id);
   html += `<details class="admin-settings-details"${isOpen ? ' open' : ''} ontoggle="_setClubSettingsOpen('${esc(club.id)}', this.open)">`;
   html += `<summary class="admin-settings-summary">`;
-  html += `<span class="admin-settings-title"><span class="tv-chevron admin-settings-chevron">▸</span> ${_antIc('setting')} ${t('txt_club_settings_title')}</span>`;
+  html += `<span class="admin-settings-title"><span class="tv-chevron admin-settings-chevron">▸</span> ${_ic('settings')} ${t('txt_club_settings_title')}</span>`;
   html += `</summary>`;
 
   html += `<div class="admin-settings-body">`;
@@ -349,7 +349,7 @@ function _renderClubSettingsCard(club) {
     const isActive = st.key === activeKey;
     html += `<button type="button" class="settings-subtab-btn${isActive ? ' active' : ''}" role="tab"`;
     html += ` aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? 0 : -1}"`;
-    html += ` data-subtab="${escAttr(st.key)}"`;
+    html += ` data-subtab="${escAttr(st.key)}" aria-label="${escAttr(st.label)}" title="${escAttr(st.label)}"`;
     html += ` onclick="setClubSubtab('${esc(club.id)}','${escAttr(st.key)}')">`;
     html += `<span class="settings-subtab-icon" aria-hidden="true">${st.icon}</span>`;
     html += `<span class="settings-subtab-label">${esc(st.label)}</span>`;
@@ -360,6 +360,8 @@ function _renderClubSettingsCard(club) {
   for (const st of subtabs) {
     const isActive = st.key === activeKey;
     html += `<div class="settings-subpanel${isActive ? '' : ' hidden'}" role="tabpanel" data-subtab="${escAttr(st.key)}">`;
+    // Phones show icon-only tabs; this heading names the open tab.
+    html += `<h4 class="settings-subpanel-title">${esc(st.label)}</h4>`;
     html += st.body;
     html += `</div>`;
   }

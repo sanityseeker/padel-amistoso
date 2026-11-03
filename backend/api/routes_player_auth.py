@@ -26,7 +26,8 @@ from ..auth.security import create_player_token, create_profile_token
 from ..models import GPPhase, Player, TournamentType
 from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .db import get_db
-from .elo_store import retroactive_transfer_elo
+from .elo_recalc import mark_elo_dirty
+from .elo_store import refresh_profile_elo
 from .helpers import _require_editor_access
 from .player_secret_store import (
     add_player_secret,
@@ -244,8 +245,9 @@ def _get_or_create_ghost_profile(past_player_id: str, name: str) -> str:
     The profile ID is deterministic (``ghost_<past_player_id>``) so this
     function is idempotent: calling it twice for the same player is safe.
 
-    After creation, :func:`~backend.api.elo_store.retroactive_transfer_elo`
-    is called so any ELO from previous tournaments is immediately reflected.
+    The ghost's rating is rebuilt immediately (callers seed new tournament
+    players from it) and the link change is marked for the ELO flush, which
+    replays later tournaments if the ghost's chain changed their seeds.
 
     Args:
         past_player_id: The ``player_id`` from a previous tournament's
@@ -278,8 +280,8 @@ def _get_or_create_ghost_profile(past_player_id: str, name: str) -> str:
                 (ghost_id, past_player_id),
             )
 
-    # Backfill ELO from all prior tournaments (idempotent)
-    retroactive_transfer_elo(ghost_id, past_player_id)
+    refresh_profile_elo(ghost_id)
+    mark_elo_dirty([ghost_id])
     return ghost_id
 
 

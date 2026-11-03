@@ -210,7 +210,7 @@ function _renderRegDetailInline(rid) {
     html += `<thead><tr class="reg-table-head-row">`;
     html += `<th class="reg-th">${t('txt_reg_name')}</th>`;
     html += `<th class="reg-th">${t('txt_email')}</th>`;
-    html += `<th class="reg-th reg-th--center">${_antIc('global')}</th>`;
+    html += `<th class="reg-th reg-th--center">${_ic('globe')}</th>`;
     html += `<th class="reg-th">${t('txt_txt_passphrase')}</th>`;
     html += `<th class="reg-th reg-th--center"></th>`;
     html += `</tr></thead><tbody>`;
@@ -223,14 +223,14 @@ function _renderRegDetailInline(rid) {
           ? `<span class="reg-eligible-dot ok" title="${escAttr(t('txt_reg_filter_eligible_tooltip'))}"></span>`
           : `<span class="reg-eligible-dot no" title="${escAttr(t('txt_reg_filter_not_eligible_tooltip'))}"></span>`;
       }
-      html += `<td class="${_hasSavedFilter && !_eligibleSet.has(reg.player_id) ? 'reg-row-not-eligible' : ''} reg-td reg-td--name">${eligibleMark}${isDup ? _antIc('warning')+' ' : ''}${esc(reg.player_name)}</td>`;
+      html += `<td class="${_hasSavedFilter && !_eligibleSet.has(reg.player_id) ? 'reg-row-not-eligible' : ''} reg-td reg-td--name">${eligibleMark}${isDup ? _ic('alert')+' ' : ''}${esc(reg.player_name)}</td>`;
       html += `<td class="reg-td reg-td--email">${reg.email ? esc(reg.email) : '—'}</td>`;
       html += `<td class="reg-td reg-td--lang">${_langToggle(rid, reg.player_id, reg.lang || 'en', 'reg')}</td>`;
       html += `<td class="reg-td"><code class="reg-passphrase-code" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(reg.passphrase)}</code></td>`;
       html += `<td class="reg-td reg-td--actions">`;
       html += `<button type="button" class="btn btn-sm btn-row-action mr-1" onclick="_editRegistrant('${esc(r.id)}','${esc(reg.player_id)}','${esc(reg.player_name)}','${esc(reg.email||'')}')" title="${t('txt_reg_edit_player')}">${_ic('edit')}</button>`;
       if (window._emailConfigured && reg.email) {
-        html += `<button type="button" class="btn btn-sm btn-row-action mr-1" onclick="_sendRegEmail('${esc(r.id)}','${esc(reg.player_id)}', this)" title="${t('txt_email_send')}">${_antIc('mail')}</button>`;
+        html += `<button type="button" class="btn btn-sm btn-row-action mr-1" onclick="_sendRegEmail('${esc(r.id)}','${esc(reg.player_id)}', this)" title="${t('txt_email_send')}">${_ic('mail')}</button>`;
       }
       html += `<button type="button" class="btn btn-danger btn-sm btn-row-action" onclick="_removeRegistrant('${esc(r.id)}','${esc(reg.player_id)}')" title="${t('txt_reg_confirm_remove')}">✕</button>`;
       html += `</td></tr>`;

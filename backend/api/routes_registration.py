@@ -2661,13 +2661,14 @@ async def resolve_participation_claim(
                 (now, user.username, claim_id),
             )
 
-    # Backfill history + transfer ELO for the newly-linked participation.
+    # Backfill history for the newly-linked participation; ELO is recalculated
+    # by the flush after this request.
     # Local import avoids any module import-order coupling with the Hub routes.
     from .routes_player_space import _backfill_finished_secrets, _backfill_history_for_profile
-    from .elo_store import retroactive_transfer_all_elos
+    from .elo_recalc import mark_elo_dirty
 
     _backfill_history_for_profile(profile_id)
     _backfill_finished_secrets(profile_id)
-    retroactive_transfer_all_elos(profile_id)
+    mark_elo_dirty([profile_id])
 
     return {"ok": True, "status": "approved"}

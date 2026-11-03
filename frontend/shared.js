@@ -51,7 +51,7 @@ function _ic(name) {
     mail:     `<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/>`,
     print:    `<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>`,
     copy:     `<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>`,
-    key:      `<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>`,
+    key:      `<path d="M2.586 17.414A2 2 0 002 18.828V21a1 1 0 001 1h3a1 1 0 001-1v-1a1 1 0 011-1h1a1 1 0 001-1v-1a1 1 0 011-1h.172a2 2 0 001.414-.586l.814-.814a6.5 6.5 0 10-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/>`,
     shield:   `<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>`,
     settings: `<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>`,
     qr:       `<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="5" y="5" width="3" height="3" fill="currentColor" stroke="none"/><rect x="16" y="5" width="3" height="3" fill="currentColor" stroke="none"/><rect x="5" y="16" width="3" height="3" fill="currentColor" stroke="none"/><line x1="14" y1="14" x2="14" y2="14"/><line x1="17" y1="14" x2="17" y2="14"/><line x1="20" y1="14" x2="20" y2="14"/><line x1="14" y1="17" x2="14" y2="17"/><line x1="17" y1="17" x2="17" y2="17"/><line x1="20" y1="17" x2="20" y2="17"/>`,
@@ -62,6 +62,7 @@ function _ic(name) {
     chart:    `<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>`,
     shuffle:  `<polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/>`,
     monitor:  `<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>`,
+    wallet:   `<path d="M20 7V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h13a2 2 0 002-2v-2"/><path d="M3 7h17a1 1 0 011 1v8a1 1 0 01-1 1h-5a2 2 0 01-2-2v-4a2 2 0 012-2h6"/><circle cx="16.5" cy="12" r="0.5" fill="currentColor"/>`,
     globe:    `<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>`,
     users:    `<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>`,
     user:     `<path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>`,
@@ -85,6 +86,24 @@ function _ic(name) {
     clipboard: `<path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>`,
     eye:      `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,
     eyeoff:   `<path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>`,
+    search:   `<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>`,
+    message:  `<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>`,
+    pin:      `<line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 00-1.11-1.79l-1.78-.9A2 2 0 0115 10.76V6h1a2 2 0 000-4H8a2 2 0 000 4h1v4.76a2 2 0 01-1.11 1.79l-1.78.9A2 2 0 005 15.24z"/>`,
+    calendar: `<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>`,
+    zap:      `<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>`,
+    check:    `<polyline points="20 6 9 17 4 12"/>`,
+    ban:      `<circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>`,
+    repeat:   `<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/>`,
+    wrench:   `<path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>`,
+    file:     `<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>`,
+    plus:     `<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>`,
+    tag:      `<path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>`,
+    camera:   `<path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/>`,
+    archive:  `<polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/>`,
+    help:     `<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>`,
+    contact:  `<path d="M17 18a2 2 0 00-2-2H9a2 2 0 00-2 2"/><rect x="3" y="4" width="18" height="18" rx="2"/><circle cx="12" cy="10" r="2"/><line x1="8" y1="2" x2="8" y2="4"/><line x1="16" y1="2" x2="16" y2="4"/>`,
+    refresh:  `<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>`,
+    login:    `<path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>`,
   };
   const p = paths[name] || '';
   return `<svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
@@ -841,6 +860,7 @@ function setDisplayTheme(mode) {
   }
   document.dispatchEvent(new CustomEvent('app-theme-changed', { detail: { theme: effective, preference: mode } }));
   refreshPublicHeader();
+  _refreshDisplayButtons();
   _renderDisplaySheetContent();
   return effective;
 }
@@ -857,6 +877,29 @@ function setDisplayLanguage(lang) {
 /** Player Hub session present on this origin? */
 function hasHubSession() {
   try { return Boolean(localStorage.getItem(_HUB_JWT_KEY)); } catch (_) { return false; }
+}
+
+/**
+ * Organizer (admin JWT) session present on this origin? auth.js is not loaded
+ * on public pages, so this reads the same storage keys directly. A stale token
+ * only means the Admin entry shows; /admin itself re-checks the session.
+ */
+function hasAdminSession() {
+  try {
+    return Boolean(localStorage.getItem('padel-auth-token') || sessionStorage.getItem('padel-auth-token'));
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Visitors get a header dropdown of Club/Events + Player Hub only; the admin
+ * sign-in is a low-emphasis key + "Admin" link at the right end of the header
+ * row instead (organizers who already have a session on this origin get the
+ * Admin dropdown entry back, which replaces the link).
+ */
+function _showHeaderAdminSignIn() {
+  return Boolean(_publicHeaderCurrent) && _publicHeaderCurrent !== 'admin' && !hasAdminSession();
 }
 
 /**
@@ -883,7 +926,7 @@ function hubProfileInitials() {
  * Pages reachable from the public header dropdown.
  * @returns {{key: string, href: string, label: string, icon: string, cls?: string}[]}
  */
-function _publicHeaderPages() {
+function _publicHeaderPages(current) {
   const pages = [];
   if (getClubSubdomain()) {
     pages.push({ key: 'club', href: '/', label: t('txt_nav_club'), icon: _ic('building'), cls: 'public-page-item--club' });
@@ -897,7 +940,7 @@ function _publicHeaderPages() {
     label: hasHubSession() ? t('txt_nav_my_hub') : t('txt_nav_player_space'),
     icon: initials ? `<span class="public-avatar" aria-hidden="true">${esc(initials)}</span>` : _ic('user'),
   });
-  if (!getClubSubdomain()) {
+  if (current === 'admin' || hasAdminSession()) {
     pages.push({ key: 'admin', href: '/admin', label: t('txt_nav_admin'), icon: _ic('settings') });
   }
   return pages;
@@ -905,16 +948,17 @@ function _publicHeaderPages() {
 
 /**
  * Build the shared public header.
- * @param {'club'|'events'|'player'|'register'} current  Page key (the sign-up
+ * @param {'club'|'events'|'player'|'register'|'admin'} current  Page key (the sign-up
  *   form shows its parent directory, Club or Events, as the current page).
  * @returns {string} HTML
  */
 function buildPublicHeaderHtml(current) {
   _publicHeaderCurrent = current;
-  const pages = _publicHeaderPages();
+  const pages = _publicHeaderPages(current);
   const currentPage = pages.find(p => p.key === current) || pages[0];
 
   let html = `<header class="public-header" id="public-header">`;
+  html += buildDisplayButtonHtml();
   html += `<nav class="public-page-selector" id="public-page-selector" aria-label="${escAttr(t('txt_nav_pages'))}">`;
   html += `<button type="button" class="public-page-btn" aria-haspopup="true" aria-expanded="false" aria-controls="public-page-menu" onclick="togglePublicPageMenu()">`;
   html += `<span class="public-page-icon">${currentPage.icon}</span><span class="public-page-label">${esc(currentPage.label)}</span>${_ic('chevdown')}</button>`;
@@ -926,13 +970,18 @@ function buildPublicHeaderHtml(current) {
     html += ` onclick="savePageChoice('${p.key}')"><span class="public-page-icon">${p.icon}</span><span>${esc(p.label)}</span></a>`;
   }
   html += `</div></nav>`;
+  if (_showHeaderAdminSignIn()) {
+    // Compact key + "Admin" so it never collides with the centred page button;
+    // the full "Admin sign in" label stays the accessible name.
+    html += `<a class="public-admin-link" href="/admin" aria-label="${escAttr(t('txt_nav_admin_sign_in'))}" onclick="savePageChoice('admin')">`
+      + `${_ic('key')}<span aria-hidden="true">${esc(t('txt_nav_admin'))}</span></a>`;
+  }
   html += `</header>`;
   if (getClubSubdomain()) _patchPublicHeaderClubName();
-  queueMicrotask(_mountPublicFooter);
   return html;
 }
 
-/** "English · Dark" — the current values shown on the Display line. */
+/** "English · Dark" — the current values shown on the language/theme button. */
 function _displayLineValue() {
   const lang = getAppLanguage() === 'es' ? 'Español' : 'English';
   const pref = getThemePreference();
@@ -942,25 +991,28 @@ function _displayLineValue() {
   return `${lang} · ${themeLabel}`;
 }
 
+/** Inner markup of the language/theme button: globe + "English · Dark" (phones: "EN"). */
+function _displayButtonInner() {
+  const short = getAppLanguage() === 'es' ? 'ES' : 'EN';
+  return `${_ic('globe')}<span class="public-display-value">${esc(_displayLineValue())}</span>`
+    + `<span class="public-display-value-short" aria-hidden="true">${short}</span>`;
+}
+
+/** Accessible name of the language/theme button ("Language and theme: English · Dark"). */
+function _displayButtonLabel() {
+  return t('txt_display_btn_aria', { value: _displayLineValue() });
+}
+
 /**
- * Insert (or refresh) the footer Display line at the end of the page, above
- * the support links when the page has them. Hidden by CSS whenever the page
- * isn't showing the public header (e.g. the TV live board, which keeps its
- * own toggles).
+ * Language/theme button (opens the Display sheet). Sits at the left end of
+ * the shared header (buildPublicHeaderHtml) and of the TV live-board header.
+ * @returns {string} HTML
  */
-function _mountPublicFooter() {
-  let footer = document.getElementById('public-footer');
-  if (!footer) {
-    footer = document.createElement('footer');
-    footer.id = 'public-footer';
-    footer.className = 'public-footer';
-    const support = document.querySelector('body > .support-links');
-    if (support) support.before(footer);
-    else document.body.appendChild(footer);
-  }
-  footer.innerHTML = `<button type="button" class="public-display-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="display-sheet" onclick="openDisplaySheet(this)">`
-    + `<span class="public-display-label">${esc(t('txt_display_label'))}:</span> `
-    + `<span class="public-display-value">${esc(_displayLineValue())}</span></button>`;
+function buildDisplayButtonHtml() {
+  const open = Boolean(document.getElementById('display-sheet-backdrop'));
+  return `<button type="button" class="public-display-btn" aria-haspopup="dialog" aria-expanded="${open ? 'true' : 'false'}" aria-controls="display-sheet" `
+    + `aria-label="${escAttr(_displayButtonLabel())}" title="${escAttr(_displayButtonLabel())}" onclick="openDisplaySheet(this)">`
+    + `${_displayButtonInner()}</button>`;
 }
 
 /** Open/close the header page dropdown. */
@@ -1068,7 +1120,15 @@ function openDisplaySheet(trigger) {
   sheet.setAttribute('aria-labelledby', 'display-sheet-title');
   sheet.innerHTML = _displaySheetMarkup();
   backdrop.appendChild(sheet);
+  // Wider screens: anchor the card under the button instead of a bottom sheet.
+  if (_displaySheetTrigger && window.matchMedia('(min-width: 640px)').matches) {
+    const r = _displaySheetTrigger.getBoundingClientRect();
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - 328));
+    backdrop.style.setProperty('--display-sheet-top', `${Math.round(r.bottom + 6)}px`);
+    backdrop.style.setProperty('--display-sheet-left', `${Math.round(left)}px`);
+  }
   document.body.appendChild(backdrop);
+  lockPageScroll();
   document.querySelectorAll('.public-display-btn').forEach(b => b.setAttribute('aria-expanded', 'true'));
   document.addEventListener('keydown', _displaySheetKeyHandler);
   const first = sheet.querySelector('.display-seg-btn.is-active') || sheet.querySelector('button');
@@ -1077,7 +1137,9 @@ function openDisplaySheet(trigger) {
 
 function closeDisplaySheet() {
   const backdrop = document.getElementById('display-sheet-backdrop');
-  if (backdrop) backdrop.remove();
+  if (!backdrop) return;
+  backdrop.remove();
+  unlockPageScroll();
   document.removeEventListener('keydown', _displaySheetKeyHandler);
   document.querySelectorAll('.public-display-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
   const trigger = _displaySheetTrigger && _displaySheetTrigger.isConnected
@@ -1101,8 +1163,18 @@ function _displaySheetKeyHandler(ev) {
   else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
 }
 
+/** Update every language/theme button in place (keeps the element and its focus). */
+function _refreshDisplayButtons() {
+  document.querySelectorAll('.public-display-btn').forEach(btn => {
+    btn.innerHTML = _displayButtonInner();
+    btn.setAttribute('aria-label', _displayButtonLabel());
+    btn.setAttribute('title', _displayButtonLabel());
+  });
+}
+
 document.addEventListener('app-language-changed', () => {
   refreshPublicHeader();
+  _refreshDisplayButtons();
   _renderDisplaySheetContent();
 });
 
@@ -1261,10 +1333,49 @@ function createVersionStream(opts) {
 }
 
 // ---------------------------------------------------------------------------
+// Page scroll lock (modals: player mini-cards, Display sheet)
+// ---------------------------------------------------------------------------
+
+let _scrollLockCount = 0;
+let _scrollLockY = 0;
+
+/**
+ * Freeze the page behind a modal. `overflow: hidden` alone does not stop iOS
+ * Safari from scrolling the page when a swipe starts on the backdrop, so the
+ * body is pinned with `position: fixed` at the current offset and the scroll
+ * position is restored on unlock. Ref-counted: nested modals unlock once.
+ */
+function lockPageScroll() {
+  _scrollLockCount += 1;
+  if (_scrollLockCount > 1) return;
+  _scrollLockY = window.scrollY || window.pageYOffset || 0;
+  const body = document.body;
+  const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+  if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
+  body.style.position = 'fixed';
+  body.style.top = `-${_scrollLockY}px`;
+  body.style.left = '0';
+  body.style.right = '0';
+  body.style.width = '100%';
+  document.documentElement.classList.add('scroll-locked');
+}
+
+/** Release one lockPageScroll() call; the last one restores the page. */
+function unlockPageScroll() {
+  if (_scrollLockCount === 0) return;
+  _scrollLockCount -= 1;
+  if (_scrollLockCount > 0) return;
+  const body = document.body;
+  for (const prop of ['position', 'top', 'left', 'right', 'width', 'paddingRight']) body.style[prop] = '';
+  document.documentElement.classList.remove('scroll-locked');
+  window.scrollTo({ top: _scrollLockY, left: 0, behavior: 'instant' });
+}
+
+// ---------------------------------------------------------------------------
 // Player mini-card primitives (shared by club.js and tv.js)
 // ---------------------------------------------------------------------------
 
-const _MINI_CARD_FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+const _MINI_CARD_FOCUSABLE ='button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 /**
  * Create (once) and return the modal overlay element for a mini-card.
@@ -1286,6 +1397,7 @@ function ensureMiniCardOverlay({ id, className, onClose }) {
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay._miniCardLastFocus = null;
+  overlay._miniCardOnClose = onClose;
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) onClose();
   });
@@ -1303,10 +1415,28 @@ function ensureMiniCardOverlay({ id, className, onClose }) {
   return overlay;
 }
 
-/** Show a mini-card overlay, remember the trigger, and focus into it. */
+/**
+ * Show a mini-card overlay, remember the trigger, and focus into it. Locks
+ * the page scroll and pushes a history entry so the back gesture closes the
+ * card instead of leaving the page. Idempotent while the card is open.
+ */
 function showMiniCardOverlay(overlay) {
-  overlay._miniCardLastFocus = document.activeElement;
-  overlay.hidden = false;
+  if (overlay.hidden) {
+    overlay._miniCardLastFocus = document.activeElement;
+    overlay.hidden = false;
+    lockPageScroll();
+    try {
+      history.pushState({ miniCard: overlay.id }, '');
+      overlay._miniCardPop = () => {
+        // Back gesture: the entry is already gone, just close.
+        window.removeEventListener('popstate', overlay._miniCardPop);
+        overlay._miniCardPop = null;
+        if (typeof overlay._miniCardOnClose === 'function') overlay._miniCardOnClose();
+        else hideMiniCardOverlay(overlay);
+      };
+      window.addEventListener('popstate', overlay._miniCardPop);
+    } catch (_) { /* history unavailable */ }
+  }
   // Defer focus so the rendered close button exists.
   setTimeout(() => {
     const first = overlay.querySelector(_MINI_CARD_FOCUSABLE);
@@ -1314,15 +1444,24 @@ function showMiniCardOverlay(overlay) {
   }, 0);
 }
 
-/** Hide a mini-card overlay and restore focus to the originating element. */
+/**
+ * Hide a mini-card overlay, release the scroll lock, drop the history entry
+ * pushed on open (unless the back gesture already did), and restore focus.
+ */
 function hideMiniCardOverlay(overlay) {
-  if (!overlay) return;
+  if (!overlay || overlay.hidden) return;
   overlay.hidden = true;
   overlay.innerHTML = '';
+  unlockPageScroll();
+  if (overlay._miniCardPop) {
+    window.removeEventListener('popstate', overlay._miniCardPop);
+    overlay._miniCardPop = null;
+    if (history.state && history.state.miniCard === overlay.id) history.back();
+  }
   const restore = overlay._miniCardLastFocus;
   overlay._miniCardLastFocus = null;
   if (restore && typeof restore.focus === 'function') {
-    try { restore.focus(); } catch (_) { /* ignore */ }
+    try { restore.focus({ preventScroll: true }); } catch (_) { /* ignore */ }
   }
 }
 

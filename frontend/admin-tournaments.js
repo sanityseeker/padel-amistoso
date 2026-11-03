@@ -369,7 +369,7 @@ function _confirmDeleteTournament(ghosts) {
     dialog.innerHTML = `
       <div class="modal-header delete-tourn-header">
         <h2 class="modal-title delete-tourn-title" id="delete-tourn-title">
-          <span class="delete-tourn-title-icon" aria-hidden="true">${_antIc('warning')}</span>
+          <span class="delete-tourn-title-icon" aria-hidden="true">${_ic('alert')}</span>
           ${esc(t('txt_txt_delete_this_tournament'))}
         </h2>
         <button type="button" class="modal-close-btn" data-action="cancel" aria-label="${esc(t('txt_txt_close'))}">✕</button>
@@ -521,40 +521,57 @@ function _refreshCurrentView() {
 }
 
 function updateActiveTournamentUI() {
-  const indicator = document.getElementById('active-tournament-indicator');
-  const hasActive = Boolean(currentTid);
   const refreshBtn = document.getElementById('admin-refresh-btn');
-  if (refreshBtn) refreshBtn.style.display = hasActive ? '' : 'none';
-  if (hasActive) {
-    const shownName = currentTournamentName || `#${String(currentTid).slice(0, 8)}`;
-    indicator.innerHTML = `${t('txt_txt_active_tournament')} <strong>${esc(shownName)}</strong>`;
-    indicator.style.display = '';
-  } else {
-    indicator.innerHTML = `${t('txt_txt_active_tournament')} <strong>${t('txt_txt_none_selected')}</strong>`;
-    indicator.style.display = 'none';
-  }
+  if (refreshBtn) refreshBtn.style.display = currentTid ? '' : 'none';
   _renderTournamentChips();
 }
 
+/**
+ * Render the open-tournament quick-switch chips. Each chip is one pill made of
+ * two sibling buttons: the name (opens the tournament) and × (unpins it).
+ * The whole row collapses while no tournament is open.
+ */
 function _renderTournamentChips() {
   const container = document.getElementById('tournament-chips');
   if (!container) return;
-  container.innerHTML = _openTournaments.map(tournament =>
-    `<button type="button" class="tab-btn tournament-chip${tournament.id === currentTid ? ' active' : ''}" data-tid="${tournament.id}" data-type="${tournament.type}" title="${esc(tournament.name)}">
-      <span class="chip-check">✓</span>${esc(tournament.name)}
-      <span class="chip-close" data-close-tid="${tournament.id}" title="${t('txt_txt_remove')}">×</span>
-    </button>`
-  ).join('');
+  const row = document.getElementById('tournament-tabs');
+  if (row) row.classList.toggle('hidden', _openTournaments.length === 0);
+  const removeLabel = t('txt_txt_remove');
+  container.innerHTML = _openTournaments.map(tournament => {
+    const isActive = tournament.id === currentTid;
+    return `<span class="tournament-chip-wrap">`
+      + `<button type="button" class="tab-btn tournament-chip${isActive ? ' active' : ''}" data-tid="${escAttr(tournament.id)}" data-type="${escAttr(tournament.type)}" title="${escAttr(tournament.name)}" aria-pressed="${isActive}">`
+      + `<span class="chip-check" aria-hidden="true">✓</span><span class="chip-name">${esc(tournament.name)}</span></button>`
+      + `<button type="button" class="chip-close" data-close-tid="${escAttr(tournament.id)}" title="${escAttr(removeLabel)}" aria-label="${escAttr(`${removeLabel}: ${tournament.name}`)}">×</button>`
+      + `</span>`;
+  }).join('');
+  container.querySelectorAll('.chip-close').forEach(btn => {
+    btn.addEventListener('click', () => _unpinTournament(btn.dataset.closeTid));
+  });
   container.querySelectorAll('.tournament-chip').forEach(btn => {
-    btn.addEventListener('click', e => {
-      const closeTid = e.target.closest('[data-close-tid]')?.dataset.closeTid;
-      if (closeTid) { _unpinTournament(closeTid); return; }
+    btn.addEventListener('click', () => {
       const tournament = _openTournaments.find(entry => entry.id === btn.dataset.tid);
       if (!tournament) return;
       if (tournament.type === 'registration') openRegistration(tournament.id, tournament.name);
       else openTournament(tournament.id, tournament.type, tournament.name);
     });
   });
+  _scrollActiveChipIntoView(row);
+}
+
+/**
+ * Phones scroll the chip row sideways: bring the active chip into view.
+ * Adjusts only the row's scrollLeft, so the page itself never jumps.
+ */
+function _scrollActiveChipIntoView(row) {
+  if (!row || row.scrollWidth <= row.clientWidth) return;
+  const chip = row.querySelector('.tournament-chip.active')?.parentElement;
+  if (!chip) return;
+  const rowBox = row.getBoundingClientRect();
+  const chipBox = chip.getBoundingClientRect();
+  const pad = 8;
+  if (chipBox.left < rowBox.left + pad) row.scrollLeft += chipBox.left - rowBox.left - pad;
+  else if (chipBox.right > rowBox.right - pad) row.scrollLeft += chipBox.right - rowBox.right + pad;
 }
 
 function _unpinTournament(id) {

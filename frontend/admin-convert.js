@@ -255,7 +255,7 @@ function _renderConvPlayerList(rid) {
     h += `</label>`;
     h += `<span class="conv-player-name">${esc(reg.player_name)}</span>`;
     if (isAssigned) {
-      h += `<span class="conv-player-overlap-dot" role="img" title="${esc(overlapTooltip)}" aria-label="${esc(overlapTooltip)}">${_antIc('warning')}</span>`;
+      h += `<span class="conv-player-overlap-dot" role="img" title="${esc(overlapTooltip)}" aria-label="${esc(overlapTooltip)}">${_ic('alert')}</span>`;
     }
     if (hasQuestions) {
       h += `<button type="button" class="conv-answers-btn${wasOpen ? ' active' : ''}" onclick="event.stopPropagation();_toggleConvAnswers('${pid}')" title="${t('txt_conv_show_answers')}" aria-label="${t('txt_conv_show_answers')}">${_ic('clipboard')}</button>`;
@@ -940,7 +940,7 @@ function _cancelConvertMode() {
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   initLanguageSelector();
-  _initPageSelector();
+  _mountAdminHeader();
   // Restore sport selector from localStorage
   setSport(_currentSport);
   _initParticipantFields();

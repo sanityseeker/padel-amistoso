@@ -38,7 +38,7 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
 
   // ── Group: Public link ─────────────────────────────────────────
   html += `<div class="settings-group">`;
-  html += `<h4 class="settings-group-title">${_antIc('link')} ${t('txt_admin_settings_group_public_link')}</h4>`;
+  html += `<h4 class="settings-group-title">${_ic('link')} ${t('txt_admin_settings_group_public_link')}</h4>`;
 
   // Tournament Alias — demo accounts keep only the random tm_… address,
   // so the custom-address controls are greyed out (server 403s enforce it).
@@ -46,7 +46,7 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
   const _demoAliasAttr = _demoAlias ? ` disabled title="${escAttr(t('txt_demo_not_available'))}"` : '';
   html += `<div class="settings-block">`;
   html += `<label class="settings-label">${t('txt_txt_tournament_alias')}</label>`;
-  html += `<p class="settings-help">${t('txt_tv_alias_help')}</p>`;
+  html += `<p class="settings-help settings-help--explain">${t('txt_tv_alias_help')}</p>`;
   if (_demoAlias) {
     html += `<p class="demo-disabled-hint">${t('txt_demo_not_available')}</p>`;
   }
@@ -55,7 +55,7 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
     pattern="[a-zA-Z0-9_-]+" maxlength="64"${_demoAliasAttr}>`;
   html += `<button type="button" class="btn btn-sm btn-primary" onclick="_setTournamentAlias()"${_demoAliasAttr}>${t('txt_txt_save')}</button>`;
   if (currentAlias) {
-  html += `<button type="button" class="btn btn-sm btn-danger" onclick="_deleteTournamentAlias()"${_demoAliasAttr}>${_antIc('link')} ${t('txt_txt_remove')}</button>`;
+  html += `<button type="button" class="btn btn-sm btn-danger" onclick="_deleteTournamentAlias()"${_demoAliasAttr}>${_ic('link')} ${t('txt_txt_remove')}</button>`;
   }
   html += `</div>`;
   const _tvSlug = currentAlias || currentTid;
@@ -65,7 +65,7 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
   html += `</div>`;
   html += `<div class="settings-url-actions">`;
   html += `<button type="button" class="settings-url-copy-btn" onclick="const b=this;navigator.clipboard.writeText(window.location.origin+'/tv/${escAttr(_tvSlug)}').then(()=>flashSuccess(b,'${escAttr(t('txt_txt_copied'))}'))">${_ic('copy')} ${t('txt_txt_copy')}</button>`;
-  html += `<button type="button" class="settings-url-copy-btn" onclick="window.open('/tv/${escAttr(_tvSlug)}','padel_tv_${escAttr(currentTid)}','noopener noreferrer')">${_antIc('desktop')} ${t('txt_txt_tv_mode_controls')} ↗</button>`;
+  html += `<button type="button" class="settings-url-copy-btn" onclick="window.open('/tv/${escAttr(_tvSlug)}','padel_tv_${escAttr(currentTid)}','noopener noreferrer')">${_ic('monitor')} ${t('txt_txt_tv_mode_controls')} ↗</button>`;
   html += `</div>`;
   html += `</div>`;
   html += `</div>`;
@@ -73,20 +73,20 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
 
   // ── Group: On-screen content ───────────────────────────────────
   html += `<div class="settings-group">`;
-  html += `<h4 class="settings-group-title">${_antIc('desktop')} ${t('txt_admin_settings_group_onscreen')}</h4>`;
+  html += `<h4 class="settings-group-title">${_ic('monitor')} ${t('txt_admin_settings_group_onscreen')}</h4>`;
 
   // Banner
   const currentBanner = def('banner_text', '');
   html += `<div class="settings-block">`;
   html += `<label class="settings-label">${t('txt_banner_label')}</label>`;
-  html += `<p class="settings-help">${t('txt_banner_help')}</p>`;
+  html += `<p class="settings-help settings-help--explain">${t('txt_banner_help')}</p>`;
   // Auto-growing textarea (same class / limits as the registration description);
   // newlines are kept and rendered on the TV (white-space: pre-line).
   html += `<textarea id="tournament-banner-input" class="reg-desc-textarea w-full" rows="3" maxlength="5000" placeholder="${escAttr(t('txt_banner_placeholder'))}" oninput="_autoResizeTextarea(this)" onfocus="_autoResizeTextarea(this)">${esc(currentBanner)}</textarea>`;
   html += `<div class="settings-inline-row mt-1-5">`;
   html += `<button type="button" class="btn btn-sm btn-primary" onclick="_setTournamentBanner()">${t('txt_txt_save')}</button>`;
   if (currentBanner) {
-    html += `<button type="button" class="btn btn-sm btn-danger" onclick="_clearTournamentBanner()">${_antIc('notification')} ${t('txt_txt_remove')}</button>`;
+    html += `<button type="button" class="btn btn-sm btn-danger" onclick="_clearTournamentBanner()">${_ic('megaphone')} ${t('txt_txt_remove')}</button>`;
   }
   html += `</div>`;
   html += `</div>`;
@@ -99,7 +99,7 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
   // TV section toggles
   html += `<div class="settings-block">`;
   html += `<label class="settings-label">${t('txt_admin_settings_tv_sections')}</label>`;
-  html += `<p class="settings-help">${t('txt_tv_sections_help')}</p>`;
+  html += `<p class="settings-help settings-help--explain">${t('txt_tv_sections_help')}</p>`;
   html += `<div class="tv-settings-grid">`;
   html += chkRow('show_past_matches',   t('txt_txt_past_matches'),            true);
   if (isMexicano) html += chkRow('show_score_breakdown', t('txt_tv_score_breakdowns'), false);
@@ -113,13 +113,13 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
 
   // ── Group: Refresh & visuals ───────────────────────────────────
   html += `<div class="settings-group">`;
-  html += `<h4 class="settings-group-title">${_antIc('sync')} ${t('txt_admin_settings_group_refresh_visuals')}</h4>`;
+  html += `<h4 class="settings-group-title">${_ic('refresh')} ${t('txt_admin_settings_group_refresh_visuals')}</h4>`;
 
   // Auto-refresh
   const currentInterval = def('refresh_interval', 15);
   html += `<div class="settings-block">`;
   html += `<label class="settings-label">${t('txt_txt_auto_refresh_every')}</label>`;
-  html += `<p class="settings-help">${t('txt_admin_settings_refresh_help')}</p>`;
+  html += `<p class="settings-help settings-help--explain">${t('txt_admin_settings_refresh_help')}</p>`;
   html += `<select class="tvmail-compact-field" onchange="_updateTvSetting('refresh_interval', +this.value)">`;
   [[-1,t('txt_tv_on_update')],[0,t('txt_tv_never')],[5,'5 s'],[10,'10 s'],[15,'15 s'],[30,'30 s'],[60,'1 min'],[120,'2 min'],[300,'5 min']].forEach(([secs, lbl]) => {
     html += `<option value="${secs}"${currentInterval === secs ? ' selected' : ''}>${lbl}</option>`;
@@ -137,7 +137,7 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
   const fmt            = def('schema_format',           'svg');
   html += `<div class="settings-block">`;
   html += `<details class="settings-collapse-inner" open>`;
-  html += `<summary>${_antIc('setting')} ${t('txt_txt_rendering_options')}</summary>`;
+  html += `<summary>${_ic('settings')} ${t('txt_txt_rendering_options')}</summary>`;
   html += `<div class="settings-inline-row">`;
   html += `<label class="fs-md text-muted">${t('txt_txt_format')}</label>`;
   html += `<select id="tv-schema-format" class="tvmail-compact-field"`
@@ -184,7 +184,7 @@ function _renderScoringRulesBody(tvSettings, scoringStages = []) {
 
   // ── Group: Player scoring & confirmation ─────────────────────
   html += `<div class="settings-group">`;
-html += `<h4 class="settings-group-title">${_antIc('setting')} ${t('txt_admin_settings_group_scoring_flow')}</h4>`;
+html += `<h4 class="settings-group-title">${_ic('settings')} ${t('txt_admin_settings_group_scoring_flow')}</h4>`;
 
   const _playerScoringOn = def('allow_player_scoring', true);
   html += `<div class="settings-block">`;
@@ -193,7 +193,7 @@ html += `<h4 class="settings-group-title">${_antIc('setting')} ${t('txt_admin_se
     +   ` onchange="_updateTvSetting('allow_player_scoring', this.checked); document.getElementById('scoring-dep-settings').classList.toggle('disabled', !this.checked)">`
     + `${t('txt_tv_allow_player_scoring')}`
     + `</label>`;
-  html += `<p class="settings-master-help">${t('txt_tv_allow_player_scoring_help')}</p>`;
+  html += `<p class="settings-master-help settings-help--explain">${t('txt_tv_allow_player_scoring_help')}</p>`;
   html += `</div>`;
 
   html += `<div id="scoring-dep-settings" class="settings-dep-group${_playerScoringOn ? '' : ' disabled'}">`;
@@ -211,7 +211,7 @@ html += `<h4 class="settings-group-title">${_antIc('setting')} ${t('txt_admin_se
   const corrMins = Math.round(corrSecs / 60 * 10) / 10;
   html += `<div class="settings-block">`;
   html += `<label class="settings-label">${t('txt_tv_correction_window')}</label>`;
-  html += `<p class="settings-help">${t('txt_tv_correction_window_help')}</p>`;
+  html += `<p class="settings-help settings-help--explain">${t('txt_tv_correction_window_help')}</p>`;
   html += `<div class="settings-inline-row">`;
   html += `<input type="number" min="0" max="60" step="0.5" value="${corrMins}" class="tvmail-compact-field tvmail-compact-field--number"`;
   html += ` onchange="_updateTvSetting('correction_window_seconds', Math.max(0, Math.min(3600, Math.round((+this.value||0)*60))))">`;
@@ -225,10 +225,10 @@ html += `<h4 class="settings-group-title">${_antIc('setting')} ${t('txt_admin_se
   // ── Group: Score format per stage ────────────────────────────
   if (scoringStages && scoringStages.length) {
     html += `<div class="settings-group">`;
-    html += `<h4 class="settings-group-title">${_antIc('profile')} ${t('txt_admin_settings_group_score_format')}</h4>`;
+    html += `<h4 class="settings-group-title">${_ic('clipboard')} ${t('txt_admin_settings_group_score_format')}</h4>`;
     html += `<div class="settings-block">`;
     html += `<label class="settings-label">${t('txt_admin_settings_input_format')}</label>`;
-    html += `<p class="settings-help">${t('txt_admin_settings_input_format_help')}</p>`;
+    html += `<p class="settings-help settings-help--explain">${t('txt_admin_settings_input_format_help')}</p>`;
     for (const stage of scoringStages) {
       const mode = _gpScoreMode[stage.key] || 'points';
       html += `<div class="settings-stage-row">`;
@@ -245,7 +245,7 @@ html += `<h4 class="settings-group-title">${_antIc('setting')} ${t('txt_admin_se
     const decider = def('set_decider', 'full_set');
     html += `<div class="settings-block">`;
     html += `<label class="settings-label">${t('txt_admin_settings_decider')}</label>`;
-    html += `<p class="settings-help">${t('txt_admin_settings_decider_help')}</p>`;
+    html += `<p class="settings-help settings-help--explain">${t('txt_admin_settings_decider_help')}</p>`;
     html += `<div class="score-mode-toggle" id="set-decider-toggle" role="group" aria-label="${escAttr(t('txt_admin_settings_decider'))}">`;
     html += `<button type="button" class="${decider === 'full_set' ? 'active' : ''}" aria-pressed="${decider === 'full_set'}" onclick="_setDefaultDecider('full_set')">${t('txt_match_format_decider_full_set')}</button>`;
     html += `<button type="button" class="${decider === 'match_tiebreak' ? 'active' : ''}" aria-pressed="${decider === 'match_tiebreak'}" onclick="_setDefaultDecider('match_tiebreak')">${t('txt_match_format_decider_tiebreak')}</button>`;
@@ -273,18 +273,18 @@ function _renderCommsBody(emailSettings) {
 
   // ── Group: Sender configuration ─────────────────────────────
   html += `<div class="settings-group">`;
-  html += `<h4 class="settings-group-title">${_antIc('mail')} ${t('txt_admin_settings_group_sender')}</h4>`;
+  html += `<h4 class="settings-group-title">${_ic('mail')} ${t('txt_admin_settings_group_sender')}</h4>`;
 
   html += `<div class="settings-block">`;
   html += `<label class="settings-label">${t('txt_email_sender_name')}</label>`;
-  html += `<p class="settings-help">${t('txt_email_sender_name_help')}</p>`;
+  html += `<p class="settings-help settings-help--explain">${t('txt_email_sender_name_help')}</p>`;
   html += `<input type="text" id="email-settings-sender-name" value="${escAttr(senderName)}" maxlength="100"
     placeholder="${t('txt_email_sender_placeholder')}" class="w-full fs-md">`;
   html += `</div>`;
 
   html += `<div class="settings-block">`;
   html += `<label class="settings-label">${t('txt_email_reply_to')}</label>`;
-  html += `<p class="settings-help">${t('txt_email_reply_to_help')}</p>`;
+  html += `<p class="settings-help settings-help--explain">${t('txt_email_reply_to_help')}</p>`;
   html += `<input type="email" id="email-settings-reply-to" value="${escAttr(replyTo)}"
     placeholder="${t('txt_email_reply_to_placeholder')}" class="w-full fs-md">`;
   html += `</div>`;
@@ -298,13 +298,13 @@ function _renderCommsBody(emailSettings) {
 
   // ── Group: Bulk notifications ───────────────────────────────
   html += `<div class="settings-group">`;
-  html += `<h4 class="settings-group-title">${_antIc('notification')} ${t('txt_admin_settings_group_bulk')}</h4>`;
+  html += `<h4 class="settings-group-title">${_ic('megaphone')} ${t('txt_admin_settings_group_bulk')}</h4>`;
   html += `<div class="settings-block">`;
-  html += `<p class="settings-help">${t('txt_admin_settings_comms_bulk_help')}</p>`;
+  html += `<p class="settings-help settings-help--explain">${t('txt_admin_settings_comms_bulk_help')}</p>`;
   html += `<div class="settings-inline-row">`;
-  html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,_sendNextRoundEmails)">${_antIc('mail')} ${t('txt_email_notify_round')}</button>`;
+  html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,_sendNextRoundEmails)">${_ic('mail')} ${t('txt_email_notify_round')}</button>`;
   if (playerCount > 0) {
-    html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,_sendAllTournamentEmails)">${_antIc('mail')} ${t('txt_email_send_all')}</button>`;
+    html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,_sendAllTournamentEmails)">${_ic('mail')} ${t('txt_email_send_all')}</button>`;
   }
   html += `</div>`;
   html += `</div>`;
@@ -313,12 +313,12 @@ function _renderCommsBody(emailSettings) {
   // ── Group: Organizer message ────────────────────────────────
   if (playerCount > 0) {
     html += `<div class="settings-group">`;
-    html += `<h4 class="settings-group-title">${_antIc('message')} ${t('txt_admin_settings_group_organizer_msg')}</h4>`;
+    html += `<h4 class="settings-group-title">${_ic('message')} ${t('txt_admin_settings_group_organizer_msg')}</h4>`;
     html += `<div class="settings-block">`;
     html += `<label class="settings-label">${t('txt_email_organizer_message')}</label>`;
     html += `<textarea id="pc-organizer-message" class="reg-desc-textarea w-full" rows="3" placeholder="${t('txt_email_message_placeholder')}" oninput="_autoResizeTextarea(this)"></textarea>`;
     html += `<div class="settings-inline-row mt-1-5">`;
-    html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendTournamentMessageEmails())">${_antIc('mail')} ${t('txt_email_send_message')}</button>`;
+    html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendTournamentMessageEmails())">${_ic('mail')} ${t('txt_email_send_message')}</button>`;
     html += `</div>`;
     html += `</div>`;
     html += `</div>`;
@@ -338,10 +338,10 @@ function _renderScopeGroup() {
   let html = '';
 
   html += `<div class="settings-group">`;
-    html += `<h4 class="settings-group-title">${_antIc('link')} ${t('txt_admin_settings_group_scope')}</h4>`;
+    html += `<h4 class="settings-group-title">${_ic('link')} ${t('txt_admin_settings_group_scope')}</h4>`;
   html += `<div class="settings-block">`;
 
-  html += `<p class="settings-help">${t('txt_tv_attach_club_community_help')}</p>`;
+  html += `<p class="settings-help settings-help--explain">${t('txt_tv_attach_club_community_help')}</p>`;
 
   const adminClubsLocal = (_adminClubs || []).filter(c => c.community_id === currentCommunityId);
   if (adminClubsLocal.length) {
@@ -389,7 +389,7 @@ function _renderAccessScopeBody(collaborators) {
   const collabHtml = _renderCollaboratorsBody(collaborators);
   if (collabHtml) {
     html += `<div class="settings-group">`;
-    html += `<h4 class="settings-group-title">${_antIc('team')} ${t('txt_txt_collaborators')}</h4>`;
+    html += `<h4 class="settings-group-title">${_ic('users')} ${t('txt_txt_collaborators')}</h4>`;
     html += `<div class="settings-block">`;
     html += collabHtml;
     html += `</div>`;
@@ -398,15 +398,15 @@ function _renderAccessScopeBody(collaborators) {
 
   // ── Group: Maintenance ──────────────────────────────────────
   html += `<div class="settings-group">`;
-  html += `<h4 class="settings-group-title">${_antIc('tool')} ${t('txt_admin_settings_maintenance')}</h4>`;
+  html += `<h4 class="settings-group-title">${_ic('wrench')} ${t('txt_admin_settings_maintenance')}</h4>`;
   html += `<div class="settings-block">`;
-  html += `<p class="settings-help">${t('txt_admin_settings_recalc_help')}</p>`;
+  html += `<p class="settings-help settings-help--explain">${t('txt_admin_settings_recalc_help')}</p>`;
   html += `<div class="settings-inline-row">`;
-  html += `<button type="button" id="recalc-elo-btn" class="btn btn-warning btn-sm" onclick="withLoading(this,_recalculateTournamentElo)">${_antIc('sync')} ${t('txt_txt_recalculate_elo')}</button>`;
+  html += `<button type="button" id="recalc-elo-btn" class="btn btn-warning btn-sm" onclick="withLoading(this,_recalculateTournamentElo)">${_ic('refresh')} ${t('txt_txt_recalculate_elo')}</button>`;
   html += `</div>`;
-  html += `<p class="settings-help">${t('txt_admin_settings_recalc_all_help')}</p>`;
+  html += `<p class="settings-help settings-help--explain">${t('txt_admin_settings_recalc_all_help')}</p>`;
   html += `<div class="settings-inline-row">`;
-  html += `<button type="button" class="btn btn-warning btn-sm" onclick="withLoading(this,_recalculateAllElo)">${_antIc('sync')} ${t('txt_admin_recalculate_all_elo')}</button>`;
+  html += `<button type="button" class="btn btn-warning btn-sm" onclick="withLoading(this,_recalculateAllElo)">${_ic('refresh')} ${t('txt_admin_recalculate_all_elo')}</button>`;
   html += `</div>`;
   html += `</div>`;
   html += `</div>`;

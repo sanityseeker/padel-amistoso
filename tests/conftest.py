@@ -48,6 +48,17 @@ def _clean_state(tmp_path):
     state_mod._tournament_versions.clear()
     state_mod._tournament_locks.clear()
     state_mod._state_version = 0
+    # Drop ELO recalculations marked by a previous test (they reference its DB).
+    import backend.api.elo_recalc as elo_recalc_mod
+
+    with elo_recalc_mod._pending_lock:
+        for pending in (
+            elo_recalc_mod._pending_profiles,
+            elo_recalc_mod._pending_whole_profiles,
+            elo_recalc_mod._pending_tournaments,
+            elo_recalc_mod._pending_reseed,
+        ):
+            pending.clear()
     # Clear co-editor in-memory caches so stale entries don't leak between tests.
     db_mod._co_editor_cache.clear()
     db_mod._reg_co_editor_cache.clear()

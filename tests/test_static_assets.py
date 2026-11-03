@@ -276,17 +276,19 @@ def test_tv_js_mounts_picker_island(client):
 
 
 def test_shared_public_header_shipped(client):
-    """shared.js ships the public header (page dropdown, no Admin entry on club
-    subdomains) plus the footer Display line + sheet; the home-page pin is gone."""
+    """shared.js ships the public header (page dropdown, Admin entry only with an
+    organizer session) plus the language/theme button + sheet; the home-page pin is gone."""
     js = client.get("/shared.js", headers={"Accept-Encoding": "identity"}).text
     assert "function buildPublicHeaderHtml(current)" in js
     assert "function togglePublicPageMenu(open)" in js
     assert 'aria-haspopup="true" aria-expanded="false" aria-controls="public-page-menu"' in js
-    pages = js[js.index("function _publicHeaderPages()") :]
+    pages = js[js.index("function _publicHeaderPages(current)") :]
     pages = pages[: pages.index("\n}\n")]
-    assert "if (!getClubSubdomain()) {\n    pages.push({ key: 'admin'" in pages
-    assert "function _mountPublicFooter()" in js
-    assert 'class="public-display-btn" aria-haspopup="dialog" aria-expanded="false"' in js
+    assert "if (current === 'admin' || hasAdminSession()) {\n    pages.push({ key: 'admin'" in pages
+    assert "function buildDisplayButtonHtml()" in js
+    assert 'class="public-display-btn" aria-haspopup="dialog" aria-expanded="${open ? ' in js
+    assert "mountDisplayFooter" not in js
+    assert "public-footer" not in js
     assert "function openDisplaySheet(" in js
     assert "function setDisplayTheme(mode)" in js
     assert "localStorage.removeItem(THEME_KEY)" in js  # Auto theme clears the saved key
@@ -302,6 +304,74 @@ def test_shared_public_header_shipped(client):
         "amistoso-home-page",
     ):
         assert gone not in js, gone
+
+
+def test_admin_sign_in_is_a_header_link(client):
+    """Visitors see only Club/Events + Player Hub in the header dropdown; the
+    admin sign-in is a low-emphasis key + "Admin" link at the right end of
+    the header row, hidden once an organizer session exists on the origin (the
+    dropdown then shows the Admin entry instead). The language/theme button sits
+    at the opposite (left) end of the same row."""
+    js = client.get("/shared.js", headers={"Accept-Encoding": "identity"}).text
+    assert "function hasAdminSession()" in js
+    assert "localStorage.getItem('padel-auth-token')" in js
+    gate = js[js.index("function _showHeaderAdminSignIn()") :]
+    gate = gate[: gate.index("\n}\n")]
+    assert "getClubSubdomain()" not in gate
+    assert "_publicHeaderCurrent !== 'admin'" in gate
+    assert "!hasAdminSession()" in gate
+    header = js[js.index("function buildPublicHeaderHtml(current)") :]
+    header = header[: header.index("\n}\n")]
+    assert "if (_showHeaderAdminSignIn())" in header
+    assert 'class="public-admin-link" href="/admin"' in header
+    assert "_ic('key')" in header
+    assert "t('txt_nav_admin')" in header
+    assert "t('txt_nav_admin_sign_in')" in header
+    assert header.index("public-admin-link") < header.index("</header>")
+    assert header.index("html += buildDisplayButtonHtml();") < header.index('<nav class="public-page-selector"')
+    button = js[js.index("function buildDisplayButtonHtml()") :]
+    button = button[: button.index("\n}\n")]
+    assert "public-admin-link" not in button
+    assert "aria-label=" in button
+    css = client.get("/theme.css", headers={"Accept-Encoding": "identity"}).text
+    assert ".public-admin-link {" in css
+    display_rule = css[css.index(".public-display-btn {") :]
+    display_rule = display_rule[: display_rule.index("}")]
+    assert "position: absolute;" in display_rule and "left: 0;" in display_rule
+
+
+def test_buttons_and_fields_share_one_base_in_theme(client):
+    """.btn and its shared variants plus the field base live in theme.css; page
+    sheets keep only page-specific overrides."""
+    css = client.get("/theme.css", headers={"Accept-Encoding": "identity"}).text
+    for rule in (
+        ".btn {",
+        ".btn-primary {",
+        ".btn-secondary {",
+        ".btn-sm {",
+        ".btn-outline {",
+        ".btn-danger {",
+        ".btn-danger-outline {",
+        'input:where(:not([type="radio"], [type="checkbox"])), select, textarea {',
+    ):
+        assert rule in css, rule
+    for path in ("/player.css", "/register.css", "/club.css"):
+        page = client.get(path, headers={"Accept-Encoding": "identity"}).text
+        assert "\n.btn {" not in page, path
+        assert "\n.btn-secondary {" not in page, path
+    for path in ("/admin.css", "/tv.css"):
+        page = client.get(path, headers={"Accept-Encoding": "identity"}).text
+        assert "body {\n  font-family: var(--font-body);" in page, path
+
+
+@pytest.mark.parametrize("page", ["index.html", "player.html", "register.html", "club.html", "public.html", "404.html"])
+def test_fontshare_loads_one_family_per_request(page):
+    """The Fontshare API returns only the first family of a combined f[] query,
+    which silently dropped Cabinet Grotesk (--font-body) on every page."""
+    html = Path("frontend", page).read_text(encoding="utf-8")
+    assert "f[]=clash-display@400,500,600,700&display=swap" in html
+    assert "f[]=cabinet-grotesk@400,500,700,800&display=swap" in html
+    assert "&f[]=" not in html
 
 
 def test_public_pages_share_one_content_width(client):
@@ -321,18 +391,48 @@ def test_public_pages_use_shared_header(client, path):
     assert "buildPageSelectorHtml" not in js
 
 
-def test_tv_live_board_keeps_own_toggles_without_tab_bar(client):
+def test_tv_live_board_has_display_button_without_tab_bar(client):
     js = client.get("/tv.js", headers={"Accept-Encoding": "identity"}).text
     header = js[js.index("function _buildHeader(name, phase, champion)") :]
     header = header[: header.index("\n}\n")]
-    assert 'onclick="_toggleLanguage()"' in header
-    assert 'onclick="_toggleTheme()"' in header
+    assert "${buildDisplayButtonHtml()}" in header
+    assert "mountDisplayFooter" not in js
+    assert "_toggleLanguage" not in js
+    assert "_toggleTheme" not in js
     assert "buildPublicHeaderHtml" not in header
+
+
+def test_admin_uses_header_display_button_instead_of_toggles(client):
+    html = client.get("/admin", headers={"Accept-Encoding": "identity"}).text
+    assert 'id="lang-toggle-btn"' not in html
+    assert 'id="theme-toggle-btn"' not in html
+    js = client.get("/admin-utils.js", headers={"Accept-Encoding": "identity"}).text
+    assert "mountDisplayFooter" not in js
+    assert "buildPublicHeaderHtml('admin')" in js  # the header carries the button
+    assert "document.addEventListener('app-language-changed'" in js
+    css = client.get("/theme.css", headers={"Accept-Encoding": "identity"}).text
+    assert ".public-footer" not in css
+    assert ".public-page-btn {" in css
+    tv_css = client.get("/tv.css", headers={"Accept-Encoding": "identity"}).text
+    assert ".public-page-btn {" not in tv_css
+    assert ".display-sheet {" in css
+
+
+@pytest.mark.parametrize("page", ["index.html", "player.html", "register.html", "public.html", "club.html"])
+def test_every_page_has_support_links_footer(page):
+    html = (Path(__file__).parent.parent / "frontend" / page).read_text(encoding="utf-8")
+    assert '<div class="support-links' in html
+    assert "https://ko-fi.com/torneosamistosos" in html
+    assert "https://github.com/sanityseeker/padel-amistoso" in html
 
 
 def test_admin_header_has_single_events_link_and_no_pin(client):
     html = client.get("/admin", headers={"Accept-Encoding": "identity"}).text
-    assert 'href="/events" class="page-selector-item" data-page="events"' in html
+    assert 'id="admin-public-header"' in html
+    assert "page-selector" not in html
+    assert "page-selector" not in client.get("/admin.css", headers={"Accept-Encoding": "identity"}).text
+    js = client.get("/admin-utils.js", headers={"Accept-Encoding": "identity"}).text
+    assert "buildPublicHeaderHtml('admin')" in js
     assert 'data-page="tv"' not in html
     assert 'data-page="register"' not in html
     assert "toggleHomePin" not in html
@@ -378,6 +478,7 @@ def test_public_header_i18n_keys_in_both_languages(client):
     js = client.get("/i18n.js", headers={"Accept-Encoding": "identity"}).text
     keys = [
         "txt_display_label",
+        "txt_display_btn_aria",
         "txt_display_theme",
         "txt_display_theme_light",
         "txt_display_theme_dark",
@@ -1012,7 +1113,7 @@ _EMOJI_FREE_FILES = [
 
 @pytest.mark.parametrize("name", _EMOJI_FREE_FILES)
 def test_ui_uses_svg_icons_not_emoji(name):
-    """Admin, Player Hub and TV views draw icons with _ic()/_antIc(), not emoji
+    """Admin, Player Hub and TV views draw icons with _ic(), not emoji
     (including the exported HTML/PDF results document built in admin-mex.js)."""
     offenders = [line.strip()[:80] for line in _read_frontend(name).splitlines() if _EMOJI_RE.search(line)]
     assert offenders == []
@@ -1024,9 +1125,12 @@ def test_icon_helper_shared_by_every_page():
     assert "function _ic(name)" not in _read_frontend("admin-utils.js")
     for icon in ("sun:", "moon:", "trophy:", "bench:", "court:", "medal:", "bell:", "belloff:", "alert:", "clock:"):
         assert f"    {icon}" in shared, icon
-    assert "'question-circle':" in _read_frontend("admin-utils.js")
-    assert "btn.innerHTML = _ic(theme === 'dark' ? 'moon' : 'sun');" in _read_frontend("admin-utils.js")
-    assert ".lang-code {" in _read_frontend("theme.css")
+    for icon in ("help:", "search:", "calendar:", "zap:", "archive:", "refresh:", "login:"):
+        assert f"    {icon}" in shared, icon
+    # Admin moved from the filled Ant icon set to the shared stroke _ic() set.
+    assert "_antIc" not in _read_frontend("admin-utils.js")
+    for name in ("index.html", "auth.js", "admin-gp.js", "admin-mex.js"):
+        assert "_antIc" not in _read_frontend(name), name
 
 
 def test_admin_header_row_and_create_strip_fit_phones(client):
@@ -1069,19 +1173,142 @@ def _phone_block(css: str, marker: str) -> str:
     return css[start : css.index("\n}\n", start)]
 
 
-def test_settings_subtab_strips_wrap_into_rows_on_phones():
-    """Club / tournament / lobby settings tabs: balanced grid rows, no sideways scroll."""
+def test_settings_subtab_strips_are_icon_only_on_phones():
+    """Club / tournament / lobby settings tabs: one row of icon-only cells on
+    phones (label kept as aria-label/title), the open tab named by a heading."""
     css = _read_frontend("admin.css")
     block = _phone_block(css, "@media (max-width: 720px) {\n  /* Phones: the sub-tab strip")
-    assert "grid-template-columns: repeat(6, minmax(0, 1fr));" in block
-    assert "overflow-x" not in block and "nowrap" not in block.split(".settings-subtab-btn {")[0]
-    assert ".settings-subtab-btn:nth-child(3n+1):last-child { grid-column: 1 / -1; }" in block
-    assert ".settings-subtab-btn:first-child:nth-last-child(4) ~ .settings-subtab-btn { grid-column: span 3; }" in block
-    assert "text-overflow: ellipsis;" in block
+    assert "overflow-x" not in block and "nowrap" not in block
+    assert ".settings-subtab-label { display: none; }" in block
+    assert "flex: 1 1 0;" in block and "min-width: 44px;" in block
+    assert ".settings-subpanel-title {" in block
+    assert ".settings-help-master-label { display: none; }" in block
+    assert "#admin-settings-card:not(.is-help-on) .settings-help--explain { display: none; }" in block
+    assert ".settings-subpanel-title { display: none; }" in css  # desktop keeps the labelled tabs
     for name in ("admin-clubs-settings-panel.js", "admin-settings-panel.js", "admin-lobby-settings-panel.js"):
         js = _read_frontend(name)
         assert '<div class="settings-subtabs" role="tablist"' in js, name
         assert '<span class="settings-subtab-label">' in js, name
+        assert 'aria-label="${escAttr(st.label)}" title="${escAttr(st.label)}"' in js, name
+        assert '<h4 class="settings-subpanel-title">${esc(st.label)}</h4>' in js, name
+        assert "icon: '€'" not in js, name
+
+
+def test_settings_help_toggle_is_icon_only_and_hides_explanations():
+    """The Settings help toggle keeps its label as the accessible name, persists
+    per tab session, and drives the phone-only explanatory paragraphs."""
+    js = _read_frontend("admin-settings-panel.js")
+    toggle = js[js.index("function _renderSettingsHelpToggle(") :]
+    toggle = toggle[: toggle.index("\n}\n")]
+    assert 'aria-label="${label}" title="${label}"' in toggle
+    assert "_ic('info')" in toggle
+    flip = js[js.index("function _toggleSettingsHelp(") :]
+    flip = flip[: flip.index("\n}\n")]
+    assert "card.classList.toggle('is-help-on', willShow)" in flip
+    assert "_setSettingsHelpOn(willShow)" in flip
+    assert "btn.setAttribute('aria-label', t(key))" in flip
+    assert "sessionStorage.getItem(_SETTINGS_HELP_STORAGE_KEY)" in js
+    assert "_renderSettingsHelpBlock" not in js
+    tv_email = _read_frontend("admin-tv-email.js")
+    assert tv_email.count("settings-help--explain") == 14
+    # Empty states stay visible on phones.
+    assert "<p class=\"settings-help\">${t('txt_comm_no_communities')}</p>" in tv_email
+    for name in ("admin-payments.js", "admin-collaborators.js", "admin-player-codes.js"):
+        assert "settings-help--explain" in _read_frontend(name), name
+    i18n = _read_frontend("i18n.js")
+    for gone in ("txt_admin_settings_help_title", "txt_admin_settings_help_intro"):
+        assert f'"{gone}"' not in i18n, gone
+
+
+def test_tournament_status_bar_is_one_slim_row():
+    """GP / Play-off / Mexicano status bar: match progress, review chip and an
+    icon-only Settings gear; no Status heading or Next action shortcut."""
+    utils = _read_frontend("admin-utils.js")
+    assert "function _buildOpsStats(matches)" in utils
+    bar = utils[utils.index("function _renderTournamentStatusBar(") :]
+    bar = bar[: bar.index("\n}\n")]
+    assert (
+        "t('txt_admin_status_matches_short', { done: completed, total })"
+        in utils[utils.index("function _renderOpsBarProgress(") :]
+    )
+    assert "_renderOpsBarProgress(completed, total)" in bar
+    assert "if (review > 0)" in bar and "txt_admin_status_attention" in bar
+    assert 'aria-label="${settingsLabel}" title="${settingsLabel}">${_ic(\'settings\')}</button>' in bar
+    assert "_renderStatusBarStats" not in utils
+    gp = _read_frontend("admin-gp.js")
+    mex = _read_frontend("admin-mex.js")
+    assert "_renderTournamentStatusBar({\n      id: 'gp-ops-header'," in gp
+    assert "_renderTournamentStatusBar({\n      id: 'po-ops-header'," in gp
+    assert "_renderTournamentStatusBar({\n      id: 'mex-ops-header'," in mex
+    for js in (gp, mex):
+        for gone in (
+            "FocusNextAction",
+            "OpsHeader(",
+            "_buildGpOpsStats",
+            "_buildMexOpsStats",
+            "txt_admin_status_phase",
+        ):
+            assert gone not in js, gone
+    i18n = _read_frontend("i18n.js")
+    for key in ("txt_admin_status_matches_short", "txt_admin_status_matches_unit"):
+        assert i18n.count(f'"{key}"') == 2, key
+    for gone in ("txt_admin_status_phase", "txt_txt_next_action", "txt_txt_escalated"):
+        assert f'"{gone}"' not in i18n, gone
+    css = _read_frontend("admin.css")
+    assert ".card.ops-bar {" in css
+    assert ".gp-ops-stat-pill" not in css
+
+
+def test_tournament_status_bar_carries_phase_and_empty_state():
+    """The bar names the phase (replacing the separate round / play-offs
+    alerts), says "No matches yet" before any exist, has no progress meter
+    (the count says it), and on touch widths is no taller than its 44px gear."""
+    utils = _read_frontend("admin-utils.js")
+    bar = utils[utils.index("function _renderTournamentStatusBar(") :]
+    bar = bar[: bar.index("\n}\n")]
+    assert "phase = ''" in bar
+    assert '<span class="ops-bar-phase">${esc(phase)}</span>' in bar
+    assert "t('txt_admin_status_no_matches')" in bar
+    assert "btn-muted" not in bar
+    mex = _read_frontend("admin-mex.js")
+    gp = _read_frontend("admin-gp.js")
+    assert "phase: mexPhaseLabel" in mex
+    assert "txt_admin_status_round_n_of_m" in mex and "txt_admin_status_round_n'" in mex
+    assert "txt_txt_mexicano_round_n" not in mex
+    assert "phase: gpPhaseLabel" in gp
+    for js in (gp, mex):
+        assert "${t('txt_txt_phase')}:" not in js
+    i18n = _read_frontend("i18n.js")
+    for key in ("txt_admin_status_no_matches", "txt_admin_status_round_n", "txt_admin_status_round_n_of_m"):
+        assert i18n.count(f'"{key}"') == 2, key
+    for gone in ("txt_txt_mexicano_round_n", "txt_txt_mexicano_round_n_of_m"):
+        assert f'"{gone}"' not in i18n, gone
+    css = _read_frontend("admin.css")
+    assert "ops-bar-meter" not in css and "ops-bar-meter" not in utils
+    assert 'role="progressbar"' not in utils[utils.index("function _renderOpsBarProgress(") :][:1500]
+    assert "  .card.ops-bar,\n  #mex-ops-header {\n    min-height: 44px;\n    padding-top: 0;" in css
+
+
+def test_player_mini_card_locks_page_scroll():
+    """Opening a leaderboard player card freezes the page behind it (iOS-safe
+    position:fixed lock), the back gesture closes it, and the card itself
+    contains its scroll."""
+    js = _read_frontend("shared.js")
+    assert "function lockPageScroll()" in js and "function unlockPageScroll()" in js
+    show = js[js.index("function showMiniCardOverlay(overlay)") :]
+    show = show[: show.index("\n}\n")]
+    assert "lockPageScroll();" in show and "history.pushState({ miniCard: overlay.id }" in show
+    hide = js[js.index("function hideMiniCardOverlay(overlay)") :]
+    hide = hide[: hide.index("\n}\n")]
+    assert "if (!overlay || overlay.hidden) return;" in hide
+    assert "unlockPageScroll();" in hide and "history.back()" in hide
+    assert "html.scroll-locked { overflow: hidden; }" in _read_frontend("theme.css")
+    for name, rule in (("tv.css", ".tv-player-card {"), ("club.css", ".club-mini-card {")):
+        css = _read_frontend(name)
+        block = css[css.index(rule) :]
+        block = block[: block.index("}")]
+        assert "overscroll-behavior: contain;" in block, name
+        assert "max-height: 90dvh;" in block, name
 
 
 def test_admin_player_tables_stack_into_cards_on_phones():
@@ -1135,3 +1362,108 @@ def test_service_worker_cache_bumped_for_pass_three(client):
     sw = client.get("/service-worker.js", headers={"Accept-Encoding": "identity"}).text
     version = re.search(r"CACHE_NAME = 'amistoso-v(\d+)'", sw)
     assert version and int(version.group(1)) >= 71
+
+
+# ── Admin light revamp: shared chips, ghost nav, stroke icons, labels ───────
+
+
+def test_home_filter_chips_defined_once_in_theme():
+    theme = _read_frontend("theme.css")
+    for sel in (".home-filter-row {", ".home-filter-chip {", ".home-filter-chip-count {"):
+        assert theme.count("\n" + sel) == 1, sel
+        assert ("\n" + sel) not in _read_frontend("admin.css"), sel
+        assert ("\n" + sel) not in _read_frontend("club.css"), sel
+
+
+def test_admin_info_button_uses_stroke_icon():
+    html = _read_frontend("index.html")
+    start = html.index('class="tab-btn tab-btn--info"')
+    button = html[start : html.index("</button>", start)]
+    assert 'viewBox="0 0 24 24"' in button and 'stroke="currentColor"' in button
+    assert "64 64 896 896" not in html
+
+
+def test_status_bar_shows_each_bracket_current_round():
+    """Play-offs: the bar lists the current round of each running bracket
+    (Espejo via bracket_side, double elimination via "Winners/Losers Rn"),
+    short round names on phones, and the text below does not repeat it."""
+    utils = _read_frontend("admin-utils.js")
+    helper = utils[utils.index("function _buildBracketRounds(") :]
+    helper = helper[: helper.index("\n}\n")]
+    assert "m.bracket_side === 'winners' || m.bracket_side === 'losers'" in helper
+    assert "/^(Winners|Losers) (R\\d+)$/" in helper
+    assert "if (split.length) return split;" in helper
+    assert "function _shortRoundLabel(round)" in utils
+    gp = _read_frontend("admin-gp.js")
+    mex = _read_frontend("admin-mex.js")
+    assert "rounds: status.phase === 'playoffs' ? _buildBracketRounds(allPlayoffMatches) : []," in gp
+    assert "rounds: status.phase === 'finished' ? [] : _buildBracketRounds(poMatches)," in gp
+    assert "rounds: isPlayoffs ? _buildBracketRounds(playoffMatches) : []," in mex
+    assert "const showRound = new Set(" in mex
+    assert '<div class="card mex-current-round">' in mex
+    assert "match-round-badge" in gp
+    assert "nav-btn-round-count" not in gp and "nav-btn-round-count" not in _read_frontend("admin.css")
+    i18n = _read_frontend("i18n.js")
+    for key in (
+        "txt_admin_status_bracket_winners",
+        "txt_admin_status_bracket_losers",
+        "txt_admin_round_short_quarter",
+        "txt_admin_round_short_semi",
+        "txt_admin_round_short_third",
+        "txt_admin_round_short_of_n",
+    ):
+        assert i18n.count(f'"{key}"') == 2, key
+    assert "Court assignments Play-offs" not in i18n
+    css = _read_frontend("admin.css")
+    assert ".mex-current-round .match-round-badge { display: none; }" in css
+    assert ".ops-bar-round ~ .ops-bar-count .ops-bar-unit { display: none; }" in css
+
+
+def test_admin_header_nav_holds_tournaments_and_new():
+    """Tournaments / New tournament live in header row 2 beside Info as icon +
+    label buttons; the chip row below only holds open tournaments + refresh."""
+    html = _read_frontend("index.html")
+    nav_start = html.index('<div class="page-header-row page-header-row--nav">')
+    nav = html[nav_start : html.index('<div id="auth-status"', nav_start)]
+    for tab, key in (("home", "txt_txt_tournaments"), ("create", "txt_txt_create")):
+        start = nav.index(f'data-tab="{tab}"')
+        button = nav[nav.rindex("<button", 0, start) : nav.index("</button>", start)]
+        assert 'role="tab"' in button and 'class="tab-btn tab-btn--nav' in button, tab
+        assert f'data-i18n-aria-label="{key}"' in button, tab
+        assert 'viewBox="0 0 24 24"' in button and 'stroke="currentColor"' in button, tab
+        assert f'<span class="tab-btn-label" data-i18n="{key}">' in button, tab
+    # Chip row: collapsed by default, no nav tabs, refresh right after the chips.
+    row_start = html.index('<div class="tabs tournament-tabs hidden" id="tournament-tabs">')
+    row = html[row_start : html.index("<!-- ─── HOME", row_start)]
+    assert "data-tab=" not in row
+    assert row.index('id="tournament-chips"') < row.index('id="admin-refresh-btn"')
+    assert "compact-controls" not in html
+    assert "active-tournament-indicator" not in html
+    js = _read_frontend("admin-tournaments.js")
+    assert "active-tournament-indicator" not in js
+    assert "row.classList.toggle('hidden', _openTournaments.length === 0)" in js
+    # × is a sibling button of the chip, not a span nested inside it.
+    assert '<button type="button" class="chip-close"' in js
+    assert '<span class="chip-close"' not in js
+    assert "_scrollActiveChipIntoView(row)" in js
+    css = _read_frontend("admin.css")
+    assert "max-width: 18rem;" in css
+    assert ".chip-close { min-width: 44px; min-height: 44px; }" in css
+
+
+def test_admin_players_nav_label_key_exists():
+    i18n = _read_frontend("i18n.js")
+    assert '"txt_admin_nav_players": "Players"' in i18n
+    assert '"txt_admin_nav_players": "Jugadores"' in i18n
+    # the shared public header keeps the Player Hub wording
+    assert '"txt_nav_player_space": "Player Hub"' in i18n
+    assert "txt_admin_nav_players" in _read_frontend("auth.js")
+
+
+def test_admin_css_uses_tokens_not_off_palette_hues():
+    css = _read_frontend("admin.css")
+    for legacy in ("#3b82f6", "#2563eb", "#d97706", "#f59e0b", "#10b981", "rgba(34,197,94", "rgba(239,68,68"):
+        assert legacy not in css, legacy
+    assert "color: #fff" not in css
+    assert "var(--accent)" not in css and "var(--surface2)" not in css
+    assert "#3b82f6" not in _read_frontend("register.html")

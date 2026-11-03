@@ -66,14 +66,19 @@ async function renderMex() {
     const activeMatches = (isPlayoffs || hasPlayoffBracket)
       ? playoffMatches
       : (matches.all_matches || matches.current_matches || []);
-    const mexOpsStats = _buildMexOpsStats({
-      status,
-      hasPlayoffBracket,
-      hasCourts,
-      matches: activeMatches,
-    });
     let html = '';
-    html += _renderMexOpsHeader(mexOpsStats);
+    let mexPhaseLabel;
+    if (isFinished) mexPhaseLabel = t('txt_txt_finished');
+    else if (isPlayoffs) mexPhaseLabel = t('txt_txt_play_offs');
+    else if (isRolling) mexPhaseLabel = `${t('txt_admin_status_round_n', { n: status.current_round })} · ${t('txt_txt_rolling')}`;
+    else mexPhaseLabel = t('txt_admin_status_round_n_of_m', { n: status.current_round, m: status.num_rounds });
+    html += _renderTournamentStatusBar({
+      id: 'mex-ops-header',
+      stats: _buildOpsStats(activeMatches),
+      reviewCardId: 'mex-review-queue-card',
+      phase: mexPhaseLabel,
+      rounds: isPlayoffs ? _buildBracketRounds(playoffMatches) : [],
+    });
     // Top-of-page court assignments (most important admin focus).
     if (isPlayoffs || hasPlayoffBracket) {
       const pendingPo = (playoffsData.pending || []).filter(m => m.status !== 'completed');
@@ -83,18 +88,18 @@ async function renderMex() {
     }
     html += _renderMexReviewQueueCard(activeMatches);
 
-    if (isPlayoffs) {
-      html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${t('txt_txt_play_offs')}</span></div>`;
-    } else if (isFinished && hasPlayoffBracket) {
+    // The round / play-offs phase lives in the status bar; only the states
+    // that need explaining or call for action get an alert.
+    if (isFinished && hasPlayoffBracket) {
       html += `<div class="alert alert-info">${t('txt_txt_tournament_finished_after_playoffs')}</div>`;
     } else if (isFinished) {
       html += `<div class="alert alert-info">${t('txt_txt_tournament_finished_no_playoffs')}</div>`;
+    } else if (isPlayoffs) {
+      // No alert: the status bar shows the play-offs phase.
     } else if (mexicanoEnded) {
       html += `<div class="alert alert-info">${t('txt_txt_mexicano_phase_ended')}</div>`;
-    } else if (!isPlayoffs && isRolling) {
-      html += `<div class="alert alert-info">${t('txt_txt_mexicano_round_n', { n: status.current_round })} <span class="badge badge-phase">${t('txt_txt_rolling')}</span></div>`;
-    } else if (!isPlayoffs) {
-      html += `<div class="alert alert-info">${t('txt_txt_mexicano_round_n_of_m', { n: status.current_round, m: status.num_rounds })}${mexRoundsDone ? ` — <strong>${t('txt_txt_mexicano_rounds_complete_ready_for_play_offs')}</strong>` : ''}</div>`;
+    } else if (mexRoundsDone) {
+      html += `<div class="alert alert-info"><strong>${t('txt_txt_mexicano_rounds_complete_ready_for_play_offs')}</strong></div>`;
     }
 
     if (status.champion) {
@@ -127,7 +132,8 @@ async function renderMex() {
     if (!(isPlayoffs || isFinished)) {
       // Phase: Mexicano rounds
       if (matches.current_matches.length > 0) {
-        html += `<div class="card">`;
+        // mex-current-round: hides each row's round badge (the bar names the round).
+        html += `<div class="card mex-current-round">`;
         html += `<div class="current-round-header">`;
         html += `<h2 class="playoff-header-title">${t('txt_txt_current_round_matches')}</h2>`;
         html += `</div>`;
@@ -186,7 +192,7 @@ async function renderMex() {
         html += `<div id="mex-next-section">`;
         html += _renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/mex/courts`);
         html += `<div class="decision-actions-row">`;
-        html += `<button type="button" class="btn btn-success btn-lg-action"${_decisionDisabledAttrs(proposeReason)} onclick="withLoading(this,proposeMexPairings)">${_antIc('thunderbolt')} ${t('txt_txt_propose_next_round')}</button>`;
+        html += `<button type="button" class="btn btn-success btn-lg-action"${_decisionDisabledAttrs(proposeReason)} onclick="withLoading(this,proposeMexPairings)">${_ic('zap')} ${t('txt_txt_propose_next_round')}</button>`;
         html += `<button type="button" class="btn btn-primary btn-lg-action"${_decisionDisabledAttrs(endReason)} onclick="withLoading(this,endMexicano)">&#9632; ${t('txt_txt_end_mexicano')}</button>`;
         const overallReason = proposeReason && endReason ? proposeReason : null;
         if (overallReason) html += `<div class="decision-actions-disabled-note">${esc(overallReason)}</div>`;
@@ -269,68 +275,6 @@ async function renderMex() {
 
 let _mexReviewQueueFilterState = 'all';
 
-function _buildMexOpsStats({ status, hasPlayoffBracket, hasCourts, matches }) {
-  const unresolved = (matches || []).filter(m => m.status !== 'completed');
-  const disputes = unresolved.filter(m => m.disputed);
-  const escalated = disputes.filter(m => m.dispute_escalated);
-  const pendingConfirmation = unresolved.filter(m => (m.score && m.scored_by && !m.score_confirmed && !m.disputed) || m.format_review);
-  const unassignedCourtsCount = hasCourts
-    ? unresolved.filter(m => !String(m.court || '').trim()).length
-    : 0;
-
-  let nextAction = 'none';
-  if (disputes.length > 0 || pendingConfirmation.length > 0) {
-    nextAction = 'review';
-  } else if (unresolved.length > 0) {
-    nextAction = 'record';
-  } else if (status.phase === 'playoffs') {
-    nextAction = 'finish-playoffs';
-  } else if (status.phase !== 'finished' && !status.mexicano_ended && (status.rolling || status.current_round < status.num_rounds)) {
-    nextAction = 'next-round';
-  } else if (status.phase !== 'finished' && !status.mexicano_ended) {
-    nextAction = 'end-mexicano';
-  } else if (status.phase !== 'finished' && status.mexicano_ended && !hasPlayoffBracket) {
-    nextAction = 'start-playoffs';
-  }
-
-  return {
-    unresolvedCount: unresolved.length,
-    pendingConfirmationCount: pendingConfirmation.length,
-    disputesCount: disputes.length,
-    escalatedCount: escalated.length,
-    unassignedCourtsCount,
-    nextAction,
-  };
-}
-
-function _renderMexOpsHeader(stats) {
-  const actionLabelMap = {
-    review: t('txt_txt_next_action_review_queue'),
-    record: t('txt_txt_next_action_record_scores'),
-    'next-round': t('txt_txt_propose_next_round'),
-    'end-mexicano': t('txt_txt_end_mexicano'),
-    'start-playoffs': t('txt_txt_start_optional_playoffs'),
-    'finish-playoffs': t('txt_txt_next_action_complete_playoffs'),
-    none: '—',
-  };
-  const actionLabel = actionLabelMap[stats.nextAction] || actionLabelMap.none;
-  return `
-    <div class="card gp-ops-header tournament-status-bar" id="mex-ops-header">
-      <div class="gp-ops-header-top">
-        <h3>${t('txt_admin_status_phase')}</h3>
-        <div class="gp-ops-next-action">
-          <span>${t('txt_txt_next_action')}:</span>
-          <button type="button" class="btn btn-sm" ${stats.nextAction === 'none' ? 'disabled' : ''} onclick="_mexFocusNextAction('${stats.nextAction}')">${esc(actionLabel)}</button>
-          <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">${_ic('settings')} ${t('txt_admin_status_jump_settings')}</button>
-        </div>
-      </div>
-      <div class="gp-ops-header-collapsible">
-        ${_renderStatusBarStats(stats, 'mex-review-queue-card')}
-      </div>
-    </div>
-  `;
-}
-
 function _renderMexReviewQueueCard(matches) {
   const reviewItems = (matches || []).filter(m => _gpGetReviewItemKind(m));
   if (!reviewItems.length) return '';
@@ -398,31 +342,6 @@ function _mexApplyReviewQueueFilter() {
       const isActive = btn.textContent.trim().startsWith(labels[filter]);
       btn.classList.toggle('active', isActive);
     });
-  }
-}
-
-function _mexFocusNextAction(action) {
-  if (action === 'review') {
-    document.getElementById('mex-review-queue-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
-  }
-  if (action === 'record') {
-    const firstPending = document.querySelector('.match-card-wrap[data-status="pending"]');
-    if (firstPending?.id?.startsWith('mcard-')) {
-      _scrollToMatch(firstPending.id.slice(6), true);
-    }
-    return;
-  }
-  if (action === 'next-round' || action === 'end-mexicano') {
-    document.getElementById('mex-next-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
-  }
-  if (action === 'start-playoffs') {
-    document.getElementById('mex-playoffs-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
-  }
-  if (action === 'finish-playoffs') {
-    document.getElementById('mex-playoff-schema')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
 
@@ -503,7 +422,7 @@ function _courtFormatChip(ctx) {
   if (!ctx || typeof _gpScoreMode === 'undefined' || !(ctx in _gpScoreMode)) return '';
   const mode = _gpScoreMode[ctx] || 'points';
   const label = mode === 'sets' ? t('txt_txt_sets') : t('txt_txt_points_label');
-  return `<span class="court-format-chip">${_antIc('profile')} ${esc(label)}</span>`;
+  return `<span class="court-format-chip">${_ic('clipboard')} ${esc(label)}</span>`;
 }
 
 function _renderCourtAssignmentsCard(matches, title, assignCourts = true, scoreContext = null) {
@@ -533,7 +452,7 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true, scoreC
       if (key) html += `<div class="pending-round-label">${esc(key)}</div>`;
       for (const m of _byRound[key]) {
         const tbd = _hasTbd(m);
-        const _cmt = m.comment ? `<div class="match-comment-text match-comment-static cursor-pointer">${_antIc('message')} ${esc(m.comment)}</div>` : '';
+        const _cmt = m.comment ? `<div class="match-comment-text match-comment-static cursor-pointer">${_ic('message')} ${esc(m.comment)}</div>` : '';
         const _jumpAttr = m.id ? ` role="button" tabindex="0" onclick="_scrollToMatch('${m.id}', true)" onkeydown="if(event.key==='Enter')_scrollToMatch('${m.id}', true)"` : '';
         html += `<div class="match-card pending-match-card${tbd ? ' match-tbd-disabled' : ''}"${_jumpAttr}><div class="match-teams">${esc(_tl(m.team1))} <span class="vs">vs</span> ${esc(_tl(m.team2))}</div>${_cmt}</div>`;
       }
@@ -559,6 +478,17 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true, scoreC
   }
 
   const courtNames = Object.keys(matchesByCourt).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  // One shared round ("Round 1", a single bracket's "Semi-Final") is already in
+  // the status bar; label rows only when the playable matches (both teams
+  // known) span several rounds / groups / brackets.
+  const playable = matches.filter(m => m.team1?.length && m.team2?.length);
+  const showRound = new Set(playable.map(m => `${m.bracket_side || ''}|${m.round_label || ''}`)).size > 1;
+  // Espejo rounds share names across brackets: "Winners Semi-Final".
+  const roundText = m => {
+    if (m.bracket_side === 'winners') return `${t('txt_admin_status_bracket_winners')} ${m.round_label}`;
+    if (m.bracket_side === 'losers') return `${t('txt_admin_status_bracket_losers')} ${m.round_label}`;
+    return m.round_label;
+  };
   if (courtNames.length === 0) {
     return `<div class="card"><h3>${esc(title)}</h3><div class="empty-state-line">${t('txt_txt_no_pending_assignments')}</div></div>`;
   }
@@ -580,14 +510,14 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true, scoreC
       const m = courtMatches[i];
       const t1 = _teamLabel(m.team1);
       const t2 = _teamLabel(m.team2);
-      const r = m.round_label ? `<span class="court-round">${esc(m.round_label)}</span>` : '';
+      const r = showRound && m.round_label ? `<span class="court-round">${esc(roundText(m))}</span>` : '';
       const jumpLabel = `${t('txt_txt_go_to_match')}: ${t1} vs ${t2}`;
       const upcomingCls = i > 0 ? ' court-match-upcoming' : '';
       const fmtMark = m.format_override
         ? `<span class="court-match-override" title="${escAttr(t('txt_match_format_overridden'))}" aria-label="${escAttr(t('txt_match_format_overridden'))}"></span>`
         : '';
       html += `<div class="court-match-item${upcomingCls}" role="button" tabindex="0" data-match-id="${m.id}" aria-label="${esc(jumpLabel)}" onclick="_scrollToMatch('${m.id}', true)" onkeydown="if(event.key==='Enter')_scrollToMatch('${m.id}', true)">${esc(t1)} <span class="muted-text">vs</span> ${esc(t2)}${r}${fmtMark}</div>`;
-      if (m.comment && !isCompact) html += `<div class="court-match-item court-match-item-no-top"><span class="match-comment-text match-comment-static">${_antIc('message')} ${esc(m.comment)}</span></div>`;
+      if (m.comment && !isCompact) html += `<div class="court-match-item court-match-item-no-top"><span class="match-comment-text match-comment-static">${_ic('message')} ${esc(m.comment)}</span></div>`;
     }
     html += `</div>`;
   }
@@ -864,17 +794,17 @@ function _renderProposalPicker(proposals) {
     if (p.recommended) card += `<span class="badge badge-best">${_ic('star')} ${t('txt_txt_best')}</span>`;
     card += `</div>`;
     card += `<div class="proposal-metrics">`;
-    card += `${_antIc('bar-chart')} ${t('txt_txt_score_gap')}: <strong>${fmt2(p.score_imbalance)} pts</strong><br>`;
+    card += `${_ic('chart')} ${t('txt_txt_score_gap')}: <strong>${fmt2(p.score_imbalance)} pts</strong><br>`;
     const repLabel = p.repeat_count === 0
-      ? `${_antIc('check')} ${t('txt_txt_no_repeated_matchups')}`
-      : `${_antIc('warning')} ${t('txt_txt_n_repeats', { n: fmt2(p.repeat_count) })}`;  
+      ? `${_ic('check')} ${t('txt_txt_no_repeated_matchups')}`
+      : `${_ic('alert')} ${t('txt_txt_n_repeats', { n: fmt2(p.repeat_count) })}`;  
     card += `${repLabel}`;
     if ((p.exact_prev_round_repeats || 0) > 0) {
-      card += `<br>${_antIc('retweet')} ${t('txt_txt_exact_rematch_warning', { n: p.exact_prev_round_repeats })}`;
+      card += `<br>${_ic('repeat')} ${t('txt_txt_exact_rematch_warning', { n: p.exact_prev_round_repeats })}`;
     }
     if ((p.skill_gap_violations || 0) > 0) {
       const excess = fmt2(p.skill_gap_worst_excess || 0);
-      card += `<br>${_antIc('stop')} ${t('txt_txt_skill_gap_violation', { n: p.skill_gap_violations, excess })}`;
+      card += `<br>${_ic('ban')} ${t('txt_txt_skill_gap_violation', { n: p.skill_gap_violations, excess })}`;
     }
     if (p.sit_out_names && p.sit_out_names.length > 0) {
       card += `<br>${_ic('bench')} ${t('txt_txt_sitting_out')}: <em>${esc(p.sit_out_names.join(', '))}</em>`;
@@ -1208,7 +1138,7 @@ function _showManualEditor() {
 
   let html = `<div class="card manual-editor-card">`;
   html += `<div class="manual-editor-header">`;
-  html += `<h2>${_antIc('edit')} ${t('txt_txt_manual_pairing_editor')}</h2>`;
+  html += `<h2>${_ic('edit')} ${t('txt_txt_manual_pairing_editor')}</h2>`;
   html += `<div class="manual-editor-actions">`;
   html += `<button type="button" class="btn btn-sm btn-outline-muted" onclick="proposeMexPairings()">← ${t('txt_txt_back_to_proposals')}</button>`;
   html += `<button type="button" class="btn btn-sm btn-outline-muted" onclick="_manualClearAll()">✕ ${t('txt_txt_manual_clear_all')}</button>`;
@@ -1295,9 +1225,9 @@ function _renderManualMatch(idx) {
   card += `<div class="manual-match-header">`;
   card += `<div class="manual-match-title">${t('txt_txt_match_n', { n: idx + 1 })}</div>`;
   if (isLocked) {
-    card += `<button type="button" class="btn btn-sm manual-lock-btn locked" onclick="_manualUnlockMatch(${idx})">${_antIc('unlock')} ${t('txt_txt_manual_unlock_match')}</button>`;
+    card += `<button type="button" class="btn btn-sm manual-lock-btn locked" onclick="_manualUnlockMatch(${idx})">${_ic('unlock')} ${t('txt_txt_manual_unlock_match')}</button>`;
   } else {
-    card += `<button type="button" class="btn btn-sm manual-lock-btn" onclick="_manualLockMatch(${idx})">${_antIc('lock')} ${t('txt_txt_manual_lock_match')}</button>`;
+    card += `<button type="button" class="btn btn-sm manual-lock-btn" onclick="_manualLockMatch(${idx})">${_ic('lock')} ${t('txt_txt_manual_lock_match')}</button>`;
   }
   card += `</div>`;
 
@@ -1586,18 +1516,18 @@ function _updateManualRoundStats() {
   let html = `<div class="manual-stats-card">`;
   html += `<div class="manual-stats-title">${t('txt_txt_round_summary')}</div>`;
   html += `<div class="proposal-metrics">`;
-  html += `${_antIc('bar-chart')} ${t('txt_txt_score_gap')}: <strong>${fmt2(stats.score_imbalance)} pts</strong><br>`;
+  html += `${_ic('chart')} ${t('txt_txt_score_gap')}: <strong>${fmt2(stats.score_imbalance)} pts</strong><br>`;
 
   if (stats.repeat_count === 0) {
-    html += `${_antIc('check')} ${t('txt_txt_no_repeated_matchups')}`;
+    html += `${_ic('check')} ${t('txt_txt_no_repeated_matchups')}`;
   } else {
-    html += `${_antIc('warning')} ${t('txt_txt_n_repeats', { n: fmt2(stats.repeat_count) })}`;
+    html += `${_ic('alert')} ${t('txt_txt_n_repeats', { n: fmt2(stats.repeat_count) })}`;
   }
   if (stats.exact_prev_round_repeats > 0) {
-    html += `<br>${_antIc('retweet')} ${t('txt_txt_exact_rematch_warning', { n: stats.exact_prev_round_repeats })}`;
+    html += `<br>${_ic('repeat')} ${t('txt_txt_exact_rematch_warning', { n: stats.exact_prev_round_repeats })}`;
   }
   if (stats.skill_gap_violations > 0) {
-    html += `<br>${_antIc('stop')} ${t('txt_txt_skill_gap_violation', { n: stats.skill_gap_violations, excess: fmt2(stats.skill_gap_worst_excess) })}`;
+    html += `<br>${_ic('ban')} ${t('txt_txt_skill_gap_violation', { n: stats.skill_gap_violations, excess: fmt2(stats.skill_gap_worst_excess) })}`;
   }
   html += `</div>`;
 

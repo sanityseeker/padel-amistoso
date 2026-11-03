@@ -534,7 +534,7 @@ function togglePasteMode(mode) {
     fields?.classList.remove('hidden');
     _participantPasteMode[mode] = false;
     renderParticipantFields(mode);
-    if (btn) btn.innerHTML = `${_antIc('container')} <span data-i18n="txt_txt_paste_a_list">${t('txt_txt_paste_a_list')}</span>`;
+    if (btn) btn.innerHTML = `${_ic('archive')} <span data-i18n="txt_txt_paste_a_list">${t('txt_txt_paste_a_list')}</span>`;
   }
   _updateParticipantCount(mode);
 }
@@ -1319,7 +1319,7 @@ function _renderGPGroupPreview() {
   const canAdjustGroups = groups.length > 1;
   const str = _gpGroupPreview.strengths;
   let html = `<div class="gp-group-preview-title-row">`;
-  html += `<div class="field-section-title field-section-title-inline">${_antIc('container')} ${t('txt_gp_group_assignments')}</div>`;
+  html += `<div class="field-section-title field-section-title-inline">${_ic('archive')} ${t('txt_gp_group_assignments')}</div>`;
   html += `<button type="button" class="gp-preview-close" onclick="_cancelGPPreview()" title="${t('txt_txt_back')}">&times;</button>`;
   html += `</div>`;
   html += `<div class="gp-group-preview-grid">`;
@@ -1597,7 +1597,7 @@ function _createHubEnsureModal() {
   overlay.className = 'pc-hub-modal-overlay';
   overlay.innerHTML = `<div class="pc-hub-modal-box">`
     + `<div class="pc-hub-modal-header">`
-    + `<span class="pc-hub-modal-title">${_antIc('link')} ${t('txt_hub_link')}</span>`
+    + `<span class="pc-hub-modal-title">${_ic('link')} ${t('txt_hub_link')}</span>`
     + `<button type="button" class="pc-hub-close-btn" onclick="_createHubClose()">✕</button>`
     + `</div>`
     + `<input type="text" id="create-hub-q" class="player-codes-input" placeholder="${t('txt_hub_search_placeholder')}" oninput="_createHubDebouncedSearch()">`

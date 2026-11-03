@@ -30,21 +30,7 @@ body {
   scrollbar-gutter: stable;
 }
 
-/* Buttons (minimal — mirrors admin.css since admin.css is not loaded here) */
-.btn {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 600;
-  text-decoration: none;
-  display: inline-block;
-  line-height: 1.2;
-}
-.btn-primary { background: var(--accent, #3b82f6); color: #fff; }
-.btn-primary:hover { background: var(--accent-hover, #2563eb); }
-.btn-sm { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+/* .btn / .btn-primary / .btn-sm come from theme.css. */
 
 
 .club-description {
@@ -74,13 +60,14 @@ body {
   padding: 0 0 3rem;
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  --club-section-gap: 2rem;
+  gap: var(--club-section-gap);
 }
 
 @media (max-width: 600px) {
   .club-page {
     padding: 0 0 3rem;
-    gap: 1.5rem;
+    --club-section-gap: 1.5rem;
   }
 }
 
@@ -95,7 +82,7 @@ body {
 .club-header-logo img {
   max-width: 120px;
   max-height: 120px;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   display: block;
 }
 
@@ -109,7 +96,7 @@ body {
 .club-leaderboard-section {
   background: var(--card-bg, var(--bg, #fff));
   border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   padding: 1.25rem 1rem;
 }
 
@@ -133,6 +120,11 @@ body {
   display: flex;
   justify-content: center;
   gap: 0.5rem;
+}
+/* The sport pills belong to the club intro (logo, name, description), so they
+   sit close under it instead of a full section gap away. */
+.club-header:not([hidden]) + .club-sport-selector {
+  margin-top: calc(0.75rem - var(--club-section-gap));
 }
 
 /* Sport filter pills — used in unified selector */
@@ -190,6 +182,7 @@ body {
 }
 
 .club-leaderboard-scope-select {
+  width: auto;
   padding: 0.35rem 0.6rem;
   border-radius: 8px;
   border: 1px solid var(--border, #e2e8f0);
@@ -435,54 +428,11 @@ body {
   white-space: nowrap;
 }
 
-/* Status filter chips — reuse admin home-filter-chip look */
-.home-filter-row {
-  display: flex;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-}
-.home-filter-chip {
-  border: 1px solid var(--border-color, #e2e8f0);
-  background: var(--surface, var(--bg, #fff));
-  color: var(--text-muted);
-  border-radius: 999px;
-  padding: 0.28rem 0.65rem;
-  font-size: 0.78rem;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.home-filter-chip:hover {
-  border-color: var(--accent, #3b82f6);
-  color: var(--text);
-}
-.home-filter-chip.active {
-  background: color-mix(in srgb, var(--accent, #3b82f6) 14%, var(--surface, #fff));
-  border-color: color-mix(in srgb, var(--accent, #3b82f6) 55%, var(--border-color, #e2e8f0));
-  color: var(--text);
-}
-.home-filter-chip-count {
-  display: inline-block;
-  margin-left: 0.35rem;
-  padding: 0 0.4rem;
-  min-width: 1.1rem;
-  border-radius: 999px;
-  background: var(--bg-alt, var(--bg-muted, #eee));
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  line-height: 1.25rem;
-  font-weight: 600;
-  text-align: center;
-}
-.home-filter-chip.active .home-filter-chip-count {
-  background: color-mix(in srgb, var(--accent, #3b82f6) 28%, var(--surface, #fff));
-  color: var(--text);
-}
-
 /* Tournament / registration ID search — mirrors .home-search-row in admin.css */
 .club-search-section {
   background: var(--card-bg, var(--bg, #fff));
   border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   padding: 1rem;
 }
 
@@ -532,7 +482,7 @@ body {
 .club-items-section {
   background: var(--card-bg, var(--bg, #fff));
   border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   padding: 1.25rem 1rem;
 }
 .club-items-header {
@@ -590,12 +540,12 @@ body {
   color: var(--color-success);
 }
 .club-item-status--open_registration {
-  background: color-mix(in srgb, var(--accent, #3b82f6) 15%, transparent);
-  color: var(--accent, #3b82f6);
+  background: var(--color-primary-highlight);
+  color: var(--color-primary);
 }
 .club-item-status--upcoming {
-  background: color-mix(in srgb, #eab308 15%, transparent);
-  color: #ca8a04;
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
 }
 .club-item-status--finished {
   background: var(--bg-muted, #f1f5f9);
@@ -639,12 +589,13 @@ body {
 .club-mini-card-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.55);
+  background: var(--color-overlay-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
   padding: 1rem;
+  overscroll-behavior: contain;
 }
 .club-mini-card-overlay[hidden] { display: none; }
 
@@ -652,13 +603,16 @@ body {
   position: relative;
   background: var(--bg, #fff);
   color: var(--text, #0f172a);
-  border-radius: 12px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lg);
   padding: 1.25rem 1.25rem 1rem;
   max-width: min(640px, 95vw);
   width: 100%;
   max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .club-mini-card-close {
   position: absolute;
@@ -801,6 +755,8 @@ body {
 }
 /* The page's flex gap already spaces the header like the other public pages. */
 .events-page .public-header { margin-bottom: 0; }
+/* .club-page gap already spaces the header from the club name. */
+.club-page .public-header { margin-bottom: 0; }
 .events-toolbar .club-sport-selector { justify-content: flex-start; }
 /* Refresh sits in the sport-pill row, so it takes the pill shape too. */
 .events-toolbar .theme-btn.btn-refresh {

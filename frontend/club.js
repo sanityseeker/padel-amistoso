@@ -76,6 +76,7 @@ function _clubRenderHeader(club) {
     img.src = club.logo_url;
     img.alt = club.name;
     img.hidden = false;
+    img.parentElement.hidden = false;
   }
   const descEl = document.getElementById('club-description');
   if (descEl) {

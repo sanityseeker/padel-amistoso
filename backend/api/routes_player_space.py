@@ -49,14 +49,13 @@ from .player_secret_store import (
 )
 from .rate_limit import BoundedRateLimiter
 from .state import bump_tournament_version, get_tournament_data
+from .elo_recalc import mark_elo_dirty
 from .elo_store import (
     DEFAULT_RATING,
     get_live_profile_elo_stats,
     get_profile_elo,
     get_profile_recent_elo_logs,
     log_manual_elo_adjustment,  # noqa: F401 — re-exported for callers/tests
-    retroactive_transfer_all_elos,
-    retroactive_transfer_elo,
 )
 
 logger = logging.getLogger(__name__)
@@ -408,6 +407,13 @@ def _row_to_profile_out(row: dict) -> ProfileOut:
 def _link_email_participations(profile_id: str, email: str) -> None:
     """Link all unclaimed participations that match ``email`` to ``profile_id``."""
     with get_db() as conn:
+        tournament_ids = [
+            r["tournament_id"]
+            for r in conn.execute(
+                "SELECT DISTINCT tournament_id FROM player_secrets WHERE LOWER(email) = LOWER(?) AND profile_id IS NULL",
+                (email,),
+            ).fetchall()
+        ]
         conn.execute(
             "UPDATE player_secrets SET profile_id = ? WHERE LOWER(email) = LOWER(?) AND profile_id IS NULL",
             (profile_id, email),
@@ -416,8 +422,8 @@ def _link_email_participations(profile_id: str, email: str) -> None:
             "UPDATE registrants SET profile_id = ? WHERE LOWER(email) = LOWER(?) AND profile_id IS NULL",
             (profile_id, email),
         )
-    # Transfer ELO from all newly-linked participations.
-    retroactive_transfer_all_elos(profile_id)
+    if tournament_ids:
+        mark_elo_dirty([profile_id], tournament_ids)
 
 
 def _find_or_create_profile_for_email(
@@ -2664,7 +2670,7 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
 
     _backfill_history_for_profile(profile_id)
     _backfill_finished_secrets(profile_id)
-    retroactive_transfer_all_elos(profile_id)
+    mark_elo_dirty([profile_id])
     active = _build_active_entries(profile_id)
     history = _build_history_entries(profile_id)
 
@@ -2877,8 +2883,8 @@ async def recover_by_participation(req: ProfileRecoverRequest, request: Request)
     if profile_id is None:
         return {"ok": True}
 
-    # Sweep ELO for any freshly-linked participations, then email a magic link.
-    retroactive_transfer_all_elos(profile_id)
+    # Freshly-linked participations were marked for ELO recalculation by the
+    # sweep above; email a magic link.
     with get_db() as conn:
         prof = conn.execute(
             "SELECT name, email, lang FROM player_profiles WHERE id = ?",
@@ -3113,65 +3119,53 @@ async def unlink_participation(
     the ``player_secrets`` row — the player can re-link later using their
     passphrase.
 
-    For **finished** tournaments the ``player_history`` row is deleted,
-    permanently removing the stats from the player's hub.  A warning is
-    included in the response so the frontend can surface it.
+    For **finished** tournaments the durable ``player_history`` row is
+    detached too, removing the stats from the player's hub (an organiser can
+    still link it again).  A warning is included in the response so the
+    frontend can surface it.
+
+    Either way ELO is recalculated from this tournament onward and the
+    profile is rebuilt from the participations it still owns.
     """
     if identity is None:
         raise HTTPException(401, "Profile authentication required")
 
     pid = identity.profile_id
+    tid = req.entity_id
 
     with get_db() as conn:
-        # Try active first (player_secrets row still present).
-        row = conn.execute(
-            "SELECT profile_id, finished_at FROM player_secrets WHERE tournament_id = ? AND profile_id = ?",
-            (req.entity_id, pid),
-        ).fetchone()
+        secret_rows = conn.execute(
+            "SELECT player_id, finished_at FROM player_secrets WHERE tournament_id = ? AND profile_id = ?",
+            (tid, pid),
+        ).fetchall()
+        history_rows = conn.execute(
+            "SELECT player_id FROM player_history WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
+            (pid, tid),
+        ).fetchall()
+        if not secret_rows and not history_rows:
+            raise HTTPException(404, "Participation not found")
+        conn.execute(
+            "UPDATE player_secrets SET profile_id = NULL WHERE tournament_id = ? AND profile_id = ?",
+            (tid, pid),
+        )
+        conn.execute(
+            "UPDATE player_history SET profile_id = NULL"
+            " WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
+            (pid, tid),
+        )
+    player_ids = list(dict.fromkeys(r["player_id"] for r in (*secret_rows, *history_rows)))
+    is_finished = bool(history_rows) or any(r["finished_at"] is not None for r in secret_rows)
 
-        if row is not None:
-            if row["finished_at"] is None:
-                # Active tournament — just clear the link.
-                conn.execute(
-                    "UPDATE player_secrets SET profile_id = NULL WHERE tournament_id = ? AND profile_id = ?",
-                    (req.entity_id, pid),
-                )
-                bump_tournament_version(req.entity_id)
-                return {"ok": True, "status": ParticipationStatus.ACTIVE, "warning": None}
-            else:
-                # Finished but player_secrets row still exists.
-                conn.execute(
-                    "UPDATE player_secrets SET profile_id = NULL WHERE tournament_id = ? AND profile_id = ?",
-                    (req.entity_id, pid),
-                )
-                conn.execute(
-                    "DELETE FROM player_history WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
-                    (pid, req.entity_id),
-                )
-                bump_tournament_version(req.entity_id)
-                return {
-                    "ok": True,
-                    "status": ParticipationStatus.FINISHED,
-                    "warning": "Stats have been permanently removed from your hub.",
-                }
-
-        # No player_secrets row — check player_history directly.
-        hist = conn.execute(
-            "SELECT 1 FROM player_history WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
-            (pid, req.entity_id),
-        ).fetchone()
-        if hist is not None:
-            conn.execute(
-                "DELETE FROM player_history WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
-                (pid, req.entity_id),
-            )
-            return {
-                "ok": True,
-                "status": ParticipationStatus.FINISHED,
-                "warning": "Stats have been permanently removed from your hub.",
-            }
-
-    raise HTTPException(404, "Participation not found")
+    mark_elo_dirty([pid], [tid], player_ids)
+    if secret_rows:
+        bump_tournament_version(tid)
+    if not is_finished:
+        return {"ok": True, "status": ParticipationStatus.ACTIVE, "warning": None}
+    return {
+        "ok": True,
+        "status": ParticipationStatus.FINISHED,
+        "warning": "Stats have been removed from your hub.",
+    }
 
 
 @router.post("/link", response_model=PlayerSpaceEntry)
@@ -3212,15 +3206,20 @@ async def link_participation(
                 raise HTTPException(401, "Invalid passphrase or tournament not found")
 
             resolved_tid = row["tid"]
+            previous = conn.execute(
+                "SELECT profile_id FROM player_secrets WHERE tournament_id = ? AND passphrase = ?",
+                (resolved_tid, req.passphrase),
+            ).fetchone()
             conn.execute(
                 "UPDATE player_secrets SET profile_id = ? WHERE tournament_id = ? AND passphrase = ?",
                 (identity.profile_id, resolved_tid, req.passphrase),
             )
+        if previous["profile_id"] != identity.profile_id:
+            mark_elo_dirty([previous["profile_id"], identity.profile_id], [resolved_tid], [row["player_id"]])
 
         if row["finished_at"]:
             # Tournament already finished — backfill history and return a finished entry.
             _backfill_finished_secrets(identity.profile_id)
-            retroactive_transfer_elo(identity.profile_id, row["player_id"])
             with get_db() as conn:
                 h = conn.execute(
                     "SELECT * FROM player_history"
@@ -3249,10 +3248,6 @@ async def link_participation(
                 top_partners=json.loads(h["top_partners"]) if h and h["top_partners"] else [],
                 top_rivals=json.loads(h["top_rivals"]) if h and h["top_rivals"] else [],
             )
-
-        # Active tournament — still transfer any existing ELO from earlier
-        # tournaments so the profile ratings stay up-to-date.
-        retroactive_transfer_elo(identity.profile_id, row["player_id"])
 
         return PlayerSpaceEntry(
             entity_type=EntityType.TOURNAMENT,

@@ -156,7 +156,7 @@ function _clubsRenderOverview() {
 
   // Club list
   if (!_clubsList.length) {
-    html += `<p class="muted-note">${t('txt_clubs_no_clubs')} <button type="button" class="btn btn-sm btn-link btn-link--inline" onclick="openContextInfo('clubs')">${_antIc('info-circle')} ${esc(t('txt_txt_learn_more'))}</button></p>`;
+    html += `<p class="muted-note">${t('txt_clubs_no_clubs')} <button type="button" class="btn btn-sm btn-link btn-link--inline" onclick="openContextInfo('clubs')">${_ic('info')} ${esc(t('txt_txt_learn_more'))}</button></p>`;
   } else {
     // Hide the Community column when every club lives in the same community
     // (the most common single-community deployment) — it's pure noise then.
@@ -327,20 +327,21 @@ function _clubsRenderDetail() {
     <!-- Players (collapsed by default; sessionStorage restores the last choice) -->
     <details class="card" id="clubs-players-card">
       <summary class="player-codes-summary">
-        <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> ${_antIc('team')} ${t('txt_clubs_players')}</span>
+        <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> ${_ic('users')} ${t('txt_clubs_players')}</span>
         <span class="clubs-card-badge">${_clubPlayers.length}</span>
       </summary>
       <div class="player-codes-body">
         <p class="player-codes-help">${t('txt_clubs_players_help')}</p>
         <div id="clubs-players-list"></div>
         <div id="clubs-ghost-duplicates"></div>
+        <div id="clubs-hub-merge"></div>
       </div>
     </details>
 
     <!-- Club leaderboard (primary content) -->
     <details class="card" open id="clubs-leaderboard-card">
       <summary class="player-codes-summary">
-        <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> ${_antIc('bar-chart')} ${t('txt_clubs_leaderboard')}</span>
+        <span class="player-codes-title"><span class="tv-chevron player-codes-chevron">▸</span> ${_ic('chart')} ${t('txt_clubs_leaderboard')}</span>
         ${(() => { const ranked = _clubPlayers.filter(p => (_clubsSport === 'padel' ? p.elo_padel : p.elo_tennis) != null); return ranked.length ? `<span class="clubs-card-badge">${ranked.length}</span>` : ''; })()}
       </summary>
       <div class="player-codes-body">
@@ -1116,7 +1117,7 @@ function _clubEventsRefresh() {
 const _CLUB_EVENTS_ISLAND_HTML = `
 <div class="card club-events-card" id="club-events-island" v-scope>
   <div class="club-events-head">
-    <h3 class="club-events-title">${_antIc('calendar')} {{ t('txt_club_events_title') }}</h3>
+    <h3 class="club-events-title">${_ic('calendar')} {{ t('txt_club_events_title') }}</h3>
     <div class="club-events-head-actions">
       <button type="button" class="btn btn-sm btn-primary" @click="newEvent()">+ {{ t('txt_club_events_new') }}</button>
       <button type="button" class="btn btn-sm" :aria-expanded="attachOpen" aria-controls="club-events-attach-body" @click="openAttach()">{{ t('txt_club_events_attach') }}</button>
@@ -1472,6 +1473,7 @@ function _clubsRenderPlayers() {
   _clubsMarkScrollableTables(container);
   _clubsRenderLeaderboard();
   _clubsRenderGhostDuplicates();
+  _clubsRenderHubMerge();
 }
 
 // ─── Ghost profile → Hub profile conversion ──────────────
@@ -1920,6 +1922,113 @@ async function clubsConsolidateGhostGroup(groupIndex) {
     }
   } catch (e) {
     if (msgEl) msgEl.innerHTML = `<span class="text-error">${esc(e.message)}</span>`;
+  }
+}
+
+// ─── Merge two registered (Hub) members ──────────────────
+
+let _clubsHubMergeOpen = false;
+let _clubsHubMergeKeep = '';
+let _clubsHubMergeRemove = '';
+let _clubsHubMergePreview = null;
+let _clubsHubMergeMsg = '';       // result/error line under the form
+let _clubsHubMergeMsgError = false;
+
+/** Collapsible form to merge one registered club member into another. */
+function _clubsRenderHubMerge() {
+  const container = document.getElementById('clubs-hub-merge');
+  if (!container || !_activeClubId) return;
+  const hubMembers = _clubPlayers.filter(p => p.has_hub_profile);
+  if (hubMembers.length < 2) { container.innerHTML = ''; return; }
+  const ids = new Set(hubMembers.map(p => p.profile_id));
+  if (!ids.has(_clubsHubMergeKeep)) _clubsHubMergeKeep = '';
+  if (!ids.has(_clubsHubMergeRemove)) _clubsHubMergeRemove = '';
+
+  const nameOf = id => hubMembers.find(p => p.profile_id === id)?.name || id;
+  const options = selected => `<option value="">${t('txt_ph_choose')}</option>` + hubMembers
+    .map(p => `<option value="${escAttr(p.profile_id)}"${p.profile_id === selected ? ' selected' : ''}>${esc(p.name || p.profile_id)}${p.email ? ` (${esc(p.email)})` : ''}</option>`)
+    .join('');
+  const preview = _clubsHubMergePreview;
+  const keepName = nameOf(_clubsHubMergeKeep);
+  const removeName = nameOf(_clubsHubMergeRemove);
+
+  let status = '';
+  if (_clubsHubMergeMsg) {
+    status = `<div class="alert ${_clubsHubMergeMsgError ? 'alert-error' : 'alert-success'} mt-2" role="status">${esc(_clubsHubMergeMsg)}</div>`;
+  } else if (preview && !preview.can_merge) {
+    const tournaments = preview.shared_tournaments.map(s => s.tournament_name).join(', ');
+    status = `<div class="alert alert-error mt-2" role="alert">${esc(t('txt_ph_merge_hub_blocked', { a: keepName, b: removeName, tournaments }))}</div>`;
+  } else if (preview) {
+    status = `<p class="muted-note mt-2">${esc(t('txt_ph_merge_hub_hint', { keep: keepName, remove: removeName, n: preview.secondary.tournaments }))}</p>`;
+  }
+
+  container.innerHTML = `
+    <details id="clubs-hub-merge-details"${_clubsHubMergeOpen ? ' open' : ''} class="clubs-ghost-section">
+      <summary class="clubs-ghost-section-summary"
+        onclick="_clubsHubMergeOpen = !(document.getElementById('clubs-hub-merge-details')?.open ?? false)">
+        <span class="tv-chevron clubs-ghost-section-chevron">&#9658;</span>
+        ${t('txt_clubs_hub_merge_title')}
+        <span class="muted-tiny clubs-ghost-section-hint">${t('txt_clubs_hub_merge_hint')}</span>
+      </summary>
+      <div class="clubs-ghost-section-body">
+        <div class="clubs-ghost-merge-bar">
+          <label class="muted-tiny d-flex items-center gap-1-5">${t('txt_clubs_hub_merge_keep')}
+            <select class="clubs-ghost-merge-bar-input" onchange="clubsSetHubMerge('keep', this.value)">${options(_clubsHubMergeKeep)}</select>
+          </label>
+          <label class="muted-tiny d-flex items-center gap-1-5">${t('txt_clubs_hub_merge_remove')}
+            <select class="clubs-ghost-merge-bar-input" onchange="clubsSetHubMerge('remove', this.value)">${options(_clubsHubMergeRemove)}</select>
+          </label>
+          <button type="button" class="btn btn-primary btn-sm" onclick="clubsMergeHubMembers()"${preview && preview.can_merge ? '' : ' disabled'}>${t('txt_ph_merge_hub_btn')}</button>
+        </div>
+        ${status}
+      </div>
+    </details>`;
+}
+
+/** Pick one side of the Hub merge and refresh the preview. */
+async function clubsSetHubMerge(side, profileId) {
+  if (side === 'keep') _clubsHubMergeKeep = profileId;
+  else _clubsHubMergeRemove = profileId;
+  _clubsHubMergePreview = null;
+  _clubsHubMergeMsg = '';
+  const keep = _clubsHubMergeKeep;
+  const remove = _clubsHubMergeRemove;
+  if (keep && remove && keep !== remove) {
+    try {
+      const params = new URLSearchParams({ primary_id: keep, secondary_id: remove });
+      const preview = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players/merge-hub/preview?${params}`);
+      // Ignore a stale answer if the selection changed meanwhile.
+      if (keep === _clubsHubMergeKeep && remove === _clubsHubMergeRemove) _clubsHubMergePreview = preview;
+    } catch (e) {
+      _clubsHubMergeMsg = e.message;
+      _clubsHubMergeMsgError = true;
+    }
+  }
+  _clubsRenderHubMerge();
+}
+
+async function clubsMergeHubMembers() {
+  const preview = _clubsHubMergePreview;
+  if (!preview || !preview.can_merge || !_activeClubId) return;
+  const keep = preview.primary.name || preview.primary.id;
+  const remove = preview.secondary.name || preview.secondary.id;
+  if (!confirm(t('txt_ph_merge_hub_confirm', { keep, remove }))) return;
+  try {
+    const result = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players/merge-hub`, {
+      method: 'POST',
+      body: JSON.stringify({ primary_id: preview.primary.id, secondary_id: preview.secondary.id }),
+    });
+    _clubsHubMergeKeep = '';
+    _clubsHubMergeRemove = '';
+    _clubsHubMergePreview = null;
+    _clubsHubMergeMsg = t('txt_ph_merge_hub_ok', { name: result.name });
+    _clubsHubMergeMsgError = false;
+    _clubPlayers = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players`).catch(() => _clubPlayers);
+    _clubsRenderPlayers();
+  } catch (e) {
+    _clubsHubMergeMsg = e.message;
+    _clubsHubMergeMsgError = true;
+    _clubsRenderHubMerge();
   }
 }
 

@@ -8,7 +8,7 @@ function _renderRegCollaboratorsSection(rid, collaborators) {
 
   let html = `<div class="collab-add-section">`;
   html += `<div class="fw-700 d-flex items-center gap-2 mb-2">`;
-  html += `${_antIc('team')} ${t('txt_txt_collaborators')}`;
+  html += `${_ic('users')} ${t('txt_txt_collaborators')}`;
   if (list.length > 0) html += ` <span class="fs-xs fw-normal text-muted">(${list.length})</span>`;
   html += `</div>`;
   html += `<p class="text-muted fs-sm mb-3">${t('txt_txt_collaborators_help')}</p>`;
@@ -31,7 +31,7 @@ function _renderRegCollaboratorsSection(rid, collaborators) {
   } else {
     for (const username of list) {
       html += `<div class="collab-row">`;
-      html += `<span class="fs-lg">${_antIc('user')} ${esc(username)}</span>`;
+      html += `<span class="fs-lg">${_ic('user')} ${esc(username)}</span>`;
       html += `<button type="button" class="btn btn-danger btn-sm btn-compact fs-2xs"`;
       html += ` onclick="_removeRegCollaborator('${esc(rid)}', '${escAttr(username)}')">✕ ${t('txt_txt_remove')}</button>`;
       html += `</div>`;
@@ -103,7 +103,7 @@ function _renderCollaboratorsBody(collaborators) {
 
   const list = collaborators || [];
   let html = '';
-  html += `<p class="settings-help mt-0">${t('txt_txt_collaborators_help')}</p>`;
+  html += `<p class="settings-help settings-help--explain mt-0">${t('txt_txt_collaborators_help')}</p>`;
 
   html += `<div class="settings-inline-row mb-2">`;
   html += `<input type="text" id="collab-username-input" placeholder="${t('txt_txt_add_collaborator_placeholder')}"`;
@@ -121,7 +121,7 @@ function _renderCollaboratorsBody(collaborators) {
   } else {
     for (const username of list) {
       html += `<div class="collab-row">`;
-      html += `<span class="fs-lg">${_antIc('user')} ${esc(username)}</span>`;
+      html += `<span class="fs-lg">${_ic('user')} ${esc(username)}</span>`;
       html += `<button type="button" class="btn btn-danger btn-sm btn-compact fs-2xs"`;
       html += ` onclick="_removeCollaborator('${escAttr(username)}')">✕ ${t('txt_txt_remove')}</button>`;
       html += `</div>`;
@@ -181,9 +181,6 @@ document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!el) return;
   switch (el.dataset.action) {
-    case 'toggleLanguage': toggleLanguage(); break;
-    case 'togglePageSelector': togglePageSelector(); break;
-    case 'toggleTheme': toggleTheme(); break;
     case 'refreshCurrentView': _refreshCurrentView(); break;
     case 'openFormatInfo': openFormatInfo(); break;
     case 'openContextInfo': openContextInfo(el.dataset.context); break;

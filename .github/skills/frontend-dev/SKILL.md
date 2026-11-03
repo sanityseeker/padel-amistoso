@@ -121,22 +121,23 @@ even if they're technically fine CSS:
 - **Glassmorphism-by-default** (frosted `backdrop-blur` cards on every panel),
   **rounded-everything at 16–24px**, or a **generic shadcn/Material card stack**
   — this app's radius scale is smaller and more "architectural, crisp like court
-  lines" per the `theme.css` comment (`--radius-card: 8px`, not 16–24px).
+  lines" per the `theme.css` comment (`--radius-card: 12px`, not 16–24px).
   `border-radius: 20px` pill shapes only belong on true pills/badges/toggles, not
   cards.
-  - Note: `border-radius: 10-12px` on cards is the pre-existing baseline in
-    `admin.css`/`club.css`/`player.css` (not the token-defined 8px) — match the
-    surrounding file's existing radius rather than "fixing" it ad hoc; migrate to
-    `var(--radius-card)` only as a deliberate, reviewed pass.
+  - Note: card radius is `var(--radius-card)` (12px, the public pages' value) in
+    every sheet including `admin.css`; use the radius tokens (`--radius-md/lg/card/
+    dialog/full`) instead of hardcoded px values.
 - **Inline `style=""` gradients/colors for one-off banners** (see the demo-banner
   in `index.html` using a hardcoded amber/red gradient) — new banners/alerts
   should use the `--color-warning-*`/`--color-error-*` tokens and an actual CSS
   class, not inline hex.
-- **Emoji as icons in new UI.** The codebase is inconsistent (emoji nav icons
-  alongside inline SVG icons elsewhere), but new icons should follow the inline
-  `<svg class="ic" viewBox="64 64 896 896" fill="currentColor">` pattern already
-  used throughout `index.html`, not emoji — emoji renders inconsistently across
-  platforms and reads as a placeholder/AI-generated icon.
+- **Emoji as icons in new UI.** Emoji renders inconsistently across platforms and
+  reads as a placeholder/AI-generated icon. New icons use the shared stroke set:
+  `_ic('name')` from `shared.js` (24x24 viewBox, `stroke="currentColor"`, Lucide-style).
+  Add a missing glyph to the `_ic` map in the same stroke style. Do not use the old
+  filled Ant Design `viewBox="64 64 896 896"` pattern (admin has been migrated off it;
+  `_antIc` no longer exists). Static HTML cannot call `_ic`, so inline the same stroke
+  `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" ...>` markup.
 - **Boilerplate "AI card" copy patterns**: vague button labels ("Submit",
   "Learn More"), title-case marketing headers, or a hero section with a gradient
   blob — this is an operational tournament tool, copy should be concrete and

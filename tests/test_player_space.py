@@ -1650,7 +1650,7 @@ class TestUnlinkParticipation:
         res = client.get("/api/player-profile/space", headers=_headers(token))
         assert not any(e["entity_id"] == tid for e in res.json()["entries"])
 
-    def test_unlink_finished_tournament_deletes_history(self, client: TestClient) -> None:
+    def test_unlink_finished_tournament_detaches_history(self, client: TestClient) -> None:
         created = _create_profile(client, name="History Unlinker")
         token = created["access_token"]
         profile_id = created["profile"]["id"]
@@ -1681,13 +1681,14 @@ class TestUnlinkParticipation:
         assert data["status"] == "finished"
         assert data["warning"] is not None
 
-        # Confirm history row is deleted
+        # Confirm history row is detached (kept, so it can be linked again), not deleted
         with db_mod.get_db() as conn:
             row = conn.execute(
-                "SELECT 1 FROM player_history WHERE profile_id = ? AND entity_id = ?",
-                (profile_id, eid),
+                "SELECT profile_id FROM player_history WHERE entity_id = ? AND player_id = 'p1'",
+                (eid,),
             ).fetchone()
-        assert row is None
+        assert row is not None
+        assert row["profile_id"] is None
 
         # Confirm it disappears from dashboard
         res = client.get("/api/player-profile/space", headers=_headers(token))

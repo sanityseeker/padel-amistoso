@@ -22,6 +22,9 @@ const _phStore = reactiveStore({
   // Selection state (id→true maps; petite-vue tracks plain objects, not Sets).
   selectedGhosts: {},        // ghost profiles picked for consolidation
   selectedHub: null,         // one non-ghost profile as merge target
+  selectedHub2: null,        // a second Hub profile: merged into selectedHub (Hub+Hub merge)
+  hubMergePreview: null,     // GET merge-hub/preview result for the selected pair
+  hubMergeLoading: false,
   mergeName: '',             // v-model for the consolidate-name input
   mergeMsg: '',              // merge/consolidate status (alert text)
   mergeMsgError: false,
@@ -48,6 +51,12 @@ const _phStore = reactiveStore({
   get selectedGhostIds() { return Object.keys(this.selectedGhosts).filter(id => this.selectedGhosts[id]); },
   get selectedGhostCount() { return this.selectedGhostIds.length; },
   get hubProfile() { return this.selectedHub ? this.profiles.find(p => p.id === this.selectedHub) : null; },
+  get hubProfile2() { return this.selectedHub2 ? this.profiles.find(p => p.id === this.selectedHub2) : null; },
+  get hubName() { return this.hubProfile?.name || this.selectedHub; },
+  get hubName2() { return this.hubProfile2?.name || this.selectedHub2; },
+  get hubSharedNames() {
+    return (this.hubMergePreview?.shared_tournaments || []).map(s => s.tournament_name).join(', ');
+  },
   get selectedGhostNames() {
     return this.selectedGhostIds.map(id => this.profiles.find(p => p.id === id)?.name || id);
   },
@@ -60,6 +69,7 @@ const _phStore = reactiveStore({
   // Which merge-bar variant to show.
   get mergeMode() {
     if (this.merging || this.mergeMsg) return this.mergeMsg ? 'msg' : 'busy';
+    if (this.selectedHub && this.selectedHub2) return 'hub-hub';
     if (this.selectedHub) return this.sourceCount > 0 ? 'hub-ghosts' : 'hub';
     if (this.sourceCount >= 2) return 'ghosts';
     return 'none';
@@ -82,6 +92,8 @@ const _phStore = reactiveStore({
     const q = (this.query || '').trim();
     this.selectedGhosts = {};
     this.selectedHub = null;
+    this.selectedHub2 = null;
+    this.hubMergePreview = null;
     this.selectedPast = {};
     this.mergeMsg = '';
     this.error = '';
@@ -101,6 +113,8 @@ const _phStore = reactiveStore({
     try { localStorage.setItem('ph-show-ghosts', this.showGhosts ? '1' : '0'); } catch (_) {}
     this.selectedGhosts = {};
     this.selectedHub = null;
+    this.selectedHub2 = null;
+    this.hubMergePreview = null;
   },
   persistOpen(ev) {
     this.profilesOpen = ev.target.open;
@@ -118,12 +132,64 @@ const _phStore = reactiveStore({
       delete this.selectedGhosts[id];
     }
   },
+  // The first checked Hub profile is the merge target; a second one is merged into it.
   toggleHub(id, checked) {
-    this.selectedHub = checked ? id : (this.selectedHub === id ? null : this.selectedHub);
+    if (checked) {
+      if (!this.selectedHub) this.selectedHub = id;
+      else if (this.selectedHub !== id) this.selectedHub2 = id;
+    } else if (this.selectedHub === id) {
+      this.selectedHub = this.selectedHub2;
+      this.selectedHub2 = null;
+    } else if (this.selectedHub2 === id) {
+      this.selectedHub2 = null;
+    }
+    this.loadHubMergePreview();
+  },
+  swapHubs() {
+    [this.selectedHub, this.selectedHub2] = [this.selectedHub2, this.selectedHub];
+    this.loadHubMergePreview();
+  },
+  async loadHubMergePreview() {
+    this.hubMergePreview = null;
+    if (!this.selectedHub || !this.selectedHub2) return;
+    const pair = [this.selectedHub, this.selectedHub2];
+    this.hubMergeLoading = true;
+    try {
+      const params = new URLSearchParams({ primary_id: pair[0], secondary_id: pair[1] });
+      const preview = await api(`/api/admin/player-profiles/merge-hub/preview?${params}`);
+      // Ignore a stale answer if the selection changed meanwhile.
+      if (this.selectedHub === pair[0] && this.selectedHub2 === pair[1]) this.hubMergePreview = preview;
+    } catch (e) {
+      this._flashMerge(true, e.message);
+    } finally {
+      this.hubMergeLoading = false;
+    }
+  },
+  async mergeHubs() {
+    const preview = this.hubMergePreview;
+    if (!preview || !preview.can_merge) return;
+    if (!confirm(this.t('txt_ph_merge_hub_confirm', { keep: this.hubName, remove: this.hubName2 }))) return;
+    this.merging = true;
+    this.mergeMsg = '';
+    try {
+      const result = await api('/api/admin/player-profiles/merge-hub', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ primary_id: preview.primary.id, secondary_id: preview.secondary.id }),
+      });
+      this.merging = false;
+      await this.search();
+      this._flashMerge(false, this.t('txt_ph_merge_hub_ok', { name: result.name }));
+    } catch (e) {
+      this.merging = false;
+      this._flashMerge(true, e.message);
+    }
   },
   clearSelection() {
     this.selectedGhosts = {};
     this.selectedHub = null;
+    this.selectedHub2 = null;
+    this.hubMergePreview = null;
     this.selectedPast = {};
     this.mergeName = '';
     this.mergeMsg = '';
@@ -249,7 +315,7 @@ function _phRenderDetail(data) {
 
   let html = '<div class="card">';
   html += '<div class="d-flex items-center justify-between mb-3 flex-wrap gap-2">';
-  html += `<h2 class="m-0">${_antIc('user')} ${esc(data.name || t('txt_ph_unnamed_profile'))}</h2>`;
+  html += `<h2 class="m-0">${_ic('user')} ${esc(data.name || t('txt_ph_unnamed_profile'))}</h2>`;
   html += '<div class="d-flex items-center gap-1-5 flex-wrap">';
   html += `<button type="button" class="btn btn-danger btn-sm" onclick="phDeleteProfile('${escAttr(data.id)}')">${t('txt_ph_delete_profile')}</button>`;
   html += `<button type="button" class="btn btn-sm" onclick="phCloseDetail()">✕ ${t('txt_txt_close')}</button>`;
@@ -345,7 +411,7 @@ function _phParticipationTable(participations, profileId, isFinished) {
       html += `<td class="player-codes-cell-center">${p.wins}/${p.losses}/${p.draws}</td>`;
       html += `<td class="player-codes-cell-center">${p.points_for}/${p.points_against}</td>`;
     }
-    const unlinkLabel = isFinished ? `${_antIc('warning')} ${t('txt_ph_unlink')}` : t('txt_ph_unlink');
+    const unlinkLabel = isFinished ? `${_ic('alert')} ${t('txt_ph_unlink')}` : t('txt_ph_unlink');
     const btnClass = isFinished ? 'btn btn-danger btn-sm' : 'btn btn-sm btn-muted';
     html += `<td class="player-codes-cell-center"><button type="button" class="${btnClass} fs-sm" onclick="phUnlink('${escAttr(p.tournament_id)}','${escAttr(p.player_id)}',${isFinished})">${unlinkLabel}</button></td>`;
     html += '</tr>';
@@ -565,7 +631,7 @@ async function phStartLink(profileId) {
     html += `<button type="button" class="btn btn-sm" onclick="document.getElementById('ph-link-area').innerHTML=''">✕</button></div>`;
     html += '<div class="mb-2">';
     html += `<label class="fs-md text-muted">${t('txt_ph_select_tournament')}</label>`;
-    html += `<select id="ph-link-tid" class="ph-link-select mt-1" onchange="phLoadUnlinkedPlayers('${escAttr(profileId)}')">`;
+    html += `<select id="ph-link-tid" class="ph-link-select mt-1" onchange="phLoadLinkCandidates('${escAttr(profileId)}')">`;
     html += `<option value="">${t('txt_ph_choose')}</option>`;
     for (const tour of tournaments) {
       html += `<option value="${escAttr(tour.id)}">${esc(tour.name)} (${esc(tour.phase || tour.type)})</option>`;
@@ -579,24 +645,39 @@ async function phStartLink(profileId) {
   }
 }
 
-/** Load unlinked players for a tournament */
-async function phLoadUnlinkedPlayers(profileId) {
+/** Participants of the tournament picked in the link form, keyed by player_id */
+let _phLinkCandidates = {};
+/** The participant of that tournament already linked to the open profile, if any */
+let _phLinkOwnParticipant = null;
+
+/** Load a tournament's participants (linked ones included, so they can be re-linked) */
+async function phLoadLinkCandidates(profileId) {
   const select = document.getElementById('ph-link-tid');
   const container = document.getElementById('ph-link-players');
   if (!select || !container) return;
   const tid = select.value;
+  _phLinkCandidates = {};
+  _phLinkOwnParticipant = null;
   if (!tid) { container.innerHTML = ''; return; }
   container.innerHTML = `<em>${t('txt_ph_loading_players')}</em>`;
   try {
-    const players = await api(`/api/admin/player-profiles/unlinked/${tid}`);
+    const participants = await api(`/api/admin/player-profiles/participants/${tid}`);
+    _phLinkOwnParticipant = participants.find(p => p.profile_id === profileId) || null;
+    const players = participants.filter(p => p.profile_id !== profileId);
     if (players.length === 0) {
-      container.innerHTML = `<p class="text-muted fs-md">${t('txt_ph_all_players_already_linked')}</p>`;
+      container.innerHTML = `<p class="text-muted fs-md">${t('txt_ph_no_players_to_link')}</p>`;
       return;
     }
     let html = `<label class="fs-md text-muted">${t('txt_ph_select_player')}</label>`;
     html += `<select id="ph-link-pid" class="ph-link-select m-0 mt-1 mb-2">`;
     for (const p of players) {
-      html += `<option value="${escAttr(p.player_id)}">${esc(p.player_name)} (${esc(p.player_id.slice(0, 6))}…)</option>`;
+      _phLinkCandidates[p.player_id] = p;
+      let label = `${p.player_name} (${p.player_id.slice(0, 6)}…)`;
+      if (p.profile_id) {
+        const key = p.is_ghost ? 'txt_ph_linked_to_ghost_value' : 'txt_ph_linked_to_value';
+        label += ` — ${t(key, { value: p.profile_name || p.profile_id })}`;
+      }
+      html += `<option value="${escAttr(p.player_id)}">${esc(label)}</option>`;
     }
     html += '</select>';
     html += `<button type="button" class="btn btn-primary btn-sm" onclick="phSubmitLink('${escAttr(profileId)}')">${t('txt_ph_link')}</button>`;
@@ -606,7 +687,7 @@ async function phLoadUnlinkedPlayers(profileId) {
   }
 }
 
-/** Submit the link */
+/** Submit the link; a participant linked elsewhere is moved after confirmation */
 async function phSubmitLink(profileId) {
   const tidSelect = document.getElementById('ph-link-tid');
   const pidSelect = document.getElementById('ph-link-pid');
@@ -614,6 +695,12 @@ async function phSubmitLink(profileId) {
   const tid = tidSelect.value;
   const pid = pidSelect.value;
   if (!tid || !pid) return;
+  const current = _phLinkCandidates[pid];
+  if (current && current.profile_id && !current.is_ghost
+      && !confirm(t('txt_ph_relink_confirm', { value: current.profile_name || current.profile_id }))) return;
+  // A profile is one participant per tournament: its existing link here gets removed.
+  if (_phLinkOwnParticipant
+      && !confirm(t('txt_hub_profile_moves_confirm', { value: _phLinkOwnParticipant.player_name }))) return;
   try {
     await api(`/api/admin/player-profiles/${profileId}/link/${tid}/${pid}`, { method: 'POST' });
     document.getElementById('ph-link-area').innerHTML = '';

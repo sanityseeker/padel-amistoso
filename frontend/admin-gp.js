@@ -29,14 +29,19 @@ async function renderGP() {
     const allGroupMatches = Object.values(groups.matches).flat();
     const allPlayoffMatches = playoffs?.matches || [];
     const phaseMatches = status.phase === 'groups' ? allGroupMatches : allPlayoffMatches;
-    const gpOpsStats = _buildGpOpsStats({
-      phase: status.phase,
-      hasCourts,
-      hasMoreGroupRounds: Boolean(groups.has_more_rounds),
-      matches: phaseMatches,
-    });
     let html = '';
-    html += _renderGpOpsHeader(gpOpsStats, status.phase);
+    const gpPhaseLabel = {
+      groups: t('txt_txt_group_stage'),
+      playoffs: t('txt_txt_play_offs'),
+      finished: t('txt_txt_finished'),
+    }[status.phase] || '';
+    html += _renderTournamentStatusBar({
+      id: 'gp-ops-header',
+      stats: _buildOpsStats(phaseMatches),
+      reviewCardId: 'gp-review-queue-card',
+      phase: gpPhaseLabel,
+      rounds: status.phase === 'playoffs' ? _buildBracketRounds(allPlayoffMatches) : [],
+    });
     // Pending court assignments are the most important admin focus, so they
     // appear immediately under the status bar.
     const groupPending = _sortTbdLast(Object.values(groups.matches)
@@ -51,9 +56,6 @@ async function renderGP() {
       status.phase === 'groups' ? 'gp-group' : 'gp-playoff',
     );
     html += _renderGpReviewQueueCard(phaseMatches);
-    if (status.phase === 'playoffs') {
-      html += `<div class="alert alert-info">${t('txt_txt_phase')}: <span class="badge badge-phase">${t('txt_txt_play_offs')}</span></div>`;
-    }
 
     const groupFormatLabel = _gpScoreMode['gp-group'] === 'sets' ? t('txt_txt_sets') : t('txt_txt_points_label');
     html += _renderChampionAlerts(status);
@@ -142,7 +144,7 @@ async function renderGP() {
       html += `<div class="decision-actions-row">`;
       if (groups.has_more_rounds) {
         const reason = blockedReason;
-        html += `<button type="button" class="btn btn-primary btn-lg-action"${_decisionDisabledAttrs(reason)} onclick="withLoading(this,nextGpGroupRound)">${_antIc('thunderbolt')} ${t('txt_txt_generate_next_group_round')}</button>`;
+        html += `<button type="button" class="btn btn-primary btn-lg-action"${_decisionDisabledAttrs(reason)} onclick="withLoading(this,nextGpGroupRound)">${_ic('zap')} ${t('txt_txt_generate_next_group_round')}</button>`;
       }
       const playoffReason = blockedReason;
       html += `<button type="button" class="btn btn-success btn-lg-action"${_decisionDisabledAttrs(playoffReason)} onclick="withLoading(this,proposeGpPlayoffs)">${_ic('trophy')} ${t('txt_txt_start_playoffs')} →</button>`;
@@ -207,67 +209,6 @@ async function renderGP() {
     if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
     el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
   }
-}
-
-function _buildGpOpsStats({ phase, hasCourts, hasMoreGroupRounds, matches }) {
-  const unresolved = (matches || []).filter(m => m.status !== 'completed');
-  const disputes = unresolved.filter(m => m.disputed);
-  const escalated = disputes.filter(m => m.dispute_escalated);
-  const pendingConfirmation = unresolved.filter(m => (m.score && m.scored_by && !m.score_confirmed && !m.disputed) || m.format_review);
-  const unassignedCourts = hasCourts
-    ? unresolved.filter(m => !String(m.court || '').trim()).length
-    : 0;
-
-  let nextAction = 'none';
-  if (disputes.length > 0 || pendingConfirmation.length > 0) {
-    nextAction = 'review';
-  } else if (unresolved.length > 0) {
-    nextAction = 'record';
-  } else if (phase === 'groups' && hasMoreGroupRounds) {
-    nextAction = 'next-round';
-  } else if (phase === 'groups') {
-    nextAction = 'start-playoffs';
-  } else if (phase === 'playoffs') {
-    nextAction = 'finish-playoffs';
-  }
-
-  return {
-    unresolvedCount: unresolved.length,
-    disputesCount: disputes.length,
-    escalatedCount: escalated.length,
-    pendingConfirmationCount: pendingConfirmation.length,
-    unassignedCourtsCount: unassignedCourts,
-    completedMatchCount: (matches || []).filter(m => m.status === 'completed').length,
-    totalMatchCount: (matches || []).length,
-    nextAction,
-  };
-}
-
-function _renderGpOpsHeader(stats, phase) {
-  const actionLabelMap = {
-    review: t('txt_txt_next_action_review_queue'),
-    record: t('txt_txt_next_action_record_scores'),
-    'next-round': t('txt_txt_next_action_generate_round'),
-    'start-playoffs': t('txt_txt_next_action_start_playoffs'),
-    'finish-playoffs': t('txt_txt_next_action_complete_playoffs'),
-    none: '—',
-  };
-  const actionLabel = actionLabelMap[stats.nextAction] || actionLabelMap.none;
-  return `
-    <div class="card gp-ops-header tournament-status-bar" id="gp-ops-header">
-      <div class="gp-ops-header-top">
-        <h3>${t('txt_admin_status_phase')}</h3>
-        <div class="gp-ops-next-action">
-          <span>${t('txt_txt_next_action')}:</span>
-          <button type="button" class="btn btn-sm" ${stats.nextAction === 'none' ? 'disabled' : ''} onclick="_gpFocusNextAction('${stats.nextAction}')">${esc(actionLabel)}</button>
-          <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">${_ic('settings')} ${t('txt_admin_status_jump_settings')}</button>
-        </div>
-      </div>
-      <div class="gp-ops-header-collapsible">
-        ${_renderStatusBarStats(stats, 'gp-review-queue-card')}
-      </div>
-    </div>
-  `;
 }
 
 function _gpGetReviewItemKind(match) {
@@ -358,29 +299,6 @@ function _goToMatchFromQueue(matchId) {
   _scrollToMatch(matchId);
 }
 
-function _gpFocusNextAction(action) {
-  if (action === 'review') {
-    document.getElementById('gp-review-queue-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
-  }
-  if (action === 'record') {
-    if (_gpMatchFilterState !== 'pending') _applyMatchFilter('pending');
-    const firstPending = document.querySelector('.match-card-wrap[data-status="pending"]');
-    if (firstPending?.id?.startsWith('mcard-')) {
-      _scrollToMatch(firstPending.id.slice(6), true);
-    }
-    return;
-  }
-  if (action === 'next-round' || action === 'start-playoffs') {
-    const target = document.getElementById('gp-playoffs-section') || document.getElementById('gp-group-progress-section');
-    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
-  }
-  if (action === 'finish-playoffs') {
-    document.getElementById('gp-playoff-schema')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
-}
-
 // ─── Render Standalone Playoff ────────────────────────────
 async function renderPO() {
   _totalPts = 0;
@@ -405,14 +323,14 @@ async function renderPO() {
     const poMatches = playoffs.matches || [];
 
     const hasCourts = status.assign_courts !== false;
-    const poOpsStats = _buildGpOpsStats({
-      phase: status.phase,
-      hasCourts,
-      hasMoreGroupRounds: false,
-      matches: poMatches,
-    });
     let html = '';
-    html += _renderPoOpsHeader(poOpsStats);
+    html += _renderTournamentStatusBar({
+      id: 'po-ops-header',
+      stats: _buildOpsStats(poMatches),
+      reviewCardId: 'po-review-queue-card',
+      phase: status.phase === 'finished' ? t('txt_txt_finished') : '',
+      rounds: status.phase === 'finished' ? [] : _buildBracketRounds(poMatches),
+    });
     const pending = _sortTbdLast((playoffs.pending || []).filter(m => m.status !== 'completed'));
     html += _renderCourtAssignmentsCard(pending, t('txt_txt_court_assignments_play_offs'), status.assign_courts !== false, 'po-playoff');
     html += _renderPoReviewQueueCard(poMatches);
@@ -473,31 +391,6 @@ async function renderPO() {
     if (_recoverFromMissingOpenTournament(_renderTid, e)) return;
     el.innerHTML = `<div class="alert alert-error">${esc(e.message)}</div>`;
   }
-}
-
-function _renderPoOpsHeader(stats) {
-  const actionLabelMap = {
-    review: t('txt_txt_next_action_review_queue'),
-    record: t('txt_txt_next_action_record_scores'),
-    'finish-playoffs': t('txt_txt_next_action_complete_playoffs'),
-    none: '—',
-  };
-  const actionLabel = actionLabelMap[stats.nextAction] || actionLabelMap.none;
-  return `
-    <div class="card gp-ops-header tournament-status-bar" id="po-ops-header">
-      <div class="gp-ops-header-top">
-        <h3>${t('txt_admin_status_phase')}</h3>
-        <div class="gp-ops-next-action">
-          <span>${t('txt_txt_next_action')}:</span>
-          <button type="button" class="btn btn-sm" ${stats.nextAction === 'none' ? 'disabled' : ''} onclick="_poFocusNextAction('${stats.nextAction}')">${esc(actionLabel)}</button>
-          <button type="button" class="btn btn-sm btn-muted status-bar-settings-btn" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_status_jump_settings'))}">${_ic('settings')} ${t('txt_admin_status_jump_settings')}</button>
-        </div>
-      </div>
-      <div class="gp-ops-header-collapsible">
-        ${_renderStatusBarStats(stats, 'po-review-queue-card')}
-      </div>
-    </div>
-  `;
 }
 
 function _renderPoReviewQueueCard(matches) {
@@ -567,23 +460,6 @@ function _poApplyReviewQueueFilter() {
       const isActive = btn.textContent.trim().startsWith(labels[filter]);
       btn.classList.toggle('active', isActive);
     });
-  }
-}
-
-function _poFocusNextAction(action) {
-  if (action === 'review') {
-    document.getElementById('po-review-queue-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
-  }
-  if (action === 'record') {
-    const firstPending = document.querySelector('.match-card-wrap[data-status="pending"]');
-    if (firstPending?.id?.startsWith('mcard-')) {
-      _scrollToMatch(firstPending.id.slice(6), true);
-    }
-    return;
-  }
-  if (action === 'finish-playoffs') {
-    document.getElementById('po-playoff-schema')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
 
@@ -692,7 +568,7 @@ function _renderMatchFormatChip(m, ctx, { onlyIfOverride = false, mode = null, m
     ? t('txt_match_format_overridden')
     : t('txt_match_format_default_value', { value: defaultValue });
   const cls = `match-format-btn${overridden ? ' is-override' : ''}`;
-  return `<button type="button" class="${cls}" id="${idPrefix}${m.id}" data-mode-key="${key}" aria-haspopup="dialog" aria-label="${escAttr(t('txt_match_format_btn_label'))}" title="${escAttr(title)}" onclick="_openMatchFormatPopover('${m.id}','${ctx}', this, '${key}')">${_antIc('profile')} ${label}<span class="match-format-caret" aria-hidden="true"></span></button>`;
+  return `<button type="button" class="${cls}" id="${idPrefix}${m.id}" data-mode-key="${key}" aria-haspopup="dialog" aria-label="${escAttr(t('txt_match_format_btn_label'))}" title="${escAttr(title)}" onclick="_openMatchFormatPopover('${m.id}','${ctx}', this, '${key}')">${_ic('clipboard')} ${label}<span class="match-format-caret" aria-hidden="true"></span></button>`;
 }
 
 /** Show the points or sets inputs of one form without re-rendering the row. */
@@ -834,8 +710,8 @@ function _renderDisputePanel(m, ctx) {
   const origScore = fmt(m.sets, m.score);
   const dispScore = fmt(m.dispute_sets, m.dispute_score);
   const escalatedNote = m.dispute_escalated
-    ? `<div class="admin-dispute-note note-escalated">${_antIc('warning')} ${t('txt_txt_escalated_by_player')}</div>`
-    : `<div class="admin-dispute-note note-reviewing">${_antIc('sync')} ${t('txt_txt_players_reviewing')}</div>`;
+    ? `<div class="admin-dispute-note note-escalated">${_ic('alert')} ${t('txt_txt_escalated_by_player')}</div>`
+    : `<div class="admin-dispute-note note-reviewing">${_ic('refresh')} ${t('txt_txt_players_reviewing')}</div>`;
   const hideCustom = `document.getElementById('dr-custom-${m.id}')?.classList.add('hidden')`;
   const showCustom = `document.getElementById('dr-custom-${m.id}')?.classList.remove('hidden');_focusFirstScoreInput(document.getElementById('dr-custom-${m.id}'))`;
   let html = `<div class="admin-dispute-panel" id="dispute-panel-${m.id}">`;
@@ -889,7 +765,7 @@ function _renderFormatReviewPanel(m) {
     ? formatSetScore(m.review_sets, m.review_decider || _matchDecider(m), ' / ')
     : (m.review_score ? `${m.review_score[0]}–${m.review_score[1]}` : '?');
   let html = `<div class="admin-dispute-panel" id="review-panel-${m.id}">`;
-  html += `<div class="admin-dispute-note note-escalated">${_antIc('warning')} ${t('txt_admin_format_review_note')}</div>`;
+  html += `<div class="admin-dispute-note note-escalated">${_ic('alert')} ${t('txt_admin_format_review_note')}</div>`;
   html += `<div class="admin-dispute-scores"><span class="dispute-score-value">${esc(score)}</span></div>`;
   html += `<div class="admin-review-actions">`;
   html += `<button type="button" class="btn btn-success btn-sm" onclick="_adminFormatReview('${m.id}','approve')">${t('txt_admin_approve_score')}</button>`;
@@ -902,9 +778,9 @@ function _renderFormatReviewPanel(m) {
 function _renderCommentBanner(m) {
   let html = `<div class="match-comment-banner">`;
   if (m.comment) {
-    html += `<span class="match-comment-text" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_click_to_edit')}">${_antIc('message')} ${esc(m.comment)}</span>`;
+    html += `<span class="match-comment-text" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_click_to_edit')}">${_ic('message')} ${esc(m.comment)}</span>`;
   } else {
-    html += `<span class="match-comment-add" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_comment_placeholder')}">${_antIc('message')} ${t('txt_match_add_comment')}</span>`;
+    html += `<span class="match-comment-add" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_comment_placeholder')}">${_ic('message')} ${t('txt_match_add_comment')}</span>`;
   }
   html += `<div class="match-comment-edit hidden" id="mc-row-${m.id}">`;
   html += `<input type="text" id="mc-${m.id}" value="${m.comment ? esc(m.comment) : ''}" placeholder="${t('txt_match_comment_placeholder')}" maxlength="500" onkeydown="if(event.key==='Enter')_setMatchComment('${m.id}')">`;
@@ -932,12 +808,12 @@ function _renderScoreDisplay(m) {
 function _renderLifecycleBadge(m, awaitingTipKey) {
   if (m.disputed) {
     if (m.dispute_escalated) {
-      return ` <span class="badge badge-dispute" title="${t('txt_txt_dispute_escalated_tip')}">${_antIc('warning')} ${t('txt_txt_dispute_label')}</span>`;
+      return ` <span class="badge badge-dispute" title="${t('txt_txt_dispute_escalated_tip')}">${_ic('alert')} ${t('txt_txt_dispute_label')}</span>`;
     }
-    return ` <span class="badge badge-dispute badge-dispute-pending" title="${t('txt_txt_dispute_pending_tip')}">${_antIc('sync')} ${t('txt_txt_dispute_review_label')}</span>`;
+    return ` <span class="badge badge-dispute badge-dispute-pending" title="${t('txt_txt_dispute_pending_tip')}">${_ic('refresh')} ${t('txt_txt_dispute_review_label')}</span>`;
   }
   if (awaitingTipKey && _scoreConfirmationMode !== 'immediate') {
-    return ` <span class="badge badge-pending-score" title="${t(awaitingTipKey)}" aria-label="${escAttr(t(awaitingTipKey))}">${_antIc('clock-circle')}</span>`;
+    return ` <span class="badge badge-pending-score" title="${t(awaitingTipKey)}" aria-label="${escAttr(t(awaitingTipKey))}">${_ic('clock')}</span>`;
   }
   return '';
 }
@@ -949,7 +825,7 @@ function _renderBreakdown(m, ctx) {
   if (!bd || Object.keys(bd).length === 0) return '';
   const scaled = Object.values(bd).find(d => d.scale && d.scale !== 1);
   let html = `<details class="breakdown-details" id="breakdown-${m.id}">`;
-  html += `<summary>${_antIc('bar-chart')} ${t('txt_txt_score_breakdown')}</summary>`;
+  html += `<summary>${_ic('chart')} ${t('txt_txt_score_breakdown')}</summary>`;
   html += `<div class="breakdown-panel">`;
   if (scaled) html += `<div class="breakdown-scale-note">${esc(t('txt_match_format_scaled_note', { n: _totalPts }))} (×${scaled.scale.toFixed(2)})</div>`;
   html += `<table class="breakdown-table"><thead><tr><th>${t('txt_txt_player')}</th><th>${t('txt_txt_raw')}</th><th>${t('txt_txt_relative_strength')}</th><th>${t('txt_txt_strength_weight')}</th><th>${t('txt_txt_strength_multiplier')}</th><th>${t('txt_txt_loss_disc_multiplier')}</th><th>${t('txt_txt_win_bonus_header')}</th><th>${t('txt_txt_final')}</th></tr></thead><tbody>`;
@@ -972,7 +848,7 @@ function matchRow(m, ctx) {
   const t1 = m.team1.join(' & ') || 'TBD';
   const t2 = m.team2.join(' & ') || 'TBD';
   const court = m.court ? `<span class="match-court">${esc(m.court)}</span>` : '';
-  const roundLabel = m.round_label ? `<span class="badge badge-scheduled">${esc(m.round_label)}</span>` : '';
+  const roundLabel = m.round_label ? `<span class="badge badge-scheduled match-round-badge">${esc(m.round_label)}</span>` : '';
   const editBtn = () => {
     const sc = m.score || [0, 0];
     const setsJson = JSON.stringify(m.sets || []);
@@ -989,7 +865,7 @@ function matchRow(m, ctx) {
     let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap" data-status="completed" data-disputed="${m.disputed ? '1' : '0'}">`;
     html += `${roundLabel} <div class="match-teams"><span class="${t1Class}">${esc(t1)}</span> <span class="vs">vs</span> <span class="${t2Class}">${esc(t2)}</span></div> ${court}`;
     html += ` <span class="${disp.cls}" id="mscore-${m.id}">${disp.html}</span>`;
-    html += ` <span class="badge badge-completed" aria-label="${escAttr(t('txt_txt_filter_completed'))}">${_antIc('check')}</span>`;
+    html += ` <span class="badge badge-completed" aria-label="${escAttr(t('txt_txt_filter_completed'))}">${_ic('check')}</span>`;
     const awaiting = m.scored_by && !m.score_confirmed ? 'txt_txt_player_submitted_not_confirmed' : null;
     html += _renderLifecycleBadge(m, awaiting);
     html += _renderMatchFormatChip(m, ctx, { onlyIfOverride: true });
@@ -2326,12 +2202,12 @@ function _renderPlayoffMatchesByRound(matches, ctx, losersCtx = ctx, superFinalC
 
   // ── Round nav bar ─────────────────────────────────────────────────────────
   let html = `<div class="group-nav-bar" id="po-round-nav">`;
+  // No per-round counts: the status bar carries the current rounds' progress;
+  // the pending dot / dimmed done state is enough here.
   for (const key of roundOrder) {
-    const rMatches = byRound[key];
-    const pending = rMatches.filter(m => m.status !== 'completed').length;
-    const total = rMatches.length;
-    const cls = pending > 0 ? 'group-nav-btn has-pending' : 'group-nav-btn all-done';
-    html += `<button type="button" class="${cls}" onclick="_scrollToPlayoffRound('${escAttr(key)}')">${esc(key)}<span class="nav-btn-round-count">${pending > 0 ? `${pending}/` : ''}${total}</span></button>`;
+    const pending = byRound[key].some(m => m.status !== 'completed');
+    const cls = pending ? 'group-nav-btn has-pending' : 'group-nav-btn all-done';
+    html += `<button type="button" class="${cls}" onclick="_scrollToPlayoffRound('${escAttr(key)}')">${esc(key)}</button>`;
   }
   html += `<span class="group-nav-sep" aria-hidden="true"></span>`;
   html += _renderMatchFilterChips(currentTid);

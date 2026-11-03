@@ -123,7 +123,7 @@ def _insert_player_secret(
 
 
 def _insert_history(
-    profile_id: str,
+    profile_id: str | None,
     tid: str,
     player_id: str,
     player_name: str = "Player",
@@ -409,6 +409,114 @@ class TestLinkParticipation:
             ).fetchone()
             assert row["profile_id"] == pid
 
+    def test_relink_finished_moves_history_from_old_profile(self, client: TestClient, auth_headers: dict) -> None:
+        """Re-linking a finished participation moves the durable history row to the new profile."""
+        pid = _insert_profile(name="Alice")
+        old_pid = _insert_profile(name="Ghost", email="", is_ghost=True)
+        _insert_tournament("t1")
+        _insert_player_secret(
+            "t1",
+            "p1",
+            "Alice",
+            profile_id=old_pid,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+            tournament_name="T1",
+        )
+        _insert_history(old_pid, "t1", "p1", player_name="Alice", tournament_name="T1", rank=2)
+
+        resp = client.post(f"/api/admin/player-profiles/{pid}/link/t1/p1", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "finished"
+
+        with db_mod.get_db() as conn:
+            rows = conn.execute(
+                "SELECT profile_id, rank FROM player_history WHERE entity_id = 't1' AND player_id = 'p1'"
+            ).fetchall()
+        assert [(r["profile_id"], r["rank"]) for r in rows] == [(pid, 2)]
+
+    def test_relink_history_only_participation(self, client: TestClient, auth_headers: dict) -> None:
+        """A finished participation with no player_secrets row left can still be re-linked."""
+        pid = _insert_profile(name="Alice")
+        old_pid = _insert_profile(name="Bob", email="bob@example.com")
+        _insert_history(old_pid, "t1", "p1", player_name="Bob", tournament_name="T1")
+
+        resp = client.post(f"/api/admin/player-profiles/{pid}/link/t1/p1", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "finished"
+
+        with db_mod.get_db() as conn:
+            row = conn.execute(
+                "SELECT profile_id FROM player_history WHERE entity_id = 't1' AND player_id = 'p1'"
+            ).fetchone()
+        assert row["profile_id"] == pid
+
+        detail = client.get(f"/api/admin/player-profiles/{old_pid}", headers=auth_headers).json()
+        assert detail["participations"] == []
+
+    def test_link_finished_when_history_claimed_elsewhere(self, client: TestClient, auth_headers: dict) -> None:
+        """An unlinked secret whose history row belongs to another profile still links, not silently no-ops."""
+        pid = _insert_profile(name="Alice")
+        old_pid = _insert_profile(name="Bob", email="bob@example.com")
+        _insert_tournament("t1")
+        _insert_player_secret("t1", "p1", "Alice", finished_at=datetime.now(timezone.utc).isoformat())
+        _insert_history(old_pid, "t1", "p1", player_name="Alice", tournament_name="T1")
+
+        resp = client.post(f"/api/admin/player-profiles/{pid}/link/t1/p1", headers=auth_headers)
+        assert resp.status_code == 200
+
+        with db_mod.get_db() as conn:
+            row = conn.execute(
+                "SELECT profile_id FROM player_history WHERE entity_id = 't1' AND player_id = 'p1'"
+            ).fetchone()
+        assert row["profile_id"] == pid
+
+    def test_link_unlinks_profile_from_other_participant_active(self, client: TestClient, auth_headers: dict) -> None:
+        """Linking a profile to a participant drops its link to another participant of the same tournament."""
+        pid = _insert_profile(name="Alice")
+        _insert_tournament("t1")
+        _insert_tournament("t2")
+        _insert_player_secret("t1", "p1", "Alice", profile_id=pid)
+        _insert_player_secret("t1", "p2", "Alicia")
+        _insert_player_secret("t2", "p9", "Alice", profile_id=pid)
+
+        resp = client.post(f"/api/admin/player-profiles/{pid}/link/t1/p2", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["unlinked_player_ids"] == ["p1"]
+
+        with db_mod.get_db() as conn:
+            links = dict(conn.execute("SELECT player_id, profile_id FROM player_secrets").fetchall())
+        # Other tournaments are untouched.
+        assert links == {"p1": None, "p2": pid, "p9": pid}
+
+    def test_link_unlinks_profile_from_other_participant_finished(self, client: TestClient, auth_headers: dict) -> None:
+        """The other participant's finished history row is detached, not deleted."""
+        pid = _insert_profile(name="Alice")
+        _insert_history(pid, "t1", "p1", player_name="Alice", tournament_name="T1")
+        _insert_history(None, "t1", "p2", player_name="Alicia", tournament_name="T1")
+
+        resp = client.post(f"/api/admin/player-profiles/{pid}/link/t1/p2", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["unlinked_player_ids"] == ["p1"]
+
+        with db_mod.get_db() as conn:
+            links = dict(
+                conn.execute("SELECT player_id, profile_id FROM player_history WHERE entity_id = 't1'").fetchall()
+            )
+        assert links == {"p1": None, "p2": pid}
+
+    def test_failed_link_keeps_other_participant_linked(self, client: TestClient, auth_headers: dict) -> None:
+        """A 404 on the target participation rolls back the unlink of the other one."""
+        pid = _insert_profile(name="Alice")
+        _insert_tournament("t1")
+        _insert_player_secret("t1", "p1", "Alice", profile_id=pid)
+
+        resp = client.post(f"/api/admin/player-profiles/{pid}/link/t1/missing", headers=auth_headers)
+        assert resp.status_code == 404
+
+        with db_mod.get_db() as conn:
+            row = conn.execute("SELECT profile_id FROM player_secrets WHERE player_id = 'p1'").fetchone()
+        assert row["profile_id"] == pid
+
     def test_link_same_profile_idempotent(self, client: TestClient, auth_headers: dict) -> None:
         """Linking to the same profile that's already linked returns success."""
         pid = _insert_profile(name="Alice")
@@ -648,31 +756,40 @@ class TestUpdateEmail:
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Unlinked players listing
+# Tournament participants listing (link picker)
 # ────────────────────────────────────────────────────────────────────────────
 
 
-class TestUnlinkedPlayers:
-    def test_returns_only_unlinked(self, client: TestClient, auth_headers: dict) -> None:
-        pid = _insert_profile(name="Alice")
+class TestTournamentParticipants:
+    def test_lists_linked_and_unlinked(self, client: TestClient, auth_headers: dict) -> None:
+        pid = _insert_profile(name="Alice Hub")
+        ghost = _insert_profile(name="Carol", email="", is_ghost=True)
         _insert_tournament("t1")
         _insert_player_secret("t1", "p1", "Alice", profile_id=pid)
         _insert_player_secret("t1", "p2", "Bob")
+        _insert_player_secret("t1", "p3", "Carol", profile_id=ghost)
 
-        resp = client.get("/api/admin/player-profiles/unlinked/t1", headers=auth_headers)
+        resp = client.get("/api/admin/player-profiles/participants/t1", headers=auth_headers)
         assert resp.status_code == 200
-        data = resp.json()
-        assert len(data) == 1
-        assert data[0]["player_id"] == "p2"
+        by_id = {p["player_id"]: p for p in resp.json()}
+        assert set(by_id) == {"p1", "p2", "p3"}
+        assert by_id["p1"]["profile_id"] == pid
+        assert by_id["p1"]["profile_name"] == "Alice Hub"
+        assert by_id["p1"]["is_ghost"] is False
+        assert by_id["p2"]["profile_id"] is None
+        assert by_id["p3"]["is_ghost"] is True
 
-    def test_returns_empty_when_all_linked(self, client: TestClient, auth_headers: dict) -> None:
+    def test_includes_history_only_participants(self, client: TestClient, auth_headers: dict) -> None:
         pid = _insert_profile(name="Alice")
-        _insert_tournament("t1")
-        _insert_player_secret("t1", "p1", "Alice", profile_id=pid)
+        _insert_history(pid, "t1", "p1", player_name="Alice")
 
-        resp = client.get("/api/admin/player-profiles/unlinked/t1", headers=auth_headers)
+        resp = client.get("/api/admin/player-profiles/participants/t1", headers=auth_headers)
         data = resp.json()
-        assert len(data) == 0
+        assert [(p["player_id"], p["profile_id"]) for p in data] == [("p1", pid)]
+
+    def test_requires_admin(self, client: TestClient, alice_headers: dict) -> None:
+        resp = client.get("/api/admin/player-profiles/participants/t1", headers=alice_headers)
+        assert resp.status_code == 403
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -938,17 +1055,26 @@ class TestGhostProfileConsolidation:
         assert "cg-t-h2" in history_tids
 
     def test_consolidate_recalculates_elo(self, client: TestClient, auth_headers: dict) -> None:
-        pid1 = "cg-pid-e1"
-        pid2 = "cg-pid-e2"
-        ghost1 = _insert_ghost_profile(pid1, "Elo A")
-        ghost2 = _insert_ghost_profile(pid2, "Elo B")
-        _insert_tournament("cg-t-e1", "Elo T1")
-        _insert_tournament("cg-t-e2", "Elo T2")
-        _insert_player_elo("cg-t-e1", pid1, elo_after=1080.0, matches=5)
-        _insert_player_elo("cg-t-e2", pid2, elo_after=1120.0, matches=8)
-        # Link both player_ids to their respective ghost profiles via player_history
-        _insert_history(ghost1, "cg-t-e1", pid1, wins=3)
-        _insert_history(ghost2, "cg-t-e2", pid2, wins=5)
+        """Merged ghosts form one rating chain: the later tournament is replayed from the earlier result."""
+        from tests.test_elo_relink import _elo_before, _play_mexicano, _profile_elo
+
+        t1, ids1 = _play_mexicano(client, auth_headers)
+        t2, ids2 = _play_mexicano(client, auth_headers)
+        ghost1 = _insert_ghost_profile(ids1["Alice"], "Elo A")
+        ghost2 = _insert_ghost_profile(ids2["Alice"], "Elo B")
+        with db_mod.get_db() as conn:
+            conn.execute("UPDATE player_secrets SET profile_id = ? WHERE player_id = ?", (ghost1, ids1["Alice"]))
+            conn.execute("UPDATE player_secrets SET profile_id = ? WHERE player_id = ?", (ghost2, ids2["Alice"]))
+            t1_after = conn.execute(
+                "SELECT elo_after FROM player_elo WHERE tournament_id = ? AND player_id = ?", (t1, ids1["Alice"])
+            ).fetchone()[0]
+        # t1 finished first, so it precedes t2 in the chain.
+        _insert_history(ghost1, t1, ids1["Alice"], wins=1)
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "UPDATE player_history SET finished_at = '2026-01-01T00:00:00+00:00' WHERE entity_id = ?", (t1,)
+            )
+        assert _elo_before(t2, ids2["Alice"]) == 1000
 
         resp = client.post(
             "/api/admin/player-profiles/consolidate-ghosts",
@@ -957,14 +1083,16 @@ class TestGhostProfileConsolidation:
         )
         assert resp.status_code == 200
 
-        # ELO should now reflect the most recent tournament (1120), and matches
-        # should be the SUM across all merged ghosts (5 + 8 = 13). Before the
-        # fix, matches were overwritten with the last tournament's count (8),
-        # which understated the player's true match count in community/global
-        # leaderboards and the admin panel.
+        # t2 now starts from t1's result and counts t1's match too (1 + 1).
+        assert _elo_before(t2, ids2["Alice"]) == t1_after
+        with db_mod.get_db() as conn:
+            t2_after = conn.execute(
+                "SELECT elo_after FROM player_elo WHERE tournament_id = ? AND player_id = ?", (t2, ids2["Alice"])
+            ).fetchone()[0]
         data = resp.json()
-        assert data["elo_padel_matches"] == 13
-        assert abs(data["elo_padel"] - 1120.0) < 0.01
+        assert data["elo_padel_matches"] == 2
+        assert abs(data["elo_padel"] - t2_after) < 0.01
+        assert _profile_elo(data["id"]) == (data["elo_padel"], 2)
 
     def test_consolidate_requires_auth(self, client: TestClient) -> None:
         resp = client.post(

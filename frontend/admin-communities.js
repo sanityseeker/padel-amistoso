@@ -185,7 +185,7 @@ const _commStore = reactiveStore({
   // Icon SVG strings (static, rendered via v-html on the rename/delete buttons).
   icEdit() { return _ic('edit'); },
   icTrash() { return _ic('trash'); },
-  icInfo() { return _antIc('info-circle'); },
+  icInfo() { return _ic('info'); },
   openInfo() { openContextInfo('communities'); },
 });
 
