@@ -1,3 +1,9 @@
+## v1.20.1 (2026-11-03)
+
+### Fix
+
+- **ui**: unify public header and page width; add multi-winner playoffs
+
 ## v1.20.0 (2026-11-03)
 
 ### Feat
