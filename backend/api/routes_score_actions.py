@@ -46,6 +46,7 @@ from .helpers import (
     _is_player_in_match,
     _is_player_in_opposing_team,
     _is_player_in_submitter_team,
+    _clear_format_review,
     _mark_admin_score,
     _prepare_set_score,
     _require_editor_access,
@@ -636,6 +637,79 @@ async def resolve_dispute(
             notify_champion(tid, data, [p.name for p in winners[0]])
         else:
             notify_winners(tid, data, [[p.name for p in team] for team in winners])
+    return {"ok": True}
+
+
+@router.post("/{tid}/matches/{mid}/approve-review")
+async def approve_format_review(tid: str, mid: str, user: User = Depends(get_current_user)) -> dict:
+    """Accept a player score that was submitted in a non-default format (organiser only).
+
+    The parked ``review_score`` / ``review_sets`` are applied to the engine as
+    if the organiser had recorded them.
+    """
+    _require_editor_access(tid, user)
+    async with get_tournament_lock(tid):
+        data = _get_any_tournament(tid)
+        t = data["tournament"]
+        match = _find_match_full(t, mid)
+        if match is None:
+            raise HTTPException(404, "Match not found")
+        if not match.format_review or match.review_score is None:
+            raise HTTPException(409, "Match has no score awaiting review")
+        sets = list(match.review_sets) if match.review_sets else None
+        # Approving adopts the format the match was actually played in, so the
+        # stored score, the decider validation and the match's chip all agree.
+        previous_override = match.format_override
+        prev = previous_override or MatchFormatOverride()
+        match.format_override = MatchFormatOverride(
+            mode=InputFormat.SETS if sets else InputFormat.POINTS,
+            points_target=prev.points_target,
+            decider=(match.review_decider or prev.decider) if sets else prev.decider,
+            set_by=user.username,
+            set_at=time.time(),
+        )
+        try:
+            _apply_score_to_tournament(tid, data, match, match.review_score, sets)
+        except (ValueError, RuntimeError, KeyError) as e:
+            match.format_override = previous_override
+            raise HTTPException(400, str(e))
+        _mark_admin_score(match, user.username)
+        match.score_history[-1]["action"] = "approve_review"
+        await save_tournament(tid)
+        await update_live_stats(tid)
+        elo_after_score(tid, data, match)
+
+    winners = tournament_winners(t)
+    if winners:
+        if len(winners) == 1:
+            notify_champion(tid, data, [p.name for p in winners[0]])
+        else:
+            notify_winners(tid, data, [[p.name for p in team] for team in winners])
+    return {"ok": True}
+
+
+@router.post("/{tid}/matches/{mid}/reject-review")
+async def reject_format_review(tid: str, mid: str, user: User = Depends(get_current_user)) -> dict:
+    """Discard a player score parked for format review; players may submit again."""
+    _require_editor_access(tid, user)
+    async with get_tournament_lock(tid):
+        data = _get_any_tournament(tid)
+        match = _find_match_full(data["tournament"], mid)
+        if match is None:
+            raise HTTPException(404, "Match not found")
+        if not match.format_review:
+            raise HTTPException(409, "Match has no score awaiting review")
+        _clear_format_review(match)
+        match.score_history.append(
+            {
+                "player_id": user.username,
+                "action": "reject_review",
+                "score": None,
+                "sets": None,
+                "timestamp": time.time(),
+            }
+        )
+        await save_tournament(tid)
     return {"ok": True}
 
 

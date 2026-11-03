@@ -1018,8 +1018,9 @@ function _validatePlayerScore(matchId, scoreCtx) {
       const w2 = sets[1][0] > sets[1][1] ? 'a' : 'b';
       if (w1 === w2) { _showErr(t('txt_txt_third_set_needs_split')); return null; }
     }
-    const display = formatSetScore(sets, _tvMatchDeciderById(matchId), ' / ');
-    return { body: JSON.stringify({ match_id: matchId, sets }), path: entry.tennis, displayScore: display };
+    const decider = setsDiv.dataset.decider || _tvMatchDeciderById(matchId);
+    const display = formatSetScore(sets, decider, ' / ');
+    return { body: JSON.stringify({ match_id: matchId, sets, decider }), path: entry.tennis, displayScore: display };
   } else {
     const s1 = +(document.getElementById('ps1-' + matchId)?.value) || 0;
     const s2 = +(document.getElementById('ps2-' + matchId)?.value) || 0;
@@ -1054,8 +1055,12 @@ function _playerSubmitScore(matchId, scoreCtx) {
   // Build the overlay inside the form
   const overlay = document.createElement('div');
   overlay.className = 'score-confirm-overlay';
+  const reviewNote = _isOffFormatEntry(matchId)
+    ? `<div class="player-format-warning">${esc(t('txt_tv_score_in_review_help'))}</div>`
+    : '';
   overlay.innerHTML = `
     <div class="confirm-score-value">${displayScore}</div>
+    ${reviewNote}
     <div class="confirm-score-actions">
       <button type="button" class="score-confirm-btn" id="ps-confirm-${matchId}">${t('txt_txt_confirm_score')}</button>
       <button type="button" class="score-cancel-btn" id="ps-cancel-${matchId}">${t('txt_txt_cancel')}</button>
@@ -1116,6 +1121,9 @@ function _buildPlayerScoreForm(m, scoreCtx) {
     return _buildScoreLifecyclePanel(m, scoreCtx);
   }
 
+  // Off-format score parked for the organiser — nothing to enter until they decide.
+  if (m.format_review) return _buildFormatReviewPanel(m);
+
   // Don't show the input form for completed/confirmed matches.
   if (m.score) return '';
 
@@ -1130,12 +1138,14 @@ function _buildPlayerScoreForm(m, scoreCtx) {
   html += `<button type="button" class="score-toggle-btn" id="ps-toggle-${m.id}" onclick="_toggleScoreForm('${m.id}')">${t('txt_txt_submit_score')}</button>`;
   html += `<div class="score-form-body hidden" id="ps-body-${m.id}">`;
 
-  // Points / Sets toggle (only when tennis scoring is available for this context)
+  // Format chip (only when tennis scoring is available for this context).
+  // The form opens in the organiser's format; picking the other one in the
+  // chip's popover sends the score to the organiser for review instead.
+  const decider = _tvMatchDecider(m);
   if (hasTennis) {
-    html += `<div class="player-score-mode-toggle" data-match="${m.id}">`;
-    html += `<button type="button" class="${defaultMode === 'points' ? 'active' : ''}" onclick="_setPlayerScoreMode('${m.id}','points')">${t('txt_txt_points_label')}</button>`;
-    html += `<button type="button" class="${defaultMode === 'sets' ? 'active' : ''}" onclick="_setPlayerScoreMode('${m.id}','sets')">${t('txt_txt_sets')}</button>`;
-    html += `</div>`;
+    const defaultFmt = _tvFormatKey(defaultMode, decider);
+    html += _tvFormatChip(m.id, defaultFmt, defaultFmt);
+    html += `<div id="ps-fmt-warn-${m.id}" class="player-format-warning hidden">${esc(t('txt_tv_format_review_warning', { format: _tvFormatLabel(defaultFmt) }))}</div>`;
   }
 
   // Points inputs — compact single row: Alice [0] – [0] Bob [Save]
@@ -1149,8 +1159,8 @@ function _buildPlayerScoreForm(m, scoreCtx) {
   // Sets inputs (hidden by default unless admin chose sets)
   // S1 and S2: standard sets capped at 7; S3: uncapped (super tie-break can go beyond 7)
   if (hasTennis) {
-    html += `<div id="ps-sets-${m.id}"${defaultMode === 'sets' ? '' : ' class="hidden"'}><div class="player-sets-grid">`;
-    html += _tvRenderSetRows(`pts1-${m.id}`, `pts2-${m.id}`, _tvMatchDecider(m));
+    html += `<div id="ps-sets-${m.id}" data-decider="${decider}"${defaultMode === 'sets' ? '' : ' class="hidden"'}><div class="player-sets-grid">`;
+    html += _tvRenderSetRows(`pts1-${m.id}`, `pts2-${m.id}`, decider);
     html += `</div></div>`;
   }
 
@@ -1167,8 +1177,12 @@ function _toggleScoreForm(matchId) {
   const body = document.getElementById('ps-body-' + matchId);
   const btn = document.getElementById('ps-toggle-' + matchId);
   if (!body || !btn) return;
-  const opening = body.classList.toggle('hidden');
-  btn.classList.toggle('active', !opening);
+  // The toggle reads "Cancel" while the form is open so only one submit
+  // button (the form's own) is ever visible.
+  const closed = body.classList.toggle('hidden');
+  btn.classList.toggle('active', !closed);
+  btn.textContent = closed ? t('txt_txt_submit_score') : t('txt_txt_cancel');
+  if (closed && _psFmtStore.matchId === matchId) _psFmtStore.open = false;
 }
 
 /**
@@ -1303,25 +1317,131 @@ function _playerAutoFillScore(matchId, total) {
   }
 }
 
-/** Toggle between points and sets input for a specific match */
-function _setPlayerScoreMode(matchId, mode) {
+/**
+ * Entry format of a player score form: 'points', 'sets' (full third set) or
+ * 'sets_tb' (sets with a super tie-break deciding the third).
+ */
+function _tvFormatKey(mode, decider) {
+  if (mode !== 'sets') return 'points';
+  return decider === 'match_tiebreak' ? 'sets_tb' : 'sets';
+}
+
+/** Display label for a format key. */
+function _tvFormatLabel(fmt) {
+  if (fmt === 'points') return t('txt_txt_points_label');
+  if (fmt === 'sets_tb') return `${t('txt_txt_sets')} + ${t('txt_match_format_decider_tiebreak').toLowerCase()}`;
+  return t('txt_txt_sets');
+}
+
+/** Switch a player score form to *fmt*; off the organiser's format shows the review warning. */
+function _setPlayerScoreMode(matchId, fmt) {
   const pointsDiv = document.getElementById('ps-points-' + matchId);
   const setsDiv = document.getElementById('ps-sets-' + matchId);
   if (!pointsDiv || !setsDiv) return;
-  if (mode === 'sets') {
-    pointsDiv.classList.add('hidden');
-    setsDiv.classList.remove('hidden');
-  } else {
-    pointsDiv.classList.remove('hidden');
-    setsDiv.classList.add('hidden');
+  const isSets = fmt !== 'points';
+  pointsDiv.classList.toggle('hidden', isSets);
+  setsDiv.classList.toggle('hidden', !isSets);
+  if (isSets) {
+    // The third row is a set or a match tie-break — rebuild the rows when the decider changes.
+    const decider = fmt === 'sets_tb' ? 'match_tiebreak' : 'full_set';
+    if (setsDiv.dataset.decider !== decider) {
+      setsDiv.dataset.decider = decider;
+      const grid = setsDiv.querySelector('.player-sets-grid');
+      if (grid) grid.innerHTML = _tvRenderSetRows(`pts1-${matchId}`, `pts2-${matchId}`, decider);
+    }
   }
-  // Update toggle button states
-  const toggle = pointsDiv.closest('.player-score-form')?.querySelector('.player-score-mode-toggle');
-  if (toggle) {
-    toggle.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
-    const idx = mode === 'sets' ? 1 : 0;
-    toggle.children[idx]?.classList.add('active');
+  const chip = document.getElementById('ps-fmt-btn-' + matchId);
+  if (chip) {
+    const defaultFmt = chip.dataset.defaultFmt;
+    chip.outerHTML = _tvFormatChip(matchId, fmt, defaultFmt);
+    document.getElementById('ps-fmt-warn-' + matchId)?.classList.toggle('hidden', fmt === defaultFmt);
   }
+}
+
+/** Small format chip (admin-panel style) that opens the format popover. */
+function _tvFormatChip(matchId, fmt, defaultFmt) {
+  const cls = `match-format-btn${fmt !== defaultFmt ? ' is-override' : ''}`;
+  const label = fmt === 'sets_tb'
+    ? `${esc(t('txt_txt_sets'))}</span> <span class="match-format-tb">${esc(t('txt_match_tb_label'))}`
+    : esc(_tvFormatLabel(fmt));
+  return `<button type="button" class="${cls}" id="ps-fmt-btn-${matchId}" data-fmt="${fmt}" data-default-fmt="${defaultFmt}" aria-haspopup="dialog" aria-label="${escAttr(t('txt_match_format_btn_label'))}" onclick="_openPlayerFormatPopover('${matchId}', this)">${_ic('settings')} <span class="match-format-mode">${label}</span><span class="match-format-caret" aria-hidden="true"></span></button>`;
+}
+
+// ─── Player format popover (Petite-Vue island) ─────────
+// Markup: #ps-format-popover in public.html, outside #tv-root so live
+// re-renders never destroy it.  Opened from the chip in a player score form.
+
+/** Chip that opened the popover; focus returns here on close. */
+let _psFmtTrigger = null;
+
+const _psFmtStore = reactiveStore({
+  open: false,
+  matchId: '',
+  fmt: 'points',         // 'points' | 'sets' | 'sets_tb' — see _tvFormatKey
+  defaultFmt: 'points',
+  top: 0,
+  left: 0,
+  lang: 'en',            // tracked so t() bindings re-render on language switch
+
+  t(key, params) { void this.lang; return window.t(key, params); },
+  label(fmt) { void this.lang; return _tvFormatLabel(fmt); },
+  choose(fmt) {
+    this.fmt = fmt;
+    _setPlayerScoreMode(this.matchId, fmt);
+    this.close();
+  },
+  close() {
+    this.open = false;
+    const back = document.getElementById('ps-fmt-btn-' + this.matchId) || _psFmtTrigger;
+    back?.focus();
+    _psFmtTrigger = null;
+  },
+});
+
+/** Open the format popover under *btn* for one match's score form. */
+function _openPlayerFormatPopover(matchId, btn) {
+  if (_psFmtStore.open && _psFmtStore.matchId === matchId) { _psFmtStore.close(); return; }
+  mountIsland('#ps-format-popover', _psFmtStore);
+  _psFmtTrigger = btn;
+  const r = btn.getBoundingClientRect();
+  const width = Math.min(320, window.innerWidth - 32);
+  _psFmtStore.top = Math.round(r.bottom + window.scrollY + 6);
+  _psFmtStore.left = Math.round(Math.max(16, Math.min(r.right + window.scrollX - width, window.scrollX + window.innerWidth - width - 16)));
+  _psFmtStore.lang = getAppLanguage();
+  _psFmtStore.matchId = matchId;
+  _psFmtStore.fmt = btn.dataset.fmt;
+  _psFmtStore.defaultFmt = btn.dataset.defaultFmt;
+  _psFmtStore.open = true;
+}
+
+// Click outside the popover (and not on a format chip) closes it; so does Esc.
+document.addEventListener('mousedown', (ev) => {
+  if (!_psFmtStore.open) return;
+  if (ev.target.closest?.('#ps-format-popover') || ev.target.closest?.('.match-format-btn')) return;
+  _psFmtStore.open = false;
+  _psFmtTrigger = null;
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && _psFmtStore.open) _psFmtStore.close();
+});
+
+/** True when the player switched the form away from the organiser's format. */
+function _isOffFormatEntry(matchId) {
+  const warn = document.getElementById('ps-fmt-warn-' + matchId);
+  return !!warn && !warn.classList.contains('hidden');
+}
+
+/** Read-only panel for a score parked for organiser review (entered off-format). */
+function _buildFormatReviewPanel(m) {
+  const score = (m.review_sets && m.review_sets.length > 0)
+    ? formatSetScore(m.review_sets, m.review_decider || _tvMatchDecider(m), ' / ')
+    : (m.review_score ? `${m.review_score[0]} – ${m.review_score[1]}` : '');
+  let html = '<div class="player-score-form player-score-submitted player-score-review">';
+  html += `<span class="submitted-score-label">${t('txt_tv_score_in_review')}</span>`;
+  if (score) html += `<span class="submitted-score-value">${esc(score)}</span>`;
+  html += `<span class="submitted-waiting">${t('txt_tv_score_in_review_help')}</span>`;
+  html += '</div>';
+  return html;
 }
 
 // ── Score lifecycle helpers ───────────────────────────────
@@ -2327,7 +2447,7 @@ function _buildPendingGroupCollapsibles(pendingByGroup, _tl, _hasTbd, _commentHt
       if (key) html += `<div class="court-name">${esc(trl(key))}</div>`;
       for (const m of byRound[key]) {
         const tbd = _hasTbd(m);
-        html += `<div class="court-match opacity-50"${tbd ? '' : ''}>`;
+        html += `<div class="court-match${tbd ? ' opacity-50' : ''}">`;
         html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl(m.team2))}</div>`;
         html += _commentHtml(m);
         html += `</div>`;
@@ -2378,7 +2498,7 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
         if (key) html += `<div class="court-name">${esc(trl(key))}</div>`;
         for (const m of _byRound[key]) {
           const tbd = _hasTbd(m);
-          html += `<div class="court-match opacity-50"${tbd ? '' : ''}>`;
+          html += `<div class="court-match${tbd ? ' opacity-50' : ''}">`;
           html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl(m.team2))}</div>`;
           html += _commentHtml(m);
           html += `</div>`;
@@ -2471,7 +2591,7 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
       if (key) html += `<div class="court-name">${esc(key)}</div>`;
       for (const m of byRound2[key]) {
         const tbd = _hasTbd2(m);
-        html += `<div class="court-match opacity-50"${tbd ? '' : ''}>`;
+        html += `<div class="court-match${tbd ? ' opacity-50' : ''}">`;
         html += `<div class="court-match-info"><div class="court-match-teams">${esc(_tl2(m.team1))}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(_tl2(m.team2))}</div>`;
         html += _commentHtml(m);
         html += `</div>`;

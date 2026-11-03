@@ -175,6 +175,97 @@ body {
 .court-match .player-score-dispute {
   flex-basis: 100%;
 }
+/* Format chip + popover in player score forms — same look as the admin
+   panel's per-match format chip (admin.css .match-format-btn / .mf-*). */
+.match-format-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 32px;
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.match-format-btn .ic { width: 0.85em; height: 0.85em; flex-shrink: 0; }
+.match-format-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.match-format-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.match-format-btn.is-override {
+  border-color: var(--color-warning-border);
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+.match-format-mode { color: var(--color-text); font-weight: 600; }
+.match-format-btn.is-override .match-format-mode { color: inherit; }
+.match-format-caret {
+  width: 0;
+  height: 0;
+  margin-left: 0.15rem;
+  border-left: 0.25rem solid transparent;
+  border-right: 0.25rem solid transparent;
+  border-top: 0.3rem solid currentColor;
+  opacity: 0.7;
+}
+.match-format-popover {
+  position: absolute;
+  z-index: 900;
+  width: min(320px, calc(100vw - 32px));
+  padding: 0.75rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.85rem;
+}
+.match-format-popover[hidden] { display: none; }
+.mf-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.35rem; }
+.mf-title { font-family: var(--font-display); font-weight: 600; font-size: 0.95rem; }
+.mf-close { background: none; border: none; color: var(--color-text-muted); cursor: pointer; font-size: 1rem; padding: 0.15rem 0.35rem; }
+.mf-close:hover { color: var(--color-text); }
+.mf-line { margin: 0 0 0.3rem; color: var(--color-text-muted); font-size: 0.8rem; }
+.mf-hint { margin: 0.3rem 0 0; color: var(--color-text-muted); font-size: 0.78rem; }
+.mf-options { display: flex; flex-direction: column; gap: 0.3rem; margin: 0.35rem 0; }
+.mf-option {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  min-height: 44px; padding: 0.4rem 0.7rem;
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-surface); color: var(--color-text);
+  font-size: 0.9rem; font-weight: 600; text-align: left; cursor: pointer;
+}
+.mf-option:hover { border-color: var(--color-primary); }
+.mf-option.active { border-color: var(--color-primary); background: var(--color-primary); color: var(--color-on-primary); }
+.mf-option-tag { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.75; }
+.match-format-tb {
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 0 0.25rem; border: 1px solid currentColor; border-radius: 3px;
+}
+
+/* Score entered in a format other than the organiser's — goes to review. */
+.player-format-warning {
+  max-width: 18rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--color-warning-border);
+  border-radius: 6px;
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  text-align: left;
+}
+/* With the warning showing, the form needs its own row below the teams. */
+.court-match .player-score-form:has(.player-format-warning:not(.hidden)) {
+  flex-basis: 100%;
+}
+.player-score-submitted.player-score-review {
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
+}
 .court-match:last-child { border-bottom: none; }
 .court-match-empty {
   padding: 0.55rem 0;
@@ -1244,9 +1335,12 @@ html[data-theme="light"] .court-card--yours {
   background: var(--accent);
   color: #fff;
 }
+/* Open form: the toggle reads "Cancel" — neutral, so the form's own
+   Submit stays the only primary action. */
 .score-toggle-btn.active {
-  background: var(--accent);
-  color: #fff;
+  background: var(--surface);
+  color: var(--text-muted);
+  border-color: var(--border);
 }
 .score-form-body {
   display: flex; flex-direction: column; align-items: flex-end;

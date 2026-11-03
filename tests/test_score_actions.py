@@ -1155,7 +1155,9 @@ class TestMatchTiebreakDeciderPlayerPath:
     def test_tournament_default_tiebreak_counts_one_game(self, client: TestClient, auth_headers: dict) -> None:
         tid, secrets, groups = _setup_gp(client, auth_headers, required=True)
         client.patch(
-            f"/api/tournaments/{tid}/tv-settings", json={"set_decider": "match_tiebreak"}, headers=auth_headers
+            f"/api/tournaments/{tid}/tv-settings",
+            json={"set_decider": "match_tiebreak", "score_mode": {"gp-group": "sets"}},
+            headers=auth_headers,
         )
         mid, pid1, pid2 = _find_match_with_two_players(groups["matches"], secrets)
         h1 = _player_headers(client, tid, secrets[pid1]["passphrase"])
@@ -1178,7 +1180,9 @@ class TestMatchTiebreakDeciderPlayerPath:
     def test_full_set_under_tiebreak_decider_returns_400(self, client: TestClient, auth_headers: dict) -> None:
         tid, secrets, groups = _setup_gp(client, auth_headers, required=True)
         client.patch(
-            f"/api/tournaments/{tid}/tv-settings", json={"set_decider": "match_tiebreak"}, headers=auth_headers
+            f"/api/tournaments/{tid}/tv-settings",
+            json={"set_decider": "match_tiebreak", "score_mode": {"gp-group": "sets"}},
+            headers=auth_headers,
         )
         mid, pid1, _pid2 = _find_match_with_two_players(groups["matches"], secrets)
         h1 = _player_headers(client, tid, secrets[pid1]["passphrase"])
@@ -1205,7 +1209,9 @@ class TestMatchTiebreakDeciderPlayerPath:
     def test_correct_tennis_validates_decider(self, client: TestClient, auth_headers: dict) -> None:
         tid, secrets, groups = _setup_gp(client, auth_headers, required=True)
         client.patch(
-            f"/api/tournaments/{tid}/tv-settings", json={"set_decider": "match_tiebreak"}, headers=auth_headers
+            f"/api/tournaments/{tid}/tv-settings",
+            json={"set_decider": "match_tiebreak", "score_mode": {"gp-group": "sets"}},
+            headers=auth_headers,
         )
         mid, pid1, pid2 = _find_match_with_two_players(groups["matches"], secrets)
         h1 = _player_headers(client, tid, secrets[pid1]["passphrase"])
@@ -1232,3 +1238,145 @@ class TestMatchTiebreakDeciderPlayerPath:
         match = _get_gp_match(client, tid, mid, auth_headers)
         assert match["sets"] == [[4, 6], [6, 3], [8, 10]]
         assert match["score"] == [10, 11]
+
+
+# ── Test: off-format submissions go to organiser review ──────────────────────
+
+
+def _gp_player_setup(client: TestClient, auth_headers: dict) -> tuple[str, str, dict]:
+    """GP tournament in its default points mode; return (tid, match_id, player headers)."""
+    tid, secrets, groups = _setup_gp(client, auth_headers)
+    mid, pid1, _pid2 = _find_match_with_two_players(groups["matches"], secrets)
+    return tid, mid, _player_headers(client, tid, secrets[pid1]["passphrase"])
+
+
+def _submit_sets(client: TestClient, tid: str, mid: str, headers: dict) -> dict:
+    r = client.post(
+        f"/api/tournaments/{tid}/gp/record-group-tennis",
+        json={"match_id": mid, "sets": [[6, 3], [6, 4]]},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    return r.json()
+
+
+class TestFormatReview:
+    """A player score in a format other than the match's is held for the organiser."""
+
+    def test_off_format_submit_is_parked_not_counted(self, client: TestClient, auth_headers: dict) -> None:
+        tid, mid, headers = _gp_player_setup(client, auth_headers)
+        assert _submit_sets(client, tid, mid, headers)["review"] is True
+
+        m = _get_gp_match(client, tid, mid, auth_headers)
+        assert m["format_review"] is True
+        assert m["review_sets"] == [[6, 3], [6, 4]]
+        assert m["score"] is None
+        assert m["status"] != "completed"
+
+    def test_matching_format_submit_counts_immediately(self, client: TestClient, auth_headers: dict) -> None:
+        tid, mid, headers = _gp_player_setup(client, auth_headers)
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/record-group",
+            json={"match_id": mid, "score1": 6, "score2": 3},
+            headers=headers,
+        )
+        assert r.status_code == 200
+        assert "review" not in r.json()
+        m = _get_gp_match(client, tid, mid, auth_headers)
+        assert m["status"] == "completed"
+        assert m["format_review"] is False
+
+    def test_match_override_defines_expected_format(self, client: TestClient, auth_headers: dict) -> None:
+        tid, mid, headers = _gp_player_setup(client, auth_headers)
+        r = client.patch(
+            f"/api/tournaments/{tid}/matches/{mid}/format", json={"override": {"mode": "sets"}}, headers=auth_headers
+        )
+        assert r.status_code == 200
+        assert "review" not in _submit_sets(client, tid, mid, headers)
+        assert _get_gp_match(client, tid, mid, auth_headers)["status"] == "completed"
+
+    def test_resubmit_while_under_review_returns_409(self, client: TestClient, auth_headers: dict) -> None:
+        tid, mid, headers = _gp_player_setup(client, auth_headers)
+        _submit_sets(client, tid, mid, headers)
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/record-group",
+            json={"match_id": mid, "score1": 6, "score2": 3},
+            headers=headers,
+        )
+        assert r.status_code == 409
+
+    def test_approve_applies_parked_score(self, client: TestClient, auth_headers: dict) -> None:
+        tid, mid, headers = _gp_player_setup(client, auth_headers)
+        _submit_sets(client, tid, mid, headers)
+        r = client.post(f"/api/tournaments/{tid}/matches/{mid}/approve-review", headers=auth_headers)
+        assert r.status_code == 200
+        m = _get_gp_match(client, tid, mid, auth_headers)
+        assert m["status"] == "completed"
+        assert m["sets"] == [[6, 3], [6, 4]]
+        assert m["format_review"] is False
+        assert m["review_sets"] is None
+
+    def test_reject_clears_review_and_allows_resubmit(self, client: TestClient, auth_headers: dict) -> None:
+        tid, mid, headers = _gp_player_setup(client, auth_headers)
+        _submit_sets(client, tid, mid, headers)
+        r = client.post(f"/api/tournaments/{tid}/matches/{mid}/reject-review", headers=auth_headers)
+        assert r.status_code == 200
+        m = _get_gp_match(client, tid, mid, auth_headers)
+        assert m["format_review"] is False
+        assert m["score"] is None
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/record-group",
+            json={"match_id": mid, "score1": 6, "score2": 3},
+            headers=headers,
+        )
+        assert r.status_code == 200
+
+    def test_review_actions_require_organiser(self, client: TestClient, auth_headers: dict) -> None:
+        tid, mid, headers = _gp_player_setup(client, auth_headers)
+        _submit_sets(client, tid, mid, headers)
+        r = client.post(f"/api/tournaments/{tid}/matches/{mid}/approve-review", headers=headers)
+        assert r.status_code in (401, 403)
+
+    def test_approve_without_review_returns_409(self, client: TestClient, auth_headers: dict) -> None:
+        tid, mid, _headers = _gp_player_setup(client, auth_headers)
+        r = client.post(f"/api/tournaments/{tid}/matches/{mid}/approve-review", headers=auth_headers)
+        assert r.status_code == 409
+
+    def test_off_decider_super_tiebreak_goes_to_review(self, client: TestClient, auth_headers: dict) -> None:
+        """Sets stage with a full-set decider: a super tie-break third set is parked, then adopted on approval."""
+        tid, mid, headers = _gp_player_setup(client, auth_headers)
+        client.patch(
+            f"/api/tournaments/{tid}/tv-settings", json={"score_mode": {"gp-group": "sets"}}, headers=auth_headers
+        )
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/record-group-tennis",
+            json={"match_id": mid, "sets": [[6, 4], [3, 6], [10, 8]], "decider": "match_tiebreak"},
+            headers=headers,
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["review"] is True
+        m = _get_gp_match(client, tid, mid, auth_headers)
+        assert m["review_decider"] == "match_tiebreak"
+
+        r = client.post(f"/api/tournaments/{tid}/matches/{mid}/approve-review", headers=auth_headers)
+        assert r.status_code == 200, r.text
+        m = _get_gp_match(client, tid, mid, auth_headers)
+        assert m["status"] == "completed"
+        assert m["effective_decider"] == "match_tiebreak"
+        assert m["format_override"]["decider"] == "match_tiebreak"
+
+    def test_matching_decider_counts_immediately(self, client: TestClient, auth_headers: dict) -> None:
+        tid, mid, headers = _gp_player_setup(client, auth_headers)
+        client.patch(
+            f"/api/tournaments/{tid}/tv-settings",
+            json={"score_mode": {"gp-group": "sets"}, "set_decider": "match_tiebreak"},
+            headers=auth_headers,
+        )
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/record-group-tennis",
+            json={"match_id": mid, "sets": [[6, 4], [3, 6], [10, 8]], "decider": "match_tiebreak"},
+            headers=headers,
+        )
+        assert r.status_code == 200, r.text
+        assert "review" not in r.json()
+        assert _get_gp_match(client, tid, mid, auth_headers)["status"] == "completed"

@@ -45,6 +45,25 @@
   </a>
 </div>
 <div id="abbrev-popup" role="tooltip"></div>
+<!-- Player score-format popover (Petite-Vue island, _psFmtStore in tv.js).
+     Outside #tv-root so live re-renders never destroy it. -->
+<div id="ps-format-popover" class="match-format-popover" v-scope hidden :hidden="!open"
+     role="dialog" :aria-label="t('txt_match_format_btn_label')"
+     :style="{ top: top + 'px', left: left + 'px' }">
+  <div class="mf-head">
+    <span class="mf-title">{{ t('txt_match_format_btn_label') }}</span>
+    <button type="button" class="mf-close" :aria-label="t('txt_txt_close')" @click="close()">✕</button>
+  </div>
+  <p class="mf-line">{{ t('txt_tv_format_set_by_organiser', { value: label(defaultFmt) }) }}</p>
+  <div class="mf-options" role="group" :aria-label="t('txt_match_format_btn_label')">
+    <button v-for="f in ['points', 'sets', 'sets_tb']" :key="f" type="button" class="mf-option"
+            :class="{ active: fmt === f }" :aria-pressed="fmt === f" @click="choose(f)">
+      <span>{{ label(f) }}</span>
+      <span v-if="f === defaultFmt" class="mf-option-tag">{{ t('txt_tv_format_organiser_tag') }}</span>
+    </button>
+  </div>
+  <p class="mf-hint">{{ t('txt_tv_format_other_hint') }}</p>
+</div>
 
 <div id="bracket-lightbox" role="dialog" aria-modal="true" aria-label="Bracket" data-i18n-aria-label="txt_txt_bracket" onclick="_closeBracketLightbox(event)">
   <div class="bracket-lb-toolbar" onclick="event.stopPropagation()">

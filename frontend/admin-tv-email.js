@@ -527,6 +527,16 @@ async function _adminResolveDispute(matchId, ctx) {
   }
 }
 
+/** Approve or reject a player score parked for format review. */
+async function _adminFormatReview(matchId, action) {
+  try {
+    await api(`/api/tournaments/${currentTid}/matches/${matchId}/${action}-review`, { method: 'POST' });
+    await _rerenderCurrentViewPreserveDrafts();
+  } catch (e) {
+    _showToast(e.message, 'error');
+  }
+}
+
 /** Show the inline comment editor for a match. */
 function _openCommentEdit(matchId) {
   const row = document.getElementById(`mc-row-${matchId}`);

@@ -804,8 +804,9 @@ def test_tv_js_labels_match_tiebreak(client):
     assert "tvSettings.set_decider" in js
     assert "function _tvMatchDecider(m)" in js
     assert "txt_match_tb_label" in js
-    # Both the submit form and the correction form share the decider-aware rows.
-    assert js.count("_tvRenderSetRows(") == 3
+    # The submit form, the correction form and the submit form's format switch
+    # (rebuilding the rows for the chosen decider) share the decider-aware rows.
+    assert js.count("_tvRenderSetRows(") == 4
 
 
 def test_decider_i18n_keys_in_both_languages(client):

@@ -273,7 +273,7 @@ function _buildMexOpsStats({ status, hasPlayoffBracket, hasCourts, matches }) {
   const unresolved = (matches || []).filter(m => m.status !== 'completed');
   const disputes = unresolved.filter(m => m.disputed);
   const escalated = disputes.filter(m => m.dispute_escalated);
-  const pendingConfirmation = unresolved.filter(m => m.score && m.scored_by && !m.score_confirmed && !m.disputed);
+  const pendingConfirmation = unresolved.filter(m => (m.score && m.scored_by && !m.score_confirmed && !m.disputed) || m.format_review);
   const unassignedCourtsCount = hasCourts
     ? unresolved.filter(m => !String(m.court || '').trim()).length
     : 0;

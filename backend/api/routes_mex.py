@@ -15,7 +15,7 @@ from fastapi.responses import Response
 from .rate_limit import BoundedRateLimiter
 from ..auth.deps import get_current_user, get_current_user_optional, get_current_player, PlayerIdentity
 from ..auth.models import User
-from ..models import Court, Player, TournamentType, EliminationType, ScoreConfirmation
+from ..models import Court, EliminationType, InputFormat, Player, ScoreConfirmation, TournamentType
 from ..tournaments import MexicanoTournament
 from ..viz import render_playoff_schema
 from .helpers import (
@@ -35,6 +35,8 @@ from .helpers import (
     _store_tournament,
     _get_tv_settings,
     _apply_player_score_metadata,
+    _hold_for_format_review,
+    _is_off_format_player_submit,
     _mark_admin_score,
 )
 from .schemas import (
@@ -583,6 +585,10 @@ async def mex_record_playoff(
         if match is None:
             raise HTTPException(404, "Match not found")
         _require_score_permission(tid, match, user, player)
+        if _is_off_format_player_submit(data, match, "mex-playoff", InputFormat.POINTS, user, player):
+            _hold_for_format_review(match, player.player_id, (req.score1, req.score2))
+            await save_tournament(tid)
+            return {"ok": True, "review": True}
         try:
             t.record_playoff_result(req.match_id, (req.score1, req.score2))
         except (KeyError, RuntimeError, ValueError) as e:
@@ -616,7 +622,13 @@ async def mex_record_playoff_tennis(
         if match is None:
             raise HTTPException(404, "Match not found")
         _require_score_permission(tid, match, user, player)
-        total1, total2, sets_tuples, _, decider = _prepare_set_score(data, match, req.sets)
+        total1, total2, sets_tuples, _, decider = _prepare_set_score(
+            data, match, req.sets, req.decider if user is None else None
+        )
+        if _is_off_format_player_submit(data, match, "mex-playoff", InputFormat.SETS, user, player, decider):
+            _hold_for_format_review(match, player.player_id, (total1, total2), sets_tuples, decider)
+            await save_tournament(tid)
+            return {"ok": True, "review": True}
         try:
             t.record_playoff_result(req.match_id, (total1, total2), sets=sets_tuples)
         except (KeyError, RuntimeError, ValueError) as e:

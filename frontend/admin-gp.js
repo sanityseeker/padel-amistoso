@@ -213,7 +213,7 @@ function _buildGpOpsStats({ phase, hasCourts, hasMoreGroupRounds, matches }) {
   const unresolved = (matches || []).filter(m => m.status !== 'completed');
   const disputes = unresolved.filter(m => m.disputed);
   const escalated = disputes.filter(m => m.dispute_escalated);
-  const pendingConfirmation = unresolved.filter(m => m.score && m.scored_by && !m.score_confirmed && !m.disputed);
+  const pendingConfirmation = unresolved.filter(m => (m.score && m.scored_by && !m.score_confirmed && !m.disputed) || m.format_review);
   const unassignedCourts = hasCourts
     ? unresolved.filter(m => !String(m.court || '').trim()).length
     : 0;
@@ -879,6 +879,25 @@ function _renderDisputePanel(m, ctx) {
   return html;
 }
 
+/**
+ * Approve / reject panel for a player score entered in a format other than
+ * the match's.  The score is parked server-side and counts nowhere until
+ * approved; recording a score in the inputs below also replaces it.
+ */
+function _renderFormatReviewPanel(m) {
+  const score = (m.review_sets && m.review_sets.length > 0)
+    ? formatSetScore(m.review_sets, m.review_decider || _matchDecider(m), ' / ')
+    : (m.review_score ? `${m.review_score[0]}–${m.review_score[1]}` : '?');
+  let html = `<div class="admin-dispute-panel" id="review-panel-${m.id}">`;
+  html += `<div class="admin-dispute-note note-escalated">${_antIc('warning')} ${t('txt_admin_format_review_note')}</div>`;
+  html += `<div class="admin-dispute-scores"><span class="dispute-score-value">${esc(score)}</span></div>`;
+  html += `<div class="admin-review-actions">`;
+  html += `<button type="button" class="btn btn-success btn-sm" onclick="_adminFormatReview('${m.id}','approve')">${t('txt_admin_approve_score')}</button>`;
+  html += `<button type="button" class="btn btn-sm" onclick="_adminFormatReview('${m.id}','reject')">${t('txt_admin_reject_score')}</button>`;
+  html += `</div></div>`;
+  return html;
+}
+
 /** Comment banner with its inline editor. */
 function _renderCommentBanner(m) {
   let html = `<div class="match-comment-banner">`;
@@ -1008,6 +1027,7 @@ function matchRow(m, ctx) {
   const saveClass = `btn btn-success btn-sm${hasTbd ? ' btn-disabled-ish' : ''}`;
 
   let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap${tbdClass}" data-status="pending" data-disputed="0">${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
+  if (m.format_review) html += _renderFormatReviewPanel(m);
   html += `<div class="match-actions" id="score-input-${m.id}">`;
   html += _renderScoreInputs(m, ctx, { mode: _matchInputMode(m, ctx), saveClass, tbdAttr });
   html += `</div>`;

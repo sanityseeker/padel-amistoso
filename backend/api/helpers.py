@@ -14,7 +14,7 @@ from fastapi.responses import Response
 
 from ..auth.deps import PlayerIdentity
 from ..auth.models import User, UserRole
-from ..models import Match, MatchStatus, SetDecider
+from ..models import InputFormat, Match, MatchStatus, SetDecider
 from ..tournaments.playoff import THIRD_PLACE_LABEL, EspejoParallelBracket
 from ..tournaments.set_format import format_sets, games_from_sets, match_decider, validate_decider_sets
 from .db import get_co_editors
@@ -271,6 +271,10 @@ def _serialize_match(m: Match, points_target: int | None = None) -> dict:
         "dispute_by": getattr(m, "dispute_by", None),
         "dispute_at": getattr(m, "dispute_at", None),
         "dispute_escalated": getattr(m, "dispute_escalated", False),
+        "format_review": getattr(m, "format_review", False),
+        "review_score": list(m.review_score) if getattr(m, "review_score", None) else None,
+        "review_sets": [list(s) for s in m.review_sets] if getattr(m, "review_sets", None) else None,
+        "review_decider": m.review_decider.value if getattr(m, "review_decider", None) else None,
         "format_override": _serialize_format_override(m),
         "effective_decider": _effective_decider_value(m),
     }
@@ -383,6 +387,8 @@ def _require_score_permission(
         tv_settings = _tournaments.get(tid, {}).get("tv_settings") or {}
         if not tv_settings.get("allow_player_scoring", True):
             raise HTTPException(403, "Player score submission is disabled for this tournament")
+        if getattr(match, "format_review", False):
+            raise HTTPException(409, "A score for this match is awaiting organiser review")
         match_player_ids = {p.id for p in match.team1} | {p.id for p in match.team2}
         if player.player_id in match_player_ids:
             return
@@ -508,8 +514,12 @@ def _prepare_set_score(
     data: dict,
     match: Match,
     sets: list[list[int]],
+    decider: SetDecider | None = None,
 ) -> tuple[int, int, list[tuple[int, int]], bool, SetDecider]:
     """Validate *sets* against the match's effective decider and total the games.
+
+    Pass *decider* to validate under another decider instead (a player score
+    entered off-format, which then goes to organiser review).
 
     Raises ``HTTPException(400)`` when the third set does not fit a match
     tie-break decider (see ``set_format.validate_decider_sets``).
@@ -519,7 +529,7 @@ def _prepare_set_score(
         caller stamps ``match.decider = decider`` once the engine accepted
         the score.
     """
-    decider = _effective_decider(data, match)
+    decider = decider or _effective_decider(data, match)
     try:
         validate_decider_sets(sets, decider)
     except ValueError as e:
@@ -729,11 +739,82 @@ def _apply_player_score_metadata(
     )
 
 
+def _expected_input_format(data: dict, match: Match, stage: str) -> InputFormat:
+    """Input format the organiser set for *match*: its override, else the stage default.
+
+    *stage* is the ``tv_settings.score_mode`` key (``"gp-group"``,
+    ``"gp-playoff"``, ``"mex-playoff"``, ``"po-playoff"``).
+    """
+    override = getattr(match, "format_override", None)
+    if override is not None and override.mode:
+        return override.mode
+    raw = ((data.get("tv_settings") or {}).get("score_mode") or {}).get(stage)
+    return InputFormat.SETS if raw == InputFormat.SETS.value else InputFormat.POINTS
+
+
+def _is_off_format_player_submit(
+    data: dict,
+    match: Match,
+    stage: str,
+    submitted: InputFormat,
+    user: User | None,
+    player: PlayerIdentity | None,
+    decider: SetDecider | None = None,
+) -> bool:
+    """True when a *player* (not an organiser) submits in a format other than the match's.
+
+    For set scores *decider* is the third-set decider the player entered
+    under; a different decider than the match's is also off-format.
+    """
+    if player is None or user is not None:
+        return False
+    if submitted != _expected_input_format(data, match, stage):
+        return True
+    return decider is not None and decider != _effective_decider(data, match)
+
+
+def _hold_for_format_review(
+    match: Match,
+    player_id: str,
+    score: tuple[int, int],
+    sets: list[tuple[int, int]] | None = None,
+    decider: SetDecider | None = None,
+) -> None:
+    """Park an off-format player score for organiser review.
+
+    The score is NOT applied to the tournament engine, so it counts nowhere
+    (standings, bracket, ELO) until an organiser approves it.
+    """
+    now = time.time()
+    match.format_review = True
+    match.review_score = (score[0], score[1])
+    match.review_sets = [(s[0], s[1]) for s in sets] if sets else None
+    match.review_decider = decider if sets else None
+    match.score_history.append(
+        {
+            "player_id": player_id,
+            "action": "submit_for_review",
+            "score": [score[0], score[1]],
+            "sets": [list(s) for s in sets] if sets else None,
+            "timestamp": now,
+        }
+    )
+
+
+def _clear_format_review(match: Match) -> None:
+    """Drop a parked off-format score (approved, rejected or superseded)."""
+    match.format_review = False
+    match.review_score = None
+    match.review_sets = None
+    match.review_decider = None
+
+
 def _mark_admin_score(match: Match, actor_id: str | None = None) -> None:
     """Mark a match score as immediately confirmed (admin / organiser record)."""
     match.scored_by = None
     match.scored_at = None
     match.score_confirmed = True
+    _clear_format_review(match)
     # Clear any previous dispute state when an admin re-records.
     match.disputed = False
     match.dispute_score = None

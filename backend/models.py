@@ -257,6 +257,15 @@ class Match:
     # and wants the organiser/admin to decide.  While False, the original
     # submitter can still accept the correction themselves.
     dispute_escalated: bool = False
+    # True when a player submitted a score in a different input format than
+    # the one the organiser set for this match.  The score is parked in
+    # ``review_score`` / ``review_sets`` (not applied to the engine) until an
+    # organiser approves or rejects it.
+    format_review: bool = False
+    review_score: tuple[int, int] | None = None
+    review_sets: list[tuple[int, int]] | None = None
+    # Decider a parked set score was entered under (validated against it).
+    review_decider: SetDecider | None = None
     # Append-only audit log; each entry is a plain dict with keys:
     # player_id, action, score, sets, timestamp.
     score_history: list[dict[str, Any]] = field(default_factory=list)
@@ -281,6 +290,10 @@ class Match:
         state.setdefault("dispute_by", None)
         state.setdefault("dispute_at", None)
         state.setdefault("dispute_escalated", False)
+        state.setdefault("format_review", False)
+        state.setdefault("review_score", None)
+        state.setdefault("review_sets", None)
+        state.setdefault("review_decider", None)
         state.setdefault("score_history", [])
         state.setdefault("format_override", None)
         state.setdefault("decider", None)

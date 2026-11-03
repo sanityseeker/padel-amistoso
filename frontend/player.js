@@ -1968,6 +1968,17 @@ function _buildEloChartCanvas() {
   return html;
 }
 
+/** `#rrggbb` (or `#rgb`) theme token → `rgba()` with *alpha*; other formats pass through. */
+function _hexAlpha(hex, alpha) {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const h = m[1].length === 3 ? m[1].replace(/./g, c => c + c) : m[1];
+  const n = parseInt(h, 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+document.addEventListener('app-theme-changed', () => { if (_eloChart) _initEloChart(); });
+
 function _initEloChart() {
   // Destroy previous instance to prevent memory leaks
   if (_eloChart) {
@@ -1983,12 +1994,18 @@ function _initEloChart() {
     if (!chartData) return;
     const { labels, dataPoints, sport, matches } = chartData;
 
-    const lineColor = sport === 'tennis' ? '#f59e0b' : '#3b82f6';
-    const fillColor = sport === 'tennis' ? 'rgba(245,158,11,0.08)' : 'rgba(59,130,246,0.08)';
-    const pointColor = sport === 'tennis' ? '#d97706' : '#2563eb';
+    // Canvas can't resolve CSS custom properties, so read the theme tokens
+    // here; the chart is rebuilt on 'app-theme-changed' to pick up the switch.
+    const css = getComputedStyle(document.documentElement);
+    const token = (name) => css.getPropertyValue(name).trim();
+    const lineColor = token(sport === 'tennis' ? '--color-sport-tennis' : '--color-primary');
+    const fillColor = _hexAlpha(lineColor, 0.12);
+    const pointColor = lineColor;
+    const tickColor = token('--color-text-muted');
+    const gridColor = _hexAlpha(tickColor, 0.18);
 
     // First point is baseline (hollow); rest are filled
-    const ptBg = dataPoints.map((_, i) => i === 0 ? '#fff' : pointColor);
+    const ptBg = dataPoints.map((_, i) => i === 0 ? token('--color-surface') : pointColor);
     const ptBorder = dataPoints.map((_, i) => i === 0 ? lineColor : lineColor);
     const ptRadius = dataPoints.map((_, i) => i === 0 ? 4 : 3);
     const ptBorderWidth = dataPoints.map((_, i) => i === 0 ? 2 : 1);
@@ -2070,12 +2087,13 @@ function _initEloChart() {
             suggestedMin: minElo - padding,
             suggestedMax: maxElo + padding,
             ticks: {
-              color: 'var(--text-muted)',
+              color: tickColor,
+              font: { family: token('--font-data') || undefined },
               stepSize: Math.max(5, Math.round((maxElo - minElo + 2 * padding) / 5)),
               callback: (v) => Math.round(v),
             },
             grid: {
-              color: 'rgba(128,128,128,0.15)',
+              color: gridColor,
             },
           },
         },

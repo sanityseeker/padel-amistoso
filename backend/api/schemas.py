@@ -9,7 +9,15 @@ from typing import Annotated, Literal
 from email_validator import EmailNotValidError, validate_email as _validate_email
 from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
 
-from backend.models import EliminationType, ParticipationStatus, QuestionType, ScoreConfirmation, Sport, TournamentType
+from backend.models import (
+    EliminationType,
+    ParticipationStatus,
+    QuestionType,
+    ScoreConfirmation,
+    SetDecider,
+    Sport,
+    TournamentType,
+)
 
 EmailLang = Literal["en", "es"]
 
@@ -417,6 +425,10 @@ class RecordTennisScoreRequest(BaseModel):
 
     match_id: str
     sets: list[list[int]]  # e.g. [[6,4],[3,6],[7,5]]
+    # Third-set decider the match was actually played with.  Only honoured for
+    # player submissions: one that differs from the match's own decider is an
+    # off-format score and goes to organiser review.  ``None`` = the match's.
+    decider: SetDecider | None = None
 
     @field_validator("sets")
     @classmethod

@@ -2165,6 +2165,7 @@ html.bracket-lb-open body { overflow: hidden; }
   min-height: auto;
   padding: 0.25rem 0.3rem;
 }
+.admin-review-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .admin-dispute-resolve {
   align-self: flex-start;
   margin-top: 0.1rem;

@@ -1406,6 +1406,15 @@ const I18N_MESSAGES = {
     "txt_tv_your_match_badge": "Your match",
     "txt_tv_dispute_admin_help": "The organiser will resolve this.",
     "txt_tv_submit_score_btn": "Submit",
+    "txt_tv_format_review_warning": "This match is set to {format}. A score in another format goes to the organiser for review and only counts once approved.",
+    "txt_tv_format_set_by_organiser": "Set by the organiser: {value}",
+    "txt_tv_format_other_hint": "A score in another format goes to the organiser for review.",
+    "txt_tv_format_organiser_tag": "organiser",
+    "txt_tv_score_in_review": "Sent to the organiser for review",
+    "txt_tv_score_in_review_help": "Entered in a different format than set for this match. It counts once the organiser approves it.",
+    "txt_admin_format_review_note": "Player entered this score in a different format than set for the match. It does not count until you approve it.",
+    "txt_admin_approve_score": "Approve score",
+    "txt_admin_reject_score": "Reject",
     "txt_reg_withdrawn": "You've withdrawn from this lobby.",
 
     // ─── Clubs & Seasons ────────────────────────────────
@@ -3153,6 +3162,15 @@ const I18N_MESSAGES = {
     "txt_tv_your_match_badge": "Tu partido",
     "txt_tv_dispute_admin_help": "El organizador lo resolverá.",
     "txt_tv_submit_score_btn": "Enviar",
+    "txt_tv_format_review_warning": "Este partido se juega a {format}. Un resultado en otro formato se envía al organizador para revisión y solo cuenta cuando lo aprueba.",
+    "txt_tv_format_set_by_organiser": "Definido por el organizador: {value}",
+    "txt_tv_format_other_hint": "Un resultado en otro formato se envía al organizador para revisión.",
+    "txt_tv_format_organiser_tag": "organizador",
+    "txt_tv_score_in_review": "Enviado al organizador para revisión",
+    "txt_tv_score_in_review_help": "Introducido en un formato distinto al del partido. Contará cuando el organizador lo apruebe.",
+    "txt_admin_format_review_note": "El jugador introdujo este resultado en un formato distinto al del partido. No cuenta hasta que lo apruebes.",
+    "txt_admin_approve_score": "Aprobar resultado",
+    "txt_admin_reject_score": "Rechazar",
     "txt_reg_withdrawn": "Te has dado de baja de esta inscripción.",
 
     // ─── Clubs & Seasons ────────────────────────────────
