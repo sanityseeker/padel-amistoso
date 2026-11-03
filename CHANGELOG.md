@@ -1,3 +1,9 @@
+## v1.20.0 (2026-11-03)
+
+### Feat
+
+- **ui**: unify public Events page, club-scoped navigation and mobile admin polish
+
 ## v1.19.1 (2026-11-02)
 
 ### Fix
