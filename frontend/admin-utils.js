@@ -1053,7 +1053,8 @@ async function generatePoPreviewSchema() {
     const outputScale = numOpt('schema-output-scale', 0.7);
     const title       = document.getElementById('schema-title')?.value?.trim() || '';
 
-    const _buildParams = (participantNames, extraTitle) => {
+    const winnerOpts = _gpReadWinnerControls('po');
+    const _buildParams = (participantNames, extraTitle, withWinnerOpts = true) => {
       const p = new URLSearchParams({
         participants: participantNames.length,
         elimination: 'single',
@@ -1064,6 +1065,10 @@ async function generatePoPreviewSchema() {
         title_font_scale: titleScale,
         output_scale: outputScale,
       });
+      if (withWinnerOpts) {
+        if (winnerOpts.num_winners > 1) p.set('num_winners', winnerOpts.num_winners);
+        if (winnerOpts.third_place) p.set('third_place', 'true');
+      }
       const t_ = extraTitle || title;
       if (t_) p.set('title', t_);
       for (const n of participantNames) p.append('names', n);
@@ -1084,7 +1089,7 @@ async function generatePoPreviewSchema() {
 
       // Fetch WB always; only fetch LB when there are ≥2 losers to show.
       const fetchWb = fetch(wbUrl);
-      const fetchLb = lbCount >= 2 ? fetch(`/api/schema/playoff-preview?${_buildParams(lbNames, t('txt_txt_espejo_losers_bracket'))}`) : null;
+      const fetchLb = lbCount >= 2 ? fetch(`/api/schema/playoff-preview?${_buildParams(lbNames, t('txt_txt_espejo_losers_bracket'), false)}`) : null;
       const [wbRes, lbRes] = await Promise.all([fetchWb, fetchLb || Promise.resolve(null)]);
 
       if (!wbRes.ok) throw new Error((await wbRes.json().catch(() => ({}))).detail || 'Error');

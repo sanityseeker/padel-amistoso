@@ -80,15 +80,21 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
   html += `<div class="settings-block">`;
   html += `<label class="settings-label">${t('txt_banner_label')}</label>`;
   html += `<p class="settings-help">${t('txt_banner_help')}</p>`;
-  html += `<div class="settings-inline-row">`;
-  html += `<input type="text" id="tournament-banner-input" class="settings-input settings-input--grow" placeholder="${t('txt_banner_placeholder')}" value="${escAttr(currentBanner)}"
-    maxlength="500">`;
+  // Auto-growing textarea (same class / limits as the registration description);
+  // newlines are kept and rendered on the TV (white-space: pre-line).
+  html += `<textarea id="tournament-banner-input" class="reg-desc-textarea w-full" rows="3" maxlength="5000" placeholder="${escAttr(t('txt_banner_placeholder'))}" oninput="_autoResizeTextarea(this)" onfocus="_autoResizeTextarea(this)">${esc(currentBanner)}</textarea>`;
+  html += `<div class="settings-inline-row mt-1-5">`;
   html += `<button type="button" class="btn btn-sm btn-primary" onclick="_setTournamentBanner()">${t('txt_txt_save')}</button>`;
   if (currentBanner) {
-  html += `<button type="button" class="btn btn-sm btn-danger" onclick="_clearTournamentBanner()">${_antIc('notification')} ${t('txt_txt_remove')}</button>`;
+    html += `<button type="button" class="btn btn-sm btn-danger" onclick="_clearTournamentBanner()">${_antIc('notification')} ${t('txt_txt_remove')}</button>`;
   }
   html += `</div>`;
   html += `</div>`;
+  // Saved multi-line text should open at full height; only measurable once the node is visible.
+  setTimeout(() => {
+    const bannerEl = document.getElementById('tournament-banner-input');
+    if (bannerEl && bannerEl.offsetParent !== null) _autoResizeTextarea(bannerEl);
+  }, 0);
 
   // TV section toggles
   html += `<div class="settings-block">`;

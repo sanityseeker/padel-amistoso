@@ -21,7 +21,13 @@ from collections import defaultdict
 from ..models import Court, GPPhase, Match, MatchStatus, Player
 from .group_stage import Group, assign_courts, distribute_players_to_groups
 from . import pairing as pairing_mod
-from .playoff import DoubleEliminationBracket, EspejoParallelBracket, SingleEliminationBracket, bracket_matches
+from .playoff import (
+    DoubleEliminationBracket,
+    EspejoParallelBracket,
+    SingleEliminationBracket,
+    bracket_matches,
+    validate_num_winners,
+)
 
 
 class GroupPlayoffTournament:
@@ -353,6 +359,8 @@ class GroupPlayoffTournament:
         double_elimination: bool | None = None,
         espejo: bool = False,
         playoff_teams: list[list[str]] | None = None,
+        num_winners: int = 1,
+        third_place: bool = False,
     ) -> None:
         """Seed the play‑off bracket from group results.
 
@@ -390,12 +398,19 @@ class GroupPlayoffTournament:
             Pre-composed teams as lists of player IDs.  When provided,
             the bracket uses these teams directly instead of automatic
             pairing.
+        num_winners : int
+            Number of equal winners (single elimination only; 1 = classic
+            champion).  Validated against the formed team count.
+        third_place : bool
+            Add a 3rd-place match (single elimination or Espejo).
         """
         if self._phase != GPPhase.GROUPS:
             raise RuntimeError("Must be in group phase to start play‑offs")
         if self.pending_group_matches():
             raise RuntimeError("All group matches must be completed first")
 
+        prev_double_elimination = self.double_elimination
+        prev_espejo = getattr(self, "_espejo", False)
         if double_elimination is not None:
             self.double_elimination = double_elimination
         self._espejo = espejo
@@ -511,12 +526,25 @@ class GroupPlayoffTournament:
                 # Sort formed teams by combined standings for proper bracket seeding.
                 teams.sort(key=lambda t: tuple(-x for x in _seed_key(t)))
 
+        try:
+            if num_winners != 1 and (espejo or self.double_elimination):
+                raise ValueError("Multiple winners are only supported for single-elimination brackets")
+            if third_place and self.double_elimination and not espejo:
+                raise ValueError("A 3rd-place match is not supported for double elimination")
+            if num_winners != 1 or third_place:
+                validate_num_winners(len(teams), num_winners, third_place)
+        except ValueError:
+            # Leave the tournament untouched so the organiser can retry with other options.
+            self.double_elimination = prev_double_elimination
+            self._espejo = prev_espejo
+            raise
+
         if espejo:
-            self.playoff_bracket = EspejoParallelBracket(teams)
+            self.playoff_bracket = EspejoParallelBracket(teams, third_place=third_place)
         elif self.double_elimination:
             self.playoff_bracket = DoubleEliminationBracket(teams, courts=self.courts)
         else:
-            self.playoff_bracket = SingleEliminationBracket(teams)
+            self.playoff_bracket = SingleEliminationBracket(teams, num_winners=num_winners, third_place=third_place)
 
         if self.courts and not espejo:
             assign_courts(bracket_matches(self.playoff_bracket), self.courts)
@@ -559,10 +587,25 @@ class GroupPlayoffTournament:
         # Finished only when the whole bracket is decided.  For Espejo the
         # bracket champion stays ``None`` until the consolation (Losers)
         # bracket is done as well, so the phase does not flip early.
-        if self.playoff_bracket.champion() is not None:
+        if self.winners() is not None:
             self._phase = GPPhase.FINISHED
 
-    def champion(self) -> list[Player] | None:
-        if self.playoff_bracket is None:
+    def winners(self) -> list[list[Player]] | None:
+        """All (equal) winners once the play-offs are fully decided, else ``None``."""
+        bracket = self.playoff_bracket
+        if bracket is None:
             return None
-        return self.playoff_bracket.champion()
+        if isinstance(bracket, SingleEliminationBracket):
+            return bracket.winners()
+        champ = bracket.champion()
+        return [champ] if champ else None
+
+    def champion(self) -> list[Player] | None:
+        """Single winner (``None`` while undecided and always ``None`` with several winners)."""
+        bracket = self.playoff_bracket
+        if bracket is None:
+            return None
+        if isinstance(bracket, SingleEliminationBracket):
+            w = bracket.winners()
+            return w[0] if w and len(w) == 1 else None
+        return bracket.champion()

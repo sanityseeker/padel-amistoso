@@ -2289,7 +2289,9 @@ async function exportTournamentOutcome(format) {
         _fetch_image_as_base64(schemaUrl),
       ]);
 
-      if (status.champion) {
+      if (Array.isArray(status.winners) && status.winners.length > 1) {
+        body += `<div class="champ">${_REPORT_TROPHY_SVG} ${t('txt_winners_word')}: <strong>${status.winners.map(w => esc(w.join(' & '))).join(' · ')}</strong></div>`;
+      } else if (status.champion) {
         body += `<div class="champ">${_REPORT_TROPHY_SVG} ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
       }
 
@@ -2351,7 +2353,9 @@ async function exportTournamentOutcome(format) {
         _fetch_image_as_base64(schemaUrl),
       ]);
 
-      if (status.champion) {
+      if (Array.isArray(status.winners) && status.winners.length > 1) {
+        body += `<div class="champ">${_REPORT_TROPHY_SVG} ${t('txt_winners_word')}: <strong>${status.winners.map(w => esc(w.join(' & '))).join(' · ')}</strong></div>`;
+      } else if (status.champion) {
         body += `<div class="champ">${_REPORT_TROPHY_SVG} ${t('txt_txt_champion')}: <strong>${esc(status.champion.join(', '))}</strong></div>`;
       }
 

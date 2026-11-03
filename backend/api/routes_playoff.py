@@ -18,6 +18,8 @@ from ..models import Court, Player, TournamentType, EliminationType
 from ..tournaments import PlayoffTournament
 from ..viz import render_playoff_schema
 from .helpers import (
+    tournament_winners,
+    winners_payload,
     _build_match_labels,
     _get_tournament,
     _is_bye_match,
@@ -40,7 +42,7 @@ from .helpers import (
 from .schemas import CreatePlayoffRequest, RecordScoreRequest, RecordTennisScoreRequest, UpdateCourtsRequest
 from .state import allocate_tournament_id, _tournament_versions, get_tournament_lock, save_tournament
 from .player_secret_store import create_secrets_for_tournament
-from .push_events import notify_champion
+from .push_events import notify_champion, notify_winners
 from .elo_integration import elo_after_score, elo_finish_tournament, elo_init_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["playoff"])
@@ -98,14 +100,19 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
                 name_to_id[name]: score for name, score in req.player_strengths.items() if name in name_to_id
             } or None
 
-    t = PlayoffTournament(
-        teams=teams,
-        courts=courts,
-        double_elimination=req.double_elimination,
-        espejo=req.espejo,
-        team_mode=req.team_mode,
-        initial_strength=initial_strength,
-    )
+    try:
+        t = PlayoffTournament(
+            teams=teams,
+            courts=courts,
+            double_elimination=req.double_elimination,
+            espejo=req.espejo,
+            team_mode=req.team_mode,
+            initial_strength=initial_strength,
+            num_winners=req.num_winners,
+            third_place=req.third_place,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
     tid = await allocate_tournament_id()
     await asyncio.to_thread(
@@ -167,7 +174,7 @@ async def po_status(tid: str) -> dict:
         "espejo_losers_bracket_seeded": (t.bracket.losers_bracket is not None if espejo else False),
         "assign_courts": data.get("assign_courts", True),
         "courts": [{"id": c.id, "name": c.name} for c in t.courts],
-        "champion": [p.name for p in t.champion()] if t.champion() else None,
+        **winners_payload(t),
         # Known as soon as the Winners final is played (before the tournament ends).
         "winners_champion": (
             [p.name for p in t.bracket.winners_champion()] if espejo and t.bracket.winners_champion() else None
@@ -191,7 +198,7 @@ async def po_playoffs(tid: str) -> dict:
     return {
         "matches": matches,
         "pending": pending,
-        "champion": [p.name for p in t.champion()] if t.champion() else None,
+        **winners_payload(t),
     }
 
 
@@ -229,6 +236,9 @@ async def po_playoffs_schema(
     if len(participant_names) < 2:
         raise HTTPException(400, "Need at least 2 participants for play-off schema")
 
+    num_winners = int(getattr(active_bracket, "num_winners", 1) or 1)
+    third_place = bool(getattr(active_bracket, "third_place", False))
+
     version = _tournament_versions.get(tid, 0)
     key = _schema_cache_key(
         "po",
@@ -244,6 +254,8 @@ async def po_playoffs_schema(
         arrow_scale,
         title_font_scale,
         output_scale,
+        num_winners,
+        third_place,
     )
     cached = _schema_cache_get(key)
     if cached:
@@ -263,6 +275,8 @@ async def po_playoffs_schema(
         arrow_scale=arrow_scale,
         title_font_scale=title_font_scale,
         output_scale=output_scale,
+        num_winners=num_winners,
+        third_place=third_place,
     )
     _schema_cache_put(key, img, fmt)
     return _schema_image_response(img, fmt, etag=key[:16])
@@ -293,10 +307,13 @@ async def po_record(
             _mark_admin_score(match, user.username if user else None)
         await save_tournament(tid)
         elo_after_score(tid, data, match)
-    champ = t.champion()
-    if champ:
+    winners = tournament_winners(t)
+    if winners:
         elo_finish_tournament(tid)
-        notify_champion(tid, data, [p.name for p in champ])
+        if len(winners) == 1:
+            notify_champion(tid, data, [p.name for p in winners[0]])
+        else:
+            notify_winners(tid, data, [[p.name for p in team] for team in winners])
     return {"ok": True, "phase": t.phase}
 
 
@@ -329,10 +346,13 @@ async def po_record_tennis(
             _mark_admin_score(match, user.username if user else None)
         await save_tournament(tid)
         elo_after_score(tid, data, match)
-    champ = t.champion()
-    if champ:
+    winners = tournament_winners(t)
+    if winners:
         elo_finish_tournament(tid)
-        notify_champion(tid, data, [p.name for p in champ])
+        if len(winners) == 1:
+            notify_champion(tid, data, [p.name for p in winners[0]])
+        else:
+            notify_winners(tid, data, [[p.name for p in team] for team in winners])
     return {
         "ok": True,
         "phase": t.phase,

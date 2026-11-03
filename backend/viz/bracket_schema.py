@@ -85,6 +85,8 @@ def render_schema(
     arrow_scale: float = 1.0,
     title_font_scale: float = 1.0,
     output_scale: float = 1.0,
+    num_winners: int = 1,
+    third_place: bool = False,
 ) -> bytes:
     """
     Generate a tournament block‑scheme and return it as image bytes.
@@ -120,7 +122,9 @@ def render_schema(
     bytes
         The rendered image.
     """
-    layout = _compute_layout(group_sizes, advance_per_group, elimination)
+    layout = _compute_layout(
+        group_sizes, advance_per_group, elimination, num_winners=num_winners, third_place=third_place
+    )
     fig = _draw(
         layout,
         title=title,
@@ -171,12 +175,20 @@ def render_playoff_schema(
     arrow_scale: float = 1.0,
     title_font_scale: float = 1.0,
     output_scale: float = 1.0,
+    num_winners: int = 1,
+    third_place: bool = False,
 ) -> bytes:
-    """Generate a play-off bracket schema from participant names."""
+    """Generate a play-off bracket schema from participant names.
+
+    *num_winners* truncates a single-elimination bracket (see
+    :class:`SingleEliminationBracket`); *third_place* adds the 3rd-place match.
+    """
     if len(participant_names) < 2:
         raise ValueError("Need at least 2 participants")
 
-    layout = _compute_playoff_layout(participant_names, elimination, match_labels=match_labels)
+    layout = _compute_playoff_layout(
+        participant_names, elimination, match_labels=match_labels, num_winners=num_winners, third_place=third_place
+    )
     if side and elimination == EliminationType.DOUBLE:
         layout = _filter_layout_by_side(layout, side)
     fig = _draw(
@@ -244,6 +256,9 @@ def _compute_layout(
     group_sizes: list[int],
     advance_per_group: int,
     elimination: str,
+    *,
+    num_winners: int = 1,
+    third_place: bool = False,
 ) -> dict:
     """
     Build the full layout dict used by the renderer.
@@ -336,6 +351,8 @@ def _compute_layout(
             total_advancing,
             x_start=5.0,
             slot_spacing=slot_spacing,
+            num_winners=num_winners,
+            third_place=third_place,
         )
     else:
         _build_double_elim_bracket(
@@ -363,6 +380,8 @@ def _compute_playoff_layout(
     elimination: str,
     *,
     match_labels: dict[str, dict] | None = None,
+    num_winners: int = 1,
+    third_place: bool = False,
 ) -> dict:
     """Build a bracket-only layout from named participants."""
     G = nx.DiGraph()
@@ -400,6 +419,8 @@ def _compute_playoff_layout(
             x_start=2.5,
             slot_spacing=slot_spacing,
             match_labels=match_labels,
+            num_winners=num_winners,
+            third_place=third_place,
         )
     else:
         _build_double_elim_bracket(
@@ -471,9 +492,14 @@ def _build_single_elim_bracket(
     x_start: float,
     slot_spacing: float,
     match_labels: dict[str, dict] | None = None,
+    num_winners: int = 1,
+    third_place: bool = False,
 ):
     bracket_size = _next_power_of_two(n_teams)
-    num_rounds = int(math.log2(bracket_size)) if bracket_size > 1 else 1
+    full_depth = int(math.log2(bracket_size)) if bracket_size > 1 else 1
+    # Truncated brackets stop early (N=3 stops after the semi-finals); labels keep the full depth.
+    cut = 1 if num_winners == 3 else int(math.log2(num_winners)) if num_winners > 1 else 0
+    num_rounds = max(1, full_depth - cut)
 
     # Apply standard tournament seeding (1-vs-N, 2-vs-N-1, …) so that
     # same-group players land on opposite sides of the bracket.
@@ -494,8 +520,9 @@ def _build_single_elim_bracket(
             positions[nid] = (positions[nid][0], y_pool[y_idx])
             y_idx += 1
 
+    semi_round_nodes: list[str] = []
     for r in range(num_rounds):
-        round_label = _round_label(num_rounds, r)
+        round_label = _round_label(full_depth, r)
         round_nodes: list[str | None] = []
         x_round = x_start + r * 3.0
         num_pairs = len(prev_round_nodes) // 2
@@ -577,6 +604,34 @@ def _build_single_elim_bracket(
             stages.append({"name": round_label, "x": x_round, "nodes": stage_nodes})
 
         prev_round_nodes = round_nodes
+        if third_place and r == full_depth - 2:
+            semi_round_nodes = [n for n in round_nodes if n and n.startswith("match_")]
+
+    # ── Optional 3rd-place match: fed by the semi-final losers ──────────
+    if third_place and full_depth >= 2 and len(semi_round_nodes) == 2:
+        tp_id = "third_place"
+        x_tp = x_start + (full_depth - 1) * 3.0
+        y_tp = min(positions[n][1] for n in semi_round_nodes) - slot_spacing * 1.5
+        # Keep it clear of the final that sits at the same x.
+        final_id = f"match_r{full_depth - 1}_p0"
+        if final_id in positions:
+            y_tp = min(y_tp, positions[final_id][1] - slot_spacing * 2.0)
+        G.add_node(tp_id)
+        node_meta[tp_id] = {
+            "label": "3rd Place",
+            "kind": BracketNodeKind.MATCH,
+            "stage": 2 + full_depth - 1,
+            "round": "3rd Place",
+            "round_header": "3rd Place",
+        }
+        md = (match_labels or {}).get(tp_id)
+        if md:
+            node_meta[tp_id]["label"] = _label_from_match_data(md)
+            node_meta[tp_id]["has_teams"] = True
+        positions[tp_id] = (x_tp, y_tp)
+        for semi in semi_round_nodes:
+            G.add_edge(semi, tp_id, relation="loss")
+        stages.append({"name": "3rd Place", "x": x_tp, "nodes": [tp_id]})
 
 
 def _make_seed_order(n: int) -> list[int]:

@@ -272,14 +272,20 @@ def test_tv_js_mounts_picker_island(client):
     assert "localStorage.setItem('amistoso-last-page', 'events')" in js
 
 
-# ── Shared public header + Display sheet ─────────────────────────────────────
+# ── Shared public header ─────────────────────────────────────────────────────
 
 
 def test_shared_public_header_shipped(client):
-    """shared.js ships the segmented public header and the Display sheet, and
-    the old page-selector dropdown / home-page pin are gone."""
+    """shared.js ships the public header (page dropdown, no Admin entry on club
+    subdomains) plus the footer Display line + sheet; the home-page pin is gone."""
     js = client.get("/shared.js", headers={"Accept-Encoding": "identity"}).text
     assert "function buildPublicHeaderHtml(current)" in js
+    assert "function togglePublicPageMenu(open)" in js
+    assert 'aria-haspopup="true" aria-expanded="false" aria-controls="public-page-menu"' in js
+    pages = js[js.index("function _publicHeaderPages()") :]
+    pages = pages[: pages.index("\n}\n")]
+    assert "if (!getClubSubdomain()) {\n    pages.push({ key: 'admin'" in pages
+    assert "function _mountPublicFooter()" in js
     assert 'class="public-display-btn" aria-haspopup="dialog" aria-expanded="false"' in js
     assert "function openDisplaySheet(" in js
     assert "function setDisplayTheme(mode)" in js
@@ -296,6 +302,16 @@ def test_shared_public_header_shipped(client):
         "amistoso-home-page",
     ):
         assert gone not in js, gone
+
+
+def test_public_pages_share_one_content_width(client):
+    for path, rule in (
+        ("/player.css", ".container { max-width: var(--content-public);"),
+        ("/register.css", ".container { max-width: var(--content-public);"),
+        ("/club.css", "max-width: var(--content-public);"),
+    ):
+        css = client.get(path, headers={"Accept-Encoding": "identity"}).text
+        assert rule in css, path
 
 
 @pytest.mark.parametrize("path", ["/player.js", "/register.js", "/club.js"])

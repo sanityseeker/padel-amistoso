@@ -18,7 +18,7 @@ from ..models import EntityType
 
 from ..models import Sport, TournamentType
 from ..tournaments.player_secrets import PlayerSecret, generate_secrets_for_players
-from ..tournaments.playoff import bracket_matches
+from ..tournaments.playoff import THIRD_PLACE_LABEL, bracket_matches
 from .db import get_db
 
 logger = logging.getLogger(__name__)
@@ -214,6 +214,19 @@ def _fold_playoff_match_stats(
                     stats[pid]["draws"] += 1
 
 
+def _winner_ids_and_label(t: object) -> tuple[set[str], str]:
+    """Return ``(winner player ids, stage label)`` for a tournament object.
+
+    The label is ``"Champion"`` for a single winner and ``"Winner"`` when
+    several equal winners were decided.
+    """
+    from .helpers import tournament_winners  # noqa: PLC0415  (helpers imports state -> this module)
+
+    winners = tournament_winners(t) or []
+    ids = {p.id for team in winners for p in team}
+    return ids, ("Winner" if len(winners) > 1 else "Champion")
+
+
 def _apply_playoff_stages(
     stats: dict[str, dict],
     playoff_matches: list,
@@ -221,6 +234,7 @@ def _apply_playoff_stages(
     total: int,
     *,
     create_missing: bool = True,
+    winner_label: str = "Champion",
 ) -> None:
     """Compute and write ``playoff_stage`` / ``playoff_stage_rank`` into *stats*.
 
@@ -232,7 +246,7 @@ def _apply_playoff_stages(
         create_missing: When ``True``, players from *playoff_matches* that are
             absent from *stats* get a fresh zeroed entry.
     """
-    playoff_stage = _compute_playoff_stage_by_player(playoff_matches, champion_ids)
+    playoff_stage = _compute_playoff_stage_by_player(playoff_matches, champion_ids, winner_label)
     for pid, stage_data in playoff_stage.items():
         if pid not in stats:
             if not create_missing:
@@ -294,8 +308,8 @@ def extract_history_stats(t_data: dict) -> dict[str, dict]:
                 mex_match_ids = {m.id for m in t.all_matches()}
                 playoff_matches = [m for m in _collect_all_completed_matches(t) if m.id not in mex_match_ids]
                 _fold_playoff_match_stats(stats, playoff_matches, total)
-                champion_ids = {p.id for p in (t.champion() or [])}
-                _apply_playoff_stages(stats, playoff_matches, champion_ids, total)
+                champion_ids, winner_label = _winner_ids_and_label(t)
+                _apply_playoff_stages(stats, playoff_matches, champion_ids, total, winner_label=winner_label)
         elif t_type == TournamentType.GROUP_PLAYOFF:
             all_standings = t.group_standings()
             rows = [row for grp_rows in all_standings.values() for row in grp_rows]
@@ -327,11 +341,10 @@ def extract_history_stats(t_data: dict) -> dict[str, dict]:
             }
             playoff_matches = [m for m in _collect_all_completed_matches(t) if m.id not in group_match_ids]
             _fold_playoff_match_stats(stats, playoff_matches, total)
-            champion_ids = {p.id for p in (t.champion() or [])}
-            _apply_playoff_stages(stats, playoff_matches, champion_ids, total)
+            champion_ids, winner_label = _winner_ids_and_label(t)
+            _apply_playoff_stages(stats, playoff_matches, champion_ids, total, winner_label=winner_label)
         elif t_type == TournamentType.PLAYOFF:
-            champion = t.champion()
-            champion_ids = {p.id for p in (champion or [])}
+            champion_ids, winner_label = _winner_ids_and_label(t)
             all_players = [p for team in getattr(t, "original_teams", []) for p in team]
             total = len(all_players)
             for p in all_players:
@@ -347,7 +360,7 @@ def extract_history_stats(t_data: dict) -> dict[str, dict]:
 
             matches = _collect_all_completed_matches(t)
             _fold_playoff_match_stats(stats, matches, total, create_missing=False)
-            _apply_playoff_stages(stats, matches, champion_ids, total, create_missing=False)
+            _apply_playoff_stages(stats, matches, champion_ids, total, create_missing=False, winner_label=winner_label)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not extract history stats: %s", exc)
 
@@ -399,13 +412,13 @@ def _collect_all_completed_matches(t: object) -> list:
 def _playoff_stage_rank(round_label: str) -> int:
     """Return a sortable rank where smaller means deeper playoff achievement."""
     label = (round_label or "").strip()
-    if label == "Champion":
+    if label in {"Champion", "Winner"}:
         return 0
     if label == "Grand Final Reset":  # legacy: no longer created, may exist in old tournaments
         return 1
     if label in {"Grand Final", "Final"}:
         return 2
-    if label == "Semi-Final":
+    if label in {"Semi-Final", THIRD_PLACE_LABEL}:
         return 3
     if label == "Quarter-Final":
         return 4
@@ -430,12 +443,30 @@ def _playoff_stage_rank(round_label: str) -> int:
     return 999
 
 
-def _compute_playoff_stage_by_player(matches: list, champion_ids: set[str]) -> dict[str, dict[str, str | int]]:
-    """Compute best playoff stage reached for each player id."""
+def _compute_playoff_stage_by_player(
+    matches: list, champion_ids: set[str], winner_label: str = "Champion"
+) -> dict[str, dict[str, str | int]]:
+    """Compute best playoff stage reached for each player id.
+
+    Winners (*champion_ids*) are all tied at rank 0 under *winner_label*
+    (``"Champion"`` for one winner, ``"Winner"`` for several equal winners).
+    The winner of a 3rd-place match is labelled ``"3rd Place"`` (the loser keeps
+    the semi-final stage).
+    """
     best: dict[str, dict[str, str | int]] = {}
     for m in matches:
         label = str(getattr(m, "round_label", "") or "").strip()
         if not label:
+            continue
+        if label == THIRD_PLACE_LABEL:
+            score = getattr(m, "score", None)
+            if score is None or score[0] == score[1]:
+                continue
+            third_team = (getattr(m, "team1", None) or []) if score[0] > score[1] else (getattr(m, "team2", None) or [])
+            for p in third_team:
+                prev = best.get(p.id)
+                if prev is None or int(prev["playoff_stage_rank"]) >= 3:
+                    best[p.id] = {"playoff_stage": THIRD_PLACE_LABEL, "playoff_stage_rank": 3}
             continue
         rank = _playoff_stage_rank(label)
         for p in [*(getattr(m, "team1", None) or []), *(getattr(m, "team2", None) or [])]:
@@ -449,7 +480,7 @@ def _compute_playoff_stage_by_player(matches: list, champion_ids: set[str]) -> d
 
     for pid in champion_ids:
         best[pid] = {
-            "playoff_stage": "Champion",
+            "playoff_stage": winner_label,
             "playoff_stage_rank": 0,
         }
     return best

@@ -2248,6 +2248,11 @@ function _buildChampionBanners(status) {
   const consolation = espejo && !legacySuperFinal ? status.losers_champion : null;
   const half = champion && consolation ? ' champion-banner--half' : '';
   let html = '';
+  // Several equal winners (multi-winner single elimination): one banner listing every team.
+  if (Array.isArray(status.winners) && status.winners.length > 1) {
+    html += `<div class="champion-banner">${_ic('trophy')} ${t('txt_winners_word')}: ${status.winners.map(w => esc(w.join(' & '))).join(' · ')}</div>`;
+    return html;
+  }
   if (champion) {
     html += `<div class="champion-banner${half}">${_ic('trophy')} ${t('txt_txt_champion')}: ${esc(champion.join(' & '))}</div>`;
   }
@@ -2620,16 +2625,16 @@ async function _resolveAlias() {
 const _PICKER_ISLAND_HTML = `
 <div id="tv-picker-island" v-scope class="tv-picker events-page">
   <div v-html="headerHtml"></div>
-  <div class="events-title-row">
-    <h1 class="events-title">{{ t('txt_events_title') }}</h1>
+  <h1 class="sr-only">{{ t('txt_events_title') }}</h1>
+  <div class="events-toolbar">
+    <div class="club-sport-selector" role="group" :aria-label="t('txt_txt_sport')">
+      <button type="button" class="club-sport-pill" data-sport="padel" :class="{ active: sport === 'padel' }"
+              :aria-pressed="sport === 'padel'" @click="toggleSport('padel')">{{ t('txt_txt_sport_padel') }}</button>
+      <button type="button" class="club-sport-pill" data-sport="tennis" :class="{ active: sport === 'tennis' }"
+              :aria-pressed="sport === 'tennis'" @click="toggleSport('tennis')">{{ t('txt_txt_sport_tennis') }}</button>
+    </div>
     <button type="button" class="theme-btn btn-refresh" @click="refresh()"
             :title="t('txt_txt_refresh_now')" :aria-label="t('txt_txt_refresh_now')">↻</button>
-  </div>
-  <div class="club-sport-selector" role="group" :aria-label="t('txt_txt_sport')">
-    <button type="button" class="club-sport-pill" data-sport="padel" :class="{ active: sport === 'padel' }"
-            :aria-pressed="sport === 'padel'" @click="toggleSport('padel')">{{ t('txt_txt_sport_padel') }}</button>
-    <button type="button" class="club-sport-pill" data-sport="tennis" :class="{ active: sport === 'tennis' }"
-            :aria-pressed="sport === 'tennis'" @click="toggleSport('tennis')">{{ t('txt_txt_sport_tennis') }}</button>
   </div>
   <section class="club-items-section">
     <header class="club-items-header">

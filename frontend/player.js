@@ -1170,7 +1170,7 @@ function _buildHeader() {
 document.addEventListener('app-language-changed', () => _render());
 
 function _buildAuthPanel() {
-  let html = `<div class="card">`;
+  let html = `<div class="card player-auth-card">`;
   html += `<p class="subtitle">${esc(t('txt_player_space_subtitle'))}</p>`;
   if (_successMsg) html += `<div class="success-msg">${esc(_successMsg)}</div>`;
 
@@ -1565,11 +1565,11 @@ function _buildBestResultsListHtml(bestGroupRank, bestGroupRankTournament, bestP
     html += `</div>`;
   }
   if (bestPlayoffStage) {
-    const icon = _ic(bestPlayoffStage === 'Champion' ? 'trophy' : 'medal');
+    const icon = _ic(bestPlayoffStage === 'Champion' || bestPlayoffStage === 'Winner' ? 'trophy' : 'medal');
     html += `<div class="best-results-row">`;
     html += `<span class="best-results-icon">${icon}</span>`;
     html += `<span class="best-results-detail">`;
-    html += `<span class="best-results-value">${esc(bestPlayoffStage)}</span>`;
+    html += `<span class="best-results-value">${esc(_playoffStageLabel(bestPlayoffStage))}</span>`;
     if (bestPlayoffStageTournament) html += `<span class="best-results-tournament"> — ${esc(bestPlayoffStageTournament)}</span>`;
     html += `</span>`;
     html += `<span class="best-results-tag">${esc(t('txt_player_career_best_playoff_stage'))}</span>`;
@@ -2363,6 +2363,17 @@ function _buildEntryCard(entry) {
   return html;
 }
 
+/**
+ * Display text for a stored playoff stage. "Winner" is used when several equal
+ * winners were decided (multi-winner play-offs); "Champion" for a single winner.
+ */
+function _playoffStageLabel(stage) {
+  if (stage === 'Champion') return t('txt_txt_champion');
+  if (stage === 'Winner') return t('txt_winner_word');
+  if (stage === '3rd Place') return t('txt_third_place_label');
+  return stage;
+}
+
 function _buildStatsLine(entry) {
   const hasRank = entry.rank != null && entry.rank > 0;
   const hasPlayoffStage = !!entry.playoff_stage;
@@ -2375,7 +2386,7 @@ function _buildStatsLine(entry) {
     const of = entry.total_players ? ` ${t('txt_player_stats_of')} ${entry.total_players}` : '';
     parts.push(`${suffix}${of}`);
   } else if (hasPlayoffStage) {
-    parts.push(entry.playoff_stage);
+    parts.push(esc(_playoffStageLabel(entry.playoff_stage)));
   }
   if (hasWL) {
     let wl = `${entry.wins || 0}W`;

@@ -15,7 +15,7 @@ from fastapi.responses import Response
 from ..auth.deps import PlayerIdentity
 from ..auth.models import User, UserRole
 from ..models import Match, MatchStatus, SetDecider
-from ..tournaments.playoff import EspejoParallelBracket
+from ..tournaments.playoff import THIRD_PLACE_LABEL, EspejoParallelBracket
 from ..tournaments.set_format import format_sets, games_from_sets, match_decider, validate_decider_sets
 from .db import get_co_editors
 from .state import _tournaments, _save_tournament
@@ -185,6 +185,38 @@ def _store_tournament(
         "club_id": club_id,
     }
     _save_tournament(tid)
+
+
+def tournament_winners(t: object) -> list[list] | None:
+    """Return the decided winners of tournament *t* as a list of teams, else ``None``.
+
+    Prefers ``t.winners()`` (Play-off / Group+Playoff, possibly several equal
+    winners) and falls back to ``[t.champion()]`` (Mexicano, legacy objects).
+    """
+    winners_fn = getattr(t, "winners", None)
+    if callable(winners_fn):
+        return winners_fn() or None
+    champion_fn = getattr(t, "champion", None)
+    champ = champion_fn() if callable(champion_fn) else None
+    return [champ] if champ else None
+
+
+def winners_payload(t: object) -> dict:
+    """Status/playoffs payload fragment: ``num_winners``, ``winners`` and ``champion``.
+
+    ``champion`` is populated only for single-winner tournaments (``num_winners == 1``).
+    """
+    bracket = getattr(t, "bracket", None) or getattr(t, "playoff_bracket", None)
+    num_winners = int(getattr(bracket, "num_winners", 1) or 1)
+    winners = tournament_winners(t)
+    names = [[p.name for p in team] for team in winners] if winners else None
+    return {
+        "num_winners": num_winners,
+        "third_place": bool(getattr(bracket, "third_place", False))
+        or bool(getattr(getattr(bracket, "winners_bracket", None), "third_place", False)),
+        "winners": names,
+        "champion": names[0] if names and len(names) == 1 else None,
+    }
 
 
 def _is_bye_match(m: Match) -> bool:
@@ -544,6 +576,7 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
         for round_num, rmatches in sorted(by_round.items()):
             r = round_num - 1
             for p_idx, m in enumerate(rmatches):
+                is_third = m.round_label == THIRD_PLACE_LABEL
                 # Use the stored bracket pair_index when available so the key
                 # matches the viz node ID (which uses the actual slot position
                 # including bye slots, not a sequential non-bye count).
@@ -558,7 +591,7 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
                 loser = m.loser_team
                 if loser:
                     entry["loser"] = _fmt_team(loser)
-                labels[f"{prefix}_r{r}_p{key_p}"] = entry
+                labels["third_place" if is_third else f"{prefix}_r{r}_p{key_p}"] = entry
 
     labels: dict[str, dict] = {}
 

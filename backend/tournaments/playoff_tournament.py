@@ -8,7 +8,13 @@ Each participant name becomes a single bracket entry (team of one entry).
 from __future__ import annotations
 
 from ..models import Court, Match, MatchStatus, POPhase, Player
-from .playoff import DoubleEliminationBracket, EspejoParallelBracket, SingleEliminationBracket, bracket_matches
+from .playoff import (
+    DoubleEliminationBracket,
+    EspejoParallelBracket,
+    SingleEliminationBracket,
+    bracket_matches,
+    validate_num_winners,
+)
 
 
 class PlayoffTournament:
@@ -37,7 +43,19 @@ class PlayoffTournament:
         espejo: bool = False,
         team_mode: bool = True,
         initial_strength: dict[str, float] | None = None,
+        num_winners: int = 1,
+        third_place: bool = False,
     ):
+        # Multi-winner only exists for plain single elimination; third place
+        # is allowed for single elimination and Espejo (winners bracket).
+        if num_winners != 1 and (double_elimination or espejo):
+            raise ValueError("Multiple winners are only supported for single-elimination brackets")
+        if third_place and double_elimination and not espejo:
+            raise ValueError("A 3rd-place match is not supported for double elimination")
+        if num_winners != 1 or third_place:
+            validate_num_winners(len(teams), num_winners, third_place)
+        self.num_winners = num_winners
+        self.third_place = third_place
         self.original_teams = list(teams)
         self.courts = courts or []
         self.double_elimination = double_elimination
@@ -58,12 +76,12 @@ class PlayoffTournament:
         # court assignment so the bracket never internally pre-assigns anything.
         if espejo:
             self.bracket: SingleEliminationBracket | DoubleEliminationBracket | EspejoParallelBracket = (
-                EspejoParallelBracket(teams)
+                EspejoParallelBracket(teams, third_place=third_place)
             )
         elif double_elimination:
             self.bracket = DoubleEliminationBracket(teams)
         else:
-            self.bracket = SingleEliminationBracket(teams)
+            self.bracket = SingleEliminationBracket(teams, num_winners=num_winners, third_place=third_place)
 
         self._assign_courts_greedily()
 
@@ -73,7 +91,7 @@ class PlayoffTournament:
 
     @property
     def phase(self) -> POPhase:
-        return POPhase.FINISHED if self.champion() is not None else POPhase.PLAYOFFS
+        return POPhase.FINISHED if self.winners() is not None else POPhase.PLAYOFFS
 
     def all_matches(self) -> list[Match]:
         """Return all bracket matches (including future TBD matches)."""
@@ -95,12 +113,24 @@ class PlayoffTournament:
         # Greedily fill every free court with an unassigned ready match.
         self._assign_courts_greedily()
 
+    def winners(self) -> list[list[Player]] | None:
+        """All (equal) winners once the whole tournament is complete, else ``None``."""
+        if isinstance(self.bracket, SingleEliminationBracket):
+            return self.bracket.winners()
+        champ = self.bracket.champion()
+        return [champ] if champ else None
+
     def champion(self) -> list[Player] | None:
-        """Return the winning team once the whole tournament is complete, else ``None``.
+        """Return the single winning team once the whole tournament is complete, else ``None``.
 
         For Espejo this is the Winners-Bracket champion, but only after the
-        consolation (Losers) bracket has been decided too.
+        consolation (Losers) bracket has been decided too.  With several
+        winners (or a pending 3rd-place match) this stays ``None`` until the
+        whole tournament is decided, and is always ``None`` for ``num_winners > 1``.
         """
+        if isinstance(self.bracket, SingleEliminationBracket):
+            w = self.bracket.winners()
+            return w[0] if w and len(w) == 1 else None
         return self.bracket.champion()
 
     # ------------------------------------------------------------------ #

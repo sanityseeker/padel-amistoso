@@ -332,6 +332,7 @@ function ts(text, sport, params = {}) {
  */
 function trl(label) {
   if (!label) return label;
+  if (label === '3rd Place') return t('txt_third_place_label');
   return label.replace(/\bGroup\b/g, t('txt_txt_group_word'));
 }
 
@@ -794,19 +795,18 @@ function _bracketLightboxKeyHandler(e) {
 
 // ── Public header (club page, Player Hub, registration form, Events) ──────
 //
-// One shared header for every public surface: a thin "Display" line (current
-// language · theme, opens a sheet/popover with both controls) above a
-// segmented tab bar [Club|Events] [Sign in|My Hub] (+ Admin). The admin entry
-// is cosmetic only — it just shows up when a `padel-auth-token` exists on this
-// origin; server auth is unchanged. Pages re-render their own content on
-// language change; the header re-renders itself via `app-language-changed`.
+// One shared header for every public surface: a centred page dropdown
+// [current page ▾] listing Club|Events, Player Hub (initials + "My Hub" when
+// signed in) and Admin (hidden on club subdomains — club visitors aren't
+// platform organizers). A quiet "Display: English · Light" line in the page
+// footer opens the Display sheet (language + theme). Pages re-render their
+// own content on language change; header and footer re-render themselves via
+// `app-language-changed`.
 
 /** localStorage key of the Player Hub profile JWT (player.js keeps it there). */
 const _HUB_JWT_KEY = 'padel-player-profile';
 /** localStorage key of the cached Player Hub profile object. */
 const _HUB_PROFILE_DATA_KEY = 'padel-player-profile-data';
-/** localStorage key of the organizer (admin SPA) JWT (auth.js keeps it there). */
-const _ADMIN_TOKEN_KEY = 'padel-auth-token';
 
 /** @type {string|null} key of the page the header was last built for. */
 let _publicHeaderCurrent = null;
@@ -859,11 +859,6 @@ function hasHubSession() {
   try { return Boolean(localStorage.getItem(_HUB_JWT_KEY)); } catch (_) { return false; }
 }
 
-/** Organizer token present on this origin? (cosmetic check only) */
-function hasAdminToken() {
-  try { return Boolean(localStorage.getItem(_ADMIN_TOKEN_KEY)); } catch (_) { return false; }
-}
-
 /**
  * Up to two initials from the cached Hub profile name. Never exposes the
  * full name in the header.
@@ -884,6 +879,59 @@ function hubProfileInitials() {
   }
 }
 
+/**
+ * Pages reachable from the public header dropdown.
+ * @returns {{key: string, href: string, label: string, icon: string, cls?: string}[]}
+ */
+function _publicHeaderPages() {
+  const pages = [];
+  if (getClubSubdomain()) {
+    pages.push({ key: 'club', href: '/', label: t('txt_nav_club'), icon: _ic('building'), cls: 'public-page-item--club' });
+  } else {
+    pages.push({ key: 'events', href: '/events', label: t('txt_nav_events'), icon: _ic('trophy') });
+  }
+  const initials = hasHubSession() ? hubProfileInitials() : '';
+  pages.push({
+    key: 'player',
+    href: '/player',
+    label: hasHubSession() ? t('txt_nav_my_hub') : t('txt_nav_player_space'),
+    icon: initials ? `<span class="public-avatar" aria-hidden="true">${esc(initials)}</span>` : _ic('user'),
+  });
+  if (!getClubSubdomain()) {
+    pages.push({ key: 'admin', href: '/admin', label: t('txt_nav_admin'), icon: _ic('settings') });
+  }
+  return pages;
+}
+
+/**
+ * Build the shared public header.
+ * @param {'club'|'events'|'player'|'register'} current  Page key (the sign-up
+ *   form shows its parent directory, Club or Events, as the current page).
+ * @returns {string} HTML
+ */
+function buildPublicHeaderHtml(current) {
+  _publicHeaderCurrent = current;
+  const pages = _publicHeaderPages();
+  const currentPage = pages.find(p => p.key === current) || pages[0];
+
+  let html = `<header class="public-header" id="public-header">`;
+  html += `<nav class="public-page-selector" id="public-page-selector" aria-label="${escAttr(t('txt_nav_pages'))}">`;
+  html += `<button type="button" class="public-page-btn" aria-haspopup="true" aria-expanded="false" aria-controls="public-page-menu" onclick="togglePublicPageMenu()">`;
+  html += `<span class="public-page-icon">${currentPage.icon}</span><span class="public-page-label">${esc(currentPage.label)}</span>${_ic('chevdown')}</button>`;
+  html += `<div class="public-page-menu" id="public-page-menu" hidden>`;
+  for (const p of pages) {
+    const active = p.key === currentPage.key;
+    html += `<a class="public-page-item${p.cls ? ' ' + p.cls : ''}${active ? ' is-active' : ''}" href="${p.href}"`;
+    if (active) html += ` aria-current="page"`;
+    html += ` onclick="savePageChoice('${p.key}')"><span class="public-page-icon">${p.icon}</span><span>${esc(p.label)}</span></a>`;
+  }
+  html += `</div></nav>`;
+  html += `</header>`;
+  if (getClubSubdomain()) _patchPublicHeaderClubName();
+  queueMicrotask(_mountPublicFooter);
+  return html;
+}
+
 /** "English · Dark" — the current values shown on the Display line. */
 function _displayLineValue() {
   const lang = getAppLanguage() === 'es' ? 'Español' : 'English';
@@ -895,63 +943,55 @@ function _displayLineValue() {
 }
 
 /**
- * Build the shared public header.
- * @param {'club'|'events'|'player'|'register'} current  Page key (marks the active tab).
- * @returns {string} HTML
+ * Insert (or refresh) the footer Display line at the end of the page, above
+ * the support links when the page has them. Hidden by CSS whenever the page
+ * isn't showing the public header (e.g. the TV live board, which keeps its
+ * own toggles).
  */
-function buildPublicHeaderHtml(current) {
-  _publicHeaderCurrent = current;
-  const onClubSubdomain = Boolean(getClubSubdomain());
-  const tabs = [];
-  if (onClubSubdomain) {
-    tabs.push({ key: 'club', href: '/', label: t('txt_nav_club'), cls: 'public-tab--club' });
-  } else {
-    tabs.push({ key: 'events', href: '/events', label: t('txt_nav_events'), cls: '' });
+function _mountPublicFooter() {
+  let footer = document.getElementById('public-footer');
+  if (!footer) {
+    footer = document.createElement('footer');
+    footer.id = 'public-footer';
+    footer.className = 'public-footer';
+    const support = document.querySelector('body > .support-links');
+    if (support) support.before(footer);
+    else document.body.appendChild(footer);
   }
-  if (hasHubSession()) {
-    const initials = hubProfileInitials();
-    const avatar = initials
-      ? `<span class="public-avatar" aria-hidden="true">${esc(initials)}</span>`
-      : '';
-    tabs.push({ key: 'player', href: '/player', label: t('txt_nav_my_hub'), cls: 'public-tab--hub', prefix: avatar });
-  } else {
-    tabs.push({ key: 'player', href: '/player', label: t('txt_nav_sign_in'), cls: '' });
-  }
-  const adminIn = hasAdminToken();
-  if (adminIn) tabs.push({ key: 'admin', href: '/admin', label: t('txt_nav_admin'), cls: '' });
-
-  const activeKey = current === 'register' ? null : current;
-  let html = `<header class="public-header" id="public-header">`;
-  html += `<div class="public-display-line">`;
-  html += `<button type="button" class="public-display-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="display-sheet" onclick="openDisplaySheet(this)">`;
-  html += `<span class="public-display-label">${esc(t('txt_display_label'))}:</span> `;
-  html += `<span class="public-display-value">${esc(_displayLineValue())}</span>`;
-  html += `</button></div>`;
-  html += `<nav class="public-tabs-row" aria-label="${escAttr(t('txt_nav_pages'))}">`;
-  html += `<div class="public-tabs${tabs.length > 2 ? ' public-tabs--three' : ''}">`;
-  for (const tab of tabs) {
-    const active = tab.key === activeKey;
-    html += `<a class="public-tab${tab.cls ? ' ' + tab.cls : ''}${active ? ' is-active' : ''}" href="${tab.href}"`;
-    if (active) html += ` aria-current="page"`;
-    html += ` onclick="savePageChoice('${tab.key}')">${tab.prefix || ''}<span class="public-tab-label">${esc(tab.label)}</span></a>`;
-  }
-  html += `</div>`;
-  if (!adminIn) {
-    html += `<a class="public-admin-link" href="/admin" onclick="savePageChoice('admin')">${esc(t('txt_nav_admin_sign_in'))}</a>`;
-  }
-  html += `</nav></header>`;
-  if (onClubSubdomain) _patchPublicHeaderClubName();
-  return html;
+  footer.innerHTML = `<button type="button" class="public-display-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="display-sheet" onclick="openDisplaySheet(this)">`
+    + `<span class="public-display-label">${esc(t('txt_display_label'))}:</span> `
+    + `<span class="public-display-value">${esc(_displayLineValue())}</span></button>`;
 }
 
+/** Open/close the header page dropdown. */
+function togglePublicPageMenu(open) {
+  const btn = document.querySelector('#public-page-selector .public-page-btn');
+  const menu = document.getElementById('public-page-menu');
+  if (!btn || !menu) return;
+  const show = typeof open === 'boolean' ? open : menu.hidden;
+  menu.hidden = !show;
+  btn.setAttribute('aria-expanded', show ? 'true' : 'false');
+}
+
+document.addEventListener('click', (ev) => {
+  const sel = document.getElementById('public-page-selector');
+  if (sel && !sel.contains(ev.target)) togglePublicPageMenu(false);
+});
+document.addEventListener('keydown', (ev) => {
+  const menu = document.getElementById('public-page-menu');
+  if (ev.key !== 'Escape' || !menu || menu.hidden) return;
+  togglePublicPageMenu(false);
+  document.querySelector('#public-page-selector .public-page-btn')?.focus();
+});
+
 /**
- * The club tab is rendered as "Club" immediately; once the subdomain resolves
- * the full club name is set as its tooltip/accessible name.
+ * The club entry is rendered as "Club" immediately; once the subdomain
+ * resolves the full club name is set as its tooltip/accessible name.
  */
 function _patchPublicHeaderClubName() {
   resolveClubSubdomainContext().then(club => {
     if (!club || !club.name) return;
-    document.querySelectorAll('.public-tab--club').forEach(el => {
+    document.querySelectorAll('.public-page-item--club').forEach(el => {
       el.setAttribute('title', club.name);
       el.setAttribute('aria-label', club.name);
     });
@@ -1010,7 +1050,7 @@ function _renderDisplaySheetContent() {
 }
 
 /**
- * Open the Display sheet (bottom sheet on phones, popover on desktop).
+ * Open the Display sheet (bottom sheet on phones, centred above the footer on desktop).
  * @param {HTMLElement} [trigger] the Display button, focus returns to it on close
  */
 function openDisplaySheet(trigger) {

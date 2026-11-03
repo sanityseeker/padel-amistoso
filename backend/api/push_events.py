@@ -150,15 +150,33 @@ def notify_score_disputed(tid: str, data: dict, match: Match, disputer_id: str) 
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def notify_champion(tid: str, data: dict, champion_names: list[str]) -> None:
-    """Push 'tournament finished' to all subscribers."""
+def notify_winners(tid: str, data: dict, winner_teams: list[list[str]] | list[str]) -> None:
+    """Push 'tournament finished' to all subscribers.
+
+    *winner_teams* is a list of teams (each a list of player names).  A flat
+    list of names is treated as a single team (legacy ``notify_champion`` form).
+    """
     name = data.get("name", "Tournament")
     alias = data.get("alias")
-    champ = " & ".join(champion_names) if champion_names else "the champions"
+    teams: list[list[str]]
+    if winner_teams and isinstance(winner_teams[0], str):
+        teams = [list(winner_teams)]  # type: ignore[arg-type]
+    else:
+        teams = [list(t) for t in winner_teams]  # type: ignore[union-attr]
+    if len(teams) > 1:
+        body = "Tournament finished! Winners: " + "; ".join(" & ".join(t) for t in teams)
+    else:
+        champ = " & ".join(teams[0]) if teams and teams[0] else "the champions"
+        body = f"Tournament finished! Champion: {champ}"
     send_push_to_tournament(
         tournament_id=tid,
         title=name,
-        body=f"Tournament finished! Champion: {champ}",
+        body=body,
         url=_tv_url(tid, alias),
         tag=f"{tid}-champion",
     )
+
+
+def notify_champion(tid: str, data: dict, champion_names: list[str]) -> None:
+    """Push 'tournament finished' for a single champion (wrapper around :func:`notify_winners`)."""
+    notify_winners(tid, data, [list(champion_names)] if champion_names else [])

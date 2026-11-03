@@ -495,7 +495,10 @@ function _updateParticipantCount(mode) {
   if (document.getElementById(`${mode}-contact-section`)?.open) renderContactFields(mode);
   if (document.getElementById(`${mode}-strength-section`)?.open) renderStrengthBubbles(mode);
   // Auto-refresh PO bracket preview as participants change (debounced)
-  if (mode === 'po') _schedulePoPreview();
+  if (mode === 'po') {
+    if (typeof _updatePoMatchEstimate === 'function') _updatePoMatchEstimate();
+    _schedulePoPreview();
+  }
 }
 
 function removeParticipantField(mode, index) {
@@ -1535,6 +1538,7 @@ async function createMex() {
 async function createPO() {
   const msg = document.getElementById('po-msg');
   try {
+    _updatePoMatchEstimate();  // re-validate the winner options against the current team count
     const names = getParticipantNames('po');
     const useBuilder = _useTeamBuilder('po');
     if (names.length < 2) throw new Error(t('txt_txt_need_at_least_2_participants'));
@@ -1546,6 +1550,7 @@ async function createPO() {
       team_mode: _currentSport === 'tennis' ? _entryModeIsTeam('po') : true,
       double_elimination: document.getElementById('po-double-elim').checked,
       espejo: document.getElementById('po-espejo')?.checked || false,
+      ..._gpReadWinnerControls('po'),
       public: document.getElementById('po-public').checked,
       sport: _currentSport,
       community_id: _getSelectedCommunityId(),
@@ -1692,11 +1697,13 @@ function _updatePoMatchEstimate() {
   const el = document.getElementById('po-match-estimate');
   if (!el) return;
   const n = getParticipantNames('po').length;
-  if (n < 2) { el.innerHTML = ''; return; }
   const isEspejo = document.getElementById('po-espejo')?.checked || false;
   const isDouble = !isEspejo && (document.getElementById('po-double-elim')?.checked || false);
   const format = isEspejo ? 'espejo' : (isDouble ? 'double' : 'single');
-  const count = _gpEstimatePlayoffMatches(n, format);
+  _gpRefreshWinnerControls('po', n, format);
+  if (n < 2) { el.innerHTML = ''; return; }
+  const { num_winners: numWinners, third_place: thirdPlace } = _gpReadWinnerControls('po');
+  const count = _gpEstimatePlayoffMatches(n, format, numWinners, thirdPlace);
   const matchText = `~${count} ${t('txt_txt_matches')}`;
   function branchRow(label, seq, suffix) {
     return `<div class="gp-playoff-branch">` +
@@ -1705,7 +1712,7 @@ function _updatePoMatchEstimate() {
       `</div>`;
   }
   if (format === 'single') {
-    const seqStr = _gpFormatConcurrencySeq(_gpSingleElimSequence(n));
+    const seqStr = _gpFormatConcurrencySeq(_gpSingleElimSequence(n, numWinners, thirdPlace));
     el.textContent = seqStr ? `${matchText} · ${seqStr}` : matchText;
   } else if (format === 'double') {
     const { wbSeq, lbSeq } = _gpDeSequences(n);
@@ -1714,7 +1721,7 @@ function _updatePoMatchEstimate() {
       branchRow('WB', wbSeq, '') + branchRow('LB', lbSeq, 'GF') +
       `</div>`;
   } else {
-    const { wbSeq, lbSeq } = _gpEspejoSequences(n);
+    const { wbSeq, lbSeq } = _gpEspejoSequences(n, thirdPlace);
     el.innerHTML = `<span class="gp-playoff-estimate-count">${matchText}</span>` +
       `<div class="gp-playoff-branches">` +
       branchRow('WB', wbSeq, '') +

@@ -1780,79 +1780,72 @@ html[data-theme="light"] .court-card--yours {
 tr.is-removed { opacity: 0.45; }
 
 /* ── Shared public header (club page, Player Hub, sign-up form, Events) ──
-   Display line (language · theme) above a segmented tab bar. Built by
-   shared.js buildPublicHeaderHtml(). */
+   A centred [current page ▾] dropdown. Built by shared.js
+   buildPublicHeaderHtml(); the Display line lives in .public-footer. */
 .public-header {
   display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+  justify-content: center;
   margin-bottom: 1.25rem;
 }
-.public-display-line {
-  display: flex;
-  justify-content: flex-end;
-  min-height: 24px;
-}
-.public-display-btn {
-  background: none;
-  border: none;
-  padding: 0.1rem 0.25rem;
-  min-height: 24px;
-  font: inherit;
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  line-height: 1.3;
-}
-.public-display-btn:hover,
-.public-display-btn:focus-visible { color: var(--color-text); outline: none; }
-.public-display-btn:focus-visible { box-shadow: 0 0 0 2px var(--color-primary); }
-.public-display-value { font-weight: 600; }
-.public-tabs-row {
-  display: flex;
-  align-items: stretch;
-  gap: 0.5rem;
-  max-width: 480px;
-  width: 100%;
-  margin: 0 auto;
-}
-.public-tabs {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  overflow: hidden;
-}
-.public-tab {
-  flex: 1 1 0;
-  min-width: 0;
+.public-page-selector { position: relative; }
+.public-page-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   min-height: 44px;
+  padding: 0.3rem 0.75rem;
+  font-family: var(--font-body);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.public-page-btn:hover { border-color: var(--color-border); }
+.public-page-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.public-page-btn > .ic { width: 0.9em; height: 0.9em; color: var(--color-text-muted); }
+.public-page-btn[aria-expanded="true"] > .ic { transform: rotate(180deg); }
+.public-page-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.5rem;
+  color: var(--color-primary);
+}
+.public-page-icon .ic { width: 1em; height: 1em; }
+.public-page-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 200px;
+  padding: 0.3rem 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+}
+.public-page-menu[hidden] { display: none; }
+.public-page-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  padding: 0.5rem 0.9rem;
   font-family: var(--font-body);
   font-size: 0.92rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
+  font-weight: 500;
+  color: var(--color-text);
   text-decoration: none;
-  white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
 }
-.public-tab + .public-tab { border-left: 1px solid var(--color-border); }
-.public-tab:hover { color: var(--color-text); background: var(--color-hover-overlay); }
-.public-tab.is-active {
-  color: var(--color-on-primary);
-  background: var(--color-primary);
-}
-.public-tab:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
-.public-tab-label { overflow: hidden; text-overflow: ellipsis; }
+.public-page-item:hover,
+.public-page-item:focus-visible { background: var(--color-hover-overlay); outline: none; }
+.public-page-item.is-active { color: var(--color-primary); font-weight: 700; }
 .public-avatar {
-  flex: 0 0 auto;
   width: 24px;
   height: 24px;
   border-radius: var(--radius-full);
@@ -1866,37 +1859,33 @@ tr.is-removed { opacity: 0.45; }
   background: var(--color-primary-highlight);
   color: var(--color-primary);
 }
-.public-tab.is-active .public-avatar {
-  background: color-mix(in srgb, var(--color-on-primary) 22%, transparent);
-  color: var(--color-on-primary);
-}
-.public-admin-link {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0 0.6rem;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  text-decoration: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  white-space: nowrap;
-}
-.public-admin-link:hover,
-.public-admin-link:focus-visible {
-  color: var(--color-text);
-  border-color: var(--color-border);
-  outline: none;
-}
-@media (max-width: 420px) {
-  /* Segments size to their label so "Iniciar sesión" never truncates. */
-  .public-tab { flex: 1 1 auto; font-size: 0.84rem; padding: 0.35rem 0.5rem; }
-  .public-admin-link { font-size: 0.72rem; padding: 0 0.35rem; }
-}
 
-/* Display sheet: bottom sheet on phones, popover below the Display line on desktop. */
+/* Footer Display line (language · theme) — opens the Display sheet. */
+.public-footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 2.5rem;
+}
+/* Only on pages showing the public header (not the TV live board). */
+body:not(:has(#public-header)) .public-footer { display: none; }
+.public-footer + .support-links { padding-top: 1rem; }
+.public-display-btn {
+  background: none;
+  border: none;
+  padding: 0.1rem 0.25rem;
+  min-height: 44px;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  line-height: 1.3;
+}
+.public-display-btn:hover,
+.public-display-btn:focus-visible { color: var(--color-text); outline: none; }
+.public-display-btn:focus-visible { box-shadow: 0 0 0 2px var(--color-primary); }
+.public-display-value { font-weight: 600; }
+/* Display sheet: bottom sheet on phones, a floating card above the footer on desktop. */
 .display-sheet-backdrop {
   position: fixed;
   inset: 0;
@@ -1970,11 +1959,12 @@ tr.is-removed { opacity: 0.45; }
 .display-seg-btn.is-active { background: var(--color-primary); color: var(--color-on-primary); }
 .display-seg-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
 @media (min-width: 640px) {
-  .display-sheet-backdrop { align-items: flex-start; justify-content: flex-end; background: transparent; }
+  .display-sheet-backdrop { background: transparent; }
   .display-sheet {
-    width: 300px;
-    margin: 2.25rem 1rem 0 0;
+    width: 320px;
+    margin-bottom: 4.5rem;
     border-radius: var(--radius-dialog);
     box-shadow: var(--shadow-lg);
   }
 }
+

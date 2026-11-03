@@ -40,6 +40,7 @@ from ..models import (
 from ..tournaments import GroupPlayoffTournament
 from ..tournaments.set_format import match_decider, validate_decider_sets
 from .helpers import (
+    tournament_winners,
     _effective_decider,
     _find_match_full,
     _is_player_in_match,
@@ -61,7 +62,7 @@ from .schemas import (
     validate_set_scores,
 )
 from .state import _tournaments, get_tournament_lock, save_tournament, update_live_stats
-from .push_events import notify_score_accepted, notify_score_disputed, notify_champion
+from .push_events import notify_score_accepted, notify_score_disputed, notify_champion, notify_winners
 from .elo_integration import elo_after_score, elo_recalculate_tournament
 
 router = APIRouter(prefix="/api/tournaments", tags=["score-actions"])
@@ -273,9 +274,12 @@ async def accept_score(
         elo_after_score(tid, data, match)
 
     notify_score_accepted(tid, data, match, player.player_id)
-    champ = getattr(t, "champion", lambda: None)()
-    if champ:
-        notify_champion(tid, data, [p.name for p in champ])
+    winners = tournament_winners(t)
+    if winners:
+        if len(winners) == 1:
+            notify_champion(tid, data, [p.name for p in winners[0]])
+        else:
+            notify_winners(tid, data, [[p.name for p in team] for team in winners])
     return {"ok": True}
 
 
@@ -486,9 +490,12 @@ async def accept_correction(
         elo_after_score(tid, data, match)
 
     notify_score_accepted(tid, data, match, player.player_id)
-    champ = getattr(t, "champion", lambda: None)()
-    if champ:
-        notify_champion(tid, data, [p.name for p in champ])
+    winners = tournament_winners(t)
+    if winners:
+        if len(winners) == 1:
+            notify_champion(tid, data, [p.name for p in winners[0]])
+        else:
+            notify_winners(tid, data, [[p.name for p in team] for team in winners])
     return {"ok": True}
 
 
@@ -623,9 +630,12 @@ async def resolve_dispute(
         await update_live_stats(tid)
         elo_recalculate_tournament(tid)
 
-    champ = getattr(t, "champion", lambda: None)()
-    if champ:
-        notify_champion(tid, data, [p.name for p in champ])
+    winners = tournament_winners(t)
+    if winners:
+        if len(winners) == 1:
+            notify_champion(tid, data, [p.name for p in winners[0]])
+        else:
+            notify_winners(tid, data, [[p.name for p in team] for team in winners])
     return {"ok": True}
 
 

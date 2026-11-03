@@ -66,6 +66,53 @@ def _next_power_of_two(n: int) -> int:
     return 1 << (n - 1).bit_length()
 
 
+THIRD_PLACE_LABEL = "3rd Place"
+MIN_TEAMS_THIRD_PLACE = 4
+
+
+def max_power_of_two_winners(n_teams: int) -> int:
+    """Largest power-of-two winner count a single-elimination bracket of *n_teams* supports."""
+    if n_teams < 2:
+        return 1
+    return max(1, _next_power_of_two(n_teams) // 2)
+
+
+def valid_num_winners(n_teams: int) -> list[int]:
+    """All winner counts accepted for *n_teams* (powers of two, plus 3 via the 3rd-place match)."""
+    out: list[int] = []
+    n = 1
+    limit = max_power_of_two_winners(n_teams)
+    while n <= limit:
+        out.append(n)
+        n *= 2
+    if n_teams >= MIN_TEAMS_THIRD_PLACE:
+        out.append(3)
+    return sorted(out)
+
+
+def validate_num_winners(n_teams: int, num_winners: int = 1, third_place: bool = False) -> None:
+    """Validate the multi-winner / third-place options for a **single-elimination** bracket.
+
+    Raises ``ValueError`` with a user-facing message when the combination is invalid.
+    """
+    if num_winners < 1:
+        raise ValueError("Number of winners must be at least 1")
+    if third_place and n_teams < MIN_TEAMS_THIRD_PLACE:
+        raise ValueError(f"A 3rd-place match needs at least {MIN_TEAMS_THIRD_PLACE} teams")
+    if num_winners == 3:
+        if n_teams < MIN_TEAMS_THIRD_PLACE:
+            raise ValueError(f"3 winners need at least {MIN_TEAMS_THIRD_PLACE} teams (semi-finals + 3rd-place match)")
+        if not third_place:
+            raise ValueError("3 winners require the 3rd-place match")
+        return
+    if num_winners > 1 and third_place:
+        raise ValueError("The 3rd-place match can only be combined with 1 or 3 winners")
+    if num_winners & (num_winners - 1):
+        raise ValueError("Number of winners must be 1, 3 or a power of two")
+    if num_winners > max_power_of_two_winners(n_teams):
+        raise ValueError(f"Too many winners ({num_winners}) for {n_teams} teams")
+
+
 def _make_seed_order(n: int) -> list[int]:
     """
     Standard interleaved bracket seeding for *n* slots (power of 2).
@@ -114,15 +161,36 @@ class BracketSlot:
 class SingleEliminationBracket:
     """Generates and manages a single‑elimination bracket."""
 
-    def __init__(self, teams: list[list[Player]]):
+    # Class-level defaults so pickles from before these attributes existed load.
+    num_winners: int = 1
+    third_place: bool = False
+    third_place_match: Match | None = None
+
+    def __init__(self, teams: list[list[Player]], num_winners: int = 1, third_place: bool = False):
         """
         *teams*: list of teams ordered by seed (index 0 = best seed).
         Each team is a list[Player] (length 2 for padel doubles).
+
+        *num_winners*: how many (equal) winners the bracket produces.  The
+        bracket is truncated at build time: 1 = full bracket, 2 = stop after
+        the semi-finals, 4 = after the quarter-finals, ...  ``3`` plays up to
+        the semi-finals plus the 3rd-place match (requires *third_place*).
+
+        *third_place*: add a match between the two semi-final losers.
         """
+        if num_winners != 1 or third_place:
+            validate_num_winners(len(teams), num_winners, third_place)
         self.original_teams = list(teams)
+        self.num_winners = num_winners
+        self.third_place = third_place
+        self.third_place_match = None
         self.matches: list[Match] = []
         self._match_map: dict[str, Match] = {}
         self._next_match: dict[str, tuple[str, int]] = {}  # match_id -> (next_match_id, slot 0 or 1)
+        self._loser_next: dict[str, tuple[str, int]] = {}  # semi match_id -> (3rd-place match id, slot)
+        # One entry per cutoff slot: ("match", match_id) or ("team", team) for a bye team.
+        self._winner_slots: list[tuple[str, object]] = []
+        self._final_id: str | None = None
         self._generate()
 
     # ------------------------------------------------------------------ #
@@ -139,8 +207,12 @@ class SingleEliminationBracket:
             teams[seed_order[i]] if seed_order[i] < n else None for i in range(bracket_size)
         ]
 
-        num_rounds = int(math.log2(bracket_size))
-        round_labels = self._round_labels(num_rounds)
+        full_depth = int(math.log2(bracket_size))
+        round_labels = self._round_labels(full_depth)
+        # Truncate: N winners (power of two) stop log2(N) rounds early; N=3 stops after the semis.
+        nw = self.num_winners
+        cut = 1 if nw == 3 else int(math.log2(nw))
+        num_rounds = full_depth - cut
 
         # Track bracket state per round using logical positions.
         # positions[r] = list of teams at each bracket slot
@@ -199,6 +271,36 @@ class SingleEliminationBracket:
                     next_match = match_at[r + 1][next_pair]
                     self._next_match[match.id] = (next_match.id, slot)
 
+        # Cutoff layout: who is decided by which match (or by a bye).
+        last = num_rounds - 1
+        for p_idx, bye_team in enumerate(positions[num_rounds] if num_rounds > 0 else []):
+            if p_idx in match_at[last]:
+                self._winner_slots.append(("match", match_at[last][p_idx].id))
+            elif bye_team is not None:
+                self._winner_slots.append(("team", bye_team))
+
+        if nw != 3 and self.matches:
+            self._final_id = self.matches[-1].id if nw == 1 else None
+
+        if self.third_place:
+            # Semi-final round: the round just before the (possibly absent) final.
+            semi_r = full_depth - 2
+            semis = [match_at[semi_r][i] for i in sorted(match_at[semi_r])]
+            tp = Match(
+                team1=[],
+                team2=[],
+                round_number=full_depth,
+                round_label=THIRD_PLACE_LABEL,
+                pair_index=1,
+            )
+            self.third_place_match = tp
+            self._match_map[tp.id] = tp
+            self.matches.append(tp)
+            for slot, semi in enumerate(semis[:2]):
+                self._loser_next[semi.id] = (tp.id, slot)
+            if nw == 3:
+                self._winner_slots = [("match", semi.id) for semi in semis[:2]] + [("match", tp.id)]
+
     @staticmethod
     def _round_labels(num_rounds: int) -> list[str]:
         labels: list[str] = []
@@ -242,15 +344,83 @@ class SingleEliminationBracket:
             else:
                 nm.team2 = winner
 
+        # Semi-final loser drops into the 3rd-place match.
+        loser_next = getattr(self, "_loser_next", None) or {}
+        if match_id in loser_next:
+            next_id, slot = loser_next[match_id]
+            nm = self._match_map[next_id]
+            loser = m.loser_team
+            if slot == 0:
+                nm.team1 = loser or []
+            else:
+                nm.team2 = loser or []
+
     def pending_matches(self) -> list[Match]:
         """Return matches not yet completed *and* with both teams filled in."""
         return [m for m in self.matches if m.status != MatchStatus.COMPLETED and m.team1 and m.team2]
 
-    def champion(self) -> list[Player] | None:
+    def _final_match(self) -> Match | None:
+        """The final (legacy brackets: the last match)."""
+        final_id = getattr(self, "_final_id", None)
+        if final_id is not None:
+            return self._match_map.get(final_id)
         if not self.matches:
             return None
-        final = self.matches[-1]
-        return final.winner_team
+        return self.matches[-1]
+
+    def _third_place_done(self) -> bool:
+        tp = getattr(self, "third_place_match", None)
+        return tp is None or tp.status == MatchStatus.COMPLETED
+
+    def _seed_index(self, team: list[Player]) -> int:
+        key = tuple(p.id for p in team)
+        for i, t in enumerate(self.original_teams):
+            if tuple(p.id for p in t) == key:
+                return i
+        return len(self.original_teams)
+
+    def winners(self) -> list[list[Player]] | None:
+        """All (equal) winners once every cutoff slot is decided, else ``None``.
+
+        Ordered by original seed -- there is no ranking among them.  With a
+        3rd-place match configured alongside a single winner, the bracket is
+        only complete once that match has been played too.
+        """
+        slots = getattr(self, "_winner_slots", None)
+        if not slots:
+            # Legacy pickle (or empty bracket): old single-champion behaviour.
+            final = self._final_match()
+            champ = final.winner_team if final else None
+            return [champ] if champ else None
+        teams: list[list[Player]] = []
+        for kind, ref in slots:
+            if kind == "team":
+                teams.append(ref)  # type: ignore[arg-type]
+            else:
+                winner = self._match_map[ref].winner_team  # type: ignore[index]
+                if not winner:
+                    return None
+                teams.append(winner)
+        if not self._third_place_done():
+            return None
+        teams.sort(key=self._seed_index)
+        return teams
+
+    def is_complete(self) -> bool:
+        """Whether the whole bracket (including any 3rd-place match) is decided."""
+        return self.winners() is not None
+
+    def champion(self) -> list[Player] | None:
+        """The single winner (``None`` until decided, and always ``None`` when more than 1 winner)."""
+        if getattr(self, "num_winners", 1) != 1:
+            return None
+        final = self._final_match()
+        return final.winner_team if final else None
+
+    def third_place_team(self) -> list[Player] | None:
+        """Winner of the 3rd-place match, if one exists and is decided."""
+        tp = getattr(self, "third_place_match", None)
+        return tp.winner_team if tp is not None else None
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -811,11 +981,12 @@ class EspejoParallelBracket:
     # Class-level default so pickles from before the attribute existed load.
     super_final_enabled: bool = False
 
-    def __init__(self, teams: list[list[Player]]):
+    def __init__(self, teams: list[list[Player]], third_place: bool = False):
         if len(teams) < 2:
             raise ValueError("Need at least 2 teams")
 
-        self.winners_bracket = SingleEliminationBracket(teams)
+        # The optional 3rd-place match lives in the winners (main) bracket.
+        self.winners_bracket = SingleEliminationBracket(teams, third_place=third_place)
         self.losers_bracket: SingleEliminationBracket | None = None
         self.super_final_match: Match | None = None
         self._match_map: dict[str, Match] = {}
@@ -881,7 +1052,7 @@ class EspejoParallelBracket:
         done it can never be (seeding happens as soon as Round 1 completes),
         so the Espejo finishes with the WB.
         """
-        if self.winners_bracket.champion() is None:
+        if self.winners_bracket.champion() is None or not self.winners_bracket._third_place_done():
             return False
         if self.losers_bracket is not None and self.losers_bracket.champion() is None:
             return False

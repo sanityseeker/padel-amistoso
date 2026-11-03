@@ -1536,13 +1536,18 @@ async def convert_registration(
             else:
                 teams = [[Player(name=name, id=pid)] for name, pid in player_entries]
 
-            t = PlayoffTournament(
-                teams=teams,
-                courts=courts,
-                double_elimination=req.double_elimination,
-                team_mode=req.team_mode,
-                initial_strength=initial_strength,
-            )
+            try:
+                t = PlayoffTournament(
+                    teams=teams,
+                    courts=courts,
+                    double_elimination=req.double_elimination,
+                    team_mode=req.team_mode,
+                    initial_strength=initial_strength,
+                    num_winners=req.num_winners,
+                    third_place=req.third_place,
+                )
+            except ValueError as e:
+                raise HTTPException(400, str(e))
             await asyncio.to_thread(
                 _store_tournament,
                 tid,

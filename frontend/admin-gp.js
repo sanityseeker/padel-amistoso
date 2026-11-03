@@ -1820,6 +1820,15 @@ function _renderGpPlayoffEditor() {
   html += `<div class="gp-format-row">`;
   html += `<div class="form-group"><label>${t('txt_txt_format')}</label><select id="gp-playoff-format" onchange="_gpPlayoffFormatChanged()"><option value="single">${t('txt_txt_single_elimination')}</option><option value="double">${t('txt_txt_double_elimination')}</option><option value="espejo">${t('txt_txt_espejo_format')}</option></select></div>`;
   html += `</div>`;
+  // Number of winners (single elimination) + optional 3rd-place match
+  html += `<div class="gp-format-row" id="gp-winners-row">`;
+  html += `<div class="form-group"><label for="gp-num-winners">${t('txt_num_winners')}</label><select id="gp-num-winners" onchange="_gpWinnerControlsChanged('gp')"><option value="1">${esc(t('txt_num_winners_champion'))}</option></select>`;
+  html += `<div class="settings-help">${t('txt_num_winners_hint')}</div></div>`;
+  html += `</div>`;
+  html += `<div class="d-flex items-center gap-2 mt-1" id="gp-third-row">`;
+  html += `<input type="checkbox" id="gp-third-place" class="cursor-pointer" onchange="_gpUpdatePlayoffMatchCount()">`;
+  html += `<label for="gp-third-place" class="fs-md cursor-pointer">${t('txt_third_place_match')}</label>`;
+  html += `</div>`;
   html += `<div class="gp-playoff-match-estimate" id="gp-playoff-match-estimate"></div>`;
   setTimeout(_gpUpdatePlayoffMatchCount, 0);
 
@@ -1862,6 +1871,20 @@ function _gpPlayoffFormatChanged() {
   _gpUpdatePlayoffMatchCount();
 }
 
+/** Winner-count select changed ('gp' or 'po'): force/clear the 3rd-place box, refresh the estimate. */
+function _gpWinnerControlsChanged(prefix) {
+  const sel = document.getElementById(`${prefix}-num-winners`);
+  const third = document.getElementById(`${prefix}-third-place`);
+  if (sel && third) {
+    const nw = +sel.value || 1;
+    if (nw === 3) third.checked = true;
+    else if (nw > 1) third.checked = false;
+    third.disabled = nw !== 1;
+  }
+  if (prefix === 'po') _updatePoMatchEstimate();
+  else _gpUpdatePlayoffMatchCount();
+}
+
 function _gpNextPowerOfTwo(n) {
   let p = 1;
   while (p < n) p <<= 1;
@@ -1869,15 +1892,88 @@ function _gpNextPowerOfTwo(n) {
 }
 
 // Returns the number of simultaneous matches per round for single elimination.
-function _gpSingleElimSequence(n) {
+// numWinners truncates the bracket (2 = stop after the semi-finals, 4 = after the
+// quarter-finals, 3 = semi-finals + 3rd-place match); thirdPlace adds the 3rd-place
+// match (played alongside the final, or after the semi-finals when numWinners is 3).
+function _gpSingleElimSequence(n, numWinners = 1, thirdPlace = false) {
   if (n < 2) return [];
   const p = _gpNextPowerOfTwo(n);
-  const seq = [];
+  let seq = [];
   const r1 = n - p / 2;
   if (r1 > 0) seq.push(r1);
   let r = p / 4;
   while (r >= 1) { seq.push(r); r = Math.floor(r / 2); }
+  const cut = numWinners === 3 ? 1 : Math.round(Math.log2(Math.max(1, numWinners)));
+  if (cut > 0 && seq.length > cut) seq = seq.slice(0, seq.length - cut);
+  if (thirdPlace && n >= 4) {
+    if (numWinners === 3) seq.push(1);
+    else seq[seq.length - 1] += 1;
+  }
   return seq;
+}
+
+/**
+ * Valid "number of winners" choices for a single-elimination bracket of n teams:
+ * powers of two up to half the bracket size, plus 3 (semi-finals + 3rd-place match).
+ * Each option carries a label naming the stopping round.
+ */
+function _gpWinnerOptions(n) {
+  const opts = [];
+  if (n < 2) return [{ value: 1, label: t('txt_num_winners_champion') }];
+  const half = Math.max(1, _gpNextPowerOfTwo(n) / 2);
+  for (let k = 1; k <= half; k *= 2) {
+    let label;
+    if (k === 1) label = t('txt_num_winners_champion');
+    else if (k === 2) label = t('txt_num_winners_sf', { n: k });
+    else if (k === 4) label = t('txt_num_winners_qf', { n: k });
+    else label = t('txt_num_winners_round', { n: k, r: k * 2 });
+    opts.push({ value: k, label });
+  }
+  if (n >= 4) opts.push({ value: 3, label: t('txt_num_winners_three') });
+  return opts.sort((a, b) => a.value - b.value);
+}
+
+/**
+ * Populate / show the "Number of winners" select and 3rd-place checkbox for a form
+ * prefix ('po' or 'gp') from the team count and chosen format. Multi-winner is
+ * single-elimination only; the 3rd-place match exists for single elimination and
+ * Espejo, is forced on for 3 winners, and is unavailable for 2 / 4+ winners.
+ */
+function _gpRefreshWinnerControls(prefix, n, format) {
+  const sel = document.getElementById(`${prefix}-num-winners`);
+  const third = document.getElementById(`${prefix}-third-place`);
+  const winnersRow = document.getElementById(`${prefix}-winners-row`);
+  const thirdRow = document.getElementById(`${prefix}-third-row`);
+  if (!sel || !third) return;
+  const single = format === 'single';
+  const canThird = (single || format === 'espejo') && n >= 4;
+  if (!single) {
+    sel.innerHTML = `<option value="1">${esc(t('txt_num_winners_champion'))}</option>`;
+    sel.value = '1';
+  } else {
+    const prev = +sel.value || 1;
+    const opts = _gpWinnerOptions(n);
+    sel.innerHTML = opts.map(o => `<option value="${o.value}">${esc(o.label)}</option>`).join('');
+    sel.value = String(opts.some(o => o.value === prev) ? prev : 1);
+  }
+  sel.disabled = !single;
+  if (winnersRow) winnersRow.classList.toggle('hidden', !single);
+  const nw = +sel.value || 1;
+  if (nw === 3) { third.checked = true; }
+  else if (nw > 1 || !canThird) { third.checked = false; }
+  third.disabled = !canThird || nw !== 1;
+  if (thirdRow) thirdRow.classList.toggle('hidden', !canThird || (nw > 1 && nw !== 3));
+}
+
+/** Read the chosen { num_winners, third_place } for a form prefix ('po' or 'gp'). */
+function _gpReadWinnerControls(prefix) {
+  const sel = document.getElementById(`${prefix}-num-winners`);
+  const third = document.getElementById(`${prefix}-third-place`);
+  const winnersRow = document.getElementById(`${prefix}-winners-row`);
+  const thirdRow = document.getElementById(`${prefix}-third-row`);
+  const nw = (sel && !sel.disabled && !(winnersRow && winnersRow.classList.contains('hidden'))) ? (+sel.value || 1) : 1;
+  const tp = !!(third && third.checked && !(thirdRow && thirdRow.classList.contains('hidden')));
+  return { num_winners: nw, third_place: tp };
 }
 
 // Returns separate { wbSeq, lbSeq } for double elimination so WB and LB rows
@@ -1904,9 +2000,9 @@ function _gpDeSequences(n) {
 
 // Returns separate { wbSeq, lbSeq } for espejo — WB has all n teams (single
 // elim), LB is seeded with R1 WB losers and runs as its own single elim.
-function _gpEspejoSequences(n) {
+function _gpEspejoSequences(n, thirdPlace = false) {
   const p = _gpNextPowerOfTwo(n);
-  const wbSeq = _gpSingleElimSequence(n);
+  const wbSeq = _gpSingleElimSequence(n, 1, thirdPlace);
   const lbTeams = n - p / 2;
   const lbSeq = lbTeams >= 2 ? _gpSingleElimSequence(lbTeams) : [];
   return { wbSeq, lbSeq };
@@ -1918,25 +2014,40 @@ function _gpFormatConcurrencySeq(seq) {
   return seq.join(' → ');
 }
 
-function _gpEstimatePlayoffMatches(n, format) {
+function _gpEstimatePlayoffMatches(n, format, numWinners = 1, thirdPlace = false) {
   if (n < 2) return 0;
-  if (format === 'single') return n - 1;
+  const third = thirdPlace && n >= 4 ? 1 : 0;
+  // Truncating to N winners removes the last rounds (N-1 matches); 3 winners drop only the final.
+  const removed = numWinners === 3 ? 1 : Math.max(0, numWinners - 1);
+  if (format === 'single') return n - 1 - removed + third;
   if (format === 'double') return 2 * (n - 1);
   if (format === 'espejo') {
     const lbTeams = n - _gpNextPowerOfTwo(n) / 2;
-    return (n - 1) + Math.max(0, lbTeams - 1);
+    return (n - 1) + Math.max(0, lbTeams - 1) + third;
   }
   return n - 1;
+}
+
+/** Number of bracket entries the GP play-off will have (individual mode pairs players up). */
+function _gpPlayoffEntryCount() {
+  const raw = _gpAdvancingIds.size + _gpExternalParticipants.length;
+  if (_gpPlayoffTeamMode && _gpPlayoffTeams.length > 0) {
+    const valid = _gpPlayoffTeams.filter(team => team.every(pid => pid)).length;
+    if (valid > 0) return valid;
+  }
+  return _gpTeamMode ? raw : Math.floor(raw / 2);
 }
 
 function _gpUpdatePlayoffMatchCount() {
   const el = document.getElementById('gp-playoff-match-estimate');
   if (!el) return;
-  const n = _gpAdvancingIds.size + _gpExternalParticipants.length;
+  const n = _gpPlayoffEntryCount();
   const format = document.getElementById('gp-playoff-format')?.value || 'single';
+  _gpRefreshWinnerControls('gp', n, format);
   if (n < 2) { el.innerHTML = ''; return; }
 
-  const count = _gpEstimatePlayoffMatches(n, format);
+  const { num_winners: numWinners, third_place: thirdPlace } = _gpReadWinnerControls('gp');
+  const count = _gpEstimatePlayoffMatches(n, format, numWinners, thirdPlace);
   const matchText = `~${count} ${t('txt_txt_matches')}`;
 
   function branchRow(label, seq, suffix) {
@@ -1948,7 +2059,7 @@ function _gpUpdatePlayoffMatchCount() {
   }
 
   if (format === 'single') {
-    const seqStr = _gpFormatConcurrencySeq(_gpSingleElimSequence(n));
+    const seqStr = _gpFormatConcurrencySeq(_gpSingleElimSequence(n, numWinners, thirdPlace));
     el.textContent = seqStr ? `${matchText} · ${seqStr}` : matchText;
   } else if (format === 'double') {
     const { wbSeq, lbSeq } = _gpDeSequences(n);
@@ -1958,7 +2069,7 @@ function _gpUpdatePlayoffMatchCount() {
       branchRow('LB', lbSeq, 'GF') +
       `</div>`;
   } else {
-    const { wbSeq, lbSeq } = _gpEspejoSequences(n);
+    const { wbSeq, lbSeq } = _gpEspejoSequences(n, thirdPlace);
     el.innerHTML = `<span class="gp-playoff-estimate-count">${matchText}</span>` +
       `<div class="gp-playoff-branches">` +
       branchRow('WB', wbSeq, '') +
@@ -2083,6 +2194,11 @@ async function _confirmGpPlayoffs() {
     double_elimination: fmt === 'double',
     espejo: fmt === 'espejo',
   };
+  const winnerOpts = _gpReadWinnerControls('gp');
+  if (fmt !== 'double') {
+    body.num_winners = fmt === 'single' ? winnerOpts.num_winners : 1;
+    body.third_place = winnerOpts.third_place;
+  }
   if (_gpPlayoffTeamMode && _gpPlayoffTeams.length > 0) {
     const validTeams = _gpPlayoffTeams.filter(team => team.every(pid => pid));
     if (validTeams.length < 2) {
@@ -2149,6 +2265,10 @@ function _renderChampionAlerts(status) {
   const legacySuperFinal = espejo && status.espejo_super_final === true;
   const champion = status.champion || (espejo && !legacySuperFinal ? status.winners_champion : null);
   let h = '';
+  // Several equal winners (multi-winner single elimination): one alert listing every team.
+  if (Array.isArray(status.winners) && status.winners.length > 1) {
+    return `<div class="alert alert-success">${_ic('trophy')} ${t('txt_winners_word')}: <strong>${status.winners.map(w => esc(w.join(' & '))).join(' · ')}</strong></div>`;
+  }
   if (champion) {
     h += `<div class="alert alert-success">${_ic('trophy')} ${t('txt_txt_champion')}: <strong>${esc(champion.join(', '))}</strong></div>`;
   }

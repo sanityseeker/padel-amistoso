@@ -17,9 +17,22 @@ from .helpers import (
     _schema_cache_put,
     _schema_image_response,
 )
+from ..tournaments.playoff import validate_num_winners
 from .schemas import SchemaPreviewRequest
 
 router = APIRouter(prefix="/api/schema", tags=["schema"])
+
+
+def _check_winner_options(n_teams: int, elimination: EliminationType, num_winners: int, third_place: bool) -> None:
+    """Reject invalid multi-winner / 3rd-place previews with a 400."""
+    if num_winners == 1 and not third_place:
+        return
+    if elimination != EliminationType.SINGLE:
+        raise HTTPException(400, "Multiple winners / 3rd-place preview only supports single elimination")
+    try:
+        validate_num_winners(n_teams, num_winners, third_place)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @router.get("/preview")
@@ -37,6 +50,8 @@ async def schema_preview(
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(1.0, ge=0.5, le=3.0),
+    num_winners: int = Query(1, ge=1, le=64),
+    third_place: bool = Query(False),
 ) -> Response:
     """
     Generate a tournament block-scheme preview image.
@@ -50,6 +65,7 @@ async def schema_preview(
             raise ValueError
     except ValueError:
         raise HTTPException(400, "group_sizes must be comma-separated integers ≥ 2")
+    _check_winner_options(len(sizes) * advance_per_group, elimination, num_winners, third_place)
 
     key = _schema_cache_key(
         "gs",
@@ -63,6 +79,8 @@ async def schema_preview(
         arrow_scale,
         title_font_scale,
         output_scale,
+        num_winners,
+        third_place,
     )
     cached = _schema_cache_get(key)
     if cached:
@@ -79,6 +97,8 @@ async def schema_preview(
         arrow_scale=arrow_scale,
         title_font_scale=title_font_scale,
         output_scale=output_scale,
+        num_winners=num_winners,
+        third_place=third_place,
     )
 
     _schema_cache_put(key, img, fmt)
@@ -97,8 +117,11 @@ async def playoff_schema_preview(
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(0.7, ge=0.5, le=3.0),
+    num_winners: int = Query(1, ge=1, le=64),
+    third_place: bool = Query(False),
 ) -> Response:
     """Generate a standalone play-off bracket preview from participant count."""
+    _check_winner_options(participants, elimination, num_winners, third_place)
     if names and len(names) >= participants:
         names = names[:participants]
     else:
@@ -116,6 +139,8 @@ async def playoff_schema_preview(
         arrow_scale,
         title_font_scale,
         output_scale,
+        num_winners,
+        third_place,
     )
     cached = _schema_cache_get(key)
     if cached:
@@ -123,6 +148,8 @@ async def playoff_schema_preview(
 
     img = render_playoff_schema(
         participant_names=names,
+        num_winners=num_winners,
+        third_place=third_place,
         elimination=elimination,
         title=title,
         fmt=fmt,
@@ -139,6 +166,9 @@ async def playoff_schema_preview(
 @router.post("/preview")
 async def schema_preview_post(req: SchemaPreviewRequest) -> Response:
     """POST variant — accepts a JSON body instead of query params."""
+    _check_winner_options(
+        len(req.group_sizes) * req.advance_per_group, req.elimination, req.num_winners, req.third_place
+    )
     key = _schema_cache_key(
         "gs_post",
         tuple(req.group_sizes),
@@ -151,6 +181,8 @@ async def schema_preview_post(req: SchemaPreviewRequest) -> Response:
         req.arrow_scale,
         req.title_font_scale,
         req.output_scale,
+        req.num_winners,
+        req.third_place,
     )
     cached = _schema_cache_get(key)
     if cached:
@@ -167,6 +199,8 @@ async def schema_preview_post(req: SchemaPreviewRequest) -> Response:
         arrow_scale=req.arrow_scale,
         title_font_scale=req.title_font_scale,
         output_scale=req.output_scale,
+        num_winners=req.num_winners,
+        third_place=req.third_place,
     )
 
     _schema_cache_put(key, img, "png")

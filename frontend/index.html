@@ -591,6 +591,17 @@
             <input type="checkbox" id="po-espejo" class="cursor-pointer" onchange="_poToggleEspejo()">
             <label for="po-espejo" class="fs-md cursor-pointer" data-i18n="txt_txt_espejo_format">Espejo (parallel losers bracket)</label>
           </div>
+          <div class="form-group mt-1-5" id="po-winners-row">
+            <label for="po-num-winners" data-i18n="txt_num_winners">Number of winners</label>
+            <select id="po-num-winners" onchange="_gpWinnerControlsChanged('po')">
+              <option value="1" data-i18n="txt_num_winners_champion">1 — Champion (Final)</option>
+            </select>
+            <div class="settings-help" data-i18n="txt_num_winners_hint">Winners share the top result; there is no ranking among them. Single elimination only.</div>
+          </div>
+          <div class="d-flex items-center gap-2 mt-1-5" id="po-third-row">
+            <input type="checkbox" id="po-third-place" class="cursor-pointer" onchange="_updatePoMatchEstimate()">
+            <label for="po-third-place" class="fs-md cursor-pointer" data-i18n="txt_third_place_match">3rd-place match</label>
+          </div>
           <div id="po-match-estimate" class="gp-playoff-match-estimate mt-1-5"></div>
         </div>
         <div class="field-section mt-2">

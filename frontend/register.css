@@ -1,5 +1,6 @@
 /* ── Register-specific styles (base theme/layout from tv.css) ── */
-.container { max-width: 560px; width: 100%; margin: 0 auto; flex: 1; }
+/* Same column as every public page (club, Events, Player Hub). */
+.container { max-width: var(--content-public); width: 100%; margin: 0 auto; flex: 1; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
 h1 { font-size: 1.5rem; margin-bottom: 0.5rem; text-align: center; }
 .subtitle { font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 1rem; }

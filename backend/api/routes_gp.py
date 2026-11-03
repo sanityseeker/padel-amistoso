@@ -19,6 +19,8 @@ from ..models import Court, Player, TournamentType, EliminationType, ScoreConfir
 from ..tournaments import GroupPlayoffTournament
 from ..viz import render_playoff_schema
 from .helpers import (
+    tournament_winners,
+    winners_payload,
     _get_tournament,
     _get_tv_settings,
     _is_bye_match,
@@ -55,7 +57,7 @@ from .state import (
     update_live_stats,
 )
 from .player_secret_store import create_secrets_for_tournament
-from .push_events import notify_matches_ready, notify_champion, notify_score_submitted
+from .push_events import notify_matches_ready, notify_champion, notify_winners, notify_score_submitted
 from .elo_integration import elo_after_score, elo_finish_tournament, elo_init_tournament
 from .elo_store import get_tournament_elos
 
@@ -191,7 +193,7 @@ async def gp_status(tid: str) -> dict:
         "espejo_losers_bracket_seeded": bool(espejo and bracket.losers_bracket is not None),
         "assign_courts": data.get("assign_courts", True),
         "courts": [{"id": c.id, "name": c.name} for c in t.courts],
-        "champion": [p.name for p in t.champion()] if t.champion() else None,
+        **winners_payload(t),
         # Known as soon as the Winners final is played (before the tournament ends).
         "winners_champion": [p.name for p in bracket.winners_champion()]
         if espejo and bracket.winners_champion()
@@ -391,6 +393,8 @@ async def gp_start_playoffs(
                 double_elimination=req.double_elimination,
                 espejo=req.espejo,
                 playoff_teams=req.playoff_teams,
+                num_winners=req.num_winners,
+                third_place=req.third_place,
             )
         except (RuntimeError, KeyError, ValueError) as e:
             raise HTTPException(400, str(e))
@@ -408,7 +412,7 @@ async def gp_playoffs(tid: str) -> dict:
             t.playoff_bracket, [m for m in t.playoff_matches() if not _is_bye_match(m)]
         ),
         "pending": _serialize_playoff_matches(t.playoff_bracket, t.pending_playoff_matches()),
-        "champion": [p.name for p in t.champion()] if t.champion() else None,
+        **winners_payload(t),
     }
 
 
@@ -441,6 +445,9 @@ async def gp_playoffs_schema(
     if len(participant_names) < 2:
         raise HTTPException(400, "Need at least 2 participants for play-off schema")
 
+    num_winners = int(getattr(active_bracket, "num_winners", 1) or 1)
+    third_place = bool(getattr(active_bracket, "third_place", False))
+
     version = _tournament_versions.get(tid, 0)
     key = _schema_cache_key(
         "gp",
@@ -456,6 +463,8 @@ async def gp_playoffs_schema(
         arrow_scale,
         title_font_scale,
         output_scale,
+        num_winners,
+        third_place,
     )
     cached = _schema_cache_get(key)
     if cached:
@@ -475,6 +484,8 @@ async def gp_playoffs_schema(
         arrow_scale=arrow_scale,
         title_font_scale=title_font_scale,
         output_scale=output_scale,
+        num_winners=num_winners,
+        third_place=third_place,
     )
     _schema_cache_put(key, img, fmt)
     return _schema_image_response(img, fmt, etag=key[:16])
@@ -506,10 +517,13 @@ async def gp_record_playoff(
         await save_tournament(tid)
         elo_after_score(tid, data, match)
         await update_live_stats(tid)
-    champ = t.champion()
-    if champ:
+    winners = tournament_winners(t)
+    if winners:
         elo_finish_tournament(tid)
-        notify_champion(tid, data, [p.name for p in champ])
+        if len(winners) == 1:
+            notify_champion(tid, data, [p.name for p in winners[0]])
+        else:
+            notify_winners(tid, data, [[p.name for p in team] for team in winners])
     return {"ok": True, "phase": t.phase}
 
 
@@ -543,10 +557,13 @@ async def gp_record_playoff_tennis(
         await save_tournament(tid)
         elo_after_score(tid, data, match)
         await update_live_stats(tid)
-    champ = t.champion()
-    if champ:
+    winners = tournament_winners(t)
+    if winners:
         elo_finish_tournament(tid)
-        notify_champion(tid, data, [p.name for p in champ])
+        if len(winners) == 1:
+            notify_champion(tid, data, [p.name for p in winners[0]])
+        else:
+            notify_winners(tid, data, [[p.name for p in team] for team in winners])
     return {
         "ok": True,
         "phase": t.phase,

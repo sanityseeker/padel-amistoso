@@ -161,6 +161,9 @@
   --content-narrow:  640px;
   --content-default: 960px;
   --content-wide:    1400px;
+  /* Public pages (club, Events, Player Hub, sign-up form) share one column
+     that grows with the monitor: 640px on laptops up to 960px on wide screens. */
+  --content-public:  clamp(var(--content-narrow), 55vw, var(--content-default));
 }
 
 

@@ -204,6 +204,10 @@ class CreatePlayoffRequest(BaseModel):
         default=False,
         description="Deprecated and ignored: the Espejo Super Final was removed. Accepted so old clients keep working.",
     )
+    # Number of equal winners (single elimination only; 1 = classic champion, 3 needs third_place).
+    num_winners: int = Field(default=1, ge=1, le=64)
+    # Play a 3rd-place match (single elimination or Espejo).
+    third_place: bool = False
     public: bool = True
     assign_courts: bool = True
     player_strengths: dict[str, float] = Field(default_factory=dict)
@@ -270,7 +274,7 @@ class TvSettingsRequest(BaseModel):
     score_mode: dict[str, str] | None = None
     # Tournament-wide third-set decider for set scores (per-match overrides win).
     set_decider: Literal["full_set", "match_tiebreak"] | None = None
-    banner_text: str | None = None
+    banner_text: str | None = Field(default=None, max_length=5000)
     score_confirmation: ScoreConfirmation | None = None
     # Seconds the opposing team has to submit a correction after the score is
     # submitted.  0 means no limit (corrections are always allowed until confirmed).
@@ -523,6 +527,9 @@ class StartGroupPlayoffsRequest(BaseModel):
         description="Deprecated and ignored: the Espejo Super Final was removed. Accepted so old clients keep working.",
     )
     playoff_teams: list[list[str]] | None = None
+    # Number of equal winners (single elimination only) and optional 3rd-place match.
+    num_winners: int = Field(default=1, ge=1, le=64)
+    third_place: bool = False
 
 
 class SchemaPreviewRequest(BaseModel):
@@ -535,6 +542,8 @@ class SchemaPreviewRequest(BaseModel):
     arrow_scale: float = Field(default=1.0, ge=0.3, le=5.0)
     title_font_scale: float = Field(default=1.0, ge=0.3, le=5.0)
     output_scale: float = Field(default=1.0, ge=0.5, le=3.0)
+    num_winners: int = Field(default=1, ge=1, le=64)
+    third_place: bool = False
 
     @field_validator("group_sizes")
     @classmethod
@@ -872,6 +881,9 @@ class ConvertRegistrationRequest(BaseModel):
     group_assignments: dict[str, list[str]] = Field(default_factory=dict)
     top_per_group: int = Field(default=2, ge=1)
     double_elimination: bool = False
+    # Play-off specific (single elimination only for num_winners > 1)
+    num_winners: int = Field(default=1, ge=1, le=64)
+    third_place: bool = False
     public: bool = True
     assign_courts: bool = True
     # Mexicano specific

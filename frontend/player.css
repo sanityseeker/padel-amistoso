@@ -4,7 +4,10 @@
    it here. Roboto / Roboto Mono are reserved for tabular data surfaces below
    (leaderboard, participant stats, score/ELO figures). */
 body { font-family: var(--font-body); }
-.container { max-width: 600px; width: 100%; margin: 0 auto; flex: 1; }
+/* Same column as every public page (club, Events, sign-up form). */
+.container { max-width: var(--content-public); width: 100%; margin: 0 auto; flex: 1; }
+/* Sign-in stays form-width even when the shared column grows on wide screens. */
+.player-auth-card { max-width: var(--content-narrow); margin-left: auto; margin-right: auto; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
 
 /* Auth panel */

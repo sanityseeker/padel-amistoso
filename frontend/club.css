@@ -67,9 +67,11 @@ body {
 
 .club-page {
   width: 100%;
-  max-width: min(1200px, 95vw);
+  /* Same column as every public page (Events, Player Hub, sign-up form);
+     body already provides the side padding. */
+  max-width: var(--content-public);
   margin: 0 auto;
-  padding: 1.25rem 1.5rem 3rem;
+  padding: 0 0 3rem;
   display: flex;
   flex-direction: column;
   gap: 2rem;
@@ -77,7 +79,7 @@ body {
 
 @media (max-width: 600px) {
   .club-page {
-    padding: 1rem 1rem 3rem;
+    padding: 0 0 3rem;
     gap: 1.5rem;
   }
 }
@@ -783,23 +785,30 @@ body {
  * /events directory (public.html, tv.js island) — reuses the club card styles
  * ------------------------------------------------------------------------- */
 .tv-picker.events-page {
-  max-width: 640px;
+  max-width: var(--content-public);
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
   box-shadow: none;
   text-align: left;
 }
-.events-title-row {
+.events-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
 }
-.events-title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: var(--text-2xl);
-  font-weight: 700;
-  letter-spacing: var(--tracking-display);
+/* The page's flex gap already spaces the header like the other public pages. */
+.events-page .public-header { margin-bottom: 0; }
+.events-toolbar .club-sport-selector { justify-content: flex-start; }
+/* Refresh sits in the sport-pill row, so it takes the pill shape too. */
+.events-toolbar .theme-btn.btn-refresh {
+  min-height: 34px;
+  min-width: 34px;
+  padding: 0 0.6rem;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
