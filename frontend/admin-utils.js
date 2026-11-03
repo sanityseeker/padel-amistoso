@@ -1581,48 +1581,43 @@ function deriveEventRows(tournaments, registrations, opts = {}) {
 /**
  * Suggestions for the club admin "Attach existing" panel.
  *
- * Only events the user can edit that belong to NO club yet are suggested —
- * an event in another club has to be removed there first ("Remove from
- * club"), so clubs never silently steal each other's events. Dismissed keys
- * are split out so the UI can offer "Show dismissed" + Restore.
+ * Only events the user can edit that belong to NO club yet and are in the
+ * club's own community are suggested — an event in another club has to be
+ * removed there first ("Remove from club"), so clubs never silently steal
+ * each other's events. Dismissed keys are split out so the UI can offer
+ * "Show dismissed" + Restore.
  *
  * @param {object[]} tournaments   /api/tournaments items
  * @param {object[]} registrations /api/registrations?include_archived=1 items
  * @param {{clubId: string, clubCommunityId?: string, authUser?: string|null, admin?: boolean,
- *          dismissed?: string[], query?: string, communityName?: (id: string) => string}} opts
+ *          dismissed?: string[], query?: string}} opts
  * @returns {{candidates: object[], dismissed: object[]}} both sorted newest first; items are
- *   {key, kind, id, name, communityId, communityName, createdAt, movesCommunity, dismissed}
+ *   {key, kind, id, name, createdAt, dismissed}
  */
 function deriveAttachCandidates(tournaments, registrations, opts = {}) {
-  const clubId = opts.clubId;
   const clubCommunityId = opts.clubCommunityId || 'open';
   const authUser = opts.authUser || null;
   const admin = Boolean(opts.admin);
   const dismissedKeys = new Set(Array.isArray(opts.dismissed) ? opts.dismissed : []);
   const q = (opts.query || '').trim().toLowerCase();
-  const commName = typeof opts.communityName === 'function' ? opts.communityName : () => '';
   const canEdit = (t) => admin || (authUser !== null && t.owner === authUser) || t.shared === true;
-  const item = (key, kind, src) => {
-    const communityId = src.community_id || 'open';
-    return {
-      key, kind, id: src.id, name: src.name || '', communityId,
-      communityName: commName(communityId) || '',
-      createdAt: src.created_at || '',
-      movesCommunity: communityId !== clubCommunityId,
-      dismissed: dismissedKeys.has(key),
-    };
-  };
+  const inClubCommunity = (src) => (src.community_id || 'open') === clubCommunityId;
+  const item = (key, kind, src) => ({
+    key, kind, id: src.id, name: src.name || '',
+    createdAt: src.created_at || '',
+    dismissed: dismissedKeys.has(key),
+  });
   const all = [];
   for (const t of (Array.isArray(tournaments) ? tournaments : [])) {
-    if (!t || t.club_id || t.club_id === clubId) continue; // already in a club (this or another)
+    if (!t || t.club_id || !inClubCommunity(t)) continue; // already in a club, or another community
     if (!canEdit(t)) continue;
     all.push(item('tn:' + t.id, 'tournament', t));
   }
   for (const r of (Array.isArray(registrations) ? registrations : [])) {
-    if (!r || r.club_id || r.archived) continue;
+    if (!r || r.club_id || r.archived || !inClubCommunity(r)) continue;
     all.push(item('reg:' + r.id, 'lobby', r));
   }
-  const matches = (it) => !q || `${it.name} ${it.communityName}`.toLowerCase().includes(q);
+  const matches = (it) => !q || it.name.toLowerCase().includes(q);
   all.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || (a.name || '').localeCompare(b.name || ''));
   return {
     candidates: all.filter(it => !it.dismissed && matches(it)),

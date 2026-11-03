@@ -1022,11 +1022,6 @@ const _clubEventsStore = reactiveStore({
       admin: isAdmin(),
       dismissed: this.dismissedKeys,
       query,
-      communityName: (id) => {
-        if (!id || id === 'open') return ''; // built-in community: no label
-        const c = _clubsCommunities.find(cm => cm.id === id);
-        return c ? c.name : '';
-      },
     });
   },
   /** All non-dismissed suggestions (no search filter) — the section count. */
@@ -1048,11 +1043,6 @@ const _clubEventsStore = reactiveStore({
     if (!this.dismissedKeys.length) this.showDismissed = false;
   },
   toggleShowDismissed() { this.showDismissed = !this.showDismissed; },
-  attachHint(item) {
-    const club = _clubsList.find(c => c.id === this.clubId);
-    const comm = club ? _clubsCommunities.find(cm => cm.id === club.community_id) : null;
-    return this.t('txt_club_events_attach_moves_community', { community: comm ? comm.name : '' });
-  },
   async attach(item) {
     this.busyKey = item.key;
     try {
@@ -1138,8 +1128,6 @@ const _CLUB_EVENTS_ISLAND_HTML = `
           <span class="club-events-attach-name">
             {{ item.name }}
             <span class="badge badge-type">{{ item.kind === 'lobby' ? t('txt_reg_lobby') : t('txt_comm_col_tournament') }}</span>
-            <span v-if="item.communityName" class="muted-note fs-sm">{{ item.communityName }}</span>
-            <span v-if="item.movesCommunity" class="club-events-attach-hint">{{ attachHint(item) }}</span>
           </span>
           <span class="club-events-attach-actions">
             <button type="button" class="btn btn-sm btn-muted" @click="dismiss(item)">{{ t('txt_club_events_attach_dismiss') }}</button>
@@ -1158,7 +1146,6 @@ const _CLUB_EVENTS_ISLAND_HTML = `
             <span class="club-events-attach-name">
               {{ item.name }}
               <span class="badge badge-type">{{ item.kind === 'lobby' ? t('txt_reg_lobby') : t('txt_comm_col_tournament') }}</span>
-              <span v-if="item.communityName" class="muted-note fs-sm">{{ item.communityName }}</span>
             </span>
             <span class="club-events-attach-actions">
               <button type="button" class="btn btn-sm" @click="restore(item)">{{ t('txt_club_events_attach_restore') }}</button>
@@ -1399,9 +1386,9 @@ function _clubsRenderPlayers() {
                 </select>
                 <span id="clubs-ptier-${sport}-msg-${esc(p.profile_id)}" class="clubs-inline-msg"></span>
               </td>
-              <td class="player-codes-cell-center nowrap stack-actions">
-                <button class="btn btn-sm player-codes-icon-btn text-muted" onclick="clubsTogglePlayerSport('${esc(p.profile_id)}', '${sport}', false)" title="${esc(hideTip)}" aria-label="${esc(hideTip)} ${esc(p.name)}">${_ic('eyeoff')}</button>
-                <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsRemovePlayer('${esc(p.profile_id)}', '${esc(p.name)}')" title="${esc(removeTip)}" aria-label="${esc(removeTip)} ${esc(p.name)}">${_ic('trash')}</button>
+              <td class="row-actions stack-actions">
+                <button class="btn btn-sm btn-row player-codes-icon-btn" onclick="clubsTogglePlayerSport('${esc(p.profile_id)}', '${sport}', false)" title="${esc(hideTip)}" aria-label="${esc(hideTip)} ${esc(p.name)}">${_ic('eyeoff')}</button>
+                <button class="btn btn-sm btn-row btn-row--danger player-codes-icon-btn" onclick="clubsRemovePlayer('${esc(p.profile_id)}', '${esc(p.name)}')" title="${esc(removeTip)}" aria-label="${esc(removeTip)} ${esc(p.name)}">${_ic('trash')}</button>
               </td>
             </tr>`;
           }).join('')}
@@ -1440,9 +1427,9 @@ function _clubsRenderPlayers() {
                 <td class="player-codes-name stack-title">${esc(p.name)}</td>
                 <td class="player-codes-cell-center stack-pri" data-label="${escAttr(`${sportLabel} ELO`)}"><span class="muted-tiny">${eloVal != null ? Math.round(eloVal) : '—'}</span></td>
                 <td class="player-codes-cell-center stack-pri" data-label="${escAttr(t('txt_clubs_player_matches'))}"><span class="muted-tiny">${matchCount != null ? matchCount : '—'}</span></td>
-                <td class="player-codes-cell-center nowrap stack-actions">
-                  <button class="btn btn-sm btn-success player-codes-icon-btn" onclick="clubsTogglePlayerSport('${esc(p.profile_id)}', '${sport}', true)" title="${esc(restoreTip)}" aria-label="${esc(restoreTip)} ${esc(p.name)}">${_ic('eye')}</button>
-                  <button class="btn btn-sm btn-danger player-codes-icon-btn" onclick="clubsRemovePlayer('${esc(p.profile_id)}', '${esc(p.name)}')" title="${esc(removeTip)}" aria-label="${esc(removeTip)} ${esc(p.name)}">${_ic('trash')}</button>
+                <td class="row-actions stack-actions">
+                  <button class="btn btn-sm btn-row btn-row--accent player-codes-icon-btn" onclick="clubsTogglePlayerSport('${esc(p.profile_id)}', '${sport}', true)" title="${esc(restoreTip)}" aria-label="${esc(restoreTip)} ${esc(p.name)}">${_ic('eye')}</button>
+                  <button class="btn btn-sm btn-row btn-row--danger player-codes-icon-btn" onclick="clubsRemovePlayer('${esc(p.profile_id)}', '${esc(p.name)}')" title="${esc(removeTip)}" aria-label="${esc(removeTip)} ${esc(p.name)}">${_ic('trash')}</button>
                 </td>
               </tr>`;
               }).join('')}
@@ -1508,6 +1495,7 @@ function clubsShowConvertGhostForm(profileId, currentName) {
     </div>`;
 
   document.getElementById('clubs-convert-ghost-form')?.remove();
+  document.getElementById('clubs-merge-ghost-form')?.remove();
   if (area) {
     area.insertAdjacentHTML('afterbegin', formHtml);
   } else {
@@ -1549,6 +1537,103 @@ async function clubsConvertGhost(profileId) {
         ${result.email ? `<br><span class="fs-sm text-muted">${t('txt_ph_convert_email_sent', { email: esc(result.email) })}</span>` : ''}`;
       area.prepend(banner);
       setTimeout(() => banner.remove(), 14000);
+    }
+  } catch (e) {
+    if (msgEl) msgEl.innerHTML = `<span class="text-error">${esc(e.message)}</span>`;
+  }
+}
+
+// ─── Ghost profile → existing Hub profile merge ──────────
+
+let _clubsMergeGhostSearchTimer = null;
+
+function _clubsHubOptionsHtml(rows) {
+  return rows.map(r => `<option value="${escAttr(r.name || r.profile_id)}" data-profile-id="${escAttr(r.profile_id)}">`).join('');
+}
+
+/** Per-row "Merge into player": fold one ghost into an existing Hub profile. */
+function clubsShowMergeGhostForm(profileId, currentName) {
+  const area = document.getElementById('clubs-ghost-duplicates');
+  if (!area) return;
+  // Roster Hub members are offered up front; typing searches the whole community.
+  const rosterHubs = _clubPlayers.filter(p => p.has_hub_profile);
+  const formHtml = `
+    <div id="clubs-merge-ghost-form" class="ghost-convert-form">
+      <p class="m-0 mb-1-5 fs-lg fw-600">${t('txt_clubs_merge_ghost_title')} — <em>${esc(currentName)}</em></p>
+      <p class="m-0 mb-2-5 fs-sm text-muted">${t('txt_clubs_merge_ghost_help')}</p>
+      <div class="d-flex gap-2 flex-wrap items-end">
+        <label class="ghost-field ghost-field--wide">
+          ${t('txt_clubs_merge_target_label')}
+          <input type="search" id="clubs-merge-ghost-target" list="clubs-merge-ghost-options"
+            class="hub-input" autocomplete="off"
+            placeholder="${escAttr(t('txt_clubs_merge_ghost_search_placeholder'))}"
+            oninput="_clubsMergeGhostSearchInput(this.value)"
+            aria-label="${escAttr(t('txt_clubs_merge_target_label'))}">
+          <datalist id="clubs-merge-ghost-options">${_clubsHubOptionsHtml(rosterHubs)}</datalist>
+        </label>
+        <button type="button" class="btn btn-primary btn-sm" onclick="clubsMergeGhostIntoHub('${escAttr(profileId)}', '${escAttr(currentName)}')">${t('txt_ph_merge_into_hub')}</button>
+        <button type="button" class="btn btn-sm btn-muted" onclick="document.getElementById('clubs-merge-ghost-form')?.remove()">${t('txt_txt_cancel')}</button>
+      </div>
+      <div id="clubs-merge-ghost-msg" class="mt-1-5 fs-sm"></div>
+    </div>`;
+
+  document.getElementById('clubs-convert-ghost-form')?.remove();
+  document.getElementById('clubs-merge-ghost-form')?.remove();
+  area.insertAdjacentHTML('afterbegin', formHtml);
+  document.getElementById('clubs-merge-ghost-target')?.focus();
+}
+
+function _clubsMergeGhostSearchInput(value) {
+  clearTimeout(_clubsMergeGhostSearchTimer);
+  const q = (value || '').trim();
+  if (q.length < 2 || !_activeClubId) return;
+  _clubsMergeGhostSearchTimer = setTimeout(async () => {
+    try {
+      const results = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players/candidates?q=${encodeURIComponent(q)}`);
+      const dl = document.getElementById('clubs-merge-ghost-options');
+      if (!dl || !Array.isArray(results)) return;
+      // Past participants have no profile to merge into — Hub profiles only.
+      const hubs = results.filter(r => r.has_hub_profile !== false && r.profile_id);
+      for (const p of _clubPlayers) {
+        if (p.has_hub_profile && (p.name || '').toLowerCase().includes(q.toLowerCase())
+            && !hubs.some(h => h.profile_id === p.profile_id)) hubs.push(p);
+      }
+      dl.innerHTML = _clubsHubOptionsHtml(hubs);
+    } catch (_) {}
+  }, 250);
+}
+
+async function clubsMergeGhostIntoHub(ghostId, ghostName) {
+  const input = document.getElementById('clubs-merge-ghost-target');
+  const dl = document.getElementById('clubs-merge-ghost-options');
+  const msgEl = document.getElementById('clubs-merge-ghost-msg');
+  const value = input?.value?.trim() || '';
+  const opt = dl ? Array.from(dl.options).find(o => o.value === value) : null;
+  const targetId = opt?.dataset.profileId || '';
+  if (!targetId) {
+    if (msgEl) msgEl.innerHTML = `<span class="text-error">${esc(t('txt_clubs_merge_ghost_pick_target'))}</span>`;
+    return;
+  }
+  if (!confirm(t('txt_ph_merge_into_hub_confirm', { hub: value, names: ghostName }))) return;
+  if (msgEl) msgEl.innerHTML = `<em>${t('txt_ph_merging')}</em>`;
+  try {
+    // The Hub target leads source_ids; the backend keeps it and folds the ghost in.
+    const result = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players/consolidate-ghosts`, {
+      method: 'POST',
+      body: JSON.stringify({ source_ids: [targetId, ghostId], name: null }),
+    });
+    document.getElementById('clubs-merge-ghost-form')?.remove();
+    _clubsSelectedGhostProfiles.delete(ghostId);
+    _clubPlayers = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players`).catch(() => []);
+    _clubsRenderPlayers();
+    await _clubsRenderPossibleMembers();
+    const area = document.getElementById('clubs-ghost-duplicates');
+    if (area) {
+      const banner = document.createElement('div');
+      banner.className = 'alert alert-info mt-2';
+      banner.textContent = t('txt_ph_merge_into_hub_ok', { name: result.name || value });
+      area.prepend(banner);
+      setTimeout(() => banner.remove(), 4000);
     }
   } catch (e) {
     if (msgEl) msgEl.innerHTML = `<span class="text-error">${esc(e.message)}</span>`;
@@ -1781,11 +1866,15 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
         <td class="player-codes-name stack-title">${esc(p.name)}</td>
         <td class="player-codes-cell-center stack-pri" data-label="${escAttr(sport === 'padel' ? t('txt_ph_padel_elo') : t('txt_ph_tennis_elo'))}">${elo != null ? Math.round(elo) : '—'}</td>
         <td class="player-codes-cell-center stack-pri" data-label="${escAttr(t('txt_clubs_player_matches'))}">${matches != null ? matches : '—'}</td>
-        <td class="player-codes-cell-center nowrap stack-actions">
-          <button class="btn btn-sm btn-success fs-sm"
+        <td class="row-actions stack-actions">
+          <button type="button" class="btn btn-sm btn-row"
+            onclick="clubsShowMergeGhostForm('${escAttr(p.profile_id)}', '${escAttr(p.name)}')"
+            title="${t('txt_clubs_merge_ghost_hint')}"
+           >${_ic('link')} ${t('txt_clubs_merge_ghost')}</button>
+          <button type="button" class="btn btn-sm btn-row btn-row--accent"
             onclick="clubsShowConvertGhostForm('${esc(p.profile_id)}', '${escAttr(p.name)}')"
             title="${t('txt_ph_convert_ghost_hint')}"
-           >${t('txt_ph_convert_ghost')}</button>
+           >${_ic('userplus')} ${t('txt_ph_convert_ghost')}</button>
         </td>
       </tr>`;
   }

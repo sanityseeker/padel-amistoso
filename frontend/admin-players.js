@@ -17,7 +17,8 @@ const _phStore = reactiveStore({
   searched: false,           // a search has run at least once
   searching: false,
   error: '',                 // search error text
-  showGhosts: (typeof localStorage !== 'undefined' && localStorage.getItem('ph-show-ghosts') !== '0'),
+  // Ghosts are hidden until the admin opts in (persisted per browser).
+  showGhosts: (typeof localStorage !== 'undefined' && localStorage.getItem('ph-show-ghosts') === '1'),
   profilesOpen: (typeof localStorage !== 'undefined' && localStorage.getItem('ph-profiles-open') === '1'),
   // Selection state (id→true maps; petite-vue tracks plain objects, not Sets).
   selectedGhosts: {},        // ghost profiles picked for consolidation

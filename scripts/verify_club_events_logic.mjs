@@ -158,7 +158,7 @@ const byKey = (rows) => Object.fromEntries(rows.map(r => [r.key, r]));
 assert.deepEqual(deriveEventRows(null, undefined, { clubId: CLUB }), []);
 
 // ── Attach suggestions ──────────────────────────────────────────────────────
-const aOpts = { clubId: CLUB, clubCommunityId: 'cm_1', authUser: 'alice', admin: false, communityName: (id) => ({ cm_1: 'Comm One', cm_2: 'Comm Two' }[id] || '') };
+const aOpts = { clubId: CLUB, clubCommunityId: 'cm_1', authUser: 'alice', admin: false };
 
 // 10. Only club-less events are suggested — never ones in this or another club.
 {
@@ -171,20 +171,30 @@ const aOpts = { clubId: CLUB, clubCommunityId: 'cm_1', authUser: 'alice', admin:
   assert.deepEqual(out.dismissed, []);
 }
 
-// 11. Only editable tournaments; community-move hint when the community differs.
+// 11. Only editable tournaments.
 {
   const out = deriveAttachCandidates(
-    [tournament({ id: 'mine', club_id: null, community_id: 'cm_2' }), tournament({ id: 'bobs', club_id: null, owner: 'bob' }), tournament({ id: 'shared', club_id: null, owner: 'bob', shared: true })],
+    [tournament({ id: 'mine', club_id: null }), tournament({ id: 'bobs', club_id: null, owner: 'bob' }), tournament({ id: 'shared', club_id: null, owner: 'bob', shared: true })],
     [], aOpts,
   );
-  const keys = out.candidates.map(c => c.key).sort();
-  assert.deepEqual(keys, ['tn:mine', 'tn:shared']);
-  const mine = out.candidates.find(c => c.key === 'tn:mine');
-  assert.equal(mine.movesCommunity, true);
-  assert.equal(mine.communityName, 'Comm Two');
-  assert.equal(out.candidates.find(c => c.key === 'tn:shared').movesCommunity, false);
+  assert.deepEqual(out.candidates.map(c => c.key).sort(), ['tn:mine', 'tn:shared']);
   const asAdmin = deriveAttachCandidates([tournament({ id: 'bobs', club_id: null, owner: 'bob' })], [], { ...aOpts, admin: true });
   assert.equal(asAdmin.candidates.length, 1);
+}
+
+// 11b. Only events in the club's own community; missing community_id means 'open'.
+{
+  const out = deriveAttachCandidates(
+    [tournament({ id: 'same', club_id: null }), tournament({ id: 'far', club_id: null, community_id: 'cm_2' })],
+    [lobby({ id: 'lsame', club_id: null }), lobby({ id: 'lfar', club_id: null, community_id: 'cm_2' })],
+    { ...aOpts, admin: true },
+  );
+  assert.deepEqual(out.candidates.map(c => c.key).sort(), ['reg:lsame', 'tn:same']);
+  const openClub = deriveAttachCandidates(
+    [tournament({ id: 'legacy', club_id: null, community_id: undefined }), tournament({ id: 'c1', club_id: null })],
+    [], { clubId: CLUB, admin: true },
+  );
+  assert.deepEqual(openClub.candidates.map(c => c.key), ['tn:legacy']);
 }
 
 // 12. Dismissed keys are split out; search filters both lists; newest first.

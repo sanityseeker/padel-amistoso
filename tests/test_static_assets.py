@@ -581,7 +581,7 @@ def test_club_events_attach_panel_is_collapsible_with_dismiss(client):
     assert "deriveAttachCandidates(_clubsTournaments, _clubsRegistrations, {" in js
     utils = client.get("/admin-utils.js", headers={"Accept-Encoding": "identity"}).text
     assert "function deriveAttachCandidates(tournaments, registrations, opts = {})" in utils
-    assert "if (!t || t.club_id || t.club_id === clubId) continue;" in utils
+    assert "if (!t || t.club_id || !inClubCommunity(t)) continue;" in utils
     i18n = client.get("/i18n.js", headers={"Accept-Encoding": "identity"}).text
     for key in (
         "txt_club_events_attach_suggestions",
@@ -589,6 +589,25 @@ def test_club_events_attach_panel_is_collapsible_with_dismiss(client):
         "txt_club_events_attach_restore",
         "txt_club_events_attach_show_dismissed",
         "txt_club_events_attach_hide_dismissed",
+    ):
+        assert i18n.count(f'"{key}"') == 2, key
+
+
+def test_club_past_participants_can_merge_into_existing_player(client):
+    """Each past-participant row offers "Merge into player" (fold the ghost into an
+    existing Hub profile) alongside "Convert to Hub"."""
+    js = client.get("/admin-clubs.js", headers={"Accept-Encoding": "identity"}).text
+    assert "onclick=\"clubsShowMergeGhostForm('${escAttr(p.profile_id)}', '${escAttr(p.name)}')\"" in js
+    assert "body: JSON.stringify({ source_ids: [targetId, ghostId], name: null })," in js
+    assert "/players/candidates?q=${encodeURIComponent(q)}" in js
+    i18n = client.get("/i18n.js", headers={"Accept-Encoding": "identity"}).text
+    for key in (
+        "txt_clubs_merge_ghost",
+        "txt_clubs_merge_ghost_hint",
+        "txt_clubs_merge_ghost_title",
+        "txt_clubs_merge_ghost_help",
+        "txt_clubs_merge_ghost_search_placeholder",
+        "txt_clubs_merge_ghost_pick_target",
     ):
         assert i18n.count(f'"{key}"') == 2, key
 
@@ -1322,15 +1341,27 @@ def test_admin_player_tables_stack_into_cards_on_phones():
     clubs = _read_frontend("admin-clubs.js")
     assert clubs.count('<table class="player-codes-table table-stack">') == 3
     assert 'class="player-codes-cell stack-pri" data-label="${escAttr(t(\'txt_clubs_hub_status\'))}"' in clubs
-    assert 'class="player-codes-cell-center nowrap stack-actions"' in clubs
+    assert clubs.count('class="row-actions stack-actions"') == 3
+    # Player-row buttons are quiet outlines/tints, not filled per-row colour.
+    assert "btn btn-sm btn-row btn-row--accent" in clubs and "btn-row--danger player-codes-icon-btn" in clubs
+    assert ".btn-row--accent {" in css and ".btn-row--danger:hover {" in css
     assert "&#x2715;" not in clubs and "&#x2296;" not in clubs and "&#x2295;" not in clubs
     assert "${_ic('eyeoff')}" in clubs and "${_ic('eye')}" in clubs
     shared = _read_frontend("shared.js")
     assert "    eye:" in shared and "    eyeoff:" in shared
     html = _read_frontend("index.html")
-    assert '<div class="player-codes-table-wrap mt-2"><table class="player-codes-table table-stack">' in html
+    assert (
+        '<div v-if="visibleProfiles.length" class="player-codes-table-wrap mt-2"><table class="player-codes-table table-stack">'
+        in html
+    )
+    # Ghost profiles start hidden; a search matching only ghosts says so.
+    assert "localStorage.getItem('ph-show-ghosts') === '1'" in _read_frontend("admin-players.js")
+    assert "t('txt_ph_only_ghosts_hidden', { n: ghostCount })" in html
     assert ":data-label=\"t('txt_ph_padel_elo')\"" in html
-    assert '<td class="player-codes-cell-center stack-actions">' in html
+    assert '<td class="row-actions stack-actions">' in html
+    assert 'class="btn btn-sm btn-row btn-row--accent" @click="showConvert(p.id)"' in html
+    assert 'class="btn btn-sm btn-row" @click="manage(p.id)"' in html
+    assert "    userplus:" in shared
 
 
 def test_results_export_trophy_is_self_sized_svg():

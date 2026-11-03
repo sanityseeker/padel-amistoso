@@ -626,7 +626,7 @@
                   :aria-label="showGhosts ? t('txt_ph_hide_ghosts') : t('txt_ph_show_ghosts')">{{ showGhosts ? t('txt_ph_hide_ghosts') : t('txt_ph_show_ghosts') }}</button>
               </template>
             </summary>
-            <div class="player-codes-table-wrap mt-2"><table class="player-codes-table table-stack">
+            <div v-if="visibleProfiles.length" class="player-codes-table-wrap mt-2"><table class="player-codes-table table-stack">
               <thead><tr class="player-codes-head-row">
                 <th class="player-codes-th-center player-codes-th-narrow"></th>
                 <th class="player-codes-th">{{ t('txt_ph_name') }}</th>
@@ -651,14 +651,18 @@
                     <span v-if="p.is_ghost" class="text-muted" :title="t('txt_ph_ghost_no_passphrase')">—</span>
                     <code v-else class="player-codes-passphrase" @click="copyText($event)" :title="t('txt_txt_click_to_copy')">{{ p.passphrase }}</code>
                   </td>
-                  <td class="player-codes-cell fs-sm text-muted" :data-label="t('txt_ph_created')">{{ fmtDate(p.created_at) }}</td>
-                  <td class="player-codes-cell-center stack-actions">
-                    <button type="button" class="btn btn-primary btn-sm" @click="manage(p.id)">{{ t('txt_ph_manage') }}</button>
-                    <button v-if="p.is_ghost" type="button" class="btn btn-sm btn-success" @click="showConvert(p.id)" :title="t('txt_ph_convert_ghost_hint')">{{ t('txt_ph_convert_ghost') }}</button>
+                  <td class="player-codes-cell fs-sm text-muted nowrap" :data-label="t('txt_ph_created')">{{ fmtDate(p.created_at) }}</td>
+                  <td class="row-actions stack-actions">
+                    <button v-if="p.is_ghost" type="button" class="btn btn-sm btn-row btn-row--accent" @click="showConvert(p.id)" :title="t('txt_ph_convert_ghost_hint')"><span v-html="_ic('userplus')"></span> {{ t('txt_ph_convert_ghost') }}</button>
+                    <button type="button" class="btn btn-sm btn-row" @click="manage(p.id)">{{ t('txt_ph_manage') }}</button>
                   </td>
                 </tr>
               </tbody>
             </table></div>
+            <p v-if="!visibleProfiles.length && ghostCount" class="fs-sm text-muted mt-2 mb-0">
+              {{ t('txt_ph_only_ghosts_hidden', { n: ghostCount }) }}
+              <button type="button" class="ph-ghost-toggle" @click="toggleShowGhosts()">{{ t('txt_ph_show_ghosts') }}</button>
+            </p>
           </details>
           <!-- Past participants (played but never got a profile) — selectable
                as merge sources so their history can be folded into a player. -->

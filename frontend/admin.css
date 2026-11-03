@@ -903,6 +903,29 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
   white-space: nowrap;
 }
 .player-codes-icon-btn { font-size: 0.72rem; padding: 0.2rem 0.4rem; }
+
+/* ── Per-row table actions (player lists, club rosters)
+   Row buttons stay quiet so a long list reads as data, not a wall of filled
+   colour: neutral outline by default, a tinted accent for the one promoting
+   action, red only on hover for destructive ones. The cell is right-aligned
+   so the trailing button sits in the same place on every row. Pair with
+   .btn-sm so the mobile 44px touch rule still applies. */
+.row-actions { padding: 0.4rem 0.6rem; text-align: right; white-space: nowrap; }
+.row-actions > .btn + .btn { margin-left: var(--space-1-5); }
+.btn-row { background: transparent; border-color: var(--color-border); color: var(--color-text); }
+.btn-row:hover { background: var(--color-primary-highlight); border-color: var(--color-primary); color: var(--color-text); }
+.btn-row--accent {
+  background: var(--color-success-highlight);
+  border-color: color-mix(in srgb, var(--color-success) 40%, transparent);
+  color: var(--color-success);
+}
+.btn-row--accent:hover {
+  background: color-mix(in srgb, var(--color-success) 24%, transparent);
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+.btn-row--danger { color: var(--color-text-muted); }
+.btn-row--danger:hover { background: var(--color-error-highlight); border-color: var(--color-error); color: var(--color-error); }
 .player-codes-linked-badge { font-size: 0.78rem; opacity: 0.75; cursor: default; user-select: none; }
 .player-codes-add-row { margin-top: 0.5rem; }
 
@@ -7108,7 +7131,6 @@ label.user-mgmt-checkbox-label {
   border-top: 1px solid var(--color-border);
 }
 .club-events-attach-name { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; min-width: 0; }
-.club-events-attach-hint { font-size: 0.78rem; color: var(--color-warning-text); }
 .view-club-return { margin-bottom: 0.5rem; }
 .view-club-return-btn { font-weight: 600; }
 @media (max-width: 640px) {
@@ -7375,6 +7397,7 @@ html { scroll-padding-top: calc(var(--admin-sticky-offset, 0px) + 0.5rem); }
     justify-content: flex-end;
     gap: 0.4rem;
   }
+  .table-stack .row-actions > .btn + .btn { margin-left: 0; }
   .table-stack td select,
   .table-stack td input:not([type="checkbox"]) { max-width: 100%; }
 }
