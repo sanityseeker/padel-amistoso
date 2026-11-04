@@ -765,6 +765,9 @@ html:not(.demo-instance) .demo-only {
 .public-page-item:hover,
 .public-page-item:focus-visible { background: var(--color-hover-overlay); outline: none; }
 .public-page-item.is-active { color: var(--color-primary); font-weight: 700; }
+/* Fixed icon column = avatar width, so labels line up whether the row shows
+   a 1em glyph or the 24px initials avatar. */
+.public-page-item .public-page-icon { flex: 0 0 24px; width: 24px; }
 .public-avatar {
   width: 24px;
   height: 24px;
