@@ -1592,7 +1592,7 @@ function deriveEventRows(tournaments, registrations, opts = {}) {
  * @param {{clubId: string, clubCommunityId?: string, authUser?: string|null, admin?: boolean,
  *          dismissed?: string[], query?: string}} opts
  * @returns {{candidates: object[], dismissed: object[]}} both sorted newest first; items are
- *   {key, kind, id, name, createdAt, dismissed}
+ *   {key, kind, id, name, sport, createdAt, dismissed}
  */
 function deriveAttachCandidates(tournaments, registrations, opts = {}) {
   const clubCommunityId = opts.clubCommunityId || 'open';
@@ -1604,6 +1604,7 @@ function deriveAttachCandidates(tournaments, registrations, opts = {}) {
   const inClubCommunity = (src) => (src.community_id || 'open') === clubCommunityId;
   const item = (key, kind, src) => ({
     key, kind, id: src.id, name: src.name || '',
+    sport: src.sport || 'padel',
     createdAt: src.created_at || '',
     dismissed: dismissedKeys.has(key),
   });

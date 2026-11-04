@@ -80,6 +80,21 @@ def revalidate_scope_for_community(
     return club_id, season_id
 
 
+def align_community_to_club(conn, community_id: str, club_id: str | None) -> tuple[str, str | None]:
+    """Return a ``(community_id, club_id)`` pair that agrees on the community.
+
+    A new event created with a club always lives in that club's community, so
+    the club wins over a stale community pick (e.g. the creator's default).
+    An unknown club id is dropped.
+    """
+    if not club_id:
+        return community_id, None
+    row = conn.execute("SELECT community_id FROM clubs WHERE id = ?", (club_id,)).fetchone()
+    if row is None:
+        return community_id, None
+    return row["community_id"], club_id
+
+
 # MIME types for the three supported image/document formats.
 _SCHEMA_MEDIA_TYPES: dict[str, str] = {
     "png": "image/png",
@@ -163,13 +178,17 @@ def _store_tournament(
 
     # If the caller supplied a season but not a club, derive club_id from the
     # season so the two stay consistent without requiring callers to pass both.
-    if season_id and not club_id:
-        from .db import get_db  # noqa: PLC0415
+    # Then make community/club/season agree: the club's community wins, and a
+    # season outside that club's community is dropped.
+    from .db import get_db  # noqa: PLC0415
 
-        with get_db() as conn:
+    with get_db() as conn:
+        if season_id and not club_id:
             row = conn.execute("SELECT club_id FROM seasons WHERE id = ?", (season_id,)).fetchone()
-        if row is not None:
-            club_id = row["club_id"]
+            if row is not None:
+                club_id = row["club_id"]
+        community_id, club_id = align_community_to_club(conn, community_id, club_id)
+        club_id, season_id = revalidate_scope_for_community(conn, community_id, club_id, season_id)
 
     _tournaments[tid] = {
         "name": name,

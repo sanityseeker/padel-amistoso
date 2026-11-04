@@ -800,6 +800,12 @@ const _clubEventsStore = reactiveStore({
   sportLabel(row) {
     return (row.sport || 'padel') === 'tennis' ? this.t('txt_txt_sport_tennis') : this.t('txt_txt_sport_padel');
   },
+  /** Short creation date, so same-named attach suggestions can be told apart. */
+  createdLabel(item) {
+    const d = item.createdAt ? new Date(item.createdAt) : null;
+    if (!d || Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(this.lang || undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  },
   stateLabel(row) {
     const keys = {
       live: 'txt_club_events_state_live',
@@ -1132,6 +1138,8 @@ const _CLUB_EVENTS_ISLAND_HTML = `
           <span class="club-events-attach-name">
             {{ item.name }}
             <span class="badge badge-type">{{ item.kind === 'lobby' ? t('txt_reg_lobby') : t('txt_comm_col_tournament') }}</span>
+            <span class="badge badge-sport">{{ sportLabel(item) }}</span>
+            <span v-if="createdLabel(item)" class="muted-note fs-sm">{{ createdLabel(item) }}</span>
           </span>
           <span class="club-events-attach-actions">
             <button type="button" class="btn btn-sm btn-muted" @click="dismiss(item)">{{ t('txt_club_events_attach_dismiss') }}</button>
@@ -1150,6 +1158,8 @@ const _CLUB_EVENTS_ISLAND_HTML = `
             <span class="club-events-attach-name">
               {{ item.name }}
               <span class="badge badge-type">{{ item.kind === 'lobby' ? t('txt_reg_lobby') : t('txt_comm_col_tournament') }}</span>
+              <span class="badge badge-sport">{{ sportLabel(item) }}</span>
+              <span v-if="createdLabel(item)" class="muted-note fs-sm">{{ createdLabel(item) }}</span>
             </span>
             <span class="club-events-attach-actions">
               <button type="button" class="btn btn-sm" @click="restore(item)">{{ t('txt_club_events_attach_restore') }}</button>
@@ -1705,6 +1715,12 @@ function clubsSetGhostSearch(value) {
   _clubsGhostSearch = String(value || '');
   try { localStorage.setItem(_CLUBS_GHOST_SEARCH_KEY, _clubsGhostSearch); } catch (_) {}
   _clubsRenderPossibleMembers(false);
+  // The re-render replaces the input; put focus and caret back so typing continues.
+  const input = document.getElementById('clubs-ghost-search-input');
+  if (input) {
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
 }
 
 
@@ -1827,9 +1843,9 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
 
   const sport = _clubsSport;
   let html = `
-    <details id="clubs-possible-members-details"${_clubsPossibleMembersOpen ? ' open' : ''} class="clubs-ghost-section">
-      <summary class="clubs-ghost-section-summary"
-        onclick="_clubsSetPossibleMembersOpen(document.getElementById('clubs-possible-members-details')?.open ?? false)">
+    <details id="clubs-possible-members-details"${_clubsPossibleMembersOpen ? ' open' : ''} class="clubs-ghost-section"
+      ontoggle="_clubsSetPossibleMembersOpen(this.open)">
+      <summary class="clubs-ghost-section-summary">
         <span class="tv-chevron clubs-ghost-section-chevron">&#9658;</span>
         ${t('txt_clubs_possible_members_title', { n: members.length })}
         <span class="muted-tiny clubs-ghost-section-hint">${t('txt_clubs_possible_members_hint')}</span>
@@ -1929,9 +1945,9 @@ async function _clubsRenderPossibleMembers(forceReload = true) {
   // Duplicate-group merge section (if any)
   if (_clubsGhostGroups.length) {
     html += `
-      <details id="clubs-ghost-dup-details"${_clubsGhostMergeOpen ? ' open' : ''} class="clubs-ghost-section clubs-ghost-section--inner">
-        <summary class="clubs-ghost-section-summary"
-          onclick="_clubsSetGhostMergeOpen(document.getElementById('clubs-ghost-dup-details')?.open ?? false)">
+      <details id="clubs-ghost-dup-details"${_clubsGhostMergeOpen ? ' open' : ''} class="clubs-ghost-section clubs-ghost-section--inner"
+        ontoggle="_clubsSetGhostMergeOpen(this.open)">
+        <summary class="clubs-ghost-section-summary">
           <span class="tv-chevron clubs-ghost-section-chevron">&#9658;</span>
           ${t('txt_clubs_ghost_dup_title', { n: _clubsGhostGroups.length })}
           <span class="muted-tiny clubs-ghost-section-hint">${t('txt_clubs_ghost_dup_hint')}</span>

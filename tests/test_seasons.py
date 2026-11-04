@@ -671,6 +671,29 @@ class TestTournamentClubAssignment:
         )
         assert res.status_code == 400
 
+    def test_create_with_club_takes_club_community(self, client, auth_headers) -> None:
+        """A stale community pick on create must not leave a club in another community."""
+        club, comm = _setup_club(client, auth_headers)
+        other_comm = _create_community(client, auth_headers, "Other")
+        tid = self._create_gp(client, auth_headers, other_comm["id"], club_id=club["id"])
+        assert _state._tournaments[tid]["community_id"] == comm["id"]
+        assert _state._tournaments[tid]["club_id"] == club["id"]
+
+    def test_create_registration_with_club_takes_club_community(self, client, auth_headers) -> None:
+        club, comm = _setup_club(client, auth_headers)
+        other_comm = _create_community(client, auth_headers, "Other")
+        res = client.post(
+            "/api/registrations",
+            json={"name": "Lobby", "community_id": other_comm["id"], "club_id": club["id"]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT community_id, club_id FROM registrations WHERE id = ?", (res.json()["id"],)
+            ).fetchone()
+        assert (row["community_id"], row["club_id"]) == (comm["id"], club["id"])
+
     def test_setting_season_syncs_club_id(self, client, auth_headers) -> None:
         club, comm = _setup_club(client, auth_headers)
         season = _create_season(client, auth_headers, club["id"])

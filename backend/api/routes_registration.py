@@ -42,7 +42,12 @@ from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .db import add_co_editor, get_db, get_registration_co_editors, get_shared_registration_ids
 from .elo_integration import elo_init_tournament
 from .elo_store import get_profile_starting_elos
-from .helpers import _store_tournament, get_scope_branding as _get_scope_branding, revalidate_scope_for_community
+from .helpers import (
+    _store_tournament,
+    align_community_to_club,
+    get_scope_branding as _get_scope_branding,
+    revalidate_scope_for_community,
+)
 from . import payments_store as _payments
 from .player_secret_store import (
     lookup_registrant_by_passphrase,
@@ -514,6 +519,7 @@ async def create_registration(
         rid = _next_registration_id()
         try:
             with get_db() as conn:
+                community_id, club_id = align_community_to_club(conn, req.community_id, req.club_id)
                 conn.execute(
                     """INSERT INTO registrations
                        (id, name, owner, open, join_code, questions, description, message, listed, sport, auto_send_email, email_requirement, community_id, club_id, created_at)
@@ -530,8 +536,8 @@ async def create_registration(
                         req.sport.value,
                         1 if req.auto_send_email else 0,
                         req.email_requirement,
-                        req.community_id,
-                        req.club_id,
+                        community_id,
+                        club_id,
                         now,
                     ),
                 )
