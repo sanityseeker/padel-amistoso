@@ -16,15 +16,17 @@ The app supports three tournament formats:
 | **Mexicano** | New pairings each round from the ratings, a fixed total of points per match, and optional seeded play-offs |
 | **Direct Play-offs** | No group stage: seed the players and play a bracket immediately |
 
-**Live demo:** [padel-amistoso.onrender.com](https://padel-amistoso.onrender.com). Log in with `admin` / `admin` to use all features (lobbies, clubs, communities, Player Hub, custom addresses, and more).
+You can try the app on two demo sites:
 
-Some instances also have a demo site. On these instances, the login screen has the button **Open the demo sandbox**. This button opens a separate practice site, which creates a **temporary demo account** for you when you arrive. You do not have to sign up. The account has these limits:
+**Quick demo:** [demo.amistoso.club](https://demo.amistoso.club). Use this site to test the match generation: create a tournament, enter scores, and see how the app makes the next rounds and the brackets. When you arrive, the site creates a **temporary demo account** for you. You do not have to sign up. The login screen of the main site also has the button **Open the demo sandbox**, which opens this site. The account has these limits:
 
 - It can have only **one active tournament** at a time.
 - It has a limited set of admin functions.
 - The app **deletes the account and all its data automatically after 3 days**.
 
-> The demo runs on a free tier. After a period with no use, the app can need approximately 30 s to start. **Do not use the demo for real tournaments.**
+**Full sandbox:** [padel-amistoso.onrender.com](https://padel-amistoso.onrender.com). Log in with `admin` / `admin` to use all features (lobbies, clubs, communities, Player Hub, custom addresses, and more).
+
+> The full sandbox runs on a free tier. After a period with no use, the app can need approximately 30 s to start. **Do not use the demo sites for real tournaments.**
 
 ## Project status
 
