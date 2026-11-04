@@ -580,6 +580,11 @@ async function _clubShowFatal(kind) {
     : `<button type="button" class="btn btn-primary club-fatal-action" onclick="window.location.reload()">${esc(t('txt_club_retry', {}) || 'Try again')}</button>`;
   el.classList.add('club-fatal');
   el.innerHTML = `<p class="club-fatal-msg">${esc(msg)}</p>${action}`;
+  // Like the server's 404 page: an unknown club sends the visitor to the
+  // platform home after a moment. Never redirect onto this same origin.
+  if (apex && new URL(apex).origin !== window.location.origin) {
+    setTimeout(() => window.location.replace(apex), 5000);
+  }
 }
 
 async function _clubInit() {

@@ -34,7 +34,7 @@ from collections.abc import Collection, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-from backend.models import Match
+from backend.models import GPPhase, Match
 from backend.tournaments.elo import EloUpdate, compute_match_elo_updates
 
 from .db import get_db
@@ -44,7 +44,7 @@ from .elo_integration import (
     _is_team_mode,
     _mexicano_k_multiplier,
 )
-from .elo_store import _get_linked_profiles, _profile_player_ids, get_k_factor_overrides
+from .elo_store import _get_linked_profiles, _profile_player_ids, get_k_factor_overrides, get_tournament_elos
 from .leaderboard_cache import invalidate_leaderboard_cache
 from .state import _tournaments
 
@@ -122,6 +122,40 @@ def recompute_club_elo_for_tournaments(tournament_ids: Collection[str]) -> None:
         recompute_club_elo(club_id)
 
 
+def get_tournament_display_elos(tournament_id: str, sport: str) -> dict[str, float]:
+    """``{player_id: rating}`` shown next to each player of a tournament.
+
+    Outside a club this is the community rating (``player_elo``).  In a club
+    tournament it is the player's club rating:
+
+    * while the tournament runs, the rating their next club match starts from —
+      their latest club match, or a later tier / manual club rating;
+    * once it is finished, their club rating after their last match in it.
+
+    A player with no club rating yet keeps the community rating, which is also
+    where their club chain starts.
+    """
+    elos = get_tournament_elos(tournament_id, sport)
+    data = _tournaments.get(tournament_id)
+    club_id = data.get("club_id") if data else None
+    if not club_id or not elos:
+        return elos
+    finished = str(getattr(data.get("tournament"), "phase", "")) == GPPhase.FINISHED
+    with get_db() as conn:
+        profiles = {r["player_id"]: r["profile_id"] for r in _get_linked_profiles(tournament_id, conn)}
+        for player_id in elos:
+            profile_id = profiles.get(player_id)
+            identity = profile_id or f"{tournament_id}:{player_id}"
+            last = _last_club_row(conn, club_id, sport, identity, tournament_id=tournament_id if finished else None)
+            manual = _latest_manual_rating(conn, club_id, sport, profile_id) if profile_id and not finished else None
+            # As when rating a match: a manual rating applies only if it is later.
+            if manual is not None and (last is None or manual["updated_at"] > last["updated_at"]):
+                elos[player_id] = float(manual["elo_after"])
+            elif last is not None:
+                elos[player_id] = float(last["club_elo_after"])
+    return elos
+
+
 @contextmanager
 def deferred_club_elo() -> Iterator[None]:
     """Collect club work inside the block and replay each club once at the end.
@@ -179,19 +213,7 @@ def _rate_newest_match(club_id: str, tid: str, data: dict, match: Match, sport: 
             player_id = row["player_id"]
             profile_id = profiles.get(player_id)
             identity = profile_id or f"{tid}:{player_id}"
-            last = conn.execute(
-                """
-                SELECT l.club_elo_after, l.club_matches_after, l.updated_at
-                  FROM player_elo_log l
-                  JOIN tournaments t ON t.id = l.tournament_id
-                 WHERE t.club_id = ? AND l.sport = ? AND l.club_identity = ? AND l.is_manual = 0
-                   AND l.club_elo_after IS NOT NULL AND l.club_matches_after IS NOT NULL
-                   AND NOT (l.tournament_id = ? AND l.match_id = ?)
-              ORDER BY l.updated_at DESC, l.tournament_id DESC, l.match_order DESC
-                 LIMIT 1
-                """,
-                (club_id, sport, identity, tid, match.id),
-            ).fetchone()
+            last = _last_club_row(conn, club_id, sport, identity, exclude=(tid, match.id))
             manual = _latest_manual_rating(conn, club_id, sport, profile_id) if profile_id else None
             if last is not None:
                 rating, count = float(last["club_elo_after"]), int(last["club_matches_after"])
@@ -233,6 +255,41 @@ def _has_later_club_event(conn, club_id: str, sport: str, match_ts: str, tid: st
         (sport, club_id, match_ts, tid, match_id, club_id, match_ts),
     ).fetchone()
     return row is not None
+
+
+def _last_club_row(
+    conn,
+    club_id: str,
+    sport: str,
+    identity: str,
+    *,
+    tournament_id: str | None = None,
+    exclude: tuple[str, str] | None = None,
+):
+    """The identity's latest rated club match row (``club_elo_after``, ``club_matches_after``, ``updated_at``).
+
+    *tournament_id* limits the search to one tournament; *exclude* skips one
+    ``(tournament_id, match_id)``.  None if the identity has no rated club match.
+    """
+    filters, params = "", [club_id, sport, identity]
+    if tournament_id is not None:
+        filters += " AND l.tournament_id = ?"
+        params.append(tournament_id)
+    if exclude is not None:
+        filters += " AND NOT (l.tournament_id = ? AND l.match_id = ?)"
+        params.extend(exclude)
+    return conn.execute(
+        f"""
+        SELECT l.club_elo_after, l.club_matches_after, l.updated_at
+          FROM player_elo_log l
+          JOIN tournaments t ON t.id = l.tournament_id
+         WHERE t.club_id = ? AND l.sport = ? AND l.club_identity = ? AND l.is_manual = 0
+           AND l.club_elo_after IS NOT NULL AND l.club_matches_after IS NOT NULL{filters}
+      ORDER BY l.updated_at DESC, l.tournament_id DESC, l.match_order DESC
+         LIMIT 1
+        """,
+        params,
+    ).fetchone()
 
 
 def _latest_manual_rating(conn, club_id: str, sport: str, profile_id: str):

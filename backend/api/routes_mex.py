@@ -59,7 +59,7 @@ from .state import (
 from .player_secret_store import create_secrets_for_tournament
 from .push_events import notify_matches_ready, notify_champion, notify_score_submitted
 from .elo_integration import elo_after_score, elo_finish_tournament, elo_init_tournament
-from .elo_store import get_tournament_elos
+from .club_elo import get_tournament_display_elos
 
 router = APIRouter(prefix="/api/tournaments", tags=["mexicano"])
 
@@ -189,7 +189,7 @@ async def mex_status(tid: str) -> dict:
     data = _get_tournament(tid, _MEX)
     t: MexicanoTournament = data["tournament"]
     sport = data.get("sport", "padel")
-    elos = get_tournament_elos(tid, sport)
+    elos = get_tournament_display_elos(tid, sport)
     board = t.leaderboard()
     for entry in board:
         entry["elo"] = round(elos.get(entry["player_id"], 0), 1) or None

@@ -15,6 +15,7 @@ import backend.api.db as db_mod
 from backend.api import state as state_mod
 from backend.api import club_elo
 from backend.auth.security import create_profile_token
+from backend.models import MexPhase
 from tests.test_elo_relink import _insert_profile
 
 # conftest stubs out ``_save_tournament``; the club chain reads tournament rows
@@ -311,3 +312,49 @@ class TestRecalculateClubEndpoint:
         _make_club("ku")
         res = client.post("/api/clubs/ku/elo/recalculate", headers=alice_headers)
         assert res.status_code == 403
+
+
+def _board_elo(client, tid: str, player_id: str) -> float | None:
+    board = client.get(f"/api/tournaments/{tid}/mex/status").json()["leaderboard"]
+    return next(e["elo"] for e in board if e["player_id"] == player_id)
+
+
+class TestTournamentPageShowsClubRatings:
+    def test_standings_and_player_card_show_the_club_rating(self, client, auth_headers):
+        _make_club("kv")
+        alice = _insert_profile("Alice")
+        _tier(client, auth_headers, "kv", alice, 1400)
+        tid, ids = _play(client, auth_headers, "kv", winner="Alice", profiles={"Alice": alice})
+
+        last = _log(tid, ids["Alice"])[-1]
+        assert last["club_elo_after"] != last["elo_after"]
+        assert _board_elo(client, tid, ids["Alice"]) == round(last["club_elo_after"], 1)
+        card = client.get(f"/api/tournaments/{tid}/players/{ids['Alice']}/public-card").json()
+        assert card["elo"] == round(last["club_elo_after"], 1)
+        assert card["recent_matches"][0]["elo_after"] == last["club_elo_after"]
+
+    def test_tier_set_after_play_shows_while_running_and_survives_recalculation(self, client, auth_headers):
+        _make_club("kw")
+        alice = _insert_profile("Alice")
+        tid, ids = _new_tournament(client, auth_headers, "kw", {"Alice": alice})
+        _play_rounds(client, auth_headers, tid, "Alice", rounds=2)
+        _tier(client, auth_headers, "kw", alice, 1500)
+
+        assert _board_elo(client, tid, ids["Alice"]) == 1500
+        res = client.post("/api/clubs/kw/elo/recalculate", headers=auth_headers)
+        assert res.status_code == 200, res.text
+        assert _board_elo(client, tid, ids["Alice"]) == 1500
+        assert _space(client, alice, "?club_id=kw")["profile"]["elo_padel"] == 1500
+        # The next match starts from the tier rating.
+        _play_rounds(client, auth_headers, tid, "Alice")
+        assert _log(tid, ids["Alice"])[-1]["club_elo_before"] == 1500
+
+    def test_finished_tournament_keeps_the_rating_it_ended_with(self, client, auth_headers):
+        _make_club("kx")
+        alice = _insert_profile("Alice")
+        tid, ids = _play(client, auth_headers, "kx", winner="Alice", profiles={"Alice": alice})
+        assert client.post(f"/api/tournaments/{tid}/mex/end", headers=auth_headers).status_code == 200
+        assert client.post(f"/api/tournaments/{tid}/mex/finish", headers=auth_headers).status_code == 200
+        assert state_mod._tournaments[tid]["tournament"].phase == MexPhase.FINISHED
+        _tier(client, auth_headers, "kx", alice, 1500)
+        assert _board_elo(client, tid, ids["Alice"]) == round(_log(tid, ids["Alice"])[-1]["club_elo_after"], 1)

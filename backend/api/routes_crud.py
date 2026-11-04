@@ -52,7 +52,7 @@ from .schemas import (
 )
 from . import state
 from .state import _delete_tournament, _tournaments, save_tournament
-from .club_elo import deferred_club_elo, recompute_club_elo
+from .club_elo import deferred_club_elo, get_tournament_display_elos, recompute_club_elo
 from .elo_integration import elo_recalculate_tournament
 from .elo_store import delete_tournament_elos, tournaments_in_chronological_order
 from .leaderboard_cache import etag_for, get_mini_card_cached
@@ -540,9 +540,16 @@ def _build_tournament_player_card(tid: str, player_id: str) -> dict:
                 player_name = getattr(p, "name", None) or player_id
                 break
 
+    # A club tournament shows the club's own ratings (see ``club_elo``).
+    elo_columns = (
+        "COALESCE(club_elo_before, elo_before) AS elo_before, COALESCE(club_elo_after, elo_after) AS elo_after,"
+        " COALESCE(club_elo_after - club_elo_before, elo_delta) AS elo_delta"
+        if data.get("club_id")
+        else "elo_before, elo_after, elo_delta"
+    )
     with get_db() as conn:
         rows = conn.execute(
-            """SELECT match_id, sport, elo_before, elo_after, elo_delta,
+            f"""SELECT match_id, sport, {elo_columns},
                       match_payload, updated_at, is_manual, match_order
                FROM player_elo_log
               WHERE tournament_id = ? AND player_id = ?
@@ -633,14 +640,20 @@ def _build_tournament_player_card(tid: str, player_id: str) -> dict:
     # Newest-first for display; sparkline already chronological.
     recent.reverse()
     matches_played = wins + draws + losses
-    current_elo = elo_history[-1] if elo_history else None
+    last_match_elo = elo_history[-1] if elo_history else None
     starting_elo = next(
         (float(r["elo_before"]) for r in rows if r["elo_before"] is not None),
         None,
     )
     elo_delta_total = (
-        round(current_elo - starting_elo, 1) if current_elo is not None and starting_elo is not None else None
+        round(last_match_elo - starting_elo, 1) if last_match_elo is not None and starting_elo is not None else None
     )
+    current_elo = last_match_elo
+    if data.get("club_id"):
+        # Also picks up a tier / manual club rating set after the last match.
+        club_elo = get_tournament_display_elos(tid, sport).get(player_id)
+        if club_elo is not None:
+            current_elo = round(club_elo, 1)
 
     return {
         "tournament_id": tid,
