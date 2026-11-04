@@ -1,3 +1,9 @@
+## v2.1.2 (2026-11-04)
+
+### Fix
+
+- **clubs**: show club ratings on club tournament pages, redirect unknown clubs
+
 ## v2.1.1 (2026-11-04)
 
 ### Fix
