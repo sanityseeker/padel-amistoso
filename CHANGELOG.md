@@ -1,3 +1,13 @@
+## v2.1.0 (2026-11-04)
+
+### Feat
+
+- **elo**: give each club its own rating chain, add club ELO recalculation, hide Player Hub on demo
+
+### Fix
+
+- **admin**: limit club event suggestions to the club's community, add ghost merge, quieter player rows
+
 ## v2.0.0 (2026-11-03)
 
 ### BREAKING CHANGE
