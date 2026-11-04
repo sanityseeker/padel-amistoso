@@ -27,6 +27,7 @@ from collections.abc import Collection
 
 from backend.tournaments.elo import DEFAULT_RATING
 
+from .club_elo import deferred_club_elo, recompute_club_elo_for_tournaments
 from .db import get_db
 from .elo_integration import elo_recalculate_tournament
 from .elo_store import (
@@ -96,7 +97,12 @@ async def flush_elo_recalculation() -> None:
         if not profiles and not tournaments:
             return
         try:
-            await _recalculate(profiles, whole, tournaments, reseed)
+            # Each replayed tournament would replay its club; do every club once.
+            with deferred_club_elo():
+                await _recalculate(profiles, whole, tournaments, reseed)
+                # A link change moves the club chain even when the main chain's
+                # starting ratings (and so its replay) stay the same.
+                recompute_club_elo_for_tournaments(tournaments)
         except Exception:
             logger.exception("ELO recalculation after a link change failed")
 

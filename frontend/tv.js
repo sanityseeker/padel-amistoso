@@ -442,10 +442,10 @@ function _showPlayerLoginModal() {
       <div class="d-flex justify-center mt-1-5">
         <button class="btn btn-primary" onclick="_doPlayerLogin()">${t('txt_txt_login')}</button>
       </div>
-      <div class="player-login-separator"><span>${t('txt_txt_or_separator')}</span></div>
+      ${isDemoInstance() ? '' : `<div class="player-login-separator"><span>${t('txt_txt_or_separator')}</span></div>
       <button class="btn btn-player-hub" onclick="_doPlayerHubLogin()">
         <span class="player-hub-icon">${_ic('user')}</span> ${t('txt_txt_login_player_hub')}
-      </button>
+      </button>`}
     </div>`;
   document.body.appendChild(overlay);
   const input = document.getElementById('player-passphrase-input');
@@ -648,7 +648,7 @@ function _buildPlayerOpponentsHtml() {
 /** Build the optional Player Hub section (passphrase + auto-login button) */
 function _buildPlayerHubSectionHtml() {
   const passphrase = tvState.hubPassphrase;
-  if (!passphrase) return '';
+  if (!passphrase || isDemoInstance()) return '';
   const hasToken = !!tvState.hubAccessToken;
   const openBtn = hasToken
     ? `<button class="player-hub-section-open" onclick="_openHubAutoLogin()" title="${t('txt_player_hub_open')}">${t('txt_player_hub_open')}</button>`
@@ -741,6 +741,8 @@ function _hubCtaDismissedKey() { return TID ? `padel-hub-cta-dismissed:${TID}` :
 
 /** Should the inline "register on Player Hub" banner be shown for this logged-in player? */
 function _shouldShowHubCta() {
+  // No Player Hub on the demo instance: never invite players to create a profile.
+  if (isDemoInstance()) return false;
   if (!_isPlayerLoggedIn()) return false;
   if (tvState.playerHasHubProfile !== false) return false;
   if (!tvState.playerLoginPassphrase) return false;

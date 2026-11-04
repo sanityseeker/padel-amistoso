@@ -477,11 +477,14 @@ function _showForm() {
   const isLoggedIn = !!_linkedProfilePassphrase;
 
   // Identity strip: Player Hub identity vs this-tournament entry, side by
-  // side so "signed in" is never mistaken for "registered".
-  html += _renderIdentityStrip({
-    loggedIn: isLoggedIn,
-    name: prefillName || _regPrefill?.email || '',
-  });
+  // side so "signed in" is never mistaken for "registered". Skipped on the
+  // demo instance, which has no Player Hub to sign in to.
+  if (!isDemoInstance()) {
+    html += _renderIdentityStrip({
+      loggedIn: isLoggedIn,
+      name: prefillName || _regPrefill?.email || '',
+    });
+  }
 
   // ── Unified "Returning player?" section: code / email / name ──
   html += _renderReturningPlayerSection(isLoggedIn);
@@ -1230,6 +1233,8 @@ const _successStore = reactiveStore({
 
 /** Player Hub create / past-claim sections: legacy innerHTML rendered into the v-pre host. */
 function _renderHubSections(r, profileLinked, hasProfileSession) {
+  // No Player Hub on the demo instance: never offer to create a profile.
+  if (isDemoInstance()) return '';
   let html = '';
   if (!profileLinked && !_linkedProfilePassphrase && !hasProfileSession) {
     const emailMode = _regData?.email_requirement || 'optional';

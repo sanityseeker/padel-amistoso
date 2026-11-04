@@ -52,6 +52,7 @@ from .schemas import (
 )
 from . import state
 from .state import _delete_tournament, _tournaments, save_tournament
+from .club_elo import deferred_club_elo, recompute_club_elo
 from .elo_integration import elo_recalculate_tournament
 from .elo_store import delete_tournament_elos, tournaments_in_chronological_order
 from .leaderboard_cache import etag_for, get_mini_card_cached
@@ -200,6 +201,9 @@ async def delete_tournament(
         del _tournaments[tournament_id]
         _delete_tournament(tournament_id)
         delete_tournament_elos(tournament_id)
+        if t_data.get("club_id"):
+            # Later club matches were rated against this tournament's results.
+            recompute_club_elo(t_data["club_id"])
         purged: list[str] = []
         if purge_ghosts and ghost_ids:
             # ``_delete_tournament`` already wiped ``player_secrets`` rows
@@ -370,12 +374,14 @@ async def recalculate_all_elo(user: User = Depends(get_current_user)) -> dict:
     ordered_tids = await asyncio.to_thread(tournaments_in_chronological_order)
 
     recalculated = 0
-    for tid in ordered_tids:
-        async with state.get_tournament_lock(tid):
-            if tid not in _tournaments:
-                continue
-            await asyncio.to_thread(elo_recalculate_tournament, tid)
-            recalculated += 1
+    # Replay each club's own rating chain once, after all its tournaments.
+    with deferred_club_elo():
+        for tid in ordered_tids:
+            async with state.get_tournament_lock(tid):
+                if tid not in _tournaments:
+                    continue
+                await asyncio.to_thread(elo_recalculate_tournament, tid)
+                recalculated += 1
 
     return {"ok": True, "recalculated_tournaments": recalculated, "total": len(ordered_tids)}
 

@@ -476,8 +476,9 @@ For tennis (scoring by sets), the app adds the games of all sets into one score 
 The app calculates the match counts and the current ratings from the ELO log of each match. These numbers show in the admin **Players** tab, in the headers and chips of the Player Hub, and on all leaderboards. Thus the numbers are always the same in all places.
 
 - **Global** is the total across all communities and clubs. Its rating is the rating after the most recent rated match.
-- **Community** and **club** scopes count only the matches in tournaments of that scope.
-- A manual club ELO override, or the base ELO of a tier, becomes the current club rating of the player immediately. The ELO history of the player shows it as a manual adjustment. It does not count as a match. The next rated match starts from the tournament rating of the player.
+- **Community** scope counts only the matches in tournaments of that community.
+- **Club** scope uses a separate rating for each club. The app replays all the matches of the club's tournaments in the order they were played. A player's first club match starts from their community rating at that time. After that, only matches in that club change the club rating. Club ratings never change the community or global ratings. To rebuild them, use **Recalculate club ELO** in the club's leaderboard card. It recalculates every tournament of the club in order.
+- A manual club ELO override, or the base ELO of a tier, becomes the current club rating of the player immediately. The next club match of the player starts from it, also when the player has not played in the club yet. The ELO history of the player shows it as a manual adjustment. It does not count as a match. It does not change the community or global ratings.
 
 ### Authentication & API
 
@@ -691,13 +692,13 @@ Each instance saves and restores its own tournaments.
 
 Demo mode is a second, fully isolated instance. It gives temporary sandbox accounts to visitors. The procedure is:
 
-1. On the core instance, the login dialog has the link "Open the demo sandbox". This link opens `AMISTOSO_DEMO_URL`. A note gives the name of the separate host, so the visitor knows that the demo does not change the core site. There is no automatic login. Thus a visitor can always log out and log in again on the demo instance.
+1. On the core instance, the login dialog has the link "Open the demo sandbox". This link opens the admin page of `AMISTOSO_DEMO_URL` (`/admin` is added when the URL has no path), so the visitor goes directly to the "Start a sandbox" dialog. A note gives the name of the separate host, so the visitor knows that the demo does not change the core site. There is no automatic login. Thus a visitor can always log out and log in again on the demo instance.
 2. On the demo instance, the visitor sees a short "Your demo sandbox" explanation and a "Start a N-day sandbox" button.
 3. When the visitor clicks the button, the app creates a `demo-xxxxxx` account and opens the Create tab. A banner shows the generated passphrase. This passphrase is the account password. The visitor can use it to log in from other devices.
 4. Returning demo users and the instance admin use "Already have a demo login? Log in" to open the username and password form.
 5. A device that created or logged in to a sandbox shows the username of the visitor in the dialog, and puts the cursor in the password field. If the sandbox expired, the dialog tells the visitor. The device keeps only the username, never the passphrase.
 
-A sandbox can run one tournament at a time, and it has a limited set of admin functions. It has no lobbies, clubs, communities, custom addresses, or Player Hub profiles.
+A sandbox can run one tournament at a time, and it has a limited set of admin functions. It has no lobbies, clubs, communities, custom addresses, or Player Hub profiles. The demo instance hides all Player Hub entry points (page selector, login links, "create a profile" offers), greys out the Hub link buttons, and redirects `/player` to `/events`.
 
 The app permanently deletes the demo account and all its data 3 days after it creates the account. The variable `AMISTOSO_DEMO_TTL_DAYS` sets this period. The frontend gets the value as `demo_ttl_days` from `/api/config`. The demo instance has its own data directory, so the delete job never changes the core database.
 

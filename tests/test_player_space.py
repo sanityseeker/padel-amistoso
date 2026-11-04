@@ -849,6 +849,48 @@ class TestGetPlayerSpace:
         assert entries[0]["status"] == "finished"
         assert entries[0]["auto_login_token"] is None
 
+    def test_club_play_lists_player_without_admin_roster_visit(self, client: TestClient) -> None:
+        # The club roster is filled lazily; Hub readers must sync it themselves
+        # instead of waiting for an organiser to open the admin roster.
+        created = _create_profile(client, name="Unrostered", email="unrostered@example.com")
+        profile_id = created["profile"]["id"]
+        suffix = uuid.uuid4().hex[:8]
+        community_id, club_id = f"c-roster-{suffix}", f"club-roster-{suffix}"
+        _insert_community(community_id, "Roster Community")
+        _insert_club(club_id, community_id, "Roster Club")
+
+        tid, pid = str(uuid.uuid4()), str(uuid.uuid4())
+        _insert_tournament(tid, "Roster Tournament")
+        _insert_player_secret(tid, pid, "Unrostered", f"pass-{suffix}", f"tok-{suffix}", profile_id)
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "UPDATE tournaments SET community_id = ?, club_id = ? WHERE id = ?",
+                (community_id, club_id, tid),
+            )
+            for idx in range(3):
+                conn.execute(
+                    """
+                    INSERT INTO player_elo_log
+                        (tournament_id, sport, match_id, player_id, match_order,
+                         elo_before, elo_after, elo_delta, match_payload, updated_at)
+                    VALUES (?, 'padel', ?, ?, ?, 1000, ?, 5, '{}', ?)
+                    """,
+                    (tid, f"mr-{idx}", pid, idx + 1, 1005.0 + idx * 5, now),
+                )
+            roster = conn.execute("SELECT COUNT(*) FROM profile_club_elo WHERE club_id = ?", (club_id,)).fetchone()[0]
+        assert roster == 0
+
+        space = client.get(f"/api/player-profile/space?club_id={club_id}", headers=_headers(created["access_token"]))
+        assert space.status_code == 200
+        clubs = {c["id"]: c for c in space.json()["player_clubs"]}
+        assert clubs[club_id]["elo_padel"] == 1015
+        assert clubs[club_id]["matches_padel"] == 3
+
+        res = client.get(f"/api/player-profile/leaderboard?club_id={club_id}", headers=_lb_headers())
+        assert res.status_code == 200
+        assert [(e["name"], e["elo"], e["matches"]) for e in res.json()["padel"]] == [("Unrostered", 1015, 3)]
+
     def test_dashboard_space_club_scope_uses_club_specific_elo(self, client: TestClient) -> None:
         created = _create_profile(client, name="Club Scoped", email="club-scoped@example.com")
         profile_id = created["profile"]["id"]
@@ -903,6 +945,56 @@ class TestGetPlayerSpace:
         assert profile["elo_tennis"] == 1222
         assert profile["elo_padel_matches"] == 7
         assert profile["elo_tennis_matches"] == 4
+
+    def test_dashboard_space_scope_filters_active_entries(self, client: TestClient) -> None:
+        created = _create_profile(client, name="Active Scoped", email="active-scoped@example.com")
+        profile_id = created["profile"]["id"]
+        suffix = uuid.uuid4().hex[:8]
+
+        community_a, community_b = f"c-act-a-{suffix}", f"c-act-b-{suffix}"
+        club_a, club_a2, club_b = f"club-act-a-{suffix}", f"club-act-a2-{suffix}", f"club-act-b-{suffix}"
+        _insert_community(community_a, "Active A")
+        _insert_community(community_b, "Active B")
+        _insert_club(club_a, community_a, "Club A")
+        _insert_club(club_a2, community_a, "Club A2")
+        _insert_club(club_b, community_b, "Club B")
+
+        # Active tournaments: one per club.
+        tid_a, tid_a2, tid_b = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+        for tid, club_id, community_id in (
+            (tid_a, club_a, community_a),
+            (tid_a2, club_a2, community_a),
+            (tid_b, club_b, community_b),
+        ):
+            _insert_tournament(tid, f"Active {club_id}")
+            _insert_player_secret(tid, str(uuid.uuid4()), "P", f"pass-{tid}", f"tok-{tid}", profile_id)
+            with db_mod.get_db() as conn:
+                conn.execute(
+                    "UPDATE tournaments SET community_id = ?, club_id = ? WHERE id = ?",
+                    (community_id, club_id, tid),
+                )
+
+        # Open lobbies: one in club A, one in club B.
+        lobby_a, lobby_b = str(uuid.uuid4()), str(uuid.uuid4())
+        for rid, club_id, community_id in ((lobby_a, club_a, community_a), (lobby_b, club_b, community_b)):
+            _insert_registration(rid, f"Lobby {club_id}")
+            _insert_registrant(rid, str(uuid.uuid4()), "P", f"pass-{rid}", f"tok-{rid}", profile_id)
+            with db_mod.get_db() as conn:
+                conn.execute(
+                    "UPDATE registrations SET community_id = ?, club_id = ? WHERE id = ?",
+                    (community_id, club_id, rid),
+                )
+
+        def _active_ids(query: str) -> set[str]:
+            res = client.get(f"/api/player-profile/space{query}", headers=_headers(created["access_token"]))
+            assert res.status_code == 200
+            return {e["entity_id"] for e in res.json()["entries"] if e["status"] == "active"}
+
+        all_ids = {tid_a, tid_a2, tid_b, lobby_a, lobby_b}
+        assert all_ids <= _active_ids("")
+        assert _active_ids(f"?club_id={club_a}") & all_ids == {tid_a, lobby_a}
+        assert _active_ids(f"?community_id={community_a}&club_id={club_a}") & all_ids == {tid_a, lobby_a}
+        assert _active_ids(f"?community_id={community_a}") & all_ids == {tid_a, tid_a2, lobby_a}
 
     def test_dashboard_space_club_scope_defaults_hidden_sport_to_base_rating(self, client: TestClient) -> None:
         created = _create_profile(client, name="Club Hidden", email="club-hidden@example.com")

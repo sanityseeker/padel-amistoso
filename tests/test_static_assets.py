@@ -439,7 +439,7 @@ def test_admin_header_has_single_events_link_and_no_pin(client):
     assert "amistoso-home-page" not in html
     # Root redirect: anonymous visitors go to /player or /events, organizers stay.
     assert "localStorage.getItem('padel-auth-token')" in html
-    assert "last === 'player' ? '/player' : '/events'" in html
+    assert "last === 'player' && !demo ? '/player' : '/events'" in html
 
 
 def test_club_page_has_header_slot_logo_above_name_and_no_login_section(client):

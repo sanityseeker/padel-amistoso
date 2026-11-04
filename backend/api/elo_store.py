@@ -557,16 +557,25 @@ def get_profile_recent_elo_logs(
     When *community_id* is provided, only matches from tournaments in that
     community are returned. When *club_id* is provided, only matches from
     tournaments whose season belongs to that club are returned (manual
-    adjustments logged with ``tournament_id == club_id`` are also kept).
+    adjustments logged with ``tournament_id == club_id`` are also kept), and
+    every rating — the row's and each payload participant's — is the club's
+    own rating (:mod:`.club_elo`) instead of the community one.
     """
     # Build the scope filter. ``club_id`` takes precedence over ``community_id``
     # since clubs are nested inside communities.
     scope_filter = ""
     params: list[str | int] = [profile_id, profile_id, profile_id, profile_id]
+    elo_columns = "l.elo_before, l.elo_after, l.elo_delta"
     if club_id is not None:
         # Manual adjustments use the club_id as their tournament_id, so accept
         # both real club tournaments and manual log rows targeting this club.
         scope_filter = " AND (t.club_id = ? OR (l.is_manual = 1 AND l.tournament_id = ?))"
+        # Manual rows have no club columns: their elo values are club values.
+        elo_columns = (
+            "COALESCE(l.club_elo_before, l.elo_before) AS elo_before,"
+            " COALESCE(l.club_elo_after, l.elo_after) AS elo_after,"
+            " COALESCE(l.club_elo_after - l.club_elo_before, l.elo_delta) AS elo_delta"
+        )
         params.append(club_id)
         params.append(club_id)
     elif community_id is not None:
@@ -602,9 +611,7 @@ def get_profile_recent_elo_logs(
                        l.match_id,
                        l.player_id,
                        l.match_order,
-                       l.elo_before,
-                       l.elo_after,
-                       l.elo_delta,
+                       {elo_columns},
                        l.match_payload,
                        l.updated_at,
                        l.is_manual,
@@ -636,7 +643,25 @@ def get_profile_recent_elo_logs(
             """,
             params,
         ).fetchall()
-    return [dict(r) for r in rows]
+    logs = [dict(r) for r in rows]
+    if club_id is not None:
+        for log in logs:
+            log["match_payload"] = _payload_with_club_ratings(log["match_payload"])
+    return logs
+
+
+def _payload_with_club_ratings(payload_json: str) -> str:
+    """Show each match participant's club rating in place of the community one."""
+    try:
+        payload = json.loads(payload_json or "{}")
+    except json.JSONDecodeError:
+        return payload_json
+    for side in ("team1", "team2"):
+        for participant in payload.get(side) or []:
+            if participant.get("club_elo_after") is not None:
+                participant["elo_before"] = participant["club_elo_before"]
+                participant["elo_after"] = participant["club_elo_after"]
+    return json.dumps(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -939,9 +964,11 @@ def get_pretournament_seed(
 
         # This tournament's chronological position.  A finished tournament carries
         # player_history.finished_at rows; an in-progress one sorts last (seed from
-        # the latest finished tournament) via a "now" sentinel.
+        # the latest finished tournament) via a "now" sentinel.  Live-stats rows of
+        # in-progress tournaments have ``finished_at = ''`` and count as unfinished.
         fin_row = conn.execute(
-            "SELECT MIN(finished_at) AS fin FROM player_history WHERE entity_type = 'tournament' AND entity_id = ?",
+            "SELECT MIN(NULLIF(finished_at, '')) AS fin FROM player_history"
+            " WHERE entity_type = 'tournament' AND entity_id = ?",
             (tournament_id,),
         ).fetchone()
         this_fin = fin_row["fin"] if fin_row and fin_row["fin"] else datetime.now(timezone.utc).isoformat()
@@ -962,6 +989,7 @@ def get_pretournament_seed(
              WHERE ph.entity_type = 'tournament'
                AND ph.sport = ?
                AND ph.entity_id != ?
+               AND ph.finished_at != ''
                AND ph.finished_at < ?
                AND ph.profile_id IN ({placeholders})
           ORDER BY ph.finished_at ASC
@@ -1006,7 +1034,7 @@ def _latest_tournament_result(
         return None
     ph = ",".join("?" for _ in player_ids)
     fin_expr = (
-        "(SELECT MIN(h.finished_at) FROM player_history h"
+        "(SELECT MIN(NULLIF(h.finished_at, '')) FROM player_history h"
         "  WHERE h.entity_type = 'tournament' AND h.entity_id = pe.tournament_id)"
     )
     if community_id is not None and community_id != DEFAULT_COMMUNITY_ID:
@@ -1114,14 +1142,15 @@ def refresh_profiles_after_tournament(
 def tournaments_in_chronological_order() -> list[str]:
     """Return all tournament ids ordered by when they finished (then created).
 
-    In-progress tournaments (no ``player_history`` rows yet) sort last so their
-    live ratings are applied on top of the finished chain.
+    In-progress tournaments (no ``player_history`` rows yet, or only live-stats
+    rows with ``finished_at = ''``) sort last so their live ratings are applied
+    on top of the finished chain.
     """
     with get_db() as conn:
         rows = conn.execute(
             """
             SELECT t.id AS id,
-                   (SELECT MIN(ph.finished_at) FROM player_history ph
+                   (SELECT MIN(NULLIF(ph.finished_at, '')) FROM player_history ph
                      WHERE ph.entity_type = 'tournament' AND ph.entity_id = t.id) AS fin,
                    t.created_at AS created_at
               FROM tournaments t

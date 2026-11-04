@@ -379,9 +379,20 @@ const _loginStore = reactiveStore({
       if (el) el.focus();
     });
   },
-  /** Core instance: plain demo URL (the visitor starts the sandbox themselves). */
+  /**
+   * Core instance: the demo site's admin page (the visitor starts the sandbox
+   * themselves). A bare demo URL gets /admin appended, because the demo root
+   * sends cold-start visitors without a token to /events instead.
+   */
   demoHref() {
-    return this.demoUrl || '';
+    if (!this.demoUrl) return '';
+    try {
+      const url = new URL(this.demoUrl);
+      if (url.pathname === '/' || url.pathname === '') url.pathname = '/admin';
+      return url.href;
+    } catch (_) {
+      return this.demoUrl;
+    }
   },
   /** Host of the demo site (for the "Opens {host}" note), or '' if unparsable. */
   demoHost() {
@@ -574,10 +585,11 @@ function updateAuthUI() {
   if (authStatus) {
     if (username) {
       const _onSubdomain = !!(typeof window !== 'undefined' && window.__ADMIN_SUBDOMAIN_CLUB__);
-      // Communities and clubs are core-site features: never offered on the demo instance.
+      // Communities, clubs and Player Hub profiles are core-site features:
+      // never offered on the demo instance.
       const _demoInstance = typeof isDemoInstance === 'function' && isDemoInstance();
       const adminBtn = isAdmin()
-        ? `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('players-hub')" title="${t('txt_admin_nav_players')}">${_ic('contact')} <span class="nav-btn-label">${t('txt_admin_nav_players')}</span></button>`
+        ? (_demoInstance ? '' : `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('players-hub')" title="${t('txt_admin_nav_players')}">${_ic('contact')} <span class="nav-btn-label">${t('txt_admin_nav_players')}</span></button>`)
           + `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('user-mgmt')" title="${t('txt_txt_user_management')}">${_ic('shield')} <span class="nav-btn-label">${t('txt_txt_users_tab')}</span></button>`
           + ((_onSubdomain || _demoInstance) ? '' : `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('communities')" title="Communities">${_ic('users')} <span class="nav-btn-label">${t('txt_comm_title')}</span></button>`)
         : '';

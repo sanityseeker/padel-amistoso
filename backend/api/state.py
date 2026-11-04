@@ -200,11 +200,14 @@ def _save_tournament(tid: str) -> bool:
 
     data = _tournaments[tid]
     persisted = True
+    previous_club_id: str | None = None
     try:
         blob = pickle.dumps(data["tournament"], protocol=pickle.HIGHEST_PROTOCOL)
         tv_raw = json.dumps(data["tv_settings"]) if data.get("tv_settings") else None
         email_raw = json.dumps(data["email_settings"]) if data.get("email_settings") else None
         with get_db() as conn:
+            previous = conn.execute("SELECT club_id FROM tournaments WHERE id = ?", (tid,)).fetchone()
+            previous_club_id = previous["club_id"] if previous else None
             conn.execute(
                 """
                 INSERT INTO tournaments
@@ -248,6 +251,14 @@ def _save_tournament(tid: str) -> bool:
         logger.warning("Could not save tournament %s: %s", tid, exc)
         persist_failed.set(True)
         persisted = False
+
+    if persisted and previous_club_id != data.get("club_id"):
+        # Moving a tournament between clubs moves its matches between the
+        # clubs' rating chains: replay both.
+        from .club_elo import recompute_club_elo  # noqa: PLC0415 — club_elo imports this module
+
+        for club_id in {previous_club_id, data.get("club_id")} - {None}:
+            recompute_club_elo(club_id)
 
     # Purge player secrets once the tournament enters the finished phase so
     # that old passphrases / QR tokens cannot be confused with new ones.

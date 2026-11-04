@@ -1752,11 +1752,8 @@ function _sortParticipantRows(selectEl) {
 
 function _buildGlobalStatsCard() {
   const withStats = _entries.filter(e => {
-    // Active entries are always shown in the tournaments card so the player
-    // can navigate them, but they should only contribute to the stats card
-    // when they actually belong to the currently selected scope. Without
-    // this guard, in-progress matches from other clubs/communities would
-    // leak into the totals as soon as a round is completed.
+    // /space already scopes entries; this guard keeps the totals scoped even
+    // if _entries briefly holds an unscoped list (e.g. right after create).
     if (_selectedClubId && e.club_id !== _selectedClubId) return false;
     if (!_selectedClubId && _selectedCommunityId && e.community_id !== _selectedCommunityId) return false;
     if (e.status === 'finished') return true;
@@ -2581,6 +2578,11 @@ async function _doCreate() {
     _jwt = data.access_token;
     _profile = data.profile;
     _entries = data.entries || [];
+    // The create response is unscoped; on a club subdomain or with a club /
+    // community selected, re-fetch so other scopes' events don't show.
+    if (_selectedStatsScope) {
+      try { await _fetchSpace(); } catch (_) {}
+    }
     _setPassphraseEmailedMsg(t('txt_player_passphrase_emailed', { email: data.profile.email }));
     _showPassphrase = true;
     _saveSession();
@@ -2670,10 +2672,11 @@ async function _doLink() {
   _successMsg = '';
   if (!entityId || !passphrase) return;
   try {
-    const entry = await _apiPost('/link', { entity_type: entityType, entity_id: entityId, passphrase }, _jwt);
-    _entries = [..._entries.filter(e => !(e.entity_type === entry.entity_type && e.entity_id === entry.entity_id)), entry];
+    await _apiPost('/link', { entity_type: entityType, entity_id: entityId, passphrase }, _jwt);
+    // Re-fetch instead of appending the response: it carries no club /
+    // community, so it can't be checked against the active scope.
+    await _fetchSpace();
     _successMsg = t('txt_player_link_success');
-    _saveSession();
     _render();
   } catch (err) {
     _errorMsg = err.message;

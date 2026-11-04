@@ -347,6 +347,10 @@ function _clubsRenderDetail() {
       <div class="player-codes-body">
         <div id="clubs-leaderboard-scope-bar"></div>
         <div id="clubs-leaderboard"></div>
+        <div class="clubs-lb-recalc">
+          <p class="muted-note">${t('txt_clubs_recalc_elo_help')}</p>
+          <button type="button" id="clubs-recalc-elo-btn" class="btn btn-warning btn-sm" onclick="withLoading(this, clubsRecalculateElo)">${_ic('refresh')} ${t('txt_clubs_recalc_elo')}</button>
+        </div>
       </div>
     </details>
   `;
@@ -2122,6 +2126,22 @@ async function clubsMergeHubMembers() {
 }
 
 // ─── Club leaderboard (ELO ranking across all members) ───
+
+/** Recalculate ELO for every tournament of the open club, then reload its ratings. */
+async function clubsRecalculateElo() {
+  if (!_activeClubId) return;
+  if (!confirm(t('txt_clubs_recalc_elo_confirm'))) return;
+  try {
+    const res = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/elo/recalculate`, { method: 'POST' });
+    _clubPlayers = await apiAuth(`/api/clubs/${encodeURIComponent(_activeClubId)}/players`).catch(() => _clubPlayers);
+    _clubsRenderPlayers();
+    _clubsRenderLeaderboard();
+    flashSuccess('clubs-recalc-elo-btn');
+    _showToast(t('txt_clubs_recalc_elo_done', { value: res.recalculated_tournaments }));
+  } catch (e) {
+    _showToast(t('txt_txt_elo_recalc_failed_value', { value: e.message }), 'error');
+  }
+}
 
 function clubsSortLeaderboard(col) {
   if (_clubsLeaderboardSort.col === col) {

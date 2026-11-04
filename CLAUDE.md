@@ -75,6 +75,11 @@ section.
     update stream), `routes_schema.py` (bracket diagram preview).
   - `elo_integration.py` / `elo_store.py` — wire the ELO engine into match completion
     and persist rating history.
+  - `club_elo.py` — each club's own rating chain, stored per player on
+    `player_elo_log` (`club_identity`, `club_elo_*`, `club_matches_after`); tier/manual
+    club ratings act as seeds; never touches community/global ratings. New scores are
+    rated alone from the players' latest club rows; history-rewriting changes (score
+    corrections, link changes, club moves/deletes) replay the whole club.
   - `backup.py` — periodic SQLite backup scheduler (started/stopped in the app lifespan).
   - `rate_limit.py`, `leaderboard_cache.py`, `push_events.py`, `push.py` — supporting
     infra for the above.

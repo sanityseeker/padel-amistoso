@@ -934,13 +934,16 @@ function _publicHeaderPages(current) {
   } else {
     pages.push({ key: 'events', href: '/events', label: t('txt_nav_events'), icon: _ic('trophy') });
   }
-  const initials = hasHubSession() ? hubProfileInitials() : '';
-  pages.push({
-    key: 'player',
-    href: '/player',
-    label: hasHubSession() ? t('txt_nav_my_hub') : t('txt_nav_player_space'),
-    icon: initials ? `<span class="public-avatar" aria-hidden="true">${esc(initials)}</span>` : _ic('user'),
-  });
+  // The Player Hub is a core-site feature: never offered on the demo instance.
+  if (!isDemoInstance()) {
+    const initials = hasHubSession() ? hubProfileInitials() : '';
+    pages.push({
+      key: 'player',
+      href: '/player',
+      label: hasHubSession() ? t('txt_nav_my_hub') : t('txt_nav_player_space'),
+      icon: initials ? `<span class="public-avatar" aria-hidden="true">${esc(initials)}</span>` : _ic('user'),
+    });
+  }
   if (current === 'admin' || hasAdminSession()) {
     pages.push({ key: 'admin', href: '/admin', label: t('txt_nav_admin'), icon: _ic('settings') });
   }

@@ -48,6 +48,7 @@ from .player_secret_store import (
     resolve_passphrase,
 )
 from .rate_limit import BoundedRateLimiter
+from .routes_clubs import ensure_club_roster_synced
 from .state import bump_tournament_version, get_tournament_data
 from .elo_recalc import mark_elo_dirty
 from .elo_store import (
@@ -610,7 +611,8 @@ def _build_active_entries(profile_id: str) -> list[PlayerSpaceEntry]:
             """
             SELECT rn.player_id, rn.player_name, rn.token,
                    r.id AS rid, r.name AS rname, r.alias AS ralias,
-                   r.sport, r.community_id AS rcommunity_id
+                   r.sport, r.community_id AS rcommunity_id,
+                   r.club_id AS rclub_id
             FROM registrants rn
             JOIN registrations r ON r.id = rn.registration_id
             WHERE rn.profile_id = ?
@@ -636,6 +638,7 @@ def _build_active_entries(profile_id: str) -> list[PlayerSpaceEntry]:
                     entity_deleted=False,
                     finished_at=None,
                     community_id=row["rcommunity_id"],
+                    club_id=row["rclub_id"],
                 )
             )
 
@@ -984,14 +987,10 @@ def _filter_entries_by_scope(
 ) -> list[PlayerSpaceEntry]:
     """Restrict entries to those matching the active stats scope.
 
-    Active entries (in-progress tournaments and open registrations) are
-    always preserved so the "what's going on now" list never disappears
-    when a user picks a club — many active events have no season/club link
-    yet, but the player still wants to see them.
-
-    Finished entries are filtered:
-    - ``club_id`` keeps only tournament entries whose season belongs to that
-      club (registrations have no club affiliation and are dropped).
+    Applies to active and finished entries alike, so a club subdomain (or a
+    club/community picked in the Hub scope selector) never lists events from
+    other clubs or communities:
+    - ``club_id`` keeps only entries (tournaments and lobbies) of that club.
     - ``community_id`` keeps only entries belonging to that community.
     - Neither set returns the list unchanged.
     """
@@ -999,8 +998,6 @@ def _filter_entries_by_scope(
         return entries
 
     def _keep(entry: PlayerSpaceEntry) -> bool:
-        if entry.status == ParticipationStatus.ACTIVE:
-            return True
         if club_id:
             return entry.club_id == club_id
         return entry.community_id == community_id
@@ -2025,6 +2022,7 @@ def _leaderboard_for_sport(sport: str, community_id: str = "", club_id: str | No
     are aggregated.
     """
     if club_id:
+        ensure_club_roster_synced(club_id)
         with get_db() as conn:
             rows = conn.execute(
                 """
@@ -2060,7 +2058,7 @@ def _leaderboard_for_sport(sport: str, community_id: str = "", club_id: str | No
                 ),
                 scoped AS (
                     SELECT lp.profile_id AS profile_id,
-                           l.elo_after   AS elo_after,
+                           COALESCE(l.club_elo_after, l.elo_after) AS elo_after,
                            l.is_manual   AS is_manual,
                            l.updated_at  AS updated_at,
                            l.match_order AS match_order
@@ -2330,12 +2328,33 @@ def _get_player_communities(profile_id: str) -> list[dict]:
 def _get_player_clubs(profile_id: str) -> list[PlayerClubSummary]:
     """Return clubs where the profile is a visible member.
 
-    Membership is taken from ``profile_club_elo`` (visible / non-hidden rows).
+    Membership is taken from ``profile_club_elo`` (visible / non-hidden rows),
+    after syncing the roster of every club the profile has played in.
     Per-sport ELO and match counts are derived live from ``player_elo_log``
     joined to ``tournaments`` filtered by ``tournaments.club_id`` so they
     reflect actual play in each club. Sports whose ``profile_club_elo`` row
     is hidden are masked back to defaults.
     """
+    with get_db() as conn:
+        played_club_ids = [
+            r["club_id"]
+            for r in conn.execute(
+                """
+                SELECT DISTINCT t.club_id
+                  FROM tournaments t
+                  JOIN (
+                       SELECT tournament_id FROM player_secrets WHERE profile_id = ?
+                       UNION
+                       SELECT entity_id FROM player_history WHERE profile_id = ? AND entity_type = 'tournament'
+                  ) lp ON lp.tournament_id = t.id
+                 WHERE t.club_id IS NOT NULL
+                """,
+                (profile_id, profile_id),
+            ).fetchall()
+        ]
+    for played_club_id in played_club_ids:
+        ensure_club_roster_synced(played_club_id)
+
     with get_db() as conn:
         member_rows = conn.execute(
             """
@@ -2383,7 +2402,7 @@ def _get_player_clubs(profile_id: str) -> list[PlayerClubSummary]:
             scoped AS (
                 SELECT COALESCE(t.club_id, l.tournament_id) AS club_id,
                        l.sport        AS sport,
-                       l.elo_after    AS elo_after,
+                       COALESCE(l.club_elo_after, l.elo_after) AS elo_after,
                        l.is_manual    AS is_manual,
                        l.updated_at   AS updated_at,
                        l.match_order  AS match_order
@@ -2512,7 +2531,7 @@ def _get_profile_club_elo(profile_id: str, club_id: str) -> dict[str, float | in
             ),
             scoped AS (
                 SELECT l.sport,
-                       l.elo_after,
+                       COALESCE(l.club_elo_after, l.elo_after) AS elo_after,
                        l.is_manual,
                        l.updated_at,
                        l.match_order

@@ -42,11 +42,15 @@ from .db import (
     get_shared_club_ids,
     remove_club_co_editor,
 )
+from .club_elo import deferred_club_elo, recompute_club_elo
+from .elo_integration import elo_recalculate_tournament
 from .elo_store import (
     _profile_player_ids,
+    get_profile_elo,
     get_profile_recent_elo_logs,
     log_manual_elo_adjustment,
     refresh_profile_elo,
+    tournaments_in_chronological_order,
 )
 from .player_merge import (
     materialize_participants,
@@ -1052,7 +1056,7 @@ def _compute_club_leaderboard_rows_uncached(conn, club_id: str) -> list[dict]:
         scoped AS (
             SELECT lp.profile_id  AS profile_id,
                    l.sport        AS sport,
-                   l.elo_after    AS elo_after,
+                   COALESCE(l.club_elo_after, l.elo_after) AS elo_after,
                    l.is_manual    AS is_manual,
                    l.updated_at   AS updated_at,
                    l.match_order  AS match_order
@@ -1154,6 +1158,7 @@ def get_club_public_leaderboard(
     auth-gated and must not be stored by shared proxies).
     """
     _get_club(club_id)
+    ensure_club_roster_synced(club_id)
 
     def _project(rows: list[dict], target_sport: str) -> list[dict]:
         entries = [
@@ -1678,21 +1683,21 @@ async def delete_tier(club_id: str, tier_id: str, user: User = Depends(get_curre
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{club_id}/players", response_model=list[ClubPlayerOut])
-def list_club_players(
-    club_id: str,
-    sport: str = Query(default="", pattern=r"^(|padel|tennis)$"),
-    user: User = Depends(get_current_user),
-) -> list[ClubPlayerOut]:
-    """List club players with their club-local ELO and tier info.
+def ensure_club_roster_synced(club_id: str) -> None:
+    """Add this club's tournament participants to its roster (``profile_club_elo``).
 
-    When ``sport`` is provided, only players visible for that sport are
-    returned. This is used by tournament creation so hidden padel/tennis club
-    players are not proposed for the wrong sport.
+    The roster is filled lazily, so every reader of club membership — the admin
+    roster, the club page leaderboard and the Player Hub club views — calls this
+    first; otherwise a player who has played club tournaments stays missing
+    until an organiser opens the admin roster. Cheap when nothing changed (a
+    version check of two COUNT(*) lookups). Unknown clubs are a no-op.
     """
-    club = _get_club(club_id)
-    # This handler runs in the request threadpool; the participant sync
-    # creates ghost profiles, so concurrent calls must not both run it.
+    with get_db() as conn:
+        club = conn.execute("SELECT community_id FROM clubs WHERE id = ?", (club_id,)).fetchone()
+    if club is None:
+        return
+    # Callers run in the request threadpool; the participant sync creates
+    # ghost profiles, so concurrent calls must not both run it.
     with _CLUB_PLAYERS_SYNC_LOCK:
         with get_db() as conn:
             # Skip the (relatively heavy) participant sync when nothing relevant
@@ -1708,7 +1713,7 @@ def list_club_players(
                     _SYNC_VERSION_CACHE[club_id] = version
 
         # Rebuild the ghosts' ratings outside the transaction (to avoid nested
-        # DB connections) so the club rows below seed from them; the flush after
+        # DB connections) so the club rows seed from them; the flush after
         # this request replays later tournaments if a ghost's chain moved seeds.
         if needs_elo_transfer:
             for profile_id, _player_id in needs_elo_transfer:
@@ -1721,6 +1726,22 @@ def list_club_players(
                     )
                 # Refresh sync version so the next call short-circuits.
                 _SYNC_VERSION_CACHE[club_id] = _club_sync_version(conn, club_id)
+
+
+@router.get("/{club_id}/players", response_model=list[ClubPlayerOut])
+def list_club_players(
+    club_id: str,
+    sport: str = Query(default="", pattern=r"^(|padel|tennis)$"),
+    user: User = Depends(get_current_user),
+) -> list[ClubPlayerOut]:
+    """List club players with their club-local ELO and tier info.
+
+    When ``sport`` is provided, only players visible for that sport are
+    returned. This is used by tournament creation so hidden padel/tennis club
+    players are not proposed for the wrong sport.
+    """
+    _get_club(club_id)
+    ensure_club_roster_synced(club_id)
 
     with get_db() as conn:
         leaderboard_rows = _compute_club_leaderboard_rows(conn, club_id)
@@ -2656,28 +2677,42 @@ def _record_club_elo_override(
     snapshot, so updating the snapshot alone has no visible effect once the
     player has any logged match.  Writing an ``is_manual`` log row (keyed on the
     club id) makes the override the latest rating in club scope without touching
-    the match count, and lists it in the player's ELO history.
+    the match count, and lists it in the player's ELO history.  The club's own
+    rating chain (:mod:`.club_elo`) starts the player's next club match from it.
 
-    Players with no linked tournament player id cannot be logged (nothing to
-    join on); they also have no logged matches, so the snapshot is what shows.
+    A profile that has never played is logged under its profile id: no view
+    lists it (they join on tournament player ids), but the club chain still
+    starts the player's first club match from it.
     """
     with get_db() as conn:
-        current = next(
-            (
-                r["elo"]
-                for r in _compute_club_leaderboard_rows_uncached(conn, club_id)
-                if r["profile_id"] == profile_id and r["sport"] == sport
-            ),
-            None,
-        )
         player_ids = _profile_player_ids(conn, profile_id)
-    if not player_ids:
-        return
-    before = float(current) if current is not None else float(new_elo)
-    if abs(before - float(new_elo)) < 1e-9:
-        return
+        log_ids = [*player_ids, profile_id]
+        placeholders = ",".join("?" for _ in log_ids)
+        # The current club rating is the latest club-scope log row.  Callers
+        # have already written the new value to the ``profile_club_elo``
+        # snapshot, so the snapshot cannot tell whether anything changed.
+        latest = conn.execute(
+            f"""
+            SELECT COALESCE(l.club_elo_after, l.elo_after) AS elo
+              FROM player_elo_log l
+         LEFT JOIN tournaments t ON t.id = l.tournament_id
+             WHERE l.sport = ? AND l.player_id IN ({placeholders})
+               AND (t.club_id = ? OR (l.is_manual = 1 AND l.tournament_id = ?))
+          ORDER BY l.updated_at DESC, l.match_order DESC
+             LIMIT 1
+            """,
+            [sport, *log_ids, club_id, club_id],
+        ).fetchone()
+    if latest is not None:
+        before = float(latest["elo"])
+        if abs(before - float(new_elo)) < 1e-9:
+            return
+    else:
+        # No club history: the club chain would start from the community rating.
+        community_elo = get_profile_elo(profile_id, community_id=_get_club(club_id)["community_id"])
+        before = float(community_elo[f"elo_{sport}"])
     log_manual_elo_adjustment(
-        player_id=player_ids[0],
+        player_id=player_ids[0] if player_ids else profile_id,
         profile_id=profile_id,
         sport=sport,
         elo_before=before,
@@ -2772,6 +2807,33 @@ async def assign_player_tier(
         "tier_id": req.tier_id,
         "applied_base_elo": req.apply_base_elo and tier is not None,
     }
+
+
+@router.post("/{club_id}/elo/recalculate")
+async def recalculate_club_elo(club_id: str, user: User = Depends(get_current_user)) -> dict:
+    """Recalculate ELO for every tournament of the club, then the club's own ratings.
+
+    Replays the club's tournaments in chronological order, like the site-wide
+    "Recalculate all tournaments", and then replays the club rating chain once.
+    Restricted to the club owner, co-editors and site admins.
+    """
+    club = _get_club(club_id)
+    _require_club_editor(club, user)
+    from . import state  # noqa: PLC0415
+
+    ordered = await asyncio.to_thread(tournaments_in_chronological_order)
+    club_tids = [tid for tid in ordered if (state._tournaments.get(tid) or {}).get("club_id") == club_id]
+    recalculated = 0
+    with deferred_club_elo():
+        for tid in club_tids:
+            async with state.get_tournament_lock(tid):
+                if state._tournaments.get(tid, {}).get("club_id") != club_id:
+                    continue
+                await asyncio.to_thread(elo_recalculate_tournament, tid)
+                recalculated += 1
+        # Also when no tournament had matches to replay (e.g. only tier ratings).
+        recompute_club_elo(club_id)
+    return {"ok": True, "recalculated_tournaments": recalculated}
 
 
 # ---------------------------------------------------------------------------

@@ -596,7 +596,10 @@ async def serve_register_legacy(slug: str) -> Response:
 
 
 @app.get("/player")
-async def serve_player() -> Response:
+async def serve_player(request: Request) -> Response:
+    # The Player Hub is a core-site feature: demo-instance visitors go to Events.
+    if config.DEMO_INSTANCE:
+        return _redirect_to_events(request)
     return _html_page("player.html", "<h1>Player Hub not found</h1>")
 
 

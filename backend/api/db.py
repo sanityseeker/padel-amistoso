@@ -896,6 +896,20 @@ def init_db() -> None:
             conn.execute("ALTER TABLE player_elo_log ADD COLUMN adjustment_reason TEXT")
         if "adjusted_by" not in elo_log_cols:
             conn.execute("ALTER TABLE player_elo_log ADD COLUMN adjusted_by TEXT")
+        # Per-club rating chain (see api/club_elo.py); NULL outside club tournaments.
+        if "club_elo_before" not in elo_log_cols:
+            conn.execute("ALTER TABLE player_elo_log ADD COLUMN club_elo_before REAL")
+        if "club_elo_after" not in elo_log_cols:
+            conn.execute("ALTER TABLE player_elo_log ADD COLUMN club_elo_after REAL")
+        if "club_matches_after" not in elo_log_cols:
+            conn.execute("ALTER TABLE player_elo_log ADD COLUMN club_matches_after INTEGER")
+        if "club_identity" not in elo_log_cols:
+            conn.execute("ALTER TABLE player_elo_log ADD COLUMN club_identity TEXT")
+        # A player's latest club row, read when rating each new club match.
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_player_elo_log_club_identity"
+            " ON player_elo_log (club_identity, sport, updated_at DESC)"
+        )
 
         if "profile_club_elo" not in all_tables:
             # Backfill existing club data: copy community ELO into club-local ELO for each existing club

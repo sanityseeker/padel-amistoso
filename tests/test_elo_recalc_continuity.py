@@ -293,3 +293,24 @@ class TestRecalculateAllEndpoint:
     def test_recalculate_all_requires_admin(self, client, alice_headers):
         r = client.post("/api/tournaments/elo/recalculate-all", headers=alice_headers)
         assert r.status_code == 403
+
+    def test_recalculate_all_keeps_unfinished_tournaments_independent(self, client, auth_headers, monkeypatch):
+        """Live stats of unfinished tournaments (``finished_at = ''``) are not earlier results.
+
+        Regression: both unfinished tournaments seeded each other on recalculation,
+        double-counting a linked player's live results.
+        """
+        from backend.api import state as state_mod
+        from tests.test_club_elo import _REAL_SAVE_TOURNAMENT, _log, _new_tournament, _play_rounds
+
+        monkeypatch.setattr(state_mod, "_save_tournament", _REAL_SAVE_TOURNAMENT)
+        alice = _insert_profile("Alice")
+        t1, ids1 = _new_tournament(client, auth_headers, None, {"Alice": alice})
+        _play_rounds(client, auth_headers, t1, "Alice")
+        t2, ids2 = _new_tournament(client, auth_headers, None, {"Alice": alice})
+        _play_rounds(client, auth_headers, t2, "Alice")
+        live = {t1: _log(t1, ids1["Alice"]), t2: _log(t2, ids2["Alice"])}
+
+        r = client.post("/api/tournaments/elo/recalculate-all", headers=auth_headers)
+        assert r.status_code == 200, r.text
+        assert {t1: _log(t1, ids1["Alice"]), t2: _log(t2, ids2["Alice"])} == live

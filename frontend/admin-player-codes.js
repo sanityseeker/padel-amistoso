@@ -10,6 +10,10 @@ let _playerSecrets = {};
  * after _hubLinkProfile / _hubUnlink so the markup stays consistent.
  */
 function _renderHubLinkCellInner(pid, info) {
+  // No Player Hub profiles on the demo instance: keep the column, grey it out.
+  if (isDemoInstance()) {
+    return `<button type="button" class="btn btn-sm player-codes-action-btn pc-hub-link-btn" disabled title="${escAttr(t('txt_demo_not_available'))}">${esc(t('txt_hub_link_btn'))}</button>`;
+  }
   const _isLinked = Boolean(info && info.profile_id);
   const _isGhost  = _isLinked && String(info.profile_id).startsWith('ghost_');
   if (_isLinked && !_isGhost) {

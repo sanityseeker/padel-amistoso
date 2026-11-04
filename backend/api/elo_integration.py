@@ -82,6 +82,10 @@ def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
         sync_live_elos_to_profiles(tid, sport)
     except Exception:
         logger.exception("Failed to update ELO for match %s in tournament %s", match.id, tid)
+        return
+    from .club_elo import rate_new_club_match  # noqa: PLC0415 — club_elo imports this module
+
+    rate_new_club_match(tid, match, sport)
 
 
 def elo_recalculate_tournament(tournament_id: str, reseed_player_ids: Collection[str] = ()) -> None:
@@ -161,6 +165,8 @@ def elo_recalculate_tournament(tournament_id: str, reseed_player_ids: Collection
         refresh_profiles_after_tournament(tournament_id, sport)
     except Exception:
         logger.exception("Failed to recalculate ELO for tournament %s", tournament_id)
+        return
+    _recompute_club_elo(tournament_id)
 
 
 def elo_init_tournament(tournament_id: str, player_ids: list[str], sport: str) -> None:
@@ -192,6 +198,13 @@ def elo_finish_tournament(tournament_id: str) -> None:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _recompute_club_elo(tournament_id: str) -> None:
+    """Replay the club chain of *tournament_id*'s club, if it has one."""
+    from .club_elo import recompute_club_elo_for_tournaments  # noqa: PLC0415 — club_elo imports this module
+
+    recompute_club_elo_for_tournaments([tournament_id])
 
 
 def _extract_completed_matches(tournament: object, ttype: str) -> list[Match]:

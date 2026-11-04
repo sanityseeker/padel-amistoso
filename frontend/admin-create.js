@@ -1113,6 +1113,8 @@ function renderContactFields(mode) {
   // ephemeral) — grey out the whole section with a hint instead of hiding it.
   const _demo = typeof isDemoUser === 'function' && isDemoUser();
   const _demoAttr = _demo ? ` disabled title="${escAttr(t('txt_demo_not_available'))}"` : '';
+  // No Player Hub profiles on the demo instance (even for its admin).
+  const _hubAttr = (_demo || isDemoInstance()) ? ` disabled title="${escAttr(t('txt_demo_not_available'))}"` : ` title="${t('txt_hub_link')}"`;
   let html = _demo ? `<p class="demo-disabled-hint">${t('txt_demo_not_available')}</p>` : '';
   html += '<div class="contact-grid">';
   names.forEach(name => {
@@ -1123,7 +1125,7 @@ function renderContactFields(mode) {
     html += `<label title="${escaped}">${escaped}</label>`;
     html += `<input type="email" class="create-contact-email" data-mode="${mode}" data-key="${escaped}" value="${esc(emailVal)}" placeholder="${t('txt_contact_email_placeholder')}" oninput="_participantEmails['${mode}'][this.dataset.key]=this.value.trim()"${_demoAttr}>`;
     html += `<input type="text" class="create-contact-info" data-mode="${mode}" data-key="${escaped}" value="${esc(contactVal)}" placeholder="${t('txt_contact_info_placeholder')}" oninput="_participantContacts['${mode}'][this.dataset.key]=this.value.trim()"${_demoAttr}>`;
-    html += `<button type="button" class="contact-hub-btn"${_demoAttr || ` title="${t('txt_hub_link')}"`} onclick="_createHubOpen('${escAttr(mode)}','${escAttr(name)}')">${_ic('link')}</button>`;
+    html += `<button type="button" class="contact-hub-btn"${_hubAttr} onclick="_createHubOpen('${escAttr(mode)}','${escAttr(name)}')">${_ic('link')}</button>`;
     html += `</div>`;
   });
   html += '</div>';

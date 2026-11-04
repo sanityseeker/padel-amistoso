@@ -385,6 +385,19 @@ class TestDemoInstanceHtmlClass:
         assert "demo-instance" not in r.text.split("<head>", 1)[0]
 
 
+class TestDemoPlayerHubPage:
+    """The Player Hub is a core-instance feature; the demo instance sends /player to Events."""
+
+    def test_player_redirects_to_events_on_demo_instance(self, client, demo_instance):
+        r = client.get("/player", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/events"
+
+    def test_player_served_on_core_instance(self, client):
+        r = client.get("/player", follow_redirects=False)
+        assert r.status_code == 200
+
+
 class TestDemoClubSubdomains:
     """Club subdomains are a core-instance feature; the demo instance refuses them."""
 
