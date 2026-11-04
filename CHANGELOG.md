@@ -1,3 +1,9 @@
+## v2.1.1 (2026-11-04)
+
+### Fix
+
+- **clubs**: keep new events in their club's community, tidy club admin UI
+
 ## v2.1.0 (2026-11-04)
 
 ### Feat
