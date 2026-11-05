@@ -547,6 +547,9 @@ class StartGroupPlayoffsRequest(BaseModel):
     espejo_split: bool = False
     oro_player_ids: list[str] | None = None
     plata_player_ids: list[str] | None = None
+    # External participants per bracket (split mode replaces ``extra_participants``).
+    oro_extra_participants: list[ExternalParticipant] | None = None
+    plata_extra_participants: list[ExternalParticipant] | None = None
     # Optional 3rd-place match in the Plata bracket (``third_place`` applies to Oro).
     plata_third_place: bool = False
 
@@ -555,8 +558,20 @@ class StartGroupPlayoffsRequest(BaseModel):
         if self.espejo_split:
             if self.advancing_player_ids is not None:
                 raise ValueError("advancing_player_ids cannot be used with espejo_split; send oro/plata lists")
-        elif self.oro_player_ids or self.plata_player_ids or self.plata_third_place:
-            raise ValueError("oro_player_ids / plata_player_ids / plata_third_place require espejo_split")
+            if self.extra_participants:
+                raise ValueError(
+                    "extra_participants cannot be used with espejo_split; send oro/plata_extra_participants"
+                )
+        elif (
+            self.oro_player_ids
+            or self.plata_player_ids
+            or self.oro_extra_participants
+            or self.plata_extra_participants
+            or self.plata_third_place
+        ):
+            raise ValueError(
+                "oro/plata player ids, oro/plata extra participants and plata_third_place require espejo_split"
+            )
         return self
 
 

@@ -367,6 +367,8 @@ class GroupPlayoffTournament:
         espejo_split: bool = False,
         oro_player_ids: list[str] | None = None,
         plata_player_ids: list[str] | None = None,
+        oro_extra_players: list[tuple[str, float]] | None = None,
+        plata_extra_players: list[tuple[str, float]] | None = None,
         plata_third_place: bool = False,
     ) -> None:
         """Seed the play‑off bracket from group results.
@@ -418,6 +420,9 @@ class GroupPlayoffTournament:
             ids in neither list are excluded.  ``advancing_player_ids``,
             ``extra_players``, ``playoff_teams``, ``double_elimination`` and
             ``num_winners != 1`` are rejected in this mode.
+        oro_extra_players / plata_extra_players : list[tuple[str, float]] | None
+            Split mode only: external participants of the Oro / Plata
+            bracket, ``(name, score)`` like ``extra_players``.
         plata_third_place : bool
             Optional 3rd-place match in the Plata bracket (split mode only).
         """
@@ -430,6 +435,8 @@ class GroupPlayoffTournament:
             self._start_split_playoffs(
                 oro_player_ids=oro_player_ids,
                 plata_player_ids=plata_player_ids,
+                oro_extra_players=oro_extra_players,
+                plata_extra_players=plata_extra_players,
                 advancing_player_ids=advancing_player_ids,
                 extra_players=extra_players,
                 double_elimination=double_elimination,
@@ -439,7 +446,7 @@ class GroupPlayoffTournament:
                 plata_third_place=plata_third_place,
             )
             return
-        if oro_player_ids or plata_player_ids or plata_third_place:
+        if oro_player_ids or plata_player_ids or oro_extra_players or plata_extra_players or plata_third_place:
             raise RuntimeError("Oro/Plata options require the split Espejo mode")
 
         prev_double_elimination = self.double_elimination
@@ -534,6 +541,8 @@ class GroupPlayoffTournament:
         *,
         oro_player_ids: list[str] | None,
         plata_player_ids: list[str] | None,
+        oro_extra_players: list[tuple[str, float]] | None,
+        plata_extra_players: list[tuple[str, float]] | None,
         advancing_player_ids: list[str] | None,
         extra_players: list[tuple[str, float]] | None,
         double_elimination: bool | None,
@@ -546,7 +555,7 @@ class GroupPlayoffTournament:
         if advancing_player_ids is not None:
             raise RuntimeError("advancing_player_ids cannot be combined with the Oro/Plata split; use oro/plata lists")
         if extra_players:
-            raise RuntimeError("External participants are not supported in the Oro/Plata split")
+            raise RuntimeError("Use per-bracket external participants (Oro / Plata) in the split")
         if playoff_teams is not None:
             raise RuntimeError("Pre-composed playoff teams are not supported in the Oro/Plata split")
         if double_elimination:
@@ -577,15 +586,23 @@ class GroupPlayoffTournament:
             for rank_idx, row in enumerate(g.standings(), start=1):
                 player_rank[row.player.id] = rank_idx
 
-        brackets: list[tuple[str, list[str], bool]] = [
-            ("Oro", oro_ids, third_place),
-            ("Plata", plata_ids, plata_third_place),
+        brackets: list[tuple[str, list[str], list[tuple[str, float]], bool]] = [
+            ("Oro", oro_ids, list(oro_extra_players or []), third_place),
+            ("Plata", plata_ids, list(plata_extra_players or []), plata_third_place),
         ]
         seeded: list[list[list[Player]]] = []
-        for label, ids, want_third in brackets:
-            if not self.team_mode and len(ids) % 2 != 0:
-                raise RuntimeError(f"{label} bracket needs an even number of players to form teams (got {len(ids)})")
+        for label, ids, extras, want_third in brackets:
             players = [player_map[pid] for pid in ids]
+            # External participants: score seeds as wins, rank defaults to last (999).
+            for name, ext_score in extras:
+                ext = Player(name=name)
+                players.append(ext)
+                player_map[ext.id] = ext
+                scores[ext.id] = (float(ext_score), 0.0, 0.0, 0.0)
+            if not self.team_mode and len(players) % 2 != 0:
+                raise RuntimeError(
+                    f"{label} bracket needs an even number of players to form teams (got {len(players)})"
+                )
             teams = self._form_seeded_teams(
                 players,
                 scores=scores,

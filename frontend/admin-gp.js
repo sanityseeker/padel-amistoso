@@ -60,17 +60,6 @@ async function renderGP() {
     const groupFormatLabel = _gpScoreMode['gp-group'] === 'sets' ? t('txt_txt_sets') : t('txt_txt_points_label');
     html += _renderChampionAlerts(status);
 
-    if (status.phase === 'finished') {
-      html += `<div class="card">`;
-      html += `<h3>${t('txt_txt_export_outcome')}</h3>`;
-      html += `<label class="switch-label"><input type="checkbox" id="export-include-history" checked><span class="switch-track"></span>${t('txt_txt_include_match_history')}</label>`;
-      html += `<div class="export-actions-row">`;
-      html += `<button type="button" class="btn btn-primary" onclick="exportTournamentOutcome('html')">${t('txt_txt_export_html')}</button>`;
-      html += `<button type="button" class="btn btn-muted" onclick="exportTournamentOutcome('pdf')">${t('txt_txt_export_pdf')}</button>`;
-      html += `</div>`;
-      html += `</div>`;
-    }
-
     const shouldCollapseGroups = status.phase !== 'groups';
     if (shouldCollapseGroups) {
       html += `<details id="gp-group-stage-details" class="card"><summary>${t('txt_txt_group_stage_results_format_value', { value: groupFormatLabel })}</summary>`;
@@ -196,6 +185,7 @@ async function renderGP() {
       scoringStages,
       playerSecrets,
       collaborators: collabData?.collaborators || [],
+      exportPanel: { finished: status.phase === 'finished', hasBracket: status.phase !== 'groups' },
     });
 
     if (currentTid !== _renderTid) return;
@@ -344,17 +334,6 @@ async function renderPO() {
 
     html += _renderChampionAlerts(status);
 
-    if (status.phase === 'finished') {
-      html += `<div class="card">`;
-      html += `<h3>${t('txt_txt_export_outcome')}</h3>`;
-      html += `<label class="switch-label"><input type="checkbox" id="export-include-history" checked><span class="switch-track"></span>${t('txt_txt_include_match_history')}</label>`;
-      html += `<div class="export-actions-row">`;
-      html += `<button type="button" class="btn btn-primary" onclick="exportTournamentOutcome('html')">${t('txt_txt_export_html')}</button>`;
-      html += `<button type="button" class="btn btn-muted" onclick="exportTournamentOutcome('pdf')">${t('txt_txt_export_pdf')}</button>`;
-      html += `</div>`;
-      html += `</div>`;
-    }
-
     html += _renderAdminBracketCard(`/api/tournaments/${currentTid}/po/playoffs-schema`, tvSettings, { isEspejo: status.espejo === true });
     html += _renderPlayoffMatchesByRound(
       playoffs.matches || [],
@@ -379,6 +358,7 @@ async function renderPO() {
       scoringStages: poScoringStages,
       playerSecrets,
       collaborators: collabData?.collaborators || [],
+      exportPanel: { finished: status.phase === 'finished', hasStandings: false, hasBracket: true },
     });
 
     if (currentTid !== _renderTid) return;
@@ -1669,6 +1649,7 @@ async function proposeGpPlayoffs() {
 let _gpPlayoffFormat = 'single';   // 'single' | 'double' | 'espejo_split' (Oro / Plata replaces classic Espejo here)
 let _gpSplitAssign = {};           // player_id -> 'oro' | 'plata' | 'out'
 let _gpSplitCutoff = 1;            // quick-helper value: places 1..N go to Oro
+let _gpExternalSide = 'oro';       // bracket preselected for the next external participant (split mode)
 
 /** Recommended rows grouped by group name, each group in group-rank order. */
 function _gpRowsByGroup() {
@@ -1718,6 +1699,7 @@ function _gpSplitCounts() {
     const side = _gpSplitAssign[r.player_id];
     if (side === 'oro' || side === 'plata') n[side] += 1;
   }
+  for (const ep of _gpExternalParticipants) n[ep.side === 'plata' ? 'plata' : 'oro'] += 1;
   const entries = v => (_gpTeamMode ? v : Math.floor(v / 2));
   return { players: n, oro: entries(n.oro), plata: entries(n.plata) };
 }
@@ -1765,6 +1747,42 @@ function _renderGpSplitEditor() {
   }
   html += `</div>`;
   html += `<div class="gp-split-summary" id="gp-split-summary" aria-live="polite"></div>`;
+  return html;
+}
+
+/** Gold / Silver `<select>` options for an external participant (split mode). */
+function _gpSplitSideOptions(cur) {
+  return [['oro', 'txt_split_gold'], ['plata', 'txt_split_silver']]
+    .map(([val, key]) => `<option value="${val}"${cur === val ? ' selected' : ''}>${esc(t(key))}</option>`).join('');
+}
+
+/** External participants (shared by all formats; split mode adds a Gold / Silver picker per entry). */
+function _renderGpExternalSection(isSplit) {
+  let html = `<div class="gp-external-section">`;
+  html += `<h3>${t('txt_txt_external_participants')}</h3>`;
+  html += `<p class="gp-external-hint">${t(isSplit ? 'txt_split_external_hint' : 'txt_txt_external_participants_hint')}</p>`;
+  html += `<div id="gp-external-list">`;
+  for (let i = 0; i < _gpExternalParticipants.length; i++) {
+    const ep = _gpExternalParticipants[i];
+    html += `<div class="gp-external-row">`;
+    html += `<span class="gp-external-name">★ ${esc(ep.name)}</span>`;
+    html += `<input type="number" value="${ep.score}" class="playoff-editor-score-input" inputmode="numeric" pattern="[0-9]*" aria-label="${escAttr(t('txt_txt_score'))}" onchange="_gpUpdateExternalScore(${i}, this.value)">`;
+    if (isSplit) {
+      html += `<select class="gp-split-select" aria-label="${escAttr(ep.name)}" onchange="_gpSetExternalSide(${i}, this.value)">${_gpSplitSideOptions(ep.side)}</select>`;
+    }
+    html += `<button type="button" class="btn btn-sm btn-muted playoff-editor-remove-btn" onclick="_gpRemoveExternal(${i})">✕</button>`;
+    html += `</div>`;
+  }
+  html += `</div>`;
+  html += `<div class="gp-external-add-row">`;
+  html += `<input type="text" id="gp-external-name" placeholder="${t('txt_txt_add_external_participant')}" onkeydown="if(event.key==='Enter')_gpAddExternal()">`;
+  html += `<input type="number" id="gp-external-score" class="playoff-editor-score-input" inputmode="numeric" pattern="[0-9]*" placeholder="${t('txt_txt_score')}" value="0">`;
+  if (isSplit) {
+    html += `<select id="gp-external-side" class="gp-split-select" aria-label="${escAttr(t('txt_split_external_bracket'))}">${_gpSplitSideOptions(_gpExternalSide)}</select>`;
+  }
+  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_gpAddExternal()">+</button>`;
+  html += `</div>`;
+  html += `</div>`;
   return html;
 }
 
@@ -1816,28 +1834,8 @@ function _renderGpPlayoffEditor() {
     html += `</div>`;
   }
   html += `</div>`;
-
-  // External participants section
-  html += `<div class="gp-external-section">`;
-  html += `<h3>${t('txt_txt_external_participants')}</h3>`;
-  html += `<p class="gp-external-hint">${t('txt_txt_external_participants_hint')}</p>`;
-  html += `<div id="gp-external-list">`;
-  for (let i = 0; i < _gpExternalParticipants.length; i++) {
-    const ep = _gpExternalParticipants[i];
-    html += `<div class="gp-external-row">`;
-    html += `<span class="gp-external-name">★ ${esc(ep.name)}</span>`;
-    html += `<input type="number" value="${ep.score}" class="playoff-editor-score-input" inputmode="numeric" pattern="[0-9]*" onchange="_gpUpdateExternalScore(${i}, this.value)">`;
-    html += `<button type="button" class="btn btn-sm btn-muted playoff-editor-remove-btn" onclick="_gpRemoveExternal(${i})">✕</button>`;
-    html += `</div>`;
   }
-  html += `</div>`;
-  html += `<div class="gp-external-add-row">`;
-  html += `<input type="text" id="gp-external-name" placeholder="${t('txt_txt_add_external_participant')}" onkeydown="if(event.key==='Enter')_gpAddExternal()">`;
-  html += `<input type="number" id="gp-external-score" class="playoff-editor-score-input" inputmode="numeric" pattern="[0-9]*" placeholder="${t('txt_txt_score')}" value="0">`;
-  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_gpAddExternal()">+</button>`;
-  html += `</div>`;
-  html += `</div>`;
-  }
+  html += _renderGpExternalSection(isSplit);
   // Number of winners (single elimination) + optional 3rd-place match
   html += `<div class="gp-format-row" id="gp-winners-row">`;
   html += `<div class="form-group"><label for="gp-num-winners">${t('txt_num_winners')}</label><select id="gp-num-winners" onchange="_gpWinnerControlsChanged('gp')"><option value="1">${esc(t('txt_num_winners_champion'))}</option></select>`;
@@ -2158,7 +2156,10 @@ function _gpAddExternal() {
   const name = (input?.value || '').trim();
   if (!name) return;
   const score = parseInt(scoreInput?.value || '0', 10) || 0;
-  _gpExternalParticipants.push({ name, score });
+  // `side` only matters for the Oro / Plata split; other formats ignore it.
+  const sideSel = document.getElementById('gp-external-side');
+  if (sideSel) _gpExternalSide = sideSel.value === 'plata' ? 'plata' : 'oro';
+  _gpExternalParticipants.push({ name, score, side: _gpExternalSide });
   input.value = '';
   if (scoreInput) scoreInput.value = '0';
   const section = document.getElementById('gp-playoffs-section');
@@ -2174,6 +2175,13 @@ function _gpRemoveExternal(idx) {
 function _gpUpdateExternalScore(idx, value) {
   if (idx >= 0 && idx < _gpExternalParticipants.length) {
     _gpExternalParticipants[idx].score = parseInt(value, 10) || 0;
+  }
+}
+
+function _gpSetExternalSide(idx, value) {
+  if (idx >= 0 && idx < _gpExternalParticipants.length) {
+    _gpExternalParticipants[idx].side = value === 'plata' ? 'plata' : 'oro';
+    _gpUpdatePlayoffMatchCount();
   }
 }
 
@@ -2296,7 +2304,7 @@ async function _confirmGpPlayoffs() {
   } catch (e) { alert(e.message); }
 }
 
-/** Start the Oro / Plata split: explicit per-player bracket lists, nothing else. */
+/** Start the Oro / Plata split: explicit per-bracket player and external-participant lists. */
 async function _confirmGpSplitPlayoffs() {
   const winnerOpts = _gpReadWinnerControls('gp');
   const plataBox = document.getElementById('gp-plata-third-place');
@@ -2307,10 +2315,15 @@ async function _confirmGpSplitPlayoffs() {
     return;
   }
   const pick = side => _gpRecommended.filter(r => _gpSplitAssign[r.player_id] === side).map(r => r.player_id);
+  const extras = side => _gpExternalParticipants
+    .filter(ep => (ep.side === 'plata' ? 'plata' : 'oro') === side)
+    .map(ep => ({ name: ep.name, score: ep.score }));
   const body = {
     espejo_split: true,
     oro_player_ids: pick('oro'),
     plata_player_ids: pick('plata'),
+    oro_extra_participants: extras('oro'),
+    plata_extra_participants: extras('plata'),
     third_place: winnerOpts.third_place,
     plata_third_place: plataThird,
   };
@@ -2322,6 +2335,7 @@ async function _confirmGpSplitPlayoffs() {
     _gpRecommended = [];
     _gpAdvancingIds = new Set();
     _gpSplitAssign = {};
+    _gpExternalParticipants = [];
     _gpPlayoffFormat = 'single';
     renderGP();
   } catch (e) { alert(e.message); }

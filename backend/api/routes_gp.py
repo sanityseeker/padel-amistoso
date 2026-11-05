@@ -412,6 +412,8 @@ async def gp_start_playoffs(
                 espejo_split=req.espejo_split,
                 oro_player_ids=req.oro_player_ids,
                 plata_player_ids=req.plata_player_ids,
+                oro_extra_players=[(ep.name, ep.score) for ep in req.oro_extra_participants or []] or None,
+                plata_extra_players=[(ep.name, ep.score) for ep in req.plata_extra_participants or []] or None,
                 plata_third_place=req.plata_third_place,
             )
         except (RuntimeError, KeyError, ValueError) as e:

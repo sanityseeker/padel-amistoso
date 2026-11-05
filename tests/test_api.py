@@ -359,6 +359,44 @@ class TestGroupPlayoffAPI:
         labels = [(m["bracket_side"], m["round_label"]) for m in po["matches"]]
         assert sum(1 for side, lab in labels if side == "losers" and "3rd" in lab) == 1
 
+    def test_split_external_participants(self, client, auth_headers):
+        tid, _ = self._start_split(
+            client,
+            auth_headers,
+            body_extra={
+                "oro_extra_participants": [{"name": "Guest Gold", "score": 3}],
+                "plata_extra_participants": [{"name": "Guest Silver", "score": 0}],
+            },
+        )
+        po = client.get(f"/api/tournaments/{tid}/gp/playoffs").json()
+        side_of = {}
+        for m in po["matches"]:
+            for name in (*m["team1"], *m["team2"]):
+                side_of[name] = m["bracket_side"]
+        assert side_of["Guest Gold"] == "winners"
+        assert side_of["Guest Silver"] == "losers"
+
+    def test_split_rejects_shared_extra_participants(self, client, auth_headers):
+        tid, rows = self._start_split(client, auth_headers, cutoff=6, expect=400)
+        ids = [x["player_id"] for x in rows]
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/start-playoffs",
+            json={
+                "espejo_split": True,
+                "oro_player_ids": ids[:4],
+                "plata_player_ids": ids[4:8],
+                "extra_participants": [{"name": "Guest", "score": 0}],
+            },
+            headers=auth_headers,
+        )
+        assert r.status_code == 422
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/start-playoffs",
+            json={"plata_extra_participants": [{"name": "Guest", "score": 0}]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 422
+
     def test_plata_fields_absent_for_normal_gp(self, client, auth_headers):
         tid = self._start_espejo(client, auth_headers)
         assert "plata_third_place" not in client.get(f"/api/tournaments/{tid}/gp/status").json()

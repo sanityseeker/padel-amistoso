@@ -1,12 +1,12 @@
 // ─── Unified per-tournament Settings card ─────────────────────────────────
 //
 // Renders all per-tournament configuration into a single collapsible card
-// with five sub-tabs: Public view & sharing, Scoring, Communications, Player codes,
-// Access & scope. The active sub-tab is persisted per tournament in
+// with sub-tabs: Public view & sharing, Scoring, Communications, Player codes,
+// Payments, Access & scope, Export. The active sub-tab is persisted per tournament in
 // localStorage under `adminSettingsSubtab:<tid>`.
 
 const SETTINGS_SUBTAB_DEFAULT = 'tv';
-const SETTINGS_SUBTABS = ['tv', 'scoring', 'comms', 'codes', 'payments', 'access'];
+const SETTINGS_SUBTABS = ['tv', 'scoring', 'comms', 'codes', 'payments', 'access', 'export'];
 
 function _settingsSubtabStorageKey(tid) {
   return `adminSettingsSubtab:${tid}`;
@@ -85,6 +85,7 @@ function _jumpToSettings(subtab) {
  *   - scoringStages: [{ key, label }] entries for the points/sets toggles
  *   - playerSecrets: object map from `_loadPlayerSecrets`
  *   - collaborators: array of usernames
+ *   - exportPanel:   `_renderExportPanel` context; omit to hide the Export tab
  */
 function _renderSettingsCard(ctx) {
   if (!currentTid) return '';
@@ -96,6 +97,7 @@ function _renderSettingsCard(ctx) {
     scoringStages = [],
     playerSecrets = {},
     collaborators = [],
+    exportPanel = null,
   } = ctx || {};
 
   const active = _getSettingsSubtab(currentTid);
@@ -111,6 +113,7 @@ function _renderSettingsCard(ctx) {
     { key: 'codes',   label: t('txt_admin_settings_tab_codes'),   icon: _ic('key'), body: codesBody },
     { key: 'payments', label: t('txt_pay_tab'),                   icon: _ic('wallet'), body: _renderPaymentsIsland('tournament', currentTid) },
     { key: 'access',  label: t('txt_admin_settings_tab_access'),  icon: _ic('shield'), body: accessBody },
+    { key: 'export',  label: t('txt_admin_settings_tab_export'),  icon: _ic('download'), body: exportPanel ? _renderExportPanel(exportPanel) : '' },
   ].filter(st => st.body && st.body.trim());
 
   if (subtabs.length === 0) return '';
@@ -171,6 +174,7 @@ function _renderSubtabHelpCard(st, helpOn = false) {
     codes: 'txt_admin_settings_help_codes',
     payments: 'txt_admin_settings_help_payments',
     access: 'txt_admin_settings_help_access',
+    export: 'txt_admin_settings_help_export',
   };
   const descKey = descKeyByTab[st.key];
   if (!descKey) return '';

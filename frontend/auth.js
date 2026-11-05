@@ -434,6 +434,11 @@ const _loginStore = reactiveStore({
     return '';
   },
   async submit() {
+    // Password managers can fill and auto-submit this form the moment it
+    // opens (e.g. on the reload right after logout), silently logging the
+    // admin back in. Only accept a submit that follows a real click or key
+    // press; browsers without the UserActivation API keep the old behavior.
+    if (navigator.userActivation && !navigator.userActivation.isActive) return;
     const username = this.username.trim();
     const password = this.password;
     if (!username || !password) {

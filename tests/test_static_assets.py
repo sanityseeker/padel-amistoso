@@ -887,7 +887,7 @@ def test_shared_js_has_single_set_score_formatter(client):
     # The mini-card match-history helper formats through the shared formatter too.
     helper = shared[shared.index("function eloScoreSepHtml(m)") :]
     assert "formatSetScore(m.sets, m.decider" in helper[: helper.index("\n}\n")]
-    for path in ("/admin-gp.js", "/tv.js", "/player.js", "/club.js", "/admin-mex.js"):
+    for path in ("/admin-gp.js", "/tv.js", "/player.js", "/club.js", "/admin-export.js"):
         js = client.get(path, headers={"Accept-Encoding": "identity"}).text
         assert "formatSetScore(" in js or "eloScoreSepHtml(" in js, path
         assert "sets.map(s => `${s[0]}-${s[1]}`)" not in js, path
@@ -1165,6 +1165,7 @@ _EMOJI_FREE_FILES = [
     "i18n.js",
     "admin-utils.js",
     "admin-mex.js",
+    "admin-export.js",
     "admin-gp.js",
     "admin-players.js",
     "admin-convert.js",
@@ -1178,7 +1179,7 @@ _EMOJI_FREE_FILES = [
 @pytest.mark.parametrize("name", _EMOJI_FREE_FILES)
 def test_ui_uses_svg_icons_not_emoji(name):
     """Admin, Player Hub and TV views draw icons with _ic(), not emoji
-    (including the exported HTML/PDF results document built in admin-mex.js)."""
+    (including the exported HTML/PDF results document built in admin-export.js)."""
     offenders = [line.strip()[:80] for line in _read_frontend(name).splitlines() if _EMOJI_RE.search(line)]
     assert offenders == []
 
@@ -1412,14 +1413,87 @@ def test_admin_player_tables_stack_into_cards_on_phones():
 def test_results_export_trophy_is_self_sized_svg():
     """The standalone HTML/PDF export has no theme.css, so the trophy SVG sizes
     and colours itself instead of relying on the `.ic` rule."""
-    mex = _read_frontend("admin-mex.js")
-    assert "\U0001f3c6" not in mex
-    assert mex.count("<div class=\"champ\">${_REPORT_TROPHY_SVG} ${t('txt_txt_champion')}") == 3
-    start = mex.index("const _REPORT_TROPHY_SVG")
-    svg = mex[start : mex.index("</svg>';", start)]
+    export = _read_frontend("admin-export.js")
+    assert "\U0001f3c6" not in export
+    assert export.count("<div class=\"champ\">${_REPORT_TROPHY_SVG} ${t('txt_txt_champion')}") == 1
+    start = export.index("const _REPORT_TROPHY_SVG")
+    svg = export[start : export.index("</svg>';", start)]
     for attr in ('width="18"', 'height="18"', 'viewBox="0 0 24 24"', 'fill="none"', 'stroke="#166534"'):
         assert attr in svg, attr
     assert 'class="ic"' not in svg
+
+
+def test_tournament_export_lives_in_shared_module(client):
+    """The HTML/PDF export is one module, reached from an Export tab in each
+    view's Settings card (out of the match-management flow), in every phase:
+    results once finished, a snapshot while running."""
+    resp = client.get("/admin-export.js")
+    assert resp.status_code == 200
+    export = _read_frontend("admin-export.js")
+    assert "async function exportTournamentOutcome(format)" in export
+    assert "function _renderExportPanel({ finished, hasStandings = true, hasBracket = false })" in export
+    panel = _read_frontend("admin-settings-panel.js")
+    assert "'access', 'export'];" in panel
+    assert "body: exportPanel ? _renderExportPanel(exportPanel) : ''" in panel
+    assert "export: 'txt_admin_settings_help_export'," in panel
+    assert "    download: `" in _read_frontend("shared.js")
+    mex = _read_frontend("admin-mex.js")
+    gp = _read_frontend("admin-gp.js")
+    for js in (mex, gp):
+        assert "function exportTournamentOutcome" not in js
+        assert "export-include-history" not in js
+        assert "_renderExportCard" not in js
+    assert "exportPanel: { finished: isFinished, hasBracket: isPlayoffs || hasPlayoffBracket }," in mex
+    assert "exportPanel: { finished: status.phase === 'finished', hasBracket: status.phase !== 'groups' }," in gp
+    assert "exportPanel: { finished: status.phase === 'finished', hasStandings: false, hasBracket: true }," in gp
+    # admin-player-codes.js reuses the print helper, so it loads first.
+    html = _read_frontend("index.html")
+    assert html.index('src="/admin-export.js"') < html.index('src="/admin-player-codes.js"')
+    sw = _read_frontend("service-worker.js")
+    assert "'/admin-export.js'" in sw
+
+
+def test_tournament_export_options_are_remembered():
+    """Section choices persist per browser; standings are always included."""
+    export = _read_frontend("admin-export.js")
+    assert "const _EXPORT_OPTS_KEY = 'amistoso-export-opts';" in export
+    assert "{ history: true, bracket: true, upcoming: true, settings: false, elo: false }" in export
+    assert "localStorage.setItem(_EXPORT_OPTS_KEY, JSON.stringify(opts))" in export
+    assert "onchange=\"_saveExportOpt('${key}', this.checked)\"" in export
+    for key in ("elo", "settings", "upcoming", "bracket", "history"):
+        assert f"opts.{key}" in export, key
+    i18n = _read_frontend("i18n.js")
+    for key in (
+        "txt_export_include_bracket",
+        "txt_export_include_upcoming",
+        "txt_export_include_elo",
+        "txt_export_include_settings",
+        "txt_admin_settings_tab_export",
+        "txt_admin_settings_help_export",
+        "txt_export_snapshot_title",
+        "txt_export_matches_played",
+        "txt_export_upcoming_matches",
+        "txt_export_settings_heading",
+        "txt_export_rounds",
+        "txt_export_col_elo",
+        "txt_export_score_disputed",
+        "txt_export_score_unconfirmed",
+        "txt_export_preparing",
+    ):
+        assert i18n.count(f'"{key}"') == 2, key
+
+
+def test_tournament_export_pdf_window_opens_before_any_await():
+    """The print window opens inside the click gesture (iOS Safari blocks a
+    window.open after an await) and Espejo exports fetch both brackets."""
+    export = _read_frontend("admin-export.js")
+    body = export[export.index("async function exportTournamentOutcome(format)") :]
+    assert body.index("pdfWin = window.open('', '_blank');") < body.index("await ")
+    assert "_open_printable_pdf(htmlDoc, pdfWin);" in body
+    assert "function _open_printable_pdf(htmlDoc, win = null)" in export
+    assert "`${url}&side=winners`" in export and "`${url}&side=losers`" in export
+    assert "#1d4ed8" not in export and "Arial" not in export
+    assert "<html lang=\"${escAttr(_currentLang || 'en')}\">" in export
 
 
 def test_tv_profile_auto_login_checks_participation_first():

@@ -1241,4 +1241,53 @@ class TestEspejoSplit:
         t = self._running()
         with pytest.raises(RuntimeError):
             t.start_playoffs(oro_player_ids=self._by_rank(t, 1, 3))
+        with pytest.raises(RuntimeError):
+            t.start_playoffs(plata_extra_players=[("Guest", 1)])
         assert t.phase == GPPhase.GROUPS
+
+    def test_external_participants_per_bracket(self):
+        t = self._running()
+        t.start_playoffs(
+            espejo_split=True,
+            oro_player_ids=self._by_rank(t, 1, 3),
+            plata_player_ids=self._by_rank(t, 4, 6),
+            oro_extra_players=[("Guest Gold", 50)],
+            plata_extra_players=[("Guest Silver A", 0), ("Guest Silver B", 2)],
+        )
+        b = t.playoff_bracket
+        names = {
+            side: [p.name for team in br.original_teams for p in team]
+            for side, br in (("oro", b.winners_bracket), ("plata", b.losers_bracket))
+        }
+        assert len(b.winners_bracket.original_teams) == 7
+        assert len(b.losers_bracket.original_teams) == 8
+        assert "Guest Gold" in names["oro"] and "Guest Gold" not in names["plata"]
+        assert {"Guest Silver A", "Guest Silver B"} <= set(names["plata"])
+        # Externals have no group rank, so they seed after every group player regardless of score.
+        assert names["oro"][-1] == "Guest Gold"
+        # Externals are not tournament players.
+        assert "Guest Gold" not in {p.name for p in t.players}
+
+    def test_external_participant_completes_individual_pairs(self):
+        t = self._running(n=16, team_mode=False)
+        oro = self._by_rank(t, 1, 4)[:-1]  # 7 players: odd on its own
+        t.start_playoffs(
+            espejo_split=True,
+            oro_player_ids=oro,
+            plata_player_ids=self._by_rank(t, 5, 8),
+            oro_extra_players=[("Guest", 0)],
+        )
+        teams = t.playoff_bracket.winners_bracket.original_teams
+        assert len(teams) == 4 and all(len(team) == 2 for team in teams)
+        assert "Guest" in {p.name for team in teams for p in team}
+
+    def test_external_participant_odd_count_rejected(self):
+        t = self._running(n=16, team_mode=False)
+        with pytest.raises(RuntimeError, match="Plata"):
+            t.start_playoffs(
+                espejo_split=True,
+                oro_player_ids=self._by_rank(t, 1, 4),
+                plata_player_ids=self._by_rank(t, 5, 8),
+                plata_extra_players=[("Guest", 0)],
+            )
+        assert t.phase == GPPhase.GROUPS and t.playoff_bracket is None

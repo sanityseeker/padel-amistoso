@@ -641,8 +641,14 @@ async def serve_admin_gp_js(request: Request) -> Response:
 
 @app.get("/admin-mex.js")
 async def serve_admin_mex_js(request: Request) -> Response:
-    """Serve Mexicano render logic, pairing proposals, and export helpers."""
+    """Serve Mexicano render logic and pairing proposals."""
     return _serve_js_file("admin-mex.js", request)
+
+
+@app.get("/admin-export.js")
+async def serve_admin_export_js(request: Request) -> Response:
+    """Serve the tournament HTML/PDF export (results and in-progress snapshots)."""
+    return _serve_js_file("admin-export.js", request)
 
 
 @app.get("/admin-player-codes.js")

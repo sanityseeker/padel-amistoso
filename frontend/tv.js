@@ -1908,7 +1908,7 @@ function _renderGP(tvSettings, status, groups, playoffs) {
 
   const hasCourts = status.assign_courts !== false;
   const _gpScoreCtx = isPlayoffs ? 'gp-playoff' : 'gp-group';
-  html += _buildCourts(assignmentMatches, courtTitle, hasCourts && tvSettings.show_courts !== false, tvSettings.show_pending_matches === true, _gpScoreCtx, Object.keys(pendingByGroup).length > 0 ? pendingByGroup : null);
+  html += _buildCourts(assignmentMatches, courtTitle, hasCourts && tvSettings.show_courts !== false, tvSettings.show_pending_matches === true, _gpScoreCtx, Object.keys(pendingByGroup).length > 0 ? pendingByGroup : null, status.espejo_split === true);
 
   if (isPlayoffs) {
     // Play-offs phase: past playoff matches → bracket → group past
@@ -2426,7 +2426,7 @@ function _buildPendingGroupCollapsibles(pendingByGroup, _tl, _hasTbd, _commentHt
   return html;
 }
 
-function _buildCourts(matches, title, assignCourts = true, showPending = false, scoreCtx = null, pendingByGroup = null) {
+function _buildCourts(matches, title, assignCourts = true, showPending = false, scoreCtx = null, pendingByGroup = null, isSplit = false) {
   const _commentHtml = (m) => m.comment ? `<div class="match-comment">${esc(m.comment)}</div>` : '';
   if (!assignCourts && !showPending) return '';
   if (!assignCourts) {
@@ -2443,11 +2443,11 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
     if (pendingByGroup) {
       html += _buildPendingGroupCollapsibles(pendingByGroup, _tl, _hasTbd, _commentHtml, scoreCtx);
     } else {
-      // Group by round_label, preserving first-seen order
+      // Group by displayed round title (keeps Espejo brackets apart), preserving first-seen order
       const _byRound = {};
       const _roundOrder = [];
       for (const m of matches) {
-        const key = m.round_label || '';
+        const key = _tvRoundLabel(m, isSplit);
         if (!_byRound[key]) { _byRound[key] = []; _roundOrder.push(key); }
         _byRound[key].push(m);
       }
@@ -2459,7 +2459,7 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
       for (const key of _roundOrder) {
         const hasMyMatch = scoreCtx && _byRound[key].some(bm => !_hasTbd(bm) && _playerIsInMatch(bm));
         html += `<div class="court-card${hasMyMatch ? ' court-card--yours' : ''}">`;
-        if (key) html += `<div class="court-name">${esc(trl(key))}</div>`;
+        if (key) html += `<div class="court-name">${esc(key)}</div>`;
         for (const m of _byRound[key]) {
           const tbd = _hasTbd(m);
           html += `<div class="court-match${tbd ? ' opacity-50' : ''}">`;
@@ -2518,7 +2518,7 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
     html += `</div>`;
     html += `<div class="court-match">`;
     html += `<div class="court-match-info"><div class="court-match-teams">${esc(t1)}<span class="court-match-vs">${t('txt_txt_vs')}</span>${esc(t2)}</div>`;
-    if (m.round_label) html += `<div class="court-match-meta">${esc(trl(m.round_label))}</div>`;
+    if (m.round_label) html += `<div class="court-match-meta">${esc(_tvRoundLabel(m, isSplit))}</div>`;
     html += _commentHtml(m);
     html += `</div>`;
     html += _tvFormatNote(m, scoreCtx);
@@ -2538,10 +2538,11 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
   if (pendingByGroup) {
     html += _buildPendingGroupCollapsibles(pendingByGroup, _tl2, _hasTbd2, _commentHtml, scoreCtx);
   } else {
+    // Keyed by the displayed title so the Espejo brackets' same-named rounds stay apart.
     const byRound2 = {};
     const roundOrder2 = [];
     for (const m of matches) {
-      const key = m.round_label || '';
+      const key = _tvRoundLabel(m, isSplit);
       if (!byRound2[key]) { byRound2[key] = []; roundOrder2.push(key); }
       byRound2[key].push(m);
     }
@@ -2578,6 +2579,21 @@ function _tvEspejoSideLabel(side, isSplit) {
   return t(isSplit ? 'txt_txt_espejo_gold_bracket' : 'txt_txt_espejo_winners_bracket');
 }
 
+/**
+ * Round title of a match, naming its Espejo bracket: "Semi-final (Gold)".
+ * Both brackets reuse the same round names, so the side is what tells them apart.
+ * `base` overrides the round label (e.g. the "Round N" fallback of past matches).
+ */
+function _tvRoundLabel(m, isSplit = false, base = m.round_label || '') {
+  const round = trl(base);
+  const side = m.bracket_side;
+  if (!side || side === 'super_final' || !round) return round;
+  const sideName = isSplit
+    ? t(side === 'losers' ? 'txt_split_silver' : 'txt_split_gold')
+    : _tvEspejoSideLabel(side, false);
+  return `${round} (${sideName})`;
+}
+
 function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = t('txt_txt_past_matches'), tvKey = 'past-matches', scoreCtx = null, isSplit = false) {
   if (!matches || matches.length === 0) return '';
 
@@ -2607,7 +2623,7 @@ function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = t('txt_txt
     html += `<details class="round-block" data-tv-key="${tvKey}-${esc(key)}"${openAttr}>`;
     const sideSep = key.indexOf('|');
     const roundTitle = (rMatches[0].bracket_side && sideSep > 0)
-      ? `${_tvEspejoSideLabel(rMatches[0].bracket_side, isSplit)}: ${trl(key.slice(sideSep + 1))}`
+      ? _tvRoundLabel(rMatches[0], isSplit, key.slice(sideSep + 1))
       : trl(key);
     html += `<summary class="round-summary">▶ ${esc(roundTitle)} — ${rMatches.length} ${rMatches.length > 1 ? t('txt_txt_matches') : t('txt_txt_match')}</summary>`;
     html += `<div class="round-body">`;
