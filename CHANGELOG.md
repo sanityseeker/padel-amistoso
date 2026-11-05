@@ -1,3 +1,9 @@
+## v2.3.0 (2026-11-05)
+
+### Feat
+
+- **playoffs**: per-bracket external participants in Oro/Plata split
+
 ## v2.2.0 (2026-11-05)
 
 ### Feat
