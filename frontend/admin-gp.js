@@ -86,11 +86,11 @@ async function renderGP() {
       html += `<div class="card" id="gp-group-card-${escAttr(gName)}"><h3 class="card-heading-row">${t('txt_txt_group_name_value', { value: esc(gName) })} <button class="format-info-btn" onclick="showAbbrevPopup(event,'standings')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h3>`;
       const hParticipant = (status.team_roster && Object.keys(status.team_roster).length > 0) ? t('txt_txt_team') : t('txt_txt_player');
       const hasSets = rows.some(r => r.sets_won > 0 || r.sets_lost > 0);
-      html += `<table class="standings-table"><thead><tr><th>${hParticipant}</th><th>${t('txt_txt_p_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_d_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th>`;
+      html += `<table class="standings-table"><thead><tr><th>${hParticipant}</th><th title="${escAttr(t('txt_txt_abbrev_mp_full'))}">${t('txt_txt_p_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th>`;
       if (hasSets) html += `<th>${t('txt_txt_sw_abbrev')}</th><th>${t('txt_txt_sl_abbrev')}</th><th>${t('txt_txt_sd_abbrev')}</th>`;
       html += `<th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_diff_abbrev')}</th></tr></thead><tbody>`;
       for (const r of rows) {
-        html += `<tr><td>${esc(r.player)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td>`;
+        html += `<tr><td>${esc(r.player)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.losses}</td>`;
         if (hasSets) html += `<td>${r.sets_won}</td><td>${r.sets_lost}</td><td>${r.sets_diff}</td>`;
         html += `<td>${r.points_for}</td><td>${r.points_against}</td><td>${r.point_diff}</td></tr>`;
       }
@@ -680,9 +680,35 @@ function _renderEditForm(m, ctx) {
   const saved = m.sets && m.sets.length > 0 ? 'sets' : 'points';
   let html = `<div class="match-actions hidden" id="medit-${m.id}">`;
   html += _renderScoreInputs(m, ctx, { mode: _matchInputMode(m, ctx, saved), prefill: sc, idPrefix: 'mfmt-edit-' });
+  if (_canClearMatchResult(ctx)) {
+    html += `<button type="button" class="btn btn-sm btn-danger" onclick="_clearMatchResult('${m.id}')">${_ic('reset')} ${t('txt_match_clear_btn')}</button>`;
+  }
   html += `<button type="button" class="btn btn-sm btn-muted" aria-label="${escAttr(t('txt_txt_cancel'))}" onclick="_cancelEditMatch('${m.id}')">✕</button>`;
   html += `</div>`;
   return html;
+}
+
+/** Whether a result can be cleared from this scoring context (never once finished). */
+function _canClearMatchResult(ctx) {
+  const phase = ctx.startsWith('gp') ? _gpCurrentPhase : (ctx.startsWith('mex') ? _mexCurrentPhase : _poCurrentPhase);
+  if (phase === 'finished') return false;
+  if (ctx === 'gp-group' && phase !== 'groups') return false;
+  return true;
+}
+
+/** Revert a scored match to unplayed after confirmation (server enforces the rules). */
+async function _clearMatchResult(mid) {
+  const ok = await uiConfirm(t('txt_match_clear_confirm'), {
+    danger: true,
+    title: t('txt_match_clear_title'),
+    confirmLabel: t('txt_match_clear_btn'),
+  });
+  if (!ok) return;
+  try {
+    await api(`/api/tournaments/${currentTid}/matches/${mid}/clear`, { method: 'POST' });
+    _showToast(t('txt_match_clear_done'));
+    await _rerenderCurrentViewPreserveDrafts();
+  } catch (e) { _showToast(e.message, 'error'); }
 }
 
 /** Inline dispute-resolution panel (original / correction / custom score). */

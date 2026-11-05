@@ -11,6 +11,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 
+from .club_elo import resolve_initial_strengths
 from .rate_limit import BoundedRateLimiter
 from ..auth.deps import get_current_user, get_current_user_optional, get_current_player, PlayerIdentity
 from ..auth.models import User
@@ -101,6 +102,17 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
             initial_strength = {
                 name_to_id[name]: score for name, score in req.player_strengths.items() if name in name_to_id
             } or None
+
+    # Players linked to a Hub profile without a manual strength are seeded from
+    # their club rating (club tournaments) or community rating; others start at 1000.
+    initial_strength = resolve_initial_strengths(
+        [p.id for p in all_players],
+        initial_strength,
+        {p.id: req.player_profile_ids[p.name] for p in all_players if p.name in req.player_profile_ids},
+        req.sport.value,
+        req.community_id,
+        req.club_id,
+    )
 
     try:
         t = PlayoffTournament(

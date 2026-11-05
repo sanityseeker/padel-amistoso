@@ -311,7 +311,6 @@ body {
 .standings-table .col-player { width: auto; }
 .standings-table .col-played,
 .standings-table .col-w,
-.standings-table .col-d,
 .standings-table .col-l,
 .standings-table .col-sw,
 .standings-table .col-sl,
@@ -888,19 +887,16 @@ html[data-theme="light"] .court-card--yours {
   .standings-table th:nth-child(2),
   .standings-table td:nth-child(2) { white-space: normal; min-width: 5rem; }
 
-  /* GP table on narrow screens: hide D, SL, PF, PA — keep #, Player, P, W, L, (SW, SD), Diff */
-  .standings-table[data-type="gp"] .col-d,
+  /* GP table on narrow screens: hide SL, PF, PA — keep #, Player, P, W, L, (SW, SD), Diff */
   .standings-table[data-type="gp"] .col-sl,
   .standings-table[data-type="gp"] .col-pf,
   .standings-table[data-type="gp"] .col-pa { display: none; }
 
-  /* Mex table (# | Player | Total Pts | Played | W | D | L | Avg Pts): hide Played, D, L */
+  /* Mex table (# | Player | Total Pts | Played | W | L | Avg Pts): hide Played, L */
   .standings-table[data-type="mex"] th:nth-child(4),
   .standings-table[data-type="mex"] td:nth-child(4),
   .standings-table[data-type="mex"] th:nth-child(6),
-  .standings-table[data-type="mex"] td:nth-child(6),
-  .standings-table[data-type="mex"] th:nth-child(7),
-  .standings-table[data-type="mex"] td:nth-child(7) { display: none; }
+  .standings-table[data-type="mex"] td:nth-child(6) { display: none; }
 
   /* Picker: less wasted vertical space */
   .tv-picker { margin: 0 auto; padding: 0 0.5rem; }

@@ -541,7 +541,7 @@ function _renderTournamentChips() {
     const isActive = tournament.id === currentTid;
     return `<span class="tournament-chip-wrap">`
       + `<button type="button" class="tab-btn tournament-chip${isActive ? ' active' : ''}" data-tid="${escAttr(tournament.id)}" data-type="${escAttr(tournament.type)}" title="${escAttr(tournament.name)}" aria-pressed="${isActive}">`
-      + `<span class="chip-check" aria-hidden="true">✓</span><span class="chip-name">${esc(tournament.name)}</span></button>`
+      + `<span class="chip-name">${esc(tournament.name)}</span></button>`
       + `<button type="button" class="chip-close" data-close-tid="${escAttr(tournament.id)}" title="${escAttr(removeLabel)}" aria-label="${escAttr(`${removeLabel}: ${tournament.name}`)}">×</button>`
       + `</span>`;
   }).join('');

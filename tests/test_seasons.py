@@ -734,3 +734,49 @@ class TestTournamentClubAssignment:
         assert res.status_code == 200
         assert res.json()["club_id"] == club_b["id"]
         assert res.json()["season_id"] is None
+
+
+class TestSeasonStandingsClubElo:
+    def test_live_standings_use_club_values_when_chains_diverge(self, client, auth_headers) -> None:
+        club, comm = _setup_club(client, auth_headers)
+        season = _create_season(client, auth_headers, club["id"])
+        res = client.post(
+            "/api/tournaments/group-playoff",
+            json={
+                "name": "GP Club ELO",
+                "player_names": ["A", "B", "C", "D"],
+                "num_groups": 1,
+                "top_per_group": 2,
+                "court_names": ["Court 1"],
+                "community_id": comm["id"],
+                "season_id": season["id"],
+            },
+            headers=auth_headers,
+        )
+        tid = res.json()["id"]
+        profile_id = "prof_club_elo"
+        now = datetime.now(timezone.utc).isoformat()
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO player_profiles (id, passphrase, name, email, is_ghost, created_at)"
+                " VALUES (?, 'pp-club-elo', 'Club Elo', '', 0, datetime('now'))",
+                (profile_id,),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO player_secrets"
+                " (tournament_id, player_id, player_name, passphrase, token, contact, email, profile_id)"
+                " VALUES (?, 'pid-ce', 'Club Elo', 'pp-ce', 'tok-ce', '', '', ?)",
+                (tid, profile_id),
+            )
+            conn.execute(
+                "INSERT INTO player_elo_log"
+                " (tournament_id, sport, match_id, player_id, match_order, elo_before, elo_after, elo_delta,"
+                "  club_elo_before, club_elo_after, match_payload, updated_at)"
+                " VALUES (?, 'padel', 'm0', 'pid-ce', 0, 1000.0, 1010.0, 10.0, 1400.0, 1432.0, '{}', ?)",
+                (tid, now),
+            )
+        res = client.get(f"/api/seasons/{season['id']}/standings", headers=_member_headers())
+        entry = next(e for e in res.json()["padel"] if e["profile_id"] == profile_id)
+        assert entry["elo_start"] == 1400.0
+        assert entry["elo_end"] == 1432.0
+        assert entry["elo_change"] == 32.0

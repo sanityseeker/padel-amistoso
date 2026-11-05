@@ -228,7 +228,7 @@ function _clubLeaderboardTableHtml(rows) {
     <tr>
       <th class="col-rank">#</th>
       <th class="col-name">${esc(t('txt_txt_player', {}) || 'Player')}</th>
-      <th class="col-elo">${esc(t('txt_player_elo_label', {}) || 'ELO')}</th>
+      <th class="col-elo">${esc(t('txt_elo_club_label'))}</th>
       <th class="col-matches">${matchesLabel}</th>
     </tr>`;
   const rowsHtml = rows.map(r => `
@@ -285,7 +285,7 @@ function _buildSeasonLeaderboardTable(rows) {
     <tr>
       <th class="col-rank">#</th>
       <th class="col-name">${esc(t('txt_txt_player', {}) || 'Player')}</th>
-      <th class="col-elo">${esc(t('txt_player_elo_label', {}) || 'ELO')}</th>
+      <th class="col-elo">${esc(t('txt_elo_club_label'))}</th>
       <th class="col-elo">${esc(t('txt_clubs_season_elo_change', {}) || 'Δ')}</th>
       <th class="col-matches">${esc(t('txt_txt_matches', {}) || 'Matches')}</th>
     </tr>`;

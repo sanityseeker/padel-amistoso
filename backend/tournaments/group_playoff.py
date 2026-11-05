@@ -18,7 +18,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from ..models import Court, GPPhase, Match, MatchStatus, Player
+from ..models import Court, GPPhase, Match, MatchStatus, Player, reset_match_result
+from .errors import MatchClearBlocked
 from .group_stage import Group, assign_courts, distribute_players_to_groups
 from . import pairing as pairing_mod
 from .playoff import (
@@ -313,6 +314,27 @@ class GroupPlayoffTournament:
                     m.third_set_loss = third_set_loss
                     m.status = MatchStatus.COMPLETED
                     return
+        raise KeyError(f"Match {match_id} not found in any group")
+
+    def clear_group_result(self, match_id: str) -> None:
+        """Revert a group-stage match to unplayed (group phase only).
+
+        In individual mode only the latest round of the match's group may be
+        cleared, because later rounds are generated from earlier results.
+        """
+        if self._phase != GPPhase.GROUPS:
+            raise MatchClearBlocked("Group results can only be cleared during the group stage")
+        for g in self.groups:
+            for m in g.matches:
+                if m.id != match_id:
+                    continue
+                if not self.team_mode:
+                    latest = max((x.round_number for x in g.matches), default=0)
+                    if m.round_number != latest:
+                        raise MatchClearBlocked("Only the latest round of a group can be cleared")
+                reset_match_result(m)
+                g._standings_cache = None
+                return
         raise KeyError(f"Match {match_id} not found in any group")
 
     def group_standings(self) -> dict[str, list]:
@@ -749,6 +771,12 @@ class GroupPlayoffTournament:
         # bracket is done as well, so the phase does not flip early.
         if self.winners() is not None:
             self._phase = GPPhase.FINISHED
+
+    def clear_playoff_result(self, match_id: str) -> None:
+        """Revert a play-off match to unplayed (play-offs phase only)."""
+        if self.playoff_bracket is None or self._phase != GPPhase.PLAYOFFS:
+            raise MatchClearBlocked("Play-off results can only be cleared while the play-offs are running")
+        self.playoff_bracket.clear_result(match_id)
 
     def winners(self) -> list[list[Player]] | None:
         """All (equal) winners once the play-offs are fully decided, else ``None``."""

@@ -52,7 +52,7 @@ from .schemas import (
 )
 from . import state
 from .state import _delete_tournament, _tournaments, save_tournament
-from .club_elo import deferred_club_elo, get_tournament_display_elos, recompute_club_elo
+from .club_elo import deferred_club_elo, elo_scope, get_tournament_display_elos, recompute_club_elo
 from .elo_integration import elo_recalculate_tournament
 from .elo_store import delete_tournament_elos, tournaments_in_chronological_order
 from .leaderboard_cache import etag_for, get_mini_card_cached
@@ -457,6 +457,7 @@ async def get_tournament_meta(tid: str) -> dict:
         "club_logo_url": branding["club_logo_url"],
         "community_name": branding["community_name"],
         "club_name": branding["club_name"],
+        "elo_scope": elo_scope(data),
     }
 
 
@@ -661,6 +662,7 @@ def _build_tournament_player_card(tid: str, player_id: str) -> dict:
         "player_name": player_name,
         "sport": sport,
         "elo": current_elo,
+        "elo_scope": elo_scope(data),
         "elo_start": round(starting_elo, 1) if starting_elo is not None else None,
         "elo_delta_total": elo_delta_total,
         "matches": matches_played,

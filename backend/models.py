@@ -367,3 +367,30 @@ class GroupStanding:
         state.setdefault("sets_won", 0)
         state.setdefault("sets_lost", 0)
         self.__dict__.update(state)
+
+
+def reset_match_result(m: Match) -> None:
+    """Return *m* to the unplayed state.
+
+    Clears the score, sets and every score-lifecycle / review field, and sets the
+    status to SCHEDULED.  Keeps the comment, format override, court and
+    ``score_history`` (the audit log).
+    """
+    m.score = None
+    m.sets = None
+    m.third_set_loss = False
+    m.decider = None
+    m.status = MatchStatus.SCHEDULED
+    m.scored_by = None
+    m.scored_at = None
+    m.score_confirmed = False
+    m.disputed = False
+    m.dispute_score = None
+    m.dispute_sets = None
+    m.dispute_by = None
+    m.dispute_at = None
+    m.dispute_escalated = False
+    m.format_review = False
+    m.review_score = None
+    m.review_sets = None
+    m.review_decider = None

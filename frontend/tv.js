@@ -1784,6 +1784,7 @@ async function loadTV() {
     tvState.tournamentName = meta.name;
     tvState.tournamentSport = meta.sport || 'padel';
     tvState.tournamentAlias = meta.alias || null;
+    tvState.eloScope = meta.elo_scope === 'club' ? 'club' : 'community';
     tvState.communityName = meta.community_name || null;
     tvState.clubName = meta.club_name || null;
     tvState.clubLogoUrl = meta.club_logo_url || null;
@@ -1938,16 +1939,16 @@ function _renderGP(tvSettings, status, groups, playoffs) {
         const hasSets = rows.some(r => r.sets_won > 0 || r.sets_lost > 0);
         html += `<div class="group-block"><h3>${t('txt_txt_group_name_value', { value: esc(gName) })}</h3>`;
         html += `<table class="standings-table" data-type="gp"><thead><tr>`;
-        html += `<th class="col-hash">#</th><th class="col-player">${(status.team_roster && Object.keys(status.team_roster).length > 0) ? t('txt_txt_team') : t('txt_txt_player')}</th><th class="col-played">${t('txt_txt_p_abbrev')}</th><th class="col-w">${t('txt_txt_w_abbrev')}</th><th class="col-d">${t('txt_txt_d_abbrev')}</th><th class="col-l">${t('txt_txt_l_abbrev')}</th>`;
+        html += `<th class="col-hash">#</th><th class="col-player">${(status.team_roster && Object.keys(status.team_roster).length > 0) ? t('txt_txt_team') : t('txt_txt_player')}</th><th class="col-played" title="${escAttr(t('txt_txt_abbrev_mp_full'))}">${t('txt_txt_p_abbrev')}</th><th class="col-w">${t('txt_txt_w_abbrev')}</th><th class="col-l">${t('txt_txt_l_abbrev')}</th>`;
         if (hasSets) html += `<th class="col-sw">${t('txt_txt_sw_abbrev')}</th><th class="col-sl">${t('txt_txt_sl_abbrev')}</th><th class="col-sd">${t('txt_txt_sd_abbrev')}</th>`;
         html += `<th class="col-pf">${t('txt_txt_pf_abbrev')}</th><th class="col-pa">${t('txt_txt_pa_abbrev')}</th><th class="col-diff">${t('txt_txt_diff_abbrev')}</th>`;
         html += `</tr></thead><tbody>`;
         rows.forEach((r, i) => {
           const isMe = tvState.playerId && r.player_id === tvState.playerId;
-          const eloHtml = r.elo ? ` <span class="elo-badge">${Math.round(r.elo)}</span>` : '';
+          const eloHtml = r.elo ? ` <span class="elo-badge" title="${escAttr(_tvEloLabel())}">${Math.round(r.elo)}</span>` : '';
           const nameHtml = _tvPlayerNameCell(r.player_id, r.player);
           html += `<tr${isMe ? ' class="my-row"' : ''}><td class="rank-cell col-hash">${i + 1}</td><td class="player-cell col-player">${nameHtml}${eloHtml}</td>`;
-          html += `<td class="col-played">${r.played}</td><td class="col-w">${r.wins}</td><td class="col-d">${r.draws}</td><td class="col-l">${r.losses}</td>`;
+          html += `<td class="col-played">${r.played}</td><td class="col-w">${r.wins}</td><td class="col-l">${r.losses}</td>`;
           if (hasSets) html += `<td class="col-sw">${r.sets_won}</td><td class="col-sl">${r.sets_lost}</td><td class="col-sd">${r.sets_diff}</td>`;
           html += `<td class="col-pf">${r.points_for}</td><td class="col-pa">${r.points_against}</td>`;
           html += `<td class="col-diff">${r.point_diff}</td></tr>`;
@@ -2100,7 +2101,8 @@ function _tvRenderMexLeaderboard() {
       : isActive
         ? `<strong>${label}${indicator(col)}</strong>`
         : label;
-    return `<th class="tv-sortable-col${isActive ? ' tv-sort-active' : ''}" onclick="_tvMexSetSort('${col}')">${inner}</th>`;
+    const hint = col === 'matches_played' ? ` title="${escAttr(t('txt_txt_abbrev_mp_full'))}"` : '';
+    return `<th class="tv-sortable-col${isActive ? ' tv-sort-active' : ''}"${hint} onclick="_tvMexSetSort('${col}')">${inner}</th>`;
   };
 
   let html = `<table class="standings-table" data-type="mex"><thead><tr>`;
@@ -2109,7 +2111,6 @@ function _tvRenderMexLeaderboard() {
   html += thHtml('total_points', t('txt_txt_total_pts_abbrev'));
   html += thHtml('matches_played', t('txt_txt_played_abbrev'));
   html += thHtml('wins', t('txt_txt_w_abbrev'));
-  html += thHtml('draws', t('txt_txt_d_abbrev'));
   html += thHtml('losses', t('txt_txt_l_abbrev'));
   html += thHtml('avg_points', t('txt_txt_avg_pts_abbrev'));
   html += `</tr></thead><tbody>`;
@@ -2120,12 +2121,12 @@ function _tvRenderMexLeaderboard() {
     const rankCell = r.removed ? `<span class="text-muted">—</span>` : r.rank;
     const nameCell = r.removed
       ? `${esc(r.player)} <span class="tv-removed-tag">(${t('txt_txt_removed')})</span>`
-      : _tvPlayerNameCell(r.player_id, r.player) + (r.elo ? ` <span class="elo-badge">${Math.round(r.elo)}</span>` : '');
+      : _tvPlayerNameCell(r.player_id, r.player) + (r.elo ? ` <span class="elo-badge" title="${escAttr(_tvEloLabel())}">${Math.round(r.elo)}</span>` : '');
     html += `<tr${rowClasses ? ` class="${rowClasses}"` : ''}><td class="rank-cell">${rankCell}</td><td class="player-cell">${nameCell}</td>`;
     const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
     const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
     html += `<td class="${byAvg ? '' : 'pts-cell'}">${totalCell}</td>`;
-    html += `<td>${r.matches_played}</td><td>${r.wins ?? 0}</td><td>${r.draws ?? 0}</td><td>${r.losses ?? 0}</td>`;
+    html += `<td>${r.matches_played}</td><td>${r.wins ?? 0}</td><td>${r.losses ?? 0}</td>`;
     html += `<td class="${byAvg ? 'pts-cell' : ''}">${avgCell}</td></tr>`;
   }
   html += `</tbody></table>`;
@@ -2146,7 +2147,6 @@ function _buildAbbrevLegend(type) {
   const rows = type === 'standings' ? [
     [t('txt_txt_p_abbrev'),    t('txt_txt_abbrev_mp_full')],
     [t('txt_txt_w_abbrev'),    t('txt_txt_abbrev_w_full')],
-    [t('txt_txt_d_abbrev'),    t('txt_txt_abbrev_d_full')],
     [t('txt_txt_l_abbrev'),    t('txt_txt_abbrev_l_full')],
     [t('txt_txt_sw_abbrev'),   t('txt_txt_abbrev_sw_full')],
     [t('txt_txt_sl_abbrev'),   t('txt_txt_abbrev_sl_full')],
@@ -2158,7 +2158,6 @@ function _buildAbbrevLegend(type) {
     [t('txt_txt_total_pts_abbrev'), t('txt_txt_abbrev_total_pts_full')],
     [t('txt_txt_played_abbrev'),    t('txt_txt_abbrev_played_full')],
     [t('txt_txt_w_abbrev'),         t('txt_txt_abbrev_w_full')],
-    [t('txt_txt_d_abbrev'),         t('txt_txt_abbrev_d_full')],
     [t('txt_txt_l_abbrev'),         t('txt_txt_abbrev_l_full')],
     [t('txt_txt_avg_pts_abbrev'),   t('txt_txt_abbrev_avg_pts_full')],
   ];
@@ -2985,12 +2984,16 @@ async function _tvOpenPlayerCard(playerId) {
   _tvScheduleAutoClose();
 }
 
+/** Label of the rating shown next to players: the club's own rating in club tournaments. */
+function _tvEloLabel() {
+  return tvState.eloScope === 'club' ? t('txt_elo_club_label') : t('txt_player_elo_label');
+}
+
 function _tvRenderPlayerCard(overlay, card) {
   const closeLabel = esc(t('txt_txt_close', {}) || 'Close');
-  const eloLabel = esc(t('txt_player_elo_label', {}) || 'ELO');
+  const eloLabel = esc(card.elo_scope === 'club' ? t('txt_elo_club_label') : (t('txt_player_elo_label', {}) || 'ELO'));
   const matchesLabel = esc(t('txt_txt_matches', {}) || 'Matches');
   const wLabel = esc(t('txt_txt_w_abbrev', {}) || 'W');
-  const dLabel = esc(t('txt_txt_d_abbrev', {}) || 'D');
   const lLabel = esc(t('txt_txt_l_abbrev', {}) || 'L');
   const recentLabel = esc(t('txt_tv_player_card_recent', {}) || 'Recent matches in this tournament');
   const emptyRecent = esc(t('txt_tv_player_card_no_recent', {}) || 'No matches yet.');
@@ -3030,7 +3033,7 @@ function _tvRenderPlayerCard(overlay, card) {
         <div class="tv-player-stat"><div class="tv-player-stat-label">${eloLabel}</div><div class="tv-player-stat-value">${elo == null ? '—' : Math.round(elo)}</div></div>
         <div class="tv-player-stat"><div class="tv-player-stat-label">${deltaLabel}</div><div class="tv-player-stat-value ${deltaClass}">${deltaStr}</div></div>
         <div class="tv-player-stat"><div class="tv-player-stat-label">${matchesLabel}</div><div class="tv-player-stat-value">${card.matches || 0}</div></div>
-        <div class="tv-player-stat"><div class="tv-player-stat-label">${wLabel}/${dLabel}/${lLabel}</div><div class="tv-player-stat-value">${card.wins || 0}/${card.draws || 0}/${card.losses || 0}</div></div>
+        <div class="tv-player-stat"><div class="tv-player-stat-label">${wLabel}/${lLabel}</div><div class="tv-player-stat-value">${card.wins || 0}/${card.losses || 0}</div></div>
       </div>
       <div class="tv-player-recent">
         ${recentHtml}

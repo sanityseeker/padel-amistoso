@@ -109,8 +109,7 @@ body.login-dialog-open .container { filter: blur(3px); pointer-events: none; tra
 }
 .tournament-chip-wrap > .tournament-chip:focus-visible { outline-offset: -2px; }
 .tournament-chip .chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tournament-chip .chip-check { display: none; }
-.tournament-chip.active .chip-check { display: inline; margin-right: 0.25rem; }
+.tournament-chip.active .chip-name { font-weight: 700; }
 .chip-close {
   display: inline-flex; align-items: center; justify-content: center;
   flex-shrink: 0;
@@ -5571,9 +5570,6 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   color: var(--color-primary);
 }
 .settings-help-icon .ic { width: 1.1rem; height: 1.1rem; }
-/* Name of the open tab: only shown on phones, where the tabs are icon-only. */
-.settings-subpanel-title { display: none; }
-
 .settings-subtabs {
   display: flex;
   flex-wrap: wrap;
@@ -5588,12 +5584,14 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   z-index: 1;
 }
 .settings-subtab-btn {
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  min-width: 44px;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
-  padding: 0.45rem 0.7rem;
+  gap: 2px;
+  padding: var(--space-1) 0.25rem;
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-lg);
@@ -5612,6 +5610,16 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   font-weight: 600;
 }
 .settings-subtab-icon { font-size: 1rem; line-height: 1; }
+.settings-subtab-label {
+  font-size: var(--fs-2xs);
+  line-height: 1.1;
+  font-weight: 500;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-subtab-btn.active .settings-subtab-label { font-weight: 600; }
 .settings-subpanel.hidden { display: none; }
 .settings-subpanel { display: block; }
 
@@ -6022,32 +6030,17 @@ a.settings-input { color: var(--color-primary); }
 
 @media (max-width: 720px) {
   /* Phones: the sub-tab strip (club / tournament / lobby settings) is one row
-     of equal icon-only cells (each keeps its label as aria-label / title) and
-     the open tab is named by the .settings-subpanel-title heading instead of
-     truncated labels. It stops being sticky to save height under the status bar. */
+     of equal cells, each an icon over a one-word label. It stops being sticky
+     to save height under the status bar. */
   .settings-subtabs {
     display: flex;
     gap: 0.2rem;
     padding: 0.2rem;
     position: static;
   }
-  .settings-subtab-btn {
-    flex: 1 1 0;
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0.35rem 0;
-  }
-  .settings-subtab-label { display: none; }
+  .settings-subtab-btn { min-height: 44px; }
   .settings-subtab-icon { flex-shrink: 0; font-size: 1.1rem; }
   .settings-subtab-icon .ic { width: 1.25rem; height: 1.25rem; }
-  .settings-subpanel-title {
-    display: block;
-    margin: 0 0 var(--space-2);
-    font-family: var(--font-display);
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--color-text);
-  }
   /* Settings summary: icon-only help toggle. */
   .settings-help-master-label { display: none; }
   .settings-help-master-toggle {

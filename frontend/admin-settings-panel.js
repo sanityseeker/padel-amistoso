@@ -107,13 +107,13 @@ function _renderSettingsCard(ctx) {
 
   // Sub-tab definitions; entries with empty body are skipped.
   const subtabs = [
-    { key: 'tv',      label: t('txt_admin_settings_tab_tv'),      icon: _ic('monitor'), body: _renderTvSharingBody(tvSettings, hasCourts, isMexicano, scoringStages.some(s => /playoff/i.test(s.key))) },
-    { key: 'scoring', label: t('txt_admin_settings_tab_scoring'), icon: _ic('clipboard'), body: _renderScoringRulesBody(tvSettings, scoringStages) },
-    { key: 'comms',   label: t('txt_admin_settings_tab_comms'),   icon: _ic('mail'), body: commsBody },
-    { key: 'codes',   label: t('txt_admin_settings_tab_codes'),   icon: _ic('key'), body: codesBody },
-    { key: 'payments', label: t('txt_pay_tab'),                   icon: _ic('wallet'), body: _renderPaymentsIsland('tournament', currentTid) },
-    { key: 'access',  label: t('txt_admin_settings_tab_access'),  icon: _ic('shield'), body: accessBody },
-    { key: 'export',  label: t('txt_admin_settings_tab_export'),  icon: _ic('download'), body: exportPanel ? _renderExportPanel(exportPanel) : '' },
+    { key: 'tv',      short: t('txt_settings_tab_tv_short'), label: t('txt_admin_settings_tab_tv'),      icon: _ic('monitor'), body: _renderTvSharingBody(tvSettings, hasCourts, isMexicano, scoringStages.some(s => /playoff/i.test(s.key))) },
+    { key: 'scoring', short: t('txt_settings_tab_scoring_short'), label: t('txt_admin_settings_tab_scoring'), icon: _ic('clipboard'), body: _renderScoringRulesBody(tvSettings, scoringStages) },
+    { key: 'comms',   short: t('txt_settings_tab_comms_short'), label: t('txt_admin_settings_tab_comms'),   icon: _ic('mail'), body: commsBody },
+    { key: 'codes',   short: t('txt_settings_tab_codes_short'), label: t('txt_admin_settings_tab_codes'),   icon: _ic('key'), body: codesBody },
+    { key: 'payments', short: t('txt_settings_tab_payments_short'), label: t('txt_pay_tab'),                   icon: _ic('wallet'), body: _renderPaymentsIsland('tournament', currentTid) },
+    { key: 'access',  short: t('txt_settings_tab_access_short'), label: t('txt_admin_settings_tab_access'),  icon: _ic('shield'), body: accessBody },
+    { key: 'export',  short: t('txt_settings_tab_export_short'), label: t('txt_admin_settings_tab_export'),  icon: _ic('download'), body: exportPanel ? _renderExportPanel(exportPanel) : '' },
   ].filter(st => st.body && st.body.trim());
 
   if (subtabs.length === 0) return '';
@@ -136,19 +136,18 @@ function _renderSettingsCard(ctx) {
     const isActive = st.key === activeKey;
     html += `<button type="button" class="settings-subtab-btn${isActive ? ' active' : ''}" role="tab"`;
     html += ` aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? 0 : -1}"`;
-    html += ` data-subtab="${escAttr(st.key)}" aria-label="${escAttr(st.label)}" title="${escAttr(st.label)}"`;
+    html += ` id="admin-settings-tab-${escAttr(st.key)}" aria-controls="admin-settings-panel-${escAttr(st.key)}"` +
+    ` data-subtab="${escAttr(st.key)}" aria-label="${escAttr(st.short + ' — ' + st.label)}" title="${escAttr(st.label)}"`;
     html += ` onclick="setSettingsSubtab(currentTid,'${escAttr(st.key)}')">`;
     html += `<span class="settings-subtab-icon" aria-hidden="true">${st.icon}</span>`;
-    html += `<span class="settings-subtab-label">${esc(st.label)}</span>`;
+    html += `<span class="settings-subtab-label">${esc(st.short)}</span>`;
     html += `</button>`;
   }
   html += `</div>`;
 
   for (const st of subtabs) {
     const isActive = st.key === activeKey;
-    html += `<div class="settings-subpanel${isActive ? '' : ' hidden'}" role="tabpanel" data-subtab="${escAttr(st.key)}">`;
-    // Phones show icon-only tabs; this heading names the open tab.
-    html += `<h4 class="settings-subpanel-title">${esc(st.label)}</h4>`;
+    html += `<div class="settings-subpanel${isActive ? '' : ' hidden'}" role="tabpanel" id="admin-settings-panel-${escAttr(st.key)}" aria-labelledby="admin-settings-tab-${escAttr(st.key)}" data-subtab="${escAttr(st.key)}">`;
     html += _renderSubtabHelpCard(st, helpOn);
     html += st.body;
     html += `</div>`;

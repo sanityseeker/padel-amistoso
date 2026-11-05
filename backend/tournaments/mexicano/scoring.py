@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from ...models import MatchStatus, Player
+from ...models import MatchStatus, MexPhase, Player, reset_match_result
+from ..errors import MatchClearBlocked
 from .. import pairing as pairing_mod
 
 
@@ -351,6 +352,52 @@ class ScoringMixin:
 
         if not was_completed:
             self._update_history(m.team1, m.team2)
+
+    def clear_result(self, match_id: str) -> None:
+        """Revert a latest-round match to unplayed, undoing credits and history.
+
+        Raises ``MatchClearBlocked`` when the Mexicano phase is over or the
+        match belongs to an earlier round.
+        """
+        if self._phase != MexPhase.MEXICANO or self._mexicano_ended:
+            raise MatchClearBlocked("Results can only be cleared while Mexicano rounds are running")
+        m = self._find_match_by_id(match_id)
+        if not self.rounds or m not in self.rounds[-1]:
+            raise MatchClearBlocked("Only matches of the latest round can be cleared")
+        if m.status == MatchStatus.COMPLETED:
+            credits = self._match_credits.pop(m.id, {})
+            for pid, detail in credits.items():
+                norm = self._normalize_credit(detail)
+                self.scores[pid] -= norm["final"]
+                self._raw_scores[pid] = self._raw_scores.get(pid, 0) - norm["raw"]
+                self._matches_played[pid] -= 1
+            if m.score is not None:
+                self._update_wdl(m.team1, m.score[0], m.score[1], delta=-1)
+                self._update_wdl(m.team2, m.score[1], m.score[0], delta=-1)
+            self._revert_history(m.team1, m.team2)
+        reset_match_result(m)
+        self._est_cache = None
+        self._pending_proposals.clear()
+
+    def _revert_history(self, team1: list[Player], team2: list[Player]) -> None:
+        """Undo :meth:`_update_history` for a match of the current round."""
+        pairing_mod.revert_history(team1, team2, self._partner_history, self._opponent_history)
+        round_num = self.current_round
+
+        def drop(table: dict, a: Player, b: Player) -> None:
+            lst = table[a.id][b.id]
+            if round_num in lst:
+                lst.remove(round_num)
+
+        for team in [team1, team2]:
+            for i, p1 in enumerate(team):
+                for p2 in team[i + 1 :]:
+                    drop(self._partner_history_rounds, p1, p2)
+                    drop(self._partner_history_rounds, p2, p1)
+        for p1 in team1:
+            for p2 in team2:
+                drop(self._opponent_history_rounds, p1, p2)
+                drop(self._opponent_history_rounds, p2, p1)
 
     def store_pending_score(self, match_id: str, score: tuple[int, int]) -> None:
         """Store a score on a match without applying credits (required-confirmation mode).

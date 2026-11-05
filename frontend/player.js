@@ -2406,13 +2406,12 @@ function _buildStatsLine(entry) {
   if (hasWL) {
     let wl = `${entry.wins || 0}W`;
     if (entry.losses) wl += ` ${entry.losses}L`;
-    if (entry.draws) wl += ` ${entry.draws}D`;
     parts.push(wl);
   }
   if (entry.elo_before != null && entry.elo_after != null) {
     const delta = Math.round(entry.elo_after) - Math.round(entry.elo_before);
     const sign = delta >= 0 ? '+' : '';
-    parts.push(`ELO ${sign}${delta}`);
+    parts.push(t('txt_player_entry_elo_delta', { n: `${sign}${delta}` }));
   }
   return parts.join(' · ');
 }

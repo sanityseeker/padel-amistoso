@@ -11,7 +11,8 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from ..models import Court, Match, MatchStatus, Player
+from ..models import Court, Match, MatchStatus, Player, reset_match_result
+from .errors import MatchClearBlocked
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -354,6 +355,32 @@ class SingleEliminationBracket:
                 nm.team1 = loser or []
             else:
                 nm.team2 = loser or []
+
+    def clear_result(self, match_id: str) -> None:
+        """Revert *match_id* to unplayed, emptying the slots it fed.
+
+        Raises ``MatchClearBlocked`` (before mutating anything) when a downstream
+        match was already played.
+        """
+        m = self._match_map[match_id]
+        targets: list[tuple[str, int]] = []
+        if match_id in self._next_match:
+            targets.append(self._next_match[match_id])
+        loser_next = getattr(self, "_loser_next", None) or {}
+        if match_id in loser_next:
+            targets.append(loser_next[match_id])
+        for next_id, _slot in targets:
+            nm = self._match_map[next_id]
+            if nm.status == MatchStatus.COMPLETED or nm.score is not None:
+                raise MatchClearBlocked("A later match already used this result; clear that one first")
+        for next_id, slot in targets:
+            nm = self._match_map[next_id]
+            if slot == 0:
+                nm.team1 = []
+            else:
+                nm.team2 = []
+            nm.court = None
+        reset_match_result(m)
 
     def pending_matches(self) -> list[Match]:
         """Return matches not yet completed *and* with both teams filled in."""
@@ -930,6 +957,50 @@ class DoubleEliminationBracket:
                 # Check if the target match is a bye and can be auto-resolved
                 self._try_resolve_bye(next_id)
 
+    def clear_result(self, match_id: str) -> None:
+        """Revert *match_id* to unplayed, unwinding auto-resolved bye matches.
+
+        A downstream match that was really played blocks the clear; the check
+        runs on a dry run so a blocked clear changes nothing.
+        """
+        m = self._match_map[match_id]
+        # (match id, slot) pairs to empty, and bye matches to reset.
+        slots: list[tuple[str, int]] = []
+        byes: list[str] = []
+        seen: set[str] = set()
+
+        def collect(src_id: str, winner_only: bool) -> None:
+            for next_id, slot, is_loser in self._advancement.get(src_id, []):
+                if winner_only and is_loser:
+                    continue
+                nm = self._match_map[next_id]
+                if nm.status == MatchStatus.COMPLETED or nm.score is not None:
+                    bye_slots = self._bye_slots.get(next_id, set())
+                    is_auto_bye = nm.score is None and bool(bye_slots) and not (0 in bye_slots and 1 in bye_slots)
+                    if not is_auto_bye:
+                        raise MatchClearBlocked("A later match already used this result; clear that one first")
+                    slots.append((next_id, slot))
+                    if next_id not in seen:
+                        seen.add(next_id)
+                        byes.append(next_id)
+                        collect(next_id, winner_only=True)
+                    continue
+                slots.append((next_id, slot))
+
+        collect(match_id, winner_only=False)
+        for next_id, slot in slots:
+            nm = self._match_map[next_id]
+            if slot == 0:
+                nm.team1 = []
+            else:
+                nm.team2 = []
+            nm.court = None
+        for bye_id in byes:
+            bm = self._match_map[bye_id]
+            bm.status = MatchStatus.SCHEDULED
+            bm.court = None
+        reset_match_result(m)
+
     def pending_matches(self) -> list[Match]:
         return [m for m in self.all_matches if m.status != MatchStatus.COMPLETED and m.team1 and m.team2]
 
@@ -1043,6 +1114,33 @@ class EspejoParallelBracket:
             return
 
         raise KeyError(f"Match {match_id!r} not found in Espejo bracket")
+
+    def clear_result(self, match_id: str) -> None:
+        """Revert a match in either bracket to unplayed.
+
+        Clearing a Round-1 winners match after the losers bracket was seeded
+        removes that bracket again (so it is re-seeded on the next record),
+        provided nothing in it was played.
+        """
+        if self.super_final_match is not None:
+            raise MatchClearBlocked("Results cannot be cleared once a Super Final exists")
+        if self.losers_bracket and match_id in {m.id for m in self.losers_bracket.matches}:
+            self.losers_bracket.clear_result(match_id)
+            return
+        if match_id not in {m.id for m in self.winners_bracket.matches}:
+            raise KeyError(f"Match {match_id!r} not found in Espejo bracket")
+        m = self.winners_bracket._match_map[match_id]
+        drop_lb = m.round_number == 1 and self.losers_bracket is not None and not getattr(self, "is_split", False)
+        if drop_lb:
+            assert self.losers_bracket is not None
+            if any(lm.score is not None or lm.status == MatchStatus.COMPLETED for lm in self.losers_bracket.matches):
+                raise MatchClearBlocked("A losers-bracket match was already played; clear it first")
+        self.winners_bracket.clear_result(match_id)
+        if drop_lb:
+            assert self.losers_bracket is not None
+            for lm in self.losers_bracket.matches:
+                self._match_map.pop(lm.id, None)
+            self.losers_bracket = None
 
     def is_finished(self) -> bool:
         """Whether both brackets are decided (the whole Espejo is over).

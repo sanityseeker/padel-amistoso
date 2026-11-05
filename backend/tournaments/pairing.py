@@ -53,6 +53,24 @@ def update_history(
             opponent_history[p2.id][p1.id] += 1
 
 
+def revert_history(
+    team1: list[Player],
+    team2: list[Player],
+    partner_history: dict[str, dict[str, int]],
+    opponent_history: dict[str, dict[str, int]],
+) -> None:
+    """Inverse of :func:`update_history` (counts never go below zero)."""
+    for team in [team1, team2]:
+        for i, p1 in enumerate(team):
+            for p2 in team[i + 1 :]:
+                partner_history[p1.id][p2.id] = max(0, partner_history[p1.id][p2.id] - 1)
+                partner_history[p2.id][p1.id] = max(0, partner_history[p2.id][p1.id] - 1)
+    for p1 in team1:
+        for p2 in team2:
+            opponent_history[p1.id][p2.id] = max(0, opponent_history[p1.id][p2.id] - 1)
+            opponent_history[p2.id][p1.id] = max(0, opponent_history[p2.id][p1.id] - 1)
+
+
 def _decayed_score(
     rounds_list: list[int] | None,
     count: int,

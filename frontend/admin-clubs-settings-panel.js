@@ -326,11 +326,11 @@ function _renderClubSettingsCard(club) {
   const active = _getClubSubtab(club.id);
 
   const subtabs = [
-    { key: 'general',     label: t('txt_club_settings_tab_general'),     icon: _ic('settings'),   body: _renderClubGeneralBody(club) },
-    { key: 'tiers',       label: t('txt_club_settings_tab_tiers'),       icon: _ic('tag'),       body: _renderClubTiersBody() },
-    { key: 'seasons',     label: t('txt_club_settings_tab_seasons'),     icon: _ic('calendar'),  body: _renderClubSeasonsBody() },
-    { key: 'comms',       label: t('txt_club_settings_tab_comms'),       icon: _ic('mail'),      body: _renderClubCommsBody(club) },
-    { key: 'access',      label: t('txt_club_settings_tab_access'),      icon: _ic('shield'),    body: _renderClubAccessBody(club) },
+    { key: 'general',     short: t('txt_settings_tab_general_short'), label: t('txt_club_settings_tab_general'),     icon: _ic('settings'),   body: _renderClubGeneralBody(club) },
+    { key: 'tiers',       short: t('txt_settings_tab_tiers_short'), label: t('txt_club_settings_tab_tiers'),       icon: _ic('tag'),       body: _renderClubTiersBody() },
+    { key: 'seasons',     short: t('txt_settings_tab_seasons_short'), label: t('txt_club_settings_tab_seasons'),     icon: _ic('calendar'),  body: _renderClubSeasonsBody() },
+    { key: 'comms',       short: t('txt_settings_tab_comms_short'), label: t('txt_club_settings_tab_comms'),       icon: _ic('mail'),      body: _renderClubCommsBody(club) },
+    { key: 'access',      short: t('txt_settings_tab_access_short'), label: t('txt_club_settings_tab_access'),      icon: _ic('shield'),    body: _renderClubAccessBody(club) },
   ].filter(st => st.body && st.body.trim());
 
   if (subtabs.length === 0) return '';
@@ -349,19 +349,18 @@ function _renderClubSettingsCard(club) {
     const isActive = st.key === activeKey;
     html += `<button type="button" class="settings-subtab-btn${isActive ? ' active' : ''}" role="tab"`;
     html += ` aria-selected="${isActive ? 'true' : 'false'}" tabindex="${isActive ? 0 : -1}"`;
-    html += ` data-subtab="${escAttr(st.key)}" aria-label="${escAttr(st.label)}" title="${escAttr(st.label)}"`;
+    html += ` id="club-settings-tab-${escAttr(st.key)}" aria-controls="club-settings-panel-${escAttr(st.key)}"` +
+    ` data-subtab="${escAttr(st.key)}" aria-label="${escAttr(st.short + ' — ' + st.label)}" title="${escAttr(st.label)}"`;
     html += ` onclick="setClubSubtab('${esc(club.id)}','${escAttr(st.key)}')">`;
     html += `<span class="settings-subtab-icon" aria-hidden="true">${st.icon}</span>`;
-    html += `<span class="settings-subtab-label">${esc(st.label)}</span>`;
+    html += `<span class="settings-subtab-label">${esc(st.short)}</span>`;
     html += `</button>`;
   }
   html += `</div>`;
 
   for (const st of subtabs) {
     const isActive = st.key === activeKey;
-    html += `<div class="settings-subpanel${isActive ? '' : ' hidden'}" role="tabpanel" data-subtab="${escAttr(st.key)}">`;
-    // Phones show icon-only tabs; this heading names the open tab.
-    html += `<h4 class="settings-subpanel-title">${esc(st.label)}</h4>`;
+    html += `<div class="settings-subpanel${isActive ? '' : ' hidden'}" role="tabpanel" id="club-settings-panel-${escAttr(st.key)}" aria-labelledby="club-settings-tab-${escAttr(st.key)}" data-subtab="${escAttr(st.key)}">`;
     html += st.body;
     html += `</div>`;
   }

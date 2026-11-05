@@ -381,7 +381,8 @@ function _renderMexLeaderboard() {
       : isActive
         ? `<strong>${label}${indicator(col)}</strong>`
         : label;
-    return `<th class="sortable-col${isActive ? ' sort-active' : ''}" onclick="_mexSetSort('${col}')">${inner}</th>`;
+    const hint = col === 'matches_played' ? ` title="${escAttr(t('txt_txt_abbrev_mp_full'))}"` : '';
+    return `<th class="sortable-col${isActive ? ' sort-active' : ''}"${hint} onclick="_mexSetSort('${col}')">${inner}</th>`;
   };
 
   let html = `<h2 class="card-heading-row">${t('txt_txt_leaderboard')} <button class="format-info-btn" onclick="showAbbrevPopup(event,'leaderboard')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h2>`;
@@ -391,7 +392,6 @@ function _renderMexLeaderboard() {
   html += thHtml('total_points', t('txt_txt_total_pts_abbrev'));
   html += thHtml('matches_played', t('txt_txt_played_abbrev'));
   html += thHtml('wins', t('txt_txt_w_abbrev'));
-  html += thHtml('draws', t('txt_txt_d_abbrev'));
   html += thHtml('losses', t('txt_txt_l_abbrev'));
   html += thHtml('avg_points', t('txt_txt_avg_pts_abbrev'));
   html += thHtml('buchholz', t('txt_txt_buchholz_abbrev'));
@@ -403,7 +403,7 @@ function _renderMexLeaderboard() {
     const rowClass = r.removed ? ' class="leaderboard-row-removed"' : '';
     const rankCell = r.removed ? `<span class="muted-text">—</span>` : r.rank;
     const nameCell = r.removed ? `${esc(r.player)} <span class="badge badge-closed badge-removed-inline">${t('txt_txt_removed')}</span>` : esc(r.player);
-    html += `<tr${rowClass}><td>${rankCell}</td><td>${nameCell}</td><td>${totalCell}</td><td>${r.matches_played}</td><td>${r.wins || 0}</td><td>${r.draws || 0}</td><td>${r.losses || 0}</td><td>${avgCell}</td><td>${r.buchholz != null ? r.buchholz : '—'}</td></tr>`;
+    html += `<tr${rowClass}><td>${rankCell}</td><td>${nameCell}</td><td>${totalCell}</td><td>${r.matches_played}</td><td>${r.wins || 0}</td><td>${r.losses || 0}</td><td>${avgCell}</td><td>${r.buchholz != null ? r.buchholz : '—'}</td></tr>`;
   }
   html += `</tbody></table>`;
   card.innerHTML = html;

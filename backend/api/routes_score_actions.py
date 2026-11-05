@@ -38,6 +38,7 @@ from ..models import (
     TournamentType,
 )
 from ..tournaments import GroupPlayoffTournament
+from ..tournaments.errors import MatchClearBlocked
 from ..tournaments.set_format import match_decider, validate_decider_sets
 from .helpers import (
     tournament_winners,
@@ -56,6 +57,7 @@ from .helpers import (
     _tv_default_decider,
 )
 from .schemas import (
+    ClearMatchResponse,
     MatchFormatResponse,
     RecordScoreRequest,
     RecordTennisScoreRequest,
@@ -65,6 +67,7 @@ from .schemas import (
 from .state import _tournaments, get_tournament_lock, save_tournament, update_live_stats
 from .push_events import notify_score_accepted, notify_score_disputed, notify_champion, notify_winners
 from .elo_integration import elo_after_score, elo_recalculate_tournament
+from .elo_store import has_match_elo_log
 
 router = APIRouter(prefix="/api/tournaments", tags=["score-actions"])
 
@@ -638,6 +641,78 @@ async def resolve_dispute(
         else:
             notify_winners(tid, data, [[p.name for p in team] for team in winners])
     return {"ok": True}
+
+
+def _clear_in_tournament(data: dict, match: Match) -> None:
+    """Dispatch a result clear to the engine matching the tournament type."""
+    t = data["tournament"]
+    tournament_type = data.get("type", "")
+    if tournament_type == TournamentType.MEXICANO.value:
+        if _is_mexicano_round_match(data, match):
+            t.clear_result(match.id)
+        else:
+            t.clear_playoff_result(match.id)
+    elif tournament_type == TournamentType.GROUP_PLAYOFF.value:
+        if match.id not in _collect_group_match_ids(t):
+            t.clear_playoff_result(match.id)
+        else:
+            t.clear_group_result(match.id)
+    elif tournament_type == TournamentType.PLAYOFF.value:
+        t.clear_result(match.id)
+    else:
+        raise RuntimeError("Unsupported tournament type")
+
+
+@router.post("/{tid}/matches/{mid}/clear", response_model=ClearMatchResponse)
+async def clear_match_result(
+    tid: str,
+    mid: str,
+    user: User = Depends(get_current_user),
+) -> ClearMatchResponse:
+    """Revert a match to unplayed (organiser/admin only).
+
+    The engine refuses (409) when later state depends on the result.  ELO is
+    recalculated afterwards when the match had been rated.
+    """
+    _require_editor_access(tid, user)
+
+    async with get_tournament_lock(tid):
+        data = _get_any_tournament(tid)
+        t = data["tournament"]
+        match = _find_match_full(t, mid)
+        if match is None:
+            raise HTTPException(404, "Match not found")
+        if match.score is None and match.status == MatchStatus.SCHEDULED and not match.format_review:
+            raise HTTPException(409, "Match has no result to clear")
+        if str(getattr(t, "phase", "")) == "finished":
+            raise HTTPException(409, "Finished tournaments cannot be reopened; edit the score instead")
+
+        prev_score = list(match.score) if match.score else None
+        prev_sets = [list(s) for s in match.sets] if match.sets else None
+        sport = data.get("sport", "padel")
+        had_elo_log = has_match_elo_log(tid, mid, sport)
+
+        try:
+            _clear_in_tournament(data, match)
+        except KeyError as e:
+            raise HTTPException(404, str(e))
+        except (MatchClearBlocked, ValueError, RuntimeError) as e:
+            raise HTTPException(409, str(e))
+
+        match.score_history.append(
+            {
+                "player_id": user.username,
+                "action": "admin_clear",
+                "score": prev_score,
+                "sets": prev_sets,
+                "timestamp": time.time(),
+            }
+        )
+        await save_tournament(tid)
+        await update_live_stats(tid)
+        if had_elo_log:
+            elo_recalculate_tournament(tid)
+        return ClearMatchResponse(ok=True, phase=str(getattr(t, "phase", "")))
 
 
 @router.post("/{tid}/matches/{mid}/approve-review")

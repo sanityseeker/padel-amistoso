@@ -20,6 +20,7 @@ from .elo_store import (
     get_tournament_elo_snapshots,
     get_tournament_elo_timestamps,
     has_match_elo_log,
+    has_tournament_elo_log,
     upsert_tournament_elo_log,
     get_pretournament_seed,
     get_tournament_elos,
@@ -107,7 +108,9 @@ def elo_recalculate_tournament(tournament_id: str, reseed_player_ids: Collection
     ttype = data.get("type", "")
 
     all_matches = _extract_completed_matches(tournament, ttype)
-    if not all_matches and not reseed_player_ids:
+    # With no completed match left there is still stale log (and club) rows to drop
+    # after a cleared result, so only skip when nothing was ever rated.
+    if not all_matches and not reseed_player_ids and not has_tournament_elo_log(tournament_id, sport):
         return
 
     team_mode = _is_team_mode(tournament, ttype)

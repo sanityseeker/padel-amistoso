@@ -72,6 +72,11 @@ function _export_score_cell(m) {
   return score;
 }
 
+/** Column header of the ELO column: the club's own rating in club tournaments. */
+function _exportEloHeader(status) {
+  return t(status && status.elo_scope === 'club' ? 'txt_export_col_elo_club' : 'txt_export_col_elo');
+}
+
 function _report_table(headers, rows, cls = '') {
   const thead = `<tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr>`;
   const tbody = rows.map(row => `<tr>${row.map(c => `<td>${esc(String(c))}</td>`).join('')}</tr>`).join('');
@@ -310,14 +315,14 @@ async function _build_gp_report(tid, opts, tvSettings) {
   for (const [gName, rows] of Object.entries(groups.standings || {})) {
     body += `<h3>${t('txt_txt_group_name_value', { value: esc(gName) })}</h3>`;
     const hasSets = rows.some(r => r.sets_won > 0 || r.sets_lost > 0);
-    const headers = [_participant_header(tbl.teams), t('txt_txt_played'), t('txt_txt_w_abbrev'), t('txt_txt_d_abbrev'), t('txt_txt_l_abbrev')];
+    const headers = [_participant_header(tbl.teams), t('txt_txt_played_abbrev'), t('txt_txt_w_abbrev'), t('txt_txt_l_abbrev')];
     if (hasSets) headers.push(t('txt_txt_sw_abbrev'), t('txt_txt_sl_abbrev'), t('txt_txt_sd_abbrev'));
     headers.push(t('txt_txt_pf_abbrev'), t('txt_txt_pa_abbrev'), t('txt_txt_diff_abbrev'));
-    if (opts.elo) headers.push(t('txt_export_col_elo'));
+    if (opts.elo) headers.push(_exportEloHeader(status));
     body += _report_table(
       headers,
       rows.map(r => {
-        const base = [r.player, r.played, r.wins, r.draws, r.losses];
+        const base = [r.player, r.played, r.wins, r.losses];
         if (hasSets) base.push(r.sets_won, r.sets_lost, r.sets_diff);
         base.push(r.points_for, r.points_against, r.point_diff);
         if (opts.elo) base.push(r.elo ?? '—');
@@ -387,13 +392,13 @@ async function _build_mex_report(tid, opts, tvSettings) {
   body += _report_bracket(images);
   if (opts.history) body += _report_history(t('txt_txt_play_off_match_history'), playoffMatches, tbl);
 
-  const headers = [t('txt_txt_rank'), _participant_header(tbl.teams), t('txt_txt_total_pts'), t('txt_txt_played'), t('txt_txt_w_abbrev'), t('txt_txt_d_abbrev'), t('txt_txt_l_abbrev'), t('txt_txt_avg_pts')];
-  if (opts.elo) headers.push(t('txt_export_col_elo'));
+  const headers = [t('txt_txt_rank'), _participant_header(tbl.teams), t('txt_txt_total_pts'), t('txt_txt_played_abbrev'), t('txt_txt_w_abbrev'), t('txt_txt_l_abbrev'), t('txt_txt_avg_pts')];
+  if (opts.elo) headers.push(_exportEloHeader(status));
   body += `<h2>${t('txt_txt_leaderboard')}</h2>`;
   body += _report_table(
     headers,
     (status.leaderboard || []).map(r => {
-      const row = [r.rank, r.player, r.total_points, r.matches_played, r.wins || 0, r.draws || 0, r.losses || 0, r.avg_points];
+      const row = [r.rank, r.player, r.total_points, r.matches_played, r.wins || 0, r.losses || 0, r.avg_points];
       if (opts.elo) row.push(r.elo ?? '—');
       return row;
     }),

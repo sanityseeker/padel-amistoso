@@ -409,7 +409,7 @@ function _phParticipationTable(participations, profileId, isFinished) {
     if (isFinished) {
       const rankStr = p.rank != null ? `#${p.rank}/${p.total_players || '?'}` : '—';
       html += `<td class="player-codes-cell-center">${rankStr}</td>`;
-      html += `<td class="player-codes-cell-center">${p.wins}/${p.losses}/${p.draws}</td>`;
+      html += `<td class="player-codes-cell-center">${p.wins}/${p.losses}</td>`;
       html += `<td class="player-codes-cell-center">${p.points_for}/${p.points_against}</td>`;
     }
     const unlinkLabel = isFinished ? `${_ic('alert')} ${t('txt_ph_unlink')}` : t('txt_ph_unlink');

@@ -1042,3 +1042,119 @@ class TestEspejoSplitBracket:
         assert not getattr(b2, "is_split", False)
         self._play_all(b2)
         assert b2.is_finished()
+
+
+# ── Clearing results ───────────────────────────────────────
+
+
+def _snap(bracket):
+    matches = bracket.all_matches if hasattr(bracket, "all_matches") else bracket.matches
+    return [(m.id, m.status, tuple(p.id for p in m.team1), tuple(p.id for p in m.team2), m.score) for m in matches]
+
+
+class TestClearResult:
+    def test_single_elim_r1_clear_empties_next_slot(self):
+        from backend.models import reset_match_result  # noqa: F401
+
+        bracket = SingleEliminationBracket(_teams(4))
+        before = _snap(bracket)
+        semi = next(m for m in bracket.matches if m.round_label == "Semi-Final")
+        bracket.record_result(semi.id, (10, 5))
+        bracket.clear_result(semi.id)
+        assert _snap(bracket) == before
+        assert semi.status == MatchStatus.SCHEDULED and semi.score is None
+
+    def test_single_elim_blocked_when_next_played(self):
+        from backend.tournaments.errors import MatchClearBlocked
+
+        bracket = SingleEliminationBracket(_teams(4))
+        semis = [m for m in bracket.matches if m.round_label == "Semi-Final"]
+        for s in semis:
+            bracket.record_result(s.id, (10, 5))
+        final = next(m for m in bracket.matches if m.round_label == "Final")
+        bracket.record_result(final.id, (10, 5))
+        before = _snap(bracket)
+        with pytest.raises(MatchClearBlocked):
+            bracket.clear_result(semis[0].id)
+        assert _snap(bracket) == before
+
+    def test_semi_clear_empties_third_place_slot(self):
+        bracket = SingleEliminationBracket(_teams(4), third_place=True)
+        semi = next(m for m in bracket.matches if m.round_label == "Semi-Final")
+        bracket.record_result(semi.id, (10, 5))
+        tp = bracket.third_place_match
+        assert tp.team1 or tp.team2
+        bracket.clear_result(semi.id)
+        assert not tp.team1 and not tp.team2
+
+    @pytest.mark.parametrize("n", [3, 5, 6, 7])
+    def test_double_elim_clear_restores_state_including_auto_byes(self, n):
+        bracket = DoubleEliminationBracket(_teams(n))
+        r1 = [m for m in bracket.winners_matches if m.round_number == 1 and m.team1 and m.team2]
+        for m in r1:
+            before = _snap(bracket)
+            bracket.record_result(m.id, (10, 5))
+            bracket.clear_result(m.id)
+            assert _snap(bracket) == before
+            bracket.record_result(m.id, (10, 5))
+
+    def test_double_elim_blocked_when_played_downstream(self):
+        from backend.tournaments.errors import MatchClearBlocked
+
+        bracket = DoubleEliminationBracket(_teams(4))
+        r1 = [m for m in bracket.winners_matches if m.round_number == 1]
+        for m in r1:
+            bracket.record_result(m.id, (10, 5))
+        wf = next(m for m in bracket.winners_matches if m.round_number == 2)
+        bracket.record_result(wf.id, (10, 5))
+        with pytest.raises(MatchClearBlocked):
+            bracket.clear_result(r1[0].id)
+
+    def test_espejo_last_r1_clear_removes_unplayed_losers_bracket(self):
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(4))
+        r1 = [m for m in b.winners_bracket.matches if m.round_number == 1]
+        for m in r1:
+            b.record_result(m.id, (10, 5))
+        assert b.losers_bracket is not None
+        b.clear_result(r1[-1].id)
+        assert b.losers_bracket is None
+        b.record_result(r1[-1].id, (10, 5))
+        assert b.losers_bracket is not None
+
+    def test_espejo_blocked_when_losers_match_played(self):
+        from backend.tournaments.errors import MatchClearBlocked
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(4))
+        r1 = [m for m in b.winners_bracket.matches if m.round_number == 1]
+        for m in r1:
+            b.record_result(m.id, (10, 5))
+        lm = b.losers_bracket.matches[0]
+        b.record_result(lm.id, (10, 5))
+        with pytest.raises(MatchClearBlocked):
+            b.clear_result(r1[0].id)
+        assert b.losers_bracket is not None
+        # Clearing the losers-bracket match itself is fine.
+        b.clear_result(lm.id)
+        assert lm.status == MatchStatus.SCHEDULED
+
+    def test_espejo_split_keeps_losers_bracket(self):
+        from backend.tournaments.playoff import EspejoSplitBracket
+
+        b = EspejoSplitBracket(_teams(4), _teams(4))
+        m = next(x for x in b.winners_bracket.matches if x.round_number == 1)
+        b.record_result(m.id, (10, 5))
+        lb = b.losers_bracket
+        b.clear_result(m.id)
+        assert b.losers_bracket is lb
+
+    def test_playoff_tournament_refuses_when_finished(self):
+        from backend.tournaments.errors import MatchClearBlocked
+
+        t = PlayoffTournament(_teams(2), courts=[Court(name="C1")])
+        m = t.all_matches()[0]
+        t.record_result(m.id, (10, 5))
+        with pytest.raises(MatchClearBlocked):
+            t.clear_result(m.id)

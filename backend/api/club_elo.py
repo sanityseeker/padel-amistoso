@@ -35,7 +35,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from backend.models import GPPhase, Match
-from backend.tournaments.elo import EloUpdate, compute_match_elo_updates
+from backend.tournaments.elo import DEFAULT_RATING, EloUpdate, compute_match_elo_updates
 
 from .db import get_db
 from .elo_integration import (
@@ -44,7 +44,13 @@ from .elo_integration import (
     _is_team_mode,
     _mexicano_k_multiplier,
 )
-from .elo_store import _get_linked_profiles, _profile_player_ids, get_k_factor_overrides, get_tournament_elos
+from .elo_store import (
+    _get_linked_profiles,
+    _profile_player_ids,
+    get_k_factor_overrides,
+    get_profile_starting_elos,
+    get_tournament_elos,
+)
 from .leaderboard_cache import invalidate_leaderboard_cache
 from .state import _tournaments
 
@@ -120,6 +126,89 @@ def recompute_club_elo_for_tournaments(tournament_ids: Collection[str]) -> None:
     club_ids = {(_tournaments.get(tid) or {}).get("club_id") for tid in tournament_ids}
     for club_id in sorted(c for c in club_ids if c):
         recompute_club_elo(club_id)
+
+
+def elo_scope(data: dict | None) -> str:
+    """Which rating a tournament shows: ``"club"`` for club tournaments, else ``"community"``."""
+    return "club" if data and data.get("club_id") else "community"
+
+
+def get_club_elo_spans(conn, keys: Collection[tuple[str, str]]) -> dict[tuple[str, str], tuple[float, float]]:
+    """``{(tournament_id, player_id): (club ELO before first match, after last match)}``.
+
+    One query for all *keys*.  Uses ``COALESCE(club_elo_*, elo_*)`` so rows
+    without club values fall back to the main chain; keys without any match
+    row are omitted.
+    """
+    wanted = set(keys)
+    if not wanted:
+        return {}
+    tids = sorted({tid for tid, _pid in wanted})
+    placeholders = ",".join("?" for _ in tids)
+    rows = conn.execute(
+        f"""SELECT tournament_id, player_id,
+                   COALESCE(club_elo_before, elo_before) AS before,
+                   COALESCE(club_elo_after, elo_after) AS after
+              FROM player_elo_log
+             WHERE tournament_id IN ({placeholders}) AND is_manual = 0
+             ORDER BY updated_at ASC, match_order ASC""",
+        tids,
+    ).fetchall()
+    first: dict[tuple[str, str], float] = {}
+    last: dict[tuple[str, str], float] = {}
+    for r in rows:
+        key = (r["tournament_id"], r["player_id"])
+        if key not in wanted:
+            continue
+        first.setdefault(key, float(r["before"]))
+        last[key] = float(r["after"])
+    return {key: (first[key], last[key]) for key in first}
+
+
+def get_club_starting_elos(club_id: str, sport: str, pid_to_profile: dict[str, str]) -> dict[str, float]:
+    """``{player_id: club rating}`` for players linked to a profile with a club rating.
+
+    Built on the club leaderboard rows, so a seed equals the number the create
+    picker and the club leaderboard show (tier / manual seeds included).
+    Players without a linked profile or without a rating in this club are omitted.
+    """
+    if not club_id or not pid_to_profile:
+        return {}
+    from .routes_clubs import _compute_club_leaderboard_rows  # noqa: PLC0415 — routes_clubs imports this module
+
+    with get_db() as conn:
+        rows = _compute_club_leaderboard_rows(conn, club_id)
+    by_profile = {r["profile_id"]: float(r["elo"]) for r in rows if r["sport"] == sport and r["elo"] is not None}
+    return {pid: by_profile[prof] for pid, prof in pid_to_profile.items() if prof in by_profile}
+
+
+def resolve_initial_strengths(
+    player_ids: Collection[str],
+    manual: dict[str, float] | None,
+    pid_to_profile: dict[str, str],
+    sport: str,
+    community_id: str,
+    club_id: str | None,
+) -> dict[str, float] | None:
+    """Seed strengths for a new tournament: manual first, then club / community ELO.
+
+    ELO seeding applies when some player is linked to a profile and lacks a
+    manual strength.  Those players are seeded from their club rating (in a
+    club tournament), else their community rating; everyone else without a
+    manual strength — unlinked or unrated — starts at ``DEFAULT_RATING`` so
+    they do not land below every rated player.  Otherwise (no linked player,
+    or all manual) the manual strengths are returned unchanged (``None`` if
+    empty).
+    """
+    manual = dict(manual or {})
+    needs_elo = [pid for pid in player_ids if pid not in manual]
+    linked = {pid: prof for pid, prof in pid_to_profile.items() if prof and pid in set(needs_elo)}
+    if not linked:
+        return manual or None
+    elos = get_profile_starting_elos(linked, community_id, sport)
+    if club_id:
+        elos.update(get_club_starting_elos(club_id, sport, linked))
+    return {**{pid: elos.get(pid, DEFAULT_RATING) for pid in needs_elo}, **manual}
 
 
 def get_tournament_display_elos(tournament_id: str, sport: str) -> dict[str, float]:

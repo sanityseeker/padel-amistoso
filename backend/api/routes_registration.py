@@ -41,7 +41,7 @@ from ..tournaments import GroupPlayoffTournament, MexicanoTournament, PlayoffTou
 from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .db import add_co_editor, get_db, get_registration_co_editors, get_shared_registration_ids
 from .elo_integration import elo_init_tournament
-from .elo_store import get_profile_starting_elos
+from .club_elo import resolve_initial_strengths
 from .helpers import (
     _store_tournament,
     align_community_to_club,
@@ -1376,14 +1376,16 @@ async def convert_registration(
                     manual_strengths[pid] = req.player_strengths[name]
 
         pid_to_profile = {pid: prof for (prof, pid, *_rest) in secret_rows if prof}
-        elo_strengths = get_profile_starting_elos(
+        # Club lobby: the club rating seeds (falling back to the community rating);
+        # players without a linked profile or a rating start at DEFAULT_RATING.
+        initial_strength = resolve_initial_strengths(
+            [pid for _name, pid in player_entries],
+            manual_strengths,
             pid_to_profile,
-            registration.get("community_id", "open"),
             req.sport.value,
+            registration.get("community_id", "open"),
+            registration.get("club_id"),
         )
-        if manual_strengths or elo_strengths:
-            # Manual entries override the ELO fallback per player.
-            initial_strength = {**elo_strengths, **manual_strengths}
 
         tid = await allocate_tournament_id()
 

@@ -2547,3 +2547,62 @@ class TestPerMatchPointsTarget:
             assert t._raw_scores.get(pid, 0) == (16 if played else baseline_raw.get(pid, 0))
             if played:
                 assert t._matches_played[pid] == 1
+
+
+class TestMexicanoClearResult:
+    @staticmethod
+    def _state(t):
+        return (
+            dict(t.scores),
+            dict(t._raw_scores),
+            dict(t._wins),
+            dict(t._draws),
+            dict(t._losses),
+            dict(t._matches_played),
+            # Zero / empty entries are equivalent to missing ones (defaultdicts).
+            {a: {b: n for b, n in d.items() if n} for a, d in t._partner_history.items()},
+            {a: {b: n for b, n in d.items() if n} for a, d in t._opponent_history.items()},
+            {a: {b: list(c) for b, c in d.items() if c} for a, d in t._partner_history_rounds.items()},
+            {a: {b: list(c) for b, c in d.items() if c} for a, d in t._opponent_history_rounds.items()},
+        )
+
+    def test_record_then_clear_restores_state(self):
+        t = MexicanoTournament(_make_players(8), _make_courts(2), num_rounds=3)
+        t.generate_next_round()
+        m = t.rounds[-1][0]
+        before = self._state(t)
+        t.record_result(m.id, (20, 12))
+        assert self._state(t) != before
+        t.clear_result(m.id)
+        assert self._state(t) == before
+        assert m.status == MatchStatus.SCHEDULED and m.score is None
+
+    def test_pending_score_can_be_cleared(self):
+        t = MexicanoTournament(_make_players(4), _make_courts(1), num_rounds=3)
+        t.generate_next_round()
+        m = t.rounds[-1][0]
+        t.store_pending_score(m.id, (20, 12))
+        t.clear_result(m.id)
+        assert m.score is None and m.status == MatchStatus.SCHEDULED
+
+    def test_previous_round_is_blocked(self):
+        from backend.tournaments.errors import MatchClearBlocked
+
+        t = MexicanoTournament(_make_players(4), _make_courts(1), num_rounds=3)
+        t.generate_next_round()
+        first = t.rounds[-1][0]
+        t.record_result(first.id, (20, 12))
+        t.generate_next_round()
+        with pytest.raises(MatchClearBlocked):
+            t.clear_result(first.id)
+
+    def test_blocked_once_mexicano_ended(self):
+        from backend.tournaments.errors import MatchClearBlocked
+
+        t = MexicanoTournament(_make_players(4), _make_courts(1), num_rounds=3)
+        t.generate_next_round()
+        m = t.rounds[-1][0]
+        t.record_result(m.id, (20, 12))
+        t.end_mexicano()
+        with pytest.raises(MatchClearBlocked):
+            t.clear_result(m.id)

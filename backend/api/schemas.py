@@ -1285,3 +1285,10 @@ class RemindUnpaidOut(BaseModel):
     failed: int = 0
     skipped: int = 0
     unreachable: list[str] = Field(default_factory=list)
+
+
+class ClearMatchResponse(BaseModel):
+    """Result of clearing a match back to unplayed."""
+
+    ok: bool = True
+    phase: str

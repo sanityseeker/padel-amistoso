@@ -1238,25 +1238,30 @@ def _phone_block(css: str, marker: str) -> str:
     return css[start : css.index("\n}\n", start)]
 
 
-def test_settings_subtab_strips_are_icon_only_on_phones():
-    """Club / tournament / lobby settings tabs: one row of icon-only cells on
-    phones (label kept as aria-label/title), the open tab named by a heading."""
+def test_settings_subtab_strips_show_short_labels_under_icons():
+    """Club / tournament / lobby settings tabs: icon over a one-word label, the
+    tab-name heading is gone, and tabs/panels are linked for accessibility."""
     css = _read_frontend("admin.css")
     block = _phone_block(css, "@media (max-width: 720px) {\n  /* Phones: the sub-tab strip")
     assert "overflow-x" not in block and "nowrap" not in block
-    assert ".settings-subtab-label { display: none; }" in block
-    assert "flex: 1 1 0;" in block and "min-width: 44px;" in block
-    assert ".settings-subpanel-title {" in block
+    assert ".settings-subtab-label { display: none; }" not in block
+    assert "settings-subpanel-title" not in css
+    base = css[css.index(".settings-subtab-btn {") :]
+    base = base[: base.index("}")]
+    assert "flex-direction: column;" in base
+    assert "flex: 1 1 0;" in base and "min-width: 44px;" in base
     assert ".settings-help-master-label { display: none; }" in block
     assert "#admin-settings-card:not(.is-help-on) .settings-help--explain { display: none; }" in block
-    assert ".settings-subpanel-title { display: none; }" in css  # desktop keeps the labelled tabs
+    i18n = _read_frontend("i18n.js")
     for name in ("admin-clubs-settings-panel.js", "admin-settings-panel.js", "admin-lobby-settings-panel.js"):
         js = _read_frontend(name)
         assert '<div class="settings-subtabs" role="tablist"' in js, name
-        assert '<span class="settings-subtab-label">' in js, name
-        assert 'aria-label="${escAttr(st.label)}" title="${escAttr(st.label)}"' in js, name
-        assert '<h4 class="settings-subpanel-title">${esc(st.label)}</h4>' in js, name
+        assert '<span class="settings-subtab-label">${esc(st.short)}</span>' in js, name
+        assert "settings-subpanel-title" not in js, name
+        assert "aria-labelledby=" in js and "aria-controls=" in js, name
         assert "icon: '€'" not in js, name
+        for key in re.findall(r"txt_settings_tab_\w+_short", js):
+            assert i18n.count(f'"{key}"') == 2, (name, key)
 
 
 def test_settings_help_toggle_is_icon_only_and_hides_explanations():
@@ -1672,3 +1677,44 @@ def test_admin_rerenders_preserve_view_position():
     reg = _read_frontend("admin-registration.js")
     assert "const scrollY = window.scrollY" not in reg
     assert reg.count("_preserveScrollPosition(") == 2
+
+
+def test_tournament_chip_has_no_tick():
+    js = _read_frontend("admin-tournaments.js")
+    css = _read_frontend("admin.css")
+    assert "chip-check" not in js and "chip-check" not in css
+    assert ".tournament-chip.active .chip-name { font-weight: 700; }" in css
+
+
+def test_clear_result_button_lives_in_edit_form():
+    js = _read_frontend("admin-gp.js")
+    form = js[js.index("function _renderEditForm") : js.index("function _canClearMatchResult")]
+    assert "_clearMatchResult('${m.id}')" in form and "txt_match_clear_btn" in form
+    assert "/matches/${mid}/clear" in js
+    assert "if (phase === 'finished') return false;" in js
+
+
+def test_standings_tables_drop_draws_and_use_one_letter_played_header():
+    i18n = _read_frontend("i18n.js")
+    assert '"txt_txt_p_abbrev": "P"' in i18n and '"txt_txt_p_abbrev": "J"' in i18n
+    assert '"txt_txt_played_abbrev": "P"' in i18n and '"txt_txt_played_abbrev": "J"' in i18n
+    assert "txt_txt_d_abbrev" not in i18n and "txt_txt_abbrev_d_full" not in i18n
+    for name in ("admin-gp.js", "admin-mex.js", "admin-export.js", "admin-utils.js", "tv.js"):
+        js = _read_frontend(name)
+        assert "txt_txt_d_abbrev" not in js, name
+        assert "r.draws" not in js, name
+    # The played header keeps its meaning discoverable (title on the one-letter header).
+    assert "txt_txt_abbrev_mp_full" in _read_frontend("tv.js")
+    assert "txt_txt_abbrev_mp_full" in _read_frontend("admin-gp.js")
+    assert "txt_txt_played'" not in _read_frontend("admin-export.js")
+    assert not re.search(r"\.col-d\b(?!iff)", _read_frontend("tv.css"))
+
+
+def test_elo_scope_labels_exist_and_are_used():
+    i18n = _read_frontend("i18n.js")
+    for key in ("txt_elo_club_label", "txt_export_col_elo_club", "txt_player_entry_elo_delta"):
+        assert i18n.count(f'"{key}"') == 2, key
+    assert "elo_scope" in _read_frontend("tv.js")
+    assert "elo_scope" in _read_frontend("admin-export.js")
+    assert "txt_player_entry_elo_delta" in _read_frontend("player.js")
+    assert "`ELO ${sign}${delta}`" not in _read_frontend("player.js")

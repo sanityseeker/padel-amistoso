@@ -484,7 +484,6 @@ function _buildAbbrevLegend(type) {
   const rows = type === 'standings' ? [
     [t('txt_txt_p_abbrev'),    t('txt_txt_abbrev_mp_full')],
     [t('txt_txt_w_abbrev'),    t('txt_txt_abbrev_w_full')],
-    [t('txt_txt_d_abbrev'),    t('txt_txt_abbrev_d_full')],
     [t('txt_txt_l_abbrev'),    t('txt_txt_abbrev_l_full')],
     [t('txt_txt_sw_abbrev'),   t('txt_txt_abbrev_sw_full')],
     [t('txt_txt_sl_abbrev'),   t('txt_txt_abbrev_sl_full')],
@@ -496,7 +495,6 @@ function _buildAbbrevLegend(type) {
     [t('txt_txt_total_pts_abbrev'), t('txt_txt_abbrev_total_pts_full')],
     [t('txt_txt_played_abbrev'),    t('txt_txt_abbrev_played_full')],
     [t('txt_txt_w_abbrev'),         t('txt_txt_abbrev_w_full')],
-    [t('txt_txt_d_abbrev'),         t('txt_txt_abbrev_d_full')],
     [t('txt_txt_l_abbrev'),         t('txt_txt_abbrev_l_full')],
     [t('txt_txt_avg_pts_abbrev'),   t('txt_txt_abbrev_avg_pts_full')],
     [t('txt_txt_buchholz_abbrev'),  t('txt_txt_abbrev_buchholz_full')],

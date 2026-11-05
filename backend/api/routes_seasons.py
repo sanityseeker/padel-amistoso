@@ -415,7 +415,11 @@ def _compute_live_standings(season_id: str) -> SeasonStandingsResponse:
         placeholders = ",".join("?" for _ in season_tids)
 
         elo_rows = conn.execute(
-            f"""SELECT player_id, sport, elo_before, elo_after, elo_delta, match_order, tournament_id
+            f"""SELECT player_id, sport,
+                       COALESCE(club_elo_before, elo_before) AS elo_before,
+                       COALESCE(club_elo_after, elo_after) AS elo_after,
+                       COALESCE(club_elo_after - club_elo_before, elo_delta) AS elo_delta,
+                       match_order, tournament_id
                 FROM player_elo_log
                 WHERE tournament_id IN ({placeholders})
                 ORDER BY updated_at ASC, match_order ASC""",

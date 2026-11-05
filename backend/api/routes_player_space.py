@@ -39,6 +39,7 @@ from .schemas import EmailLang
 from ..models import EntityType, MatchStatus, ParticipationStatus, ScoreMode, Sport, TournamentType
 from ..tournaments.player_secrets import generate_passphrase
 from ..tournaments.set_format import format_sets, games_from_sets, match_decider
+from .club_elo import get_club_elo_spans
 from .db import get_db
 from .player_merge import resolve_current_identities
 from .player_secret_store import (
@@ -1003,6 +1004,26 @@ def _filter_entries_by_scope(
         return entry.community_id == community_id
 
     return [e for e in entries if _keep(e)]
+
+
+def _apply_club_elo_spans(entries: list[PlayerSpaceEntry], club_id: str | None) -> list[PlayerSpaceEntry]:
+    """In a club scope, show club ELO movement on that club's tournament entries.
+
+    Overrides ``elo_before`` / ``elo_after`` from the club chain; entries without
+    rated matches keep their stored values.
+    """
+    if not club_id:
+        return entries
+    targets = [e for e in entries if e.club_id == club_id and e.entity_type == EntityType.TOURNAMENT]
+    if not targets:
+        return entries
+    with get_db() as conn:
+        spans = get_club_elo_spans(conn, {(e.entity_id, e.player_id) for e in targets})
+    for e in targets:
+        span = spans.get((e.entity_id, e.player_id))
+        if span is not None:
+            e.elo_before, e.elo_after = span
+    return entries
 
 
 def _build_elo_history(
@@ -2964,6 +2985,7 @@ def get_player_space(
     history = _build_history_entries(identity.profile_id)
     all_entries = _annotate_counterpart_identities(_deduplicate_entries(active + history))
     scoped_entries = _filter_entries_by_scope(all_entries, community_id=community_id, club_id=club_id)
+    scoped_entries = _apply_club_elo_spans(scoped_entries, club_id)
 
     # De-duplicate: a registration that was converted to a tournament should
     # not appear twice if both still have a valid profile_id row.

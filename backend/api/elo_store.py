@@ -381,6 +381,16 @@ def delete_tournament_elos(tournament_id: str) -> None:
         conn.execute("DELETE FROM player_elo_log WHERE tournament_id = ?", (tournament_id,))
 
 
+def has_tournament_elo_log(tournament_id: str, sport: str = Sport.PADEL) -> bool:
+    """Return True when the tournament has any per-match ELO log rows."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM player_elo_log WHERE tournament_id = ? AND sport = ? LIMIT 1",
+            (tournament_id, sport),
+        ).fetchone()
+    return row is not None
+
+
 def has_match_elo_log(tournament_id: str, match_id: str, sport: str = Sport.PADEL) -> bool:
     """Return True when *match_id* already has ELO log rows in this tournament.
 

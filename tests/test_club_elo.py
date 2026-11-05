@@ -358,3 +358,142 @@ class TestTournamentPageShowsClubRatings:
         assert state_mod._tournaments[tid]["tournament"].phase == MexPhase.FINISHED
         _tier(client, auth_headers, "kx", alice, 1500)
         assert _board_elo(client, tid, ids["Alice"]) == round(_log(tid, ids["Alice"])[-1]["club_elo_after"], 1)
+
+
+# ---------------------------------------------------------------------------
+# Club tournaments: seeding, Hub entries, labels
+# ---------------------------------------------------------------------------
+
+
+def _lobby_in_club(client, auth_headers, club_id: str | None, names: list[str]) -> str:
+    body = {"name": "Club Lobby"}
+    if club_id:
+        body["club_id"] = club_id
+    rid = client.post("/api/registrations", json=body, headers=auth_headers).json()["id"]
+    for name in names:
+        assert client.post(f"/api/registrations/{rid}/register", json={"player_name": name}).status_code == 200
+    return rid
+
+
+def _link_registrant(rid: str, name: str, profile_id: str) -> None:
+    with db_mod.get_db() as conn:
+        conn.execute(
+            "UPDATE registrants SET profile_id = ? WHERE registration_id = ? AND player_name = ?",
+            (profile_id, rid, name),
+        )
+
+
+def _convert(client, auth_headers, rid: str, names: list[str], **extra) -> dict:
+    r = client.post(
+        f"/api/registrations/{rid}/convert",
+        json={"tournament_type": "mexicano", "player_names": names, "num_rounds": 1, **extra},
+        headers=auth_headers,
+    )
+    assert r.status_code == 200, r.text
+    tid = r.json()["tournament_id"]
+    t = state_mod._tournaments[tid]["tournament"]
+    return {p.name: (p.id, (t.initial_strength or {}).get(p.id)) for p in t.players}
+
+
+class TestClubSeeding:
+    def test_convert_club_lobby_seeds_from_club_rating_and_unlinked_get_1000(self, client, auth_headers):
+        _make_club("ks")
+        names = ["Alice", "Bob", "Carol", "Dave"]
+        alice, bob = _insert_profile("Alice"), _insert_profile("Bob")
+        _tier(client, auth_headers, "ks", alice, 1400)  # tier seed = club rating
+        # Bob only has a community rating.
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)"
+                " VALUES (?, 'open', 'padel', 1150, 5)",
+                (bob,),
+            )
+        rid = _lobby_in_club(client, auth_headers, "ks", names)
+        _link_registrant(rid, "Alice", alice)
+        _link_registrant(rid, "Bob", bob)
+        seeds = _convert(client, auth_headers, rid, names)
+        assert seeds["Alice"][1] == 1400
+        assert seeds["Bob"][1] == 1150  # no club rating: community fallback
+        assert seeds["Carol"][1] == 1000 and seeds["Dave"][1] == 1000
+
+    def test_manual_strength_wins(self, client, auth_headers):
+        _make_club("km")
+        names = ["Alice", "Bob", "Carol", "Dave"]
+        alice = _insert_profile("Alice")
+        _tier(client, auth_headers, "km", alice, 1400)
+        rid = _lobby_in_club(client, auth_headers, "km", names)
+        _link_registrant(rid, "Alice", alice)
+        seeds = _convert(client, auth_headers, rid, names, player_strengths={"Alice": 5, "Bob": 3})
+        assert seeds["Alice"][1] == 5 and seeds["Bob"][1] == 3
+        # The only linked player has a manual strength: no ELO seeding is in play.
+        assert seeds["Carol"][1] is None
+
+    def test_all_manual_or_unlinked_tournaments_are_unchanged(self, client, auth_headers):
+        r = client.post(
+            "/api/tournaments/mexicano",
+            json={"player_names": ["A", "B", "C", "D"], "court_names": ["C1"], "num_rounds": 1},
+            headers=auth_headers,
+        )
+        t = state_mod._tournaments[r.json()["id"]]["tournament"]
+        assert not t.initial_strength
+
+    def test_create_with_profile_ids_seeds_club_rating(self, client, auth_headers):
+        _make_club("kcr")
+        alice = _insert_profile("Alice")
+        _tier(client, auth_headers, "kcr", alice, 1350)
+        r = client.post(
+            "/api/tournaments/mexicano",
+            json={
+                "player_names": ["Alice", "Bob", "Carol", "Dave"],
+                "court_names": ["C1"],
+                "num_rounds": 1,
+                "club_id": "kcr",
+                "player_profile_ids": {"Alice": alice},
+            },
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        t = state_mod._tournaments[r.json()["id"]]["tournament"]
+        by_name = {p.name: t.initial_strength[p.id] for p in t.players}
+        assert by_name == {"Alice": 1350, "Bob": 1000, "Carol": 1000, "Dave": 1000}
+
+
+class TestClubScopedHubEntries:
+    def test_space_entry_deltas_follow_the_club_chain(self, client, auth_headers):
+        _make_club("khe")
+        alice = _insert_profile("Alice")
+        _tier(client, auth_headers, "khe", alice, 1400)
+        tid, ids = _play(client, auth_headers, "khe", winner="Alice", profiles={"Alice": alice})
+        rows = _log(tid, ids["Alice"])
+        assert rows[-1]["club_elo_after"] != rows[-1]["elo_after"]
+
+        club = _space(client, alice, "?club_id=khe")
+        entry = next(e for e in club["entries"] if e["entity_id"] == tid)
+        assert entry["elo_before"] == rows[0]["club_elo_before"]
+        assert entry["elo_after"] == rows[-1]["club_elo_after"]
+
+    def test_get_club_elo_spans_keeps_missing_keys_out(self, client, auth_headers):
+        with db_mod.get_db() as conn:
+            assert club_elo.get_club_elo_spans(conn, {("nope", "nobody")}) == {}
+            assert club_elo.get_club_elo_spans(conn, set()) == {}
+
+
+class TestEloScopePayloads:
+    def test_scope_is_club_only_for_club_tournaments(self, client, auth_headers):
+        _make_club("ksc")
+        club_tid, ids = _play(client, auth_headers, "ksc", winner="Alice")
+        plain_tid, _ = _play(client, auth_headers, None, winner="Alice")
+        for tid, scope in ((club_tid, "club"), (plain_tid, "community")):
+            assert client.get(f"/api/tournaments/{tid}/meta").json()["elo_scope"] == scope
+            assert client.get(f"/api/tournaments/{tid}/mex/status").json()["elo_scope"] == scope
+        card = client.get(f"/api/tournaments/{club_tid}/players/{ids['Alice']}/public-card").json()
+        assert card["elo_scope"] == "club"
+
+    def test_gp_status_has_scope(self, client, auth_headers):
+        r = client.post(
+            "/api/tournaments/group-playoff",
+            json={"player_names": list("ABCDEFGH"), "court_names": ["C1"], "num_groups": 2, "top_per_group": 2},
+            headers=auth_headers,
+        )
+        tid = r.json()["id"]
+        assert client.get(f"/api/tournaments/{tid}/gp/status").json()["elo_scope"] == "community"

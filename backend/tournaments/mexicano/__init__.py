@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ...models import Court, Match, MatchStatus, MexPhase, Player, SitOutStrategy
+from ..errors import MatchClearBlocked
 from .grouping import GroupingMixin
 from .scoring import ScoringMixin
 from .sit_outs import SitOutMixin
@@ -1001,6 +1002,12 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         self.playoff_bracket.record_result(match_id, score, sets=sets)
         if self.playoff_bracket.champion() is not None:
             self._phase = MexPhase.FINISHED
+
+    def clear_playoff_result(self, match_id: str) -> None:
+        """Revert a play-off match to unplayed (play-offs phase only)."""
+        if self.playoff_bracket is None or self._phase != MexPhase.PLAYOFFS:
+            raise MatchClearBlocked("Play-off results can only be cleared while the play-offs are running")
+        self.playoff_bracket.clear_result(match_id)
 
     def champion(self) -> list[Player] | None:
         """Return the champion, or None if not yet decided."""

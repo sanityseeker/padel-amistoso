@@ -8,6 +8,7 @@ Each participant name becomes a single bracket entry (team of one entry).
 from __future__ import annotations
 
 from ..models import Court, Match, MatchStatus, POPhase, Player
+from .errors import MatchClearBlocked
 from .playoff import (
     DoubleEliminationBracket,
     EspejoParallelBracket,
@@ -111,6 +112,13 @@ class PlayoffTournament:
         self.bracket.record_result(match_id, score, sets=sets)
         # The completed match frees its court; new matches may have unlocked.
         # Greedily fill every free court with an unassigned ready match.
+        self._assign_courts_greedily()
+
+    def clear_result(self, match_id: str) -> None:
+        """Revert a bracket match to unplayed (refused once the tournament is finished)."""
+        if self.phase == POPhase.FINISHED:
+            raise MatchClearBlocked("Finished tournaments cannot be reopened; edit the score instead")
+        self.bracket.clear_result(match_id)
         self._assign_courts_greedily()
 
     def winners(self) -> list[list[Player]] | None:
