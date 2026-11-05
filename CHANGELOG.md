@@ -1,3 +1,9 @@
+## v2.3.2 (2026-11-05)
+
+### Fix
+
+- **admin**: keep scroll position across re-renders and tidy export/registration views
+
 ## v2.3.1 (2026-11-05)
 
 ### Fix
