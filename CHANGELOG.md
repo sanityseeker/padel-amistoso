@@ -1,3 +1,9 @@
+## v2.3.4 (2026-11-05)
+
+### Fix
+
+- **i18n**: correct group standings tie-breaker legend
+
 ## v2.3.3 (2026-11-05)
 
 ### Fix
