@@ -177,7 +177,7 @@ function _renderRegDetailInline(rid) {
   html += `<div class="reg-sections-group reg-sections-group-players">`;
 
   // Registrants table (collapsible) — names, passphrases, actions only
-  html += `<details class="reg-section mb-3">`;
+  html += `<details class="reg-section mb-3" data-scroll-anchor="reg-registrants">`;
   html += `<summary class="reg-section-summary reg-section-summary--split">`;
   html += `<span class="reg-section-summary-heading"><span class="tv-chevron">&#9658;</span>${t('txt_reg_registrants')} (${r.registrants.length})</span>`;
   html += `</summary>`;
@@ -243,7 +243,7 @@ function _renderRegDetailInline(rid) {
   // Pending participation claims (name-based recovery awaiting organizer approval)
   const _claims = _regClaims[rid] || [];
   if (_claims.length > 0) {
-    html += `<details class="reg-section mb-3" open>`;
+    html += `<details class="reg-section mb-3" open data-scroll-anchor="reg-claims">`;
     html += `<summary class="reg-section-summary summary-toggle">`;
     html += `<span class="reg-section-summary-heading"><span class="tv-chevron">&#9658;</span>${t('txt_reg_claims_title')} (${_claims.length})</span>`;
     html += `</summary>`;
@@ -266,7 +266,7 @@ function _renderRegDetailInline(rid) {
   }
 
   // Payments panel (Petite-Vue island; mounted after the innerHTML swap below)
-  html += `<details class="reg-section reg-section-payments mb-3" open>`;
+  html += `<details class="reg-section reg-section-payments mb-3" open data-scroll-anchor="reg-payments">`;
   html += `<summary class="reg-section-summary summary-toggle">`;
   html += `<span class="reg-section-summary-heading"><span class="tv-chevron">&#9658;</span>${t('txt_pay_tab')}</span>`;
   html += `</summary>`;
@@ -333,7 +333,6 @@ function _renderRegDetailInline(rid) {
     if (inp.type === 'checkbox') savedInputs[inp.id] = { checked: inp.checked };
     else savedInputs[inp.id] = { value: inp.value };
   });
-  const scrollY = window.scrollY;
   // Save answers-panel filter state (not captured by id-based savedInputs)
   const savedParticipantFilter = el.querySelector('.reg-answers-participant-select')?.value ?? '';
   const savedParticipantSearch = el.querySelector('.reg-answers-participant-search')?.value ?? '';
@@ -350,68 +349,70 @@ function _renderRegDetailInline(rid) {
     if (card.querySelector('.reg-answer-sort-btn')?.dataset.sorted === 'true') savedSortedCards.add(i);
   });
 
-  el.innerHTML = html;
-  _mountPaymentsPanel('registration', rid);
+  // Keep the section the admin was reading in place across the re-render.
+  _preserveScrollPosition(() => {
+    el.innerHTML = html;
+    _mountPaymentsPanel('registration', rid);
 
-  // ── Restore UI state after replacing DOM ──────────────────────────
-  el.querySelectorAll('details.reg-section').forEach((d, i) => { if (openDetails.has(d.id || i)) d.open = true; });
-  for (const [id, state] of Object.entries(savedInputs)) {
-    const inp = document.getElementById(id);
-    if (!inp) continue;
-    if ('checked' in state) inp.checked = state.checked;
-    else inp.value = state.value;
-  }
-  const notesEl = document.getElementById(`reg-notes-${rid}`);
-  if (notesEl) _autoResizeTextarea(notesEl);
-  if (savedFocus) {
-    const fe = document.getElementById(savedFocus.id);
-    if (fe) {
-      fe.focus({ preventScroll: true });
-      try { if (savedFocus.start != null) fe.setSelectionRange(savedFocus.start, savedFocus.end); } catch (_) {}
+    // ── Restore UI state after replacing DOM ──────────────────────────
+    el.querySelectorAll('details.reg-section').forEach((d, i) => { if (openDetails.has(d.id || i)) d.open = true; });
+    for (const [id, state] of Object.entries(savedInputs)) {
+      const inp = document.getElementById(id);
+      if (!inp) continue;
+      if ('checked' in state) inp.checked = state.checked;
+      else inp.value = state.value;
     }
-  }
-  window.scrollTo({ top: scrollY });
+    const notesEl = document.getElementById(`reg-notes-${rid}`);
+    if (notesEl) _autoResizeTextarea(notesEl);
+    if (savedFocus) {
+      const fe = document.getElementById(savedFocus.id);
+      if (fe) {
+        fe.focus({ preventScroll: true });
+        try { if (savedFocus.start != null) fe.setSelectionRange(savedFocus.start, savedFocus.end); } catch (_) {}
+      }
+    }
 
-  // Restore answers-panel filter state: active choices, spoilers, sort, text searches
-  el.querySelectorAll('.reg-answer-card').forEach((card, i) => {
-    if (i in savedActiveChoices) {
-      card.querySelectorAll('.reg-answer-bar-row').forEach(barRow => {
-        if (savedActiveChoices[i].includes(barRow.dataset.choice)) barRow.classList.add('active');
-      });
+    // Restore answers-panel filter state: active choices, spoilers, sort, text searches
+    el.querySelectorAll('.reg-answer-card').forEach((card, i) => {
+      if (i in savedActiveChoices) {
+        card.querySelectorAll('.reg-answer-bar-row').forEach(barRow => {
+          if (savedActiveChoices[i].includes(barRow.dataset.choice)) barRow.classList.add('active');
+        });
+      }
+      if (savedTextSearches[i]) {
+        const search = card.querySelector('.reg-answer-text-search');
+        if (search) search.value = savedTextSearches[i];
+      }
+      if (savedSpoilerOpen.has(i) || i in savedActiveChoices) {
+        const spoiler = card.querySelector('.reg-answer-spoiler');
+        if (spoiler) spoiler.open = true;
+      }
+      if (savedSortedCards.has(i)) {
+        const sortBtn = card.querySelector('.reg-answer-sort-btn');
+        if (sortBtn) _regSortChoiceAnswers(sortBtn);
+      }
+    });
+    // Restore participant filter and re-apply all row filters (participant + choice + hide-empty)
+    const _restoredParticipantSearch = el.querySelector('.reg-answers-participant-search');
+    if (_restoredParticipantSearch && savedParticipantSearch) {
+      _restoredParticipantSearch.value = savedParticipantSearch;
+      _regFilterParticipantOptions(_restoredParticipantSearch);
     }
-    if (savedTextSearches[i]) {
-      const search = card.querySelector('.reg-answer-text-search');
-      if (search) search.value = savedTextSearches[i];
+    const _restoredParticipantSelect = el.querySelector('.reg-answers-participant-select');
+    if (_restoredParticipantSelect && savedParticipantFilter) {
+      _restoredParticipantSelect.value = savedParticipantFilter;
+      _regFilterByParticipant(_restoredParticipantSelect);
+    } else if (!savedParticipantSearch) {
+      el.querySelectorAll('.reg-answer-card').forEach(card => _regApplyRowFilters(card));
     }
-    if (savedSpoilerOpen.has(i) || i in savedActiveChoices) {
-      const spoiler = card.querySelector('.reg-answer-spoiler');
-      if (spoiler) spoiler.open = true;
-    }
-    if (savedSortedCards.has(i)) {
-      const sortBtn = card.querySelector('.reg-answer-sort-btn');
-      if (sortBtn) _regSortChoiceAnswers(sortBtn);
-    }
+    // Re-apply text search filters after row visibility is settled
+    el.querySelectorAll('.reg-answer-text-search').forEach(search => {
+      if (search.value) _regFilterAnswers(search);
+    });
+
+    // Sync the filter panel's live result with the current draft
+    _regFilterRefreshResult(rid);
   });
-  // Restore participant filter and re-apply all row filters (participant + choice + hide-empty)
-  const _restoredParticipantSearch = el.querySelector('.reg-answers-participant-search');
-  if (_restoredParticipantSearch && savedParticipantSearch) {
-    _restoredParticipantSearch.value = savedParticipantSearch;
-    _regFilterParticipantOptions(_restoredParticipantSearch);
-  }
-  const _restoredParticipantSelect = el.querySelector('.reg-answers-participant-select');
-  if (_restoredParticipantSelect && savedParticipantFilter) {
-    _restoredParticipantSelect.value = savedParticipantFilter;
-    _regFilterByParticipant(_restoredParticipantSelect);
-  } else if (!savedParticipantSearch) {
-    el.querySelectorAll('.reg-answer-card').forEach(card => _regApplyRowFilters(card));
-  }
-  // Re-apply text search filters after row visibility is settled
-  el.querySelectorAll('.reg-answer-text-search').forEach(search => {
-    if (search.value) _regFilterAnswers(search);
-  });
-
-  // Sync the filter panel's live result with the current draft
-  _regFilterRefreshResult(rid);
 }
 
 /**
@@ -430,26 +431,26 @@ function _renderRegSettingsPageInline(rid, el) {
     else savedInputs[inp.id] = { value: inp.value };
   });
   const savedQuestionDraft = _captureRegQuestionsDraft(`reg-edit-questions-${rid}`);
-  const scrollY = window.scrollY;
 
-  el.innerHTML = _renderLobbySettingsPage(rid, {
-    regDetail: r,
-    emailSettings: _regEmailSettings[rid] || null,
+  _preserveScrollPosition(() => {
+    el.innerHTML = _renderLobbySettingsPage(rid, {
+      regDetail: r,
+      emailSettings: _regEmailSettings[rid] || null,
+    });
+    _mountPaymentSettingsPanel('registration', rid);
+
+    for (const [id, state] of Object.entries(savedInputs)) {
+      const inp = document.getElementById(id);
+      if (!inp) continue;
+      if ('checked' in state) inp.checked = state.checked;
+      else inp.value = state.value;
+    }
+
+    const descEl = document.getElementById(`reg-edit-desc-${rid}`);
+    if (descEl) _autoResizeTextarea(descEl);
+    const msgEl = document.getElementById(`reg-edit-message-${rid}`);
+    if (msgEl) _autoResizeTextarea(msgEl);
   });
-  _mountPaymentSettingsPanel('registration', rid);
-
-  for (const [id, state] of Object.entries(savedInputs)) {
-    const inp = document.getElementById(id);
-    if (!inp) continue;
-    if ('checked' in state) inp.checked = state.checked;
-    else inp.value = state.value;
-  }
-  window.scrollTo({ top: scrollY });
-
-  const descEl = document.getElementById(`reg-edit-desc-${rid}`);
-  if (descEl) _autoResizeTextarea(descEl);
-  const msgEl = document.getElementById(`reg-edit-message-${rid}`);
-  if (msgEl) _autoResizeTextarea(msgEl);
   _populateRegQuestions(`reg-edit-questions-${rid}`, questions);
   if (savedQuestionDraft !== null) {
     _restoreRegQuestionsDraft(`reg-edit-questions-${rid}`, savedQuestionDraft);
@@ -937,7 +938,7 @@ function _renderAnswersPanel(rid, r, questions) {
 
     // Card header
     const unansweredCount = r.registrants.filter(reg => !reg.answers?.[q.key]).length;
-    h += `<div class="reg-answer-card${unansweredCount > 0 ? ' hide-empty' : ''}">`;
+    h += `<div class="reg-answer-card${unansweredCount > 0 ? ' hide-empty' : ''}" data-scroll-anchor="reg-answer-${escAttr(q.key)}">`;
 
     h += `<div class="reg-answer-card-header">`;
     h += `<span class="reg-answer-card-label">${esc(q.label)}</span>`;

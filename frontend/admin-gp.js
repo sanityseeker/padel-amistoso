@@ -1266,21 +1266,23 @@ function _restoreViewDrafts(drafts) {
 }
 
 async function _rerenderCurrentViewPreserveDrafts() {
-  const scrollY = window.scrollY;
-  const drafts = _captureViewDrafts();
-  if (currentType === 'registration') {
-    await renderRegistration();
-  } else if (currentType === 'group_playoff') {
-    await renderGP();
-  } else if (currentType === 'playoff') {
-    await renderPO();
-  } else {
-    await renderMex();
-  }
-  _restoreViewDrafts(drafts);
-  // Re-apply match filter if active
-  if (_gpMatchFilterState !== 'all') _applyMatchFilter(_gpMatchFilterState);
-  window.scrollTo({ top: scrollY, behavior: 'instant' });
+  // Keep the card the admin was looking at in place, even when content above
+  // it changes height (new round, review queue, court-board layout switch).
+  await _preserveScrollPosition(async () => {
+    const drafts = _captureViewDrafts();
+    if (currentType === 'registration') {
+      await renderRegistration();
+    } else if (currentType === 'group_playoff') {
+      await renderGP();
+    } else if (currentType === 'playoff') {
+      await renderPO();
+    } else {
+      await renderMex();
+    }
+    _restoreViewDrafts(drafts);
+    // Re-apply match filter if active
+    if (_gpMatchFilterState !== 'all') _applyMatchFilter(_gpMatchFilterState);
+  });
   // Reseed the version so the poll doesn't trigger a redundant re-render
   // right after an admin-initiated mutation or an already-handled poll update.
   if (currentTid) {

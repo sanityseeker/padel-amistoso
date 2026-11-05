@@ -436,7 +436,7 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true, scoreC
     for (const key of _roundOrder) {
       _byRound[key].sort((a, b) => _hasTbd(a) - _hasTbd(b));
     }
-    let html = `<div class="card"><h3>${t('txt_txt_pending_matches')}</h3>`;
+    let html = `<div class="card" data-scroll-anchor="court-board"><h3>${t('txt_txt_pending_matches')}</h3>`;
     html += `<div class="pending-grid">`;
     for (const key of _roundOrder) {
       html += `<div>`;
@@ -492,7 +492,7 @@ function _renderCourtAssignmentsCard(matches, title, assignCourts = true, scoreC
   const compactCls = isCompact ? ' court-board-compact' : '';
   const chip = _courtFormatChip(scoreContext);
 
-  let html = `<div class="card"><div class="court-board-header"><h3>${esc(title)}</h3>${chip}</div><div class="court-board${compactCls}">`;
+  let html = `<div class="card" data-scroll-anchor="court-board"><div class="court-board-header"><h3>${esc(title)}</h3>${chip}</div><div class="court-board${compactCls}">`;
   for (const courtName of courtNames) {
     const courtMatches = matchesByCourt[courtName];
     html += `<div class="court-column">`;

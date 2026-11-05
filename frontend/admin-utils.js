@@ -219,6 +219,114 @@ if (document.readyState === 'loading') {
   _initAdminStickyOffset();
 }
 
+// ─── View-position preservation across re-renders ────────
+/** Elements that can act as scroll anchors (form controls excluded). */
+const _SCROLL_ANCHOR_SELECTOR = '[id]:not(input):not(select):not(textarea):not(option), [data-scroll-anchor]';
+/** Pinned elements never move on screen, so they are useless as anchors. */
+const _SCROLL_ANCHOR_IGNORE_SELECTOR = `${_ADMIN_STICKY_BAR_SELECTOR}, .admin-subdomain-banner, .settings-subtabs`;
+
+/**
+ * Record which anchors are visible and where. Anchors whose top edge is in
+ * view come first, top to bottom: the first one is what the user is reading.
+ * Anchors cut off by the top of the view follow, deepest first, so a section
+ * the user is scrolled into still holds when a filter hides everything in it.
+ */
+function _captureScrollAnchors(root) {
+  const snap = { scrollY: window.scrollY, entries: [] };
+  if (!root) return snap;
+  const bandTop = parseFloat(document.documentElement.style.getPropertyValue('--admin-sticky-offset')) || 0;
+  const viewBottom = window.innerHeight;
+  const inView = [];
+  const cutOff = [];
+  const open = [];
+  for (const el of root.querySelectorAll(_SCROLL_ANCHOR_SELECTOR)) {
+    if (el.closest(_SCROLL_ANCHOR_IGNORE_SELECTOR)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    if (r.bottom <= bandTop || r.top >= viewBottom) continue;
+    // Hits arrive in document order, so ancestors precede descendants.
+    while (open.length && !open[open.length - 1].contains(el)) open.pop();
+    const hit = { el, top: r.top, depth: open.length };
+    open.push(el);
+    (r.top >= bandTop ? inView : cutOff).push(hit);
+  }
+  inView.sort((a, b) => a.top - b.top);
+  cutOff.sort((a, b) => b.depth - a.depth);
+  for (const h of [...inView.slice(0, 12), ...cutOff]) {
+    snap.entries.push({
+      node: h.el,
+      id: h.el.id || '',
+      anchor: h.el.dataset.scrollAnchor || '',
+      top: h.top,
+    });
+  }
+  return snap;
+}
+
+/** Scroll so the first surviving anchor sits where it was; else restore scrollY. */
+function _restoreScrollAnchors(snap) {
+  for (const e of snap.entries) {
+    let el = e.node.isConnected ? e.node : null;
+    if (!el && e.id) el = document.getElementById(e.id);
+    if (!el && e.anchor) el = document.querySelector(`[data-scroll-anchor="${CSS.escape(e.anchor)}"]`);
+    if (!el || !el.getClientRects().length) continue;
+    const delta = el.getBoundingClientRect().top - e.top;
+    // Two-arg form scrolls instantly everywhere; skipping tiny deltas avoids
+    // interrupting an iOS momentum scroll when nothing moved.
+    if (Math.abs(delta) >= 1) window.scrollBy(0, delta);
+    return;
+  }
+  window.scrollTo(0, snap.scrollY);
+}
+
+/**
+ * Browser scroll anchoring (Chrome/Firefox) would apply its own correction on
+ * the next frame on top of ours, so it is switched off while a preservation
+ * is in flight and back on two frames after the last one finishes.
+ */
+let _scrollPreserveHolds = 0;
+function _holdBrowserScrollAnchoring() {
+  if (_scrollPreserveHolds++ === 0) document.documentElement.style.overflowAnchor = 'none';
+}
+function _releaseBrowserScrollAnchoring() {
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (--_scrollPreserveHolds === 0) document.documentElement.style.overflowAnchor = '';
+  }));
+}
+
+/**
+ * Run `mutate` (sync or async) and keep the user's view in place: the element
+ * they were looking at stays at the same spot on screen even when content
+ * above it changes height or disappears. While an async render is pending,
+ * user scrolls re-capture the snapshot so the latest position wins.
+ * @param {() => any} mutate
+ * @returns {any} mutate's result (a Promise if mutate returned one)
+ */
+function _preserveScrollPosition(mutate) {
+  const root = document.getElementById('view-content');
+  let snap = _captureScrollAnchors(root);
+  const onScroll = () => { snap = _captureScrollAnchors(root); };
+  _holdBrowserScrollAnchoring();
+  const finish = () => {
+    window.removeEventListener('scroll', onScroll);
+    _restoreScrollAnchors(snap);
+    _releaseBrowserScrollAnchoring();
+  };
+  let result;
+  try {
+    result = mutate();
+  } catch (err) {
+    finish();
+    throw err;
+  }
+  if (result && typeof result.then === 'function') {
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return Promise.resolve(result).finally(finish);
+  }
+  finish();
+  return result;
+}
+
 // ─── Tab switching ─────────────────────────────────────────
 function setActiveTab(tabName) {
   if (tabName === 'view' && !currentTid) return;
@@ -1195,7 +1303,7 @@ function _renderMatchFilterChips(tid) {
   const showDisputed = (typeof _scoreConfirmationMode !== 'undefined') && _scoreConfirmationMode !== 'immediate';
   const chip = (key, label) => {
     const active = current === key ? ' active' : '';
-    return `<button type="button" class="${active}" data-filter="${key}" onclick="_applyMatchFilter('${key}')">${esc(label)}</button>`;
+    return `<button type="button" class="${active}" data-filter="${key}" onclick="_preserveScrollPosition(() => _applyMatchFilter('${key}'))">${esc(label)}</button>`;
   };
   let html = `<div class="match-filter-row" id="admin-match-filter-row" role="tablist" aria-label="Match filter">`;
   html += `<div class="match-filter-toggle" id="gp-match-filter">`;

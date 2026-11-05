@@ -1457,7 +1457,7 @@ def test_tournament_export_options_are_remembered():
     """Section choices persist per browser; standings are always included."""
     export = _read_frontend("admin-export.js")
     assert "const _EXPORT_OPTS_KEY = 'amistoso-export-opts';" in export
-    assert "{ history: true, bracket: true, upcoming: true, elo: false }" in export
+    assert "{ history: true, bracket: true, upcoming: true, comments: true, elo: false }" in export
     assert "localStorage.setItem(_EXPORT_OPTS_KEY, JSON.stringify(opts))" in export
     assert "onchange=\"_saveExportOpt('${key}', this.checked)\"" in export
     for key in ("elo", "upcoming", "bracket", "history"):
@@ -1473,11 +1473,51 @@ def test_tournament_export_options_are_remembered():
         "txt_export_matches_played",
         "txt_export_upcoming_matches",
         "txt_export_col_elo",
+        "txt_export_col_comment",
+        "txt_export_include_comments",
         "txt_export_score_disputed",
         "txt_export_score_unconfirmed",
         "txt_export_preparing",
     ):
         assert i18n.count(f'"{key}"') == 2, key
+
+
+def test_tournament_export_match_tables_show_comments():
+    """Admin match comments get their own column in the upcoming and history
+    tables, behind a remembered toggle, and only when a listed match has one."""
+    export = _read_frontend("admin-export.js")
+    assert "const _showComments = (on, ms) => on && ms.some(m => (m.comment || '').trim());" in export
+    assert "h += toggle('comments', t('txt_export_include_comments'));" in export
+    for fn in (
+        "function _report_history(title, matches, { comments, teams })",
+        "function _report_upcoming(matches, { comments, teams })",
+    ):
+        body = export[export.index(fn) :]
+        body = body[: body.index("\n}\n")]
+        assert "_comment_headers(show, _court_headers(" in body, fn
+        assert "_with_comment(show, m, _with_court(" in body, fn
+    calls = [
+        line
+        for line in export.splitlines()
+        if "body += _report_history(" in line or "body += _report_upcoming(" in line
+    ]
+    assert len(calls) == 8 and all(line.endswith(", tbl);") for line in calls)
+
+
+def test_tournament_export_names_teams_and_players():
+    """Team events say "Team" in standings and match tables (a team is one
+    entry per side, so the one-per-side "Player" rule must not apply to them);
+    Mexicano tennis team_mode is singles, so it stays "Player"."""
+    export = _read_frontend("admin-export.js")
+    rule = export[export.index("function _is_team_event(status, mexicano = false)") :]
+    rule = rule[: rule.index("\n}\n")]
+    assert "if (Object.keys(status.team_roster || {}).length > 0) return true;" in rule
+    assert "return !mexicano || (status.sport || 'padel') !== 'tennis';" in rule
+    assert "const _side_headers = (ms, teams) => (!teams && ms.length" in export
+    assert export.count("teams: _is_team_event(status) };") == 2
+    assert export.count("teams: _is_team_event(status, true) };") == 1
+    assert export.count("_participant_header(tbl.teams)") == 2
+    assert "[t('txt_export_player_1'), t('txt_export_player_2')]" in export
 
 
 def test_tournament_export_pdf_window_opens_before_any_await():
@@ -1614,3 +1654,21 @@ def test_admin_css_uses_tokens_not_off_palette_hues():
     assert "color: #fff" not in css
     assert "var(--accent)" not in css and "var(--surface2)" not in css
     assert "#3b82f6" not in _read_frontend("register.html")
+
+
+def test_admin_rerenders_preserve_view_position():
+    """Filter chips and full re-renders keep the admin's view anchored to the
+    element they were looking at instead of restoring a raw scrollY."""
+    utils = _read_frontend("admin-utils.js")
+    assert "function _preserveScrollPosition(" in utils
+    assert "_preserveScrollPosition(() => _applyMatchFilter(" in utils
+
+    gp = _read_frontend("admin-gp.js")
+    start = gp.index("async function _rerenderCurrentViewPreserveDrafts(")
+    rerender = gp[start : gp.index("\n}\n", start)]
+    assert "_preserveScrollPosition(" in rerender
+    assert "window.scrollTo" not in rerender
+
+    reg = _read_frontend("admin-registration.js")
+    assert "const scrollY = window.scrollY" not in reg
+    assert reg.count("_preserveScrollPosition(") == 2

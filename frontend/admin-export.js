@@ -9,7 +9,7 @@
 const _EXPORT_OPTS_KEY = 'amistoso-export-opts';
 
 /** Section toggles and their defaults. Standings are always included. */
-const _EXPORT_DEFAULTS = { history: true, bracket: true, upcoming: true, elo: false };
+const _EXPORT_DEFAULTS = { history: true, bracket: true, upcoming: true, comments: true, elo: false };
 
 function _loadExportOpts() {
   try {
@@ -31,7 +31,8 @@ function _saveExportOpt(key, value) {
  * @param {{finished: boolean, hasStandings?: boolean, hasBracket?: boolean}} ctx
  *   `hasStandings` shows the ELO toggle (Direct Playoffs has no table);
  *   `hasBracket` shows the bracket toggle; the upcoming-matches toggle only
- *   applies while the tournament runs.
+ *   applies while the tournament runs. The comments toggle adds admin match
+ *   comments as a column to both match tables.
  */
 function _renderExportPanel({ finished, hasStandings = true, hasBracket = false }) {
   const opts = _loadExportOpts();
@@ -43,6 +44,7 @@ function _renderExportPanel({ finished, hasStandings = true, hasBracket = false 
   h += toggle('history', t('txt_txt_include_match_history'));
   if (hasBracket) h += toggle('bracket', t('txt_export_include_bracket'));
   if (!finished) h += toggle('upcoming', t('txt_export_include_upcoming'));
+  h += toggle('comments', t('txt_export_include_comments'));
   if (hasStandings) h += toggle('elo', t('txt_export_include_elo'));
   h += `</div>`;
   h += `<div class="export-actions-row">`;
@@ -81,30 +83,57 @@ const _hasCourts = (ms) => ms.some(m => m.court);
 const _court_headers = (ms, headers) => (_hasCourts(ms) ? [...headers, t('txt_txt_court')] : headers);
 const _with_court = (m, cells, ms) => (_hasCourts(ms) ? [...cells, m.court || ''] : cells);
 
-/** Side headers read "Player" when every listed match is one player per side. */
-const _side_headers = (ms) => (ms.length && ms.every(m => (m.team1 || []).length === 1 && (m.team2 || []).length === 1)
+/**
+ * Side headers read "Player" when every listed match is one player per side.
+ * In a team event each side is a single team entry, so it stays "Team".
+ */
+const _side_headers = (ms, teams) => (!teams && ms.length && ms.every(m => (m.team1 || []).length === 1 && (m.team2 || []).length === 1)
   ? [t('txt_export_player_1'), t('txt_export_player_2')]
   : [t('txt_txt_team_1'), t('txt_txt_team_2')]);
 
 const _teamText = (team) => (team || []).join(' & ') || 'TBD';
 
+/**
+ * Whether the tournament's entries are teams. GP and play-off `team_mode`
+ * means team entries; Mexicano `team_mode` means one entry per side, which is
+ * a fixed pair in padel but a single player in tennis.
+ */
+function _is_team_event(status, mexicano = false) {
+  if (Object.keys(status.team_roster || {}).length > 0) return true;
+  if (!status.team_mode) return false;
+  return !mexicano || (status.sport || 'padel') !== 'tennis';
+}
+
+/** Standings name column. */
+const _participant_header = (teams) => (teams ? t('txt_txt_team') : t('txt_txt_player'));
+
+/**
+ * The Comment column appears when comments are switched on and at least one
+ * listed match has an admin comment.
+ */
+const _showComments = (on, ms) => on && ms.some(m => (m.comment || '').trim());
+const _comment_headers = (show, headers) => (show ? [...headers, t('txt_export_col_comment')] : headers);
+const _with_comment = (show, m, cells) => (show ? [...cells, (m.comment || '').trim()] : cells);
+
 /** Completed matches as a history table; empty string when there are none. */
-function _report_history(title, matches) {
+function _report_history(title, matches, { comments, teams }) {
   const done = (matches || []).filter(m => m.status === 'completed');
   if (done.length === 0) return '';
+  const show = _showComments(comments, done);
   return `<h2>${esc(title)}</h2>` + _report_table(
-    _court_headers(done, [t('txt_txt_round'), ..._side_headers(done), t('txt_txt_score')]),
-    done.map(m => _with_court(m, [m.round_label || '', _teamText(m.team1), _teamText(m.team2), _export_score_cell(m)], done)),
+    _comment_headers(show, _court_headers(done, [t('txt_txt_round'), ..._side_headers(done, teams), t('txt_txt_score')])),
+    done.map(m => _with_comment(show, m, _with_court(m, [m.round_label || '', _teamText(m.team1), _teamText(m.team2), _export_score_cell(m)], done))),
   );
 }
 
-/** Not-yet-played matches (with court) for a running tournament's snapshot. */
-function _report_upcoming(matches) {
+/** Not-yet-played matches (with court and admin comment) for a running tournament's snapshot. */
+function _report_upcoming(matches, { comments, teams }) {
   const open = (matches || []).filter(m => m.status !== 'completed');
   if (open.length === 0) return '';
+  const show = _showComments(comments, open);
   return `<h2>${t('txt_export_upcoming_matches')}</h2>` + _report_table(
-    _court_headers(open, [t('txt_txt_round'), ..._side_headers(open)]),
-    open.map(m => _with_court(m, [m.round_label || '', _teamText(m.team1), _teamText(m.team2)], open)),
+    _comment_headers(show, _court_headers(open, [t('txt_txt_round'), ..._side_headers(open, teams)])),
+    open.map(m => _with_comment(show, m, _with_court(m, [m.round_label || '', _teamText(m.team1), _teamText(m.team2)], open))),
   );
 }
 
@@ -249,6 +278,7 @@ async function _build_gp_report(tid, opts, tvSettings) {
     api(`/api/tournaments/${tid}/gp/playoffs`).catch(() => ({ matches: [], pending: [] })),
   ]);
   const finished = status.phase === 'finished';
+  const tbl = { comments: opts.comments, teams: _is_team_event(status) };
   const hasBracket = status.phase !== 'groups';
   const espejo = status.espejo === true;
   const labels = (espejo || status.double_elimination)
@@ -271,16 +301,16 @@ async function _build_gp_report(tid, opts, tvSettings) {
 
   let body = _report_champion(status);
   if (!finished && opts.upcoming) {
-    body += _report_upcoming(status.phase === 'groups' ? groupMatches : (playoffs?.pending || []));
+    body += _report_upcoming(status.phase === 'groups' ? groupMatches : (playoffs?.pending || []), tbl);
   }
   body += _report_bracket(images);
-  if (opts.history) body += _report_history(t('txt_txt_play_off_match_history'), playoffMatches);
+  if (opts.history) body += _report_history(t('txt_txt_play_off_match_history'), playoffMatches, tbl);
 
   body += `<h2>${t('txt_txt_group_standings')}</h2>`;
   for (const [gName, rows] of Object.entries(groups.standings || {})) {
     body += `<h3>${t('txt_txt_group_name_value', { value: esc(gName) })}</h3>`;
     const hasSets = rows.some(r => r.sets_won > 0 || r.sets_lost > 0);
-    const headers = [t('txt_txt_player'), t('txt_txt_played'), t('txt_txt_w_abbrev'), t('txt_txt_d_abbrev'), t('txt_txt_l_abbrev')];
+    const headers = [_participant_header(tbl.teams), t('txt_txt_played'), t('txt_txt_w_abbrev'), t('txt_txt_d_abbrev'), t('txt_txt_l_abbrev')];
     if (hasSets) headers.push(t('txt_txt_sw_abbrev'), t('txt_txt_sl_abbrev'), t('txt_txt_sd_abbrev'));
     headers.push(t('txt_txt_pf_abbrev'), t('txt_txt_pa_abbrev'), t('txt_txt_diff_abbrev'));
     if (opts.elo) headers.push(t('txt_export_col_elo'));
@@ -296,7 +326,7 @@ async function _build_gp_report(tid, opts, tvSettings) {
       'standings',
     );
   }
-  if (opts.history) body += _report_history(t('txt_txt_group_match_history'), groupMatches);
+  if (opts.history) body += _report_history(t('txt_txt_group_match_history'), groupMatches, tbl);
 
   return { body, finished, progress };
 }
@@ -307,6 +337,7 @@ async function _build_po_report(tid, opts, tvSettings) {
     api(`/api/tournaments/${tid}/po/playoffs`),
   ]);
   const finished = status.phase === 'finished';
+  const tbl = { comments: opts.comments, teams: _is_team_event(status) };
   // Standalone double elimination draws both sides in one image; only
   // Espejo has a separate Silver / Losers bracket to fetch.
   const labels = status.espejo === true
@@ -321,9 +352,9 @@ async function _build_po_report(tid, opts, tvSettings) {
     : `${t('txt_txt_play_offs')} · ${t('txt_export_matches_played', { done: _played(matches), total: matches.length })}`;
 
   let body = _report_champion(status);
-  if (!finished && opts.upcoming) body += _report_upcoming(playoffs.pending || []);
+  if (!finished && opts.upcoming) body += _report_upcoming(playoffs.pending || [], tbl);
   body += _report_bracket(images);
-  if (opts.history) body += _report_history(t('txt_txt_play_off_match_history'), matches);
+  if (opts.history) body += _report_history(t('txt_txt_play_off_match_history'), matches, tbl);
 
   return { body, finished, progress };
 }
@@ -335,6 +366,7 @@ async function _build_mex_report(tid, opts, tvSettings) {
     api(`/api/tournaments/${tid}/mex/playoffs`).catch(() => ({ matches: [], pending: [] })),
   ]);
   const finished = status.phase === 'finished';
+  const tbl = { comments: opts.comments, teams: _is_team_event(status, true) };
   const playoffMatches = playoffs?.matches || [];
   const inPlayoffs = status.phase === 'playoffs' || playoffMatches.length > 0;
   const images = opts.bracket && inPlayoffs
@@ -350,12 +382,12 @@ async function _build_mex_report(tid, opts, tvSettings) {
 
   let body = _report_champion(status);
   if (!finished && opts.upcoming) {
-    body += _report_upcoming(inPlayoffs ? (playoffs?.pending || []) : (matches.current_matches || []));
+    body += _report_upcoming(inPlayoffs ? (playoffs?.pending || []) : (matches.current_matches || []), tbl);
   }
   body += _report_bracket(images);
-  if (opts.history) body += _report_history(t('txt_txt_play_off_match_history'), playoffMatches);
+  if (opts.history) body += _report_history(t('txt_txt_play_off_match_history'), playoffMatches, tbl);
 
-  const headers = [t('txt_txt_rank'), t('txt_txt_player'), t('txt_txt_total_pts'), t('txt_txt_played'), t('txt_txt_w_abbrev'), t('txt_txt_d_abbrev'), t('txt_txt_l_abbrev'), t('txt_txt_avg_pts')];
+  const headers = [t('txt_txt_rank'), _participant_header(tbl.teams), t('txt_txt_total_pts'), t('txt_txt_played'), t('txt_txt_w_abbrev'), t('txt_txt_d_abbrev'), t('txt_txt_l_abbrev'), t('txt_txt_avg_pts')];
   if (opts.elo) headers.push(t('txt_export_col_elo'));
   body += `<h2>${t('txt_txt_leaderboard')}</h2>`;
   body += _report_table(
@@ -366,7 +398,7 @@ async function _build_mex_report(tid, opts, tvSettings) {
       return row;
     }),
   );
-  if (opts.history) body += _report_history(t('txt_txt_mexicano_round_history'), matches.all_matches);
+  if (opts.history) body += _report_history(t('txt_txt_mexicano_round_history'), matches.all_matches, tbl);
 
   return { body, finished, progress };
 }
