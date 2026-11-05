@@ -1457,24 +1457,21 @@ def test_tournament_export_options_are_remembered():
     """Section choices persist per browser; standings are always included."""
     export = _read_frontend("admin-export.js")
     assert "const _EXPORT_OPTS_KEY = 'amistoso-export-opts';" in export
-    assert "{ history: true, bracket: true, upcoming: true, settings: false, elo: false }" in export
+    assert "{ history: true, bracket: true, upcoming: true, elo: false }" in export
     assert "localStorage.setItem(_EXPORT_OPTS_KEY, JSON.stringify(opts))" in export
     assert "onchange=\"_saveExportOpt('${key}', this.checked)\"" in export
-    for key in ("elo", "settings", "upcoming", "bracket", "history"):
+    for key in ("elo", "upcoming", "bracket", "history"):
         assert f"opts.{key}" in export, key
     i18n = _read_frontend("i18n.js")
     for key in (
         "txt_export_include_bracket",
         "txt_export_include_upcoming",
         "txt_export_include_elo",
-        "txt_export_include_settings",
         "txt_admin_settings_tab_export",
         "txt_admin_settings_help_export",
         "txt_export_snapshot_title",
         "txt_export_matches_played",
         "txt_export_upcoming_matches",
-        "txt_export_settings_heading",
-        "txt_export_rounds",
         "txt_export_col_elo",
         "txt_export_score_disputed",
         "txt_export_score_unconfirmed",

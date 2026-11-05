@@ -9,7 +9,7 @@
 const _EXPORT_OPTS_KEY = 'amistoso-export-opts';
 
 /** Section toggles and their defaults. Standings are always included. */
-const _EXPORT_DEFAULTS = { history: true, bracket: true, upcoming: true, settings: false, elo: false };
+const _EXPORT_DEFAULTS = { history: true, bracket: true, upcoming: true, elo: false };
 
 function _loadExportOpts() {
   try {
@@ -44,7 +44,6 @@ function _renderExportPanel({ finished, hasStandings = true, hasBracket = false 
   if (hasBracket) h += toggle('bracket', t('txt_export_include_bracket'));
   if (!finished) h += toggle('upcoming', t('txt_export_include_upcoming'));
   if (hasStandings) h += toggle('elo', t('txt_export_include_elo'));
-  h += toggle('settings', t('txt_export_include_settings'));
   h += `</div>`;
   h += `<div class="export-actions-row">`;
   h += `<button type="button" class="btn btn-primary" onclick="exportTournamentOutcome('html')">${t('txt_txt_export_html')}</button>`;
@@ -82,6 +81,11 @@ const _hasCourts = (ms) => ms.some(m => m.court);
 const _court_headers = (ms, headers) => (_hasCourts(ms) ? [...headers, t('txt_txt_court')] : headers);
 const _with_court = (m, cells, ms) => (_hasCourts(ms) ? [...cells, m.court || ''] : cells);
 
+/** Side headers read "Player" when every listed match is one player per side. */
+const _side_headers = (ms) => (ms.length && ms.every(m => (m.team1 || []).length === 1 && (m.team2 || []).length === 1)
+  ? [t('txt_export_player_1'), t('txt_export_player_2')]
+  : [t('txt_txt_team_1'), t('txt_txt_team_2')]);
+
 const _teamText = (team) => (team || []).join(' & ') || 'TBD';
 
 /** Completed matches as a history table; empty string when there are none. */
@@ -89,7 +93,7 @@ function _report_history(title, matches) {
   const done = (matches || []).filter(m => m.status === 'completed');
   if (done.length === 0) return '';
   return `<h2>${esc(title)}</h2>` + _report_table(
-    _court_headers(done, [t('txt_txt_round'), t('txt_txt_team_1'), t('txt_txt_team_2'), t('txt_txt_score')]),
+    _court_headers(done, [t('txt_txt_round'), ..._side_headers(done), t('txt_txt_score')]),
     done.map(m => _with_court(m, [m.round_label || '', _teamText(m.team1), _teamText(m.team2), _export_score_cell(m)], done)),
   );
 }
@@ -99,16 +103,9 @@ function _report_upcoming(matches) {
   const open = (matches || []).filter(m => m.status !== 'completed');
   if (open.length === 0) return '';
   return `<h2>${t('txt_export_upcoming_matches')}</h2>` + _report_table(
-    _court_headers(open, [t('txt_txt_round'), t('txt_txt_team_1'), t('txt_txt_team_2')]),
+    _court_headers(open, [t('txt_txt_round'), ..._side_headers(open)]),
     open.map(m => _with_court(m, [m.round_label || '', _teamText(m.team1), _teamText(m.team2)], open)),
   );
-}
-
-/** Two-column key/value table for the settings summary. */
-function _report_settings(pairs) {
-  const rows = pairs.filter(([, v]) => v !== null && v !== undefined && v !== '');
-  return `<h2>${t('txt_export_settings_heading')}</h2>`
-    + `<table class="kv"><tbody>${rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(String(v))}</td></tr>`).join('')}</tbody></table>`;
 }
 
 function _report_champion(status) {
@@ -149,22 +146,6 @@ function _report_bracket(images) {
   return h;
 }
 
-function _bracketVariantLabel(status) {
-  if (status.espejo_split) return t('txt_txt_espejo_split_format');
-  if (status.espejo) return t('txt_txt_espejo_format');
-  if (status.double_elimination) return t('txt_txt_double_elimination');
-  return t('txt_txt_single_elimination');
-}
-
-function _sportLabel(status) {
-  return (status.sport || 'padel') === 'tennis' ? t('txt_txt_sport_tennis') : t('txt_txt_sport_padel');
-}
-
-function _courtsLabel(status) {
-  const courts = status.courts || [];
-  if (status.assign_courts === false || courts.length === 0) return null;
-  return courts.map(c => c.name).join(', ');
-}
 
 /**
  * Trophy icon for the standalone HTML/PDF export. The export document does not
@@ -202,7 +183,6 @@ function _build_report_document(title, bodyHtml) {
     th { background: #f3f4f6; }
     table.standings { table-layout: fixed; }
     table.standings th:first-child { width: 28%; }
-    table.kv { width: auto; min-width: 50%; }
     img { max-width: 100%; height: auto; }
     h2, h3 { break-after: avoid; }
     tr, img { break-inside: avoid; }
@@ -318,14 +298,6 @@ async function _build_gp_report(tid, opts, tvSettings) {
   }
   if (opts.history) body += _report_history(t('txt_txt_group_match_history'), groupMatches);
 
-  if (opts.settings) {
-    body += _report_settings([
-      [t('txt_txt_format'), `${t('txt_txt_group_playoff')} · ${_bracketVariantLabel(status)}`],
-      [t('txt_txt_sport'), _sportLabel(status)],
-      [t('txt_txt_groups'), status.num_groups],
-      [t('txt_txt_courts'), _courtsLabel(status)],
-    ]);
-  }
   return { body, finished, progress };
 }
 
@@ -353,13 +325,6 @@ async function _build_po_report(tid, opts, tvSettings) {
   body += _report_bracket(images);
   if (opts.history) body += _report_history(t('txt_txt_play_off_match_history'), matches);
 
-  if (opts.settings) {
-    body += _report_settings([
-      [t('txt_txt_format'), `${t('txt_txt_play_offs')} · ${_bracketVariantLabel(status)}`],
-      [t('txt_txt_sport'), _sportLabel(status)],
-      [t('txt_txt_courts'), _courtsLabel(status)],
-    ]);
-  }
   return { body, finished, progress };
 }
 
@@ -403,15 +368,6 @@ async function _build_mex_report(tid, opts, tvSettings) {
   );
   if (opts.history) body += _report_history(t('txt_txt_mexicano_round_history'), matches.all_matches);
 
-  if (opts.settings) {
-    body += _report_settings([
-      [t('txt_txt_format'), t('txt_txt_mexicano')],
-      [t('txt_txt_sport'), _sportLabel(status)],
-      [t('txt_export_rounds'), status.rolling ? t('txt_txt_rolling') : status.num_rounds],
-      [t('txt_txt_total_points_per_match'), status.total_points_per_match || null],
-      [t('txt_txt_courts'), _courtsLabel(status)],
-    ]);
-  }
   return { body, finished, progress };
 }
 
