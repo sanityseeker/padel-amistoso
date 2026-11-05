@@ -1,3 +1,9 @@
+## v2.3.3 (2026-11-05)
+
+### Fix
+
+- **admin**: consistent club ELO, clear match result, compact standings and settings tabs
+
 ## v2.3.2 (2026-11-05)
 
 ### Fix
