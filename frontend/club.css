@@ -345,14 +345,12 @@ body {
     grid-row: 1;
     font-weight: 700;
   }
-  .club-leaderboard-table td.col-tier,
   .club-leaderboard-table td.col-matches {
     grid-column: 1 / -1;
     text-align: left;
     font-size: 0.8rem;
     color: var(--text-muted);
   }
-  .club-leaderboard-table td.col-tier::before { content: attr(data-label) ": "; opacity: 0.7; }
   .club-leaderboard-table td.col-matches::before { content: attr(data-label) ": "; opacity: 0.7; }
 }
 

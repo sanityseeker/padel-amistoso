@@ -151,6 +151,40 @@ function formatSetScore(sets, decider, sep = ' / ') {
 }
 
 /**
+ * Escaped HTML for one side of a match-history row: each player in its own
+ * ``.elo-team-player`` span so narrow screens can stack partners instead of
+ * truncating them away. Used by the club and TV player mini-cards.
+ * @param {string[]|null|undefined} names
+ * @returns {string}
+ */
+function eloTeamPlayersHtml(names) {
+  if (!Array.isArray(names)) return '';
+  return names
+    .map(n => `<span class="elo-team-player">${esc(n)}</span>`)
+    .join('<span class="elo-team-join">/</span>');
+}
+
+/**
+ * Escaped HTML for the middle of a match-history row: the set scores (one
+ * ``.elo-set`` span each, so phones can stack them), the game score, or "vs".
+ * Used by the club and TV player mini-cards.
+ * @param {{sets?: number[][], decider?: string|null, score?: number[]}} m
+ * @returns {string}
+ */
+function eloScoreSepHtml(m) {
+  if (Array.isArray(m.sets) && m.sets.length > 0) {
+    const sets = formatSetScore(m.sets, m.decider, '\n').split('\n');
+    return `<span class="elo-score-sep elo-score-sep--sets">${sets
+      .map(s => `<span class="elo-set">${esc(s)}</span>`)
+      .join('<span class="elo-set-join">·</span>')}</span>`;
+  }
+  if (Array.isArray(m.score) && m.score.length >= 2) {
+    return `<span class="elo-score-sep">${esc(`${m.score[0]} – ${m.score[1]}`)}</span>`;
+  }
+  return '<span class="elo-vs-sep">vs</span>';
+}
+
+/**
  * Return a copy of *matches* sorted so TBD-team matches come last.
  * @param {object[]} matches
  * @returns {object[]}

@@ -158,15 +158,18 @@ async function renderGP() {
     // Playoff bracket
     if (status.phase === 'playoffs' || status.phase === 'finished') {
       const gpEspejo = status.espejo === true;
+      const gpSplit = status.espejo_split === true;
       html += _renderAdminBracketCard(`/api/tournaments/${currentTid}/gp/playoffs-schema`, tvSettings, {
         isDouble: status.double_elimination === true && !gpEspejo,
         isEspejo: gpEspejo,
+        isSplit: gpSplit,
       });
       html += _renderPlayoffMatchesByRound(
         playoffs?.matches || [],
         'gp-playoff',
         gpEspejo ? 'gp-espejo-losers' : 'gp-playoff',
         status.espejo_super_final ? 'gp-espejo-super-final' : (gpEspejo ? 'gp-espejo-losers' : 'gp-playoff'),
+        gpSplit,
       );
     }
 
@@ -178,7 +181,7 @@ async function renderGP() {
     if (status.phase === 'playoffs' || status.phase === 'finished') {
       scoringStages.push({ key: 'gp-playoff', label: t('txt_txt_play_offs') });
       if (status.espejo) {
-        scoringStages.push({ key: 'gp-espejo-losers', label: t('txt_txt_espejo_losers_bracket') });
+        scoringStages.push({ key: 'gp-espejo-losers', label: t(status.espejo_split ? 'txt_txt_espejo_silver_bracket' : 'txt_txt_espejo_losers_bracket') });
       }
       if (status.espejo_super_final) {
         // Legacy: only tournaments created before the Super Final was removed.
@@ -1655,14 +1658,141 @@ async function proposeGpPlayoffs() {
     _gpExternalParticipants = [];
     _gpPlayoffTeamMode = false;
     _gpPlayoffTeams = [];
+    _gpPlayoffFormat = 'single';
+    _gpSplitInit();
     const section = document.getElementById('gp-playoffs-section');
     if (section) section.innerHTML = _renderGpPlayoffEditor();
   } catch (e) { alert(e.message); }
 }
 
+// ─── Oro / Plata split (Espejo by group position) ─────────
+let _gpPlayoffFormat = 'single';   // 'single' | 'double' | 'espejo_split' (Oro / Plata replaces classic Espejo here)
+let _gpSplitAssign = {};           // player_id -> 'oro' | 'plata' | 'out'
+let _gpSplitCutoff = 1;            // quick-helper value: places 1..N go to Oro
+
+/** Recommended rows grouped by group name, each group in group-rank order. */
+function _gpRowsByGroup() {
+  const byGroup = {};
+  for (const r of _gpRecommended) {
+    if (!byGroup[r.group]) byGroup[r.group] = [];
+    byGroup[r.group].push(r);
+  }
+  for (const rows of Object.values(byGroup)) rows.sort((a, b) => (a.group_rank || 0) - (b.group_rank || 0));
+  return byGroup;
+}
+
+/** Default pre-selection: ranks 1..ceil(size/2) of every group go to Oro, the rest to Plata. */
+function _gpSplitInit() {
+  _gpSplitAssign = {};
+  let maxSize = 0;
+  for (const rows of Object.values(_gpRowsByGroup())) {
+    const half = Math.ceil(rows.length / 2);
+    maxSize = Math.max(maxSize, rows.length);
+    rows.forEach((r, i) => { _gpSplitAssign[r.player_id] = i < half ? 'oro' : 'plata'; });
+  }
+  _gpSplitCutoff = Math.max(1, Math.ceil(maxSize / 2));
+}
+
+/** Cut-off helper: places 1..K to Oro, the rest to Plata, in every group. */
+function _gpSplitApplyCutoff(value) {
+  const k = Math.max(0, parseInt(value, 10) || 0);
+  _gpSplitCutoff = k;
+  for (const rows of Object.values(_gpRowsByGroup())) {
+    rows.forEach((r, i) => { _gpSplitAssign[r.player_id] = i < k ? 'oro' : 'plata'; });
+  }
+  document.querySelectorAll('select[data-split-pid]').forEach(sel => {
+    sel.value = _gpSplitAssign[sel.dataset.splitPid] || 'out';
+  });
+  _gpUpdatePlayoffMatchCount();
+}
+
+function _gpSplitSet(pid, value) {
+  _gpSplitAssign[pid] = value;
+  _gpUpdatePlayoffMatchCount();
+}
+
+/** Number of bracket entries (teams) per bucket; individual mode pairs players up. */
+function _gpSplitCounts() {
+  const n = { oro: 0, plata: 0 };
+  for (const r of _gpRecommended) {
+    const side = _gpSplitAssign[r.player_id];
+    if (side === 'oro' || side === 'plata') n[side] += 1;
+  }
+  const entries = v => (_gpTeamMode ? v : Math.floor(v / 2));
+  return { players: n, oro: entries(n.oro), plata: entries(n.plata) };
+}
+
+/** Warnings that would make the server reject the split (shown live and before submit). */
+function _gpSplitWarnings(thirdOro = false, thirdPlata = false) {
+  const c = _gpSplitCounts();
+  const warns = [];
+  const label = { oro: t('txt_split_gold'), plata: t('txt_split_silver') };
+  for (const side of ['oro', 'plata']) {
+    if (!_gpTeamMode && c.players[side] % 2 !== 0) warns.push(t('txt_split_warn_odd', { bracket: label[side] }));
+    else if (c[side] < 2) warns.push(t('txt_split_warn_min', { bracket: label[side] }));
+  }
+  if (thirdOro && c.oro < 4) warns.push(t('txt_split_warn_third', { bracket: label.oro }));
+  if (thirdPlata && c.plata < 4) warns.push(t('txt_split_warn_third', { bracket: label.plata }));
+  return warns;
+}
+
+/** Rows of the Oro / Plata / Out assignment editor, one box per group. */
+function _renderGpSplitEditor() {
+  let html = `<p class="panel-intro">${t('txt_split_intro')}</p>`;
+  html += `<div class="gp-split-cutoff">`;
+  html += `<label for="gp-split-cutoff">${t('txt_split_cutoff')}</label>`;
+  html += `<input type="number" id="gp-split-cutoff" min="0" value="${_gpSplitCutoff}" inputmode="numeric" pattern="[0-9]*" class="playoff-editor-score-input" onchange="_gpSplitApplyCutoff(this.value)">`;
+  html += `</div>`;
+  html += `<div class="settings-help">${t('txt_split_cutoff_hint')}</div>`;
+  html += `<div class="gp-groups-container">`;
+  for (const [gName, rows] of Object.entries(_gpRowsByGroup())) {
+    html += `<div class="gp-group-box">`;
+    html += `<div class="gp-group-title">${esc(gName)}</div>`;
+    for (const r of rows) {
+      const cur = _gpSplitAssign[r.player_id] || 'out';
+      html += `<div class="gp-player-row gp-split-row">`;
+      html += `<span class="gp-split-rank">${r.group_rank}</span>`;
+      html += `<span class="gp-player-name">${esc(r.player)}</span>`;
+      html += `<span class="gp-player-stats">${_gpPlayerStatsText(r)}</span>`;
+      html += `<select class="gp-split-select" data-split-pid="${escAttr(r.player_id)}" aria-label="${escAttr(r.player)}" onchange="_gpSplitSet(this.dataset.splitPid, this.value)">`;
+      for (const [val, key] of [['oro', 'txt_split_gold'], ['plata', 'txt_split_silver'], ['out', 'txt_split_out']]) {
+        html += `<option value="${val}"${cur === val ? ' selected' : ''}>${esc(t(key))}</option>`;
+      }
+      html += `</select>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+  html += `</div>`;
+  html += `<div class="gp-split-summary" id="gp-split-summary" aria-live="polite"></div>`;
+  return html;
+}
+
+/** Wins and score-difference text shared by the checkbox and split editors. */
+function _gpPlayerStatsText(r) {
+  const _usesSets = r.sets_won > 0 || r.sets_lost > 0;
+  const _diffPart = _usesSets
+    ? `${t('txt_txt_sd_abbrev')}: ${r.sets_diff >= 0 ? '+' : ''}${r.sets_diff}, diff ${r.point_diff >= 0 ? '+' : ''}${r.point_diff}`
+    : `diff ${r.point_diff >= 0 ? '+' : ''}${r.point_diff}`;
+  return `${r.wins} ${t('txt_txt_w_abbrev')}, ${_diffPart}`;
+}
+
 function _renderGpPlayoffEditor() {
   let html = `<div class="card">`;
   html += `<h2>${t('txt_txt_configure_gp_playoffs')}</h2>`;
+  const isSplit = _gpPlayoffFormat === 'espejo_split';
+
+  // Format selector first: the split format swaps the whole participant section.
+  html += `<div class="gp-format-row">`;
+  html += `<div class="form-group"><label>${t('txt_txt_format')}</label><select id="gp-playoff-format" onchange="_gpPlayoffFormatChanged()">` +
+    [['single', 'txt_txt_single_elimination'], ['double', 'txt_txt_double_elimination'], ['espejo_split', 'txt_txt_espejo_split_format']]
+      .map(([v, k]) => `<option value="${v}"${_gpPlayoffFormat === v ? ' selected' : ''}>${t(k)}</option>`).join('') +
+    `</select></div>`;
+  html += `</div>`;
+
+  if (isSplit) {
+    html += _renderGpSplitEditor();
+  } else {
   html += `<p class="panel-intro">${t('txt_txt_select_advancing_players')}</p>`;
 
   // Participant checkboxes grouped by group — grid layout
@@ -1680,11 +1810,7 @@ function _renderGpPlayoffEditor() {
       html += `<label class="gp-player-row">`;
       html += `<input type="checkbox" value="${r.player_id}" class="gp-advancing-cb"${checked} onchange="_gpToggleAdvancing(this)">`;
       html += `<span class="gp-player-name">${esc(r.player)}</span>`;
-      const _usesSets = r.sets_won > 0 || r.sets_lost > 0;
-      const _diffPart = _usesSets
-        ? `${t('txt_txt_sd_abbrev')}: ${r.sets_diff >= 0 ? '+' : ''}${r.sets_diff}, diff ${r.point_diff >= 0 ? '+' : ''}${r.point_diff}`
-        : `diff ${r.point_diff >= 0 ? '+' : ''}${r.point_diff}`;
-      html += `<span class="gp-player-stats">${r.wins} ${t('txt_txt_w_abbrev')}, ${_diffPart}</span>`;
+      html += `<span class="gp-player-stats">${_gpPlayerStatsText(r)}</span>`;
       html += `</label>`;
     }
     html += `</div>`;
@@ -1711,11 +1837,7 @@ function _renderGpPlayoffEditor() {
   html += `<button type="button" class="btn btn-sm btn-primary" onclick="_gpAddExternal()">+</button>`;
   html += `</div>`;
   html += `</div>`;
-
-  // Format selector
-  html += `<div class="gp-format-row">`;
-  html += `<div class="form-group"><label>${t('txt_txt_format')}</label><select id="gp-playoff-format" onchange="_gpPlayoffFormatChanged()"><option value="single">${t('txt_txt_single_elimination')}</option><option value="double">${t('txt_txt_double_elimination')}</option><option value="espejo">${t('txt_txt_espejo_format')}</option></select></div>`;
-  html += `</div>`;
+  }
   // Number of winners (single elimination) + optional 3rd-place match
   html += `<div class="gp-format-row" id="gp-winners-row">`;
   html += `<div class="form-group"><label for="gp-num-winners">${t('txt_num_winners')}</label><select id="gp-num-winners" onchange="_gpWinnerControlsChanged('gp')"><option value="1">${esc(t('txt_num_winners_champion'))}</option></select>`;
@@ -1723,14 +1845,20 @@ function _renderGpPlayoffEditor() {
   html += `</div>`;
   html += `<div class="d-flex items-center gap-2 mt-1" id="gp-third-row">`;
   html += `<input type="checkbox" id="gp-third-place" class="cursor-pointer" onchange="_gpUpdatePlayoffMatchCount()">`;
-  html += `<label for="gp-third-place" class="fs-md cursor-pointer">${t('txt_third_place_match')}</label>`;
+  html += `<label for="gp-third-place" class="fs-md cursor-pointer">${t(isSplit ? 'txt_split_gold_third_place' : 'txt_third_place_match')}</label>`;
   html += `</div>`;
+  if (isSplit) {
+    html += `<div class="d-flex items-center gap-2 mt-1" id="gp-plata-third-row">`;
+    html += `<input type="checkbox" id="gp-plata-third-place" class="cursor-pointer" onchange="_gpUpdatePlayoffMatchCount()">`;
+    html += `<label for="gp-plata-third-place" class="fs-md cursor-pointer">${t('txt_split_silver_third_place')}</label>`;
+    html += `</div>`;
+  }
   html += `<div class="gp-playoff-match-estimate" id="gp-playoff-match-estimate"></div>`;
   setTimeout(_gpUpdatePlayoffMatchCount, 0);
 
   // Playoff team mode toggle — shown for tennis individual tournaments
   const _gpIsIndividualTennis = _gpSport === 'tennis' && (!_gpTeamRoster || Object.keys(_gpTeamRoster).length === 0);
-  if (_gpIsIndividualTennis) {
+  if (_gpIsIndividualTennis && !isSplit) {
     html += `<div class="gp-format-row mt-2">`;
     html += `<div class="form-group"><label>${t('txt_txt_playoff_mode')}</label>`;
     html += `<div class="score-mode-toggle" id="gp-playoff-team-toggle">`;
@@ -1764,6 +1892,15 @@ function _gpToggleAdvancing(cb) {
 }
 
 function _gpPlayoffFormatChanged() {
+  const next = document.getElementById('gp-playoff-format')?.value || 'single';
+  const switchesSplit = (next === 'espejo_split') !== (_gpPlayoffFormat === 'espejo_split');
+  _gpPlayoffFormat = next;
+  if (switchesSplit) {
+    // The participant section differs between the modes: re-render the editor.
+    const section = document.getElementById('gp-playoffs-section');
+    if (section) section.innerHTML = _renderGpPlayoffEditor();
+    return;
+  }
   _gpUpdatePlayoffMatchCount();
 }
 
@@ -1842,7 +1979,7 @@ function _gpRefreshWinnerControls(prefix, n, format) {
   const thirdRow = document.getElementById(`${prefix}-third-row`);
   if (!sel || !third) return;
   const single = format === 'single';
-  const canThird = (single || format === 'espejo') && n >= 4;
+  const canThird = (single || format === 'espejo' || format === 'espejo_split') && n >= 4;
   if (!single) {
     sel.innerHTML = `<option value="1">${esc(t('txt_num_winners_champion'))}</option>`;
     sel.value = '1';
@@ -1904,6 +2041,14 @@ function _gpEspejoSequences(n, thirdPlace = false) {
   return { wbSeq, lbSeq };
 }
 
+// Oro / Plata: two independent single-elimination brackets that run side by side.
+function _gpEspejoSplitSequences(nOro, nPlata, thirdOro = false, thirdPlata = false) {
+  return {
+    oroSeq: _gpSingleElimSequence(nOro, 1, thirdOro),
+    plataSeq: _gpSingleElimSequence(nPlata, 1, thirdPlata),
+  };
+}
+
 function _gpFormatConcurrencySeq(seq) {
   if (!seq || seq.length === 0) return '';
   if (seq.every(v => v === seq[0])) return `${seq[0]}/round`;
@@ -1937,8 +2082,9 @@ function _gpPlayoffEntryCount() {
 function _gpUpdatePlayoffMatchCount() {
   const el = document.getElementById('gp-playoff-match-estimate');
   if (!el) return;
-  const n = _gpPlayoffEntryCount();
   const format = document.getElementById('gp-playoff-format')?.value || 'single';
+  if (format === 'espejo_split') { _gpUpdateSplitEstimate(el); return; }
+  const n = _gpPlayoffEntryCount();
   _gpRefreshWinnerControls('gp', n, format);
   if (n < 2) { el.innerHTML = ''; return; }
 
@@ -1972,6 +2118,38 @@ function _gpUpdatePlayoffMatchCount() {
       (lbSeq.length ? branchRow('LB', lbSeq, '') : '') +
       `</div>`;
   }
+}
+
+/** Counts, warnings and match estimate of the Oro / Plata editor. */
+function _gpUpdateSplitEstimate(el) {
+  const c = _gpSplitCounts();
+  // The Oro checkbox reuses the shared 3rd-place control; Plata has its own.
+  _gpRefreshWinnerControls('gp', c.oro, 'espejo_split');
+  const plataBox = document.getElementById('gp-plata-third-place');
+  const plataRow = document.getElementById('gp-plata-third-row');
+  if (plataBox) {
+    const can = c.plata >= 4;
+    if (!can) plataBox.checked = false;
+    plataBox.disabled = !can;
+    if (plataRow) plataRow.classList.toggle('hidden', !can);
+  }
+  const thirdOro = _gpReadWinnerControls('gp').third_place;
+  const thirdPlata = !!(plataBox && plataBox.checked);
+
+  const summary = document.getElementById('gp-split-summary');
+  if (summary) {
+    let h = `<span>${esc(t('txt_split_count', { bracket: t('txt_split_gold'), n: c.oro }))}</span>` +
+      `<span>${esc(t('txt_split_count', { bracket: t('txt_split_silver'), n: c.plata }))}</span>`;
+    for (const w of _gpSplitWarnings(thirdOro, thirdPlata)) h += `<span class="gp-split-warning" role="alert">${esc(w)}</span>`;
+    summary.innerHTML = h;
+  }
+
+  const total = _gpEstimatePlayoffMatches(c.oro, 'single', 1, thirdOro) + _gpEstimatePlayoffMatches(c.plata, 'single', 1, thirdPlata);
+  if (c.oro < 2 || c.plata < 2) { el.innerHTML = ''; return; }
+  const { oroSeq, plataSeq } = _gpEspejoSplitSequences(c.oro, c.plata, thirdOro, thirdPlata);
+  const row = (label, seq) => `<div class="gp-playoff-branch"><span class="gp-playoff-branch-label">${esc(label)}</span><span>${seq.join(' → ')}</span></div>`;
+  el.innerHTML = `<span class="gp-playoff-estimate-count">~${total} ${t('txt_txt_matches')}</span>` +
+    `<div class="gp-playoff-branches">${row(t('txt_split_gold'), oroSeq)}${row(t('txt_split_silver'), plataSeq)}</div>`;
 }
 
 function _gpAddExternal() {
@@ -2074,8 +2252,9 @@ function _gpRenderPlayoffTeams() {
 }
 
 async function _confirmGpPlayoffs() {
-  const ids = [..._gpAdvancingIds];
   const fmt = document.getElementById('gp-playoff-format')?.value || 'single';
+  if (fmt === 'espejo_split') return _confirmGpSplitPlayoffs();
+  const ids = [..._gpAdvancingIds];
   const extra = _gpExternalParticipants.length > 0
     ? _gpExternalParticipants.map(ep => ({ name: ep.name, score: ep.score }))
     : null;
@@ -2117,6 +2296,37 @@ async function _confirmGpPlayoffs() {
   } catch (e) { alert(e.message); }
 }
 
+/** Start the Oro / Plata split: explicit per-player bracket lists, nothing else. */
+async function _confirmGpSplitPlayoffs() {
+  const winnerOpts = _gpReadWinnerControls('gp');
+  const plataBox = document.getElementById('gp-plata-third-place');
+  const plataThird = !!(plataBox && plataBox.checked && !plataBox.disabled);
+  const warnings = _gpSplitWarnings(winnerOpts.third_place, plataThird);
+  if (warnings.length > 0) {
+    alert(warnings.join('\n'));
+    return;
+  }
+  const pick = side => _gpRecommended.filter(r => _gpSplitAssign[r.player_id] === side).map(r => r.player_id);
+  const body = {
+    espejo_split: true,
+    oro_player_ids: pick('oro'),
+    plata_player_ids: pick('plata'),
+    third_place: winnerOpts.third_place,
+    plata_third_place: plataThird,
+  };
+  try {
+    await api(`/api/tournaments/${currentTid}/gp/start-playoffs`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    _gpRecommended = [];
+    _gpAdvancingIds = new Set();
+    _gpSplitAssign = {};
+    _gpPlayoffFormat = 'single';
+    renderGP();
+  } catch (e) { alert(e.message); }
+}
+
 async function startPlayoffs() {
   // Direct start (backwards compat) — delegates to confirm flow
   await _confirmGpPlayoffs();
@@ -2144,10 +2354,10 @@ function _scrollToPlayoffRound(roundKey) {
 }
 
 /** Display name of an Espejo bracket side (a match's `bracket_side`). */
-function _espejoSideLabel(side) {
-  if (side === 'losers') return t('txt_txt_espejo_losers_bracket');
+function _espejoSideLabel(side, isSplit = false) {
+  if (side === 'losers') return t(isSplit ? 'txt_txt_espejo_silver_bracket' : 'txt_txt_espejo_losers_bracket');
   if (side === 'super_final') return t('txt_txt_espejo_super_final');
-  return t('txt_txt_espejo_winners_bracket');
+  return t(isSplit ? 'txt_txt_espejo_gold_bracket' : 'txt_txt_espejo_winners_bracket');
 }
 
 /**
@@ -2169,7 +2379,7 @@ function _renderChampionAlerts(status) {
     h += `<div class="alert alert-success">${_ic('trophy')} ${t('txt_txt_champion')}: <strong>${esc(champion.join(', '))}</strong></div>`;
   }
   if (espejo && !legacySuperFinal && status.losers_champion) {
-    h += `<div class="alert alert-info">${t('txt_txt_consolation_winner')}: <strong>${esc(status.losers_champion.join(', '))}</strong></div>`;
+    h += `<div class="alert alert-info">${t(status.espejo_split ? 'txt_txt_silver_winner' : 'txt_txt_consolation_winner')}: <strong>${esc(status.losers_champion.join(', '))}</strong></div>`;
   }
   return h;
 }
@@ -2184,7 +2394,7 @@ function _renderChampionAlerts(status) {
  *                                (only relevant for Espejo; defaults to ctx).
  * @returns {string} HTML string.
  */
-function _renderPlayoffMatchesByRound(matches, ctx, losersCtx = ctx, superFinalCtx = ctx) {
+function _renderPlayoffMatchesByRound(matches, ctx, losersCtx = ctx, superFinalCtx = ctx, isSplit = false) {
   if (!matches || matches.length === 0) return '';
 
   // Group by round_label, preserving first-seen order (which follows bracket round order).
@@ -2195,7 +2405,7 @@ function _renderPlayoffMatchesByRound(matches, ctx, losersCtx = ctx, superFinalC
   const isEspejoList = matches.some(m => m.bracket_side);
   for (const m of matches) {
     const label = m.round_label || t('txt_txt_match');
-    const key = isEspejoList ? `${_espejoSideLabel(m.bracket_side)}: ${label}` : label;
+    const key = isEspejoList ? `${_espejoSideLabel(m.bracket_side, isSplit)}: ${label}` : label;
     if (!byRound[key]) { byRound[key] = []; roundOrder.push(key); }
     byRound[key].push(m);
   }

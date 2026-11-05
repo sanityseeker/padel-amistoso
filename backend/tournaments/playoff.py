@@ -1144,6 +1144,65 @@ class EspejoParallelBracket:
         self._match_map[self.super_final_match.id] = self.super_final_match
 
 
+class EspejoSplitBracket(EspejoParallelBracket):
+    """Espejo variant where both brackets exist from the start ("Oro / Plata").
+
+    Instead of dropping Round-1 losers into a consolation bracket, the caller
+    decides up front which teams play in the upper (*Oro*, stored as
+    ``winners_bracket``) and which in the lower (*Plata*, stored as
+    ``losers_bracket``) bracket.  The two brackets are fully independent.
+
+    Because it subclasses :class:`EspejoParallelBracket`, every consumer that
+    keys on ``isinstance(..., EspejoParallelBracket)`` (side tagging, schema
+    images, status payloads, score contexts, lazy court assignment) keeps
+    working unchanged.
+
+    Parameters
+    ----------
+    upper_teams / lower_teams:
+        Seeded team lists (index 0 = top seed), at least two teams each.
+    third_place / lower_third_place:
+        Optional 3rd-place match in the upper / lower bracket.
+    """
+
+    # Class-level marker, so code can tell the variants apart without isinstance.
+    is_split: bool = True
+
+    def __init__(
+        self,
+        upper_teams: list[list[Player]],
+        lower_teams: list[list[Player]],
+        *,
+        third_place: bool = False,
+        lower_third_place: bool = False,
+    ):
+        if len(upper_teams) < 2 or len(lower_teams) < 2:
+            raise ValueError("Each bracket needs at least 2 teams")
+        self.winners_bracket = SingleEliminationBracket(upper_teams, third_place=third_place)
+        self.losers_bracket = SingleEliminationBracket(lower_teams, third_place=lower_third_place)
+        self.super_final_match = None
+        self._match_map = {}
+        for m in self.winners_bracket.matches + self.losers_bracket.matches:
+            self._match_map[m.id] = m
+
+    def _try_seed_losers_bracket(self) -> None:
+        """No-op: the lower bracket is built up front, never from Round-1 losers."""
+        return
+
+    def is_finished(self) -> bool:
+        """Both brackets (including any 3rd-place matches) are decided."""
+        if self.winners_bracket.champion() is None or not self.winners_bracket._third_place_done():
+            return False
+        lb = self.losers_bracket
+        if lb is None or lb.champion() is None or not lb._third_place_done():
+            return False
+        return True
+
+    def lower_third_place_team(self) -> list[Player] | None:
+        """Winner of the lower bracket's 3rd-place match, if played."""
+        return self.losers_bracket.third_place_team() if self.losers_bracket else None
+
+
 def bracket_matches(bracket: object) -> list[Match]:
     """Return every match of *bracket*, whatever its class.
 

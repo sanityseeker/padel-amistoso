@@ -936,3 +936,109 @@ class TestEspejoParallelBracket:
         while t.pending_matches():
             t.record_result(t.pending_matches()[0].id, (6, 3))
         assert t.phase == POPhase.FINISHED
+
+
+class TestEspejoSplitBracket:
+    """Oro / Plata: both single-elimination brackets exist from the start."""
+
+    def _make(self, n_up=4, n_low=4, **kw):
+        from backend.tournaments.playoff import EspejoSplitBracket
+
+        up = [_team(f"U{i + 1}") for i in range(n_up)]
+        low = [_team(f"L{i + 1}") for i in range(n_low)]
+        return EspejoSplitBracket(up, low, **kw)
+
+    @staticmethod
+    def _play_all(b):
+        while b.pending_matches():
+            b.record_result(b.pending_matches()[0].id, (6, 3))
+
+    def test_both_brackets_exist_immediately(self):
+        b = self._make()
+        assert b.winners_bracket is not None
+        assert b.losers_bracket is not None
+        assert len(b.pending_matches()) == 4  # two semi-finals per bracket
+
+    def test_r1_losers_never_drop_down(self):
+        b = self._make()
+        before = {m.id for m in b.losers_bracket.matches}
+        for m in [m for m in b.winners_bracket.matches if m.round_number == 1]:
+            b.record_result(m.id, (6, 3))
+        assert {m.id for m in b.losers_bracket.matches} == before
+        assert len(b.losers_bracket.original_teams) == 4
+
+    def test_three_team_bracket_gets_bye(self):
+        b = self._make(n_up=3, n_low=2)
+        self._play_all(b)
+        assert b.is_finished()
+        assert b.winners_champion() is not None
+        assert b.losers_champion() is not None
+
+    def test_needs_two_teams_per_bracket(self):
+        from backend.tournaments.playoff import EspejoSplitBracket
+
+        with pytest.raises(ValueError):
+            EspejoSplitBracket(_teams(3), _teams(1))
+
+    def test_finished_needs_both_brackets(self):
+        b = self._make()
+        up_ids = {m.id for m in b.winners_bracket.matches}
+        while True:
+            pending = [m for m in b.pending_matches() if m.id in up_ids]
+            if not pending:
+                break
+            b.record_result(pending[0].id, (6, 3))
+        assert b.winners_champion() is not None
+        assert not b.is_finished()
+        assert b.champion() is None
+        self._play_all(b)
+        assert b.is_finished()
+        assert b.champion() == b.winners_champion()
+        assert b.losers_champion() != b.winners_champion()
+
+    def test_finished_waits_for_both_third_place_matches(self):
+        b = self._make(third_place=True, lower_third_place=True)
+        tp_ids = {b.winners_bracket.third_place_match.id, b.losers_bracket.third_place_match.id}
+        # Play everything except the two 3rd-place matches.
+        while True:
+            pending = [m for m in b.pending_matches() if m.id not in tp_ids]
+            if not pending:
+                break
+            b.record_result(pending[0].id, (6, 3))
+        assert not b.is_finished()
+        b.record_result(b.winners_bracket.third_place_match.id, (6, 3))
+        assert not b.is_finished()
+        b.record_result(b.losers_bracket.third_place_match.id, (6, 3))
+        assert b.is_finished()
+        assert b.lower_third_place_team() is not None
+
+    def test_lower_third_place_independent_of_upper(self):
+        b = self._make(third_place=False, lower_third_place=True)
+        assert b.winners_bracket.third_place_match is None
+        assert b.losers_bracket.third_place_match is not None
+
+    def test_lower_third_place_needs_four_teams(self):
+        with pytest.raises(ValueError):
+            self._make(n_up=4, n_low=3, lower_third_place=True)
+
+    def test_pickle_round_trip(self):
+        import pickle
+
+        b = self._make(lower_third_place=True)
+        b.record_result(b.pending_matches()[0].id, (6, 3))
+        b2 = pickle.loads(pickle.dumps(b))
+        assert b2.is_split
+        assert len(b2.all_matches) == len(b.all_matches)
+        self._play_all(b2)
+        assert b2.is_finished()
+
+    def test_old_parent_pickle_still_loads(self):
+        import pickle
+
+        from backend.tournaments.playoff import EspejoParallelBracket
+
+        b = EspejoParallelBracket(_teams(4))
+        b2 = pickle.loads(pickle.dumps(b))
+        assert not getattr(b2, "is_split", False)
+        self._play_all(b2)
+        assert b2.is_finished()

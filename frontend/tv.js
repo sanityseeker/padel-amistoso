@@ -1915,12 +1915,12 @@ function _renderGP(tvSettings, status, groups, playoffs) {
     if (tvSettings.show_past_matches) {
       const playoffPast = (playoffs?.matches || []).filter(m => m.status === 'completed');
       if (playoffPast.length > 0)
-        html += _buildPastMatches(playoffPast, tvSettings, false, t('txt_txt_play_off_matches'), 'past-playoffs', 'gp-playoff');
+        html += _buildPastMatches(playoffPast, tvSettings, false, t('txt_txt_play_off_matches'), 'past-playoffs', 'gp-playoff', status.espejo_split === true);
     }
 
   if (tvSettings.show_bracket) {
       const imgUrl = _bracketImgUrl('gp', tvSettings, playoffs);
-      html += _buildBracketSection(imgUrl, status.double_elimination === true && status.espejo !== true, status.espejo === true);
+      html += _buildBracketSection(imgUrl, status.double_elimination === true && status.espejo !== true, status.espejo === true, status.espejo_split === true);
     }
 
     if (tvSettings.show_past_matches) {
@@ -2341,13 +2341,13 @@ function _buildChampionBanners(status) {
     html += `<div class="champion-banner${half}">${_ic('trophy')} ${t('txt_txt_champion')}: ${esc(champion.join(' & '))}</div>`;
   }
   if (consolation) {
-    html += `<div class="champion-banner champion-banner--consolation${half}">${t('txt_txt_consolation_winner')}: ${esc(consolation.join(' & '))}</div>`;
+    html += `<div class="champion-banner champion-banner--consolation${half}">${t(status.espejo_split ? 'txt_txt_silver_winner' : 'txt_txt_consolation_winner')}: ${esc(consolation.join(' & '))}</div>`;
   }
   return html;
 }
 
 /** Build bracket section HTML with scrollable wrapper for mobile */
-function _buildBracketSection(imgUrl, isDouble = false, isEspejo = false) {
+function _buildBracketSection(imgUrl, isDouble = false, isEspejo = false, isSplit = false) {
   let html = `<details class="tv-collapsible" data-tv-key="bracket" open>`;
   const infoBtn = isDouble && !isEspejo
     ? ` <button type="button" class="format-info-btn" onclick="showAbbrevPopup(event,'double_elim')" aria-label="${escAttr(t('txt_double_elim_info_btn'))}" title="${escAttr(t('txt_double_elim_info_btn'))}">i</button>`
@@ -2357,11 +2357,11 @@ function _buildBracketSection(imgUrl, isDouble = false, isEspejo = false) {
   if (isEspejo || isDouble) {
     html += `<div class="espejo-brackets-row">`;
     html += `<div class="espejo-bracket-half">`;
-    html += `<div class="espejo-bracket-label">${esc(t('txt_txt_espejo_winners_bracket'))}</div>`;
+    html += `<div class="espejo-bracket-label">${esc(t(isSplit ? 'txt_txt_espejo_gold_bracket' : 'txt_txt_espejo_winners_bracket'))}</div>`;
     html += `<div class="bracket-scroll-wrapper"><img class="bracket-img" ${_bracketSrcAttrs(`${imgUrl}&side=winners`)} alt="Winners" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none'"></div>`;
     html += `</div>`;
     html += `<div class="espejo-bracket-half">`;
-    html += `<div class="espejo-bracket-label">${esc(t('txt_txt_espejo_losers_bracket'))}</div>`;
+    html += `<div class="espejo-bracket-label">${esc(t(isSplit ? 'txt_txt_espejo_silver_bracket' : 'txt_txt_espejo_losers_bracket'))}</div>`;
     if (isEspejo) {
       html += `<div class="bracket-scroll-wrapper">` +
         `<img class="bracket-img" ${_bracketSrcAttrs(`${imgUrl}&side=losers`)} alt="Losers" onclick="_openBracketLightbox(this.src)" title="${t('txt_txt_click_to_expand')}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
@@ -2571,14 +2571,24 @@ function _buildCourts(matches, title, assignCourts = true, showPending = false, 
   return html;
 }
 
-function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = t('txt_txt_past_matches'), tvKey = 'past-matches', scoreCtx = null) {
+/** Display name of an Espejo bracket side (a match's `bracket_side`) on the TV. */
+function _tvEspejoSideLabel(side, isSplit) {
+  if (side === 'losers') return t(isSplit ? 'txt_txt_espejo_silver_bracket' : 'txt_txt_espejo_losers_bracket');
+  if (side === 'super_final') return t('txt_txt_espejo_super_final');
+  return t(isSplit ? 'txt_txt_espejo_gold_bracket' : 'txt_txt_espejo_winners_bracket');
+}
+
+function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = t('txt_txt_past_matches'), tvKey = 'past-matches', scoreCtx = null, isSplit = false) {
   if (!matches || matches.length === 0) return '';
 
-  // Group by round_label first (more descriptive), fall back to round_number
+  // Group by round_label first (more descriptive), fall back to round_number.
+  // Espejo matches carry bracket_side: both brackets have e.g. a "Semi-Final",
+  // so the side is part of the key and shown as a prefix.
   const byRound = {};
   const roundOrder = [];
   for (const m of matches) {
-    const key = m.round_label || `Round ${m.round_number ?? 0}`;
+    const baseKey = m.round_label || `Round ${m.round_number ?? 0}`;
+    const key = m.bracket_side ? `${m.bracket_side}|${baseKey}` : baseKey;
     if (!byRound[key]) { byRound[key] = []; roundOrder.push(key); }
     byRound[key].push(m);
   }
@@ -2595,7 +2605,11 @@ function _buildPastMatches(matches, tvSettings, isMex, sectionTitle = t('txt_txt
     const openAttr = ri === 0 ? ' open' : ''; // most recent open by default
 
     html += `<details class="round-block" data-tv-key="${tvKey}-${esc(key)}"${openAttr}>`;
-    html += `<summary class="round-summary">▶ ${esc(trl(key))} — ${rMatches.length} ${rMatches.length > 1 ? t('txt_txt_matches') : t('txt_txt_match')}</summary>`;
+    const sideSep = key.indexOf('|');
+    const roundTitle = (rMatches[0].bracket_side && sideSep > 0)
+      ? `${_tvEspejoSideLabel(rMatches[0].bracket_side, isSplit)}: ${trl(key.slice(sideSep + 1))}`
+      : trl(key);
+    html += `<summary class="round-summary">▶ ${esc(roundTitle)} — ${rMatches.length} ${rMatches.length > 1 ? t('txt_txt_matches') : t('txt_txt_match')}</summary>`;
     html += `<div class="round-body">`;
     for (const m of rMatches) {
       html += _buildHistoryMatch(m, tvSettings, isMex, scoreCtx);
@@ -2978,23 +2992,15 @@ function _tvRenderPlayerCard(overlay, card) {
         const d = m.elo_delta;
         const dCls = d > 0 ? 'elo-transition--gain' : d < 0 ? 'elo-transition--loss' : 'elo-transition--neutral';
         const dStr = d == null ? '' : (d > 0 ? '+' : '') + Number(d).toFixed(1);
-        const hasSets = Array.isArray(m.sets) && m.sets.length > 0;
-        const score = hasSets
-          ? formatSetScore(m.sets, m.decider, ' · ')
-          : (Array.isArray(m.score) && m.score.length >= 2 ? `${m.score[0]} – ${m.score[1]}` : '');
-        const t1 = Array.isArray(m.team1) ? m.team1.join(' / ') : '';
-        const t2 = Array.isArray(m.team2) ? m.team2.join(' / ') : '';
         const roundTxt = m.round_label || (m.round_number ? `R${m.round_number}` : '');
         const roundChip = roundTxt ? `<span class="elo-log-round">${esc(roundTxt)}</span>` : '';
-        const mid = score
-          ? `<span class="elo-score-sep">${esc(score)}</span>`
-          : `<span class="elo-vs-sep">vs</span>`;
+        const mid = eloScoreSepHtml(m);
         return `<div class="elo-log-row elo-log-row--inline">
           ${roundChip}
           <div class="elo-log-teams">
-            <span class="elo-team elo-team--a">${esc(t1)}</span>
+            <span class="elo-team elo-team--a">${eloTeamPlayersHtml(m.team1)}</span>
             ${mid}
-            <span class="elo-team elo-team--b">${esc(t2)}</span>
+            <span class="elo-team elo-team--b">${eloTeamPlayersHtml(m.team2)}</span>
           </div>
           <span class="elo-transition ${dCls}">${esc(dStr)}</span>
         </div>`;

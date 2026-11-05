@@ -284,6 +284,126 @@ class TestGroupPlayoffAPI:
         assert po["matches"]
         assert {m["bracket_side"] for m in po["matches"]} == {"winners"}
 
+    # ── Espejo Oro / Plata split ──
+
+    def _start_split(self, client, auth_headers, *, teams=12, cutoff=3, body_extra=None, expect=200):
+        """Team-mode GP, groups finished, then start the Oro/Plata split (ranks <= cutoff -> Oro)."""
+        body = {
+            **self.GP_BODY,
+            "team_mode": True,
+            "player_names": [f"T{i} & U{i}" for i in range(teams)],
+            "num_groups": 2,
+            "top_per_group": 2,
+        }
+        r = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers)
+        assert r.status_code == 200, r.text
+        tid = r.json()["id"]
+        self._complete_all_group_rounds(client, auth_headers, tid)
+        rows = client.get(f"/api/tournaments/{tid}/gp/recommend-playoffs").json()["recommended_participants"]
+        assert all("group_rank" in row for row in rows)
+        payload = {
+            "espejo_split": True,
+            "oro_player_ids": [x["player_id"] for x in rows if x["group_rank"] <= cutoff],
+            "plata_player_ids": [x["player_id"] for x in rows if x["group_rank"] > cutoff],
+            **(body_extra or {}),
+        }
+        r = client.post(f"/api/tournaments/{tid}/gp/start-playoffs", json=payload, headers=auth_headers)
+        assert r.status_code == expect, r.text
+        return tid, rows
+
+    def test_split_status_and_sides(self, client, auth_headers):
+        tid, _ = self._start_split(client, auth_headers)
+        st = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert st["espejo"] is True and st["espejo_split"] is True
+        assert st["espejo_losers_bracket_seeded"] is True
+        assert st["champion"] is None
+        po = client.get(f"/api/tournaments/{tid}/gp/playoffs").json()
+        assert {m["bracket_side"] for m in po["pending"]} == {"winners", "losers"}
+
+    def test_regular_espejo_is_not_split(self, client, auth_headers):
+        tid = self._start_espejo(client, auth_headers)
+        assert client.get(f"/api/tournaments/{tid}/gp/status").json()["espejo_split"] is False
+
+    def test_split_schema_both_sides_available_immediately(self, client, auth_headers):
+        tid, _ = self._start_split(client, auth_headers)
+        base = f"/api/tournaments/{tid}/gp/playoffs-schema?fmt=png"
+        gold = client.get(f"{base}&side=winners")
+        silver = client.get(f"{base}&side=losers")
+        assert gold.status_code == 200 and silver.status_code == 200
+        assert gold.content != silver.content
+
+    def test_split_finishes_only_after_both_sides(self, client, auth_headers):
+        tid, _ = self._start_split(client, auth_headers)
+        self._play_espejo_matches(client, auth_headers, tid, "winners")
+        st = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert st["winners_champion"] is not None
+        assert st["phase"] == "playoffs" and st["champion"] is None
+        self._play_espejo_matches(client, auth_headers, tid, "losers")
+        st = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert st["phase"] == "finished"
+        assert st["champion"] == st["winners_champion"]
+        assert st["losers_champion"] not in (None, st["champion"])
+
+    def test_split_plata_third_place(self, client, auth_headers):
+        tid, _ = self._start_split(client, auth_headers, body_extra={"third_place": True, "plata_third_place": True})
+        st = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert st["third_place"] is True and st["plata_third_place"] is True
+        assert st["plata_third_place_team"] is None
+        self._play_espejo_matches(client, auth_headers, tid, "winners")
+        self._play_espejo_matches(client, auth_headers, tid, "losers")
+        st = client.get(f"/api/tournaments/{tid}/gp/status").json()
+        assert st["phase"] == "finished"
+        assert st["plata_third_place_team"]
+        po = client.get(f"/api/tournaments/{tid}/gp/playoffs").json()
+        assert po["plata_third_place"] is True
+        labels = [(m["bracket_side"], m["round_label"]) for m in po["matches"]]
+        assert sum(1 for side, lab in labels if side == "losers" and "3rd" in lab) == 1
+
+    def test_plata_fields_absent_for_normal_gp(self, client, auth_headers):
+        tid = self._start_espejo(client, auth_headers)
+        assert "plata_third_place" not in client.get(f"/api/tournaments/{tid}/gp/status").json()
+
+    def test_split_rejections(self, client, auth_headers):
+        # Bucket with one entry -> 400.
+        tid, rows = self._start_split(client, auth_headers, cutoff=6, expect=400)
+        # Overlap -> 400.
+        ids = [x["player_id"] for x in rows]
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/start-playoffs",
+            json={"espejo_split": True, "oro_player_ids": ids[:4], "plata_player_ids": ids[3:8]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 400
+        # Unknown id -> 400.
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/start-playoffs",
+            json={"espejo_split": True, "oro_player_ids": ["x", "y"], "plata_player_ids": ids[:3]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 400
+        # advancing_player_ids together with the split -> 422; split fields without the flag -> 422.
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/start-playoffs",
+            json={"espejo_split": True, "advancing_player_ids": ids[:4], "oro_player_ids": ids[:2]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 422
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/start-playoffs",
+            json={"oro_player_ids": ids[:2]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 422
+        # Double elimination / several winners -> 400; tournament is still in the group phase.
+        for extra in ({"double_elimination": True}, {"num_winners": 2}):
+            r = client.post(
+                f"/api/tournaments/{tid}/gp/start-playoffs",
+                json={"espejo_split": True, "oro_player_ids": ids[:3], "plata_player_ids": ids[6:9], **extra},
+                headers=auth_headers,
+            )
+            assert r.status_code == 400
+        assert client.get(f"/api/tournaments/{tid}/gp/status").json()["phase"] == "groups"
+
     def test_non_espejo_status_and_matches_have_no_espejo_data(self, client, auth_headers):
         tid = self._create(client, auth_headers)
         self._complete_all_group_rounds(client, auth_headers, tid)

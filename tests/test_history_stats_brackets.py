@@ -52,6 +52,13 @@ def _gp_tournament(*, n_players: int, top_per_group: int, **start_kwargs) -> Gro
     t.generate()
     for idx, m in enumerate(t.pending_group_matches()):
         t.record_group_result(m.id, (10, 6) if idx % 2 == 0 else (6, 10))
+    if start_kwargs.get("espejo_split"):
+        ranked = t.recommend_playoff_participants()
+        start_kwargs = {
+            **start_kwargs,
+            "oro_player_ids": [r["player_id"] for r in ranked if r["group_rank"] <= top_per_group],
+            "plata_player_ids": [r["player_id"] for r in ranked if r["group_rank"] > top_per_group],
+        }
     t.start_playoffs(**start_kwargs)
     _play_all_playoffs(t)
     assert t.champion() is not None
@@ -64,6 +71,7 @@ def _gp_tournament(*, n_players: int, top_per_group: int, **start_kwargs) -> Gro
         pytest.param({}, id="single-elim"),
         pytest.param({"double_elimination": True}, id="double-elim"),
         pytest.param({"espejo": True}, id="espejo"),
+        pytest.param({"espejo_split": True}, id="espejo-split"),
     ],
 )
 def test_group_playoff_history_stats_include_bracket_matches(start_kwargs):

@@ -24,6 +24,7 @@ from . import pairing as pairing_mod
 from .playoff import (
     DoubleEliminationBracket,
     EspejoParallelBracket,
+    EspejoSplitBracket,
     SingleEliminationBracket,
     bracket_matches,
     validate_num_winners,
@@ -347,8 +348,10 @@ class GroupPlayoffTournament:
         ranked: list[dict] = []
         all_standings = self.group_standings()
         for group_name, rows in all_standings.items():
-            for row in rows:
-                ranked.append({**row, "group": group_name})
+            for group_rank, row in enumerate(rows, start=1):
+                # ``group_rank`` is the 1-based position inside the group; the
+                # list below is sorted globally, so it cannot be inferred from order.
+                ranked.append({**row, "group": group_name, "group_rank": group_rank})
         ranked.sort(key=lambda r: (-r["wins"], -r["sets_diff"], -r["point_diff"], -r["points_for"]))
         return ranked
 
@@ -361,6 +364,10 @@ class GroupPlayoffTournament:
         playoff_teams: list[list[str]] | None = None,
         num_winners: int = 1,
         third_place: bool = False,
+        espejo_split: bool = False,
+        oro_player_ids: list[str] | None = None,
+        plata_player_ids: list[str] | None = None,
+        plata_third_place: bool = False,
     ) -> None:
         """Seed the play‑off bracket from group results.
 
@@ -402,12 +409,38 @@ class GroupPlayoffTournament:
             Number of equal winners (single elimination only; 1 = classic
             champion).  Validated against the formed team count.
         third_place : bool
-            Add a 3rd-place match (single elimination or Espejo).
+            Add a 3rd-place match (single elimination or Espejo; in split
+            mode it applies to the Oro bracket).
+        espejo_split : bool
+            Oro / Plata mode: two independent brackets that exist from the
+            start.  The organiser assigns participants via ``oro_player_ids``
+            and ``plata_player_ids`` (same id space as ``advancing_player_ids``);
+            ids in neither list are excluded.  ``advancing_player_ids``,
+            ``extra_players``, ``playoff_teams``, ``double_elimination`` and
+            ``num_winners != 1`` are rejected in this mode.
+        plata_third_place : bool
+            Optional 3rd-place match in the Plata bracket (split mode only).
         """
         if self._phase != GPPhase.GROUPS:
             raise RuntimeError("Must be in group phase to start play‑offs")
         if self.pending_group_matches():
             raise RuntimeError("All group matches must be completed first")
+
+        if espejo_split:
+            self._start_split_playoffs(
+                oro_player_ids=oro_player_ids,
+                plata_player_ids=plata_player_ids,
+                advancing_player_ids=advancing_player_ids,
+                extra_players=extra_players,
+                double_elimination=double_elimination,
+                playoff_teams=playoff_teams,
+                num_winners=num_winners,
+                third_place=third_place,
+                plata_third_place=plata_third_place,
+            )
+            return
+        if oro_player_ids or plata_player_ids or plata_third_place:
+            raise RuntimeError("Oro/Plata options require the split Espejo mode")
 
         prev_double_elimination = self.double_elimination
         prev_espejo = getattr(self, "_espejo", False)
@@ -461,6 +494,140 @@ class GroupPlayoffTournament:
 
         if len(advancing) < 2:
             raise RuntimeError("Need at least 2 participants to start play‑offs")
+
+        teams = self._form_seeded_teams(
+            advancing,
+            scores=scores,
+            player_rank=player_rank,
+            player_group_index=player_group_index,
+            player_map=player_map,
+            playoff_teams=playoff_teams,
+        )
+
+        try:
+            if num_winners != 1 and (espejo or self.double_elimination):
+                raise ValueError("Multiple winners are only supported for single-elimination brackets")
+            if third_place and self.double_elimination and not espejo:
+                raise ValueError("A 3rd-place match is not supported for double elimination")
+            if num_winners != 1 or third_place:
+                validate_num_winners(len(teams), num_winners, third_place)
+        except ValueError:
+            # Leave the tournament untouched so the organiser can retry with other options.
+            self.double_elimination = prev_double_elimination
+            self._espejo = prev_espejo
+            raise
+
+        if espejo:
+            self.playoff_bracket = EspejoParallelBracket(teams, third_place=third_place)
+        elif self.double_elimination:
+            self.playoff_bracket = DoubleEliminationBracket(teams, courts=self.courts)
+        else:
+            self.playoff_bracket = SingleEliminationBracket(teams, num_winners=num_winners, third_place=third_place)
+
+        if self.courts and not espejo:
+            assign_courts(bracket_matches(self.playoff_bracket), self.courts)
+
+        self._phase = GPPhase.PLAYOFFS
+
+    def _start_split_playoffs(
+        self,
+        *,
+        oro_player_ids: list[str] | None,
+        plata_player_ids: list[str] | None,
+        advancing_player_ids: list[str] | None,
+        extra_players: list[tuple[str, float]] | None,
+        double_elimination: bool | None,
+        playoff_teams: list[list[str]] | None,
+        num_winners: int,
+        third_place: bool,
+        plata_third_place: bool,
+    ) -> None:
+        """Start the Oro / Plata Espejo.  Leaves the tournament untouched on any error."""
+        if advancing_player_ids is not None:
+            raise RuntimeError("advancing_player_ids cannot be combined with the Oro/Plata split; use oro/plata lists")
+        if extra_players:
+            raise RuntimeError("External participants are not supported in the Oro/Plata split")
+        if playoff_teams is not None:
+            raise RuntimeError("Pre-composed playoff teams are not supported in the Oro/Plata split")
+        if double_elimination:
+            raise ValueError("Double elimination is not supported in the Oro/Plata split")
+        if num_winners != 1:
+            raise ValueError("Multiple winners are not supported in the Oro/Plata split")
+
+        oro_ids = list(oro_player_ids or [])
+        plata_ids = list(plata_player_ids or [])
+        if len(set(oro_ids)) != len(oro_ids) or len(set(plata_ids)) != len(plata_ids):
+            raise RuntimeError("Oro/Plata player IDs must be unique")
+        overlap = set(oro_ids) & set(plata_ids)
+        if overlap:
+            raise RuntimeError("A player cannot be in both the Oro and Plata brackets")
+
+        player_map: dict[str, Player] = {p.id: p for p in self.players}
+        group_of: dict[str, int] = {}
+        for g_idx, g in enumerate(self.groups):
+            for p in g.players:
+                group_of[p.id] = g_idx
+        for pid in (*oro_ids, *plata_ids):
+            if pid not in player_map or pid not in group_of:
+                raise KeyError(f"Player {pid} is not a group participant")
+
+        scores = self._player_scores()
+        player_rank: dict[str, int] = {}
+        for g in self.groups:
+            for rank_idx, row in enumerate(g.standings(), start=1):
+                player_rank[row.player.id] = rank_idx
+
+        brackets: list[tuple[str, list[str], bool]] = [
+            ("Oro", oro_ids, third_place),
+            ("Plata", plata_ids, plata_third_place),
+        ]
+        seeded: list[list[list[Player]]] = []
+        for label, ids, want_third in brackets:
+            if not self.team_mode and len(ids) % 2 != 0:
+                raise RuntimeError(f"{label} bracket needs an even number of players to form teams (got {len(ids)})")
+            players = [player_map[pid] for pid in ids]
+            teams = self._form_seeded_teams(
+                players,
+                scores=scores,
+                player_rank=player_rank,
+                player_group_index={pid: group_of[pid] for pid in ids},
+                player_map=player_map,
+            )
+            if len(teams) < 2:
+                raise RuntimeError(f"{label} bracket needs at least 2 teams (got {len(teams)})")
+            if want_third:
+                try:
+                    validate_num_winners(len(teams), 1, True)
+                except ValueError as exc:
+                    raise ValueError(f"{label} bracket: {exc}") from exc
+            seeded.append(teams)
+
+        self._espejo = True
+        self.playoff_bracket = EspejoSplitBracket(
+            seeded[0],
+            seeded[1],
+            third_place=third_place,
+            lower_third_place=plata_third_place,
+        )
+        self._phase = GPPhase.PLAYOFFS
+
+    def _form_seeded_teams(
+        self,
+        advancing: list[Player],
+        *,
+        scores: dict[str, tuple[float, float, float, float]],
+        player_rank: dict[str, int],
+        player_group_index: dict[str, int],
+        player_map: dict[str, Player],
+        playoff_teams: list[list[str]] | None = None,
+    ) -> list[list[Player]]:
+        """Turn *advancing* players into a seeded list of bracket entries (best seed first).
+
+        Seed key: best group rank, then wins, sets_diff, point_diff, points_for.
+        Multiple groups use group-diversity seeding so Round-1 opponents come
+        from different groups.  Individual mode pairs players with the fold
+        method; team mode (or *playoff_teams*) uses entries as given.
+        """
 
         def _seed_key(team: list[Player]) -> tuple[float, float, float, float, float]:
             """Sort key for bracket seeding (higher = better).
@@ -525,31 +692,7 @@ class GroupPlayoffTournament:
             else:
                 # Sort formed teams by combined standings for proper bracket seeding.
                 teams.sort(key=lambda t: tuple(-x for x in _seed_key(t)))
-
-        try:
-            if num_winners != 1 and (espejo or self.double_elimination):
-                raise ValueError("Multiple winners are only supported for single-elimination brackets")
-            if third_place and self.double_elimination and not espejo:
-                raise ValueError("A 3rd-place match is not supported for double elimination")
-            if num_winners != 1 or third_place:
-                validate_num_winners(len(teams), num_winners, third_place)
-        except ValueError:
-            # Leave the tournament untouched so the organiser can retry with other options.
-            self.double_elimination = prev_double_elimination
-            self._espejo = prev_espejo
-            raise
-
-        if espejo:
-            self.playoff_bracket = EspejoParallelBracket(teams, third_place=third_place)
-        elif self.double_elimination:
-            self.playoff_bracket = DoubleEliminationBracket(teams, courts=self.courts)
-        else:
-            self.playoff_bracket = SingleEliminationBracket(teams, num_winners=num_winners, third_place=third_place)
-
-        if self.courts and not espejo:
-            assign_courts(bracket_matches(self.playoff_bracket), self.courts)
-
-        self._phase = GPPhase.PLAYOFFS
+        return teams
 
     def playoff_matches(self) -> list[Match]:
         if self.playoff_bracket is None:

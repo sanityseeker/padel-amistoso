@@ -780,6 +780,8 @@ function _renderAdminBracketCard(apiBase, tvSettings, opts = {}) {
   const title = opts.title || t('txt_txt_play_off_bracket');
   const isEspejo = opts.isEspejo === true;
   const isDouble = opts.isDouble === true;
+  // Oro / Plata split Espejo: same layout, Gold / Silver labels.
+  const isSplit = opts.isSplit === true;
   const useSplit = isEspejo || isDouble;
   const url = _adminBracketUrl(apiBase, tvSettings);
   let h = `<div class="card admin-bracket-card" data-bracket-api="${apiBase}" data-espejo="${isEspejo ? '1' : ''}" data-double="${isDouble ? '1' : ''}">`;
@@ -790,11 +792,11 @@ function _renderAdminBracketCard(apiBase, tvSettings, opts = {}) {
   if (useSplit) {
     h += `<div class="espejo-brackets-row">`;
     h += `<div class="espejo-bracket-half">`;
-    h += `<div class="espejo-bracket-label">${esc(t('txt_txt_espejo_winners_bracket'))}</div>`;
+    h += `<div class="espejo-bracket-label">${esc(t(isSplit ? 'txt_txt_espejo_gold_bracket' : 'txt_txt_espejo_winners_bracket'))}</div>`;
     h += `<div class="bracket-scroll-wrapper"><img id="admin-bracket-img" class="bracket-img" src="${url}&side=winners" alt="Winners" onclick="_openBracketLightbox(this.src)" title="${escAttr(t('txt_txt_click_to_expand'))}" onerror="this.style.display='none'"></div>`;
     h += `</div>`;
     h += `<div class="espejo-bracket-half">`;
-    h += `<div class="espejo-bracket-label">${esc(t('txt_txt_espejo_losers_bracket'))}</div>`;
+    h += `<div class="espejo-bracket-label">${esc(t(isSplit ? 'txt_txt_espejo_silver_bracket' : 'txt_txt_espejo_losers_bracket'))}</div>`;
     h += `<div class="bracket-scroll-wrapper" id="admin-bracket-losers-wrap">` +
       `<img id="admin-bracket-img-losers" class="bracket-img" src="${url}&side=losers" alt="Losers"` +
       ` onclick="_openBracketLightbox(this.src)" title="${escAttr(t('txt_txt_click_to_expand'))}"`;

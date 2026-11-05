@@ -884,9 +884,12 @@ def test_shared_js_has_single_set_score_formatter(client):
     shared = client.get("/shared.js", headers={"Accept-Encoding": "identity"}).text
     assert "function formatSetScore(sets, decider, sep" in shared
     assert "function isMatchTiebreakSet(sets, index, decider)" in shared
+    # The mini-card match-history helper formats through the shared formatter too.
+    helper = shared[shared.index("function eloScoreSepHtml(m)") :]
+    assert "formatSetScore(m.sets, m.decider" in helper[: helper.index("\n}\n")]
     for path in ("/admin-gp.js", "/tv.js", "/player.js", "/club.js", "/admin-mex.js"):
         js = client.get(path, headers={"Accept-Encoding": "identity"}).text
-        assert "formatSetScore(" in js, path
+        assert "formatSetScore(" in js or "eloScoreSepHtml(" in js, path
         assert "sets.map(s => `${s[0]}-${s[1]}`)" not in js, path
 
 
@@ -1101,6 +1104,48 @@ def test_gp_views_are_espejo_aware():
     assert "'gp-espejo-losers':{ points: 'gp/record-playoff'" in admin_gp
     assert "'gp-espejo-losers'" in _read_frontend("admin-tournaments.js")
     assert "status.espejo === true)" in _read_frontend("tv.js")
+
+
+def test_gp_espejo_split_oro_plata_frontend():
+    """The Oro / Plata editor sends the split payload and every new i18n key exists in en + es."""
+    admin_gp = _read_frontend("admin-gp.js")
+    for field in ("espejo_split: true", "oro_player_ids:", "plata_player_ids:", "plata_third_place:"):
+        assert field in admin_gp, field
+    assert "advancing_player_ids" in admin_gp  # the regular path is unchanged
+    # Oro / Plata replaces classic Espejo in the GP editor (Direct Playoffs keeps it).
+    assert "['espejo', 'txt_txt_espejo_format']" not in admin_gp
+    assert 'id="po-espejo"' in _read_frontend("index.html")
+    assert "isSplit: gpSplit" in admin_gp
+    assert "status.espejo_split" in admin_gp
+    assert "isSplit" in _read_frontend("admin-utils.js")
+    tv = _read_frontend("tv.js")
+    assert "status.espejo_split === true" in tv
+    assert "m.bracket_side" in tv
+
+    i18n = _read_frontend("i18n.js")
+    keys = (
+        "txt_txt_espejo_split_format",
+        "txt_txt_espejo_gold_bracket",
+        "txt_txt_espejo_silver_bracket",
+        "txt_txt_silver_winner",
+        "txt_split_intro",
+        "txt_split_cutoff",
+        "txt_split_cutoff_hint",
+        "txt_split_gold",
+        "txt_split_silver",
+        "txt_split_out",
+        "txt_split_count",
+        "txt_split_warn_min",
+        "txt_split_warn_odd",
+        "txt_split_warn_third",
+        "txt_split_gold_third_place",
+        "txt_split_silver_third_place",
+    )
+    for key in keys:
+        assert i18n.count(f'"{key}"') == 2, key  # en + es
+        assert f"'{key}'" in admin_gp or f"'{key}'" in tv or f"'{key}'" in _read_frontend("admin-utils.js"), (
+            f"{key} is defined but unused"
+        )
 
 
 # ── Admin mobile polish: icons, header row, Create format strip ─────────────

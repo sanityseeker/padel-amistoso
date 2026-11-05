@@ -218,6 +218,29 @@ function _clubRenderLeaderboardSkeleton(dual) {
   }
 }
 
+/**
+ * Leaderboard table HTML for a non-empty list of rows. A player's tier is
+ * shown only on their mini-card (click the name), not as a column here.
+ */
+function _clubLeaderboardTableHtml(rows) {
+  const matchesLabel = esc(t('txt_txt_matches', {}) || 'Matches');
+  const headers = `
+    <tr>
+      <th class="col-rank">#</th>
+      <th class="col-name">${esc(t('txt_txt_player', {}) || 'Player')}</th>
+      <th class="col-elo">${esc(t('txt_player_elo_label', {}) || 'ELO')}</th>
+      <th class="col-matches">${matchesLabel}</th>
+    </tr>`;
+  const rowsHtml = rows.map(r => `
+    <tr>
+      <td class="col-rank">${esc(r.rank)}</td>
+      <td class="col-name">${_clubNameCell(r)}</td>
+      <td class="col-elo">${r.elo == null ? '' : esc(r.elo.toFixed(1))}</td>
+      <td class="col-matches" data-label="${matchesLabel}">${esc(r.matches)}</td>
+    </tr>`).join('');
+  return `<table class="club-leaderboard-table"><thead>${headers}</thead><tbody>${rowsHtml}</tbody></table>`;
+}
+
 function _clubRenderGlobalLeaderboard(rows, containerId) {
   const body = document.getElementById(containerId || 'club-leaderboard-body');
   if (!body) return;
@@ -225,25 +248,7 @@ function _clubRenderGlobalLeaderboard(rows, containerId) {
     body.innerHTML = `<div class="club-leaderboard-empty">${esc(t('txt_club_leaderboard_empty', {}) || 'No players yet.')}</div>`;
     return;
   }
-  const headers = `
-    <tr>
-      <th class="col-rank">#</th>
-      <th class="col-name">${esc(t('txt_txt_player', {}) || 'Player')}</th>
-      <th class="col-tier">${esc(t('txt_clubs_tier_name', {}) || 'Tier')}</th>
-      <th class="col-elo">${esc(t('txt_player_elo_label', {}) || 'ELO')}</th>
-      <th class="col-matches">${esc(t('txt_txt_matches', {}) || 'Matches')}</th>
-    </tr>`;
-  const tierLabel = esc(t('txt_clubs_tier_name', {}) || 'Tier');
-  const matchesLabel = esc(t('txt_txt_matches', {}) || 'Matches');
-  const rowsHtml = rows.map(r => `
-    <tr>
-      <td class="col-rank">${esc(r.rank)}</td>
-      <td class="col-name">${_clubNameCell(r)}</td>
-      <td class="col-tier" data-label="${tierLabel}">${esc(r.tier_name || '')}</td>
-      <td class="col-elo">${r.elo == null ? '' : esc(r.elo.toFixed(1))}</td>
-      <td class="col-matches" data-label="${matchesLabel}">${esc(r.matches)}</td>
-    </tr>`).join('');
-  body.innerHTML = `<table class="club-leaderboard-table"><thead>${headers}</thead><tbody>${rowsHtml}</tbody></table>`;
+  body.innerHTML = _clubLeaderboardTableHtml(rows);
 }
 
 function _clubRenderDualLeaderboard(padelRows, tennisRows) {
@@ -257,23 +262,7 @@ function _clubRenderDualLeaderboard(padelRows, tennisRows) {
   }
   const buildTable = (rows) => {
     if (!Array.isArray(rows) || rows.length === 0) return `<div class="club-leaderboard-empty">${esc(t('txt_club_leaderboard_empty', {}) || 'No players yet.')}</div>`;
-    const headers = `<tr>
-      <th class="col-rank">#</th>
-      <th class="col-name">${esc(t('txt_txt_player', {}) || 'Player')}</th>
-      <th class="col-tier">${esc(t('txt_clubs_tier_name', {}) || 'Tier')}</th>
-      <th class="col-elo">${esc(t('txt_player_elo_label', {}) || 'ELO')}</th>
-      <th class="col-matches">${esc(t('txt_txt_matches', {}) || 'Matches')}</th>
-    </tr>`;
-    const tierLabel = esc(t('txt_clubs_tier_name', {}) || 'Tier');
-    const matchesLabel = esc(t('txt_txt_matches', {}) || 'Matches');
-    const rowsHtml = rows.map(r => `<tr>
-      <td class="col-rank">${esc(r.rank)}</td>
-      <td class="col-name">${_clubNameCell(r)}</td>
-      <td class="col-tier" data-label="${tierLabel}">${esc(r.tier_name || '')}</td>
-      <td class="col-elo">${r.elo == null ? '' : esc(r.elo.toFixed(1))}</td>
-      <td class="col-matches" data-label="${matchesLabel}">${esc(r.matches)}</td>
-    </tr>`).join('');
-    return `<table class="club-leaderboard-table"><thead>${headers}</thead><tbody>${rowsHtml}</tbody></table>`;
+    return _clubLeaderboardTableHtml(rows);
   };
   body.innerHTML = `
     <div class="club-lb-dual">
@@ -757,7 +746,7 @@ function _clubRenderMiniCard(overlay, card) {
           <div class="club-mini-stat"><div class="club-mini-stat-label">${eloLabel}</div><div class="club-mini-stat-value">${esc(Number(elo).toFixed(1))}</div></div>
           <div class="club-mini-stat"><div class="club-mini-stat-label">${rankLabel}</div><div class="club-mini-stat-value">${rank == null ? '—' : '#' + esc(rank)}</div></div>
           <div class="club-mini-stat"><div class="club-mini-stat-label">${matchesLabel}</div><div class="club-mini-stat-value">${esc(matches)}</div></div>
-          <div class="club-mini-stat"><div class="club-mini-stat-label">${tierLabel}</div><div class="club-mini-stat-value">${esc(tier || '—')}</div></div>
+          ${tier ? `<div class="club-mini-stat"><div class="club-mini-stat-label">${tierLabel}</div><div class="club-mini-stat-value">${esc(tier)}</div></div>` : ''}
         </div>
       </div>`;
   };
@@ -772,21 +761,13 @@ function _clubRenderMiniCard(overlay, card) {
         const delta = m.elo_delta;
         const deltaClass = delta > 0 ? 'elo-transition--gain' : delta < 0 ? 'elo-transition--loss' : 'elo-transition--neutral';
         const deltaStr = delta == null ? '' : (delta > 0 ? '+' : '') + Number(delta).toFixed(1);
-        const hasSets = Array.isArray(m.sets) && m.sets.length > 0;
-        const score = hasSets
-          ? formatSetScore(m.sets, m.decider, ' · ')
-          : (Array.isArray(m.score) && m.score.length >= 2 ? `${m.score[0]} – ${m.score[1]}` : '');
-        const team1 = Array.isArray(m.team1) ? m.team1.join(' / ') : '';
-        const team2 = Array.isArray(m.team2) ? m.team2.join(' / ') : '';
         const sportTag = m.sport === 'tennis' ? tennisLabel : padelLabel;
         const tname = m.tournament_alias || m.tournament_name || '';
         const roundTxt = m.round_label || (m.round_number ? `R${m.round_number}` : '');
         const tnameWithRound = roundTxt
           ? `${esc(tname)}<span class="elo-log-sub">· ${esc(roundTxt)}</span>`
           : esc(tname);
-        const mid = score
-          ? `<span class="elo-score-sep">${esc(score)}</span>`
-          : `<span class="elo-vs-sep">vs</span>`;
+        const mid = eloScoreSepHtml(m);
         return `<div class="elo-log-row">
           <div class="elo-log-main">
             <span class="elo-log-name">${tnameWithRound}</span>
@@ -795,9 +776,9 @@ function _clubRenderMiniCard(overlay, card) {
           </div>
           <div class="elo-log-row elo-log-row--inline elo-log-row--nested">
             <div class="elo-log-teams">
-              <span class="elo-team elo-team--a">${esc(team1)}</span>
+              <span class="elo-team elo-team--a">${eloTeamPlayersHtml(m.team1)}</span>
               ${mid}
-              <span class="elo-team elo-team--b">${esc(team2)}</span>
+              <span class="elo-team elo-team--b">${eloTeamPlayersHtml(m.team2)}</span>
             </div>
           </div>
         </div>`;

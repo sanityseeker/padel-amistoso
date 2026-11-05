@@ -190,6 +190,8 @@ async def gp_status(tid: str) -> dict:
         "team_mode": t.team_mode,
         "double_elimination": t.double_elimination,
         "espejo": t.espejo,
+        # Oro / Plata split: both brackets exist from the start.
+        "espejo_split": bool(espejo and getattr(bracket, "is_split", False)),
         # True only for tournaments persisted before the Super Final was removed.
         "espejo_super_final": bool(espejo and getattr(bracket, "super_final_enabled", False)),
         "espejo_losers_bracket_seeded": bool(espejo and bracket.losers_bracket is not None),
@@ -407,6 +409,10 @@ async def gp_start_playoffs(
                 playoff_teams=req.playoff_teams,
                 num_winners=req.num_winners,
                 third_place=req.third_place,
+                espejo_split=req.espejo_split,
+                oro_player_ids=req.oro_player_ids,
+                plata_player_ids=req.plata_player_ids,
+                plata_third_place=req.plata_third_place,
             )
         except (RuntimeError, KeyError, ValueError) as e:
             raise HTTPException(400, str(e))

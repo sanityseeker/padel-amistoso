@@ -844,8 +844,8 @@ class TestUpdateCourts:
 
     @pytest.mark.parametrize(
         "start_kwargs",
-        [{}, {"double_elimination": True}, {"espejo": True}],
-        ids=["single-elim", "double-elim", "espejo"],
+        [{}, {"double_elimination": True}, {"espejo": True}, "split"],
+        ids=["single-elim", "double-elim", "espejo", "espejo-split"],
     )
     def test_update_courts_after_playoffs_started(self, start_kwargs):
         """Re-assigning courts once play-offs exist must work for every bracket type."""
@@ -855,6 +855,13 @@ class TestUpdateCourts:
         t.generate()
         for m in t.pending_group_matches():
             t.record_group_result(m.id, (10, 6))
+        if start_kwargs == "split":
+            ranked = t.recommend_playoff_participants()
+            start_kwargs = {
+                "espejo_split": True,
+                "oro_player_ids": [r["player_id"] for r in ranked if r["group_rank"] == 1],
+                "plata_player_ids": [r["player_id"] for r in ranked if r["group_rank"] == 2],
+            }
         t.start_playoffs(**start_kwargs)
 
         t.update_courts([Court(name="NewCourt")])
@@ -1042,3 +1049,196 @@ class TestTeamModeRoundOrderedCourts:
         """With courts available, every group match must receive a court."""
         t = self._generate(n_players=6, n_courts=2)
         assert all(m.court is not None for m in t.all_group_matches())
+
+
+# ── Espejo Oro / Plata split ──────────────────────────────────────────────────
+
+
+class TestEspejoSplit:
+    def _running(self, n: int = 12, groups: int = 2, team_mode: bool = True) -> GroupPlayoffTournament:
+        t = GroupPlayoffTournament(
+            _make_players(n), num_groups=groups, courts=_make_courts(2), top_per_group=2, team_mode=team_mode
+        )
+        t.generate()
+        # Team mode generates every match up front; in individual mode one scored round is
+        # enough to rank the groups (generating all rounds is slow).
+        for idx, m in enumerate(t.pending_group_matches()):
+            t.record_group_result(m.id, (10, 6) if idx % 2 == 0 else (6, 10))
+        return t
+
+    @staticmethod
+    def _by_rank(t, lo: int, hi: int) -> list[str]:
+        return [r["player_id"] for r in t.recommend_playoff_participants() if lo <= r["group_rank"] <= hi]
+
+    def test_group_rank_present_and_per_group(self):
+        t = self._running()
+        rows = t.recommend_playoff_participants()
+        assert all("group_rank" in r for r in rows)
+        for g in t.groups:
+            ranks = sorted(r["group_rank"] for r in rows if r["group"] == g.name)
+            assert ranks == list(range(1, len(g.players) + 1))
+
+    def test_team_mode_default_split(self):
+        t = self._running()
+        t.start_playoffs(
+            espejo_split=True, oro_player_ids=self._by_rank(t, 1, 3), plata_player_ids=self._by_rank(t, 4, 6)
+        )
+        b = t.playoff_bracket
+        assert t.phase == GPPhase.PLAYOFFS and t.espejo
+        assert b.is_split
+        assert len(b.winners_bracket.original_teams) == 6
+        assert len(b.losers_bracket.original_teams) == 6
+        # Round 1 (non-bye) matches pair teams from different groups.
+        group_of = {p.id: g.name for g in t.groups for p in g.players}
+        for br in (b.winners_bracket, b.losers_bracket):
+            for m in br.matches:
+                if m.round_number == 1 and m.team1 and m.team2 and m.score is None:
+                    assert group_of[m.team1[0].id] != group_of[m.team2[0].id]
+        # Brackets are populated immediately.
+        assert t.pending_playoff_matches()
+
+    def test_individual_mode_split(self):
+        t = self._running(n=16, team_mode=False)
+        assert all(len(g.players) == 8 for g in t.groups)
+        t.start_playoffs(
+            espejo_split=True, oro_player_ids=self._by_rank(t, 1, 4), plata_player_ids=self._by_rank(t, 5, 8)
+        )
+        b = t.playoff_bracket
+        assert len(b.winners_bracket.original_teams) == 4
+        assert all(len(team) == 2 for team in b.losers_bracket.original_teams)
+
+    def test_uneven_groups(self):
+        t = self._running(n=11)
+        sizes = sorted(len(g.players) for g in t.groups)
+        assert sizes == [5, 6]
+        t.start_playoffs(
+            espejo_split=True, oro_player_ids=self._by_rank(t, 1, 3), plata_player_ids=self._by_rank(t, 4, 6)
+        )
+        assert len(t.playoff_bracket.winners_bracket.original_teams) == 6
+        assert len(t.playoff_bracket.losers_bracket.original_teams) == 5
+
+    def test_manual_move_keeps_group_rank_seed(self):
+        t = self._running()
+        rows = {r["player_id"]: r for r in t.recommend_playoff_participants()}
+        oro = self._by_rank(t, 1, 2)
+        plata = self._by_rank(t, 3, 6)
+        moved = next(pid for pid in oro if rows[pid]["group_rank"] == 2)
+        oro.remove(moved)
+        plata.append(moved)
+        # Keep Oro at an even-sized, valid bracket.
+        extra = next(pid for pid in plata if rows[pid]["group_rank"] == 3)
+        plata.remove(extra)
+        oro.append(extra)
+        t.start_playoffs(espejo_split=True, oro_player_ids=oro, plata_player_ids=plata)
+        plata_seeds = [team[0].id for team in t.playoff_bracket.losers_bracket.original_teams]
+        # The moved rank-2 player is the best-ranked Plata entry, so seeded first or second
+        # (group diversity may swap it with a better-ranked player from the other group).
+        assert moved in plata_seeds[:2]
+        assert extra in {team[0].id for team in t.playoff_bracket.winners_bracket.original_teams}
+
+    def test_excluded_ids_are_dropped(self):
+        t = self._running()
+        t.start_playoffs(
+            espejo_split=True, oro_player_ids=self._by_rank(t, 1, 2), plata_player_ids=self._by_rank(t, 3, 4)
+        )
+        in_bracket = {
+            team[0].id
+            for br in (t.playoff_bracket.winners_bracket, t.playoff_bracket.losers_bracket)
+            for team in br.original_teams
+        }
+        assert in_bracket == set(self._by_rank(t, 1, 4))
+
+    def test_odd_individual_bucket_rejected(self):
+        t = self._running(n=16, team_mode=False)
+        with pytest.raises(RuntimeError, match="Plata"):
+            t.start_playoffs(
+                espejo_split=True,
+                oro_player_ids=self._by_rank(t, 1, 4),
+                plata_player_ids=self._by_rank(t, 5, 8)[:-1],
+            )
+        assert t.phase == GPPhase.GROUPS and not t.espejo
+
+    def test_oro_odd_individual_bucket_names_oro(self):
+        t = self._running(n=16, team_mode=False)
+        with pytest.raises(RuntimeError, match="Oro"):
+            t.start_playoffs(
+                espejo_split=True, oro_player_ids=self._by_rank(t, 1, 4)[:-1], plata_player_ids=self._by_rank(t, 5, 8)
+            )
+
+    def test_bucket_with_fewer_than_two_entries_rejected(self):
+        t = self._running()
+        with pytest.raises(RuntimeError, match="at least 2"):
+            t.start_playoffs(
+                espejo_split=True, oro_player_ids=self._by_rank(t, 1, 3), plata_player_ids=self._by_rank(t, 6, 6)[:1]
+            )
+        assert t.phase == GPPhase.GROUPS and t.playoff_bracket is None
+
+    def test_overlapping_ids_rejected(self):
+        t = self._running()
+        ids = self._by_rank(t, 1, 3)
+        with pytest.raises(RuntimeError, match="both"):
+            t.start_playoffs(espejo_split=True, oro_player_ids=ids, plata_player_ids=ids[:2] + self._by_rank(t, 4, 5))
+        assert t.phase == GPPhase.GROUPS
+
+    def test_unknown_id_rejected(self):
+        t = self._running()
+        with pytest.raises(KeyError):
+            t.start_playoffs(
+                espejo_split=True, oro_player_ids=["nope", "nope2"], plata_player_ids=self._by_rank(t, 4, 5)
+            )
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"extra_players": [("Ext", 1.0)]},
+            {"playoff_teams": [["a", "b"]]},
+            {"double_elimination": True},
+            {"num_winners": 2},
+            {"advancing_player_ids": ["a", "b"]},
+        ],
+        ids=["extra", "playoff-teams", "double-elim", "num-winners", "advancing"],
+    )
+    def test_incompatible_options_rejected(self, kwargs):
+        t = self._running()
+        with pytest.raises((RuntimeError, ValueError)):
+            t.start_playoffs(
+                espejo_split=True,
+                oro_player_ids=self._by_rank(t, 1, 3),
+                plata_player_ids=self._by_rank(t, 4, 6),
+                **kwargs,
+            )
+        assert t.phase == GPPhase.GROUPS and not t.espejo and t.playoff_bracket is None
+
+    def test_plata_third_place_needs_four_teams(self):
+        t = self._running()
+        with pytest.raises(ValueError, match="Plata"):
+            t.start_playoffs(
+                espejo_split=True,
+                oro_player_ids=self._by_rank(t, 1, 3),
+                plata_player_ids=self._by_rank(t, 4, 5)[:3],
+                plata_third_place=True,
+            )
+        assert t.phase == GPPhase.GROUPS
+
+    def test_third_place_both_and_full_run(self):
+        t = self._running()
+        t.start_playoffs(
+            espejo_split=True,
+            oro_player_ids=self._by_rank(t, 1, 3),
+            plata_player_ids=self._by_rank(t, 4, 6),
+            third_place=True,
+            plata_third_place=True,
+        )
+        b = t.playoff_bracket
+        assert b.winners_bracket.third_place_match and b.losers_bracket.third_place_match
+        while t.pending_playoff_matches():
+            assert t.phase == GPPhase.PLAYOFFS
+            t.record_playoff_result(t.pending_playoff_matches()[0].id, (6, 3))
+        assert t.phase == GPPhase.FINISHED
+        assert t.champion() == b.winners_champion()
+
+    def test_split_args_without_flag_rejected(self):
+        t = self._running()
+        with pytest.raises(RuntimeError):
+            t.start_playoffs(oro_player_ids=self._by_rank(t, 1, 3))
+        assert t.phase == GPPhase.GROUPS

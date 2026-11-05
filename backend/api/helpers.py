@@ -220,6 +220,18 @@ def tournament_winners(t: object) -> list[list] | None:
     return [champ] if champ else None
 
 
+def _plata_third_place_payload(bracket: object) -> dict:
+    """``plata_third_place`` flag and ``plata_third_place_team`` names (split Espejo only)."""
+    if not getattr(bracket, "is_split", False):
+        return {}
+    lb = getattr(bracket, "losers_bracket", None)
+    team = lb.third_place_team() if lb is not None else None
+    return {
+        "plata_third_place": bool(getattr(lb, "third_place", False)),
+        "plata_third_place_team": [p.name for p in team] if team else None,
+    }
+
+
 def winners_payload(t: object) -> dict:
     """Status/playoffs payload fragment: ``num_winners``, ``winners`` and ``champion``.
 
@@ -235,6 +247,8 @@ def winners_payload(t: object) -> dict:
         or bool(getattr(getattr(bracket, "winners_bracket", None), "third_place", False)),
         "winners": names,
         "champion": names[0] if names and len(names) == 1 else None,
+        # Oro / Plata split only: optional 3rd-place match of the lower (Plata) bracket.
+        **_plata_third_place_payload(bracket),
     }
 
 
@@ -711,11 +725,14 @@ def _espejo_schema_target(bracket: EspejoParallelBracket, side: str | None, titl
     Raises:
         HTTPException: 425 when the Losers Bracket is requested before it is seeded.
     """
+    split = bool(getattr(bracket, "is_split", False))
     if side == "losers":
+        if split and bracket.losers_bracket is not None:
+            return bracket.losers_bracket, title or "Silver Bracket"
         if bracket.losers_bracket is None:
             raise HTTPException(425, "Losers bracket not yet seeded — wait for all Round-1 winners matches to complete")
         return bracket.losers_bracket, title or "Losers Bracket"
-    return bracket.winners_bracket, title or "Winners Bracket"
+    return bracket.winners_bracket, title or ("Gold Bracket" if split else "Winners Bracket")
 
 
 # ---------------------------------------------------------------------------

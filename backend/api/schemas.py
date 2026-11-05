@@ -542,6 +542,22 @@ class StartGroupPlayoffsRequest(BaseModel):
     # Number of equal winners (single elimination only) and optional 3rd-place match.
     num_winners: int = Field(default=1, ge=1, le=64)
     third_place: bool = False
+    # Oro / Plata split Espejo: two brackets seeded up front from explicit player lists
+    # (same id space as ``advancing_player_ids``; ids in neither list are excluded).
+    espejo_split: bool = False
+    oro_player_ids: list[str] | None = None
+    plata_player_ids: list[str] | None = None
+    # Optional 3rd-place match in the Plata bracket (``third_place`` applies to Oro).
+    plata_third_place: bool = False
+
+    @model_validator(mode="after")
+    def _check_split_options(self) -> StartGroupPlayoffsRequest:
+        if self.espejo_split:
+            if self.advancing_player_ids is not None:
+                raise ValueError("advancing_player_ids cannot be used with espejo_split; send oro/plata lists")
+        elif self.oro_player_ids or self.plata_player_ids or self.plata_third_place:
+            raise ValueError("oro_player_ids / plata_player_ids / plata_third_place require espejo_split")
+        return self
 
 
 class SchemaPreviewRequest(BaseModel):

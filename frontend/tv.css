@@ -1671,6 +1671,31 @@ html[data-theme="light"] .court-card--yours {
   font-size: 0.9rem;
 }
 
+/* Mini-card match rows (TV + club): wrap long names instead of truncating
+   them, so a doubles partner is never cut off; stack partners on phones. */
+:is(.tv-player-recent, .club-mini-recent) .elo-team {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+:is(.tv-player-recent, .club-mini-recent) .elo-team-join,
+:is(.tv-player-recent, .club-mini-recent) .elo-set-join {
+  margin: 0 0.25rem;
+  color: var(--color-text-muted);
+}
+@media (max-width: 480px) {
+  :is(.tv-player-recent, .club-mini-recent) .elo-team-player { display: block; }
+  :is(.tv-player-recent, .club-mini-recent) :is(.elo-team-join, .elo-set-join) { display: none; }
+  /* One set per line, scoreboard-style, so the names keep the width. */
+  :is(.tv-player-recent, .club-mini-recent) .elo-score-sep--sets {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.25;
+  }
+  .club-mini-recent .elo-log-name { white-space: normal; }
+}
+
 /* Compact match log (shared with player history hub styling) */
 .elo-log {
   display: flex;
