@@ -71,11 +71,16 @@ function _export_score_cell(m) {
   return score;
 }
 
-function _report_table(headers, rows) {
+function _report_table(headers, rows, cls = '') {
   const thead = `<tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr>`;
   const tbody = rows.map(row => `<tr>${row.map(c => `<td>${esc(String(c))}</td>`).join('')}</tr>`).join('');
-  return `<table><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+  return `<table${cls ? ` class="${cls}"` : ''}><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
 }
+
+/** The Court column only appears when at least one listed match has a court. */
+const _hasCourts = (ms) => ms.some(m => m.court);
+const _court_headers = (ms, headers) => (_hasCourts(ms) ? [...headers, t('txt_txt_court')] : headers);
+const _with_court = (m, cells, ms) => (_hasCourts(ms) ? [...cells, m.court || ''] : cells);
 
 const _teamText = (team) => (team || []).join(' & ') || 'TBD';
 
@@ -84,8 +89,8 @@ function _report_history(title, matches) {
   const done = (matches || []).filter(m => m.status === 'completed');
   if (done.length === 0) return '';
   return `<h2>${esc(title)}</h2>` + _report_table(
-    [t('txt_txt_round'), t('txt_txt_team_1'), t('txt_txt_team_2'), t('txt_txt_score'), t('txt_txt_court')],
-    done.map(m => [m.round_label || '', _teamText(m.team1), _teamText(m.team2), _export_score_cell(m), m.court || '']),
+    _court_headers(done, [t('txt_txt_round'), t('txt_txt_team_1'), t('txt_txt_team_2'), t('txt_txt_score')]),
+    done.map(m => _with_court(m, [m.round_label || '', _teamText(m.team1), _teamText(m.team2), _export_score_cell(m)], done)),
   );
 }
 
@@ -94,8 +99,8 @@ function _report_upcoming(matches) {
   const open = (matches || []).filter(m => m.status !== 'completed');
   if (open.length === 0) return '';
   return `<h2>${t('txt_export_upcoming_matches')}</h2>` + _report_table(
-    [t('txt_txt_round'), t('txt_txt_team_1'), t('txt_txt_team_2'), t('txt_txt_court')],
-    open.map(m => [m.round_label || '', _teamText(m.team1), _teamText(m.team2), m.court || '']),
+    _court_headers(open, [t('txt_txt_round'), t('txt_txt_team_1'), t('txt_txt_team_2')]),
+    open.map(m => _with_court(m, [m.round_label || '', _teamText(m.team1), _teamText(m.team2)], open)),
   );
 }
 
@@ -195,6 +200,8 @@ function _build_report_document(title, bodyHtml) {
     table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; }
     th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; font-size: 0.9rem; }
     th { background: #f3f4f6; }
+    table.standings { table-layout: fixed; }
+    table.standings th:first-child { width: 28%; }
     table.kv { width: auto; min-width: 50%; }
     img { max-width: 100%; height: auto; }
     h2, h3 { break-after: avoid; }
@@ -306,6 +313,7 @@ async function _build_gp_report(tid, opts, tvSettings) {
         if (opts.elo) base.push(r.elo ?? '—');
         return base;
       }),
+      'standings',
     );
   }
   if (opts.history) body += _report_history(t('txt_txt_group_match_history'), groupMatches);
