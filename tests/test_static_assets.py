@@ -1511,16 +1511,19 @@ def test_tournament_export_match_tables_show_comments():
 
 def test_tournament_export_names_teams_and_players():
     """Team events say "Team" in standings and match tables (a team is one
-    entry per side, so the one-per-side "Player" rule must not apply to them);
-    Mexicano tennis team_mode is singles, so it stays "Player"."""
+    entry per side, so the one-per-side "Player" rule must not apply to them).
+    Tennis Individual events say "Player": tennis Group+Playoff always stores
+    team_mode=true and Mexicano tennis team_mode is singles, so in tennis only
+    a roster or a play-off's team_mode means teams."""
     export = _read_frontend("admin-export.js")
-    rule = export[export.index("function _is_team_event(status, mexicano = false)") :]
+    rule = export[export.index("function _is_team_event(status, kind)") :]
     rule = rule[: rule.index("\n}\n")]
     assert "if (Object.keys(status.team_roster || {}).length > 0) return true;" in rule
-    assert "return !mexicano || (status.sport || 'padel') !== 'tennis';" in rule
+    assert "return (status.sport || 'padel') !== 'tennis' || kind === 'po';" in rule
     assert "const _side_headers = (ms, teams) => (!teams && ms.length" in export
-    assert export.count("teams: _is_team_event(status) };") == 2
-    assert export.count("teams: _is_team_event(status, true) };") == 1
+    assert "teams: _is_team_event(status, 'gp') };" in export
+    assert "teams: _is_team_event(status, 'po') };" in export
+    assert "teams: _is_team_event(status, 'mex') };" in export
     assert export.count("_participant_header(tbl.teams)") == 2
     assert "[t('txt_export_player_1'), t('txt_export_player_2')]" in export
 

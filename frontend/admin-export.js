@@ -99,14 +99,16 @@ const _side_headers = (ms, teams) => (!teams && ms.length && ms.every(m => (m.te
 const _teamText = (team) => (team || []).join(' & ') || 'TBD';
 
 /**
- * Whether the tournament's entries are teams. GP and play-off `team_mode`
- * means team entries; Mexicano `team_mode` means one entry per side, which is
- * a fixed pair in padel but a single player in tennis.
+ * Whether the tournament's entries are teams. A team roster always means
+ * teams. In padel, `team_mode` means team entries too. In tennis only a
+ * play-off's `team_mode` does: tennis Group+Playoff always stores
+ * team_mode=true (an Individual event just has no roster), and Mexicano's
+ * means singles.
  */
-function _is_team_event(status, mexicano = false) {
+function _is_team_event(status, kind) {
   if (Object.keys(status.team_roster || {}).length > 0) return true;
   if (!status.team_mode) return false;
-  return !mexicano || (status.sport || 'padel') !== 'tennis';
+  return (status.sport || 'padel') !== 'tennis' || kind === 'po';
 }
 
 /** Standings name column. */
@@ -283,7 +285,7 @@ async function _build_gp_report(tid, opts, tvSettings) {
     api(`/api/tournaments/${tid}/gp/playoffs`).catch(() => ({ matches: [], pending: [] })),
   ]);
   const finished = status.phase === 'finished';
-  const tbl = { comments: opts.comments, teams: _is_team_event(status) };
+  const tbl = { comments: opts.comments, teams: _is_team_event(status, 'gp') };
   const hasBracket = status.phase !== 'groups';
   const espejo = status.espejo === true;
   const labels = (espejo || status.double_elimination)
@@ -342,7 +344,7 @@ async function _build_po_report(tid, opts, tvSettings) {
     api(`/api/tournaments/${tid}/po/playoffs`),
   ]);
   const finished = status.phase === 'finished';
-  const tbl = { comments: opts.comments, teams: _is_team_event(status) };
+  const tbl = { comments: opts.comments, teams: _is_team_event(status, 'po') };
   // Standalone double elimination draws both sides in one image; only
   // Espejo has a separate Silver / Losers bracket to fetch.
   const labels = status.espejo === true
@@ -371,7 +373,7 @@ async function _build_mex_report(tid, opts, tvSettings) {
     api(`/api/tournaments/${tid}/mex/playoffs`).catch(() => ({ matches: [], pending: [] })),
   ]);
   const finished = status.phase === 'finished';
-  const tbl = { comments: opts.comments, teams: _is_team_event(status, true) };
+  const tbl = { comments: opts.comments, teams: _is_team_event(status, 'mex') };
   const playoffMatches = playoffs?.matches || [];
   const inPlayoffs = status.phase === 'playoffs' || playoffMatches.length > 0;
   const images = opts.bracket && inPlayoffs
