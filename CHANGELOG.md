@@ -1,3 +1,9 @@
+## v2.2.0 (2026-11-05)
+
+### Feat
+
+- **playoffs**: Oro/Plata split Espejo with independent Gold and Silver brackets
+
 ## v2.1.2 (2026-11-04)
 
 ### Fix
