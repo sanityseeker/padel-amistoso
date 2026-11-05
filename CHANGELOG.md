@@ -1,3 +1,10 @@
+## v2.3.1 (2026-11-05)
+
+### Fix
+
+- **export**: player headers for individual matches, drop settings section
+- **export**: uniform group table widths, omit court column without courts
+
 ## v2.3.0 (2026-11-05)
 
 ### Feat
