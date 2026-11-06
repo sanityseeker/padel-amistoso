@@ -26,8 +26,11 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+import time
+
 from ...models import Court, Match, MatchStatus, MexPhase, Player, SitOutStrategy
-from ..errors import MatchClearBlocked
+from .. import withdrawal as wd
+from ..errors import MatchClearBlocked, WithdrawalBlocked
 from .grouping import GroupingMixin
 from .scoring import ScoringMixin
 from .sit_outs import SitOutMixin
@@ -197,6 +200,8 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         self._player_map: dict[str, Player] = {p.id: p for p in players}
         self.initial_strength: dict[str, float] | None = initial_strength
         self._removed_players: list[Player] = []
+        # Play-off withdrawals (bracket forfeits) by entry key.
+        self.withdrawals: dict[str, wd.WithdrawalRecord] = {}
 
     def __getattr__(self, name: str) -> object:
         """Provide defaults for attributes missing from older pickled instances."""
@@ -218,6 +223,7 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
             "_opponent_history_rounds": {},
             "team_roster": {},
             "team_member_names": {},
+            "withdrawals": {},
         }
         if name in defaults:
             value = defaults[name]
@@ -999,15 +1005,110 @@ class MexicanoTournament(GroupingMixin, ScoringMixin, SitOutMixin):
         """Record a play-off match result."""
         if self.playoff_bracket is None:
             raise RuntimeError("Play-offs not started")
-        self.playoff_bracket.record_result(match_id, score, sets=sets)
+        m = wd.bracket_match(self.playoff_bracket, match_id)
+        if m is not None and m.walkover:
+            raise ValueError("This result is a walkover and cannot be edited")
+        unwind = m is not None and wd.has_forfeits(self.withdrawals) and wd.winner_changes(m, score)
+        snapshot = wd.snapshot_bracket(self.playoff_bracket) if unwind else None
+        try:
+            if unwind:
+                wd.forget_walkovers(self.withdrawals, wd.unwind_downstream_walkovers(self.playoff_bracket, match_id))
+            self.playoff_bracket.record_result(match_id, score, sets=sets)
+        except Exception:
+            if snapshot is not None:
+                self.playoff_bracket = snapshot
+            raise
+        self.resolve_forfeits()
+
+    def resolve_forfeits(self) -> list[Match]:
+        """Create the walkovers owed by withdrawn entries, then re-check the finish."""
+        if self.playoff_bracket is None:
+            return []
+        created = wd.resolve_bracket_forfeits(self.playoff_bracket, self.withdrawals)
         if self.playoff_bracket.champion() is not None:
             self._phase = MexPhase.FINISHED
+        return created
 
     def clear_playoff_result(self, match_id: str) -> None:
         """Revert a play-off match to unplayed (play-offs phase only)."""
         if self.playoff_bracket is None or self._phase != MexPhase.PLAYOFFS:
             raise MatchClearBlocked("Play-off results can only be cleared while the play-offs are running")
-        self.playoff_bracket.clear_result(match_id)
+        m = wd.bracket_match(self.playoff_bracket, match_id)
+        if m is not None and m.walkover:
+            raise MatchClearBlocked("This result is a walkover; clear the match that fed it instead")
+        if not wd.has_forfeits(self.withdrawals):
+            self.playoff_bracket.clear_result(match_id)
+            return
+        snapshot = wd.snapshot_bracket(self.playoff_bracket)
+        try:
+            wd.forget_walkovers(self.withdrawals, wd.unwind_downstream_walkovers(self.playoff_bracket, match_id))
+            self.playoff_bracket.clear_result(match_id)
+        except Exception:
+            self.playoff_bracket = snapshot
+            raise
+        self.resolve_forfeits()
+
+    # ------------------------------------------------------------------ #
+    # Withdrawals (play-offs phase only; rounds use the remove endpoint)
+    # ------------------------------------------------------------------ #
+
+    def withdrawal_record_for(self, person_id: str) -> wd.WithdrawalRecord | None:
+        """The withdrawal covering *person_id*, if any."""
+        return next((r for r in self.withdrawals.values() if person_id in r.member_ids), None)
+
+    def plan_withdrawal(self, person_id: str) -> wd.WithdrawalPlan:
+        """Dry run of :meth:`withdraw`."""
+        if self._phase == MexPhase.FINISHED:
+            raise WithdrawalBlocked("The tournament is finished")
+        if self._phase != MexPhase.PLAYOFFS or self.playoff_bracket is None:
+            raise WithdrawalBlocked("Use remove player during the Mexicano rounds")
+        if self.withdrawal_record_for(person_id) is not None:
+            raise WithdrawalBlocked("This participant has already withdrawn")
+        team = wd.find_bracket_entry(self.playoff_bracket, person_id, self.team_roster)
+        if team is None:
+            if any(p.id == person_id for p in self.players):
+                raise WithdrawalBlocked("This participant is not in the play-offs")
+            raise KeyError(f"Player {person_id} not found in tournament")
+        return wd.plan_bracket_forfeit(self.playoff_bracket, team, self.withdrawals)
+
+    def withdraw(
+        self,
+        person_id: str,
+        *,
+        template: wd.WalkoverTemplate | None = None,
+        expected_kind: wd.WithdrawalKind | None = None,
+        by: str | None = None,
+        at: float | None = None,
+    ) -> tuple[wd.WithdrawalRecord, list[Match]]:
+        """Forfeit the play-off entry of *person_id*: its bracket matches become walkovers."""
+        at = time.time() if at is None else at
+        plan = self.plan_withdrawal(person_id)
+        if expected_kind is not None and plan.kind != expected_kind:
+            raise WithdrawalBlocked("The withdrawal outcome changed; review it again")
+        if plan.blockers:
+            raise WithdrawalBlocked("Settle the pending, disputed or under-review scores first")
+        assert self.playoff_bracket is not None
+        snapshot = wd.snapshot_bracket(self.playoff_bracket)
+        try:
+            record, created = wd.apply_bracket_forfeit(
+                self.playoff_bracket,
+                plan.entry,
+                self.withdrawals,
+                template,
+                member_ids=wd.entry_member_ids(plan.entry, self.team_roster),
+                by=by,
+                at=at,
+            )
+        except Exception:
+            self.playoff_bracket = snapshot
+            self.withdrawals.pop(plan.entry_key, None)
+            raise
+        self.resolve_forfeits()
+        return record, created
+
+    def undo_block_reason(self, entry_key: str) -> str | None:
+        """Play-off forfeits are never undone."""
+        return "Play-off withdrawals cannot be undone" if entry_key in self.withdrawals else "No such withdrawal"
 
     def champion(self) -> list[Player] | None:
         """Return the champion, or None if not yet decided."""

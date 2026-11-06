@@ -16,12 +16,14 @@ Usage:
 
 from __future__ import annotations
 
+import time
 from collections import defaultdict
 
 from ..models import Court, GPPhase, Match, MatchStatus, Player, reset_match_result
-from .errors import MatchClearBlocked
+from .errors import MatchClearBlocked, WithdrawalBlocked
 from .group_stage import Group, assign_courts, distribute_players_to_groups
 from . import pairing as pairing_mod
+from . import withdrawal as wd
 from .playoff import (
     DoubleEliminationBracket,
     EspejoParallelBracket,
@@ -64,6 +66,16 @@ class GroupPlayoffTournament:
         self._espejo: bool = False
 
         self._phase: GPPhase = GPPhase.SETUP
+        # Withdrawals by entry key, in the order they happened.
+        self.withdrawals: dict[str, wd.WithdrawalRecord] = {}
+
+    def __getstate__(self) -> dict:
+        return self.__dict__.copy()
+
+    def __setstate__(self, state: dict) -> None:
+        # Tournaments pickled before withdrawals existed.
+        state.setdefault("withdrawals", {})
+        self.__dict__.update(state)
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -223,6 +235,22 @@ class GroupPlayoffTournament:
 
         new_matches = group.add_player(player)
         self.players.append(player)
+        # A new fixed-team entry never plays an entry that already withdrew:
+        # those matches are walkovers straight away, with that withdrawal's score.
+        if self.team_mode and group.withdrawn_ids:
+            now = time.time()
+            for m in new_matches:
+                other = next((x for x in m.team1 + m.team2 if x.id in group.withdrawn_ids), None)
+                rec = self.withdrawals.get(other.id) if other is not None else None
+                if rec is None:
+                    continue
+                template = rec.template or wd.WalkoverTemplate()
+                withdrawn_is_team1 = any(x.id == other.id for x in m.team1)
+                result = template.result_for(m, withdrawn_is_team1)
+                m.score, m.sets, m.status = result.score, result.sets, MatchStatus.COMPLETED
+                wd.stamp_walkover(m, result, entry_key=rec.entry_key, by="system", at=now)
+                rec.walkover_match_ids.append(m.id)
+            group._standings_cache = None
 
         if new_matches and self.courts:
             max_slot = self._max_slot_number()
@@ -309,6 +337,8 @@ class GroupPlayoffTournament:
         for g in self.groups:
             for m in g.matches:
                 if m.id == match_id:
+                    if m.walkover:
+                        raise RuntimeError("This result is a walkover; undo the withdrawal to change it")
                     m.score = score
                     m.sets = sets
                     m.third_set_loss = third_set_loss
@@ -328,6 +358,8 @@ class GroupPlayoffTournament:
             for m in g.matches:
                 if m.id != match_id:
                     continue
+                if m.walkover:
+                    raise MatchClearBlocked("This result is a walkover; undo the withdrawal to change it")
                 if not self.team_mode:
                     latest = max((x.round_number for x in g.matches), default=0)
                     if m.round_number != latest:
@@ -356,6 +388,7 @@ class GroupPlayoffTournament:
                     "points_for": s.points_for,
                     "points_against": s.points_against,
                     "point_diff": s.point_diff,
+                    "withdrawn": s.withdrawn,
                 }
                 for s in standings
             ]
@@ -374,7 +407,10 @@ class GroupPlayoffTournament:
                 # ``group_rank`` is the 1-based position inside the group; the
                 # list below is sorted globally, so it cannot be inferred from order.
                 ranked.append({**row, "group": group_name, "group_rank": group_rank})
-        ranked.sort(key=lambda r: (-r["wins"], -r["sets_diff"], -r["point_diff"], -r["points_for"]))
+        # Withdrawn entries are flagged (``withdrawn``) and listed last: they cannot advance.
+        ranked.sort(
+            key=lambda r: (r.get("withdrawn", False), -r["wins"], -r["sets_diff"], -r["point_diff"], -r["points_for"])
+        )
         return ranked
 
     def start_playoffs(
@@ -452,6 +488,15 @@ class GroupPlayoffTournament:
             raise RuntimeError("Must be in group phase to start play‑offs")
         if self.pending_group_matches():
             raise RuntimeError("All group matches must be completed first")
+
+        self._reject_withdrawn(
+            [
+                *(advancing_player_ids or []),
+                *(oro_player_ids or []),
+                *(plata_player_ids or []),
+                *(pid for team in (playoff_teams or []) for pid in team),
+            ]
+        )
 
         if espejo_split:
             self._start_split_playoffs(
@@ -764,19 +809,203 @@ class GroupPlayoffTournament:
     ) -> None:
         if self.playoff_bracket is None:
             raise RuntimeError("Play‑offs have not started")
-        self.playoff_bracket.record_result(match_id, score, sets=sets)
+        m = wd.bracket_match(self.playoff_bracket, match_id)
+        if m is not None and m.walkover:
+            raise ValueError("This result is a walkover and cannot be edited")
+        unwind = m is not None and wd.has_forfeits(self.withdrawals) and wd.winner_changes(m, score)
+        snapshot = wd.snapshot_bracket(self.playoff_bracket) if unwind else None
+        try:
+            if unwind:
+                wd.forget_walkovers(self.withdrawals, wd.unwind_downstream_walkovers(self.playoff_bracket, match_id))
+            self.playoff_bracket.record_result(match_id, score, sets=sets)
+        except Exception:
+            if snapshot is not None:
+                self.playoff_bracket = snapshot
+            raise
+        self.resolve_forfeits()
 
+    def resolve_forfeits(self) -> list[Match]:
+        """Create the walkovers owed by withdrawn bracket entries, then re-check the finish."""
+        created: list[Match] = []
+        if self.playoff_bracket is not None:
+            created = wd.resolve_bracket_forfeits(self.playoff_bracket, self.withdrawals)
         # Finished only when the whole bracket is decided.  For Espejo the
         # bracket champion stays ``None`` until the consolation (Losers)
         # bracket is done as well, so the phase does not flip early.
-        if self.winners() is not None:
+        if self.playoff_bracket is not None and self.winners() is not None:
             self._phase = GPPhase.FINISHED
+        return created
 
     def clear_playoff_result(self, match_id: str) -> None:
-        """Revert a play-off match to unplayed (play-offs phase only)."""
+        """Revert a play-off match to unplayed (play-offs phase only).
+
+        Walkovers that depend on the result are cleared first and recreated
+        afterwards when still owed; a really played later match still blocks.
+        """
         if self.playoff_bracket is None or self._phase != GPPhase.PLAYOFFS:
             raise MatchClearBlocked("Play-off results can only be cleared while the play-offs are running")
-        self.playoff_bracket.clear_result(match_id)
+        m = wd.bracket_match(self.playoff_bracket, match_id)
+        if m is not None and m.walkover:
+            raise MatchClearBlocked("This result is a walkover; clear the match that fed it instead")
+        if not wd.has_forfeits(self.withdrawals):
+            self.playoff_bracket.clear_result(match_id)
+            return
+        snapshot = wd.snapshot_bracket(self.playoff_bracket)
+        try:
+            wd.forget_walkovers(self.withdrawals, wd.unwind_downstream_walkovers(self.playoff_bracket, match_id))
+            self.playoff_bracket.clear_result(match_id)
+        except Exception:
+            self.playoff_bracket = snapshot
+            raise
+        self.resolve_forfeits()
+
+    # ------------------------------------------------------------------ #
+    # Withdrawals
+    # ------------------------------------------------------------------ #
+
+    @property
+    def withdrawn_ids(self) -> set[str]:
+        """Ids of entries / persons withdrawn during the group stage and still listed."""
+        out: set[str] = set()
+        for g in self.groups:
+            out |= g.withdrawn_ids
+        return out
+
+    def _reject_withdrawn(self, ids: list[str]) -> None:
+        withdrawn = self.withdrawn_ids
+        bad = next((pid for pid in ids if pid in withdrawn), None)
+        if bad is not None:
+            name = next((p.name for p in self.players if p.id == bad), bad)
+            raise RuntimeError(f"{name} has withdrawn and cannot play the play-offs")
+
+    def withdrawal_record_for(self, person_id: str) -> wd.WithdrawalRecord | None:
+        """The withdrawal covering *person_id* (an entry id or a team member), if any."""
+        return next((r for r in self.withdrawals.values() if person_id in r.member_ids), None)
+
+    def _group_entry_for(self, person_id: str) -> tuple[Group, str]:
+        for g in self.groups:
+            if any(p.id == person_id for p in g.players):
+                return g, person_id
+        for team_pid, members in (self.team_roster or {}).items():
+            if person_id in members:
+                for g in self.groups:
+                    if any(p.id == team_pid for p in g.players):
+                        return g, team_pid
+        raise KeyError(f"Player {person_id} is not in any group")
+
+    def _person_known(self, person_id: str) -> bool:
+        if any(p.id == person_id for p in self.players):
+            return True
+        return any(person_id in members for members in (self.team_roster or {}).values())
+
+    def plan_withdrawal(self, person_id: str) -> wd.WithdrawalPlan:
+        """Dry run of :meth:`withdraw` (raises like it, never mutates)."""
+        if self._phase == GPPhase.FINISHED:
+            raise WithdrawalBlocked("The tournament is finished")
+        if self.withdrawal_record_for(person_id) is not None:
+            raise WithdrawalBlocked("This participant has already withdrawn")
+        if self._phase == GPPhase.GROUPS:
+            group, entry_id = self._group_entry_for(person_id)
+            if self.team_mode:
+                return wd.plan_group_team_withdrawal(group, entry_id, group.withdrawn_ids)
+            return wd.plan_group_rotating_withdrawal(group, entry_id)
+        if self._phase == GPPhase.PLAYOFFS and self.playoff_bracket is not None:
+            team = wd.find_bracket_entry(self.playoff_bracket, person_id, self.team_roster)
+            if team is None:
+                if self._person_known(person_id):
+                    raise WithdrawalBlocked("This participant is not in the play-offs")
+                raise KeyError(f"Player {person_id} not found in tournament")
+            return wd.plan_bracket_forfeit(self.playoff_bracket, team, self.withdrawals)
+        raise WithdrawalBlocked("Withdrawals are not possible in this phase")
+
+    def withdraw(
+        self,
+        person_id: str,
+        *,
+        template: wd.WalkoverTemplate | None = None,
+        expected_kind: wd.WithdrawalKind | None = None,
+        by: str | None = None,
+        at: float | None = None,
+    ) -> tuple[wd.WithdrawalRecord, list[Match]]:
+        """Withdraw the entry of *person_id*; the case follows the phase and team mode.
+
+        Returns the stored record and the walkovers created now.
+
+        Raises:
+            WithdrawalBlocked: finished, already withdrawn or eliminated, a score
+                awaiting confirmation / disputed / under review, or the outcome
+                differs from *expected_kind*.
+            KeyError: unknown person.
+        """
+        at = time.time() if at is None else at
+        plan = self.plan_withdrawal(person_id)
+        if expected_kind is not None and plan.kind != expected_kind:
+            raise WithdrawalBlocked("The withdrawal outcome changed; review it again")
+        if plan.blockers:
+            raise WithdrawalBlocked("Settle the pending, disputed or under-review scores first")
+        members = wd.entry_member_ids(plan.entry, self.team_roster)
+        if self._phase == GPPhase.GROUPS:
+            group, entry_id = self._group_entry_for(person_id)
+            if self.team_mode:
+                record = wd.apply_group_team_withdrawal(
+                    self.players, group, entry_id, group.withdrawn_ids, template, member_ids=members, by=by, at=at
+                )
+                created = [m for m in group.matches if m.id in set(record.walkover_match_ids)]
+            else:
+                record = wd.apply_group_rotating_withdrawal(group, entry_id, by=by, at=at)
+                created = []
+            self.withdrawals[record.entry_key] = record
+            return record, created
+        assert self.playoff_bracket is not None
+        snapshot = wd.snapshot_bracket(self.playoff_bracket)
+        try:
+            record, created = wd.apply_bracket_forfeit(
+                self.playoff_bracket, plan.entry, self.withdrawals, template, member_ids=members, by=by, at=at
+            )
+        except Exception:
+            self.playoff_bracket = snapshot
+            self.withdrawals.pop(plan.entry_key, None)
+            raise
+        self.resolve_forfeits()
+        return record, created
+
+    def undo_block_reason(self, entry_key: str) -> str | None:
+        """Why the withdrawal *entry_key* cannot be undone now, or ``None`` when it can."""
+        record = self.withdrawals.get(entry_key)
+        if record is None:
+            return "No such withdrawal"
+        if record.kind == wd.WithdrawalKind.FORFEIT:
+            return "Play-off withdrawals cannot be undone"
+        if self._phase != GPPhase.GROUPS:
+            return "Group withdrawals can only be undone during the group stage"
+        keys = list(self.withdrawals)
+        later = [self.withdrawals[k] for k in keys[keys.index(entry_key) + 1 :]]
+        if any(r.group_name == record.group_name for r in later):
+            return "Undo the later withdrawal in this group first"
+        group = next((g for g in self.groups if g.name == record.group_name), None)
+        if group is None:
+            return "The group no longer exists"
+        if [p.id for p in group.players] != record.roster_snapshot:
+            return "The group roster changed since the withdrawal"
+        if record.kind == wd.WithdrawalKind.EXCLUDE and group._round_count != record.round_count_at:
+            return "A new round was generated since the withdrawal"
+        return None
+
+    def undo_withdrawal(self, entry_key: str, *, by: str | None = None, at: float | None = None) -> wd.WithdrawalRecord:
+        """Reverse a group-stage withdrawal (G1 / G2).  Play-off forfeits cannot be undone."""
+        if entry_key not in self.withdrawals:
+            raise KeyError(f"Withdrawal {entry_key} not found")
+        reason = self.undo_block_reason(entry_key)
+        if reason is not None:
+            raise WithdrawalBlocked(reason)
+        record = self.withdrawals[entry_key]
+        group = next(g for g in self.groups if g.name == record.group_name)
+        if record.kind == wd.WithdrawalKind.EXCLUDE:
+            wd.undo_group_rotating_withdrawal(group, record)
+        else:
+            wd.undo_group_team_withdrawal(self.players, group, record, by=by, at=at)
+        del self.withdrawals[entry_key]
+        return record
 
     def winners(self) -> list[list[Player]] | None:
         """All (equal) winners once the play-offs are fully decided, else ``None``."""

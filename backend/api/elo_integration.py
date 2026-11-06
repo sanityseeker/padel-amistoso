@@ -47,6 +47,8 @@ def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
     """
     if match.status != MatchStatus.COMPLETED or match.score is None:
         return
+    if getattr(match, "walkover", False):
+        return  # walkovers are never rated
 
     sport = data.get("sport", "padel")
     ttype = data.get("type", "")
@@ -241,7 +243,12 @@ def _extract_completed_matches(tournament: object, ttype: str) -> list[Match]:
         else:
             matches.extend(bracket.matches)
 
-    return [m for m in matches if m.status == MatchStatus.COMPLETED and m.score is not None]
+    # Walkovers (a side withdrew) are results for standings, never for ratings.
+    return [
+        m
+        for m in matches
+        if m.status == MatchStatus.COMPLETED and m.score is not None and not getattr(m, "walkover", False)
+    ]
 
 
 def _is_team_mode(tournament: object, ttype: str) -> bool:
@@ -271,6 +278,12 @@ def _extract_player_ids(tournament: object, ttype: str) -> list[str]:
     # Include removed players (Mexicano supports mid-tournament removal)
     if hasattr(tournament, "_removed_players"):
         for p in tournament._removed_players:  # type: ignore[attr-defined]
+            seen.setdefault(p.id, None)
+
+    # Withdrawn entries (a G1-annulled entry is no longer in ``players``) keep
+    # their tournament row at the seed.
+    for record in (getattr(tournament, "withdrawals", None) or {}).values():
+        for p in record.entry:
             seen.setdefault(p.id, None)
 
     # Playoff: teams stored as list[list[Player]]

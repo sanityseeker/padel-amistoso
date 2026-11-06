@@ -16,6 +16,7 @@ async function renderMex() {
     _mexPlayers = status.players || [];
     _mexTeamMode = status.team_mode || false;
     _mexTeamRoster = status.team_roster || {};
+    _setCurrentWithdrawals(status);
     _mexSport = status.sport || 'padel';
     // Default playoff toggle to match the tournament's round format:
     // Tennis Individual (team_mode=true) → toggle off (1-per-slot);
@@ -405,12 +406,16 @@ function _renderMexLeaderboard() {
   html += thHtml('buchholz', t('txt_txt_buchholz_abbrev'));
   html += `</tr></thead><tbody>`;
 
+  const wdIds = _wdWithdrawnIdSet();
   for (const r of rows) {
     const totalCell = byAvg ? r.total_points : `<strong>${r.total_points}</strong>`;
     const avgCell   = byAvg ? `<strong>${r.avg_points.toFixed(2)}</strong>` : r.avg_points.toFixed(2);
-    const rowClass = r.removed ? ' class="leaderboard-row-removed"' : '';
+    // Withdrawn from the play-offs: the round results stay, the name is flagged.
+    const withdrawn = !r.removed && wdIds.has(r.player_id);
+    const rowClass = r.removed ? ' class="leaderboard-row-removed"' : (withdrawn ? ' class="row-withdrawn"' : '');
     const rankCell = r.removed ? `<span class="muted-text">—</span>` : r.rank;
-    const nameCell = r.removed ? `${esc(r.player)} <span class="badge badge-closed badge-removed-inline">${t('txt_txt_removed')}</span>` : esc(r.player);
+    let nameCell = r.removed ? `${esc(r.player)} <span class="badge badge-closed badge-removed-inline">${t('txt_txt_removed')}</span>` : esc(r.player);
+    if (withdrawn) nameCell = `<span class="withdrawn-name">${esc(r.player)}</span> <span class="badge badge-withdrawn">${esc(t('txt_withdrawn_badge'))}</span>`;
     html += `<tr${rowClass}><td>${rankCell}</td><td>${nameCell}</td><td>${totalCell}</td><td>${r.matches_played}</td><td>${r.wins || 0}</td><td>${r.losses || 0}</td><td>${avgCell}</td><td>${r.buchholz != null ? r.buchholz : '—'}</td></tr>`;
   }
   html += `</tbody></table>`;

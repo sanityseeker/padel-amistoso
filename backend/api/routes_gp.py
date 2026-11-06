@@ -63,6 +63,7 @@ from .player_secret_store import create_secrets_for_tournament
 from .push_events import notify_matches_ready, notify_champion, notify_winners, notify_score_submitted
 from .elo_integration import elo_after_score, elo_finish_tournament, elo_init_tournament
 from .club_elo import get_tournament_display_elos
+from .routes_withdrawals import withdraw_unavailable_ids, withdrawal_summaries
 
 router = APIRouter(prefix="/api/tournaments", tags=["group-playoff"])
 
@@ -219,6 +220,8 @@ async def gp_status(tid: str) -> dict:
         if espejo and bracket.losers_champion()
         else None,
         "team_roster": getattr(t, "team_roster", None) or {},
+        "withdrawals": withdrawal_summaries(t),
+        "withdraw_unavailable_ids": withdraw_unavailable_ids(t),
         "sport": data.get("sport", "padel"),
     }
 

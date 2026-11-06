@@ -83,8 +83,9 @@ function _renderPlayerCodesBody(secrets) {
     const lblEmail = escAttr(t('txt_email'));
     const lblLang = escAttr(t('txt_txt_language'));
     for (const [pid, info] of entries) {
-      html += `<tr class="player-codes-row" id="pc-row-${pid}">`;
-      html += `<td class="player-codes-name stack-title" id="pc-name-${pid}">${esc(info.name)}</td>`;
+      const _wd = _withdrawalFor(pid);
+      html += `<tr class="player-codes-row${_wd ? ' row-withdrawn' : ''}" id="pc-row-${pid}">`;
+      html += `<td class="player-codes-name stack-title" id="pc-name-${pid}">${_wd ? `<span class="withdrawn-name">${esc(info.name)}</span> <span class="badge badge-withdrawn">${esc(t('txt_withdrawn_badge'))}</span>` : esc(info.name)}</td>`;
       html += `<td class="player-codes-cell stack-pri" data-label="${lblPass}"><code id="pc-pass-${pid}" class="player-codes-passphrase" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(info.passphrase)}</code></td>`;
       html += `<td class="player-codes-cell stack-full" data-label="${lblContact}"><input type="text" id="pc-contact-${pid}" value="${escAttr(info.contact || '')}" data-orig="${escAttr(info.contact || '')}" placeholder="${t('txt_reg_contact_placeholder')}" class="player-codes-input" onblur="_savePlayerContact('${pid}')"></td>`;
       html += `<td class="player-codes-cell-center stack-act">${_renderHubLinkCellInner(pid, info)}</td>`;
@@ -96,7 +97,7 @@ function _renderPlayerCodesBody(secrets) {
       html += `<td class="player-codes-cell-center stack-pri" data-label="${lblLang}">${_langToggle(currentTid, pid, info.lang || 'en', 'sec')}</td>`;
       html += `<td class="player-codes-cell-center stack-act"><button type="button" class="btn btn-sm player-codes-action-btn" onclick="_showPlayerQr('${escAttr(pid)}','${escAttr(info.name)}')">${_ic('qr')} ${t('txt_txt_qr_code')}</button></td>`;
       html += `<td class="player-codes-cell-center stack-act"><button type="button" class="btn btn-sm btn-muted player-codes-action-btn" onclick="_regeneratePlayerCode('${pid}')">${_ic('reset')} ${t('txt_txt_regenerate')}</button></td>`;
-      html += `<td class="player-codes-cell-center stack-act">${_isMex ? `<button type="button" class="btn btn-danger btn-sm player-codes-icon-btn" onclick="_removeTournamentPlayer('${pid}','${escAttr(info.name)}')" title="${t('txt_txt_remove_player')}">${_ic('trash')}</button>` : ''}</td>`;
+      html += `<td class="player-codes-cell-center stack-act">${_renderWithdrawCell(pid, info)}</td>`;
       html += `</tr>`;
     }
     html += `</tbody></table>`;
@@ -110,6 +111,370 @@ function _renderPlayerCodesBody(secrets) {
   html += `</div>`;
   return html;
 }
+
+// ─── Withdrawals (Players tab) ────────────────────────────
+// The status payload's ``withdrawals`` list is stored by renderGP / renderPO /
+// renderMex before the settings card renders.  The row cell is legacy markup
+// (inline onclick like the rest of this table); the confirm dialog is the
+// ``#withdraw-overlay`` Petite-Vue island below.
+
+/** Withdrawals of the open tournament (``WithdrawalSummary`` dicts). */
+let _currentWithdrawals = [];
+
+/** Store the open tournament's withdrawals from its status payload. */
+function _setCurrentWithdrawals(status) {
+  _currentWithdrawals = Array.isArray(status?.withdrawals) ? status.withdrawals : [];
+  _wdUnavailableIds = new Set(Array.isArray(status?.withdraw_unavailable_ids) ? status.withdraw_unavailable_ids : []);
+}
+
+/** Person ids whose bracket run is over (or who never reached the play-offs): no Withdraw button. */
+let _wdUnavailableIds = new Set();
+
+/** The withdrawal covering player *pid* (an entry or a team member), or null. */
+function _withdrawalFor(pid) {
+  return _currentWithdrawals.find(w => (w.member_ids || []).includes(pid)) || null;
+}
+
+/** Phase of the open tournament ('groups', 'mexicano', 'playoffs', 'finished'). */
+function _wdCurrentPhase() {
+  if (currentType === 'group_playoff') return _gpCurrentPhase;
+  if (currentType === 'playoff') return _poCurrentPhase;
+  if (currentType === 'mexicano') return _mexCurrentPhase;
+  return '';
+}
+
+/** True when *pid* is a member of a composite team (withdrawing takes the whole team). */
+function _wdIsTeamMember(pid) {
+  // Both rosters are implicit globals set by renderMex / renderGP.
+  let rosters = {};
+  if (currentType === 'mexicano' && typeof _mexTeamRoster !== 'undefined') rosters = _mexTeamRoster || {};
+  else if (currentType === 'group_playoff' && typeof _gpTeamRoster !== 'undefined') rosters = _gpTeamRoster || {};
+  return Object.values(rosters).some(ids => (ids || []).includes(pid));
+}
+
+/** Last cell of a Players-tab row: Withdraw / Withdrawn + Undo / Mexicano-rounds remove. */
+function _renderWithdrawCell(pid, info) {
+  const w = _withdrawalFor(pid);
+  if (w) {
+    if (!w.undo_allowed) return '';
+    return `<button type="button" class="btn btn-sm player-codes-action-btn" onclick="_undoWithdrawal('${escAttr(w.entry_key)}','${escAttr(w.name)}')" title="${escAttr(t('txt_withdraw_undo'))}">${_ic('reset')} ${esc(t('txt_withdraw_undo'))}</button>`;
+  }
+  const phase = _wdCurrentPhase();
+  if (phase === 'finished') return '';
+  // Bracket over for this entry (e.g. it won or lost its last play-off match): nothing left to withdraw from.
+  if (_wdUnavailableIds.has(pid)) return '';
+  if (currentType === 'mexicano' && phase !== 'playoffs') {
+    // Mexicano rounds keep the existing remove (results stay, login code is deleted).
+    return `<button type="button" class="btn btn-danger btn-sm player-codes-icon-btn" onclick="_removeTournamentPlayer('${escAttr(pid)}','${escAttr(info.name)}')" title="${escAttr(t('txt_txt_remove_player'))}">${_ic('trash')}</button>`;
+  }
+  const label = _wdIsTeamMember(pid) ? t('txt_withdraw_team_btn') : t('txt_withdraw_btn');
+  return `<button type="button" class="btn btn-sm btn-danger-outline player-codes-action-btn" onclick="_openWithdrawDialog('${escAttr(pid)}', this)">${_ic('userminus')} ${esc(label)}</button>`;
+}
+
+/** Ids of every withdrawn entry and its members (for bracket / match rows). */
+function _wdWithdrawnIdSet() {
+  const ids = new Set();
+  for (const w of _currentWithdrawals) for (const id of (w.member_ids || [])) ids.add(id);
+  return ids;
+}
+
+/** "W/O" badge for a walkover match; *loserNames* is the side that withdrew. */
+function _renderWalkoverBadge(loserNames) {
+  const tip = t('txt_walkover_tip', { name: loserNames });
+  return `<span class="badge badge-walkover" title="${escAttr(tip)}" aria-label="${escAttr(tip)}">${esc(t('txt_walkover_short'))}</span>`;
+}
+
+/**
+ * Footnote under a group's standings for entries whose results were annulled
+ * (they no longer appear in the table).  With ``admin``, adds the Undo button.
+ */
+function _renderAnnulledWithdrawalNote(groupName, { admin = false } = {}) {
+  const rows = _currentWithdrawals.filter(w => w.kind === 'annul' && w.group === groupName);
+  if (!rows.length) return '';
+  let html = '';
+  for (const w of rows) {
+    html += `<p class="withdrawn-annulled-note">${esc(t('txt_withdrawn_annulled_note', { names: w.name }))}`;
+    if (admin && w.undo_allowed) {
+      html += ` <button type="button" class="btn btn-sm" onclick="_undoWithdrawal('${escAttr(w.entry_key)}','${escAttr(w.name)}')">${_ic('reset')} ${esc(t('txt_withdraw_undo'))}</button>`;
+    }
+    html += `</p>`;
+  }
+  return html;
+}
+
+/** Undo a group-stage withdrawal after a confirm. */
+async function _undoWithdrawal(entryKey, name) {
+  if (!confirm(t('txt_withdraw_undo_confirm', { name }))) return;
+  try {
+    await api(`/api/tournaments/${currentTid}/withdrawals/${encodeURIComponent(entryKey)}`, { method: 'DELETE' });
+    if (typeof _showAdminToast === 'function') _showAdminToast(t('txt_withdraw_undone'), { duration: 3000 });
+    await _refreshCurrentView();
+  } catch (e) { alert(e.message || t('txt_reg_error')); }
+}
+
+/** Element that opened the withdraw dialog; focus returns here on close. */
+let _wdTrigger = null;
+
+/** Server 409 messages mapped to translated text (raw message otherwise). */
+function _wdErrorText(message) {
+  const msg = String(message || '');
+  // "eliminated" first: that message also says "has finished its bracket".
+  if (/eliminated|not in the play-offs/i.test(msg)) return t('txt_withdraw_unavailable_eliminated');
+  if (/finished/i.test(msg)) return t('txt_withdraw_unavailable_finished');
+  if (/already withdrawn/i.test(msg)) return t('txt_withdraw_already');
+  // Walkover-score validation (422): server text is English, so map it.
+  if (/tie-break must be won/i.test(msg)) return t('txt_withdraw_err_tiebreak');
+  if (/must win more sets/i.test(msg)) return t('txt_withdraw_err_winner_sets');
+  if (/walkover winner must score|exactly two numbers/i.test(msg)) return t('txt_withdraw_err_winner_points');
+  if (/cannot be a tie/i.test(msg)) return t('txt_withdraw_err_set_tied');
+  if (/at least one set|more than 5 sets|exactly 2 scores|non-negative|must have a winner/i.test(msg)) return t('txt_withdraw_err_score');
+  return msg || t('txt_reg_error');
+}
+
+/** Parse an <input type=number> value: an integer or NaN. */
+function _wdInt(v) {
+  const n = typeof v === 'number' ? v : parseInt(String(v ?? '').trim(), 10);
+  return Number.isInteger(n) ? n : NaN;
+}
+
+const _WD_EMPTY_PREVIEW = Object.freeze({
+  kind: '', entry_name: '', member_names: [], played: 0, total: 0, group: null,
+  annul_matches: [], walkover_matches: [], dropped_match: null, sit_out_names: [],
+  pending_forfeit_match: null, advance_to: null, opponent_tbd: false, lb_drop: false,
+  third_place_note: false, active_after: null, modes_needed: [], walkover_defaults: {},
+  default_decider: 'full_set', deciders_needed: [], elo_recalc: false, undo_possible: false, blockers: [],
+});
+
+const _wdStore = reactiveStore({
+  open: false,
+  loading: false,
+  saving: false,
+  error: '',
+  playerId: '',
+  p: null,                 // WithdrawalPreviewResponse
+  points: [6, 0],          // walkover score, winner first
+  sets: [[6, 0], [6, 0], ['', '']],
+  lang: 'en',              // tracked so t() bindings re-render on language switch
+
+  // Lang-tracking t() wrapper (petite-vue only re-renders on reactive reads).
+  t(key, params) { void this.lang; return window.t(key, params); },
+
+  /** ``p`` or an empty preview, so bindings never read a null while ``v-if`` tears down. */
+  get q() { return this.p || _WD_EMPTY_PREVIEW; },
+  get title() {
+    return this.p ? this.t('txt_withdraw_title', { name: this.p.entry_name }) : this.t('txt_withdraw_btn');
+  },
+  /** Partner names (the rest of the team), or ''. */
+  get partnerNames() {
+    const names = this.p?.member_names || [];
+    if (names.length < 2) return '';
+    const own = (_playerSecrets[this.playerId] || {}).name;
+    const others = names.filter(n => n !== own);
+    return (others.length ? others : names.slice(1)).join(', ');
+  },
+  get isGroupKind() { return this.p && (this.p.kind === 'annul' || this.p.kind === 'walkover'); },
+  get listMatches() {
+    if (!this.p) return [];
+    return this.p.kind === 'annul' ? this.p.annul_matches : this.p.walkover_matches;
+  },
+  get ruleText() {
+    if (!this.p) return '';
+    if (this.p.kind === 'annul') {
+      const n = this.p.annul_matches.length;
+      return this.t(n === 1 ? 'txt_withdraw_rule_annul_one' : 'txt_withdraw_rule_annul', { n });
+    }
+    if (this.p.kind === 'walkover') {
+      // Two clauses so each can be singular on its own (1 result stands; 1 remaining match).
+      const { played } = this.p;
+      const n = this.p.walkover_matches.length;
+      const stand = this.t(played === 1 ? 'txt_withdraw_results_stand_one' : 'txt_withdraw_results_stand', { played });
+      return `${stand} ${this.t(n === 1 ? 'txt_withdraw_remaining_wo_one' : 'txt_withdraw_remaining_wo', { n })}`;
+    }
+    if (this.p.kind === 'exclude') return this.t('txt_withdraw_rule_exclude', { name: this.p.entry_name });
+    return this.t('txt_withdraw_rule_forfeit', { name: this.p.entry_name });
+  },
+  get droppedText() {
+    const m = this.p?.dropped_match;
+    if (!m) return '';
+    const players = [...(m.team1 || []), ...(m.team2 || [])].join(', ');
+    return this.t('txt_withdraw_dropped_match', { court: m.court || this.roundLabel(m.round_label), players });
+  },
+  get forfeitText() {
+    const m = this.p?.pending_forfeit_match;
+    if (!this.p || this.p.kind !== 'forfeit') return '';
+    if (!m) return this.t('txt_withdraw_forfeit_tbd');
+    if (this.p.advance_to) return this.t('txt_withdraw_forfeit_now', { opponent: m.opponent, round: this.roundPhrase(this.p.advance_to, 'to') });
+    return this.t('txt_withdraw_forfeit_decides', { opponent: m.opponent, round: this.roundPhrase(m.round_label, 'match') });
+  },
+  /** Translated round label (bracket labels come from the engine in English). */
+  roundLabel(label) { void this.lang; return trl(label || ''); },
+  /** Round name with article for sentences (see ``trlPhrase``). */
+  roundPhrase(label, kind) { void this.lang; return trlPhrase(label, kind); },
+  get modes() { return this.p?.modes_needed || []; },
+  get needsScore() { return this.modes.length > 0; },
+  hasMode(mode) { return this.modes.includes(mode); },
+  /** Filled set rows, as integers. */
+  get setRows() {
+    return this.sets
+      .filter(([a, b]) => String(a ?? '').trim() !== '' || String(b ?? '').trim() !== '')
+      .map(([a, b]) => [_wdInt(a), _wdInt(b)]);
+  },
+  get pointsError() {
+    if (!this.hasMode('points')) return '';
+    const [w, l] = [_wdInt(this.points[0]), _wdInt(this.points[1])];
+    return Number.isInteger(w) && Number.isInteger(l) && l >= 0 && w > l && w <= 200 ? '' : this.t('txt_withdraw_score_invalid');
+  },
+  get setsError() {
+    if (!this.hasMode('sets')) return '';
+    const rows = this.setRows;
+    const bad = this.t('txt_withdraw_score_invalid');
+    if (rows.length === 0 || rows.some(([a, b]) => !Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0 || a === b)) return bad;
+    const won = rows.filter(([a, b]) => a > b).length;
+    if (won <= rows.length - won) return bad;
+    if (isMatchTiebreakSet(rows, 2, this.thirdSetDecider)) {
+      const [a, b] = rows[2];
+      if (Math.max(a, b) < 10 || Math.abs(a - b) < 2) return bad;
+    }
+    return '';
+  },
+  get scoreError() { return this.pointsError || this.setsError; },
+  /** Walkover score shown for match *m* (winner first), following the editor. */
+  resultFor(m) {
+    // Bracket each match's own decider: a full-set match shows "10-8" plain even when another match needs a tie-break.
+    if (m.mode === 'sets') return this.setsError ? m.resulting_score : formatSetScore(this.setRows, m.decider || this.p?.default_decider, ' ');
+    if (m.mode === 'points') return this.pointsError ? m.resulting_score : `${_wdInt(this.points[0])}-${_wdInt(this.points[1])}`;
+    return m.resulting_score;
+  },
+  /**
+   * Decider the single set editor is labelled and validated for.  The server
+   * checks the score against every affected match's decider; a valid match
+   * tie-break (10+, 2 ahead) is also a valid full set, so when the matches
+   * disagree the editor requires the tie-break and satisfies all of them.
+   */
+  get thirdSetDecider() {
+    const needed = this.p?.deciders_needed || [];
+    if (needed.includes('match_tiebreak')) return 'match_tiebreak';
+    return needed[0] || this.p?.default_decider || 'full_set';
+  },
+  get mixedDeciders() { return (this.p?.deciders_needed || []).length > 1; },
+  setLabel(i) { return i === 2 && this.thirdSetDecider === 'match_tiebreak' ? this.t('txt_match_tb_label') : `S${i + 1}`; },
+  blockerText(b) {
+    const reason = this.t(`txt_withdraw_blocker_${b.reason}`);
+    return b.round_label ? `${this.roundLabel(b.round_label)}: ${reason}` : reason;
+  },
+  get undoText() {
+    if (!this.p) return '';
+    if (!this.p.undo_possible) return this.t('txt_withdraw_no_undo');
+    return this.p.kind === 'exclude' ? this.t('txt_withdraw_undo_until_next_round') : this.t('txt_withdraw_undo_possible');
+  },
+  get confirmLabel() { return this.p ? this.t(`txt_withdraw_confirm_${this.p.kind}`) : this.t('txt_withdraw_btn'); },
+  get canConfirm() {
+    return !!this.p && !this.loading && !this.saving && this.p.blockers.length === 0 && !(this.needsScore && this.scoreError);
+  },
+  load() { return _wdLoadPreview(); },
+  confirm() { return _wdConfirm(); },
+  close() { _closeWithdrawDialog(); },
+  onKeydown(e) { _wdKeydown(e); },
+});
+
+/** Open the withdraw dialog for player *playerId* (a Players-tab row). */
+async function _openWithdrawDialog(playerId, trigger) {
+  _wdTrigger = trigger || null;
+  if (typeof _currentLang !== 'undefined') _wdStore.lang = _currentLang;
+  _wdStore.playerId = playerId;
+  _wdStore.p = null;
+  _wdStore.error = '';
+  _wdStore.saving = false;
+  _wdStore.points = [6, 0];
+  _wdStore.sets = [[6, 0], [6, 0], ['', '']];
+  _wdStore.open = true;
+  const overlay = document.getElementById('withdraw-overlay');
+  if (overlay) overlay.style.display = 'flex';
+  await _wdLoadPreview();
+  requestAnimationFrame(() => {
+    overlay?.querySelector('.modal-dialog input:not([disabled]), .modal-dialog .modal-close-btn')?.focus();
+  });
+}
+
+/** Fetch the dry-run preview into the store (keeps a previous error visible). */
+async function _wdLoadPreview() {
+  _wdStore.loading = true;
+  try {
+    const p = await api(`/api/tournaments/${currentTid}/withdrawals/preview?player_id=${encodeURIComponent(_wdStore.playerId)}`);
+    _wdStore.p = p;
+    const d = p.walkover_defaults || {};
+    if (Array.isArray(d.points) && d.points.length === 2) _wdStore.points = [...d.points];
+    if (Array.isArray(d.sets) && d.sets.length) {
+      _wdStore.sets = d.sets.concat([['', ''], ['', ''], ['', '']]).slice(0, 3).map(s => [s[0], s[1]]);
+    }
+  } catch (e) {
+    _wdStore.p = null;
+    _wdStore.error = _wdErrorText(e.message);
+  } finally {
+    _wdStore.loading = false;
+  }
+}
+
+/** POST the withdrawal; on failure show the message and re-read the preview. */
+async function _wdConfirm() {
+  const s = _wdStore;
+  if (!s.canConfirm) return;
+  const body = { player_id: s.playerId, expected_kind: s.p.kind };
+  if (s.needsScore) {
+    body.walkover = {};
+    if (s.hasMode('points')) body.walkover.points = [_wdInt(s.points[0]), _wdInt(s.points[1])];
+    if (s.hasMode('sets')) body.walkover.sets = s.setRows;
+  }
+  s.saving = true;
+  s.error = '';
+  try {
+    await api(`/api/tournaments/${currentTid}/withdrawals`, { method: 'POST', body: JSON.stringify(body) });
+    const name = s.p.entry_name;
+    _closeWithdrawDialog();
+    if (typeof _showAdminToast === 'function') _showAdminToast(t('txt_withdraw_done', { name }), { duration: 3000 });
+    await _refreshCurrentView();
+  } catch (e) {
+    s.error = _wdErrorText(e.message);
+    s.saving = false;
+    const keep = s.error;
+    await _wdLoadPreview();
+    s.error = keep;
+  }
+}
+
+/** Close the dialog; focus returns to the row button that opened it. */
+function _closeWithdrawDialog() {
+  _wdStore.open = false;
+  _wdStore.saving = false;
+  const overlay = document.getElementById('withdraw-overlay');
+  if (overlay) overlay.style.display = 'none';
+  if (_wdTrigger && document.body.contains(_wdTrigger)) _wdTrigger.focus();
+  _wdTrigger = null;
+}
+
+/** Esc closes; Tab cycles inside the dialog (focus trap). */
+function _wdKeydown(e) {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    _closeWithdrawDialog();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+  const root = document.querySelector('#withdraw-overlay .modal-dialog');
+  const items = Array.from(root?.querySelectorAll('button:not([disabled]), input:not([disabled])') || [])
+    .filter(el => el.offsetParent !== null);
+  if (items.length === 0) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+
+mountIsland('#withdraw-overlay .modal-dialog', _wdStore);
+// Backdrop click closes (the overlay itself is outside the island).
+document.getElementById('withdraw-overlay')?.addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) _closeWithdrawDialog();
+});
 
 /** Show a QR code in a modal dialog */
 async function _showPlayerQr(playerId, playerName) {
@@ -317,7 +682,9 @@ async function _removeTournamentPlayer(playerId, playerName) {
   try {
     await api(`/api/tournaments/${currentTid}/players/${playerId}`, { method: 'DELETE' });
     _refreshCurrentView();
-  } catch (e) { alert(e.message || t('txt_reg_error')); }
+  } catch (e) {
+    alert(/withdrawal during play-offs/i.test(e.message || '') ? t('txt_mex_use_withdraw_in_playoffs') : (e.message || t('txt_reg_error')));
+  }
 }
 
 /** Regenerate a single player's passphrase & token */

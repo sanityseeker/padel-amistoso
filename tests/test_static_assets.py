@@ -2071,3 +2071,253 @@ def test_glyph_replacement_icons_exist():
     shared = _read_frontend("shared.js")
     for icon in ("    x:", "    check:", "    chevright:", "    arrowleft:", "    refresh:"):
         assert icon in shared, icon
+
+
+# ── Participant withdrawal (Settings → Players) ─────────────────────────────
+
+
+def test_withdraw_dialog_island_markup_and_mount(client):
+    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    assert '<div id="withdraw-overlay" class="modal-overlay">' in html
+    island = html.split('id="withdraw-overlay"', 1)[1].split("<!-- Forgot Password Modal -->", 1)[0]
+    assert "v-scope" in island
+    assert '@click="confirm()"' in island and ':disabled="!canConfirm"' in island
+    assert 'v-model.number="points[0]"' in island and 'v-model.number="row[0]"' in island
+    js = client.get("/admin-player-codes.js", headers={"Accept-Encoding": "identity"}).text
+    assert "const _wdStore = reactiveStore(" in js
+    assert "mountIsland('#withdraw-overlay .modal-dialog', _wdStore)" in js
+    assert "/withdrawals/preview?player_id=" in js
+
+
+def test_players_tab_uses_users_icon():
+    js = _read_frontend("admin-settings-panel.js")
+    assert (
+        "key: 'codes',   short: t('txt_settings_tab_codes_short'), label: t('txt_admin_settings_tab_codes'),   icon: _ic('users')"
+        in js
+    )
+
+
+def test_walkover_rendering_in_views():
+    assert "m.walkover" in _read_frontend("admin-gp.js")
+    assert "history-badge-walkover" in _read_frontend("tv.js")
+    assert "row.walkover" in _read_frontend("player.js")
+    assert "txt_export_score_walkover" in _read_frontend("admin-export.js")
+
+
+def test_walkover_label_has_its_own_slot_left_of_the_score():
+    # The W/O label comes before the score in a reserved slot, so walkover scores
+    # line up with the other rows in every view.
+    assert '<span class="history-wo-cell">${walkoverBadge}${scoreHtml}</span>' in _read_frontend("tv.js")
+    assert ".history-wo-cell { position: relative; display: inline-flex; padding-left: var(--space-12); }" in (
+        _read_frontend("tv.css")
+    )
+    gp = _read_frontend("admin-gp.js")
+    assert '<span class="match-wo-cell">${_renderWalkoverBadge(loser)}<span class="${disp.cls}"' in gp
+    assert 'class="match-edit-btn match-slot-reserve" tabindex="-1" aria-hidden="true" disabled' in gp
+    admin_css = _read_frontend("admin.css")
+    assert (
+        "padding-left: var(--space-12); }" in admin_css and ".match-slot-reserve { visibility: hidden; }" in admin_css
+    )
+    assert '<div class="entry-path-score-center entry-path-score-center--wo"><span class="badge badge-walkover"' in (
+        _read_frontend("player.js")
+    )
+    assert ".entry-path-score-center--wo { position: relative; padding-inline: var(--space-12); }" in (
+        _read_frontend("player.css")
+    )
+    export = _read_frontend("admin-export.js")
+    assert "_wo_headers" not in export and "_wo_cells" not in export
+    assert "(${t('txt_export_score_walkover')})" not in export
+
+
+def test_hub_walkover_tip_names_the_side_that_withdrew():
+    # The tip must name the player's own side when they are the one who withdrew.
+    assert "(row.walkover_lost ? playerTeamNames : opponentNames)" in _read_frontend("player.js")
+
+
+def test_tv_withdrawn_name_strikes_through_the_name_button():
+    # The TV name is an inline-block button: text-decoration does not reach it from the span.
+    assert ".withdrawn-name .tv-name-btn { text-decoration: line-through; }" in _read_frontend("tv.css")
+
+
+def test_withdraw_error_text_checks_eliminated_before_finished():
+    # The server's "already eliminated or has finished its bracket" message also matches /finished/.
+    body = _read_frontend("admin-player-codes.js").split("function _wdErrorText(", 1)[1].split("\n}\n", 1)[0]
+    assert body.index("/eliminated|not in the play-offs/i") < body.index("/finished/i")
+
+
+def test_withdrawal_i18n_keys_in_both_languages(client):
+    js = client.get("/i18n.js", headers={"Accept-Encoding": "identity"}).text
+    keys = [
+        "txt_withdraw_btn",
+        "txt_withdraw_team_btn",
+        "txt_withdraw_title",
+        "txt_withdraw_partner_note",
+        "txt_withdraw_played",
+        "txt_withdraw_rule_annul",
+        "txt_withdraw_results_stand",
+        "txt_withdraw_remaining_wo",
+        "txt_withdraw_rule_exclude",
+        "txt_withdraw_dropped_match",
+        "txt_withdraw_group_too_small",
+        "txt_withdraw_rule_forfeit",
+        "txt_withdraw_forfeit_now",
+        "txt_withdraw_forfeit_tbd",
+        "txt_withdraw_lb_note",
+        "txt_withdraw_third_place_note",
+        "txt_withdraw_walkover_score",
+        "txt_withdraw_score_invalid",
+        "txt_withdraw_elo_note",
+        "txt_withdraw_blocked",
+        "txt_withdraw_blocker_pending",
+        "txt_withdraw_blocker_disputed",
+        "txt_withdraw_blocker_format_review",
+        "txt_withdraw_no_undo",
+        "txt_withdraw_confirm_annul",
+        "txt_withdraw_confirm_walkover",
+        "txt_withdraw_confirm_exclude",
+        "txt_withdraw_confirm_forfeit",
+        "txt_withdrawn_badge",
+        "txt_withdrawn_annulled_note",
+        "txt_withdraw_undo",
+        "txt_withdraw_undo_confirm",
+        "txt_walkover_short",
+        "txt_walkover_tip",
+        "txt_export_score_walkover",
+        "txt_withdraw_unavailable_finished",
+        "txt_withdraw_unavailable_eliminated",
+        "txt_mex_use_withdraw_in_playoffs",
+        "txt_withdraw_err_tiebreak",
+        "txt_withdraw_err_winner_sets",
+        "txt_withdraw_err_winner_points",
+        "txt_withdraw_err_set_tied",
+        "txt_withdraw_err_score",
+        "txt_withdraw_mixed_deciders",
+        "txt_rnd_to_final",
+        "txt_rnd_to_other",
+        "txt_rnd_m_final",
+        "txt_rnd_m_other",
+    ]
+    for key in keys:
+        assert js.count(f'"{key}"') == 2, key
+    assert '"txt_settings_tab_codes_short": "Jugadores"' in js
+    assert "Player Codes panel" not in js
+
+
+def test_withdraw_dialog_labels_and_validates_set_3_from_the_matches_deciders(client):
+    js = _read_frontend("admin-player-codes.js")
+    # One editor, driven by the deciders the preview lists for the affected matches.
+    assert "get thirdSetDecider()" in js and "deciders_needed" in js
+    assert "needed.includes('match_tiebreak')" in js
+    assert "isMatchTiebreakSet(rows, 2, this.thirdSetDecider)" in js
+    assert "i === 2 && this.thirdSetDecider === 'match_tiebreak'" in js
+    # Each match's walkover score is bracketed by its own decider.
+    assert "formatSetScore(this.setRows, m.decider || this.p?.default_decider, ' ')" in js
+    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    assert "v-if=\"hasMode('sets') && mixedDeciders\"" in html
+
+
+def test_withdraw_422_messages_are_translated():
+    body = _read_frontend("admin-player-codes.js").split("function _wdErrorText(", 1)[1].split("\n}\n", 1)[0]
+    for key in ("tiebreak", "winner_sets", "winner_points", "set_tied", "score"):
+        assert f"txt_withdraw_err_{key}" in body
+
+
+def test_withdraw_button_hidden_when_the_bracket_is_over():
+    js = _read_frontend("admin-player-codes.js")
+    assert "status?.withdraw_unavailable_ids" in js
+    cell = js.split("function _renderWithdrawCell(", 1)[1].split("\n}\n", 1)[0]
+    assert "_wdUnavailableIds.has(pid)" in cell
+    assert cell.index("_wdUnavailableIds.has(pid)") < cell.index("_openWithdrawDialog(")
+
+
+def test_playoff_picker_greys_out_withdrawn_entries():
+    gp = _read_frontend("admin-gp.js")
+    # Kept in the list (not filtered out), disabled, badged.
+    assert "_gpRecommended = data.recommended_participants || [];" in gp
+    assert "filter(r => !r.withdrawn)" in gp
+    assert "gp-advancing-cb\"${checked}${wd ? ' disabled' : ''}" in gp
+    assert "gp-player-row--withdrawn" in gp and "badge-withdrawn" in gp
+    assert "data-split-pid" in gp and "${wd ? ' disabled' : ''} onchange=\"_gpSplitSet" in gp
+    assert ".gp-player-row--withdrawn { opacity: 0.6; cursor: not-allowed; }" in _read_frontend("admin.css")
+
+
+def test_spanish_round_names_get_articles():
+    js = _read_frontend("i18n.js")
+    for key, es in (
+        ("final", "a la final"),
+        ("semi", "a la semifinal"),
+        ("third", "al tercer puesto"),
+        ("quarter", "a los cuartos de final"),
+    ):
+        assert f'"txt_rnd_to_{key}": "{es}"' in js
+    assert '"txt_rnd_m_final": "la final"' in js and '"txt_rnd_m_third": "el tercer puesto"' in js
+    assert '"{opponent} pasa {round} por W.O."' in js and '"{opponent} gana {round} por W.O."' in js
+    # English keeps the bare engine label.
+    assert '"txt_rnd_to_final": "Final"' in js and '"txt_rnd_m_semi": "Semi-Final"' in js
+    codes = _read_frontend("admin-player-codes.js")
+    assert "this.roundPhrase(this.p.advance_to, 'to')" in codes
+    assert "this.roundPhrase(m.round_label, 'match')" in codes
+    assert "function trlPhrase(label, kind)" in _read_frontend("shared.js")
+
+
+def test_mobile_walkover_label_moves_to_the_meta_line():
+    gp = _read_frontend("admin-gp.js")
+    # The head copy sits right after the court, before the score cell.
+    assert gp.index('<span class="match-wo-head">') < gp.index('<span class="match-wo-cell">')
+    css = _read_frontend("admin.css")
+    assert ".match-wo-head { display: none; }" in css  # desktop keeps the slot left of the score
+    block = css.split("/* Three-line card: the label leaves", 1)[1].split("\n}\n", 1)[0]
+    assert ".match-wo-cell > .badge-walkover { display: none; }" in block
+    assert ".match-card-wrap > .match-wo-head { display: inline-flex; align-items: center; order: 2; }" in css
+    assert ".match-card-wrap > .match-round-badge ~ .match-wo-head::before" in css
+    assert ".po-round-card .match-card-wrap > .match-wo-head::before" in css
+
+
+def test_withdraw_counts_have_singular_variants(client):
+    js = client.get("/i18n.js", headers={"Accept-Encoding": "identity"}).text
+    assert '"txt_withdraw_remaining_wo_one": "el partido restante se da por W.O."' in js
+    assert '"txt_withdraw_remaining_wo_one": "1 remaining match becomes a walkover (W/O)."' in js
+    for key in (
+        "txt_withdraw_played_one",
+        "txt_withdraw_rule_annul_one",
+        "txt_withdraw_results_stand_one",
+        "txt_withdraw_group_too_small_one",
+    ):
+        assert js.count(f'"{key}"') == 2, key
+    codes = _read_frontend("admin-player-codes.js")
+    assert "n === 1 ? 'txt_withdraw_remaining_wo_one'" in codes
+    assert "n === 1 ? 'txt_withdraw_rule_annul_one'" in codes
+    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    assert "txt_withdraw_played_one" in html and "txt_withdraw_group_too_small_one" in html
+
+
+def test_export_walkover_label_sits_in_the_score_cell():
+    export = _read_frontend("admin-export.js")
+    assert """<span class="wo">${esc(t('txt_export_score_walkover'))}</span>""" in export
+    assert "c && typeof c === 'object' && 'html' in c ? c.html : esc(String(c))" in export
+    assert "    .wo { margin-left: 6px;" in export
+
+
+def test_walkover_loser_is_struck_through_in_html_views():
+    tv = _read_frontend("tv.js")
+    assert "const woLoser = m.walkover && m.score ? (m.score[0] > m.score[1] ? 2 : 1) : 0;" in tv
+    assert """`<span class="withdrawn-name">${esc(name)}</span>`""" in tv
+    hub = _read_frontend("player.js")
+    assert (
+        "entry-path-team-name--withdrawn" in hub
+        and "wdCls(row.walkover_lost)" in hub
+        and "wdCls(!row.walkover_lost)" in hub
+    )
+    assert ".entry-path-team-name--withdrawn { text-decoration: line-through;" in _read_frontend("player.css")
+    # Admin rows already strike only the loser.
+    gp = _read_frontend("admin-gp.js")
+    assert (
+        "w1 ? 'team-winner' : 'team-loser withdrawn-name'" in gp
+        and "w1 ? 'team-loser withdrawn-name' : 'team-winner'" in gp
+    )
+
+
+def test_cache_name_bumped_for_withdrawals(client):
+    sw = client.get("/service-worker.js", headers={"Accept-Encoding": "identity"}).text
+    version = re.search(r"CACHE_NAME = 'amistoso-v(\d+)'", sw)
+    assert version and int(version.group(1)) >= 113

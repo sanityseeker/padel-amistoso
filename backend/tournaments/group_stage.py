@@ -77,6 +77,24 @@ class Group:
         self._all_partnerships: set[frozenset[str]] = {
             frozenset([a.id, b.id]) for a, b in itertools.combinations(self.players, 2)
         }
+        # Entries that withdrew but stay in ``players`` (their standings row
+        # and played matches are kept).  Rotating-partner groups never pair
+        # them again; every group sorts them last and never advances them.
+        self.withdrawn_ids: set[str] = set()
+
+    def __getstate__(self) -> dict:
+        return self.__dict__.copy()
+
+    def __setstate__(self, state: dict) -> None:
+        # Groups pickled before withdrawals existed.
+        state.setdefault("withdrawn_ids", set())
+        self.__dict__.update(state)
+
+    @property
+    def active_players(self) -> list[Player]:
+        """Players who have not withdrawn, in group order."""
+        withdrawn = self.withdrawn_ids
+        return [p for p in self.players if p.id not in withdrawn]
 
     # ------------------------------------------------------------------ #
     # Match generation
@@ -144,7 +162,8 @@ class Group:
              first and partner/opponent repeats second.
 
         Returns an empty list when all C(N, 2) partnerships have been
-        covered.
+        covered.  Withdrawn players (``withdrawn_ids``) are never paired.
+        When no match can be formed the round counter is not advanced.
         """
         if self.team_mode:
             raise RuntimeError("Use generate_round_robin() for team mode")
@@ -157,7 +176,7 @@ class Group:
         for row in self.standings():
             scores[row.player.id] = float(row.points_for)
 
-        ranked = sorted(self.players, key=lambda p: -scores[p.id])
+        ranked = sorted(self.active_players, key=lambda p: -scores[p.id])
 
         # Sit-outs (group size not divisible by 4).
         num_sit = len(ranked) % 4
@@ -171,12 +190,12 @@ class Group:
             playing = ranked
 
         # Form groups of 4 and pick best 2v2 splits.
-        groups = [playing[i : i + 4] for i in range(0, len(playing), 4)]
+        groups = [playing[i : i + 4] for i in range(0, len(playing), 4) if len(playing[i : i + 4]) == 4]
+        if not groups:
+            return []
         self._round_count += 1
         new_matches: list[Match] = []
         for group in groups:
-            if len(group) < 4:
-                continue
             t1, t2 = pairing_mod.best_2v2_split(
                 group,
                 scores,
@@ -202,8 +221,13 @@ class Group:
 
     @property
     def has_more_rounds(self) -> bool:
-        """Whether there are still uncovered partnerships."""
+        """Whether there are still uncovered partnerships among active players.
+
+        False once fewer than four players are active: no 2v2 match can be formed.
+        """
         if self.team_mode:
+            return False
+        if len(self.active_players) < 4:
             return False
         return bool(self._all_partnerships - self._used_partnerships)
 
@@ -249,9 +273,11 @@ class Group:
         # Extend sit-out tracking.
         self._sit_out_counts[player.id] = 0
 
-        # Register all new possible partnerships.
+        # Register all new possible partnerships (never with a withdrawn player,
+        # who is not paired again, or ``has_more_rounds`` would never end).
         for pid in existing_ids:
-            self._all_partnerships.add(frozenset([player.id, pid]))
+            if pid not in self.withdrawn_ids:
+                self._all_partnerships.add(frozenset([player.id, pid]))
 
         self.players.append(player)
         self._standings_cache = None
@@ -323,13 +349,18 @@ class Group:
                 for p in m.team2:
                     _update_standing(table[p.id], scored=s2, conceded=s1)
 
+        withdrawn = self.withdrawn_ids
+        for row in table.values():
+            row.withdrawn = row.player.id in withdrawn
         standings = sorted(table.values(), key=lambda r: r.sort_key(uses_sets=uses_sets), reverse=True)
+        # Withdrawn entries always sort last (stable, so their own order is kept).
+        standings.sort(key=lambda r: r.withdrawn)
         self._standings_cache = standings
         return standings
 
     def top_players(self, n: int) -> list[Player]:
-        """Return the top *n* players by standings."""
-        st = self.standings()
+        """Return the top *n* players by standings, skipping withdrawn entries."""
+        st = [row for row in self.standings() if not row.withdrawn]
         return [row.player for row in st[:n]]
 
 

@@ -50,6 +50,7 @@ from .schemas import (
     StartMexicanoPlayoffsRequest,
     UpdateCourtsRequest,
 )
+from .routes_withdrawals import withdraw_unavailable_ids, withdrawal_summaries
 from .state import (
     _tournament_versions,
     allocate_tournament_id,
@@ -244,6 +245,8 @@ async def mex_status(tid: str) -> dict:
         },
         "champion": [p.name for p in t.champion()] if t.champion() else None,
         "double_elimination": hasattr(t.playoff_bracket, "all_matches") if t.playoff_bracket else False,
+        "withdrawals": withdrawal_summaries(t),
+        "withdraw_unavailable_ids": withdraw_unavailable_ids(t),
         "sport": data.get("sport", "padel"),
     }
 

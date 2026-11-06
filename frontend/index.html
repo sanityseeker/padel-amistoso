@@ -1544,6 +1544,80 @@
   </div>
 </div>
 
+<!-- Withdraw participant (Petite-Vue island: _wdStore in admin-player-codes.js).
+     Outside #view-content so view re-renders never destroy it. -->
+<div id="withdraw-overlay" class="modal-overlay">
+  <div class="modal-dialog modal-md wd-dialog" v-scope role="dialog" aria-modal="true" aria-labelledby="wd-title" @keydown="onKeydown($event)">
+    <div class="modal-header mb-2">
+      <h2 class="modal-title" id="wd-title">{{ title }}</h2>
+      <button type="button" class="modal-close-btn" :aria-label="t('txt_txt_close')" @click="close()"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <p v-if="loading && !p" class="modal-subtitle" role="status">{{ t('txt_withdraw_loading') }}</p>
+    <p v-if="error" class="wd-error" role="alert">{{ error }}</p>
+    <div v-if="p" class="wd-body">
+      <p v-if="partnerNames" class="wd-note wd-note-warn">{{ t('txt_withdraw_partner_note', { partner: partnerNames }) }}</p>
+      <div v-if="isGroupKind">
+        <p class="wd-line wd-strong">{{ t(q.total === 1 ? 'txt_withdraw_played_one' : 'txt_withdraw_played', { played: q.played, total: q.total }) }}</p>
+        <p class="wd-line">{{ ruleText }}</p>
+        <div v-if="listMatches.length">
+          <p class="modal-label">{{ t('txt_withdraw_matches_affected') }}</p>
+          <ul class="wd-match-list">
+            <li v-for="m in listMatches" :key="m.match_id" class="wd-match">
+              <span class="wd-match-round">{{ roundLabel(m.round_label) }}</span>
+              <span class="wd-match-opp">{{ t('txt_withdraw_vs', { opponent: m.opponent }) }}</span>
+              <span v-if="m.current_score" class="wd-score">{{ m.current_score }}</span>
+              <span v-if="q.kind === 'walkover'" class="wd-score wd-score-new"><span class="badge badge-walkover">{{ t('txt_walkover_short') }}</span> {{ resultFor(m) }}</span>
+            </li>
+          </ul>
+        </div>
+        <p v-if="q.elo_recalc" class="wd-note">{{ t('txt_withdraw_elo_note') }}</p>
+      </div>
+      <div v-if="q.kind === 'exclude'">
+        <p class="wd-line">{{ ruleText }}</p>
+        <p v-if="droppedText" class="wd-line">{{ droppedText }}</p>
+        <p v-if="q.active_after !== null && q.active_after < 4" class="wd-note wd-note-warn">{{ t(q.active_after === 1 ? 'txt_withdraw_group_too_small_one' : 'txt_withdraw_group_too_small', { group: q.group, n: q.active_after }) }}</p>
+      </div>
+      <div v-if="q.kind === 'forfeit'">
+        <p class="wd-line">{{ ruleText }}</p>
+        <p class="wd-line wd-strong">{{ forfeitText }}<span v-if="q.pending_forfeit_match"> <span class="badge badge-walkover">{{ t('txt_walkover_short') }}</span> {{ resultFor(q.pending_forfeit_match) }}</span></p>
+        <p v-if="q.lb_drop" class="wd-line">{{ t('txt_withdraw_lb_note', { name: q.entry_name }) }}</p>
+        <p v-if="q.third_place_note" class="wd-line">{{ t('txt_withdraw_third_place_note') }}</p>
+      </div>
+      <div v-if="needsScore && !q.blockers.length" class="wd-score-editor">
+        <p class="modal-label">{{ t('txt_withdraw_walkover_score') }}</p>
+        <div v-if="hasMode('points')" class="wd-score-row">
+          <span class="wd-score-label">{{ t('txt_txt_points_label') }}</span>
+          <input type="number" class="wd-score-input" inputmode="numeric" min="1" max="200" v-model.number="points[0]" :aria-label="t('txt_withdraw_winner_label')">
+          <span aria-hidden="true">–</span>
+          <input type="number" class="wd-score-input" inputmode="numeric" min="0" max="199" v-model.number="points[1]" :aria-label="t('txt_withdrawn_badge')">
+        </div>
+        <div v-if="hasMode('sets')">
+          <div v-for="(row, i) in sets" :key="i" class="wd-score-row">
+            <span class="wd-score-label">{{ setLabel(i) }}</span>
+            <input type="number" class="wd-score-input" inputmode="numeric" min="0" v-model.number="row[0]" :aria-label="t('txt_withdraw_winner_label') + ' ' + setLabel(i)">
+            <span aria-hidden="true">–</span>
+            <input type="number" class="wd-score-input" inputmode="numeric" min="0" v-model.number="row[1]" :aria-label="t('txt_withdrawn_badge') + ' ' + setLabel(i)">
+          </div>
+        </div>
+        <p v-if="hasMode('sets') && mixedDeciders" class="wd-note">{{ t('txt_withdraw_mixed_deciders') }}</p>
+        <p v-if="scoreError" class="wd-error">{{ scoreError }}</p>
+        <p class="wd-note">{{ t('txt_withdraw_walkover_elo_note') }}</p>
+      </div>
+      <div v-if="q.blockers.length" class="wd-blockers" role="alert">
+        <p class="wd-strong">{{ t('txt_withdraw_blocked') }}</p>
+        <ul class="wd-match-list">
+          <li v-for="b in q.blockers" :key="b.match_id" class="wd-match">{{ blockerText(b) }}</li>
+        </ul>
+      </div>
+      <p class="wd-note" :class="{ 'wd-note-warn': !q.undo_possible }">{{ undoText }}</p>
+    </div>
+    <div class="wd-actions">
+      <button type="button" class="btn" @click="close()">{{ t('txt_txt_cancel') }}</button>
+      <button type="button" class="btn btn-danger" :disabled="!canConfirm" @click="confirm()">{{ confirmLabel }}</button>
+    </div>
+  </div>
+</div>
+
 <!-- Forgot Password Modal -->
 <div id="forgot-pwd-overlay" class="modal-overlay" data-action="hideForgotPasswordDialog"></div>
 <div id="forgot-pwd-dialog" class="modal-dialog modal-sm">

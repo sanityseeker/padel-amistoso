@@ -16,7 +16,7 @@ from ..auth.deps import PlayerIdentity
 from ..auth.models import User, UserRole
 from ..models import InputFormat, Match, MatchStatus, SetDecider
 from ..tournaments.playoff import THIRD_PLACE_LABEL, EspejoParallelBracket
-from ..tournaments.set_format import format_sets, games_from_sets, match_decider, validate_decider_sets
+from ..tournaments.set_format import format_sets, match_decider, totals_from_sets, validate_decider_sets
 from .db import get_co_editors
 from .state import _tournaments, _save_tournament
 
@@ -310,6 +310,7 @@ def _serialize_match(m: Match, points_target: int | None = None) -> dict:
         "review_decider": m.review_decider.value if getattr(m, "review_decider", None) else None,
         "format_override": _serialize_format_override(m),
         "effective_decider": _effective_decider_value(m),
+        "walkover": bool(getattr(m, "walkover", False)),
     }
     if points_target is not None:
         out["effective_points_target"] = points_target
@@ -504,18 +505,9 @@ def _tennis_sets_to_scores(
         decided_by_third_set).
     """
     sets_tuples = [tuple(s) for s in sets]
-    total1, total2 = games_from_sets(sets_tuples, decider)
-    sets1_won = sum(1 for s in sets_tuples if s[0] > s[1])
-    sets2_won = sum(1 for s in sets_tuples if s[1] > s[0])
-    decided_by_third_set = len(sets_tuples) == 3
-    # Ensure the set-winner always has a higher game total so that
-    # Match.winner_team (which compares score[0] vs score[1]) returns
-    # the correct team.  The winner is whoever won more *sets*, not
-    # whoever accumulated more games.
-    if sets1_won > sets2_won and total1 <= total2:
-        total1 = total2 + 1
-    elif sets2_won > sets1_won and total2 <= total1:
-        total2 = total1 + 1
+    # The set winner always gets the higher game total (see totals_from_sets),
+    # so Match.winner_team names whoever won more *sets*.
+    total1, total2, decided_by_third_set = totals_from_sets(sets_tuples, decider)
     return total1, total2, sets_tuples, decided_by_third_set
 
 
@@ -607,9 +599,17 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
         return " & ".join(p.name for p in team) if team else "TBD"
 
     def _fmt_score(m: object) -> str | None:
+        if getattr(m, "walkover", False):
+            return "W/O"
         if m.sets:
             return format_sets(m.sets, match_decider(m), sep="  ")
         return f"{m.score[0]}–{m.score[1]}" if m.score else None
+
+    def _wo_loser(m: object) -> str | None:
+        """Side (``team1`` / ``team2``) that lost a walkover; ``None`` for played matches."""
+        if not getattr(m, "walkover", False) or not m.score:
+            return None
+        return "team2" if m.score[0] > m.score[1] else "team1"
 
     def _label_round_matches(match_list: list, prefix: str) -> None:
         """Group *match_list* by round, then write labels keyed ``{prefix}_r{r}_p{p}``."""
@@ -629,6 +629,7 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
                     "team2": _fmt_team(m.team2),
                     "score": _fmt_score(m),
                     "round": m.round_label,
+                    "walkover_loser": _wo_loser(m),
                 }
                 # Include loser info so the viz can draw data-driven loss edges.
                 loser = m.loser_team
@@ -652,6 +653,7 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
                 "team2": _fmt_team(m.team2),
                 "score": _fmt_score(m),
                 "round": m.round_label,
+                "walkover_loser": _wo_loser(m),
             }
             loser = m.loser_team
             if loser:
@@ -665,6 +667,7 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
                 "team2": _fmt_team(gf.team2),
                 "score": _fmt_score(gf),
                 "round": "Grand Final",
+                "walkover_loser": _wo_loser(gf),
             }
     else:
         _label_round_matches(bracket.matches, "match")

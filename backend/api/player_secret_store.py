@@ -315,6 +315,7 @@ def extract_history_stats(t_data: dict) -> dict[str, dict]:
             rows = [row for grp_rows in all_standings.values() for row in grp_rows]
             rows.sort(
                 key=lambda r: (
+                    r.get("withdrawn", False),  # withdrawn entries rank last
                     -r["wins"],
                     -r.get("sets_diff", 0),
                     -r.get("point_diff", 0),
@@ -556,7 +557,8 @@ def extract_partner_rival_stats(t_data: dict) -> dict[str, dict]:
     if t is None:
         return {}
     try:
-        matches = _collect_all_completed_matches(t)
+        # Walkovers were never played: no teammate or rival to credit.
+        matches = [m for m in _collect_all_completed_matches(t) if not getattr(m, "walkover", False)]
         # Expand composite team players to individual members so that
         # partner/rival stats reflect real per-person relationships.
         team_roster: dict[str, list[str]] = getattr(t, "team_roster", None) or {}

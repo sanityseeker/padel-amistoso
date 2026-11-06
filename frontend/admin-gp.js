@@ -24,6 +24,7 @@ async function renderGP() {
     _gpSport = status.sport || 'padel';
     _gpTeamRoster = status.team_roster || {};
     _gpTeamMode = status.team_mode || false;
+    _setCurrentWithdrawals(status);
 
     const hasCourts = status.assign_courts !== false;
     const allGroupMatches = Object.values(groups.matches).flat();
@@ -93,11 +94,15 @@ async function renderGP() {
       if (hasSets) html += `<th>${t('txt_txt_sw_abbrev')}</th><th>${t('txt_txt_sl_abbrev')}</th><th>${t('txt_txt_sd_abbrev')}</th>`;
       html += `<th>${t('txt_txt_pf_abbrev')}</th><th>${t('txt_txt_pa_abbrev')}</th><th>${t('txt_txt_diff_abbrev')}</th></tr></thead><tbody>`;
       for (const r of rows) {
-        html += `<tr><td>${esc(r.player)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.losses}</td>`;
+        const nameCell = r.withdrawn
+          ? `<span class="withdrawn-name">${esc(r.player)}</span> <span class="badge badge-withdrawn">${esc(t('txt_withdrawn_badge'))}</span>`
+          : esc(r.player);
+        html += `<tr${r.withdrawn ? ' class="row-withdrawn"' : ''}><td>${nameCell}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.losses}</td>`;
         if (hasSets) html += `<td>${r.sets_won}</td><td>${r.sets_lost}</td><td>${r.sets_diff}</td>`;
         html += `<td>${r.points_for}</td><td>${r.points_against}</td><td>${r.point_diff}</td></tr>`;
       }
       html += `</tbody></table>`;
+      html += _renderAnnulledWithdrawalNote(gName, { admin: true });
 
       // Group matches
       const gMatches = _sortTbdLast(groups.matches[gName] || []);
@@ -319,6 +324,7 @@ async function renderPO() {
     _gpSetDecider = tvSettings.set_decider || 'full_set';
     _scoreConfirmationMode = tvSettings.score_confirmation || 'immediate';
     _poCurrentPhase = status.phase;
+    _setCurrentWithdrawals(status);
     const poMatches = playoffs.matches || [];
 
     const hasCourts = status.assign_courts !== false;
@@ -878,6 +884,32 @@ function matchRow(m, ctx) {
     return `<button type="button" class="match-edit-btn" id="medit-btn-${m.id}" data-sets='${setsJson}' aria-label="${label}" title="${label}" onclick="_toggleEditMatch('${m.id}','${ctx}',${sc[0]},${sc[1]})">${_ic('edit')}</button>`;
   };
 
+  if (m.status === 'completed' && m.walkover) {
+    // Walkover (a side withdrew): read-only.  No edit, clear, dispute or format
+    // chip; undoing the withdrawal is the way to change it.
+    const sc = m.score || [0, 0];
+    const disp = _renderScoreDisplay(m);
+    const w1 = sc[0] > sc[1];
+    const loser = w1 ? t2 : t1;
+    // Both sides withdrew: the better seed took the walkover; flag the winner too.
+    const wdIds = _wdWithdrawnIdSet();
+    const winnerIds = (w1 ? m.team1_ids : m.team2_ids) || [];
+    const winnerWd = winnerIds.some(id => wdIds.has(id)) ? ` <span class="badge badge-withdrawn">${esc(t('txt_withdrawn_badge'))}</span>` : '';
+    let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap match-card-walkover" data-status="completed" data-disputed="0">`;
+    html += `${roundLabel} <div class="match-teams"><span class="${w1 ? 'team-winner' : 'team-loser withdrawn-name'}">${esc(t1)}</span>${w1 ? winnerWd : ''} <span class="vs">vs</span> <span class="${w1 ? 'team-loser withdrawn-name' : 'team-winner'}">${esc(t2)}</span>${w1 ? '' : winnerWd}</div> ${court}`;
+    // Mobile only (admin.css, <=600px): the label moves into the small header line
+    // so the score line starts at the same x as every other row.
+    html += ` <span class="match-wo-head">${_renderWalkoverBadge(loser)}</span>`;
+    // W/O in its own slot left of the score; the check and a hidden Edit-sized
+    // placeholder keep the score in line with the editable rows (admin.css).
+    html += ` <span class="match-wo-cell">${_renderWalkoverBadge(loser)}<span class="${disp.cls}" id="mscore-${m.id}">${disp.html}</span></span>`;
+    html += ` <span class="badge badge-completed" aria-label="${escAttr(t('txt_txt_filter_completed'))}">${_ic('check')}</span>`;
+    html += `<button type="button" class="match-edit-btn match-slot-reserve" tabindex="-1" aria-hidden="true" disabled>${_ic('edit')}</button>`;
+    html += _renderCommentBanner(m);
+    html += `</div>`;
+    return html;
+  }
+
   if (m.status === 'completed') {
     const sc = m.score || [0, 0];
     const disp = _renderScoreDisplay(m);
@@ -925,7 +957,15 @@ function matchRow(m, ctx) {
   const tbdClass = hasTbd ? ' match-tbd-disabled' : '';
   const saveClass = `btn btn-success btn-sm${hasTbd ? ' btn-disabled-ish' : ''}`;
 
-  let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap${tbdClass}" data-status="pending" data-disputed="0">${roundLabel} <div class="match-teams">${esc(t1)} <span class="vs">vs</span> ${esc(t2)}</div> ${court}`;
+  // A withdrawn side waiting for its opponent: the walkover is recorded as
+  // soon as the opponent is known.
+  const wdIds = _wdWithdrawnIdSet();
+  const wd1 = (m.team1_ids || []).some(id => wdIds.has(id));
+  const wd2 = (m.team2_ids || []).some(id => wdIds.has(id));
+  const t1Html = wd1 ? `<span class="withdrawn-name">${esc(t1)}</span>` : esc(t1);
+  const t2Html = wd2 ? `<span class="withdrawn-name">${esc(t2)}</span>` : esc(t2);
+  const wdBadge = wd1 || wd2 ? ` <span class="badge badge-withdrawn">${esc(t('txt_withdrawn_badge'))}</span>` : '';
+  let html = `<div id="mcard-${m.id}" class="match-card match-card-wrap${tbdClass}" data-status="pending" data-disputed="0">${roundLabel} <div class="match-teams">${t1Html} <span class="vs">vs</span> ${t2Html}</div>${wdBadge} ${court}`;
   if (m.format_review) html += _renderFormatReviewPanel(m);
   html += `<div class="match-actions" id="score-input-${m.id}">`;
   html += _renderScoreInputs(m, ctx, { mode: _matchInputMode(m, ctx), saveClass, tbdAttr });
@@ -1675,8 +1715,9 @@ async function nextGpGroupRound() {
 async function proposeGpPlayoffs() {
   try {
     const data = await api(`/api/tournaments/${currentTid}/gp/recommend-playoffs`);
+    // Withdrawn entries stay listed (greyed out, not selectable) but never advance.
     _gpRecommended = data.recommended_participants || [];
-    _gpAdvancingIds = new Set(_gpRecommended.map(r => r.player_id));
+    _gpAdvancingIds = new Set(_gpRecommended.filter(r => !r.withdrawn).map(r => r.player_id));
     _gpExternalParticipants = [];
     _gpPlayoffTeamMode = false;
     _gpPlayoffTeams = [];
@@ -1708,7 +1749,10 @@ function _gpRowsByGroup() {
 function _gpSplitInit() {
   _gpSplitAssign = {};
   let maxSize = 0;
-  for (const rows of Object.values(_gpRowsByGroup())) {
+  for (const allRows of Object.values(_gpRowsByGroup())) {
+    // Withdrawn entries are always 'out' and do not count towards the half.
+    const rows = allRows.filter(r => !r.withdrawn);
+    allRows.filter(r => r.withdrawn).forEach(r => { _gpSplitAssign[r.player_id] = 'out'; });
     const half = Math.ceil(rows.length / 2);
     maxSize = Math.max(maxSize, rows.length);
     rows.forEach((r, i) => { _gpSplitAssign[r.player_id] = i < half ? 'oro' : 'plata'; });
@@ -1720,11 +1764,12 @@ function _gpSplitInit() {
 function _gpSplitApplyCutoff(value) {
   const k = Math.max(0, parseInt(value, 10) || 0);
   _gpSplitCutoff = k;
-  for (const rows of Object.values(_gpRowsByGroup())) {
-    rows.forEach((r, i) => { _gpSplitAssign[r.player_id] = i < k ? 'oro' : 'plata'; });
+  for (const allRows of Object.values(_gpRowsByGroup())) {
+    allRows.filter(r => r.withdrawn).forEach(r => { _gpSplitAssign[r.player_id] = 'out'; });
+    allRows.filter(r => !r.withdrawn).forEach((r, i) => { _gpSplitAssign[r.player_id] = i < k ? 'oro' : 'plata'; });
   }
   document.querySelectorAll('select[data-split-pid]').forEach(sel => {
-    sel.value = _gpSplitAssign[sel.dataset.splitPid] || 'out';
+    if (!sel.disabled) sel.value = _gpSplitAssign[sel.dataset.splitPid] || 'out';
   });
   _gpUpdatePlayoffMatchCount();
 }
@@ -1774,11 +1819,13 @@ function _renderGpSplitEditor() {
     html += `<div class="gp-group-title">${esc(gName)}</div>`;
     for (const r of rows) {
       const cur = _gpSplitAssign[r.player_id] || 'out';
-      html += `<div class="gp-player-row gp-split-row">`;
+      const wd = !!r.withdrawn;
+      html += `<div class="gp-player-row gp-split-row${wd ? ' gp-player-row--withdrawn' : ''}">`;
       html += `<span class="gp-split-rank">${r.group_rank}</span>`;
-      html += `<span class="gp-player-name">${esc(r.player)}</span>`;
+      html += `<span class="gp-player-name${wd ? ' withdrawn-name' : ''}">${esc(r.player)}</span>`;
+      if (wd) html += `<span class="badge badge-withdrawn">${esc(t('txt_withdrawn_badge'))}</span>`;
       html += `<span class="gp-player-stats">${_gpPlayerStatsText(r)}</span>`;
-      html += `<select class="gp-split-select" data-split-pid="${escAttr(r.player_id)}" aria-label="${escAttr(r.player)}" onchange="_gpSplitSet(this.dataset.splitPid, this.value)">`;
+      html += `<select class="gp-split-select" data-split-pid="${escAttr(r.player_id)}" aria-label="${escAttr(r.player)}"${wd ? ' disabled' : ''} onchange="_gpSplitSet(this.dataset.splitPid, this.value)">`;
       for (const [val, key] of [['oro', 'txt_split_gold'], ['plata', 'txt_split_silver'], ['out', 'txt_split_out']]) {
         html += `<option value="${val}"${cur === val ? ' selected' : ''}>${esc(t(key))}</option>`;
       }
@@ -1866,10 +1913,12 @@ function _renderGpPlayoffEditor() {
     html += `<div class="gp-group-box">`;
     html += `<div class="gp-group-title">${esc(gName)}</div>`;
     for (const r of rows) {
-      const checked = _gpAdvancingIds.has(r.player_id) ? ' checked' : '';
-      html += `<label class="gp-player-row">`;
-      html += `<input type="checkbox" value="${r.player_id}" class="gp-advancing-cb"${checked} onchange="_gpToggleAdvancing(this)">`;
-      html += `<span class="gp-player-name">${esc(r.player)}</span>`;
+      const wd = !!r.withdrawn;
+      const checked = !wd && _gpAdvancingIds.has(r.player_id) ? ' checked' : '';
+      html += `<label class="gp-player-row${wd ? ' gp-player-row--withdrawn' : ''}">`;
+      html += `<input type="checkbox" value="${r.player_id}" class="gp-advancing-cb"${checked}${wd ? ' disabled' : ''} onchange="_gpToggleAdvancing(this)">`;
+      html += `<span class="gp-player-name${wd ? ' withdrawn-name' : ''}">${esc(r.player)}</span>`;
+      if (wd) html += `<span class="badge badge-withdrawn">${esc(t('txt_withdrawn_badge'))}</span>`;
       html += `<span class="gp-player-stats">${_gpPlayerStatsText(r)}</span>`;
       html += `</label>`;
     }

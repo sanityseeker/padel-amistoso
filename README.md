@@ -185,7 +185,7 @@ Operational notes:
 
 ### Player codes
 
-The app gives each player a unique **passphrase** (for example, `brave-little-tiger`) and a **QR code** automatically. In the Player Codes panel, you can see, copy, print, or generate again the passphrase of each player.
+The app gives each player a unique **passphrase** (for example, `brave-little-tiger`) and a **QR code** automatically. In the Players tab (Admin → Settings → Players), you can see, copy, print, or generate again the passphrase of each player. The same tab has the **Withdraw** action (see [Withdrawing a participant](#withdrawing-a-participant)).
 
 ### During the tournament
 
@@ -202,8 +202,30 @@ The app gives each player a unique **passphrase** (for example, `brave-little-ti
 - **Match comments**: add a short note to a match (for example, "Moved to Court 2"). The public screen shows the note.
 - **Announcement banner**: show a message to all players on the public screen.
 - **Co-editing**: share a tournament with other registered users as co-editors. Co-editors can manage rounds and scores. Only the owner or an admin can delete the tournament or manage the collaborators.
-- **Player list changes**: you can add players during the tournament (in Mexicano, and in Group + Play-off during the group phase). In Mexicano, you can also remove a player during the tournament if the player has no pending match.
+- **Player list changes**: you can add players during the tournament (in Mexicano, and in Group + Play-off during the group phase). In Mexicano rounds, you can also remove a player if the player has no pending match. In the other cases, use [Withdraw](#withdrawing-a-participant).
 - **Player contacts and email**: record the contact data and email of each player. If SMTP is configured, the app can send these emails: passphrase reminders, round schedules, organizer announcements, and final results.
+
+### Withdrawing a participant
+
+In Admin → Settings → **Players**, each row has a **Withdraw** button (Withdraw team for a team member). The confirm dialog shows what changes before you confirm. The app selects the rule from the format and the phase:
+
+| Where | What happens | Undo |
+|---|---|---|
+| Group stage, fixed teams or singles | **The 50% rule.** If the entry played fewer than half of its group matches, all its group results are **annulled** and it leaves the group. If it played half or more, the played results stand and its remaining matches become **walkovers (W/O)** for the opponents. | Yes, during the group stage, while the group roster does not change |
+| Group stage, rotating partners | The person is **left out of all following rounds**. Played matches stay. If the person has an unplayed match in the current round, that match is removed and its other three players sit out this round (they play first in the next round). | Yes, until the next round is generated |
+| Any play-off bracket (Group + Play-off, Play-offs, Mexicano play-offs) | **Forfeit.** The pending match becomes a walkover and the opponent advances. If the opponent is not known yet, the walkover is recorded as soon as it is known. In double elimination, the entry does not play in the losers bracket: that opponent also advances by walkover. The same applies to a 3rd-place match. | No |
+| Mexicano rounds | Use the existing remove button (unchanged). | No |
+
+Rules for all cases:
+
+- Withdrawing a member of a team withdraws the **whole team**.
+- The **walkover score** is entered winner first. The defaults are 6-0 (points) and 6-0 6-0 (sets). You can edit it; the app checks it against the match format (for example, a match tie-break must be won 10-8 or better).
+- **Walkovers count in the standings but are never ELO-rated.** Annulled results are removed from the ELO history (the app recalculates the tournament and the club ratings).
+- A withdrawal is blocked while one of the entry's scores waits for confirmation, is disputed, or waits for a format review. Settle that score first.
+- Withdrawn entries stay in the standings (struck through, last, with a "Withdrawn" badge) and cannot be selected for the play-offs. Annulled entries disappear from the table and leave a note under the group.
+- The withdrawn player's login code stays active. The app sends no push notification about the withdrawal. If a walkover decides the final, the usual champion notification is sent.
+- If you clear or change the result of a match that fed a walkover, the app clears that walkover first and records it again once the new opponent is known. A match that was really played after it still blocks the clear.
+- A walkover score is captured when you withdraw. If you change a stage's score mode later, walkovers that are created later still use the captured mode (unless the match has its own format).
 
 ### TV display
 

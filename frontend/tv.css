@@ -1884,3 +1884,29 @@ html[data-theme="light"] .court-card--yours {
 tr.is-removed { opacity: 0.45; }
 
 
+/* ── Withdrawals ── */
+.row-withdrawn .withdrawn-name,
+.withdrawn-name { text-decoration: line-through; color: var(--color-text-muted); }
+/* The name is an inline-block button: decorations do not reach it from the span. */
+.withdrawn-name .tv-name-btn { text-decoration: line-through; }
+.badge-withdrawn,
+.badge-walkover {
+  display: inline-block; padding: 0.1rem 0.45rem; border-radius: var(--radius-full);
+  font-size: 0.68rem; font-weight: 700; vertical-align: middle;
+}
+.badge-withdrawn {
+  background: var(--color-error-highlight); color: var(--color-error);
+  border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
+}
+.badge-walkover,
+.history-badge-walkover {
+  background: var(--color-warning-bg); color: var(--color-warning-text);
+  border: 1px solid var(--color-warning-border);
+}
+.history-badge-walkover { padding: 0.1rem 0.45rem; border-radius: var(--radius-full); font-weight: 700; }
+/* W/O slot left of the score. The slot's width comes out of the teams column,
+   so the score keeps the same x (and the row wraps) exactly like other rows. */
+.history-wo-cell { position: relative; display: inline-flex; padding-left: var(--space-12); }
+.history-wo-cell > .history-badge-walkover { position: absolute; left: 0; top: 50%; transform: translateY(-50%); margin-left: 0; }
+.history-match--wo .history-teams { min-width: calc(200px - var(--space-12)); }
+.withdrawn-annulled-note { margin: 0.4rem 0 0; font-size: 0.85rem; color: var(--color-text-muted); }

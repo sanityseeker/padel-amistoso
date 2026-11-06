@@ -1946,14 +1946,22 @@ function _renderGP(tvSettings, status, groups, playoffs) {
         rows.forEach((r, i) => {
           const isMe = tvState.playerId && r.player_id === tvState.playerId;
           const eloHtml = r.elo ? ` <span class="elo-badge" title="${escAttr(_tvEloLabel())}">${Math.round(r.elo)}</span>` : '';
-          const nameHtml = _tvPlayerNameCell(r.player_id, r.player);
-          html += `<tr${isMe ? ' class="my-row"' : ''}><td class="rank-cell col-hash">${i + 1}</td><td class="player-cell col-player">${nameHtml}${eloHtml}</td>`;
+          let nameHtml = _tvPlayerNameCell(r.player_id, r.player);
+          // Withdrawn entries sort last, struck through, with a badge.
+          if (r.withdrawn) nameHtml = `<span class="withdrawn-name">${nameHtml}</span> <span class="badge badge-withdrawn">${esc(t('txt_withdrawn_badge'))}</span>`;
+          const rowCls = [isMe ? 'my-row' : '', r.withdrawn ? 'row-withdrawn' : ''].filter(Boolean).join(' ');
+          html += `<tr${rowCls ? ` class="${rowCls}"` : ''}><td class="rank-cell col-hash">${i + 1}</td><td class="player-cell col-player">${nameHtml}${eloHtml}</td>`;
           html += `<td class="col-played">${r.played}</td><td class="col-w">${r.wins}</td><td class="col-l">${r.losses}</td>`;
           if (hasSets) html += `<td class="col-sw">${r.sets_won}</td><td class="col-sl">${r.sets_lost}</td><td class="col-sd">${r.sets_diff}</td>`;
           html += `<td class="col-pf">${r.points_for}</td><td class="col-pa">${r.points_against}</td>`;
           html += `<td class="col-diff">${r.point_diff}</td></tr>`;
         });
-        html += `</tbody></table></div>`;
+        html += `</tbody></table>`;
+        // Entries whose results were annulled are no longer in the table.
+        for (const w of (status.withdrawals || []).filter(x => x.kind === 'annul' && x.group === gName)) {
+          html += `<p class="withdrawn-annulled-note">${esc(t('txt_withdrawn_annulled_note', { names: w.name }))}</p>`;
+        }
+        html += `</div>`;
       }
       html += `</div></details>`;
     }
@@ -2665,16 +2673,29 @@ function _buildHistoryMatch(m, tvSettings, isMex, scoreCtx = null) {
     scoreHtml = `<span class="history-score text-muted">—</span>`;
   }
 
-  let html = `<div class="history-match">`;
-  html += `<div class="history-teams">${esc(t1)}<span class="history-vs">${t('txt_txt_vs')}</span>${esc(t2)}</div>`;
-  html += scoreHtml;
+  // Walkover: one side withdrew (the loser).  Never editable by players.
+  let walkoverBadge = '';
+  if (m.walkover && m.score) {
+    const loser = m.score[0] > m.score[1] ? t2 : t1;
+    const tip = t('txt_walkover_tip', { name: loser });
+    walkoverBadge = `<span class="history-badge history-badge-walkover" title="${escAttr(tip)}" aria-label="${escAttr(tip)}">${esc(t('txt_walkover_short'))}</span>`;
+  }
+
+  // The W/O label sits in its own slot left of the score (tv.css), so the
+  // score stays in line with the other rows.
+  let html = `<div class="history-match${walkoverBadge ? ' history-match--wo' : ''}">`;
+  // Walkover: only the side that lost it (the withdrawn side) is struck through.
+  const woLoser = m.walkover && m.score ? (m.score[0] > m.score[1] ? 2 : 1) : 0;
+  const teamHtml = (name, side) => (woLoser === side ? `<span class="withdrawn-name">${esc(name)}</span>` : esc(name));
+  html += `<div class="history-teams">${teamHtml(t1, 1)}<span class="history-vs">${t('txt_txt_vs')}</span>${teamHtml(t2, 2)}</div>`;
+  html += walkoverBadge ? `<span class="history-wo-cell">${walkoverBadge}${scoreHtml}</span>` : scoreHtml;
   html += pendingBadge;
   html += court;
   html += `</div>`;
 
   // Score lifecycle panel for unconfirmed matches in history view
   html += _tvFormatNote(m, scoreCtx);
-  if (scoreCtx) html += _buildPlayerScoreForm(m, scoreCtx);
+  if (scoreCtx && !m.walkover) html += _buildPlayerScoreForm(m, scoreCtx);
 
   // Score breakdown for Mexicano matches
   if (isMex && tvSettings.show_score_breakdown) {

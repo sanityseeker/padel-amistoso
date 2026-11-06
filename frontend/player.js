@@ -782,11 +782,13 @@ function _buildPathPanel(entry) {
     const playerTeam = [(_profile && _profile.name) ? _profile.name : '', ...partners].filter(Boolean);
     const playerTeamNames = playerTeam.length ? playerTeam : [row.played ? '—' : t('txt_player_path_sit_out')];
     const opponentNames = opponents.length ? opponents : [row.played ? '—' : t('txt_player_path_sit_out')];
+    // Walkover: strike through the names of the side that withdrew (the loser).
+    const wdCls = (isLoser) => (row.walkover && isLoser ? ' entry-path-team-name--withdrawn' : '');
     const playerTeamNamesHtml = playerTeamNames
-      .map((name) => `<span class="entry-path-team-name">${esc(name)}</span>`)
+      .map((name) => `<span class="entry-path-team-name${wdCls(row.walkover_lost)}">${esc(name)}</span>`)
       .join('');
     const opponentNamesHtml = opponentNames
-      .map((name) => `<span class="entry-path-team-name">${esc(name)}</span>`)
+      .map((name) => `<span class="entry-path-team-name${wdCls(!row.walkover_lost)}">${esc(name)}</span>`)
       .join('');
     const isTennisRow = row.score_mode === 'tennis';
 
@@ -852,7 +854,13 @@ function _buildPathPanel(entry) {
 
     html += `<div class="entry-path-match">`;
     html += `<div class="entry-path-team entry-path-team--player"><span class="entry-path-team-names">${playerTeamNamesHtml}</span></div>`;
-    html += `<div class="entry-path-score-center">${esc(row.score || '—')}</div>`;
+    // Walkover: one side withdrew (the losing side); the score was recorded, not played.
+    const withdrewNames = (row.walkover_lost ? playerTeamNames : opponentNames).join(' & ');
+    // The label sits in its own slot left of the score (player.css), so the
+    // score stays centred like the other rows.
+    html += row.walkover
+      ? `<div class="entry-path-score-center entry-path-score-center--wo"><span class="badge badge-walkover" title="${escAttr(t('txt_walkover_tip', { name: withdrewNames }))}">${esc(t('txt_walkover_short'))}</span>${esc(row.score || '—')}</div>`
+      : `<div class="entry-path-score-center">${esc(row.score || '—')}</div>`;
     html += `<div class="entry-path-team entry-path-team--opponents"><span class="entry-path-team-names">${opponentNamesHtml}</span></div>`;
     html += `</div>`;
     html += `</div>`;

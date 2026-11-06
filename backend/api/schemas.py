@@ -11,12 +11,20 @@ from pydantic import AfterValidator, BaseModel, Field, field_validator, model_va
 
 from backend.models import (
     EliminationType,
+    InputFormat,
     ParticipationStatus,
     QuestionType,
     ScoreConfirmation,
     SetDecider,
     Sport,
     TournamentType,
+)
+from backend.tournaments.withdrawal import (
+    DEFAULT_WALKOVER_POINTS,
+    DEFAULT_WALKOVER_SETS,
+    WithdrawalKind,
+    validate_walkover_points,
+    validate_walkover_sets,
 )
 
 EmailLang = Literal["en", "es"]
@@ -1292,3 +1300,143 @@ class ClearMatchResponse(BaseModel):
 
     ok: bool = True
     phase: str
+
+
+# ---------------------------------------------------------------------------
+# Withdrawals
+# ---------------------------------------------------------------------------
+
+
+class WalkoverScoreIn(BaseModel):
+    """Walkover score template, winner first (opponent - withdrawn).
+
+    ``points`` is ``[W, L]`` with ``0 <= L < W <= 200``; ``sets`` is a set
+    score the first side wins.  Each is optional: the 6-0 / 6-0 6-0 defaults
+    apply when omitted.
+    """
+
+    points: list[int] | None = None
+    sets: list[list[int]] | None = None
+
+    @field_validator("points")
+    @classmethod
+    def _validate_points(cls, v: list[int] | None) -> list[int] | None:
+        if v is None:
+            return None
+        validate_walkover_points(v)
+        return v
+
+    @field_validator("sets")
+    @classmethod
+    def _validate_sets(cls, v: list[list[int]] | None) -> list[list[int]] | None:
+        if v is None:
+            return None
+        validate_set_scores(v)
+        validate_walkover_sets(v)
+        return v
+
+    @classmethod
+    def defaults(cls) -> WalkoverScoreIn:
+        return cls(points=list(DEFAULT_WALKOVER_POINTS), sets=[list(s) for s in DEFAULT_WALKOVER_SETS])
+
+
+class WithdrawRequest(BaseModel):
+    """Body for ``POST /api/tournaments/{tid}/withdrawals``."""
+
+    player_id: str = Field(min_length=1, max_length=64)
+    # The outcome the organiser confirmed in the preview; a different outcome is a 409.
+    expected_kind: WithdrawalKind
+    walkover: WalkoverScoreIn | None = None
+
+
+class WithdrawalMatchItem(BaseModel):
+    """One match affected by a withdrawal, as shown in the confirm dialog."""
+
+    match_id: str
+    round_label: str = ""
+    court: str | None = None
+    team1: list[str] = Field(default_factory=list)
+    team2: list[str] = Field(default_factory=list)
+    # The other side's names (the withdrawn entry's opponent).
+    opponent: str = ""
+    current_score: str | None = None
+    # Walkover score, winner first, for matches that become walkovers.
+    resulting_score: str | None = None
+    # Score mode the walkover is recorded in (``None`` when no walkover).
+    mode: InputFormat | None = None
+    # Third-set decider the walkover is recorded under (the match's own override,
+    # else the tournament default); ``None`` unless the walkover is in sets.
+    decider: SetDecider | None = None
+
+
+class WithdrawalBlockerItem(BaseModel):
+    """A match whose score must be accepted, resolved or cleared first."""
+
+    match_id: str
+    round_label: str = ""
+    reason: Literal["pending", "disputed", "format_review"]
+
+
+class WithdrawalPreviewResponse(BaseModel):
+    """What withdrawing a participant would do (``GET .../withdrawals/preview``)."""
+
+    entry_key: str
+    entry_name: str
+    member_names: list[str] = Field(default_factory=list)
+    kind: WithdrawalKind
+    group: str | None = None
+    played: int = 0
+    total: int = 0
+    annul_matches: list[WithdrawalMatchItem] = Field(default_factory=list)
+    walkover_matches: list[WithdrawalMatchItem] = Field(default_factory=list)
+    dropped_match: WithdrawalMatchItem | None = None
+    sit_out_names: list[str] = Field(default_factory=list)
+    pending_forfeit_match: WithdrawalMatchItem | None = None
+    advance_to: str | None = None
+    opponent_tbd: bool = False
+    lb_drop: bool = False
+    third_place_note: bool = False
+    active_after: int | None = None
+    modes_needed: list[InputFormat] = Field(default_factory=list)
+    walkover_defaults: WalkoverScoreIn = Field(default_factory=WalkoverScoreIn.defaults)
+    default_decider: SetDecider = SetDecider.FULL_SET
+    # Distinct deciders the set score must satisfy: one per affected match scored in
+    # sets, plus the tournament default when walkovers are created later.
+    deciders_needed: list[SetDecider] = Field(default_factory=list)
+    elo_recalc: bool = False
+    undo_possible: bool = False
+    blockers: list[WithdrawalBlockerItem] = Field(default_factory=list)
+
+
+class WithdrawalSummary(BaseModel):
+    """A stored withdrawal, as listed in the status payloads."""
+
+    entry_key: str
+    name: str
+    member_ids: list[str] = Field(default_factory=list)
+    member_names: list[str] = Field(default_factory=list)
+    kind: WithdrawalKind
+    group: str | None = None
+    played: int = 0
+    total: int = 0
+    walkovers: int = 0
+    at: float = 0.0
+    undo_allowed: bool = False
+
+
+class WithdrawResponse(BaseModel):
+    """Result of ``POST /api/tournaments/{tid}/withdrawals``."""
+
+    ok: bool = True
+    withdrawal: WithdrawalSummary
+    walkovers_created: int = 0
+    phase: str
+    elo_recalculated: bool = False
+
+
+class UndoWithdrawalResponse(BaseModel):
+    """Result of ``DELETE /api/tournaments/{tid}/withdrawals/{entry_key}``."""
+
+    ok: bool = True
+    phase: str
+    elo_recalculated: bool = False

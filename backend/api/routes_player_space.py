@@ -286,6 +286,10 @@ class PlayerPathRound(BaseModel):
     cumulative_games_diff: int | None = None
     eliminated: bool = False
     stage: str = "groups"
+    # True when this row's match was a walkover (a side withdrew).
+    walkover: bool = False
+    # True when this player's side lost the walkover, i.e. it is the side that withdrew.
+    walkover_lost: bool = False
 
 
 class TournamentPathResponse(BaseModel):
@@ -1343,6 +1347,14 @@ def _group_rank_and_points_for_round(
     return rank_map, points_map, uses_sets, sets_diff_map, games_diff_map
 
 
+def _lost_walkover(match: object, in_team1: bool) -> bool:
+    """True when *match* is a walkover and the player's side (team1 if *in_team1*) lost it."""
+    score = getattr(match, "score", None)
+    if not getattr(match, "walkover", False) or not score:
+        return False
+    return score[0] < score[1] if in_team1 else score[1] < score[0]
+
+
 def _build_group_playoff_rows(
     tournament: object,
     player_id: str,
@@ -1401,6 +1413,8 @@ def _build_group_playoff_rows(
             cumulative_sets_diff=int(cumulative_sets_diff) if score_mode == ScoreMode.TENNIS else None,
             cumulative_games_diff=int(cumulative_games_diff) if score_mode == ScoreMode.TENNIS else None,
             stage="playoff",
+            walkover=bool(getattr(match, "walkover", False)),
+            walkover_lost=_lost_walkover(match, in_team1),
         )
         rows.append(row)
 
@@ -1537,6 +1551,8 @@ def _build_group_path_rows(tournament: object, player_id: str) -> list[PlayerPat
                 cumulative_sets_diff=cumulative_sets_diff,
                 cumulative_games_diff=cumulative_games_diff,
                 stage="groups",
+                walkover=bool(player_match is not None and getattr(player_match, "walkover", False)),
+                walkover_lost=player_match is not None and _lost_walkover(player_match, player_in_team1),
             )
         )
 

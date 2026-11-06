@@ -110,7 +110,7 @@ function _renderSettingsCard(ctx) {
     { key: 'tv',      short: t('txt_settings_tab_tv_short'), label: t('txt_admin_settings_tab_tv'),      icon: _ic('monitor'), body: _renderTvSharingBody(tvSettings, hasCourts, isMexicano, scoringStages.some(s => /playoff/i.test(s.key))) },
     { key: 'scoring', short: t('txt_settings_tab_scoring_short'), label: t('txt_admin_settings_tab_scoring'), icon: _ic('clipboard'), body: _renderScoringRulesBody(tvSettings, scoringStages) },
     { key: 'comms',   short: t('txt_settings_tab_comms_short'), label: t('txt_admin_settings_tab_comms'),   icon: _ic('mail'), body: commsBody },
-    { key: 'codes',   short: t('txt_settings_tab_codes_short'), label: t('txt_admin_settings_tab_codes'),   icon: _ic('key'), body: codesBody },
+    { key: 'codes',   short: t('txt_settings_tab_codes_short'), label: t('txt_admin_settings_tab_codes'),   icon: _ic('users'), body: codesBody },
     { key: 'payments', short: t('txt_settings_tab_payments_short'), label: t('txt_pay_tab'),                   icon: _ic('wallet'), body: _renderPaymentsIsland('tournament', currentTid) },
     { key: 'access',  short: t('txt_settings_tab_access_short'), label: t('txt_admin_settings_tab_access'),  icon: _ic('shield'), body: accessBody },
     { key: 'export',  short: t('txt_settings_tab_export_short'), label: t('txt_admin_settings_tab_export'),  icon: _ic('download'), body: exportPanel ? _renderExportPanel(exportPanel) : '' },

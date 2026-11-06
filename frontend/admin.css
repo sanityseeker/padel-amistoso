@@ -2181,6 +2181,81 @@ html.bracket-lb-open body { overflow: hidden; }
   background: var(--color-primary-highlight); color: var(--color-primary);
   border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent); cursor: default;
 }
+
+/* ── Withdrawals: struck-through entry, "Withdrawn" and "W/O" badges ── */
+.row-withdrawn .withdrawn-name,
+.withdrawn-name { text-decoration: line-through; color: var(--color-text-muted); }
+.badge-withdrawn {
+  background: var(--color-error-highlight); color: var(--color-error);
+  border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
+  font-size: 0.68rem; vertical-align: middle; cursor: default;
+}
+.badge-walkover {
+  background: var(--color-warning-bg); color: var(--color-warning-text);
+  border: 1px solid var(--color-warning-border); cursor: default;
+}
+.match-card-walkover .match-score { opacity: 0.85; }
+/* W/O slot left of the score. The slot's width comes out of the teams column,
+   so the score keeps the x (and wrapping) of the other rows. */
+.match-wo-cell { position: relative; display: inline-flex; align-items: center; padding-left: var(--space-12); }
+.match-wo-cell > .badge-walkover { position: absolute; left: 0; top: 50%; transform: translateY(-50%); }
+.match-card-walkover .match-teams { min-width: calc(200px - var(--space-12)); }
+/* The court comes before the score: give back the slot from its 80px too. */
+.match-card-walkover .match-court { min-width: calc(80px - var(--space-12)); }
+.match-slot-reserve { visibility: hidden; }
+.match-wo-head { display: none; }
+@media (max-width: 600px) {
+  /* Three-line card: the label leaves the score line for the meta line
+     ("Group A R3 · C2 · W/O"), so the score keeps the x of every other row. */
+  .match-card-walkover .match-teams { min-width: 100%; }
+  .match-wo-cell { padding-left: 0; }
+  .match-wo-cell > .badge-walkover { display: none; }
+}
+.withdrawn-annulled-note {
+  margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--color-text-muted);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+}
+
+/* Withdraw confirm dialog (#withdraw-overlay island) */
+.wd-dialog { padding: 1.5rem; }
+.wd-line { margin: 0 0 0.6rem; font-size: 0.9rem; }
+.wd-strong { font-weight: 700; }
+.wd-note { margin: 0.6rem 0; font-size: 0.82rem; color: var(--color-text-muted); }
+.wd-note-warn {
+  color: var(--color-warning-text); background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border); border-radius: var(--radius-lg);
+  padding: 0.45rem 0.6rem;
+}
+.wd-error { margin: 0.4rem 0; font-size: 0.82rem; color: var(--color-error); }
+.wd-match-list { list-style: none; margin: 0 0 0.6rem; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.wd-match {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem;
+  font-size: 0.85rem; padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+}
+.wd-match-round { font-weight: 600; color: var(--color-text-muted); }
+.wd-score { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.wd-score-new { margin-left: auto; }
+.wd-score-editor {
+  margin: 0.8rem 0; padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border); border-radius: var(--radius-card);
+}
+.wd-score-row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem; }
+.wd-score-label { min-width: 4.5rem; font-size: 0.82rem; color: var(--color-text-muted); }
+.wd-score-input {
+  width: 3.6rem; padding: 0.35rem 0.4rem; text-align: center;
+  border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+  background: var(--color-bg); color: var(--color-text);
+  font-family: var(--font-data); font-size: 0.9rem;
+}
+.wd-score-input:focus { outline: none; border-color: var(--color-primary); }
+.wd-blockers {
+  margin: 0.8rem 0; padding: 0.6rem 0.75rem; font-size: 0.85rem;
+  background: var(--color-error-highlight); border-radius: var(--radius-card);
+  border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
+}
+.wd-blockers .wd-match { border-color: color-mix(in srgb, var(--color-error) 30%, transparent); }
+.wd-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
 .admin-dispute-panel {
   width: 100%; margin-top: 0.4rem; padding: 0.6rem 0.75rem;
   background: color-mix(in srgb, var(--color-amber) 8%, transparent);
@@ -3443,6 +3518,11 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   accent-color: var(--color-primary);
   cursor: pointer;
 }
+/* Withdrawn entry in the play-off picker: greyed out, not selectable. */
+.gp-player-row--withdrawn { opacity: 0.6; cursor: not-allowed; }
+.gp-player-row--withdrawn:hover { background: transparent; }
+.gp-player-row--withdrawn input,
+.gp-player-row--withdrawn select { cursor: not-allowed; }
 .gp-player-name {
   flex: 1;
   font-size: 0.88rem;
@@ -3859,6 +3939,9 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   .match-card-wrap > .match-round-badge { order: 1; padding: 0; background: none; color: var(--color-text-muted); font-size: var(--fs-xs); font-weight: 600; }
   .match-card-wrap > .match-court { order: 2; min-width: 0; font-size: var(--fs-xs); }
   .match-card-wrap > .match-round-badge ~ .match-court::before { content: "\00b7"; margin-right: var(--space-1-5); }
+  .match-card-wrap > .match-wo-head { display: inline-flex; align-items: center; order: 2; }
+  .match-wo-head > .badge-walkover { padding: 0 var(--space-1-5); font-size: var(--fs-2xs); }
+  .match-card-wrap > .match-round-badge ~ .match-wo-head::before { content: "\00b7"; margin-right: var(--space-1-5); color: var(--color-text-muted); }
   .match-card-wrap > .match-comment-banner { order: 8; }
   .match-card-wrap > .match-comment-banner--empty { order: 3; width: auto; margin: 0 0 0 auto; }
   .match-comment-banner--empty .match-comment-add { min-width: var(--tap-sm); min-height: var(--tap-sm); margin: -0.5rem -0.35rem -0.5rem 0; justify-content: center; opacity: 0.8; }
@@ -3878,7 +3961,9 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
      hidden (here and in the Mexicano current round) the court needs no dot. */
   .po-round-card .match-round-badge { display: none; }
   .po-round-card .match-card-wrap > .match-court::before,
-  .mex-current-round .match-card-wrap > .match-court::before { content: none; }
+  .mex-current-round .match-card-wrap > .match-court::before,
+  .po-round-card .match-card-wrap > .match-wo-head::before,
+  .mex-current-round .match-card-wrap > .match-wo-head::before { content: none; }
   /* Tournament list cards: keep delete button inline with the name */
   .tournament-list-card { flex-wrap: nowrap; }
   .tournament-list-card .match-teams { min-width: 0; flex: 1; }

@@ -587,6 +587,7 @@ body { font-family: var(--font-body); }
   font-weight: 700;
 }
 
+.entry-path-team-name--withdrawn { text-decoration: line-through; color: var(--text-muted); }
 .entry-path-team-names {
   display: flex;
   align-items: center;
@@ -1912,3 +1913,15 @@ h1 { font-family: var(--font-display); font-size: var(--text-xl); font-weight: 7
   margin-bottom: var(--space-3);
   font-size: var(--fs-lg);
 }
+
+
+/* ── Walkover badge on tournament path rows ── */
+.badge-walkover {
+  vertical-align: middle;
+  background: var(--color-warning-bg); color: var(--color-warning-text);
+  border: 1px solid var(--color-warning-border);
+}
+/* Its own slot left of the score. The padding is symmetric, so the score
+   stays centred in the row exactly like rows without a walkover. */
+.entry-path-score-center--wo { position: relative; padding-inline: var(--space-12); }
+.entry-path-score-center--wo > .badge-walkover { position: absolute; left: 0; top: 50%; transform: translateY(-50%); }

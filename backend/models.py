@@ -275,6 +275,9 @@ class Match:
     # ``format_override.decider`` or the tournament setting at record time).
     # ``None`` for points scores and for legacy set scores (= full set).
     decider: SetDecider | None = None
+    # True when the result was recorded because one side withdrew (W/O).
+    # The winner comes from the score; walkovers are never ELO-rated.
+    walkover: bool = False
 
     def __getstate__(self) -> dict:
         return self.__dict__.copy()
@@ -297,6 +300,7 @@ class Match:
         state.setdefault("score_history", [])
         state.setdefault("format_override", None)
         state.setdefault("decider", None)
+        state.setdefault("walkover", False)
         self.__dict__.update(state)
 
     @property
@@ -333,6 +337,8 @@ class GroupStanding:
     sets_lost: int = 0
     points_for: int = 0
     points_against: int = 0
+    # True when the entry withdrew; such rows sort last and cannot advance.
+    withdrawn: bool = False
 
     @property
     def sets_diff(self) -> int:
@@ -366,16 +372,18 @@ class GroupStanding:
         # Add new fields missing in old pickles.
         state.setdefault("sets_won", 0)
         state.setdefault("sets_lost", 0)
+        state.setdefault("withdrawn", False)
         self.__dict__.update(state)
 
 
 def reset_match_result(m: Match) -> None:
     """Return *m* to the unplayed state.
 
-    Clears the score, sets and every score-lifecycle / review field, and sets the
-    status to SCHEDULED.  Keeps the comment, format override, court and
-    ``score_history`` (the audit log).
+    Clears the score, sets, the walkover marker and every score-lifecycle /
+    review field, and sets the status to SCHEDULED.  Keeps the comment, format
+    override, court and ``score_history`` (the audit log).
     """
+    m.walkover = False
     m.score = None
     m.sets = None
     m.third_set_loss = False

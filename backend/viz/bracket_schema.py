@@ -246,6 +246,27 @@ def _label_from_match_data(data: dict, max_name: int = 16) -> str:
     return f"{t1}\nvs\n{t2}"
 
 
+def _strike_lines(data: dict, max_name: int = 16) -> list[int]:
+    """Indices of the label lines (see :func:`_label_from_match_data`) to strike through.
+
+    A walkover match carries ``walkover_loser`` (``"team1"`` / ``"team2"``): the
+    side that withdrew.  Only that side's name lines are struck; the winner and
+    the score line are left alone, also when both sides withdrew.
+    """
+    side = data.get("walkover_loser")
+    if side not in ("team1", "team2"):
+        return []
+    n1 = len(((data.get("team1") or "TBD")[:max_name]).split("\n"))
+    n2 = len(((data.get("team2") or "TBD")[:max_name]).split("\n"))
+    return list(range(n1)) if side == "team1" else list(range(n1 + 1, n1 + 1 + n2))
+
+
+def _mark_strike(meta: dict, data: dict) -> None:
+    lines = _strike_lines(data)
+    if lines:
+        meta["strike_lines"] = lines
+
+
 def _next_power_of_two(n: int) -> int:
     if n <= 1:
         return 1
@@ -582,6 +603,7 @@ def _build_single_elim_bracket(
             md = (match_labels or {}).get(mid)
             if md:
                 node_meta[mid]["label"] = _label_from_match_data(md)
+                _mark_strike(node_meta[mid], md)
                 node_meta[mid]["has_teams"] = True
             positions[mid] = (x_round, y_mid)
 
@@ -627,6 +649,7 @@ def _build_single_elim_bracket(
         md = (match_labels or {}).get(tp_id)
         if md:
             node_meta[tp_id]["label"] = _label_from_match_data(md)
+            _mark_strike(node_meta[tp_id], md)
             node_meta[tp_id]["has_teams"] = True
         positions[tp_id] = (x_tp, y_tp)
         for semi in semi_round_nodes:
@@ -748,6 +771,7 @@ def _build_double_elim_bracket(
             md = (match_labels or {}).get(mid)
             if md:
                 node_meta[mid]["label"] = _label_from_match_data(md)
+                _mark_strike(node_meta[mid], md)
                 node_meta[mid]["has_teams"] = True
             positions[mid] = (x_round, y_mid)
 
@@ -887,6 +911,7 @@ def _build_double_elim_bracket(
             _md = (match_labels or {}).get(f"l_{global_idx}")
             if _md:
                 node_meta[_mid]["label"] = _label_from_match_data(_md)
+                _mark_strike(node_meta[_mid], _md)
                 node_meta[_mid]["has_teams"] = True
             positions[_mid] = (_x_eff, _y_mid)
             id_to_viz[_mref.id] = _mid
@@ -989,6 +1014,7 @@ def _build_double_elim_bracket(
     gf_md = (match_labels or {}).get("grand_final")
     if gf_md:
         gf_meta["label"] = _label_from_match_data(gf_md)
+        _mark_strike(gf_meta, gf_md)
         gf_meta["has_teams"] = True
     node_meta[gf_id] = gf_meta
     positions[gf_id] = (x_gf, y_gf)
@@ -1193,6 +1219,7 @@ def _draw(
         ax.plot(sx, sy, "o", color=es["color"], markersize=_base_arrow_ms * 0.25, zorder=5)
 
     # ── Draw nodes ──────────────────────────────────────────────────────
+    strike_jobs: list[tuple[object, list[int], str]] = []
     for nid in G.nodes():
         if nid not in positions:
             continue
@@ -1227,6 +1254,7 @@ def _draw(
         )
         ax.add_patch(box)
 
+        label_txt = None
         fontsize = (7 if kind == BracketNodeKind.BYE else (8 if kind == BracketNodeKind.ADVANCE else 9)) * box_scale
         round_header = meta.get("round_header", "")
         header_fs = 8 * box_scale * title_font_scale
@@ -1253,7 +1281,7 @@ def _draw(
                 zorder=4,
             )
             # Team names + score in the main body
-            ax.text(
+            label_txt = ax.text(
                 x,
                 y - 0.05 * box_scale,
                 label,
@@ -1299,7 +1327,7 @@ def _draw(
                     zorder=4,
                 )
         else:
-            ax.text(
+            label_txt = ax.text(
                 x,
                 y,
                 label,
@@ -1310,6 +1338,8 @@ def _draw(
                 color=style["tc"],
                 zorder=4,
             )
+        if label_txt is not None and meta.get("strike_lines"):
+            strike_jobs.append((label_txt, meta["strike_lines"], style["tc"]))
 
     # ── Stage column labels (top) ───────────────────────────────────────
     y_top = max(p[1] for p in positions.values()) + 1.5
@@ -1336,4 +1366,42 @@ def _draw(
     ax.set_ylim(min(ys) - margin, y_top + 1.0)
 
     fig.tight_layout()
+    _draw_strikes(fig, ax, strike_jobs)
     return fig
+
+
+def _draw_strikes(fig: plt.Figure, ax: plt.Axes, jobs: list[tuple[object, list[int], str]]) -> None:
+    """Draw a line through the given lines of each multi-line label text.
+
+    Matplotlib text has no strikethrough, so each line's extent is measured
+    with the renderer (after ``tight_layout``, when the pixel geometry is
+    final) and converted to data coordinates, which scale with any output dpi.
+    """
+    if not jobs:
+        return
+    renderer = fig.canvas.get_renderer()
+    inv = ax.transData.inverted()
+    for txt, line_idx, colour in jobs:
+        lines = txt.get_text().split("\n")
+        props = txt.get_fontproperties()
+        bb = txt.get_window_extent(renderer)
+        _w, h1, d1 = renderer.get_text_width_height_descent("lp", props, ismath=False)
+        pitch = (bb.height - h1) / (len(lines) - 1) if len(lines) > 1 else 0.0
+        font_px = txt.get_fontsize() * fig.dpi / 72
+        cx = (bb.x0 + bb.x1) / 2
+        for k in line_idx:
+            if k >= len(lines) or not lines[k].strip():
+                continue
+            w, _h, _d = renderer.get_text_width_height_descent(lines[k], props, ismath=False)
+            baseline = bb.y1 - h1 - k * pitch + d1
+            y = baseline + 0.27 * font_px  # about the middle of the lower-case letters
+            pad = 0.08 * font_px
+            (x0, y0), (x1, _y1) = inv.transform([(cx - w / 2 - pad, y), (cx + w / 2 + pad, y)])
+            ax.plot(
+                [x0, x1],
+                [y0, y0],
+                color=colour,
+                linewidth=max(0.8, txt.get_fontsize() * 0.09),
+                solid_capstyle="butt",
+                zorder=5,
+            )

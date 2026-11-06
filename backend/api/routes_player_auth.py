@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from ..auth.deps import PlayerIdentity, get_current_player, get_current_user, require_not_demo
 from ..auth.models import User
 from ..auth.security import create_player_token, create_profile_token
-from ..models import GPPhase, Player, TournamentType
+from ..models import GPPhase, MexPhase, Player, TournamentType
 from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .db import get_db
 from .elo_recalc import mark_elo_dirty
@@ -402,6 +402,9 @@ async def remove_player_from_tournament(
         t = data["tournament"]
         if str(getattr(t, "phase", "")) == GPPhase.FINISHED:
             raise HTTPException(409, "Cannot remove players from a finished tournament")
+        if str(getattr(t, "phase", "")) == MexPhase.PLAYOFFS:
+            # A removed player could still hold a bracket slot; forfeits handle that.
+            raise HTTPException(409, "Use withdrawal during play-offs")
 
         player = next((p for p in t.players if p.id == player_id), None)
         if player is None:

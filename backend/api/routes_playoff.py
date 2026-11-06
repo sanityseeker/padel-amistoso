@@ -43,6 +43,7 @@ from .helpers import (
     _mark_admin_score,
 )
 from .schemas import CreatePlayoffRequest, RecordScoreRequest, RecordTennisScoreRequest, UpdateCourtsRequest
+from .routes_withdrawals import withdraw_unavailable_ids, withdrawal_summaries
 from .state import allocate_tournament_id, _tournament_versions, get_tournament_lock, save_tournament
 from .player_secret_store import create_secrets_for_tournament
 from .push_events import notify_champion, notify_winners
@@ -197,6 +198,8 @@ async def po_status(tid: str) -> dict:
         "losers_champion": (
             [p.name for p in t.bracket.losers_champion()] if espejo and t.bracket.losers_champion() else None
         ),
+        "withdrawals": withdrawal_summaries(t),
+        "withdraw_unavailable_ids": withdraw_unavailable_ids(t),
         "sport": data.get("sport", "padel"),
     }
 

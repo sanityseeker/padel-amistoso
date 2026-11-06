@@ -81,6 +81,32 @@ def games_from_sets(sets: Sequence[SetPair], decider: SetDecider | str | None = 
     return games_a, games_b
 
 
+def totals_from_sets(
+    sets: Sequence[SetPair],
+    decider: SetDecider | str | None = None,
+) -> tuple[int, int, bool]:
+    """Total the games of a set score so the set winner always has the higher total.
+
+    Games are summed with :func:`games_from_sets` (a match tie-break counts as
+    one game).  When the totals do not favour the team that won more sets
+    (equal totals, or the set winner has fewer games), the set winner's total
+    is raised to one more than the other's, so ``Match.winner_team`` (which
+    compares the two totals) always names the set winner.
+
+    Returns:
+        ``(games_a, games_b, decided_by_third_set)``; the flag is True whenever
+        exactly three sets were played.
+    """
+    total1, total2 = games_from_sets(sets, decider)
+    sets1_won = sum(1 for s in sets if s[0] > s[1])
+    sets2_won = sum(1 for s in sets if s[1] > s[0])
+    if sets1_won > sets2_won and total1 <= total2:
+        total1 = total2 + 1
+    elif sets2_won > sets1_won and total2 <= total1:
+        total2 = total1 + 1
+    return total1, total2, len(sets) == 3
+
+
 def validate_decider_sets(sets: Sequence[SetPair], decider: SetDecider | str | None) -> None:
     """Raise ``ValueError`` when the third set does not fit the decider.
 

@@ -67,6 +67,8 @@ function _format_match_score(m) {
 /** Score cell text, flagged when the score is disputed or not yet confirmed. */
 function _export_score_cell(m) {
   const score = _format_match_score(m);
+  // Walkover: a small label right after the score (no extra column, so the score keeps its x).
+  if (m.walkover) return { html: `${esc(score)}<span class="wo">${esc(t('txt_export_score_walkover'))}</span>` };
   if (m.disputed) return `${score} (${t('txt_export_score_disputed')})`;
   if (m.score && m.scored_by && !m.score_confirmed) return `${score} (${t('txt_export_score_unconfirmed')})`;
   return score;
@@ -79,7 +81,7 @@ function _exportEloHeader(status) {
 
 function _report_table(headers, rows, cls = '') {
   const thead = `<tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr>`;
-  const tbody = rows.map(row => `<tr>${row.map(c => `<td>${esc(String(c))}</td>`).join('')}</tr>`).join('');
+  const tbody = rows.map(row => `<tr>${row.map(c => `<td>${c && typeof c === 'object' && 'html' in c ? c.html : esc(String(c))}</td>`).join('')}</tr>`).join('');
   return `<table${cls ? ` class="${cls}"` : ''}><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
 }
 
@@ -219,6 +221,7 @@ function _build_report_document(title, bodyHtml) {
     th { background: #f3f4f6; }
     table.standings { table-layout: fixed; }
     table.standings th:first-child { width: 28%; }
+    .wo { margin-left: 6px; padding: 0 4px; border: 1px solid #b45309; border-radius: 4px; color: #92400e; font-size: 0.75em; font-weight: 600; white-space: nowrap; }
     img { max-width: 100%; height: auto; }
     h2, h3 { break-after: avoid; }
     tr, img { break-inside: avoid; }
@@ -324,7 +327,8 @@ async function _build_gp_report(tid, opts, tvSettings) {
     body += _report_table(
       headers,
       rows.map(r => {
-        const base = [r.player, r.played, r.wins, r.losses];
+        const name = r.withdrawn ? `${r.player} (${t('txt_withdrawn_badge')})` : r.player;
+        const base = [name, r.played, r.wins, r.losses];
         if (hasSets) base.push(r.sets_won, r.sets_lost, r.sets_diff);
         base.push(r.points_for, r.points_against, r.point_diff);
         if (opts.elo) base.push(r.elo ?? '—');
@@ -332,6 +336,9 @@ async function _build_gp_report(tid, opts, tvSettings) {
       }),
       'standings',
     );
+    for (const w of (status.withdrawals || []).filter(x => x.kind === 'annul' && x.group === gName)) {
+      body += `<p>${esc(t('txt_withdrawn_annulled_note', { names: w.name }))}</p>`;
+    }
   }
   if (opts.history) body += _report_history(t('txt_txt_group_match_history'), groupMatches, tbl);
 

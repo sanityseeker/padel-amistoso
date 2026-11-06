@@ -67,6 +67,7 @@ function _ic(name) {
     users:    `<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>`,
     user:     `<path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>`,
     userplus: `<path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>`,
+    userminus: `<path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="22" y1="11" x2="16" y2="11"/>`,
     grid:     `<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>`,
     building: `<rect x="2" y="7" width="20" height="14" rx="1"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/>`,
     star:     `<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>`,
@@ -395,6 +396,32 @@ function trl(label) {
   if (!label) return label;
   if (label === '3rd Place') return t('txt_third_place_label');
   return label.replace(/\bGroup\b/g, t('txt_txt_group_word'));
+}
+
+/**
+ * Bracket round name as it reads inside a sentence, with the article (and the
+ * "a" of "pasa a" in Spanish).  Engine labels are English ("Final",
+ * "Semi-Final", "Round of 16", "3rd Place", "Winners R2"...), so build the
+ * phrase from keys instead of gluing a bare label into the string.
+ * @param {string} label  Engine round label.
+ * @param {'to'|'match'} kind  'to' = destination of "advances to"; 'match' = object of "wins".
+ * @returns {string}
+ */
+function trlPhrase(label, kind) {
+  const k = kind === 'to' ? 'to' : 'm';
+  const raw = String(label || '').trim();
+  let m;
+  if (raw === 'Final') return t(`txt_rnd_${k}_final`);
+  if (raw === 'Semi-Final') return t(`txt_rnd_${k}_semi`);
+  if (raw === 'Quarter-Final') return t(`txt_rnd_${k}_quarter`);
+  if (raw === '3rd Place') return t(`txt_rnd_${k}_third`);
+  if (raw === 'Grand Final') return t(`txt_rnd_${k}_grand`);
+  if (raw === 'Super Final') return t(`txt_rnd_${k}_super`);
+  if (raw === 'Round of 16') return t(`txt_rnd_${k}_r16`);
+  if ((m = /^Round of (\d+)$/.exec(raw))) return t(`txt_rnd_${k}_round`, { n: m[1] });
+  if ((m = /^Winners R(\d+)$/.exec(raw))) return t(`txt_rnd_${k}_winners`, { n: m[1] });
+  if ((m = /^Losers R(\d+)$/.exec(raw))) return t(`txt_rnd_${k}_losers`, { n: m[1] });
+  return t(`txt_rnd_${k}_other`, { label: trl(raw) });
 }
 
 /** @returns {'en'|'es'} */
