@@ -197,7 +197,7 @@ function _renderLobbyDetailsBody(rid, r) {
   html += `<input type="text" id="reg-alias-input-${esc(rid)}" class="settings-input settings-input--mono settings-input--grow" placeholder="${t('txt_tv_alias_placeholder')}" value="${escAttr(regAlias)}" pattern="[a-zA-Z0-9_-]+" maxlength="64">`;
   html += `<button type="button" id="reg-alias-save-btn-${esc(rid)}" class="btn btn-sm btn-primary" onclick="withLoading(this,()=>_setRegAlias('${esc(rid)}'))">${t('txt_txt_save')}</button>`;
   if (regAlias) {
-    html += `<button type="button" class="btn btn-sm btn-danger" onclick="withLoading(this,()=>_deleteRegAlias('${esc(rid)}'))">✕ ${t('txt_txt_remove')}</button>`;
+    html += `<button type="button" class="btn btn-sm btn-danger" onclick="withLoading(this,()=>_deleteRegAlias('${esc(rid)}'))">${_ic('x')} ${t('txt_txt_remove')}</button>`;
   }
   html += `</div>`;
   html += `<div class="settings-url-preview">`;
@@ -369,7 +369,7 @@ function _renderLobbySettingsPage(rid, ctx) {
   html += `<span class="badge badge-count">${t('txt_lobby_settings_title')}</span>`;
   html += `</h3>`;
   html += `<div class="gp-ops-next-action">`;
-  html += `<button type="button" class="btn btn-sm btn-muted" onclick="_closeLobbySettingsPage('${esc(rid)}')">← ${t('txt_reg_back_to_lobby')}</button>`;
+  html += `<button type="button" class="btn btn-sm btn-muted" onclick="_closeLobbySettingsPage('${esc(rid)}')">${_ic('arrowleft')} ${t('txt_reg_back_to_lobby')}</button>`;
   html += `</div>`;
   html += `</div>`;
   html += `</div>`;

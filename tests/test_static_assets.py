@@ -1644,6 +1644,10 @@ def test_admin_header_nav_holds_tournaments_and_new():
     css = _read_frontend("admin.css")
     assert "max-width: 18rem;" in css
     assert ".chip-close { min-width: 44px; min-height: 44px; }" in css
+    # Phones: Tournaments / New stay icon-only squares on the same row as the
+    # labelled account buttons (see test_phone_header_is_one_labelled_row).
+    assert ".page-header-row--nav .tab-btn-label { display: none; }" in css
+    assert ".page-header-row--nav .tab-btn--nav { min-width: 40px; min-height: 48px; }" in css
 
 
 def test_admin_players_nav_label_key_exists():
@@ -1721,3 +1725,319 @@ def test_elo_scope_labels_exist_and_are_used():
     assert "elo_scope" in _read_frontend("admin-export.js")
     assert "txt_player_entry_elo_delta" in _read_frontend("player.js")
     assert "`ELO ${sign}${delta}`" not in _read_frontend("player.js")
+
+
+# ── Admin on phones (360-430px): control sizes, score rows, nav, tables ────
+
+
+def _touch_block(css: str) -> str:
+    """The late `(max-width: 900px)` block that owns admin control sizing."""
+    return _phone_block(css, "@media (max-width: 900px) {\n  .btn { min-height: var(--tap-md); }")
+
+
+def test_admin_touch_sizes_come_from_one_tap_scale():
+    theme = _read_frontend("theme.css")
+    for token in ("--tap-lg: 44px;", "--tap-md: 40px;", "--tap-sm: 36px;"):
+        assert token in theme, token
+    css = _read_frontend("admin.css")
+    block = _touch_block(css)
+    small = block[: block.index("{ min-height: var(--tap-sm); }")]
+    for sel in (".btn-sm,", ".match-filter-toggle button,", ".group-nav-btn,", ".match-edit-btn,", ".btn-ghost,"):
+        assert sel in small, sel
+    assert "[data-score-save],\n  .btn-lg-action { min-height: var(--tap-lg); }" in block
+    # The early phone block no longer re-declares button heights.
+    early = _phone_block(css, "@media (max-width: 600px) {\n  body { padding: 0.5rem; }")
+    for gone in (
+        "\n  .btn { min-height",
+        "\n  .btn-sm { min-height",
+        ".match-edit-btn { min-height",
+        ".group-nav-btn { min-height",
+    ):
+        assert gone not in early, gone
+    assert ".btn-sm { padding: 0.35rem 0.7rem; font-size: var(--fs-sm); }" in css
+
+
+def test_points_score_row_is_one_aligned_line_on_phones():
+    css = _read_frontend("admin.css")
+    early = _phone_block(css, "@media (max-width: 600px) {\n  body { padding: 0.5rem; }")
+    assert ".match-actions { width: 100%; flex-wrap: nowrap; gap: var(--space-2); }" in early
+    assert ".match-actions > .score-entry:not(.score-entry-sets) { flex: 1 1 auto; display: flex;" in early
+    assert ".match-actions .score-input-narrow { flex: 1 1 0; max-width: 4.5rem; }" in early
+    assert ".match-actions [data-score-save] { margin-left: auto; }" in early
+    assert ".match-actions:has(> .score-entry-sets:not(.hidden))," in early
+    assert (
+        ".match-tbd-disabled .match-actions,\n  .match-tbd-disabled .match-comment-banner { display: none; }" in early
+    )
+    # One shared renderer still draws every format's score inputs.
+    gp = _read_frontend("admin-gp.js")
+    assert gp.count("function _renderScoreInputs(") == 1
+
+
+def test_long_settings_tab_strip_is_a_four_column_grid_on_narrow_phones():
+    css = _read_frontend("admin.css")
+    block = _phone_block(css, "@media (max-width: 420px) {\n  /* Narrow phones: a strip with six or more tabs")
+    assert ".settings-subtabs:has(> .settings-subtab-btn:nth-child(6)) {" in block
+    assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in block
+    assert "overflow-x" not in block and "nowrap" not in block
+
+
+def test_action_rows_share_one_pattern():
+    css = _read_frontend("admin.css")
+    assert ".action-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }" in css
+    assert ".action-row--split > :first-child:not(:only-child) { margin-right: auto; }" in css
+    touch = _touch_block(css)
+    assert ".action-row--end { justify-content: flex-end; }" in touch
+    assert ".court-chip-delete { width: var(--tap-sm); height: var(--tap-sm);" in touch
+    assert ".action-row--fill > * { flex: 1 1 0; min-width: 0; }" in css
+    assert ".action-row--stack { flex-direction: column; align-items: stretch; }" in css
+    assert ".courts-editor-input { flex: 1 1 auto; width: auto; min-width: 6rem; }" in css
+    tv = _read_frontend("admin-tv-email.js")
+    assert tv.count("action-row action-row--end") == 4
+    assert tv.count("action-row action-row--stack") == 2
+    # Banner: secondary (Remove) first, primary (Save) last.
+    banner = tv[tv.index("mt-1-5 action-row action-row--end") :]
+    assert banner.index("_clearTournamentBanner()") < banner.index("_setTournamentBanner()")
+    mex = _read_frontend("admin-mex.js")
+    assert '<div class="advanced-save-row action-row action-row--end">' in mex
+    courts = mex[mex.index('<div class="courts-editor-actions action-row action-row--split">') :]
+    assert courts.index("_addEditorCourt(") < courts.index("_cancelCourtEditor()") < courts.index("_saveCourtEditor(")
+    assert 'aria-label="Remove">&times;' not in mex
+    assert '<div class="export-actions-row action-row action-row--fill">' in _read_frontend("admin-export.js")
+    shared = _read_frontend("shared.js")
+    for icon in ("    x:", "    flag:", "    arrowleft:", "    arrowright:"):
+        assert icon in shared, icon
+
+
+def test_secondary_actions_are_quiet_and_use_stroke_icons():
+    gp = _read_frontend("admin-gp.js")
+    form = gp[gp.index("function _renderEditForm") : gp.index("function _canClearMatchResult")]
+    assert '<div class="action-row action-row--split">' in form
+    assert 'btn btn-sm btn-outline-danger" onclick="_clearMatchResult(\'${m.id}\')"' in form
+    assert (
+        "class=\"btn btn-sm btn-outline\" onclick=\"_cancelEditMatch('${m.id}')\">${t('txt_txt_cancel')}</button>"
+        in form
+    )
+    assert "✕" not in form and 'btn-danger"' not in form
+    edit = gp[gp.index("const editBtn = () => {") : gp.index("if (m.status === 'completed')")]
+    assert "${_ic('edit')}</button>" in edit and 'aria-label="${label}" title="${label}"' in edit
+    assert "${t('txt_txt_start_playoffs')} ${_ic('arrowright')}" in gp
+    mex = _read_frontend("admin-mex.js")
+    assert "&#9632;" not in mex and "${_ic('flag')} ${t('txt_txt_end_mexicano')}" in mex
+    assert "${_ic('check')} ${t('txt_txt_finish_as_is')}" in mex
+    assert "${_ic('arrowleft')} ${t('txt_txt_back_to_mexicano')}" in mex
+    utils = _read_frontend("admin-utils.js")
+    assert "aria-label=\"${escAttr(t('txt_admin_bracket_tune_btn'))}\"" in utils
+    assert "<span class=\"btn-label\">${esc(t('txt_admin_bracket_tune_btn'))}</span>" in utils
+    css = _read_frontend("admin.css")
+    assert ".admin-bracket-tune-btn .btn-label { display: none; }" in css
+    assert ".settings-help-master-toggle { background: transparent; border-color: transparent;" in _touch_block(css)
+
+
+def test_match_card_has_meta_teams_actions_lines_on_phones():
+    gp = _read_frontend("admin-gp.js")
+    banner = gp[gp.index("function _renderCommentBanner(") : gp.index("function _renderScoreDisplay(")]
+    assert "match-comment-banner--empty" in banner
+    assert '<button type="button" class="match-comment-add"' in banner
+    assert 'aria-label="${addLabel}"' in banner and "const addLabel = escAttr(t('txt_match_add_comment'));" in banner
+    assert '<span class="match-comment-add"' not in banner
+    assert '<div class="card po-round-card" id="po-round-card-${escAttr(key)}">' in gp
+    css = _read_frontend("admin.css")
+    early = _phone_block(css, "@media (max-width: 600px) {\n  body { padding: 0.5rem; }")
+    assert ".match-card-wrap > .match-round-badge { order: 1;" in early
+    assert ".match-card-wrap > .match-court { order: 2;" in early
+    assert ".match-card-wrap > .match-comment-banner--empty { order: 3;" in early
+    assert ".match-card-wrap > .match-teams { order: 4; }" in early
+    assert ".match-card-wrap > .match-edit-btn { order: 6; margin-left: auto; }" in early
+    # The generic banner order is declared before the empty-banner override.
+    assert early.index(".match-card-wrap > .match-comment-banner { order: 8; }") < early.index(
+        ".match-card-wrap > .match-comment-banner--empty { order: 3;"
+    )
+    assert ".po-round-card .match-round-badge { display: none; }" in early
+
+
+def test_sticky_nav_wraps_filter_to_second_row_on_phones():
+    gp = _read_frontend("admin-gp.js")
+    assert gp.count('<div class="group-nav-chips">') == 2
+    for bar_id in ("gp-group-nav", "po-round-nav"):
+        start = gp.index(f'<div class="group-nav-bar" id="{bar_id}">`;')
+        chunk = gp[start : start + 900]
+        assert (
+            chunk.index('<div class="group-nav-chips">')
+            < chunk.index("group-nav-btn")
+            < chunk.index('<span class="group-nav-sep"')
+        ), bar_id
+    css = _read_frontend("admin.css")
+    assert ".group-nav-chips { display: contents; }" in css
+    early = _phone_block(css, "@media (max-width: 600px) {\n  body { padding: 0.5rem; }")
+    assert "flex-wrap: wrap; overflow: visible; }" in early[early.index("  .group-nav-bar {") :][:200]
+    chips = early[early.index("  .group-nav-chips {") :]
+    chips = chips[: chips.index("}")]
+    assert "flex: 1 1 auto;" in chips and "min-width: 0;" in chips and "overflow-x: auto;" in chips
+    assert ".group-nav-bar > .match-filter-row { flex: 0 0 auto; margin-left: auto;" in early
+    # The bar stays the sticky element and the offset is measured, not assumed.
+    utils = _read_frontend("admin-utils.js")
+    assert "return el.getBoundingClientRect().height;" in utils
+    assert 'aria-label="Match filter"' not in utils
+    assert "aria-label=\"${escAttr(t('txt_admin_match_filter_label'))}\"" in utils
+    assert _read_frontend("i18n.js").count('"txt_admin_match_filter_label"') == 2
+
+
+def test_player_codes_table_stacks_into_cards_on_phones():
+    js = _read_frontend("admin-player-codes.js")
+    assert '<table class="player-codes-table table-stack">' in js
+    assert '<td class="player-codes-name stack-title" id="pc-name-${pid}">' in js
+    assert '<td class="player-codes-cell stack-pri" data-label="${lblPass}">' in js
+    assert '<td class="player-codes-cell stack-full" data-label="${lblContact}">' in js
+    assert js.count("stack-act") == 4
+    # Handlers are untouched.
+    for handler in (
+        "_savePlayerContact('${pid}')",
+        "_hubOpenSearch(",
+        "_showPlayerQr(",
+        "_regeneratePlayerCode('${pid}')",
+    ):
+        assert handler in js, handler
+    css = _read_frontend("admin.css")
+    assert ".player-codes-table.table-stack td.stack-act { order: 3; flex: 0 0 auto; }" in css
+    # The shared stacked-table block is reused unchanged (clubs still uses it three times).
+    assert _read_frontend("admin-clubs.js").count('<table class="player-codes-table table-stack">') == 3
+
+
+def test_decision_zone_groups_courts_and_decisions():
+    gp = _read_frontend("admin-gp.js")
+    mex = _read_frontend("admin-mex.js")
+    for js, section in ((gp, '<div id="gp-playoffs-section">'), (mex, '<div id="mex-next-section">')):
+        start = js.index(section)
+        zone = js[start : start + 1400]
+        assert '<div class="decision-zone">' in zone
+        assert (
+            zone.index('<div class="decision-zone">')
+            < zone.index("_renderCourtsSection(")
+            < zone.index('<div class="decision-actions-row">')
+        )
+    # End Mexicano is a quiet secondary under the primary decision.
+    nxt = mex[mex.index('<div id="mex-next-section">') :]
+    nxt = nxt[: nxt.index("// decision-zone")]
+    assert '<div class="action-row action-row--fill decision-secondary">' in nxt
+    assert 'class="btn btn-outline btn-lg-action"${_decisionDisabledAttrs(endReason)}' in nxt
+    assert "btn btn-primary btn-lg-action" not in nxt
+    assert '<div id="mex-playoffs-section" class="card decision-zone">' in mex
+    for label in ("txt_txt_finish_as_is", "txt_txt_back_to_mexicano"):
+        line = next(ln for ln in mex.splitlines() if f"t('{label}')" in ln and "<button" in ln)
+        assert "btn btn-outline btn-lg-action" in line, label
+    # Play-offs: the courts strip moved down into the same slot.
+    po = gp[gp.index("async function renderPO(") :]
+    po = po[: po.index("_renderSettingsCard(")]
+    assert po.index("_renderPlayoffMatchesByRound(") < po.index('<div class="decision-zone">${_renderCourtsSection(')
+    css = _read_frontend("admin.css")
+    assert ".btn-lg-action { padding: 0.6rem 1rem; font-size: 1rem; }" in css
+    touch = _touch_block(css)
+    assert ".decision-zone {" in touch and ".card-title {" in touch
+
+
+def test_card_headers_share_one_title_style():
+    gp = _read_frontend("admin-gp.js")
+    mex = _read_frontend("admin-mex.js")
+    utils = _read_frontend("admin-utils.js")
+    assert "<h3 class=\"card-heading-row card-title\">${t('txt_txt_group_name_value'" in gp
+    assert gp.count('<div class="gp-review-queue-head card-heading-row">') == 2
+    assert '<div class="gp-review-queue-head card-heading-row">' in mex
+    assert '<div class="court-board-header card-heading-row"><h3 class="card-title">' in mex
+    assert '<div class="current-round-header card-heading-row">' in mex
+    assert "<h2 class=\"card-heading-row card-title\">${t('txt_txt_leaderboard')}" in mex
+    assert "<h3 class=\"card-heading-row card-title\">${t('txt_txt_previous_rounds')}</h3>" in mex
+    assert '<div class="admin-bracket-header card-heading-row">' in utils
+    # Old header classes stay as aliases for their existing styles.
+    css = _read_frontend("admin.css")
+    for alias in (".court-board-header {", ".admin-bracket-card .admin-bracket-header {", ".current-round-header {"):
+        assert alias in css, alias
+
+
+def test_mexicano_advanced_summary_is_plain_and_translated():
+    mex = _read_frontend("admin-mex.js")
+    section = mex[mex.index("function _renderMexSettingsSection(") :]
+    section = section[: section.index('let html = `<details class="advanced-section">`;')]
+    for gone in ("gap: ${", "bonus: ${", "str: ${", "disc: ${"):
+        assert gone not in section, gone
+    for key in (
+        "txt_mex_adv_summary_rounds",
+        "txt_mex_adv_summary_rounds_unlimited",
+        "txt_mex_adv_summary_scoring_default",
+        "txt_mex_adv_summary_scoring_custom",
+    ):
+        assert f"'{key}'" in section, key
+        assert _read_frontend("i18n.js").count(f'"{key}"') == 2, key
+
+
+def test_service_worker_cache_bumped_for_admin_phone_pass(client):
+    sw = client.get("/service-worker.js", headers={"Accept-Encoding": "identity"}).text
+    version = re.search(r"CACHE_NAME = 'amistoso-v(\d+)'", sw)
+    assert version and int(version.group(1)) >= 107
+
+
+def test_phone_header_is_one_labelled_row():
+    """Phones: Tournaments / New (icon-only) and the account buttons share one
+    row; each account button shows a one-word label under its icon, Logout
+    included, with the full name as title / aria-label."""
+    auth = _read_frontend("auth.js")
+    ui = auth[auth.index("function updateAuthUI(") :]
+    ui = ui[: ui.index("\n}\n")]
+    assert '<span class="nav-btn-short" aria-hidden="true">${esc(short)}</span>' in ui
+    assert 'title="${escAttr(full)}" aria-label="${escAttr(full)}"' in ui
+    assert "t('txt_admin_nav_short_communities')" in ui and "t('txt_admin_nav_short_password')" in ui
+    assert "<span class=\"nav-btn-phone-ic\">${_ic('logout')}</span>" in ui
+    assert 'title="Communities"' not in ui
+    assert "    logout:" in _read_frontend("shared.js")
+    i18n = _read_frontend("i18n.js")
+    for key in ("txt_admin_nav_short_communities", "txt_admin_nav_short_password"):
+        assert i18n.count(f'"{key}"') == 2, key
+    css = _read_frontend("admin.css")
+    assert ".nav-btn-short,\n.nav-btn-phone-ic { display: none; }" in css
+    phone = css[css.index("  /* Phone header, two lines:") :]
+    phone = phone[: phone.index("  /* Create: the four format tabs")]
+    assert ".page-header-row--nav { flex-wrap: nowrap;" in phone
+    assert ".auth-nav-icons { display: contents; }" in phone
+    btn = phone[phone.index("  #auth-status .btn.auth-nav-btn {") :]
+    btn = btn[: btn.index("}")]
+    assert "flex-direction: column;" in btn and "max-width: 4.5rem;" in btn
+    assert "#auth-status .nav-btn-short {" in phone and "text-overflow: ellipsis;" in phone
+    assert "#auth-status .nav-btn-label { display: none; }" in phone
+    # The old three-line layout (centred icon line, Logout ordered last) is gone.
+    assert "flex: 1 0 100%;" not in phone and "order: 3" not in phone
+    # Header nav keeps the 44px target on tablets.
+    assert ".auth-nav-btn { min-height: var(--tap-lg); }" in _touch_block(css)
+
+
+_GLYPH_ICON_RE = re.compile(
+    r">\s*[✓✔✕✖✗×←→↻■▶]"  # glyph as the first thing inside an element
+    r"|[✓✔✕✖✗←↻■▶] \$\{"  # glyph prefixing a translated label
+    r"|textContent = '[✓✔✕✖✗×]'"
+    r"|\? '[✓✔✕✖✗]'"
+    r"|&times;|&#10003;|&#10005;|&#215;|&#9632;|&#9654;|&rarr;|&larr;"
+)
+
+
+@pytest.mark.parametrize(
+    "name",
+    sorted(p.name for p in (Path(__file__).parent.parent / "frontend").glob("admin-*.js")) + ["auth.js", "index.html"],
+)
+def test_admin_buttons_use_svg_icons_not_text_glyphs(name):
+    """Ticks, crosses and arrows on admin buttons and badges are _ic() / inline
+    stroke SVGs. Content stays: multipliers ("×1.2", "2×4"), bracket sequences
+    and "→ Group" select options, and arrows inside translated sentences."""
+    offenders = []
+    for line in _read_frontend(name).splitlines():
+        if line.strip().startswith(("//", "*", "/*", "<!--")):
+            continue
+        # Content, not icons: "2×4" presets, "→ Group B" <option> text.
+        if 'class="schema-preset-btn"' in line or "<option value=" in line:
+            continue
+        if _GLYPH_ICON_RE.search(line):
+            offenders.append(line.strip()[:100])
+    assert offenders == []
+
+
+def test_glyph_replacement_icons_exist():
+    shared = _read_frontend("shared.js")
+    for icon in ("    x:", "    check:", "    chevright:", "    arrowleft:", "    refresh:"):
+        assert icon in shared, icon

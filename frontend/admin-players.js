@@ -319,7 +319,7 @@ function _phRenderDetail(data) {
   html += `<h2 class="m-0">${_ic('user')} ${esc(data.name || t('txt_ph_unnamed_profile'))}</h2>`;
   html += '<div class="d-flex items-center gap-1-5 flex-wrap">';
   html += `<button type="button" class="btn btn-danger btn-sm" onclick="phDeleteProfile('${escAttr(data.id)}')">${t('txt_ph_delete_profile')}</button>`;
-  html += `<button type="button" class="btn btn-sm" onclick="phCloseDetail()">✕ ${t('txt_txt_close')}</button>`;
+  html += `<button type="button" class="btn btn-sm" onclick="phCloseDetail()">${_ic('x')} ${t('txt_txt_close')}</button>`;
   html += '</div>';
   html += '</div>';
 
@@ -629,7 +629,7 @@ async function phStartLink(profileId) {
     }
     let html = '<div class="ghost-convert-form">';
     html += `<div class="d-flex items-center justify-between mb-2"><strong class="fs-lg">${t('txt_ph_link_participation')}</strong>`;
-    html += `<button type="button" class="btn btn-sm" onclick="document.getElementById('ph-link-area').innerHTML=''">✕</button></div>`;
+    html += `<button type="button" class="btn btn-sm" onclick="document.getElementById('ph-link-area').innerHTML=''" aria-label="${escAttr(t('txt_txt_close'))}" title="${escAttr(t('txt_txt_close'))}">${_ic('x')}</button></div>`;
     html += '<div class="mb-2">';
     html += `<label class="fs-md text-muted">${t('txt_ph_select_tournament')}</label>`;
     html += `<select id="ph-link-tid" class="ph-link-select mt-1" onchange="phLoadLinkCandidates('${escAttr(profileId)}')">`;

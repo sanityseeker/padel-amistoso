@@ -457,7 +457,8 @@ textarea { min-height: 80px; }
 }
 
 /* Buttons: base + shared variants live in theme.css. Admin is a desktop/tablet
-   tool, so it drops the public 44px floor; the ≤768px block below restores it. */
+   tool, so it drops the public 44px floor; the "Touch widths" block (≤900px,
+   near the end of this file) restores sized targets from the --tap-* scale. */
 .btn { min-height: 0; }
 .btn-sm { min-height: 0; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
 .btn.loading { opacity: 0.7; pointer-events: none; position: relative; }
@@ -1401,6 +1402,9 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
   background: var(--color-primary);
 }
 .group-nav-btn.all-done { opacity: 0.55; }
+/* Group / round chips. On desktop the wrapper is transparent to the bar's
+   layout; phones make it its own scrolling row (see the 600px block). */
+.group-nav-chips { display: contents; }
 
 /* ── Tournament status bar (GP / Play-offs / Mexicano) ──
    One slim row built by admin-utils.js _renderTournamentStatusBar(): the
@@ -1774,7 +1778,18 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
 .mex-settings-rounds-input { width: 56px; }
 .advanced-save-row { display: flex; justify-content: flex-end; margin-top: 0.6rem; }
 
-.court-editor-save-btn { margin-left: auto; }
+/* ── Action rows: one pattern for the buttons under a form or panel ──────
+   .action-row          wrapping row, 8px gaps
+   .action-row--split   secondary action left, the rest (Cancel, primary)
+                        pushed right; a lone button sits right
+   .action-row--end     right-aligned, primary last (touch widths; desktop
+                        rows keep their existing alignment)
+   .action-row--fill    phones: buttons share the row in equal widths
+   .action-row--stack   phones: one full-width button per line
+   Spacing above the row comes from the context (touch widths add 8px). */
+.action-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.action-row--split > :first-child:not(:only-child) { margin-right: auto; }
+.action-row--split > :only-child { margin-left: auto; }
 
 .manual-match-actions-row {
   margin: 0.5rem 0;
@@ -2015,14 +2030,21 @@ html.bracket-lb-open body { overflow: hidden; }
   background: var(--color-active-overlay);
 }
 .match-comment-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  font-family: inherit;
   font-size: 0.75rem;
   color: var(--color-text-muted);
+  background: none;
+  border: 0;
   cursor: pointer;
   padding: 0.1rem 0.35rem;
   border-radius: var(--radius-md);
   opacity: 0.55;
   transition: opacity 0.12s, background 0.12s;
 }
+.match-comment-add:focus-visible { opacity: 1; }
 .match-comment-add:hover {
   opacity: 1;
   background: color-mix(in srgb, var(--color-text-faint) 10%, transparent);
@@ -2628,6 +2650,7 @@ html[data-theme="light"] .badge-lobby-closed { background: var(--color-error-hig
 /* Editable completed match */
 .match-edit-btn { background: none; border: 1px solid var(--color-border); color: var(--color-text-muted); padding: 0.15rem 0.4rem; border-radius: var(--radius-md); cursor: pointer; font-size: 0.75rem; }
 .match-edit-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.match-edit-btn .ic { width: 0.95rem; height: 0.95rem; }
 
 /* Per-match scoring format chip (opens #match-format-popover) */
 .match-format-btn {
@@ -3293,6 +3316,9 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
 }
 /* Account icon group (auth.js): no box of its own on wider screens. */
 .auth-nav-icons { display: contents; }
+/* Phone-only parts of the account buttons (one-word label, Logout icon). */
+.nav-btn-short,
+.nav-btn-phone-ic { display: none; }
 
 /* ── Form grid (used in schema / playoff panels) ── */
 .form-grid {
@@ -3766,23 +3792,58 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   .court-board .court-column { flex-basis: 100%; }
   .court-board-compact { grid-template-columns: repeat(2, 1fr); }
 
-  /* Match card: ensure team name gets full row before score */
+  /* Match card, three lines (CSS order on the existing flex children, so the
+     surgical single-card updates keep working):
+       1  meta: "Group A R1 · Pista 1" (small, muted) ......... [comment]
+       2  teams, full width
+       3  pending: score row  |  scored: score + badges ......... [Edit]
+     Panels (dispute, edit form, breakdown, comments) follow full width. */
+  .match-card { padding: 0.6rem 0; column-gap: var(--space-2); row-gap: var(--space-1-5); }
+  .match-card-wrap > .match-round-badge { order: 1; padding: 0; background: none; color: var(--color-text-muted); font-size: var(--fs-xs); font-weight: 600; }
+  .match-card-wrap > .match-court { order: 2; min-width: 0; font-size: var(--fs-xs); }
+  .match-card-wrap > .match-round-badge ~ .match-court::before { content: "\00b7"; margin-right: var(--space-1-5); }
+  .match-card-wrap > .match-comment-banner { order: 8; }
+  .match-card-wrap > .match-comment-banner--empty { order: 3; width: auto; margin: 0 0 0 auto; }
+  .match-comment-banner--empty .match-comment-add { min-width: var(--tap-sm); min-height: var(--tap-sm); margin: -0.5rem -0.35rem -0.5rem 0; justify-content: center; opacity: 0.8; }
+  .match-comment-banner--empty .match-comment-add .ic { width: 1.05rem; height: 1.05rem; }
+  .match-comment-add-label { display: none; }
   .match-teams { min-width: 100%; }
-  .match-card { padding: 0.6rem 0; }
+  .match-card-wrap > .match-teams { order: 4; }
+  .match-card-wrap > * { order: 5; }
+  .match-card-wrap > .match-edit-btn { order: 6; margin-left: auto; }
+  .match-card-wrap > .admin-dispute-panel,
+  .match-card-wrap > .match-actions,
+  .match-card-wrap > .breakdown-details { order: 7; flex-basis: 100%; }
+  /* Opening the editor on an empty banner moves it to the bottom, full width. */
+  .match-card-wrap > .match-comment-banner--empty:has(.match-comment-edit:not(.hidden)) { order: 8; width: 100%; margin-left: 0; }
+  .match-comment-banner--empty:has(.match-comment-edit:not(.hidden)) .match-comment-add { display: none; }
+  /* A play-off round card already names its round. Where the badge is
+     hidden (here and in the Mexicano current round) the court needs no dot. */
+  .po-round-card .match-round-badge { display: none; }
+  .po-round-card .match-card-wrap > .match-court::before,
+  .mex-current-round .match-card-wrap > .match-court::before { content: none; }
   /* Tournament list cards: keep delete button inline with the name */
   .tournament-list-card { flex-wrap: nowrap; }
   .tournament-list-card .match-teams { min-width: 0; flex: 1; }
 
-  /* Touch targets */
+  /* Touch targets: control heights live in the "Touch widths" block near the
+     end of this file; only the score inputs are sized here. */
   .match-actions input { width: 56px !important; height: 44px; font-size: 1rem; }
-  .btn { min-height: 44px; }
-  .btn-sm { min-height: 44px; padding: 0.5rem 0.8rem; font-size: 0.85rem; }
-  .tournament-actions .btn-sm { min-height: 44px; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
-  .match-edit-btn { min-height: 44px; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
-  .match-format-btn { min-height: 44px; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
-  .match-format-btn.is-override { padding-right: 0.9rem; }
-  /* Score entry: format chip on its own line, set boxes full width, then Save. */
-  .match-actions { width: 100%; }
+  /* Points entry: one aligned row on every card,
+       [Points v] [0] - [0] ........ [Save]
+     inputs share the free width (capped), Save sits at the right edge. */
+  .match-actions { width: 100%; flex-wrap: nowrap; gap: var(--space-2); }
+  .match-actions > .score-entry:not(.score-entry-sets) { flex: 1 1 auto; display: flex; flex-wrap: nowrap; gap: var(--space-1-5); }
+  .match-actions .score-input-narrow { flex: 1 1 0; max-width: 4.5rem; }
+  .match-actions [data-score-save] { margin-left: auto; }
+  /* Sets entry and the edit form's action row need their own lines. */
+  .match-actions:has(> .score-entry-sets:not(.hidden)),
+  .match-actions:has(> .action-row) { flex-wrap: wrap; }
+  .match-actions > .action-row { flex: 1 1 100%; margin-top: 0; }
+  /* Matches still waiting for their players: names only, no inputs. */
+  .match-tbd-disabled .match-actions,
+  .match-tbd-disabled .match-comment-banner { display: none; }
+  /* Sets entry: format chip on its own line, set boxes full width, then Save. */
   .score-entry-sets { flex: 1 1 100%; }
   /* Sets side by side like a scoreboard: label on top, "x – y" below. */
   .score-entry-sets .tennis-sets {
@@ -3812,11 +3873,23 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   .admin-dispute-scores input[type="radio"] { width: 18px; height: 18px; }
   .admin-dispute-custom input[type="number"] { width: 60px; min-height: 44px; font-size: 1rem; }
   .admin-dispute-resolve { width: 100%; text-align: center; }
-  .score-mode-toggle button { min-height: 40px; padding: 0.4rem 0.75rem; font-size: 0.85rem; }
-  .group-nav-bar { padding: 0.35rem 0.4rem; gap: 0.25rem; }
-  .group-nav-btn { min-height: 38px; padding: 0.35rem 0.6rem; font-size: 0.82rem; }
-  .match-filter-toggle button { min-height: 38px; padding: 0.35rem 0.55rem; font-size: 0.82rem; }
-  .gp-review-filter button { min-height: 38px; padding: 0.35rem 0.5rem; font-size: 0.78rem; }
+  /* Sticky nav: chips row on top (scrolls sideways within itself), the
+     match filter beside it when both fit, otherwise on a second row at the
+     right. The bar itself never scrolls, so the filter is never clipped. */
+  .group-nav-bar { padding: 0.35rem 0.4rem; gap: var(--space-1-5) var(--space-2); flex-wrap: wrap; overflow: visible; }
+  .group-nav-chips {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .group-nav-chips::-webkit-scrollbar { display: none; }
+  .group-nav-chips > .group-nav-btn { flex: 0 0 auto; }
+  .group-nav-bar > .group-nav-sep { display: none; }
+  .group-nav-bar > .match-filter-row { flex: 0 0 auto; margin-left: auto; max-width: 100%; }
   .gp-review-row { flex-direction: column; align-items: stretch; }
   .gp-review-row-teams { white-space: normal; overflow: visible; text-overflow: clip; }
   .gp-review-row .btn { width: 100%; }
@@ -6054,6 +6127,17 @@ a.settings-input { color: var(--color-primary); }
   #admin-settings-card:not(.is-help-on) .settings-help--explain { display: none; }
   .settings-stage-label { min-width: 0; flex: 1 1 auto; }
 }
+@media (max-width: 420px) {
+  /* Narrow phones: a strip with six or more tabs (tournament settings has
+     seven) becomes two even rows of four, so no label truncates and no row
+     is left with a single orphan tab. Five-tab strips (lobby, club) keep
+     their single row. */
+  .settings-subtabs:has(> .settings-subtab-btn:nth-child(6)) {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .settings-subtab-label { font-size: var(--fs-2xs); }
+}
 
 /* ── Status-bar review chip ───────────────────────────────────────────────
    Shown while there are review items (disputes / pending confirmation);
@@ -7187,11 +7271,30 @@ label.user-mgmt-checkbox-label {
   .club-events-menu-item { min-height: 44px; }
 }
 
-/* ── Touch widths (phones + tablets): 44px targets, rows that line up ──
-   Every control that shares a row gets the same height; icon-only buttons
-   are square. Desktop (> 900px) keeps the compact sizes. */
+/* ── Touch widths (phones + tablets): one control-size scale ──────────
+   This block (plus the phone block right after it) owns admin control
+   sizing on touch widths. Three steps from theme.css:
+     --tap-lg (44px)  score inputs, score Save, primary decision buttons,
+                      header nav, tab strips, chip close;
+     --tap-md (40px)  ordinary buttons;
+     --tap-sm (36px)  small text buttons, segmented toggles, nav chips, Edit.
+   Controls that share a row line up; icon-only buttons are square. Desktop
+   (> 900px) keeps the compact sizes. */
 @media (max-width: 900px) {
-  .btn,
+  .btn { min-height: var(--tap-md); }
+  /* Small text buttons, segmented toggles and nav chips: --tap-sm, with at
+     least 8px between neighbours (the rows set their own gaps). Declared
+     first so the 44px icon squares and tab strips below still win. */
+  .btn-sm,
+  .score-mode-toggle button,
+  .match-filter-toggle button,
+  .gp-review-filter button,
+  .group-nav-btn,
+  .match-edit-btn,
+  .match-format-btn,
+  .btn-outline-muted,
+  .btn-ghost,
+  .settings-url-copy-btn { min-height: var(--tap-sm); }
   .tab-btn,
   .subtab-btn,
   .compact-icon-btn,
@@ -7199,7 +7302,8 @@ label.user-mgmt-checkbox-label {
   .settings-subtab-btn,
   .paste-list-btn,
   .clubs-sport-pill,
-  .ph-ghost-toggle { min-height: 44px; }
+  .ph-ghost-toggle,
+  .auth-nav-btn { min-height: var(--tap-lg); }
   .btn { display: inline-flex; align-items: center; justify-content: center; }
   .paste-list-btn { display: inline-flex; align-items: center; }
 
@@ -7261,20 +7365,55 @@ label.user-mgmt-checkbox-label {
   .team-builder-members input,
   .participant-entry input { min-height: 44px !important; }
 
-  /* Small text buttons and segmented toggles. */
-  .score-mode-toggle button,
-  .match-filter-toggle button,
-  .gp-review-filter button,
-  .group-nav-btn,
   .reg-q-type-toggle button,
   .add-participant-btn,
   .reg-q-add-choice-btn,
+  .reg-section-summary-btn { min-height: var(--tap-lg); }
+  .settings-url-copy-btn,
   .btn-outline-muted,
-  .settings-url-copy-btn,
-  .match-format-btn,
-  .reg-section-summary-btn { min-height: 44px; }
-  .settings-url-copy-btn,
-  .btn-outline-muted { display: inline-flex; align-items: center; justify-content: center; }
+  .match-edit-btn,
+  .match-format-btn { display: inline-flex; align-items: center; justify-content: center; }
+  /* Icon-only Edit on scored rows: a square. */
+  .match-edit-btn { min-width: var(--tap-sm); padding: 0; }
+  /* Settings help toggle: a quiet ghost, tinted while help is on. */
+  .settings-help-master-toggle { background: transparent; border-color: transparent; color: var(--color-text-muted); }
+  .settings-help-master-toggle[aria-expanded="true"] { color: var(--color-primary); }
+  /* Action rows (see "Action rows" above). */
+  .action-row { margin-top: var(--space-2); }
+  .action-row--end { justify-content: flex-end; }
+  /* Courts editor: chip delete is a real target. */
+  .court-chip-delete { width: var(--tap-sm); height: var(--tap-sm); font-size: 1.15rem; }
+  .decision-actions-row > .action-row { margin-top: 0; }
+  /* A button that shares a row with a 44px field matches the field. */
+  .settings-inline-row:has(> input, > select, > .settings-input) > .btn,
+  .home-search-row .btn,
+  .clubs-add-player-row .btn,
+  .gp-ops-next-action .btn { min-height: var(--tap-lg); }
+  /* Card headers: one pattern on touch widths. Title (semantic h2/h3, one
+     look) left, muted meta and an action slot right. .court-board-header,
+     .current-round-header, .admin-bracket-header and .gp-review-queue-head
+     keep their own classes alongside .card-heading-row. */
+  .card-title {
+    margin-top: 0;
+    margin-bottom: 0;
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    letter-spacing: normal;
+  }
+  .card-heading-row { margin-bottom: var(--space-2); }
+  /* Decision zone: courts strip + phase decisions in one card. */
+  .decision-zone {
+    margin-bottom: 1rem;
+    padding: 0.85rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+  }
+  .decision-zone > .courts-section { margin-bottom: 0; }
+  /* Courtside typing and the main decisions keep the full 44px. */
+  [data-score-save],
+  .btn-lg-action { min-height: var(--tap-lg); }
   .reg-q-remove,
   #clubs-players-list .player-codes-icon-btn { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
 
@@ -7284,6 +7423,36 @@ label.user-mgmt-checkbox-label {
   .format-info-btn::after { content: ''; position: absolute; inset: -8px; }
 }
 @media (max-width: 600px) {
+  /* Phone control sizing (pairs with the block above): small buttons stay
+     no larger than on desktop, only taller. */
+  .btn-sm { padding: 0.35rem 0.7rem; font-size: var(--fs-sm); }
+  .tournament-actions .btn-sm { min-height: var(--tap-lg); padding: 0.3rem 0.6rem; font-size: var(--fs-sm); }
+  .match-format-btn { padding: 0.3rem 0.6rem; font-size: var(--fs-sm); }
+  /* Bracket "Tune rendering": icon only (aria-label keeps the name). */
+  .admin-bracket-tune-btn .btn-label { display: none; }
+  .admin-bracket-tune-btn { min-width: var(--tap-sm); padding-left: 0; padding-right: 0; }
+  .match-format-btn.is-override { padding-right: 0.9rem; }
+  .score-mode-toggle button,
+  .group-nav-btn,
+  .match-filter-toggle button { padding: 0.35rem 0.6rem; font-size: var(--fs-sm); }
+  .gp-review-filter button { padding: 0.35rem 0.5rem; font-size: var(--fs-xs); }
+
+  /* Decisions: smaller big buttons; the primary spans the zone, secondary /
+     terminal actions share the row underneath. */
+  .btn-lg-action { padding: 0.6rem 1rem; font-size: 1rem; }
+  .decision-secondary { width: 100%; }
+  .proposal-actions:has(> .decision-secondary) { flex-direction: column; }
+  .proposal-actions:has(> .decision-secondary) > .btn { width: 100%; }
+  /* Card headers: header actions go icon-only (labels stay as aria-label). */
+  .card-heading-row .btn-label { display: none; }
+  /* Action rows: equal-width buttons, or one per line. */
+  .action-row--fill > * { flex: 1 1 0; min-width: 0; }
+  .action-row--stack { flex-direction: column; align-items: stretch; }
+  .action-row--stack > * { width: 100%; }
+  /* Courts editor: one full-width chip per court, the name input grows. */
+  .court-editor-chip { flex: 1 1 100%; }
+  .courts-editor-input { flex: 1 1 auto; width: auto; min-width: 6rem; }
+
   /* Phones: label on its own line, input + Add share the next one. */
   .clubs-add-player-label { flex: 1 1 100%; }
   .clubs-add-player-row input[type="text"] { flex: 1 1 0; min-width: 0; }
@@ -7296,37 +7465,65 @@ label.user-mgmt-checkbox-label {
   /* Participants header: the small text buttons wrap as one group with one gap. */
   .participants-header { align-items: center; flex-wrap: wrap; }
 
-  /* Phone header:
+  /* Phone header, two lines:
        line 1  [EN]        Admin ▾        (i)   <- Info pinned top-right
-       line 2       [P] [U] [C] [Cl] [S]        <- account icons, centred
-       line 3  [Tournaments] [+]       Logout
-     The view buttons drop their text labels (title / aria-label still name
-     them) and become 44px squares. #auth-status dissolves (display: contents)
-     so its icon group and Logout can be ordered around the view buttons. */
+       line 2  [T][+] | [Players][Users][Comm.][Clubs][Password][Logout]
+     Tournaments / New stay icon-only 40px squares (title / aria-label name
+     them, the active one keeps its highlight). The account buttons and
+     Logout share the rest of the row: icon over a one-word label, the same
+     look as the Settings sub-tab strip; the full name stays the title /
+     aria-label. Columns start from their label width (flex: 1 1 auto) so
+     the admin's eight buttons fit at 360px in EN and ES ("Jugadores" is
+     the longest), grow evenly when there is room, and are capped so
+     accounts with fewer buttons stay right-aligned and compact; ellipsis
+     is the last resort. #auth-status and its icon group dissolve
+     (display: contents) so every button is an item of this row. */
   .page-header { position: relative; }
-  .page-header-row--nav { flex-wrap: wrap; gap: 0.3rem; }
+  .page-header-row--nav { flex-wrap: nowrap; align-items: stretch; gap: 1px; }
   .page-header-row--nav .tab-btn { min-width: 44px; padding: 0; justify-content: center; font-size: 1.05rem; flex-shrink: 0; }
   .page-header-row--nav .tab-btn-label { display: none; }
   .page-header-row--nav .tab-btn--info { position: absolute; top: 0; right: 0; }
-  #auth-status { display: contents; }
-  #auth-status .mr-1,
-  #auth-status .mr-2 { margin-right: 0; }
-  .auth-nav-icons {
-    order: 1;
-    flex: 1 0 100%;
-    display: flex;
-    justify-content: center;
-    gap: 0.6rem;
-  }
-  /* Each control has a line with room to spare: larger targets and glyphs. */
-  #auth-status .auth-nav-icons .auth-nav-btn { min-width: 48px; min-height: 48px; padding: 0; }
-  .auth-nav-icons .ic { width: 1.4rem; height: 1.4rem; }
-  .page-header-row--nav .tab-btn { min-width: 48px; min-height: 48px; }
-  .page-header-row--nav .tab-btn .ic { width: 1.4rem; height: 1.4rem; }
+  .page-header-row--nav .tab-btn--nav { min-width: 40px; min-height: 48px; }
+  .page-header-row--nav .tab-btn .ic { width: 1.3rem; height: 1.3rem; }
   .page-header-row--nav .tab-btn--info { min-width: 44px; min-height: 44px; }
   .page-header-row--nav .tab-btn--info .ic { width: 1.25rem; height: 1.25rem; }
-  .admin-main-nav { order: 2; }
-  #auth-status > .btn:last-child { order: 3; margin-left: auto; }
+  .admin-main-nav {
+    flex: 0 0 auto;
+    gap: 1px;
+    margin-right: auto;
+    padding-right: 2px;
+    border-right: 1px solid var(--color-border);
+  }
+  #auth-status { display: contents; }
+  /* The desktop spacing utilities are !important; the row gap spaces these. */
+  #auth-status .mr-1,
+  #auth-status .mr-2 { margin-right: 0 !important; }
+  .auth-nav-icons { display: contents; }
+  #auth-status .btn.auth-nav-btn {
+    flex: 1 1 auto;
+    min-width: 36px;
+    max-width: 4.5rem;
+    min-height: 48px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: var(--space-1) 1px;
+    border-radius: var(--radius-lg);
+    font-size: var(--fs-2xs);
+  }
+  #auth-status .auth-nav-btn .ic { width: 1.25rem; height: 1.25rem; }
+  #auth-status .nav-btn-label { display: none; }
+  #auth-status .nav-btn-phone-ic { display: contents; }
+  #auth-status .nav-btn-short {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-2xs);
+    font-weight: 500;
+    line-height: 1.1;
+  }
 
   /* Create: the four format tabs form one 2 x 2 segmented control. */
   .create-mode-strip {
@@ -7352,10 +7549,6 @@ label.user-mgmt-checkbox-label {
   #create-tab-po { border-right: 1px solid var(--color-border); }
   #create-tab-gp,
   #create-tab-mex { border-bottom: 1px solid var(--color-border); }
-}
-@media (max-width: 420px) {
-  /* Narrow phones: tighter gaps on the centred account icon line. */
-  .auth-nav-icons { gap: 0.35rem; }
 }
 
 /* Club detail already has a sticky status bar at top:0 — a second sticky
@@ -7443,4 +7636,16 @@ html { scroll-padding-top: calc(var(--admin-sticky-offset, 0px) + 0.5rem); }
   .table-stack .row-actions > .btn + .btn { margin-left: 0; }
   .table-stack td select,
   .table-stack td input:not([type="checkbox"]) { max-width: 100%; }
+}
+
+/* Player codes (Settings > Players) as stacked rows on phones: name, then
+   passphrase + language, contact (and email), then the row's buttons
+   (Link, QR, Regenerate, Remove) on the last line, right-aligned. The cells
+   stay separate so the desktop table keeps its columns. */
+@media (max-width: 600px) {
+  .player-codes-table.table-stack tr { justify-content: flex-end; }
+  .player-codes-table.table-stack td.stack-act { order: 3; flex: 0 0 auto; }
+  .player-codes-table.table-stack td.stack-act:empty { display: none; }
+  .player-codes-table.table-stack .player-codes-input { width: 100%; }
+  .player-codes-table.table-stack td.codes-new-cell { flex-basis: 100%; }
 }

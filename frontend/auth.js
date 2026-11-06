@@ -593,22 +593,30 @@ function updateAuthUI() {
       // Communities, clubs and Player Hub profiles are core-site features:
       // never offered on the demo instance.
       const _demoInstance = typeof isDemoInstance === 'function' && isDemoInstance();
+      // Phones show a one-word label under each icon (.nav-btn-short); wider
+      // screens keep the full label (.nav-btn-label) or the bare icon. The full
+      // name is always the title / aria-label.
+      const navBtn = (onclick, icon, full, short, label = '', extraCls = 'mr-1') =>
+        `<button class="btn btn-sm auth-nav-btn ${extraCls}" onclick="${onclick}" title="${escAttr(full)}" aria-label="${escAttr(full)}">`
+        + `${icon}${label ? ` <span class="nav-btn-label">${esc(label)}</span>` : ''}<span class="nav-btn-short" aria-hidden="true">${esc(short)}</span></button>`;
       const adminBtn = isAdmin()
-        ? (_demoInstance ? '' : `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('players-hub')" title="${t('txt_admin_nav_players')}">${_ic('contact')} <span class="nav-btn-label">${t('txt_admin_nav_players')}</span></button>`)
-          + `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('user-mgmt')" title="${t('txt_txt_user_management')}">${_ic('shield')} <span class="nav-btn-label">${t('txt_txt_users_tab')}</span></button>`
-          + ((_onSubdomain || _demoInstance) ? '' : `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('communities')" title="Communities">${_ic('users')} <span class="nav-btn-label">${t('txt_comm_title')}</span></button>`)
+        ? (_demoInstance ? '' : navBtn("setActiveTab('players-hub')", _ic('contact'), t('txt_admin_nav_players'), t('txt_admin_nav_players'), t('txt_admin_nav_players')))
+          + navBtn("setActiveTab('user-mgmt')", _ic('shield'), t('txt_txt_user_management'), t('txt_txt_users_tab'), t('txt_txt_users_tab'))
+          + ((_onSubdomain || _demoInstance) ? '' : navBtn("setActiveTab('communities')", _ic('users'), t('txt_comm_title'), t('txt_admin_nav_short_communities'), t('txt_comm_title')))
         : '';
       // Demo accounts get the minimal surface: no Clubs (Player Space /
       // Users / Communities are already admin-only above).
       const clubsBtn = (isDemoUser() || _demoInstance)
         ? ''
-        : `<button class="btn btn-sm auth-nav-btn mr-1" onclick="setActiveTab('clubs')" title="${t('txt_clubs_title')}">${_ic('building')} <span class="nav-btn-label">${t('txt_clubs_title')}</span></button>`;
-      const changePwdBtn = `<button class="btn btn-sm auth-nav-btn mr-1" onclick="showChangePasswordDialog()" title="${t('txt_txt_change_password')}">${_ic('lock')}</button>`;
-      // The icon group is its own element so phones can centre it on a line of
-      // its own above Tournaments / New, leaving Logout at the row end.
+        : navBtn("setActiveTab('clubs')", _ic('building'), t('txt_clubs_title'), t('txt_clubs_title'), t('txt_clubs_title'));
+      const changePwdBtn = navBtn('showChangePasswordDialog()', _ic('lock'), t('txt_txt_change_password'), t('txt_admin_nav_short_password'));
+      // Logout: text on wider screens; on phones an icon + label like the rest.
+      const logoutBtn = navBtn('logout()', `<span class="nav-btn-phone-ic">${_ic('logout')}</span>`, t('txt_txt_logout'), t('txt_txt_logout'), t('txt_txt_logout'), 'auth-logout-btn');
+      // The icon group is its own element; on phones it dissolves so every
+      // account button joins the Tournaments / New row as an equal column.
       authStatus.innerHTML = `
         <span class="auth-nav-icons">${adminBtn}${clubsBtn}${changePwdBtn}</span><strong class="mr-2">${esc(username)}</strong>
-        <button class="btn btn-sm auth-nav-btn" onclick="logout()">${t('txt_txt_logout')}</button>
+        ${logoutBtn}
       `;
     } else {
       authStatus.innerHTML = `

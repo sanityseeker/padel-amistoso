@@ -78,6 +78,13 @@
   --fs-md:  0.85rem;
   --fs-lg:  0.9rem;
 
+  /* Touch-target scale (admin phones/tablets). lg: score entry, primary
+     actions, header nav; md: ordinary buttons; sm: small text buttons,
+     segmented toggles and chips that sit in dense rows. */
+  --tap-lg: 44px;
+  --tap-md: 40px;
+  --tap-sm: 36px;
+
   /* Third-party brand colours (support links) — identical in both modes */
   --color-brand-coffee:    #ffdd00;
   --color-on-brand-coffee: #1a1a1a;

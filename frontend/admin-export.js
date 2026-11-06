@@ -47,7 +47,7 @@ function _renderExportPanel({ finished, hasStandings = true, hasBracket = false 
   h += toggle('comments', t('txt_export_include_comments'));
   if (hasStandings) h += toggle('elo', t('txt_export_include_elo'));
   h += `</div>`;
-  h += `<div class="export-actions-row">`;
+  h += `<div class="export-actions-row action-row action-row--fill">`;
   h += `<button type="button" class="btn btn-primary" onclick="exportTournamentOutcome('html')">${t('txt_txt_export_html')}</button>`;
   h += `<button type="button" class="btn btn-muted" onclick="exportTournamentOutcome('pdf')">${t('txt_txt_export_pdf')}</button>`;
   h += `</div>`;

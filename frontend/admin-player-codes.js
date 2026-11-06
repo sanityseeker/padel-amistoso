@@ -64,7 +64,9 @@ function _renderPlayerCodesBody(secrets) {
     html += `<p class="player-codes-empty">${t('txt_txt_no_player_codes')}</p>`;
   } else {
     html += `<div class="player-codes-table-wrap">`;
-    html += `<table class="player-codes-table">`;
+    // Phones stack each row into a card (.table-stack): name on top,
+    // passphrase + language, contact, then the row's buttons.
+    html += `<table class="player-codes-table table-stack">`;
     html += `<thead><tr class="player-codes-head-row">`;
     html += `<th class="player-codes-th">${t('txt_txt_player')}</th>`;
     html += `<th class="player-codes-th">${t('txt_txt_passphrase')}</th>`;
@@ -76,21 +78,25 @@ function _renderPlayerCodesBody(secrets) {
     html += `<th class="player-codes-th-center"></th>`;
     html += `<th class="player-codes-th-center"></th>`;
     html += `</tr></thead><tbody>`;
+    const lblPass = escAttr(t('txt_txt_passphrase'));
+    const lblContact = escAttr(t('txt_txt_contact'));
+    const lblEmail = escAttr(t('txt_email'));
+    const lblLang = escAttr(t('txt_txt_language'));
     for (const [pid, info] of entries) {
       html += `<tr class="player-codes-row" id="pc-row-${pid}">`;
-      html += `<td class="player-codes-name" id="pc-name-${pid}">${esc(info.name)}</td>`;
-      html += `<td class="player-codes-cell"><code id="pc-pass-${pid}" class="player-codes-passphrase" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(info.passphrase)}</code></td>`;
-      html += `<td class="player-codes-cell"><input type="text" id="pc-contact-${pid}" value="${escAttr(info.contact || '')}" data-orig="${escAttr(info.contact || '')}" placeholder="${t('txt_reg_contact_placeholder')}" class="player-codes-input" onblur="_savePlayerContact('${pid}')"></td>`;
-      html += `<td class="player-codes-cell-center">${_renderHubLinkCellInner(pid, info)}</td>`;
+      html += `<td class="player-codes-name stack-title" id="pc-name-${pid}">${esc(info.name)}</td>`;
+      html += `<td class="player-codes-cell stack-pri" data-label="${lblPass}"><code id="pc-pass-${pid}" class="player-codes-passphrase" onclick="const c=this;navigator.clipboard.writeText(c.textContent).then(()=>flashSuccess(c,'${escAttr(t('txt_txt_copied'))}'))" title="${t('txt_txt_click_to_copy')}">${esc(info.passphrase)}</code></td>`;
+      html += `<td class="player-codes-cell stack-full" data-label="${lblContact}"><input type="text" id="pc-contact-${pid}" value="${escAttr(info.contact || '')}" data-orig="${escAttr(info.contact || '')}" placeholder="${t('txt_reg_contact_placeholder')}" class="player-codes-input" onblur="_savePlayerContact('${pid}')"></td>`;
+      html += `<td class="player-codes-cell-center stack-act">${_renderHubLinkCellInner(pid, info)}</td>`;
       if (_showEmail) {
-        html += `<td class="player-codes-cell"><span class="player-codes-edit-wrap"><input type="email" id="pc-email-${pid}" value="${escAttr(info.email || '')}" data-orig="${escAttr(info.email || '')}" placeholder="${t('txt_email_placeholder')}" class="player-codes-input player-codes-input-email" onblur="_savePlayerEmail('${pid}')">`;
+        html += `<td class="player-codes-cell stack-full" data-label="${lblEmail}"><span class="player-codes-edit-wrap"><input type="email" id="pc-email-${pid}" value="${escAttr(info.email || '')}" data-orig="${escAttr(info.email || '')}" placeholder="${t('txt_email_placeholder')}" class="player-codes-input player-codes-input-email" onblur="_savePlayerEmail('${pid}')">`;
         if (info.email) html += `<button type="button" class="btn btn-sm player-codes-icon-btn" onclick="_sendPlayerEmail('${pid}', this)" title="${t('txt_email_send')}">${_ic('mail')}</button>`;
         html += `</span></td>`;
       }
-      html += `<td class="player-codes-cell-center">${_langToggle(currentTid, pid, info.lang || 'en', 'sec')}</td>`;
-      html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-sm player-codes-action-btn" onclick="_showPlayerQr('${escAttr(pid)}','${escAttr(info.name)}')">${_ic('qr')} ${t('txt_txt_qr_code')}</button></td>`;
-      html += `<td class="player-codes-cell-center"><button type="button" class="btn btn-sm btn-muted player-codes-action-btn" onclick="_regeneratePlayerCode('${pid}')">${_ic('reset')} ${t('txt_txt_regenerate')}</button></td>`;
-      html += `<td class="player-codes-cell-center">${_isMex ? `<button type="button" class="btn btn-danger btn-sm player-codes-icon-btn" onclick="_removeTournamentPlayer('${pid}','${escAttr(info.name)}')" title="${t('txt_txt_remove_player')}">${_ic('trash')}</button>` : ''}</td>`;
+      html += `<td class="player-codes-cell-center stack-pri" data-label="${lblLang}">${_langToggle(currentTid, pid, info.lang || 'en', 'sec')}</td>`;
+      html += `<td class="player-codes-cell-center stack-act"><button type="button" class="btn btn-sm player-codes-action-btn" onclick="_showPlayerQr('${escAttr(pid)}','${escAttr(info.name)}')">${_ic('qr')} ${t('txt_txt_qr_code')}</button></td>`;
+      html += `<td class="player-codes-cell-center stack-act"><button type="button" class="btn btn-sm btn-muted player-codes-action-btn" onclick="_regeneratePlayerCode('${pid}')">${_ic('reset')} ${t('txt_txt_regenerate')}</button></td>`;
+      html += `<td class="player-codes-cell-center stack-act">${_isMex ? `<button type="button" class="btn btn-danger btn-sm player-codes-icon-btn" onclick="_removeTournamentPlayer('${pid}','${escAttr(info.name)}')" title="${t('txt_txt_remove_player')}">${_ic('trash')}</button>` : ''}</td>`;
       html += `</tr>`;
     }
     html += `</tbody></table>`;
@@ -125,7 +131,7 @@ async function _showPlayerQr(playerId, playerName) {
       <h3 class="codes-qr-title">${esc(playerName)}</h3>
       <img src="${objectUrl}" alt="${t('txt_txt_qr_code')}" class="codes-qr-img">
       <p class="m-0 mt-3 fs-sm text-muted">${t('txt_txt_player_codes_help')}</p>
-      <button type="button" class="btn btn-primary btn-sm mt-3" onclick="this.closest('.codes-modal-backdrop').remove()">✕ ${t('txt_txt_close')}</button>
+      <button type="button" class="btn btn-primary btn-sm mt-3" onclick="this.closest('.codes-modal-backdrop').remove()">${_ic('x')} ${t('txt_txt_close')}</button>
     </div>`;
     document.body.appendChild(modal);
   } catch (e) {
@@ -189,8 +195,8 @@ function _addTournamentPlayer() {
         maxlength="128">
       <datalist id="pc-new-suggestions"></datalist>
       ${groupSelectHtml}
-      <button type="button" class="btn btn-primary btn-sm codes-new-save" onclick="_submitNewPlayer()">✓</button>
-      <button type="button" class="btn btn-sm btn-compact fs-sm" onclick="_pcNewPlayerPastId=null;document.getElementById('pc-new-row')?.remove()">✕</button>
+      <button type="button" class="btn btn-primary btn-sm codes-new-save" onclick="_submitNewPlayer()" aria-label="${escAttr(t('txt_txt_save'))}" title="${escAttr(t('txt_txt_save'))}">${_ic('check')}</button>
+      <button type="button" class="btn btn-sm btn-compact fs-sm" onclick="_pcNewPlayerPastId=null;document.getElementById('pc-new-row')?.remove()" aria-label="${escAttr(t('txt_txt_cancel'))}" title="${escAttr(t('txt_txt_cancel'))}">${_ic('x')}</button>
     </span></td>`;
   tbody.appendChild(newRow);
 
@@ -484,7 +490,7 @@ function _hubEnsureModal() {
   overlay.innerHTML = `<div class="pc-hub-modal-box">`
     + `<div class="pc-hub-modal-header">`
     + `<span class="pc-hub-modal-title">${_ic('link')} ${t('txt_hub_link')}</span>`
-    + `<button type="button" class="pc-hub-close-btn" onclick="_hubCloseModal()">✕</button>`
+    + `<button type="button" class="pc-hub-close-btn" onclick="_hubCloseModal()" aria-label="${escAttr(t('txt_txt_close'))}">${_ic('x')}</button>`
     + `</div>`
     + `<div id="pc-hub-modal-scope" class="pc-hub-scope-row" role="group" aria-label="${escAttr(t('txt_hub_scope_label'))}"></div>`
     + `<input type="text" id="pc-hub-modal-q" class="player-codes-input" placeholder="${t('txt_hub_search_placeholder')}" oninput="_hubDebouncedSearch()">`

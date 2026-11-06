@@ -50,7 +50,7 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
   if (_demoAlias) {
     html += `<p class="demo-disabled-hint">${t('txt_demo_not_available')}</p>`;
   }
-  html += `<div class="settings-inline-row">`;
+  html += `<div class="settings-inline-row action-row action-row--end">`;
   html += `<input type="text" id="tournament-alias-input" class="settings-input settings-input--mono settings-input--grow" placeholder="${t('txt_tv_alias_placeholder')}" value="${escAttr(currentAlias)}"
     pattern="[a-zA-Z0-9_-]+" maxlength="64"${_demoAliasAttr}>`;
   html += `<button type="button" class="btn btn-sm btn-primary" onclick="_setTournamentAlias()"${_demoAliasAttr}>${t('txt_txt_save')}</button>`;
@@ -83,11 +83,11 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
   // Auto-growing textarea (same class / limits as the registration description);
   // newlines are kept and rendered on the TV (white-space: pre-line).
   html += `<textarea id="tournament-banner-input" class="reg-desc-textarea w-full" rows="3" maxlength="5000" placeholder="${escAttr(t('txt_banner_placeholder'))}" oninput="_autoResizeTextarea(this)" onfocus="_autoResizeTextarea(this)">${esc(currentBanner)}</textarea>`;
-  html += `<div class="settings-inline-row mt-1-5">`;
-  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_setTournamentBanner()">${t('txt_txt_save')}</button>`;
+  html += `<div class="settings-inline-row mt-1-5 action-row action-row--end">`;
   if (currentBanner) {
     html += `<button type="button" class="btn btn-sm btn-danger" onclick="_clearTournamentBanner()">${_ic('megaphone')} ${t('txt_txt_remove')}</button>`;
   }
+  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_setTournamentBanner()">${t('txt_txt_save')}</button>`;
   html += `</div>`;
   html += `</div>`;
   // Saved multi-line text should open at full height; only measurable once the node is visible.
@@ -290,7 +290,7 @@ function _renderCommsBody(emailSettings) {
   html += `</div>`;
 
   html += `<div class="settings-block">`;
-  html += `<div class="settings-inline-row">`;
+  html += `<div class="settings-inline-row action-row action-row--end">`;
   html += `<button type="button" id="email-settings-save-btn" class="btn btn-primary btn-sm" onclick="withLoading(this,()=>_saveEmailSettings())">${t('txt_email_save_email')}</button>`;
   html += `</div>`;
   html += `</div>`;
@@ -317,7 +317,7 @@ function _renderCommsBody(emailSettings) {
     html += `<div class="settings-block">`;
     html += `<label class="settings-label">${t('txt_email_organizer_message')}</label>`;
     html += `<textarea id="pc-organizer-message" class="reg-desc-textarea w-full" rows="3" placeholder="${t('txt_email_message_placeholder')}" oninput="_autoResizeTextarea(this)"></textarea>`;
-    html += `<div class="settings-inline-row mt-1-5">`;
+    html += `<div class="settings-inline-row mt-1-5 action-row action-row--end">`;
     html += `<button type="button" class="btn btn-sm" onclick="withLoading(this,()=>_sendTournamentMessageEmails())">${_ic('mail')} ${t('txt_email_send_message')}</button>`;
     html += `</div>`;
     html += `</div>`;
@@ -401,11 +401,11 @@ function _renderAccessScopeBody(collaborators) {
   html += `<h4 class="settings-group-title">${_ic('wrench')} ${t('txt_admin_settings_maintenance')}</h4>`;
   html += `<div class="settings-block">`;
   html += `<p class="settings-help settings-help--explain">${t('txt_admin_settings_recalc_help')}</p>`;
-  html += `<div class="settings-inline-row">`;
+  html += `<div class="settings-inline-row action-row action-row--stack">`;
   html += `<button type="button" id="recalc-elo-btn" class="btn btn-warning btn-sm" onclick="withLoading(this,_recalculateTournamentElo)">${_ic('refresh')} ${t('txt_txt_recalculate_elo')}</button>`;
   html += `</div>`;
   html += `<p class="settings-help settings-help--explain">${t('txt_admin_settings_recalc_all_help')}</p>`;
-  html += `<div class="settings-inline-row">`;
+  html += `<div class="settings-inline-row action-row action-row--stack">`;
   html += `<button type="button" class="btn btn-warning btn-sm" onclick="withLoading(this,_recalculateAllElo)">${_ic('refresh')} ${t('txt_admin_recalculate_all_elo')}</button>`;
   html += `</div>`;
   html += `</div>`;

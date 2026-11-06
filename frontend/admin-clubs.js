@@ -1270,7 +1270,7 @@ function _renderViewClubReturn() {
     return;
   }
   el.hidden = false;
-  el.innerHTML = `<button type="button" class="btn btn-sm view-club-return-btn" onclick="clubsReturnToClub()">← ${esc(t('txt_club_events_back_to_club', { club: club.name }))}</button>`;
+  el.innerHTML = `<button type="button" class="btn btn-sm view-club-return-btn" onclick="clubsReturnToClub()">${_ic('arrowleft')} ${esc(t('txt_club_events_back_to_club', { club: club.name }))}</button>`;
 }
 
 /** Return to the club detail the current event was opened from. */

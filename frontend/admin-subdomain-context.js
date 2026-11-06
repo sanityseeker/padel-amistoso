@@ -59,7 +59,7 @@
     ${logo}
     <span class="admin-subdomain-text">${esc(label)}</span>
     <a class="admin-subdomain-link" href="${esc(apexUrl)}">${esc(apexLabel)}</a>
-    <button type="button" class="admin-subdomain-dismiss" aria-label="${esc(dismissLabel)}">×</button>
+    <button type="button" class="admin-subdomain-dismiss" aria-label="${esc(dismissLabel)}">${_ic('x')}</button>
   `;
 
   banner.querySelector('.admin-subdomain-dismiss').addEventListener('click', () => {

@@ -372,7 +372,7 @@ function _confirmDeleteTournament(ghosts) {
           <span class="delete-tourn-title-icon" aria-hidden="true">${_ic('alert')}</span>
           ${esc(t('txt_txt_delete_this_tournament'))}
         </h2>
-        <button type="button" class="modal-close-btn" data-action="cancel" aria-label="${esc(t('txt_txt_close'))}">✕</button>
+        <button type="button" class="modal-close-btn" data-action="cancel" aria-label="${esc(t('txt_txt_close'))}">${_ic('x')}</button>
       </div>
       <p class="delete-tourn-warning">${esc(t('txt_txt_delete_tournament_warning'))}</p>
       ${ghostBlockHtml}
@@ -542,7 +542,7 @@ function _renderTournamentChips() {
     return `<span class="tournament-chip-wrap">`
       + `<button type="button" class="tab-btn tournament-chip${isActive ? ' active' : ''}" data-tid="${escAttr(tournament.id)}" data-type="${escAttr(tournament.type)}" title="${escAttr(tournament.name)}" aria-pressed="${isActive}">`
       + `<span class="chip-name">${esc(tournament.name)}</span></button>`
-      + `<button type="button" class="chip-close" data-close-tid="${escAttr(tournament.id)}" title="${escAttr(removeLabel)}" aria-label="${escAttr(`${removeLabel}: ${tournament.name}`)}">×</button>`
+      + `<button type="button" class="chip-close" data-close-tid="${escAttr(tournament.id)}" title="${escAttr(removeLabel)}" aria-label="${escAttr(`${removeLabel}: ${tournament.name}`)}">${_ic('x')}</button>`
       + `</span>`;
   }).join('');
   container.querySelectorAll('.chip-close').forEach(btn => {

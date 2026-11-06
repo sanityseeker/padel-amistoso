@@ -75,7 +75,7 @@
        tournament is open: _renderTournamentChips() toggles .hidden. -->
   <div class="tabs tournament-tabs hidden" id="tournament-tabs">
     <div id="tournament-chips" class="tournament-chips"></div>
-    <button type="button" id="admin-refresh-btn" class="compact-icon-btn" data-action="refreshCurrentView" title="Refresh" data-i18n-title="txt_txt_refresh" aria-label="Refresh" data-i18n-aria-label="txt_txt_refresh" style="display:none">↻</button>
+    <button type="button" id="admin-refresh-btn" class="compact-icon-btn" data-action="refreshCurrentView" title="Refresh" data-i18n-title="txt_txt_refresh" aria-label="Refresh" data-i18n-aria-label="txt_txt_refresh" style="display:none"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg></button>
   </div>
 
   <!-- ─── HOME ──────────────────────────────────────────── -->
@@ -110,7 +110,7 @@
                       :aria-checked="filters[dim] === value"
                       class="home-filter-dropdown-item" :class="{ selected: filters[dim] === value }"
                       @click="setFilter(dim, value)">
-                <span class="home-filter-dropdown-item-check" aria-hidden="true">{{ filters[dim] === value ? '✓' : '' }}</span>
+                <span class="home-filter-dropdown-item-check" aria-hidden="true"><svg v-if="filters[dim] === value" class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                 <span class="home-filter-dropdown-item-label">{{ valueLabel(dim, value) }}</span>
                 <span class="home-filter-chip-count" aria-hidden="true">{{ chipCount(dim, value) }}</span>
               </button>
@@ -159,7 +159,7 @@
                   @click="togglePublic(entry.item.id, entry.item.public !== false)">
             <span v-html="_ic(entry.item.public !== false ? 'globe' : 'lock')"></span> {{ entry.item.public !== false ? t('txt_txt_public') : t('txt_txt_private') }}
           </button>
-          <button v-if="canDeleteTournament(entry.item)" type="button" class="btn btn-danger btn-sm" @click="deleteTournament(entry.item.id)">✕</button>
+          <button v-if="canDeleteTournament(entry.item)" type="button" class="btn btn-danger btn-sm" :title="t('txt_txt_delete')" :aria-label="t('txt_txt_delete')" @click="deleteTournament(entry.item.id)"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
       </div>
     </template>
@@ -178,7 +178,7 @@
                   @click="_toggleRegListed(entry.item.id, isListed(entry.item))">
             <span v-html="_ic(isListed(entry.item) ? 'globe' : 'lock')"></span> {{ isListed(entry.item) ? t('txt_txt_public') : t('txt_txt_private') }}
           </button>
-          <button type="button" class="btn btn-danger btn-sm" :title="t('txt_reg_delete')" @click="_deleteRegistration(entry.item.id)">✕</button>
+          <button type="button" class="btn btn-danger btn-sm" :title="t('txt_reg_delete')" :aria-label="t('txt_reg_delete')" @click="_deleteRegistration(entry.item.id)"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
       </div>
     </template>
@@ -888,8 +888,8 @@
                       <button class="btn btn-sm btn-danger player-codes-icon-btn" @click="remove(c.id)" :title="t('txt_txt_remove')"><span v-html="icTrash()"></span></button>
                     </template>
                     <template v-else>
-                      <button class="btn btn-sm btn-primary btn-compact mr-1" @click="confirmRename(c.id)" :title="t('txt_txt_save')">✓</button>
-                      <button class="btn btn-sm btn-compact" @click="cancelRename()" :title="t('txt_txt_cancel')">✕</button>
+                      <button class="btn btn-sm btn-primary btn-compact mr-1" @click="confirmRename(c.id)" :title="t('txt_txt_save')" :aria-label="t('txt_txt_save')"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>
+                      <button class="btn btn-sm btn-compact" @click="cancelRename()" :title="t('txt_txt_cancel')" :aria-label="t('txt_txt_cancel')"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
                     </template>
                   </td>
                 </tr>
@@ -1427,7 +1427,7 @@
 <!-- Format Info Modal -->
 <div id="format-info-overlay" data-action="closeFormatInfo"></div>
 <div id="format-info-dialog" role="dialog" aria-modal="true" aria-labelledby="format-info-heading">
-  <button type="button" class="format-info-close-btn" data-action="closeFormatInfo" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
+  <button type="button" class="format-info-close-btn" data-action="closeFormatInfo" aria-label="Close" data-i18n-aria-label="txt_txt_close"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   <div id="format-info-content"></div>
 </div>
 
@@ -1439,7 +1439,7 @@
     <button class="bracket-lb-btn" data-action="bracketLightboxZoomIn" aria-label="Zoom in" data-i18n-aria-label="txt_txt_zoom_in" title="Zoom in" data-i18n-title="txt_txt_zoom_in">+</button>
     <button class="bracket-lb-btn" data-action="bracketLightboxOpenFull" aria-label="Open original image" data-i18n-aria-label="txt_txt_open_original_image" title="Open original image" data-i18n-title="txt_txt_open_original_image">↗</button>
     <button class="bracket-lb-btn" data-action="bracketLightboxDownload" aria-label="Download image" data-i18n-aria-label="txt_txt_download_image" title="Download image" data-i18n-title="txt_txt_download_image">⬇</button>
-    <button class="bracket-lb-btn bracket-lb-close-btn" data-action="closeBracketLightbox" aria-label="Close" data-i18n-aria-label="txt_txt_close" title="Close (Esc)" data-i18n-title="txt_txt_close_esc">✕</button>
+    <button class="bracket-lb-btn bracket-lb-close-btn" data-action="closeBracketLightbox" aria-label="Close" data-i18n-aria-label="txt_txt_close" title="Close (Esc)" data-i18n-title="txt_txt_close_esc"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
   <div class="bracket-lightbox-scroll">
     <img id="bracket-lightbox-img" src="" alt="Bracket" data-i18n-alt="txt_txt_bracket">
@@ -1454,7 +1454,7 @@
 <div id="auth-dialog" class="modal-dialog modal-sm" v-scope>
   <div class="modal-header">
     <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg> <span v-cloak>{{ dialogTitle() }}</span></h2>
-    <button type="button" class="modal-close-btn" data-action="hideLoginDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
+    <button type="button" class="modal-close-btn" data-action="hideLoginDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
 
   <!-- Core instance: link out to the separate demo site (shown when AMISTOSO_DEMO_URL
@@ -1525,7 +1525,7 @@
   <div class="modal-dialog modal-sm" v-scope>
     <div class="modal-header mb-2">
       <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 002 18.828V21a1 1 0 001 1h3a1 1 0 001-1v-1a1 1 0 011-1h1a1 1 0 001-1v-1a1 1 0 011-1h.172a2 2 0 001.414-.586l.814-.814a6.5 6.5 0 10-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg> <span data-i18n="txt_txt_change_password">Change Password</span></h2>
-      <button type="button" class="modal-close-btn" data-action="hideChangePasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
+      <button type="button" class="modal-close-btn" data-action="hideChangePasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
     <p id="change-pwd-for" class="modal-subtitle mb-4" v-text="targetLabel"></p>
     <form @submit.prevent="submit()">
@@ -1549,7 +1549,7 @@
 <div id="forgot-pwd-dialog" class="modal-dialog modal-sm">
   <div class="modal-header">
     <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 002 18.828V21a1 1 0 001 1h3a1 1 0 001-1v-1a1 1 0 011-1h1a1 1 0 001-1v-1a1 1 0 011-1h.172a2 2 0 001.414-.586l.814-.814a6.5 6.5 0 10-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg> <span data-i18n="txt_txt_forgot_password_title">Forgot Password</span></h2>
-    <button type="button" class="modal-close-btn" data-action="hideForgotPasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
+    <button type="button" class="modal-close-btn" data-action="hideForgotPasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
   <p class="modal-subtitle" data-i18n="txt_txt_forgot_password_subtitle">Enter your email address and we'll send you a password reset link.</p>
   <form onsubmit="handleForgotPassword(event)">
@@ -1568,7 +1568,7 @@
 <div id="accept-invite-dialog" class="modal-dialog modal-sm">
   <div class="modal-header">
     <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/></svg> <span data-i18n="txt_txt_accept_invitation">Accept Invitation</span></h2>
-    <button type="button" class="modal-close-btn" data-action="hideAcceptInviteDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
+    <button type="button" class="modal-close-btn" data-action="hideAcceptInviteDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
   <p class="modal-subtitle" id="accept-invite-subtitle"></p>
   <form onsubmit="handleAcceptInvite(event)">
@@ -1595,7 +1595,7 @@
 <div id="reset-pwd-dialog" class="modal-dialog modal-sm">
   <div class="modal-header">
     <h2 class="modal-title"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 002 18.828V21a1 1 0 001 1h3a1 1 0 001-1v-1a1 1 0 011-1h1a1 1 0 001-1v-1a1 1 0 011-1h.172a2 2 0 001.414-.586l.814-.814a6.5 6.5 0 10-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg> <span data-i18n="txt_txt_reset_password">Reset Password</span></h2>
-    <button type="button" class="modal-close-btn" data-action="hideResetPasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close">✕</button>
+    <button type="button" class="modal-close-btn" data-action="hideResetPasswordDialog" aria-label="Close" data-i18n-aria-label="txt_txt_close"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
   <p class="modal-subtitle" data-i18n="txt_txt_choose_new_password_for_account">Choose a new password for your account.</p>
   <form onsubmit="handleResetPassword(event)">
@@ -1621,7 +1621,7 @@
      :style="{ top: top + 'px', left: left + 'px' }" @keydown="onKeydown($event)">
   <div class="mf-head">
     <span class="mf-title">{{ t('txt_match_format_btn_label') }}</span>
-    <button type="button" class="mf-close" :aria-label="t('txt_txt_close')" @click="close()">✕</button>
+    <button type="button" class="mf-close" :aria-label="t('txt_txt_close')" @click="close()"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
   <p class="mf-line">{{ defaultLabel }}</p>
   <p v-if="isOverride" class="mf-line mf-line-override">{{ t('txt_match_format_overridden') }}</p>

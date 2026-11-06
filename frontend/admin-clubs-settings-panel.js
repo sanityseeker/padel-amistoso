@@ -118,7 +118,7 @@ function _renderClubStatusBar(club, comm) {
   return `
     <div class="card club-status-bar tournament-status-bar" id="club-status-bar-${esc(club.id)}">
       <div class="club-status-bar-row">
-        ${!(typeof window !== 'undefined' && window.__ADMIN_SUBDOMAIN_CLUB__) ? `<button class="btn btn-sm club-status-bar-back" onclick="clubsBackToOverview()" aria-label="${escAttr(t('txt_txt_back'))}">←</button>` : ''}
+        ${!(typeof window !== 'undefined' && window.__ADMIN_SUBDOMAIN_CLUB__) ? `<button class="btn btn-sm club-status-bar-back" onclick="clubsBackToOverview()" aria-label="${escAttr(t('txt_txt_back'))}">${_ic('arrowleft')}</button>` : ''}
         ${logoImg}
         <h3 class="club-status-bar-title">${esc(club.name)}${comm ? `<span class="muted-note club-status-bar-comm">· ${esc(comm.name)}</span>` : ''}</h3>
         <span class="badge badge-count club-status-bar-count">${playerCount} ${t(playerCount === 1 ? 'txt_clubs_player_singular' : 'txt_clubs_players_plural')}</span>

@@ -33,7 +33,7 @@ function _renderRegCollaboratorsSection(rid, collaborators) {
       html += `<div class="collab-row">`;
       html += `<span class="fs-lg">${_ic('user')} ${esc(username)}</span>`;
       html += `<button type="button" class="btn btn-danger btn-sm btn-compact fs-2xs"`;
-      html += ` onclick="_removeRegCollaborator('${esc(rid)}', '${escAttr(username)}')">✕ ${t('txt_txt_remove')}</button>`;
+      html += ` onclick="_removeRegCollaborator('${esc(rid)}', '${escAttr(username)}')">${_ic('x')} ${t('txt_txt_remove')}</button>`;
       html += `</div>`;
     }
   }
@@ -123,7 +123,7 @@ function _renderCollaboratorsBody(collaborators) {
       html += `<div class="collab-row">`;
       html += `<span class="fs-lg">${_ic('user')} ${esc(username)}</span>`;
       html += `<button type="button" class="btn btn-danger btn-sm btn-compact fs-2xs"`;
-      html += ` onclick="_removeCollaborator('${escAttr(username)}')">✕ ${t('txt_txt_remove')}</button>`;
+      html += ` onclick="_removeCollaborator('${escAttr(username)}')">${_ic('x')} ${t('txt_txt_remove')}</button>`;
       html += `</div>`;
     }
   }

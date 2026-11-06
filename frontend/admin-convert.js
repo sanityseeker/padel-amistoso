@@ -415,7 +415,7 @@ function _renderConvExtraPlayers() {
   _convExtraPlayers.forEach((name, i) => {
     html += `<div class="d-flex gap-1-5 items-center mb-1-5">`;
     html += `<input type="text" class="conv-extra-player-input flex-1" data-idx="${i}" value="${esc(name)}" placeholder="${t('txt_reg_name_placeholder')}" oninput="_convExtraPlayers[${i}]=this.value;_debouncedConvStrength()">`;
-    html += `<button type="button" class="btn btn-danger btn-sm btn-row-action" onclick="_removeConvExtraPlayer(${i})">✕</button>`;
+    html += `<button type="button" class="btn btn-danger btn-sm btn-row-action" onclick="_removeConvExtraPlayer(${i})" aria-label="${escAttr(t('txt_txt_remove'))}" title="${escAttr(t('txt_txt_remove'))}">${_ic('x')}</button>`;
     html += `</div>`;
   });
   container.innerHTML = html;
@@ -459,7 +459,7 @@ function _renderConvTeams(rid) {
     html += `<div class="d-flex items-center gap-2 mb-1-5">`;
     html += `<span class="fs-sm fw-700 text-muted">${t('txt_conv_team')} ${idx + 1}</span>`;
     html += `<input type="text" class="conv-team-name-input" data-idx="${idx}" value="${esc(_convTeamNames[idx] || '')}" placeholder="${team.join(' & ')}">`;
-    html += `<button type="button" class="participant-remove-btn" onclick="_removeConvTeam(${idx})" title="${t('txt_txt_remove')}">×</button>`;
+    html += `<button type="button" class="participant-remove-btn" onclick="_removeConvTeam(${idx})" title="${t('txt_txt_remove')}" aria-label="${escAttr(t('txt_txt_remove'))}">${_ic('x')}</button>`;
     html += `</div>`;
     html += `<div class="d-flex gap-1-5 flex-wrap">`;
     team.forEach((member, mi) => {
@@ -735,7 +735,7 @@ function _renderConvGroupPreview(rid) {
   const str = _convGroupPreview.strengths;
   let html = `<div class="gp-group-preview-title-row">`;
   html += `<div class="field-section-title m-0">${t('txt_gp_group_assignments')}</div>`;
-  html += `<button type="button" class="gp-preview-close" onclick="_cancelConvGroupPreview('${esc(rid)}')" title="${t('txt_txt_back')}">&times;</button>`;
+  html += `<button type="button" class="gp-preview-close" onclick="_cancelConvGroupPreview('${esc(rid)}')" title="${t('txt_txt_back')}" aria-label="${escAttr(t('txt_txt_back'))}">${_ic('x')}</button>`;
   html += `</div>`;
   html += `<div class="gp-group-preview-grid">`;
   groups.forEach((g, gi) => {

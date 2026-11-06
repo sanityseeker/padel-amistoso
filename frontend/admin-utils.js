@@ -101,7 +101,7 @@ function _renderDemoCredsBanner(username, passphrase) {
     <code class="demo-banner-code">${esc(username)}</code> / <code class="demo-banner-code">${esc(passphrase)}</code>
     <button type="button" class="btn btn-sm" onclick="copyDemoCredsBanner(this)">${esc(t('txt_demo_creds_copy'))}</button>
     <span class="demo-creds-note">${esc(t('txt_demo_creds_save_hint'))}</span>
-    <button type="button" class="demo-banner-dismiss" onclick="dismissDemoCredsBanner()" aria-label="${escAttr(t('txt_txt_close'))}">✕</button>
+    <button type="button" class="demo-banner-dismiss" onclick="dismissDemoCredsBanner()" aria-label="${escAttr(t('txt_txt_close'))}">${_ic('x')}</button>
   `;
   banner.style.display = 'block';
 }
@@ -891,9 +891,9 @@ function _renderAdminBracketCard(apiBase, tvSettings, opts = {}) {
   const useSplit = isEspejo || isDouble;
   const url = _adminBracketUrl(apiBase, tvSettings);
   let h = `<div class="card admin-bracket-card" data-bracket-api="${apiBase}" data-espejo="${isEspejo ? '1' : ''}" data-double="${isDouble ? '1' : ''}">`;
-  h += `<div class="admin-bracket-header">`;
-  h += `<h2 class="admin-bracket-title">${esc(title)}</h2>`;
-  h += `<button type="button" class="btn btn-sm btn-muted" onclick="_jumpToSettings('tv')" title="${escAttr(t('txt_admin_bracket_open_settings_hint'))}">${_ic('settings')} ${esc(t('txt_admin_bracket_tune_btn'))}</button>`;
+  h += `<div class="admin-bracket-header card-heading-row">`;
+  h += `<h2 class="admin-bracket-title card-title">${esc(title)}</h2>`;
+  h += `<button type="button" class="btn btn-sm btn-muted admin-bracket-tune-btn" onclick="_jumpToSettings('tv')" aria-label="${escAttr(t('txt_admin_bracket_tune_btn'))}" title="${escAttr(t('txt_admin_bracket_open_settings_hint'))}">${_ic('settings')} <span class="btn-label">${esc(t('txt_admin_bracket_tune_btn'))}</span></button>`;
   h += `</div>`;
   if (useSplit) {
     h += `<div class="espejo-brackets-row">`;
@@ -1127,7 +1127,7 @@ async function generatePoPreviewSchema() {
     } else {
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
-      resultEl.innerHTML = `<details class="bracket-collapse bracket-collapse-left" open><summary class="bracket-collapse-summary"><span class="bracket-chevron bracket-chevron-anim">&#9654;</span>${t('txt_txt_play_off_bracket')}</summary><img class="bracket-img" src="${blobUrl}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox('${blobUrl}')" title="${t('txt_txt_click_to_expand')}"></details>`;
+      resultEl.innerHTML = `<details class="bracket-collapse bracket-collapse-left" open><summary class="bracket-collapse-summary"><span class="bracket-chevron bracket-chevron-anim">${_ic('chevright')}</span>${t('txt_txt_play_off_bracket')}</summary><img class="bracket-img" src="${blobUrl}" alt="${t('txt_txt_play_off_bracket')}" onclick="_openBracketLightbox('${blobUrl}')" title="${t('txt_txt_click_to_expand')}"></details>`;
     }
   } catch (e) {
     resultEl.innerHTML = '';
@@ -1225,8 +1225,8 @@ function _showAdminToast(msg, opts = {}) {
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'admin-toast-close';
-  closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.textContent = '×';
+  closeBtn.setAttribute('aria-label', t('txt_txt_close'));
+  closeBtn.innerHTML = _ic('x');
   closeBtn.onclick = () => _dismissAdminToast(id);
   toast.appendChild(closeBtn);
   stack.appendChild(toast);
@@ -1303,7 +1303,7 @@ function _renderMatchFilterChips(tid) {
     const active = current === key ? ' active' : '';
     return `<button type="button" class="${active}" data-filter="${key}" onclick="_preserveScrollPosition(() => _applyMatchFilter('${key}'))">${esc(label)}</button>`;
   };
-  let html = `<div class="match-filter-row" id="admin-match-filter-row" role="tablist" aria-label="Match filter">`;
+  let html = `<div class="match-filter-row" id="admin-match-filter-row" role="tablist" aria-label="${escAttr(t('txt_admin_match_filter_label'))}">`;
   html += `<div class="match-filter-toggle" id="gp-match-filter">`;
   html += chip('all', t('txt_txt_filter_all'));
   html += chip('pending', t('txt_txt_filter_pending'));

@@ -69,11 +69,13 @@ async function renderGP() {
     // match filter chips share this bar so they sit alongside the group chips.
     if (status.phase === 'groups' && _gpGroupNames.length > 1) {
       html += `<div class="group-nav-bar" id="gp-group-nav">`;
+      html += `<div class="group-nav-chips">`;
       for (const gName of _gpGroupNames) {
         const gPending = (groups.matches[gName] || []).filter(m => m.status !== 'completed').length;
         const cls = gPending > 0 ? 'group-nav-btn has-pending' : 'group-nav-btn all-done';
         html += `<button type="button" class="${cls}" onclick="_scrollToGroup('${escAttr(gName)}')">${t('txt_txt_group_name_value', { value: esc(gName) })}</button>`;
       }
+      html += `</div>`;
       html += `<span class="group-nav-sep" aria-hidden="true"></span>`;
       html += _renderMatchFilterChips(currentTid);
       html += `</div>`;
@@ -83,7 +85,7 @@ async function renderGP() {
 
     // Group standings
     for (const [gName, rows] of Object.entries(groups.standings)) {
-      html += `<div class="card" id="gp-group-card-${escAttr(gName)}"><h3 class="card-heading-row">${t('txt_txt_group_name_value', { value: esc(gName) })} <button class="format-info-btn" onclick="showAbbrevPopup(event,'standings')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h3>`;
+      html += `<div class="card" id="gp-group-card-${escAttr(gName)}"><h3 class="card-heading-row card-title">${t('txt_txt_group_name_value', { value: esc(gName) })} <button class="format-info-btn" onclick="showAbbrevPopup(event,'standings')" aria-label="${esc(t('txt_txt_column_legend'))}">i</button></h3>`;
       const hParticipant = (status.team_roster && Object.keys(status.team_roster).length > 0) ? t('txt_txt_team') : t('txt_txt_player');
       const hasSets = rows.some(r => r.sets_won > 0 || r.sets_lost > 0);
       html += `<table class="standings-table"><thead><tr><th>${hParticipant}</th><th title="${escAttr(t('txt_txt_abbrev_mp_full'))}">${t('txt_txt_p_abbrev')}</th><th>${t('txt_txt_w_abbrev')}</th><th>${t('txt_txt_l_abbrev')}</th>`;
@@ -129,6 +131,8 @@ async function renderGP() {
         hasMoreRounds: true,
       });
       html += `<div id="gp-playoffs-section">`;
+      // Decision zone: courts strip + the phase decisions in one card.
+      html += `<div class="decision-zone">`;
       html += _renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/gp/courts`);
       html += `<div class="decision-actions-row">`;
       if (groups.has_more_rounds) {
@@ -136,11 +140,12 @@ async function renderGP() {
         html += `<button type="button" class="btn btn-primary btn-lg-action"${_decisionDisabledAttrs(reason)} onclick="withLoading(this,nextGpGroupRound)">${_ic('zap')} ${t('txt_txt_generate_next_group_round')}</button>`;
       }
       const playoffReason = blockedReason;
-      html += `<button type="button" class="btn btn-success btn-lg-action"${_decisionDisabledAttrs(playoffReason)} onclick="withLoading(this,proposeGpPlayoffs)">${_ic('trophy')} ${t('txt_txt_start_playoffs')} →</button>`;
+      html += `<button type="button" class="btn btn-success btn-lg-action"${_decisionDisabledAttrs(playoffReason)} onclick="withLoading(this,proposeGpPlayoffs)">${_ic('trophy')} ${t('txt_txt_start_playoffs')} ${_ic('arrowright')}</button>`;
       if (blockedReason) {
         html += `<div class="decision-actions-disabled-note">${esc(blockedReason)}</div>`;
       }
       html += `</div>`;
+      html += `</div>`;   // decision-zone
       html += `</div>`;
     }
 
@@ -224,8 +229,8 @@ function _renderGpReviewQueueCard(matches) {
   const disputesCount = reviewItems.filter(m => _gpGetReviewItemKind(m) === 'disputes').length;
   const pendingCount = reviewItems.length - disputesCount;
   let html = `<div class="card gp-review-queue-card" id="gp-review-queue-card">`;
-  html += `<div class="gp-review-queue-head">`;
-  html += `<h3>${t('txt_txt_review_queue')}</h3>`;
+  html += `<div class="gp-review-queue-head card-heading-row">`;
+  html += `<h3 class="card-title">${t('txt_txt_review_queue')}</h3>`;
   html += `<div class="gp-review-filter" id="gp-review-filter">`;
   html += `<button type="button" class="active" onclick="_gpSetReviewQueueFilter('all')">${t('txt_txt_filter_all')} (${reviewItems.length})</button>`;
   if (_scoreConfirmationMode !== 'immediate') html += `<button type="button" onclick="_gpSetReviewQueueFilter('disputes')">${t('txt_txt_disputes')} (${disputesCount})</button>`;
@@ -328,10 +333,6 @@ async function renderPO() {
     html += _renderCourtAssignmentsCard(pending, t('txt_txt_court_assignments_play_offs'), status.assign_courts !== false, 'po-playoff');
     html += _renderPoReviewQueueCard(poMatches);
 
-    if (hasCourts) {
-      html += _renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/po/courts`);
-    }
-
     html += _renderChampionAlerts(status);
 
     html += _renderAdminBracketCard(`/api/tournaments/${currentTid}/po/playoffs-schema`, tvSettings, { isEspejo: status.espejo === true });
@@ -341,6 +342,11 @@ async function renderPO() {
       status.espejo ? 'po-espejo-losers' : 'po-playoff',
       status.espejo_super_final ? 'po-espejo-super-final' : (status.espejo ? 'po-espejo-losers' : 'po-playoff'),
     );
+
+    // Courts strip in the same slot as the GP / Mexicano decision zone.
+    if (hasCourts) {
+      html += `<div class="decision-zone">${_renderCourtsSection(status.courts, `/api/tournaments/${currentTid}/po/courts`)}</div>`;
+    }
 
     const poScoringStages = [{ key: 'po-playoff', label: t('txt_txt_play_offs') }];
     if (status.espejo) {
@@ -383,8 +389,8 @@ function _renderPoReviewQueueCard(matches) {
   const disputesCount = reviewItems.filter(m => _gpGetReviewItemKind(m) === 'disputes').length;
   const pendingCount = reviewItems.length - disputesCount;
   let html = `<div class="card gp-review-queue-card" id="po-review-queue-card">`;
-  html += `<div class="gp-review-queue-head">`;
-  html += `<h3>${t('txt_txt_review_queue')}</h3>`;
+  html += `<div class="gp-review-queue-head card-heading-row">`;
+  html += `<h3 class="card-title">${t('txt_txt_review_queue')}</h3>`;
   html += `<div class="gp-review-filter" id="po-review-filter">`;
   html += `<button type="button" class="active" onclick="_poSetReviewQueueFilter('all')">${t('txt_txt_filter_all')} (${reviewItems.length})</button>`;
   if (_scoreConfirmationMode !== 'immediate') html += `<button type="button" onclick="_poSetReviewQueueFilter('disputes')">${t('txt_txt_disputes')} (${disputesCount})</button>`;
@@ -680,10 +686,13 @@ function _renderEditForm(m, ctx) {
   const saved = m.sets && m.sets.length > 0 ? 'sets' : 'points';
   let html = `<div class="match-actions hidden" id="medit-${m.id}">`;
   html += _renderScoreInputs(m, ctx, { mode: _matchInputMode(m, ctx, saved), prefill: sc, idPrefix: 'mfmt-edit-' });
+  // Secondary actions under the score row: Clear (destructive, quiet) left, Cancel right.
+  html += `<div class="action-row action-row--split">`;
   if (_canClearMatchResult(ctx)) {
-    html += `<button type="button" class="btn btn-sm btn-danger" onclick="_clearMatchResult('${m.id}')">${_ic('reset')} ${t('txt_match_clear_btn')}</button>`;
+    html += `<button type="button" class="btn btn-sm btn-outline-danger" onclick="_clearMatchResult('${m.id}')">${_ic('reset')} ${t('txt_match_clear_btn')}</button>`;
   }
-  html += `<button type="button" class="btn btn-sm btn-muted" aria-label="${escAttr(t('txt_txt_cancel'))}" onclick="_cancelEditMatch('${m.id}')">✕</button>`;
+  html += `<button type="button" class="btn btn-sm btn-outline" onclick="_cancelEditMatch('${m.id}')">${t('txt_txt_cancel')}</button>`;
+  html += `</div>`;
   html += `</div>`;
   return html;
 }
@@ -785,17 +794,20 @@ function _renderFormatReviewPanel(m) {
 
 /** Comment banner with its inline editor. */
 function _renderCommentBanner(m) {
-  let html = `<div class="match-comment-banner">`;
+  // Without a comment the banner is just the "Add comment" button; on phones
+  // it moves up to the right end of the card's meta line (CSS order).
+  let html = `<div class="match-comment-banner${m.comment ? '' : ' match-comment-banner--empty'}">`;
   if (m.comment) {
     html += `<span class="match-comment-text" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_click_to_edit')}">${_ic('message')} ${esc(m.comment)}</span>`;
   } else {
-    html += `<span class="match-comment-add" onclick="_openCommentEdit('${m.id}')" title="${t('txt_match_comment_placeholder')}">${_ic('message')} ${t('txt_match_add_comment')}</span>`;
+    const addLabel = escAttr(t('txt_match_add_comment'));
+    html += `<button type="button" class="match-comment-add" onclick="_openCommentEdit('${m.id}')" aria-label="${addLabel}" title="${escAttr(t('txt_match_comment_placeholder'))}">${_ic('message')}<span class="match-comment-add-label">${t('txt_match_add_comment')}</span></button>`;
   }
   html += `<div class="match-comment-edit hidden" id="mc-row-${m.id}">`;
   html += `<input type="text" id="mc-${m.id}" value="${m.comment ? esc(m.comment) : ''}" placeholder="${t('txt_match_comment_placeholder')}" maxlength="500" onkeydown="if(event.key==='Enter')_setMatchComment('${m.id}')">`;
   html += `<button type="button" class="btn-comment-save" onclick="_setMatchComment('${m.id}')">${t('txt_txt_save')}</button>`;
-  if (m.comment) html += `<button type="button" class="btn btn-danger btn-sm" onclick="_clearMatchComment('${m.id}')">✕</button>`;
-  html += `<button type="button" class="btn-comment-cancel" aria-label="${t('txt_txt_cancel')}" onclick="_closeCommentEdit('${m.id}')">✕</button>`;
+  if (m.comment) html += `<button type="button" class="btn btn-danger btn-sm" onclick="_clearMatchComment('${m.id}')" aria-label="${escAttr(t('txt_txt_remove'))}" title="${escAttr(t('txt_txt_remove'))}">${_ic('x')}</button>`;
+  html += `<button type="button" class="btn-comment-cancel" aria-label="${t('txt_txt_cancel')}" title="${escAttr(t('txt_txt_cancel'))}" onclick="_closeCommentEdit('${m.id}')">${_ic('x')}</button>`;
   html += `</div></div>`;
   return html;
 }
@@ -861,7 +873,8 @@ function matchRow(m, ctx) {
   const editBtn = () => {
     const sc = m.score || [0, 0];
     const setsJson = JSON.stringify(m.sets || []);
-    return `<button type="button" class="match-edit-btn" id="medit-btn-${m.id}" data-sets='${setsJson}' onclick="_toggleEditMatch('${m.id}','${ctx}',${sc[0]},${sc[1]})">${t('txt_txt_edit')}</button>`;
+    const label = escAttr(t('txt_txt_edit'));
+    return `<button type="button" class="match-edit-btn" id="medit-btn-${m.id}" data-sets='${setsJson}' aria-label="${label}" title="${label}" onclick="_toggleEditMatch('${m.id}','${ctx}',${sc[0]},${sc[1]})">${_ic('edit')}</button>`;
   };
 
   if (m.status === 'completed') {
@@ -1798,7 +1811,7 @@ function _renderGpExternalSection(isSplit) {
     if (isSplit) {
       html += `<select class="gp-split-select" aria-label="${escAttr(ep.name)}" onchange="_gpSetExternalSide(${i}, this.value)">${_gpSplitSideOptions(ep.side)}</select>`;
     }
-    html += `<button type="button" class="btn btn-sm btn-muted playoff-editor-remove-btn" onclick="_gpRemoveExternal(${i})">✕</button>`;
+    html += `<button type="button" class="btn btn-sm btn-muted playoff-editor-remove-btn" onclick="_gpRemoveExternal(${i})" aria-label="${escAttr(t('txt_txt_remove'))}" title="${escAttr(t('txt_txt_remove'))}">${_ic('x')}</button>`;
     html += `</div>`;
   }
   html += `</div>`;
@@ -1902,10 +1915,14 @@ function _renderGpPlayoffEditor() {
   }
 
   // Courts + action buttons
+  html += `<div class="decision-zone">`;
   html += _renderCourtsSection(_gpCurrentCourts, `/api/tournaments/${currentTid}/gp/courts`);
   html += `<div class="decision-actions-row">`;
   html += `<button type="button" class="btn btn-success btn-lg-action" onclick="withLoading(this,_confirmGpPlayoffs)">${_ic('trophy')} ${t('txt_txt_start_playoffs')}</button>`;
-  html += `<button type="button" class="btn btn-muted btn-lg-action" onclick="renderGP()">✕ ${t('txt_txt_cancel')}</button>`;
+  html += `<div class="action-row action-row--fill decision-secondary">`;
+  html += `<button type="button" class="btn btn-outline btn-lg-action" onclick="renderGP()">${_ic('x')} ${t('txt_txt_cancel')}</button>`;
+  html += `</div>`;
+  html += `</div>`;
   html += `</div>`;
   html += `</div>`;
   return html;
@@ -2264,7 +2281,7 @@ function _gpRenderPlayoffTeams() {
     html += `<div class="conv-team-row">`;
     html += `<div class="d-flex items-center gap-2 mb-1-5">`;
     html += `<span class="fs-sm fw-700 text-muted">${t('txt_conv_team')} ${idx + 1}</span>`;
-    html += `<button type="button" class="participant-remove-btn" onclick="_gpRemovePlayoffTeam(${idx})" title="${t('txt_txt_remove')}">×</button>`;
+    html += `<button type="button" class="participant-remove-btn" onclick="_gpRemovePlayoffTeam(${idx})" title="${t('txt_txt_remove')}" aria-label="${escAttr(t('txt_txt_remove'))}">${_ic('x')}</button>`;
     html += `</div>`;
     html += `<div class="d-flex gap-1-5 flex-wrap">`;
     team.forEach((pid, mi) => {
@@ -2456,11 +2473,13 @@ function _renderPlayoffMatchesByRound(matches, ctx, losersCtx = ctx, superFinalC
   let html = `<div class="group-nav-bar" id="po-round-nav">`;
   // No per-round counts: the status bar carries the current rounds' progress;
   // the pending dot / dimmed done state is enough here.
+  html += `<div class="group-nav-chips">`;
   for (const key of roundOrder) {
     const pending = byRound[key].some(m => m.status !== 'completed');
     const cls = pending ? 'group-nav-btn has-pending' : 'group-nav-btn all-done';
     html += `<button type="button" class="${cls}" onclick="_scrollToPlayoffRound('${escAttr(key)}')">${esc(key)}</button>`;
   }
+  html += `</div>`;
   html += `<span class="group-nav-sep" aria-hidden="true"></span>`;
   html += _renderMatchFilterChips(currentTid);
   html += `</div>`;
@@ -2477,7 +2496,7 @@ function _renderPlayoffMatchesByRound(matches, ctx, losersCtx = ctx, superFinalC
     const firstSide = rMatches[0]?.bracket_side;
     const roundCtx = firstSide === 'super_final' ? superFinalCtx : (firstSide === 'losers' ? losersCtx : ctx);
 
-    html += `<div class="card" id="po-round-card-${escAttr(key)}">`;
+    html += `<div class="card po-round-card" id="po-round-card-${escAttr(key)}">`;
     html += `<details class="group-matches-details"${openAttr}>`;
     html += `<summary>${esc(key)} <span class="matches-summary-count">(${pending} / ${total})</span></summary>`;
     for (const m of rMatches) {

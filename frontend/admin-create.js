@@ -369,8 +369,9 @@ function renderParticipantFields(mode) {
     const rm = document.createElement('button');
     rm.type = 'button';
     rm.className = 'participant-remove-btn';
-    rm.textContent = '×';
+    rm.innerHTML = _ic('x');
     rm.title = t('txt_txt_remove');
+    rm.setAttribute('aria-label', t('txt_txt_remove'));
     rm.addEventListener('click', () => removeParticipantField(mode, i));
     row.appendChild(inp);
     row.appendChild(rm);
@@ -436,8 +437,9 @@ function _renderTeamBuilder(mode) {
     const rm = document.createElement('button');
     rm.type = 'button';
     rm.className = 'participant-remove-btn';
-    rm.textContent = '×';
+    rm.innerHTML = _ic('x');
     rm.title = t('txt_txt_remove');
+    rm.setAttribute('aria-label', t('txt_txt_remove'));
     rm.addEventListener('click', () => _removeTeamBuilderRow(mode, ti));
     teamRow.appendChild(rm);
 
@@ -675,7 +677,7 @@ function _createClubEnsurePickerModal() {
   overlay.innerHTML = `<div class="pc-hub-modal-box create-club-picker-modal-box">`
     + `<div class="pc-hub-modal-header">`
     + `<span class="pc-hub-modal-title">${t('txt_create_pick_from_club_title')}</span>`
-    + `<button type="button" class="pc-hub-close-btn" onclick="_createClubClosePicker()">✕</button>`
+    + `<button type="button" class="pc-hub-close-btn" onclick="_createClubClosePicker()" aria-label="${escAttr(t('txt_txt_close'))}">${_ic('x')}</button>`
     + `</div>`
     + `<input type="text" id="create-club-picker-q" class="player-codes-input" placeholder="${t('txt_create_pick_from_club_search')}" oninput="_createClubPickerSearch()">`
     + `<div id="create-club-picker-results" class="pc-hub-results create-club-picker-results"></div>`
@@ -1322,7 +1324,7 @@ function _renderGPGroupPreview() {
   const str = _gpGroupPreview.strengths;
   let html = `<div class="gp-group-preview-title-row">`;
   html += `<div class="field-section-title field-section-title-inline">${_ic('archive')} ${t('txt_gp_group_assignments')}</div>`;
-  html += `<button type="button" class="gp-preview-close" onclick="_cancelGPPreview()" title="${t('txt_txt_back')}">&times;</button>`;
+  html += `<button type="button" class="gp-preview-close" onclick="_cancelGPPreview()" title="${t('txt_txt_back')}" aria-label="${escAttr(t('txt_txt_back'))}">${_ic('x')}</button>`;
   html += `</div>`;
   html += `<div class="gp-group-preview-grid">`;
   groups.forEach((g, gi) => {
@@ -1600,7 +1602,7 @@ function _createHubEnsureModal() {
   overlay.innerHTML = `<div class="pc-hub-modal-box">`
     + `<div class="pc-hub-modal-header">`
     + `<span class="pc-hub-modal-title">${_ic('link')} ${t('txt_hub_link')}</span>`
-    + `<button type="button" class="pc-hub-close-btn" onclick="_createHubClose()">✕</button>`
+    + `<button type="button" class="pc-hub-close-btn" onclick="_createHubClose()" aria-label="${escAttr(t('txt_txt_close'))}">${_ic('x')}</button>`
     + `</div>`
     + `<input type="text" id="create-hub-q" class="player-codes-input" placeholder="${t('txt_hub_search_placeholder')}" oninput="_createHubDebouncedSearch()">`
     + `<div id="create-hub-results" class="pc-hub-results"></div>`

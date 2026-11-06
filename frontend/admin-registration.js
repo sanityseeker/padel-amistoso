@@ -232,7 +232,7 @@ function _renderRegDetailInline(rid) {
       if (window._emailConfigured && reg.email) {
         html += `<button type="button" class="btn btn-sm btn-row-action mr-1" onclick="_sendRegEmail('${esc(r.id)}','${esc(reg.player_id)}', this)" title="${t('txt_email_send')}">${_ic('mail')}</button>`;
       }
-      html += `<button type="button" class="btn btn-danger btn-sm btn-row-action" onclick="_removeRegistrant('${esc(r.id)}','${esc(reg.player_id)}')" title="${t('txt_reg_confirm_remove')}">✕</button>`;
+      html += `<button type="button" class="btn btn-danger btn-sm btn-row-action" onclick="_removeRegistrant('${esc(r.id)}','${esc(reg.player_id)}')" title="${t('txt_reg_confirm_remove')}" aria-label="${escAttr(t('txt_reg_confirm_remove'))}">${_ic('x')}</button>`;
       html += `</td></tr>`;
     }
     html += `</tbody></table></div>`;
@@ -792,7 +792,7 @@ function _addRegQuestion(containerId, noFocus = false) {
         <span class="switch-track"></span>
         <span>${t('txt_reg_q_required')}</span>
       </label>
-      <button type="button" class="reg-q-remove" onclick="_removeRegQuestion(this)" title="${t('txt_txt_remove')}">✕</button>
+      <button type="button" class="reg-q-remove" onclick="_removeRegQuestion(this)" title="${t('txt_txt_remove')}" aria-label="${escAttr(t('txt_txt_remove'))}">${_ic('x')}</button>
     </div>
     <div class="reg-q-card-body">
       <input type="text" class="reg-q-label" placeholder="${t('txt_reg_question_label')}" maxlength="128">
@@ -843,7 +843,7 @@ function _addRegChoice(btn) {
   if (!list) return;
   const row = document.createElement('div');
   row.className = 'reg-q-choice-row';
-  row.innerHTML = `<input type="text" class="reg-q-choice-val" placeholder="${t('txt_reg_q_choices_placeholder')}" maxlength="128"><button type="button" class="reg-q-choice-remove" onclick="this.parentElement.remove()" title="${t('txt_txt_remove')}">✕</button>`;
+  row.innerHTML = `<input type="text" class="reg-q-choice-val" placeholder="${t('txt_reg_q_choices_placeholder')}" maxlength="128"><button type="button" class="reg-q-choice-remove" onclick="this.parentElement.remove()" title="${t('txt_txt_remove')}" aria-label="${escAttr(t('txt_txt_remove'))}">${_ic('x')}</button>`;
   list.appendChild(row);
   row.querySelector('input')?.focus();
 }
@@ -1655,7 +1655,7 @@ function _populateRegQuestions(containerId, questions) {
         for (const choice of q.choices) {
           const row = document.createElement('div');
           row.className = 'reg-q-choice-row';
-          row.innerHTML = `<input type="text" class="reg-q-choice-val" placeholder="${t('txt_reg_q_choices_placeholder')}" maxlength="128"><button type="button" class="reg-q-choice-remove" onclick="this.parentElement.remove()" title="${t('txt_txt_remove')}">✕</button>`;
+          row.innerHTML = `<input type="text" class="reg-q-choice-val" placeholder="${t('txt_reg_q_choices_placeholder')}" maxlength="128"><button type="button" class="reg-q-choice-remove" onclick="this.parentElement.remove()" title="${t('txt_txt_remove')}" aria-label="${escAttr(t('txt_txt_remove'))}">${_ic('x')}</button>`;
           row.querySelector('input').value = choice;
           list.appendChild(row);
         }
