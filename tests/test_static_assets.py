@@ -1855,31 +1855,61 @@ def test_match_card_has_meta_teams_actions_lines_on_phones():
     assert ".po-round-card .match-round-badge { display: none; }" in early
 
 
-def test_sticky_nav_wraps_filter_to_second_row_on_phones():
+def _css_rule(css: str, selector: str) -> str:
+    """Body of the first `selector { ... }` rule in css."""
+    start = css.index(selector + " {")
+    return css[start : css.index("}", start)]
+
+
+def test_sticky_nav_is_one_row():
     gp = _read_frontend("admin-gp.js")
     assert gp.count('<div class="group-nav-chips">') == 2
     for bar_id in ("gp-group-nav", "po-round-nav"):
         start = gp.index(f'<div class="group-nav-bar" id="{bar_id}">`;')
-        chunk = gp[start : start + 900]
+        chunk = gp[start : start + 1200]
         assert (
             chunk.index('<div class="group-nav-chips">')
             < chunk.index("group-nav-btn")
             < chunk.index('<span class="group-nav-sep"')
         ), bar_id
     css = _read_frontend("admin.css")
-    assert ".group-nav-chips { display: contents; }" in css
+    assert ".group-nav-chips { display: contents; }" not in css
+    chips = _css_rule(css, ".group-nav-chips")
+    assert "flex: 1 1 0;" in chips and "min-width: 0;" in chips and "overflow-x: auto;" in chips
+    bar = _css_rule(css, ".group-nav-bar")
+    assert "flex-wrap: nowrap;" in bar and "overflow-x" not in bar
+    assert "#mex-ops-header ~ .group-nav-bar { position: static; }" in css
     early = _phone_block(css, "@media (max-width: 600px) {\n  body { padding: 0.5rem; }")
-    assert "flex-wrap: wrap; overflow: visible; }" in early[early.index("  .group-nav-bar {") :][:200]
-    chips = early[early.index("  .group-nav-chips {") :]
-    chips = chips[: chips.index("}")]
-    assert "flex: 1 1 auto;" in chips and "min-width: 0;" in chips and "overflow-x: auto;" in chips
-    assert ".group-nav-bar > .match-filter-row { flex: 0 0 auto; margin-left: auto;" in early
+    assert "flex-wrap: wrap" not in early[early.index("  .group-nav-bar {") :][:200]
+    assert ".group-nav-bar .match-filter-toggle { display: none; }" in early
+    assert "min-height: var(--tap-sm);" in early[early.index(".group-nav-bar .match-filter-select") :][:200]
     # The bar stays the sticky element and the offset is measured, not assumed.
     utils = _read_frontend("admin-utils.js")
     assert "return el.getBoundingClientRect().height;" in utils
     assert 'aria-label="Match filter"' not in utils
-    assert "aria-label=\"${escAttr(t('txt_admin_match_filter_label'))}\"" in utils
+    assert 'aria-label="${label}"' in utils
+    assert "const label = escAttr(t('txt_admin_match_filter_label'));" in utils
     assert _read_frontend("i18n.js").count('"txt_admin_match_filter_label"') == 2
+    # Edge fades follow the chip strip's scroll state.
+    assert "function _syncNavChipsOverflow(el)" in utils
+    assert '.group-nav-chips[data-overflow="both"]' in css
+
+
+def test_match_filter_has_phone_select_synced_with_toggle():
+    utils = _read_frontend("admin-utils.js")
+    assert '<select class="match-filter-select' in utils
+    assert 'onchange="_preserveScrollPosition(() => _applyMatchFilter(this.value))"' in utils
+    assert 'role="group"' in utils and 'role="tablist"' not in utils
+    gp = _read_frontend("admin-gp.js")
+    assert "root.querySelectorAll('.match-filter-select')" in gp
+    assert "sel.value = filter;" in gp
+
+
+def test_group_chip_shows_bare_name_with_full_label_in_title():
+    gp = _read_frontend("admin-gp.js")
+    assert "const full = t('txt_txt_group_name_value', { value: gName });" in gp
+    assert 'title="${escAttr(full)}" aria-label="${escAttr(full)}"' in gp
+    assert ">${esc(gName)}</button>" in gp
 
 
 def test_player_codes_table_stacks_into_cards_on_phones():

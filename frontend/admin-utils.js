@@ -185,6 +185,19 @@ function _syncAdminStickyOffset() {
 }
 
 /**
+ * Flag which edges of a group/round chip strip have chips scrolled out of view
+ * (data-overflow = '' | 'end' | 'start' | 'both'); admin.css fades those edges.
+ */
+function _syncNavChipsOverflow(el) {
+  const max = el.scrollWidth - el.clientWidth;
+  const atStart = el.scrollLeft <= 1;
+  const atEnd = el.scrollLeft >= max - 1;
+  let state = '';
+  if (max > 1) state = atStart ? 'end' : (atEnd ? 'start' : 'both');
+  if ((el.dataset.overflow || '') !== state) el.dataset.overflow = state;
+}
+
+/**
  * Keep the sticky offset current: views re-render their bars via innerHTML
  * (MutationObserver re-binds), and bars change height when they wrap,
  * collapse or get hidden with their tab panel (ResizeObserver).
@@ -193,18 +206,31 @@ function _initAdminStickyOffset() {
   let frame = 0;
   const schedule = () => {
     if (frame) return;
-    frame = requestAnimationFrame(() => { frame = 0; _syncAdminStickyOffset(); });
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      _syncAdminStickyOffset();
+      document.querySelectorAll('.group-nav-chips').forEach(_syncNavChipsOverflow);
+    });
   };
   const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
   let observed = [];
   const rebind = () => {
+    const chips = Array.from(document.querySelectorAll('.group-nav-chips'));
+    chips.forEach(el => {
+      if (!el._navOverflowBound) {
+        el._navOverflowBound = true;
+        el.addEventListener('scroll', () => _syncNavChipsOverflow(el), { passive: true });
+      }
+      _syncNavChipsOverflow(el);
+    });
     const bars = Array.from(document.querySelectorAll(`${_ADMIN_STICKY_BAR_SELECTOR}, .admin-subdomain-banner`));
-    if (bars.length === observed.length && bars.every((el, i) => el === observed[i])) return;
+    const all = bars.concat(chips);
+    if (all.length === observed.length && all.every((el, i) => el === observed[i])) return;
     if (resizeObserver) {
       resizeObserver.disconnect();
-      bars.forEach(el => resizeObserver.observe(el));
+      all.forEach(el => resizeObserver.observe(el));
     }
-    observed = bars;
+    observed = all;
   };
   new MutationObserver(() => { rebind(); schedule(); })
     .observe(document.body, { childList: true, subtree: true });
@@ -1299,17 +1325,26 @@ function _renderMatchFilterChips(tid) {
   // _gpMatchFilterState is the legacy global used by _applyMatchFilter; keep in sync.
   if (typeof _gpMatchFilterState !== 'undefined') _gpMatchFilterState = current;
   const showDisputed = (typeof _scoreConfirmationMode !== 'undefined') && _scoreConfirmationMode !== 'immediate';
-  const chip = (key, label) => {
-    const active = current === key ? ' active' : '';
-    return `<button type="button" class="${active}" data-filter="${key}" onclick="_preserveScrollPosition(() => _applyMatchFilter('${key}'))">${esc(label)}</button>`;
-  };
-  let html = `<div class="match-filter-row" id="admin-match-filter-row" role="tablist" aria-label="${escAttr(t('txt_admin_match_filter_label'))}">`;
+  const options = [
+    ['all', t('txt_txt_filter_all')],
+    ['pending', t('txt_txt_filter_pending')],
+    ['completed', t('txt_txt_filter_completed')],
+  ];
+  if (showDisputed) options.push(['disputed', t('txt_admin_filter_disputed')]);
+  // A saved 'disputed' filter has no option once disputes are impossible.
+  const active = options.some(([key]) => key === current) ? current : 'all';
+  const label = escAttr(t('txt_admin_match_filter_label'));
+  let html = `<div class="match-filter-row" id="admin-match-filter-row" role="group" aria-label="${label}">`;
   html += `<div class="match-filter-toggle" id="gp-match-filter">`;
-  html += chip('all', t('txt_txt_filter_all'));
-  html += chip('pending', t('txt_txt_filter_pending'));
-  html += chip('completed', t('txt_txt_filter_completed'));
-  if (showDisputed) html += chip('disputed', t('txt_admin_filter_disputed'));
-  html += `</div></div>`;
+  for (const [key, text] of options) {
+    html += `<button type="button" class="${active === key ? 'active' : ''}" data-filter="${key}" onclick="_preserveScrollPosition(() => _applyMatchFilter('${key}'))">${esc(text)}</button>`;
+  }
+  html += `</div>`;
+  html += `<select class="match-filter-select${active === 'all' ? '' : ' is-filtered'}" aria-label="${label}" onchange="_preserveScrollPosition(() => _applyMatchFilter(this.value))">`;
+  for (const [key, text] of options) {
+    html += `<option value="${key}"${active === key ? ' selected' : ''}>${esc(text)}</option>`;
+  }
+  html += `</select></div>`;
   return html;
 }
 

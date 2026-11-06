@@ -73,7 +73,8 @@ async function renderGP() {
       for (const gName of _gpGroupNames) {
         const gPending = (groups.matches[gName] || []).filter(m => m.status !== 'completed').length;
         const cls = gPending > 0 ? 'group-nav-btn has-pending' : 'group-nav-btn all-done';
-        html += `<button type="button" class="${cls}" onclick="_scrollToGroup('${escAttr(gName)}')">${t('txt_txt_group_name_value', { value: esc(gName) })}</button>`;
+        const full = t('txt_txt_group_name_value', { value: gName });
+        html += `<button type="button" class="${cls}" title="${escAttr(full)}" aria-label="${escAttr(full)}" onclick="_scrollToGroup('${escAttr(gName)}')">${esc(gName)}</button>`;
       }
       html += `</div>`;
       html += `<span class="group-nav-sep" aria-hidden="true"></span>`;
@@ -2477,7 +2478,7 @@ function _renderPlayoffMatchesByRound(matches, ctx, losersCtx = ctx, superFinalC
   for (const key of roundOrder) {
     const pending = byRound[key].some(m => m.status !== 'completed');
     const cls = pending ? 'group-nav-btn has-pending' : 'group-nav-btn all-done';
-    html += `<button type="button" class="${cls}" onclick="_scrollToPlayoffRound('${escAttr(key)}')">${esc(key)}</button>`;
+    html += `<button type="button" class="${cls}" title="${escAttr(key)}" onclick="_scrollToPlayoffRound('${escAttr(key)}')">${esc(key)}</button>`;
   }
   html += `</div>`;
   html += `<span class="group-nav-sep" aria-hidden="true"></span>`;
@@ -2527,6 +2528,12 @@ function _applyMatchFilter(filter) {
       const key = btn.dataset.filter || _legacyFilterKeyFromLabel(btn.textContent.trim());
       btn.classList.toggle('active', key === filter);
     }
+  }
+
+  // Keep the phone-width selects in step with the segmented control.
+  for (const sel of root.querySelectorAll('.match-filter-select')) {
+    sel.value = filter;
+    sel.classList.toggle('is-filtered', filter !== 'all');
   }
 
   // Show/hide match cards based on data-status / data-disputed.

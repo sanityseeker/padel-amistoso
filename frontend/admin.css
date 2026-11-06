@@ -1366,7 +1366,7 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
   z-index: 10;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-2);
   padding: 0.45rem 0.6rem;
   background: color-mix(in srgb, var(--color-bg) 85%, transparent);
   backdrop-filter: blur(8px);
@@ -1374,8 +1374,6 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   margin-bottom: 0.75rem;
-  overflow-x: auto;
-  scrollbar-width: thin;
   flex-wrap: nowrap;
 }
 .group-nav-btn {
@@ -1402,9 +1400,47 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
   background: var(--color-primary);
 }
 .group-nav-btn.all-done { opacity: 0.55; }
-/* Group / round chips. On desktop the wrapper is transparent to the bar's
-   layout; phones make it its own scrolling row (see the 600px block). */
-.group-nav-chips { display: contents; }
+/* Group / round chips: the only scrolling part of the bar, so the match filter
+   stays pinned at the right on one row at every width. Edge fades are driven by
+   data-overflow (set by _syncNavChipsOverflow in admin-utils.js). */
+.group-nav-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  scroll-padding-inline: var(--space-6);
+}
+.group-nav-chips::-webkit-scrollbar { display: none; }
+@media (pointer: fine) {
+  .group-nav-chips { scrollbar-width: thin; }
+}
+.group-nav-chips > .group-nav-btn {
+  flex: none;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.group-nav-chips .group-nav-btn:focus-visible { outline-offset: -2px; }
+.group-nav-chips[data-overflow="end"] {
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - var(--space-6)), transparent);
+  mask-image: linear-gradient(to right, black calc(100% - var(--space-6)), transparent);
+}
+.group-nav-chips[data-overflow="start"] {
+  -webkit-mask-image: linear-gradient(to left, black calc(100% - var(--space-6)), transparent);
+  mask-image: linear-gradient(to left, black calc(100% - var(--space-6)), transparent);
+}
+.group-nav-chips[data-overflow="both"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, black var(--space-6), black calc(100% - var(--space-6)), transparent);
+  mask-image: linear-gradient(to right, transparent, black var(--space-6), black calc(100% - var(--space-6)), transparent);
+}
+.group-nav-bar > .match-filter-row { flex: none; margin-left: auto; }
+/* Mexicano play-offs: the round nav shares a container with the sticky ops
+   header at the same offset, so it would slide under it; let it scroll. */
+#mex-ops-header ~ .group-nav-bar { position: static; }
 
 /* ── Tournament status bar (GP / Play-offs / Mexicano) ──
    One slim row built by admin-utils.js _renderTournamentStatusBar(): the
@@ -1644,6 +1680,27 @@ details[open] .archived-lobbies-summary::before { transform: rotate(90deg); }
   transition: background 0.15s, color 0.15s;
 }
 .match-filter-toggle button.active { background: var(--color-primary-highlight); color: var(--color-primary); }
+/* Compact filter for phones (swapped in for the segmented control at <=600px) */
+.match-filter-select {
+  display: none;
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  font-size: 1rem; /* iOS zooms on focus below 16px */
+  padding: 0 1.6rem 0 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 0.85rem) 55%, calc(100% - 0.6rem) 55%;
+  background-size: 0.25rem 0.25rem;
+  background-repeat: no-repeat;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.match-filter-select.is-filtered { background-color: var(--color-primary-highlight); color: var(--color-primary); border-color: var(--color-primary); }
+.match-filter-select:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.match-filter-select option { background: var(--color-surface); color: var(--color-text); }
 
 /* ── Collapsible group matches ── */
 .group-matches-details summary {
@@ -3873,23 +3930,13 @@ details.bracket-collapse[open] .bracket-chevron { transform: rotate(90deg); }
   .admin-dispute-scores input[type="radio"] { width: 18px; height: 18px; }
   .admin-dispute-custom input[type="number"] { width: 60px; min-height: 44px; font-size: 1rem; }
   .admin-dispute-resolve { width: 100%; text-align: center; }
-  /* Sticky nav: chips row on top (scrolls sideways within itself), the
-     match filter beside it when both fit, otherwise on a second row at the
-     right. The bar itself never scrolls, so the filter is never clipped. */
-  .group-nav-bar { padding: 0.35rem 0.4rem; gap: var(--space-1-5) var(--space-2); flex-wrap: wrap; overflow: visible; }
-  .group-nav-chips {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .group-nav-chips::-webkit-scrollbar { display: none; }
-  .group-nav-chips > .group-nav-btn { flex: 0 0 auto; }
+  /* Sticky nav stays one row: chips scroll inside their own region and the
+     match filter collapses to a native select so it always fits. */
+  .group-nav-bar { padding: var(--space-1) var(--space-1-5); }
   .group-nav-bar > .group-nav-sep { display: none; }
-  .group-nav-bar > .match-filter-row { flex: 0 0 auto; margin-left: auto; max-width: 100%; }
+  .group-nav-bar .match-filter-toggle { display: none; }
+  .group-nav-bar .match-filter-select { display: inline-block; min-height: var(--tap-sm); }
+  .group-nav-chips > .group-nav-btn { max-width: 10rem; }
   .gp-review-row { flex-direction: column; align-items: stretch; }
   .gp-review-row-teams { white-space: normal; overflow: visible; text-overflow: clip; }
   .gp-review-row .btn { width: 100%; }
