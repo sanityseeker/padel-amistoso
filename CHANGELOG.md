@@ -1,3 +1,13 @@
+## v2.4.0 (2026-11-06)
+
+### Feat
+
+- **admin**: tighter, better-aligned mobile layout for tournament admin
+
+### Fix
+
+- **export**: player headers for individual tennis group stages
+
 ## v2.3.4 (2026-11-05)
 
 ### Fix
