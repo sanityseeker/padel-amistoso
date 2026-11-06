@@ -1,3 +1,13 @@
+## v2.4.2 (2026-11-06)
+
+### Feat
+
+- withdraw participants mid-tournament (50% rule)
+
+### Fix
+
+- **bracket**: keep long participant names inside their boxes
+
 ## v2.4.1 (2026-11-06)
 
 ### Fix
