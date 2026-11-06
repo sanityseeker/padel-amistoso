@@ -636,6 +636,47 @@ class TestDoubleEliminationSchemaViz:
             )
 
 
+class TestParticipantLabelFit:
+    """Long participant names must stay inside their box in the bracket image."""
+
+    @staticmethod
+    def _fit(name: str) -> tuple[str, bool]:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        from backend.viz.bracket_schema import _fit_labels
+
+        fig, ax = plt.subplots(figsize=(8, 4), dpi=100)
+        ax.set_xlim(-3, 3)  # font-to-box width ratio close to a real bracket render
+        ax.set_ylim(-1, 1)
+        txt = ax.text(0, 0, name, ha="center", va="center", fontsize=8, fontweight="bold")
+        bw, bh = 1.3, 0.5
+        _fit_labels(fig, ax, [(txt, 0.0, 0.0, bw, bh)])
+        renderer = fig.canvas.get_renderer()
+        bb = txt.get_window_extent(renderer)
+        (x0, y0), (x1, y1) = ax.transData.transform([(-bw / 2, -bh / 2), (bw / 2, bh / 2)])
+        inside = bb.width <= x1 - x0 + 0.5 and bb.height <= y1 - y0 + 0.5
+        text = txt.get_text()
+        plt.close(fig)
+        return text, inside
+
+    def test_short_name_is_untouched(self):
+        assert self._fit("Hugo") == ("Hugo", True)
+
+    def test_team_name_wraps_at_ampersand(self):
+        text, inside = self._fit("Alejandra Fernandez & Bea Gonzalez")
+        assert inside
+        assert text.split("\n")[0].endswith("&")
+        assert "…" not in text
+
+    def test_overlong_name_is_truncated(self):
+        text, inside = self._fit("Maximiliano Rodriguez-Etxeberria de la Vega y Montenegro")
+        assert inside
+        assert text.endswith("…")
+
+
 # ── PlayoffTournament court assignment ─────────────────────
 
 

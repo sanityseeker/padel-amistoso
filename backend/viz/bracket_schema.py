@@ -1220,6 +1220,7 @@ def _draw(
 
     # ── Draw nodes ──────────────────────────────────────────────────────
     strike_jobs: list[tuple[object, list[int], str]] = []
+    fit_jobs: list[tuple[object, float, float, float, float]] = []
     for nid in G.nodes():
         if nid not in positions:
             continue
@@ -1340,6 +1341,8 @@ def _draw(
             )
         if label_txt is not None and meta.get("strike_lines"):
             strike_jobs.append((label_txt, meta["strike_lines"], style["tc"]))
+        if label_txt is not None and kind == BracketNodeKind.ADVANCE:
+            fit_jobs.append((label_txt, x, y, bw, bh))
 
     # ── Stage column labels (top) ───────────────────────────────────────
     y_top = max(p[1] for p in positions.values()) + 1.5
@@ -1366,8 +1369,52 @@ def _draw(
     ax.set_ylim(min(ys) - margin, y_top + 1.0)
 
     fig.tight_layout()
+    _fit_labels(fig, ax, fit_jobs)
     _draw_strikes(fig, ax, strike_jobs)
     return fig
+
+
+def _fit_labels(fig: plt.Figure, ax: plt.Axes, jobs: list[tuple[object, float, float, float, float]]) -> None:
+    """Keep each label inside its box: shrink, then wrap at " & ", then truncate.
+
+    Measured with the renderer after ``tight_layout`` so the check holds for
+    any figure size, dpi and ``box_scale``.
+    """
+    if not jobs:
+        return
+    renderer = fig.canvas.get_renderer()
+    for txt, x, y, bw, bh in jobs:
+        (px0, py0), (px1, py1) = ax.transData.transform([(x - bw / 2, y - bh / 2), (x + bw / 2, y + bh / 2)])
+        max_w, max_h = px1 - px0, py1 - py0
+
+        def fits() -> bool:
+            bb = txt.get_window_extent(renderer)
+            return bb.width <= max_w and bb.height <= max_h
+
+        if fits():
+            continue
+        full = txt.get_text()
+        min_size = txt.get_fontsize() * 0.8
+        txt.set_fontsize(min_size)
+        if fits():
+            continue
+        if " & " in full:
+            txt.set_text(full.replace(" & ", " &\n", 1))
+            if fits():
+                continue
+        lines = txt.get_text().split("\n")
+        if txt.get_window_extent(renderer).height > max_h:
+            lines = [full]
+        props = txt.get_fontproperties()
+
+        def line_w(s: str) -> float:
+            return renderer.get_text_width_height_descent(s, props, ismath=False)[0]
+
+        for i, line in enumerate(lines):
+            while len(line) > 2 and line_w(line) > max_w:
+                line = line[:-2].rstrip() + "…"
+            lines[i] = line
+        txt.set_text("\n".join(lines))
 
 
 def _draw_strikes(fig: plt.Figure, ax: plt.Axes, jobs: list[tuple[object, list[int], str]]) -> None:
