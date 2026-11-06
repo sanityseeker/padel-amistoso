@@ -1,3 +1,9 @@
+## v2.4.1 (2026-11-06)
+
+### Fix
+
+- **admin**: keep sticky group/round nav on one row
+
 ## v2.4.0 (2026-11-06)
 
 ### Feat
