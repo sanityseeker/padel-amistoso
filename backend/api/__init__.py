@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from html import escape
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlencode, urlparse
 
 from dotenv import load_dotenv
 
@@ -25,7 +25,7 @@ load_dotenv()
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from brotli_asgi import BrotliMiddleware
 
 from . import state as _state_module
@@ -458,6 +458,18 @@ async def get_global_version(request: Request) -> Response:
 # ────────────────────────────────────────────────────────────────────────────
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
+ADMIN_BUILD_DIR = FRONTEND_DIR / "admin-app" / "dist"
+
+
+# Vite emits content-hashed files under a dedicated prefix, avoiding collisions
+# with the existing public, player, club, and legacy admin assets.
+@app.get("/admin-assets/{asset_path:path}", include_in_schema=False)
+async def serve_admin_asset(asset_path: str) -> Response:
+    directory = (ADMIN_BUILD_DIR / "admin-assets").resolve()
+    asset = (directory / asset_path).resolve()
+    if not asset.is_relative_to(directory) or not asset.is_file():
+        return Response(status_code=404)
+    return FileResponse(asset, headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 @lru_cache(maxsize=32)
@@ -537,7 +549,17 @@ def _html_page(filename: str, fallback: str) -> Response:
 
 @app.get("/")
 @app.get("/admin")
-async def serve_frontend() -> Response:
+async def serve_frontend(request: Request) -> Response:
+    # The demo onboarding and account recovery flows still use the original UI.
+    recovery = any(key in request.query_params for key in ("invite_token", "reset_token"))
+    if not config.DEMO_INSTANCE and not recovery and (ADMIN_BUILD_DIR / "index.html").is_file():
+        return FileResponse(ADMIN_BUILD_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+    return _html_page("index.html", "<h1>Frontend not found</h1>")
+
+
+@app.get("/legacy-admin")
+async def serve_legacy_admin() -> Response:
+    """Keep advanced workflows available during the React admin migration."""
     return _html_page("index.html", "<h1>Frontend not found</h1>")
 
 
@@ -550,8 +572,29 @@ def _redirect_to_events(request: Request) -> RedirectResponse:
 
 
 @app.get("/events")
-async def serve_events() -> Response:
+async def serve_events(request: Request) -> Response:
     """Public Events directory (tournaments + open sign-ups across all clubs)."""
+    # Preserve old /tv?tid= and /events?t= links after moving the directory
+    # to React. Tournament views continue to use their dedicated public route.
+    slug = request.query_params.get("tid") or request.query_params.get("t")
+    if slug:
+        params = [(key, value) for key, value in request.query_params.multi_items() if key not in {"tid", "t"}]
+        target = f"/tv/{quote(slug, safe='')}"
+        if params:
+            target += "?" + urlencode(params)
+        return RedirectResponse(url=target, status_code=302)
+    index = ADMIN_BUILD_DIR / "index.html"
+    if index.is_file():
+        if config.DEMO_INSTANCE:
+            content = index.read_text().replace('<html lang="en">', '<html lang="en" class="demo-instance">', 1)
+            return Response(content, media_type="text/html", headers={"Cache-Control": "no-cache"})
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
+    return _html_page("public.html", "<h1>Events page not found</h1>")
+
+
+@app.get("/legacy-events")
+async def serve_legacy_events() -> Response:
+    """Original directory retained alongside the tournament TV templates."""
     return _html_page("public.html", "<h1>Events page not found</h1>")
 
 
@@ -600,6 +643,16 @@ async def serve_register_legacy(slug: str) -> Response:
 @app.get("/player")
 async def serve_player(request: Request) -> Response:
     # The Player Hub is a core-site feature: demo-instance visitors go to Events.
+    if config.DEMO_INSTANCE:
+        return _redirect_to_events(request)
+    if (ADMIN_BUILD_DIR / "index.html").is_file():
+        return FileResponse(ADMIN_BUILD_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+    return _html_page("player.html", "<h1>Player Hub not found</h1>")
+
+
+@app.get("/legacy-player")
+async def serve_legacy_player(request: Request) -> Response:
+    """Keep detailed player tools available during the React migration."""
     if config.DEMO_INSTANCE:
         return _redirect_to_events(request)
     return _html_page("player.html", "<h1>Player Hub not found</h1>")

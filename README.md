@@ -78,12 +78,18 @@ cd padel-amistoso
 # 2. Install dependencies (creates .venv automatically)
 uv sync
 
-# 3. Start the server
+# 3. Build the React admin (Node.js 22.12+; Node 24 recommended)
+npm --prefix frontend/admin-app ci
+npm --prefix frontend/admin-app run build
+
+# 4. Start the server
 uv run uvicorn backend.api:app --reload --port 8000
 ```
 
 1. Open <http://localhost:8000> in your browser.
-2. Log in with the default account `admin` / `admin`. To change this account, see [Authentication](#authentication--api).
+2. Log in as `admin` with the initial password printed in the server terminal
+   (or the value of `PADEL_ADMIN_PASSWORD`, if set). To change this account,
+   see [Authentication](#authentication--api).
 
 The interactive API documentation is at `/docs` (Swagger) and `/redoc`. With the `--reload` flag, the server restarts automatically when you change a Python file.
 
@@ -751,6 +757,91 @@ Then open <http://localhost:8000>.
 ---
 
 ## Development
+
+### React admin, Player Hub, and Events
+
+The admin at `/` and `/admin`, the Player Hub at `/player`, and public Events at `/events` use
+**React, TypeScript, Vite, and Mantine**. They call the existing FastAPI API and
+use the same SQLite database. Registration, club landing, and TV
+pages still use their existing frontend.
+
+For frontend development, run the Python server above, then in another terminal:
+
+```bash
+cd frontend/admin-app
+npm ci
+npm run dev
+```
+
+Open <http://localhost:5173> for admin, <http://localhost:5173/player> for the
+Player Hub, or <http://localhost:5173/events> for public Events. Vite proxies API requests to port 8000 and reloads
+the UI when source files change. To update the UI served directly by FastAPI,
+run `npm run build` in `frontend/admin-app`. Docker builds it automatically.
+The development proxy forwards public-page links to FastAPI as well.
+
+React colors are defined centrally in `frontend/admin-app/src/theme.ts`, using
+the legacy **Hardcourt Nights** palette from `frontend/theme.css`: court blue,
+cool concrete surfaces, Penn-ball green, and semantic success/warning/error
+colors. Mantine components use the `court`, `tennis`, `success`, `warning`, and
+`danger` palettes; custom CSS uses the shared `--app-*` tokens. Headers and login
+screens include a light/dark toggle. The `amistoso-theme` preference is shared
+with legacy pages, and the older `padel-theme` key is migrated. With no saved
+preference, the UI follows the OS. Browser tests compare the React tokens with
+the actual legacy stylesheet in both modes.
+
+An **EN / ES** language selector sits beside the theme button in React headers
+and login screens. React uses i18next, `src/i18n.ts`, and `src/locales/es.json`;
+shared wording reuses the legacy translation catalog. The `amistoso-lang`
+preference is shared with legacy pages, with migration from `padel-lang`.
+Language changes update the interface without resetting forms or sessions.
+Dates and amounts follow the selected locale; event names and API enum values
+remain unchanged.
+
+The React admin currently supports login, tournament lists and creation, raw
+score entry, round progression, standings, registration lobbies and entrants,
+payment settings and statuses, communities, clubs, seasons, and user creation.
+Use **Advanced admin** (`/legacy-admin`) for fixed-team setup, set-score entry,
+bracket customization, player profiles/codes, event conversion, exports, email,
+collaborators, detailed club settings, and other advanced workflows. The two
+admin interfaces share the browser login on the same origin. Demo onboarding
+and invite/password-reset links continue to use the existing interface.
+Without a React build, FastAPI falls back to the existing admin.
+
+The React Player Hub supports player/event passphrase login, profile creation,
+email login and verification links, recovery requests, event linking, active
+events and history, own-match scores and opponent confirmation, ratings and
+leaderboards by club/community, outstanding payments and payment reporting,
+and profile editing. Player sessions use `padel-player-profile` and remain
+independent of organizer login. Tournament scoring exchanges an entry's token
+for its own player credential; it never uses an organizer token. Score entry
+respects organizer settings and match format overrides, including set deciders.
+Full event views retain corrections, disputes, and bracket tools; **Detailed
+player tools** (`/legacy-player`) retains deeper player comparisons and history
+tools. Both player interfaces share the existing player session keys.
+
+Public Events uses the anonymous `/api/public-events` feed, without organizer
+or player credentials. It includes live/upcoming tournaments, public sign-up
+lobbies, finished results, sport/club/community filters, search, and exact
+ID/alias lookup. Filters are shareable through the URL. SSE and a 30-second
+poll keep listings fresh. Private events and unlisted lobbies stay out of the
+directory. Existing `/tv/{slug}` and `/register/{slug}` links still open their
+event views; old `/events?tid=...` and `?t=...` links redirect to the TV route.
+The old directory is available at `/legacy-events`, and remains the fallback
+when there is no React build. Demo Events keeps its no-index behavior.
+
+Frontend checks:
+
+```bash
+cd frontend/admin-app
+npm run typecheck
+npm run format:check
+npx playwright install chromium
+npm run test:e2e
+```
+
+Browser tests use an isolated temporary database and a separate server on port
+8011. They do not modify your local data. Install Python dependencies first;
+the browser test server uses the repo's `.venv`.
 
 ### Project structure
 

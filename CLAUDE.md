@@ -95,14 +95,59 @@ section.
 
 ### Frontend (`frontend/`)
 
-**Vanilla JS + HTML + CSS, no build step, no Node/npm anywhere in the stack.** Each
+The admin at `/` and `/admin`, Player Hub at `/player`, and Events at `/events`
+use **React + TypeScript + Vite + Mantine**
+in `frontend/admin-app/`. Run `npm ci` and `npm run dev` there for frontend
+development (port 5173, API proxy to 8000), or `npm run build` to produce `dist/`.
+FastAPI serves the built admin and hashed `/admin-assets/` files. Docker builds
+the admin in a Node stage; the runtime remains Python. API contracts and SQLite
+storage are unchanged. The React admin shares existing `padel-auth-*` login keys.
+`/legacy-admin` retains advanced workflows not migrated yet. Without a build,
+or for demo onboarding and account recovery, the existing admin remains available.
+Browser checks: `npm run test:e2e` (isolated temporary database and port 8011).
+
+`src/theme.ts` is the React design system's color source, ported from the legacy
+`frontend/theme.css` Hardcourt Nights palette. It defines Mantine color ramps,
+semantic `--app-*` variables, and exact light/dark surface/text/primary values.
+Use `court` for primary UI, `tennis` for that sport, and semantic success/warning/
+danger colors. Do not add screen-specific hex colors. `ThemeToggle.tsx` syncs
+the legacy `data-theme` attribute and `amistoso-theme` storage preference with
+Mantine; `padel-theme` is migrated. `e2e/theme.spec.ts` checks parity against the
+legacy CSS, preference persistence, OS changes, and mobile overflow.
+
+`src/i18n.ts` and `src/locales/es.json` provide English/Spanish React UI text via
+i18next. `LanguageSelect.tsx` is shown beside the theme button in headers and
+login screens. Use `t` for UI copy and `useLocale()` in rendering components;
+the hook subscribes without remounting forms. English copy is the fallback key.
+Never translate API enum values, IDs, routes, or user-entered event/player names.
+Persist language with `amistoso-lang` (legacy key: `padel-lang`). Browser tests
+cover persistence, live switching, form preservation, and Spanish API actions.
+
+`src/player/` implements Player Hub login/onboarding, email links, dashboard,
+event linking, own-match scoring, ELO, payments, and profile settings. It uses
+`padel-player-profile` and `padel-player-profile-data` independently of organizer
+authentication. Entry tokens must be exchanged at `/{tid}/player-auth` before
+score submission; never pass an admin JWT to a player action. `/legacy-player`
+keeps the detailed legacy player tools available. Vite serves `/player` itself
+and proxies `/legacy-player` plus the existing public routes/assets.
+
+`src/events/` implements the public event directory with anonymous fetches to
+`/api/public-events`, URL-backed filters, SSE/polling, and exact ID/alias lookup.
+Do not attach organizer/player tokens to this feed. Private tournaments and
+unlisted/closed registrations must remain absent. `/legacy-events` keeps the
+original directory template; `/tv/{slug}` and `/register/{slug}` retain the
+existing event views. Vite serves `/events` itself. Legacy `?tid=`/`?t=` links
+redirect to the canonical TV route, preserving other query parameters.
+
+The existing registration, club, TV, advanced admin, and detailed player pages use vanilla JS,
+HTML, CSS, and Petite-Vue islands without a build step. Each
 major view is a standalone HTML page + its own JS file(s), all loaded via fixed
 `<script>` tags (there's no bundler/router to route around):
 
 | Page | HTML | JS |
 |---|---|---|
 | Admin | `index.html` | `admin-*.js` (split by feature, see filenames) |
-| Player Hub | `player.html` | `player.js` |
+| Detailed player tools | `player.html` (`/legacy-player`) | `player.js` |
 | TV / spectator | `public.html` | `tv.js` |
 | Registration | `register.html` | `register.js` |
 | Club landing | `club.html` | `club.js` |

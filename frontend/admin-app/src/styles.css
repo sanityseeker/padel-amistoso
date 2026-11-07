@@ -1,0 +1,430 @@
+:root {
+  color: var(--app-text);
+  background: var(--app-bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+body {
+  margin: 0;
+}
+a {
+  color: var(--app-primary);
+}
+.events-workspace,
+.player-workspace {
+  min-height: 100dvh;
+  background: var(--app-bg);
+}
+.compact-public-header {
+  background: var(--app-surface);
+  border-bottom: 1px solid var(--app-border);
+}
+.compact-header-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  min-height: 64px;
+}
+.compact-header-row > :first-child {
+  justify-self: start;
+}
+.page-switcher {
+  height: 44px;
+  padding-inline: 8px;
+}
+.compact-event-row {
+  display: block;
+  color: var(--app-text);
+  text-decoration: none;
+  border: 1px solid var(--app-border);
+  overflow-wrap: anywhere;
+}
+.compact-event-row:hover {
+  border-color: var(--app-primary);
+  background: var(--app-surface-2);
+}
+.compact-event-row:focus-visible {
+  outline: 2px solid var(--app-primary);
+  outline-offset: 2px;
+}
+.compact-details {
+  margin-top: 16px;
+}
+.compact-details > summary {
+  cursor: pointer;
+  color: var(--app-primary);
+  font-weight: 600;
+  padding-block: 8px;
+}
+.compact-player-event {
+  border: 1px solid var(--app-border);
+}
+.compact-code-form .mantine-TextInput-root {
+  min-width: 0;
+}
+.compact-admin-nav {
+  border-bottom: 1px solid var(--app-border);
+  padding-bottom: 12px;
+}
+.rating-chart {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  margin: 15px 0;
+}
+.mantine-Paper-root,
+.mantine-Card-root {
+  background: var(--app-surface);
+  border-color: var(--app-border);
+  box-shadow: none;
+}
+.mantine-Title-root {
+  color: var(--app-text);
+}
+.stat-value {
+  margin-bottom: 0;
+}
+.event-list,
+#event-filters {
+  scroll-margin-top: 24px;
+}
+.public-event-section + .public-event-section {
+  margin-top: 40px;
+}
+.public-event-card {
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.public-event-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--app-primary);
+  box-shadow: 0 9px 24px color-mix(in srgb, var(--app-primary) 8%, transparent);
+}
+.public-event-card:focus-visible {
+  outline: 2px solid var(--app-primary);
+  outline-offset: 3px;
+}
+.public-event-title {
+  min-height: 54px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.public-event-action {
+  border-top: 1px solid var(--app-divider);
+  padding-top: 16px;
+  color: var(--app-primary);
+}
+.event-code-box {
+  background: var(--app-surface-2);
+}
+.event-code-form {
+  width: min(100%, 390px);
+}
+.event-code-form .mantine-TextInput-root {
+  flex: 1;
+  min-width: 0;
+}
+.events-organizer-cta {
+  background: var(--app-surface);
+  color: var(--app-primary);
+}
+@media (max-width: 575px) {
+  .events-hero {
+    padding: 25px;
+  }
+  .events-hero .mantine-Badge-root {
+    font-size: 8px;
+    letter-spacing: 0.4px;
+  }
+  .desktop-break,
+  .events-stat-icon {
+    display: none;
+  }
+  .events-stat .mantine-Text-root:first-child {
+    font-size: 11px;
+  }
+  .events-stat .stat-value {
+    font-size: 29px;
+  }
+  .events-status-control {
+    width: 100%;
+  }
+  .events-status-control .mantine-SegmentedControl-label {
+    font-size: 11px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+}
+.player-workspace {
+  min-height: 100dvh;
+  background: var(--app-bg);
+}
+.player-header {
+  background: var(--app-surface);
+  border-bottom: 1px solid var(--app-border);
+}
+.player-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+.player-tabs > button {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.rating-chart {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  margin: 15px 0;
+}
+a {
+  color: var(--app-primary);
+}
+.mantine-AppShell-main {
+  background: var(--app-bg);
+}
+.mantine-AppShell-header {
+  border-color: var(--app-border);
+}
+.mantine-AppShell-navbar {
+  background: var(--app-surface);
+  border-color: var(--app-border);
+}
+.mantine-Paper-root,
+.mantine-Card-root {
+  background: var(--app-surface);
+  border-color: var(--app-border);
+  box-shadow: none;
+}
+.mantine-Title-root {
+  letter-spacing: -0.65px;
+  color: var(--app-text);
+}
+h1.mantine-Title-root {
+  font-size: clamp(27px, 3vw, 34px);
+  line-height: 1.15;
+}
+.brand-dot {
+  color: var(--app-tennis);
+}
+.nav-caption,
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--app-muted);
+}
+.workspace-nav {
+  border-radius: 8px;
+  color: var(--app-muted);
+  padding: 12px;
+  font-weight: 500;
+}
+.workspace-nav[data-active] {
+  color: var(--app-primary);
+  background: var(--app-primary-light);
+}
+.workspace-nav[data-active] .mantine-NavLink-label {
+  font-weight: 700;
+}
+.sidebar-note {
+  background: var(--app-surface-2);
+  border-color: var(--app-border);
+}
+.hero-banner {
+  background: var(--app-hero-bg);
+  border-radius: 14px;
+  position: relative;
+  min-height: 310px;
+  overflow: hidden;
+  padding: 34px 40px;
+}
+.hero-banner h2 {
+  color: var(--app-hero-text);
+  font-size: clamp(28px, 3vw, 39px);
+  line-height: 1.17;
+  letter-spacing: -0.9px;
+}
+.hero-copy {
+  position: relative;
+  z-index: 2;
+}
+.hero-caption {
+  position: absolute;
+  right: 25px;
+  bottom: 21px;
+  color: var(--app-hero-muted);
+  font-size: 8px;
+  letter-spacing: 2px;
+}
+.court-art {
+  position: absolute;
+  width: 340px;
+  height: 420px;
+  border: 2px solid var(--app-court-line);
+  right: 70px;
+  top: -65px;
+  transform: rotate(25deg);
+  background: color-mix(in srgb, var(--mantine-color-court-4) 18%, transparent);
+  box-shadow:
+    0 0 0 35px color-mix(in srgb, var(--mantine-color-court-4) 8%, transparent),
+    0 0 0 37px color-mix(in srgb, var(--app-court-line) 30%, transparent);
+}
+.court-line {
+  position: absolute;
+  background: var(--app-court-line);
+}
+.court-middle {
+  width: 2px;
+  height: 100%;
+  left: 50%;
+}
+.court-service {
+  width: 100%;
+  height: 2px;
+  top: 25%;
+  box-shadow: 0 210px var(--app-court-line);
+}
+.court-net {
+  position: absolute;
+  height: 5px;
+  top: 50%;
+  width: 100%;
+  background: var(--app-hero-text);
+  box-shadow: 0 5px 10px color-mix(in srgb, var(--app-hero-bg) 20%, transparent);
+}
+.tennis-ball {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  position: absolute;
+  left: 40px;
+  top: 280px;
+  background: radial-gradient(
+    circle at 32% 26%,
+    color-mix(in srgb, var(--app-ball) 65%, white),
+    var(--app-ball) 65%,
+    color-mix(in srgb, var(--app-ball) 70%, var(--app-hero-bg))
+  );
+  box-shadow: 20px 24px 20px color-mix(in srgb, var(--app-hero-bg) 50%, transparent);
+  overflow: hidden;
+}
+.tennis-ball::before,
+.tennis-ball::after {
+  content: '';
+  width: 88px;
+  height: 88px;
+  border: 3px solid color-mix(in srgb, var(--app-ball) 40%, white);
+  border-radius: 50%;
+  position: absolute;
+  top: -43px;
+  left: 12px;
+}
+.tennis-ball::after {
+  top: 48px;
+  left: -15px;
+}
+.stat-card {
+  transition: border-color 0.15s;
+}
+.stat-card:hover {
+  border-color: var(--app-primary);
+}
+.stat-value {
+  font-size: 35px;
+  font-weight: 650;
+  letter-spacing: -1.5px;
+  margin: 10px 0 5px;
+  line-height: 1.3;
+  color: var(--app-text);
+}
+.table-paper {
+  overflow: hidden;
+}
+.mantine-Table-thead {
+  background: var(--app-surface-2);
+  color: var(--app-muted);
+  font-size: 11px;
+}
+.mantine-Table-th {
+  font-weight: 600;
+}
+.text-link {
+  text-decoration: none;
+  color: var(--app-text);
+}
+.text-link:hover {
+  text-decoration: underline;
+}
+.workspace-footer {
+  border-top: 1px solid var(--app-border);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+.mantine-Modal-content,
+.mantine-Modal-header,
+.mantine-Drawer-content,
+.mantine-Drawer-header,
+.mantine-Popover-dropdown,
+.mantine-Menu-dropdown,
+.mantine-Combobox-dropdown,
+.mantine-Input-input {
+  background: var(--app-surface);
+  color: var(--app-text);
+  border-color: var(--app-border);
+}
+.mantine-Input-input[data-disabled] {
+  background: var(--app-surface-2);
+}
+.mantine-Overlay-root {
+  --overlay-bg: var(--app-overlay);
+}
+.mantine-SegmentedControl-root {
+  background: var(--app-surface-2);
+}
+.mantine-SegmentedControl-indicator {
+  background: var(--app-surface);
+}
+.mantine-Table-root {
+  --table-hover-color: var(--app-hover);
+  --table-striped-color: var(--app-surface-2);
+  --table-border-color: var(--app-divider);
+}
+
+@media (max-width: 575px) {
+  .compact-header-row {
+    grid-template-columns: auto 1fr auto;
+    gap: 4px;
+  }
+  .page-switcher {
+    justify-self: center;
+    font-size: 12px;
+  }
+  .language-select [data-position='left'] {
+    display: none;
+  }
+  .language-select select {
+    padding-inline-start: 10px;
+  }
+  .compact-admin-nav .mantine-Select-root {
+    min-width: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

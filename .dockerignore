@@ -31,3 +31,9 @@ tests/
 .vscode/
 .idea/
 *.DS_Store
+
+# Built inside the frontend-builder stage
+**/node_modules/
+frontend/admin-app/dist/
+frontend/admin-app/test-results/
+frontend/admin-app/playwright-report/

@@ -63,7 +63,10 @@ def _create_club(client: TestClient, headers: dict, slug: str | None = None) -> 
 
 
 class TestEventsRoutes:
-    def test_events_serves_public_html(self, client):
+    def test_events_falls_back_to_public_html_without_build(self, client, monkeypatch, tmp_path):
+        import backend.api as api_module
+
+        monkeypatch.setattr(api_module, "ADMIN_BUILD_DIR", tmp_path / "missing-build")
         r = client.get("/events")
         assert r.status_code == 200
         assert 'id="tv-root"' in r.text

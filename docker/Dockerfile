@@ -1,3 +1,11 @@
+# Build the React admin independently of the Python environment.
+FROM node:24-slim AS frontend-builder
+WORKDIR /app/frontend/admin-app
+COPY frontend/admin-app/package*.json ./
+RUN npm ci
+COPY frontend/admin-app/ ./
+RUN npm run build
+
 # ── Stage 1: install dependencies ────────────────────────────────────────────
 FROM python:3.12-slim AS builder
 
@@ -28,6 +36,7 @@ COPY --from=builder /app/.venv /app/.venv
 # Copy application source
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
+COPY --from=frontend-builder /app/frontend/admin-app/dist ./frontend/admin-app/dist
 
 # Create the data directory that will be overridden by a volume mount
 RUN mkdir -p /app/data

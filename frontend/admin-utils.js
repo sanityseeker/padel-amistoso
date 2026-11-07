@@ -407,6 +407,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
+// Allow the React navigation to open the original documentation panel.
+document.addEventListener('DOMContentLoaded', () => {
+  if (new URLSearchParams(window.location.search).get('tab') === 'info') setActiveTab('info');
+});
+
 let _currentCreateMode = 'gp';
 
 function setCreateMode(mode) {

@@ -77,7 +77,7 @@ def test_js_content_type_and_cache_control(client):
 PETITE_VUE_SRC = "cdn.jsdelivr.net/npm/petite-vue@0.4.1/dist/petite-vue.iife.js"
 PETITE_VUE_SRI = "sha384-G3VE2R9nao/dKH0R46Bvk6qIVBAeImWjeTj+SwWOJzJ4N0vQ2RKWuC/cp36l4Iba"
 
-PETITE_VUE_PAGES = ["/", "/player", "/events", "/tv/some-alias", "/register/some-alias"]
+PETITE_VUE_PAGES = ["/legacy-admin", "/legacy-player", "/legacy-events", "/tv/some-alias", "/register/some-alias"]
 
 
 @pytest.mark.parametrize("path", PETITE_VUE_PAGES)
@@ -114,7 +114,7 @@ def test_service_worker_caches_petite_vue(client):
 
 def test_login_dialog_has_reactive_bindings(client):
     """The login dialog is a v-scope island with v-model / @submit bindings."""
-    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     dialog = html[html.index('id="auth-dialog"') :]
     dialog = dialog[: dialog.index("</form>")]
     assert "v-scope" in dialog
@@ -143,7 +143,7 @@ def test_login_dialog_has_reactive_bindings(client):
 
 def test_login_dialog_returning_view_offers_new_sandbox(client):
     """The returning-user view (after the form) can still mint a new sandbox."""
-    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     dialog = html[html.index('id="auth-dialog"') :]
     dialog = dialog[: dialog.index("<!-- Change Password Modal")]
     after_form = dialog[dialog.index("</form>") :]
@@ -169,7 +169,7 @@ def test_auth_js_never_auto_mints_demo(client):
 
 def test_change_pwd_dialog_has_reactive_bindings(client):
     """The change-password dialog is a v-scope island with v-model bindings."""
-    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     block = html[html.index('id="change-pwd-overlay"') :]
     block = block[: block.index("</form>")]
     assert "v-scope" in block
@@ -213,7 +213,7 @@ def test_mount_island_preserves_store_identity(client):
 
 def test_home_island_has_reactive_bindings(client):
     """The home panel is a v-scope island: v-model search, v-for filters/cards."""
-    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     block = html[html.index('id="home-island"') :]
     block = block[: block.index('id="panel-create"')]
     assert 'v-model="searchDraft"' in block
@@ -239,7 +239,7 @@ def test_admin_tournaments_js_mounts_home_island(client):
 def test_tv_picker_item_template_shipped(client):
     """public.html (Events page + TV view) ships the directory card template —
     the same club-card markup the club page renders."""
-    html = client.get("/events", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-events", headers={"Accept-Encoding": "identity"}).text
     assert 'id="tpl-tv-picker-item"' in html
     assert 'class="club-item-card"' in html
     assert "{{ it.name }}" in html
@@ -403,7 +403,7 @@ def test_tv_live_board_has_display_button_without_tab_bar(client):
 
 
 def test_admin_uses_header_display_button_instead_of_toggles(client):
-    html = client.get("/admin", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     assert 'id="lang-toggle-btn"' not in html
     assert 'id="theme-toggle-btn"' not in html
     js = client.get("/admin-utils.js", headers={"Accept-Encoding": "identity"}).text
@@ -427,7 +427,7 @@ def test_every_page_has_support_links_footer(page):
 
 
 def test_admin_header_has_single_events_link_and_no_pin(client):
-    html = client.get("/admin", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     assert 'id="admin-public-header"' in html
     assert "page-selector" not in html
     assert "page-selector" not in client.get("/admin.css", headers={"Accept-Encoding": "identity"}).text
@@ -527,7 +527,7 @@ def test_service_worker_caches_events_shell_and_bumped(client):
 
 
 def test_club_events_row_template_shipped(client):
-    html = client.get("/admin", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     block = html[html.index('<template id="tpl-club-event-row">') :]
     block = block[: block.index("</template>")]
     assert "{{ row.name }}" in block
@@ -663,7 +663,7 @@ def test_club_events_i18n_keys_in_both_languages(client):
 
 def test_communities_panel_has_reactive_bindings(client):
     """The communities tab is a v-scope island: v-model inputs, v-for rows."""
-    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     block = html[html.index('id="panel-communities"') :]
     block = block[: block.index('id="panel-clubs"')]
     assert "v-scope" in block
@@ -690,7 +690,7 @@ def test_admin_communities_js_mounts_island(client):
 
 def test_players_hub_search_has_reactive_bindings(client):
     """The Players Hub search/results/merge bar is a v-scope island."""
-    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     block = html[html.index('id="panel-players-hub"') :]
     block = block[: block.index('id="ph-detail"')]
     assert 'id="ph-search-island" v-scope' in block
@@ -825,7 +825,7 @@ def test_match_row_emits_single_format_button(client):
 
 def test_match_format_popover_is_island(client):
     """index.html carries the popover island outside #view-content, bound to _mfStore."""
-    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     assert 'id="match-format-popover" class="match-format-popover" v-scope' in html
     popover = html[html.index('id="match-format-popover"') :]
     popover = popover[: popover.index("</div>\n\n\n<script")]
@@ -894,7 +894,7 @@ def test_shared_js_has_single_set_score_formatter(client):
 
 
 def test_format_popover_has_decider_bindings(client):
-    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     popover = html[html.index('id="match-format-popover"') :]
     popover = popover[: popover.index("</div>\n\n\n<script")]
     assert "@click=\"setDecider('full_set')\"" in popover
@@ -962,7 +962,7 @@ def test_admin_payments_js_served_and_cached(client):
     r = client.get("/admin-payments.js", headers={"Accept-Encoding": "identity"})
     assert r.status_code == 200
     assert "javascript" in r.headers["content-type"]
-    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     assert '<script src="/admin-payments.js" defer></script>' in html
     sw = client.get("/service-worker.js", headers={"Accept-Encoding": "identity"}).text
     assert "'/admin-payments.js'" in sw
@@ -1199,7 +1199,7 @@ def test_icon_helper_shared_by_every_page():
 
 
 def test_admin_header_row_and_create_strip_fit_phones(client):
-    html = client.get("/admin", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     assert '<div class="page-header-row page-header-row--nav">' in html
     assert '<span class="tab-btn-label" data-i18n="txt_txt_info">Info</span>' in html
     assert '<div class="create-mode-strip d-flex' in html
@@ -2077,7 +2077,7 @@ def test_glyph_replacement_icons_exist():
 
 
 def test_withdraw_dialog_island_markup_and_mount(client):
-    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     assert '<div id="withdraw-overlay" class="modal-overlay">' in html
     island = html.split('id="withdraw-overlay"', 1)[1].split("<!-- Forgot Password Modal -->", 1)[0]
     assert "v-scope" in island
@@ -2212,7 +2212,7 @@ def test_withdraw_dialog_labels_and_validates_set_3_from_the_matches_deciders(cl
     assert "i === 2 && this.thirdSetDecider === 'match_tiebreak'" in js
     # Each match's walkover score is bracketed by its own decider.
     assert "formatSetScore(this.setRows, m.decider || this.p?.default_decider, ' ')" in js
-    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     assert "v-if=\"hasMode('sets') && mixedDeciders\"" in html
 
 
@@ -2287,7 +2287,7 @@ def test_withdraw_counts_have_singular_variants(client):
     codes = _read_frontend("admin-player-codes.js")
     assert "n === 1 ? 'txt_withdraw_remaining_wo_one'" in codes
     assert "n === 1 ? 'txt_withdraw_rule_annul_one'" in codes
-    html = client.get("/", headers={"Accept-Encoding": "identity"}).text
+    html = client.get("/legacy-admin", headers={"Accept-Encoding": "identity"}).text
     assert "txt_withdraw_played_one" in html and "txt_withdraw_group_too_small_one" in html
 
 
