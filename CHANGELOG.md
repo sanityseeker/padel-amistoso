@@ -1,3 +1,9 @@
+## v3.0.2 (2026-11-09)
+
+### Fix
+
+- count stage progress on the server and add a standings toggle
+
 ## v3.0.1 (2026-11-09)
 
 ### Fix
