@@ -1,3 +1,9 @@
+## v3.0.1 (2026-11-09)
+
+### Fix
+
+- **e2e**: wait for form remount before typing in browser tests
+
 ## v3.0.0 (2026-11-09)
 
 ### BREAKING CHANGE
