@@ -141,9 +141,13 @@ def _site_url() -> str:
     return (SITE_URL or "").rstrip("/")
 
 
-def _tx(lang: str, en: str, es: str) -> str:
-    """Return the Spanish text when ``lang == 'es'``, otherwise English."""
-    return es if lang == "es" else en
+def _tx(lang: str, en: str, es: str, ru: str | None = None) -> str:
+    """Pick the text for ``lang``. English is the fallback, so ``ru`` without a Russian text is English."""
+    if lang == "es":
+        return es
+    if lang == "ru" and ru is not None:
+        return ru
+    return en
 
 
 def render_registration_confirmation(
@@ -170,16 +174,21 @@ def render_registration_confirmation(
     if login_url and hub_login_token:
         login_url = f"{login_url}#hub_token={hub_login_token}"
 
-    subject = _tx(lang, f"Registration confirmed \u2014 {lobby_name}", f"Registro confirmado \u2014 {lobby_name}")
+    subject = _tx(
+        lang,
+        f"Registration confirmed \u2014 {lobby_name}",
+        f"Registro confirmado \u2014 {lobby_name}",
+        f"Регистрация подтверждена \u2014 {lobby_name}",
+    )
     body = f"""\
 <div style="{_BASE_STYLE}">
-  <h2 style="margin-top:0">{_tx(lang, "You're registered! \U0001f3be", "\u00a1Est\u00e1s registrado! \U0001f3be")}</h2>
-  <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, you've been registered for <strong>{_esc(lobby_name)}</strong>.", f"Hola <strong>{_esc(player_name)}</strong>, te has registrado en <strong>{_esc(lobby_name)}</strong>.")}</p>
-  <p>{_tx(lang, "Your personal passphrase:", "Tu contrase\u00f1a personal:")}</p>
+  <h2 style="margin-top:0">{_tx(lang, "You're registered! \U0001f3be", "\u00a1Est\u00e1s registrado! \U0001f3be", "Заявка принята! \U0001f3be")}</h2>
+  <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, you've been registered for <strong>{_esc(lobby_name)}</strong>.", f"Hola <strong>{_esc(player_name)}</strong>, te has registrado en <strong>{_esc(lobby_name)}</strong>.", f"Здравствуйте, <strong>{_esc(player_name)}</strong>! Ваша заявка на событие <strong>{_esc(lobby_name)}</strong> принята.")}</p>
+  <p>{_tx(lang, "Your personal passphrase:", "Tu contrase\u00f1a personal:", "Ваша личная кодовая фраза:")}</p>
   <p style="text-align:center"><span style="{_CODE_STYLE}">{_esc(passphrase)}</span></p>
-  <p style="font-size:.9em;color:#666">{_tx(lang, "Keep this passphrase \u2014 you can use it to log in, update your answers, and cancel your registration if needed. This same passphrase will also be used later in the tournament to submit scores and check your next opponents.", "Guard\u00e1 esta contrase\u00f1a \u2014 pod\u00e9s usarla para ingresar, actualizar tus respuestas y cancelar tu registro si es necesario. Esta misma contrase\u00f1a se usar\u00e1 tambi\u00e9n durante el torneo para cargar resultados y ver tus pr\u00f3ximos rivales.")}</p>
-  <p style="font-size:.9em;color:#666">{_tx(lang, "Use the link below to return to this registration. When the tournament starts, this link will also take you to the tournament view.", "Us\u00e1 el enlace de abajo para volver a tu registro. Cuando el torneo comience, este enlace tambi\u00e9n te llevar\u00e1 a la vista del torneo.")}</p>
-  {f'<p style="text-align:center"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open registration", "Abrir registro")}</a></p>' if login_url else ""}
+  <p style="font-size:.9em;color:#666">{_tx(lang, "Keep this passphrase \u2014 you can use it to log in, update your answers, and cancel your registration if needed. This same passphrase will also be used later in the tournament to submit scores and check your next opponents.", "Guard\u00e1 esta contrase\u00f1a \u2014 pod\u00e9s usarla para ingresar, actualizar tus respuestas y cancelar tu registro si es necesario. Esta misma contrase\u00f1a se usar\u00e1 tambi\u00e9n durante el torneo para cargar resultados y ver tus pr\u00f3ximos rivales.", "Сохраните эту кодовую фразу. По ней можно войти, изменить ответы и отменить заявку. Эта же кодовая фраза нужна на турнире для отправки счёта и просмотра следующих соперников.")}</p>
+  <p style="font-size:.9em;color:#666">{_tx(lang, "Use the link below to return to this registration. When the tournament starts, this link will also take you to the tournament view.", "Us\u00e1 el enlace de abajo para volver a tu registro. Cuando el torneo comience, este enlace tambi\u00e9n te llevar\u00e1 a la vista del torneo.", "Ссылка ниже открывает эту регистрацию. После начала турнира она откроет страницу турнира.")}</p>
+  {f'<p style="text-align:center"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open registration", "Abrir registro", "Открыть регистрацию")}</a></p>' if login_url else ""}
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
   {_footer(reply_to, lang)}
 </div>"""
@@ -202,16 +211,21 @@ def render_credentials_email(
     lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register/{lobby_id}"
     login_url = f"{base}{lobby_path}?token={token}" if base else ""
 
-    subject = _tx(lang, f"Your login details \u2014 {lobby_name}", f"Tus datos de acceso \u2014 {lobby_name}")
+    subject = _tx(
+        lang,
+        f"Your login details \u2014 {lobby_name}",
+        f"Tus datos de acceso \u2014 {lobby_name}",
+        f"Ваши данные для входа \u2014 {lobby_name}",
+    )
     body = f"""\
 <div style="{_BASE_STYLE}">
-  <h2 style="margin-top:0">{_tx(lang, "Your login details \U0001f511", "Tus datos de acceso \U0001f511")}</h2>
-  <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, here are your credentials for <strong>{_esc(lobby_name)}</strong>.", f"Hola <strong>{_esc(player_name)}</strong>, estas son tus credenciales para <strong>{_esc(lobby_name)}</strong>.")}</p>
-  <p>{_tx(lang, "Your personal passphrase:", "Tu contrase\u00f1a personal:")}</p>
+  <h2 style="margin-top:0">{_tx(lang, "Your login details \U0001f511", "Tus datos de acceso \U0001f511", "Ваши данные для входа \U0001f511")}</h2>
+  <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, here are your credentials for <strong>{_esc(lobby_name)}</strong>.", f"Hola <strong>{_esc(player_name)}</strong>, estas son tus credenciales para <strong>{_esc(lobby_name)}</strong>.", f"Здравствуйте, <strong>{_esc(player_name)}</strong>! Ваши данные для входа в событие <strong>{_esc(lobby_name)}</strong>.")}</p>
+  <p>{_tx(lang, "Your personal passphrase:", "Tu contrase\u00f1a personal:", "Ваша личная кодовая фраза:")}</p>
   <p style="text-align:center"><span style="{_CODE_STYLE}">{_esc(passphrase)}</span></p>
-  <p style="font-size:.9em;color:#666">{_tx(lang, "Keep this passphrase \u2014 you can use it later to log in, update your answers, and cancel your registration if needed. This same passphrase will also be used later in the tournament to submit scores and check your next opponents.", "Guard\u00e1 esta contrase\u00f1a \u2014 pod\u00e9s usarla despu\u00e9s para ingresar, actualizar tus respuestas y cancelar tu registro si es necesario. Esta misma contrase\u00f1a se usar\u00e1 tambi\u00e9n durante el torneo para cargar resultados y ver tus pr\u00f3ximos rivales.")}</p>
-  <p style="font-size:.9em;color:#666">{_tx(lang, "Use the link below to open your registration. When the tournament starts, this link will also take you to the tournament view.", "Us\u00e1 el enlace de abajo para abrir tu registro. Cuando el torneo comience, este enlace tambi\u00e9n te llevar\u00e1 a la vista del torneo.")}</p>
-  {f'<p style="text-align:center"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open registration", "Abrir registro")}</a></p>' if login_url else ""}
+  <p style="font-size:.9em;color:#666">{_tx(lang, "Keep this passphrase \u2014 you can use it later to log in, update your answers, and cancel your registration if needed. This same passphrase will also be used later in the tournament to submit scores and check your next opponents.", "Guard\u00e1 esta contrase\u00f1a \u2014 pod\u00e9s usarla despu\u00e9s para ingresar, actualizar tus respuestas y cancelar tu registro si es necesario. Esta misma contrase\u00f1a se usar\u00e1 tambi\u00e9n durante el torneo para cargar resultados y ver tus pr\u00f3ximos rivales.", "Сохраните эту кодовую фразу. По ней можно войти, изменить ответы и отменить заявку. Эта же кодовая фраза нужна на турнире для отправки счёта и просмотра следующих соперников.")}</p>
+  <p style="font-size:.9em;color:#666">{_tx(lang, "Use the link below to open your registration. When the tournament starts, this link will also take you to the tournament view.", "Us\u00e1 el enlace de abajo para abrir tu registro. Cuando el torneo comience, este enlace tambi\u00e9n te llevar\u00e1 a la vista del torneo.", "Ссылка ниже открывает вашу регистрацию. После начала турнира она откроет страницу турнира.")}</p>
+  {f'<p style="text-align:center"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open registration", "Abrir registro", "Открыть регистрацию")}</a></p>' if login_url else ""}
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
   {_footer(reply_to, lang)}
 </div>"""
@@ -235,16 +249,19 @@ def render_tournament_started_email(
     login_url = f"{base}{tv_path}?player_token={token}" if base else ""
 
     subject = _tx(
-        lang, f"Tournament started \u2014 {tournament_name}", f"\u00a1Torneo iniciado! \u2014 {tournament_name}"
+        lang,
+        f"Tournament started \u2014 {tournament_name}",
+        f"\u00a1Torneo iniciado! \u2014 {tournament_name}",
+        f"Турнир начат \u2014 {tournament_name}",
     )
     body = f"""\
 <div style="{_BASE_STYLE}">
-  <h2 style="margin-top:0">{_tx(lang, "The tournament is live! \U0001f3c6", "\u00a1El torneo est\u00e1 en marcha! \U0001f3c6")}</h2>
-  <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, <strong>{_esc(tournament_name)}</strong> has started.", f"Hola <strong>{_esc(player_name)}</strong>, <strong>{_esc(tournament_name)}</strong> ha comenzado.")}</p>
-  <p>{_tx(lang, "Your personal passphrase:", "Tu contrase\u00f1a personal:")}</p>
+  <h2 style="margin-top:0">{_tx(lang, "The tournament is live! \U0001f3c6", "\u00a1El torneo est\u00e1 en marcha! \U0001f3c6", "Турнир начат! \U0001f3c6")}</h2>
+  <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, <strong>{_esc(tournament_name)}</strong> has started.", f"Hola <strong>{_esc(player_name)}</strong>, <strong>{_esc(tournament_name)}</strong> ha comenzado.", f"Здравствуйте, <strong>{_esc(player_name)}</strong>! Турнир <strong>{_esc(tournament_name)}</strong> начат.")}</p>
+  <p>{_tx(lang, "Your personal passphrase:", "Tu contrase\u00f1a personal:", "Ваша личная кодовая фраза:")}</p>
   <p style="text-align:center"><span style="{_CODE_STYLE}">{_esc(passphrase)}</span></p>
-  <p style="font-size:.9em;color:#666">{_tx(lang, "Use this passphrase to log in and submit your scores.", "Us\u00e1 esta contrase\u00f1a para ingresar y cargar tus resultados.")}</p>
-  {f'<p style="text-align:center"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Go to tournament", "Ir al torneo")}</a></p>' if login_url else ""}
+  <p style="font-size:.9em;color:#666">{_tx(lang, "Use this passphrase to log in and submit your scores.", "Us\u00e1 esta contrase\u00f1a para ingresar y cargar tus resultados.", "Введите эту кодовую фразу, чтобы войти и отправить счёт.")}</p>
+  {f'<p style="text-align:center"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Go to tournament", "Ir al torneo", "Перейти к турниру")}</a></p>' if login_url else ""}
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
   {_footer(reply_to, lang)}
 </div>"""
@@ -267,16 +284,21 @@ def render_organizer_message_email(
     lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register/{lobby_id}"
     login_url = f"{base}{lobby_path}?token={token}" if base else ""
 
-    subject = _tx(lang, f"Message from organizer \u2014 {lobby_name}", f"Mensaje del organizador \u2014 {lobby_name}")
+    subject = _tx(
+        lang,
+        f"Message from organizer \u2014 {lobby_name}",
+        f"Mensaje del organizador \u2014 {lobby_name}",
+        f"Сообщение организатора \u2014 {lobby_name}",
+    )
     body = f"""\
 <div style="{_BASE_STYLE}">
-    <h2 style="margin-top:0">{_tx(lang, "Message from organizer \U0001f4e2", "Mensaje del organizador \U0001f4e2")}</h2>
-    <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, there's a new update for <strong>{_esc(lobby_name)}</strong>.", f"Hola <strong>{_esc(player_name)}</strong>, hay una novedad para <strong>{_esc(lobby_name)}</strong>.")}</p>
+    <h2 style="margin-top:0">{_tx(lang, "Message from organizer \U0001f4e2", "Mensaje del organizador \U0001f4e2", "Сообщение организатора \U0001f4e2")}</h2>
+    <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, there's a new update for <strong>{_esc(lobby_name)}</strong>.", f"Hola <strong>{_esc(player_name)}</strong>, hay una novedad para <strong>{_esc(lobby_name)}</strong>.", f"Здравствуйте, <strong>{_esc(player_name)}</strong>! Новое сообщение по событию <strong>{_esc(lobby_name)}</strong>.")}</p>
     <div style="margin:12px 0;padding:12px 14px;border-radius:8px;background:#f8fafc;border:1px solid #e5e7eb;white-space:pre-wrap">
         {_esc(message)}
     </div>
-    <p style="font-size:.9em;color:#666">{_tx(lang, "Use the link below to open your registration and follow tournament updates.", "Us\u00e1 el enlace de abajo para abrir tu registro y seguir las novedades del torneo.")}</p>
-    {f'<p style="text-align:center"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open registration", "Abrir registro")}</a></p>' if login_url else ""}
+    <p style="font-size:.9em;color:#666">{_tx(lang, "Use the link below to open your registration and follow tournament updates.", "Us\u00e1 el enlace de abajo para abrir tu registro y seguir las novedades del torneo.", "Ссылка ниже открывает вашу регистрацию и новости турнира.")}</p>
+    {f'<p style="text-align:center"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open registration", "Abrir registro", "Открыть регистрацию")}</a></p>' if login_url else ""}
     <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
     {_footer(reply_to, lang)}
 </div>"""
@@ -300,17 +322,20 @@ def render_tournament_message_email(
     login_url = f"{base}{tv_path}?player_token={token}" if base else ""
 
     subject = _tx(
-        lang, f"Message from organizer \u2014 {tournament_name}", f"Mensaje del organizador \u2014 {tournament_name}"
+        lang,
+        f"Message from organizer \u2014 {tournament_name}",
+        f"Mensaje del organizador \u2014 {tournament_name}",
+        f"Сообщение организатора \u2014 {tournament_name}",
     )
     body = f"""\
 <div style="{_BASE_STYLE}">
-    <h2 style="margin-top:0">{_tx(lang, "Message from organizer \U0001f4e2", "Mensaje del organizador \U0001f4e2")}</h2>
-    <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, there's a new update for <strong>{_esc(tournament_name)}</strong>.", f"Hola <strong>{_esc(player_name)}</strong>, hay una novedad para <strong>{_esc(tournament_name)}</strong>.")}</p>
+    <h2 style="margin-top:0">{_tx(lang, "Message from organizer \U0001f4e2", "Mensaje del organizador \U0001f4e2", "Сообщение организатора \U0001f4e2")}</h2>
+    <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, there's a new update for <strong>{_esc(tournament_name)}</strong>.", f"Hola <strong>{_esc(player_name)}</strong>, hay una novedad para <strong>{_esc(tournament_name)}</strong>.", f"Здравствуйте, <strong>{_esc(player_name)}</strong>! Новое сообщение по турниру <strong>{_esc(tournament_name)}</strong>.")}</p>
     <div style="margin:12px 0;padding:12px 14px;border-radius:8px;background:#f8fafc;border:1px solid #e5e7eb;white-space:pre-wrap">
         {_esc(message)}
     </div>
-    <p style="font-size:.9em;color:#666">{_tx(lang, "Use the link below to go to the tournament and check for updates.", "Us\u00e1 el enlace de abajo para ir al torneo y ver las novedades.")}</p>
-    {f'<p style="text-align:center"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Go to tournament", "Ir al torneo")}</a></p>' if login_url else ""}
+    <p style="font-size:.9em;color:#666">{_tx(lang, "Use the link below to go to the tournament and check for updates.", "Us\u00e1 el enlace de abajo para ir al torneo y ver las novedades.", "Ссылка ниже открывает турнир и его новости.")}</p>
+    {f'<p style="text-align:center"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Go to tournament", "Ir al torneo", "Перейти к турниру")}</a></p>' if login_url else ""}
     <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
     {_footer(reply_to, lang)}
 </div>"""
@@ -352,6 +377,7 @@ def render_next_round_email(
                 lang,
                 f" \u2014 Court <strong>{_esc(m['court'])}</strong>",
                 f" \u2014 Cancha <strong>{_esc(m['court'])}</strong>",
+                f" \u2014 корт <strong>{_esc(m['court'])}</strong>",
             )
             if m.get("court")
             else ""
@@ -369,10 +395,14 @@ def render_next_round_email(
                     lang,
                     f"Your next opponent will be the <strong>{_esc(waiting)}</strong>",
                     f"Tu pr\u00f3ximo rival ser\u00e1 el <strong>{_esc(waiting)}</strong>",
+                    f"Следующий соперник: <strong>{_esc(waiting)}</strong>",
                 )
                 if waiting
                 else _tx(
-                    lang, "Your next opponent is to be determined", "Tu pr\u00f3ximo rival est\u00e1 por definirse"
+                    lang,
+                    "Your next opponent is to be determined",
+                    "Tu pr\u00f3ximo rival est\u00e1 por definirse",
+                    "Следующий соперник пока не определён",
                 )
             )
             return f'<li style="margin-bottom:12px">{vs_part}</li>'
@@ -381,13 +411,14 @@ def render_next_round_email(
                 lang,
                 f"With <strong>{_esc(m['teammates'])}</strong> vs <strong>{_esc(m['opponents'])}</strong>",
                 f"Con <strong>{_esc(m['teammates'])}</strong> vs <strong>{_esc(m['opponents'])}</strong>",
+                f"Партнёр: <strong>{_esc(m['teammates'])}</strong>, соперники: <strong>{_esc(m['opponents'])}</strong>",
             )
         else:
             vs_part = f"vs <strong>{_esc(m['opponents'])}</strong>"
         return f'<li style="margin-bottom:12px">{vs_part}{court_part}{comment_part}{contacts_part}</li>'
 
     def _round_label(n: int) -> str:
-        return _tx(lang, f"Round {n}", f"Ronda {n}")
+        return _tx(lang, f"Round {n}", f"Ronda {n}", f"Раунд {n}")
 
     round_nums = sorted(set(m.get("round_number", round_number) for m in matches_info))
     multiple_rounds = len(round_nums) > 1
@@ -414,17 +445,27 @@ def render_next_round_email(
                 lang,
                 f"{stage}: upcoming rounds \u2014 {tournament_name}",
                 f"{stage}: pr\u00f3ximas rondas \u2014 {tournament_name}",
+                f"{stage}: следующие раунды \u2014 {tournament_name}",
             )
             if stage
             else _tx(
-                lang, f"Upcoming rounds \u2014 {tournament_name}", f"Pr\u00f3ximas rondas \u2014 {tournament_name}"
+                lang,
+                f"Upcoming rounds \u2014 {tournament_name}",
+                f"Pr\u00f3ximas rondas \u2014 {tournament_name}",
+                f"Следующие раунды \u2014 {tournament_name}",
             )
         )
-        title = _tx(lang, "Your upcoming matches \U0001f4cb", "Tus pr\u00f3ximos partidos \U0001f4cb")
+        title = _tx(
+            lang,
+            "Your upcoming matches \U0001f4cb",
+            "Tus pr\u00f3ximos partidos \U0001f4cb",
+            "Ваши следующие матчи \U0001f4cb",
+        )
         intro = _tx(
             lang,
             f"Hi <strong>{_esc(player_name)}</strong>, here are your upcoming matches for <strong>{_esc(tournament_name)}</strong>.",
             f"Hola <strong>{_esc(player_name)}</strong>, estos son tus pr\u00f3ximos partidos en <strong>{_esc(tournament_name)}</strong>.",
+            f"Здравствуйте, <strong>{_esc(player_name)}</strong>! Ваши следующие матчи в турнире <strong>{_esc(tournament_name)}</strong>.",
         )
         matches_section = ""
         for rn in round_nums:
@@ -444,35 +485,52 @@ def render_next_round_email(
                     lang,
                     f"{rl} update \u2014 {tournament_name}",
                     f"Actualizaci\u00f3n de {rl} \u2014 {tournament_name}",
+                    f"{rl}: новости \u2014 {tournament_name}",
                 )
             )
-            title = _tx(lang, f"{rl} \u2014 awaiting opponent \U0001f4cb", f"{rl} \u2014 esperando rival \U0001f4cb")
+            title = _tx(
+                lang,
+                f"{rl} \u2014 awaiting opponent \U0001f4cb",
+                f"{rl} \u2014 esperando rival \U0001f4cb",
+                f"{rl} \u2014 соперник не определён \U0001f4cb",
+            )
             intro = _tx(
                 lang,
                 f"Hi <strong>{_esc(player_name)}</strong>, your opponent for {rl.lower()} of <strong>{_esc(tournament_name)}</strong> has not been decided yet.",
                 f"Hola <strong>{_esc(player_name)}</strong>, tu rival para la {rl.lower()} de <strong>{_esc(tournament_name)}</strong> a\u00fan no se ha definido.",
+                f"Здравствуйте, <strong>{_esc(player_name)}</strong>! {rl}, турнир <strong>{_esc(tournament_name)}</strong>: соперник пока не определён.",
             )
         else:
             subject = f"{stage}: {rl} \u2014 {tournament_name}" if stage else f"{rl} \u2014 {tournament_name}"
-            title = _tx(lang, f"{rl} is up! \U0001f4cb", f"\u00a1{rl} est\u00e1 lista! \U0001f4cb")
+            title = _tx(
+                lang,
+                f"{rl} is up! \U0001f4cb",
+                f"\u00a1{rl} est\u00e1 lista! \U0001f4cb",
+                f"{rl}: всё готово! \U0001f4cb",
+            )
             intro = _tx(
                 lang,
                 f"Hi <strong>{_esc(player_name)}</strong>, {rl.lower()} of <strong>{_esc(tournament_name)}</strong> is ready.",
                 f"Hola <strong>{_esc(player_name)}</strong>, la {rl.lower()} de <strong>{_esc(tournament_name)}</strong> est\u00e1 lista.",
+                f"Здравствуйте, <strong>{_esc(player_name)}</strong>! {rl}, турнир <strong>{_esc(tournament_name)}</strong>: всё готово.",
             )
         items = "".join(_match_li(m) for m in matches_info)
         if not items:
-            items = f"<li>{_tx(lang, 'No matches assigned this round (sit-out).', 'No ten\u00e9s partidos asignados en esta ronda (descans\u00e1s).')}</li>"
+            items = f"<li>{_tx(lang, 'No matches assigned this round (sit-out).', 'No ten\u00e9s partidos asignados en esta ronda (descans\u00e1s).', 'В этом раунде у вас нет матчей (отдых).')}</li>"
         matches_section = f'<ul style="padding-left:20px">{items}</ul>'
 
-    matches_label = _tx(lang, "Status:", "Estado:") if all_byes else _tx(lang, "Your matches:", "Tus partidos:")
+    matches_label = (
+        _tx(lang, "Status:", "Estado:", "Статус:")
+        if all_byes
+        else _tx(lang, "Your matches:", "Tus partidos:", "Ваши матчи:")
+    )
     body = f"""\
 <div style="{_BASE_STYLE}">
   <h2 style="margin-top:0">{title}</h2>
   {stage_badge}<p>{intro}</p>
   <p>{matches_label}</p>
   {matches_section}
-  {f'<p style="text-align:center"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Go to tournament", "Ir al torneo")}</a></p>' if login_url else ""}
+  {f'<p style="text-align:center"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Go to tournament", "Ir al torneo", "Перейти к турниру")}</a></p>' if login_url else ""}
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
   {_footer(reply_to, lang)}
 </div>"""
@@ -507,9 +565,14 @@ def render_tournament_results_email(
     losses = stats.get("losses", 0)
     draws = stats.get("draws", 0)
     if draws:
-        stats_line = _tx(lang, f"{wins}W \u2013 {losses}L \u2013 {draws}D", f"{wins}G \u2013 {losses}P \u2013 {draws}E")
+        stats_line = _tx(
+            lang,
+            f"{wins}W \u2013 {losses}L \u2013 {draws}D",
+            f"{wins}G \u2013 {losses}P \u2013 {draws}E",
+            f"В {wins} \u2013 П {losses} \u2013 Н {draws}",
+        )
     else:
-        stats_line = _tx(lang, f"{wins}W \u2013 {losses}L", f"{wins}G \u2013 {losses}P")
+        stats_line = _tx(lang, f"{wins}W \u2013 {losses}L", f"{wins}G \u2013 {losses}P", f"В {wins} \u2013 П {losses}")
 
     lb_rows = ""
     for entry in leaderboard_top:
@@ -522,24 +585,29 @@ def render_tournament_results_email(
             f"</tr>"
         )
 
-    subject = _tx(lang, f"Final results \u2014 {tournament_name}", f"Resultados finales \u2014 {tournament_name}")
+    subject = _tx(
+        lang,
+        f"Final results \u2014 {tournament_name}",
+        f"Resultados finales \u2014 {tournament_name}",
+        f"Итоги \u2014 {tournament_name}",
+    )
     body = f"""\
 <div style="{_BASE_STYLE}">
-  <h2 style="margin-top:0">{_tx(lang, "Tournament complete! \U0001f3c6", "\u00a1Torneo finalizado! \U0001f3c6")}</h2>
-  <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, <strong>{_esc(tournament_name)}</strong> has finished.", f"Hola <strong>{_esc(player_name)}</strong>, <strong>{_esc(tournament_name)}</strong> ha terminado.")}</p>
-  <p>{_tx(lang, f"Your final position: <strong>#{rank}</strong> out of {total_players} players ({stats_line}).", f"Tu posici\u00f3n final: <strong>#{rank}</strong> de {total_players} jugadores ({stats_line}).")}</p>
-  <h3 style="margin-bottom:8px">{_tx(lang, "Leaderboard", "Tabla de posiciones")}</h3>
+  <h2 style="margin-top:0">{_tx(lang, "Tournament complete! \U0001f3c6", "\u00a1Torneo finalizado! \U0001f3c6", "Турнир завершён! \U0001f3c6")}</h2>
+  <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, <strong>{_esc(tournament_name)}</strong> has finished.", f"Hola <strong>{_esc(player_name)}</strong>, <strong>{_esc(tournament_name)}</strong> ha terminado.", f"Здравствуйте, <strong>{_esc(player_name)}</strong>! Турнир <strong>{_esc(tournament_name)}</strong> завершён.")}</p>
+  <p>{_tx(lang, f"Your final position: <strong>#{rank}</strong> out of {total_players} players ({stats_line}).", f"Tu posici\u00f3n final: <strong>#{rank}</strong> de {total_players} jugadores ({stats_line}).", f"Ваше итоговое место: <strong>#{rank}</strong>, всего игроков: {total_players} ({stats_line}).")}</p>
+  <h3 style="margin-bottom:8px">{_tx(lang, "Leaderboard", "Tabla de posiciones", "Таблица")}</h3>
   <table style="width:100%;border-collapse:collapse;font-size:.95em">
     <thead>
       <tr style="background:#f3f4f6">
         <th style="padding:6px 10px;text-align:left">#</th>
-        <th style="padding:6px 10px;text-align:left">{_tx(lang, "Player", "Jugador")}</th>
-        <th style="padding:6px 10px;text-align:right">{_tx(lang, "Score", "Puntos")}</th>
+        <th style="padding:6px 10px;text-align:left">{_tx(lang, "Player", "Jugador", "Игрок")}</th>
+        <th style="padding:6px 10px;text-align:right">{_tx(lang, "Score", "Puntos", "Счёт")}</th>
       </tr>
     </thead>
     <tbody>{lb_rows}</tbody>
   </table>
-  {f'<p style="text-align:center;margin-top:20px"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "View full results", "Ver resultados completos")}</a></p>' if login_url else ""}
+  {f'<p style="text-align:center;margin-top:20px"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "View full results", "Ver resultados completos", "Посмотреть все итоги")}</a></p>' if login_url else ""}
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
   {_footer(reply_to, lang)}
 </div>"""
@@ -560,13 +628,18 @@ def render_cancellation_email(
     lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register/{lobby_id}"
     register_url = f"{base}{lobby_path}" if base else ""
 
-    subject = _tx(lang, f"Registration cancelled \u2014 {lobby_name}", f"Registro cancelado \u2014 {lobby_name}")
+    subject = _tx(
+        lang,
+        f"Registration cancelled \u2014 {lobby_name}",
+        f"Registro cancelado \u2014 {lobby_name}",
+        f"Регистрация отменена \u2014 {lobby_name}",
+    )
     body = f"""\
 <div style="{_BASE_STYLE}">
-  <h2 style="margin-top:0">{_tx(lang, "Registration cancelled \u274c", "Registro cancelado \u274c")}</h2>
-  <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, your registration for <strong>{_esc(lobby_name)}</strong> has been cancelled.", f"Hola <strong>{_esc(player_name)}</strong>, tu registro en <strong>{_esc(lobby_name)}</strong> ha sido cancelado.")}</p>
-  <p style="font-size:.9em;color:#666">{_tx(lang, "If this was a mistake, you can register again using the link below (as long as registration is still open).", "Si fue un error, pod\u00e9s volver a registrarte usando el enlace de abajo (siempre que el registro siga abierto).")}</p>
-  {f'<p style="text-align:center"><a href="{_esc(register_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open registration", "Abrir registro")}</a></p>' if register_url else ""}
+  <h2 style="margin-top:0">{_tx(lang, "Registration cancelled \u274c", "Registro cancelado \u274c", "Регистрация отменена \u274c")}</h2>
+  <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, your registration for <strong>{_esc(lobby_name)}</strong> has been cancelled.", f"Hola <strong>{_esc(player_name)}</strong>, tu registro en <strong>{_esc(lobby_name)}</strong> ha sido cancelado.", f"Здравствуйте, <strong>{_esc(player_name)}</strong>! Ваша заявка на событие <strong>{_esc(lobby_name)}</strong> отменена.")}</p>
+  <p style="font-size:.9em;color:#666">{_tx(lang, "If this was a mistake, you can register again using the link below (as long as registration is still open).", "Si fue un error, pod\u00e9s volver a registrarte usando el enlace de abajo (siempre que el registro siga abierto).", "Если это ошибка, зарегистрируйтесь снова по ссылке ниже. Это возможно, пока регистрация открыта.")}</p>
+  {f'<p style="text-align:center"><a href="{_esc(register_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open registration", "Abrir registro", "Открыть регистрацию")}</a></p>' if register_url else ""}
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
   {_footer(reply_to, lang)}
 </div>"""
@@ -588,13 +661,18 @@ def render_waitlist_spot_email(
     lobby_path = f"/register/{lobby_alias}" if lobby_alias else f"/register/{lobby_id}"
     login_url = f"{base}{lobby_path}?token={token}" if base else ""
 
-    subject = _tx(lang, f"A spot opened up \u2014 {lobby_name}", f"\u00a1Se liber\u00f3 un lugar! \u2014 {lobby_name}")
+    subject = _tx(
+        lang,
+        f"A spot opened up \u2014 {lobby_name}",
+        f"\u00a1Se liber\u00f3 un lugar! \u2014 {lobby_name}",
+        f"Освободилось место \u2014 {lobby_name}",
+    )
     body = f"""\
 <div style="{_BASE_STYLE}">
-  <h2 style="margin-top:0">{_tx(lang, "A spot just opened! \U0001f389", "\u00a1Se liber\u00f3 un lugar! \U0001f389")}</h2>
-  <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, a spot has become available in <strong>{_esc(lobby_name)}</strong>.", f"Hola <strong>{_esc(player_name)}</strong>, se liber\u00f3 un lugar en <strong>{_esc(lobby_name)}</strong>.")}</p>
-  <p style="font-size:.9em;color:#666">{_tx(lang, "You were on the waiting list. The organizer is letting you know that you can now confirm your participation.", "Estabas en la lista de espera. El organizador te avisa que ya pod\u00e9s confirmar tu participaci\u00f3n.")}</p>
-  {f'<p style="text-align:center"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open registration", "Abrir registro")}</a></p>' if login_url else ""}
+  <h2 style="margin-top:0">{_tx(lang, "A spot just opened! \U0001f389", "\u00a1Se liber\u00f3 un lugar! \U0001f389", "Освободилось место! \U0001f389")}</h2>
+  <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>, a spot has become available in <strong>{_esc(lobby_name)}</strong>.", f"Hola <strong>{_esc(player_name)}</strong>, se liber\u00f3 un lugar en <strong>{_esc(lobby_name)}</strong>.", f"Здравствуйте, <strong>{_esc(player_name)}</strong>! В событии <strong>{_esc(lobby_name)}</strong> освободилось место.")}</p>
+  <p style="font-size:.9em;color:#666">{_tx(lang, "You were on the waiting list. The organizer is letting you know that you can now confirm your participation.", "Estabas en la lista de espera. El organizador te avisa que ya pod\u00e9s confirmar tu participaci\u00f3n.", "Вы были среди ожидающих. Организатор сообщает, что теперь вы можете подтвердить участие.")}</p>
+  {f'<p style="text-align:center"><a href="{_esc(login_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open registration", "Abrir registro", "Открыть регистрацию")}</a></p>' if login_url else ""}
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
   {_footer(reply_to, lang)}
 </div>"""
@@ -676,18 +754,23 @@ def render_player_space_welcome(
         verify_url = ""
     display_name = name.strip() or email
 
-    subject = _tx(lang, "Your Player Hub passphrase", "Tu contrase\u00f1a de Player Hub")
+    subject = _tx(
+        lang,
+        "Your Player Hub passphrase",
+        "Tu contrase\u00f1a de Player Hub",
+        "Ваша кодовая фраза для личного кабинета",
+    )
     body = f"""\
 <div style="{_BASE_STYLE}">
-  <h2 style="margin-top:0">{_tx(lang, "Welcome to Player Hub \U0001f3c5", "Bienvenido a Player Hub \U0001f3c5")}</h2>
-  <p>{_tx(lang, f"Hi <strong>{_esc(display_name)}</strong>!", f"\u00a1Hola <strong>{_esc(display_name)}</strong>!")}</p>
-  <p>{_tx(lang, "Your player profile has been created. Here is your personal passphrase \u2014 it's the only thing you need to log in from any device:", "Tu perfil de jugador fue creado. Esta es tu contrase\u00f1a personal \u2014 es lo \u00fanico que necesit\u00e1s para ingresar desde cualquier dispositivo:")}</p>
+  <h2 style="margin-top:0">{_tx(lang, "Welcome to Player Hub \U0001f3c5", "Bienvenido a Player Hub \U0001f3c5", "Добро пожаловать в личный кабинет \U0001f3c5")}</h2>
+  <p>{_tx(lang, f"Hi <strong>{_esc(display_name)}</strong>!", f"\u00a1Hola <strong>{_esc(display_name)}</strong>!", f"Здравствуйте, <strong>{_esc(display_name)}</strong>!")}</p>
+  <p>{_tx(lang, "Your player profile has been created. Here is your personal passphrase \u2014 it's the only thing you need to log in from any device:", "Tu perfil de jugador fue creado. Esta es tu contrase\u00f1a personal \u2014 es lo \u00fanico que necesit\u00e1s para ingresar desde cualquier dispositivo:", "Ваш профиль игрока создан. Вот ваша личная кодовая фраза. Только она нужна для входа с любого устройства:")}</p>
   <p style="text-align:center"><span style="{_CODE_STYLE}">{_esc(passphrase)}</span></p>
-  <p style="font-size:.9em;color:#666">{_tx(lang, "Keep this passphrase safe. Use it to access your Player Hub dashboard and to log in to any tournament or registration lobby you're linked to.", "Guard\u00e1 esta contrase\u00f1a de forma segura. Usala para acceder a tu panel de Player Hub y para ingresar a cualquier torneo o registro al que est\u00e9s vinculado.")}</p>
-    {f'<p style="font-size:.9em;color:#666">{_tx(lang, "Please verify your email address to enable secure account recovery and automatic linking by email.", "Por favor verific\u00e1 tu direcci\u00f3n de email para habilitar la recuperaci\u00f3n segura de tu cuenta y la vinculaci\u00f3n autom\u00e1tica por email.")}</p><p style="text-align:center"><a href="{_esc(verify_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Verify email", "Verificar email")}</a></p>' if verify_url else ""}
-  {f'<p style="text-align:center"><a href="{_esc(player_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open Player Hub", "Abrir Player Hub")}</a></p>' if player_url else ""}
+  <p style="font-size:.9em;color:#666">{_tx(lang, "Keep this passphrase safe. Use it to access your Player Hub dashboard and to log in to any tournament or registration lobby you're linked to.", "Guard\u00e1 esta contrase\u00f1a de forma segura. Usala para acceder a tu panel de Player Hub y para ingresar a cualquier torneo o registro al que est\u00e9s vinculado.", "Храните эту кодовую фразу в надёжном месте. По ней можно войти в личный кабинет и в любой связанный турнир или лобби регистрации.")}</p>
+    {f'<p style="font-size:.9em;color:#666">{_tx(lang, "Please verify your email address to enable secure account recovery and automatic linking by email.", "Por favor verific\u00e1 tu direcci\u00f3n de email para habilitar la recuperaci\u00f3n segura de tu cuenta y la vinculaci\u00f3n autom\u00e1tica por email.", "Подтвердите адрес email. Это нужно для безопасного восстановления доступа и автоматической связи по email.")}</p><p style="text-align:center"><a href="{_esc(verify_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Verify email", "Verificar email", "Подтвердить email")}</a></p>' if verify_url else ""}
+  {f'<p style="text-align:center"><a href="{_esc(player_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open Player Hub", "Abrir Player Hub", "Открыть личный кабинет")}</a></p>' if player_url else ""}
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
-  <p style="font-size:.8em;color:#999">{_tx(lang, "This is an automated message from Torneos Amistosos.", "Este es un mensaje autom\u00e1tico de Torneos Amistosos.")}</p>
+  <p style="font-size:.8em;color:#999">{_tx(lang, "This is an automated message from Torneos Amistosos.", "Este es un mensaje autom\u00e1tico de Torneos Amistosos.", "Это автоматическое сообщение от Torneos Amistosos.")}</p>
 </div>"""
     return subject, body
 
@@ -708,16 +791,18 @@ def render_player_space_magic_link(
     player_url = f"{base}/player#token={access_token}" if base else ""
     display_name = name.strip() or email
 
-    subject = _tx(lang, "Your Player Hub login link", "Tu enlace de acceso a Player Hub")
+    subject = _tx(
+        lang, "Your Player Hub login link", "Tu enlace de acceso a Player Hub", "Ссылка для входа в личный кабинет"
+    )
     body = f"""\
 <div style="{_BASE_STYLE}">
-  <h2 style="margin-top:0">{_tx(lang, "Player Hub login link \U0001f3c5", "Enlace de acceso a Player Hub \U0001f3c5")}</h2>
-  <p>{_tx(lang, f"Hi <strong>{_esc(display_name)}</strong>!", f"\u00a1Hola <strong>{_esc(display_name)}</strong>!")}</p>
-  <p>{_tx(lang, "We received a request to access your player profile. Click the button below to log in instantly \u2014 this link is valid for <strong>1 hour</strong> and can only be used once.", "Recibimos una solicitud para acceder a tu perfil de jugador. Hac\u00e9 clic en el bot\u00f3n de abajo para ingresar \u2014 este enlace es v\u00e1lido por <strong>1 hora</strong> y solo se puede usar una vez.")}</p>
-  {f'<p style="text-align:center"><a href="{_esc(player_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open Player Hub", "Abrir Player Hub")}</a></p>' if player_url else ""}
-  <p style="font-size:.9em;color:#666">{_tx(lang, "If you didn't request this link, you can safely ignore this email \u2014 your account has not been changed.", "Si no solicitaste este enlace, pod\u00e9s ignorar este email \u2014 tu cuenta no fue modificada.")}</p>
+  <h2 style="margin-top:0">{_tx(lang, "Player Hub login link \U0001f3c5", "Enlace de acceso a Player Hub \U0001f3c5", "Ссылка для входа в личный кабинет \U0001f3c5")}</h2>
+  <p>{_tx(lang, f"Hi <strong>{_esc(display_name)}</strong>!", f"\u00a1Hola <strong>{_esc(display_name)}</strong>!", f"Здравствуйте, <strong>{_esc(display_name)}</strong>!")}</p>
+  <p>{_tx(lang, "We received a request to access your player profile. Click the button below to log in instantly \u2014 this link is valid for <strong>1 hour</strong> and can only be used once.", "Recibimos una solicitud para acceder a tu perfil de jugador. Hac\u00e9 clic en el bot\u00f3n de abajo para ingresar \u2014 este enlace es v\u00e1lido por <strong>1 hora</strong> y solo se puede usar una vez.", "Мы получили запрос на доступ к вашему профилю игрока. Нажмите кнопку ниже, чтобы сразу войти. Ссылка действует <strong>1 час</strong> и работает только один раз.")}</p>
+  {f'<p style="text-align:center"><a href="{_esc(player_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open Player Hub", "Abrir Player Hub", "Открыть личный кабинет")}</a></p>' if player_url else ""}
+  <p style="font-size:.9em;color:#666">{_tx(lang, "If you didn't request this link, you can safely ignore this email \u2014 your account has not been changed.", "Si no solicitaste este enlace, pod\u00e9s ignorar este email \u2014 tu cuenta no fue modificada.", "Если вы не запрашивали эту ссылку, просто не обращайте внимания на это письмо. Ваш аккаунт не изменён.")}</p>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
-  <p style="font-size:.8em;color:#999">{_tx(lang, "This is an automated message from Torneos Amistosos.", "Este es un mensaje autom\u00e1tico de Torneos Amistosos.")}</p>
+  <p style="font-size:.8em;color:#999">{_tx(lang, "This is an automated message from Torneos Amistosos.", "Este es un mensaje autom\u00e1tico de Torneos Amistosos.", "Это автоматическое сообщение от Torneos Amistosos.")}</p>
 </div>"""
     return subject, body
 
@@ -747,6 +832,7 @@ def _footer(reply_to: str = "", lang: str = "en") -> str:
             "Este es un mensaje autom\u00e1tico del organizador del torneo. "
             "Para contactar al organizador, simplemente respond\u00e9 este email "
             "\u2014 tu respuesta llegar\u00e1 directamente a ellos.",
+            "Это автоматическое сообщение от организатора турнира. Чтобы связаться с организатором, нажмите <strong>Ответить</strong> в почтовой программе. Ответ придёт напрямую организатору.",
         )
     else:
         msg = _tx(
@@ -755,6 +841,7 @@ def _footer(reply_to: str = "", lang: str = "en") -> str:
             "Feel free to reply if you have any questions or need any assistance!",
             "Este es un mensaje autom\u00e1tico del organizador del torneo. "
             "\u00a1No dudes en responder si ten\u00e9s alguna pregunta o necesit\u00e1s ayuda!",
+            "Это автоматическое сообщение от организатора турнира. Если есть вопросы или нужна помощь, ответьте на это письмо.",
         )
     return f'<p style="font-size:.8em;color:#999">{msg}</p>'
 
@@ -790,20 +877,36 @@ def render_club_lobby_invite_email(
         lang,
         f"You're invited to {lobby_name}",
         f"Estás invitado a {lobby_name}",
+        f"Приглашение на событие {lobby_name}",
     )
     body = f"""\
 <div style="{_BASE_STYLE}">
-  <h2 style="margin-top:0">{_tx(lang, f"Invitation to {_esc(lobby_name)}", f"Invitación a {_esc(lobby_name)}")}</h2>
-  <p>{_tx(lang, f"Hi <strong>{_esc(player_name)}</strong>,", f"Hola <strong>{_esc(player_name)}</strong>,")}</p>
+  <h2 style="margin-top:0">{
+        _tx(
+            lang,
+            f"Invitation to {_esc(lobby_name)}",
+            f"Invitación a {_esc(lobby_name)}",
+            f"Приглашение: {_esc(lobby_name)}",
+        )
+    }</h2>
+  <p>{
+        _tx(
+            lang,
+            f"Hi <strong>{_esc(player_name)}</strong>,",
+            f"Hola <strong>{_esc(player_name)}</strong>,",
+            f"Здравствуйте, <strong>{_esc(player_name)}</strong>!",
+        )
+    }</p>
   <p>{
         _tx(
             lang,
             f"<strong>{_esc(club_name)}</strong> is organising <strong>{_esc(lobby_name)}</strong> and you're invited to join.",
             f"<strong>{_esc(club_name)}</strong> está organizando <strong>{_esc(lobby_name)}</strong> y estás invitado a participar.",
+            f"Клуб <strong>{_esc(club_name)}</strong> организует событие <strong>{_esc(lobby_name)}</strong> и приглашает вас принять участие.",
         )
     }</p>
   {
-        f'<p style="text-align:center"><a href="{_esc(reg_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Register now", "Registrarse ahora")}</a></p>'
+        f'<p style="text-align:center"><a href="{_esc(reg_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Register now", "Registrarse ahora", "Зарегистрироваться")}</a></p>'
         if reg_url
         else ""
     }

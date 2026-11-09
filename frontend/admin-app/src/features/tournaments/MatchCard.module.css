@@ -1,0 +1,95 @@
+.list {
+  overflow: hidden;
+}
+/* Cards size themselves: the actions sit beside the teams when there is room (a container query, not
+   the viewport), and drop to their own row under them when there is not. */
+.card {
+  container-type: inline-size;
+}
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'meta actions'
+    'sides actions';
+  column-gap: var(--mantine-spacing-sm);
+  row-gap: 6px;
+  align-items: start;
+}
+.body[data-extra] {
+  grid-template-areas:
+    'meta actions'
+    'sides actions'
+    'extra actions';
+}
+.meta {
+  grid-area: meta;
+  min-width: 0;
+}
+.sides {
+  grid-area: sides;
+}
+.extra {
+  grid-area: extra;
+  min-width: 0;
+}
+.actions {
+  grid-area: actions;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: flex-end;
+}
+/* Narrow cards: the actions move up beside the meta line instead of taking a row of their own. */
+@container (max-width: 25rem) {
+  .body,
+  .body[data-extra] {
+    grid-template-areas:
+      'meta actions'
+      'sides sides'
+      'extra extra';
+    align-items: center;
+  }
+}
+.card[data-density='slot'] .body,
+.card[data-density='slot'] .body[data-extra] {
+  grid-template-areas:
+    'meta actions'
+    'sides sides'
+    'extra extra';
+  align-items: center;
+}
+/* A flexible name column that wraps, and a fixed score column that never shrinks. */
+.side {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--mantine-spacing-md);
+}
+.name {
+  overflow-wrap: anywhere;
+}
+/* The signed-in player's scheduled match on the spectator screen; a status flag below keeps the edge. */
+.card[data-yours] {
+  background: var(--color-primary-highlight);
+  box-shadow: inset 3px 0 0 var(--sport-accent);
+}
+/* The most urgent flag colors a rule on the left edge. */
+.card[data-tone='dispute'] {
+  box-shadow: inset 3px 0 0 var(--color-status-dispute);
+}
+.card[data-tone='await'],
+.card[data-tone='review'] {
+  box-shadow: inset 3px 0 0 var(--color-status-await);
+}
+.side[data-you] .name {
+  font-weight: 700;
+}
+.side[data-win] .name {
+  font-weight: 700;
+}
+/* Keyboard selection: an outline inside the row, so it never shifts the layout. */
+.card[data-selected] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}

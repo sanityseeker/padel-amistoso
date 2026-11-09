@@ -1,0 +1,131 @@
+/* Brand identity only. Mantine components get these through theme.components (see components.ts):
+   no global .mantine-* selectors anywhere. Colors come from --app-* / --color-* tokens. */
+
+.focus:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* ---- Surfaces ------------------------------------------------------------------------------- */
+.surface {
+  background: var(--app-surface);
+  color: var(--app-text);
+  border-color: var(--app-border);
+}
+.paper {
+  background: var(--app-surface);
+  border-color: var(--app-border);
+  box-shadow: none;
+}
+/* A row inside a bordered list: no frame of its own, a hairline between neighbours. */
+.paperRow {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.paperRow:not(:last-child) {
+  border-bottom: 1px solid var(--app-divider);
+}
+/* At most one court surface per screen. */
+.paperCourtPanel {
+  background: var(--color-court-panel);
+  border-color: transparent;
+  color: #fff;
+  --mantine-color-dimmed: color-mix(in srgb, #fff 72%, transparent);
+}
+.paperDashed {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--app-border);
+}
+.overlay {
+  --overlay-bg: var(--app-overlay);
+}
+.input {
+  background: var(--app-surface);
+  color: var(--app-text);
+  border-color: var(--app-border);
+}
+.input[data-disabled] {
+  background: var(--app-surface-2);
+}
+.segmentedRoot {
+  background: var(--app-surface-2);
+}
+.segmentedIndicator {
+  background: var(--app-surface);
+}
+
+/* ---- Tables --------------------------------------------------------------------------------- */
+.table {
+  --table-hover-color: var(--app-hover);
+  --table-striped-color: var(--app-surface-2);
+  --table-border-color: var(--app-divider);
+}
+.thead {
+  background: var(--app-surface-2);
+  color: var(--app-muted);
+  font-size: var(--mantine-font-size-xs);
+}
+.th {
+  font-weight: 600;
+}
+
+/* ---- Tabs: a ball-colored rule marks the active tab ------------------------------------------ */
+.tabList {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.tabList::-webkit-scrollbar {
+  display: none;
+}
+.tab {
+  flex-shrink: 0;
+}
+.tab[data-active] {
+  border-bottom-color: var(--sport-accent);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* ---- Type: headings use Geologica at a calm weight; h3 and below use the body face -------------- */
+.title {
+  color: var(--app-text);
+}
+.h3,
+.h4,
+.h5,
+.h6 {
+  font-family: var(--font-body);
+}
+
+/* Text variants. `eyebrow` is the only uppercase text in the app. */
+.eyebrow {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--mantine-font-size-xs);
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.score,
+.scoreXl {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
+  line-height: 1.1;
+}
+.score {
+  font-size: 1.25rem;
+}
+.scoreXl {
+  font-weight: 700;
+  font-size: clamp(3rem, 2.4rem + 3vw, 4rem);
+  line-height: 1;
+}
+.mono {
+  font-family: var(--font-mono);
+}

@@ -311,10 +311,26 @@ def _home_url_for(request: Request) -> str:
     return f"{_request_scheme(request)}://{_apex_host(host)}/"
 
 
+def _inject_head(html: str, snippet: str) -> str:
+    """Insert ``snippet`` just before ``</head>`` (or at the start when the page has no head)."""
+    if "</head>" in html:
+        return html.replace("</head>", snippet + "</head>", 1)
+    return snippet + html
+
+
 def _serve_404_page(request: Request) -> HTMLResponse:
-    """Return the custom 404 page with the host-aware home URL injected."""
+    """Return the 404 page with the host-aware home URL injected.
+
+    The React shell renders the page (its ``*`` route) when a build exists, with the home URL in
+    ``<meta name="amistoso-home">``; without a build the legacy ``404.html`` is used.
+    """
+    home = escape(_home_url_for(request), quote=True)
+    spa = _spa_index()
+    if spa is not None:
+        html = _inject_head(spa[0], f'<meta name="amistoso-home" content="{home}">')
+        return HTMLResponse(content=html, status_code=404, headers={"Cache-Control": "no-cache"})
     html = _read_frontend_text("404.html") or "<h1>404 Not Found</h1>"
-    html = html.replace("__HOME_URL__", escape(_home_url_for(request), quote=True))
+    html = html.replace("__HOME_URL__", home)
     return HTMLResponse(content=html, status_code=404, headers={"Cache-Control": "no-cache"})
 
 
@@ -377,6 +393,12 @@ async def subdomain_router(request: Request, call_next):
         return RedirectResponse(url="/", status_code=302)
     if request.url.path != "/" or request.method != "GET":
         return await call_next(request)
+    spa = _spa_index()
+    if spa is not None:
+        # The React shell renders the club landing page; the slug travels in a meta tag because the
+        # configured domain (not a hostname guess) decided that this host is a club.
+        html = _inject_head(spa[0], f'<meta name="amistoso-club" content="{escape(label, quote=True)}">')
+        return Response(content=html, media_type="text/html", headers={"Cache-Control": "no-cache"})
     return Response(
         content=_read_frontend_text("club.html") or "<h1>Club page not found</h1>",
         media_type="text/html",
@@ -472,7 +494,6 @@ async def serve_admin_asset(asset_path: str) -> Response:
     return FileResponse(asset, headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
-@lru_cache(maxsize=32)
 @lru_cache(maxsize=64)
 def _read_frontend_text(filename: str) -> str:
     """Read a frontend text file, caching the result for the process lifetime."""
@@ -547,20 +568,124 @@ def _html_page(filename: str, fallback: str) -> Response:
     return Response(content=content, media_type="text/html", headers={"Cache-Control": "no-cache"})
 
 
+_HTML_OPEN_TAG_RE = re.compile(r"<html\b([^>]*)>", re.IGNORECASE)
+_HTML_CLASS_ATTR_RE = re.compile(r"""\bclass\s*=\s*(["'])(.*?)\1""", re.IGNORECASE)
+_spa_index_cache: dict[tuple[str, int, int, bool], tuple[str, str]] = {}
+
+
+def _mark_demo_instance(html: str) -> str:
+    """Add the ``demo-instance`` class to the first ``<html>`` tag, whatever its attribute order."""
+
+    def _inject(match: re.Match[str]) -> str:
+        attrs = match.group(1)
+        existing = _HTML_CLASS_ATTR_RE.search(attrs)
+        if existing is None:
+            return f'<html{attrs} class="demo-instance">'
+        if "demo-instance" in existing.group(2).split():
+            return match.group(0)
+        quote_char = existing.group(1)
+        replacement = f"class={quote_char}{existing.group(2)} demo-instance{quote_char}"
+        return f"<html{attrs[: existing.start()]}{replacement}{attrs[existing.end() :]}>"
+
+    return _HTML_OPEN_TAG_RE.sub(_inject, html, count=1)
+
+
+def _spa_index() -> tuple[str, str] | None:
+    """Return ``(html, etag)`` for the built React shell, or ``None`` when no build exists.
+
+    The result is cached per process and invalidated when the file changes, so a
+    redeploy (or a test rewriting the file) is picked up without a restart.
+    """
+    index = ADMIN_BUILD_DIR / "index.html"
+    try:
+        stat = index.stat()
+    except OSError:
+        return None
+    key = (str(index), stat.st_mtime_ns, stat.st_size, bool(config.DEMO_INSTANCE))
+    cached = _spa_index_cache.get(key)
+    if cached is None:
+        html = index.read_text()
+        if config.DEMO_INSTANCE:
+            html = _mark_demo_instance(html)
+        etag = f'"s{hashlib.sha256(html.encode()).hexdigest()[:16]}"'
+        _spa_index_cache.clear()
+        cached = _spa_index_cache[key] = (html, etag)
+    return cached
+
+
+def _spa_response(
+    request: Request,
+    legacy_page: str = "index.html",
+    legacy_fallback: str = "<h1>Frontend not found</h1>",
+) -> Response:
+    """Serve the React shell for any SPA path (no-cache + ETag, demo class injected).
+
+    Falls back to the matching legacy page when the Vite build is missing.
+    """
+    spa = _spa_index()
+    if spa is None:
+        return _html_page(legacy_page, legacy_fallback)
+    html, etag = spa
+    headers = {"Cache-Control": "no-cache", "ETag": etag}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    return Response(content=html, media_type="text/html", headers=headers)
+
+
 @app.get("/")
 @app.get("/admin")
 async def serve_frontend(request: Request) -> Response:
-    # The demo onboarding and account recovery flows still use the original UI.
-    recovery = any(key in request.query_params for key in ("invite_token", "reset_token"))
-    if not config.DEMO_INSTANCE and not recovery and (ADMIN_BUILD_DIR / "index.html").is_file():
-        return FileResponse(ADMIN_BUILD_DIR / "index.html", headers={"Cache-Control": "no-cache"})
-    return _html_page("index.html", "<h1>Frontend not found</h1>")
+    # The React shell also serves the demo instance: its login page has the one-click sandbox start.
+    return _spa_response(request)
 
 
-@app.get("/legacy-admin")
+@app.get("/admin/{rest:path}", include_in_schema=False)
+async def serve_admin_spa(rest: str, request: Request) -> Response:
+    """Deep links into the React admin (``/admin/t/<id>``, ``/admin/clubs`` ...)."""
+    return _spa_response(request)
+
+
+# ── Legacy (vanilla-JS) pages, kept under one prefix as an escape hatch ──────────
+# The React SPA owns /admin, /events and /player; the original pages stay reachable
+# at /legacy/* until every workflow is ported.
+
+
+@app.get("/legacy", include_in_schema=False)
+async def serve_legacy_root() -> RedirectResponse:
+    return RedirectResponse(url="/legacy/admin", status_code=302)
+
+
+@app.get("/legacy/admin")
 async def serve_legacy_admin() -> Response:
     """Keep advanced workflows available during the React admin migration."""
     return _html_page("index.html", "<h1>Frontend not found</h1>")
+
+
+def _permanent_redirect(request: Request, target: str) -> RedirectResponse:
+    """308 to a fixed in-site path, keeping the query string.
+
+    ``target`` is always a literal path chosen by the caller, never request input, so
+    this cannot become an open redirect. 308 keeps the method and the ``?tab=``,
+    ``?invite_token=`` ... query intact.
+    """
+    if request.url.query:
+        target += f"?{request.url.query}"
+    return RedirectResponse(url=target, status_code=308)
+
+
+@app.get("/legacy-admin", include_in_schema=False)
+async def redirect_legacy_admin(request: Request) -> RedirectResponse:
+    return _permanent_redirect(request, "/legacy/admin")
+
+
+@app.get("/legacy-events", include_in_schema=False)
+async def redirect_legacy_events(request: Request) -> RedirectResponse:
+    return _permanent_redirect(request, "/legacy/events")
+
+
+@app.get("/legacy-player", include_in_schema=False)
+async def redirect_legacy_player(request: Request) -> RedirectResponse:
+    return _permanent_redirect(request, "/legacy/player")
 
 
 def _redirect_to_events(request: Request) -> RedirectResponse:
@@ -583,16 +708,16 @@ async def serve_events(request: Request) -> Response:
         if params:
             target += "?" + urlencode(params)
         return RedirectResponse(url=target, status_code=302)
-    index = ADMIN_BUILD_DIR / "index.html"
-    if index.is_file():
-        if config.DEMO_INSTANCE:
-            content = index.read_text().replace('<html lang="en">', '<html lang="en" class="demo-instance">', 1)
-            return Response(content, media_type="text/html", headers={"Cache-Control": "no-cache"})
-        return FileResponse(index, headers={"Cache-Control": "no-cache"})
-    return _html_page("public.html", "<h1>Events page not found</h1>")
+    return _spa_response(request, "public.html", "<h1>Events page not found</h1>")
 
 
-@app.get("/legacy-events")
+@app.get("/events/{rest:path}", include_in_schema=False)
+async def serve_events_spa(rest: str, request: Request) -> Response:
+    """Client-side routes under ``/events``."""
+    return _spa_response(request, "public.html", "<h1>Events page not found</h1>")
+
+
+@app.get("/legacy/events")
 async def serve_legacy_events() -> Response:
     """Original directory retained alongside the tournament TV templates."""
     return _html_page("public.html", "<h1>Events page not found</h1>")
@@ -604,8 +729,17 @@ async def serve_tv_root(request: Request) -> Response:
     return _redirect_to_events(request)
 
 
-@app.get("/tv/{slug}")
-async def serve_tv(slug: str) -> Response:
+@app.get("/tv/{rest:path}", include_in_schema=False)
+async def serve_tv(rest: str, request: Request) -> Response:
+    """Spectator / TV view: the React shell, or the legacy page when there is no build."""
+    if not rest.strip("/"):
+        return _redirect_to_events(request)
+    return _spa_response(request, "public.html", "<h1>TV page not found</h1>")
+
+
+@app.get("/legacy/tv/{slug}", include_in_schema=False)
+async def serve_legacy_tv(slug: str) -> Response:
+    """The original vanilla TV page, kept reachable while the React one settles in."""
     return _html_page("public.html", "<h1>TV page not found</h1>")
 
 
@@ -625,9 +759,35 @@ async def serve_register(request: Request) -> Response:
     return _redirect_to_events(request)
 
 
-@app.get("/register/{alias}")
-async def serve_register_alias(alias: str) -> Response:
+@app.get("/register/{rest:path}", include_in_schema=False)
+async def serve_register_alias(rest: str, request: Request) -> Response:
+    """Public sign-up: the React shell, or the legacy page when there is no build."""
+    if not rest.strip("/"):
+        return _redirect_to_events(request)
+    return _spa_response(request, "register.html", "<h1>Registration page not found</h1>")
+
+
+@app.get("/legacy/register/{alias}", include_in_schema=False)
+async def serve_legacy_register(alias: str) -> Response:
+    """The original vanilla sign-up page, kept reachable while the React one settles in."""
     return _html_page("register.html", "<h1>Registration page not found</h1>")
+
+
+@app.get("/club/{rest:path}", include_in_schema=False)
+async def serve_club_path(rest: str, request: Request) -> Response:
+    """Club landing page by path (``/club/<slug>``), for hosts without subdomains."""
+    if not rest.strip("/"):
+        return _redirect_to_events(request)
+    if _spa_index() is None:
+        # The legacy landing page reads the club from the hostname, so it cannot serve a path route.
+        return _serve_404_page(request)
+    return _spa_response(request)
+
+
+@app.get("/legacy/club", include_in_schema=False)
+async def serve_legacy_club() -> Response:
+    """The original club landing page (it reads the club slug from the subdomain)."""
+    return _html_page("club.html", "<h1>Club page not found</h1>")
 
 
 @app.get("/r")
@@ -645,12 +805,18 @@ async def serve_player(request: Request) -> Response:
     # The Player Hub is a core-site feature: demo-instance visitors go to Events.
     if config.DEMO_INSTANCE:
         return _redirect_to_events(request)
-    if (ADMIN_BUILD_DIR / "index.html").is_file():
-        return FileResponse(ADMIN_BUILD_DIR / "index.html", headers={"Cache-Control": "no-cache"})
-    return _html_page("player.html", "<h1>Player Hub not found</h1>")
+    return _spa_response(request, "player.html", "<h1>Player Hub not found</h1>")
 
 
-@app.get("/legacy-player")
+@app.get("/player/{rest:path}", include_in_schema=False)
+async def serve_player_spa(rest: str, request: Request) -> Response:
+    """Client-side routes under ``/player``."""
+    if config.DEMO_INSTANCE:
+        return _redirect_to_events(request)
+    return _spa_response(request, "player.html", "<h1>Player Hub not found</h1>")
+
+
+@app.get("/legacy/player")
 async def serve_legacy_player(request: Request) -> Response:
     """Keep detailed player tools available during the React migration."""
     if config.DEMO_INSTANCE:
@@ -866,10 +1032,84 @@ async def serve_manifest(request: Request) -> Response:
     )
 
 
+_SW_CACHE_NAME_RE = re.compile(r"const CACHE_NAME = '(amistoso-v\d+)';")
+_SW_ASSETS_PLACEHOLDER = "/*__SPA_ASSETS__*/"
+_sw_cache: dict[tuple[object, ...], tuple[str, str]] = {}
+
+
+# Heavy lazy chunks that most visits never open (charts, the long Info guide). They are not precached;
+# the service worker still caches them the first time they are fetched.
+_SPA_LAZY_PREFIXES = (
+    "admin-assets/EloChart-",
+    "admin-assets/PlayerSparkline-",
+    "admin-assets/AreaGradient-",
+    "admin-assets/InfoPage-",
+    "admin-assets/ru-",
+)
+
+
+def _spa_asset_paths() -> list[str]:
+    """Return the ``/admin-assets/*`` files of the Vite build to precache (entry, CSS, shell chunks)."""
+    manifest_path = ADMIN_BUILD_DIR / ".vite" / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, ValueError):
+        return []
+    paths: set[str] = set()
+    for entry in manifest.values():
+        if not isinstance(entry, dict):
+            continue
+        files = [entry.get("file"), *entry.get("css", []), *entry.get("assets", [])]
+        for file in files:
+            if isinstance(file, str) and file.startswith("admin-assets/") and not file.startswith(_SPA_LAZY_PREFIXES):
+                paths.add(f"/{file}")
+    return sorted(paths)
+
+
+def _render_service_worker() -> tuple[str, str]:
+    """Return ``(source, etag)`` of the service worker, templated with the current SPA build.
+
+    The cache name gets a hash of the built ``index.html`` (so every new build installs
+    a fresh cache) and the asset placeholder becomes the JSON list of hashed SPA files to
+    precache. Without a build the worker is served with a plain cache name and no assets.
+    Cached per process, keyed on the build files' mtimes.
+    """
+    index = ADMIN_BUILD_DIR / "index.html"
+    manifest = ADMIN_BUILD_DIR / ".vite" / "manifest.json"
+    key: tuple[object, ...] = (str(ADMIN_BUILD_DIR),)
+    for path in (index, manifest):
+        try:
+            stat = path.stat()
+            key += (stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            key += (None, None)
+    cached = _sw_cache.get(key)
+    if cached is not None:
+        return cached
+    source = _read_frontend_text("service-worker.js")
+    assets: list[str] = []
+    if index.is_file():
+        build_hash = hashlib.sha256(index.read_bytes()).hexdigest()[:10]
+        source = _SW_CACHE_NAME_RE.sub(lambda m: f"const CACHE_NAME = '{m.group(1)}-{build_hash}';", source, count=1)
+        assets = _spa_asset_paths()
+    source = source.replace(_SW_ASSETS_PLACEHOLDER, ", ".join(json.dumps(asset) for asset in assets))
+    etag = f'"w{hashlib.sha256(source.encode()).hexdigest()[:12]}"'
+    _sw_cache.clear()
+    _sw_cache[key] = (source, etag)
+    return source, etag
+
+
 @app.get("/service-worker.js")
 async def serve_service_worker(request: Request) -> Response:
-    """Serve the PWA service worker."""
-    return _serve_js_file("service-worker.js", request)
+    """Serve the PWA service worker, templated with the React build's cache name and assets."""
+    source, etag = _render_service_worker()
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    return Response(
+        content=source,
+        media_type="application/javascript",
+        headers={"Cache-Control": "public, max-age=300, must-revalidate", "ETag": etag},
+    )
 
 
 @app.get("/icon-192.png")

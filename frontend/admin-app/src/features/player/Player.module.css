@@ -1,0 +1,40 @@
+.navCard {
+  overflow: hidden;
+}
+.navCardLink {
+  display: block;
+  padding: var(--mantine-spacing-md);
+  color: var(--app-text);
+}
+.navCardLink:hover {
+  background: var(--app-hover);
+}
+.navCardBody {
+  padding: 0 var(--mantine-spacing-md) var(--mantine-spacing-md);
+}
+.todoRow {
+  display: flex;
+  gap: var(--mantine-spacing-sm);
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scroll-snap-type: x proximity;
+}
+.todoCard {
+  flex: 0 0 min(260px, 80%);
+  scroll-snap-align: start;
+}
+.sideNav {
+  position: sticky;
+  top: calc(var(--app-shell-header-offset, 0px) + var(--mantine-spacing-md));
+}
+.textLink {
+  color: var(--mantine-color-text);
+  text-decoration: none;
+}
+.textLink:hover {
+  text-decoration: underline;
+}
+.navCard[data-sport],
+.sportCard[data-sport] {
+  box-shadow: inset 3px 0 0 var(--sport-accent);
+}

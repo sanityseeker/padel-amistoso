@@ -269,6 +269,16 @@ def _serialize_format_override(m: Match) -> dict | None:
     }
 
 
+def _last_score_activity(m: Match) -> float | None:
+    """Timestamp of the newest score-history entry, or ``None`` when nothing was recorded."""
+    history = getattr(m, "score_history", None) or []
+    for entry in reversed(history):
+        stamp = entry.get("timestamp") if isinstance(entry, dict) else None
+        if isinstance(stamp, (int, float)):
+            return float(stamp)
+    return None
+
+
 def _serialize_match(m: Match, points_target: int | None = None) -> dict:
     """Convert a Match dataclass to a JSON-friendly dict.
 
@@ -311,6 +321,8 @@ def _serialize_match(m: Match, points_target: int | None = None) -> dict:
         "format_override": _serialize_format_override(m),
         "effective_decider": _effective_decider_value(m),
         "walkover": bool(getattr(m, "walkover", False)),
+        # When the score last changed, for any author (organizer scores have no ``scored_at``).
+        "last_activity_at": _last_score_activity(m),
     }
     if points_target is not None:
         out["effective_points_target"] = points_target
@@ -424,16 +436,19 @@ def _require_score_permission(
         if getattr(match, "format_review", False):
             raise HTTPException(409, "A score for this match is awaiting organiser review")
         match_player_ids = {p.id for p in match.team1} | {p.id for p in match.team2}
-        if player.player_id in match_player_ids:
+        is_participant = player.player_id in match_player_ids
+        if not is_participant:
+            # Composite team roster: the player may belong to a synthetic team
+            # entry that appears in the match.
+            tournament = _tournaments.get(tid, {}).get("tournament")
+            team_roster: dict[str, list[str]] = getattr(tournament, "team_roster", None) or {}
+            is_participant = any(player.player_id in team_roster.get(team_pid, []) for team_pid in match_player_ids)
+        if is_participant:
+            # A recorded (or pending) score is never overwritten by a player; changes go
+            # through accept / correct / escalate, or the organizer.
+            if match.score is not None:
+                raise HTTPException(409, "A score was already submitted for this match")
             return
-        # Check composite team roster — the player may be a member of a
-        # synthetic team entry that appears in the match.
-        tournament = _tournaments.get(tid, {}).get("tournament")
-        team_roster: dict[str, list[str]] = getattr(tournament, "team_roster", None) or {}
-        if team_roster:
-            for team_pid in match_player_ids:
-                if player.player_id in team_roster.get(team_pid, []):
-                    return
 
     raise HTTPException(403, "You do not have permission to record this score")
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+import backend.api as api_module
 from backend.api import app
 
 
@@ -83,7 +84,9 @@ class TestEventsRoutes:
         assert r.status_code == 302
         assert r.headers["location"] == "/events?tid=abc&x=1"
 
-    def test_alias_routes_unchanged(self, client):
+    def test_alias_routes_unchanged(self, client, tmp_path, monkeypatch):
+        # Without a React build the public pages fall back to the legacy ones (see test_public_spa_routes).
+        monkeypatch.setattr(api_module, "ADMIN_BUILD_DIR", tmp_path / "missing")
         tv = client.get("/tv/summer-cup", follow_redirects=False)
         assert tv.status_code == 200
         assert 'id="tv-root"' in tv.text
@@ -103,7 +106,8 @@ class TestEventsRoutes:
         assert r.status_code == 302
         assert r.headers["location"] == "/"
 
-    def test_club_subdomain_alias_routes_fall_through(self, client, auth_headers):
+    def test_club_subdomain_alias_routes_fall_through(self, client, auth_headers, tmp_path, monkeypatch):
+        monkeypatch.setattr(api_module, "ADMIN_BUILD_DIR", tmp_path / "missing")
         _create_club(client, auth_headers, slug="padelclub")
         r = client.get("/tv/some-alias", headers={"host": "padelclub.example.com"}, follow_redirects=False)
         assert r.status_code == 200

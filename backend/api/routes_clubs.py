@@ -2507,7 +2507,7 @@ async def club_convert_ghost_to_hub_profile(
         )
 
     if clean_email:
-        token = create_profile_token(profile_id, expires_delta=timedelta(days=30))
+        token = create_profile_token(profile_id, expires_delta=timedelta(days=365))
         verify_token = create_profile_email_verify_token(profile_id, clean_email)
         subject, html_body = render_player_space_welcome(
             name=clean_name,

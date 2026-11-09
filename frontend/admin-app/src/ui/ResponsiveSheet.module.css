@@ -1,0 +1,10 @@
+.sheet {
+  max-height: var(--sheet-max-height, 92dvh);
+  margin-bottom: var(--sheet-bottom-inset, 0px);
+  display: flex;
+  flex-direction: column;
+}
+.body {
+  overflow-y: auto;
+  padding-bottom: calc(var(--mantine-spacing-md) + env(safe-area-inset-bottom));
+}

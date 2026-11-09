@@ -1,0 +1,32 @@
+.digits {
+  display: inline-flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  min-width: 1.5ch;
+}
+.digit {
+  color: var(--color-text-muted);
+}
+.digit[data-win] {
+  color: var(--color-text);
+}
+.tb {
+  color: var(--color-text-faint);
+}
+@keyframes scoreRoll {
+  from {
+    opacity: 0;
+    transform: translateY(40%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.roll {
+  animation: scoreRoll var(--motion-slow, 240ms) var(--motion-ease, ease-out);
+}
+/* TV variant: scoreboard numerals read from across a room. */
+.digits[data-size='tv'] .digit {
+  font-size: clamp(2.5rem, 4vw, 5rem);
+}

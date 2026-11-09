@@ -1,0 +1,22 @@
+.row {
+  container-type: inline-size;
+}
+.title {
+  color: var(--mantine-color-text);
+  text-decoration: none;
+}
+.compact .title {
+  line-height: 1.3;
+}
+.title:is(a):hover {
+  text-decoration: underline;
+}
+.actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.row[data-sport] {
+  box-shadow: inset 3px 0 0 var(--sport-accent);
+}

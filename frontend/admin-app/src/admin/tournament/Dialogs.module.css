@@ -1,0 +1,8 @@
+/* Cancel / Continue stay in view while a long list of options scrolls (phone sheets and dialogs). */
+.footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-top: var(--mantine-spacing-sm);
+  background: var(--app-surface);
+}

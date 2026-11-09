@@ -426,6 +426,13 @@ class TestInviteFlow:
         r = client.post(f"/api/auth/invite/{raw}/accept", json={"username": "admin", "password": "securepass1"})
         assert r.status_code == 409
 
+    def test_taken_username_does_not_burn_the_invite(self, client):
+        raw = user_store.create_auth_token("keep@example.com", AuthTokenType.INVITE, role=UserRole.USER)
+        taken = client.post(f"/api/auth/invite/{raw}/accept", json={"username": "admin", "password": "securepass1"})
+        assert taken.status_code == 409
+        retry = client.post(f"/api/auth/invite/{raw}/accept", json={"username": "keepuser1", "password": "securepass1"})
+        assert retry.status_code == 201
+
     @pytest.mark.parametrize("role", ["admin", "user"])
     def test_accept_invite_preserves_role(self, client, role):
         user_role = UserRole(role)

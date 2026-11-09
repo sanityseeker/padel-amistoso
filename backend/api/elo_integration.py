@@ -7,11 +7,12 @@ tournament creation, and tournament finish.
 
 from __future__ import annotations
 
+import copy
 import logging
 from collections.abc import Collection
 from typing import Any
 
-from backend.models import Match, MatchStatus, TournamentType
+from backend.models import Match, MatchStatus, Player, TournamentType
 from backend.tournaments.elo import DEFAULT_RATING, compute_match_elo_updates, get_k_factor
 
 from .elo_store import (
@@ -53,6 +54,7 @@ def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
     sport = data.get("sport", "padel")
     ttype = data.get("type", "")
     team_mode = _is_team_mode(data["tournament"], ttype)
+    match = expand_composite_sides(data["tournament"], match)
 
     try:
         ratings = get_tournament_elos(tid, sport)
@@ -245,10 +247,42 @@ def _extract_completed_matches(tournament: object, ttype: str) -> list[Match]:
 
     # Walkovers (a side withdrew) are results for standings, never for ratings.
     return [
-        m
+        expand_composite_sides(tournament, m)
         for m in matches
         if m.status == MatchStatus.COMPLETED and m.score is not None and not getattr(m, "walkover", False)
     ]
+
+
+def expand_composite_sides(tournament: object, match: Match) -> Match:
+    """Return *match* with composite team entries replaced by their members.
+
+    In GP / Mexicano team mode with admin-composed teams, each match side holds
+    one synthetic team ``Player`` whose id maps to the real members in
+    ``tournament.team_roster``.  Ratings belong to the individuals (who hold the
+    passphrases and Hub links), so they are rated as a 2v2 between the members.
+    Returns *match* itself when it has no composite entry; otherwise a shallow
+    copy, so the tournament's own match objects are never modified.
+    """
+    roster: dict[str, list[str]] = getattr(tournament, "team_roster", None) or {}
+    if not roster or not any(p.id in roster for p in match.team1 + match.team2):
+        return match
+    member_names: dict[str, list[str]] = getattr(tournament, "team_member_names", None) or {}
+
+    def expand(side: list[Player]) -> list[Player]:
+        out: list[Player] = []
+        for p in side:
+            members = roster.get(p.id)
+            if not members:
+                out.append(p)
+                continue
+            names = member_names.get(p.id) or []
+            out.extend(Player(name=names[i] if i < len(names) else mid, id=mid) for i, mid in enumerate(members))
+        return out
+
+    expanded = copy.copy(match)
+    expanded.team1 = expand(match.team1)
+    expanded.team2 = expand(match.team2)
+    return expanded
 
 
 def _is_team_mode(tournament: object, ttype: str) -> bool:
@@ -297,7 +331,13 @@ def _extract_player_ids(tournament: object, ttype: str) -> list[str]:
         for p in m.team1 + m.team2:
             seen.setdefault(p.id, None)
 
-    return list(seen)
+    # Composite team entries are rated through their members, never as a unit.
+    roster: dict[str, list[str]] = getattr(tournament, "team_roster", None) or {}
+    ids: dict[str, None] = {}
+    for pid in seen:
+        for member in roster.get(pid) or [pid]:
+            ids.setdefault(member, None)
+    return list(ids)
 
 
 def _mexicano_k_multiplier(data: dict[str, Any], match: Match | None = None) -> float:

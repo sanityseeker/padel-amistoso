@@ -235,6 +235,12 @@ async def mex_status(tid: str) -> dict:
         "team_roster": getattr(t, "team_roster", None) or {},
         "sit_out_count": t._sit_out_count,
         "sit_outs": [[p.name for p in so] for so in t.sit_outs],
+        # Ids sitting out the round in play (empty once the Mexicano rounds have ended).
+        "current_sit_out_ids": (
+            [p.id for p in t.sit_outs[-1]]
+            if t.sit_outs and len(t.sit_outs) == len(t.rounds) and not t.mexicano_ended
+            else []
+        ),
         "missed_games": {
             p.id: {
                 "name": p.name,

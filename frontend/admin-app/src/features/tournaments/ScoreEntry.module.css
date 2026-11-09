@@ -1,0 +1,24 @@
+.footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-top: var(--mantine-spacing-sm);
+  background: var(--app-surface);
+}
+.form[data-surface='inline'] .footer {
+  position: static;
+  padding-top: 0;
+  background: transparent;
+}
+.form[data-surface='inline'] {
+  margin-top: var(--mantine-spacing-sm);
+  padding-top: var(--mantine-spacing-sm);
+  border-top: 1px dashed var(--app-border);
+}
+.team {
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+.clear {
+  margin-right: auto;
+}

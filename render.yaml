@@ -5,6 +5,9 @@ services:
     plan: free
     buildCommand: "pip install uv && uv sync && npm --prefix frontend/admin-app ci && npm --prefix frontend/admin-app run build"
     startCommand: "uv run uvicorn backend.api:app --host 0.0.0.0 --port $PORT"
+    # NOTE: the live Render service ignores the envVars below (it was not created from
+    # this blueprint). Set every variable, including NODE_VERSION, in the Render
+    # dashboard; the Node version for the frontend build also comes from /.node-version.
     envVars:
       - key: NODE_VERSION
         value: "24"

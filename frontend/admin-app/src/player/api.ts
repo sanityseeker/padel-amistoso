@@ -30,7 +30,15 @@ export async function playerApi<T>(
         : Array.isArray(detail)
           ? detail.map((d: { msg: string }) => d.msg).join('. ')
           : `Request failed (${response.status})`;
-    if (response.status === 401 && token === undefined)
+    // A rejected default credential signs the player out, but only if it is still the stored one: a slow
+    // 401 for a request sent before sign-in (or with an older token) must not wipe the session that
+    // was started meanwhile.
+    if (
+      response.status === 401 &&
+      token === undefined &&
+      credential &&
+      localStorage.getItem(PLAYER_TOKEN) === credential
+    )
       window.dispatchEvent(new Event('player-auth-expired'));
     throw new ApiError(message, response.status);
   }
@@ -40,6 +48,7 @@ export function saveSession(session: Session) {
   localStorage.setItem(PLAYER_TOKEN, session.access_token);
   localStorage.setItem(PLAYER_DATA, JSON.stringify(session.profile));
   localStorage.setItem('amistoso-last-page', 'player');
+  window.dispatchEvent(new Event('player-session-changed'));
 }
 export function eventUrl(entry: {
   entity_type: string;

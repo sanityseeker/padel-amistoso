@@ -1,11 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
+import { logoutAdmin, fillNames } from './helpers';
 
 async function login(page: Page) {
   await page.goto('/admin');
   await page.getByLabel(/^Username/).fill('admin');
   await page.getByLabel(/^Password/).fill('test-admin-2026');
   await page.getByRole('button', { name: 'Log in', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Tournaments' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tournaments', exact: true })).toBeVisible();
 }
 
 test('authentication, persisted session, responsive navigation and logout', async ({ page }) => {
@@ -16,72 +17,81 @@ test('authentication, persisted session, responsive navigation and logout', asyn
   await expect(page.getByText('Invalid username or password')).toBeVisible();
   await page.getByLabel(/^Password/).fill('test-admin-2026');
   await page.getByRole('button', { name: 'Log in', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Tournaments' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tournaments', exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Tournaments' })).toBeVisible();
-  await expect(page.locator('.hero-banner, .stat-card, .mantine-AppShell-navbar')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Tournaments', exact: true })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('link', { name: 'Tournaments', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Tournaments', exact: true })).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
-  await page.getByText('Log out', { exact: true }).click();
+  await logoutAdmin(page);
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
 });
 
 test('create a Mexicano, save scores, advance a round and filter tournaments', async ({ page }) => {
   await login(page);
-  await page.getByRole('link', { name: 'New Tournament', exact: true }).click();
-  await page.getByRole('tab', { name: 'Mexicano + Play-offs' }).click();
-  const dialog = page.locator('form');
+  await page.getByRole('link', { name: 'New', exact: true }).click();
+  await page.getByRole('radio', { name: 'Mexicano + Play-offs' }).click();
+  const dialog = page.locator('form#tournament-form');
   await dialog.getByLabel('Tournament name').fill('Browser Test Mexicano');
-  await dialog
-    .getByLabel(/^Players/)
-    .fill('Ana\nCarlos\nLucia\nPablo\nMarta\nDiego\nElena\nJavier');
+  await fillNames(page, 'players', 'Ana\nCarlos\nLucia\nPablo\nMarta\nDiego\nElena\nJavier');
   await dialog.getByRole('button', { name: 'Create tournament', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Browser Test Mexicano' })).toBeVisible();
   await page.getByRole('button', { name: 'Start first round' }).click();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  await page.getByRole('button', { name: 'Record score', exact: true }).first().click();
-  const scoreDialog = page.getByRole('dialog');
+  await page
+    .getByRole('button', { name: /^(Record score|More scoring options)/ })
+    .first()
+    .click();
+  // Desktop scoring is inline in the match row; phones get a sheet. Both carry this test id.
+  const scoreDialog = page.getByTestId('score-sheet');
   await scoreDialog.getByRole('textbox').nth(0).fill('20');
   await scoreDialog.getByRole('textbox').nth(1).fill('12');
   await scoreDialog.getByRole('button', { name: 'Save score' }).click();
   await expect(scoreDialog).not.toBeVisible();
-  await page.getByRole('button', { name: 'Record score', exact: true }).first().click();
-  await page.getByRole('dialog').getByRole('textbox').nth(0).fill('18');
-  await page.getByRole('dialog').getByRole('textbox').nth(1).fill('14');
+  await page
+    .getByRole('button', { name: /^(Record score|More scoring options)/ })
+    .first()
+    .click();
+  await page.getByTestId('score-sheet').getByRole('textbox').nth(0).fill('18');
+  await page.getByTestId('score-sheet').getByRole('textbox').nth(1).fill('14');
   await page.getByRole('button', { name: 'Save score' }).click();
   await page.getByRole('button', { name: 'Next round' }).click();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page.getByText('Round 2 of 6', { exact: true })).toBeVisible();
+  // ELO is a low-priority column: it shows when the table has room (a full-width tab on a tablet).
+  await page.setViewportSize({ width: 820, height: 900 });
   await page.getByRole('tab', { name: 'Standings' }).click();
   await expect(page.getByRole('columnheader', { name: 'ELO' })).toBeVisible();
-  await page.getByRole('link', { name: 'All tournaments' }).click();
+  await page
+    .getByRole('navigation', { name: 'Administration' })
+    .getByRole('link', { name: 'Tournaments', exact: true })
+    .click();
   await page.getByLabel('Search tournaments').fill('does not exist');
-  await page.getByRole('button', { name: 'Go', exact: true }).click();
   await expect(page.getByText('No tournaments found', { exact: true })).toBeVisible();
 });
 
 test('create a lobby, add a player, update fee and payment status', async ({ page }) => {
   await login(page);
-  await page.getByRole('link', { name: 'New Tournament', exact: true }).click();
-  await page.getByRole('tab', { name: 'Lobby', exact: true }).click();
+  await page.getByRole('link', { name: 'New', exact: true }).click();
+  await page.getByRole('radio', { name: 'Lobby', exact: true }).click();
+  await expect(page.getByRole('radio', { name: 'Lobby', exact: true })).toBeChecked();
   await page.getByLabel('Event name').fill('Browser Test Social');
   await page.getByRole('button', { name: 'Create lobby', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Browser Test Social' })).toBeVisible();
   await page.getByRole('button', { name: 'Add player', exact: true }).click();
   await page.getByLabel('Player name').fill('Sample Player');
   await page.getByRole('dialog').getByRole('button', { name: 'Add player', exact: true }).click();
-  await expect(page.getByRole('cell', { name: 'Sample Player' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Sample Player', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Payments' }).click();
   await page.getByRole('button', { name: 'Payment settings' }).click();
   await page.getByLabel('Fee per player (EUR)').fill('15');
   await page.getByRole('button', { name: 'Save settings' }).click();
-  await page.getByRole('combobox', { name: 'Payment status for Sample Player' }).click();
-  await page.getByRole('option', { name: 'paid', exact: true }).click();
-  await expect(page.getByRole('heading', { name: /15.*collected/ })).toBeVisible();
+  await page.getByLabel('Payment status for Sample Player').selectOption('paid');
+  await expect(page.getByText(/15.*/).first()).toBeVisible();
+  await expect(page.getByTestId('stat-collected')).toContainText('15');
   await page.getByRole('button', { name: 'Close registration' }).click();
   await expect(page.getByRole('button', { name: 'Reopen registration' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Public sign-up' })).toHaveAttribute(
@@ -107,11 +117,11 @@ test('create a community, club, season and organizer account', async ({ page }) 
     .click();
   await page.getByRole('option', { name: 'Browser Test Community' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Create club' }).click();
-  await page.getByRole('button', { name: 'Manage club' }).click();
+  await page.getByRole('link', { name: 'Manage club' }).first().click();
+  await page.getByRole('tab', { name: 'Seasons' }).click();
   await page.getByLabel('New season').fill('Autumn League');
   await page.getByRole('button', { name: 'Add season' }).click();
   await expect(page.getByText('Autumn League', { exact: true })).toBeVisible();
-  await page.keyboard.press('Escape');
   await page.getByRole('link', { name: 'Users', exact: true }).click();
   await page.getByRole('button', { name: 'Add user' }).click();
   await page
@@ -120,5 +130,37 @@ test('create a community, club, season and organizer account', async ({ page }) 
     .fill('browser-organizer');
   await page.getByLabel('Temporary password').fill('organizer-test-2026');
   await page.getByRole('button', { name: 'Create user', exact: true }).click();
-  await expect(page.getByRole('cell', { name: 'browser-organizer' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'browser-organizer', exact: true })).toBeVisible();
+});
+
+test('players and courts are a list by default and can be typed as text', async ({ page }) => {
+  await login(page);
+  await page.getByRole('link', { name: 'New', exact: true }).click();
+  await page.getByRole('radio', { name: 'Mexicano + Play-offs' }).click();
+  const form = page.locator('form#tournament-form');
+  const name = (n: string) => form.getByRole('textbox', { name: n, exact: true });
+  await name('Player 1').fill('Ana');
+  await form.getByRole('button', { name: 'Add player' }).click();
+  await name('Player 2').fill('Bea');
+  await form.getByRole('button', { name: 'Add player' }).click();
+  await name('Player 3').fill('Cleo');
+  await form
+    .locator('label', { hasText: /^Text$/ })
+    .first()
+    .click();
+  await expect(form.getByLabel('Players', { exact: true })).toHaveValue('Ana\nBea\nCleo');
+  await form.getByLabel('Players', { exact: true }).fill('Ana\nBea\nCleo\nDana');
+  await form
+    .locator('label', { hasText: /^List$/ })
+    .first()
+    .click();
+  await expect(name('Player 4')).toHaveValue('Dana');
+  await expect(name('Court 2')).toHaveValue('Court 2');
+  await form.getByRole('button', { name: 'Add court' }).click();
+  await name('Court 3').fill('Centre');
+  await form
+    .locator('label', { hasText: /^Text$/ })
+    .last()
+    .click();
+  await expect(form.getByLabel('Courts', { exact: true })).toHaveValue('Court 1\nCourt 2\nCentre');
 });

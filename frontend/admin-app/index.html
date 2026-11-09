@@ -2,9 +2,36 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#eff2f6" />
-    <title>Torneos Amistosos · Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#eff2f6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#07101c" media="(prefers-color-scheme: dark)" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="icon" href="/icon-192.png" />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('amistoso-theme') || localStorage.getItem('padel-theme');
+          if (!t) t = window.matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
+        } catch (_) {}
+        try {
+          var storedScale = localStorage.getItem('amistoso-ui-scale');
+          var s = storedScale;
+          if (storedScale === '90') s = '85';
+          else if (storedScale === '100') s = '95';
+          else if (storedScale !== '85' && storedScale !== '95' && storedScale !== '110') {
+            if (storedScale !== null) localStorage.removeItem('amistoso-ui-scale');
+            s = null;
+          }
+          if (s !== storedScale && s !== null) localStorage.setItem('amistoso-ui-scale', s);
+        } catch (_) {
+          s = null;
+        }
+        document.documentElement.style.fontSize = (s || '95') + '%';
+      })();
+    </script>
+    <title>Torneos Amistosos</title>
   </head>
   <body>
     <div id="root"></div>

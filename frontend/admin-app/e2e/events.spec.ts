@@ -111,6 +111,7 @@ test('compact legacy directory keeps two tabs, sport filters and anonymous visib
   });
   await page.goto('/events');
   await expect(page.getByRole('link').filter({ hasText: prefix + ' Padel Live' })).toBeVisible();
+  await expect(page.getByTestId('public-event').first()).toHaveAttribute('data-density', 'compact');
   await expect(page.getByRole('link').filter({ hasText: prefix + ' Private' })).toHaveCount(0);
   await expect(page.getByRole('link').filter({ hasText: prefix + ' Unlisted' })).toHaveCount(0);
   await expect(
@@ -120,17 +121,14 @@ test('compact legacy directory keeps two tabs, sport filters and anonymous visib
   await expect(page.locator('.hero-banner, .events-stat, .events-organizer-cta')).toHaveCount(0);
   await expect(page.getByText('Code required', { exact: true })).toBeVisible();
   await page.getByRole('tab', { name: /^Finished/ }).click();
-  await page.getByRole('button', { name: 'Tennis', exact: true }).click();
+  await page
+    .getByRole('radiogroup', { name: 'Sport' })
+    .getByText('Tennis', { exact: true })
+    .click();
   await expect(page.getByRole('link').filter({ hasText: prefix + ' Tennis Final' })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Tennis', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
-  await expect(page.getByRole('button', { name: 'Padel', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'false',
-  );
+  await expect(page.getByRole('radio', { name: 'Tennis', exact: true })).toBeChecked();
+  await expect(page.getByRole('radio', { name: 'Padel', exact: true })).not.toBeChecked();
   await expect(page.getByRole('tab', { name: /^Finished/ })).toHaveAttribute(
     'aria-selected',
     'true',
@@ -171,6 +169,11 @@ test('directory shows load failures, recovers, and fits a mobile screen', async 
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
   await expect(page.getByRole('link').filter({ hasText: `${prefix} Padel Sign-up` })).toBeVisible();
+  const compactRow = page.getByTestId('public-event').first();
+  await expect(compactRow).toHaveAttribute('data-density', 'compact');
+  expect(
+    await compactRow.evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).toBeTruthy();
 });
 
 test('live listings update after a tournament is made public', async ({ page, request }) => {

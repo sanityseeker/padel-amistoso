@@ -3,19 +3,37 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  build: { assetsDir: 'admin-assets' },
+  build: {
+    // manifest.json lists every hashed file; the backend turns it into the service worker's precache list.
+    assetsDir: 'admin-assets',
+    manifest: true,
+    rolldownOptions: {
+      output: {
+        // Long-lived vendor chunks cache across deploys; app code changes more often. @mantine/charts and
+        // recharts stay out of the eager chunks: only the Hub and Ratings routes import them (lazy).
+        codeSplitting: {
+          groups: [
+            {
+              name: 'react',
+              test: /node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/,
+            },
+            { name: 'mantine', test: /node_modules[\\/]@mantine[\\/](?!charts)/ },
+            { name: 'query', test: /node_modules[\\/]@tanstack[\\/]/ },
+            { name: 'i18n', test: /node_modules[\\/](i18next|react-i18next)[\\/]/ },
+          ],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     strictPort: true,
     proxy: Object.fromEntries(
       [
         '/api',
-        '/legacy-admin',
-        '/legacy-events',
-        '/tv',
-        '/register',
-        '/legacy-player',
-        '/club',
+        '/legacy',
+        '/manifest.json',
+        '/service-worker.js',
         '^/[^/]+\\.(?:js|css|png|ico|json)$',
       ].map((path) => [
         path,

@@ -1,5 +1,7 @@
 // Service worker — optimal caching for performance + freshness.
-const CACHE_NAME = 'amistoso-v113';
+// The backend appends a hash of the React build to this name and fills SPA_ASSETS
+// with the hashed /admin-assets/* files (see _render_service_worker in backend/api).
+const CACHE_NAME = 'amistoso-v119';
 const STATIC_ASSETS = [
   '/shared.js', '/auth.js', '/i18n.js', '/manifest.json',
   '/admin-utils.js', '/admin-tournaments.js', '/admin-create.js',
@@ -19,12 +21,22 @@ const STATIC_ASSETS = [
   'https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js',
   'https://cdn.jsdelivr.net/npm/dompurify@3.3.3/dist/purify.min.js',
 ];
-const SHELL = ['/', '/events'];
+const SHELL = ['/', '/events', '/player', '/admin'];
+const SPA_ASSETS = [/*__SPA_ASSETS__*/];
+// React routes that all resolve to the same shell, and the cached page used offline.
+const SPA_PREFIXES = ['/admin', '/player', '/events', '/tv', '/register', '/club'];
+const SPA_OFFLINE_SHELL = '/events';
+// Never store a page whose URL carries a credential.
+const SENSITIVE_PARAMS = ['invite_token', 'reset_token', 'player_token', 'token'];
+
+const isSpaPath = (pathname) =>
+  SPA_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
+const hasSensitiveParam = (url) => SENSITIVE_PARAMS.some((p) => url.searchParams.has(p));
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
-      cache.addAll([...SHELL, ...STATIC_ASSETS])
+      cache.addAll([...SHELL, ...STATIC_ASSETS, ...SPA_ASSETS])
     )
   );
   self.skipWaiting();
@@ -43,21 +55,46 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Let API calls pass through to the network (no caching).
+  // Only GET responses are cacheable; let everything else hit the network untouched.
+  if (request.method !== 'GET') return;
+
+  // Let API calls pass through to the network (never cached, never authenticated HTML).
   if (url.pathname.startsWith('/api/')) return;
+
+  // Hashed React build files never change: cache-first.
+  if (url.pathname.startsWith('/admin-assets/')) {
+    event.respondWith(
+      caches.match(request).then(
+        (cached) =>
+          cached ||
+          fetch(request).then((response) => {
+            if (response.ok) {
+              const clone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            }
+            return response;
+          })
+      )
+    );
+    return;
+  }
 
   // HTML pages: network-first (always fresh, offline fallback from cache).
   if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
+    const sensitive = hasSensitiveParam(url);
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response.ok) {
+          if (response.ok && !sensitive) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           }
           return response;
         })
-        .catch(() => caches.match(request).then((cached) => cached || caches.match('/')))
+        .catch(() => {
+          if (isSpaPath(url.pathname)) return caches.match(SPA_OFFLINE_SHELL);
+          return caches.match(request).then((cached) => cached || caches.match('/'));
+        })
     );
     return;
   }

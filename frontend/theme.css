@@ -135,6 +135,7 @@
   --color-amber:        #c87800;  /* dispute / attention */
   --color-on-amber:     #ffffff;
   --color-sport-tennis: #4a8c00;  /* Penn ball yellow-green on light */
+  --color-sport-padel: var(--color-primary);
   /* Per-match override marker (organiser changed one match's scoring format) */
   --color-override:     #4a8c00;
   --color-override-bg:  color-mix(in srgb, #4a8c00 14%, transparent);
@@ -161,6 +162,22 @@
   --shadow-md:      0 4px 12px  oklch(0.2 0.02 240 / 0.12);
   --shadow-lg:      0 12px 32px oklch(0.2 0.02 240 / 0.16);
   --shadow-overlay: 0 8px 24px  oklch(0.2 0.02 240 / 0.20);
+
+  /* "Baseline" role tokens. Optic ball yellow-green means "live" or "your turn" and nothing else.
+     Mirrored by frontend/admin-app/src/theme/tokens.ts (roleTokens). */
+  --color-ball:           #d6f23a;
+  --color-on-ball:        #0d1520;
+  --color-ball-ink:       #4a6b00;  /* ball-colored text or line on a light surface */
+  --color-focus:          #1a5fa3;
+  --color-nav-ink:        #4a5a6e;
+  --color-nav-ink-active: #0d1520;
+  --color-court-panel:    #0f3a66;  /* at most one court surface per screen */
+  --color-court-line:     rgba(255, 255, 255, 0.28);
+  --color-rank-1:         #b89000;
+  --color-rank-2:         #7d8b99;
+  --color-rank-3:         #a4622c;
+  --color-status-await:   #c87800;
+  --color-status-dispute: #c0301e;
 
   /* Transitions */
   --transition-interactive: 180ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -227,6 +244,7 @@ html[data-theme="dark"] {
   --color-amber:        #d48000;
   --color-on-amber:     #000000;
   --color-sport-tennis: #9abb00;  /* Penn ball yellow-green — pops under lights */
+  --color-sport-padel: var(--color-primary);
   /* Per-match override marker (organiser changed one match's scoring format) */
   --color-override:     #9abb00;
   --color-override-bg:  color-mix(in srgb, #9abb00 14%, transparent);
@@ -235,6 +253,21 @@ html[data-theme="dark"] {
   --color-hover-overlay:    rgba(46, 138, 212, 0.07);
   --color-active-overlay:   rgba(46, 138, 212, 0.14);
   --color-overlay-backdrop: rgba(0, 8, 18, 0.75);
+
+  /* "Baseline" role tokens (night session) */
+  --color-ball:           #d8f550;
+  --color-on-ball:        #07101c;
+  --color-ball-ink:       #d8f550;
+  --color-focus:          #d8f550;
+  --color-nav-ink:        #8ea6be;
+  --color-nav-ink-active: #e4ecf5;
+  --color-court-panel:    #0b2440;
+  --color-court-line:     rgba(142, 166, 190, 0.35);
+  --color-rank-1:         #d4a800;
+  --color-rank-2:         #9aa7b5;
+  --color-rank-3:         #c27a3e;
+  --color-status-await:   #d48000;
+  --color-status-dispute: #ef4444;
 
   /* Shadows — deep navy, never pure black */
   --shadow-sm:      0 1px 3px   oklch(0.05 0.03 240 / 0.50);
@@ -294,6 +327,21 @@ html[data-theme="dark"] {
     --color-active-overlay:   rgba(46, 138, 212, 0.14);
     --color-overlay-backdrop: rgba(0, 8, 18, 0.75);
 
+    /* "Baseline" role tokens (night session) */
+    --color-ball:           #d8f550;
+    --color-on-ball:        #07101c;
+    --color-ball-ink:       #d8f550;
+    --color-focus:          #d8f550;
+    --color-nav-ink:        #8ea6be;
+    --color-nav-ink-active: #e4ecf5;
+    --color-court-panel:    #0b2440;
+    --color-court-line:     rgba(142, 166, 190, 0.35);
+    --color-rank-1:         #d4a800;
+    --color-rank-2:         #9aa7b5;
+    --color-rank-3:         #c27a3e;
+    --color-status-await:   #d48000;
+    --color-status-dispute: #ef4444;
+
     --shadow-sm:      0 1px 3px   oklch(0.05 0.03 240 / 0.50);
     --shadow-md:      0 4px 12px  oklch(0.05 0.03 240 / 0.60);
     --shadow-lg:      0 12px 32px oklch(0.05 0.03 240 / 0.70);
@@ -335,6 +383,7 @@ html[data-theme="dark"] {
 
   /* Sport accent */
   --sport-tennis: var(--color-sport-tennis);
+  --sport-padel: var(--color-sport-padel);
 
   /* club.css alias vars */
   --card-bg:      var(--color-surface);
@@ -715,6 +764,30 @@ html:not(.demo-instance) .demo-only {
 .public-admin-link:focus-visible { box-shadow: 0 0 0 2px var(--color-primary); }
 .public-admin-link .ic { width: 1.1em; height: 1.1em; }
 .public-page-selector { position: relative; }
+/* "Legacy view" tag beside the page button on the /legacy/* pages. Absolutely placed
+   so the page button stays centred. */
+.public-legacy-badge {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: var(--space-2);
+  white-space: nowrap;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-highlight);
+  color: var(--color-primary);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+@media (max-width: 520px) {
+  .public-legacy-badge {
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin: 2px 0 0;
+  }
+}
 .public-page-btn {
   display: inline-flex;
   align-items: center;

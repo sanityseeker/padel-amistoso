@@ -2258,7 +2258,7 @@ async def find_participations_by_name(
     so long-returning players stay findable.
 
     Tournament participations also survive their own ``player_secrets`` row
-    disappearing (30-day purge, or the tournament was deleted outright): every
+    disappearing (360-day purge, or the tournament was deleted outright): every
     participant is snapshotted into ``player_history`` at finish, with
     ``club_id``/``community_id`` denormalized onto that row so scope can still
     be checked once the tournament itself is gone. Covers unlinked players who
@@ -2350,7 +2350,7 @@ async def find_participations_by_name(
                     matches.append(_participation_match("tournament", row["tournament_id"], row["tname"] or "", row))
 
             # Durable history for tournaments whose player_secrets row is gone —
-            # purged 30 days after finish, or the tournament itself was deleted.
+            # purged 360 days after finish, or the tournament itself was deleted.
             # club_id/community_id are denormalized onto player_history at finish
             # time specifically so this scope check survives both. Excludes rows
             # already covered by tourn_rows above (still-live player_secrets).
@@ -2426,7 +2426,7 @@ async def find_participations_by_name(
                     )
 
             # Ghost profiles with ELO history in this club/community — durable even
-            # after their player_secrets rows are purged (30 days post-finish) or
+            # after their player_secrets rows are purged (360 days post-finish) or
             # their tournaments deleted, so long-returning players stay findable.
             if club_id:
                 ghost_rows = conn.execute(

@@ -1,4 +1,4 @@
-import { t as tx, useLocale, i18n } from '../i18n';
+import { t as tx, useLocale, currentLanguage } from '../i18n';
 import { useState } from 'react';
 import {
   Alert,
@@ -13,7 +13,6 @@ import {
   Title,
 } from '@mantine/core';
 import { IconArrowRight } from '@tabler/icons-react';
-import { PublicHeader } from '../PublicHeader';
 import { useMutation } from '@tanstack/react-query';
 import { playerApi } from './api';
 import type { Resolution, Session, Space } from './types';
@@ -70,7 +69,7 @@ export function PlayerLogin({
           participant_passphrase: passphrase.trim(),
           name,
           email,
-          lang: i18n.language === 'es' ? 'es' : 'en',
+          lang: currentLanguage(),
         },
         'POST',
         null,
@@ -89,10 +88,16 @@ export function PlayerLogin({
       ),
     onSuccess: () => setRecovered(true),
   });
-  const error = resolve.error || create.error || recover.error;
+  // Returning players who took part in an event but never made a profile: the server finds their
+  // participations by email and mails a sign-in link. It always answers ok, so nothing leaks.
+  const recoverByParticipation = useMutation({
+    mutationFn: () =>
+      playerApi('/player-profile/recover-by-participation', { email }, 'POST', null),
+    onSuccess: () => setRecovered(true),
+  });
+  const error = resolve.error || create.error || recover.error || recoverByParticipation.error;
   return (
     <>
-      <PublicHeader current="player" />
       <Center p="xl">
         <Paper p="xl" maw={440} w="100%" className="login-card">
           <Group justify="space-between" wrap="nowrap">
@@ -176,11 +181,22 @@ export function PlayerLogin({
                     ? tx('Create player profile')
                     : tx('Continue')}
               </Button>
+              {recovering && (
+                <Button
+                  variant="light"
+                  loading={recoverByParticipation.isPending}
+                  disabled={recovered || !email}
+                  onClick={() => recoverByParticipation.mutate()}
+                >
+                  {tx('I played in an event but have no profile')}
+                </Button>
+              )}
               <Button
                 variant="subtle"
                 color="gray"
                 onClick={() => {
                   resolve.reset();
+                  recoverByParticipation.reset();
                   create.reset();
                   recover.reset();
                   if (resolution || recovering) {

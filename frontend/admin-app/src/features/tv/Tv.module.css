@@ -1,0 +1,83 @@
+/* The spectator screen: the type scale (--fs-tv-*) comes from the theme; this file only lays out. */
+.page {
+  min-height: 100dvh;
+}
+.title {
+  font-size: var(--fs-tv-display);
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+.sectionTitle {
+  font-size: var(--fs-tv-xl);
+  line-height: 1.1;
+}
+.text {
+  font-size: var(--fs-tv-md);
+}
+.small {
+  font-size: var(--fs-tv-sm);
+}
+.logo {
+  height: clamp(2.5rem, 5vw, 7rem);
+  width: auto;
+  max-width: 40vw;
+  object-fit: contain;
+}
+.banner {
+  font-size: var(--fs-tv-lg);
+}
+/* One card per court; on a wide screen the cards are large enough to read from the other side of a hall. */
+.courts {
+  display: grid;
+  gap: var(--mantine-spacing-md);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+}
+@media (min-width: 1400px) {
+  .courts {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 32rem), 1fr));
+  }
+}
+@media (min-width: 2400px) {
+  .courts {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 48rem), 1fr));
+  }
+}
+.court[data-yours] {
+  box-shadow: inset 4px 0 0 var(--sport-accent);
+}
+.courtName {
+  font-family: var(--font-display);
+  font-size: var(--fs-tv-lg);
+  font-weight: 700;
+}
+.groups {
+  display: grid;
+  gap: var(--mantine-spacing-lg);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+  align-items: start;
+}
+.chip {
+  cursor: copy;
+}
+.bracket {
+  overflow: auto;
+  max-width: 100%;
+}
+.bracketImage {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  cursor: zoom-in;
+  background: white;
+  border-radius: var(--mantine-radius-md);
+}
+.lightbox {
+  overflow: auto;
+  max-height: calc(100dvh - 8rem);
+}
+.lightboxImage {
+  display: block;
+  max-width: none;
+  background: white;
+  transform-origin: top left;
+}

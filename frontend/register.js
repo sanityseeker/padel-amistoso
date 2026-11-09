@@ -203,7 +203,7 @@ function _init() {
   const params = new URLSearchParams(window.location.search);
   let rid = params.get('id');
   if (!rid) {
-    const pathMatch = window.location.pathname.match(/^\/register\/(.+)$/);
+    const pathMatch = window.location.pathname.match(/^\/(?:legacy\/)?register\/(.+)$/);
     if (pathMatch) rid = decodeURIComponent(pathMatch[1]);
   }
   _rid = rid || null;
@@ -668,7 +668,7 @@ function _matchEventLine(m) {
   if (m.event_date) {
     const d = new Date(m.event_date);
     if (!isNaN(d)) {
-      parts.push(d.toLocaleDateString(getAppLanguage() === 'es' ? 'es' : 'en', { year: 'numeric', month: 'short' }));
+      parts.push(d.toLocaleDateString(getAppLanguage(), { year: 'numeric', month: 'short' }));
     }
   }
   return parts.filter(Boolean).join(' · ');

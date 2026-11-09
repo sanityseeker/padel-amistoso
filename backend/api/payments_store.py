@@ -625,6 +625,18 @@ def reminder_message(settings: PaymentSettings, *, concept: str, entity_name: st
         if settings.instructions:
             lines.append(settings.instructions)
         lines.append("Si ya has pagado, ignora este mensaje o marca 'Ya he pagado' en tu inscripcion.")
+    elif lang == "ru":
+        lines = [f"Оплата не получена. Сумма: {amount}. Событие: {entity_name}."]
+        if settings.due_at:
+            lines.append(f"Оплатить до: {settings.due_at}.")
+        if methods:
+            lines.append("Способы оплаты:\n" + methods)
+        lines.append(f"Назначение платежа: {concept}")
+        if settings.instructions:
+            lines.append(settings.instructions)
+        lines.append(
+            "Если вы уже оплатили, не обращайте внимания на это сообщение или нажмите «Я оплатил(а)» в вашей заявке."
+        )
     else:
         lines = [f"Your payment of {amount} for {entity_name} is still pending."]
         if settings.due_at:

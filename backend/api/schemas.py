@@ -4,7 +4,7 @@ Pydantic request / response schemas for the REST API.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from email_validator import EmailNotValidError, validate_email as _validate_email
 from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
@@ -27,7 +27,7 @@ from backend.tournaments.withdrawal import (
     validate_walkover_sets,
 )
 
-EmailLang = Literal["en", "es"]
+EmailLang = Literal["en", "es", "ru"]
 
 
 def _coerce_optional_email(v: str) -> str:
@@ -77,8 +77,29 @@ def _coerce_team_names(values: list[str | None]) -> list[str]:
     return [(v or "").strip() for v in values]
 
 
+def _with_default_name(data: Any, noun: str) -> Any:
+    """Fill a missing or blank ``name`` with ``My <Sport> <noun>``.
+
+    The sport comes from the same payload (padel when absent), so an
+    auto-named event always says which sport it is for.
+    """
+    if not isinstance(data, dict):
+        return data
+    name = data.get("name")
+    if isinstance(name, str) and name.strip():
+        return data
+    sport = data.get("sport") or Sport.PADEL
+    label = "Tennis" if sport == Sport.TENNIS else "Padel"
+    return {**data, "name": f"My {label} {noun}"}
+
+
 class CreateGroupPlayoffRequest(BaseModel):
-    name: str = Field(default="My Tournament", max_length=255)
+    @model_validator(mode="before")
+    @classmethod
+    def _default_name(cls, data: Any) -> Any:
+        return _with_default_name(data, "Tournament")
+
+    name: str = Field(max_length=255)
     player_names: list[str] = Field(min_length=2, max_length=256)
     team_mode: bool = False
     sport: Sport = Sport.PADEL
@@ -136,7 +157,12 @@ class CreateGroupPlayoffRequest(BaseModel):
 
 
 class CreateMexicanoRequest(BaseModel):
-    name: str = Field(default="My Mexicano", max_length=255)
+    @model_validator(mode="before")
+    @classmethod
+    def _default_name(cls, data: Any) -> Any:
+        return _with_default_name(data, "Mexicano")
+
+    name: str = Field(max_length=255)
     player_names: list[str] = Field(min_length=2, max_length=256)
     court_names: list[str] = Field(default=["Court 1"], max_length=64)
     team_mode: bool = False
@@ -206,7 +232,12 @@ class CreateMexicanoRequest(BaseModel):
 
 
 class CreatePlayoffRequest(BaseModel):
-    name: str = Field(default="My Play-off", max_length=255)
+    @model_validator(mode="before")
+    @classmethod
+    def _default_name(cls, data: Any) -> Any:
+        return _with_default_name(data, "Play-off")
+
+    name: str = Field(max_length=255)
     participant_names: list[str] = Field(min_length=2, max_length=256)
     court_names: list[str] = Field(default=["Court 1"], max_length=64)
     team_mode: bool = True
@@ -643,7 +674,12 @@ class FilterConditionDef(BaseModel):
 class RegistrationCreate(BaseModel):
     """Create a new registration lobby."""
 
-    name: str = Field(default="My Tournament", min_length=1, max_length=255)
+    @model_validator(mode="before")
+    @classmethod
+    def _default_name(cls, data: Any) -> Any:
+        return _with_default_name(data, "Tournament")
+
+    name: str = Field(min_length=1, max_length=255)
     join_code: str | None = Field(default=None, max_length=64)
     questions: list[QuestionDef] = Field(default_factory=list)
     description: str | None = Field(default=None, max_length=5000)

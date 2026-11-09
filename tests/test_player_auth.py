@@ -9,6 +9,7 @@ import zxingcpp
 from PIL import Image
 
 from backend.api.db import get_db
+from backend.api.routes_player_auth import _with_hub_account_flags
 from backend.api.player_secret_store import (
     create_secrets_for_tournament as real_create_secrets_for_tournament,
     delete_secrets_for_tournament as real_delete_secrets_for_tournament,
@@ -162,7 +163,7 @@ class TestDeleteSecretsForTournament:
         """Every participant is snapshotted at finish, linked or not.
 
         Without this, an unlinked player's only record was the
-        ``player_secrets`` row, purged 30 days after finish (or gone
+        ``player_secrets`` row, purged 360 days after finish (or gone
         immediately if the tournament itself is deleted) — making them
         permanently unfindable. The durable snapshot has ``profile_id NULL``
         until the player later claims/links it.
@@ -195,7 +196,7 @@ class TestDeleteSecretsForTournament:
             assert history["player_name"] == "Durable Dana"
             assert history["wins"] == 1
 
-            # Simulate the 30-day purge and even outright tournament deletion —
+            # Simulate the 360-day purge and even outright tournament deletion —
             # the history snapshot must survive both.
             conn.execute("DELETE FROM player_secrets WHERE tournament_id = ?", (tid,))
             conn.execute("DELETE FROM tournaments WHERE id = ?", (tid,))
@@ -662,6 +663,49 @@ class TestPlayerSecretsEndpoints:
         assert "passphrase" in first
         assert "token" in first
         assert "name" in first
+
+    def test_hub_account_flag_distinguishes_ghost_and_refreshes_after_conversion(self, client, auth_headers):
+        tid = "hub-flag-test"
+        ghost_profile_id = "ghost-hub-flag-test"
+        real_profile_id = "real-hub-flag-test"
+        with get_db() as conn:
+            for index, profile_id in enumerate((ghost_profile_id, real_profile_id)):
+                conn.execute(
+                    "INSERT INTO player_profiles (id, passphrase, name, created_at, is_ghost) VALUES (?, ?, ?, ?, ?)",
+                    (profile_id, f"pass-{profile_id}", f"Player {index}", "2026-01-01", index == 0),
+                )
+                conn.execute(
+                    """INSERT INTO player_secrets
+                       (tournament_id, player_id, player_name, passphrase, token, profile_id)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        tid,
+                        f"player-{index}",
+                        f"Player {index}",
+                        f"player-pass-{index}",
+                        f"player-token-{index}",
+                        profile_id,
+                    ),
+                )
+        secrets = {
+            "player-0": {"profile_id": None},
+            "player-1": {"profile_id": None},
+        }
+        players = _with_hub_account_flags(tid, secrets)
+        assert players["player-0"]["profile_id"] == ghost_profile_id
+        assert players["player-0"]["hub_account_linked"] is False
+        assert players["player-1"]["profile_id"] == real_profile_id
+        assert players["player-1"]["hub_account_linked"] is True
+
+        converted = client.post(
+            f"/api/admin/player-profiles/{ghost_profile_id}/convert-ghost",
+            headers=auth_headers,
+            json={},
+        )
+        assert converted.status_code == 200
+
+        refreshed = _with_hub_account_flags(tid, secrets)
+        assert refreshed["player-0"]["hub_account_linked"] is True
 
     def test_get_secrets_non_owner_returns_403(self, client, auth_headers, bob_headers):
         tid = _create_gp(client, auth_headers)

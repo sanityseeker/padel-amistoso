@@ -380,6 +380,73 @@ class TestCreateProfileGating:
         )
         assert second.status_code == 409
 
+    def test_create_claims_participation_ghosted_by_club_roster(
+        self, client: TestClient, auth_headers: dict[str, str]
+    ) -> None:
+        """Opening a club roster turns unlinked participants into ghosts; signing up
+        afterwards must still claim the participation instead of starting empty."""
+        _insert_community("cm-ghost", "Ghost Community")
+        _insert_club("cl-ghost", "cm-ghost", "Ghost Club")
+        tid, pid, pp = f"t-{uuid.uuid4().hex[:8]}", f"p-{uuid.uuid4().hex[:8]}", f"pp-{uuid.uuid4().hex[:12]}"
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO tournaments (id, name, type, owner, tournament_blob, sport, community_id, club_id)
+                   VALUES (?, 'Club Night', 'mexicano', 'admin', X'80', 'padel', 'cm-ghost', 'cl-ghost')""",
+                (tid,),
+            )
+        _insert_player_secret(tid, pid, "Dora", pp, uuid.uuid4().hex)
+
+        assert client.get("/api/clubs/cl-ghost/players", headers=auth_headers).status_code == 200
+        with db_mod.get_db() as conn:
+            ghost_id = conn.execute(
+                "SELECT profile_id FROM player_secrets WHERE tournament_id = ? AND player_id = ?", (tid, pid)
+            ).fetchone()["profile_id"]
+        assert ghost_id == f"ghost_{pid}"
+
+        res = client.post(
+            "/api/player-profile", json={"name": "Dora", "email": "dora@example.com", "participant_passphrase": pp}
+        )
+        assert res.status_code == 200, res.text
+        profile_id = res.json()["profile"]["id"]
+        assert any(e["entity_id"] == tid for e in res.json()["entries"])
+        with db_mod.get_db() as conn:
+            row = conn.execute(
+                "SELECT profile_id, email FROM player_secrets WHERE tournament_id = ? AND player_id = ?", (tid, pid)
+            ).fetchone()
+            ghost_left = conn.execute("SELECT 1 FROM player_profiles WHERE id = ?", (ghost_id,)).fetchone()
+        assert row["profile_id"] == profile_id
+        assert row["email"] == "dora@example.com"
+        assert ghost_left is None
+
+    def test_create_merges_every_participation_of_the_ghost(self, client: TestClient) -> None:
+        """An organizer may have reused one ghost across events; signing up with any
+        one of its passphrases brings all of them into the new profile."""
+        ghost_id = f"ghost_{uuid.uuid4().hex[:8]}"
+        with db_mod.get_db() as conn:
+            conn.execute(
+                """INSERT INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost)
+                   VALUES (?, ?, 'Eli', '', '', datetime('now'), 1)""",
+                (ghost_id, f"ghost-pp-{uuid.uuid4().hex[:8]}"),
+            )
+        pp_first = f"pp-{uuid.uuid4().hex[:12]}"
+        _insert_player_secret("t-first", "p-first", "Eli", pp_first, uuid.uuid4().hex, profile_id=ghost_id)
+        _insert_player_secret(
+            "t-second", "p-second", "Eli", f"pp-{uuid.uuid4().hex[:12]}", uuid.uuid4().hex, profile_id=ghost_id
+        )
+
+        res = client.post(
+            "/api/player-profile",
+            json={"name": "Eli", "email": "eli@example.com", "participant_passphrase": pp_first},
+        )
+        assert res.status_code == 200, res.text
+        profile_id = res.json()["profile"]["id"]
+        with db_mod.get_db() as conn:
+            owners = {
+                r["tournament_id"]: r["profile_id"]
+                for r in conn.execute("SELECT tournament_id, profile_id FROM player_secrets WHERE player_name = 'Eli'")
+            }
+        assert owners == {"t-first": profile_id, "t-second": profile_id}
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Profile login

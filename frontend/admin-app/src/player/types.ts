@@ -12,6 +12,17 @@ export interface Profile {
   elo_padel_matches: number;
   elo_tennis_matches: number;
 }
+/** A partner or rival in one tournament, as `/player-profile/space` reports it. */
+export interface Counterpart {
+  id?: string;
+  name: string;
+  /** The name the person has now (a profile may have been renamed since the event). */
+  current_name?: string;
+  profile_id?: string;
+  games: number;
+  wins: number;
+  win_pct?: number;
+}
 export interface Entry {
   entity_type: 'tournament' | 'registration';
   entity_id: string;
@@ -33,6 +44,14 @@ export interface Entry {
   elo_after: number | null;
   community_id: string | null;
   club_id: string | null;
+  finished_at?: string | null;
+  /** Play-off result ("Champion", "Final", "Semi-Final" ...) and its order (1 = best). */
+  playoff_stage?: string | null;
+  playoff_stage_rank?: number | null;
+  top_partners?: Counterpart[];
+  top_rivals?: Counterpart[];
+  all_partners?: Counterpart[];
+  all_rivals?: Counterpart[];
 }
 export interface EloMatch {
   tournament_id: string;
@@ -47,6 +66,13 @@ export interface EloMatch {
   sets: number[][];
   is_manual: boolean;
   adjustment_reason: string | null;
+  adjusted_by?: string | null;
+  tournament_alias?: string | null;
+  match_order?: number;
+  player_id?: string;
+  decider?: string | null;
+  team1?: { player_id: string; player_name: string; elo_before: number; elo_after: number }[];
+  team2?: { player_id: string; player_name: string; elo_before: number; elo_after: number }[];
 }
 export interface Space {
   profile: Profile;
@@ -74,7 +100,6 @@ export interface PlayerMatch extends Match {
   team2_ids: string[];
   scored_by: string | null;
   score_confirmed: boolean;
-  format_override?: { mode?: string } | null;
   effective_decider?: 'full_set' | 'match_tiebreak' | null;
 }
 export interface HubPayment {
@@ -90,4 +115,42 @@ export interface HubPayment {
 export interface Leaderboard {
   padel: { rank: number; name: string; elo: number; matches: number; tier_name: string | null }[];
   tennis: { rank: number; name: string; elo: number; matches: number; tier_name: string | null }[];
+}
+
+export interface TvPlayerSettings {
+  allow_player_scoring: boolean;
+  score_mode: Record<string, string>;
+  set_decider: 'full_set' | 'match_tiebreak';
+  score_confirmation?: 'immediate' | 'required';
+  /** Seconds the submitter may still correct a score nobody has confirmed yet (0 = no window). */
+  correction_window_seconds?: number;
+}
+export interface PathRound {
+  round_number: number;
+  round_label: string;
+  cumulative_points: number;
+  rank: number | null;
+  total_players: number;
+  partners: string[];
+  opponents: string[];
+  played: boolean;
+  score: string | null;
+  score_mode: 'points' | 'tennis';
+  round_points_delta: number | null;
+  round_sets_diff_delta: number | null;
+  round_games_diff_delta: number | null;
+  cumulative_sets_diff: number | null;
+  cumulative_games_diff: number | null;
+  eliminated: boolean;
+  stage: string;
+  walkover: boolean;
+  walkover_lost: boolean;
+}
+export interface TournamentPath {
+  entity_id: string;
+  player_id: string;
+  tournament_type: string | null;
+  available: boolean;
+  reason: string | null;
+  rounds: PathRound[];
 }

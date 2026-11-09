@@ -1,0 +1,4 @@
+/* A table row carries its sport as a 3 px rule on the leading edge (blue padel, green tennis). */
+.sportRow > td:first-child {
+  box-shadow: inset 3px 0 0 var(--sport-accent);
+}

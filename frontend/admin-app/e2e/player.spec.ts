@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { expectFooter } from './helpers';
 
 interface Secret {
   name: string;
@@ -58,6 +59,9 @@ test('player signup, profile editing, mobile layout and separate organizer login
   await page.getByLabel(/^Email address/).fill('browser-player-signup@example.com');
   await page.getByRole('button', { name: 'Create player profile' }).click();
   await expect(page.getByRole('heading', { name: 'Anna Player' })).toBeVisible();
+  // Profile settings live on /player/me.
+  await page.goto('/player/me');
+  await expect(page.getByRole('heading', { name: 'Anna Player' })).toBeVisible();
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.getByLabel(/^Display name/).fill('Anna Updated');
   await page.getByLabel(/^Contact details/).fill('Prefer messages before 18:00');
@@ -65,8 +69,9 @@ test('player signup, profile editing, mobile layout and separate organizer login
   await expect(page.getByText('Profile updated', { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Anna Updated' })).toBeVisible();
-  await expect(page.locator('.hero-banner, .player-tabs')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
+  // Measure once the web fonts have settled: a swap re-flows the text.
+  await page.evaluate(() => document.fonts.ready);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
@@ -95,15 +100,30 @@ test('player logs in, sees only their matches and submits a tournament score', a
   await page.getByLabel(/^Player passphrase/).fill(secret.passphrase);
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Anna Player' })).toBeVisible();
-  await page.getByRole('button', { name: 'My matches' }).click();
+  await expectFooter(page);
+  await expect(page.getByRole('link', { name: /My Hub/ })).toBeVisible();
+  await page.evaluate(() => {
+    const event = new Event('beforeinstallprompt', { cancelable: true });
+    window.dispatchEvent(event);
+  });
+  // Install lives in the top bar only: no card on the Hub.
+  await expect(page.getByRole('button', { name: 'Install', exact: true })).toBeVisible();
+  await expect(page.getByText('Install the app on this phone')).toHaveCount(0);
+  await expect(page.getByTestId('todo-card').filter({ hasText: /Install/ })).toHaveCount(0);
+  // Hub order: the active tournaments come first, then rating and statistics.
+  const active = page.getByRole('heading', { name: 'Your active tournaments' });
+  const rating = page.getByRole('heading', { name: 'Rating and statistics' });
+  await expect(active).toBeVisible();
+  expect((await active.boundingBox())!.y).toBeLessThan((await rating.boundingBox())!.y);
+  await expect(page.getByTestId('active-tournament')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Enter score' })).toHaveCount(1);
   await page.getByRole('button', { name: 'Enter score' }).click();
   const score = page.getByRole('dialog', { name: 'Submit your score' });
   await score.getByLabel(/^First side/).fill('20');
   await score.getByLabel(/^Second side/).fill('12');
   await score.getByRole('button', { name: 'Submit score' }).click();
+  await score.getByRole('button', { name: 'Send this score' }).click();
   await expect(score).not.toBeVisible();
-  await expect(page.getByText('20', { exact: true })).toBeVisible();
   const payload = await (
     await request.get(`/api/tournaments/${tid}/mex/matches`, { headers })
   ).json();
@@ -113,8 +133,12 @@ test('player logs in, sees only their matches and submits a tournament score', a
   expect(mine.score).toEqual([20, 12]);
   const others = payload.all_matches.filter((m: { id: string }) => m.id !== mine.id);
   expect(others.every((m: { score: unknown }) => m.score === null)).toBeTruthy();
-  await page.keyboard.press('Escape');
-  await page.getByText('Match history and leaderboard', { exact: true }).click();
+  // The event page lists the player's matches; the leaderboard moved to /player/ratings.
+  await page.getByRole('link', { name: /Player Browser Cup scores/ }).click();
+  await expect(page).toHaveURL(new RegExp(`/player/matches/tournament/${tid}$`));
+  await expect(page.getByRole('heading', { name: 'Played' })).toBeVisible();
+  await expect(page.getByText('20', { exact: true }).first()).toBeVisible();
+  await page.goto('/player/ratings');
   await expect(page.getByRole('heading', { name: 'Community leaderboard' })).toBeVisible();
 });
 
@@ -157,6 +181,10 @@ test('email login link is stripped and player can report a pending payment', asy
   await page.goto(`/player#token=${encodeURIComponent(session.access_token)}`);
   await expect(page.getByRole('heading', { name: 'Anna Player' })).toBeVisible();
   expect(new URL(page.url()).hash).toBe('');
+  // A payment due shows as a to-do card on the Hub and in full on /player/me.
+  await expect(page.getByText('Payment due', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Pay or report' }).click();
+  await expect(page).toHaveURL(/\/player\/me#payments$/);
   await expect(page.getByRole('heading', { name: 'Player Payment Social' })).toBeVisible();
   await page.getByRole('button', { name: 'I’ve paid' }).click();
   await page.getByLabel(/^Payment reference/).fill('Cash at reception');
@@ -181,6 +209,7 @@ test('player links another event and respects organizer scoring controls', async
   const session = await created.json();
   await page.goto(`/player#token=${encodeURIComponent(session.access_token)}`);
   await expect(page.getByRole('heading', { name: 'Anna Player' })).toBeVisible();
+  await page.goto('/player/matches');
   await page.getByRole('button', { name: 'Link event', exact: true }).click();
   await page.getByLabel(/^Event passphrase/).fill(second.secret.passphrase);
   await page.getByRole('button', { name: 'Find event' }).click();
@@ -195,12 +224,13 @@ test('player links another event and respects organizer scoring controls', async
     ).ok(),
   ).toBeTruthy();
   const card = page
-    .locator('.compact-player-event')
+    .getByTestId('event-card')
     .filter({ has: page.getByRole('link', { name: 'Player Browser Cup link-second' }) });
-  await card.getByRole('button', { name: 'My matches' }).click();
-  await expect(page.getByRole('heading', { name: 'Your matches' })).toBeVisible();
-  await expect(
-    page.getByRole('dialog').getByText('Anna Player', { exact: false }).first(),
-  ).toBeVisible();
+  await card.getByRole('link', { name: 'My matches' }).click();
+  await expect(page.getByRole('heading', { name: 'Up next' })).toBeVisible();
+  await expect(page.getByText('Anna Player', { exact: false }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Enter score' })).toHaveCount(0);
+  await expect(page.getByTestId('event-banner')).toHaveText(
+    'Your organizer enters the scores for this event.',
+  );
 });
