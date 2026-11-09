@@ -8,7 +8,7 @@
 }
 .body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(min(100%, 16rem), 1fr) auto;
   grid-template-areas:
     'meta actions'
     'sides actions';
@@ -39,11 +39,30 @@
   gap: 4px;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  min-width: 0;
+}
+/* Medium cards: the actions get their own row under the teams so the text column keeps its width. */
+@container (max-width: 50rem) {
+  .card:not([data-density='tv']) .body,
+  .card:not([data-density='tv']) .body[data-extra] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'meta'
+      'sides'
+      'extra'
+      'actions';
+  }
+  .card:not([data-density='tv']) .actions {
+    justify-content: flex-start;
+  }
 }
 /* Narrow cards: the actions move up beside the meta line instead of taking a row of their own. */
 @container (max-width: 25rem) {
   .body,
   .body[data-extra] {
+    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
       'meta actions'
       'sides sides'
@@ -53,6 +72,7 @@
 }
 .card[data-density='slot'] .body,
 .card[data-density='slot'] .body[data-extra] {
+  grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
     'meta actions'
     'sides sides'
@@ -67,7 +87,7 @@
   column-gap: var(--mantine-spacing-md);
 }
 .name {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 /* The signed-in player's scheduled match on the spectator screen; a status flag below keeps the edge. */
 .card[data-yours] {

@@ -1,5 +1,5 @@
 import { Alert, Anchor, Button, Group, Paper, Stack, Text, Title } from '@mantine/core';
-import { IconArrowLeft, IconExternalLink } from '@tabler/icons-react';
+import { IconArrowLeft, IconExternalLink, IconMessage } from '@tabler/icons-react';
 import { Link, useParams } from 'react-router-dom';
 import { t as tx, useLocale } from '../../../i18n';
 import { formatType } from '../../../api';
@@ -127,7 +127,14 @@ export default function Event() {
             <MatchActions match={m} entry={entry} data={data} token={event.token} />
           ) : undefined
         }
-      />
+      >
+        {/* The organizer's note for this match (court change, delay, rules) is for players too. */}
+        {m.comment && (
+          <Text size="sm" c="dimmed" data-testid="match-comment">
+            <IconMessage size={13} style={{ verticalAlign: '-2px' }} /> {m.comment}
+          </Text>
+        )}
+      </MatchCard>
     );
   const section = (title: string, matches: PlayerMatch[], actions: boolean, testId: string) =>
     matches.length > 0 && (

@@ -252,6 +252,18 @@ def winners_payload(t: object) -> dict:
     }
 
 
+def stage_progress_payload(matches: list[Match] | None, total: int | None = None) -> dict:
+    """Status fragment: matches played in the stage now running (byes excluded).
+
+    ``stage_total`` is ``None`` when the stage has no known size (a Mexicano with no round limit).
+    """
+    if matches is None:
+        return {"stage_played": None, "stage_total": None}
+    real = [m for m in matches if not (m.status == MatchStatus.COMPLETED and m.score is None)]
+    played = sum(1 for m in real if m.status == MatchStatus.COMPLETED)
+    return {"stage_played": played, "stage_total": len(real) if total is None else max(total, len(real))}
+
+
 def _is_bye_match(m: Match) -> bool:
     """Return True if *m* is a bye (auto-resolved without play)."""
     return m.status == MatchStatus.COMPLETED and m.score is None

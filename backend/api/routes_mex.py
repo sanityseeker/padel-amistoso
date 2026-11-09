@@ -18,8 +18,10 @@ from ..auth.deps import get_current_user, get_current_user_optional, get_current
 from ..auth.models import User
 from ..models import Court, EliminationType, InputFormat, Player, ScoreConfirmation, TournamentType
 from ..tournaments import MexicanoTournament
+from ..tournaments.playoff import bracket_matches
 from ..viz import render_playoff_schema
 from .helpers import (
+    stage_progress_payload,
     _get_tournament,
     _serialize_match,
     _build_match_labels,
@@ -195,6 +197,18 @@ async def create_mexicano(req: CreateMexicanoRequest, request: Request, user=Dep
     return {"id": tid, "current_round": t.current_round}
 
 
+def _mex_stage_progress(t: MexicanoTournament) -> dict:
+    """Mexicano rounds: sized by ``num_rounds * matches per round``; no size when rounds are unlimited."""
+    if t.phase == "playoffs" and t.playoff_bracket is not None:
+        return stage_progress_payload(bracket_matches(t.playoff_bracket))
+    if t.phase != "mexicano":
+        return stage_progress_payload(None)
+    if not t.num_rounds:
+        return {**stage_progress_payload(t.all_matches()), "stage_total": None}
+    per_round = len(t.rounds[0]) if t.rounds else 0
+    return stage_progress_payload(t.all_matches(), t.num_rounds * per_round)
+
+
 @router.get("/{tid}/mex/status")
 async def mex_status(tid: str) -> dict:
     """Return comprehensive Mexicano tournament status including leaderboard, rounds, and sit-out info."""
@@ -254,6 +268,7 @@ async def mex_status(tid: str) -> dict:
         "withdrawals": withdrawal_summaries(t),
         "withdraw_unavailable_ids": withdraw_unavailable_ids(t),
         "sport": data.get("sport", "padel"),
+        **_mex_stage_progress(t),
     }
 
 

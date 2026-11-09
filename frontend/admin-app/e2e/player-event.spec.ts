@@ -59,9 +59,7 @@ async function expectChromeControls(page: Page, phone: boolean) {
   await installPrompt(page);
   await expect(page.getByRole('button', { name: /^Preferences:/ }).first()).toBeVisible();
   if (phone) {
-    await page.getByRole('button', { name: 'More', exact: true }).click();
-    await expect(page.getByRole('menuitem', { name: 'Install app' })).toBeVisible();
-    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Install app', exact: true })).toBeVisible();
   } else {
     await expect(page.getByRole('button', { name: 'Install', exact: true })).toBeVisible();
   }
@@ -96,10 +94,14 @@ test('Display and Install are in the top bar when signed in, and Me has neither'
     await page.goto('/player/me');
     await expect(page.getByRole('heading', { name: 'Ana', exact: true })).toBeVisible();
     await installPrompt(page);
-    await expect(page.getByRole('button', { name: 'Install app', exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole('main').getByRole('button', { name: 'Install app', exact: true }),
+    ).toHaveCount(0);
     await expect(page.getByRole('radiogroup', { name: 'Language' })).toHaveCount(0);
     await expect(page.getByText('This device')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Log out of Player Hub' })).toBeVisible();
+    await expect(
+      page.getByRole('main').getByRole('button', { name: 'Log out of Player Hub' }),
+    ).toBeVisible();
   }
 });
 

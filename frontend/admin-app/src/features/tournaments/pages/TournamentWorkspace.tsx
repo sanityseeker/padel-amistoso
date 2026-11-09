@@ -12,7 +12,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useLocalStorage, useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -29,6 +29,8 @@ import {
   IconPencil,
   IconSettings,
   IconActivity,
+  IconLayoutSidebarRightCollapse,
+  IconLayoutSidebarRightExpand,
 } from '@tabler/icons-react';
 import { Button } from '@mantine/core';
 import { t as tx, useLocale } from '../../../i18n';
@@ -398,14 +400,25 @@ function Workspace({ id }: { id: string }) {
     },
   );
   const twoPane = panes && hasStandings;
+  // Desktop only: the standings column can be hidden to give the match cards the full width.
+  const [standingsHidden, setStandingsHidden] = useLocalStorage<boolean>({
+    key: 'amistoso-standings-hidden',
+    defaultValue: false,
+    getInitialValueInEffect: false,
+  });
+  const showStandingsPane = twoPane && !standingsHidden;
+  // Asking for the standings (tab, shortcut or deep link) brings the pane back.
+  useEffect(() => {
+    if (twoPane && standingsHidden && tab === 'standings') setStandingsHidden(false);
+  }, [twoPane, standingsHidden, tab, setStandingsHidden]);
   // Focus the pane when entering standings, including on an initial deep link. Refreshes must not
   // steal focus from a control inside the pane.
   useEffect(() => {
-    if (twoPane && tab === 'standings' && standingsRef.current) {
+    if (showStandingsPane && tab === 'standings' && standingsRef.current) {
       standingsRef.current.scrollIntoView?.({ block: 'nearest' });
       standingsRef.current.focus({ preventScroll: true });
     }
-  }, [twoPane, tab]);
+  }, [showStandingsPane, tab]);
 
   if (tournaments.isPending || (tournament && query.isPending)) return <Loading />;
   if (tournaments.error || query.error)
@@ -625,16 +638,41 @@ function Workspace({ id }: { id: string }) {
     <Stack gap="sm">
       <Group justify="space-between">
         <Title order={3}>{tx('Match centre')}</Title>
-        <SegmentedControl
-          ref={filterRef}
-          value={filter}
-          onChange={setFilter}
-          data={[
-            { value: 'pending', label: tx('To play') },
-            { value: 'completed', label: tx('Completed') },
-            { value: 'all', label: tx('All matches') },
-          ]}
-        />
+        <Group gap="xs">
+          <SegmentedControl
+            ref={filterRef}
+            value={filter}
+            onChange={setFilter}
+            data={[
+              { value: 'pending', label: tx('To play') },
+              { value: 'completed', label: tx('Completed') },
+              { value: 'all', label: tx('All matches') },
+            ]}
+          />
+          {twoPane && (
+            <Button
+              size="compact-sm"
+              variant="subtle"
+              color="gray"
+              leftSection={
+                showStandingsPane ? (
+                  <IconLayoutSidebarRightCollapse size={16} />
+                ) : (
+                  <IconLayoutSidebarRightExpand size={16} />
+                )
+              }
+              aria-expanded={showStandingsPane}
+              aria-controls="standings-pane"
+              data-testid="standings-toggle"
+              onClick={() => {
+                if (showStandingsPane && tab === 'standings') setTab(firstView);
+                setStandingsHidden(showStandingsPane);
+              }}
+            >
+              {showStandingsPane ? tx('Hide standings') : tx('Show standings')}
+            </Button>
+          )}
+        </Group>
       </Group>
       {loaded?.groupStage && groupNames.length > 1 && (
         <ScrollArea type="never" scrollbars="x">
@@ -897,18 +935,21 @@ function Workspace({ id }: { id: string }) {
         )}
       </Tabs>
       {twoPane && (tab === 'matches' || tab === 'standings') && (
-        <div className={classes.panes}>
+        <div className={classes.panes} data-standings={showStandingsPane ? undefined : 'hidden'}>
           <div>{matchesPane}</div>
-          <Paper
-            ref={standingsRef}
-            tabIndex={-1}
-            p="md"
-            className={classes.standingsPane}
-            aria-label={tx('Standings')}
-            data-testid="standings-pane"
-          >
-            {standingsPane}
-          </Paper>
+          {showStandingsPane && (
+            <Paper
+              id="standings-pane"
+              ref={standingsRef}
+              tabIndex={-1}
+              p="md"
+              className={classes.standingsPane}
+              aria-label={tx('Standings')}
+              data-testid="standings-pane"
+            >
+              {standingsPane}
+            </Paper>
+          )}
         </div>
       )}
       {phone && next && (

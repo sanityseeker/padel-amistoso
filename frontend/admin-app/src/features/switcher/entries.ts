@@ -115,8 +115,11 @@ export function useEntryInfo(item: OpenItem): EntryInfo {
     const phase = status?.phase ?? tournament?.phase ?? null;
     const finished = phase === 'finished' || !!status?.is_finished;
     const matches = full.data ? pageMatches(full.data) : null;
-    const played = matches ? matches.filter((m) => m.status === 'completed').length : null;
-    const total = matches ? matches.length : null;
+    // Matches of the stage now running (groups, rounds or play-offs), counted by the status call so
+    // that every tournament has them. `total` stays null when the stage has no known size, such as a
+    // Mexicano without a round limit.
+    const played = status?.stage_played ?? null;
+    const total = status?.stage_total || null;
     const round =
       status?.current_round && tournament?.type === 'mexicano'
         ? status.num_rounds
@@ -139,9 +142,7 @@ export function useEntryInfo(item: OpenItem): EntryInfo {
       : '';
     let progress: number | null = null;
     if (finished) progress = 1;
-    else if (played != null && total) progress = played / total;
-    else if (tournament?.type === 'mexicano' && status?.num_rounds && status.current_round)
-      progress = Math.min(1, status.current_round / status.num_rounds);
+    else if (played != null && total) progress = Math.min(1, played / total);
     const courts = (status as { courts?: unknown[] } | undefined)?.courts?.length ?? null;
     return {
       ...base,
@@ -150,7 +151,7 @@ export function useEntryInfo(item: OpenItem): EntryInfo {
         // A finished Group+Play-off has no stage left to name; "Finished" says it.
         typeLabel.toUpperCase(),
         finished ? tx('Finished').toUpperCase() : round,
-        played != null && total && tournament?.type !== 'mexicano' ? `${played}/${total}` : '',
+        played != null && total && !finished ? `${played}/${total}` : '',
       ]
         .filter(Boolean)
         .join(' · '),

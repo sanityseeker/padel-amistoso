@@ -152,6 +152,42 @@ test('a wide screen shows matches and standings together under one Overview tab'
   await expect(page.getByRole('tab', { name: 'Matches' })).toHaveCount(0);
 });
 
+test('standings pane hides and remembers the choice', async ({ page, request }) => {
+  const { id } = await createTournament(request, 'gp', `Hide standings ${Date.now()}`);
+  await page.setViewportSize({ width: 1366, height: 800 });
+  await loginAdmin(page);
+  await page.goto(`/admin/t/${id}`);
+  const toggle = page.getByTestId('standings-toggle');
+  await expect(page.getByTestId('standings-pane')).toBeVisible();
+  const before = (await page.getByTestId('match-row').first().boundingBox())!.width;
+  await toggle.click();
+  await expect(page.getByTestId('standings-pane')).toHaveCount(0);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect
+    .poll(async () => (await page.getByTestId('match-row').first().boundingBox())!.width)
+    .toBeGreaterThan(before + 100);
+  await page.reload();
+  await expect(page.getByTestId('standings-toggle')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('standings-pane')).toHaveCount(0);
+  await page.goto(`/admin/t/${id}?view=standings`);
+  await expect(page.getByTestId('standings-pane')).toBeVisible();
+  await expect(page.getByTestId('standings-toggle')).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('Spanish match card keeps text readable', async ({ page, request }) => {
+  const { id } = await createTournament(request, 'gp', `Spanish card ${Date.now()}`);
+  await page.setViewportSize({ width: 1366, height: 800 });
+  await loginAdmin(page);
+  await page.evaluate(() => localStorage.setItem('amistoso-lang', 'es'));
+  await page.goto(`/admin/t/${id}`);
+  const row = page.getByTestId('match-row').first();
+  await expect(row).toBeVisible();
+  const meta = row.locator('[data-part="meta"]');
+  expect((await meta.boundingBox())!.height).toBeLessThan(40);
+  const name = row.locator('p').first();
+  expect((await name.boundingBox())!.height).toBeLessThan(40);
+});
+
 test('group standings keep their position on selection and live refresh', async ({
   page,
   request,

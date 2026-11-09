@@ -295,6 +295,9 @@ export interface TournamentStatus {
   current_round?: number;
   num_rounds?: number;
   total_points_per_match?: number;
+  /** Matches played in the stage now running; the total is null without a known size. */
+  stage_played?: number | null;
+  stage_total?: number | null;
   champion?: string[] | null;
   leaderboard?: Standing[];
   is_finished?: boolean;

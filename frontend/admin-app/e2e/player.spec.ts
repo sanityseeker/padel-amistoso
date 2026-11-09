@@ -75,7 +75,7 @@ test('player signup, profile editing, mobile layout and separate organizer login
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
-  await page.getByRole('button', { name: 'Log out of Player Hub' }).click();
+  await page.getByRole('main').getByRole('button', { name: 'Log out of Player Hub' }).click();
   await expect(page.getByRole('heading', { name: 'Player Hub' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('padel-auth-token'))).toBe(
     'separate-organizer-session',

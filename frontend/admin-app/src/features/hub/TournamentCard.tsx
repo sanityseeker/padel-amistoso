@@ -15,6 +15,7 @@ export function TournamentCard({ event, menu }: { event: HubEvent; menu: ReactNo
   useLocale();
   const info = useEntryInfo({ id: event.id, kind: event.kind, name: event.name });
   const pct = Math.round((info.progress ?? 0) * 100);
+  const sized = info.progress != null;
   return (
     <Paper p="md" data-testid="live-card" {...sportProps(event.sport)}>
       <Stack gap="sm">
@@ -39,7 +40,7 @@ export function TournamentCard({ event, menu }: { event: HubEvent; menu: ReactNo
         </Group>
         <Group justify="space-between" wrap="nowrap">
           <Group gap="sm" wrap="nowrap">
-            {event.kind === 'tournament' ? (
+            {event.kind === 'tournament' && sized ? (
               <RingProgress
                 size={56}
                 thickness={6}
@@ -56,6 +57,11 @@ export function TournamentCard({ event, menu }: { event: HubEvent; menu: ReactNo
               <SportMark sport={event.sport} />
             )}
             <Stack gap={4}>
+              {event.kind === 'tournament' && !sized && info.live && (
+                <Badge color="live" variant="light">
+                  {tx('In progress')}
+                </Badge>
+              )}
               {info.review > 0 && (
                 <Badge color="red" variant="light">
                   {tx('{n} to review', { n: info.review })}

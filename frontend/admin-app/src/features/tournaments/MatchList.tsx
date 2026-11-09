@@ -66,7 +66,7 @@ export function MatchList({
             selected={selectedId === m.id}
             editor={editingId === m.id ? renderEditor?.(m) : undefined}
             actions={
-              <Group gap={4} wrap="nowrap">
+              <Group gap={4} wrap="wrap">
                 {canEdit && view.ready && !m.walkover && !inline && (
                   <Button
                     size="touch"

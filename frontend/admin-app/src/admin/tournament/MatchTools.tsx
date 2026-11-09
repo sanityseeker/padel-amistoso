@@ -89,7 +89,7 @@ export function MatchTools({
   return (
     <>
       <div className={classes.inline}>
-        <Group gap={4} wrap="nowrap">
+        <Group gap={4} wrap="wrap">
           <Button
             size="touch"
             variant="subtle"

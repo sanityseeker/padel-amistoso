@@ -65,12 +65,35 @@ function useContextTitle(): string {
   return route.title;
 }
 
+// Install and Player Hub log out sit in the phone header itself: the bar has room, and a player
+// should not have to open a menu to find them.
+function PhoneActions() {
+  useLocale();
+  const { pathname } = useLocation();
+  const hub = usePlayerSession();
+  const { install } = useShellUi();
+  return (
+    <>
+      {install.state !== 'hidden' && (
+        <ActionIcon size="lg" aria-label={tx('Install app')} onClick={install.install}>
+          <IconDownload size={19} />
+        </ActionIcon>
+      )}
+      {/* The Me page has its own Log out button. */}
+      {hub.token && pathname.startsWith('/player') && !pathname.startsWith('/player/me') && (
+        <ActionIcon size="lg" aria-label={tx('Log out of Player Hub')} onClick={hub.logout}>
+          <IconLogout size={19} />
+        </ActionIcon>
+      )}
+    </>
+  );
+}
+
 function MoreMenu() {
   useLocale();
   const { pathname } = useLocation();
   const auth = useAuth();
-  const hub = usePlayerSession();
-  const { install, setPasswordOpen } = useShellUi();
+  const { setPasswordOpen } = useShellUi();
   const onAdmin = isAdminPath(pathname);
   const name = auth.user?.username || auth.username || tx('Admin');
   return (
@@ -78,21 +101,6 @@ function MoreMenu() {
       label={tx('More')}
       icon={<IconDots size={20} />}
       items={[
-        {
-          key: 'install',
-          label: tx('Install app'),
-          icon: <IconDownload size={18} />,
-          onClick: install.install,
-          hidden: install.state === 'hidden',
-        },
-        {
-          key: 'hub-logout',
-          label: tx('Log out of Player Hub'),
-          icon: <IconLogout size={18} />,
-          onClick: hub.logout,
-          hidden: !(hub.token && pathname.startsWith('/player')),
-          divider: install.state !== 'hidden',
-        },
         {
           key: 'admin',
           label: tx('Admin sign in'),
@@ -221,7 +229,10 @@ export function TopBar({
                 <SearchBox wide={false} />
               </>
             ) : (
-              <DisplayButton compact />
+              <>
+                <PhoneActions />
+                <DisplayButton compact />
+              </>
             )}
             {/* The admin chrome has the Menu sheet, which holds the same items. */}
             {!adminChrome && <MoreMenu />}

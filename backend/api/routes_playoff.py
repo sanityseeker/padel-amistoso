@@ -19,6 +19,7 @@ from ..models import Court, EliminationType, InputFormat, Player, TournamentType
 from ..tournaments import PlayoffTournament
 from ..viz import render_playoff_schema
 from .helpers import (
+    stage_progress_payload,
     tournament_winners,
     winners_payload,
     _build_match_labels,
@@ -201,6 +202,7 @@ async def po_status(tid: str) -> dict:
         "withdrawals": withdrawal_summaries(t),
         "withdraw_unavailable_ids": withdraw_unavailable_ids(t),
         "sport": data.get("sport", "padel"),
+        **stage_progress_payload(t.all_matches()),
     }
 
 

@@ -63,9 +63,12 @@
   .panes {
     grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   }
+  .panes[data-standings='hidden'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .standingsPane {
     position: sticky;
-    top: calc(var(--app-shell-header-offset, 0px) + 150px);
+    top: calc(var(--app-shell-header-offset, 0px) + 140px);
     max-height: calc(100dvh - var(--app-shell-header-offset, 0px) - 170px);
     overflow: auto;
   }

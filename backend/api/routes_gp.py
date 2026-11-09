@@ -20,6 +20,7 @@ from ..models import Court, EliminationType, InputFormat, Player, ScoreConfirmat
 from ..tournaments import GroupPlayoffTournament
 from ..viz import render_playoff_schema
 from .helpers import (
+    stage_progress_payload,
     tournament_winners,
     winners_payload,
     _get_tournament,
@@ -223,6 +224,9 @@ async def gp_status(tid: str) -> dict:
         "withdrawals": withdrawal_summaries(t),
         "withdraw_unavailable_ids": withdraw_unavailable_ids(t),
         "sport": data.get("sport", "padel"),
+        **stage_progress_payload(
+            t.all_group_matches() if t.phase == "groups" else t.playoff_matches() if t.phase == "playoffs" else None
+        ),
     }
 
 

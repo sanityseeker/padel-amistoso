@@ -208,12 +208,13 @@ test('Install appears only after beforeinstallprompt and invokes the browser pro
   await expect(install).toHaveCount(0);
 });
 
-test('Install moves into the overflow menu on phones', async ({ page }) => {
+test('Install is a header button on phones', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/events');
   await fireInstallPrompt(page);
-  await page.locator('.app-header').getByRole('button', { name: 'More' }).click();
-  await expect(page.getByRole('menuitem', { name: 'Install app' })).toBeVisible();
+  await expect(
+    page.locator('.app-header').getByRole('button', { name: 'Install app', exact: true }),
+  ).toBeVisible();
 });
 
 test('Install stays hidden when the app already runs standalone', async ({ page }) => {

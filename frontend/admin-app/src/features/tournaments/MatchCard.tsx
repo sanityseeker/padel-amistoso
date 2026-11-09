@@ -117,7 +117,7 @@ export function MatchCard({
       data-yours={yours ? '' : undefined}
     >
       <div className={classes.body} data-extra={children ? '' : undefined}>
-        <Group gap={6} wrap="wrap" className={classes.meta}>
+        <Group gap={6} wrap="wrap" className={classes.meta} data-part="meta">
           <Text variant="eyebrow" span fz={tv ? 'var(--fs-tv-sm)' : undefined}>
             {meta}
           </Text>
