@@ -1,3 +1,17 @@
+## v3.0.0 (2026-11-09)
+
+### BREAKING CHANGE
+
+- the admin UI moved from /admin#/... hash routes to
+/admin/... paths (old hash links are migrated at boot). The public
+pages moved under /events, /player, /tv, /register and /club, and the
+old UI is only available at /legacy/*. Bookmarks, QR codes and printed
+links to old paths may need to be regenerated.
+
+### Feat
+
+- redesign frontend as React + Mantine SPA
+
 ## v2.4.2 (2026-11-06)
 
 ### Feat
