@@ -49,6 +49,8 @@ test('Spanish tournament creation sends unchanged API enums', async ({ page }) =
   await expect(page.getByRole('heading', { name: 'Torneos', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Nuevo', exact: true }).click();
   await page.getByRole('radio', { name: /Mexicano/ }).click();
+  // Changing the format remounts the form, so wait for it before typing into it.
+  await expect(page).toHaveURL(/type=mexicano/);
   const dialog = page.locator('form#tournament-form');
   await dialog.getByRole('textbox').nth(0).fill('Spanish Browser Tournament');
   await fillNames(page, 'players', 'Ana\nCarlos\nLucia\nPablo');

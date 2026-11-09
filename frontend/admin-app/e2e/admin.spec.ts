@@ -137,6 +137,8 @@ test('players and courts are a list by default and can be typed as text', async 
   await login(page);
   await page.getByRole('link', { name: 'New', exact: true }).click();
   await page.getByRole('radio', { name: 'Mexicano + Play-offs' }).click();
+  // Changing the format remounts the form, so wait for it before typing into it.
+  await expect(page).toHaveURL(/type=mexicano/);
   const form = page.locator('form#tournament-form');
   const name = (n: string) => form.getByRole('textbox', { name: n, exact: true });
   await name('Player 1').fill('Ana');
