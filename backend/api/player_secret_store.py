@@ -705,7 +705,7 @@ def delete_secrets_for_tournament(
 
     Every participant — linked to a Hub profile or not — is written to
     ``player_history`` (``profile_id`` is nullable there) so the record
-    survives the 30-day ``player_secrets`` purge and even tournament deletion.
+    survives the 360-day ``player_secrets`` purge and even tournament deletion.
     An unlinked row's ``profile_id`` fills in later, in place, when the player
     claims or links it (see ``merge_ghost_into_profile`` /
     ``resolve_participation_claim``). The ``player_secrets`` rows are also
@@ -813,10 +813,13 @@ def delete_secrets_for_tournament(
         invalidate_secrets_cache(tournament_id)
 
 
-def purge_expired_secrets() -> None:
-    """Delete finished player secrets older than 30 days.
+SECRET_RETENTION_DAYS = 360
 
-    Called once on startup.  Secrets are preserved for 30 days after a
+
+def purge_expired_secrets() -> None:
+    """Delete finished player secrets older than ``SECRET_RETENTION_DAYS``.
+
+    Called once on startup.  Secrets are preserved for 360 days after a
     tournament finishes so that unregistered players can still create a
     Player Hub profile and have their history backfilled.
     """
@@ -826,8 +829,8 @@ def purge_expired_secrets() -> None:
     try:
         with get_db() as conn:
             conn.execute(
-                "DELETE FROM player_secrets WHERE finished_at IS NOT NULL AND finished_at < datetime(?, '-30 days')",
-                (cutoff,),
+                "DELETE FROM player_secrets WHERE finished_at IS NOT NULL AND finished_at < datetime(?, ?)",
+                (cutoff, f"-{SECRET_RETENTION_DAYS} days"),
             )
         _clear_all_secrets_caches()
     except sqlite3.Error as exc:

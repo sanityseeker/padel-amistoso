@@ -24,6 +24,9 @@
       if (qs.indexOf('invite_token') !== -1 || qs.indexOf('reset_token') !== -1) return;
       // Explicit /admin URL always stays on the admin page — skip page selection.
       if (window.location.pathname === '/admin') return;
+      // The legacy admin (/legacy/admin) is an explicit escape hatch, e.g. the
+      // React login's "Account help" link for logged-out users.
+      if (window.location.pathname.indexOf('/legacy') === 0) return;
       // Organizers (token on this origin) stay on admin; everyone else lands on
       // a public page. Legacy 'tv' / 'register' choices map to the merged /events.
       if (localStorage.getItem('padel-auth-token')) return;

@@ -482,6 +482,7 @@ class TestBilingualRendering:
         [
             ("en", True, False),
             ("es", False, True),
+            ("ru", False, False),
         ],
     )
     def test_registration_confirmation_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
@@ -503,6 +504,7 @@ class TestBilingualRendering:
         [
             ("en", True, False),
             ("es", False, True),
+            ("ru", False, False),
         ],
     )
     def test_credentials_email_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
@@ -522,6 +524,7 @@ class TestBilingualRendering:
         [
             ("en", True, False),
             ("es", False, True),
+            ("ru", False, False),
         ],
     )
     def test_tournament_started_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
@@ -543,6 +546,7 @@ class TestBilingualRendering:
         [
             ("en", True, False),
             ("es", False, True),
+            ("ru", False, False),
         ],
     )
     def test_tournament_message_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
@@ -562,6 +566,7 @@ class TestBilingualRendering:
         [
             ("en", True, False),
             ("es", False, True),
+            ("ru", False, False),
         ],
     )
     def test_next_round_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
@@ -585,6 +590,7 @@ class TestBilingualRendering:
         [
             ("en", True, False),
             ("es", False, True),
+            ("ru", False, False),
         ],
     )
     def test_next_round_sit_out_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
@@ -605,6 +611,7 @@ class TestBilingualRendering:
         [
             ("en", True, False),
             ("es", False, True),
+            ("ru", False, False),
         ],
     )
     def test_results_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
@@ -632,6 +639,7 @@ class TestBilingualRendering:
         [
             ("en", True, False),
             ("es", False, True),
+            ("ru", False, False),
         ],
     )
     def test_cancellation_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
@@ -649,6 +657,7 @@ class TestBilingualRendering:
         [
             ("en", True, False),
             ("es", False, True),
+            ("ru", False, False),
         ],
     )
     def test_waitlist_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
@@ -667,6 +676,7 @@ class TestBilingualRendering:
         [
             ("en", True, False),
             ("es", False, True),
+            ("ru", False, False),
         ],
     )
     def test_player_hub_welcome_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
@@ -686,6 +696,7 @@ class TestBilingualRendering:
         [
             ("en", True, False),
             ("es", False, True),
+            ("ru", False, False),
         ],
     )
     def test_player_hub_magic_link_language(self, lang: str, expect_en: bool, expect_es: bool) -> None:
@@ -1594,3 +1605,72 @@ class TestEmailSettingsEndpoint:
             headers=auth_headers,
         )
         assert r.status_code == 404
+
+
+# ── Russian language plumbing (Phase 1): ru is accepted and falls back to English ──
+
+
+class TestRussianFallback:
+    def test_email_lang_accepts_ru(self) -> None:
+        from pydantic import TypeAdapter
+
+        from backend.api.schemas import EmailLang
+
+        assert TypeAdapter(EmailLang).validate_python("ru") == "ru"
+
+    def test_tx_uses_russian_text_when_given(self) -> None:
+        assert _tx("ru", "Hello", "Hola", "Privet") == "Privet"
+
+    def test_tx_ru_without_text_falls_to_english(self) -> None:
+        assert _tx("ru", "Hello", "Hola") == "Hello"
+
+    def test_tx_en_and_es_unchanged(self) -> None:
+        assert _tx("en", "Hello", "Hola", "Privet") == "Hello"
+        assert _tx("es", "Hello", "Hola", "Privet") == "Hola"
+
+    def test_render_with_ru_is_russian(self) -> None:
+        subject, body = render_registration_confirmation(
+            lobby_name="Test Lobby",
+            player_name="Alice",
+            passphrase="green-frog",
+            token="tok123",
+            lobby_id="reg1",
+            lang="ru",
+        )
+        assert "Регистрация подтверждена" in subject
+        assert "Registro confirmado" not in subject
+        assert "You're registered" not in body
+
+    def test_payment_reminder_ru_is_russian(self) -> None:
+        from backend.api.payments_store import parse_payment_settings, reminder_message
+
+        settings = parse_payment_settings('{"fee_cents": 1500, "currency": "eur"}')
+        text = reminder_message(settings, concept="Cup", entity_name="Cup", lang="ru")
+        assert "Оплата не получена" in text
+        assert "is still pending" not in text
+        assert "Queda pendiente" not in text
+
+
+def test_every_tx_call_has_a_russian_text() -> None:
+    """A missing Russian argument would silently send English to a Russian reader."""
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse((Path(__file__).resolve().parent.parent / "backend" / "email.py").read_text())
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_tx"]
+    assert calls
+    assert all(len(call.args) == 4 for call in calls)
+
+
+def test_russian_email_text_is_escaped_and_keeps_the_passphrase() -> None:
+    subject, body = render_registration_confirmation(
+        lobby_name="Test Lobby",
+        player_name="<b>Анна</b>",
+        passphrase="green-frog",
+        token="tok123",
+        lobby_id="reg1",
+        lang="ru",
+    )
+    assert "Регистрация подтверждена" in subject
+    assert "green-frog" in body
+    assert "<b>Анна</b>" not in body

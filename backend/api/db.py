@@ -598,7 +598,7 @@ def init_db() -> None:
         # Migrate: add profile_id to player_secrets if missing
         if ps_cols and "profile_id" not in ps_cols:
             conn.execute("ALTER TABLE player_secrets ADD COLUMN profile_id TEXT")
-        # Migrate: keep finished secrets for 30 days so players can still claim them;
+        # Migrate: keep finished secrets for 360 days so players can still claim them;
         # stats columns store the result snapshot so backfill works even after restart.
         if ps_cols and "finished_at" not in ps_cols:
             conn.execute("ALTER TABLE player_secrets ADD COLUMN finished_at TEXT")
@@ -924,7 +924,7 @@ def init_db() -> None:
 
         # Migrate: player_history used to require profile_id and key on it —
         # meaning unlinked participants never got a durable snapshot and were
-        # lost once player_secrets purged them 30 days after finish (or their
+        # lost once player_secrets purged them 360 days after finish (or their
         # tournament was deleted). Rebuild with profile_id nullable and the PK
         # switched to player_id (stable and unique per participation, unlike
         # profile_id which starts NULL and may later be set by a claim/link).

@@ -1,0 +1,27 @@
+.control,
+.compactControl {
+  width: 100%;
+  min-width: 0;
+}
+.control {
+  max-width: 16rem;
+}
+.compactControl {
+  max-width: 10rem;
+}
+.input {
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: 1.5rem;
+  min-height: 3rem;
+}
+.auto {
+  color: var(--color-text-faint);
+}
+.compact {
+  font-size: 1.25rem;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}

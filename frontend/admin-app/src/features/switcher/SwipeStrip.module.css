@@ -1,0 +1,44 @@
+.strip {
+  padding: 0 var(--mantine-spacing-xs) 4px;
+}
+.root {
+  --carousel-control-size: 26px;
+  /* Arrows live in their own gutters, so they never cover the neighbouring cards. */
+  padding-inline: 30px;
+}
+.slide {
+  display: block;
+  padding: 6px 10px;
+  height: 100%;
+  color: var(--app-text);
+  text-decoration: none;
+  background: var(--app-surface-2);
+}
+.slide[data-active] {
+  border-color: var(--sport-accent);
+  background: var(--app-surface);
+}
+.name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.25;
+}
+.eyebrow {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+.indicators {
+  bottom: -2px;
+}
+.indicator {
+  width: 6px;
+  height: 6px;
+  background: var(--app-border);
+}
+.indicator[data-active] {
+  background: var(--sport-accent);
+}

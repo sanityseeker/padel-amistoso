@@ -9,7 +9,7 @@ account.
 
 Authentication flow
 -------------------
-- Profile JWT: ``type=profile``, ``sub=profile:<profile_id>``, 30-day expiry.
+- Profile JWT: ``type=profile``, ``sub=profile:<profile_id>``, 1-year expiry.
   Stored on the client as ``padel-player-profile`` in localStorage.
 - The profile passphrase is also accepted as a login credential on individual
   tournament TV pages (unified auth fallback — see ``routes_player_auth.py``).
@@ -41,7 +41,7 @@ from ..tournaments.player_secrets import generate_passphrase
 from ..tournaments.set_format import format_sets, games_from_sets, match_decider
 from .club_elo import get_club_elo_spans
 from .db import get_db
-from .player_merge import resolve_current_identities
+from .player_merge import reassign_profile_data, resolve_current_identities
 from .player_secret_store import (
     extract_history_stats,
     extract_partner_rival_stats,
@@ -2704,6 +2704,30 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
             "UPDATE registrants SET profile_id = ? WHERE passphrase = ? AND profile_id IS NULL",
             (profile_id, clean_passphrase),
         )
+        # A participation already held by a ghost (created when an organizer
+        # opened the club roster, or by another player's sign-up) is claimed
+        # too: the ghost stands for this same player, so the whole ghost is merged
+        # into the new profile.  Without this the profile starts empty and the
+        # player's history stays stranded on the ghost.
+        ghost_rows = conn.execute(
+            """
+            SELECT DISTINCT pp.id FROM player_profiles pp
+             WHERE pp.is_ghost = 1
+               AND pp.id IN (
+                   SELECT profile_id FROM player_secrets WHERE passphrase = ?
+                   UNION
+                   SELECT profile_id FROM registrants WHERE passphrase = ?
+               )
+            """,
+            (clean_passphrase, clean_passphrase),
+        ).fetchall()
+        for ghost in ghost_rows:
+            reassign_profile_data(conn, profile_id, ghost["id"])
+        if ghost_rows:
+            conn.execute(
+                "UPDATE player_secrets SET email = ?, contact = ? WHERE passphrase = ? AND profile_id = ?",
+                (clean_email, clean_contact, clean_passphrase, profile_id),
+            )
 
     profile_dict = {
         "id": profile_id,
@@ -2847,7 +2871,7 @@ async def resend_profile_email_verification(
 def login_profile(req: ProfileLoginRequest, request: Request) -> ProfileLoginResponse:
     """Authenticate to the Player Hub with the 3-word global passphrase.
 
-    Returns a 30-day JWT on success.
+    Returns a 1-year JWT on success.
     """
     _RATE_LIMITER.check(_client_ip(request), "Too many requests — try again later")
 

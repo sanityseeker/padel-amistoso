@@ -1,0 +1,117 @@
+.round {
+  display: inline-block;
+  min-width: 1.6em;
+  padding-inline: 2px;
+  border-radius: var(--mantine-radius-xl);
+}
+.round[data-done] {
+  background: var(--color-primary-highlight);
+}
+.round[data-current] {
+  box-shadow: 0 0 0 2px var(--sport-accent);
+}
+
+.header {
+  background: var(--app-bg);
+  padding-top: var(--mantine-spacing-xs);
+  margin-bottom: var(--mantine-spacing-md);
+  border-bottom: 1px solid var(--app-border);
+}
+@media (min-width: 48em) {
+  .header {
+    position: sticky;
+    top: var(--app-shell-header-offset, 0px);
+    z-index: 20;
+  }
+}
+.title {
+  font-size: var(--mantine-font-size-lg);
+  line-height: 1.2;
+}
+@media (min-width: 62em) {
+  .title {
+    font-size: 1.25rem;
+  }
+}
+.headLine {
+  row-gap: 2px;
+}
+.meta {
+  color: var(--color-text-muted);
+}
+.phaseRow {
+  margin-top: 6px;
+  overflow-x: auto;
+}
+
+.actionBar {
+  position: fixed;
+  inset-inline: 0;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  background: var(--app-surface);
+  border-top: 1px solid var(--app-border);
+}
+
+.panes {
+  display: grid;
+  gap: var(--mantine-spacing-lg);
+  align-items: start;
+}
+@media (min-width: 62em) {
+  .panes {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+  .standingsPane {
+    position: sticky;
+    top: calc(var(--app-shell-header-offset, 0px) + 150px);
+    max-height: calc(100dvh - var(--app-shell-header-offset, 0px) - 170px);
+    overflow: auto;
+  }
+}
+.standingsPane:focus-visible {
+  outline: 2px solid var(--sport-accent);
+  outline-offset: 2px;
+}
+
+/* Bracket: one column per round; connectors are short rules on the card edges. */
+.bracket {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(300px, 1fr);
+  gap: var(--mantine-spacing-xl);
+  align-items: stretch;
+  overflow-x: auto;
+  padding-bottom: var(--mantine-spacing-sm);
+}
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+}
+.cards {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: var(--mantine-spacing-sm);
+}
+.slot {
+  position: relative;
+}
+.column .slot::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: 100%;
+  top: 50%;
+  width: var(--mantine-spacing-xl);
+  height: 1px;
+  background: var(--app-border);
+}
+.column:last-child .slot::after {
+  display: none;
+}
+.slot[data-champion] {
+  border-color: var(--sport-accent);
+}

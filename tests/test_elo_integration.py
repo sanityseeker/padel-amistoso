@@ -6,6 +6,8 @@ in leaderboard/standings API responses, and transfer to profiles on finish.
 
 from __future__ import annotations
 
+import pytest
+
 from backend.api.elo_store import get_tournament_elos, get_tournament_match_counts
 from backend.tournaments.elo import DEFAULT_RATING
 
@@ -265,6 +267,118 @@ class TestGroupPlayoffEloIntegration:
         elos = get_tournament_elos(tid, "padel")
         changed = [pid for pid, elo in elos.items() if elo != DEFAULT_RATING]
         assert len(changed) > 0
+
+
+class TestCompositeTeamElo:
+    """Admin-composed teams (GP / Mexicano team mode) rate their individual members.
+
+    Match sides hold one synthetic team entry per team; ratings must land on the
+    members, who own the passphrases and Hub links, not on the team id.
+    """
+
+    TEAMS = [["Ana", "Bea"], ["Cris", "Dani"], ["Eva", "Fede"]]
+
+    def _create_gp(self, client, auth_headers) -> str:
+        body = {
+            "name": "Composite GP",
+            "player_names": [n for t in self.TEAMS for n in t],
+            "team_mode": True,
+            "teams": self.TEAMS,
+            "team_names": ["AB", "CD", "EF"],
+            "court_names": ["Court 1"],
+            "num_groups": 1,
+            "top_per_group": 2,
+        }
+        r = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers)
+        assert r.status_code == 200, r.text
+        return r.json()["id"]
+
+    def _ids_by_name(self, client, auth_headers, tid: str) -> dict[str, str]:
+        players = client.get(f"/api/tournaments/{tid}/player-secrets", headers=auth_headers).json()["players"]
+        return {sec["name"]: pid for pid, sec in players.items()}
+
+    def _record_first_group_match(self, client, auth_headers, tid: str) -> dict:
+        groups = client.get(f"/api/tournaments/{tid}/gp/groups").json()
+        match = next(m for ms in groups["matches"].values() for m in ms)
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/record-group",
+            json={"match_id": match["id"], "score1": 6, "score2": 2},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        return match
+
+    def _member_names(self, team_name: str) -> list[str]:
+        return {"AB": ["Ana", "Bea"], "CD": ["Cris", "Dani"], "EF": ["Eva", "Fede"]}[team_name]
+
+    def test_gp_score_rates_each_member(self, client, auth_headers):
+        tid = self._create_gp(client, auth_headers)
+        ids = self._ids_by_name(client, auth_headers, tid)
+        match = self._record_first_group_match(client, auth_headers, tid)
+
+        elos = get_tournament_elos(tid, "padel")
+        counts = get_tournament_match_counts(tid, "padel")
+        assert set(elos) == set(ids.values()), "only individual players are rated, never team ids"
+        for name in self._member_names(match["team1"][0]):
+            assert elos[ids[name]] > DEFAULT_RATING
+            assert counts[ids[name]] == 1
+        for name in self._member_names(match["team2"][0]):
+            assert elos[ids[name]] < DEFAULT_RATING
+            assert counts[ids[name]] == 1
+
+    def test_gp_recalculation_matches_incremental(self, client, auth_headers):
+        tid = self._create_gp(client, auth_headers)
+        self._record_first_group_match(client, auth_headers, tid)
+        before = get_tournament_elos(tid, "padel")
+
+        r = client.post(f"/api/tournaments/{tid}/elo/recalculate", headers=auth_headers)
+        assert r.status_code == 200, r.text
+        after = get_tournament_elos(tid, "padel")
+        assert set(after) == set(before)
+        for pid, elo in before.items():
+            assert after[pid] == pytest.approx(elo)
+
+    def test_gp_standings_show_team_average(self, client, auth_headers):
+        tid = self._create_gp(client, auth_headers)
+        ids = self._ids_by_name(client, auth_headers, tid)
+        self._record_first_group_match(client, auth_headers, tid)
+        elos = get_tournament_elos(tid, "padel")
+
+        standings = client.get(f"/api/tournaments/{tid}/gp/groups").json()["standings"]
+        for entry in (e for rows in standings.values() for e in rows):
+            members = self._member_names(entry["player"])
+            expected = sum(elos[ids[n]] for n in members) / len(members)
+            assert entry["elo"] == pytest.approx(round(expected, 1))
+
+    def test_mexicano_team_mode_rates_each_member(self, client, auth_headers):
+        body = {
+            "name": "Composite Mex",
+            "player_names": ["Ana", "Bea", "Cris", "Dani"],
+            "team_mode": True,
+            "teams": [["Ana", "Bea"], ["Cris", "Dani"]],
+            "court_names": ["Court 1"],
+            "total_points_per_match": 32,
+            "num_rounds": 1,
+        }
+        r = client.post("/api/tournaments/mexicano", json=body, headers=auth_headers)
+        assert r.status_code == 200, r.text
+        tid = r.json()["id"]
+        ids = self._ids_by_name(client, auth_headers, tid)
+        matches = client.get(f"/api/tournaments/{tid}/mex/matches").json()
+        if not matches["current_matches"]:
+            client.post(f"/api/tournaments/{tid}/mex/next-round", headers=auth_headers)
+            matches = client.get(f"/api/tournaments/{tid}/mex/matches").json()
+        match = matches["current_matches"][0]
+        r = client.post(
+            f"/api/tournaments/{tid}/mex/record",
+            json={"match_id": match["id"], "score1": 20, "score2": 12},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+
+        elos = get_tournament_elos(tid, "padel")
+        assert set(elos) == set(ids.values())
+        assert all(elo != DEFAULT_RATING for elo in elos.values())
 
 
 class TestPlayoffEloIntegration:

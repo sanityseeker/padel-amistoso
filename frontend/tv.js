@@ -21,7 +21,7 @@ document.addEventListener('app-language-changed', () => {
 const _params = new URLSearchParams(location.search);
 // Extract slug from path: /tv/<slug>
 const _pathSlug = (() => {
-  const m = location.pathname.match(/^\/tv\/(.+)$/);
+  const m = location.pathname.match(/^\/(?:legacy\/)?tv\/(.+)$/);
   return m ? decodeURIComponent(m[1]) : null;
 })();
 // Legacy query-param support (?tid= / ?t=) kept for backwards compat

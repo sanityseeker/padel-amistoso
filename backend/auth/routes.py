@@ -312,7 +312,7 @@ async def send_invite(req: InviteRequest, background_tasks: BackgroundTasks, _ad
     except ValueError:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Invalid role: {req.role!r}")
     raw_token = user_store.create_auth_token(str(req.email), AuthTokenType.INVITE, role=role)
-    accept_url = f"{_site_base()}/?invite_token={raw_token}"
+    accept_url = f"{_site_base()}/admin/account/invite?invite_token={raw_token}"
     subject, body = render_invite_email(email=str(req.email), role=role.value, accept_url=accept_url)
     background_tasks.add_task(send_email, str(req.email), subject, body)
 
@@ -329,6 +329,9 @@ async def preview_invite(token: str):
 @router.post("/invite/{token}/accept", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def accept_invite(token: str, req: AcceptInviteRequest):
     """Consume an invite token and create a new user account."""
+    # Check the username first so a taken name does not burn the single-use invite.
+    if user_store.get(req.username) is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"User '{req.username}' already exists")
     data = user_store.consume_auth_token(token, AuthTokenType.INVITE)
     if data is None:
         raise HTTPException(
@@ -360,7 +363,7 @@ async def forgot_password(req: ForgotPasswordRequest, background_tasks: Backgrou
     user = user_store.find_by_email(str(req.email))
     if user is not None and not user.disabled:
         raw_token = user_store.create_auth_token(str(req.email), AuthTokenType.PASSWORD_RESET)
-        reset_url = f"{_site_base()}/reset-password?reset_token={raw_token}"
+        reset_url = f"{_site_base()}/admin/account/reset?reset_token={raw_token}"
         subject, body = render_password_reset_email(email=str(req.email), reset_url=reset_url)
         background_tasks.add_task(send_email, str(req.email), subject, body)
 

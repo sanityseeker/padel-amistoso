@@ -1,0 +1,23 @@
+/* The whole global stylesheet: page defaults and the reduced-motion rule. Everything else is the Mantine
+   theme (src/theme) or a CSS module next to its component. The player-codes print sheet is the one other
+   global file (src/admin/tournament/tournament.css). Both are capped by tests/test_frontend_css_budget.py. */
+:root {
+  color: var(--app-text);
+  background: var(--app-bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+body {
+  margin: 0;
+}
+a {
+  color: var(--app-primary);
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -1,0 +1,1533 @@
+{
+  "version": 1,
+  "doc": "docs/i18n/controlled-russian.md describes this file. Matching is case-insensitive on word stems.",
+  "concepts": [
+    {
+      "id": "round_knockout",
+      "en": [
+        "Round (knockout draw)"
+      ],
+      "ru": "круг",
+      "stems": [
+        "круг"
+      ],
+      "forbidden": [
+        "раунд",
+        "тур"
+      ],
+      "note": "Knockout draws only. Separate concept from round_group."
+    },
+    {
+      "id": "round_group",
+      "en": [
+        "Round (group stage, Mexicano)"
+      ],
+      "ru": "раунд",
+      "stems": [
+        "раунд"
+      ],
+      "forbidden": [
+        "тур",
+        "круг"
+      ],
+      "note": "Group-stage and Mexicano rounds. Needs an i18next context key in Phase 2 because English uses Round for both this and round_knockout (круг)."
+    },
+    {
+      "id": "sit_out",
+      "en": [
+        "Sit-out",
+        "Sitting out"
+      ],
+      "ru": "отдых",
+      "stems": [
+        "отдых"
+      ],
+      "forbidden": [
+        "пропуск",
+        "простой",
+        "ожидание"
+      ],
+      "note": "Mexicano and Americano: a player rests for a round."
+    },
+    {
+      "id": "walkover",
+      "en": [
+        "Walkover",
+        "W.O."
+      ],
+      "ru": "техническая победа",
+      "stems": [
+        "техническ победа",
+        "техническая победа"
+      ],
+      "forbidden": [
+        "победа без игры",
+        "победа по неявке"
+      ],
+      "note": "Short badge form is not defined; use the full term."
+    },
+    {
+      "id": "forfeit",
+      "en": [
+        "Forfeit"
+      ],
+      "ru": "техническое поражение",
+      "stems": [
+        "техническ поражени"
+      ],
+      "forbidden": [
+        "проигрыш по неявке"
+      ],
+      "note": ""
+    },
+    {
+      "id": "no_show",
+      "en": [
+        "No-show"
+      ],
+      "ru": "неявка",
+      "stems": [
+        "неявк"
+      ],
+      "forbidden": [
+        "прогул"
+      ],
+      "note": ""
+    },
+    {
+      "id": "withdraw",
+      "en": [
+        "Withdraw",
+        "Withdrawn"
+      ],
+      "ru": "снять с турнира",
+      "stems": [
+        "снят с турнир",
+        "снять с турнир",
+        "снятие"
+      ],
+      "forbidden": [
+        "исключить",
+        "отказаться",
+        "выбыть",
+        "дисквалифицировать"
+      ],
+      "note": "Noun: снятие. Never write a gendered past with a person placeholder (rule 16). Status: Снят с турнира is masculine; use Снятие с турнира as label."
+    },
+    {
+      "id": "lobby",
+      "en": [
+        "Lobby"
+      ],
+      "ru": "лобби",
+      "stems": [
+        "лобби"
+      ],
+      "forbidden": [
+        "зал ожидания"
+      ],
+      "note": "Indeclinable loanword."
+    },
+    {
+      "id": "player_hub",
+      "en": [
+        "Player Hub",
+        "Hub"
+      ],
+      "ru": "Личный кабинет",
+      "stems": [
+        "личн кабинет",
+        "личный кабинет",
+        "кабинет"
+      ],
+      "forbidden": [
+        "хаб",
+        "Хаб",
+        "портал игрока"
+      ],
+      "note": "Short form Кабинет where space is tight (nav). The user allowed Hub or Личный кабинет; Личный кабинет is chosen."
+    },
+    {
+      "id": "elo",
+      "en": [
+        "ELO"
+      ],
+      "ru": "ELO",
+      "stems": [
+        "elo"
+      ],
+      "forbidden": [
+        "Эло",
+        "эло"
+      ],
+      "note": "Latin letters, never Cyrillic."
+    },
+    {
+      "id": "mexicano",
+      "en": [
+        "Mexicano"
+      ],
+      "ru": "Mexicano",
+      "stems": [
+        "mexicano"
+      ],
+      "forbidden": [
+        "Мексикано",
+        "мексикано"
+      ],
+      "note": "Format names stay Latin, as in other languages. Searches show sites writing Мексикано; kept Latin by decision."
+    },
+    {
+      "id": "americano",
+      "en": [
+        "Americano"
+      ],
+      "ru": "Americano",
+      "stems": [
+        "americano"
+      ],
+      "forbidden": [
+        "Американо",
+        "американо"
+      ],
+      "note": "Same as Mexicano."
+    },
+    {
+      "id": "espejo",
+      "en": [
+        "Espejo"
+      ],
+      "ru": "Espejo",
+      "stems": [
+        "espejo"
+      ],
+      "forbidden": [
+        "Зеркальная сетка",
+        "зеркальн"
+      ],
+      "note": "Never translate."
+    },
+    {
+      "id": "match",
+      "en": [
+        "Match"
+      ],
+      "ru": "матч",
+      "stems": [
+        "матч"
+      ],
+      "forbidden": [
+        "игра",
+        "встреча",
+        "партия",
+        "поединок"
+      ],
+      "note": ""
+    },
+    {
+      "id": "set",
+      "en": [
+        "Set"
+      ],
+      "ru": "сет",
+      "stems": [
+        "сет"
+      ],
+      "forbidden": [
+        "партия"
+      ],
+      "note": ""
+    },
+    {
+      "id": "game",
+      "en": [
+        "Game (inside a set)"
+      ],
+      "ru": "гейм",
+      "stems": [
+        "гейм"
+      ],
+      "forbidden": [
+        "игра",
+        "раунд"
+      ],
+      "note": "Only for games inside a set. The English UI word Games in a standings context means games won."
+    },
+    {
+      "id": "score",
+      "en": [
+        "Score",
+        "Result (of a match)"
+      ],
+      "ru": "счёт",
+      "stems": [
+        "счёт",
+        "счет"
+      ],
+      "forbidden": [
+        "результат",
+        "оценка"
+      ],
+      "note": "Score only. Payment is оплата, bill is never used. Final results of a tournament may use итоги."
+    },
+    {
+      "id": "points",
+      "en": [
+        "Points"
+      ],
+      "ru": "очки",
+      "stems": [
+        "очк",
+        "очко",
+        "очков"
+      ],
+      "forbidden": [
+        "баллы",
+        "пункты"
+      ],
+      "note": ""
+    },
+    {
+      "id": "tie_break",
+      "en": [
+        "Tie-break"
+      ],
+      "ru": "тай-брейк",
+      "stems": [
+        "тай-брейк"
+      ],
+      "forbidden": [
+        "тайбрейк",
+        "тай брейк",
+        "укороченный гейм"
+      ],
+      "note": ""
+    },
+    {
+      "id": "decider",
+      "en": [
+        "Deciding set",
+        "Decider"
+      ],
+      "ru": "решающий сет",
+      "stems": [
+        "решающ сет",
+        "решающий сет"
+      ],
+      "forbidden": [
+        "финальный сет"
+      ],
+      "note": ""
+    },
+    {
+      "id": "court",
+      "en": [
+        "Court"
+      ],
+      "ru": "корт",
+      "stems": [
+        "корт"
+      ],
+      "forbidden": [
+        "площадка",
+        "поле"
+      ],
+      "note": "English UI also uses Pistas in Spanish; Russian is always корт."
+    },
+    {
+      "id": "group",
+      "en": [
+        "Group"
+      ],
+      "ru": "группа",
+      "stems": [
+        "групп"
+      ],
+      "forbidden": [
+        "подгруппа"
+      ],
+      "note": ""
+    },
+    {
+      "id": "group_stage",
+      "en": [
+        "Group stage"
+      ],
+      "ru": "групповой этап",
+      "stems": [
+        "группов этап",
+        "групповой этап"
+      ],
+      "forbidden": [
+        "групповая стадия",
+        "групповой раунд"
+      ],
+      "note": ""
+    },
+    {
+      "id": "playoff",
+      "en": [
+        "Play-off",
+        "Play-offs"
+      ],
+      "ru": "плей-офф",
+      "stems": [
+        "плей-офф"
+      ],
+      "forbidden": [
+        "плейофф",
+        "плей офф",
+        "стыковые матчи"
+      ],
+      "note": "Indeclinable. Prefer a form that needs no case ending."
+    },
+    {
+      "id": "bracket",
+      "en": [
+        "Bracket"
+      ],
+      "ru": "сетка",
+      "stems": [
+        "сетк"
+      ],
+      "forbidden": [
+        "таблица плей-офф",
+        "дерево"
+      ],
+      "note": ""
+    },
+    {
+      "id": "main_draw",
+      "en": [
+        "Main draw",
+        "Main bracket"
+      ],
+      "ru": "основная сетка",
+      "stems": [
+        "основн сетк",
+        "основная сетка"
+      ],
+      "forbidden": [
+        "главная сетка"
+      ],
+      "note": ""
+    },
+    {
+      "id": "winners_bracket",
+      "en": [
+        "Winners bracket"
+      ],
+      "ru": "верхняя сетка",
+      "stems": [
+        "верхн сетк",
+        "верхняя сетка"
+      ],
+      "forbidden": [
+        "сетка победителей"
+      ],
+      "note": ""
+    },
+    {
+      "id": "losers_bracket",
+      "en": [
+        "Losers bracket"
+      ],
+      "ru": "нижняя сетка",
+      "stems": [
+        "нижн сетк",
+        "нижняя сетка"
+      ],
+      "forbidden": [
+        "сетка проигравших"
+      ],
+      "note": ""
+    },
+    {
+      "id": "consolation_bracket",
+      "en": [
+        "Consolation bracket"
+      ],
+      "ru": "дополнительная сетка",
+      "stems": [
+        "дополнительн сетк",
+        "дополнительная сетка"
+      ],
+      "forbidden": [
+        "утешительная сетка",
+        "утешительной сетк",
+        "утешительную сетк"
+      ],
+      "note": "User ruling. Espejo's second bracket. The Minsport padel rules use дополнительный турнир."
+    },
+    {
+      "id": "final",
+      "en": [
+        "Final"
+      ],
+      "ru": "финал",
+      "stems": [
+        "финал"
+      ],
+      "forbidden": [],
+      "note": "Do not confuse with 1/N финала."
+    },
+    {
+      "id": "semifinal",
+      "en": [
+        "Semi-final"
+      ],
+      "ru": "полуфинал",
+      "stems": [
+        "полуфинал"
+      ],
+      "forbidden": [
+        "1/2 финала"
+      ],
+      "note": ""
+    },
+    {
+      "id": "quarterfinal",
+      "en": [
+        "Quarter-final"
+      ],
+      "ru": "четвертьфинал",
+      "stems": [
+        "четвертьфинал"
+      ],
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "round_of_n",
+      "en": [
+        "Round of 16",
+        "Round of N"
+      ],
+      "ru": "1/8 финала",
+      "stems": [
+        "1/8 финала"
+      ],
+      "forbidden": [
+        "круг 16",
+        "раунд 16"
+      ],
+      "note": "Round of N is written 1/(N/2) финала: Round of 16 is 1/8 финала, Round of 32 is 1/16 финала."
+    },
+    {
+      "id": "third_place",
+      "en": [
+        "Third-place match"
+      ],
+      "ru": "матч за 3-е место",
+      "stems": [
+        "матч за 3-е место"
+      ],
+      "forbidden": [
+        "матч за бронзу",
+        "матч за третье место"
+      ],
+      "note": ""
+    },
+    {
+      "id": "seed",
+      "en": [
+        "Seed",
+        "Seeding"
+      ],
+      "ru": "посев",
+      "stems": [
+        "посев"
+      ],
+      "forbidden": [
+        "сидирование",
+        "сид"
+      ],
+      "note": "Seeded pairs: сеяные пары."
+    },
+    {
+      "id": "seeded_pairs",
+      "en": [
+        "Seeded pairs"
+      ],
+      "ru": "сеяные пары",
+      "stems": [
+        "сеян"
+      ],
+      "forbidden": [
+        "сидированные"
+      ],
+      "note": ""
+    },
+    {
+      "id": "draw_of_lots",
+      "en": [
+        "Draw (of lots)"
+      ],
+      "ru": "жеребьёвка",
+      "stems": [
+        "жеребьёвк",
+        "жеребьевк"
+      ],
+      "forbidden": [
+        "розыгрыш",
+        "лотерея"
+      ],
+      "note": "Always with ё. Do not use draw for bracket (that is сетка)."
+    },
+    {
+      "id": "tied_result",
+      "en": [
+        "Draw (tied result)",
+        "Tie"
+      ],
+      "ru": "ничья",
+      "stems": [
+        "ничь"
+      ],
+      "forbidden": [
+        "равенство"
+      ],
+      "note": "English Draw means both the bracket draw and a tied result; the two are separate concepts."
+    },
+    {
+      "id": "registration",
+      "en": [
+        "Registration",
+        "Sign-up"
+      ],
+      "ru": "регистрация",
+      "stems": [
+        "регистраци"
+      ],
+      "forbidden": [
+        "запись",
+        "инскрипция"
+      ],
+      "note": ""
+    },
+    {
+      "id": "entry",
+      "en": [
+        "Entry (a pair's registration)"
+      ],
+      "ru": "заявка",
+      "stems": [
+        "заявк"
+      ],
+      "forbidden": [
+        "анкета"
+      ],
+      "note": "Приём заявок for accepting entries."
+    },
+    {
+      "id": "accepting_entries",
+      "en": [
+        "Registration open",
+        "Accepting entries"
+      ],
+      "ru": "приём заявок",
+      "stems": [
+        "приём заяв",
+        "приема заяв"
+      ],
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "waiting_list",
+      "en": [
+        "Waiting list"
+      ],
+      "ru": "ожидающие",
+      "stems": [
+        "ожидающ"
+      ],
+      "forbidden": [
+        "резервный список",
+        "лист ожидания",
+        "очередь"
+      ],
+      "note": "The app waiting list (people waiting for a free place) differs from a federation reserve list. Sit-outs stay отдых."
+    },
+    {
+      "id": "passphrase",
+      "en": [
+        "Passphrase"
+      ],
+      "ru": "кодовая фраза",
+      "stems": [
+        "кодов фраз",
+        "кодовая фраза"
+      ],
+      "forbidden": [
+        "пароль",
+        "ключ",
+        "секретное слово"
+      ],
+      "note": "Player self-scoring credential. Never merge with password."
+    },
+    {
+      "id": "password",
+      "en": [
+        "Password"
+      ],
+      "ru": "пароль",
+      "stems": [
+        "пароль",
+        "пароля",
+        "паролем"
+      ],
+      "forbidden": [
+        "кодовая фраза"
+      ],
+      "note": "Organizer account credential. Separate auth system."
+    },
+    {
+      "id": "community",
+      "en": [
+        "Community"
+      ],
+      "ru": "сообщество",
+      "stems": [
+        "сообществ"
+      ],
+      "forbidden": [
+        "комьюнити"
+      ],
+      "note": ""
+    },
+    {
+      "id": "club",
+      "en": [
+        "Club"
+      ],
+      "ru": "клуб",
+      "stems": [
+        "клуб"
+      ],
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "season",
+      "en": [
+        "Season"
+      ],
+      "ru": "сезон",
+      "stems": [
+        "сезон"
+      ],
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "tier",
+      "en": [
+        "Tier"
+      ],
+      "ru": "уровень",
+      "stems": [
+        "уровн"
+      ],
+      "forbidden": [
+        "лига",
+        "разряд",
+        "сила"
+      ],
+      "note": "Never merge with strength."
+    },
+    {
+      "id": "strength",
+      "en": [
+        "Strength",
+        "Starting strength"
+      ],
+      "ru": "сила",
+      "stems": [
+        "сила",
+        "силу",
+        "силы"
+      ],
+      "forbidden": [
+        "уровень"
+      ],
+      "note": "Never merge with tier."
+    },
+    {
+      "id": "rating",
+      "en": [
+        "Rating"
+      ],
+      "ru": "рейтинг",
+      "stems": [
+        "рейтинг"
+      ],
+      "forbidden": [
+        "оценка",
+        "ранг"
+      ],
+      "note": ""
+    },
+    {
+      "id": "standings",
+      "en": [
+        "Standings",
+        "Leaderboard"
+      ],
+      "ru": "турнирная таблица",
+      "stems": [
+        "турнирн таблиц",
+        "турнирная таблица"
+      ],
+      "forbidden": [
+        "классификация",
+        "лидерборд",
+        "таблица лидеров"
+      ],
+      "note": ""
+    },
+    {
+      "id": "padel",
+      "en": [
+        "Padel"
+      ],
+      "ru": "падел",
+      "stems": [
+        "падел"
+      ],
+      "forbidden": [],
+      "note": "Lowercase in running text. Declines as a normal noun."
+    },
+    {
+      "id": "tennis",
+      "en": [
+        "Tennis"
+      ],
+      "ru": "теннис",
+      "stems": [
+        "теннис"
+      ],
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "gold",
+      "en": [
+        "Gold"
+      ],
+      "ru": "Золото",
+      "stems": [
+        "золот"
+      ],
+      "forbidden": [
+        "Голд"
+      ],
+      "note": "Gold bracket label."
+    },
+    {
+      "id": "silver",
+      "en": [
+        "Silver"
+      ],
+      "ru": "Серебро",
+      "stems": [
+        "серебр"
+      ],
+      "forbidden": [
+        "Сильвер"
+      ],
+      "note": "Silver bracket label."
+    },
+    {
+      "id": "organizer",
+      "en": [
+        "Organizer"
+      ],
+      "ru": "организатор",
+      "stems": [
+        "организатор"
+      ],
+      "forbidden": [
+        "админ",
+        "администратор",
+        "менеджер"
+      ],
+      "note": ""
+    },
+    {
+      "id": "co_editor",
+      "en": [
+        "Co-editor"
+      ],
+      "ru": "соредактор",
+      "stems": [
+        "соредактор"
+      ],
+      "forbidden": [
+        "со-редактор",
+        "помощник"
+      ],
+      "note": ""
+    },
+    {
+      "id": "pairing",
+      "en": [
+        "Pairing",
+        "Pairings"
+      ],
+      "ru": "пары",
+      "stems": [
+        "пар"
+      ],
+      "forbidden": [
+        "пейринг",
+        "составы"
+      ],
+      "note": "Plural noun used as label."
+    },
+    {
+      "id": "dispute",
+      "en": [
+        "Dispute"
+      ],
+      "ru": "спор",
+      "stems": [
+        "спор"
+      ],
+      "forbidden": [
+        "конфликт",
+        "диспут",
+        "апелляция"
+      ],
+      "note": ""
+    },
+    {
+      "id": "correction",
+      "en": [
+        "Correction"
+      ],
+      "ru": "исправление",
+      "stems": [
+        "исправлени"
+      ],
+      "forbidden": [
+        "коррекция"
+      ],
+      "note": ""
+    },
+    {
+      "id": "claim",
+      "en": [
+        "Claim"
+      ],
+      "ru": "запрос",
+      "stems": [
+        "запрос"
+      ],
+      "forbidden": [
+        "претензия",
+        "требование",
+        "клейм"
+      ],
+      "note": "A player's claim to be a given participant. Doubt: запрос is short, but it is also a generic word."
+    },
+    {
+      "id": "pin",
+      "en": [
+        "Pin"
+      ],
+      "ru": "закрепить",
+      "stems": [
+        "закрепить",
+        "закреплен",
+        "закреплён"
+      ],
+      "forbidden": [
+        "пин",
+        "пришпилить"
+      ],
+      "note": "Verb and past participle."
+    },
+    {
+      "id": "dock",
+      "en": [
+        "Dock"
+      ],
+      "ru": "панель",
+      "stems": [
+        "панел"
+      ],
+      "forbidden": [
+        "док",
+        "дока"
+      ],
+      "note": "Switcher dock."
+    },
+    {
+      "id": "tv_view",
+      "en": [
+        "TV view"
+      ],
+      "ru": "экран ТВ",
+      "stems": [
+        "экран тв"
+      ],
+      "forbidden": [
+        "режим телевизора",
+        "ТВ-режим"
+      ],
+      "note": ""
+    },
+    {
+      "id": "cancel_dismiss",
+      "en": [
+        "Cancel (dialog dismiss button)"
+      ],
+      "ru": "Отмена",
+      "stems": [
+        "отмена"
+      ],
+      "forbidden": [],
+      "note": "Explicit exception to rule 4: dismiss buttons use the noun Отмена. Отменить stays for cancelling a real thing (tournament, registration). Needs an i18next context key where the two collide."
+    },
+    {
+      "id": "account",
+      "en": [
+        "Account"
+      ],
+      "ru": "Аккаунт",
+      "stems": [
+        "аккаунт"
+      ],
+      "forbidden": [
+        "учётная запись",
+        "учетная запись"
+      ],
+      "note": "Loanword allowed."
+    },
+    {
+      "id": "team",
+      "en": [
+        "Team"
+      ],
+      "ru": "команда",
+      "stems": [
+        "команд"
+      ],
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "withdrawn_badge",
+      "en": [
+        "Withdrawn (status badge)"
+      ],
+      "ru": "Не участвует",
+      "stems": [
+        "не участву"
+      ],
+      "forbidden": [
+        "снят"
+      ],
+      "note": "Badge only. The event notice stays Снятие с турнира: {name}."
+    },
+    {
+      "id": "events",
+      "en": [
+        "Events"
+      ],
+      "ru": "События",
+      "stems": [
+        "событи"
+      ],
+      "forbidden": [
+        "ивент",
+        "мероприяти"
+      ],
+      "note": "Decided."
+    }
+  ],
+  "verbs": [
+    {
+      "en": "save",
+      "ru": "сохранить",
+      "stems": [
+        "сохран"
+      ],
+      "forbidden": [
+        "записать",
+        "зафиксировать"
+      ]
+    },
+    {
+      "en": "delete",
+      "ru": "удалить",
+      "stems": [
+        "удал"
+      ],
+      "forbidden": [
+        "стереть",
+        "уничтожить",
+        "ликвидировать"
+      ]
+    },
+    {
+      "en": "remove from list",
+      "ru": "убрать",
+      "stems": [
+        "убра"
+      ],
+      "forbidden": [
+        "исключить",
+        "вычеркнуть"
+      ]
+    },
+    {
+      "en": "cancel",
+      "ru": "отменить",
+      "stems": [
+        "отмен"
+      ],
+      "forbidden": [
+        "аннулировать"
+      ],
+      "note": "Cancelling a real thing. Dialog dismiss buttons use Отмена (exception to rule 4)."
+    },
+    {
+      "en": "confirm",
+      "ru": "подтвердить",
+      "stems": [
+        "подтверд"
+      ],
+      "forbidden": [
+        "утвердить",
+        "одобрить"
+      ]
+    },
+    {
+      "en": "submit, send",
+      "ru": "отправить",
+      "stems": [
+        "отправ"
+      ],
+      "forbidden": [
+        "послать",
+        "направить",
+        "передать"
+      ]
+    },
+    {
+      "en": "enter",
+      "ru": "ввести",
+      "stems": [
+        "ввести",
+        "введи",
+        "ввод"
+      ],
+      "forbidden": [
+        "внести",
+        "вписать"
+      ]
+    },
+    {
+      "en": "select",
+      "ru": "выбрать",
+      "stems": [
+        "выбра",
+        "выбер",
+        "выбор"
+      ],
+      "forbidden": [
+        "указать",
+        "отметить"
+      ]
+    },
+    {
+      "en": "edit",
+      "ru": "изменить",
+      "stems": [
+        "измени",
+        "изменен"
+      ],
+      "forbidden": [
+        "редактировать",
+        "поменять"
+      ]
+    },
+    {
+      "en": "close",
+      "ru": "закрыть",
+      "stems": [
+        "закры"
+      ],
+      "forbidden": []
+    },
+    {
+      "en": "open",
+      "ru": "открыть",
+      "stems": [
+        "откры"
+      ],
+      "forbidden": [
+        "раскрыть"
+      ]
+    },
+    {
+      "en": "start",
+      "ru": "начать",
+      "stems": [
+        "нача"
+      ],
+      "forbidden": [
+        "запустить",
+        "стартовать"
+      ]
+    },
+    {
+      "en": "finish",
+      "ru": "завершить",
+      "stems": [
+        "заверш"
+      ],
+      "forbidden": [
+        "закончить",
+        "окончить"
+      ]
+    },
+    {
+      "en": "log in",
+      "ru": "войти",
+      "stems": [
+        "войти",
+        "войд",
+        "вход"
+      ],
+      "forbidden": [
+        "авторизоваться",
+        "залогиниться"
+      ]
+    },
+    {
+      "en": "log out",
+      "ru": "выйти",
+      "stems": [
+        "выйти",
+        "выход"
+      ],
+      "forbidden": [
+        "разлогиниться"
+      ]
+    },
+    {
+      "en": "press",
+      "ru": "нажмите",
+      "stems": [
+        "нажм",
+        "нажат"
+      ],
+      "forbidden": [
+        "кликните",
+        "тапните"
+      ]
+    }
+  ],
+  "forbidden_bureaucratic": [
+    "необходимо",
+    "данный",
+    "данная",
+    "данное",
+    "является",
+    "являются",
+    "осуществить",
+    "посредством",
+    "в случае если",
+    "при наличии",
+    "произвести",
+    "производится",
+    "осуществляется",
+    "в рамках",
+    "вышеуказанный",
+    "нижеследующий",
+    "указанный выше"
+  ],
+  "forbidden_anglicisms": [
+    "дашборд",
+    "ивент",
+    "лидерборд",
+    "юзер",
+    "логин",
+    "кликнуть",
+    "тапнуть",
+    "скроллить",
+    "лайв",
+    "стрим",
+    "дедлайн",
+    "фидбек",
+    "апрувить",
+    "аппрув",
+    "чекин",
+    "чекаут",
+    "ребрендинг",
+    "пушить",
+    "ресет",
+    "дефолт",
+    "тайбрейк",
+    "плейофф",
+    "сетап"
+  ],
+  "anglicisms_allowed_note": "Every loanword used in the UI must appear as a ru value in concepts, or in loanwords_allowed below.",
+  "loanwords_allowed": [
+    "рейтинг",
+    "лобби",
+    "корт",
+    "сет",
+    "гейм",
+    "матч",
+    "тай-брейк",
+    "плей-офф",
+    "клуб",
+    "профиль",
+    "email",
+    "QR",
+    "ТВ",
+    "PDF",
+    "ELO",
+    "аккаунт"
+  ],
+  "yo_words": [
+    {
+      "wrong": "еще",
+      "right": "ещё"
+    },
+    {
+      "wrong": "счет",
+      "right": "счёт"
+    },
+    {
+      "wrong": "счета",
+      "right": "счёта",
+      "note": "Only when it means score. The plural bills is not used."
+    },
+    {
+      "wrong": "счету",
+      "right": "счёту"
+    },
+    {
+      "wrong": "все",
+      "right": "всё",
+      "note": "Only when it means everything. все (everyone) stays. Review hits by hand."
+    },
+    {
+      "wrong": "жеребьевка",
+      "right": "жеребьёвка"
+    },
+    {
+      "wrong": "жеребьевки",
+      "right": "жеребьёвки"
+    },
+    {
+      "wrong": "жеребьевку",
+      "right": "жеребьёвку"
+    },
+    {
+      "wrong": "учет",
+      "right": "учёт"
+    },
+    {
+      "wrong": "ведет",
+      "right": "ведёт"
+    },
+    {
+      "wrong": "идет",
+      "right": "идёт"
+    },
+    {
+      "wrong": "несет",
+      "right": "несёт"
+    },
+    {
+      "wrong": "подведем",
+      "right": "подведём"
+    },
+    {
+      "wrong": "завершен",
+      "right": "завершён",
+      "note": "Short form of завершённый. Neuter завершено has no ё."
+    },
+    {
+      "wrong": "сохранен",
+      "right": "сохранён"
+    },
+    {
+      "wrong": "подтвержден",
+      "right": "подтверждён"
+    },
+    {
+      "wrong": "отменен",
+      "right": "отменён"
+    },
+    {
+      "wrong": "удален",
+      "right": "удалён"
+    },
+    {
+      "wrong": "ее",
+      "right": "её"
+    },
+    {
+      "wrong": "твое",
+      "right": "твоё"
+    },
+    {
+      "wrong": "перенесен",
+      "right": "перенесён"
+    },
+    {
+      "wrong": "приведен",
+      "right": "приведён"
+    },
+    {
+      "wrong": "объем",
+      "right": "объём"
+    },
+    {
+      "wrong": "темный",
+      "right": "тёмный"
+    },
+    {
+      "wrong": "ребенок",
+      "right": "ребёнок"
+    },
+    {
+      "wrong": "дает",
+      "right": "даёт"
+    },
+    {
+      "wrong": "берет",
+      "right": "берёт"
+    },
+    {
+      "wrong": "ждет",
+      "right": "ждёт"
+    },
+    {
+      "wrong": "остается",
+      "right": "остаётся"
+    },
+    {
+      "wrong": "дается",
+      "right": "даётся"
+    }
+  ],
+  "unchanged": [
+    "API enum values",
+    "IDs",
+    "routes",
+    "user-entered names",
+    "passphrases",
+    "QR",
+    "brand name Amistoso",
+    "ELO",
+    "Mexicano",
+    "Americano",
+    "Espejo",
+    "scores such as 6-4"
+  ],
+  "standings_columns": {
+    "common": [
+      {
+        "key": "P",
+        "label": "И",
+        "title": "Игры"
+      },
+      {
+        "key": "W",
+        "label": "В",
+        "title": "Победы"
+      },
+      {
+        "key": "L",
+        "label": "П",
+        "title": "Поражения"
+      },
+      {
+        "key": "D",
+        "label": "Н",
+        "title": "Ничьи"
+      },
+      {
+        "key": "Pts",
+        "label": "О",
+        "title": "Очки"
+      },
+      {
+        "key": "Avg",
+        "label": "Ср.",
+        "title": "Среднее"
+      },
+      {
+        "key": "Bh",
+        "label": "Бх",
+        "title": "Коэффициент Бухгольца"
+      },
+      {
+        "key": "TB",
+        "label": "ТБ",
+        "title": "Тай-брейк"
+      }
+    ],
+    "sets": [
+      {
+        "key": "SW",
+        "label": "С+",
+        "title": "Выигранные сеты"
+      },
+      {
+        "key": "SL",
+        "label": "С−",
+        "title": "Проигранные сеты"
+      },
+      {
+        "key": "SD",
+        "label": "РС",
+        "title": "Разница сетов"
+      }
+    ],
+    "for_against": {
+      "context_games": [
+        {
+          "key": "PF",
+          "label": "Г+",
+          "title": "Выигранные геймы"
+        },
+        {
+          "key": "PA",
+          "label": "Г−",
+          "title": "Проигранные геймы"
+        },
+        {
+          "key": "Diff",
+          "label": "РГ",
+          "title": "Разница геймов"
+        }
+      ],
+      "context_points": [
+        {
+          "key": "PF",
+          "label": "О+",
+          "title": "Выигранные очки"
+        },
+        {
+          "key": "PA",
+          "label": "О−",
+          "title": "Проигранные очки"
+        },
+        {
+          "key": "Diff",
+          "label": "РО",
+          "title": "Разница очков"
+        }
+      ]
+    }
+  }
+}

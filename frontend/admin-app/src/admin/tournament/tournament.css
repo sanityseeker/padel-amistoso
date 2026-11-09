@@ -1,0 +1,53 @@
+/* Player codes print sheet: the one legitimate global stylesheet (system fonts on purpose). */
+.codes-print {
+  display: none;
+}
+@media print {
+  html[data-print-codes] body > *:not(.codes-print) {
+    display: none !important;
+  }
+  html[data-print-codes] .codes-print {
+    display: block;
+    color: #000;
+    background: #fff;
+    font-family: system-ui, sans-serif;
+  }
+  .codes-print h1 {
+    font-size: 1.3rem;
+    text-align: center;
+    margin: 0 0 1rem;
+  }
+  .codes-print__grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+  .codes-print__card {
+    border: 2px solid #333;
+    border-radius: 8px;
+    padding: 0.75rem;
+    text-align: center;
+    break-inside: avoid;
+  }
+  .codes-print__name {
+    font-weight: 700;
+    font-size: 1.1rem;
+  }
+  .codes-print__card img {
+    width: 140px;
+    height: 140px;
+    image-rendering: pixelated;
+    display: block;
+    margin: 0.4rem auto;
+  }
+  .codes-print__label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    color: #666;
+  }
+  .codes-print__pass {
+    font-family: monospace;
+    font-weight: 600;
+    font-size: 1.1rem;
+  }
+}

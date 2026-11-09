@@ -323,13 +323,37 @@ function _saveTheme(theme) {
 /** Single storage key shared by all pages. */
 const LANG_KEY = 'amistoso-lang';
 
-/** @type {'en'|'es'} */
+/** @type {string} */
 let _currentLang = 'en';
+
+/** Display data per language code. Only codes with messages in window.__i18n are ever used. */
+const _LANG_INFO = {
+  en: { name: 'English', short: 'EN', tag: 'en-GB' },
+  es: { name: 'Español', short: 'ES', tag: 'es-ES' },
+  ru: { name: 'Русский', short: 'RU', tag: 'ru-RU' },
+};
+
+/** @param {string} lang @returns {{name: string, short: string, tag: string}} */
+function _langInfo(lang) {
+  return _LANG_INFO[lang] || _LANG_INFO.en;
+}
+
+/**
+ * A language can be shown only when this page has its messages (English is built in).
+ * A stored language that fails this test is displayed as English but never overwritten,
+ * so a choice made on a page with more languages survives a visit to this one.
+ * @param {string} lang
+ * @returns {boolean}
+ */
+function _isUsableLanguage(lang) {
+  return lang === 'en' || Boolean(window.__i18n?.messages?.[lang]);
+}
 
 /**
  * Read the last saved language from localStorage (defaults to 'en').
  * Migrates the legacy key if present.
- * @returns {'en'|'es'}
+ * A stored language without messages on this page yields 'en' and is left in storage.
+ * @returns {string}
  */
 function _loadSavedLanguage() {
   try {
@@ -339,10 +363,12 @@ function _loadSavedLanguage() {
       localStorage.removeItem('padel-lang');
     }
     const saved = localStorage.getItem(LANG_KEY);
-    if (saved) return saved === 'es' ? 'es' : 'en';
+    if (saved) return _isUsableLanguage(saved) ? saved : 'en';
 
     // Auto-detect from browser language on first visit
     const browserLang = (navigator.languages?.[0] || navigator.language || 'en').toLowerCase();
+    // A Russian browser is not stored as English here, so the React app can still pick Russian.
+    if (browserLang.startsWith('ru')) return 'en';
     const detected = browserLang.startsWith('es') ? 'es' : 'en';
     localStorage.setItem(LANG_KEY, detected);
     return detected;
@@ -352,7 +378,7 @@ function _loadSavedLanguage() {
 }
 
 /**
- * @param {'en'|'es'} lang
+ * @param {string} lang
  */
 function _saveLanguage(lang) {
   try { localStorage.setItem(LANG_KEY, lang); } catch (_) {}
@@ -424,17 +450,21 @@ function trlPhrase(label, kind) {
   return t(`txt_rnd_${k}_other`, { label: trl(raw) });
 }
 
-/** @returns {'en'|'es'} */
+/** @returns {string} */
 function getAppLanguage() {
   return _currentLang;
 }
 
 /**
- * @param {'en'|'es'} lang
+ * Show a language. Unknown languages show English without being saved. Page-load calls only
+ * display (so a stored language this page lacks survives); a person's choice passes persist.
+ * @param {string} lang
+ * @param {boolean} [persist]
  */
-function setAppLanguage(lang) {
-  _currentLang = lang === 'en' ? 'en' : 'es';
-  _saveLanguage(_currentLang);
+function setAppLanguage(lang, persist = false) {
+  const usable = _isUsableLanguage(lang);
+  _currentLang = usable ? lang : 'en';
+  if (persist && usable) _saveLanguage(_currentLang);
   applyI18n(document);
   document.dispatchEvent(new CustomEvent('app-language-changed', { detail: { lang: _currentLang } }));
 }
@@ -617,7 +647,7 @@ function _srAnnounce(text) {
  * @param {string} lang
  */
 function setLanguage(lang) {
-  setAppLanguage(lang);
+  setAppLanguage(lang, true);
 }
 
 // ── Bracket image lightbox ─────────────────────────────────────────────────────
@@ -937,10 +967,10 @@ function setDisplayTheme(mode) {
 /**
  * Switch the UI language. Pages listen to `app-language-changed` (dispatched
  * by setAppLanguage) and re-render; the header does the same.
- * @param {'en'|'es'} lang
+ * @param {string} lang
  */
 function setDisplayLanguage(lang) {
-  setAppLanguage(lang);
+  setAppLanguage(lang, true);
 }
 
 /** Player Hub session present on this origin? */
@@ -1034,6 +1064,10 @@ function buildPublicHeaderHtml(current) {
   html += `<nav class="public-page-selector" id="public-page-selector" aria-label="${escAttr(t('txt_nav_pages'))}">`;
   html += `<button type="button" class="public-page-btn" aria-haspopup="true" aria-expanded="false" aria-controls="public-page-menu" onclick="togglePublicPageMenu()">`;
   html += `<span class="public-page-icon">${currentPage.icon}</span><span class="public-page-label">${esc(currentPage.label)}</span>${_ic('chevdown')}</button>`;
+  // The /legacy/* pages are the original UI; tell visitors where they are.
+  if (window.location.pathname.indexOf('/legacy/') === 0) {
+    html += `<span class="badge public-legacy-badge">${esc(t('txt_nav_legacy_view'))}</span>`;
+  }
   html += `<div class="public-page-menu" id="public-page-menu" hidden>`;
   for (const p of pages) {
     const active = p.key === currentPage.key;
@@ -1055,7 +1089,7 @@ function buildPublicHeaderHtml(current) {
 
 /** "English · Dark" — the current values shown on the language/theme button. */
 function _displayLineValue() {
-  const lang = getAppLanguage() === 'es' ? 'Español' : 'English';
+  const lang = _langInfo(getAppLanguage()).name;
   const pref = getThemePreference();
   const themeLabel = pref === 'auto'
     ? t('txt_display_theme_auto')
@@ -1065,7 +1099,7 @@ function _displayLineValue() {
 
 /** Inner markup of the language/theme button: globe + "English · Dark" (phones: "EN"). */
 function _displayButtonInner() {
-  const short = getAppLanguage() === 'es' ? 'ES' : 'EN';
+  const short = _langInfo(getAppLanguage()).short;
   return `${_ic('globe')}<span class="public-display-value">${esc(_displayLineValue())}</span>`
     + `<span class="public-display-value-short" aria-hidden="true">${short}</span>`;
 }
@@ -1636,7 +1670,7 @@ function mountIsland(rootSelector, scope) {
 function formatMoney(cents, currency) {
   const amount = (Number(cents) || 0) / 100;
   const code = (currency || 'EUR').toUpperCase();
-  const locale = _currentLang === 'es' ? 'es-ES' : 'en-GB';
+  const locale = _langInfo(_currentLang).tag;
   try {
     return new Intl.NumberFormat(locale, { style: 'currency', currency: code }).format(amount);
   } catch (_) {

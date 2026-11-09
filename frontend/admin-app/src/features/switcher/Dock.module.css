@@ -1,0 +1,66 @@
+/* Sidebar navigation tiles and the phone switcher cards. */
+.label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.description {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+/* Rail tiles (tablet, or the collapsed desktop dock). */
+.tile {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 52px;
+  border-radius: var(--mantine-radius-sm);
+  color: var(--app-text);
+}
+.tile[data-active] {
+  background: var(--color-primary-highlight);
+}
+.tile:hover {
+  background: var(--app-hover);
+}
+
+.section {
+  padding-inline: var(--mantine-spacing-xs);
+}
+.sectionTitle {
+  padding: var(--mantine-spacing-sm) var(--mantine-spacing-sm) 4px;
+}
+.railIcon {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 44px;
+}
+
+/* Preview card. */
+.preview {
+  width: 320px;
+}
+.previewName {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+/* Phone switcher cards. */
+.card {
+  position: relative;
+  min-height: 84px;
+}
+.card[data-active] {
+  border-color: var(--sport-accent);
+}

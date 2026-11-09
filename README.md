@@ -78,12 +78,18 @@ cd padel-amistoso
 # 2. Install dependencies (creates .venv automatically)
 uv sync
 
-# 3. Start the server
+# 3. Build the React admin (Node.js 22.12+; Node 24 recommended)
+npm --prefix frontend/admin-app ci
+npm --prefix frontend/admin-app run build
+
+# 4. Start the server
 uv run uvicorn backend.api:app --reload --port 8000
 ```
 
 1. Open <http://localhost:8000> in your browser.
-2. Log in with the default account `admin` / `admin`. To change this account, see [Authentication](#authentication--api).
+2. Log in as `admin` with the initial password printed in the server terminal
+   (or the value of `PADEL_ADMIN_PASSWORD`, if set). To change this account,
+   see [Authentication](#authentication--api).
 
 The interactive API documentation is at `/docs` (Swagger) and `/redoc`. With the `--reload` flag, the server restarts automatically when you change a Python file.
 
@@ -185,7 +191,7 @@ Operational notes:
 
 ### Player codes
 
-The app gives each player a unique **passphrase** (for example, `brave-little-tiger`) and a **QR code** automatically. In the Players tab (Admin → Settings → Players), you can see, copy, print, or generate again the passphrase of each player. The same tab has the **Withdraw** action (see [Withdrawing a participant](#withdrawing-a-participant)).
+The app gives each player a unique **passphrase** (for example, `brave-little-tiger`) and a **QR code** automatically. On the tournament page, the Players tab shows the codes. There you can see, copy, print, or generate again the passphrase of each player. The same tab has the **Withdraw** action (see [Withdrawing a participant](#withdrawing-a-participant)).
 
 ### During the tournament
 
@@ -195,7 +201,7 @@ The app gives each player a unique **passphrase** (for example, `brave-little-ti
   - The points target (for Mexicano rounds). The app scales the standings to the total of the tournament.
   - The **third-set decider**: a full set, or a **match tie-break**. A match tie-break is a super tie-break to 10, with a 2-point lead to win. You enter it in the third-set boxes, and the app shows it as `6-4 3-6 [10-8]`. In the standings, the ELO margins, and the Player Hub, a match tie-break counts as one game, not as its points.
 
-  The default decider of the tournament is in Admin → Settings → Scoring. A match with its own format keeps that format. If you change the target or the decider of a finished match, you must enter its score again.
+  The default decider of the tournament is in Tournament settings → Scoring. A match with its own format keeps that format. If you change the target or the decider of a finished match, you must enter its score again.
 - **Confirmation of player scores**: select how the app processes scores from players:
   - **Immediate**: the app applies the score immediately.
   - **Required**: the score stays pending until the opponent team does one of these actions: it accepts the score, it sends a correction, or it sends the score to the organizer.
@@ -207,7 +213,7 @@ The app gives each player a unique **passphrase** (for example, `brave-little-ti
 
 ### Withdrawing a participant
 
-In Admin → Settings → **Players**, each row has a **Withdraw** button (Withdraw team for a team member). The confirm dialog shows what changes before you confirm. The app selects the rule from the format and the phase:
+On the tournament page, in the **Players** tab, each row has a **Withdraw** button (Withdraw team for a team member). The confirm dialog shows what changes before you confirm. The app selects the rule from the format and the phase:
 
 | Where | What happens | Undo |
 |---|---|---|
@@ -229,7 +235,7 @@ Rules for all cases:
 
 ### TV display
 
-Each tournament has a public TV view at `/tv/<id>`, or at a custom alias, for example `/tv/summer-cup`. In the Admin → TV Settings panel, you can set:
+Each tournament has a public TV view at `/tv/<id>`, or at a custom alias, for example `/tv/summer-cup`. In Tournament settings → **TV screen**, you can set:
 
 - The sections that the page shows (standings, bracket, match list).
 - The refresh mode.
@@ -266,7 +272,7 @@ Pay the organizer directly. Then click **I've paid**. Your entry shows as report
 
 ### Public TV view
 
-The TV view (`/tv/<tournament-id-or-alias>`) shows live standings, the bracket, and match results. You cannot change data on this page, and you do not have to log in. The page is good for a large screen.
+The TV view (`/tv/<tournament-id-or-alias>`) shows live standings, the bracket, and match results. You do not have to log in to see it. The page is good for a large screen. Players can also use it to log in: see [Self-scoring](#self-scoring).
 
 ### Self-scoring
 
@@ -276,7 +282,7 @@ Players can enter the scores of their own matches without an admin account:
 2. After you log in, a "Record Score" form shows on your pending matches.
 3. If score confirmation is **Required**, the opponent team examines the score. The team can accept it, send a correction, or send it to the organizer for a decision.
 
-The organizer can disable self-scoring at any time in the TV Settings panel.
+The organizer can disable self-scoring at any time in Tournament settings → Scoring → Player scoring.
 
 ### Player Hub
 
@@ -296,7 +302,7 @@ This section gives the detailed settings and formulas. You do not need this sect
 
 ### Mexicano advanced settings
 
-You can set all the settings below when you create the tournament. You can change them later in **Admin → Settings** or with the `PATCH /{tid}/mex/settings` API. The default values are in parentheses.
+You can set all the settings below when you create the tournament. You can change them later in **Tournament settings → Courts and pairing** or with the `PATCH /{tid}/mex/settings` API. The default values are in parentheses.
 
 #### Structural
 
@@ -718,7 +724,7 @@ Demo mode is a second, fully isolated instance. It gives temporary sandbox accou
 
 1. On the core instance, the login dialog has the link "Open the demo sandbox". This link opens the admin page of `AMISTOSO_DEMO_URL` (`/admin` is added when the URL has no path), so the visitor goes directly to the "Start a sandbox" dialog. A note gives the name of the separate host, so the visitor knows that the demo does not change the core site. There is no automatic login. Thus a visitor can always log out and log in again on the demo instance.
 2. On the demo instance, the visitor sees a short "Your demo sandbox" explanation and a "Start a N-day sandbox" button.
-3. When the visitor clicks the button, the app creates a `demo-xxxxxx` account and opens the Create tab. A banner shows the generated passphrase. This passphrase is the account password. The visitor can use it to log in from other devices.
+3. When the visitor clicks the button, the app creates a `demo-xxxxxx` account and opens the Admin home page. A banner shows the generated passphrase. This passphrase is the account password. The visitor can use it to log in from other devices.
 4. Returning demo users and the instance admin use "Already have a demo login? Log in" to open the username and password form.
 5. A device that created or logged in to a sandbox shows the username of the visitor in the dialog, and puts the cursor in the password field. If the sandbox expired, the dialog tells the visitor. The device keeps only the username, never the passphrase.
 
@@ -752,6 +758,91 @@ Then open <http://localhost:8000>.
 
 ## Development
 
+### React admin, Player Hub, and Events
+
+The admin at `/` and `/admin`, the Player Hub at `/player`, public Events at `/events`,
+the TV screen at `/tv/{slug}`, sign-up at `/register/{slug}`, and the club page at `/club/{slug}`
+use **React, TypeScript, Vite, and Mantine**. They call the FastAPI API and
+use the same SQLite database. The original vanilla-JS pages stay in the repository as a
+fallback. FastAPI serves them under `/legacy/*`. No link in the React app points to them.
+
+For frontend development, run the Python server above, then in another terminal:
+
+```bash
+cd frontend/admin-app
+npm ci
+npm run dev
+```
+
+Open <http://localhost:5173> for admin, <http://localhost:5173/player> for the
+Player Hub, or <http://localhost:5173/events> for public Events. Vite proxies API requests to port 8000 and reloads
+the UI when source files change. To update the UI served directly by FastAPI,
+run `npm run build` in `frontend/admin-app`. Docker builds it automatically.
+The development proxy forwards public-page links to FastAPI as well.
+
+React colors are defined in the `frontend/admin-app/src/theme/` folder (`palette.ts`,
+`tokens.ts`, `resolver.ts`). They use the **Hardcourt Nights** palette from
+`frontend/theme.css`: court blue,
+cool concrete surfaces, Penn-ball green, and semantic success/warning/error
+colors. Mantine components use the `court`, `tennis`, `success`, `warning`, and
+`danger` palettes; custom CSS uses the shared `--app-*` tokens. Headers and login
+screens include a light/dark toggle. The `amistoso-theme` preference is shared
+with legacy pages, and the older `padel-theme` key is migrated. With no saved
+preference, the UI follows the OS. Browser tests compare the React tokens with
+the actual legacy stylesheet in both modes.
+
+An **EN / ES / RU** language selector sits beside the theme button in React headers
+and login screens. React uses i18next, `src/i18n.ts`, and `src/locales/es.json` and `ru.json`.
+The English text is the translation key. The `amistoso-lang`
+preference is shared with legacy pages, with migration from `padel-lang`.
+Language changes update the interface without resetting forms or sessions.
+Dates and amounts follow the selected locale; event names and API enum values
+remain unchanged.
+
+The React admin covers every organizer workflow: login (including the one-click demo
+sandbox and the invite / password-reset links), tournament and lobby lists and creation (fixed
+teams, group draws, Mexicano tuning, club rosters), scoring (points and sets, match tie-break
+deciders, per-match formats, disputes and review queues), round progression and play-off setup,
+exports, e-mail, collaborators, payments, withdrawals, player codes and Player Hub links,
+communities, clubs, seasons, tiers, rosters and user management. Without a React build, FastAPI
+falls back to the original pages.
+
+The React Player Hub supports player/event passphrase login, profile creation,
+email login and verification links, recovery requests, event linking, active
+events and history, own-match scores and opponent confirmation, ratings and
+leaderboards by club/community, outstanding payments and payment reporting,
+and profile editing. Player sessions use `padel-player-profile` and remain
+independent of organizer login. Tournament scoring exchanges an entry's token
+for its own player credential; it never uses an organizer token. Score entry
+respects organizer settings and match format overrides, including set deciders.
+Full event views retain corrections, disputes, and bracket tools. The Hub also shows
+career totals per sport, best teammates and toughest rivals, a searchable list of everyone
+the player has met, best results, per-event records and a rating history with both teams.
+
+Public Events uses the anonymous `/api/public-events` feed, without organizer
+or player credentials. It includes live/upcoming tournaments, public sign-up
+lobbies, finished results, sport/club/community filters, search, and exact
+ID/alias lookup. Filters are shareable through the URL. SSE and a 30-second
+poll keep listings fresh. Private events and unlisted lobbies stay out of the
+directory. Existing `/tv/{slug}` and `/register/{slug}` links still open their
+event views; old `/events?tid=...` and `?t=...` links redirect to the TV route.
+The original directory remains the fallback when there is no React build. Demo
+Events keeps its no-index behavior.
+
+Frontend checks:
+
+```bash
+cd frontend/admin-app
+npm run typecheck
+npm run format:check
+npx playwright install chromium
+npm run test:e2e
+```
+
+Browser tests use an isolated temporary database and a separate server on port
+8011. They do not modify your local data. Install Python dependencies first;
+the browser test server uses the repo's `.venv`.
+
 ### Project structure
 
 The app now has much more than tournaments: registration lobbies, a community and club hierarchy, a Player Hub with ELO, live TV views, and more. A file-by-file tree in this README becomes incorrect quickly. The file **[`CLAUDE.md`](CLAUDE.md)** in the repo root has the current description of each backend and frontend module. Summary:
@@ -762,7 +853,8 @@ backend/
 data/
   padel.db          – auto-generated SQLite database (tournaments, users, players)
 frontend/
-  index.html (admin), player.html (Player Hub), public.html (TV), register.html (lobbies), club.html
+  admin-app/        – React + TypeScript + Vite + Mantine app (admin, Player Hub, Events, TV, sign-up, club page)
+  index.html, player.html, public.html, register.html, club.html – original pages (fallback, served under /legacy/*)
 tests/
   pytest suite against the real app via FastAPI's TestClient — see tests/conftest.py for fixtures
 ```

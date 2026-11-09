@@ -33,3 +33,9 @@ docker-compose.nas.yml
 assets/
 
 .claude/
+
+# React admin dependencies and local build output
+node_modules/
+*.tsbuildinfo
+playwright-report/
+test-results/

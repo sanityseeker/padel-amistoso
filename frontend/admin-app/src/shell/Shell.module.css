@@ -1,0 +1,117 @@
+/* Shell chrome: header pieces, tab bars, aside. Colors come from tokens; Mantine parts are themed in
+   theme/components.ts, never overridden by global selectors. */
+.logo {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+.titleButton {
+  min-width: 0;
+  flex: 1 1 auto;
+  max-width: 22rem;
+  justify-content: flex-start;
+  padding-inline: 8px;
+  height: var(--tap-md);
+}
+.titleText {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--mantine-font-size-md);
+}
+.pageTitle {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--mantine-font-size-lg);
+  padding-inline: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.searchBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(26rem, 32vw);
+  height: var(--tap-md);
+  padding-inline: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--app-surface-2);
+  color: var(--color-text-muted);
+}
+.searchBox:hover {
+  border-color: var(--color-primary);
+}
+.searchLabel {
+  flex: 1;
+  text-align: left;
+  font-size: var(--mantine-font-size-sm);
+}
+
+/* Bottom navigation: phone tab bar. Pads for the home indicator. */
+.bottomNav {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  height: 64px;
+}
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  color: var(--color-nav-ink);
+}
+.tab[data-active] {
+  color: var(--color-nav-ink-active);
+  box-shadow: inset 0 3px 0 var(--color-primary);
+}
+.tab[data-accent] {
+  color: var(--color-primary);
+}
+.tabLabel {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-inline: 2px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.tabIcon {
+  position: relative;
+  display: inline-flex;
+}
+.tabBadge {
+  position: absolute;
+  top: -6px;
+  inset-inline-start: 60%;
+}
+
+.hubCard {
+  text-align: start;
+  cursor: pointer;
+}
+.asideRow {
+  padding-block: 6px;
+  border-bottom: 1px solid var(--app-divider);
+}

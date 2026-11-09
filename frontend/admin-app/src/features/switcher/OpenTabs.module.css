@@ -1,0 +1,96 @@
+/* The open-tournament tabs under the top bar. Equal widths, so tabs do not jump while switching. */
+.strip {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  height: 40px;
+  padding-inline: var(--mantine-spacing-md);
+  border-top: 1px solid var(--app-divider);
+}
+.scroller {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.scroller::-webkit-scrollbar {
+  display: none;
+}
+.tab {
+  display: flex;
+  flex: 1 1 220px;
+  align-items: center;
+  min-width: 150px;
+  max-width: 280px;
+  border-radius: var(--mantine-radius-sm) var(--mantine-radius-sm) 0 0;
+}
+.tab:hover {
+  background: var(--app-hover);
+}
+.tab[data-active] {
+  background: var(--color-primary-highlight);
+  box-shadow: inset 0 -2px 0 var(--sport-accent);
+}
+.link {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  padding-inline: 10px 4px;
+  color: var(--color-text-muted);
+}
+.tab[data-active] .link,
+.tab:hover .link {
+  color: var(--app-text);
+}
+.icon {
+  flex-shrink: 0;
+  color: var(--sport-accent);
+}
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab[data-active] .name {
+  font-weight: 700;
+}
+.actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding-inline-end: 4px;
+}
+/* The "..." button takes room only when it can be used, so resting tabs keep the space for the name.
+   Touch screens reach the same menu with a long press. */
+.more {
+  width: 0;
+  overflow: hidden;
+}
+.tab:hover .more,
+.tab:focus-within .more,
+.tab[data-active] .more {
+  width: auto;
+}
+.close {
+  opacity: 0.55;
+  transition: opacity var(--motion-fast) var(--motion-ease);
+}
+.tab:hover .close,
+.tab:focus-within .close,
+.tab[data-active] .close {
+  opacity: 1;
+}
+.all {
+  flex-shrink: 0;
+  align-self: center;
+}

@@ -1,0 +1,15 @@
+/* Sport accent scope: padel blue, tennis green. Outside any scope the accent is the primary blue, so
+   global UI (active nav, default tabs, focus) never reads as tennis. `--sport-accent` is for lines,
+   dots and text on a surface; `--on-sport-accent` is the text color on a filled accent. */
+:root {
+  --sport-accent: var(--color-primary);
+  --on-sport-accent: var(--color-on-primary);
+}
+[data-sport='padel'] {
+  --sport-accent: var(--color-sport-padel);
+  --on-sport-accent: var(--color-on-primary);
+}
+[data-sport='tennis'] {
+  --sport-accent: var(--color-sport-tennis);
+  --on-sport-accent: var(--color-on-tennis);
+}

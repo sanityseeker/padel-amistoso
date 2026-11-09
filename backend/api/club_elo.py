@@ -228,7 +228,7 @@ def get_tournament_display_elos(tournament_id: str, sport: str) -> dict[str, flo
     data = _tournaments.get(tournament_id)
     club_id = data.get("club_id") if data else None
     if not club_id or not elos:
-        return elos
+        return _with_team_averages(data, elos)
     finished = str(getattr(data.get("tournament"), "phase", "")) == GPPhase.FINISHED
     with get_db() as conn:
         profiles = {r["player_id"]: r["profile_id"] for r in _get_linked_profiles(tournament_id, conn)}
@@ -242,6 +242,22 @@ def get_tournament_display_elos(tournament_id: str, sport: str) -> dict[str, flo
                 elos[player_id] = float(manual["elo_after"])
             elif last is not None:
                 elos[player_id] = float(last["club_elo_after"])
+    return _with_team_averages(data, elos)
+
+
+def _with_team_averages(data: dict | None, elos: dict[str, float]) -> dict[str, float]:
+    """Add a rating for each composite team entry: the mean of its members' ratings.
+
+    Standings and leaderboards of team-mode GP / Mexicano events are keyed by
+    the synthetic team id, while ratings live on the members.
+    """
+    if not data:
+        return elos
+    roster: dict[str, list[str]] = getattr(data.get("tournament"), "team_roster", None) or {}
+    for team_id, members in roster.items():
+        rated = [elos[m] for m in members if m in elos]
+        if rated:
+            elos[team_id] = sum(rated) / len(rated)
     return elos
 
 

@@ -622,7 +622,7 @@ class TestEmailHubTokenConvergence:
 
 class TestFindByNameDurableHistory:
     """A tournament participant must stay findable after player_secrets is
-    purged (30 days post-finish) and even after the tournament is deleted
+    purged (360 days post-finish) and even after the tournament is deleted
     outright — closing the gap where only ghost profiles with ELO survived.
     """
 
@@ -645,7 +645,7 @@ class TestFindByNameDurableHistory:
     def test_unlinked_player_found_after_secrets_purged_and_tournament_gone(self, client, auth_headers):
         self._setup_scope()
         # No player_secrets row and no tournaments row at all — simulates both
-        # the 30-day purge and the tournament having been deleted outright.
+        # the 360-day purge and the tournament having been deleted outright.
         self._insert_finished_history("t-gone", "p-gone", "Gone Gina", "Old Cup", club_id="club-a")
 
         cur = _make_lobby(client, auth_headers, name="Current", community_id="c-alpha", club_id="club-a")

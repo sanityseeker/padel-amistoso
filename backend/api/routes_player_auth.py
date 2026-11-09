@@ -434,6 +434,33 @@ async def remove_player_from_tournament(
     return {"ok": True, "player_id": player_id}
 
 
+def _with_hub_account_flags(tid: str, secrets: dict[str, dict]) -> dict[str, dict]:
+    """Return secret rows with current profile links and real Hub account status."""
+    current_links: dict[str, str | None] = {}
+    real_account_players: set[str] = set()
+    player_ids = list(secrets)
+    if player_ids:
+        placeholders = ",".join("?" * len(player_ids))
+        with get_db() as conn:
+            rows = conn.execute(
+                f"""SELECT ps.player_id, ps.profile_id, pp.is_ghost
+                    FROM player_secrets ps
+                    LEFT JOIN player_profiles pp ON pp.id = ps.profile_id
+                    WHERE ps.tournament_id = ? AND ps.player_id IN ({placeholders})""",
+                [tid, *player_ids],
+            ).fetchall()
+        current_links = {row["player_id"]: row["profile_id"] for row in rows}
+        real_account_players = {row["player_id"] for row in rows if row["profile_id"] and row["is_ghost"] == 0}
+    return {
+        player_id: {
+            **secret,
+            "profile_id": current_links.get(player_id, secret.get("profile_id")),
+            "hub_account_linked": player_id in real_account_players,
+        }
+        for player_id, secret in secrets.items()
+    }
+
+
 @router.get("/{tid}/player-secrets")
 async def get_player_secrets(tid: str, user: User = Depends(get_current_user)) -> dict:
     """Return all player secrets for a tournament (organizer/admin only).
@@ -441,7 +468,7 @@ async def get_player_secrets(tid: str, user: User = Depends(get_current_user)) -
     Includes passphrases for display and tokens for QR code generation.
     """
     _require_editor_access(tid, user)
-    secrets = get_secrets_for_tournament(tid)
+    secrets = _with_hub_account_flags(tid, get_secrets_for_tournament(tid))
     return {"tournament_id": tid, "players": secrets}
 
 
