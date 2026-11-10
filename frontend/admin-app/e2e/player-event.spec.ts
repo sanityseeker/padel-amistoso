@@ -98,12 +98,13 @@ test('a signed-in player has one menu in the header: profile, the organizer door
     const header = page.locator('.app-header');
     await expect(header.getByRole('link', { name: 'Admin sign in' })).toHaveCount(0);
     await expect(header.getByRole('button', { name: 'Log out of Player Hub' })).toHaveCount(0);
+    await expect(header.getByRole('button', { name: 'Player menu' })).toHaveCount(1);
     await header.getByRole('button', { name: 'Player menu' }).click();
     await expect(page.getByRole('menuitem', { name: 'Admin sign in' })).toHaveAttribute(
       'href',
       '/admin',
     );
-    // The same sections as the phone's tab bar, the current one marked; the Hub names itself on top.
+    // The same sections as the phone's tab bar, with the current one marked.
     const sections = page.getByRole('menuitem');
     for (const name of ['Events', 'Hub', 'My events', 'Ratings', 'Profile'])
       await expect(sections.filter({ hasText: new RegExp(`^${name}$`) })).toHaveCount(1);
@@ -111,7 +112,6 @@ test('a signed-in player has one menu in the header: profile, the organizer door
       'aria-current',
       'page',
     );
-    await expect(header.getByText('Hub', { exact: true })).toBeVisible();
     await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
     await expect(page).toHaveURL(/\/player\/me$/);
   }
