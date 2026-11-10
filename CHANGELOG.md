@@ -1,3 +1,9 @@
+## v3.2.0 (2026-11-10)
+
+### Feat
+
+- track registration answer changes and customize TV info
+
 ## v3.1.0 (2026-11-10)
 
 ### Feat
