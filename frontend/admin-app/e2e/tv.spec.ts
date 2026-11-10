@@ -113,7 +113,10 @@ test('custom TV information stays hidden when empty and renders Markdown when fi
   await page.reload();
   const section = page.getByTestId('tv-custom-info');
   await expect(section.getByText('Tournament format')).toBeVisible();
-  await expect(section.getByText('Short sets', { exact: true })).toHaveJSProperty('tagName', 'STRONG');
+  await expect(section.getByText('Short sets', { exact: true })).toHaveJSProperty(
+    'tagName',
+    'STRONG',
+  );
   await expect(section).toContainText('No-ad scoring');
 });
 
