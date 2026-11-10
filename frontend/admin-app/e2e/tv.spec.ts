@@ -1,10 +1,50 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { adminHeaders, chooseLanguage, expectFooter, patchTvSettings, PLAYERS } from './helpers';
+import {
+  adminHeaders,
+  chooseLanguage,
+  createTournament,
+  expectFooter,
+  patchTvSettings,
+  PLAYERS,
+} from './helpers';
 
 // The spectator screen (/tv/<alias or id>): public data, the organizer's display flags, live refresh,
 // and a player scoring their own match with the tournament token.
 
 const stamp = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+
+test('pending group matches show their round once and omit disabled courts', async ({
+  page,
+  request,
+}) => {
+  const { id } = await createTournament(request, 'gp', `TV groups ${stamp()}`, {
+    assign_courts: false,
+  });
+  await patchTvSettings(request, id, { show_pending_matches: true, refresh_interval: 0 });
+  await page.goto(`/tv/${id}`);
+  const pending = page.locator('[data-section="pending"]');
+  await expect(pending.getByTestId('tv-match').first()).toBeVisible();
+  await expect(pending).not.toContainText('No court assigned');
+  await expect(pending.getByText('Round 1', { exact: true }).first()).toBeVisible();
+  await expect(pending.getByTestId('tv-match').first().locator('[data-part="meta"]')).toHaveCount(
+    0,
+  );
+});
+
+test('group standings have room for their statistics at medium screen widths', async ({
+  page,
+  request,
+}) => {
+  const { id } = await createTournament(request, 'gp', `TV standings ${stamp()}`);
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await page.goto(`/tv/${id}`);
+  const tables = page.locator('[data-section="standings"] table');
+  await expect(tables).toHaveCount(2);
+  await expect(tables.first().getByRole('button', { name: 'Losses' })).toBeVisible();
+  const first = await tables.nth(0).boundingBox();
+  const second = await tables.nth(1).boundingBox();
+  expect(second!.y).toBeGreaterThan(first!.y + first!.height);
+});
 
 async function mexicano(
   request: APIRequestContext,
@@ -152,10 +192,13 @@ test('a player scores their own match from the spectator screen', async ({ page,
   expect(played.score).toEqual([14, 10]);
   // The login is remembered for this tournament, and the player can sign out.
   await page.reload();
-  await expect(page.getByRole('button', { name: /Ana/ }).first()).toBeVisible();
-  await page.getByRole('button', { name: /Ana/ }).first().click();
-  await page.getByRole('button', { name: 'Logout' }).click();
-  await expect(page.getByRole('button', { name: 'Player Login' })).toBeVisible();
+  const menu = page.getByRole('button', { name: 'Player menu: Ana' });
+  await expect(menu).toBeVisible();
+  await menu.click();
+  // A normal menu: no passphrase on the spectator screen, Log out last.
+  await expect(page.getByTestId('tv-player-panel')).not.toContainText(/[a-z]+-[a-z]+-[a-z]+/);
+  await page.getByRole('menuitem', { name: 'Log out' }).click();
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
 });
 
 test('a signed-in player sees their scheduled matches highlighted', async ({ page, request }) => {
@@ -200,7 +243,7 @@ test('with the pending list off, only a signed-in player sees their own matches'
   const me = Object.values(secrets).find((p) => p.name === 'Ana')!;
 
   await page.goto(`/tv/${id}`);
-  await expect(page.getByRole('button', { name: 'Player Login' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
   await expect(page.getByTestId('tv-match')).toHaveCount(0);
 
   await page.goto(`/tv/${id}?player_token=${encodeURIComponent(me.token)}`);
@@ -219,15 +262,18 @@ test('a player signs in on the spectator screen with the passphrase', async ({ p
   ).players as Record<string, { name: string; passphrase: string }>;
   const me = Object.values(secrets).find((p) => p.name === 'Beto')!;
   await page.goto(`/tv/${id}`);
-  await page.getByRole('button', { name: 'Player Login' }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Player Login' });
   await dialog.getByLabel('Passphrase').fill('definitely-not-a-code');
   await dialog.getByRole('button', { name: 'Login', exact: true }).click();
   await expect(dialog.getByRole('alert')).toBeVisible();
   await dialog.getByLabel('Passphrase').fill(me.passphrase);
   await dialog.getByRole('button', { name: 'Login', exact: true }).click();
-  await expect(page.getByRole('button', { name: /Beto/ }).first()).toBeVisible();
-  await page.getByRole('button', { name: /Beto/ }).first().click();
+  // The signed-in player's menu, not the standings' "Open profile for Beto" (that one is there from
+  // the start, so a loose /Beto/ match clicks it before the sign-in has finished).
+  const menu = page.getByRole('button', { name: 'Player menu: Beto' });
+  await expect(menu).toBeVisible();
+  await menu.click();
   await expect(page.getByTestId('tv-player-panel')).toBeVisible();
 });
 
@@ -236,7 +282,7 @@ test('with player scoring off, nobody can sign in on the screen', async ({ page,
   await patchTvSettings(request, id, { refresh_interval: 0, allow_player_scoring: false });
   await page.goto(`/tv/${id}`);
   await expect(page.getByTestId('tv-court')).toHaveCount(2);
-  await expect(page.getByRole('button', { name: 'Player Login' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toHaveCount(0);
 });
 
 test('a standings name opens the player card', async ({ page, request }) => {

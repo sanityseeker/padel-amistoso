@@ -11,6 +11,8 @@ export const useLeaderboard = (scopeQuery: string) =>
   useQuery({
     queryKey: ['player', 'leaderboard', scopeQuery],
     queryFn: () => playerApi<Board>(`/player-profile/leaderboard${scopeQuery}`),
+    // Switching community keeps the current table until the new one arrives: no skeleton, no jump.
+    placeholderData: (previous) => previous,
   });
 
 export type BoardRow = Board['padel'][number];

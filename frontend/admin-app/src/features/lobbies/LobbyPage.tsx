@@ -4,6 +4,7 @@ import {
   Anchor,
   Badge,
   Button,
+  Collapse,
   Group,
   Menu,
   Paper,
@@ -12,11 +13,13 @@ import {
   Tabs,
   Text,
   Title,
+  UnstyledButton,
   VisuallyHidden,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import {
   IconArrowRight,
+  IconChevronDown,
   IconDots,
   IconExternalLink,
   IconMail,
@@ -50,6 +53,7 @@ import { CodesPanel, ClaimsPanel } from './LobbyPanels';
 import { LobbySettings } from './LobbySettings';
 import { ParticipantFilter } from './ParticipantFilter';
 import { RegistrantSheet } from './RegistrantSheet';
+import { registrantAnswer } from './filter';
 
 function RowMenu({
   lobbyId,
@@ -392,14 +396,7 @@ export function LobbyPage() {
                     <Text size="xs" c="dimmed">
                       {p.email || '—'}
                     </Text>
-                    {lobby.questions.map((q) => (
-                      <Text key={q.key} size="xs" c="dimmed">
-                        {q.label}:{' '}
-                        <Text span size="xs">
-                          {p.answers[q.key] || '—'}
-                        </Text>
-                      </Text>
-                    ))}
+                    <RowAnswers answers={p.answers} questions={lobby.questions} />
                   </Stack>
                   {menu(p)}
                 </Group>
@@ -425,7 +422,9 @@ export function LobbyPage() {
                         <Table.Td>{playerCell(p, tids)}</Table.Td>
                         <Table.Td>{p.email || '—'}</Table.Td>
                         {lobby.questions.map((q) => (
-                          <Table.Td key={q.key}>{p.answers[q.key] || '—'}</Table.Td>
+                          <Table.Td key={q.key}>
+                            {registrantAnswer(p.answers[q.key], q) || '—'}
+                          </Table.Td>
                         ))}
                         <Table.Td>{menu(p)}</Table.Td>
                       </Table.Tr>
@@ -483,5 +482,51 @@ export function LobbyPage() {
         onClose={() => setRemoving(null)}
       />
     </Stack>
+  );
+}
+
+// A participant's sign-up answers on a phone row: folded under "Answers (n)" so a long form does not
+// stretch every row, and listed question by question when opened.
+function RowAnswers({
+  answers,
+  questions,
+}: {
+  answers: Record<string, string>;
+  questions: LobbyDetail['questions'];
+}) {
+  useLocale();
+  const [open, setOpen] = useState(false);
+  const answered = questions.filter((q) => answers[q.key]).length;
+  if (!questions.length) return null;
+  return (
+    <>
+      <UnstyledButton onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <Group gap={4} wrap="nowrap">
+          <Text size="xs" c="court" fw={600}>
+            {tx('Answers ({n})', { n: answered })}
+          </Text>
+          <IconChevronDown
+            size={14}
+            style={{
+              transform: open ? 'rotate(180deg)' : undefined,
+              transition: 'transform 150ms',
+            }}
+            aria-hidden
+          />
+        </Group>
+      </UnstyledButton>
+      <Collapse expanded={open}>
+        <Stack gap={6} pt={4}>
+          {questions.map((q) => (
+            <div key={q.key}>
+              <Text size="xs" c="dimmed">
+                {q.label}
+              </Text>
+              <Text size="sm">{registrantAnswer(answers[q.key], q) || '—'}</Text>
+            </div>
+          ))}
+        </Stack>
+      </Collapse>
+    </>
   );
 }

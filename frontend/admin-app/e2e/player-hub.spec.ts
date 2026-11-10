@@ -192,7 +192,7 @@ test('the tournament path and notifications show on the event page', async ({ pa
   await openHub(page, profile.access_token);
   await expect(page.getByRole('heading', { name: 'Ana', exact: true })).toBeVisible();
   await page.goto(`/player/matches/tournament/${id}`);
-  await expect(page.getByRole('heading', { name: 'Your path' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your tournament' })).toBeVisible();
   await expect(
     page.getByTestId('tournament-path').or(page.getByText(/Your path appears|not available/)),
   ).toBeVisible();
@@ -220,9 +220,9 @@ test('the Hub bottom navigation on a phone has the Hub sections', async ({ page,
   // The email-link token is exchanged first; the Hub sections only exist for a signed-in session.
   await expect(page.getByRole('heading', { name: 'Ana', exact: true })).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Pages' });
-  for (const name of ['Events', 'Hub', 'My events', 'Ratings', 'Me'])
+  for (const name of ['Events', 'Hub', 'My events', 'Ratings', 'Profile'])
     await expect(nav.getByRole('link', { name, exact: true })).toBeVisible();
-  await nav.getByRole('link', { name: 'Me' }).click();
+  await nav.getByRole('link', { name: 'Profile' }).click();
   await expect(page).toHaveURL(/\/player\/me$/);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),

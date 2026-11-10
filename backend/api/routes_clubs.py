@@ -1170,7 +1170,7 @@ def get_club_public_leaderboard(
                 "matches": r["matches"],
             }
             for r in rows
-            if r["sport"] == target_sport and not r["hidden"] and r["elo"] is not None
+            if r["sport"] == target_sport and not r["hidden"] and r["elo"] is not None and r["matches"]
         ]
         entries.sort(key=lambda e: (-(e["elo"] or 0), -(e["matches"]), e["name"].lower()))
         for idx, e in enumerate(entries, start=1):
@@ -1256,8 +1256,9 @@ def _build_club_player_card(club_id: str, profile_id: str) -> ClubPlayerMiniCard
     name = next(iter(by_sport.values()))["name"]
 
     def _rank_for(sport: str) -> int | None:
+        # Ranked among the players who played this sport, as on the club leaderboard.
         ordered = sorted(
-            (r for r in rows if r["sport"] == sport and not r["hidden"] and r["elo"] is not None),
+            (r for r in rows if r["sport"] == sport and not r["hidden"] and r["elo"] is not None and r["matches"]),
             key=lambda r: (-(r["elo"] or 0), -r["matches"], r["name"].lower()),
         )
         for idx, r in enumerate(ordered, start=1):
@@ -1303,6 +1304,7 @@ def _build_club_player_card(club_id: str, profile_id: str) -> ClubPlayerMiniCard
                 "sport": log.get("sport"),
                 "score": payload.get("score") or [],
                 "sets": payload.get("sets") or [],
+                "decider": payload.get("decider"),
                 "team1": team1,
                 "team2": team2,
                 "elo_before": log.get("elo_before"),

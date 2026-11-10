@@ -36,7 +36,7 @@ async function profileFor(request: APIRequestContext, id: string, name: string, 
   return { session: await created.json(), playerId, secrets };
 }
 
-async function openHub(page: Page, token: string) {
+async function openHub(page: Page, token: string, name = 'Ana') {
   // Opening the link takes three requests in order: the link token is read (`/space`), the profile is
   // marked verified, and only then does the signed-in Hub load its own space (`/space?elo_history_limit=...`).
   // The heading exists once that last one is back, so that is the state to wait for. The first response
@@ -46,11 +46,29 @@ async function openHub(page: Page, token: string) {
   );
   await page.goto(`/player#token=${encodeURIComponent(token)}`);
   await hubLoaded;
-  await expect(page.getByRole('heading', { name: 'Ana', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
 }
 
 const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 800 };
+
+test('standings fit a phone and reveal the hidden statistics', async ({ page, request }) => {
+  const { id } = await createTournament(request, 'mex', `Standings ${Date.now()}`);
+  const { session } = await profileFor(request, id, 'Ana', 'standings');
+  await page.setViewportSize(PHONE);
+  await openHub(page, session.access_token);
+  await page.goto(`/player/matches/tournament/${id}`);
+  const table = page.getByRole('table');
+  await expect(table).toBeVisible();
+  const ana = table.getByRole('button', { name: 'Ana', exact: true });
+  await expect(ana).toHaveAttribute('aria-expanded', 'false');
+  await ana.click();
+  await expect(ana).toHaveAttribute('aria-expanded', 'true');
+  await expect(table.getByText(/Matches played/)).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+  ).toBeTruthy();
+});
 
 const installPrompt = (page: Page) =>
   page.evaluate(() => window.dispatchEvent(new Event('beforeinstallprompt', { cancelable: true })));
@@ -67,6 +85,40 @@ async function expectChromeControls(page: Page, phone: boolean) {
   await expect(page.getByRole('radiogroup', { name: 'Language' })).toBeVisible();
   await page.keyboard.press('Escape');
 }
+
+test('a signed-in player has one menu in the header: profile, the organizer door and log out', async ({
+  page,
+  request,
+}) => {
+  const { id } = await createTournament(request, 'mex', `Menu ${Date.now()}`);
+  const { session } = await profileFor(request, id, 'Ana', 'menu');
+  for (const phone of [true, false]) {
+    await page.setViewportSize(phone ? PHONE : DESKTOP);
+    await openHub(page, session.access_token);
+    const header = page.locator('.app-header');
+    await expect(header.getByRole('link', { name: 'Admin sign in' })).toHaveCount(0);
+    await expect(header.getByRole('button', { name: 'Log out of Player Hub' })).toHaveCount(0);
+    await header.getByRole('button', { name: 'Player menu' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Admin sign in' })).toHaveAttribute(
+      'href',
+      '/admin',
+    );
+    // The same sections as the phone's tab bar, the current one marked; the Hub names itself on top.
+    const sections = page.getByRole('menuitem');
+    for (const name of ['Events', 'Hub', 'My events', 'Ratings', 'Profile'])
+      await expect(sections.filter({ hasText: new RegExp(`^${name}$`) })).toHaveCount(1);
+    await expect(page.getByRole('menuitem', { name: 'Hub', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(header.getByText('Hub', { exact: true })).toBeVisible();
+    await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
+    await expect(page).toHaveURL(/\/player\/me$/);
+  }
+  await page.locator('.app-header').getByRole('button', { name: 'Player menu' }).click();
+  await page.getByRole('menuitem', { name: 'Log out of Player Hub' }).click();
+  await expect(page.getByLabel('Player passphrase')).toBeVisible();
+});
 
 test('Display and Install are in the top bar when signed out, at phone and desktop widths', async ({
   page,
@@ -134,6 +186,84 @@ test('the event page lists Up next first, then Played', async ({ page, request }
   await expect(page.getByTestId('event-banner')).toHaveCount(0);
   await expect(next.getByRole('button', { name: 'Enter score' })).toBeVisible();
   await expect(played.getByRole('button')).toHaveCount(0);
+  // Played rows lead with the result; Ana's own pair is always the first line, with her score.
+  await expect(page.getByTestId('played-summary')).toHaveText(/^(1 won · 0 lost|0 won · 1 lost)$/);
+  const row = played.getByTestId('player-match');
+  await expect(row).toHaveAttribute('data-result', /^(won|lost)$/);
+  await expect(row.getByTestId('played-own')).toContainText('Ana');
+  await expect(row.getByTestId('played-own').getByText('You', { exact: true })).toBeVisible();
+  await expect(row.getByTestId('played-other')).not.toContainText('Ana');
+  // The round's rank comes from the path, on the row itself.
+  await expect(row.getByTestId('played-rank')).toContainText(/^#\d+/);
+});
+
+test('a round sat out has its own row, and a tap on the rank chart shows that round', async ({
+  page,
+  request,
+}) => {
+  const names = ['Ana', 'Beto', 'Carla', 'Diego', 'Elena', 'Fabio', 'Gala', 'Hugo', 'Ines', 'Jon'];
+  const { id, headers } = await createTournament(request, 'mex', `Sit out ${Date.now()}`, {
+    player_names: names,
+    court_names: ['Court 1', 'Court 2'],
+  });
+  const first = await (await request.get(`/api/tournaments/${id}/mex/matches`)).json();
+  const playing = new Set(
+    (first.current_matches as Match[]).flatMap((m) => [...m.team1_ids, ...m.team2_ids]),
+  );
+  const secrets = await secretsOf(request, id);
+  const resting = Object.entries(secrets).find(([pid]) => !playing.has(pid))![1].name;
+  for (let round = 0; round < 2; round++) {
+    const matches = await (await request.get(`/api/tournaments/${id}/mex/matches`)).json();
+    for (const m of matches.current_matches as Match[])
+      await request.post(`/api/tournaments/${id}/mex/record`, {
+        headers,
+        data: { match_id: m.id, score1: 14, score2: 10 },
+      });
+    await request.post(`/api/tournaments/${id}/mex/next-round`, { headers, data: {} });
+  }
+  const { session } = await profileFor(request, id, resting, 'sitout');
+  await openHub(page, session.access_token, resting);
+  await page.goto(`/player/matches/tournament/${id}`);
+  const played = page.getByTestId('event-played');
+  const satOut = played.getByTestId('played-sat-out');
+  await expect(satOut.first()).toContainText('Sat out');
+  await expect(satOut.first().getByTestId('played-rank')).toContainText(/^#\d+/);
+  // The overview comes before the rounds.
+  const overview = page.getByTestId('tournament-path');
+  expect((await overview.boundingBox())!.y).toBeLessThan((await played.boundingBox())!.y);
+  const chart = overview.locator('svg[role="img"]');
+  const box = (await chart.boundingBox())!;
+  await page.mouse.click(box.x + 40, box.y + box.height / 2);
+  await expect(played.locator('[data-flash]')).toHaveAttribute('data-round', 'Round 1');
+  // Running: the table sits below, and the overview's rank leads to your row in it.
+  const standings = page.getByTestId('event-standings');
+  await expect(standings.getByRole('heading', { name: 'Standings', exact: true })).toBeVisible();
+  expect((await standings.boundingBox())!.y).toBeGreaterThan((await played.boundingBox())!.y);
+  await page.getByTestId('path-headline').click();
+  await expect(standings.locator('tr[data-self][data-flash]')).toHaveCount(1);
+});
+
+test("the Hub match card shows the organizer's note and no court placeholder when courts are off", async ({
+  page,
+  request,
+}) => {
+  // No court names: the organizer does not assign courts.
+  const { id, headers } = await createTournament(request, 'mex', `Note ${Date.now()}`);
+  const { session, playerId } = await profileFor(request, id, 'Ana', 'note');
+  const current = (await (await request.get(`/api/tournaments/${id}/mex/matches`)).json())
+    .current_matches as Match[];
+  const mine = current.find((m) => [...m.team1_ids, ...m.team2_ids].includes(playerId))!;
+  const noted = await request.patch(`/api/tournaments/${id}/match-comment`, {
+    headers,
+    data: { match_id: mine.id, comment: 'Court 3 is wet, play on Court 1' },
+  });
+  expect(noted.ok()).toBeTruthy();
+  await openHub(page, session.access_token);
+  const card = page.getByTestId('active-tournament');
+  await expect(card.getByTestId('match-comment')).toContainText('Court 3 is wet');
+  await expect(card).not.toContainText('No court assigned');
+  await page.goto(`/player/matches/tournament/${id}`);
+  await expect(page.getByTestId('event-up-next')).not.toContainText('No court assigned');
 });
 
 test('a player whose opponent is not decided yet cannot enter a score', async ({
@@ -274,6 +404,26 @@ test('active and past tournaments are separate sections and a past one opens rea
   );
   await expect(page.getByRole('button', { name: 'Enter score' })).toHaveCount(0);
   await expect(page.getByTestId('event-played')).toBeVisible();
+});
+
+test('a finished event leads with its final standings', async ({ page, request }) => {
+  const { id, headers } = await createTournament(request, 'mex', `Final ${Date.now()}`);
+  const matches = await (await request.get(`/api/tournaments/${id}/mex/matches`)).json();
+  for (const m of matches.current_matches as Match[])
+    await request.post(`/api/tournaments/${id}/mex/record`, {
+      headers,
+      data: { match_id: m.id, score1: 14, score2: 10 },
+    });
+  expect((await request.post(`/api/tournaments/${id}/mex/end`, { headers })).ok()).toBeTruthy();
+  expect((await request.post(`/api/tournaments/${id}/mex/finish`, { headers })).ok()).toBeTruthy();
+  const { session } = await profileFor(request, id, 'Ana', 'final');
+  await openHub(page, session.access_token);
+  await page.goto(`/player/matches/tournament/${id}`);
+  const standings = page.getByTestId('event-standings');
+  await expect(standings.getByRole('heading', { name: 'Final standings' })).toBeVisible();
+  const played = page.getByTestId('event-played');
+  await expect(played).toBeVisible();
+  expect((await standings.boundingBox())!.y).toBeLessThan((await played.boundingBox())!.y);
 });
 
 test('a picked community scope does not hide tournaments in progress', async ({

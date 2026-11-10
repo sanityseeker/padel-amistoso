@@ -1,0 +1,93 @@
+/* Current rank: the headline number. */
+.now {
+  font-family: var(--font-display);
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.headline {
+  border-radius: var(--mantine-radius-sm);
+}
+.headline:not(:disabled) {
+  cursor: pointer;
+}
+.total {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Rank chart: one 2px line in the sport colour, 8px dots ringed with the surface, hairline frame. */
+.chart {
+  position: relative;
+  touch-action: pan-y;
+}
+.chart svg {
+  display: block;
+  overflow: visible;
+}
+.grid {
+  stroke: var(--app-divider);
+  stroke-width: 1;
+}
+.axis {
+  fill: var(--color-text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.line {
+  fill: none;
+  stroke: var(--sport-accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.dot {
+  fill: var(--sport-accent);
+  stroke: var(--app-surface);
+  stroke-width: 2;
+}
+/* A round sat out keeps its standing but played no match: a hollow dot. */
+.dot[data-sat-out] {
+  fill: var(--app-surface);
+  stroke: var(--sport-accent);
+}
+.crosshair {
+  stroke: var(--color-text-muted);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+.end {
+  fill: var(--color-text);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+}
+.tip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  padding: 6px 10px;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+}
+
+/* Moving up the table is good (green arrow), down is bad (red arrow); the number stays in text ink. */
+.move {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  font-size: var(--mantine-font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+.move[data-dir='up'] svg {
+  color: var(--color-success);
+}
+.move[data-dir='down'] svg {
+  color: var(--color-error);
+}

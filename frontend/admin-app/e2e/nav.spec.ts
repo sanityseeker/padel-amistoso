@@ -20,7 +20,7 @@ test('the support footer is on every route, including logins and 404', async ({ 
   await expectFooter(page);
 });
 
-test('anonymous visitors see Events and Player Hub plus the Admin key link only', async ({
+test('anonymous visitors get a player Sign in; the organizer door is on the player login', async ({
   page,
 }) => {
   await page.goto('/events');
@@ -28,8 +28,15 @@ test('anonymous visitors see Events and Player Hub plus the Admin key link only'
   await expect(nav.getByRole('link', { name: 'Events' })).toHaveAttribute('aria-current', 'page');
   await expect(nav.getByRole('link', { name: 'Player Hub' })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'Admin' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Admin sign in' })).toHaveAttribute('href', '/admin');
+  await expect(page.getByRole('link', { name: 'Admin sign in' })).toHaveCount(0);
   await expect(page.getByText('Administration', { exact: true })).toHaveCount(0);
+  await page.locator('.app-header').getByRole('link', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Player Hub' })).toBeVisible();
+  // The login form is the page now, so the header does not offer Sign in again.
+  await expect(
+    page.locator('.app-header').getByRole('link', { name: 'Sign in', exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Admin sign in' })).toHaveAttribute('href', '/admin');
 });
 
 test('the login offers password recovery and no separate account help', async ({ page }) => {
@@ -62,7 +69,7 @@ test('switching Events, Player Hub and Admin never reloads the document', async 
   expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1);
   // Language is shared, and logging out of admin leaves the Player Hub area usable.
   await chooseLanguage(page, 'Español');
-  await expect(page.getByRole('heading', { name: 'Torneos' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Torneos', exact: true })).toBeVisible();
   await chooseLanguage(page, 'English');
   await logoutAdmin(page);
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
@@ -118,7 +125,11 @@ test('phone header has one small Display button and keeps the admin entry in the
   expect(box.x).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width).toBeLessThanOrEqual(390);
   await page.keyboard.press('Escape');
-  await expect(header.getByRole('link', { name: 'Admin sign in' })).toBeVisible();
+  await expect(header.getByRole('link', { name: 'Sign in', exact: true })).toHaveAttribute(
+    'href',
+    '/player',
+  );
+  await expect(header.getByRole('link', { name: 'Admin sign in' })).toHaveCount(0);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();

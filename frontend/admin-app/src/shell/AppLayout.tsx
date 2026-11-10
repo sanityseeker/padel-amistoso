@@ -106,17 +106,23 @@ function Layout() {
             <TournamentDock rail={rail} />
           </AppShell.Navbar>
         )}
-        <AppShell.Main miw={0} pb={showTabs ? FOOTER : undefined}>
-          <TopBarActionContext.Provider
-            value={{ action: topBarAction, setAction: setTopBarAction }}
-          >
-            <ErrorBoundary key={pathname}>
-              {adminChrome && <SubdomainBanner />}
-              <Suspense fallback={<Loading />}>
-                <Outlet />
-              </Suspense>
-            </ErrorBoundary>
-          </TopBarActionContext.Provider>
+        <AppShell.Main
+          miw={0}
+          pb={showTabs ? FOOTER : undefined}
+          style={{ display: 'flex', flexDirection: 'column' }}
+        >
+          <div style={{ width: '100%', minWidth: 0 }}>
+            <TopBarActionContext.Provider
+              value={{ action: topBarAction, setAction: setTopBarAction }}
+            >
+              <ErrorBoundary key={pathname}>
+                {adminChrome && <SubdomainBanner />}
+                <Suspense fallback={<Loading />}>
+                  <Outlet />
+                </Suspense>
+              </ErrorBoundary>
+            </TopBarActionContext.Provider>
+          </div>
           <SupportFooter />
         </AppShell.Main>
         {showAside && route.id && (

@@ -15,6 +15,12 @@
   font-size: 0.65rem;
   font-weight: 700;
 }
+/* The header's player menu: the same initials, at a size you can aim at. */
+.avatar[data-size='lg'] {
+  width: 30px;
+  height: 30px;
+  font-size: 0.75rem;
+}
 .titleButton {
   min-width: 0;
   flex: 1 1 auto;

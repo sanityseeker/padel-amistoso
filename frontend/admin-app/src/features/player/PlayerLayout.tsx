@@ -1,24 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  Alert,
-  Avatar,
-  Button,
-  Container,
-  Group,
-  Indicator,
-  NavLink,
-  Stack,
-  Tabs,
-} from '@mantine/core';
+import { Alert, Button, Container, Group, Indicator, NavLink, Stack, Tabs } from '@mantine/core';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { IconChartLine, IconHome, IconPlus, IconTrophy, IconUser } from '@tabler/icons-react';
+import { IconChartLine, IconHome, IconListCheck, IconPlus, IconUser } from '@tabler/icons-react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { t as tx, useLocale } from '../../i18n';
 import { ErrorState, Loading } from '../../components';
 import { resolveHostClub } from '../../club-context';
 import { playerApi, saveSession } from '../../player/api';
 import { PlayerLogin } from '../../player/PlayerLogin';
-import { profileInitials, usePlayerSession } from '../../player/session';
+import { usePlayerSession } from '../../player/session';
 import type { Entry, Space } from '../../player/types';
 import { useLayoutMode } from '../../shell/layout';
 import { linkToken, participantPassphrase, verifyToken } from './linkParams';
@@ -36,9 +26,9 @@ const initialScope = () => {
 
 const SECTIONS = [
   { to: '/player', label: 'Hub', icon: IconHome, end: true },
-  { to: '/player/matches', label: 'Matches', icon: IconTrophy, end: false },
+  { to: '/player/matches', label: 'My events', icon: IconListCheck, end: false },
   { to: '/player/ratings', label: 'Ratings', icon: IconChartLine, end: false },
-  { to: '/player/me', label: 'Me', icon: IconUser, end: false },
+  { to: '/player/me', label: 'Profile', icon: IconUser, end: false },
 ] as const;
 
 function useDots(space: Space | undefined, entries: Entry[], signedIn: boolean) {
@@ -72,7 +62,7 @@ export function PlayerLayout() {
   const client = useQueryClient();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { token, logout, start } = usePlayerSession();
+  const { token, profile, logout, start } = usePlayerSession();
   const { mode } = useLayoutMode();
   const [linkBusy, setLinkBusy] = useState(!!(linkToken || verifyToken));
   const [linkError, setLinkError] = useState('');
@@ -131,6 +121,12 @@ export function PlayerLayout() {
     enabled: !!token && !linkBusy,
     queryFn: () => playerApi<Space>(`/player-profile/space?${params}`),
     refetchInterval: 30_000,
+    // A new community or club is a new query: keep showing the current page until it is back.
+    // Without this the whole Hub turns into a spinner, the page shrinks and the scroll resets to the
+    // top, so a player who picked a community halfway down has to scroll back to it. Only this
+    // player's own page is kept: after signing in as someone else nothing of the last one shows.
+    placeholderData: (previous) =>
+      previous && previous.profile.id === profile?.id ? previous : undefined,
   });
   // A picked community or club narrows ratings and history, never the tournaments in progress:
   // those come from the unscoped space. Club subdomains keep their deliberate restriction.
@@ -240,14 +236,6 @@ export function PlayerLayout() {
             component="nav"
             aria-label={tx('Player Hub')}
           >
-            <Group gap="sm" px="sm" py="xs" wrap="nowrap">
-              <Avatar radius="xl" color="court" aria-hidden>
-                {profileInitials(space.profile.name)}
-              </Avatar>
-              <Stack gap={0} miw={0}>
-                <span style={{ fontWeight: 650 }}>{space.profile.name}</span>
-              </Stack>
-            </Group>
             {SECTIONS.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}

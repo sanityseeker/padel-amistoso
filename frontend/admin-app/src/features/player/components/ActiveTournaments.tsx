@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Badge, Card, Group, Skeleton, Stack, Text, Title, UnstyledButton } from '@mantine/core';
-import { IconChevronRight } from '@tabler/icons-react';
+import { IconChevronRight, IconMessage } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { t as tx, useLocale } from '../../../i18n';
@@ -109,13 +109,21 @@ export function TournamentNavCard({ entry }: { entry: Entry }) {
           <MatchCard
             density="slot"
             testId="player-match"
+            courts={data.status.assign_courts !== false}
             match={toPlayerMatchView(pending, {
               decider: pending.effective_decider || data.tv.set_decider || 'full_set',
               expand: data.expand,
               playerId: entry.player_id,
             })}
             footer={<MatchActions match={pending} entry={entry} data={data} token={event.token} />}
-          />
+          >
+            {/* The organizer's note for this match, as on the event page. */}
+            {pending.comment && (
+              <Text size="sm" c="dimmed" data-testid="match-comment">
+                <IconMessage size={13} style={{ verticalAlign: '-2px' }} /> {pending.comment}
+              </Text>
+            )}
+          </MatchCard>
         </div>
       )}
     </Card>

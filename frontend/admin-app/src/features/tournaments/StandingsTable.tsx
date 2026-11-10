@@ -1,16 +1,7 @@
-import { Fragment, useState } from 'react';
-import {
-  ActionIcon,
-  Badge,
-  Collapse,
-  Skeleton,
-  Stack,
-  Table,
-  Text,
-  UnstyledButton,
-} from '@mantine/core';
+import { Fragment, useState, type CSSProperties } from 'react';
+import { ActionIcon, Badge, Skeleton, Stack, Table, Text, UnstyledButton } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
-import { IconId } from '@tabler/icons-react';
+import { IconChevronDown, IconId } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
 import classes from './StandingsTable.module.css';
 
@@ -101,7 +92,13 @@ function columnsFor(
     get: (r) => r.played ?? 0,
     min: 400,
   };
-  const wins: Column = { key: 'wins', label: tx('W'), title: tx('Wins'), get: (r) => r.wins ?? 0 };
+  const wins: Column = {
+    key: 'wins',
+    label: tx('W'),
+    title: tx('Wins'),
+    get: (r) => r.wins ?? 0,
+    min: 280,
+  };
   const losses: Column = {
     key: 'losses',
     label: tx('L'),
@@ -223,6 +220,8 @@ export function StandingsTable({
     !board && (hidden.some((c) => c.get(r) != null) || !!r.note);
   const deciding =
     preset === 'mexicano' && !sort ? (rows[0]?.rankedByAvg ? 'avg' : 'points') : undefined;
+  // One bold column: the sorted one, else the one that decides the rank, else the main score.
+  const strong = sort?.key ?? deciding ?? all.find((c) => c.score)?.key;
   const sorted = sort
     ? [...rows].sort((a, b) => {
         const col = all.find((c) => c.key === sort.key);
@@ -245,6 +244,10 @@ export function StandingsTable({
     const v = c.get(r);
     return v == null ? '—' : c.digits ? v.toFixed(c.digits) : v;
   };
+  // A number column is as wide as its longest value or its header (plus the sort arrow), so the
+  // name keeps the rest of the row.
+  const chars = (c: Column) =>
+    Math.max(c.label.length * 0.8 + 1.2, ...rows.map((r) => String(fmt(c, r)).length));
   return (
     <Stack gap="xs" ref={boxRef} className={classes.box}>
       <Table.ScrollContainer minWidth={0}>
@@ -259,16 +262,16 @@ export function StandingsTable({
               <Table.Th className={classes.name}>{nameLabel ?? tx('Player')}</Table.Th>
               {visible.map((c) => {
                 const active = sort?.key === c.key;
-                const bold = active || deciding === c.key;
                 return (
                   <Table.Th
                     key={c.key}
                     className={classes.num}
+                    style={{ '--chars': chars(c) } as CSSProperties}
                     title={c.title}
                     aria-sort={
                       active ? (sort.dir === 'desc' ? 'descending' : 'ascending') : undefined
                     }
-                    data-deciding={bold ? '' : undefined}
+                    data-deciding={strong === c.key ? '' : undefined}
                   >
                     {board ? (
                       c.label
@@ -306,27 +309,16 @@ export function StandingsTable({
                     className={classes.row}
                     data-self={r.id === highlightId ? '' : undefined}
                     data-removed={r.removed ? '' : undefined}
+                    data-open={expandable && open === r.id ? '' : undefined}
                     data-cut={!sort && qualifyCount && i === qualifyCount - 1 ? '' : undefined}
                   >
                     <Table.Td className={classes.rank}>
-                      {place == null ? (
-                        <Text span c="dimmed">
-                          —
-                        </Text>
-                      ) : place <= 3 && !sort ? (
-                        <span className={classes.mark} data-rank={place}>
-                          {place}
-                        </span>
-                      ) : (
-                        <Text
-                          span
-                          c="dimmed"
-                          fw={700}
-                          fz={density === 'tv' ? 'inherit' : undefined}
-                        >
-                          {place}
-                        </Text>
-                      )}
+                      <span
+                        className={classes.mark}
+                        data-rank={place != null && place <= 3 && !sort ? place : undefined}
+                      >
+                        {place ?? '—'}
+                      </span>
                     </Table.Td>
                     <Table.Td className={classes.name}>
                       <div className={classes.nameLine}>
@@ -338,6 +330,12 @@ export function StandingsTable({
                             onClick={() => setOpen(open === r.id ? null : r.id)}
                           >
                             <span className={classes.nameText}>{r.name}</span>
+                            <IconChevronDown
+                              size={14}
+                              className={classes.chevron}
+                              data-open={open === r.id ? '' : undefined}
+                              aria-hidden
+                            />
                           </UnstyledButton>
                         ) : (
                           <span
@@ -374,35 +372,33 @@ export function StandingsTable({
                       <Table.Td
                         key={c.key}
                         className={classes.num}
-                        data-deciding={
-                          deciding === c.key || (sort && sort.key === c.key) ? '' : undefined
-                        }
+                        data-deciding={strong === c.key ? '' : undefined}
                       >
-                        {c.score ? (
-                          <Text span variant="score" fz={density === 'tv' ? 'inherit' : undefined}>
-                            {fmt(c, r)}
-                          </Text>
-                        ) : (
-                          fmt(c, r)
-                        )}
+                        {fmt(c, r)}
                       </Table.Td>
                     ))}
                   </Table.Tr>
                   {expandable && open === r.id && (
-                    <Table.Tr>
-                      <Table.Td colSpan={colSpan}>
-                        <Collapse expanded>
-                          <Text size="sm" c="dimmed">
-                            {[
-                              ...hidden
-                                .filter((c) => c.get(r) != null)
-                                .map((c) => `${c.title ?? c.label} ${fmt(c, r)}`),
-                              r.note,
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
+                    <Table.Tr
+                      className={classes.detailRow}
+                      data-self={r.id === highlightId ? '' : undefined}
+                    >
+                      <Table.Td colSpan={colSpan} className={classes.detail}>
+                        <dl className={classes.stats}>
+                          {hidden
+                            .filter((c) => c.get(r) != null)
+                            .map((c) => (
+                              <div key={c.key}>
+                                <dt>{c.title ?? c.label}</dt>
+                                <dd>{fmt(c, r)}</dd>
+                              </div>
+                            ))}
+                        </dl>
+                        {r.note && (
+                          <Text size="sm" c="dimmed" mt="xs">
+                            {r.note}
                           </Text>
-                        </Collapse>
+                        )}
                       </Table.Td>
                     </Table.Tr>
                   )}

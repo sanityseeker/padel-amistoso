@@ -35,6 +35,7 @@ export function MatchList({
   renderEditor,
   renderMenu,
   quick,
+  courts = true,
 }: {
   matches: Match[];
   ctx: Ctx;
@@ -49,6 +50,8 @@ export function MatchList({
   renderMenu?: (match: Match) => ReactNode;
   /** Desktop: pending points matches show their score boxes in the row (no Score button first). */
   quick?: { totalPoints: number; onSave: (match: Match, payload: ScorePayload) => void };
+  /** `false` when the tournament does not assign courts. */
+  courts?: boolean;
 }) {
   useLocale();
   const showQuick = (m: Match) => inputFormat(m, ctx, settings) === 'points';
@@ -63,6 +66,7 @@ export function MatchList({
           <MatchCard
             key={m.id}
             match={view}
+            courts={courts}
             selected={selectedId === m.id}
             editor={editingId === m.id ? renderEditor?.(m) : undefined}
             actions={

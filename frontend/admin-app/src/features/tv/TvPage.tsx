@@ -4,7 +4,6 @@ import {
   Alert,
   Badge,
   Box,
-  Button,
   Group,
   Image,
   Paper,
@@ -16,7 +15,6 @@ import {
 } from '@mantine/core';
 import { useDocumentTitle } from '@mantine/hooks';
 import {
-  IconArrowLeft,
   IconMaximize,
   IconSpeakerphone,
   IconMinimize,
@@ -30,6 +28,7 @@ import { ApiError } from '../../api';
 import { ErrorState, Loading } from '../../components';
 import { publicApi } from '../../events/api';
 import { t as tx, useLocale } from '../../i18n';
+import { BrandLogo } from '../../BrandLogo';
 import { DisplayButton } from '../../shell/DisplayMenu';
 import { followTournament, TOURNAMENT_UPDATE_EVENT } from '../../shell/followTournament';
 import { sportProps } from '../../theme';
@@ -199,75 +198,67 @@ export function TvPage() {
   const finished = !!data?.status.champion || phase === 'finished';
   return (
     <Box className={classes.page} {...sportProps(meta.sport)} data-testid="tv-page">
-      <Stack gap="lg" p={{ base: 'sm', sm: 'lg', lg: 'xl' }} maw={3600} mx="auto">
-        <Group justify="space-between" wrap="wrap" gap="xs">
-          <Button
-            component={Link}
-            to="/events"
-            size="tv"
-            variant="subtle"
-            color="gray"
-            leftSection={<IconArrowLeft size={18} />}
-          >
-            {tx('Events')}
-          </Button>
-          <Group gap="xs" wrap="wrap" justify="flex-end">
-            {data && mode > 0 && (
-              <Text c="dimmed" className={classes.small} role="status" aria-live="off">
-                {tx('Refreshes in {seconds}s', { seconds: countdown })}
-              </Text>
-            )}
-            {data && mode === 0 && (
-              <Text c="dimmed" className={classes.small}>
-                {tx('Manual only')}
-              </Text>
-            )}
-            {data && mode !== -1 && (
-              <Tooltip label={tx('Refresh now')}>
-                <ActionIcon
-                  size="tv"
-                  variant="default"
-                  aria-label={tx('Refresh now')}
-                  loading={live.isFetching}
-                  onClick={() => {
-                    void live.refetch();
-                    player.refreshOpponents();
-                  }}
-                >
-                  <IconRefresh size={20} />
-                </ActionIcon>
-              </Tooltip>
-            )}
-            {sections.length > 1 && (
-              <Tooltip label={present ? tx('Show all sections') : tx('Cycle the sections')}>
-                <ActionIcon
-                  size="tv"
-                  variant={present ? 'filled' : 'default'}
-                  aria-label={present ? tx('Show all sections') : tx('Cycle the sections')}
-                  aria-pressed={present}
-                  onClick={() => setPresent((p) => !p)}
-                >
-                  {present ? <IconPlayerPause size={20} /> : <IconPlayerPlay size={20} />}
-                </ActionIcon>
-              </Tooltip>
-            )}
-            <Tooltip label={fullscreen ? tx('Exit full screen') : tx('Full screen')}>
+      {/* The same slim bar as the app header: the logo home to Events, the screen's controls and the
+          player's initials on the right. The refresh countdown is words, so it waits for room. */}
+      <header className={classes.bar}>
+        <Link to="/events" className={classes.home} aria-label={tx('Events')}>
+          <BrandLogo size={32} />
+        </Link>
+        <Group gap={2} wrap="nowrap" justify="flex-end" miw={0}>
+          {data && mode > 0 && (
+            <Text c="dimmed" size="sm" visibleFrom="sm" mr="xs" role="status" aria-live="off">
+              {tx('Refreshes in {seconds}s', { seconds: countdown })}
+            </Text>
+          )}
+          {data && mode === 0 && (
+            <Text c="dimmed" size="sm" visibleFrom="sm" mr="xs">
+              {tx('Manual only')}
+            </Text>
+          )}
+          {data && mode !== -1 && (
+            <Tooltip label={tx('Refresh now')}>
               <ActionIcon
-                size="tv"
-                variant="default"
-                aria-label={fullscreen ? tx('Exit full screen') : tx('Full screen')}
-                onClick={() => void toggleFullscreen()}
+                size="lg"
+                aria-label={tx('Refresh now')}
+                loading={live.isFetching}
+                onClick={() => {
+                  void live.refetch();
+                  player.refreshOpponents();
+                }}
               >
-                {fullscreen ? <IconMinimize size={20} /> : <IconMaximize size={20} />}
+                <IconRefresh size={19} />
               </ActionIcon>
             </Tooltip>
-            <DisplayButton compact />
-            {data && data.settings.allow_player_scoring !== false && tid && (
-              <TvPlayerBar tid={tid} player={player} />
-            )}
-          </Group>
+          )}
+          {sections.length > 1 && (
+            <Tooltip label={present ? tx('Show all sections') : tx('Cycle the sections')}>
+              <ActionIcon
+                size="lg"
+                variant={present ? 'filled' : undefined}
+                aria-label={present ? tx('Show all sections') : tx('Cycle the sections')}
+                aria-pressed={present}
+                onClick={() => setPresent((p) => !p)}
+              >
+                {present ? <IconPlayerPause size={19} /> : <IconPlayerPlay size={19} />}
+              </ActionIcon>
+            </Tooltip>
+          )}
+          <Tooltip label={fullscreen ? tx('Exit full screen') : tx('Full screen')}>
+            <ActionIcon
+              size="lg"
+              aria-label={fullscreen ? tx('Exit full screen') : tx('Full screen')}
+              onClick={() => void toggleFullscreen()}
+            >
+              {fullscreen ? <IconMinimize size={19} /> : <IconMaximize size={19} />}
+            </ActionIcon>
+          </Tooltip>
+          <DisplayButton compact />
+          {data && data.settings.allow_player_scoring !== false && tid && (
+            <TvPlayerBar tid={tid} player={player} />
+          )}
         </Group>
-
+      </header>
+      <Stack gap="lg" p={{ base: 'sm', sm: 'lg', lg: 'xl' }} maw={3600} mx="auto">
         <Stack gap="xs" align="center" ta="center">
           <Group gap="md" justify="center" wrap="nowrap" maw="100%">
             {meta.club_logo_url && (

@@ -13,12 +13,13 @@ import {
   toStandingRows,
 } from '../../tournaments';
 import { EmptyState, StatusBadge } from '../../../ui';
+import { PlayedList, resultOf } from '../components/PlayedList';
 import { PushToggle } from '../components/PushToggle';
-import { TournamentPath } from '../components/TournamentPath';
+import { playedPath, TournamentPath, useTournamentPath } from '../components/TournamentPath';
 import { sportProps } from '../../../theme';
 import { phaseText } from '../components/ActiveTournaments';
 import { usePlayerSpace } from '../context';
-import type { PlayerMatch } from '../../../player/types';
+import type { PathRound, PlayerMatch } from '../../../player/types';
 import { useEventData } from '../eventData';
 import { MatchActions } from '../MatchActions';
 
@@ -34,6 +35,11 @@ export default function Event() {
     space.entries.find((e) => e.entity_type === kind && e.entity_id === id);
   const tournament = entry?.entity_type === 'tournament' && !entry.entity_deleted;
   const event = useEventData(tournament ? entry : undefined);
+  const ranked =
+    tournament &&
+    (entry.tournament_type === 'group_playoff' || entry.tournament_type === 'mexicano');
+  // One request: the summary card draws it, the Played rows take each round's rank from it.
+  const path = useTournamentPath(ranked ? entry : undefined);
 
   if (!entry && liveLoading) return <Loading />;
   if (!entry)
@@ -111,17 +117,21 @@ export default function Event() {
           preset: 'group' as const,
         }))
       : [];
+  const viewOf = (m: PlayerMatch) =>
+    toPlayerMatchView(m, {
+      decider: m.effective_decider || data?.tv.set_decider || 'full_set',
+      expand: data?.expand ?? ((ids) => ids),
+      playerId: entry.player_id,
+    });
+  // Rows inside one frame (the frame draws the border, hairlines split the rows).
   const card = (m: PlayerMatch, actions: boolean) =>
     data && (
       <MatchCard
         key={m.id}
-        match={toPlayerMatchView(m, {
-          decider: m.effective_decider || data.tv.set_decider || 'full_set',
-          expand: data.expand,
-          playerId: entry.player_id,
-        })}
-        density="card"
+        match={viewOf(m)}
+        density="row"
         testId="player-match"
+        courts={data.status.assign_courts !== false}
         footer={
           actions ? (
             <MatchActions match={m} entry={entry} data={data} token={event.token} />
@@ -165,6 +175,59 @@ export default function Event() {
     : [];
   const noMatches =
     !!data && !data.matches.length && !data.finished && !data.withdrawn && !data.sittingOut;
+  const inProgress = !!data && !data.finished && !data.sittingOut && !data.withdrawn;
+  const pathRounds =
+    path.data?.available && path.data.rounds.length
+      ? playedPath(path.data.rounds, inProgress)
+      : undefined;
+  const played = (data?.schedule.played ?? []).map((m) => ({
+    view: viewOf(m),
+    comment: m.comment,
+  }));
+  const results = Object.fromEntries(
+    played.map((p) => [p.view.roundLabel ?? '', resultOf(p.view)]),
+  );
+  // Once the event is over the final table is the result, so it leads the page; while it runs, Up
+  // next leads and the table sits under your own rounds, a tap away from the overview.
+  const standingsBlock = standings.length > 0 && (
+    <Stack gap="sm" data-testid="event-standings">
+      <Title order={2}>{tx(data?.finished ? 'Final standings' : 'Standings')}</Title>
+      {standings.map((s) => (
+        <Paper key={s.name} p={{ base: 'xs', sm: 'md' }}>
+          {s.name && (
+            <Text variant="eyebrow" mb="xs">
+              {tx('Group {name}', { name: s.name })}
+            </Text>
+          )}
+          <StandingsTable
+            rows={toStandingRows(s.rows)}
+            preset={s.preset}
+            highlightId={entry.player_id}
+          />
+        </Paper>
+      ))}
+    </Stack>
+  );
+  // Bring an element into view and mark it for a moment (a row the overview points at).
+  const flash = (el: HTMLElement | null) => {
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.removeAttribute('data-flash');
+    void el.offsetWidth;
+    el.setAttribute('data-flash', '');
+    window.setTimeout(() => el.removeAttribute('data-flash'), 1700);
+  };
+  const showStandings = () => {
+    const section = document.querySelector<HTMLElement>('[data-testid="event-standings"]');
+    flash(section?.querySelector<HTMLElement>('tr[data-self]') ?? section ?? null);
+  };
+  // A tap on the rank chart brings that round's row into view and marks it for a moment.
+  const showRound = (row: PathRound) =>
+    flash(
+      document.querySelector<HTMLElement>(
+        `[data-testid="event-played"] [data-round="${CSS.escape(row.round_label)}"]`,
+      ),
+    );
   return (
     <Stack gap="xl">
       {head}
@@ -177,9 +240,27 @@ export default function Event() {
       )}
       {data && (
         <>
+          {data.finished && standingsBlock}
           {section(tx('Up next'), upNext, true, 'event-up-next')}
           {section(tx('Later'), data.schedule.next, true, 'event-later')}
-          {section(tx('Played'), data.schedule.played, false, 'event-played')}
+          {/* Overview first: where you stand. Then each round's story in Played. */}
+          {ranked && (
+            <Stack gap="sm">
+              <Title order={2}>{tx('Your tournament')}</Title>
+              <TournamentPath
+                entry={entry}
+                inProgress={inProgress}
+                results={results}
+                onSelect={showRound}
+                onShowStandings={standings.length > 0 ? showStandings : undefined}
+              />
+            </Stack>
+          )}
+          {played.length > 0 && (
+            <Stack gap="sm">
+              <PlayedList testId="event-played" items={played} path={pathRounds} />
+            </Stack>
+          )}
           {noMatches && (
             <EmptyState title={tx('Your court is waiting')}>
               {tx('Your organizer will publish pairings here when the next round is ready.')}
@@ -187,31 +268,7 @@ export default function Event() {
           )}
         </>
       )}
-      {standings.length > 0 && (
-        <Stack gap="sm">
-          <Title order={2}>{tx('Standings')}</Title>
-          {standings.map((s) => (
-            <Paper key={s.name} p="md">
-              {s.name && (
-                <Text variant="eyebrow" mb="xs">
-                  {tx('Group {name}', { name: s.name })}
-                </Text>
-              )}
-              <StandingsTable
-                rows={toStandingRows(s.rows)}
-                preset={s.preset}
-                highlightId={entry.player_id}
-              />
-            </Paper>
-          ))}
-        </Stack>
-      )}
-      {(entry.tournament_type === 'group_playoff' || entry.tournament_type === 'mexicano') && (
-        <Stack gap="sm">
-          <Title order={2}>{tx('Your path')}</Title>
-          <TournamentPath entry={entry} />
-        </Stack>
-      )}
+      {!data?.finished && standingsBlock}
       <Stack gap="xs">
         <Title order={2}>{tx('Notifications')}</Title>
         <PushToggle tid={id} token={event.token} />

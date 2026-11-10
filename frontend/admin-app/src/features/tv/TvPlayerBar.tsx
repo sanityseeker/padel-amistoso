@@ -3,22 +3,24 @@ import {
   ActionIcon,
   Alert,
   Anchor,
+  Box,
   Button,
   CopyButton,
   Divider,
   Group,
+  Menu,
   Modal,
-  Popover,
   Stack,
   Text,
   TextInput,
-  UnstyledButton,
 } from '@mantine/core';
-import { IconChevronDown, IconKey, IconUser, IconX } from '@tabler/icons-react';
+import { IconCheck, IconCopy, IconLogout, IconUser, IconX } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
 import { isDemoInstance } from '../../shell/env';
 import { PushToggle, pushSupported } from '../player/components/PushToggle';
 import { PLAYER_DATA } from '../../player/api';
+import { profileInitials } from '../../player/session';
+import shell from '../../shell/Shell.module.css';
 import type { useTvPlayer } from './useTvPlayer';
 
 type Player = ReturnType<typeof useTvPlayer>;
@@ -126,7 +128,6 @@ function LoginModal({
 export function TvPlayerBar({ tid, player }: { tid: string; player: Player }) {
   useLocale();
   const [login, setLogin] = useState(false);
-  const [panel, setPanel] = useState(false);
   const session = player.session;
   const byRound = new Map<number, typeof player.opponents>();
   for (const o of player.opponents)
@@ -137,13 +138,8 @@ export function TvPlayerBar({ tid, player }: { tid: string; player: Player }) {
   if (!session)
     return (
       <Stack gap={4} align="flex-end">
-        <Button
-          size="tv"
-          variant="default"
-          leftSection={<IconKey size={18} />}
-          onClick={() => setLogin(true)}
-        >
-          {tx('Player Login')}
+        <Button variant="light" size="compact-md" h="var(--tap-md)" onClick={() => setLogin(true)}>
+          {tx('Sign in')}
         </Button>
         {player.tokenFailed && (
           <Text size="xs" c="red" role="alert">
@@ -153,85 +149,72 @@ export function TvPlayerBar({ tid, player }: { tid: string; player: Player }) {
         <LoginModal opened={login} onClose={() => setLogin(false)} player={player} />
       </Stack>
     );
+  const name = session.playerName || session.playerId;
+  // Opponents who shared a contact, to arrange the match; the court card already names everyone.
+  const reachable = [...byRound].flatMap(([round, list]) =>
+    list.filter((o) => o.contact).map((o) => ({ ...o, round })),
+  );
+  const round = reachable[0]?.round ?? 0;
   return (
-    <Popover opened={panel} onChange={setPanel} width={340} position="bottom-end" shadow="md">
-      <Popover.Target>
-        <Button
-          size="tv"
-          variant="light"
-          leftSection={<IconKey size={18} />}
-          rightSection={<IconChevronDown size={16} />}
-          aria-expanded={panel}
-          onClick={() => setPanel((o) => !o)}
-        >
-          {session.playerName || session.playerId}
-        </Button>
-      </Popover.Target>
-      <Popover.Dropdown>
-        <Stack gap="sm" data-testid="tv-player-panel">
-          <Text variant="eyebrow">{tx('You play with')}</Text>
-          {player.opponents.length === 0
-            ? player.opponentsLoaded && (
-                <Text size="sm" c="dimmed">
-                  {tx('No upcoming matches yet')}
-                </Text>
-              )
-            : [...byRound].map(([round, list]) => (
-                <Stack key={round} gap={4}>
-                  {round > 0 && (
-                    <Text size="xs" c="dimmed">
-                      {tx('Round')} {round}
-                    </Text>
-                  )}
-                  {list.map((o) => (
-                    <Group key={o.match_id + o.player_id} justify="space-between" wrap="nowrap">
-                      <Text size="sm">{o.name}</Text>
-                      {o.contact && (
-                        <CopyButton value={o.contact}>
-                          {({ copied, copy }) => (
-                            <UnstyledButton onClick={copy} title={tx('Click to copy')}>
-                              <Text size="sm" c="court" ff="monospace">
-                                {copied ? tx('Copied') : o.contact}
-                              </Text>
-                            </UnstyledButton>
-                          )}
-                        </CopyButton>
-                      )}
-                    </Group>
-                  ))}
-                </Stack>
-              ))}
-          {session.hubPassphrase && !isDemoInstance() && (
-            <Stack gap={4}>
-              <Text variant="eyebrow">{tx('Your Player Hub')}</Text>
-              <CopyButton value={session.hubPassphrase}>
+    <Menu position="bottom-end" width={280} withinPortal>
+      <Menu.Target>
+        {/* The same initials as the app header's player menu. */}
+        <ActionIcon size="touch" aria-label={tx('Player menu: {name}', { name })} title={name}>
+          <span className={shell.avatar} data-size="lg" aria-hidden="true">
+            {profileInitials(name)}
+          </span>
+        </ActionIcon>
+      </Menu.Target>
+      <Menu.Dropdown data-testid="tv-player-panel">
+        <Menu.Label>{name}</Menu.Label>
+        {reachable.length > 0 && (
+          <>
+            <Menu.Divider />
+            <Menu.Label>
+              {round > 0 ? tx('Round {n} · your opponents', { n: round }) : tx('Your opponents')}
+            </Menu.Label>
+            {reachable.map((o) => (
+              <CopyButton key={o.match_id + o.player_id} value={o.contact!}>
                 {({ copied, copy }) => (
-                  <UnstyledButton onClick={copy} title={tx('Click to copy')}>
-                    <Text ff="monospace" fw={600}>
-                      {copied ? tx('Copied') : session.hubPassphrase}
-                    </Text>
-                  </UnstyledButton>
+                  <Menu.Item
+                    closeMenuOnClick={false}
+                    leftSection={copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                    rightSection={
+                      <Text size="xs" c="dimmed" ff="monospace">
+                        {copied ? tx('Copied') : o.contact}
+                      </Text>
+                    }
+                    onClick={copy}
+                    aria-label={tx('Copy the contact of {name}', { name: o.name })}
+                  >
+                    {o.name}
+                  </Menu.Item>
                 )}
               </CopyButton>
-              {session.hubAccessToken && (
-                <Anchor
-                  href={`/player#token=${encodeURIComponent(session.hubAccessToken)}`}
-                  target="_blank"
-                  rel="noopener"
-                  size="sm"
-                >
-                  {tx('Open Player Hub')}
-                </Anchor>
-              )}
-            </Stack>
-          )}
-          {pushSupported() && <PushToggle tid={tid} token={player.token} />}
-          <Button variant="default" onClick={player.logout}>
-            {tx('Logout')}
-          </Button>
-        </Stack>
-      </Popover.Dropdown>
-    </Popover>
+            ))}
+          </>
+        )}
+        <Menu.Divider />
+        {session.hubAccessToken && !isDemoInstance() && (
+          <Menu.Item
+            component="a"
+            href={`/player#token=${encodeURIComponent(session.hubAccessToken)}`}
+            leftSection={<IconUser size={16} />}
+          >
+            {tx('My Player Hub')}
+          </Menu.Item>
+        )}
+        {pushSupported() && (
+          <Box px="sm" py={6}>
+            <PushToggle tid={tid} token={player.token} />
+          </Box>
+        )}
+        <Menu.Divider />
+        <Menu.Item color="red" leftSection={<IconLogout size={16} />} onClick={player.logout}>
+          {tx('Log out')}
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
   );
 }
 

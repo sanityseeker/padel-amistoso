@@ -30,12 +30,14 @@ export function ReviewQueue({
   ctx,
   settings,
   onOverride,
+  courts = true,
 }: {
   tid: string;
   items: ReviewItem[];
   ctx: Ctx;
   settings: TvSettings;
   onOverride: (match: Match, purpose: 'record' | 'resolve') => void;
+  courts?: boolean;
 }) {
   useLocale();
   const actions = useReviewActions(tid);
@@ -77,6 +79,7 @@ export function ReviewQueue({
             key={m.id}
             testId={null}
             kind={kind}
+            courts={courts}
             match={toMatchView(m, settings, ctx)}
             footer={
               <Group gap="xs" pt="sm">

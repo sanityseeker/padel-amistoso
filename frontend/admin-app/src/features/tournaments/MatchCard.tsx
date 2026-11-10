@@ -72,6 +72,8 @@ export interface MatchCardProps {
   hideScores?: boolean;
   /** `false` drops the court from the meta line (the spectator court cards title it themselves). */
   showCourt?: boolean;
+  /** `false` when the tournament does not assign courts: no "No court assigned" placeholder. */
+  courts?: boolean;
   /** Spectator lists: a scheduled match of the signed-in player, tinted and labelled "Your match". */
   yours?: boolean;
 }
@@ -90,13 +92,14 @@ export function MatchCard({
   selected,
   hideScores,
   showCourt = true,
+  courts = true,
   yours,
 }: MatchCardProps) {
   useLocale();
   const tv = density === 'tv';
   const meta = [
     match.roundLabel && formatRoundLabel(match.roundLabel),
-    showCourt ? match.court || tx('No court assigned') : null,
+    showCourt ? match.court || (courts ? tx('No court assigned') : null) : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -117,21 +120,25 @@ export function MatchCard({
       data-yours={yours ? '' : undefined}
     >
       <div className={classes.body} data-extra={children ? '' : undefined}>
-        <Group gap={6} wrap="wrap" className={classes.meta} data-part="meta">
-          <Text variant="eyebrow" span fz={tv ? 'var(--fs-tv-sm)' : undefined}>
-            {meta}
-          </Text>
-          {yours && (
-            <Badge color="court" size="xs">
-              {tx('Your match')}
-            </Badge>
-          )}
-          {match.flags.map((f) => (
-            <StatusBadge key={f.key} tone={f.tone} variant={f.variant ?? 'light'} size="xs">
-              {f.label}
-            </StatusBadge>
-          ))}
-        </Group>
+        {(meta || yours || match.flags.length > 0) && (
+          <Group gap={6} wrap="wrap" className={classes.meta} data-part="meta">
+            {meta && (
+              <Text variant="eyebrow" span fz={tv ? 'var(--fs-tv-sm)' : undefined}>
+                {meta}
+              </Text>
+            )}
+            {yours && (
+              <Badge color="court" size="xs">
+                {tx('Your match')}
+              </Badge>
+            )}
+            {match.flags.map((f) => (
+              <StatusBadge key={f.key} tone={f.tone} variant={f.variant ?? 'light'} size="xs">
+                {f.label}
+              </StatusBadge>
+            ))}
+          </Group>
+        )}
         <Stack gap={2} miw={0} className={classes.sides}>
           <Side side={match.sides[0]} view={match} tv={tv} hideScore={hideScores} />
           <Side side={match.sides[1]} view={match} tv={tv} hideScore={hideScores} />

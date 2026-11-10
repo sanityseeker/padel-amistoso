@@ -1,0 +1,125 @@
+/* One row per match: result chip, who and where, score. Hairlines between rows come from the frame. */
+.row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--mantine-spacing-sm);
+  padding: 0.75rem var(--mantine-spacing-sm);
+}
+.row + .row {
+  border-top: 1px solid var(--app-divider);
+}
+.chip {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--mantine-radius-sm);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--mantine-font-size-sm);
+}
+.chip[data-result='won'] {
+  background: var(--color-result-won-bg);
+  color: var(--color-result-won-ink);
+  box-shadow: inset 0 0 0 1px var(--color-result-won-line);
+}
+.chip[data-result='lost'] {
+  background: var(--color-result-lost-bg);
+  color: var(--color-result-lost-ink);
+  box-shadow: inset 0 0 0 1px var(--color-result-lost-line);
+}
+/* A round sat out: a small hollow ring (the chart's sat-out dot) keeps the column; the row is slim. */
+.chip[data-result='none'] {
+  height: 1rem;
+  background: none;
+}
+.chip[data-result='none']::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--color-text-faint);
+}
+.row[data-kind='sat-out'] {
+  padding-block: 0.5rem;
+}
+.chip[data-result='drawn'] {
+  background: var(--color-result-drawn-bg);
+  color: var(--color-result-drawn-ink);
+  box-shadow: inset 0 0 0 1px var(--color-result-drawn-line);
+}
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.names {
+  overflow-wrap: break-word;
+}
+/* One line per side, like a scoreboard: names, then the score in a fixed column. Your pair is always
+   the top line; bold is the winner (names and score), the loser is muted, a draw keeps both plain. */
+.side {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: var(--mantine-spacing-md);
+  font-size: var(--mantine-font-size-sm);
+  color: var(--color-text-muted);
+}
+.side[data-outcome='win'] {
+  color: var(--color-text);
+  font-weight: 600;
+}
+.side[data-outcome='draw'] {
+  color: var(--color-text);
+}
+.digits {
+  display: flex;
+  gap: 0.75ch;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+/* Each number (the total or one set's games) gets the same width, so they line up down the list. */
+.digits > *,
+.digits:not(:has(> *)) {
+  min-width: 2ch;
+  text-align: right;
+}
+.side[data-outcome='win'] .digits {
+  font-weight: 700;
+}
+/* The meta line carries the round on the left and the rank after it on the right, above the score. */
+.metaLine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--mantine-spacing-md);
+}
+.standing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--mantine-font-size-xs);
+}
+.rank {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--color-text);
+}
+/* The round a tap on the rank chart points at. */
+.row[data-flash] {
+  animation: flash 1.6s ease-out;
+}
+@keyframes flash {
+  from {
+    background: var(--color-primary-highlight);
+  }
+  to {
+    background: transparent;
+  }
+}

@@ -17,8 +17,8 @@ function EntryPush({ entry }: { entry: Entry }) {
 }
 
 // Me: profile, email verification, passphrase, payments, notifications and the advanced tools.
-// Install, language and theme live in the top bar and the phone More menu, not here. Log out of
-// the Player Hub lives here and in the phone More menu.
+// Install, language and theme live in the top bar, not here. Log out of the Player Hub lives here and
+// in the header's player menu.
 export default function Me() {
   useLocale();
   const { space } = usePlayerSpace();
