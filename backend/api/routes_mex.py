@@ -12,6 +12,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 
+from .. import config
 from .club_elo import elo_scope, resolve_initial_strengths
 from .rate_limit import BoundedRateLimiter
 from ..auth.deps import get_current_user, get_current_user_optional, get_current_player, PlayerIdentity
@@ -69,7 +70,7 @@ router = APIRouter(prefix="/api/tournaments", tags=["mexicano"])
 
 _MEX = TournamentType.MEXICANO.value
 
-_CREATE_MAX_ATTEMPTS = 20
+_CREATE_MAX_ATTEMPTS = config.CREATE_RATE_LIMIT
 _CREATE_WINDOW_SECONDS = 60
 _CREATE_MAX_TRACKED_IPS = 4096
 

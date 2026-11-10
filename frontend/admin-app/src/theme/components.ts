@@ -52,9 +52,21 @@ export const components: MantineThemeComponents = {
     classNames: { content: classes.surface, header: classes.surface, overlay: classes.overlay },
   }),
   Overlay: Overlay.extend({ classNames: { root: classes.overlay } }),
-  Popover: Popover.extend({ classNames: { dropdown: classes.surface } }),
-  Menu: Menu.extend({ classNames: { dropdown: classes.surface } }),
-  Combobox: Combobox.extend({ classNames: { dropdown: classes.surface } }),
+  // Every dropdown (menus, selects, popovers) is placed against the viewport. Placed against the page,
+  // the one frame before it is measured counts as page content, and a phone widens the whole page to
+  // fit it: the header's right side and the dropdown itself end up off-screen.
+  Popover: Popover.extend({
+    defaultProps: { floatingStrategy: 'fixed' },
+    classNames: { dropdown: classes.surface },
+  }),
+  Menu: Menu.extend({
+    defaultProps: { floatingStrategy: 'fixed' },
+    classNames: { dropdown: classes.surface },
+  }),
+  Combobox: Combobox.extend({
+    defaultProps: { floatingStrategy: 'fixed' },
+    classNames: { dropdown: classes.surface },
+  }),
   Input: Input.extend({ classNames: { input: classes.input } }),
   SegmentedControl: SegmentedControl.extend({
     classNames: { root: classes.segmentedRoot, indicator: classes.segmentedIndicator },

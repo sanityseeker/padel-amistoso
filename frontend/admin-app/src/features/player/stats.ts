@@ -22,12 +22,33 @@ export const historyOf = (space: Space, sport: Sport): EloMatch[] =>
     .slice()
     .reverse();
 
-/** Win or loss of the last `n` rated matches, newest first (manual adjustments are skipped). */
-export const formOf = (space: Space, sport: Sport, n = 5): ('W' | 'L')[] =>
+export type FormResult = 'W' | 'L' | 'D';
+
+/** The result of a rated match for the player: from the score (sets won when it has sets), so a draw is
+    a draw whatever it did to the rating. Entries without a score or a side fall back to the rating change. */
+function resultOf(m: Space['elo_history'][number]): FormResult {
+  const side = m.team1?.some((p) => p.player_id === m.player_id)
+    ? 0
+    : m.team2?.some((p) => p.player_id === m.player_id)
+      ? 1
+      : null;
+  if (side == null) return m.elo_delta >= 0 ? 'W' : 'L';
+  const [mine, theirs] = m.sets?.length
+    ? [
+        m.sets.filter((s) => s[side]! > s[1 - side]!).length,
+        m.sets.filter((s) => s[side]! < s[1 - side]!).length,
+      ]
+    : [m.score?.[side], m.score?.[1 - side]];
+  if (mine == null || theirs == null) return m.elo_delta >= 0 ? 'W' : 'L';
+  return mine > theirs ? 'W' : mine < theirs ? 'L' : 'D';
+}
+
+/** Result of the last `n` rated matches, newest first (manual adjustments are skipped). */
+export const formOf = (space: Space, sport: Sport, n = 5): FormResult[] =>
   space.elo_history
     .filter((m) => m.sport === sport && !m.is_manual)
     .slice(0, n)
-    .map((m) => (m.elo_delta >= 0 ? 'W' : 'L'));
+    .map(resultOf);
 
 /** Rating change over the last `n` rated matches. */
 export const recentDelta = (space: Space, sport: Sport, n = 5): number =>

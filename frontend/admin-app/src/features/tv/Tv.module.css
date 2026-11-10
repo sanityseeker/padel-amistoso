@@ -53,7 +53,9 @@
 .groups {
   display: grid;
   gap: var(--mantine-spacing-lg);
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+  /* Standings type grows with the screen (--fs-tv-lg), so a table's minimum width grows with it:
+     about 26 of these widths for the rank and seven statistics, the rest for the name. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(var(--fs-tv-lg) * 34)), 1fr));
   align-items: start;
 }
 .chip {
@@ -80,4 +82,20 @@
   max-width: none;
   background: white;
   transform-origin: top left;
+}
+/* The page's own header bar, the same height and rule as the app header (which the TV route hides). */
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-xs);
+  height: 52px;
+  padding-inline: var(--mantine-spacing-xs);
+  border-bottom: 1px solid var(--app-divider);
+  background: var(--color-bg);
+}
+.home {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border-radius: var(--mantine-radius-sm);
 }

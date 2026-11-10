@@ -6,7 +6,16 @@ import { t as tx, useLocale } from '../i18n';
 export function SupportFooter() {
   useLocale();
   return (
-    <Group component="footer" justify="center" gap="xs" wrap="nowrap" px="sm" pt={48} pb={40}>
+    <Group
+      component="footer"
+      justify="center"
+      gap="xs"
+      wrap="nowrap"
+      px="sm"
+      pt={48}
+      pb={40}
+      mt="auto"
+    >
       <Button
         component="a"
         href="https://ko-fi.com/torneosamistosos"

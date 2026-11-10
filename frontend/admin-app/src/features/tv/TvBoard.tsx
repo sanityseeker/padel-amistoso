@@ -230,6 +230,7 @@ function TvMatch({
   scope,
   pending = false,
   court = false,
+  groupedRound = false,
   base,
   breakdown,
   playerMap,
@@ -239,6 +240,7 @@ function TvMatch({
   scope: Scope;
   pending?: boolean;
   court?: boolean;
+  groupedRound?: boolean;
   base?: string;
   breakdown?: Record<string, Breakdown>;
   playerMap?: Record<string, string>;
@@ -247,7 +249,7 @@ function TvMatch({
   const { live, player } = scope;
   const view = {
     ...toMatchView(m, live.settings, ctx),
-    roundLabel: roundTitle(m, base ?? m.round_label, scope.split) || null,
+    roundLabel: groupedRound ? null : roundTitle(m, base ?? m.round_label, scope.split) || null,
   };
   const data = scope.scoring(ctx);
   const ids = [...(m.team1_ids ?? []), ...(m.team2_ids ?? [])];
@@ -268,7 +270,7 @@ function TvMatch({
       density="tv"
       testId="tv-match"
       hideScores={pending}
-      showCourt={!court}
+      showCourt={!court && live.status.assign_courts !== false}
       yours={playing && pending && !court}
       footer={
         <>
@@ -355,10 +357,13 @@ function ScoreBreakdown({
 }
 
 /** Matches grouped by the round title they show, in first-seen order, with undecided matches last. */
-function byRound(matches: Match[], split: boolean) {
+function byRound(matches: Match[], split: boolean, insideGroup = false) {
   const groups = new Map<string, Match[]>();
   for (const m of matches) {
-    const key = roundTitle(m, m.round_label, split);
+    const groupRound = insideGroup ? /^Group .+ R(\d+)$/.exec(m.round_label) : null;
+    const key = groupRound
+      ? tx('Round {round}', { round: groupRound[1] })
+      : roundTitle(m, m.round_label, split);
     groups.set(key, [...(groups.get(key) ?? []), m]);
   }
   for (const [key, list] of groups) groups.set(key, sortTbdLast(list));
@@ -388,7 +393,7 @@ function PendingList({
         )}
         <div className={classes.courts}>
           {list.map((m) => (
-            <TvMatch key={m.id} m={m} ctx={ctx} scope={scope} pending />
+            <TvMatch key={m.id} m={m} ctx={ctx} scope={scope} pending groupedRound />
           ))}
         </div>
       </Stack>
@@ -417,7 +422,9 @@ function PendingList({
                 <Stack gap="md" pt="xs">
                   {block(
                     new Map(
-                      [...byRound(list, scope.split)].map(([k, v]) => [k, v] as [string, Match[]]),
+                      [...byRound(list, scope.split, true)].map(
+                        ([k, v]) => [k, v] as [string, Match[]],
+                      ),
                     ),
                   )}
                 </Stack>

@@ -26,6 +26,31 @@ function themeCssTokens(mode: keyof typeof legacyColors) {
     '--color-warning': c.warning,
     '--color-warning-text': c.warningText,
     '--color-error': c.error,
+    // Match results (W / L / D chips). Light: a solid win, a tinted loss. Dark: one tinted set with
+    // bright letters and a hairline, so no solid block glares and the draw does not vanish.
+    ...(mode === 'light'
+      ? {
+          '--color-result-won-bg': c.success,
+          '--color-result-won-ink': '#ffffff',
+          '--color-result-won-line': 'transparent',
+          '--color-result-lost-bg': `color-mix(in srgb, ${c.error} 13%, transparent)`,
+          '--color-result-lost-ink': c.error,
+          '--color-result-lost-line': 'transparent',
+          '--color-result-drawn-bg': c.surface2,
+          '--color-result-drawn-ink': c.muted,
+          '--color-result-drawn-line': c.border,
+        }
+      : {
+          '--color-result-won-bg': `color-mix(in srgb, ${c.success} 18%, transparent)`,
+          '--color-result-won-ink': `color-mix(in srgb, ${c.success} 70%, white)`,
+          '--color-result-won-line': `color-mix(in srgb, ${c.success} 45%, transparent)`,
+          '--color-result-lost-bg': `color-mix(in srgb, ${c.error} 16%, transparent)`,
+          '--color-result-lost-ink': `color-mix(in srgb, ${c.error} 65%, white)`,
+          '--color-result-lost-line': `color-mix(in srgb, ${c.error} 40%, transparent)`,
+          '--color-result-drawn-bg': `color-mix(in srgb, ${c.muted} 14%, transparent)`,
+          '--color-result-drawn-ink': c.text,
+          '--color-result-drawn-line': `color-mix(in srgb, ${c.muted} 40%, transparent)`,
+        }),
     '--color-yellow': c.gold,
     '--color-sport-tennis': c.tennis,
     '--color-sport-padel': c.primary,

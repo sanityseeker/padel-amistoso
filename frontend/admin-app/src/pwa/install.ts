@@ -25,20 +25,21 @@ export function isStandalone(): boolean {
   }
 }
 
-// Safari-family iOS browsers have no install event: users add the page to the
-// home screen from the share sheet. Chrome/Firefox/Edge on iOS cannot do that.
-export function isIosSafari(): boolean {
+// No iOS browser has an install event, but since iOS 16.4 Safari, Chrome, Edge and Firefox all add a
+// page to the home screen from their Share menu, so they get the how-to instead. In-app browsers
+// (Instagram, WhatsApp, Facebook...) cannot; they are the ones without "Safari/" in the user agent.
+export function isIosBrowser(): boolean {
   const ua = navigator.userAgent;
   const ios =
     /iPhone|iPod|iPad/.test(ua) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  return ios && !/CriOS|FxiOS|EdgiOS/.test(ua);
+  return ios && /Safari\//.test(ua) && !/FBAN|FBAV|Instagram|Line\//.test(ua);
 }
 
 function compute(): InstallState {
   if (installed || isStandalone()) return 'hidden';
   if (deferred) return 'prompt';
-  return isIosSafari() ? 'ios' : 'hidden';
+  return isIosBrowser() ? 'ios' : 'hidden';
 }
 
 let snapshot: InstallState = compute();

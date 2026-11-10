@@ -1,3 +1,14 @@
+## v3.1.0 (2026-11-10)
+
+### Feat
+
+- **player**: mobile-first Player Hub, header and event page
+
+### Fix
+
+- **ci**: make the creation rate limit configurable, lift it for e2e
+- keep an emptied Review tab open; steady Hub cards on scope change
+
 ## v3.0.2 (2026-11-09)
 
 ### Fix

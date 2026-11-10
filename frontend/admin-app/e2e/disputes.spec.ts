@@ -85,8 +85,10 @@ test('a player score waiting for confirmation is counted on the tab and the head
   await expect(page.getByText('Nothing to review.')).toBeVisible();
   await expect.poll(async () => (await apiMatch(request, s)).score_confirmed).toBe(true);
   expect((await apiMatch(request, s)).status).toBe('completed');
-  // The badge is gone with the last item.
+  // The badge is gone with the last item, and the empty tab with it once the organizer moves on.
   await expect(page.getByRole('button', { name: /to review$/ })).toHaveCount(0);
+  await page.getByRole('tab', { name: /^(Matches|Overview)$/ }).click();
+  await expect(page.getByRole('tab', { name: /Review/ })).toHaveCount(0);
 });
 
 test('rejecting an unconfirmed score returns the match to unplayed', async ({ page, request }) => {

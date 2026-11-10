@@ -4,32 +4,26 @@ import type { ReactNode } from 'react';
 import {
   IconArrowLeft,
   IconChevronDown,
-  IconDots,
   IconDownload,
-  IconKey,
   IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarLeftExpand,
-  IconLockPassword,
-  IconLogout,
   IconSearch,
 } from '@tabler/icons-react';
 import { Link, useLocation } from 'react-router-dom';
 import { BrandLogo } from '../BrandLogo';
 import { useAuth } from '../auth';
-import { usePlayerSession } from '../player/session';
 import { useLobbyList, useTournamentList } from '../components';
 import { isMac } from '../features/switcher/hotkeys';
 import { useOrderedItems } from '../features/switcher/entries';
 import { OpenTabs, OPEN_TABS_HEIGHT } from '../features/switcher/OpenTabs';
 import { SwipeStrip, STRIP_HEIGHT } from '../features/switcher/SwipeStrip';
 import { t as tx, useLocale } from '../i18n';
-import { AccountMenu } from './AccountMenu';
 import { DisplayButton } from './DisplayMenu';
 import { rememberPage } from './env';
 import { isAdminPath, useAdminRoute, type LayoutMode } from './layout';
 import { usePageTitle } from './pageTitle';
-import { OverflowMenu } from '../ui/OverflowMenu';
 import { PagesNav } from './PagesNav';
+import { AccountSlot } from './PlayerMenu';
 import { useShellUi } from './ShellUi';
 import classes from './Shell.module.css';
 
@@ -65,68 +59,16 @@ function useContextTitle(): string {
   return route.title;
 }
 
-// Install and Player Hub log out sit in the phone header itself: the bar has room, and a player
-// should not have to open a menu to find them.
-function PhoneActions() {
+// Install sits in the phone header itself while the browser offers it: a player should not have to
+// open a menu to find it.
+function PhoneInstall() {
   useLocale();
-  const { pathname } = useLocation();
-  const hub = usePlayerSession();
   const { install } = useShellUi();
+  if (install.state === 'hidden') return null;
   return (
-    <>
-      {install.state !== 'hidden' && (
-        <ActionIcon size="lg" aria-label={tx('Install app')} onClick={install.install}>
-          <IconDownload size={19} />
-        </ActionIcon>
-      )}
-      {/* The Me page has its own Log out button. */}
-      {hub.token && pathname.startsWith('/player') && !pathname.startsWith('/player/me') && (
-        <ActionIcon size="lg" aria-label={tx('Log out of Player Hub')} onClick={hub.logout}>
-          <IconLogout size={19} />
-        </ActionIcon>
-      )}
-    </>
-  );
-}
-
-function MoreMenu() {
-  useLocale();
-  const { pathname } = useLocation();
-  const auth = useAuth();
-  const { setPasswordOpen } = useShellUi();
-  const onAdmin = isAdminPath(pathname);
-  const name = auth.user?.username || auth.username || tx('Admin');
-  return (
-    <OverflowMenu
-      label={tx('More')}
-      icon={<IconDots size={20} />}
-      items={[
-        {
-          key: 'admin',
-          label: tx('Admin sign in'),
-          icon: <IconKey size={18} />,
-          to: '/admin',
-          onClick: () => rememberPage('admin'),
-          hidden: auth.hasToken || onAdmin,
-        },
-        {
-          key: 'password',
-          label: tx('Change password'),
-          icon: <IconLockPassword size={18} />,
-          onClick: () => setPasswordOpen(true),
-          hidden: !auth.hasToken,
-          heading: name,
-          divider: true,
-        },
-        {
-          key: 'logout',
-          label: tx('Log out'),
-          icon: <IconLogout size={18} />,
-          onClick: auth.logout,
-          hidden: !auth.hasToken,
-        },
-      ]}
-    />
+    <ActionIcon size="lg" aria-label={tx('Install app')} onClick={install.install}>
+      <IconDownload size={19} />
+    </ActionIcon>
   );
 }
 
@@ -168,7 +110,6 @@ export function TopBar({
 }) {
   useLocale();
   const { pathname } = useLocation();
-  const auth = useAuth();
   const { install, setSwitcherOpen } = useShellUi();
   const route = useAdminRoute();
   const title = useContextTitle();
@@ -230,12 +171,11 @@ export function TopBar({
               </>
             ) : (
               <>
-                <PhoneActions />
+                <PhoneInstall />
                 <DisplayButton compact />
+                <AccountSlot compact />
               </>
             )}
-            {/* The admin chrome has the Menu sheet, which holds the same items. */}
-            {!adminChrome && <MoreMenu />}
           </Group>
         </Group>
         {strip && <SwipeStrip />}
@@ -288,25 +228,7 @@ export function TopBar({
               </ActionIcon>
             ))}
           <DisplayButton compact={!desktop} />
-          {auth.hasToken ? (
-            <AccountMenu compact={!desktop} />
-          ) : (
-            !onAdmin && (
-              <Button
-                component={Link}
-                to="/admin"
-                variant="subtle"
-                color="gray"
-                size="compact-md"
-                h="var(--tap-md)"
-                leftSection={<IconKey size={16} />}
-                aria-label={tx('Admin sign in')}
-                onClick={() => rememberPage('admin')}
-              >
-                <span aria-hidden="true">{tx('Admin')}</span>
-              </Button>
-            )
-          )}
+          <AccountSlot compact={!desktop} />
         </Group>
       </Group>
       {tabs && <OpenTabs />}

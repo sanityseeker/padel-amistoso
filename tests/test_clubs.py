@@ -2214,6 +2214,38 @@ class TestPublicLeaderboard:
         res = client.get("/api/clubs/cl_unknown/public-leaderboard", headers=_member_headers())
         assert res.status_code == 404
 
+    def test_players_without_a_match_in_the_sport_are_left_out(self, client, auth_headers, monkeypatch) -> None:
+        from backend.api import routes_clubs
+
+        def row(profile_id: str, name: str, sport: str, elo: float, matches: int) -> dict:
+            return {
+                "profile_id": profile_id,
+                "name": name,
+                "sport": sport,
+                "elo": elo,
+                "tier_name": None,
+                "matches": matches,
+                "hidden": False,
+            }
+
+        rows = [
+            row("p1", "Played", "padel", 980.0, 3),
+            row("p2", "Unplayed", "padel", 1000.0, 0),
+            row("p3", "Also played", "padel", 960.0, 1),
+            row("p2", "Unplayed", "tennis", 1010.0, 2),
+        ]
+        monkeypatch.setattr(routes_clubs, "_compute_club_leaderboard_rows", lambda conn, club_id: rows)
+        monkeypatch.setattr(routes_clubs, "ensure_club_roster_synced", lambda club_id: None)
+        comm = _create_community(client, auth_headers)
+        club = _create_club(client, auth_headers, comm["id"])
+        res = client.get(f"/api/clubs/{club['id']}/public-leaderboard", headers=_member_headers())
+        assert res.status_code == 200
+        padel = res.json()["padel"]
+        # The unplayed 1000 would have outranked both; it is gone and the ranks close up.
+        assert [(e["name"], e["rank"]) for e in padel] == [("Played", 1), ("Also played", 2)]
+        # Playing one sport does not hide the player from the other.
+        assert [e["name"] for e in res.json()["tennis"]] == ["Unplayed"]
+
     def test_no_email_in_response(self, client, auth_headers) -> None:
         comm = _create_community(client, auth_headers)
         club = _create_club(client, auth_headers, comm["id"])

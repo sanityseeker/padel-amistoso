@@ -20,6 +20,8 @@ interface StatusPayload {
   current_sit_out_ids?: string[];
   /** `member_ids` are person ids (team members included); `entry_key` is a "+"-joined key. */
   withdrawals?: { member_ids: string[] }[];
+  /** `false` when the organizer does not assign courts. */
+  assign_courts?: boolean;
 }
 interface MatchesPayload {
   all_matches?: PlayerMatch[];

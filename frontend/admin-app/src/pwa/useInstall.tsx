@@ -30,8 +30,11 @@ function IosHint({ opened, onClose }: { opened: boolean; onClose: () => void }) 
   return (
     <Modal opened={opened} onClose={onClose} title={tx('Install the app')} centered size="sm">
       <Stack gap="sm">
+        {/* Safari has Share in its toolbar (iOS 26: inside the ⋯ menu); Chrome in the address bar;
+            Edge and Firefox in their menu. */}
         <Text size="sm">
-          1. {tx('Tap the Share button')} <ShareGlyph />
+          1. {tx('Tap Share')} <ShareGlyph />{' '}
+          {tx('in the toolbar or the address bar, or in the browser menu (⋯ or ☰)')}
         </Text>
         <Text size="sm">2. {tx('Choose "Add to Home Screen"')}</Text>
       </Stack>

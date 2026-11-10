@@ -1,8 +1,28 @@
 import { Badge, Group, Text } from '@mantine/core';
 import { t as tx, useLocale } from '../../../i18n';
+import type { FormResult } from '../stats';
 
-// The last results as W / L badges, newest first.
-export function FormGuide({ form }: { form: ('W' | 'L')[] }) {
+const BADGE: Record<
+  FormResult,
+  { color: string; variant: string; name: () => string; letter: () => string }
+> = {
+  W: {
+    color: 'green',
+    variant: 'filled',
+    name: () => tx('Win'),
+    letter: () => tx('W', { context: 'result' }),
+  },
+  L: {
+    color: 'red',
+    variant: 'light',
+    name: () => tx('Loss'),
+    letter: () => tx('L', { context: 'result' }),
+  },
+  D: { color: 'gray', variant: 'light', name: () => tx('Draw'), letter: () => tx('D') },
+};
+
+// The last results as W / L / D badges, newest first (the same letters as the Played list).
+export function FormGuide({ form }: { form: FormResult[] }) {
   useLocale();
   if (!form.length) return null;
   return (
@@ -16,11 +36,11 @@ export function FormGuide({ form }: { form: ('W' | 'L')[] }) {
           role="listitem"
           circle
           size="lg"
-          color={r === 'W' ? 'green' : 'red'}
-          variant={r === 'W' ? 'filled' : 'light'}
-          aria-label={r === 'W' ? tx('Win') : tx('Loss')}
+          color={BADGE[r].color}
+          variant={BADGE[r].variant}
+          aria-label={BADGE[r].name()}
         >
-          {r === 'W' ? tx('W') : tx('L')}
+          {BADGE[r].letter()}
         </Badge>
       ))}
     </Group>

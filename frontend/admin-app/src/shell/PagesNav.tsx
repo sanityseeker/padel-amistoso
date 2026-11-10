@@ -3,6 +3,7 @@ import { Button, Group, Stack, UnstyledButton } from '@mantine/core';
 import {
   IconBuildingCommunity,
   IconChartLine,
+  IconHome,
   IconListCheck,
   IconSettings,
   IconTrophy,
@@ -11,7 +12,7 @@ import {
 import { Link, useLocation } from 'react-router-dom';
 import { t as tx, useLocale } from '../i18n';
 import { getClubSubdomain } from '../club-context';
-import { usePlayerSession, profileInitials } from '../player/session';
+import { usePlayerSession } from '../player/session';
 import { useAuth } from '../auth';
 import { isDemoInstance, rememberPage } from './env';
 import classes from './Shell.module.css';
@@ -28,13 +29,12 @@ interface Page {
 // Events (or Club), Player Hub (My Hub when signed in), Admin (only with a session or on /admin).
 // On the demo instance there is no Hub item. Every in-app switch is a client-side Link, so the
 // document, caches and both sessions stay alive.
-function usePages(playerTabs = false): Page[] {
+export function usePages(playerTabs = false): Page[] {
   useLocale();
   const { pathname } = useLocation();
   const auth = useAuth();
   const hub = usePlayerSession();
   const onAdmin = pathname === '/admin' || pathname.startsWith('/admin/');
-  const initials = hub.token ? profileInitials(hub.profile?.name) : '';
   const pages: Page[] = [];
   if (getClubSubdomain())
     pages.push({
@@ -60,13 +60,8 @@ function usePages(playerTabs = false): Page[] {
       to: '/player',
       label: tx(hub.token ? 'My Hub' : 'Player Hub'),
       short: tx(hub.token ? 'My Hub' : 'Hub'),
-      icon: initials ? (
-        <span className={classes.avatar} aria-hidden="true">
-          {initials}
-        </span>
-      ) : (
-        <IconUser size={18} aria-hidden />
-      ),
+      // Signed in, the initials are the header's player menu; the Hub itself is home.
+      icon: hub.token ? <IconHome size={18} aria-hidden /> : <IconUser size={18} aria-hidden />,
       active: pathname.startsWith('/player'),
     });
   if (playerTabs && hub.token) {
@@ -89,7 +84,7 @@ function usePages(playerTabs = false): Page[] {
     pages.push(
       extra('/player/matches', tx('My events'), <IconListCheck size={18} aria-hidden />),
       extra('/player/ratings', tx('Ratings'), <IconChartLine size={18} aria-hidden />),
-      extra('/player/me', tx('Me'), <IconUser size={18} aria-hidden />),
+      extra('/player/me', tx('Profile'), <IconUser size={18} aria-hidden />),
     );
     return pages;
   }
@@ -105,7 +100,7 @@ function usePages(playerTabs = false): Page[] {
   return pages;
 }
 
-const remember = (page: Page) =>
+export const remember = (page: Page) =>
   page.key !== 'club' && rememberPage(page.key as 'events' | 'player' | 'admin');
 
 /** `header`: segmented links for tablet and desktop. `bottom`: the phone tab bar (public and player).

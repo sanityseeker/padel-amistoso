@@ -89,7 +89,7 @@ export const createAppRouter = () =>
           element: <PlayerLayout />,
           handle: { title: 'Player Hub' },
           children: [
-            { index: true, element: <Hub /> },
+            { index: true, element: <Hub />, handle: { title: 'Hub' } },
             { path: 'matches', element: <PlayerMatches />, handle: { title: 'My events' } },
             { path: 'matches/:kind/:id', element: <PlayerEvent />, handle: { title: 'Event' } },
             { path: 'ratings', element: <PlayerRatings />, handle: { title: 'Ratings' } },

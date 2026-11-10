@@ -143,6 +143,8 @@ test('one live-update stream is open at a time and follows the route', async ({
 });
 
 async function loginPlain(page: Page) {
+  // Events -> Sign in (Player Hub login) -> the organizer link, all client-side.
+  await page.locator('.app-header').getByRole('link', { name: 'Sign in', exact: true }).click();
   await page.getByRole('link', { name: 'Admin sign in' }).click();
   await page.getByLabel(/^Username/).fill('admin');
   await page.getByLabel(/^Password/).fill('test-admin-2026');

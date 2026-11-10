@@ -1,6 +1,27 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { adminHeaders, createTournament, loginAdmin } from './helpers';
 
+test('stage progress remains correct after reloading a workspace', async ({ page, request }) => {
+  const { id, headers } = await createTournament(request, 'mex', `Progress ${Date.now()}`);
+  const matches = await (await request.get(`/api/tournaments/${id}/mex/matches`)).json();
+  expect(
+    (
+      await request.post(`/api/tournaments/${id}/mex/record`, {
+        headers,
+        data: { match_id: matches.current_matches[0].id, score1: 14, score2: 10 },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  const status = await (await request.get(`/api/tournaments/${id}/mex/status`)).json();
+  expect(status.stage_played).toBeGreaterThan(0);
+  await loginAdmin(page);
+  await page.goto(`/admin/t/${id}`);
+  const progress = page.getByTestId('workspace-header').getByLabel('Matches played').first();
+  await expect(progress).toContainText(`${status.stage_played} / ${status.stage_total}`);
+  await page.reload();
+  await expect(progress).toContainText(`${status.stage_played} / ${status.stage_total}`);
+});
+
 async function scoreCurrentRound(request: APIRequestContext, id: string) {
   const headers = await adminHeaders(request);
   const matches = await (await request.get(`/api/tournaments/${id}/mex/matches`)).json();

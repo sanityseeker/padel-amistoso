@@ -27,6 +27,8 @@ import { ErrorState, Loading } from '../../components';
 import { publicApi, publicEventUrl, type PublicEvent } from '../../events/api';
 import { t as tx, useLocale } from '../../i18n';
 import { formatRoundLabel } from '../../roundLabel';
+import { formatSets } from '../../admin/tournament/scoring';
+import type { SetDecider } from '../../types';
 import { PLAYER_TOKEN, playerApi } from '../../player/api';
 import { sportProps } from '../../theme';
 import { EmptyState, EventRow, SportMark, StatusBadge } from '../../ui';
@@ -175,6 +177,8 @@ function PlayerCard({
           team1: string[];
           team2: string[];
           score?: number[] | null;
+          sets?: [number, number][] | null;
+          decider?: SetDecider | null;
           elo_delta: number | null;
         }[];
       }>(
@@ -254,7 +258,14 @@ function PlayerCard({
                     .join(' · ')}
                 </Text>
                 <Text size="sm">
-                  {m.team1.join(' / ')} <b>{m.score ? m.score.join(' – ') : tx('Vs')}</b>{' '}
+                  {m.team1.join(' / ')}{' '}
+                  <b>
+                    {m.sets?.length
+                      ? formatSets(m.sets, m.decider ?? 'full_set')
+                      : m.score?.length
+                        ? m.score.join(' – ')
+                        : tx('Vs')}
+                  </b>{' '}
                   {m.team2.join(' / ')}
                 </Text>
               </Stack>

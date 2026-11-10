@@ -147,11 +147,10 @@ function Workspace({ id }: { id: string }) {
   const standingGroups = page?.data.standings ?? page?.groups?.standings;
   const hasStandings = !!page && (!!page.status.leaderboard || !!standingGroups);
   const pageReviews = page && canEdit ? reviewItems(pageMatches(page), page.settings) : [];
-  // Review exists only while something can reach it: a queued item, or score confirmation by players.
-  const hasReview =
-    !!page &&
-    canEdit &&
-    (pageReviews.length > 0 || page.settings.score_confirmation !== 'immediate');
+  // Review exists while there is something in it, and stays while it is open: resolving the last item
+  // shows "Nothing to review." instead of switching tabs under the organizer.
+  const [keepReview, setKeepReview] = useState(false);
+  const hasReview = !!page && canEdit && (pageReviews.length > 0 || keepReview);
   // On a phone the knockout bracket carries the match cards, so there is no second Matches tab.
   const bracketOnly = phone && playoffCtx;
   const firstView = bracketOnly ? 'bracket' : 'matches';
@@ -169,6 +168,7 @@ function Workspace({ id }: { id: string }) {
     page?.status.phase === 'finished' ? 'all' : undefined,
   );
   const tab = view.state.view;
+  useEffect(() => setKeepReview(tab === 'review'), [tab]);
   const filter = view.state.filter;
   const setTab = (value: string | null) => view.patch({ view: value ?? firstView });
   const setFilter = (value: string) => view.patch({ filter: value }, { replace: true });
@@ -720,6 +720,7 @@ function Workspace({ id }: { id: string }) {
         <MatchList
           matches={visible}
           ctx={ctx}
+          courts={status.assign_courts !== false}
           settings={settings}
           canEdit={scoreable}
           selectedId={selectedId}
@@ -798,6 +799,7 @@ function Workspace({ id }: { id: string }) {
           <MatchList
             matches={readOnlyGroupMatches}
             ctx="gp-group"
+            courts={status.assign_courts !== false}
             settings={settings}
             canEdit={false}
             onScore={() => undefined}
@@ -819,8 +821,8 @@ function Workspace({ id }: { id: string }) {
         phase={status.phase}
         phaseBar={phaseBar}
         roundText={roundText}
-        played={done}
-        total={matches.length}
+        played={status.stage_played ?? done}
+        total={status.stage_total ?? matches.length}
         reviewCount={reviews.length}
         onReview={() => setTab('review')}
         next={next}
@@ -912,6 +914,7 @@ function Workspace({ id }: { id: string }) {
             <ReviewQueue
               tid={id}
               items={reviews}
+              courts={status.assign_courts !== false}
               ctx={ctx}
               settings={settings}
               onOverride={(m, purpose) => setEditing({ id: m.id, purpose, from: 'review' })}

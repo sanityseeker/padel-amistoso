@@ -1,5 +1,6 @@
 import { matchPath, useLocation, useMatches } from 'react-router-dom';
 import { t as tx, useLocale } from '../i18n';
+import { usePlayerSession } from '../player/session';
 import { useAdminChrome, useAdminRoute } from './layout';
 
 /** Title from the deepest route handle, translated. Used for the document title too. */
@@ -21,6 +22,9 @@ export function usePageTitle(): string | null {
   const adminChrome = useAdminChrome();
   const route = useAdminRoute();
   const routeTitle = useRouteTitle();
+  const hub = usePlayerSession();
+  // The Hub's own page; signed out, /player is the login card, which names itself.
+  if (pathname === '/player' && hub.token) return routeTitle;
   if (BAR_PATHS.some((p) => matchPath({ path: p, end: true }, pathname))) return routeTitle;
   if (adminChrome && route.title) return route.title;
   return null;

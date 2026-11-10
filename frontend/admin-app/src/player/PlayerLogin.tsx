@@ -2,6 +2,7 @@ import { t as tx, useLocale, currentLanguage } from '../i18n';
 import { useState } from 'react';
 import {
   Alert,
+  Anchor,
   Button,
   Center,
   Group,
@@ -13,6 +14,8 @@ import {
   Title,
 } from '@mantine/core';
 import { IconArrowRight } from '@tabler/icons-react';
+import { Link } from 'react-router-dom';
+import { rememberPage } from '../shell/env';
 import { useMutation } from '@tanstack/react-query';
 import { playerApi } from './api';
 import type { Resolution, Session, Space } from './types';
@@ -213,6 +216,18 @@ export function PlayerLogin({
               </Button>
               <Text c="dimmed" size="xs" ta="center">
                 {tx('New here? Join an event to get your first player passphrase.')}
+              </Text>
+              {/* The organizer door: the header's corner is the players'. */}
+              <Text c="dimmed" size="xs" ta="center">
+                {tx('Organizing tournaments?')}{' '}
+                <Anchor
+                  component={Link}
+                  to="/admin"
+                  size="xs"
+                  onClick={() => rememberPage('admin')}
+                >
+                  {tx('Admin sign in')}
+                </Anchor>
               </Text>
             </Stack>
           </form>
