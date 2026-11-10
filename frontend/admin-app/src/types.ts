@@ -86,6 +86,7 @@ export interface Lobby extends Community {
   description: string | null;
   alias?: string | null;
   season_id?: string | null;
+  latest_answer_change_id?: number | null;
   converted_to_tids?: string[];
   created_at?: string;
 }
@@ -129,6 +130,19 @@ export interface LobbyDetail extends Lobby {
   eligible_player_ids?: string[];
   participant_filter?: FilterCondition[];
   created_at?: string;
+}
+export interface RegistrationAnswerChange {
+  id: number;
+  player_id: string;
+  player_name: string;
+  changed_at: string;
+  changes: {
+    question_key: string;
+    question_label: string;
+    change: 'added' | 'changed' | 'removed';
+    previous_answer: string | null;
+    new_answer: string | null;
+  }[];
 }
 export interface ParticipationClaim {
   id: string;
@@ -245,6 +259,8 @@ export interface TvSettings {
   schema_output_scale?: number;
   schema_format?: 'svg' | 'png';
   banner_text?: string;
+  custom_info_title?: string;
+  custom_info_text?: string;
   correction_window_seconds?: number;
 }
 // One entry of GET /api/tournaments/{tid}/player-secrets (`players` keyed by player id).

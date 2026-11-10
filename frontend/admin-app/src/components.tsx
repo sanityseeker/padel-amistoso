@@ -16,6 +16,7 @@ export const useLobbyList = (enabled = true) =>
     queryKey: ['admin', 'lobbies'],
     queryFn: () => api<Lobby[]>('/registrations?include_archived=true'),
     enabled,
+    refetchInterval: 30_000,
   });
 export function useOverview() {
   const tournaments = useTournamentList();

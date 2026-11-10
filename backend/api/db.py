@@ -168,6 +168,20 @@ CREATE INDEX IF NOT EXISTS idx_reg_registrants
 CREATE UNIQUE INDEX IF NOT EXISTS idx_reg_token
     ON registrants (token);
 
+CREATE TABLE IF NOT EXISTS registration_answer_changes (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    registration_id TEXT    NOT NULL,
+    player_id       TEXT    NOT NULL,
+    player_name     TEXT    NOT NULL,
+    changed_at      TEXT    NOT NULL,
+    changes         TEXT    NOT NULL,
+    FOREIGN KEY (registration_id, player_id)
+        REFERENCES registrants (registration_id, player_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_registration_answer_changes_latest
+    ON registration_answer_changes (registration_id, id DESC);
+
 CREATE TABLE IF NOT EXISTS registration_shares (
     registration_id TEXT NOT NULL REFERENCES registrations(id) ON DELETE CASCADE,
     username        TEXT NOT NULL,

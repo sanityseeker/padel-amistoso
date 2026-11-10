@@ -54,7 +54,7 @@ test('a full sign-up: form, passphrase, edit the answers, withdraw, and come bac
   const { alias, name, id, headers } = await lobby(request, { join_code: 'open-sesame' });
   await page.goto(`/register/${alias}`);
   await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
-  await expect(page.getByText('Welcome', { exact: true })).toBeVisible();
+  await expect(page.getByText('Welcome', { exact: true })).toHaveJSProperty('tagName', 'STRONG');
   await expectFooter(page);
   // The join code and the required question are enforced before anything is sent.
   await page.getByRole('textbox', { name: /^Your name/ }).fill('Lola Test');

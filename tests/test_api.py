@@ -1605,6 +1605,35 @@ class TestRegistrationAPI:
         assert upd.status_code == 200
         assert upd.json()["answers"] == {"q0": "advanced", "q1": "right"}
 
+        changes = client.get(f"/api/registrations/{rid}/answer-changes", headers=auth_headers)
+        assert changes.status_code == 200
+        assert len(changes.json()) == 2
+        assert changes.json()[0]["changes"] == [
+            {
+                "question_key": "q0",
+                "question_label": "Level",
+                "change": "changed",
+                "previous_answer": "intermediate",
+                "new_answer": "advanced",
+            },
+            {
+                "question_key": "q1",
+                "question_label": "Side",
+                "change": "added",
+                "previous_answer": None,
+                "new_answer": "right",
+            },
+        ]
+        listed = client.get("/api/registrations", headers=auth_headers)
+        assert listed.json()[0]["latest_answer_change_id"] == changes.json()[0]["id"]
+
+        client.patch(
+            f"/api/registrations/{rid}/player-answers",
+            json={"passphrase": passphrase, "answers": {"q0": "advanced", "q1": "right"}},
+        )
+        unchanged = client.get(f"/api/registrations/{rid}/answer-changes", headers=auth_headers)
+        assert len(unchanged.json()) == 2
+
         # public endpoint exposes names only — never answers
         pub = client.get(f"/api/registrations/{rid}/public")
         assert pub.status_code == 200

@@ -9,6 +9,7 @@ import {
   Stack,
   Switch,
   Text,
+  TextInput,
   Textarea,
 } from '@mantine/core';
 import { write } from '../../api';
@@ -166,6 +167,8 @@ export function TvSection({
   useLocale();
   const patch = useTvPatch(tid);
   const [banner, setBanner] = useState(settings.banner_text ?? '');
+  const [customInfoTitle, setCustomInfoTitle] = useState(settings.custom_info_title ?? '');
+  const [customInfoText, setCustomInfoText] = useState(settings.custom_info_text ?? '');
   const toggle = (key: keyof TvSettings, label: string, fallback: boolean, disabled = false) => (
     <Switch
       key={key}
@@ -217,6 +220,39 @@ export function TvSection({
             onClick={() => patch.mutate({ banner_text: banner })}
           >
             {tx('Save banner')}
+          </Button>
+        </Group>
+        <TextInput
+          label={tx('Custom section title')}
+          description={tx('Name this optional section on the TV screen.')}
+          maxLength={120}
+          value={customInfoTitle}
+          onChange={(e) => setCustomInfoTitle(e.currentTarget.value)}
+        />
+        <Textarea
+          label={tx('Custom section description')}
+          description={tx(
+            'Shown on TV when the description is not empty. Markdown formatting is supported.',
+          )}
+          maxLength={5000}
+          autosize
+          minRows={2}
+          value={customInfoText}
+          onChange={(e) => setCustomInfoText(e.currentTarget.value)}
+        />
+        <Group justify="flex-end">
+          <Button
+            variant="default"
+            disabled={
+              customInfoTitle === (settings.custom_info_title ?? '') &&
+              customInfoText === (settings.custom_info_text ?? '')
+            }
+            loading={patch.isPending}
+            onClick={() =>
+              patch.mutate({ custom_info_title: customInfoTitle, custom_info_text: customInfoText })
+            }
+          >
+            {tx('Save custom section')}
           </Button>
         </Group>
         <NativeSelect

@@ -97,6 +97,26 @@ test('the spectator screen shows the courts and the leaderboard, in both languag
   await expect(page.getByText('Solo manual')).toBeVisible();
 });
 
+test('custom TV information stays hidden when empty and renders Markdown when filled', async ({
+  page,
+  request,
+}) => {
+  const { id } = await mexicano(request, `TV Custom info ${stamp()}`);
+  await patchTvSettings(request, id, { refresh_interval: 0 });
+  await page.goto(`/tv/${id}`);
+  await expect(page.getByTestId('tv-custom-info')).toHaveCount(0);
+
+  await patchTvSettings(request, id, {
+    custom_info_title: 'Tournament format',
+    custom_info_text: '**Short sets**\nNo-ad scoring',
+  });
+  await page.reload();
+  const section = page.getByTestId('tv-custom-info');
+  await expect(section.getByText('Tournament format')).toBeVisible();
+  await expect(section.getByText('Short sets', { exact: true })).toHaveJSProperty('tagName', 'STRONG');
+  await expect(section).toContainText('No-ad scoring');
+});
+
 test('the organizer display flags and an old query link are honoured', async ({
   page,
   request,

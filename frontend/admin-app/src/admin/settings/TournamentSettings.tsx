@@ -107,10 +107,23 @@ export function TournamentSettings({
             mr={phone ? 0 : 'lg'}
             mb={phone ? 'md' : 0}
             miw={phone ? undefined : 170}
-            style={{ alignSelf: 'flex-start' }}
+            w={phone ? '100%' : undefined}
+            style={{
+              alignSelf: 'flex-start',
+              flexWrap: phone ? 'wrap' : undefined,
+            }}
           >
             {sections.map((s) => (
-              <Tabs.Tab key={s.value} value={s.value} style={{ justifyContent: 'flex-start' }}>
+              <Tabs.Tab
+                key={s.value}
+                value={s.value}
+                style={{
+                  justifyContent: 'flex-start',
+                  flex: phone ? '1 1 30%' : undefined,
+                  minWidth: phone ? 0 : undefined,
+                  whiteSpace: phone ? 'normal' : undefined,
+                }}
+              >
                 {s.label}
               </Tabs.Tab>
             ))}

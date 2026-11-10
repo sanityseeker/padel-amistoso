@@ -35,7 +35,12 @@ import { PaymentsPanel } from '../../admin/settings/PaymentsPanel';
 import { api, ApiError, write } from '../../api';
 import { ErrorState, Loading } from '../../components';
 import { t as tx, useLocale } from '../../i18n';
-import type { LobbyDetail, ParticipationClaim, Registrant } from '../../types';
+import type {
+  LobbyDetail,
+  ParticipationClaim,
+  Registrant,
+  RegistrationAnswerChange,
+} from '../../types';
 import {
   ConfirmAction,
   CopyField,
@@ -48,7 +53,7 @@ import {
 import { useAdminMutation } from '../../useAdminMutation';
 import { sportProps } from '../../theme';
 import { closeItem } from '../switcher';
-import { AnswersPanel } from './AnswersPanel';
+import { AnswerChangesPanel, AnswersPanel } from './AnswersPanel';
 import { CodesPanel, ClaimsPanel } from './LobbyPanels';
 import { LobbySettings } from './LobbySettings';
 import { ParticipantFilter } from './ParticipantFilter';
@@ -138,6 +143,12 @@ export function LobbyPage() {
     queryKey: ['admin', 'lobby', id, 'claims'],
     queryFn: () => api<ParticipationClaim[]>(`/registrations/${id}/claims`),
     enabled: !!detail.data,
+  });
+  const answerChanges = useQuery({
+    queryKey: ['admin', 'lobby', id, 'answer-changes'],
+    queryFn: () => api<RegistrationAnswerChange[]>(`/registrations/${id}/answer-changes`),
+    enabled: !!detail.data,
+    refetchInterval: detail.data ? 30_000 : false,
   });
   const toggle = useAdminMutation({
     request: () => write(`/registrations/${id}`, { open: !detail.data?.open }, 'PATCH'),
@@ -234,7 +245,6 @@ export function LobbyPage() {
             <VisuallyHidden>
               <Title order={1}>{lobby.name}</Title>
             </VisuallyHidden>
-            {lobby.description && <Text c="dimmed">{lobby.description}</Text>}
           </Stack>
           <ActionIcon size="touch" aria-label={tx('Settings')} onClick={() => setSettings(true)}>
             <IconSettings size={20} />
@@ -340,7 +350,15 @@ export function LobbyPage() {
           )}
         </Stack>
       </Paper>
-      <Tabs value={tab === 'claims' && !claims.data?.length ? 'players' : tab} onChange={setTab}>
+      <Tabs
+        value={
+          (tab === 'claims' && !claims.data?.length) ||
+          (tab === 'changes' && !answerChanges.data?.length)
+            ? 'players'
+            : tab
+        }
+        onChange={setTab}
+      >
         <Tabs.List mb="lg">
           <Tabs.Tab value="players">{tx('Players')}</Tabs.Tab>
           {!!claims.data?.length && (
@@ -356,6 +374,9 @@ export function LobbyPage() {
             </Tabs.Tab>
           )}
           {lobby.questions.length > 0 && <Tabs.Tab value="answers">{tx('Answers')}</Tabs.Tab>}
+          {!!answerChanges.data?.length && (
+            <Tabs.Tab value="changes">{tx('Recent answer changes')}</Tabs.Tab>
+          )}
           <Tabs.Tab
             value="filter"
             rightSection={
@@ -443,6 +464,15 @@ export function LobbyPage() {
         <Tabs.Panel value="answers">
           <AnswersPanel lobby={lobby} />
         </Tabs.Panel>
+        {!!answerChanges.data?.length && (
+          <Tabs.Panel value="changes">
+            <AnswerChangesPanel
+              lobbyId={id}
+              changes={answerChanges.data}
+              active={tab === 'changes'}
+            />
+          </Tabs.Panel>
+        )}
         <Tabs.Panel value="filter">
           <ParticipantFilter key={JSON.stringify(lobby.participant_filter ?? [])} lobby={lobby} />
         </Tabs.Panel>

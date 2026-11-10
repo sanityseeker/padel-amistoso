@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Badge,
   Button,
@@ -16,9 +16,10 @@ import {
 } from '@mantine/core';
 import { IconDownload } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
-import type { LobbyDetail, Question } from '../../types';
+import type { LobbyDetail, Question, RegistrationAnswerChange } from '../../types';
 import { EmptyState } from '../../ui';
 import { registrantAnswer } from './filter';
+import { markAnswerChangesSeen } from './answerChanges';
 
 const cell = (value: string) => (/[,"\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
 
@@ -321,6 +322,67 @@ export function AnswersPanel({ lobby }: { lobby: LobbyDetail }) {
           <QuestionCard key={q.key} lobby={lobby} q={q} people={people} />
         ))}
       </SimpleGrid>
+    </Stack>
+  );
+}
+
+export function AnswerChangesPanel({
+  lobbyId,
+  changes,
+  active,
+}: {
+  lobbyId: string;
+  changes: RegistrationAnswerChange[];
+  active: boolean;
+}) {
+  const locale = useLocale();
+  useEffect(() => {
+    if (active) markAnswerChangesSeen(lobbyId, changes[0]?.id);
+  }, [active, changes, lobbyId]);
+  return (
+    <Stack gap="md" data-testid="answer-changes">
+      <Paper p="md" variant="row">
+        <Stack gap="sm">
+          <Text fw={650}>{tx('Recent answer changes')}</Text>
+          {changes.map((event) => (
+            <Paper key={event.id} p="sm" variant="row">
+              <Stack gap="xs">
+                <Text size="sm" fw={600}>
+                  {event.player_name} ·{' '}
+                  {new Intl.DateTimeFormat(locale, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  }).format(new Date(event.changed_at))}
+                </Text>
+                {event.changes.map((change) => (
+                  <Stack key={change.question_key} gap={0}>
+                    <Text size="sm">
+                      {tx(
+                        change.change === 'added'
+                          ? 'Added an answer to {question}'
+                          : change.change === 'removed'
+                            ? 'Cleared the answer to {question}'
+                            : 'Changed the answer to {question}',
+                        { question: change.question_label },
+                      )}
+                    </Text>
+                    {change.previous_answer !== null && (
+                      <Text size="xs" c="dimmed">
+                        {tx('From: {answer}', { answer: change.previous_answer })}
+                      </Text>
+                    )}
+                    {change.new_answer !== null && (
+                      <Text size="xs" c="dimmed">
+                        {tx('To: {answer}', { answer: change.new_answer })}
+                      </Text>
+                    )}
+                  </Stack>
+                ))}
+              </Stack>
+            </Paper>
+          ))}
+        </Stack>
+      </Paper>
     </Stack>
   );
 }

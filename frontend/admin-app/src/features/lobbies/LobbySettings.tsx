@@ -77,6 +77,7 @@ function Details({ lobby }: { lobby: LobbyDetail }) {
         />
         <Textarea
           label={tx('Description')}
+          description={tx('Shown on the sign-up page. Markdown formatting is supported.')}
           autosize
           minRows={2}
           maxLength={5000}

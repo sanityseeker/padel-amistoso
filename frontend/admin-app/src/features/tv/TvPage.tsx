@@ -33,6 +33,7 @@ import { DisplayButton } from '../../shell/DisplayMenu';
 import { followTournament, TOURNAMENT_UPDATE_EVENT } from '../../shell/followTournament';
 import { sportProps } from '../../theme';
 import { StatusBadge } from '../../ui';
+import { Markdown } from '../public/Markdown';
 import { PlayerCardModal } from './PlayerCardModal';
 import { Champions, sectionKeys, TvBoard } from './TvBoard';
 import { HubInvite, TvPlayerBar } from './TvPlayerBar';
@@ -312,6 +313,20 @@ export function TvPage() {
         {data?.settings.banner_text?.trim() && (
           <Alert color="court" variant="light" icon={<IconSpeakerphone />} data-testid="tv-banner">
             <Text className={classes.banner}>{data.settings.banner_text.trim()}</Text>
+          </Alert>
+        )}
+        {data?.settings.custom_info_text?.trim() && (
+          <Alert color="court" variant="light" data-testid="tv-custom-info">
+            <Stack gap={4}>
+              {data.settings.custom_info_title?.trim() && (
+                <Text fw={700} className={classes.customInfoTitle}>
+                  {data.settings.custom_info_title.trim()}
+                </Text>
+              )}
+              <Box className={classes.customInfoMarkdown}>
+                <Markdown source={data.settings.custom_info_text.trim()} />
+              </Box>
+            </Stack>
           </Alert>
         )}
         {live.error && !data && <ErrorState error={live.error} retry={() => void live.refetch()} />}

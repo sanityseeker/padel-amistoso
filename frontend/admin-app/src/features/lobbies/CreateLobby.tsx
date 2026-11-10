@@ -75,6 +75,7 @@ export function CreateLobby({ onDone }: { onDone?: () => void }) {
             />
             <Textarea
               label={tx('Description')}
+              description={tx('Shown on the sign-up page. Markdown formatting is supported.')}
               autosize
               minRows={3}
               maxLength={5000}

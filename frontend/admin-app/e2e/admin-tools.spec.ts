@@ -75,6 +75,16 @@ test('settings drawer: alias, courts, scoring and co-editors', async ({ page, re
       return list.find((t) => t.id === id)?.alias;
     })
     .toBe(alias);
+  await drawer.getByRole('tab', { name: 'TV screen' }).click();
+  await drawer.getByLabel('Custom section title').fill('Tournament format');
+  await drawer.getByLabel('Custom section description').fill('**Short sets**');
+  await drawer.getByRole('button', { name: 'Save custom section' }).click();
+  await expect
+    .poll(async () => {
+      const settings = await (await request.get(`/api/tournaments/${id}/tv-settings`)).json();
+      return [settings.custom_info_title, settings.custom_info_text];
+    })
+    .toEqual(['Tournament format', '**Short sets**']);
   await drawer.getByRole('tab', { name: 'Scoring' }).click();
   await drawer.getByText('Opponent confirms', { exact: true }).click();
   await expect
@@ -108,6 +118,30 @@ test('settings drawer: alias, courts, scoring and co-editors', async ({ page, re
   drawer = page.getByRole('dialog', { name: 'Tournament settings' });
   await page.keyboard.press('Escape');
   await expect(drawer).toBeHidden();
+});
+
+test('settings drawer fits the phone viewport without horizontal scrolling', async ({
+  page,
+  request,
+}) => {
+  const { id } = await createTournament(request, 'mex', `Phone settings ${Date.now()}`);
+  await loginAdmin(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`/admin/t/${id}`);
+  const drawer = await openSettings(page);
+  const dimensions = await drawer.evaluate((element) => {
+    const tabs = element.querySelector<HTMLElement>('[role="tablist"]');
+    return {
+      dialog: element.getBoundingClientRect().width,
+      tabsClient: tabs?.clientWidth ?? 0,
+      tabsScroll: tabs?.scrollWidth ?? 0,
+      document: document.documentElement.scrollWidth,
+      viewport: window.innerWidth,
+    };
+  });
+  expect(dimensions.dialog).toBeLessThanOrEqual(dimensions.viewport);
+  expect(dimensions.tabsScroll).toBeLessThanOrEqual(dimensions.tabsClient);
+  expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
 });
 
 test('player codes: add a player mid-event, edit contact details, remove', async ({
@@ -201,7 +235,11 @@ test('lobby: edit a registrant, settings, claims, convert to a tournament', asyn
   const lobby = await (
     await request.post('/api/registrations', {
       headers,
-      data: { name: `Lobby tools ${Date.now()}`, auto_send_email: false },
+      data: {
+        name: `Lobby tools ${Date.now()}`,
+        auto_send_email: false,
+        description: '**Markdown lobby description**',
+      },
     })
   ).json();
   for (const name of ['Ana', 'Beto', 'Carla', 'Diego'])
@@ -215,6 +253,7 @@ test('lobby: edit a registrant, settings, claims, convert to a tournament', asyn
     ).toBeTruthy();
   await loginAdmin(page);
   await page.goto(`/admin/lobby/${lobby.id}`);
+  await expect(page.getByText('**Markdown lobby description**', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Player options: Ana' }).click();
   await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
   const edit = page.getByRole('dialog', { name: 'Edit player' });
@@ -227,10 +266,18 @@ test('lobby: edit a registrant, settings, claims, convert to a tournament', asyn
   await expect(page.getByTestId('lobby-code-row')).toHaveCount(4);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const drawer = page.getByRole('dialog', { name: 'Lobby settings' });
+  await expect(drawer.getByLabel('Description')).toHaveValue('**Markdown lobby description**');
   await drawer.getByLabel('Join code').fill('secret');
   await drawer.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByText('Lobby settings saved')).toBeVisible();
   await page.keyboard.press('Escape');
+  await expect(page.getByText('**Markdown lobby description**', { exact: true })).toHaveCount(0);
+  await page.goto(`/register/${lobby.id}`);
+  await expect(page.getByText('Markdown lobby description', { exact: true })).toHaveJSProperty(
+    'tagName',
+    'STRONG',
+  );
+  await page.goto(`/admin/lobby/${lobby.id}`);
   await page.getByRole('button', { name: 'Convert to tournament' }).click();
   await expect(page).toHaveURL(/\/admin\/new\?from=/);
   await page.getByRole('radio', { name: 'Mexicano + Play-offs' }).click();

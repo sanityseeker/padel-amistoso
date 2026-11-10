@@ -26,6 +26,21 @@
 .banner {
   font-size: var(--fs-tv-lg);
 }
+.customInfoTitle {
+  font-size: var(--fs-tv-lg);
+}
+.customInfoMarkdown :global(p),
+.customInfoMarkdown :global(li) {
+  font-size: var(--fs-tv-md);
+  line-height: 1.35;
+}
+.customInfoMarkdown :global(h3),
+.customInfoMarkdown :global(h4),
+.customInfoMarkdown :global(h5),
+.customInfoMarkdown :global(h6) {
+  font-size: var(--fs-tv-lg);
+  line-height: 1.15;
+}
 /* One card per court; on a wide screen the cards are large enough to read from the other side of a hall. */
 .courts {
   display: grid;

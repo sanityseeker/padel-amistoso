@@ -60,6 +60,29 @@ class TestBannerAndComments:
         assert r.status_code == 200
         assert r.json()["banner_text"] == ""
 
+    def test_custom_tv_info_defaults_and_partial_update(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        settings = client.get(f"/api/tournaments/{tid}/tv-settings").json()
+        assert settings["custom_info_title"] == ""
+        assert settings["custom_info_text"] == ""
+
+        updated = client.patch(
+            f"/api/tournaments/{tid}/tv-settings",
+            json={"custom_info_title": "Tournament format", "custom_info_text": "Short sets\nNo-ad scoring"},
+            headers=auth_headers,
+        )
+        assert updated.status_code == 200
+        assert updated.json()["custom_info_title"] == "Tournament format"
+        assert updated.json()["custom_info_text"] == "Short sets\nNo-ad scoring"
+
+        updated = client.patch(
+            f"/api/tournaments/{tid}/tv-settings",
+            json={"banner_text": "Unchanged"},
+            headers=auth_headers,
+        )
+        assert updated.json()["custom_info_title"] == "Tournament format"
+        assert updated.json()["custom_info_text"] == "Short sets\nNo-ad scoring"
+
     def test_banner_requires_auth(self, client, auth_headers):
         tid = self._create(client, auth_headers)
         r = client.patch(

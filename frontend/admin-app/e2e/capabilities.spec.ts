@@ -123,11 +123,12 @@ test('create: Mexicano scoring and pairing options are saved with the tournament
 
 async function seedLobby(request: import('@playwright/test').APIRequestContext) {
   const headers = await adminHeaders(request);
+  const name = `Filter lobby ${Date.now()}`;
   const lobby = await (
     await request.post('/api/registrations', {
       headers,
       data: {
-        name: `Filter lobby ${Date.now()}`,
+        name,
         auto_send_email: false,
         questions: [
           {
@@ -157,7 +158,7 @@ async function seedLobby(request: import('@playwright/test').APIRequestContext) 
         })
       ).ok(),
     ).toBeTruthy();
-  return { id: lobby.id as string, headers };
+  return { id: lobby.id as string, name, headers };
 }
 
 test('lobby: the participant filter previews, saves and preselects people on convert', async ({
@@ -167,6 +168,7 @@ test('lobby: the participant filter previews, saves and preselects people on con
   const { id, headers } = await seedLobby(request);
   await loginAdmin(page);
   await page.goto(`/admin/lobby/${id}`);
+  await expect(page.getByRole('tab', { name: 'Recent answer changes' })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Eligibility' }).click();
   const editor = page.getByTestId('participant-filter');
   await editor.getByText('Advanced', { exact: true }).click();
@@ -233,8 +235,40 @@ test('convert: pick registrants, form fixed teams from them and add an extra pla
 });
 
 test('lobby: answers summary, CSV download and a sign-up QR code', async ({ page, request }) => {
-  const { id } = await seedLobby(request);
+  const { id, name, headers } = await seedLobby(request);
+  const registration = await request.post(`/api/registrations/${id}/register`, {
+    data: { player_name: 'Zara', answers: { level: 'Advanced' } },
+  });
+  expect(registration.ok()).toBeTruthy();
+  const { passphrase } = await registration.json();
+  const update = await request.patch(`/api/registrations/${id}/player-answers`, {
+    data: { passphrase, answers: { level: 'Beginner' } },
+  });
+  expect(update.ok()).toBeTruthy();
+  const lobbies = await (
+    await request.get('/api/registrations?include_archived=true', { headers })
+  ).json();
+  expect(
+    lobbies.find((lobby: { id: string }) => lobby.id === id).latest_answer_change_id,
+  ).toBeGreaterThan(0);
+
   await loginAdmin(page);
+  await page.goto('/admin');
+  const lobbyRow = page.getByTestId('event-row').filter({ hasText: name });
+  await expect(lobbyRow.getByText('New answers')).toBeVisible();
+  await lobbyRow.getByRole('link', { name }).click();
+  await expect(page).toHaveURL(`/admin/lobby/${id}`);
+  await expect(page.getByRole('tab', { name: 'Recent answer changes' })).toBeVisible();
+  await page.getByRole('tab', { name: 'Recent answer changes' }).click();
+  const changes = page.getByTestId('answer-changes');
+  await expect(changes.getByText('Changed the answer to Level')).toBeVisible();
+  await expect(changes.getByText('From: Advanced')).toBeVisible();
+  await expect(changes.getByText('To: Beginner')).toBeVisible();
+  await expect(changes.getByText(/^Zara ·/)).toHaveCount(2);
+  await page.goto('/admin');
+  await expect(
+    page.getByTestId('event-row').filter({ hasText: name }).getByText('New answers'),
+  ).toHaveCount(0);
   await page.goto(`/admin/lobby/${id}`);
   await page.getByRole('tab', { name: 'Answers' }).click();
   const panel = page.getByTestId('answers-panel');

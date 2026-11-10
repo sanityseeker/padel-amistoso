@@ -322,6 +322,8 @@ class TvSettingsRequest(BaseModel):
     # Tournament-wide third-set decider for set scores (per-match overrides win).
     set_decider: Literal["full_set", "match_tiebreak"] | None = None
     banner_text: str | None = Field(default=None, max_length=5000)
+    custom_info_title: str | None = Field(default=None, max_length=120)
+    custom_info_text: str | None = Field(default=None, max_length=5000)
     score_confirmation: ScoreConfirmation | None = None
     # Seconds the opposing team has to submit a correction after the score is
     # submitted.  0 means no limit (corrections are always allowed until confirmed).
@@ -352,6 +354,8 @@ class TvSettings(BaseModel):
     # tie-break (to 10, win by 2) that counts as one game in standings / ELO.
     set_decider: Literal["full_set", "match_tiebreak"] = "full_set"
     banner_text: str = ""
+    custom_info_title: str = ""
+    custom_info_text: str = ""
     # "immediate": score counts on submit (good for fast Mexicano rounds).
     # "required": score stays pending until accepted/auto-finalised by opposing team.
     score_confirmation: ScoreConfirmation = ScoreConfirmation.IMMEDIATE
@@ -805,6 +809,26 @@ class RegistrantAnswersUpdateIn(BaseModel):
 
     passphrase: str = Field(min_length=1, max_length=128)
     answers: dict[str, str] = Field(default_factory=dict)
+
+
+class RegistrationAnswerDelta(BaseModel):
+    """One question changed in a player's submitted answers."""
+
+    question_key: str
+    question_label: str
+    change: Literal["added", "changed", "removed"]
+    previous_answer: str | None = None
+    new_answer: str | None = None
+
+
+class RegistrationAnswerChangeOut(BaseModel):
+    """A player's answer submission or update in a registration lobby."""
+
+    id: int
+    player_id: str
+    player_name: str
+    changed_at: str
+    changes: list[RegistrationAnswerDelta]
 
 
 class FindByNameRequest(BaseModel):

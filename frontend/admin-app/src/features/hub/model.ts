@@ -19,6 +19,7 @@ export interface HubEvent {
   finished: boolean;
   phaseLabel: string;
   registrants?: number;
+  latestAnswerChangeId?: number | null;
   tournament?: Tournament;
   lobby?: Lobby;
 }
@@ -59,6 +60,7 @@ export function fromLobby(l: Lobby): HubEvent {
     finished: l.archived,
     phaseLabel: l.archived ? 'archived' : l.open ? 'open' : 'closed',
     registrants: l.registrant_count,
+    latestAnswerChangeId: l.latest_answer_change_id,
     lobby: l,
   };
 }

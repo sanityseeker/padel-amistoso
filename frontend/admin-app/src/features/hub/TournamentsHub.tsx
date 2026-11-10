@@ -12,7 +12,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useDebouncedValue, useMediaQuery } from '@mantine/hooks';
-import { IconPlus, IconSearch } from '@tabler/icons-react';
+import { IconPointFilled, IconPlus, IconSearch } from '@tabler/icons-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { write } from '../../api';
 import { useAuth } from '../../auth';
@@ -27,6 +27,7 @@ import { useStoredFilter } from './HubFilters';
 import { GhostPurgeField, purgeQuery, useGhostPurge } from '../tournaments/GhostPurge';
 import { fromLobby, fromTournament, type HubEvent } from './model';
 import { TournamentCard } from './TournamentCard';
+import { hasUnseenAnswerChanges } from '../lobbies/answerChanges';
 
 const LIVE_CARDS = 6;
 
@@ -39,6 +40,21 @@ function lobbyBadge(e: HubEvent) {
           ? tx('Open', { context: 'status' })
           : tx('Closed')}
     </StatusBadge>
+  );
+}
+
+function newAnswersBadge(e: HubEvent) {
+  if (e.kind !== 'lobby' || !hasUnseenAnswerChanges(e.id, e.latestAnswerChangeId)) return null;
+  return (
+    <Badge
+      size="xs"
+      color="red"
+      variant="light"
+      leftSection={<IconPointFilled size={10} />}
+      aria-label={tx('New answers')}
+    >
+      {tx('New answers')}
+    </Badge>
   );
 }
 
@@ -152,6 +168,7 @@ export function TournamentsHub() {
           {e.kind === 'lobby' && (
             <Text size="xs">{tx('{count} registered', { count: e.registrants ?? 0 })}</Text>
           )}
+          {newAnswersBadge(e)}
           {e.shared && <Badge size="xs">{tx('Shared')}</Badge>}
           <Badge size="xs" variant="outline" color="gray">
             {e.listed ? tx('Public') : tx('Private')}
@@ -302,6 +319,7 @@ export function TournamentsHub() {
                                 <Text size="xs">
                                   {tx('{count} registered', { count: e.registrants ?? 0 })}
                                 </Text>
+                                {newAnswersBadge(e)}
                               </Group>
                             )}
                           </Table.Td>

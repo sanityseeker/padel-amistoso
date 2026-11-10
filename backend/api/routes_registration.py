@@ -74,6 +74,8 @@ from .schemas import (
     RegistrantLoginOut,
     RegistrantPatch,
     RegistrantPublicOut,
+    RegistrationAnswerChangeOut,
+    RegistrationAnswerDelta,
     RegistrationAdminOut,
     RegistrationCreate,
     RegistrationPublicOut,
@@ -263,6 +265,49 @@ def _parse_answers(raw: str | None) -> dict[str, str]:
     if not raw:
         return {}
     return json.loads(raw)
+
+
+def _record_answer_changes(
+    conn: sqlite3.Connection,
+    registration_id: str,
+    player_id: str,
+    player_name: str,
+    questions: list[QuestionDef],
+    previous_answers: dict[str, str],
+    new_answers: dict[str, str],
+    changed_at: str,
+) -> None:
+    labels = {question.key: question.label for question in questions}
+    keys = dict.fromkeys([*labels, *previous_answers, *new_answers])
+    changes: list[RegistrationAnswerDelta] = []
+    for key in keys:
+        previous = previous_answers.get(key) or None
+        current = new_answers.get(key) or None
+        if previous == current:
+            continue
+        change = "added" if previous is None else "removed" if current is None else "changed"
+        changes.append(
+            RegistrationAnswerDelta(
+                question_key=key,
+                question_label=labels.get(key, key),
+                change=change,
+                previous_answer=previous,
+                new_answer=current,
+            )
+        )
+    if changes:
+        conn.execute(
+            """INSERT INTO registration_answer_changes
+               (registration_id, player_id, player_name, changed_at, changes)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                registration_id,
+                player_id,
+                player_name,
+                changed_at,
+                json.dumps([change.model_dump() for change in changes]),
+            ),
+        )
 
 
 def _validate_answers(questions: list[QuestionDef], answers: dict[str, str]) -> None:
@@ -575,6 +620,18 @@ def list_registrations(
         rows = conn.execute(sql, params).fetchall()
     reg_ids = [row["id"] for row in rows]
     registrant_counts = _get_registrant_counts(reg_ids)
+    latest_answer_change_ids: dict[str, int] = {}
+    if reg_ids:
+        placeholders = ",".join("?" * len(reg_ids))
+        with get_db() as conn:
+            changes = conn.execute(
+                f"""SELECT registration_id, MAX(id) AS latest_id
+                    FROM registration_answer_changes
+                    WHERE registration_id IN ({placeholders})
+                    GROUP BY registration_id""",
+                reg_ids,
+            ).fetchall()
+        latest_answer_change_ids = {row["registration_id"]: row["latest_id"] for row in changes}
 
     result = []
     branding_cache: dict[tuple[str, str | None], dict[str, str | None]] = {}
@@ -584,6 +641,7 @@ def list_registrations(
         community_id = r.get("community_id", "open")
         branding = _get_scope_branding(community_id, r.get("club_id"), branding_cache)
         r["registrant_count"] = registrant_counts.get(r["id"], 0)
+        r["latest_answer_change_id"] = latest_answer_change_ids.get(r["id"])
         r["open"] = bool(r.get("open", 0))
         r["listed"] = bool(r.get("listed", 0))
         r["archived"] = bool(r.get("archived", 0))
@@ -722,6 +780,33 @@ def get_registration(rid: str, user: User = Depends(get_current_user)) -> Regist
             for r in registrants
         ],
     )
+
+
+@router.get("/{rid}/answer-changes", response_model=list[RegistrationAnswerChangeOut])
+def get_registration_answer_changes(
+    rid: str, user: User = Depends(get_current_user)
+) -> list[RegistrationAnswerChangeOut]:
+    """Return recent player-submitted answer changes to a registration editor."""
+    reg = _get_registration(rid)
+    _require_registration_editor(reg, user)
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT id, player_id, player_name, changed_at, changes
+               FROM registration_answer_changes
+               WHERE registration_id = ?
+               ORDER BY id DESC LIMIT 50""",
+            (reg["id"],),
+        ).fetchall()
+    return [
+        RegistrationAnswerChangeOut(
+            id=row["id"],
+            player_id=row["player_id"],
+            player_name=row["player_name"],
+            changed_at=row["changed_at"],
+            changes=[RegistrationAnswerDelta.model_validate(change) for change in json.loads(row["changes"])],
+        )
+        for row in rows
+    ]
 
 
 @router.patch("/{rid}/community")
@@ -1207,6 +1292,7 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now, profile_id, lang),
             )
+            _record_answer_changes(conn, reg_id, player_id, req.player_name, questions, {}, req.answers, now)
 
     # Eagerly give any emailed player a durable Hub identity (background). Skip
     # when this registrant was already linked to an existing profile above.
@@ -1824,13 +1910,30 @@ async def player_update_answers(rid: str, req: RegistrantAnswersUpdateIn, reques
     _validate_answers(questions, req.answers)
 
     answers_json = json.dumps(req.answers) if req.answers else None
+    changed_at = datetime.now(timezone.utc).isoformat()
     with get_db() as conn:
+        row = conn.execute(
+            "SELECT player_id, player_name, answers FROM registrants WHERE registration_id = ? AND passphrase = ?",
+            (reg_id, req.passphrase),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(401, "Passphrase not found")
         cur = conn.execute(
             "UPDATE registrants SET answers = ? WHERE registration_id = ? AND passphrase = ?",
             (answers_json, reg_id, req.passphrase),
         )
         if cur.rowcount == 0:
             raise HTTPException(401, "Passphrase not found")
+        _record_answer_changes(
+            conn,
+            reg_id,
+            row["player_id"],
+            row["player_name"],
+            questions,
+            _parse_answers(row["answers"]),
+            req.answers,
+            changed_at,
+        )
 
     result = lookup_registrant_by_passphrase(reg_id, req.passphrase)
     if result is None:
