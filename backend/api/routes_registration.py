@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from .. import config
 from .rate_limit import BoundedRateLimiter
 from ..auth.deps import ProfileIdentity, get_current_profile, get_current_user, require_not_demo
 from ..auth.models import User, UserRole
@@ -87,7 +88,7 @@ router = APIRouter(prefix="/api/registrations", tags=["registrations"])
 
 logger = logging.getLogger(__name__)
 
-_CREATE_MAX_ATTEMPTS = 20
+_CREATE_MAX_ATTEMPTS = config.CREATE_RATE_LIMIT
 _CREATE_WINDOW_SECONDS = 60
 _CREATE_MAX_TRACKED_IPS = 4096
 

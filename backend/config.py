@@ -70,6 +70,10 @@ def _float_env(name: str, default: float) -> float:
 # its login dialog can link to the demo one.  Consumers must read these via
 # the module (``config.DEMO_INSTANCE``) so tests can monkeypatch them.
 # ────────────────────────────────────────────────────────────────────────────
+# Creating tournaments and lobbies: attempts per client IP per minute before a 429. The isolated browser
+# tests raise it, since every test there comes from the same IP.
+CREATE_RATE_LIMIT: int = int(_float_env("AMISTOSO_CREATE_RATE_LIMIT", 20))
+
 DEMO_INSTANCE: bool = os.environ.get("AMISTOSO_DEMO_INSTANCE", "").lower() in ("1", "true", "yes")
 DEMO_URL: str | None = _optional_env("AMISTOSO_DEMO_URL")
 DEMO_TTL_DAYS: float = _float_env("AMISTOSO_DEMO_TTL_DAYS", 3.0)

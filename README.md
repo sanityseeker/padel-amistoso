@@ -618,6 +618,7 @@ You can use a reset link only one time. The link expires automatically.
 - The app saves user data in `data/padel.db` (the same SQLite database as the tournaments).
 - For production:
   - Set a strong `PADEL_JWT_SECRET` in the environment.
+  - `AMISTOSO_CREATE_RATE_LIMIT` (default: `20`) caps tournament and lobby creation per client IP per minute.
   - Change the default admin password immediately.
   - Use HTTPS through a reverse proxy (for example, nginx or Caddy).
   - Examine `ACCESS_TOKEN_EXPIRE_MINUTES` in `backend/auth/security.py`.

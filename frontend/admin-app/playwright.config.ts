@@ -19,6 +19,8 @@ const server = (port: number, dir: string, extra: Record<string, string> = {}) =
     // Never send real mail from browser tests, whatever the developer's .env says.
     AMISTOSO_SMTP_HOST: '',
     AMISTOSO_DEMO_INSTANCE: '0',
+    // Every test comes from 127.0.0.1: the production limit of 20 creations a minute would trip.
+    AMISTOSO_CREATE_RATE_LIMIT: '1000',
     AMISTOSO_DOMAIN: '',
     PADEL_JWT_SECRET: 'isolated-browser-tests-signing-secret-2026',
     ALLOWED_ORIGINS: `http://127.0.0.1:${port}`,
