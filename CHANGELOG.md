@@ -1,3 +1,9 @@
+## v3.2.2 (2026-11-10)
+
+### Fix
+
+- **e2e**: align player header menu assertion
+
 ## v3.2.1 (2026-11-10)
 
 ### Fix
