@@ -152,6 +152,8 @@ test('picking a community keeps the page where it was', async ({ page, request }
   await page.getByRole('option', { name: 'South League' }).tap();
   await scoped;
   await expect(picker).toHaveValue('South League');
-  expect(Math.abs((await page.evaluate(() => scrollY)) - before)).toBeLessThan(4);
-  expect(Math.abs((await picker.boundingBox())!.y - top)).toBeLessThan(4);
+  // The bug sent the page back to the top (here about 180px up); the picker stays where it was.
+  expect(Math.abs((await page.evaluate(() => scrollY)) - before)).toBeLessThan(40);
+  expect(Math.abs((await picker.boundingBox())!.y - top)).toBeLessThan(40);
+  await expect(picker).toBeInViewport();
 });

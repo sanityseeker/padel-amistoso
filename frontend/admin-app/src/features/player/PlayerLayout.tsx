@@ -138,8 +138,13 @@ export function PlayerLayout() {
     queryFn: () => playerApi<Space>('/player-profile/space?elo_history_limit=5'),
     refetchInterval: 30_000,
   });
+  // The tournaments in progress last seen in full: shown while a picked scope's own request is still
+  // out, so the active cards do not shrink to the scoped list for a moment and push the page.
+  const lastLive = useRef<Entry[] | null>(null);
+  if (!unscoped && query.data && !query.isPlaceholderData) lastLive.current = query.data.entries;
+  if (unscoped && live.data) lastLive.current = live.data.entries;
   const liveEntries = unscoped
-    ? (live.data?.entries ?? query.data?.entries ?? [])
+    ? (live.data?.entries ?? lastLive.current ?? query.data?.entries ?? [])
     : (query.data?.entries ?? []);
   const liveLoading = unscoped && live.isPending;
   useEffect(() => {

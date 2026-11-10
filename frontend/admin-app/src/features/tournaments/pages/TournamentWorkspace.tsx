@@ -147,8 +147,10 @@ function Workspace({ id }: { id: string }) {
   const standingGroups = page?.data.standings ?? page?.groups?.standings;
   const hasStandings = !!page && (!!page.status.leaderboard || !!standingGroups);
   const pageReviews = page && canEdit ? reviewItems(pageMatches(page), page.settings) : [];
-  // Review exists only while there is something in it.
-  const hasReview = !!page && canEdit && pageReviews.length > 0;
+  // Review exists while there is something in it, and stays while it is open: resolving the last item
+  // shows "Nothing to review." instead of switching tabs under the organizer.
+  const [keepReview, setKeepReview] = useState(false);
+  const hasReview = !!page && canEdit && (pageReviews.length > 0 || keepReview);
   // On a phone the knockout bracket carries the match cards, so there is no second Matches tab.
   const bracketOnly = phone && playoffCtx;
   const firstView = bracketOnly ? 'bracket' : 'matches';
@@ -166,6 +168,7 @@ function Workspace({ id }: { id: string }) {
     page?.status.phase === 'finished' ? 'all' : undefined,
   );
   const tab = view.state.view;
+  useEffect(() => setKeepReview(tab === 'review'), [tab]);
   const filter = view.state.filter;
   const setTab = (value: string | null) => view.patch({ view: value ?? firstView });
   const setFilter = (value: string) => view.patch({ filter: value }, { replace: true });
