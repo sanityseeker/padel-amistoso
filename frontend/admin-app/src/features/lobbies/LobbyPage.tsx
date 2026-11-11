@@ -376,7 +376,7 @@ export function LobbyPage() {
               value="changes"
               rightSection={
                 lobby.unseen_answer_changes ? (
-                  <StatusBadge size="sm" circle tone="danger" aria-label={tx('New answers')}>
+                  <StatusBadge size="sm" circle tone="danger">
                     {lobby.unseen_answer_changes}
                   </StatusBadge>
                 ) : undefined
