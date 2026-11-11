@@ -1,3 +1,9 @@
+## v3.2.3 (2026-11-11)
+
+### Fix
+
+- commit pending frontend and backend changes
+
 ## v3.2.2 (2026-11-10)
 
 ### Fix
