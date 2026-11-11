@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Button, Group, Stack, Text, TextInput, Textarea } from '@mantine/core';
+import { Button, Group, Stack, Text, TextInput, Textarea } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconMail } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { api, write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
 import { ConfirmAction, MutationError, Section } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
+import { Notice } from '../../ui/Notice';
 
 interface SendResult {
   sent?: number | boolean;
@@ -113,9 +114,9 @@ export function CommunicateSection({ kind, id }: { kind: 'tournament' | 'lobby';
   return (
     <Stack gap="md">
       {!configured && (
-        <Alert color="yellow" icon={<IconMail size={18} />}>
+        <Notice tone="warning" icon={<IconMail size={18} />}>
           {tx('Email is not set up on this server, so sending is disabled.')}
-        </Alert>
+        </Notice>
       )}
       <Section
         title={tx('Sender')}

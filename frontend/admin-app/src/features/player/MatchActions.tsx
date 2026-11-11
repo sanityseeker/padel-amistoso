@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Group, Stack, Text } from '@mantine/core';
+import { Button, Group, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconCheck } from '@tabler/icons-react';
@@ -11,6 +11,7 @@ import { formatScore, matchDecider } from '../../admin/tournament/scoring';
 import type { Score } from '../../types';
 import { lifecycleIn, refreshAfterError, type ScoringData } from './eventData';
 import { ScoreSheet } from './ScoreSheet';
+import { Notice } from '../../ui/Notice';
 
 const shown = (
   m: PlayerMatch,
@@ -85,7 +86,7 @@ export function MatchActions({
     onError: (error) => refreshAfterError(client, entry.entity_id, error),
   });
   if (!token || !data.tv.allow_player_scoring) return null;
-  const error = act.error && <Alert color="red">{tx(act.error.message)}</Alert>;
+  const error = act.error && <Notice tone="danger">{tx(act.error.message)}</Notice>;
   const original = shown(match, data, match.score, match.sets);
   const proposed = shown(match, data, match.dispute_score, match.dispute_sets);
   const reviewed =
@@ -180,22 +181,22 @@ export function MatchActions({
       break;
     case 'escalated':
       body = (
-        <Alert color="orange">
+        <Notice tone="warning">
           {tx('The organizer is settling this score: {original} against {proposed}.', {
             original,
             proposed,
           })}
-        </Alert>
+        </Notice>
       );
       break;
     case 'review':
       body = (
-        <Alert color="orange" title={tx('Sent to the organizer for review')}>
+        <Notice tone="warning" title={tx('Sent to the organizer for review')}>
           {reviewed && <Text fw={700}>{reviewed}</Text>}
           {tx(
             'Entered in a different format than set for this match. It counts once the organizer approves it.',
           )}
-        </Alert>
+        </Notice>
       );
       break;
     default:

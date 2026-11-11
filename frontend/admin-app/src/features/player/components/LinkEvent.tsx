@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Alert, Button, Group, Modal, Select, Stack, Text, TextInput } from '@mantine/core';
+import { Button, Group, Modal, Select, Stack, Text, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { t as tx, useLocale } from '../../../i18n';
 import { playerApi } from '../../../player/api';
 import type { Resolution } from '../../../player/types';
+import { Notice } from '../../../ui/Notice';
 
 // Link an event: resolve the passphrase (no token), pick the entry, then POST /player-profile/link.
 export function LinkEvent({ close }: { close: () => void }) {
@@ -64,7 +65,7 @@ export function LinkEvent({ close }: { close: () => void }) {
             )}
           </Text>
           {(resolve.error || link.error) && (
-            <Alert color="red">{tx((resolve.error || link.error)!.message)}</Alert>
+            <Notice tone="danger">{tx((resolve.error || link.error)!.message)}</Notice>
           )}
           <TextInput
             label={tx('Event passphrase')}

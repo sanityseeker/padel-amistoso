@@ -9,6 +9,7 @@ import {
   Select,
   Text,
   Title,
+  useMatches,
 } from '@mantine/core';
 import { t as tx, useLocale } from '../../../i18n';
 import { EmptyState, PageHeader } from '../../../ui';
@@ -23,6 +24,7 @@ const EloChart = lazy(() => import('../charts/EloChart'));
 
 // Ratings: the ELO chart, recent results, and the full leaderboard of the chosen scope.
 export default function Ratings() {
+  const gap = useMatches({ base: 'md', sm: 'xl' });
   const locale = useLocale();
   const { space, scopeQuery, scope, scopeOptions } = usePlayerSpace();
   const sports = sportsOf(space);
@@ -34,28 +36,27 @@ export default function Ratings() {
   const visible = recent.slice(0, shown);
   const scopeName = scopeOptions.find((o) => o.value === scope)?.label ?? tx('All my communities');
   return (
-    <Stack gap="xl">
+    <Stack gap={gap}>
       <PageHeader
         title={tx('Ratings')}
         description={scopeName}
         keepDescription
-        actions={
-          <Group gap="xs">
-            <EloInfoButton />
-            {sports.length > 1 && (
-              <SegmentedControl
-                value={sport}
-                onChange={(v) => setPicked(v as Sport)}
-                aria-label={tx('Rating sport')}
-                data={[
-                  { value: 'padel', label: tx('Padel') },
-                  { value: 'tennis', label: tx('Tennis') },
-                ]}
-              />
-            )}
-          </Group>
-        }
+        dense
+        actions={<EloInfoButton />}
       />
+      {sports.length > 1 && (
+        <SegmentedControl
+          fullWidth
+          size="xs"
+          value={sport}
+          onChange={(v) => setPicked(v as Sport)}
+          aria-label={tx('Rating sport')}
+          data={[
+            { value: 'padel', label: tx('Padel') },
+            { value: 'tennis', label: tx('Tennis') },
+          ]}
+        />
+      )}
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="xl" style={{ alignItems: 'start' }}>
         <Stack gap="xl">
           {history.length > 1 ? (

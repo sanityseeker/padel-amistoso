@@ -1,16 +1,5 @@
 import { useState } from 'react';
-import {
-  Alert,
-  Badge,
-  Button,
-  Code,
-  Group,
-  NativeSelect,
-  Select,
-  Stack,
-  Text,
-  TextInput,
-} from '@mantine/core';
+import { Button, Code, Group, NativeSelect, Select, Stack, Text, TextInput } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import { api, write } from '../../api';
@@ -18,6 +7,8 @@ import { t as tx, useLocale } from '../../i18n';
 import type { PlayerSecret } from '../../types';
 import { ConfirmAction, MutationError, ResponsiveSheet } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
+import { Notice } from '../../ui/Notice';
+import { StatusBadge } from '../../ui/StatusBadge';
 
 const codesKey = (tid: string) => ['admin', 'codes', tid];
 
@@ -71,9 +62,9 @@ export function AddPlayerDialog({
     <ResponsiveSheet opened onClose={onClose} title={tx('Add a player')}>
       {add.data ? (
         <Stack>
-          <Alert color="green">
+          <Notice tone="success">
             {tx('{name} joined. Share this passphrase with them:', { name: add.data.player_name })}
-          </Alert>
+          </Notice>
           <Code fz="xl">{add.data.passphrase}</Code>
           <Button onClick={onClose}>{tx('Done')}</Button>
         </Stack>
@@ -302,9 +293,9 @@ export function LinkProfileSheet({
                 <Text fw={600} size="sm">
                   {p.name}{' '}
                   {p.is_ghost && (
-                    <Badge size="xs" variant="outline" color="gray">
+                    <StatusBadge size="xs" variant="outline">
                       {tx('Past participant')}
-                    </Badge>
+                    </StatusBadge>
                   )}
                 </Text>
                 <Text size="xs" c="dimmed">

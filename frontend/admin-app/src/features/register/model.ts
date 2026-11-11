@@ -30,6 +30,7 @@ export interface PublicLobby {
   questions?: Question[];
   join_code_required?: boolean;
   email_requirement?: 'required' | 'optional' | 'disabled';
+  auto_send_email?: boolean;
   club_logo_url?: string | null;
   club_name?: string | null;
   community_id?: string;

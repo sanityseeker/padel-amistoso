@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Group, Image, Loader, Modal, Stack, Text } from '@mantine/core';
+import { Button, Group, Image, Loader, Modal, Stack, Text } from '@mantine/core';
 import { IconDownload, IconZoomIn } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
+import { Notice } from '../../ui/Notice';
 
 export type SchemaFormat = 'png' | 'svg' | 'pdf';
 
@@ -73,7 +74,7 @@ export function SchemaImage({
         </Text>
       </Group>
     );
-  if (image.error) return <Alert color="red">{tx(image.error)}</Alert>;
+  if (image.error) return <Notice tone="danger">{tx(image.error)}</Notice>;
   if (!image.blob) return null;
   const download = () => {
     const link = document.createElement('a');

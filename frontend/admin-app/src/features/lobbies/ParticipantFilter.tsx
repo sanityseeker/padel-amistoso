@@ -159,7 +159,7 @@ export function ParticipantFilter({ lobby }: { lobby: LobbyDetail }) {
             {eligible.length ? (
               <Group gap={6}>
                 {eligible.map((r) => (
-                  <Badge key={r.player_id} variant="light" color="court" size="lg" tt="none">
+                  <Badge key={r.player_id} variant="light" color="court" size="lg">
                     {r.player_name}
                   </Badge>
                 ))}

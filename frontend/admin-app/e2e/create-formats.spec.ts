@@ -59,9 +59,11 @@ test('create: individual Group + Play-off pairs players by the engine and starts
   await fillNames(page, 'players', EIGHT.join('\n'));
   await fillNames(page, 'courts', 'Court 1\nCourt 2');
   await page.getByLabel(/^Groups/).fill('2');
-  await page.getByLabel(/^Qualifiers per group/).fill('2');
   const { body, id } = await submit(page, '/api/tournaments/group-playoff');
-  expect(body).toMatchObject({ team_mode: false, sport: 'padel', num_groups: 2, top_per_group: 2 });
+  expect(body).toMatchObject({ team_mode: false, sport: 'padel', num_groups: 2 });
+  // Who advances and the bracket format are chosen when the play-offs start, not here.
+  expect(body.top_per_group).toBeUndefined();
+  expect(body.double_elimination).toBeUndefined();
   expect(body.teams).toBeUndefined();
 
   expect(await listed(request, id)).toMatchObject({

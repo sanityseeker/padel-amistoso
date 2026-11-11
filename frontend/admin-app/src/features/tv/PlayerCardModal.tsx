@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
-import { Alert, Group, Loader, Modal, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Group, Loader, Modal, SimpleGrid, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { t as tx, useLocale } from '../../i18n';
 import { formatRoundLabel } from '../../roundLabel';
 import { publicApi } from '../../events/api';
 import { formatSets } from '../../admin/tournament/scoring';
 import type { Score, SetDecider } from '../../types';
+import { Notice } from '../../ui/Notice';
 
 interface Card {
   player_name: string;
@@ -65,7 +66,7 @@ export function PlayerCardModal({
       title={data?.player_name ?? tx('Loading')}
     >
       {card.isPending && <Loader aria-label={tx('Loading')} />}
-      {card.error && <Alert color="red">{tx('Could not load player.')}</Alert>}
+      {card.error && <Notice tone="danger">{tx('Could not load player.')}</Notice>}
       {data && (
         <Stack gap="md" data-testid="tv-player-card">
           <SimpleGrid cols={{ base: 2, sm: 4 }}>

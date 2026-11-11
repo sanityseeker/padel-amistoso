@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActionIcon,
-  Alert,
-  Badge,
   Button,
-  Container,
   Group,
   Paper,
   SegmentedControl,
@@ -23,6 +20,8 @@ import { ErrorState, Loading } from '../../components';
 import { t as tx, useLocale } from '../../i18n';
 import { EmptyState, EventRow, PageHeader, SportMark, StatusBadge } from '../../ui';
 import { findEvent, publicApi, publicEventUrl, type PublicEvent } from '../../events/api';
+import { Notice } from '../../ui/Notice';
+import { PageContainer } from '../../ui/PageContainer';
 
 const STATUS_LABEL: Record<PublicEvent['status'], string> = {
   in_progress: 'In progress',
@@ -80,9 +79,9 @@ function Rows({ events }: { events: PublicEvent[] }) {
                   : formatType(event.type)}
               </Text>
               {event.join_code_required && (
-                <Badge size="xs" variant="outline" color="gray">
+                <StatusBadge size="xs" variant="outline">
                   {tx('Code required')}
-                </Badge>
+                </StatusBadge>
               )}
             </>
           }
@@ -131,7 +130,7 @@ export function EventsPage() {
   const tournaments = live.filter((e) => e.kind === 'tournament');
   const signups = live.filter((e) => e.kind === 'registration');
   return (
-    <Container size="md" py={{ base: 'xs', sm: 'lg' }}>
+    <PageContainer size="md">
       <Stack gap="md">
         <PageHeader
           title={tx('Events')}
@@ -251,10 +250,10 @@ export function EventsPage() {
                 {tx('Find event')}
               </Button>
             </Group>
-            {finder.error && <Alert color="red">{tx(finder.error.message)}</Alert>}
+            {finder.error && <Notice tone="danger">{tx(finder.error.message)}</Notice>}
           </Stack>
         </Paper>
       </Stack>
-    </Container>
+    </PageContainer>
   );
 }

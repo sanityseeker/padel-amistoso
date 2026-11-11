@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Alert, Button, Stack, Text } from '@mantine/core';
+import { Button, Stack, Text } from '@mantine/core';
 import { Link, useNavigate } from 'react-router-dom';
 import { write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
@@ -12,6 +12,7 @@ import {
   passwordProblem,
   useUrlToken,
 } from './shared';
+import { Notice } from '../../ui/Notice';
 
 export function ResetPasswordPage() {
   useLocale();
@@ -30,9 +31,9 @@ export function ResetPasswordPage() {
   if (done)
     return (
       <AccountCard title={tx('Password updated')}>
-        <Alert color="green" role="status">
+        <Notice tone="success" role="status">
           {tx('Your password has been changed. Log in with the new password.')}
-        </Alert>
+        </Notice>
         <Button
           onClick={() => navigate('/admin', { replace: true, state: { notice: 'reset' } })}
           autoFocus
@@ -45,9 +46,9 @@ export function ResetPasswordPage() {
   if (dead)
     return (
       <AccountCard title={tx('Reset link not valid')}>
-        <Alert color="red" role="alert">
+        <Notice tone="danger" role="alert">
           {tx('This reset link is invalid, expired or already used.')}
-        </Alert>
+        </Notice>
         <Button component={Link} to="/admin/account/forgot">
           {tx('Request a new link')}
         </Button>

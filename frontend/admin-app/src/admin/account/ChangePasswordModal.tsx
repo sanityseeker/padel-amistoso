@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
-import { Alert, Button, Group, Modal, PasswordInput, Stack } from '@mantine/core';
+import { Button, Group, Modal, PasswordInput, Stack } from '@mantine/core';
 import { ApiError, write } from '../../api';
 import { useAuth } from '../../auth';
 import { t as tx, useLocale } from '../../i18n';
 import { PasswordPair } from './PasswordPair';
 import { accountError, ErrorAlert, mismatchProblem, passwordProblem } from './shared';
+import { Notice } from '../../ui/Notice';
 
 function Form({ onClose }: { onClose: () => void }) {
   const { user, username: remembered } = useAuth();
@@ -23,9 +24,9 @@ function Form({ onClose }: { onClose: () => void }) {
   if (done)
     return (
       <Stack>
-        <Alert color="green" role="status">
+        <Notice tone="success" role="status">
           {tx('Your password has been changed.')}
-        </Alert>
+        </Notice>
         <Group justify="flex-end">
           <Button onClick={onClose} autoFocus>
             {tx('Close')}

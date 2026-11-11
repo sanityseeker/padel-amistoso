@@ -1,6 +1,5 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import {
-  Alert,
   Button,
   Flex,
   NavLink,
@@ -27,6 +26,7 @@ import {
   type SetRow,
 } from '../../admin/tournament/scoring';
 import classes from './ScoreEntry.module.css';
+import { Notice } from '../../ui/Notice';
 
 export interface ScoreRules {
   /** Input modes this match accepts (Mexicano rounds are points only). */
@@ -290,21 +290,19 @@ export function ScoreEntry({
             {names[0] || tx('To be decided')} {tx('vs')} {names[1] || tx('To be decided')}
           </Text>
           {review.kind === 'points' && review.score[0] === 0 && review.score[1] === 0 && (
-            <Alert color="orange" p="xs">
-              {tx('This is 0 – 0. Check it before you send it.')}
-            </Alert>
+            <Notice tone="warning">{tx('This is 0 – 0. Check it before you send it.')}</Notice>
           )}
           {formatNotice && currentKey !== defaultKey && (
-            <Alert color="orange" p="xs">
+            <Notice tone="warning">
               {tx(
                 'Entered in a different format than set for this match. It counts once the organizer approves it.',
               )}
-            </Alert>
+            </Notice>
           )}
           {serverError && (
-            <Alert color="red" p="xs" role="alert">
+            <Notice tone="danger" role="alert">
               {tx(serverError)}
-            </Alert>
+            </Notice>
           )}
           <Flex className={classes.footer} direction="row-reverse" gap="xs" wrap="nowrap">
             <Button type="submit" size="touch" loading={busy}>
@@ -467,14 +465,12 @@ export function ScoreEntry({
             </SimpleGrid>
           )}
           {formatNotice && currentKey !== defaultKey && (
-            <Alert color="orange" p="xs">
-              {formatNotice}
-            </Alert>
+            <Notice tone="warning">{formatNotice}</Notice>
           )}
           {(error || serverError) && (
-            <Alert color="red" p="xs" role="alert">
+            <Notice tone="danger" role="alert">
               {error ? errorText(error) : tx(serverError)}
-            </Alert>
+            </Notice>
           )}
           {extra?.({ replacement, setMode })}
           {/* DOM order is Save, Cancel, Clear so Tab goes last field -> Save; row-reverse shows them

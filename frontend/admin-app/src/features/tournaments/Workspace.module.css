@@ -44,16 +44,6 @@
   overflow-x: auto;
 }
 
-.actionBar {
-  position: fixed;
-  inset-inline: 0;
-  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-  z-index: 30;
-  padding: var(--mantine-spacing-xs) var(--mantine-spacing-md);
-  background: var(--app-surface);
-  border-top: 1px solid var(--app-border);
-}
-
 .panes {
   display: grid;
   gap: var(--mantine-spacing-lg);

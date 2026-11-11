@@ -99,12 +99,16 @@
   transform-origin: top left;
 }
 /* The page's own header bar, the same height and rule as the app header (which the TV route hides). */
+/* The TV route has no app header, so this bar clears the status bar itself (the shell already keeps
+   the content out of the notch side in landscape). */
 .bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--mantine-spacing-xs);
+  box-sizing: content-box;
   height: 52px;
+  padding-top: env(safe-area-inset-top, 0px);
   padding-inline: var(--mantine-spacing-xs);
   border-bottom: 1px solid var(--app-divider);
   background: var(--color-bg);

@@ -5,6 +5,7 @@ import { formatType } from '../../../api';
 import type { Entry } from '../../../player/types';
 import { EventRow } from '../../../ui';
 import { entryPath } from '../context';
+import { StatusBadge } from '../../../ui/StatusBadge';
 
 const SHOWN = 3;
 
@@ -46,11 +47,7 @@ export function PastTournaments({ entries }: { entries: Entry[] }) {
               .join(' · ')}
             badges={
               <>
-                {entry.rank ? (
-                  <Badge size="sm" color="gray">
-                    #{entry.rank}
-                  </Badge>
-                ) : null}
+                {entry.rank ? <StatusBadge size="sm">#{entry.rank}</StatusBadge> : null}
                 <Badge size="sm" variant="light">
                   {entry.wins} {tx('wins ·')} {entry.losses} {tx('losses')}
                 </Badge>

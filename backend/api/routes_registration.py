@@ -133,10 +133,11 @@ _find_by_name_rate_limiter = BoundedRateLimiter(
 
 _registration_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
-# Cap concurrent SMTP sends per bulk-email request: parallel enough that a
-# 30-registrant blast returns in seconds, bounded so we don't open dozens of
-# simultaneous connections to the SMTP relay.
-_BULK_EMAIL_CONCURRENCY = 5
+# Cap concurrent SMTP sends per bulk-email request. Each send opens its own
+# TLS connection, so 2 parallel sends stay near the ~2 requests/s default rate
+# limit of providers such as Resend, while a 30-registrant blast still finishes
+# in well under a minute.
+_BULK_EMAIL_CONCURRENCY = 2
 
 
 async def _send_emails_bounded(jobs: list[tuple[str, str, str]], es: EmailSettings) -> tuple[int, int]:
@@ -1171,6 +1172,7 @@ def get_registration_public(rid: str) -> RegistrationPublicOut:
         archived=bool(reg.get("archived", 0)),
         sport=reg.get("sport", Sport.PADEL),
         email_requirement=_email_requirement(reg),
+        auto_send_email=bool(reg.get("auto_send_email")),
         registrant_count=len(registrants),
         registrants=[RegistrantPublicOut(player_id=p["player_id"], player_name=p["player_name"]) for p in registrants],
         community_id=community_id,

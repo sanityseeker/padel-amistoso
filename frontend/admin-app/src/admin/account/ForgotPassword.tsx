@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Alert, Button, Stack, Text, TextInput } from '@mantine/core';
+import { Button, Stack, Text, TextInput } from '@mantine/core';
 import { Link } from 'react-router-dom';
 import { write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
 import { AccountCard, accountError, ErrorAlert, looksLikeEmail } from './shared';
+import { Notice } from '../../ui/Notice';
 
 export function ForgotPasswordPage() {
   useLocale();
@@ -18,11 +19,11 @@ export function ForgotPasswordPage() {
   if (sent)
     return (
       <AccountCard title={tx('Check your email')}>
-        <Alert color="green" role="status">
+        <Notice tone="success" role="status">
           {tx(
             'If an account exists for that email, we have sent a link to reset the password. The link expires after a short time.',
           )}
-        </Alert>
+        </Notice>
         <Button component={Link} to="/admin" variant="light">
           {tx('Back to log in')}
         </Button>

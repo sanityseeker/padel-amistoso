@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Accordion,
-  Alert,
   Badge,
   Box,
   Button,
-  Container,
   CopyButton,
   Group,
   Image,
@@ -16,7 +14,7 @@ import {
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconCheck, IconCopy, IconQrcode } from '@tabler/icons-react';
+import { IconCheck, IconCopy, IconMail, IconQrcode } from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ErrorState, Loading } from '../../components';
@@ -53,6 +51,8 @@ import {
   type Entry,
   type PublicLobby,
 } from './model';
+import { Notice } from '../../ui/Notice';
+import { PageContainer } from '../../ui/PageContainer';
 
 const draftKey = (rid: string, playerId: string) => `amistoso-reg-draft:${rid}:${playerId}`;
 
@@ -234,9 +234,9 @@ function SignUp({
             />
           ))}
           {error && (
-            <Alert color="red" role="alert" data-testid="register-error">
+            <Notice tone="danger" role="alert" data-testid="register-error">
               {error}
-            </Alert>
+            </Notice>
           )}
           <Button type="submit" size="touch" loading={busy}>
             {tx('Register')}
@@ -473,7 +473,7 @@ function EntryView({
             </Paper>
           )}
           {confirming && (
-            <Alert color="red" role="alertdialog" title={tx('Withdraw')}>
+            <Notice tone="danger" role="alertdialog" title={tx('Withdraw')}>
               <Stack gap="sm">
                 <Text size="sm">{tx('Withdraw from this lobby? Your spot will be released.')}</Text>
                 <Group>
@@ -485,9 +485,9 @@ function EntryView({
                   </Button>
                 </Group>
               </Stack>
-            </Alert>
+            </Notice>
           )}
-          {error && <Alert color="red">{error}</Alert>}
+          {error && <Notice tone="danger">{error}</Notice>}
         </Stack>
       )}
       {entry.payment && (
@@ -514,6 +514,7 @@ function EntryView({
         <HubSections
           entry={entry}
           email={submittedEmail}
+          emailSent={!!lobby.auto_send_email}
           lobbyRid={rid}
           hub={hub}
           onCreated={onHubCreated}
@@ -528,12 +529,15 @@ function EntryView({
 function HubSections({
   entry,
   email,
+  emailSent,
   lobbyRid,
   hub,
   onCreated,
 }: {
   entry: Entry;
   email: string;
+  /** The lobby e-mails a confirmation with a Hub login link to every registrant with an address. */
+  emailSent: boolean;
   lobbyRid: string;
   hub: ReturnType<typeof readHub>;
   onCreated: () => void;
@@ -578,7 +582,7 @@ function HubSections({
   return (
     <Stack gap="sm">
       {created ? (
-        <Alert color="green" icon={<IconCheck />} title={tx('Player profile created!')}>
+        <Notice tone="success" icon={<IconCheck />} title={tx('Player profile created!')}>
           {created.same ? (
             <Text size="sm">{tx('Use the same passphrase as above for your player profile.')}</Text>
           ) : (
@@ -589,43 +593,48 @@ function HubSections({
               </Text>
             </Stack>
           )}
-        </Alert>
+        </Notice>
+      ) : linked || signedIn ? null : emailSent && isEmail(email) ? (
+        <Notice tone="info" icon={<IconMail />} title={tx('Check your email')}>
+          <Text size="sm">
+            {tx(
+              'We sent you a link to your player profile. Open it to see all your events in one place.',
+            )}
+          </Text>
+        </Notice>
       ) : (
-        !linked &&
-        !signedIn && (
-          <Accordion variant="contained">
-            <Accordion.Item value="profile">
-              <Accordion.Control>{tx('Save your player profile')}</Accordion.Control>
-              <Accordion.Panel>
-                <Stack gap="sm">
-                  <Text size="sm" c="dimmed">
-                    {tx('One passphrase for all your events.')}
+        <Accordion variant="contained">
+          <Accordion.Item value="profile">
+            <Accordion.Control>{tx('Save your player profile')}</Accordion.Control>
+            <Accordion.Panel>
+              <Stack gap="sm">
+                <Text size="sm" c="dimmed">
+                  {tx('One passphrase for all your events.')}
+                </Text>
+                {!email && (
+                  <TextInput
+                    type="email"
+                    maxLength={320}
+                    label={tx('Enter your email to create a player profile')}
+                    placeholder={tx('your@email.com')}
+                    value={typed}
+                    onChange={(e) => setTyped(e.currentTarget.value)}
+                  />
+                )}
+                {error && <Notice tone="danger">{error}</Notice>}
+                <Button loading={busy} onClick={() => void create()}>
+                  {tx('Save your player profile')}
+                </Button>
+                <Text size="sm" c="dimmed">
+                  {tx('Already have a player profile?')}{' '}
+                  <Text component={Link} to="/player" size="sm">
+                    {tx('Login with a passphrase')}
                   </Text>
-                  {!email && (
-                    <TextInput
-                      type="email"
-                      maxLength={320}
-                      label={tx('Enter your email to create a player profile')}
-                      placeholder={tx('your@email.com')}
-                      value={typed}
-                      onChange={(e) => setTyped(e.currentTarget.value)}
-                    />
-                  )}
-                  {error && <Alert color="red">{error}</Alert>}
-                  <Button loading={busy} onClick={() => void create()}>
-                    {tx('Save your player profile')}
-                  </Button>
-                  <Text size="sm" c="dimmed">
-                    {tx('Already have a player profile?')}{' '}
-                    <Text component={Link} to="/player" size="sm">
-                      {tx('Login with a passphrase')}
-                    </Text>
-                  </Text>
-                </Stack>
-              </Accordion.Panel>
-            </Accordion.Item>
-          </Accordion>
-        )
+                </Text>
+              </Stack>
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
       )}
       {signedIn && (
         <Accordion variant="contained">
@@ -754,6 +763,10 @@ export function RegisterPage() {
               hubToken,
             );
             if (space.profile) saveHub(space.access_token || hubToken, space.profile);
+            // Opening the e-mailed link proves the address: verify it and link this entry, as the Hub does.
+            await call('/player-profile/confirm-email-link', {}, 'POST', hubToken).catch(
+              () => undefined,
+            );
             refreshHub();
           } catch {
             /* An expired link just leaves the visitor anonymous. */
@@ -818,13 +831,13 @@ export function RegisterPage() {
       return <Navigate to={`/404?${to}`} replace />;
     }
     return (
-      <Container size="sm" py="lg">
-        <Alert color="red" title={tx('Something went wrong. Please try again.')}>
+      <PageContainer size="sm">
+        <Notice tone="danger" title={tx('Something went wrong. Please try again.')}>
           <Button variant="subtle" color="red" onClick={() => void lobbyQuery.refetch()}>
             {tx('Try again')}
           </Button>
-        </Alert>
-      </Container>
+        </Notice>
+      </PageContainer>
     );
   }
   if (!lobby) return lobbyQuery.isPending ? <Loading /> : <ErrorState error={null} />;
@@ -867,7 +880,7 @@ export function RegisterPage() {
             <LinkedTournaments lobby={lobby} entryToken={readEntryToken([lobby.id, slug])} />
           </>
         ) : (
-          <Alert color="gray">{tx('Registration is closed.')}</Alert>
+          <Notice tone="neutral">{tx('Registration is closed.')}</Notice>
         )}
       </Stack>
     );
@@ -903,8 +916,8 @@ export function RegisterPage() {
     );
   }
   return (
-    <Container size="sm" py="lg" {...sportProps(lobby.sport)}>
+    <PageContainer size="sm" {...sportProps(lobby.sport)}>
       <Box data-testid="register-page">{body}</Box>
-    </Container>
+    </PageContainer>
   );
 }

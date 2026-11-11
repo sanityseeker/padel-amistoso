@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
-  Badge,
   Button,
   Checkbox,
   Group,
@@ -31,6 +29,8 @@ import {
   winnerOptions,
 } from '../../features/create/rules';
 import type { TournamentPrefix } from './query';
+import { Notice } from '../../ui/Notice';
+import { StatusBadge } from '../../ui/StatusBadge';
 
 type Format = 'single' | 'double' | 'espejo' | 'split';
 type Side = 'oro' | 'plata' | 'out';
@@ -203,7 +203,7 @@ export function PlayoffsDialog({
           plata_third_place: plataThird,
         });
       return write(`/tournaments/${tid}/gp/start-playoffs`, {
-        advancing_player_ids: ordered.length ? ordered : null,
+        advancing_player_ids: ordered,
         extra_participants: extraBody.length ? extraBody : null,
         double_elimination: format === 'double',
         espejo: format === 'espejo',
@@ -344,7 +344,7 @@ export function PlayoffsDialog({
   return (
     <ResponsiveSheet opened onClose={onClose} title={title} size="lg">
       <Stack>
-        {start.error && <Alert color="red">{tx(start.error.message)}</Alert>}
+        {start.error && <Notice tone="danger">{tx(start.error.message)}</Notice>}
         <Group justify="space-between" align="flex-end">
           <SegmentedControl
             size="xs"
@@ -416,9 +416,9 @@ export function PlayoffsDialog({
           />
         )}
         {warnings.map((w) => (
-          <Alert key={w} color="orange" p="xs" role="alert">
+          <Notice key={w} tone="warning" role="alert">
             {w}
-          </Alert>
+          </Notice>
         ))}
         {estimate && (
           <Stack gap={2} data-testid="playoff-estimate">
@@ -442,7 +442,7 @@ export function PlayoffsDialog({
         {rec.isPending ? (
           <Loader size="sm" />
         ) : rec.error ? (
-          <Alert color="red">{tx(rec.error.message)}</Alert>
+          <Notice tone="danger">{tx(rec.error.message)}</Notice>
         ) : split ? (
           <Stack gap={6} data-testid="playoff-split">
             {rows.map((r) => (
@@ -452,10 +452,10 @@ export function PlayoffsDialog({
                     {r.player}
                   </Text>
                   {r.group && (
-                    <Badge size="xs" variant="light" color="gray">
+                    <StatusBadge size="xs">
                       {tx('Group {name}', { name: r.group })}
                       {r.group_rank ? ` #${r.group_rank}` : ''}
-                    </Badge>
+                    </StatusBadge>
                   )}
                 </Group>
                 <SegmentedControl
@@ -487,10 +487,10 @@ export function PlayoffsDialog({
                       {i + 1}. {r.player}
                     </Text>
                     {r.group && (
-                      <Badge size="xs" variant="light" color="gray">
+                      <StatusBadge size="xs">
                         {tx('Group {name}', { name: r.group })}
                         {r.group_rank ? ` #${r.group_rank}` : ''}
-                      </Badge>
+                      </StatusBadge>
                     )}
                     {mex && (
                       <Text size="xs" c="dimmed">
@@ -501,9 +501,9 @@ export function PlayoffsDialog({
                       </Text>
                     )}
                     {r.withdrawn && (
-                      <Badge size="xs" variant="outline" color="gray">
+                      <StatusBadge size="xs" variant="outline">
                         {tx('Withdrawn')}
-                      </Badge>
+                      </StatusBadge>
                     )}
                   </Group>
                 }

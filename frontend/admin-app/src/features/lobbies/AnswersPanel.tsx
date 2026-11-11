@@ -20,6 +20,7 @@ import type { LobbyDetail, Question, RegistrationAnswerChange } from '../../type
 import { EmptyState } from '../../ui';
 import { registrantAnswer } from './filter';
 import { markAnswerChangesSeen } from './answerChanges';
+import { StatusBadge } from '../../ui/StatusBadge';
 
 const cell = (value: string) => (/[,"\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
 
@@ -147,7 +148,7 @@ function QuestionCard({
           <Text fw={650}>{q.label}</Text>
           <Group gap={4} wrap="nowrap">
             {q.type !== 'text' && (
-              <Badge size="xs" variant="light" color="gray">
+              <StatusBadge size="xs">
                 {tx(
                   q.type === 'multichoice'
                     ? 'Multiple choice'
@@ -155,7 +156,7 @@ function QuestionCard({
                       ? 'Number'
                       : 'Choice',
                 )}
-              </Badge>
+              </StatusBadge>
             )}
             {q.required && (
               <Badge size="xs" variant="light">
@@ -163,9 +164,9 @@ function QuestionCard({
               </Badge>
             )}
             {!choiceType && (
-              <Badge size="xs" variant="outline" color="gray">
+              <StatusBadge size="xs" variant="outline">
                 {answered} / {total}
-              </Badge>
+              </StatusBadge>
             )}
           </Group>
         </Group>

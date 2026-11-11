@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Alert, Center, Paper, Stack, Text, Title } from '@mantine/core';
+import { Center, Paper, Stack, Text, Title } from '@mantine/core';
 import { ApiError } from '../../api';
 import { t as tx } from '../../i18n';
+import { Notice } from '../../ui/Notice';
 
 export const MIN_PASSWORD = 8;
 export const MAX_PASSWORD = 128;
@@ -43,10 +44,10 @@ export function ErrorAlert({ error, children }: { error: string; children?: Reac
   const ref = useFocusOnError(error);
   if (!error) return null;
   return (
-    <Alert color="red" role="alert" ref={ref} tabIndex={-1}>
+    <Notice tone="danger" role="alert" ref={ref} tabIndex={-1}>
       {error}
       {children}
-    </Alert>
+    </Notice>
   );
 }
 

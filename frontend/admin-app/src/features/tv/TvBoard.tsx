@@ -1,7 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import {
   ActionIcon,
-  Alert,
   Badge,
   Box,
   Collapse,
@@ -26,7 +25,9 @@ import { MatchCard, StandingsTable, toMatchView, toStandingRows } from '../tourn
 import { BracketImage } from './BracketImage';
 import { ctxOf, isTbd, sortTbdLast, type Breakdown, type TvLive, type TvMeta } from './model';
 import type { useTvPlayer } from './useTvPlayer';
+import { Section, type OpenState } from './TvSection';
 import classes from './Tv.module.css';
+import { Notice } from '../../ui/Notice';
 
 type Player = ReturnType<typeof useTvPlayer>;
 
@@ -37,83 +38,6 @@ const ENDPOINT: Record<Ctx, string> = {
   'mex-playoff': 'mex/record-playoff',
   'po-playoff': 'po/record',
 };
-
-// ---- Section open state, remembered per tournament (the legacy `padel-tv-sections-<tid>` key) --------
-
-function useOpenState(tid: string) {
-  const key = `padel-tv-sections-${tid}`;
-  const [state, setState] = useState<Record<string, boolean>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(key) || '{}');
-    } catch {
-      return {};
-    }
-  });
-  return {
-    isOpen: (id: string, fallback = true) => (id in state ? state[id] : fallback),
-    toggle: (id: string, fallback = true) =>
-      setState((current) => {
-        const next = { ...current, [id]: !(id in current ? current[id] : fallback) };
-        try {
-          localStorage.setItem(key, JSON.stringify(next));
-        } catch {
-          /* The choice still applies to this visit. */
-        }
-        return next;
-      }),
-  };
-}
-type OpenState = ReturnType<typeof useOpenState>;
-
-function Section({
-  id,
-  title,
-  state,
-  info,
-  children,
-  fallback = true,
-}: {
-  id: string;
-  title: string;
-  state: OpenState;
-  info?: ReactNode;
-  children: ReactNode;
-  fallback?: boolean;
-}) {
-  const open = state.isOpen(id, fallback);
-  return (
-    <Paper
-      p={{ base: 'sm', sm: 'lg' }}
-      component="section"
-      data-testid="tv-section"
-      data-section={id}
-    >
-      <Group justify="space-between" wrap="nowrap" gap="sm">
-        <UnstyledButton
-          aria-expanded={open}
-          onClick={() => state.toggle(id, fallback)}
-          flex={1}
-          miw={0}
-        >
-          <Group gap="xs" wrap="nowrap">
-            <IconChevronRight
-              size={20}
-              style={{ transform: open ? 'rotate(90deg)' : undefined, flexShrink: 0 }}
-              aria-hidden
-            />
-            <Title order={2} className={classes.sectionTitle}>
-              {title}
-            </Title>
-          </Group>
-        </UnstyledButton>
-        {info}
-      </Group>
-      <Collapse expanded={open}>
-        <Box pt="md">{children}</Box>
-      </Collapse>
-    </Paper>
-  );
-}
 
 // ---- Column legend --------------------------------------------------------------------------------------
 
@@ -130,7 +54,8 @@ function Legend({ kind }: { kind: 'standings' | 'leaderboard' | 'double' }) {
           ['SD', 'Set difference'],
           ['PF', 'Points for'],
           ['PA', 'Points against'],
-          ['Diff', 'Point difference'],
+          ['GD', 'Game difference'],
+          ['PD', 'Point difference'],
         ]
       : [
           ['Pts', 'Total points'],
@@ -683,6 +608,7 @@ function GroupStandings({
               rows={standingsRows(rows)}
               preset="group"
               density="tv"
+              sets={live.settings.score_mode?.['gp-group'] === 'sets'}
               highlightId={highlight}
               nameLabel={teams ? tx('Team') : undefined}
               eloLabel={meta && status.elo_scope === 'club' ? tx('Club ELO') : undefined}
@@ -749,29 +675,29 @@ function Champions({ live }: { live: TvLive }) {
   const consolation = espejo && !superFinal ? s.losers_champion : null;
   if (Array.isArray(s.winners) && s.winners.length > 1)
     return (
-      <Alert color="ball" icon={<IconTrophy />} title={tx('Winners')} data-testid="tv-champion">
+      <Notice icon={<IconTrophy />} title={tx('Winners')} data-testid="tv-champion">
         <Text className={classes.banner}>{s.winners.map((w) => w.join(' & ')).join(' · ')}</Text>
-      </Alert>
+      </Notice>
     );
   return (
     <>
       {champion && (
-        <Alert color="ball" icon={<IconTrophy />} title={tx('Champion')} data-testid="tv-champion">
+        <Notice icon={<IconTrophy />} title={tx('Champion')} data-testid="tv-champion">
           <Text className={classes.banner} fw={700}>
             {champion.join(' & ')}
           </Text>
-        </Alert>
+        </Notice>
       )}
       {consolation && (
-        <Alert
-          color="gray"
+        <Notice
+          tone="neutral"
           icon={<IconTrophy />}
           title={tx(s.espejo_split ? 'Silver bracket winner' : 'Consolation winner')}
         >
           <Text className={classes.banner} fw={700}>
             {consolation.join(' & ')}
           </Text>
-        </Alert>
+        </Notice>
       )}
     </>
   );
@@ -825,8 +751,11 @@ export function TvBoard({
   player,
   onCard,
   only,
+  state,
 }: {
   tid: string;
+  /** Open/closed state of the sections, shared with the page's own sections. */
+  state: OpenState;
   meta: TvMeta;
   live: TvLive;
   player: Player;
@@ -835,7 +764,6 @@ export function TvBoard({
   only?: string;
 }) {
   useLocale();
-  const state = useOpenState(tid);
   const { settings, status, playoffs } = live;
   const phase = status.phase || '';
   const playoffPhase = phase === 'playoffs' || phase === 'finished';

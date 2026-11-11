@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Box, CloseButton, Group, Text } from '@mantine/core';
+import { Box, CloseButton, Group, Text } from '@mantine/core';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { DEMO_PASSPHRASE_KEY, useAuth } from '../auth';
 import { CopyField } from '../ui';
@@ -7,6 +7,7 @@ import { t as tx, useLocale, localeTag } from '../i18n';
 import { Loading } from '../components';
 import { useOpenItemsSync } from '../features/switcher/useOpenItemsSync';
 import { AdminLogin } from './AdminLogin';
+import { Notice } from '../ui/Notice';
 
 // Keeps the open-items list in step with the route and the server. Mounted only for signed-in sessions.
 function OpenItemsSync() {
@@ -32,7 +33,7 @@ function DemoBanner({
   });
   const until = expires ? new Date(expires) : null;
   return (
-    <Alert color="yellow" variant="light" mb="md" data-testid="demo-banner">
+    <Notice tone="warning" mb="md" data-testid="demo-banner">
       <Group justify="space-between" align="flex-start" wrap="nowrap">
         <Text size="sm" fw={600}>
           {tx('Demo sandbox')}: {username}
@@ -64,7 +65,7 @@ function DemoBanner({
           <CopyField value={phrase} label={tx('Passphrase')} />
         </>
       )}
-    </Alert>
+    </Notice>
   );
 }
 

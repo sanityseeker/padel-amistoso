@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Accordion,
-  Alert,
   Button,
   Fieldset,
   Group,
@@ -24,7 +23,7 @@ import { api, write } from '../../api';
 import { useAuth } from '../../auth';
 import { t as tx, useLocale } from '../../i18n';
 import type { LobbyDetail } from '../../types';
-import { MutationError, StatTile } from '../../ui';
+import { ActionBar, ActionBarSpacer, MutationError, StatTile } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 import {
   MEXICANO_DEFAULTS,
@@ -63,6 +62,7 @@ import {
   type Team,
   type TournamentKind,
 } from './rules';
+import { Notice } from '../../ui/Notice';
 
 export type { TournamentKind } from './rules';
 
@@ -107,14 +107,12 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
   const [mex, setMex] = useState<MexicanoOptions>(MEXICANO_DEFAULTS);
   const [groups, setGroups] = useState<number | string>(2);
   const [groupLabels, setGroupLabels] = useState<string[]>([]);
-  const [top, setTop] = useState<number | string>(2);
   const [draw, setDraw] = useState<{ sig: string; groups: Draw[] } | null>(null);
   const [community, setCommunity] = useState(user?.default_community_id || 'open');
   const [club, setClub] = useState<string | null>(null);
   const { clubs } = useOverview();
   const [season, setSeason] = useState<string | null>(null);
   const [isPublic, setPublic] = useState(true);
-  const [gpDouble, setGpDouble] = useState(false);
   const [playoff, setPlayoff] = useState<PlayoffChoice>(PLAYOFF_DEFAULTS);
   const [notify, setNotify] = useState(true);
   const emailStatus = useQuery({
@@ -229,9 +227,7 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
           : kind === 'group_playoff'
             ? {
                 num_groups: groupCount,
-                top_per_group: Number(top),
                 group_names: groupNames,
-                double_elimination: gpDouble,
                 ...(activeDraw
                   ? {
                       group_assignments: Object.fromEntries(
@@ -336,7 +332,6 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
       const per = Math.floor(entries.length / groupCount);
       return [
         { label: tx('Groups'), value: groupCount },
-        { label: tx('Advance'), value: groupCount * (Number(top) || 0) },
         {
           label: tx('Group matches'),
           value: groupCount * groupMatches(per, rules.teamMode),
@@ -344,7 +339,7 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
       ];
     }
     return [{ label: tx('Bracket matches'), value: Math.max(0, entries.length - 1) }];
-  }, [kind, entries.length, rolling, rounds, groupCount, top, rules.teamMode]);
+  }, [kind, entries.length, rolling, rounds, groupCount, rules.teamMode]);
 
   const submit = (
     <Button
@@ -524,25 +519,15 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
               )}
               {kind === 'group_playoff' && (
                 <Stack gap="sm">
-                  <SimpleGrid cols={2}>
-                    <NumberInput
-                      label={tx('Groups')}
-                      min={1}
-                      max={32}
-                      allowDecimal={false}
-                      required
-                      value={groups}
-                      onChange={setGroups}
-                    />
-                    <NumberInput
-                      label={tx('Qualifiers per group')}
-                      min={1}
-                      allowDecimal={false}
-                      required
-                      value={top}
-                      onChange={setTop}
-                    />
-                  </SimpleGrid>
+                  <NumberInput
+                    label={tx('Groups')}
+                    min={1}
+                    max={32}
+                    allowDecimal={false}
+                    required
+                    value={groups}
+                    onChange={setGroups}
+                  />
                   <Accordion variant="contained" radius="lg">
                     <Accordion.Item value="groups">
                       <Accordion.Control>{tx('Group names and draw')}</Accordion.Control>
@@ -577,12 +562,6 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
                       </Accordion.Panel>
                     </Accordion.Item>
                   </Accordion>
-                  <Switch
-                    label={tx('Double elimination')}
-                    description={tx('For the play-off after the groups.')}
-                    checked={gpDouble}
-                    onChange={(e) => setGpDouble(e.currentTarget.checked)}
-                  />
                 </Stack>
               )}
               {kind === 'playoff' && (
@@ -623,13 +602,13 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
             </Stack>
           </Fieldset>
           {lobby && selected.size === 0 && (
-            <Alert color="yellow">{tx('Select at least two registrants to convert.')}</Alert>
+            <Notice tone="warning">{tx('Select at least two registrants to convert.')}</Notice>
           )}
         </Stack>
         {phone ? (
           <>
-            <div className={classes.spacer} />
-            <div className={classes.bar}>{submit}</div>
+            <ActionBarSpacer />
+            <ActionBar>{submit}</ActionBar>
           </>
         ) : (
           <Paper p="md" className={classes.summary} aria-label={tx('Summary')}>

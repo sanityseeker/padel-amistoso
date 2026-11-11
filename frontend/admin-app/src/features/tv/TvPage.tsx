@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionIcon,
-  Alert,
   Badge,
   Box,
   Group,
@@ -36,10 +35,12 @@ import { StatusBadge } from '../../ui';
 import { Markdown } from '../public/Markdown';
 import { PlayerCardModal } from './PlayerCardModal';
 import { Champions, sectionKeys, TvBoard } from './TvBoard';
+import { Section, useOpenState } from './TvSection';
 import { HubInvite, TvPlayerBar } from './TvPlayerBar';
 import { loadLive, resolveSlug, type TvMeta } from './model';
 import { useTvPlayer } from './useTvPlayer';
 import classes from './Tv.module.css';
+import { Notice } from '../../ui/Notice';
 
 const CYCLE_MS = 15_000;
 
@@ -77,6 +78,8 @@ export function TvPage() {
     retry: false,
   });
   const tid = resolved.data;
+  // One open/closed state for every collapsible section (the board's and the custom info's).
+  const openState = useOpenState(tid ?? '');
   const metaQuery = useQuery({
     queryKey: ['public', 'tv', tid, 'meta'],
     enabled: !!tid,
@@ -311,29 +314,34 @@ export function TvPage() {
 
         {data && tid && <HubInvite tid={tid} player={player} />}
         {data?.settings.banner_text?.trim() && (
-          <Alert color="court" variant="light" icon={<IconSpeakerphone />} data-testid="tv-banner">
+          <Notice icon={<IconSpeakerphone />} data-testid="tv-banner">
             <Text className={classes.banner}>{data.settings.banner_text.trim()}</Text>
-          </Alert>
+          </Notice>
         )}
         {data?.settings.custom_info_text?.trim() && (
-          <Alert color="court" variant="light" data-testid="tv-custom-info">
-            <Stack gap={4}>
-              {data.settings.custom_info_title?.trim() && (
-                <Text fw={700} className={classes.customInfoTitle}>
-                  {data.settings.custom_info_title.trim()}
-                </Text>
-              )}
-              <Box className={classes.customInfoMarkdown}>
-                <Markdown source={data.settings.custom_info_text.trim()} />
-              </Box>
-            </Stack>
-          </Alert>
+          <Section
+            id="custom-info"
+            title={data.settings.custom_info_title?.trim() || tx('Information')}
+            state={openState}
+          >
+            <Box className={classes.customInfoMarkdown} data-testid="tv-custom-info">
+              <Markdown source={data.settings.custom_info_text.trim()} />
+            </Box>
+          </Section>
         )}
         {live.error && !data && <ErrorState error={live.error} retry={() => void live.refetch()} />}
         {!data && !live.error && <Loading />}
         {data && <Champions live={data} />}
         {data && tid && (
-          <TvBoard tid={tid} meta={meta} live={data} player={player} onCard={setCard} only={only} />
+          <TvBoard
+            tid={tid}
+            state={openState}
+            meta={meta}
+            live={data}
+            player={player}
+            onCard={setCard}
+            only={only}
+          />
         )}
         {present && sections.length > 1 && (
           <Group justify="center" gap={6} aria-label={tx('Sections')}>

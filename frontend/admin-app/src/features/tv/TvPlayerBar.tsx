@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   ActionIcon,
-  Alert,
   Anchor,
   Box,
   Button,
@@ -22,6 +21,7 @@ import { PLAYER_DATA } from '../../player/api';
 import { profileInitials } from '../../player/session';
 import shell from '../../shell/Shell.module.css';
 import type { useTvPlayer } from './useTvPlayer';
+import { Notice } from '../../ui/Notice';
 
 type Player = ReturnType<typeof useTvPlayer>;
 
@@ -96,9 +96,9 @@ function LoginModal({
           onChange={(e) => setPassphrase(e.currentTarget.value)}
         />
         {error && (
-          <Alert color="red" role="alert">
+          <Notice tone="danger" role="alert">
             {error}
-          </Alert>
+          </Notice>
         )}
         <Button type="submit" size="touch" loading={busy}>
           {tx('Login')}
@@ -248,7 +248,7 @@ export function HubInvite({ tid, player }: { tid: string; player: Player }) {
   )
     return null;
   return (
-    <Alert color="court" variant="light" data-testid="hub-invite">
+    <Notice data-testid="hub-invite">
       <Group justify="space-between" wrap="nowrap" gap="sm">
         <Group gap="md" wrap="wrap">
           <Text size="sm" fw={600}>
@@ -277,6 +277,6 @@ export function HubInvite({ tid, player }: { tid: string; player: Player }) {
           <IconX size={16} />
         </ActionIcon>
       </Group>
-    </Alert>
+    </Notice>
   );
 }

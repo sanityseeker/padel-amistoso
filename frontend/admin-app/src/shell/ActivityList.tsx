@@ -1,5 +1,6 @@
 import { Group, Stack, Text } from '@mantine/core';
-import type { Match } from '../types';
+import type { Match, SetDecider } from '../types';
+import { formatScore } from '../admin/tournament/scoring';
 import { t as tx, useLocale, localeTag } from '../i18n';
 import { formatRoundLabel } from '../roundLabel';
 import classes from './Shell.module.css';
@@ -10,7 +11,16 @@ const stampOf = (m: Match) => m.last_activity_at ?? m.scored_at ?? null;
 
 // The latest saved scores, newest first, whoever entered them. Shared by the wide-screen aside and
 // the "Recent activity" sheet of smaller screens.
-export function ActivityList({ matches, limit = 6 }: { matches: Match[]; limit?: number }) {
+export function ActivityList({
+  matches,
+  limit = 6,
+  decider,
+}: {
+  matches: Match[];
+  limit?: number;
+  /** The deciding format of a match (tournament default included). */
+  decider?: (m: Match) => SetDecider;
+}) {
   useLocale();
   const activity = matches
     .filter((m) => m.status === 'completed' && stampOf(m) != null)
@@ -44,7 +54,11 @@ export function ActivityList({ matches, limit = 6 }: { matches: Match[]; limit?:
             {m.team1.join(' & ')} {tx('vs')} {m.team2.join(' & ')}
           </Text>
           <Text size="xs" c="dimmed">
-            {m.score ? `${m.score[0]} - ${m.score[1]}` : m.sets?.map((s) => s.join('-')).join(' ')}
+            {formatScore(
+              m.score ?? null,
+              m.sets ?? null,
+              decider?.(m) ?? m.effective_decider ?? 'full_set',
+            )}
           </Text>
         </div>
       ))}

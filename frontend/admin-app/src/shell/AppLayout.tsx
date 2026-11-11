@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
-import { AppShell } from '@mantine/core';
+import { AppShell, rem } from '@mantine/core';
 import { useHeadroom, useLocalStorage } from '@mantine/hooks';
 import { Outlet, ScrollRestoration, useLocation } from 'react-router-dom';
 import { ChangePasswordModal } from '../admin/account/ChangePasswordModal';
@@ -29,7 +29,20 @@ import { WorkspaceAside } from './WorkspaceAside';
 const RAIL = 72;
 const DOCK = 280;
 const ASIDE = 340;
-const FOOTER = 'calc(64px + env(safe-area-inset-bottom, 0px))';
+// iPhone safe areas (status bar, notch or Dynamic Island, home indicator, the notch side in
+// landscape). index.html sets viewport-fit=cover, so the page runs edge to edge and each fixed bar
+// pads itself: the header grows by the top inset, the tab bar by the bottom one, the dock and the
+// aside by the side ones. AppShell turns these sizes into its offsets, so sticky elements that use
+// --app-shell-header-offset clear the status bar too.
+const SAFE_TOP = 'env(safe-area-inset-top, 0px)';
+const SAFE_BOTTOM = 'env(safe-area-inset-bottom, 0px)';
+const SAFE_LEFT = 'env(safe-area-inset-left, 0px)';
+const SAFE_RIGHT = 'env(safe-area-inset-right, 0px)';
+// rem() keeps Mantine's interface scaling, as a plain number size would get.
+const withInset = (px: number, inset: string) => `calc(${rem(px)} + ${inset})`;
+// The tab bar is 64 CSS px (Shell.module.css .bottomNav), so its size stays unscaled.
+const TABS_HEIGHT = 64;
+const FOOTER = `calc(${TABS_HEIGHT}px + ${SAFE_BOTTOM})`;
 
 // The one shell for every audience. Admin gets the Courtside Console (dock or rail, bottom tabs on
 // phones, review aside on wide screens); Events and the Player Hub get the header and, on phones,
@@ -79,17 +92,21 @@ function Layout() {
     <TopBarTitleContext.Provider value={!!barTitle && !pathname.startsWith('/tv/')}>
       <AppShell
         className="app-shell"
+        // One source for the tab bar height: fixed action bars (ui/ActionBar) sit above it.
+        style={{ '--app-tabs-height': showTabs && !hideTabs ? `${TABS_HEIGHT}px` : '0px' }}
         bg="var(--color-bg)"
-        header={tvChrome ? undefined : { height: header.height }}
-        navbar={showDock ? { width: rail ? RAIL : DOCK, breakpoint: 0 } : undefined}
-        aside={showAside ? { width: ASIDE, breakpoint: 0 } : undefined}
+        header={tvChrome ? undefined : { height: withInset(header.height, SAFE_TOP) }}
+        navbar={
+          showDock ? { width: withInset(rail ? RAIL : DOCK, SAFE_LEFT), breakpoint: 0 } : undefined
+        }
+        aside={showAside ? { width: withInset(ASIDE, SAFE_RIGHT), breakpoint: 0 } : undefined}
         footer={showTabs ? { height: FOOTER, collapsed: hideTabs, offset: false } : undefined}
         padding={0}
         withBorder
         transitionDuration={180}
       >
         {!tvChrome && (
-          <AppShell.Header className="app-header">
+          <AppShell.Header className="app-header" pt={SAFE_TOP} pl={SAFE_LEFT} pr={SAFE_RIGHT}>
             <TopBar
               mode={mode}
               adminChrome={adminChrome}
@@ -102,16 +119,24 @@ function Layout() {
           </AppShell.Header>
         )}
         {showDock && (
-          <AppShell.Navbar component="div">
+          <AppShell.Navbar component="div" pl={SAFE_LEFT}>
             <TournamentDock rail={rail} />
           </AppShell.Navbar>
         )}
         <AppShell.Main
           miw={0}
-          pb={showTabs ? FOOTER : undefined}
+          pb={showTabs ? FOOTER : SAFE_BOTTOM}
           style={{ display: 'flex', flexDirection: 'column' }}
         >
-          <div style={{ width: '100%', minWidth: 0 }}>
+          {/* Landscape: keep page content out of the notch side unless the dock or aside covers it. */}
+          <div
+            style={{
+              width: '100%',
+              minWidth: 0,
+              paddingLeft: showDock ? undefined : SAFE_LEFT,
+              paddingRight: showAside ? undefined : SAFE_RIGHT,
+            }}
+          >
             <TopBarActionContext.Provider
               value={{ action: topBarAction, setAction: setTopBarAction }}
             >
@@ -126,12 +151,12 @@ function Layout() {
           <SupportFooter />
         </AppShell.Main>
         {showAside && route.id && (
-          <AppShell.Aside>
+          <AppShell.Aside pr={SAFE_RIGHT}>
             <WorkspaceAside tid={route.id} />
           </AppShell.Aside>
         )}
         {showTabs && (
-          <AppShell.Footer className="app-tabs" pb="env(safe-area-inset-bottom, 0px)">
+          <AppShell.Footer className="app-tabs" pb={SAFE_BOTTOM} pl={SAFE_LEFT} pr={SAFE_RIGHT}>
             {adminChrome ? <AdminBottomNav /> : <PagesNav variant="bottom" />}
           </AppShell.Footer>
         )}

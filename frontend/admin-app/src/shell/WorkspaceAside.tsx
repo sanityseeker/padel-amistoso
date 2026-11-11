@@ -1,7 +1,7 @@
 import { Badge, Button, Group, ScrollArea, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useTournamentList } from '../components';
-import { pageMatches, reviewItems } from '../admin/tournament/scoring';
+import { matchDecider, pageMatches, reviewItems } from '../admin/tournament/scoring';
 import { prefixOf, workspaceQuery } from '../admin/tournament/query';
 import { workspace, useWorkspaceInfo } from '../features/switcher/workspace';
 import { t as tx, useLocale } from '../i18n';
@@ -60,7 +60,10 @@ export function WorkspaceAside({ tid }: { tid: string }) {
         </Stack>
         <Stack gap="xs">
           <Text variant="eyebrow">{tx('Activity')}</Text>
-          <ActivityList matches={matches} />
+          <ActivityList
+            matches={matches}
+            decider={data ? (m) => matchDecider(m, data.settings) : undefined}
+          />
         </Stack>
       </Stack>
     </ScrollArea>

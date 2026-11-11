@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import {
   ActionIcon,
-  Badge,
   Button,
   Group,
   Menu,
@@ -9,11 +8,13 @@ import {
   Text,
   Title,
   Tooltip,
+  UnstyledButton,
   VisuallyHidden,
 } from '@mantine/core';
 import { IconArrowRight, IconDots, IconSettings, IconTrophy } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
 import { PhaseBadge } from '../../components';
+import { StatusBadge } from '../../ui';
 import classes from './Workspace.module.css';
 
 export interface NextStep {
@@ -107,17 +108,9 @@ export function WorkspaceHeader({
           </VisuallyHidden>
           <PhaseBadge phase={phase} />
           {reviewCount > 0 && (
-            <Badge
-              component="button"
-              type="button"
-              color="red"
-              variant="light"
-              radius="sm"
-              style={{ cursor: 'pointer' }}
-              onClick={onReview}
-            >
-              {tx('{n} to review', { n: reviewCount })}
-            </Badge>
+            <UnstyledButton type="button" onClick={onReview}>
+              <StatusBadge tone="danger">{tx('{n} to review', { n: reviewCount })}</StatusBadge>
+            </UnstyledButton>
           )}
           <Text size="sm" component="span" className={classes.meta}>
             {roundText && <span>{roundText}</span>}
@@ -130,15 +123,11 @@ export function WorkspaceHeader({
             </span>
           </Text>
           {champion && champion.length > 0 && (
-            <Badge
-              color="court"
-              variant="light"
-              leftSection={<IconTrophy size={12} />}
-              title={tx('Tournament champions')}
-              style={{ textTransform: 'none' }}
-            >
-              {tx('Champions: {names}', { names: champion.join(' & ') })}
-            </Badge>
+            <span title={tx('Tournament champions')}>
+              <StatusBadge tone="info" leftSection={<IconTrophy size={12} />}>
+                {tx('Champions: {names}', { names: champion.join(' & ') })}
+              </StatusBadge>
+            </span>
           )}
         </Group>
         <Group gap="xs" wrap="nowrap">

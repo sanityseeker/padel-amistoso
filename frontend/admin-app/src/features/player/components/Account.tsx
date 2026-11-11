@@ -1,8 +1,6 @@
 import { t as tx, useLocale } from '../../../i18n';
 import { useState } from 'react';
 import {
-  Alert,
-  Badge,
   Button,
   Card,
   CopyButton,
@@ -16,6 +14,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
+import { StatusBadge } from '../../../ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { IconCheck, IconCopy, IconCreditCard, IconMail } from '@tabler/icons-react';
@@ -23,6 +22,7 @@ import { ErrorState, Loading } from '../../../components';
 import { money } from '../../../api';
 import { playerApi } from '../../../player/api';
 import type { HubPayment, Profile } from '../../../player/types';
+import { Notice } from '../../../ui/Notice';
 export function PlayerAccount({
   profile,
   editing = false,
@@ -79,7 +79,7 @@ export function PlayerAccount({
             }}
           >
             <Stack>
-              {save.error && <Alert color="red">{tx(save.error.message)}</Alert>}
+              {save.error && <Notice tone="danger">{tx(save.error.message)}</Notice>}
               <TextInput
                 label={tx('Display name')}
                 required
@@ -112,12 +112,9 @@ export function PlayerAccount({
         <Stack>
           {!profile.email_verified && (
             <Paper p="md">
-              <Group justify="space-between" mb="md">
-                <Title order={3}>{tx('Email verification')}</Title>
-                <Badge color={profile.email_verified ? 'court' : 'orange'}>
-                  {profile.email_verified ? tx('Verified') : tx('Pending')}
-                </Badge>
-              </Group>
+              <Title order={3} mb="md">
+                {tx('Email verification')}
+              </Title>
               <Text size="sm" c="dimmed">
                 {profile.email_verified
                   ? tx('Your email is verified and can help connect your event entries.')
@@ -135,9 +132,9 @@ export function PlayerAccount({
                 </Button>
               )}
               {verify.error && (
-                <Alert mt="md" color="red">
+                <Notice mt="md" tone="danger">
                   {tx(verify.error.message)}
-                </Alert>
+                </Notice>
               )}
             </Paper>
           )}
@@ -206,11 +203,11 @@ function ReportPayment({ payment }: { payment: HubPayment }) {
     <Card withBorder p="sm">
       <Group justify="space-between">
         <IconCreditCard color="var(--app-primary)" />
-        <Badge color={payment.status === 'reported' ? 'orange' : 'gray'} variant="light">
+        <StatusBadge tone={payment.status === 'reported' ? 'warning' : 'neutral'}>
           {payment.status === 'reported'
             ? tx('Awaiting confirmation')
             : tx(payment.status.replace('_', ' '))}
-        </Badge>
+        </StatusBadge>
       </Group>
       <Title order={3} size="sm" mt="sm">
         {payment.entity_name}
@@ -243,7 +240,7 @@ function ReportPayment({ payment }: { payment: HubPayment }) {
           }}
         >
           <Stack mt="md">
-            {report.error && <Alert color="red">{tx(report.error.message)}</Alert>}
+            {report.error && <Notice tone="danger">{tx(report.error.message)}</Notice>}
             <Select
               label={tx('Payment method')}
               clearable

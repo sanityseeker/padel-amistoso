@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Alert,
   Button,
   Collapse,
   Group,
@@ -22,6 +21,7 @@ import type {
 } from '../../types';
 import { canScoreSets, type Ctx } from './scoring';
 import { useSetFormat } from './useScoreActions';
+import { Notice } from '../../ui/Notice';
 
 type Replacement = Pick<SetMatchFormatBody, 'score1' | 'score2' | 'sets'>;
 
@@ -164,11 +164,7 @@ export function MatchFormat({
               {tx('Resolve the dispute before changing the format')}
             </Text>
           )}
-          {message && (
-            <Alert color="red" p="xs">
-              {message}
-            </Alert>
-          )}
+          {message && <Notice tone="danger">{message}</Notice>}
           <Group justify="space-between">
             <Button
               variant="subtle"

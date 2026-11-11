@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   ActionIcon,
-  Badge,
   Button,
   Collapse,
   Group,
@@ -202,9 +201,9 @@ export function ClubEvents({ club }: { club: Club }) {
             <Text size="xs">{tx('{count} registered', { count: r.registrants })}</Text>
           )}
           {!r.canEdit && (
-            <Badge size="xs" variant="outline" color="gray">
+            <StatusBadge size="xs" variant="outline">
               {tx('View only')}
-            </Badge>
+            </StatusBadge>
           )}
         </>
       }
@@ -271,7 +270,7 @@ export function ClubEvents({ club }: { club: Club }) {
               <Menu.Item
                 component="a"
                 href={publicHref(r)}
-                leftSection={<IconExternalLink size={15} />}
+                rightSection={<IconExternalLink size={14} aria-hidden />}
               >
                 {tx('Public view')}
               </Menu.Item>

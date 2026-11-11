@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   Accordion,
-  Alert,
   Badge,
   Button,
   Group,
@@ -25,6 +24,8 @@ import { t as tx, useLocale } from '../../i18n';
 import { api, write } from '../../api';
 import type { PairingProposal, RepeatDetail } from '../../types';
 import { roundStats, type PlayerStat, type RoundContext } from './pairings';
+import { Notice } from '../../ui/Notice';
+import { StatusBadge } from '../../ui/StatusBadge';
 
 interface ProposalResponse {
   proposals: PairingProposal[];
@@ -130,9 +131,9 @@ function ProposalCard({ proposal, details }: { proposal: PairingProposal; detail
               </Badge>
             )}
             {proposal.strategy === 'seeded' && (
-              <Badge size="sm" color="gray" variant="outline">
+              <StatusBadge size="sm" variant="outline">
                 {tx('Seeded')}
-              </Badge>
+              </StatusBadge>
             )}
             {proposal.repeat_count > 0 ? (
               <Badge size="sm" color="yellow" variant="light">
@@ -310,7 +311,7 @@ export function PairingsDialog({
         <Tabs.Panel value="suggested">
           <Stack>
             {(commit.error || proposals.error) && (
-              <Alert color="red">{tx((commit.error || proposals.error)!.message)}</Alert>
+              <Notice tone="danger">{tx((commit.error || proposals.error)!.message)}</Notice>
             )}
             {proposals.isFetching && !list.length ? (
               <Group gap="xs">
@@ -512,7 +513,7 @@ export function PairingsDialog({
         </Tabs.Panel>
         <Tabs.Panel value="manual">
           <Stack>
-            {custom.error && <Alert color="red">{tx(custom.error.message)}</Alert>}
+            {custom.error && <Notice tone="danger">{tx(custom.error.message)}</Notice>}
             <Text size="sm" c="dimmed">
               {tx('Choose who plays whom. Players you leave out sit out this round.')}
             </Text>
@@ -592,9 +593,7 @@ export function PairingsDialog({
               </Paper>
             )}
             {duplicate && (
-              <Alert color="orange" p="xs">
-                {tx('A player is assigned to more than one match.')}
-              </Alert>
+              <Notice tone="warning">{tx('A player is assigned to more than one match.')}</Notice>
             )}
             <Group justify="flex-end" className={classes.footer}>
               <Button variant="default" size="touch" onClick={onClose}>

@@ -290,3 +290,36 @@ test.afterAll(async ({ request }) => {
   for (const t of list as { id: string; name: string }[])
     if (/^Score /.test(t.name)) await request.delete(`/api/tournaments/${t.id}`, { headers });
 });
+
+test('recent activity shows a set-scored match in sets, not summed games', async ({
+  page,
+  request,
+}) => {
+  const name = `Activity Sets ${Date.now()}`;
+  const { id, headers } = await createTournament(request, 'gp', name);
+  await patchTvSettings(request, id, {
+    score_mode: { 'gp-group': 'sets' },
+    set_decider: 'match_tiebreak',
+  });
+  const [match] = await matchesOf(request, id, 'gp/groups');
+  const saved = await request.post(`/api/tournaments/${id}/gp/record-group-tennis`, {
+    headers,
+    data: {
+      match_id: match.id,
+      sets: [
+        [6, 4],
+        [3, 6],
+        [10, 8],
+      ],
+    },
+  });
+  expect(saved.ok()).toBeTruthy();
+  await openTournament(page, id, name);
+  await page.getByRole('button', { name: 'Workspace menu' }).click();
+  await page.getByRole('menuitem', { name: 'Recent activity' }).click();
+  const activity = page.getByTestId('activity-list');
+  await expect(activity).toContainText('6-4 3-6 [10-8]');
+  // The summed games (19-18) must not stand in for the sets.
+  await expect(activity).not.toContainText('19 - 18');
+  await expect(activity).not.toContainText('19-18');
+});

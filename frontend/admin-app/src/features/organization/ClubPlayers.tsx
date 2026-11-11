@@ -2,8 +2,6 @@ import { useMediaQuery } from '@mantine/hooks';
 import { useState } from 'react';
 import {
   ActionIcon,
-  Alert,
-  Badge,
   Button,
   Checkbox,
   Code,
@@ -31,6 +29,8 @@ import { ConfirmAction, EmptyState, MutationError, ResponsiveSheet } from '../..
 import { useAdminMutation } from '../../useAdminMutation';
 import { tiersKey } from './ClubTiers';
 import { PossibleMembers } from './PossibleMembers';
+import { Notice } from '../../ui/Notice';
+import { StatusBadge } from '../../ui/StatusBadge';
 
 interface Candidate {
   name: string;
@@ -95,9 +95,9 @@ function AddSheet({ clubId, onClose }: { clubId: string; onClose: () => void }) 
                   {c.name}
                 </Text>
                 {!c.has_hub_profile && (
-                  <Badge size="xs" variant="outline" color="gray">
+                  <StatusBadge size="xs" variant="outline">
                     {tx('Past participant')}
-                  </Badge>
+                  </StatusBadge>
                 )}
               </Group>
               <Button size="compact-md" variant="light" onClick={() => add.mutate(c)}>
@@ -253,9 +253,9 @@ function EditSheet({
                 {tx('This past participant has no account. Creating one gives them a passphrase.')}
               </Text>
               {convert.data ? (
-                <Alert color="green">
+                <Notice tone="success">
                   {tx('Profile created. Passphrase:')} <Code>{convert.data.passphrase}</Code>
-                </Alert>
+                </Notice>
               ) : (
                 <Group align="flex-end" wrap="nowrap">
                   <TextInput
@@ -315,12 +315,12 @@ function BulkSheet({
     >
       {send.data ? (
         <Stack>
-          <Alert color={send.data.failed.length ? 'yellow' : 'green'}>
+          <Notice tone={send.data.failed.length ? 'warning' : 'success'}>
             {tx('Sent {sent} of {requested}', {
               sent: send.data.sent,
               requested: send.data.requested,
             })}
-          </Alert>
+          </Notice>
           {send.data.failed.map((f) => (
             <Text key={f.profile_id} size="sm" c="dimmed">
               {f.reason}
@@ -493,7 +493,7 @@ function CleanupSheet({
             onChange={setSecondary}
           />
           {preview.data && (
-            <Alert color={preview.data.can_merge ? 'blue' : 'red'}>
+            <Notice tone={preview.data.can_merge ? 'info' : 'danger'}>
               {preview.data.can_merge
                 ? tx('{a} ({na} events) and {b} ({nb} events) become one profile.', {
                     a: preview.data.primary.name,
@@ -504,7 +504,7 @@ function CleanupSheet({
                 : tx('They played the same tournament: {names}', {
                     names: preview.data.shared_tournaments.map((s) => s.tournament_name).join(', '),
                   })}
-            </Alert>
+            </Notice>
           )}
           <MutationError error={preview.error ?? hub.error} />
           <Group justify="flex-end">
@@ -678,9 +678,9 @@ export function ClubPlayers({ clubId }: { clubId: string }) {
                     {p.name}
                   </Text>
                   {!p.has_hub_profile && (
-                    <Badge size="xs" variant="outline" color="gray">
+                    <StatusBadge size="xs" variant="outline">
                       {tx('Past participant')}
-                    </Badge>
+                    </StatusBadge>
                   )}
                 </Group>
                 <Text size="xs" c="dimmed" truncate>
@@ -737,9 +737,9 @@ export function ClubPlayers({ clubId }: { clubId: string }) {
                           {p.name}
                         </Text>
                         {!p.has_hub_profile && (
-                          <Badge size="xs" variant="outline" color="gray">
+                          <StatusBadge size="xs" variant="outline">
                             {tx('Past participant')}
-                          </Badge>
+                          </StatusBadge>
                         )}
                       </Group>
                       <Text size="xs" c="dimmed">

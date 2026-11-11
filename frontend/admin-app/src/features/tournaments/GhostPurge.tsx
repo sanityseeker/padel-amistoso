@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Badge, Checkbox, Group, Stack, Text } from '@mantine/core';
+import { Checkbox, Group, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
+import { StatusBadge } from '../../ui/StatusBadge';
 
 interface GhostProfiles {
   count: number;
@@ -55,9 +56,7 @@ export function GhostPurgeField({
       />
       <Group gap={4}>
         {shown.map((g) => (
-          <Badge key={g.id} variant="light" color="gray" tt="none">
-            {g.name || g.id}
-          </Badge>
+          <StatusBadge key={g.id}>{g.name || g.id}</StatusBadge>
         ))}
         {ghosts.length > shown.length && (
           <Text size="xs" c="dimmed">

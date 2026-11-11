@@ -1,7 +1,7 @@
 // Service worker — optimal caching for performance + freshness.
 // The backend appends a hash of the React build to this name and fills SPA_ASSETS
 // with the hashed /admin-assets/* files (see _render_service_worker in backend/api).
-const CACHE_NAME = 'amistoso-v119';
+const CACHE_NAME = 'amistoso-v120';
 const STATIC_ASSETS = [
   '/shared.js', '/auth.js', '/i18n.js', '/manifest.json',
   '/admin-utils.js', '/admin-tournaments.js', '/admin-create.js',

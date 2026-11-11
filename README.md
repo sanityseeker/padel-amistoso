@@ -655,19 +655,31 @@ Email notifications are **disabled by default**. They work only when SMTP is con
 - In `.env.example` and in the two Docker Compose files, the SMTP values are `None` placeholders.
 - `backend/config.py` treats `None`, `null`, and empty values as not set. Thus email stays disabled.
 
-To enable SMTP, set these environment variables:
+To enable SMTP, set these environment variables. The example uses [Resend](https://resend.com), which sends from your own domain:
 
 ```bash
-AMISTOSO_SMTP_HOST=smtp.gmail.com
+AMISTOSO_SMTP_HOST=smtp.resend.com
 AMISTOSO_SMTP_PORT=587
 AMISTOSO_SMTP_USE_TLS=true
-AMISTOSO_SMTP_USER=your_gmail_address@gmail.com
-AMISTOSO_SMTP_PASS=your_google_app_password
-AMISTOSO_FROM_EMAIL=your_gmail_address@gmail.com
+AMISTOSO_SMTP_USER=resend
+AMISTOSO_SMTP_PASS=your_resend_api_key
+AMISTOSO_FROM_EMAIL=noreply@your-domain.com
 AMISTOSO_SITE_URL=https://your-domain.com
 ```
 
-For Gmail, use a **Google App Password**, not your usual account password. An App Password needs 2-step verification.
+Resend setup:
+
+1. In Resend, add your domain (Domains → Add domain).
+2. Add the DKIM, MX and SPF records that Resend shows to your DNS. On Cloudflare, set each record to **DNS only**, not proxied.
+3. Wait until Resend shows the domain as verified. Resend rejects a `From` address on a domain that is not verified.
+4. Create an API key with **Sending access**, and use it as `AMISTOSO_SMTP_PASS`.
+
+Notes:
+
+- `AMISTOSO_FROM_EMAIL` can be any address on the verified domain. It does not need a mailbox. Replies go to the organizer, because the app sets `Reply-To`.
+- Use port 587 (or 2587). Port 465 does not work, because the app only supports STARTTLS.
+- Some hosts block outbound SMTP ports (for example, Render free web services). There, email cannot be sent through SMTP.
+- Any other SMTP provider also works. For Gmail, use `smtp.gmail.com`, your Gmail address as user and `From`, and a **Google App Password** (it needs 2-step verification).
 
 Docker Compose notes:
 

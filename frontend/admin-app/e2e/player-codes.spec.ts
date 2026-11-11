@@ -72,8 +72,8 @@ test('shows a compact marker beside players linked to a real Player Hub account'
   await openTournament(page, id, name);
   await page.getByRole('tab', { name: 'Players' }).click();
   const row = page.getByTestId('code-row').filter({ hasText: player.name });
-  await expect(row.getByText('Hub account')).toBeVisible();
-  await expect(page.getByTestId('code-row').getByText('Hub account')).toHaveCount(1);
+  await expect(row.getByRole('img', { name: 'Has a Player Hub profile' })).toBeVisible();
+  await expect(page.getByTestId('code-row').getByTestId('hub-linked')).toHaveCount(1);
 });
 
 test('share uses the Web Share API when present and copies the link otherwise', async ({

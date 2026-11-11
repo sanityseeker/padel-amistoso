@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Installed on iOS: keep an opaque status bar above the page. viewport-fit=cover still lets the
+         page reach the screen edges, so the shell pads its bars with env(safe-area-inset-*). -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Torneos" />
     <meta name="theme-color" content="#eff2f6" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#07101c" media="(prefers-color-scheme: dark)" />
     <link rel="manifest" href="/manifest.json" />

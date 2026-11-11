@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Badge, Button, Checkbox, Group, Stack, Text, TextInput } from '@mantine/core';
+import { Button, Checkbox, Group, Stack, Text, TextInput } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import { api, write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
 import { ConfirmAction, MutationError } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
+import { StatusBadge } from '../../ui/StatusBadge';
 
 interface Candidate {
   id: string;
@@ -137,9 +138,7 @@ export function FoldInto({
       {count > 0 && (
         <Group gap={4}>
           {[...Object.values(ghosts), ...Object.values(past)].map((label, i) => (
-            <Badge key={i} variant="light" color="gray" tt="none">
-              {label}
-            </Badge>
+            <StatusBadge key={i}>{label}</StatusBadge>
           ))}
         </Group>
       )}

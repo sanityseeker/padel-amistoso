@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
-  Badge,
   Button,
-  Container,
   Group,
   Image,
   Loader,
@@ -34,6 +31,8 @@ import { sportProps } from '../../theme';
 import { EmptyState, EventRow, SportMark, StatusBadge } from '../../ui';
 import { hostClubSlug } from '../public/meta';
 import { StandingsTable, type StandingRow } from '../tournaments';
+import { Notice } from '../../ui/Notice';
+import { PageContainer } from '../../ui/PageContainer';
 
 interface Club {
   club_id: string;
@@ -128,9 +127,9 @@ function Rows({ items, hideSport }: { items: ClubEvent[]; hideSport: boolean }) 
                   : formatType(event.type)}
               </Text>
               {event.join_code_required && (
-                <Badge size="xs" variant="outline" color="gray">
+                <StatusBadge size="xs" variant="outline">
                   {tx('Join code')}
-                </Badge>
+                </StatusBadge>
               )}
             </>
           }
@@ -199,7 +198,7 @@ function PlayerCard({
       title={data?.name ?? tx('Loading')}
     >
       {card.isPending && <Loader aria-label={tx('Loading')} />}
-      {card.error && <Alert color="red">{tx('Could not load player.')}</Alert>}
+      {card.error && <Notice tone="danger">{tx('Could not load player.')}</Notice>}
       {data && (
         <Stack gap="md" data-testid="club-player-card">
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
@@ -556,13 +555,13 @@ function ClubLanding({ slug }: { slug: string }) {
       return <Navigate to={`/404?${to}`} replace />;
     }
     return (
-      <Container size="md" py="lg">
-        <Alert color="red" title={tx('Could not load this club right now.')}>
+      <PageContainer size="md">
+        <Notice tone="danger" title={tx('Could not load this club right now.')}>
           <Button variant="subtle" color="red" onClick={() => void club.refetch()}>
             {tx('Try again')}
           </Button>
-        </Alert>
-      </Container>
+        </Notice>
+      </PageContainer>
     );
   }
   const data = club.data;
@@ -570,7 +569,7 @@ function ClubLanding({ slug }: { slug: string }) {
   const tournaments = live.filter((e) => e.kind === 'tournament');
   const signups = live.filter((e) => e.kind === 'registration');
   return (
-    <Container size="md" py="lg" data-testid="club-page">
+    <PageContainer size="md" data-testid="club-page">
       <Stack gap="lg">
         <Group gap="lg" wrap="nowrap" align="center">
           {data.logo_url && (
@@ -654,7 +653,7 @@ function ClubLanding({ slug }: { slug: string }) {
           <Leaderboard key={cid} club={data} sport={sport} seasons={seasons.data ?? []} />
         )}
       </Stack>
-    </Container>
+    </PageContainer>
   );
 }
 

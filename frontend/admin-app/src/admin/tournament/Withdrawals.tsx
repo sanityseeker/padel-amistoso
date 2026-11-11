@@ -1,22 +1,13 @@
 import { useEffect, useState } from 'react';
-import {
-  Alert,
-  Badge,
-  Button,
-  Group,
-  Loader,
-  Modal,
-  NumberInput,
-  Paper,
-  Stack,
-  Text,
-} from '@mantine/core';
+import { Button, Group, Loader, Modal, NumberInput, Paper, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { t as tx, useLocale } from '../../i18n';
 import { formatRoundLabel } from '../../roundLabel';
 import { api, write } from '../../api';
 import type { WithdrawalMatchItem, WithdrawalPreview } from '../../types';
+import { Notice } from '../../ui/Notice';
+import { StatusBadge } from '../../ui/StatusBadge';
 
 const refreshKeys = (tid: string) => [
   ['admin', 'tournament', tid],
@@ -137,11 +128,11 @@ export function WithdrawDialog({
         {preview.isPending ? (
           <Loader size="sm" />
         ) : preview.error ? (
-          <Alert color="red">{tx(preview.error.message)}</Alert>
+          <Notice tone="danger">{tx(preview.error.message)}</Notice>
         ) : (
           p && (
             <>
-              {send.error && <Alert color="red">{tx(send.error.message)}</Alert>}
+              {send.error && <Notice tone="danger">{tx(send.error.message)}</Notice>}
               {p.member_names.length > 1 && (
                 <Text size="sm" c="dimmed">
                   {tx('Team: {names}', { names: p.member_names.join(', ') })}
@@ -235,7 +226,7 @@ export function WithdrawDialog({
                 </Text>
               )}
               {p.blockers.length > 0 && (
-                <Alert color="yellow" title={tx('Settle these scores first')}>
+                <Notice tone="warning" title={tx('Settle these scores first')}>
                   {p.blockers.map((b) => (
                     <Text size="sm" key={b.match_id}>
                       {[formatRoundLabel(b.round_label), tx(BLOCKERS[b.reason] ?? b.reason)]
@@ -243,7 +234,7 @@ export function WithdrawDialog({
                         .join(': ')}
                     </Text>
                   ))}
-                </Alert>
+                </Notice>
               )}
               {p.elo_recalc && (
                 <Text size="xs" c="dimmed">
@@ -305,7 +296,7 @@ export function UndoWithdrawal({
       </Button>
       <Modal opened={open} onClose={() => setOpen(false)} title={tx('Undo withdrawal')} centered>
         <Stack>
-          {undo.error && <Alert color="red">{tx(undo.error.message)}</Alert>}
+          {undo.error && <Notice tone="danger">{tx(undo.error.message)}</Notice>}
           <Text size="sm">{tx('Bring {name} back into the tournament?', { name })}</Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setOpen(false)}>
@@ -322,7 +313,7 @@ export function UndoWithdrawal({
 }
 
 export const WithdrawnBadge = () => (
-  <Badge size="sm" color="gray" variant="outline">
+  <StatusBadge size="sm" variant="outline">
     {tx('Withdrawn')}
-  </Badge>
+  </StatusBadge>
 );

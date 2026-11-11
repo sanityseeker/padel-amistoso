@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Accordion,
-  Alert,
   Avatar,
-  Badge,
   Button,
   Checkbox,
   Group,
@@ -33,6 +31,8 @@ import {
   type PaymentInfo,
   type PublicLobby,
 } from './model';
+import { Notice } from '../../ui/Notice';
+import { StatusBadge } from '../../ui/StatusBadge';
 
 // ---- Small pieces --------------------------------------------------------------------------------------
 
@@ -49,15 +49,9 @@ export function PlayerChips({ lobby, open = true }: { lobby: PublicLobby; open?:
         <Accordion.Panel>
           <Group gap={6}>
             {players.map((p) => (
-              <Badge
-                key={p.player_id}
-                variant="light"
-                color="gray"
-                size="lg"
-                data-testid="registrant-chip"
-              >
+              <StatusBadge key={p.player_id} size="lg" data-testid="registrant-chip">
                 {p.player_name}
-              </Badge>
+              </StatusBadge>
             ))}
           </Group>
         </Accordion.Panel>
@@ -249,9 +243,9 @@ export function PaymentPanel({
         {payment.due_at && <Text size="sm">{tx('Due by {date}', { date: payment.due_at })}</Text>}
         {payment.instructions && <Text size="sm">{payment.instructions}</Text>}
         {payment.status !== 'unpaid' && (
-          <Alert color={payment.status === 'paid' ? 'green' : 'gray'} role="status">
+          <Notice tone={payment.status === 'paid' ? 'success' : 'neutral'} role="status">
             {tx(STATUS_NOTE[payment.status] ?? payment.status)}
-          </Alert>
+          </Notice>
         )}
         {pending && (
           <>
@@ -309,7 +303,7 @@ export function PaymentPanel({
             )}
           </>
         )}
-        {error && <Alert color="red">{error}</Alert>}
+        {error && <Notice tone="danger">{error}</Notice>}
       </Stack>
     </Paper>
   );
@@ -356,11 +350,7 @@ export function IdentityStrip({
           </Stack>
         </Group>
         <Group gap="xs">
-          {registered === false && (
-            <Badge variant="light" color="gray">
-              {tx('Not registered yet')}
-            </Badge>
-          )}
+          {registered === false && <StatusBadge>{tx('Not registered yet')}</StatusBadge>}
           {signedIn && onLogout && (
             <Button variant="subtle" color="gray" size="compact-md" onClick={onLogout}>
               {tx('Log out')}

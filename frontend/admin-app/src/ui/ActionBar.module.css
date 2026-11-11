@@ -1,0 +1,15 @@
+.bar {
+  position: fixed;
+  inset-inline: 0;
+  bottom: calc(var(--app-tabs-height, 0px) + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  padding-left: max(var(--mantine-spacing-md), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--mantine-spacing-md), env(safe-area-inset-right, 0px));
+  background: var(--app-surface);
+  border-top: 1px solid var(--app-border);
+  transition: bottom 180ms ease;
+}
+.spacer {
+  height: 72px;
+}

@@ -1,21 +1,12 @@
 import { useMemo, useState } from 'react';
-import {
-  Badge,
-  Button,
-  Checkbox,
-  Group,
-  ScrollArea,
-  Stack,
-  Tabs,
-  Text,
-  TextInput,
-} from '@mantine/core';
+import { Button, Checkbox, Group, ScrollArea, Stack, Tabs, Text, TextInput } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api';
 import { useAuth } from '../../auth';
 import { t as tx, useLocale } from '../../i18n';
 import { ResponsiveSheet } from '../../ui';
+import { StatusBadge } from '../../ui/StatusBadge';
 
 export interface PickedPlayer {
   name: string;
@@ -180,9 +171,9 @@ export function RosterPicker({
                         </Text>
                       )}
                       {used && (
-                        <Badge size="xs" variant="outline" color="gray">
+                        <StatusBadge size="xs" variant="outline">
                           {tx('Already added')}
-                        </Badge>
+                        </StatusBadge>
                       )}
                     </Group>
                   }

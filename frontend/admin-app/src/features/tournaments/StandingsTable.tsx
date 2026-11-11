@@ -1,9 +1,10 @@
 import { Fragment, useState, type CSSProperties } from 'react';
-import { ActionIcon, Badge, Skeleton, Stack, Table, Text, UnstyledButton } from '@mantine/core';
+import { ActionIcon, Skeleton, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
-import { IconChevronDown, IconId } from '@tabler/icons-react';
+import { IconChevronDown, IconId, IconUserMinus } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
 import classes from './StandingsTable.module.css';
+import { StatusBadge } from '../../ui/StatusBadge';
 
 export interface StandingRow {
   id: string;
@@ -47,6 +48,8 @@ export interface StandingsTableProps {
   eloLabel?: string;
   /** Spectator pages: a small button beside each name opens that player's card. */
   onSelect?: (row: StandingRow) => void;
+  /** The tournament scores these matches in sets (its score mode). Sets in the rows also count. */
+  sets?: boolean;
 }
 
 type NumKey =
@@ -78,6 +81,7 @@ function columnsFor(
   preset: StandingsTableProps['preset'],
   rows: StandingRow[],
   eloLabel: string,
+  setsMode = false,
 ): Column[] {
   const elo: Column = { key: 'elo', label: eloLabel, get: num('elo'), min: 620 };
   if (preset === 'leaderboard')
@@ -90,14 +94,12 @@ function columnsFor(
     label: tx('P'),
     title: tx('Matches played'),
     get: (r) => r.played ?? 0,
-    min: 400,
   };
   const wins: Column = {
     key: 'wins',
     label: tx('W'),
     title: tx('Wins'),
     get: (r) => r.wins ?? 0,
-    min: 280,
   };
   const losses: Column = {
     key: 'losses',
@@ -137,9 +139,25 @@ function columnsFor(
       },
       elo,
     ];
-  const sets = rows.some((r) => (r.setsWon ?? 0) > 0 || (r.setsLost ?? 0) > 0);
+  const sets = setsMode || rows.some((r) => (r.setsWon ?? 0) > 0 || (r.setsLost ?? 0) > 0);
   // These columns count games when matches are scored in sets, points otherwise.
   const games = sets ? { context: 'games' } : undefined;
+  // The difference decides the table, so it is the bold column and never leaves the row.
+  const diff: Column = sets
+    ? {
+        key: 'diff',
+        label: tx('GD'),
+        title: tx('Game difference'),
+        get: num('pointDiff'),
+        score: true,
+      }
+    : {
+        key: 'diff',
+        label: tx('PD'),
+        title: tx('Point difference'),
+        get: num('pointDiff'),
+        score: true,
+      };
   return [
     played,
     wins,
@@ -168,7 +186,7 @@ function columnsFor(
       label: tx('PF', games),
       title: tx('Points for', games),
       get: (r) => r.pointsFor ?? r.points ?? 0,
-      score: true,
+      min: 520,
     },
     {
       key: 'pa',
@@ -177,13 +195,7 @@ function columnsFor(
       get: num('pointsAgainst'),
       min: 520,
     },
-    {
-      key: 'diff',
-      label: tx('Diff', games),
-      title: tx('Point difference', games),
-      get: num('pointDiff'),
-      min: 520,
-    },
+    diff,
     elo,
   ];
 }
@@ -202,6 +214,7 @@ export function StandingsTable({
   nameLabel,
   eloLabel,
   onSelect,
+  sets,
 }: StandingsTableProps) {
   useLocale();
   // Columns drop out by the table's own width (a narrow side pane, a phone), not the viewport's.
@@ -209,7 +222,7 @@ export function StandingsTable({
   const [open, setOpen] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>(null);
   const board = preset === 'leaderboard';
-  const all = columnsFor(preset, rows, eloLabel ?? tx('ELO'));
+  const all = columnsFor(preset, rows, eloLabel ?? tx('ELO'), sets);
   const columns = all.filter((c) => !c.min || width >= c.min);
   // Hide columns nobody has data for (ELO off, no Buchholz).
   const visible = columns.filter(
@@ -240,6 +253,14 @@ export function StandingsTable({
           : null,
     );
   const colSpan = visible.length + 2;
+  const narrow = width < 400;
+  const legend =
+    !board && density !== 'tv' && width < 520
+      ? visible
+          .filter((c) => c.title && c.title !== c.label)
+          .map((c) => `${c.label} ${c.title}`)
+          .join(' · ')
+      : '';
   const fmt = (c: Column, r: StandingRow) => {
     const v = c.get(r);
     return v == null ? '—' : c.digits ? v.toFixed(c.digits) : v;
@@ -255,6 +276,7 @@ export function StandingsTable({
           verticalSpacing={density === 'compact' ? 'xs' : 'sm'}
           className={classes.table}
           data-density={density}
+          data-narrow={narrow ? '' : undefined}
         >
           <Table.Thead>
             <Table.Tr>
@@ -357,14 +379,25 @@ export function StandingsTable({
                           </ActionIcon>
                         )}
                         {r.removed && (
-                          <Badge size="xs" variant="outline" color="gray">
+                          <StatusBadge size="xs" variant="outline">
                             {tx('Removed')}
-                          </Badge>
+                          </StatusBadge>
                         )}
-                        {r.withdrawn && (
-                          <Badge size="xs" variant="light" color="orange">
+                        {r.withdrawn && narrow && (
+                          <Tooltip label={tx('Withdrawn')}>
+                            <IconUserMinus
+                              size={14}
+                              color="var(--mantine-color-orange-6)"
+                              aria-label={tx('Withdrawn')}
+                              role="img"
+                              style={{ flexShrink: 0 }}
+                            />
+                          </Tooltip>
+                        )}
+                        {r.withdrawn && !narrow && (
+                          <StatusBadge size="xs" tone="warning">
                             {tx('Withdrawn')}
-                          </Badge>
+                          </StatusBadge>
                         )}
                       </div>
                     </Table.Td>
@@ -408,6 +441,11 @@ export function StandingsTable({
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
+      {legend && (
+        <Text size="xs" c="dimmed" data-testid="standings-legend">
+          {legend}
+        </Text>
+      )}
       {!!qualifyCount && qualifyCount < rows.length && (
         <Text size="xs" c="dimmed">
           {tx('Above the dashed line: top {n} qualify.', { n: qualifyCount })}

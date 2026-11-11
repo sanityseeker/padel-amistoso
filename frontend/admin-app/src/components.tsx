@@ -1,10 +1,11 @@
 import { t as tx, useLocale } from './i18n';
-import { Alert, Button, Center, Loader } from '@mantine/core';
+import { Button, Center, Loader } from '@mantine/core';
 import { StatusBadge } from './ui';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { api, formatPhase } from './api';
 import type { Club, Community, Lobby, Tournament } from './types';
+import { Notice } from './ui/Notice';
 export const useTournamentList = (enabled = true) =>
   useQuery({
     queryKey: ['admin', 'tournaments'],
@@ -47,14 +48,14 @@ export function Loading() {
 export function ErrorState({ error, retry }: { error: Error | null; retry?: () => void }) {
   useLocale();
   return (
-    <Alert color="red" icon={<IconAlertCircle size={18} />} title={tx('Something went wrong')}>
+    <Notice tone="danger" icon={<IconAlertCircle size={18} />} title={tx('Something went wrong')}>
       {tx(error?.message || 'Unable to load data.')}
       {retry && (
         <Button variant="subtle" color="red" onClick={retry} mt="sm">
           {tx('Try again')}
         </Button>
       )}
-    </Alert>
+    </Notice>
   );
 }
 export function PhaseBadge({ phase }: { phase: string }) {

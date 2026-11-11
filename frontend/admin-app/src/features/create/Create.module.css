@@ -10,16 +10,7 @@
 }
 .summary {
   position: sticky;
-  top: calc(var(--app-header-height, 60px) + var(--mantine-spacing-md));
-}
-.bar {
-  position: fixed;
-  inset-inline: 0;
-  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-  z-index: 30;
-  padding: var(--mantine-spacing-xs) var(--mantine-spacing-md);
-  background: var(--app-surface);
-  border-top: 1px solid var(--app-border);
+  top: calc(var(--app-shell-header-offset, 0px) + var(--mantine-spacing-md));
 }
 .tile {
   height: 100%;
@@ -30,7 +21,4 @@
 }
 .tileBody {
   padding: var(--mantine-spacing-md);
-}
-.spacer {
-  height: 72px;
 }

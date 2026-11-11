@@ -1,7 +1,5 @@
 import { useState } from 'react';
 import {
-  Alert,
-  Badge,
   Button,
   Checkbox,
   Code,
@@ -31,6 +29,8 @@ import {
 import { useAdminMutation } from '../../useAdminMutation';
 import { FoldInto } from './FoldInto';
 import { LinkParticipation } from './LinkParticipation';
+import { Notice } from '../../ui/Notice';
+import { StatusBadge } from '../../ui/StatusBadge';
 
 interface Profile {
   id: string;
@@ -168,11 +168,7 @@ function ProfileSheet({ id, onClose }: { id: string; onClose: () => void }) {
       ) : (
         <Stack gap="md">
           <Group gap="xs">
-            {p.is_ghost && (
-              <Badge variant="outline" color="gray">
-                {tx('Past participant')}
-              </Badge>
-            )}
+            {p.is_ghost && <StatusBadge variant="outline">{tx('Past participant')}</StatusBadge>}
             <Text size="sm" c="dimmed">
               {tx('Padel {a} · Tennis {b}', {
                 a: Math.round(p.elo_padel),
@@ -181,9 +177,9 @@ function ProfileSheet({ id, onClose }: { id: string; onClose: () => void }) {
             </Text>
           </Group>
           {passphrase && (
-            <Alert color="green">
+            <Notice tone="success">
               {tx('Passphrase:')} <Code>{passphrase}</Code>
-            </Alert>
+            </Notice>
           )}
           <MutationError
             error={
@@ -305,7 +301,7 @@ function ProfileSheet({ id, onClose }: { id: string; onClose: () => void }) {
                   onChange={setMergeWith}
                 />
                 {preview.data && (
-                  <Alert color={preview.data.can_merge ? 'blue' : 'red'}>
+                  <Notice tone={preview.data.can_merge ? 'info' : 'danger'}>
                     {preview.data.can_merge
                       ? tx('{b} ({nb} events) joins {a} ({na} events).', {
                           a: preview.data.primary.name,
@@ -318,7 +314,7 @@ function ProfileSheet({ id, onClose }: { id: string; onClose: () => void }) {
                             .map((s) => s.tournament_name)
                             .join(', '),
                         })}
-                  </Alert>
+                  </Notice>
                 )}
                 <MutationError error={preview.error ?? hub.error} />
                 <Group justify="flex-end">
@@ -469,9 +465,9 @@ export function AdminPlayersPage() {
               badges={
                 <>
                   {r.is_ghost && (
-                    <Badge size="xs" variant="outline" color="gray">
+                    <StatusBadge size="xs" variant="outline">
                       {tx('Past participant')}
-                    </Badge>
+                    </StatusBadge>
                   )}
                   <Text size="xs">
                     {Math.round(r.elo_padel)} / {Math.round(r.elo_tennis)}
@@ -508,9 +504,9 @@ export function AdminPlayersPage() {
                           {r.name}
                         </Text>
                         {r.is_ghost && (
-                          <Badge size="xs" variant="outline" color="gray">
+                          <StatusBadge size="xs" variant="outline">
                             {tx('Past participant')}
-                          </Badge>
+                          </StatusBadge>
                         )}
                       </Group>
                     </Table.Td>

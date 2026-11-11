@@ -275,7 +275,9 @@ test('group standings keep their position on selection and live refresh', async 
     ).ok(),
   ).toBeTruthy();
   await refreshedGroups;
-  await expect(pane.locator('tbody')).toContainText('21');
+  // 21-10 gives the winner +11 in the point difference, the column that decides the table.
+  await expect(pane.getByRole('columnheader', { name: 'Point difference' })).toBeVisible();
+  await expect(pane.getByRole('cell', { name: '11', exact: true })).not.toHaveCount(0);
   await expect(groupSelector).toBeFocused();
   const afterRefresh = await position();
   expect(Math.abs(afterRefresh.top - beforeRefresh.top)).toBeLessThan(2);

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Alert,
   Button,
   Center,
   Divider,
@@ -19,6 +18,7 @@ import { ApiError } from '../api';
 import { t as tx, useLocale } from '../i18n';
 import { DEMO_LAST_KEY, useAuth } from '../auth';
 import { isDemoInstance } from '../shell/env';
+import { Notice } from '../ui/Notice';
 
 function lastDemo(): string {
   try {
@@ -73,9 +73,9 @@ export function AdminLogin() {
         </Text>
         {sandbox && (
           <Stack gap="xs" mb="lg" data-testid="demo-link">
-            <Alert color="court" variant="light" title={tx('Try the demo sandbox')}>
+            <Notice title={tx('Try the demo sandbox')}>
               {tx('Run a real tournament from start to finish without signing up.')}
-            </Alert>
+            </Notice>
             <Button
               component="a"
               href={sandbox.href}
@@ -97,11 +97,11 @@ export function AdminLogin() {
         )}
         {demo && (
           <Stack gap="xs" mb="lg">
-            <Alert color="court" variant="light" title={tx('Try the demo sandbox')}>
+            <Notice title={tx('Try the demo sandbox')}>
               {tx(
                 'Start a practice account in one click, with no sign-up. It keeps one tournament at a time and is deleted after a few days.',
               )}
-            </Alert>
+            </Notice>
             <Button
               size="md"
               loading={starting}
@@ -149,29 +149,29 @@ export function AdminLogin() {
         >
           <Stack>
             {notice === 'reset' && (
-              <Alert color="green" role="status">
+              <Notice tone="success" role="status">
                 {tx('Password updated. Log in with your new password.')}
-              </Alert>
+              </Notice>
             )}
             {notice === 'invite' && (
-              <Alert color="green" role="status">
+              <Notice tone="success" role="status">
                 {tx('Account created. Log in to continue.')}
-              </Alert>
+              </Notice>
             )}
             {returning && (
-              <Alert color="blue" role="status">
+              <Notice role="status">
                 {tx(
                   'Your demo sandbox on this device is {name}. Enter its passphrase to continue.',
                   {
                     name: returning,
                   },
                 )}
-              </Alert>
+              </Notice>
             )}
             {error && (
-              <Alert color="red" role="alert">
+              <Notice tone="danger" role="alert">
                 {error}
-              </Alert>
+              </Notice>
             )}
             <TextInput
               label={tx('Username')}

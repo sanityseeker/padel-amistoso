@@ -1,6 +1,7 @@
-import { Alert, Anchor, Avatar, Group, Text } from '@mantine/core';
+import { Anchor, Avatar, Group, Text } from '@mantine/core';
 import { t as tx, useLocale } from '../i18n';
 import { useSubdomainClub } from './subdomainClub';
+import { Notice } from '../ui/Notice';
 
 // "You are managing {club}" on a club subdomain, with a link to the platform-wide admin.
 export function SubdomainBanner() {
@@ -8,9 +9,7 @@ export function SubdomainBanner() {
   const host = useSubdomainClub();
   if (!host) return null;
   return (
-    <Alert
-      color="court"
-      variant="light"
+    <Notice
       mb="md"
       withCloseButton
       closeButtonLabel={tx('Dismiss')}
@@ -26,6 +25,6 @@ export function SubdomainBanner() {
           {tx('Open platform admin')}
         </Anchor>
       </Group>
-    </Alert>
+    </Notice>
   );
 }

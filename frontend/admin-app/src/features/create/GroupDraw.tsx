@@ -1,8 +1,9 @@
-import { Badge, Button, Group, Paper, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Button, Group, Paper, SimpleGrid, Stack, Text } from '@mantine/core';
 import { IconArrowsExchange, IconDice3, IconX } from '@tabler/icons-react';
 import { OverflowMenu } from '../../ui/OverflowMenu';
 import { t as tx, useLocale } from '../../i18n';
 import { drawGroups, groupMatches, type GroupDraw as Draw } from './rules';
+import { StatusBadge } from '../../ui/StatusBadge';
 
 // The seeded group draw, previewed before the tournament exists. Strengths snake-draft the players;
 // without them the draw is random. Every player can be moved to another group, or the whole draw
@@ -62,9 +63,7 @@ export function GroupDraw({
             <Stack gap={4}>
               <Group justify="space-between" wrap="nowrap">
                 <Text fw={700}>{group.name}</Text>
-                <Badge variant="light" color="gray">
-                  {group.players.length}
-                </Badge>
+                <StatusBadge>{group.players.length}</StatusBadge>
               </Group>
               {group.players.map((player, pi) => (
                 <Group key={player} justify="space-between" wrap="nowrap" gap={4}>

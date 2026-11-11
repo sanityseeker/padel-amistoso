@@ -190,3 +190,31 @@ test('the sign-up page works in Spanish and on a phone', async ({ page, request 
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
   ).toBeTruthy();
 });
+
+test('the success screen offers a player profile only when no Hub link is e-mailed', async ({
+  page,
+  request,
+}) => {
+  // Auto-send on and an email given: the confirmation carries the Hub link, so no second form.
+  const sent = await lobby(request, { auto_send_email: true });
+  await page.goto(`/register/${sent.alias}`);
+  await page.getByLabel(/^Email/).fill(`mailed-${stamp()}@example.com`);
+  await signUp(page, 'Mailed Mia');
+  await expect(page.getByRole('heading', { name: "You're registered, Mailed Mia!" })).toBeVisible();
+  await expect(
+    page.getByText('We sent you a link to your player profile.', { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save your player profile' })).toHaveCount(0);
+
+  // Auto-send off: nothing is e-mailed, so the form stays.
+  const quiet = await lobby(request);
+  await page.goto(`/register/${quiet.alias}`);
+  await page.getByLabel(/^Email/).fill(`quiet-${stamp()}@example.com`);
+  await signUp(page, 'Quiet Quinn');
+  await expect(
+    page.getByRole('heading', { name: "You're registered, Quiet Quinn!" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Save your player profile' }).first(),
+  ).toBeVisible();
+});

@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Alert, Switch } from '@mantine/core';
+import { Switch } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { t as tx, useLocale } from '../../../i18n';
 import { playerApi } from '../../../player/api';
+import { Notice } from '../../../ui/Notice';
 
 const KEY = (tid: string) => `padel-push-${tid}`;
 const read = (tid: string) => {
@@ -50,9 +51,7 @@ export function PushToggle({
   const [error, setError] = useState('');
   if (!pushSupported())
     return (
-      <Alert color="gray" variant="light">
-        {tx('This browser does not support push notifications.')}
-      </Alert>
+      <Notice tone="neutral">{tx('This browser does not support push notifications.')}</Notice>
     );
   const toggle = async (next: boolean) => {
     if (!token) return;
@@ -115,9 +114,9 @@ export function PushToggle({
         onChange={(e) => void toggle(e.currentTarget.checked)}
       />
       {error && (
-        <Alert color="red" mt="xs">
+        <Notice tone="danger" mt="xs">
           {error}
-        </Alert>
+        </Notice>
       )}
     </>
   );

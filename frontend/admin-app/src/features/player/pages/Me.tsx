@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Badge, Button, Group, Paper, Stack, Text, Title } from '@mantine/core';
+import { Button, Group, Paper, Stack, Text, Title, useMatches } from '@mantine/core';
 import { IconLogout, IconSettings } from '@tabler/icons-react';
 import { Link, useLocation } from 'react-router-dom';
 import { t as tx, useLocale } from '../../../i18n';
@@ -8,6 +8,7 @@ import type { Entry } from '../../../player/types';
 import { usePlayerSession } from '../../../player/session';
 import { PlayerAccount, PlayerPayments } from '../components/Account';
 import { PushToggle } from '../components/PushToggle';
+import { PageHeader, StatusBadge } from '../../../ui';
 import { usePlayerSpace } from '../context';
 import { usePlayerToken } from '../eventData';
 
@@ -20,6 +21,7 @@ function EntryPush({ entry }: { entry: Entry }) {
 // Install, language and theme live in the top bar, not here. Log out of the Player Hub lives here and
 // in the header's player menu.
 export default function Me() {
+  const gap = useMatches({ base: 'md', sm: 'lg' });
   useLocale();
   const { space } = usePlayerSpace();
   const { logout } = usePlayerSession();
@@ -39,27 +41,22 @@ export default function Me() {
       window.setTimeout(() => document.getElementById('payments')?.scrollIntoView?.(), 100);
   }, [hash]);
   return (
-    <Stack gap="lg">
-      <Paper p="md">
-        <Group justify="space-between" wrap="wrap">
-          <div>
-            <Title order={1} size="h3">
-              {profile.name}
-            </Title>
-            <Group gap="xs">
-              <Text size="sm" c="dimmed">
-                {profile.email}
-              </Text>
-              <Badge size="xs" color={profile.email_verified ? 'court' : 'orange'}>
-                {tx(profile.email_verified ? 'Verified' : 'Pending')}
-              </Badge>
-            </Group>
-          </div>
+    <Stack gap={gap}>
+      <PageHeader
+        title={profile.name}
+        description={profile.email}
+        keepDescription
+        meta={
+          <StatusBadge tone={profile.email_verified ? 'success' : 'warning'}>
+            {tx(profile.email_verified ? 'Verified' : 'Pending')}
+          </StatusBadge>
+        }
+        actions={
           <Button size="xs" variant="default" onClick={() => setEditing(!editing)}>
             {tx(editing ? 'Cancel' : 'Edit')}
           </Button>
-        </Group>
-      </Paper>
+        }
+      />
       <PlayerAccount
         key={profile.id + profile.name + profile.email + profile.contact + String(editing)}
         profile={profile}

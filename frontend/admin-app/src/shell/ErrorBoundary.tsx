@@ -1,10 +1,11 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { Button, Container, Stack, Text, Title } from '@mantine/core';
+import { Button, Stack, Text, Title } from '@mantine/core';
 import { t as tx } from '../i18n';
+import { PageContainer } from '../ui/PageContainer';
 
 function Fallback({ message }: { message: string }) {
   return (
-    <Container size="sm" py="xl">
+    <PageContainer size="sm">
       <Stack align="flex-start" gap="xs">
         <Title order={2}>{tx('Something went wrong')}</Title>
         <Text c="dimmed" size="sm">
@@ -19,7 +20,7 @@ function Fallback({ message }: { message: string }) {
           {tx('Reload')}
         </Button>
       </Stack>
-    </Container>
+    </PageContainer>
   );
 }
 

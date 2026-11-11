@@ -1,5 +1,5 @@
-import { Alert, Anchor, Button, Group, Paper, Stack, Text, Title } from '@mantine/core';
-import { IconArrowLeft, IconExternalLink, IconMessage } from '@tabler/icons-react';
+import { Button, Group, Paper, Stack, Text, Title } from '@mantine/core';
+import { IconExternalLink, IconInfoCircle, IconMessage } from '@tabler/icons-react';
 import { Link, useParams } from 'react-router-dom';
 import { t as tx, useLocale } from '../../../i18n';
 import { formatType } from '../../../api';
@@ -12,7 +12,7 @@ import {
   toPlayerMatchView,
   toStandingRows,
 } from '../../tournaments';
-import { EmptyState, StatusBadge } from '../../../ui';
+import { EmptyState, PageHeader, PageLink, StatusBadge } from '../../../ui';
 import { PlayedList, resultOf } from '../components/PlayedList';
 import { PushToggle } from '../components/PushToggle';
 import { playedPath, TournamentPath, useTournamentPath } from '../components/TournamentPath';
@@ -22,6 +22,7 @@ import { usePlayerSpace } from '../context';
 import type { PathRound, PlayerMatch } from '../../../player/types';
 import { useEventData } from '../eventData';
 import { MatchActions } from '../MatchActions';
+import { Notice } from '../../../ui/Notice';
 
 // One event, in the order a player needs it: one status banner, your next match (score, confirm,
 // correct, escalate), later and played matches, a standings snapshot, your path and notifications.
@@ -55,55 +56,49 @@ export default function Event() {
         {tx('It is not linked to your profile.')}
       </EmptyState>
     );
-  const back = (
-    <Anchor component={Link} to="/player/matches" size="sm">
-      <Group gap={4}>
-        <IconArrowLeft size={14} />
-        {tx('My events')}
-      </Group>
-    </Anchor>
+  // The shared page header: back to My events, format and sport, the name, then the status badge as
+  // the only meta item. "Full event view" is a secondary link at the end of the page.
+  const status = event.data && (
+    <StatusBadge
+      data-testid="event-status"
+      tone={event.data.status.phase === 'finished' ? 'neutral' : 'live'}
+    >
+      {phaseText(event.data.status)}
+    </StatusBadge>
+  );
+  const fullView = !entry.entity_deleted && (
+    <PageLink href={eventUrl(entry)} rightIcon={<IconExternalLink size={14} aria-hidden />}>
+      {tx('Full event view')}
+    </PageLink>
   );
   const head = (
-    <Stack gap={4} {...sportProps(entry.sport)}>
-      {back}
-      <Text variant="eyebrow">
-        {[
-          entry.tournament_type ? formatType(entry.tournament_type) : tx('Registration lobby'),
-          tx(entry.sport === 'tennis' ? 'Tennis' : 'Padel'),
-        ].join(' · ')}
-      </Text>
-      <Group justify="space-between" align="flex-start" wrap="wrap">
-        <Title order={1}>{entry.entity_name}</Title>
-        {!entry.entity_deleted && (
-          <Button
-            component="a"
-            href={eventUrl(entry)}
-            variant="subtle"
-            size="compact-md"
-            rightSection={<IconExternalLink size={14} />}
-          >
-            {tx('Full event view')}
-          </Button>
-        )}
-      </Group>
-      {event.data && (
-        <Group gap={6}>
-          <StatusBadge tone={event.data.status.phase === 'finished' ? 'neutral' : 'live'}>
-            {phaseText(event.data.status)}
-          </StatusBadge>
-        </Group>
-      )}
-    </Stack>
+    <PageHeader
+      dense
+      back={{ to: '/player/matches', label: tx('My events') }}
+      eyebrow={[
+        entry.tournament_type ? formatType(entry.tournament_type) : tx('Registration lobby'),
+        tx(entry.sport === 'tennis' ? 'Tennis' : 'Padel'),
+      ].join(' · ')}
+      title={entry.entity_name}
+      meta={status}
+    />
+  );
+  // A notice sits right under the header, so the two read as one block.
+  const notice = (text: string, testId?: string) => (
+    <Notice icon={<IconInfoCircle size={18} />} data-testid={testId}>
+      {text}
+    </Notice>
   );
   if (!tournament)
     return (
-      <Stack gap="lg">
+      <Stack gap="md" {...sportProps(entry.sport)}>
         {head}
-        <Alert color="gray">
-          {entry.entity_deleted
+        {notice(
+          entry.entity_deleted
             ? tx('This event was removed by its organizer.')
-            : tx('This is a registration lobby. Open the event view to see or change your entry.')}
-        </Alert>
+            : tx('This is a registration lobby. Open the event view to see or change your entry.'),
+        )}
+        {fullView}
       </Stack>
     );
   const data = event.data;
@@ -141,7 +136,10 @@ export default function Event() {
         {/* The organizer's note for this match (court change, delay, rules) is for players too. */}
         {m.comment && (
           <Text size="sm" c="dimmed" data-testid="match-comment">
-            <IconMessage size={13} style={{ verticalAlign: '-2px' }} /> {m.comment}
+            <Group gap={4} wrap="nowrap" align="flex-start" component="span">
+              <IconMessage size={13} style={{ flexShrink: 0, marginTop: 4 }} aria-hidden />
+              <span>{m.comment}</span>
+            </Group>
           </Text>
         )}
       </MatchCard>
@@ -157,10 +155,10 @@ export default function Event() {
   const readOnly = !entry.auto_login_token || !!event.tokenError;
   const banner = !data
     ? null
-    : data.withdrawn
-      ? tx('You are withdrawn from this event.')
-      : data.finished
-        ? tx('This event is finished. Matches are shown for reference.')
+    : data.finished && !data.withdrawn
+      ? null
+      : data.withdrawn
+        ? tx('You are withdrawn from this event.')
         : data.sittingOut
           ? tx('You sit out this round')
           : !data.tv.allow_player_scoring
@@ -203,6 +201,7 @@ export default function Event() {
             rows={toStandingRows(s.rows)}
             preset={s.preset}
             highlightId={entry.player_id}
+            sets={s.preset === 'group' && data?.tv.score_mode['gp-group'] === 'sets'}
           />
         </Paper>
       ))}
@@ -229,15 +228,15 @@ export default function Event() {
       ),
     );
   return (
-    <Stack gap="xl">
-      {head}
+    <Stack gap="xl" {...sportProps(entry.sport)}>
+      {/* Header, then the one notice that needs attention (none once the event is finished: the
+          status badge says so). */}
+      <Stack gap="md">
+        {head}
+        {banner && notice(banner, 'event-banner')}
+      </Stack>
       {failure && <ErrorState error={failure} retry={() => void event.refetch()} />}
       {!failure && !data && <Loading />}
-      {banner && (
-        <Alert color="gray" data-testid="event-banner">
-          {banner}
-        </Alert>
-      )}
       {data && (
         <>
           {data.finished && standingsBlock}
@@ -269,10 +268,13 @@ export default function Event() {
         </>
       )}
       {!data?.finished && standingsBlock}
-      <Stack gap="xs">
-        <Title order={2}>{tx('Notifications')}</Title>
-        <PushToggle tid={id} token={event.token} />
-      </Stack>
+      {!data?.finished && (
+        <Stack gap="xs">
+          <Title order={2}>{tx('Notifications')}</Title>
+          <PushToggle tid={id} token={event.token} />
+        </Stack>
+      )}
+      {fullView}
     </Stack>
   );
 }

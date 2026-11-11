@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Container, Group, Indicator, NavLink, Stack, Tabs } from '@mantine/core';
+import { Button, Group, Indicator, NavLink, Stack, Tabs } from '@mantine/core';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { IconChartLine, IconHome, IconListCheck, IconPlus, IconUser } from '@tabler/icons-react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -17,6 +17,8 @@ import { dueOf, usePayments } from './components/TodoCards';
 import { lifecycleIn, type EventData } from './eventData';
 import type { PlayerSpaceContext } from './context';
 import classes from './Player.module.css';
+import { Notice } from '../../ui/Notice';
+import { PageContainer } from '../../ui/PageContainer';
 
 const SCOPE_KEY = 'padel-player-community';
 const initialScope = () => {
@@ -156,19 +158,19 @@ export function PlayerLayout() {
   if (!token)
     return (
       <>
-        {linkError && <Alert color="red">{linkError}</Alert>}
-        {notice && <Alert color="court">{tx(notice)}</Alert>}
+        {linkError && <Notice tone="danger">{linkError}</Notice>}
+        {notice && <Notice>{tx(notice)}</Notice>}
         <PlayerLogin initialPassphrase={participantPassphrase} onSession={start} />
       </>
     );
   if (query.error || !query.data)
     return (
-      <Container py="xl">
+      <PageContainer>
         <ErrorState error={query.error} retry={() => void query.refetch()} />
         <Button mt="lg" onClick={logout}>
           {tx('Return to player login')}
         </Button>
-      </Container>
+      </PageContainer>
     );
   const space = query.data;
   const scopeOptions = [
@@ -197,17 +199,17 @@ export function PlayerLayout() {
     to === '/player/matches' ? dots.matches : to === '/player/me' ? dots.me : false;
   const outlet = (
     <Stack gap="md">
-      {linkError && <Alert color="red">{linkError}</Alert>}
+      {linkError && <Notice tone="danger">{linkError}</Notice>}
       {notice && (
-        <Alert color="court" withCloseButton onClose={() => setNotice('')}>
+        <Notice withCloseButton onClose={() => setNotice('')}>
           {tx(notice)}
-        </Alert>
+        </Notice>
       )}
       <Outlet context={context} />
     </Stack>
   );
   return (
-    <Container size={mode === 'desktop' ? 'lg' : 'md'} py="lg">
+    <PageContainer size={mode === 'desktop' ? 'lg' : 'md'}>
       {mode === 'tablet' && (
         <Tabs
           value={current}
@@ -274,6 +276,6 @@ export function PlayerLayout() {
         outlet
       )}
       {linking && <LinkEvent close={() => setLinking(false)} />}
-    </Container>
+    </PageContainer>
   );
 }

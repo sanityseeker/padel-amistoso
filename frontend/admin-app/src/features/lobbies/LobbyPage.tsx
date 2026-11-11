@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   ActionIcon,
   Anchor,
-  Badge,
   Button,
   Collapse,
   Group,
@@ -12,9 +11,7 @@ import {
   Table,
   Tabs,
   Text,
-  Title,
   UnstyledButton,
-  VisuallyHidden,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import {
@@ -48,6 +45,7 @@ import {
   MutationError,
   QrSheet,
   SportMark,
+  PageHeader,
   StatusBadge,
 } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
@@ -205,20 +203,16 @@ export function LobbyPage() {
       <Text fw={600} size="sm">
         {p.player_name}
       </Text>
-      {tids.length > 0 && (
-        <Badge size="xs" variant="light" color="gray">
-          {tx('In a tournament')}
-        </Badge>
-      )}
+      {tids.length > 0 && <StatusBadge size="xs">{tx('In a tournament')}</StatusBadge>}
       {duplicates.has(p.player_name.trim().toLowerCase()) && (
-        <Badge size="xs" variant="light" color="yellow">
+        <StatusBadge size="xs" tone="warning">
           {tx('Same name')}
-        </Badge>
+        </StatusBadge>
       )}
       {filtered && !eligibleIds.has(p.player_id) && (
-        <Badge size="xs" variant="light" color="red">
+        <StatusBadge size="xs" tone="danger">
           {tx('Not eligible')}
-        </Badge>
+        </StatusBadge>
       )}
     </Group>
   );
@@ -236,42 +230,39 @@ export function LobbyPage() {
 
   return (
     <Stack gap="lg" {...sportProps(lobby.sport)}>
-      <Stack gap="xs">
-        <Group justify="space-between" align="flex-start" wrap="nowrap">
-          <Stack gap={2} miw={0}>
-            <Text variant="eyebrow">
-              {[tx('Lobby'), lobby.club_name || lobby.community_name].filter(Boolean).join(' · ')}
+      <PageHeader
+        compactActions
+        eyebrow={[tx('Lobby'), lobby.club_name || lobby.community_name].filter(Boolean).join(' · ')}
+        title={lobby.name}
+        meta={
+          <>
+            <StatusBadge tone={lobby.open ? 'success' : 'neutral'}>
+              {lobby.archived
+                ? tx('Archived')
+                : lobby.open
+                  ? tx('Registration open')
+                  : tx('Closed')}
+            </StatusBadge>
+            <SportMark sport={lobby.sport} />
+            <Text size="sm">
+              {lobby.registrants.length}
+              {' ' + tx('players')}
             </Text>
-            <VisuallyHidden>
-              <Title order={1}>{lobby.name}</Title>
-            </VisuallyHidden>
-          </Stack>
+            {claims.data && claims.data.length > 0 && (
+              <UnstyledButton type="button" onClick={() => setTab('claims')}>
+                <StatusBadge tone="danger">
+                  {tx('{n} claims to review', { n: claims.data.length })}
+                </StatusBadge>
+              </UnstyledButton>
+            )}
+          </>
+        }
+        actions={
           <ActionIcon size="touch" aria-label={tx('Settings')} onClick={() => setSettings(true)}>
             <IconSettings size={20} />
           </ActionIcon>
-        </Group>
-        <Group gap="sm">
-          <StatusBadge tone={lobby.open ? 'success' : 'neutral'}>
-            {lobby.archived ? tx('Archived') : lobby.open ? tx('Registration open') : tx('Closed')}
-          </StatusBadge>
-          <SportMark sport={lobby.sport} />
-          <Text size="sm">
-            {lobby.registrants.length}
-            {' ' + tx('players')}
-          </Text>
-          {claims.data && claims.data.length > 0 && (
-            <Badge
-              color="red"
-              variant="light"
-              component="button"
-              type="button"
-              onClick={() => setTab('claims')}
-            >
-              {tx('{n} claims to review', { n: claims.data.length })}
-            </Badge>
-          )}
-        </Group>
-      </Stack>
+        }
+      />
       <Paper p="md">
         <Stack gap="sm">
           <Text variant="eyebrow">{tx('Share the sign-up')}</Text>
@@ -315,7 +306,7 @@ export function LobbyPage() {
                 component="a"
                 href={`/register/${lobby.alias || id}`}
                 variant="default"
-                rightSection={<IconExternalLink size={15} />}
+                rightSection={<IconExternalLink size={14} aria-hidden />}
               >
                 {tx('Public sign-up')}
               </Button>
@@ -365,9 +356,9 @@ export function LobbyPage() {
             <Tabs.Tab
               value="claims"
               rightSection={
-                <Badge size="sm" circle color="red">
+                <StatusBadge size="sm" circle tone="danger">
                   {claims.data.length}
-                </Badge>
+                </StatusBadge>
               }
             >
               {tx('Claims')}
@@ -381,9 +372,9 @@ export function LobbyPage() {
             value="filter"
             rightSection={
               lobby.participant_filter?.length ? (
-                <Badge size="sm" variant="light">
+                <StatusBadge size="sm">
                   {lobby.eligible_player_ids?.length ?? 0}/{lobby.registrants.length}
-                </Badge>
+                </StatusBadge>
               ) : undefined
             }
           >

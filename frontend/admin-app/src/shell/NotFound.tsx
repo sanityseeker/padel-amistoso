@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Button, Container, Group, Image, Stack, Text, Title } from '@mantine/core';
+import { Button, Group, Image, Stack, Text, Title } from '@mantine/core';
 import { Link, useSearchParams } from 'react-router-dom';
 import { t as tx, useLocale } from '../i18n';
 import { readMeta } from '../features/public/meta';
+import { PageContainer } from '../ui/PageContainer';
 
 const SECONDS = 5;
 
@@ -35,7 +36,7 @@ export function NotFound() {
     if (leaves && target && left <= 0) window.location.replace(target);
   }, [left, leaves, target]);
   return (
-    <Container size="sm" py="xl">
+    <PageContainer size="sm">
       <Stack align="flex-start" gap="sm">
         <Image
           src="/404.png"
@@ -62,6 +63,6 @@ export function NotFound() {
           </Button>
         </Group>
       </Stack>
-    </Container>
+    </PageContainer>
   );
 }

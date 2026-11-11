@@ -111,13 +111,33 @@ test('custom TV information stays hidden when empty and renders Markdown when fi
     custom_info_text: '**Short sets**\nNo-ad scoring',
   });
   await page.reload();
-  const section = page.getByTestId('tv-custom-info');
-  await expect(section.getByText('Tournament format')).toBeVisible();
-  await expect(section.getByText('Short sets', { exact: true })).toHaveJSProperty(
-    'tagName',
-    'STRONG',
-  );
-  await expect(section).toContainText('No-ad scoring');
+  const section = page.locator('[data-section="custom-info"]');
+  const info = page.getByTestId('tv-custom-info');
+  await expect(section.getByRole('heading', { name: 'Tournament format' })).toBeVisible();
+  await expect(info.getByText('Short sets', { exact: true })).toHaveJSProperty('tagName', 'STRONG');
+  await expect(info).toContainText('No-ad scoring');
+
+  // The section collapses like the others and the choice is remembered.
+  const toggle = section.getByRole('button', { name: 'Tournament format' });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(info).toBeHidden();
+  await page.reload();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(info).toBeHidden();
+  await toggle.click();
+  await expect(info).toBeVisible();
+});
+
+test('standings keep P, W and the main column on a 360px phone', async ({ page, request }) => {
+  const { id } = await mexicano(request, `TV Narrow ${stamp()}`);
+  await patchTvSettings(request, id, { refresh_interval: 0 });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto(`/tv/${id}`);
+  const table = page.getByRole('table').first();
+  await expect(table.getByRole('columnheader', { name: /Total points/ })).toBeVisible();
+  await expect(table.getByRole('columnheader', { name: /Matches played/ })).toBeVisible();
 });
 
 test('the organizer display flags and an old query link are honoured', async ({
@@ -328,4 +348,16 @@ test('the phone layout has no sideways scroll and keeps the footer', async ({ pa
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
   ).toBeTruthy();
   await expectFooter(page);
+});
+
+test('a set-scored group shows game difference before any match is played', async ({
+  page,
+  request,
+}) => {
+  const { id } = await createTournament(request, 'gp', `TV Sets ${Date.now()}`);
+  await patchTvSettings(request, id, { score_mode: { 'gp-group': 'sets' }, refresh_interval: 0 });
+  await page.goto(`/tv/${id}`);
+  const table = page.getByRole('table').first();
+  await expect(table.getByRole('columnheader', { name: /Game difference/ })).toBeVisible();
+  await expect(table.getByRole('columnheader', { name: /Point difference/ })).toHaveCount(0);
 });

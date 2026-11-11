@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Alert,
   Button,
   Checkbox,
   Code,
@@ -18,6 +17,7 @@ import { t as tx, useLocale } from '../../i18n';
 import type { ClubPlayer } from '../../types';
 import { MutationError } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
+import { Notice } from '../../ui/Notice';
 
 interface Ghost {
   profile_id: string;
@@ -113,10 +113,10 @@ export function PossibleMembers({
         onChange={(e) => setFilter(e.currentTarget.value)}
       />
       {created && (
-        <Alert color="green" withCloseButton onClose={() => setCreated(null)}>
+        <Notice tone="success" withCloseButton onClose={() => setCreated(null)}>
           {tx('Profile created for {name}. Passphrase:', { name: created.name })}{' '}
           <Code>{created.passphrase}</Code>
-        </Alert>
+        </Notice>
       )}
       <MutationError error={add.error ?? convert.error ?? merge.error} />
       <Table.ScrollContainer minWidth={420}>

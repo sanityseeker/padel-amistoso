@@ -1,10 +1,11 @@
-import { Avatar, Button, Group, Stack, Tabs, Text, Title } from '@mantine/core';
+import { Avatar, Button, Stack, Tabs, Title } from '@mantine/core';
 import { IconBuilding } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth';
 import { ErrorState, Loading, useOverview } from '../../components';
 import { t as tx, useLocale } from '../../i18n';
+import { PageHeader } from '../../ui';
 import { ClubEvents } from './ClubEvents';
 import { ClubPlayers } from './ClubPlayers';
 import { ClubSeasons } from './ClubSeasons';
@@ -32,21 +33,19 @@ export function ClubPage() {
     );
   return (
     <Stack gap="lg">
-      <Group wrap="nowrap" gap="md">
-        <Avatar
-          src={club.has_logo ? `/api/clubs/${club.id}/logo` : undefined}
-          size={56}
-          radius="md"
-        >
-          <IconBuilding size={26} />
-        </Avatar>
-        <Stack gap={2} miw={0}>
-          <Text variant="eyebrow">
-            {communities.data?.find((c) => c.id === club.community_id)?.name ?? tx('Club')}
-          </Text>
-          <Title order={1}>{club.name}</Title>
-        </Stack>
-      </Group>
+      <PageHeader
+        leading={
+          <Avatar
+            src={club.has_logo ? `/api/clubs/${club.id}/logo` : undefined}
+            size={56}
+            radius="md"
+          >
+            <IconBuilding size={26} />
+          </Avatar>
+        }
+        eyebrow={communities.data?.find((c) => c.id === club.community_id)?.name ?? tx('Club')}
+        title={club.name}
+      />
       <Tabs value={tab} onChange={setTab} keepMounted={false}>
         <Tabs.List mb="lg">
           <Tabs.Tab value="events">{tx('Events')}</Tabs.Tab>

@@ -117,6 +117,11 @@ function schemeVariables(mode: keyof typeof legacyColors) {
     '--mantine-color-ink-light-color': c.text,
     '--mantine-color-ink-outline': c.text,
     '--mantine-color-ink-outline-hover': `color-mix(in srgb, ${c.text} 8%, transparent)`,
+    // `color="gray"` light (the neutral StatusBadge, gray Alert and light Button): Mantine takes gray[1],
+    // which is the page background, so the pill vanished. A muted tint with muted text, quieter than ink.
+    '--mantine-color-gray-light': `color-mix(in srgb, ${c.muted} ${mode === 'light' ? '13%' : '18%'}, transparent)`,
+    '--mantine-color-gray-light-hover': `color-mix(in srgb, ${c.muted} ${mode === 'light' ? '19%' : '24%'}, transparent)`,
+    '--mantine-color-gray-light-color': c.muted,
   };
 }
 

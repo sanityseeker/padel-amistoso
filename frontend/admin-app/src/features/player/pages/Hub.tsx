@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Anchor, Button, Group, SimpleGrid, Stack, Title } from '@mantine/core';
+import { Anchor, Button, Group, SimpleGrid, Stack, Title, useMatches } from '@mantine/core';
 import { IconArrowRight } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { t as tx, useLocale } from '../../../i18n';
-import { EmptyState } from '../../../ui';
+import { EmptyState, PageHeader } from '../../../ui';
 import { ActiveEmpty } from '../components/ActiveEmpty';
 import { TournamentNavCard } from '../components/ActiveTournaments';
 import { CareerStats } from '../components/CareerStats';
@@ -18,6 +18,7 @@ import { sportsOf, type Sport } from '../stats';
 // page, with the match that needs you), then past tournaments, rating and statistics, and the
 // to-do cards.
 export default function Hub() {
+  const gap = useMatches({ base: 'md', sm: 'xl' });
   useLocale();
   const { space, scope, scopeQuery, scopeOptions, liveEntries, setScope, openLink } =
     usePlayerSpace();
@@ -33,8 +34,8 @@ export default function Hub() {
   const scopeName = scopeOptions.find((o) => o.value === scope)?.label ?? tx('All my communities');
   const rated = sports.length > 0;
   return (
-    <Stack gap="xl">
-      <Title order={1}>{space.profile.name}</Title>
+    <Stack gap={gap}>
+      <PageHeader title={space.profile.name} />
       <Stack gap="sm" component="section" aria-labelledby="hub-active">
         <Group justify="space-between">
           <Title order={2} id="hub-active" size="h3">

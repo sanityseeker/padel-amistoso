@@ -2423,6 +2423,6 @@ def test_service_worker_never_caches_api_or_credentialed_pages():
 def test_manifest_has_brand_colours_and_section_shortcuts(client):
     manifest = client.get("/manifest.json").json()
     assert manifest["id"] == "/"
-    assert manifest["theme_color"] == "#1a5fa3"
+    assert manifest["theme_color"] == "#eff2f6"
     assert manifest["background_color"] == "#eff2f6"
     assert [s["url"] for s in manifest["shortcuts"]] == ["/events", "/player", "/admin"]

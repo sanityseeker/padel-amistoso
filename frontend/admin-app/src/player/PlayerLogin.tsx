@@ -1,7 +1,6 @@
 import { t as tx, useLocale, currentLanguage } from '../i18n';
 import { useState } from 'react';
 import {
-  Alert,
   Anchor,
   Button,
   Center,
@@ -19,6 +18,7 @@ import { rememberPage } from '../shell/env';
 import { useMutation } from '@tanstack/react-query';
 import { playerApi } from './api';
 import type { Resolution, Session, Space } from './types';
+import { Notice } from '../ui/Notice';
 export function PlayerLogin({
   initialPassphrase,
   onSession,
@@ -128,13 +128,13 @@ export function PlayerLogin({
             }}
           >
             <Stack>
-              {error && <Alert color="red">{tx(error.message)}</Alert>}
+              {error && <Notice tone="danger">{tx(error.message)}</Notice>}
               {recovered && (
-                <Alert color="court">
+                <Notice>
                   {tx(
                     'If a matching profile exists, recovery instructions will be sent to that email.',
                   )}
-                </Alert>
+                </Notice>
               )}
               {!recovering && !resolution && (
                 <PasswordInput
@@ -148,11 +148,11 @@ export function PlayerLogin({
               )}
               {resolution && (
                 <>
-                  <Alert color="court">
+                  <Notice>
                     {tx('We found you in {events}.', {
                       events: resolution.matches.map((m) => m.entity_name).join(', '),
                     })}
-                  </Alert>
+                  </Notice>
                   <TextInput
                     label={tx('Your name')}
                     required

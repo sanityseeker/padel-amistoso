@@ -4,7 +4,6 @@ import { createPortal } from 'react-dom';
 import {
   ActionIcon,
   Anchor,
-  Badge,
   Button,
   Code,
   Group,
@@ -14,6 +13,8 @@ import {
   Paper,
   Stack,
   Text,
+  ThemeIcon,
+  Tooltip,
 } from '@mantine/core';
 import { MatchListFrame } from '../../features/tournaments';
 import './tournament.css';
@@ -27,6 +28,7 @@ import {
   IconQrcode,
   IconRefresh,
   IconShare,
+  IconUserCheck,
   IconUserMinus,
   IconUserPlus,
   IconAddressBook,
@@ -46,6 +48,9 @@ import { useAuth } from '../../auth';
 import { useSendOne } from '../settings/CommunicateSection';
 import { UndoWithdrawal, WithdrawDialog, WithdrawnBadge } from './Withdrawals';
 import { AddPlayerDialog, ContactSheet, LinkProfileSheet, RemovePlayerDialog } from './PlayerTools';
+
+// Tap opens the tooltip on phones too, where there is no hover.
+const TOOLTIP_EVENTS = { hover: true, focus: true, touch: true };
 
 export const joinLink = (tid: string, token: string) =>
   `${window.location.origin}/tv/${tid}?player_token=${encodeURIComponent(token)}`;
@@ -419,9 +424,23 @@ export function PlayerCodes({
                 <Group gap={6} wrap="wrap" align="center">
                   <Text fw={600}>{p.name}</Text>
                   {p.hub_account_linked && (
-                    <Badge size="xs" variant="light" color="court">
-                      {tx('Hub account')}
-                    </Badge>
+                    <Tooltip
+                      label={tx('Has a Player Hub profile')}
+                      withArrow
+                      events={TOOLTIP_EVENTS}
+                    >
+                      <ThemeIcon
+                        size="sm"
+                        radius="xl"
+                        variant="light"
+                        color="court"
+                        role="img"
+                        aria-label={tx('Has a Player Hub profile')}
+                        data-testid="hub-linked"
+                      >
+                        <IconUserCheck size={14} />
+                      </ThemeIcon>
+                    </Tooltip>
                   )}
                 </Group>
                 <Anchor

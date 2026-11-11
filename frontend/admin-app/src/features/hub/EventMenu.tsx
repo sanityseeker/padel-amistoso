@@ -44,7 +44,7 @@ export function EventMenu({
       </Menu.Target>
       <Menu.Dropdown>
         <Menu.Item
-          leftSection={<IconExternalLink size={15} />}
+          rightSection={<IconExternalLink size={14} aria-hidden />}
           onClick={() => navigate(event.path)}
         >
           {tx('Open')}

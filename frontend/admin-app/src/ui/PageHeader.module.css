@@ -1,0 +1,22 @@
+/* Header links (back, secondary actions): one size and weight, the icon on the text baseline. The
+   padding widens the tap target and the negative margin keeps it out of the layout. */
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding-block: 6px;
+  margin-block: -6px;
+}
+
+/* One title size rule for every page: compact on phones, the full h1 from `sm` up. */
+.title {
+  --title-fz: var(--mantine-h3-font-size);
+  --title-lh: var(--mantine-h3-line-height);
+}
+@media (min-width: 48em) {
+  .title {
+    --title-fz: var(--mantine-h1-font-size);
+    --title-lh: var(--mantine-h1-line-height);
+  }
+}

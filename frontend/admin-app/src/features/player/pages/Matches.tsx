@@ -1,5 +1,15 @@
 import { useState } from 'react';
-import { Alert, Badge, Button, Card, Group, SegmentedControl, Stack, Text } from '@mantine/core';
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Card,
+  Group,
+  SegmentedControl,
+  Stack,
+  Text,
+  useMatches,
+} from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconExternalLink, IconLinkOff, IconPlus } from '@tabler/icons-react';
@@ -14,6 +24,8 @@ import { entryPath, usePlayerSpace } from '../context';
 import { entrySummary, rankedOf } from '../stats';
 import { sportProps } from '../../../theme';
 import classes from '../Player.module.css';
+import { Notice } from '../../../ui/Notice';
+import { StatusBadge } from '../../../ui/StatusBadge';
 
 interface UnlinkResult {
   ok: boolean;
@@ -77,15 +89,11 @@ function EntryCard({ entry, onUnlink }: { entry: Entry; onUnlink: (entry: Entry)
         <Text size="xs" c="dimmed">
           {entry.tournament_type ? formatType(entry.tournament_type) : tx('Registration lobby')}
         </Text>
-        {entry.rank && (
-          <Badge size="sm" color="gray">
-            #{entry.rank}
-          </Badge>
-        )}
+        {entry.rank && <StatusBadge size="sm">#{entry.rank}</StatusBadge>}
         {entry.status === 'finished' && entry.finished_at && (
-          <Badge size="sm" variant="outline" color="gray">
+          <StatusBadge size="sm" variant="outline">
             {new Date(entry.finished_at).toLocaleDateString(localeTag())}
-          </Badge>
+          </StatusBadge>
         )}
       </Group>
       {(entry.status === 'finished' || summary.record || summary.place) && (
@@ -124,6 +132,7 @@ function EntryCard({ entry, onUnlink }: { entry: Entry; onUnlink: (entry: Entry)
 
 // My events: Active and Finished, link a new one, or unlink one (DELETE /player-profile/unlink).
 export default function Matches() {
+  const gap = useMatches({ base: 'md', sm: 'lg' });
   useLocale();
   const client = useQueryClient();
   const { space, liveEntries, openLink } = usePlayerSpace();
@@ -152,13 +161,30 @@ export default function Matches() {
   const finished = space.entries.filter((e) => e.status === 'finished');
   const list = which === 'active' ? active : finished;
   return (
-    <Stack gap="lg">
+    <Stack gap={gap}>
       <PageHeader
         title={tx('My events')}
+        dense
         actions={
-          <Button leftSection={<IconPlus size={16} />} variant="light" onClick={openLink}>
-            {tx('Link event')}
-          </Button>
+          <>
+            <ActionIcon
+              variant="light"
+              size="lg"
+              hiddenFrom="sm"
+              aria-label={tx('Link event')}
+              onClick={openLink}
+            >
+              <IconPlus size={18} />
+            </ActionIcon>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              variant="light"
+              visibleFrom="sm"
+              onClick={openLink}
+            >
+              {tx('Link event')}
+            </Button>
+          </>
         }
       />
       <SegmentedControl
@@ -217,7 +243,7 @@ export default function Matches() {
         onConfirm={() => unlinking && unlink.mutate(unlinking)}
         onClose={() => setUnlinking(null)}
       />
-      {unlink.error && !unlinking && <Alert color="red">{tx(unlink.error.message)}</Alert>}
+      {unlink.error && !unlinking && <Notice tone="danger">{tx(unlink.error.message)}</Notice>}
     </Stack>
   );
 }

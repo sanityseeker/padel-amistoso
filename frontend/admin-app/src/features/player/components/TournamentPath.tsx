@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Alert,
   Anchor,
   Group,
   Loader,
@@ -19,6 +18,7 @@ import { playerApi } from '../../../player/api';
 import { sportProps } from '../../../theme';
 import type { Entry, PathRound, TournamentPath as Path } from '../../../player/types';
 import classes from './TournamentPath.module.css';
+import { Notice } from '../../../ui/Notice';
 
 /** A played round's result from the player's side (the same rule as the Played list). */
 export type RoundResult = 'won' | 'lost' | 'drawn';
@@ -222,7 +222,7 @@ export function TournamentPath({
   useLocale();
   const path = useTournamentPath(entry);
   if (path.isPending) return <Loader size="sm" />;
-  if (path.error) return <Alert color="red">{tx(path.error.message)}</Alert>;
+  if (path.error) return <Notice tone="danger">{tx(path.error.message)}</Notice>;
   const rows = playedPath(path.data.rounds, inProgress);
   if (!path.data.available || !rows.length)
     return (

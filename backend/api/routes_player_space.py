@@ -364,6 +364,46 @@ class VerifyEmailRequest(BaseModel):
 # ────────────────────────────────────────────────────────────────────────────
 
 
+def _existing_profile_for_new_signup(email: str) -> str | None:
+    """Return the id of a provisioned Hub profile that a new sign-up should reuse.
+
+    - A verified profile with this email raises 409: the player already has a
+      profile and logs in with the email instead of creating a second one.
+    - An unverified profile with no linked participations or history is the
+      empty profile that lobby registration provisions; its id is returned.
+    - An unverified profile that already holds data returns ``None`` (a new
+      profile is created).  Proof of a lobby passphrase alone must not hand over
+      another profile's history.
+    """
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, email_verified_at FROM player_profiles
+             WHERE LOWER(email) = LOWER(?) AND is_ghost = 0
+             ORDER BY email_verified_at IS NULL, created_at
+            """,
+            (email,),
+        ).fetchall()
+        if rows and rows[0]["email_verified_at"]:
+            raise HTTPException(
+                409,
+                "A Player Hub profile already exists for this email. Log in with your email instead.",
+            )
+        for row in rows:
+            in_use = conn.execute(
+                """
+                SELECT 1 FROM player_secrets WHERE profile_id = ?
+                UNION ALL SELECT 1 FROM registrants WHERE profile_id = ?
+                UNION ALL SELECT 1 FROM player_history WHERE profile_id = ?
+                LIMIT 1
+                """,
+                (row["id"], row["id"], row["id"]),
+            ).fetchone()
+            if in_use is None:
+                return row["id"]
+    return None
+
+
 def _passphrase_unique(passphrase: str) -> bool:
     """Return True if the passphrase is not already used by another profile."""
     with get_db() as conn:
@@ -2670,7 +2710,12 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
     if not is_valid_email(clean_email):
         raise HTTPException(422, "A valid email address is required")
 
-    profile_id = str(uuid.uuid4())
+    # Registering in a lobby with an email already provisions a Hub profile for
+    # that email (``routes_registration._schedule_hub_provision``).  Reuse that
+    # profile here instead of inserting a second one for the same address.
+    shell_id = _existing_profile_for_new_signup(clean_email)
+
+    profile_id = shell_id or str(uuid.uuid4())
     # Reuse the tournament/lobby passphrase as the profile passphrase so the
     # player doesn't need to remember a second credential.  Fall back to a
     # freshly generated one only if the passphrase is already claimed by
@@ -2681,13 +2726,21 @@ async def create_profile(req: ProfileCreateRequest, request: Request) -> PlayerS
     clean_contact = req.contact.strip()
 
     with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO player_profiles (id, passphrase, name, email, email_verified_at, contact, lang, created_at)
-            VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
-            """,
-            (profile_id, passphrase, clean_name, clean_email, clean_contact, req.lang, now),
-        )
+        if shell_id:
+            conn.execute(
+                "UPDATE player_profiles SET passphrase = ?, name = ?, contact = ?, lang = ? WHERE id = ?",
+                (passphrase, clean_name, clean_contact, req.lang, shell_id),
+            )
+            row = conn.execute("SELECT created_at FROM player_profiles WHERE id = ?", (shell_id,)).fetchone()
+            now = row["created_at"] if row else now
+        else:
+            conn.execute(
+                """
+                INSERT INTO player_profiles (id, passphrase, name, email, email_verified_at, contact, lang, created_at)
+                VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
+                """,
+                (profile_id, passphrase, clean_name, clean_email, clean_contact, req.lang, now),
+            )
         # Auto-link the participation the player used to prove identity.
         # Always update BOTH tables: when a lobby is converted to a tournament the
         # same passphrase may exist in both registrants and player_secrets, so we

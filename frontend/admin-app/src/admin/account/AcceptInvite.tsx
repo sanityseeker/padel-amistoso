@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Loader, Stack, Text, TextInput } from '@mantine/core';
+import { Button, Loader, Stack, Text, TextInput } from '@mantine/core';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, write } from '../../api';
 import { useAuth } from '../../auth';
@@ -13,6 +13,7 @@ import {
   passwordProblem,
   useUrlToken,
 } from './shared';
+import { Notice } from '../../ui/Notice';
 
 const USERNAME = /^[a-zA-Z0-9_-]{3,64}$/;
 interface Preview {
@@ -52,9 +53,9 @@ export function AcceptInvitePage() {
   if (dead)
     return (
       <AccountCard title={tx('Invite not valid')}>
-        <Alert color="red" role="alert">
+        <Notice tone="danger" role="alert">
           {tx('This invite is invalid, expired or already used. Ask the organizer for a new one.')}
-        </Alert>
+        </Notice>
         <Button component={Link} to="/admin">
           {tx('Back to log in')}
         </Button>

@@ -1,7 +1,6 @@
 import { sportProps } from '../../../theme';
 import { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   Badge,
   Group,
   Paper,
@@ -52,10 +51,15 @@ import { PairingsDialog } from '../../../admin/tournament/PairingsDialog';
 import { PlayoffsDialog } from '../../../admin/tournament/PlayoffsDialog';
 import { ExportDialog } from '../../../admin/tournament/ExportDialog';
 import { TournamentSettings } from '../../../admin/settings/TournamentSettings';
-import { historyOnly, pageMatches, reviewItems } from '../../../admin/tournament/scoring';
+import {
+  historyOnly,
+  matchDecider,
+  pageMatches,
+  reviewItems,
+} from '../../../admin/tournament/scoring';
 import { useRecordScore, useReviewActions } from '../../../admin/tournament/useScoreActions';
 import type { Match } from '../../../types';
-import { ConfirmAction, EmptyState, ResponsiveSheet } from '../../../ui';
+import { ActionBar, ConfirmAction, EmptyState, ResponsiveSheet } from '../../../ui';
 import { MatchList } from '../MatchList';
 import { ActivityList } from '../../../shell/ActivityList';
 import { StandingsTable } from '../StandingsTable';
@@ -66,6 +70,7 @@ import { PhaseStepper, type PhaseKind } from '../PhaseStepper';
 import { RoundBar } from '../RoundBar';
 import { NextStepButton, WorkspaceHeader, type MenuEntry, type NextStep } from '../WorkspaceHeader';
 import classes from '../Workspace.module.css';
+import { Notice } from '../../../ui/Notice';
 
 // Opens the first pending match's Score button (or the given match's) once the editor has closed.
 function focusScoreAction(matchId: string, next: boolean) {
@@ -790,6 +795,7 @@ function Workspace({ id }: { id: string }) {
             rows={toStandingRows(standingGroups[standingsGroup] ?? [])}
             preset="group"
             density="compact"
+            sets={settings.score_mode['gp-group'] === 'sets'}
           />
         </Stack>
       )}
@@ -831,9 +837,9 @@ function Workspace({ id }: { id: string }) {
         champion={status.champion}
       />
       {phaseNote && (
-        <Alert color="court" variant="light" mb="md" data-testid="phase-note">
+        <Notice mb="md" data-testid="phase-note">
           {phaseNote}
-        </Alert>
+        </Notice>
       )}
       <Tabs value={twoPane && tab === 'standings' ? 'matches' : tab} onChange={setTab}>
         <Tabs.List mb="md">
@@ -956,9 +962,9 @@ function Workspace({ id }: { id: string }) {
         </div>
       )}
       {phone && next && (
-        <div className={classes.actionBar} data-testid="action-bar">
+        <ActionBar data-testid="action-bar">
           <NextStepButton step={next} full />
-        </div>
+        </ActionBar>
       )}
       {editing && editingMatch && (phone || editing.from === 'review') && (
         <AdminScoreDialog
@@ -1042,7 +1048,7 @@ function Workspace({ id }: { id: string }) {
       )}
       {dialog?.kind === 'activity' && (
         <ResponsiveSheet opened onClose={() => setDialog(null)} title={tx('Recent activity')}>
-          <ActivityList matches={matches} />
+          <ActivityList matches={matches} decider={(m) => matchDecider(m, settings)} />
         </ResponsiveSheet>
       )}
       {dialog?.kind === 'export' && (

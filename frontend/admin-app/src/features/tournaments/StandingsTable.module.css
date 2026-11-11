@@ -120,6 +120,9 @@
 .name {
   max-width: 12rem;
 }
+.table[data-narrow] .name {
+  max-width: 9rem;
+}
 /* One line: long names truncate with an ellipsis (the full name is in the title). */
 .nameLine {
   display: flex;

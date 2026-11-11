@@ -170,9 +170,9 @@ export function TournamentsHub() {
           )}
           {newAnswersBadge(e)}
           {e.shared && <Badge size="xs">{tx('Shared')}</Badge>}
-          <Badge size="xs" variant="outline" color="gray">
+          <StatusBadge size="xs" variant="outline">
             {e.listed ? tx('Public') : tx('Private')}
-          </Badge>
+          </StatusBadge>
         </>
       }
       actions={menu(e)}
@@ -325,9 +325,9 @@ export function TournamentsHub() {
                           </Table.Td>
                           <Table.Td>
                             <Group gap={6}>
-                              <Badge size="sm" variant="outline" color="gray">
+                              <StatusBadge size="sm" variant="outline">
                                 {e.listed ? tx('Public') : tx('Private')}
-                              </Badge>
+                              </StatusBadge>
                               {e.shared && <Badge size="sm">{tx('Shared')}</Badge>}
                             </Group>
                           </Table.Td>

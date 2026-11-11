@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Button, Group, Modal, Stack, Switch } from '@mantine/core';
+import { Button, Group, Modal, Stack, Switch } from '@mantine/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { t as tx, useLocale } from '../../i18n';
 import {
@@ -12,6 +12,7 @@ import {
   type ExportOptions,
 } from './exportReport';
 import { allMatches, type TournamentPageData } from './scoring';
+import { Notice } from '../../ui/Notice';
 
 // HTML download or printable PDF of the tournament as the workspace shows it. The choices are
 // remembered per browser, as in the legacy export.
@@ -79,7 +80,7 @@ export function ExportDialog({
   return (
     <Modal opened onClose={onClose} title={tx('Export results')} centered>
       <Stack>
-        {error && <Alert color="red">{error}</Alert>}
+        {error && <Notice tone="danger">{error}</Notice>}
         <Switch
           label={tx('Include match history')}
           checked={options.history}

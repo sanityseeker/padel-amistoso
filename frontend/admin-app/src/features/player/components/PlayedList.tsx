@@ -6,6 +6,7 @@ import type { PathRound } from '../../../player/types';
 import { MatchListFrame, type MatchView } from '../../tournaments';
 import { isRanked, Movement, type RoundResult } from './TournamentPath';
 import classes from './PlayedList.module.css';
+import { StatusBadge } from '../../../ui/StatusBadge';
 
 type Result = RoundResult;
 export interface PlayedItem {
@@ -146,9 +147,7 @@ export function PlayedList({
                     <Text size="xs" c="dimmed">
                       {formatRoundLabel(line.label)}
                     </Text>
-                    <Badge size="xs" variant="light" color="gray">
-                      {tx('Sat out')}
-                    </Badge>
+                    <StatusBadge size="xs">{tx('Sat out')}</StatusBadge>
                   </Group>
                   <StandingCell standing={standing} />
                 </div>
@@ -188,15 +187,11 @@ export function PlayedList({
                         {meta}
                       </Text>
                     )}
-                    {view.walkover && (
-                      <Badge size="xs" variant="light" color="gray">
-                        {tx('Walkover')}
-                      </Badge>
-                    )}
+                    {view.walkover && <StatusBadge size="xs">{tx('Walkover')}</StatusBadge>}
                     {flags.map((f) => (
-                      <Badge key={f.key} size="xs" variant="light" color="orange">
+                      <StatusBadge key={f.key} size="xs" tone="warning">
                         {f.label}
-                      </Badge>
+                      </StatusBadge>
                     ))}
                   </Group>
                   <StandingCell standing={standing} />

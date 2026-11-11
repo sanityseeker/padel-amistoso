@@ -904,6 +904,46 @@ class TestAutoProvisionHubProfile:
             ).fetchone()["n"]
         assert n == 1
 
+    def test_saving_profile_after_registration_reuses_provisioned_profile(self, client, auth_headers):
+        rid = _make_lobby(client, auth_headers)
+        entry = _register(client, rid, "Once Olga", email="olga-once@example.com")
+        provisioned = _profile_id_for_email("olga-once@example.com")
+
+        created = _create_profile(client, "Once Olga", "olga-once@example.com", entry["passphrase"])
+
+        with db_mod.get_db() as conn:
+            n = conn.execute(
+                "SELECT COUNT(*) AS n FROM player_profiles WHERE LOWER(email) = 'olga-once@example.com'"
+            ).fetchone()["n"]
+        assert n == 1
+        assert created["profile"]["id"] == provisioned
+        assert created["profile"]["passphrase"] == entry["passphrase"]
+        assert _registrant_profile_id(rid, entry["player_id"]) == provisioned
+
+    def test_emailed_hub_link_verifies_and_links_entry(self, client, auth_headers):
+        from backend.api.routes_registration import _hub_login_token_for_email
+
+        rid = _make_lobby(client, auth_headers)
+        entry = _register(client, rid, "Link Lina", email="lina-link@example.com")
+        token = _hub_login_token_for_email("lina-link@example.com")
+
+        r = client.post("/api/player-profile/confirm-email-link", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200, r.text
+        pid = _profile_id_for_email("lina-link@example.com")
+        assert _registrant_profile_id(rid, entry["player_id"]) == pid
+
+    def test_creating_profile_for_verified_email_is_rejected(self, client, auth_headers):
+        rid = _make_lobby(client, auth_headers)
+        _register(client, rid, "Vera Verified", email="vera-v@example.com")
+        _verify_email(_profile_id_for_email("vera-v@example.com"))
+        other = _register(client, _make_lobby(client, auth_headers, name="L2"), "Vera Two")
+
+        r = client.post(
+            "/api/player-profile",
+            json={"name": "Vera", "email": "vera-v@example.com", "participant_passphrase": other["passphrase"]},
+        )
+        assert r.status_code == 409, r.text
+
     def test_no_email_creates_no_profile(self, client, auth_headers):
         rid = _make_lobby(client, auth_headers)
         before = _count_profiles()

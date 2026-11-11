@@ -376,6 +376,32 @@ class TestGroupPlayoffAPI:
         assert side_of["Guest Gold"] == "winners"
         assert side_of["Guest Silver"] == "losers"
 
+    def test_empty_advancing_list_uses_only_externals(self, client, auth_headers):
+        """An empty selection is not "use top_per_group": the bracket holds only the externals."""
+        body = {
+            **self.GP_BODY,
+            "team_mode": True,
+            "player_names": [f"T{i} & U{i}" for i in range(8)],
+            "num_groups": 2,
+            "top_per_group": 2,
+        }
+        r = client.post("/api/tournaments/group-playoff", json=body, headers=auth_headers)
+        assert r.status_code == 200, r.text
+        tid = r.json()["id"]
+        self._complete_all_group_rounds(client, auth_headers, tid)
+        r = client.post(
+            f"/api/tournaments/{tid}/gp/start-playoffs",
+            json={
+                "advancing_player_ids": [],
+                "extra_participants": [{"name": "Guest A", "score": 1}, {"name": "Guest B", "score": 0}],
+            },
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        po = client.get(f"/api/tournaments/{tid}/gp/playoffs").json()
+        names = {n for m in po["matches"] for n in (*m["team1"], *m["team2"])}
+        assert names == {"Guest A", "Guest B"}
+
     def test_split_rejects_shared_extra_participants(self, client, auth_headers):
         tid, rows = self._start_split(client, auth_headers, cutoff=6, expect=400)
         ids = [x["player_id"] for x in rows]

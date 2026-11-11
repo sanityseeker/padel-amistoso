@@ -64,7 +64,44 @@ test('standings fit a phone and reveal the hidden statistics', async ({ page, re
   await expect(ana).toHaveAttribute('aria-expanded', 'false');
   await ana.click();
   await expect(ana).toHaveAttribute('aria-expanded', 'true');
-  await expect(table.getByText(/Matches played/)).toBeVisible();
+  await expect(table.getByText(/Losses/)).toBeVisible();
+  await expect(page.getByTestId('standings-legend')).toContainText('Matches played');
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+  ).toBeTruthy();
+});
+
+test('set-scored standings on a 360px phone keep P, W and game difference', async ({
+  page,
+  request,
+}) => {
+  const { id, headers } = await createTournament(request, 'gp', `Sets table ${Date.now()}`);
+  await patchTvSettings(request, id, { score_mode: { 'gp-group': 'sets' } });
+  const groups = await (await request.get(`/api/tournaments/${id}/gp/groups`)).json();
+  const raw = groups.all_matches ?? groups.matches;
+  const matches = (Array.isArray(raw) ? raw : Object.values(raw).flat()) as Match[];
+  const { session, playerId } = await profileFor(request, id, 'Ana', 'sets-table');
+  const anaMatch = matches.find((m) => [...m.team1_ids, ...m.team2_ids].includes(playerId))!;
+  const saved = await request.post(`/api/tournaments/${id}/gp/record-group-tennis`, {
+    headers,
+    data: {
+      match_id: anaMatch.id,
+      sets: [
+        [6, 4],
+        [6, 3],
+      ],
+    },
+  });
+  expect(saved.ok()).toBeTruthy();
+  await page.setViewportSize({ width: 360, height: 800 });
+  await openHub(page, session.access_token);
+  await page.goto(`/player/matches/tournament/${id}`);
+  const table = page.getByRole('table').filter({ hasText: 'Ana' });
+  await expect(table).toBeVisible();
+  for (const title of ['Matches played', 'Wins', 'Game difference'])
+    await expect(table.getByRole('columnheader', { name: new RegExp(title) })).toBeVisible();
+  for (const title of ['Set difference', 'Points for', 'Games for'])
+    await expect(table.getByRole('columnheader', { name: new RegExp(title) })).toHaveCount(0);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
@@ -399,9 +436,9 @@ test('active and past tournaments are separate sections and a past one opens rea
   expect((await active.boundingBox())!.y).toBeLessThan((await pastSection.boundingBox())!.y);
   await pastSection.getByRole('link', { name: /Past / }).first().click();
   await expect(page).toHaveURL(new RegExp(`/player/matches/tournament/${past.id}$`));
-  await expect(page.getByTestId('event-banner')).toHaveText(
-    'This event is finished. Matches are shown for reference.',
-  );
+  // The status badge says it is finished; there is no repeated notice.
+  await expect(page.getByTestId('event-status')).toBeVisible();
+  await expect(page.getByTestId('event-banner')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Enter score' })).toHaveCount(0);
   await expect(page.getByTestId('event-played')).toBeVisible();
 });

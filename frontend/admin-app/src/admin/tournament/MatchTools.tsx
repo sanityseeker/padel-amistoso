@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   ActionIcon,
-  Alert,
   Button,
   Drawer,
   Group,
@@ -20,6 +19,7 @@ import classes from './MatchTools.module.css';
 import { t as tx, useLocale } from '../../i18n';
 import { api, write } from '../../api';
 import type { Match, Score, ScoreHistoryEntry } from '../../types';
+import { Notice } from '../../ui/Notice';
 
 const ACTIONS: Record<string, string> = {
   record: 'Score recorded',
@@ -151,7 +151,7 @@ export function CommentDialog({
           <Text size="sm" c="dimmed">
             {match.team1.join(' & ')} / {match.team2.join(' & ')}
           </Text>
-          {save.error && <Alert color="red">{tx(save.error.message)}</Alert>}
+          {save.error && <Notice tone="danger">{tx(save.error.message)}</Notice>}
           <Textarea
             label={tx('Comment')}
             description={tx('Shown on the match for players and on the TV view.')}
@@ -213,7 +213,7 @@ export function HistoryDrawer({
         {history.isPending ? (
           <Loader size="sm" />
         ) : history.error ? (
-          <Alert color="red">{tx(history.error.message)}</Alert>
+          <Notice tone="danger">{tx(history.error.message)}</Notice>
         ) : !items.length ? (
           <Text c="dimmed" data-testid="history-empty">
             {tx('No score changes recorded yet.')}
