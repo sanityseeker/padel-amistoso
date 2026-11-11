@@ -142,6 +142,12 @@ export function LobbyPage() {
     queryFn: () => api<ParticipationClaim[]>(`/registrations/${id}/claims`),
     enabled: !!detail.data,
   });
+  // This organizer's seen marker as the page opened: what is newer stays marked Unseen for the visit.
+  const [seenBefore, setSeenBefore] = useState<number | null>(null);
+  const seenId = detail.data?.answer_changes_seen_id;
+  useEffect(() => {
+    if (seenBefore === null && seenId !== undefined) setSeenBefore(seenId);
+  }, [seenBefore, seenId]);
   const answerChanges = useQuery({
     queryKey: ['admin', 'lobby', id, 'answer-changes'],
     queryFn: () => api<RegistrationAnswerChange[]>(`/registrations/${id}/answer-changes`),
@@ -366,7 +372,18 @@ export function LobbyPage() {
           )}
           {lobby.questions.length > 0 && <Tabs.Tab value="answers">{tx('Answers')}</Tabs.Tab>}
           {!!answerChanges.data?.length && (
-            <Tabs.Tab value="changes">{tx('Recent answer changes')}</Tabs.Tab>
+            <Tabs.Tab
+              value="changes"
+              rightSection={
+                lobby.unseen_answer_changes ? (
+                  <StatusBadge size="sm" circle tone="danger" aria-label={tx('New answers')}>
+                    {lobby.unseen_answer_changes}
+                  </StatusBadge>
+                ) : undefined
+              }
+            >
+              {tx('Recent answer changes')}
+            </Tabs.Tab>
           )}
           <Tabs.Tab
             value="filter"
@@ -458,8 +475,9 @@ export function LobbyPage() {
         {!!answerChanges.data?.length && (
           <Tabs.Panel value="changes">
             <AnswerChangesPanel
-              lobbyId={id}
+              lobby={lobby}
               changes={answerChanges.data}
+              seenBefore={seenBefore}
               active={tab === 'changes'}
             />
           </Tabs.Panel>

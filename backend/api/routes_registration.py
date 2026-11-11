@@ -74,6 +74,7 @@ from .schemas import (
     RegistrantLoginOut,
     RegistrantPatch,
     RegistrantPublicOut,
+    MarkAnswerChangesSeenRequest,
     RegistrationAnswerChangeOut,
     RegistrationAnswerDelta,
     RegistrationAdminOut,
@@ -84,6 +85,7 @@ from .schemas import (
     SetAliasRequest,
     SetCommunityRequest,
 )
+from .sse import notify_global
 from .state import allocate_tournament_id, _tournaments
 
 router = APIRouter(prefix="/api/registrations", tags=["registrations"])
@@ -277,7 +279,8 @@ def _record_answer_changes(
     previous_answers: dict[str, str],
     new_answers: dict[str, str],
     changed_at: str,
-) -> None:
+) -> bool:
+    """Log the questions whose answer changed; returns whether anything was logged."""
     labels = {question.key: question.label for question in questions}
     keys = dict.fromkeys([*labels, *previous_answers, *new_answers])
     changes: list[RegistrationAnswerDelta] = []
@@ -309,6 +312,33 @@ def _record_answer_changes(
                 json.dumps([change.model_dump() for change in changes]),
             ),
         )
+    return bool(changes)
+
+
+def _answer_changes_seen_id(conn: sqlite3.Connection, registration_id: str, username: str) -> int:
+    row = conn.execute(
+        "SELECT last_seen_id FROM registration_answer_seen WHERE registration_id = ? AND username = ?",
+        (registration_id, username),
+    ).fetchone()
+    return row["last_seen_id"] if row else 0
+
+
+def _unseen_answer_counts(registration_ids: list[str], username: str) -> dict[str, int]:
+    """Answer changes newer than *username*'s seen marker, per lobby (lobbies without any are left out)."""
+    if not registration_ids:
+        return {}
+    placeholders = ",".join("?" * len(registration_ids))
+    with get_db() as conn:
+        rows = conn.execute(
+            f"""SELECT c.registration_id AS rid, COUNT(*) AS n
+                FROM registration_answer_changes c
+                LEFT JOIN registration_answer_seen s
+                  ON s.registration_id = c.registration_id AND s.username = ?
+                WHERE c.registration_id IN ({placeholders}) AND c.id > COALESCE(s.last_seen_id, 0)
+                GROUP BY c.registration_id""",
+            (username, *registration_ids),
+        ).fetchall()
+    return {row["rid"]: row["n"] for row in rows}
 
 
 def _validate_answers(questions: list[QuestionDef], answers: dict[str, str]) -> None:
@@ -633,6 +663,12 @@ def list_registrations(
                 reg_ids,
             ).fetchall()
         latest_answer_change_ids = {row["registration_id"]: row["latest_id"] for row in changes}
+    # New answers are flagged only on lobbies this user runs, not on every
+    # lobby a platform admin can list.
+    own_ids = shared_ids if user.role != UserRole.ADMIN else set(get_shared_registration_ids(user.username))
+    unseen_answer_counts = _unseen_answer_counts(
+        [row["id"] for row in rows if row["owner"] == user.username or row["id"] in own_ids], user.username
+    )
 
     result = []
     branding_cache: dict[tuple[str, str | None], dict[str, str | None]] = {}
@@ -643,6 +679,7 @@ def list_registrations(
         branding = _get_scope_branding(community_id, r.get("club_id"), branding_cache)
         r["registrant_count"] = registrant_counts.get(r["id"], 0)
         r["latest_answer_change_id"] = latest_answer_change_ids.get(r["id"])
+        r["unseen_answer_changes"] = unseen_answer_counts.get(r["id"], 0)
         r["open"] = bool(r.get("open", 0))
         r["listed"] = bool(r.get("listed", 0))
         r["archived"] = bool(r.get("archived", 0))
@@ -742,6 +779,12 @@ def get_registration(rid: str, user: User = Depends(get_current_user)) -> Regist
     linked_tournaments = _get_linked_tournaments(tids)
     assigned_ids = _get_assigned_player_ids(tids)
     player_tournament_map = _get_player_tournament_map(tids)
+    with get_db() as conn:
+        seen_id = _answer_changes_seen_id(conn, reg_id, user.username)
+        unseen = conn.execute(
+            "SELECT COUNT(*) FROM registration_answer_changes WHERE registration_id = ? AND id > ?",
+            (reg_id, seen_id),
+        ).fetchone()[0]
     return RegistrationAdminOut(
         id=reg["id"],
         name=reg["name"],
@@ -765,6 +808,8 @@ def get_registration(rid: str, user: User = Depends(get_current_user)) -> Regist
         participant_filter=_parse_participant_filter(reg.get("participant_filter")),
         admin_notes=reg.get("admin_notes"),
         eligible_player_ids=_eligible_player_ids(reg, registrants),
+        answer_changes_seen_id=seen_id,
+        unseen_answer_changes=unseen,
         created_at=reg["created_at"],
         registrants=[
             RegistrantAdminOut(
@@ -808,6 +853,33 @@ def get_registration_answer_changes(
         )
         for row in rows
     ]
+
+
+@router.post("/{rid}/answer-changes/seen")
+def mark_registration_answer_changes_seen(
+    rid: str, req: MarkAnswerChangesSeenRequest, user: User = Depends(get_current_user)
+) -> dict:
+    """Mark the answer changes up to ``up_to_id`` as seen by this organizer.
+
+    The marker only moves forward and never past the newest change.
+    """
+    reg = _get_registration(rid)
+    _require_registration_editor(reg, user)
+    reg_id = reg["id"]
+    with get_db() as conn:
+        newest = conn.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM registration_answer_changes WHERE registration_id = ?",
+            (reg_id,),
+        ).fetchone()[0]
+        conn.execute(
+            """INSERT INTO registration_answer_seen (registration_id, username, last_seen_id)
+               VALUES (?, ?, ?)
+               ON CONFLICT (registration_id, username)
+               DO UPDATE SET last_seen_id = MAX(last_seen_id, excluded.last_seen_id)""",
+            (reg_id, user.username, min(req.up_to_id, newest)),
+        )
+        seen_id = _answer_changes_seen_id(conn, reg_id, user.username)
+    return {"last_seen_id": seen_id}
 
 
 @router.patch("/{rid}/community")
@@ -1294,7 +1366,12 @@ async def register_player(rid: str, req: RegistrantIn, request: Request) -> dict
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (reg_id, player_id, req.player_name, passphrase, token, answers_json, email, now, profile_id, lang),
             )
-            _record_answer_changes(conn, reg_id, player_id, req.player_name, questions, {}, req.answers, now)
+            answers_logged = _record_answer_changes(
+                conn, reg_id, player_id, req.player_name, questions, {}, req.answers, now
+            )
+    # Organizers' open hubs pick up the new answers through the live stream.
+    if answers_logged:
+        notify_global()
 
     # Eagerly give any emailed player a durable Hub identity (background). Skip
     # when this registrant was already linked to an existing profile above.
@@ -1926,7 +2003,7 @@ async def player_update_answers(rid: str, req: RegistrantAnswersUpdateIn, reques
         )
         if cur.rowcount == 0:
             raise HTTPException(401, "Passphrase not found")
-        _record_answer_changes(
+        answers_logged = _record_answer_changes(
             conn,
             reg_id,
             row["player_id"],
@@ -1936,6 +2013,8 @@ async def player_update_answers(rid: str, req: RegistrantAnswersUpdateIn, reques
             req.answers,
             changed_at,
         )
+    if answers_logged:
+        notify_global()
 
     result = lookup_registrant_by_passphrase(reg_id, req.passphrase)
     if result is None:

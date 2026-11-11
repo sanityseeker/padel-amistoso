@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Badge,
   Button,
@@ -19,7 +19,7 @@ import { t as tx, useLocale } from '../../i18n';
 import type { LobbyDetail, Question, RegistrationAnswerChange } from '../../types';
 import { EmptyState } from '../../ui';
 import { registrantAnswer } from './filter';
-import { markAnswerChangesSeen } from './answerChanges';
+import { useMarkAnswerChangesSeen } from './answerChanges';
 import { StatusBadge } from '../../ui/StatusBadge';
 
 const cell = (value: string) => (/[,"\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
@@ -327,19 +327,24 @@ export function AnswersPanel({ lobby }: { lobby: LobbyDetail }) {
   );
 }
 
+// Players' recent answer changes, newest first. Changes newer than `seenBefore` (this organizer's marker
+// when the page opened) are marked Unseen for the whole visit; opening the tab moves the marker.
 export function AnswerChangesPanel({
-  lobbyId,
+  lobby,
   changes,
+  seenBefore,
   active,
 }: {
-  lobbyId: string;
+  lobby: LobbyDetail;
   changes: RegistrationAnswerChange[];
+  seenBefore: number | null;
   active: boolean;
 }) {
   const locale = useLocale();
-  useEffect(() => {
-    if (active) markAnswerChangesSeen(lobbyId, changes[0]?.id);
-  }, [active, changes, lobbyId]);
+  useMarkAnswerChangesSeen(lobby.id, changes[0]?.id, lobby.unseen_answer_changes ?? 0, active);
+  const questions = new Map(lobby.questions.map((q) => [q.key, q]));
+  // A multiple-choice answer is stored as a JSON list; show it as the choices, like the answers tab.
+  const shown = (key: string, raw: string) => registrantAnswer(raw, questions.get(key)) || raw;
   return (
     <Stack gap="md" data-testid="answer-changes">
       <Paper p="md" variant="row">
@@ -348,13 +353,20 @@ export function AnswerChangesPanel({
           {changes.map((event) => (
             <Paper key={event.id} p="sm" variant="row">
               <Stack gap="xs">
-                <Text size="sm" fw={600}>
-                  {event.player_name} ·{' '}
-                  {new Intl.DateTimeFormat(locale, {
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  }).format(new Date(event.changed_at))}
-                </Text>
+                <Group gap="xs" wrap="wrap">
+                  <Text size="sm" fw={600}>
+                    {event.player_name} ·{' '}
+                    {new Intl.DateTimeFormat(locale, {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    }).format(new Date(event.changed_at))}
+                  </Text>
+                  {seenBefore !== null && event.id > seenBefore && (
+                    <StatusBadge size="xs" tone="danger">
+                      {tx('Unseen')}
+                    </StatusBadge>
+                  )}
+                </Group>
                 {event.changes.map((change) => (
                   <Stack key={change.question_key} gap={0}>
                     <Text size="sm">
@@ -369,12 +381,16 @@ export function AnswerChangesPanel({
                     </Text>
                     {change.previous_answer !== null && (
                       <Text size="xs" c="dimmed">
-                        {tx('From: {answer}', { answer: change.previous_answer })}
+                        {tx('From: {answer}', {
+                          answer: shown(change.question_key, change.previous_answer),
+                        })}
                       </Text>
                     )}
                     {change.new_answer !== null && (
                       <Text size="xs" c="dimmed">
-                        {tx('To: {answer}', { answer: change.new_answer })}
+                        {tx('To: {answer}', {
+                          answer: shown(change.question_key, change.new_answer),
+                        })}
                       </Text>
                     )}
                   </Stack>

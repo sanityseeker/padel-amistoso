@@ -182,6 +182,15 @@ CREATE TABLE IF NOT EXISTS registration_answer_changes (
 CREATE INDEX IF NOT EXISTS idx_registration_answer_changes_latest
     ON registration_answer_changes (registration_id, id DESC);
 
+-- The newest answer change each organizer has seen, per lobby. Newer changes
+-- mark the lobby on that organizer's hub, on every device they use.
+CREATE TABLE IF NOT EXISTS registration_answer_seen (
+    registration_id TEXT    NOT NULL REFERENCES registrations(id) ON DELETE CASCADE,
+    username        TEXT    NOT NULL,
+    last_seen_id    INTEGER NOT NULL,
+    PRIMARY KEY (registration_id, username)
+);
+
 CREATE TABLE IF NOT EXISTS registration_shares (
     registration_id TEXT NOT NULL REFERENCES registrations(id) ON DELETE CASCADE,
     username        TEXT NOT NULL,

@@ -234,6 +234,30 @@ test('convert: pick registrants, form fixed teams from them and add an extra pla
   expect(lobby.converted_to_tids).toHaveLength(1);
 });
 
+test('lobby: new sign-up answers mark an open hub without a reload', async ({ page, request }) => {
+  const headers = await adminHeaders(request);
+  const name = `Live answers ${Date.now()}`;
+  const lobby = await (
+    await request.post('/api/registrations', {
+      headers,
+      data: {
+        name,
+        questions: [{ key: 'side', label: 'Side', type: 'text', required: false }],
+      },
+    })
+  ).json();
+  await loginAdmin(page);
+  const row = page.getByTestId('event-row').filter({ hasText: name });
+  await expect(row).toBeVisible();
+  await expect(row.getByText('New answers')).toHaveCount(0);
+  const joined = await request.post(`/api/registrations/${lobby.id}/register`, {
+    data: { player_name: 'Ana', answers: { side: 'Left' } },
+  });
+  expect(joined.ok()).toBeTruthy();
+  // Well inside the 30 s list poll: the live stream brings it.
+  await expect(row.getByText('New answers')).toBeVisible({ timeout: 10_000 });
+});
+
 test('lobby: answers summary, CSV download and a sign-up QR code', async ({ page, request }) => {
   const { id, name, headers } = await seedLobby(request);
   const registration = await request.post(`/api/registrations/${id}/register`, {
@@ -258,9 +282,17 @@ test('lobby: answers summary, CSV download and a sign-up QR code', async ({ page
   await expect(lobbyRow.getByText('New answers')).toBeVisible();
   await lobbyRow.getByRole('link', { name }).click();
   await expect(page).toHaveURL(`/admin/lobby/${id}`);
-  await expect(page.getByRole('tab', { name: 'Recent answer changes' })).toBeVisible();
-  await page.getByRole('tab', { name: 'Recent answer changes' }).click();
+  const changesTab = page.getByRole('tab', { name: /Recent answer changes/ });
+  await expect(changesTab).toBeVisible();
+  // The tab counts the changes this organizer has not seen; opening it marks them seen on the server.
+  await expect(changesTab).toContainText('2');
+  const seen = page.waitForResponse(
+    (r) => r.url().endsWith(`/registrations/${id}/answer-changes/seen`) && r.ok(),
+  );
+  await changesTab.click();
+  await seen;
   const changes = page.getByTestId('answer-changes');
+  await expect(changes.getByText('Unseen')).toHaveCount(2);
   await expect(changes.getByText('Changed the answer to Level')).toBeVisible();
   await expect(changes.getByText('From: Advanced')).toBeVisible();
   await expect(changes.getByText('To: Beginner')).toBeVisible();
