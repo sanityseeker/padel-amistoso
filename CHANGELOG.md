@@ -1,3 +1,9 @@
+## v3.5.0 (2026-11-12)
+
+### Feat
+
+- scope leaderboard history to club/community/sport, add paid-for-others payments and zoomable bracket images
+
 ## v3.4.0 (2026-11-12)
 
 ### Feat
