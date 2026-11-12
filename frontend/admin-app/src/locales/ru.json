@@ -1905,5 +1905,8 @@
   "PD": "РО",
   "Game difference": "Разница геймов",
   "Information": "Информация",
-  "We sent you a link to your player profile. Open it to see all your events in one place.": "Мы отправили вам ссылку на профиль игрока. Откройте её, чтобы видеть все ваши события в одном месте."
+  "We sent you a link to your player profile. Open it to see all your events in one place.": "Мы отправили вам ссылку на профиль игрока. Откройте её, чтобы видеть все ваши события в одном месте.",
+  "Unseen": "Не просмотрено",
+  "Answer changes cleared": "Изменения ответов скрыты",
+  "Hide these changes for you. Other organizers still see them.": "Скрыть эти изменения только для вас. Другие организаторы их по-прежнему видят."
 }

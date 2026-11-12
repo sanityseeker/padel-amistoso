@@ -27,7 +27,6 @@ import { useStoredFilter } from './HubFilters';
 import { GhostPurgeField, purgeQuery, useGhostPurge } from '../tournaments/GhostPurge';
 import { fromLobby, fromTournament, type HubEvent } from './model';
 import { TournamentCard } from './TournamentCard';
-import { hasUnseenAnswerChanges } from '../lobbies/answerChanges';
 
 const LIVE_CARDS = 6;
 
@@ -44,7 +43,7 @@ function lobbyBadge(e: HubEvent) {
 }
 
 function newAnswersBadge(e: HubEvent) {
-  if (e.kind !== 'lobby' || !hasUnseenAnswerChanges(e.id, e.latestAnswerChangeId)) return null;
+  if (e.kind !== 'lobby' || !e.unseenAnswers) return null;
   return (
     <Badge
       size="xs"

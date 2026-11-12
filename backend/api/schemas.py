@@ -821,6 +821,12 @@ class RegistrationAnswerDelta(BaseModel):
     new_answer: str | None = None
 
 
+class MarkAnswerChangesSeenRequest(BaseModel):
+    """Mark a lobby's answer changes up to ``up_to_id`` (inclusive) as seen."""
+
+    up_to_id: int = Field(ge=0)
+
+
 class RegistrationAnswerChangeOut(BaseModel):
     """A player's answer submission or update in a registration lobby."""
 
@@ -964,6 +970,10 @@ class RegistrationAdminOut(BaseModel):
     # Registrants passing every participant-filter condition (all registrants
     # when no filter is set) — the "final set" eligible for the event.
     eligible_player_ids: list[str] = Field(default_factory=list)
+    # The newest answer change the requesting organizer has seen, and how many
+    # changes are newer than that.
+    answer_changes_seen_id: int = 0
+    unseen_answer_changes: int = 0
     created_at: str
     registrants: list[RegistrantAdminOut] = []
 
