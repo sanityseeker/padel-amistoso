@@ -164,6 +164,8 @@ export default function Matches() {
     <Stack gap={gap}>
       <PageHeader
         title={tx('My events')}
+        // The Hub navigation (sidebar, tabs or bottom tabs) shows this name.
+        named
         dense
         actions={
           <>

@@ -19,6 +19,7 @@ import { formatType } from '../../api';
 import { ErrorState, Loading } from '../../components';
 import { t as tx, useLocale } from '../../i18n';
 import { EmptyState, EventRow, PageHeader, SportMark, StatusBadge } from '../../ui';
+import { getClubSubdomain } from '../../club-context';
 import { findEvent, publicApi, publicEventUrl, type PublicEvent } from '../../events/api';
 import { Notice } from '../../ui/Notice';
 import { PageContainer } from '../../ui/PageContainer';
@@ -135,6 +136,9 @@ export function EventsPage() {
         <PageHeader
           title={tx('Events')}
           description={tx('Tournaments and sign-ups open to everyone.')}
+          keepDescription
+          // The Events nav item names the page, except on a club subdomain where it reads "Club".
+          named={!getClubSubdomain()}
         />
         <Group gap="xs">
           <Group gap="xs" wrap="nowrap" flex={1} miw={240}>

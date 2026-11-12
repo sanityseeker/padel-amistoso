@@ -76,10 +76,11 @@ export function PageHeader({
   back,
   meta,
   leading,
+  named,
 }: {
   title: string;
   description?: ReactNode;
-  /** The subtitle carries data, so it stays when the top bar shows the title. */
+  /** The subtitle carries data, so it stays when the top bar or the navigation shows the title. */
   keepDescription?: boolean;
   eyebrow?: ReactNode;
   actions?: ReactNode;
@@ -93,9 +94,11 @@ export function PageHeader({
   meta?: ReactNode;
   /** A mark beside the text block, such as a club logo. */
   leading?: ReactNode;
+  /** The active navigation item already shows this title, so it is kept for screen readers only. */
+  named?: boolean;
 }) {
   useLocale();
-  const inBar = useContext(TopBarTitleContext);
+  const inBar = useContext(TopBarTitleContext) || !!named;
   const heading = inBar ? (
     <VisuallyHidden>
       <Title order={1}>{title}</Title>

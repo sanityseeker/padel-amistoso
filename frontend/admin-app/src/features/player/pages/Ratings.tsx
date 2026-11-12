@@ -41,6 +41,8 @@ export default function Ratings() {
     <Stack gap={gap}>
       <PageHeader
         title={tx('Ratings')}
+        // The Hub navigation (sidebar, tabs or bottom tabs) shows this name.
+        named
         description={scopeName}
         keepDescription
         dense
