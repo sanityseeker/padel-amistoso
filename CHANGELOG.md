@@ -1,3 +1,9 @@
+## v3.5.2 (2026-11-12)
+
+### Fix
+
+- let organizers send player messages by push notification instead of email
+
 ## v3.5.1 (2026-11-12)
 
 ### Fix
