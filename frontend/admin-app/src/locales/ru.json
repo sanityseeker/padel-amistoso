@@ -1909,5 +1909,7 @@
   "W–L": "В–П",
   "W–L–D": "В–П–Н",
   "Wins and losses": "Победы и поражения",
-  "Wins, losses and draws": "Победы, поражения и ничьи"
+  "Wins, losses and draws": "Победы, поражения и ничьи",
+  "vs {names}": "Соперники: {names}",
+  "with {names}": "Партнёр: {names}"
 }

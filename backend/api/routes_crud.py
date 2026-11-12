@@ -628,6 +628,8 @@ def _build_tournament_player_card(tid: str, player_id: str) -> dict:
                 "decider": payload.get("decider") or ("full_set" if sets else None),
                 "team1": [p.get("player_name", "") for p in team1],
                 "team2": [p.get("player_name", "") for p in team2],
+                # The card's own player: 1 or 2, so the card can show the match from their side.
+                "side": 1 if on_team1 else 2 if on_team2 else None,
                 "elo_before": r["elo_before"],
                 "elo_after": r["elo_after"],
                 "elo_delta": r["elo_delta"],

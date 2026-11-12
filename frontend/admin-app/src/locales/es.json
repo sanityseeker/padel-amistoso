@@ -1902,5 +1902,7 @@
   "W–L": "G–P",
   "W–L–D": "G–P–E",
   "Wins and losses": "Victorias y derrotas",
-  "Wins, losses and draws": "Victorias, derrotas y empates"
+  "Wins, losses and draws": "Victorias, derrotas y empates",
+  "vs {names}": "contra {names}",
+  "with {names}": "con {names}"
 }
