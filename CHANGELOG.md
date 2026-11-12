@@ -1,3 +1,9 @@
+## v3.5.1 (2026-11-12)
+
+### Fix
+
+- hide page titles the active navigation item already shows
+
 ## v3.5.0 (2026-11-12)
 
 ### Feat

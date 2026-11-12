@@ -166,39 +166,36 @@ export default function Matches() {
         title={tx('My events')}
         // The Hub navigation (sidebar, tabs or bottom tabs) shows this name.
         named
-        dense
-        actions={
-          <>
-            <ActionIcon
-              variant="light"
-              size="lg"
-              hiddenFrom="sm"
-              aria-label={tx('Link event')}
-              onClick={openLink}
-            >
-              <IconPlus size={18} />
-            </ActionIcon>
-            <Button
-              leftSection={<IconPlus size={16} />}
-              variant="light"
-              visibleFrom="sm"
-              onClick={openLink}
-            >
-              {tx('Link event')}
-            </Button>
-          </>
-        }
       />
-      <SegmentedControl
-        w="fit-content"
-        value={which}
-        onChange={(v) => setWhich(v as 'active' | 'finished')}
-        aria-label={tx('Events')}
-        data={[
-          { value: 'active', label: `${tx('Active')} (${active.length})` },
-          { value: 'finished', label: `${tx('Finished')} (${finished.length})` },
-        ]}
-      />
+      <Group justify="space-between" gap="xs" wrap="nowrap">
+        <SegmentedControl
+          w="fit-content"
+          value={which}
+          onChange={(v) => setWhich(v as 'active' | 'finished')}
+          aria-label={tx('Events')}
+          data={[
+            { value: 'active', label: `${tx('Active')} (${active.length})` },
+            { value: 'finished', label: `${tx('Finished')} (${finished.length})` },
+          ]}
+        />
+        <ActionIcon
+          variant="light"
+          size="lg"
+          hiddenFrom="sm"
+          aria-label={tx('Link event')}
+          onClick={openLink}
+        >
+          <IconPlus size={18} />
+        </ActionIcon>
+        <Button
+          leftSection={<IconPlus size={16} />}
+          variant="light"
+          visibleFrom="sm"
+          onClick={openLink}
+        >
+          {tx('Link event')}
+        </Button>
+      </Group>
       {list.length ? (
         <Stack gap="sm">
           {list.map((entry) => (
