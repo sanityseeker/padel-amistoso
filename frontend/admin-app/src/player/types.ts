@@ -104,6 +104,8 @@ export interface PlayerMatch extends Match {
 }
 export interface HubPayment {
   key: string;
+  entity_type: 'tournament' | 'registration';
+  entity_id: string;
   entity_name: string;
   status: string;
   amount_cents: number;

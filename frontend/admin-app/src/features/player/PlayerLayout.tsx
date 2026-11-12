@@ -8,15 +8,17 @@ import { ErrorState, Loading } from '../../components';
 import { resolveHostClub } from '../../club-context';
 import { playerApi, saveSession } from '../../player/api';
 import { PlayerLogin } from '../../player/PlayerLogin';
-import { setPlayerScope, usePlayerScope } from '../../player/scope';
+import { setPlayerScope, setPlayerSport, usePlayerScope, usePlayerSport } from '../../player/scope';
 import { usePlayerSession } from '../../player/session';
 import type { Entry, Space } from '../../player/types';
 import { useLayoutMode } from '../../shell/layout';
 import { linkToken, participantPassphrase, verifyToken } from './linkParams';
+import { HubFilters } from './components/HubFilters';
 import { LinkEvent } from './components/LinkEvent';
 import { dueOf, usePayments } from './components/TodoCards';
 import { lifecycleIn, type EventData } from './eventData';
 import type { PlayerSpaceContext } from './context';
+import { hubSportsOf, type Sport } from './stats';
 import classes from './Player.module.css';
 import { Notice } from '../../ui/Notice';
 import { PageContainer } from '../../ui/PageContainer';
@@ -28,8 +30,13 @@ const SECTIONS = [
   { to: '/player/me', label: 'Profile', icon: IconUser, end: false },
 ] as const;
 
-function useDots(space: Space | undefined, entries: Entry[], signedIn: boolean) {
-  const payments = usePayments(signedIn);
+function useDots(
+  space: Space | undefined,
+  entries: Entry[],
+  signedIn: boolean,
+  clubEntries: Entry[] | null,
+) {
+  const payments = usePayments(signedIn, clubEntries);
   const active = entries.filter(
     (e) => e.status === 'active' && e.entity_type === 'tournament' && !e.entity_deleted,
   );
@@ -66,6 +73,7 @@ export function PlayerLayout() {
   const [notice, setNotice] = useState('');
   const [linking, setLinking] = useState(false);
   const scope = usePlayerScope();
+  const savedSport = usePlayerSport();
   const initialized = useRef(false);
   const hostClub = useQuery({
     queryKey: ['public', 'host-club'],
@@ -75,8 +83,9 @@ export function PlayerLayout() {
   useEffect(() => {
     if (hostClub.data) setPlayerScope(`club:${hostClub.data.club_id}`, false);
   }, [hostClub.data]);
+  // On a club subdomain the club is the scope: nothing on the Hub may move it elsewhere.
   const setScope = (value: string) => {
-    setPlayerScope(value);
+    if (!hostClub.data) setPlayerScope(value);
   };
   const scopeId = scope.split(':').slice(1).join(':');
   const scopeKey = scope.startsWith('club:') ? 'club_id' : 'community_id';
@@ -114,7 +123,12 @@ export function PlayerLayout() {
   if (scopeId) params.set(scopeKey, scopeId);
   const query = useQuery({
     queryKey: ['player', 'space', scope],
-    enabled: !!token && !linkBusy,
+    // Wait for the club lookup, so a club subdomain never loads (and flashes) another saved scope.
+    enabled:
+      !!token &&
+      !linkBusy &&
+      !hostClub.isPending &&
+      (!hostClub.data || scope === `club:${hostClub.data.club_id}`),
     queryFn: () => playerApi<Space>(`/player-profile/space?${params}`),
     refetchInterval: 30_000,
     // A new community or club is a new query: keep showing the current page until it is back.
@@ -146,9 +160,10 @@ export function PlayerLayout() {
   useEffect(() => {
     if (query.data) saveSession(query.data);
   }, [query.data]);
-  const dots = useDots(query.data, liveEntries, !!token && !linkBusy);
+  const clubEntries = hostClub.data ? (query.data?.entries ?? null) : null;
+  const dots = useDots(query.data, liveEntries, !!token && !linkBusy, clubEntries);
 
-  if (linkBusy || (token && query.isPending)) return <Loading />;
+  if (linkBusy || (token && (query.isPending || hostClub.isPending))) return <Loading />;
   if (!token)
     return (
       <>
@@ -175,6 +190,10 @@ export function PlayerLayout() {
   const host = hostClub.data;
   if (host && !scopeOptions.some((s) => s.value === `club:${host.club_id}`))
     scopeOptions.push({ value: `club:${host.club_id}`, label: host.name });
+  const sports = hubSportsOf(space);
+  const sport: Sport = sports.includes(savedSport as Sport)
+    ? (savedSport as Sport)
+    : (sports[0] ?? 'padel');
   const context: PlayerSpaceContext = {
     space,
     scope,
@@ -183,12 +202,18 @@ export function PlayerLayout() {
     liveEntries,
     liveLoading,
     setScope,
+    clubEntries,
+    sport,
+    sports,
+    setSport: setPlayerSport,
     openLink: () => setLinking(true),
     notice,
     clearNotice: () => setNotice(''),
   };
   const current =
     SECTIONS.find((s) => (s.end ? pathname === s.to : pathname.startsWith(s.to)))?.to ?? '/player';
+  // The filters sit on the four Hub pages, not on one event's page (which shows that event whole).
+  const section = SECTIONS.find((s) => pathname.replace(/\/$/, '') === s.to);
   const dotFor = (to: string) =>
     to === '/player/matches' ? dots.matches : to === '/player/me' ? dots.me : false;
   const outlet = (
@@ -198,6 +223,19 @@ export function PlayerLayout() {
         <Notice withCloseButton onClose={() => setNotice('')}>
           {tx(notice)}
         </Notice>
+      )}
+      {section && (
+        <HubFilters
+          scope={scope}
+          // A club subdomain shows that club only, so there is nothing to pick.
+          scopeOptions={host ? [] : scopeOptions}
+          onScope={setScope}
+          sport={sport}
+          sports={sports}
+          onSport={setPlayerSport}
+          // Only the Hub and Ratings split by sport.
+          showSport={section.to === '/player' || section.to === '/player/ratings'}
+        />
       )}
       <Outlet context={context} />
     </Stack>

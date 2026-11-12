@@ -21,7 +21,8 @@ import { IconCheck, IconCopy, IconCreditCard, IconMail } from '@tabler/icons-rea
 import { ErrorState, Loading } from '../../../components';
 import { money } from '../../../api';
 import { playerApi } from '../../../player/api';
-import type { HubPayment, Profile } from '../../../player/types';
+import type { Entry, HubPayment, Profile } from '../../../player/types';
+import { usePayments } from './TodoCards';
 import { Notice } from '../../../ui/Notice';
 export function PlayerAccount({
   profile,
@@ -289,13 +290,9 @@ function ReportPayment({ payment }: { payment: HubPayment }) {
     </Card>
   );
 }
-export function PlayerPayments() {
+export function PlayerPayments({ only }: { only?: Entry[] | null }) {
   useLocale();
-  const payments = useQuery({
-    queryKey: ['player', 'payments'],
-    queryFn: () => playerApi<HubPayment[]>('/player-profile/payments'),
-    refetchInterval: 30_000,
-  });
+  const payments = usePayments(true, only);
   if (payments.isPending) return <Loading />;
   if (payments.error)
     return <ErrorState error={payments.error} retry={() => void payments.refetch()} />;

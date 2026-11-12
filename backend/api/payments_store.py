@@ -315,12 +315,35 @@ def report_payment(
     )
 
 
+def lobby_eligible_ids(rid: str) -> set[str]:
+    """Player ids of a lobby's registrants that pass its participant filter (all when none is set).
+
+    Only these players owe the lobby fee: listings, reminders, the player's own
+    payment block and the Hub leave the others out.
+    """
+    from .routes_registration import _eligible_player_ids  # noqa: PLC0415 — routes_registration imports this module
+
+    with get_db() as conn:
+        reg = conn.execute("SELECT * FROM registrations WHERE id = ?", (rid,)).fetchone()
+        if reg is None:
+            return set()
+        registrants = conn.execute("SELECT * FROM registrants WHERE registration_id = ?", (rid,)).fetchall()
+    return set(_eligible_player_ids(dict(reg), [dict(r) for r in registrants]))
+
+
+def _owes_nothing(kind: EntityKind, entity_id: str, player_id: str, row: dict | None) -> bool:
+    """True for a lobby registrant outside the participant filter with nothing paid or reported."""
+    if kind != "registration" or (row is not None and row["status"] != "unpaid"):
+        return False
+    return player_id not in lobby_eligible_ids(entity_id)
+
+
 class PayForOthersError(ValueError):
     """A player tried to report a payment for someone who is not eligible."""
 
 
 def entity_participants(kind: EntityKind, entity_id: str) -> list[dict]:
-    """``[{player_id, player_name, email}]`` of a lobby (registrants) or tournament (player_secrets)."""
+    """``[{player_id, player_name, email}]`` of a lobby (eligible registrants) or tournament (player_secrets)."""
     with get_db() as conn:
         if kind == "registration":
             rows = conn.execute(
@@ -332,8 +355,11 @@ def entity_participants(kind: EntityKind, entity_id: str) -> list[dict]:
                 "SELECT player_id, player_name, email FROM player_secrets WHERE tournament_id = ?",
                 (entity_id,),
             ).fetchall()
+    eligible = lobby_eligible_ids(entity_id) if kind == "registration" else None
     return [
-        {"player_id": r["player_id"], "player_name": r["player_name"] or "", "email": r["email"] or ""} for r in rows
+        {"player_id": r["player_id"], "player_name": r["player_name"] or "", "email": r["email"] or ""}
+        for r in rows
+        if eligible is None or r["player_id"] in eligible
     ]
 
 
@@ -476,6 +502,8 @@ def build_listing(
     *participants* is ``[{"player_id", "player_name", "email"}]``. Participants
     without a row are synthesized as ``unpaid`` only when a fee is configured;
     stored rows for participants who left (refund_due etc.) are still listed.
+    For a lobby, *participants* are its eligible registrants only; a stored
+    ``unpaid`` row of anyone else is left out too (they owe nothing).
     """
     settings = settings or get_settings(kind, entity_id)
     with get_db() as conn:
@@ -490,7 +518,7 @@ def build_listing(
             continue
         out.append(_row_out(row, p, settings, entity_name))
     for pid, row in stored.items():
-        if pid in seen:
+        if pid in seen or (kind == "registration" and row["status"] == "unpaid"):
             continue
         out.append(
             _row_out(row, {"player_id": pid, "player_name": row.get("player_name") or ""}, settings, entity_name)
@@ -525,7 +553,7 @@ def player_payment_info(
     """A registered player's own payment view, or ``None`` when no fee is set."""
     settings = settings or get_settings(kind, entity_id)
     row = get_row(kind, entity_id, player_id)
-    if settings.fee_cents <= 0 and row is None:
+    if (settings.fee_cents <= 0 and row is None) or _owes_nothing(kind, entity_id, player_id, row):
         return None
     return PaymentInfoOut(
         status=row["status"] if row else "unpaid",
@@ -659,7 +687,7 @@ def hub_payments_for_profile(profile_id: str) -> list[HubPaymentOut]:
         kind: EntityKind = p["kind"]
         settings = get_settings(kind, p["entity_id"])
         row = get_row(kind, p["entity_id"], p["player_id"])
-        if row is None and settings.fee_cents <= 0:
+        if (row is None and settings.fee_cents <= 0) or _owes_nothing(kind, p["entity_id"], p["player_id"], row):
             continue
         if row is not None:
             if row["id"] in seen_payment_ids:

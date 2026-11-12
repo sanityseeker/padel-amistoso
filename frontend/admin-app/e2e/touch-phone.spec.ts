@@ -106,7 +106,7 @@ test('the player menu opens on screen every time, not only the first', async ({
 
 test('picking a community keeps the page where it was', async ({ page, request }) => {
   const { id, headers } = await createTournament(request, 'mex', `Scope ${stamp()}`);
-  // A rating (one scored round) is what puts the rating card and its community picker on the Hub.
+  // A rating (one scored round) fills the Hub, so it is long enough to scroll.
   const matches = await (await request.get(`/api/tournaments/${id}/mex/matches`)).json();
   for (const m of matches.current_matches as { id: string }[])
     await request.post(`/api/tournaments/${id}/mex/record`, {
@@ -140,10 +140,8 @@ test('picking a community keeps the page where it was', async ({ page, request }
   await loaded;
   const picker = page.locator('input[aria-label="Player stats scope"]');
   await expect(picker).toBeVisible();
-  // Halfway down the page, as a player reaching the rating card would be.
-  await picker.evaluate((el) =>
-    window.scrollBy(0, el.getBoundingClientRect().top - innerHeight / 2),
-  );
+  // The picker heads the page; scroll a little, keeping it in view, so a reset to the top would show.
+  await page.evaluate(() => window.scrollBy(0, 12));
   const before = await page.evaluate(() => scrollY);
   expect(before).toBeGreaterThan(0);
   const top = (await picker.boundingBox())!.y;
@@ -152,9 +150,9 @@ test('picking a community keeps the page where it was', async ({ page, request }
   await page.getByRole('option', { name: 'South League' }).tap();
   await scoped;
   await expect(picker).toHaveValue('South League');
-  // The bug sent the page back to the top (here about 180px up); the picker stays where it was.
-  expect(Math.abs((await page.evaluate(() => scrollY)) - before)).toBeLessThan(40);
-  expect(Math.abs((await picker.boundingBox())!.y - top)).toBeLessThan(40);
+  // The bug sent the page back to the top; the picker stays where it was.
+  expect(Math.abs((await page.evaluate(() => scrollY)) - before)).toBeLessThan(6);
+  expect(Math.abs((await picker.boundingBox())!.y - top)).toBeLessThan(6);
   await expect(picker).toBeInViewport();
 });
 

@@ -44,3 +44,42 @@ export function usePlayerScope(): string {
     () => '',
   );
 }
+
+// The Player Hub's chosen sport, kept across its pages and visits like the scope above. Pages fall
+// back to the player's first sport when the saved one is not among theirs.
+const SPORT_KEY = 'padel-player-sport';
+
+const readSport = (): string => {
+  try {
+    return localStorage.getItem(SPORT_KEY) || '';
+  } catch {
+    return '';
+  }
+};
+
+let sport = readSport();
+const sportListeners = new Set<() => void>();
+
+export function setPlayerSport(value: string) {
+  try {
+    localStorage.setItem(SPORT_KEY, value);
+  } catch {
+    /* storage unavailable: the sport still applies for this visit */
+  }
+  if (value === sport) return;
+  sport = value;
+  sportListeners.forEach((listener) => listener());
+}
+
+export function usePlayerSport(): string {
+  return useSyncExternalStore(
+    (listener) => {
+      sportListeners.add(listener);
+      return () => {
+        sportListeners.delete(listener);
+      };
+    },
+    () => sport,
+    () => '',
+  );
+}

@@ -2,7 +2,6 @@ import { lazy, Suspense, useState } from 'react';
 import {
   Group,
   Paper,
-  SegmentedControl,
   SimpleGrid,
   Skeleton,
   Stack,
@@ -18,7 +17,7 @@ import { EloInfoButton } from '../../info/EloInfo';
 import { Leaderboard } from '../components/Leaderboard';
 import { ResultRow, scoreOf } from '../components/ResultRow';
 import { usePlayerSpace } from '../context';
-import { formOf, historyOf, opponentsOf, sportsOf, type Sport } from '../stats';
+import { formOf, historyOf, opponentsOf } from '../stats';
 
 const EloChart = lazy(() => import('../charts/EloChart'));
 
@@ -26,41 +25,22 @@ const EloChart = lazy(() => import('../charts/EloChart'));
 export default function Ratings() {
   const gap = useMatches({ base: 'md', sm: 'xl' });
   const locale = useLocale();
-  const { space, scopeQuery, scope, scopeOptions } = usePlayerSpace();
-  const sports = sportsOf(space);
-  const [picked, setPicked] = useState<Sport | null>(null);
-  const sport = picked && sports.includes(picked) ? picked : (sports[0] ?? 'padel');
+  const { space, scopeQuery, sport } = usePlayerSpace();
   const history = historyOf(space, sport);
   const [shown, setShown] = useState(10);
   const recent = history.slice().reverse();
   const now = history.length ? history[history.length - 1].elo_after : 0;
   const change = history.length ? Math.round(now - history[0].elo_before) : 0;
   const visible = recent.slice(0, shown);
-  const scopeName = scopeOptions.find((o) => o.value === scope)?.label ?? tx('All my communities');
   return (
     <Stack gap={gap}>
       <PageHeader
         title={tx('Ratings')}
         // The Hub navigation (sidebar, tabs or bottom tabs) shows this name.
         named
-        description={scopeName}
-        keepDescription
         dense
         actions={<EloInfoButton />}
       />
-      {sports.length > 1 && (
-        <SegmentedControl
-          fullWidth
-          size="xs"
-          value={sport}
-          onChange={(v) => setPicked(v as Sport)}
-          aria-label={tx('Rating sport')}
-          data={[
-            { value: 'padel', label: tx('Padel') },
-            { value: 'tennis', label: tx('Tennis') },
-          ]}
-        />
-      )}
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="xl" style={{ alignItems: 'start' }}>
         <Stack gap="xl">
           {history.length > 1 ? (

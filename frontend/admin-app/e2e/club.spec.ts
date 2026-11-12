@@ -53,6 +53,7 @@ async function club(request: APIRequestContext) {
   ).toBeTruthy();
   return {
     id: created.id as string,
+    communityId: community.id as string,
     slug,
     s,
     first,
@@ -232,4 +233,137 @@ test('a leaderboard row opens a card for that board sport only', async ({ page, 
   // Only the padel panel: no tennis panel on a padel card.
   await expect(card.getByText('Padel', { exact: true })).toHaveCount(1);
   await expect(card.getByText('Tennis', { exact: true })).toHaveCount(0);
+});
+
+test('the Player Hub on a club subdomain keeps to that club, profile page included', async ({
+  page,
+  request,
+}) => {
+  const c = await club(request);
+  const secrets = (
+    await (
+      await request.get(`/api/tournaments/${c.first}/player-secrets`, { headers: c.headers })
+    ).json()
+  ).players as Record<string, { name: string; passphrase: string }>;
+  const ana = Object.values(secrets).find((p) => p.name === 'Ana')!;
+  const profile = await (
+    await request.post('/api/player-profile', {
+      data: {
+        participant_passphrase: ana.passphrase,
+        name: 'Ana Club',
+        email: `club-hub-${stamp()}@example.com`,
+      },
+    })
+  ).json();
+  // One fee in this club and one elsewhere: only the club's own shows here.
+  const payment = (entity_id: string, entity_name: string) => ({
+    key: `tournament:${entity_id}:p`,
+    entity_type: 'tournament',
+    entity_id,
+    entity_name,
+    player_id: 'p',
+    status: 'unpaid',
+    amount_cents: 1000,
+    currency: 'EUR',
+    due_at: null,
+    instructions: null,
+    methods: [],
+    concept: entity_name,
+    reference: null,
+  });
+  await page.route('**/api/player-profile/payments', (route) =>
+    route.fulfill({
+      json: [payment(c.first, `Club fee ${c.s}`), payment('elsewhere', `Other fee ${c.s}`)],
+    }),
+  );
+  // A community picked on the main site must not carry over to the club's Hub.
+  await page.addInitScript(() =>
+    localStorage.setItem('padel-player-community', 'community:somewhere-else'),
+  );
+  const spaceUrls: string[] = [];
+  page.on('request', (r) => {
+    // The data loads (the bare call is the one-time exchange of the e-mail link for a session).
+    if (r.url().includes('/api/player-profile/space?')) spaceUrls.push(r.url());
+  });
+  await page.goto(
+    `http://${c.slug}.localhost:${PORT}/player#token=${encodeURIComponent(profile.access_token)}`,
+  );
+  await expect(page.getByRole('heading', { name: 'Your active tournaments' })).toBeVisible();
+  await page.goto(`http://${c.slug}.localhost:${PORT}/player/me`);
+  await expect(page.getByRole('heading', { name: 'Pending payments' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: `Club fee ${c.s}` })).toBeVisible();
+  await expect(page.getByText(`Other fee ${c.s}`)).toHaveCount(0);
+  // The club is the scope: no picker to move it, and every request asked for the club.
+  await expect(page.locator('input[aria-label="Player stats scope"]')).toHaveCount(0);
+  expect(spaceUrls.length).toBeGreaterThan(0);
+  for (const url of spaceUrls) expect(url).toContain(`club_id=${c.id}`);
+});
+
+test('on a club subdomain the Hub shows only the sports the player has in that club', async ({
+  page,
+  request,
+}) => {
+  const c = await club(request);
+  // Ana plays tennis in this club and padel elsewhere, one scored round in each.
+  const scored = async (id: string, headers: Record<string, string>) => {
+    const matches = await (await request.get(`/api/tournaments/${id}/mex/matches`)).json();
+    for (const m of matches.current_matches as { id: string }[])
+      await request.post(`/api/tournaments/${id}/mex/record`, {
+        headers,
+        data: { match_id: m.id, score1: 14, score2: 10 },
+      });
+  };
+  const passphraseOf = async (id: string, headers: Record<string, string>) =>
+    Object.values(
+      (await (await request.get(`/api/tournaments/${id}/player-secrets`, { headers })).json())
+        .players as Record<string, { name: string; passphrase: string }>,
+    ).find((p) => p.name === 'Ana')!.passphrase;
+  const tennis = await createTournament(request, 'mex', `Club tennis ${c.s}`, {
+    sport: 'tennis',
+    community_id: c.communityId,
+    club_id: c.id,
+  });
+  await scored(tennis.id, tennis.headers);
+  const padel = await createTournament(request, 'mex', `Elsewhere padel ${c.s}`);
+  await scored(padel.id, padel.headers);
+  const profile = await (
+    await request.post('/api/player-profile', {
+      data: {
+        participant_passphrase: await passphraseOf(tennis.id, tennis.headers),
+        name: 'Ana Tennis',
+        email: `club-sport-${stamp()}@example.com`,
+      },
+    })
+  ).json();
+  const linked = await request.post('/api/player-profile/link', {
+    headers: { Authorization: `Bearer ${profile.access_token}` },
+    data: {
+      entity_type: 'tournament',
+      entity_id: padel.id,
+      passphrase: await passphraseOf(padel.id, padel.headers),
+    },
+  });
+  expect(linked.ok()).toBeTruthy();
+  const hub = `#token=${encodeURIComponent(profile.access_token)}`;
+
+  // The main site has both sports, so the toggle shows.
+  await page.goto(`/player${hub}`);
+  await expect(page.getByTestId('player-card')).toBeVisible();
+  await expect(page.getByTestId('hub-filters').getByRole('radio')).toHaveCount(2);
+
+  // The club has tennis only: no toggle, tennis everywhere, even with padel saved.
+  await page.evaluate(() => localStorage.setItem('padel-player-sport', 'padel'));
+  const clubHost = `http://${c.slug}.localhost:${PORT}`;
+  await page.goto(`${clubHost}/player${hub}`);
+  await expect(page.getByTestId('player-card')).toContainText('Tennis rating');
+  await expect(page.getByRole('radio', { name: 'Padel' })).toHaveCount(0);
+  await expect(page.getByText(`Elsewhere padel ${c.s}`)).toHaveCount(0);
+  await page.goto(`${clubHost}/player/ratings`);
+  await expect(
+    page
+      .getByRole('heading', { name: 'Recent rating trend' })
+      .or(page.getByRole('heading', { name: 'Community leaderboard' }))
+      .first(),
+  ).toBeVisible();
+  await expect(page.getByRole('radio', { name: 'Padel' })).toHaveCount(0);
 });

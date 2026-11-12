@@ -1,15 +1,5 @@
 import { lazy, Suspense } from 'react';
-import {
-  Avatar,
-  Badge,
-  Group,
-  Paper,
-  SegmentedControl,
-  Select,
-  Skeleton,
-  Stack,
-  Text,
-} from '@mantine/core';
+import { Avatar, Badge, Group, Paper, Skeleton, Stack, Text } from '@mantine/core';
 import { t as tx, useLocale } from '../../../i18n';
 import { profileInitials } from '../../../player/session';
 import type { Space } from '../../../player/types';
@@ -21,21 +11,11 @@ const PlayerSparkline = lazy(() => import('../charts/PlayerSparkline'));
 export function PlayerCard({
   space,
   sport,
-  sports,
-  onSport,
-  scope,
-  scopeOptions,
-  onScope,
   rank,
   scopeName,
 }: {
   space: Space;
   sport: Sport;
-  sports: Sport[];
-  onSport: (sport: Sport) => void;
-  scope: string;
-  scopeOptions: { value: string; label: string }[];
-  onScope: (scope: string) => void;
   rank: number | null;
   scopeName: string;
 }) {
@@ -62,18 +42,6 @@ export function PlayerCard({
               </Text>
             </Stack>
           </Group>
-          {sports.length > 1 && (
-            <SegmentedControl
-              size="xs"
-              value={sport}
-              onChange={(v) => onSport(v as Sport)}
-              aria-label={tx('Rating sport')}
-              data={[
-                { value: 'padel', label: tx('Padel') },
-                { value: 'tennis', label: tx('Tennis') },
-              ]}
-            />
-          )}
         </Group>
         <Group align="flex-end" gap="sm">
           <Text variant="score-xl">{elo != null ? Math.round(elo) : '-'}</Text>
@@ -89,24 +57,9 @@ export function PlayerCard({
             <PlayerSparkline data={series} label={tx('{value1} ELO trend', { value1: sport })} />
           </Suspense>
         )}
-        <Group justify="space-between" gap="xs">
-          {rank != null ? (
-            <Text size="sm">{tx('#{rank} in {scope}', { rank, scope: scopeName })}</Text>
-          ) : (
-            <span />
-          )}
-          {scopeOptions.length > 1 && (
-            <Select
-              size="xs"
-              aria-label={tx('Player stats scope')}
-              data={scopeOptions}
-              value={scope}
-              allowDeselect={false}
-              onChange={(v) => onScope(v ?? '')}
-              w={200}
-            />
-          )}
-        </Group>
+        {rank != null && (
+          <Text size="sm">{tx('#{rank} in {scope}', { rank, scope: scopeName })}</Text>
+        )}
       </Stack>
     </Paper>
   );

@@ -1,5 +1,6 @@
 import { useOutletContext } from 'react-router-dom';
 import type { Entry, Space } from '../../player/types';
+import type { Sport } from './stats';
 
 export interface PlayerSpaceContext {
   space: Space;
@@ -12,6 +13,12 @@ export interface PlayerSpaceContext {
   /** The unscoped list is still loading (a picked scope is showing a partial list meanwhile). */
   liveLoading: boolean;
   setScope: (scope: string) => void;
+  /** On a club subdomain: that club's entries. Everything on the Hub, payments included, keeps to them. */
+  clubEntries: Entry[] | null;
+  /** The picked sport, kept across Hub pages; always one of `sports` when the player has any. */
+  sport: Sport;
+  sports: Sport[];
+  setSport: (sport: Sport) => void;
   openLink: () => void;
   notice: string;
   clearNotice: () => void;

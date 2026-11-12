@@ -12,6 +12,15 @@ export const sportsOf = (space: Space): Sport[] => {
   return out;
 };
 
+/** The sports the player has a rating in, else the sports of their events (so a player with only
+ * unrated tennis events, for example in a tennis club, is not shown padel). Both follow the scope. */
+export const hubSportsOf = (space: Space): Sport[] => {
+  const rated = sportsOf(space);
+  if (rated.length) return rated;
+  const played = new Set(space.entries.map((e) => e.sport || 'padel'));
+  return (['padel', 'tennis'] as const).filter((s) => played.has(s));
+};
+
 export const eloOf = (space: Space, sport: Sport): number | null =>
   sport === 'padel' ? space.profile.elo_padel : space.profile.elo_tennis;
 

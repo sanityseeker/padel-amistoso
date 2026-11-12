@@ -685,3 +685,90 @@ class TestReminders:
         )
         assert r.json()["sent"] == 1 and sent[0][1] == "Reminder" and "Please pay today" in sent[0][2]
         assert ana["player_id"]  # keep the fixture referenced
+
+
+# ── Participant filter ──────────────────────────────────────────────────────
+
+
+class TestParticipantFilterScope:
+    """Only registrants passing the lobby's participant filter owe the fee."""
+
+    QUESTIONS = [{"key": "level", "label": "Level", "type": "choice", "required": False, "choices": ["A", "B"]}]
+
+    def _filtered_lobby(self, client, auth_headers):
+        r = client.post(
+            "/api/registrations", json={"name": "Level Cup", "questions": self.QUESTIONS}, headers=auth_headers
+        )
+        assert r.status_code == 200, r.text
+        rid = r.json()["id"]
+        _set_fee(client, rid, auth_headers)
+        players = {}
+        for name, level in (("Ana", "A"), ("Bob", "B"), ("Cid", "A")):
+            r = client.post(
+                f"/api/registrations/{rid}/register",
+                json={"player_name": name, "email": f"{name.lower()}@example.com", "answers": {"level": level}},
+            )
+            assert r.status_code == 200, r.text
+            players[name] = r.json()
+        r = client.patch(
+            f"/api/registrations/{rid}",
+            json={"participant_filter": [{"key": "level", "op": "any_of", "values": ["A"]}]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        return rid, players
+
+    def test_listing_and_reminders_skip_ineligible(self, client, auth_headers, monkeypatch):
+        rid, p = self._filtered_lobby(client, auth_headers)
+        listing = client.get(f"/api/registrations/{rid}/payments", headers=auth_headers).json()
+        assert {r["player_name"] for r in listing["rows"]} == {"Ana", "Cid"}
+        assert listing["summary"]["total"] == 2
+
+        import backend.api.routes_payments as rp
+
+        monkeypatch.setattr(rp, "email_is_configured", lambda: True)
+        sent: list = []
+
+        async def _fake_send(jobs, es):
+            sent.extend(jobs)
+            return len(jobs), 0
+
+        monkeypatch.setattr(rp, "_send_emails_bounded", _fake_send)
+        r = client.post(f"/api/registrations/{rid}/payments/remind-unpaid", headers=auth_headers)
+        assert r.status_code == 200, r.text
+        assert sorted(j[0] for j in sent) == ["ana@example.com", "cid@example.com"]
+
+    def test_ineligible_player_sees_no_fee_and_cannot_be_paid_for(self, client, auth_headers):
+        rid, p = self._filtered_lobby(client, auth_headers)
+        bob = client.post(f"/api/registrations/{rid}/player-login", json={"token": p["Bob"]["token"]}).json()
+        assert bob["payment"] is None
+        ana = client.post(f"/api/registrations/{rid}/player-login", json={"token": p["Ana"]["token"]}).json()
+        assert ana["payment"]["status"] == "unpaid"
+        assert [t["player_name"] for t in _teammates(client, rid, p["Ana"]).json()] == ["Cid"]
+        r = _report(client, rid, p["Ana"], also_for=[p["Bob"]["player_id"]])
+        assert r.status_code == 400
+        assert _db_row(p["Bob"]["player_id"]) is None
+
+    def test_reported_payment_of_ineligible_player_stays_listed(self, client, auth_headers):
+        rid, p = self._filtered_lobby(client, auth_headers)
+        client.patch(
+            f"/api/registrations/{rid}/payments/{p['Ana']['player_id']}", json={"status": "paid"}, headers=auth_headers
+        )
+        # Ana drops out of the filter after paying: the organizer still sees the money.
+        client.patch(
+            f"/api/registrations/{rid}",
+            json={"participant_filter": [{"key": "level", "op": "any_of", "values": ["B"]}]},
+            headers=auth_headers,
+        )
+        listing = client.get(f"/api/registrations/{rid}/payments", headers=auth_headers).json()
+        assert {(r["player_name"], r["status"]) for r in listing["rows"]} == {("Bob", "unpaid"), ("Ana", "paid")}
+
+    def test_hub_hides_lobby_fee_for_ineligible_profile(self, client, auth_headers):
+        rid, p = self._filtered_lobby(client, auth_headers)
+        prof = client.post(
+            "/api/player-profile",
+            json={"name": "Bob", "email": "bob@example.com", "participant_passphrase": p["Bob"]["passphrase"]},
+        )
+        assert prof.status_code == 200, prof.text
+        headers = _hub_login(client, prof.json()["profile"]["id"])
+        assert client.get("/api/player-profile/payments", headers=headers).json() == []

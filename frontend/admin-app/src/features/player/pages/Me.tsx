@@ -23,13 +23,15 @@ function EntryPush({ entry }: { entry: Entry }) {
 export default function Me() {
   const gap = useMatches({ base: 'md', sm: 'lg' });
   useLocale();
-  const { space } = usePlayerSpace();
+  const { space, liveEntries, clubEntries } = usePlayerSpace();
   const { logout } = usePlayerSession();
   const auth = useAuth();
   const { hash } = useLocation();
   const [editing, setEditing] = useState(false);
   const profile = space.profile;
-  const live = space.entries.filter(
+  // Every tournament in progress, whatever community is picked: the scope narrows ratings and
+  // history, never which tournaments can notify you.
+  const live = liveEntries.filter(
     (e) =>
       e.status === 'active' &&
       e.entity_type === 'tournament' &&
@@ -63,7 +65,7 @@ export default function Me() {
         editing={editing}
       />
       <Stack gap="xs" id="payments">
-        <PlayerPayments />
+        <PlayerPayments only={clubEntries} />
       </Stack>
       {live.length > 0 && (
         <Paper p="md">

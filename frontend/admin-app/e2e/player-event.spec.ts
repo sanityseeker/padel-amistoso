@@ -479,4 +479,7 @@ test('a picked community scope does not hide tournaments in progress', async ({
   await page.goto(`/player/matches/tournament/${id}`);
   await expect(page.getByRole('heading', { name: 'Up next' })).toBeVisible();
   await expect(page.getByText('Event not found')).toHaveCount(0);
+  // Nor its push notifications on the profile page.
+  await page.goto('/player/me');
+  await expect(page.getByRole('heading', { name: 'Notifications' })).toBeVisible();
 });

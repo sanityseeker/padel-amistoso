@@ -228,3 +228,33 @@ test('the Hub bottom navigation on a phone has the Hub sections', async ({ page,
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
 });
+
+test('the community picker heads every Hub page and the sport choice carries across them', async ({
+  page,
+  request,
+}) => {
+  const { profile } = await setup(request, 'Filters');
+  // A player rated in both sports, with one community to choose from.
+  await page.route('**/api/player-profile/space?**', async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    json.profile.elo_padel_matches = 3;
+    json.profile.elo_tennis_matches = 2;
+    json.player_communities = [{ id: 'north', name: 'North League' }];
+    await route.fulfill({ response, json });
+  });
+  await openHub(page, profile.access_token);
+  const filters = page.getByTestId('hub-filters');
+  await expect(filters.locator('input[aria-label="Player stats scope"]')).toBeVisible();
+  await filters.getByText('Tennis', { exact: true }).click();
+  await expect(page.getByTestId('player-card')).toContainText('Tennis rating');
+
+  await page.goto('/player/ratings');
+  await expect(filters.getByRole('radio', { name: 'Tennis' })).toBeChecked();
+  await page.goto('/player/me');
+  await expect(filters.locator('input[aria-label="Player stats scope"]')).toBeVisible();
+  // Profile does not split by sport, so only the community picker shows there.
+  await expect(filters.getByRole('radio')).toHaveCount(0);
+  await page.goto('/player');
+  await expect(page.getByTestId('player-card')).toContainText('Tennis rating');
+});

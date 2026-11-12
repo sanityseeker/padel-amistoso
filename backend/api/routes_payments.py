@@ -114,9 +114,12 @@ def _tournament_participants(tid: str) -> list[dict]:
 
 
 def _registration_participants(reg_id: str) -> list[dict]:
+    """Registrants who owe the lobby fee: those passing the participant filter."""
+    eligible = store.lobby_eligible_ids(reg_id)
     return [
         {"player_id": r["player_id"], "player_name": r["player_name"], "email": r.get("email", "") or ""}
         for r in _get_registrants(reg_id)
+        if r["player_id"] in eligible
     ]
 
 

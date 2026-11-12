@@ -45,13 +45,12 @@ export async function resolveHostClub(): Promise<HostClub | null> {
   const host = window.location.hostname;
   if (host === 'localhost' || /^[\d.]+$/.test(host)) return null;
   const suffix = config.amistoso_domain ? `.${config.amistoso_domain}` : null;
+  // Without a configured domain, the same hostname rule as the header (it also knows `club.localhost`).
   const slug = suffix
     ? host.endsWith(suffix)
       ? host.slice(0, -suffix.length)
       : ''
-    : host.split('.').length === 3
-      ? host.split('.')[0]
-      : '';
+    : (getClubSubdomain(host) ?? '');
   if (!slug || slug.includes('.') || ['admin', 'www', 'demo', 'app'].includes(slug)) return null;
   return playerApi<HostClub>(`/clubs/by-slug/${encodeURIComponent(slug)}`, undefined, 'GET', null);
 }

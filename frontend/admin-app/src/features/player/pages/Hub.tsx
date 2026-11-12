@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Anchor, Button, Group, SimpleGrid, Stack, Title, useMatches } from '@mantine/core';
 import { IconArrowRight } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
@@ -12,7 +11,7 @@ import { PastTournaments } from '../components/PastTournaments';
 import { PlayerCard } from '../components/PlayerCard';
 import { TodoCards } from '../components/TodoCards';
 import { usePlayerSpace } from '../context';
-import { sportsOf, type Sport } from '../stats';
+import { sportsOf } from '../stats';
 
 // The Hub, in the order players asked for: your active tournaments first (each one a link to its
 // page, with the match that needs you), then past tournaments, rating and statistics, and the
@@ -20,11 +19,8 @@ import { sportsOf, type Sport } from '../stats';
 export default function Hub() {
   const gap = useMatches({ base: 'md', sm: 'xl' });
   useLocale();
-  const { space, scope, scopeQuery, scopeOptions, liveEntries, setScope, openLink } =
+  const { space, scope, scopeQuery, scopeOptions, liveEntries, openLink, sport, clubEntries } =
     usePlayerSpace();
-  const sports = sportsOf(space);
-  const [picked, setPicked] = useState<Sport | null>(null);
-  const sport = picked && sports.includes(picked) ? picked : (sports[0] ?? 'padel');
   // Active tournaments ignore the picked scope; Past follows it like the rating and history below.
   const active = liveEntries.filter(
     (e) => e.status === 'active' && e.entity_type === 'tournament' && !e.entity_deleted,
@@ -34,7 +30,7 @@ export default function Hub() {
   // Career statistics and past events follow the picked sport, like the rating and form beside them.
   const sportEntries = space.entries.filter((e) => e.sport === sport);
   const scopeName = scopeOptions.find((o) => o.value === scope)?.label ?? tx('All my communities');
-  const rated = sports.length > 0;
+  const rated = sportsOf(space).length > 0;
   return (
     <Stack gap={gap}>
       <PageHeader title={space.profile.name} />
@@ -65,17 +61,7 @@ export default function Hub() {
           {tx('Rating and statistics')}
         </Title>
         {rated ? (
-          <PlayerCard
-            space={space}
-            sport={sport}
-            sports={sports}
-            onSport={setPicked}
-            scope={scope}
-            scopeOptions={scopeOptions}
-            onScope={setScope}
-            rank={rank}
-            scopeName={scopeName}
-          />
+          <PlayerCard space={space} sport={sport} rank={rank} scopeName={scopeName} />
         ) : (
           <EmptyState title={tx('No rating yet')}>
             {tx('Your rated match results will appear here.')}
@@ -96,7 +82,7 @@ export default function Hub() {
         )}
       </Stack>
 
-      <TodoCards profile={space.profile} />
+      <TodoCards profile={space.profile} only={clubEntries} />
     </Stack>
   );
 }
