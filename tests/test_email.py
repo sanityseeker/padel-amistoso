@@ -1688,3 +1688,39 @@ def test_russian_email_text_is_escaped_and_keeps_the_passphrase() -> None:
     assert "Регистрация подтверждена" in subject
     assert "green-frog" in body
     assert "<b>Анна</b>" not in body
+
+
+class TestReplyFooters:
+    """Footers tell the reader whether a reply reaches anyone."""
+
+    @pytest.mark.parametrize("lang", ["en", "es", "ru"])
+    def test_footer_without_reply_to_says_do_not_reply(self, lang: str) -> None:
+        from backend.email import _footer
+
+        text = _footer("", lang)
+        assert {"en": "Do not reply", "es": "No respondas", "ru": "Не отвечайте"}[lang] in text
+
+    def test_footer_with_reply_to_invites_reply(self) -> None:
+        from backend.email import _footer
+
+        text = _footer("org@example.com")
+        assert "reply to this email" in text
+        assert "Do not reply" not in text
+
+    def test_account_emails_say_do_not_reply(self) -> None:
+        from backend.email import (
+            render_invite_email,
+            render_password_reset_email,
+            render_player_space_magic_link,
+            render_player_space_welcome,
+        )
+
+        bodies = [
+            render_invite_email(email="a@x.com", role="admin", accept_url="https://x/a")[1],
+            render_password_reset_email(email="a@x.com", reset_url="https://x/r")[1],
+            render_player_space_welcome(name="A", email="a@x.com", passphrase="p")[1],
+            render_player_space_magic_link(name="A", email="a@x.com", access_token="t")[1],
+        ]
+        assert all("Do not reply to this email" in b for b in bodies)
+        ru = render_player_space_magic_link(name="A", email="a@x.com", access_token="t", lang="ru")[1]
+        assert "Не отвечайте на это письмо" in ru

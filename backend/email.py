@@ -755,7 +755,7 @@ def render_invite_email(*, email: str, role: str, accept_url: str) -> tuple[str,
     If you weren't expecting this invitation, you can safely ignore this email.
   </p>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
-  <p style="font-size:.8em;color:#999">This is an automated message from Torneos Amistosos.</p>
+  {_no_reply_footer()}
 </div>"""
     return subject, body
 
@@ -777,7 +777,7 @@ def render_password_reset_email(*, email: str, reset_url: str) -> tuple[str, str
     Your password won't change until you open the link above and create a new one.
   </p>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
-  <p style="font-size:.8em;color:#999">This is an automated message from Torneos Amistosos.</p>
+  {_no_reply_footer()}
 </div>"""
     return subject, body
 
@@ -823,7 +823,7 @@ def render_player_space_welcome(
     {f'<p style="font-size:.9em;color:#666">{_tx(lang, "Please verify your email address to enable secure account recovery and automatic linking by email.", "Por favor verific\u00e1 tu direcci\u00f3n de email para habilitar la recuperaci\u00f3n segura de tu cuenta y la vinculaci\u00f3n autom\u00e1tica por email.", "Подтвердите адрес email. Это нужно для безопасного восстановления доступа и автоматической связи по email.")}</p><p style="text-align:center"><a href="{_esc(verify_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Verify email", "Verificar email", "Подтвердить email")}</a></p>' if verify_url else ""}
   {f'<p style="text-align:center"><a href="{_esc(player_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open Player Hub", "Abrir Player Hub", "Открыть личный кабинет")}</a></p>' if player_url else ""}
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
-  <p style="font-size:.8em;color:#999">{_tx(lang, "This is an automated message from Torneos Amistosos.", "Este es un mensaje autom\u00e1tico de Torneos Amistosos.", "Это автоматическое сообщение от Torneos Amistosos.")}</p>
+  {_no_reply_footer(lang)}
 </div>"""
     return subject, body
 
@@ -855,7 +855,7 @@ def render_player_space_magic_link(
   {f'<p style="text-align:center"><a href="{_esc(player_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open Player Hub", "Abrir Player Hub", "Открыть личный кабинет")}</a></p>' if player_url else ""}
   <p style="font-size:.9em;color:#666">{_tx(lang, "If you didn't request this link, you can safely ignore this email \u2014 your account has not been changed.", "Si no solicitaste este enlace, pod\u00e9s ignorar este email \u2014 tu cuenta no fue modificada.", "Если вы не запрашивали эту ссылку, просто не обращайте внимания на это письмо. Ваш аккаунт не изменён.")}</p>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
-  <p style="font-size:.8em;color:#999">{_tx(lang, "This is an automated message from Torneos Amistosos.", "Este es un mensaje autom\u00e1tico de Torneos Amistosos.", "Это автоматическое сообщение от Torneos Amistosos.")}</p>
+  {_no_reply_footer(lang)}
 </div>"""
     return subject, body
 
@@ -880,22 +880,34 @@ def _footer(reply_to: str = "", lang: str = "en") -> str:
         msg = _tx(
             lang,
             "This is an automated message from the tournament organizer. "
-            "To contact the organizer, just hit <strong>Reply</strong> in your email client "
-            "\u2014 your reply will go directly to them.",
+            "To contact the organizer, reply to this email. Your reply goes directly to them.",
             "Este es un mensaje autom\u00e1tico del organizador del torneo. "
-            "Para contactar al organizador, simplemente respond\u00e9 este email "
-            "\u2014 tu respuesta llegar\u00e1 directamente a ellos.",
-            "Это автоматическое сообщение от организатора турнира. Чтобы связаться с организатором, нажмите <strong>Ответить</strong> в почтовой программе. Ответ придёт напрямую организатору.",
+            "Para contactar al organizador, respond\u00e9 este email. Tu respuesta le llega directamente.",
+            "Это автоматическое сообщение от организатора турнира. "
+            "Чтобы связаться с организатором, ответьте на это письмо. Ответ придёт напрямую организатору.",
         )
     else:
+        # No Reply-To: a reply would go to the sending address, which nobody reads.
         msg = _tx(
             lang,
             "This is an automated message from the tournament organizer. "
-            "Feel free to reply if you have any questions or need any assistance!",
+            "Do not reply to this email. Replies are not read. Contact the organizer directly.",
             "Este es un mensaje autom\u00e1tico del organizador del torneo. "
-            "\u00a1No dudes en responder si ten\u00e9s alguna pregunta o necesit\u00e1s ayuda!",
-            "Это автоматическое сообщение от организатора турнира. Если есть вопросы или нужна помощь, ответьте на это письмо.",
+            "No respondas este email. Las respuestas no se leen. Contact\u00e1 al organizador directamente.",
+            "Это автоматическое сообщение от организатора турнира. "
+            "Не отвечайте на это письмо. Ответы не читаются. Свяжитесь с организатором напрямую.",
         )
+    return f'<p style="font-size:.8em;color:#999">{msg}</p>'
+
+
+def _no_reply_footer(lang: str = "en") -> str:
+    """Footer for account emails (invites, password reset, Player Hub), which never have a Reply-To."""
+    msg = _tx(
+        lang,
+        "This is an automated message from Torneos Amistosos. Do not reply to this email. Replies are not read.",
+        "Este es un mensaje autom\u00e1tico de Torneos Amistosos. No respondas este email. Las respuestas no se leen.",
+        "Это автоматическое сообщение от Torneos Amistosos. Не отвечайте на это письмо. Ответы не читаются.",
+    )
     return f'<p style="font-size:.8em;color:#999">{msg}</p>'
 
 
