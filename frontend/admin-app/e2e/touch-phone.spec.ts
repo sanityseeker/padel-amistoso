@@ -157,3 +157,28 @@ test('picking a community keeps the page where it was', async ({ page, request }
   expect(Math.abs((await picker.boundingBox())!.y - top)).toBeLessThan(40);
   await expect(picker).toBeInViewport();
 });
+
+test('fields are at least 16 px on a touch screen, so iOS does not zoom in on focus', async ({
+  page,
+}) => {
+  // The default interface size is 95 %, which makes 1 rem 15.2 px. Radios and checkboxes (the
+  // segmented controls) take no text, so iOS never zooms for them.
+  const smallest = () =>
+    page.evaluate(() =>
+      Math.min(
+        ...[
+          ...document.querySelectorAll(
+            'input:not([type=hidden], [type=radio], [type=checkbox]), select, textarea',
+          ),
+        ]
+          .filter((el) => (el as HTMLElement).offsetParent !== null)
+          .map((el) => parseFloat(getComputedStyle(el).fontSize)),
+      ),
+    );
+  await page.goto('/player');
+  await expect(page.getByLabel(/^Player passphrase/)).toBeVisible();
+  expect(await smallest()).toBeGreaterThanOrEqual(16);
+  await page.goto('/events');
+  await expect(page.getByRole('textbox').first()).toBeVisible();
+  expect(await smallest()).toBeGreaterThanOrEqual(16);
+});
