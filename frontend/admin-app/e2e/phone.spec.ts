@@ -151,3 +151,48 @@ test.afterAll(async ({ request }) => {
     if (/^Phone (Create|Bracket) /.test(t.name))
       await request.delete(`/api/tournaments/${t.id}`, { headers });
 });
+
+// A drawer's scroll area is as wide as its content's min-content width, so its row of tabs must wrap.
+test('the tournament and lobby settings drawers fit the phone width', async ({ page, request }) => {
+  const { id } = await createTournament(request, 'mex', `Drawer ${Date.now()}`);
+  const headers = await adminHeaders(request);
+  const lobby = await (
+    await request.post('/api/registrations', {
+      headers,
+      data: { name: `Drawer lobby ${Date.now()}`, auto_send_email: false },
+    })
+  ).json();
+  const fits = (dialog: ReturnType<Page['getByRole']>) =>
+    dialog.evaluate((el) =>
+      Array.from(el.querySelectorAll<HTMLElement>('*')).every(
+        (child) => child.getBoundingClientRect().right <= innerWidth + 1,
+      ),
+    );
+
+  await loginAdmin(page);
+  await page.goto(`/admin/t/${id}`);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const tournament = page.getByRole('dialog', { name: 'Tournament settings' });
+  await tournament.getByRole('tab', { name: 'TV screen', exact: true }).click();
+  await expect(tournament.getByLabel('Custom section title')).toBeVisible();
+  expect(await fits(tournament)).toBe(true);
+  // Every tab stays reachable.
+  await tournament.getByRole('tab', { name: 'Payments', exact: true }).click();
+  await expect(tournament.getByRole('tab', { name: 'Payments', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.keyboard.press('Escape');
+
+  await page.goto(`/admin/lobby/${lobby.id}`);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const lobbyDrawer = page.getByRole('dialog');
+  await expect(lobbyDrawer.getByRole('tab', { name: 'Details' })).toBeVisible();
+  expect(await fits(lobbyDrawer)).toBe(true);
+  await lobbyDrawer.getByRole('tab', { name: 'Email' }).click();
+  await expect(lobbyDrawer.getByRole('tab', { name: 'Email' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  expect(await noHorizontalOverflow(page)).toBe(true);
+});

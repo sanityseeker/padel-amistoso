@@ -209,7 +209,7 @@ async def delete_season(season_id: str, user: User = Depends(get_current_user)) 
         conn.execute("UPDATE registrations SET season_id = NULL WHERE season_id = ?", (season_id,))
         conn.execute("DELETE FROM seasons WHERE id = ?", (season_id,))
     # Sync in-memory tournament state
-    for data in _tournaments.values():
+    for data in list(_tournaments.values()):
         if data.get("season_id") == season_id:
             data["season_id"] = None
     return {"ok": True}

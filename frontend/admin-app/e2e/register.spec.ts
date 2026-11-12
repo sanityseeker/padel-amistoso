@@ -198,7 +198,9 @@ test('the success screen offers a player profile only when no Hub link is e-mail
   // Auto-send on and an email given: the confirmation carries the Hub link, so no second form.
   const sent = await lobby(request, { auto_send_email: true });
   await page.goto(`/register/${sent.alias}`);
-  await page.getByLabel(/^Email/).fill(`mailed-${stamp()}@example.com`);
+  await page
+    .getByRole('textbox', { name: 'Email (optional)' })
+    .fill(`mailed-${stamp()}@example.com`);
   await signUp(page, 'Mailed Mia');
   await expect(page.getByRole('heading', { name: "You're registered, Mailed Mia!" })).toBeVisible();
   await expect(
@@ -209,7 +211,9 @@ test('the success screen offers a player profile only when no Hub link is e-mail
   // Auto-send off: nothing is e-mailed, so the form stays.
   const quiet = await lobby(request);
   await page.goto(`/register/${quiet.alias}`);
-  await page.getByLabel(/^Email/).fill(`quiet-${stamp()}@example.com`);
+  await page
+    .getByRole('textbox', { name: 'Email (optional)' })
+    .fill(`quiet-${stamp()}@example.com`);
   await signUp(page, 'Quiet Quinn');
   await expect(
     page.getByRole('heading', { name: "You're registered, Quiet Quinn!" }),

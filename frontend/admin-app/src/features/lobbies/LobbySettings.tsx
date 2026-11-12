@@ -296,12 +296,28 @@ export function LobbySettings({ lobby, onClose }: { lobby: LobbyDetail; onClose:
       closeButtonProps={{ 'aria-label': tx('Close') }}
     >
       <Tabs value={tab} onChange={(v) => setTab(v ?? 'details')}>
-        <Tabs.List mb="md">
-          <Tabs.Tab value="details">{tx('Details')}</Tabs.Tab>
-          <Tabs.Tab value="questions">{tx('Questions')}</Tabs.Tab>
-          <Tabs.Tab value="address">{tx('Address and scope')}</Tabs.Tab>
-          <Tabs.Tab value="team">{tx('Co-editors')}</Tabs.Tab>
-          <Tabs.Tab value="email">{tx('Email')}</Tabs.Tab>
+        {/* On a phone the tabs wrap, as in the tournament settings: a single row is wider than the
+            drawer, and its scroll area grows to fit it instead of letting the row scroll. */}
+        <Tabs.List
+          mb="md"
+          w={phone ? '100%' : undefined}
+          style={{ flexWrap: phone ? 'wrap' : undefined }}
+        >
+          {[
+            { value: 'details', label: tx('Details') },
+            { value: 'questions', label: tx('Questions') },
+            { value: 'address', label: tx('Address and scope') },
+            { value: 'team', label: tx('Co-editors') },
+            { value: 'email', label: tx('Email') },
+          ].map((s) => (
+            <Tabs.Tab
+              key={s.value}
+              value={s.value}
+              style={phone ? { flex: '1 1 30%', minWidth: 0, whiteSpace: 'normal' } : undefined}
+            >
+              {s.label}
+            </Tabs.Tab>
+          ))}
         </Tabs.List>
         <Tabs.Panel value="details">
           <Details lobby={lobby} />

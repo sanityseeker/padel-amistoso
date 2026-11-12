@@ -87,6 +87,8 @@ export interface Lobby extends Community {
   alias?: string | null;
   season_id?: string | null;
   latest_answer_change_id?: number | null;
+  /** Answer changes newer than this organizer's seen marker (own and shared lobbies only). */
+  unseen_answer_changes?: number;
   converted_to_tids?: string[];
   created_at?: string;
 }
@@ -129,6 +131,8 @@ export interface LobbyDetail extends Lobby {
   player_tournament_map?: Record<string, string[]>;
   eligible_player_ids?: string[];
   participant_filter?: FilterCondition[];
+  /** The newest answer change this organizer has seen. */
+  answer_changes_seen_id?: number;
   created_at?: string;
 }
 export interface RegistrationAnswerChange {

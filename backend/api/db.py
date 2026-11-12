@@ -182,6 +182,16 @@ CREATE TABLE IF NOT EXISTS registration_answer_changes (
 CREATE INDEX IF NOT EXISTS idx_registration_answer_changes_latest
     ON registration_answer_changes (registration_id, id DESC);
 
+-- The newest answer change each organizer has seen, per lobby. Newer changes
+-- mark the lobby on that organizer's hub, on every device they use.
+CREATE TABLE IF NOT EXISTS registration_answer_seen (
+    registration_id TEXT    NOT NULL REFERENCES registrations(id) ON DELETE CASCADE,
+    username        TEXT    NOT NULL,
+    last_seen_id    INTEGER NOT NULL,
+    cleared_id      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (registration_id, username)
+);
+
 CREATE TABLE IF NOT EXISTS registration_shares (
     registration_id TEXT NOT NULL REFERENCES registrations(id) ON DELETE CASCADE,
     username        TEXT NOT NULL,
@@ -896,6 +906,11 @@ def init_db() -> None:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_profile_club_elo_profile ON profile_club_elo (profile_id, sport)"
             )
+
+        # Migrate: the organizer's "cleared up to" marker for lobby answer changes
+        seen_cols = {r[1] for r in conn.execute("PRAGMA table_info(registration_answer_seen)").fetchall()}
+        if "cleared_id" not in seen_cols:
+            conn.execute("ALTER TABLE registration_answer_seen ADD COLUMN cleared_id INTEGER NOT NULL DEFAULT 0")
 
         # Migrate: add hidden column to profile_club_elo if missing
         club_elo_cols = {r[1] for r in conn.execute("PRAGMA table_info(profile_club_elo)").fetchall()}

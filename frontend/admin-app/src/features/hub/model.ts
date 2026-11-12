@@ -20,6 +20,8 @@ export interface HubEvent {
   phaseLabel: string;
   registrants?: number;
   latestAnswerChangeId?: number | null;
+  /** Lobby only: answer changes newer than this organizer's seen marker (own lobbies only). */
+  unseenAnswers?: number;
   tournament?: Tournament;
   lobby?: Lobby;
 }
@@ -61,6 +63,7 @@ export function fromLobby(l: Lobby): HubEvent {
     phaseLabel: l.archived ? 'archived' : l.open ? 'open' : 'closed',
     registrants: l.registrant_count,
     latestAnswerChangeId: l.latest_answer_change_id,
+    unseenAnswers: l.unseen_answer_changes ?? 0,
     lobby: l,
   };
 }

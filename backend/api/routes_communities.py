@@ -242,7 +242,7 @@ async def delete_community(community_id: str, user: User = Depends(get_current_u
         conn.execute("DELETE FROM profile_community_elo WHERE community_id = ?", (community_id,))
         conn.execute("DELETE FROM communities WHERE id = ?", (community_id,))
     # Sync in-memory tournament state
-    for data in _tournaments.values():
+    for data in list(_tournaments.values()):
         if data.get("community_id") == community_id:
             data["community_id"] = DEFAULT_COMMUNITY_ID
     return {"ok": True}

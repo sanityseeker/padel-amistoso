@@ -1914,4 +1914,7 @@
   "with {names}": "Партнёр: {names}",
   "Recent form, oldest to newest": "Последняя форма, от старых к новым",
   "over {n} rating changes": "изменений рейтинга: {n}"
+  "Unseen": "Не просмотрено",
+  "Answer changes cleared": "Изменения ответов скрыты",
+  "Hide these changes for you. Other organizers still see them.": "Скрыть эти изменения только для вас. Другие организаторы их по-прежнему видят."
 }
