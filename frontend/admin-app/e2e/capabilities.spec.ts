@@ -297,6 +297,13 @@ test('lobby: answers summary, CSV download and a sign-up QR code', async ({ page
   await expect(changes.getByText('From: Advanced')).toBeVisible();
   await expect(changes.getByText('To: Beginner')).toBeVisible();
   await expect(changes.getByText(/^Zara ·/)).toHaveCount(2);
+  // Clear hides the list for this organizer: the tab goes away and stays away after a reload.
+  await changes.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(page.getByText('Answer changes cleared')).toBeVisible();
+  await expect(changesTab).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('tab', { name: 'Players' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: /Recent answer changes/ })).toHaveCount(0);
   await page.goto('/admin');
   await expect(
     page.getByTestId('event-row').filter({ hasText: name }).getByText('New answers'),

@@ -321,6 +321,21 @@ def _answer_changes_seen_id(conn: sqlite3.Connection, registration_id: str, user
     return row["last_seen_id"] if row else 0
 
 
+def _answer_changes_cleared_id(conn: sqlite3.Connection, registration_id: str, username: str) -> int:
+    row = conn.execute(
+        "SELECT cleared_id FROM registration_answer_seen WHERE registration_id = ? AND username = ?",
+        (registration_id, username),
+    ).fetchone()
+    return row["cleared_id"] if row else 0
+
+
+def _newest_answer_change_id(conn: sqlite3.Connection, registration_id: str) -> int:
+    return conn.execute(
+        "SELECT COALESCE(MAX(id), 0) FROM registration_answer_changes WHERE registration_id = ?",
+        (registration_id,),
+    ).fetchone()[0]
+
+
 def _unseen_answer_counts(registration_ids: list[str], username: str) -> dict[str, int]:
     """Answer changes newer than *username*'s seen marker, per lobby (lobbies without any are left out)."""
     if not registration_ids:
@@ -830,16 +845,20 @@ def get_registration(rid: str, user: User = Depends(get_current_user)) -> Regist
 def get_registration_answer_changes(
     rid: str, user: User = Depends(get_current_user)
 ) -> list[RegistrationAnswerChangeOut]:
-    """Return recent player-submitted answer changes to a registration editor."""
+    """Return recent player-submitted answer changes to a registration editor.
+
+    Changes this organizer cleared are left out; other organizers still see them.
+    """
     reg = _get_registration(rid)
     _require_registration_editor(reg, user)
     with get_db() as conn:
+        cleared_id = _answer_changes_cleared_id(conn, reg["id"], user.username)
         rows = conn.execute(
             """SELECT id, player_id, player_name, changed_at, changes
                FROM registration_answer_changes
-               WHERE registration_id = ?
+               WHERE registration_id = ? AND id > ?
                ORDER BY id DESC LIMIT 50""",
-            (reg["id"],),
+            (reg["id"], cleared_id),
         ).fetchall()
     return [
         RegistrationAnswerChangeOut(
@@ -865,10 +884,7 @@ def mark_registration_answer_changes_seen(
     _require_registration_editor(reg, user)
     reg_id = reg["id"]
     with get_db() as conn:
-        newest = conn.execute(
-            "SELECT COALESCE(MAX(id), 0) FROM registration_answer_changes WHERE registration_id = ?",
-            (reg_id,),
-        ).fetchone()[0]
+        newest = _newest_answer_change_id(conn, reg_id)
         conn.execute(
             """INSERT INTO registration_answer_seen (registration_id, username, last_seen_id)
                VALUES (?, ?, ?)
@@ -878,6 +894,31 @@ def mark_registration_answer_changes_seen(
         )
         seen_id = _answer_changes_seen_id(conn, reg_id, user.username)
     return {"last_seen_id": seen_id}
+
+
+@router.post("/{rid}/answer-changes/clear")
+def clear_registration_answer_changes(
+    rid: str, req: MarkAnswerChangesSeenRequest, user: User = Depends(get_current_user)
+) -> dict:
+    """Hide the answer changes up to ``up_to_id`` from this organizer's list (and mark them seen).
+
+    Nothing is deleted: other organizers keep their list, and newer changes show up again.
+    """
+    reg = _get_registration(rid)
+    _require_registration_editor(reg, user)
+    reg_id = reg["id"]
+    with get_db() as conn:
+        up_to = min(req.up_to_id, _newest_answer_change_id(conn, reg_id))
+        conn.execute(
+            """INSERT INTO registration_answer_seen (registration_id, username, last_seen_id, cleared_id)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT (registration_id, username)
+               DO UPDATE SET last_seen_id = MAX(last_seen_id, excluded.last_seen_id),
+                             cleared_id = MAX(cleared_id, excluded.cleared_id)""",
+            (reg_id, user.username, up_to, up_to),
+        )
+        cleared_id = _answer_changes_cleared_id(conn, reg_id, user.username)
+    return {"cleared_id": cleared_id}
 
 
 @router.patch("/{rid}/community")

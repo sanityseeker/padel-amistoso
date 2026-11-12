@@ -12,14 +12,15 @@ import {
   Switch,
   Text,
   TextInput,
+  Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { IconDownload } from '@tabler/icons-react';
+import { IconChecks, IconDownload } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
 import type { LobbyDetail, Question, RegistrationAnswerChange } from '../../types';
 import { EmptyState } from '../../ui';
 import { registrantAnswer } from './filter';
-import { useMarkAnswerChangesSeen } from './answerChanges';
+import { useClearAnswerChanges, useMarkAnswerChangesSeen } from './answerChanges';
 import { StatusBadge } from '../../ui/StatusBadge';
 
 const cell = (value: string) => (/[,"\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
@@ -342,6 +343,7 @@ export function AnswerChangesPanel({
 }) {
   const locale = useLocale();
   useMarkAnswerChangesSeen(lobby.id, changes[0]?.id, lobby.unseen_answer_changes ?? 0, active);
+  const clear = useClearAnswerChanges(lobby.id);
   const questions = new Map(lobby.questions.map((q) => [q.key, q]));
   // A multiple-choice answer is stored as a JSON list; show it as the choices, like the answers tab.
   const shown = (key: string, raw: string) => registrantAnswer(raw, questions.get(key)) || raw;
@@ -349,7 +351,25 @@ export function AnswerChangesPanel({
     <Stack gap="md" data-testid="answer-changes">
       <Paper p="md" variant="row">
         <Stack gap="sm">
-          <Text fw={650}>{tx('Recent answer changes')}</Text>
+          <Group justify="space-between" wrap="nowrap" gap="sm">
+            <Text fw={650}>{tx('Recent answer changes')}</Text>
+            <Tooltip
+              label={tx('Hide these changes for you. Other organizers still see them.')}
+              multiline
+              w={240}
+            >
+              <Button
+                variant="subtle"
+                size="compact-sm"
+                leftSection={<IconChecks size={16} />}
+                loading={clear.isPending}
+                disabled={!changes.length}
+                onClick={() => clear.mutate(changes[0].id)}
+              >
+                {tx('Clear')}
+              </Button>
+            </Tooltip>
+          </Group>
           {changes.map((event) => (
             <Paper key={event.id} p="sm" variant="row">
               <Stack gap="xs">

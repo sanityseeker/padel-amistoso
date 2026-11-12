@@ -26,3 +26,17 @@ export function useMarkAnswerChangesSeen(
     mutate(newestId);
   }, [active, newestId, unseen, mutate]);
 }
+
+// Hides the listed changes from this organizer's tab (and marks them seen). Nothing is deleted: other
+// organizers keep their list, and a newer change brings the tab back with just that one.
+export function useClearAnswerChanges(lobbyId: string) {
+  return useAdminMutation({
+    request: (upTo: number) =>
+      write(`/registrations/${lobbyId}/answer-changes/clear`, { up_to_id: upTo }),
+    invalidate: [
+      ['admin', 'lobbies'],
+      ['admin', 'lobby', lobbyId],
+    ],
+    success: 'Answer changes cleared',
+  });
+}

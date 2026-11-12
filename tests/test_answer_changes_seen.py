@@ -110,3 +110,79 @@ class TestAnswerChangesSeen:
                 "SELECT COUNT(*) FROM registration_answer_seen WHERE registration_id = ?", (rid,)
             ).fetchone()[0]
         assert left == 0
+
+
+def _clear(client, rid: str, headers, up_to: int):
+    return client.post(f"/api/registrations/{rid}/answer-changes/clear", json={"up_to_id": up_to}, headers=headers)
+
+
+def _changes(client, rid: str, headers) -> list[dict]:
+    r = client.get(f"/api/registrations/{rid}/answer-changes", headers=headers)
+    assert r.status_code == 200
+    return r.json()
+
+
+class TestAnswerChangesClear:
+    def test_clear_hides_the_list_and_marks_seen(self, client, alice_headers):
+        rid = _create_lobby(client, alice_headers)
+        _register(client, rid, "Ana", "B")
+        _register(client, rid, "Ben", "C")
+
+        r = _clear(client, rid, alice_headers, _newest_change(client, rid, alice_headers))
+        assert r.status_code == 200, r.text
+        assert _changes(client, rid, alice_headers) == []
+        assert _unseen_in_list(client, rid, alice_headers) == 0
+
+    def test_newer_changes_show_up_again(self, client, alice_headers):
+        rid = _create_lobby(client, alice_headers)
+        _register(client, rid, "Ana", "B")
+        _clear(client, rid, alice_headers, _newest_change(client, rid, alice_headers))
+
+        _register(client, rid, "Ben", "C")
+        assert [c["player_name"] for c in _changes(client, rid, alice_headers)] == ["Ben"]
+        assert _unseen_in_list(client, rid, alice_headers) == 1
+
+    def test_clear_is_per_organizer(self, client, alice_headers, bob_headers):
+        rid = _create_lobby(client, alice_headers)
+        client.post(f"/api/registrations/{rid}/collaborators", json={"username": "bob"}, headers=alice_headers)
+        _register(client, rid, "Ana", "B")
+
+        _clear(client, rid, alice_headers, _newest_change(client, rid, alice_headers))
+        assert _changes(client, rid, alice_headers) == []
+        assert [c["player_name"] for c in _changes(client, rid, bob_headers)] == ["Ana"]
+        assert _unseen_in_list(client, rid, bob_headers) == 1
+
+    def test_clear_never_moves_back_or_past_the_newest(self, client, alice_headers):
+        rid = _create_lobby(client, alice_headers)
+        _register(client, rid, "Ana", "B")
+        newest = _newest_change(client, rid, alice_headers)
+
+        assert _clear(client, rid, alice_headers, newest + 100).json()["cleared_id"] == newest
+        assert _clear(client, rid, alice_headers, 0).json()["cleared_id"] == newest
+        # A change after the clear is newer than the stored marker, so it is listed.
+        _register(client, rid, "Ben", "C")
+        assert len(_changes(client, rid, alice_headers)) == 1
+
+    def test_clear_requires_editor_access(self, client, alice_headers, bob_headers):
+        rid = _create_lobby(client, alice_headers)
+        assert client.post(f"/api/registrations/{rid}/answer-changes/clear", json={"up_to_id": 1}).status_code in (
+            401,
+            403,
+        )
+        assert _clear(client, rid, bob_headers, 1).status_code == 403
+
+    def test_old_marker_table_gets_the_cleared_column(self):
+        from backend.api.db import get_db, init_db
+
+        with get_db() as conn:
+            conn.execute("DROP TABLE registration_answer_seen")
+            conn.execute(
+                """CREATE TABLE registration_answer_seen (
+                       registration_id TEXT NOT NULL REFERENCES registrations(id) ON DELETE CASCADE,
+                       username TEXT NOT NULL, last_seen_id INTEGER NOT NULL,
+                       PRIMARY KEY (registration_id, username))"""
+            )
+        init_db()
+        with get_db() as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(registration_answer_seen)").fetchall()}
+        assert "cleared_id" in cols
