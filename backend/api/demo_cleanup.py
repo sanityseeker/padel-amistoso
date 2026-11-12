@@ -119,7 +119,7 @@ async def purge_expired_demo_data(now: datetime | None = None) -> dict[str, int]
     usernames = _expired_demo_usernames(now)
     tournaments_purged = 0
     for username in usernames:
-        owned = [tid for tid, data in state._tournaments.items() if data.get("owner") == username]
+        owned = [tid for tid, data in list(state._tournaments.items()) if data.get("owner") == username]
         for tid in owned:
             async with state.get_tournament_lock(tid):
                 if tid not in state._tournaments:

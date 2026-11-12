@@ -339,7 +339,7 @@ def _valid_pinnable_ids_for_club(club_id: str) -> set[str]:
     from .state import _tournaments  # noqa: PLC0415
 
     valid: set[str] = set()
-    for tid, data in _tournaments.items():
+    for tid, data in list(_tournaments.items()):
         if data.get("club_id") != club_id:
             continue
         # Keep raw IDs for backward compatibility with older frontends,
@@ -862,7 +862,7 @@ async def build_public_event_items(club_id: str | None, club_row: dict | None = 
     # The live-tournament scan stays on the event loop: iterating the shared
     # _tournaments dict from a thread could race a concurrent create/delete.
     out: list[tuple[int | None, dict]] = []
-    for tid, data in _tournaments.items():
+    for tid, data in list(_tournaments.items()):
         if club_id is not None and data.get("club_id") != club_id:
             continue
         if not data.get("public", True):
@@ -1512,8 +1512,8 @@ async def delete_club(club_id: str, user: User = Depends(get_current_user)) -> d
     # any season_id that the FK cascade nullified in the DB.
     from .state import _tournaments  # noqa: PLC0415
 
-    affected_tids = [tid for tid, data in _tournaments.items() if data.get("club_id") == club_id]
-    season_tids = [tid for tid, data in _tournaments.items() if data.get("season_id")]
+    affected_tids = [tid for tid, data in list(_tournaments.items()) if data.get("club_id") == club_id]
+    season_tids = [tid for tid, data in list(_tournaments.items()) if data.get("season_id")]
     if season_tids:
         with get_db() as conn:
             placeholders = ",".join("?" * len(season_tids))

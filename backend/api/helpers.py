@@ -369,7 +369,7 @@ def _require_demo_can_create_tournament(user: User) -> None:
     """Raise 403 if a demo user already owns a tournament (one at a time)."""
     if not user.is_demo:
         return
-    for data in _tournaments.values():
+    for data in list(_tournaments.values()):
         if data.get("owner") == user.username:
             raise HTTPException(
                 403,
