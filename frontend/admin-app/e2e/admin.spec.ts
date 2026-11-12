@@ -34,11 +34,18 @@ test('create a Mexicano, save scores, advance a round and filter tournaments', a
   await login(page);
   await page.getByRole('link', { name: 'New', exact: true }).click();
   await page.getByRole('radio', { name: 'Mexicano + Play-offs' }).click();
+  // The format lives in the URL and the form remounts when it changes: type only once it has switched,
+  // or the remount drops the name and the tournament gets the default one.
+  await expect(page.getByRole('radio', { name: 'Mexicano + Play-offs' })).toBeChecked();
   const dialog = page.locator('form#tournament-form');
   await dialog.getByLabel('Tournament name').fill('Browser Test Mexicano');
   await fillNames(page, 'players', 'Ana\nCarlos\nLucia\nPablo\nMarta\nDiego\nElena\nJavier');
   await dialog.getByRole('button', { name: 'Create tournament', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Browser Test Mexicano' })).toBeVisible();
+  // The workspace loads several requests after the redirect; a busy CI runner needs more than 5 s.
+  await expect(page).toHaveURL(/\/admin\/t\/[^/]+$/, { timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Browser Test Mexicano' })).toBeVisible({
+    timeout: 15_000,
+  });
   await page.getByRole('button', { name: 'Start first round' }).click();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page
