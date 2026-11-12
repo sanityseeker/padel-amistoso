@@ -29,15 +29,23 @@ def _optional_env(name: str) -> str | None:
     return value
 
 
-def _smtp_port() -> int:
+def _smtp_port(name: str = "AMISTOSO_SMTP_PORT") -> int:
     """Return SMTP port with a safe default when env value is invalid/unset."""
-    raw = _optional_env("AMISTOSO_SMTP_PORT")
+    raw = _optional_env(name)
     if raw is None:
         return 587
     try:
         return int(raw)
     except ValueError:
         return 587
+
+
+def _smtp_use_tls(name: str) -> bool:
+    """Return the STARTTLS flag. Unset or ``None`` means on; only an explicit false value turns it off."""
+    raw = _optional_env(name)
+    if raw is None:
+        return True
+    return raw.lower() not in ("0", "false", "no", "off")
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -49,7 +57,7 @@ SMTP_PORT: int = _smtp_port()
 SMTP_USER: str | None = _optional_env("AMISTOSO_SMTP_USER")
 SMTP_PASS: str | None = _optional_env("AMISTOSO_SMTP_PASS")
 SMTP_FROM: str | None = _optional_env("AMISTOSO_FROM_EMAIL")
-SMTP_USE_TLS: bool = os.environ.get("AMISTOSO_SMTP_USE_TLS", "1").lower() in ("1", "true", "yes")
+SMTP_USE_TLS: bool = _smtp_use_tls("AMISTOSO_SMTP_USE_TLS")
 SITE_URL: str | None = _optional_env("AMISTOSO_SITE_URL")
 
 
@@ -61,6 +69,19 @@ def _float_env(name: str, default: float) -> float:
         return float(raw)
     except ValueError:
         return default
+
+
+# Resend HTTP API — optional primary email transport. When set, the SMTP
+# settings above become the backup: emails go through SMTP only when Resend
+# fails for a provider-side reason (quota, rate limit, auth, outage).
+# RESEND_FROM_EMAIL defaults to AMISTOSO_FROM_EMAIL; set it when the backup
+# (for example Gmail) needs a different From address than your Resend domain.
+RESEND_API_KEY: str | None = _optional_env("AMISTOSO_RESEND_API_KEY")
+RESEND_FROM: str | None = _optional_env("AMISTOSO_RESEND_FROM_EMAIL")
+# Seconds a failing transport is skipped: after a quota error / after any other provider error.
+EMAIL_QUOTA_COOLDOWN_S: float = _float_env("AMISTOSO_EMAIL_QUOTA_COOLDOWN_S", 3600.0)
+EMAIL_ERROR_COOLDOWN_S: float = _float_env("AMISTOSO_EMAIL_ERROR_COOLDOWN_S", 300.0)
+EMAIL_TIMEOUT_S: float = _float_env("AMISTOSO_EMAIL_TIMEOUT_S", 20.0)
 
 
 # ────────────────────────────────────────────────────────────────────────────

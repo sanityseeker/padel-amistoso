@@ -158,7 +158,11 @@ class TestSendMessageEligibleOnly:
         _set_filter(client, auth_headers, rid, [{"key": "level", "op": "any_of", "values": ["A"]}])
         return rid
 
-    @patch("backend.api.routes_registration.send_email", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "backend.api.routes_registration.send_emails",
+        new_callable=AsyncMock,
+        side_effect=lambda emails: [True] * len(emails),
+    )
     def test_eligible_only_restricts_recipients(
         self, mock_send: AsyncMock, client: TestClient, auth_headers: dict
     ) -> None:
@@ -173,19 +177,26 @@ class TestSendMessageEligibleOnly:
         data = r.json()
         assert data["sent"] == 1  # only Ana: eligible and has an email
         assert data["skipped"] == 1  # Cruz: eligible, no email
-        assert mock_send.call_count == 1
-        assert mock_send.call_args[0][0] == "ana@test.com"
+        assert [e.to for e in mock_send.call_args[0][0]] == ["ana@test.com"]
 
-    @patch("backend.api.routes_registration.send_email", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "backend.api.routes_registration.send_emails",
+        new_callable=AsyncMock,
+        side_effect=lambda emails: [True] * len(emails),
+    )
     def test_default_still_sends_to_all(self, mock_send: AsyncMock, client: TestClient, auth_headers: dict) -> None:
         rid = self._setup(client, auth_headers)
         with patch("backend.api.routes_registration.email_is_configured", return_value=True):
             r = client.post(f"/api/registrations/{rid}/send-message-emails", headers=auth_headers)
         assert r.status_code == 200
         assert r.json()["sent"] == 2
-        assert mock_send.call_count == 2
+        assert len(mock_send.call_args[0][0]) == 2
 
-    @patch("backend.api.routes_registration.send_email", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "backend.api.routes_registration.send_emails",
+        new_callable=AsyncMock,
+        side_effect=lambda emails: [True] * len(emails),
+    )
     def test_eligible_only_without_filter_sends_to_all(
         self, mock_send: AsyncMock, client: TestClient, auth_headers: dict
     ) -> None:

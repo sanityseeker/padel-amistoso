@@ -1,3 +1,9 @@
+## v3.3.0 (2026-11-12)
+
+### Feat
+
+- send email through Resend API with SMTP fallback and batch sending
+
 ## v3.2.3 (2026-11-11)
 
 ### Fix

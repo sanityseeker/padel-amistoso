@@ -1,24 +1,76 @@
 """
 Email notification helpers.
 
-All SMTP settings are read from ``backend.config``.  When
-``AMISTOSOMISTOS_SMTP_HOST`` is not set every public function degrades gracefully
-(``is_configured()`` returns ``False``, ``send_email()`` is a silent no-op).
+Delivery goes through the transports in ``backend.email_transport``:
+
+1. Resend HTTP API, when ``AMISTOSO_RESEND_API_KEY`` is set.
+2. SMTP, when ``AMISTOSO_SMTP_HOST`` is set (the only transport, or the
+   backup for Resend — for example Gmail).
+
+A transport that fails for a provider-side reason (quota, auth, outage) is
+paused for a cooldown and the next one takes over. When nothing is configured
+every public function degrades gracefully (``is_configured()`` returns
+``False``, ``send_email()`` is a silent no-op).
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from email.message import EmailMessage
-from email.utils import formataddr
 
-import aiosmtplib
+import aiosmtplib  # noqa: F401  (tests patch ``backend.email.aiosmtplib.send``)
 from email_validator import EmailNotValidError, validate_email as _validate_email
 
-from .config import SITE_URL, SMTP_FROM, SMTP_HOST, SMTP_PASS, SMTP_PORT, SMTP_USE_TLS, SMTP_USER
+from .config import (
+    EMAIL_ERROR_COOLDOWN_S,
+    EMAIL_QUOTA_COOLDOWN_S,
+    EMAIL_TIMEOUT_S,
+    RESEND_API_KEY,
+    RESEND_FROM,
+    SITE_URL,
+    SMTP_FROM,
+    SMTP_HOST,
+    SMTP_PASS,
+    SMTP_PORT,
+    SMTP_USE_TLS,
+    SMTP_USER,
+)
+from .email_transport import (
+    EmailTransport,
+    FailoverSender,
+    OutgoingEmail,
+    ResendApiTransport,
+    SmtpTransport,
+)
 
 logger = logging.getLogger(__name__)
+
+_sender = FailoverSender(quota_cooldown_s=EMAIL_QUOTA_COOLDOWN_S, error_cooldown_s=EMAIL_ERROR_COOLDOWN_S)
+
+# Strong references to fire-and-forget send tasks (asyncio keeps only weak ones).
+_background_tasks: set[asyncio.Task[bool]] = set()
+
+
+def _transports() -> list[EmailTransport]:
+    """Configured transports in priority order. Built per call so tests can patch module values."""
+    transports: list[EmailTransport] = []
+    resend_from = RESEND_FROM or SMTP_FROM
+    if RESEND_API_KEY and resend_from:
+        transports.append(ResendApiTransport(RESEND_API_KEY, resend_from, timeout=EMAIL_TIMEOUT_S))
+    if SMTP_HOST and SMTP_FROM:
+        transports.append(
+            SmtpTransport(
+                host=SMTP_HOST,
+                port=SMTP_PORT,
+                user=SMTP_USER,
+                password=SMTP_PASS,
+                from_addr=SMTP_FROM,
+                use_tls=SMTP_USE_TLS,
+                timeout=EMAIL_TIMEOUT_S,
+            )
+        )
+    return transports
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Public helpers
@@ -26,8 +78,8 @@ logger = logging.getLogger(__name__)
 
 
 def is_configured() -> bool:
-    """Return ``True`` when all required SMTP settings are present."""
-    return bool(SMTP_HOST and SMTP_FROM)
+    """Return ``True`` when at least one email transport is configured."""
+    return bool(_transports())
 
 
 def is_valid_email(value: str) -> bool:
@@ -54,48 +106,47 @@ async def send_email(
     sender_name: str = "",
     reply_to: str = "",
 ) -> bool:
-    """Send an HTML email via SMTP.  Returns ``True`` on success.
+    """Send an HTML email through the first healthy transport.  Returns ``True`` on success.
 
-    When SMTP is not configured the call is a silent no-op returning
-    ``False``.  Exceptions from the SMTP library are caught and logged
-    so callers never need to handle them.
+    When nothing is configured the call is a silent no-op returning
+    ``False``.  Transport errors are caught and logged so callers never
+    need to handle them.
 
     Args:
         to: Recipient email address.
         subject: Email subject line.
         html_body: Full HTML body.
         sender_name: Optional display name that appears before the From address
-            (e.g. ``"Summer Cup"``).  When empty the raw ``SMTP_FROM`` address
-            is used as-is.
+            (e.g. ``"Summer Cup"``).  When empty the transport's raw From
+            address is used as-is.
         reply_to: Optional Reply-To address.  When non-empty a ``Reply-To``
             header is added so players can reply directly to the organizer.
     """
-    if not is_configured():
+    transports = _transports()
+    if not transports:
         logger.debug("Email not configured — skipping send to %s", to)
         return False
+    email = OutgoingEmail(to=to, subject=subject, html_body=html_body, sender_name=sender_name, reply_to=reply_to)
+    return await _sender.send(transports, email) is not None
 
-    msg = EmailMessage()
-    msg["From"] = formataddr((sender_name, SMTP_FROM)) if sender_name else SMTP_FROM
-    msg["To"] = to
-    msg["Subject"] = subject
-    if reply_to:
-        msg["Reply-To"] = reply_to
-    msg.set_content(html_body, subtype="html")
 
-    try:
-        await aiosmtplib.send(
-            msg,
-            hostname=SMTP_HOST,
-            port=SMTP_PORT,
-            username=SMTP_USER,
-            password=SMTP_PASS,
-            start_tls=SMTP_USE_TLS,
-        )
-        logger.info("Email sent to %s (subject=%r)", to, subject)
-        return True
-    except Exception:
-        logger.exception("Failed to send email to %s", to)
-        return False
+# One-by-one sends (SMTP, or the API after a rejected batch) run this many at a
+# time: each opens its own connection. Resend allows 10 requests/s per team.
+BULK_EMAIL_CONCURRENCY = 2
+
+
+async def send_emails(emails: list[OutgoingEmail]) -> list[bool]:
+    """Send many emails at once; return, per email, whether it was sent.
+
+    Uses the Resend batch API (up to 100 per request) when Resend is
+    configured, and falls back to one-by-one sends through the next transport
+    for any email the batch did not take. Never raises.
+    """
+    transports = _transports()
+    if not transports or not emails:
+        return [False] * len(emails)
+    results = await _sender.send_many(transports, emails, concurrency=BULK_EMAIL_CONCURRENCY)
+    return [name is not None for name in results]
 
 
 def send_email_background(
@@ -111,7 +162,9 @@ def send_email_background(
         return
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(send_email(to, subject, html_body, sender_name=sender_name, reply_to=reply_to))
+        task = loop.create_task(send_email(to, subject, html_body, sender_name=sender_name, reply_to=reply_to))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
     except RuntimeError:
         logger.debug("No running event loop — cannot send background email")
 
@@ -702,7 +755,7 @@ def render_invite_email(*, email: str, role: str, accept_url: str) -> tuple[str,
     If you weren't expecting this invitation, you can safely ignore this email.
   </p>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
-  <p style="font-size:.8em;color:#999">This is an automated message from Torneos Amistosos.</p>
+  {_no_reply_footer()}
 </div>"""
     return subject, body
 
@@ -724,7 +777,7 @@ def render_password_reset_email(*, email: str, reset_url: str) -> tuple[str, str
     Your password won't change until you open the link above and create a new one.
   </p>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
-  <p style="font-size:.8em;color:#999">This is an automated message from Torneos Amistosos.</p>
+  {_no_reply_footer()}
 </div>"""
     return subject, body
 
@@ -770,7 +823,7 @@ def render_player_space_welcome(
     {f'<p style="font-size:.9em;color:#666">{_tx(lang, "Please verify your email address to enable secure account recovery and automatic linking by email.", "Por favor verific\u00e1 tu direcci\u00f3n de email para habilitar la recuperaci\u00f3n segura de tu cuenta y la vinculaci\u00f3n autom\u00e1tica por email.", "Подтвердите адрес email. Это нужно для безопасного восстановления доступа и автоматической связи по email.")}</p><p style="text-align:center"><a href="{_esc(verify_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Verify email", "Verificar email", "Подтвердить email")}</a></p>' if verify_url else ""}
   {f'<p style="text-align:center"><a href="{_esc(player_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open Player Hub", "Abrir Player Hub", "Открыть личный кабинет")}</a></p>' if player_url else ""}
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
-  <p style="font-size:.8em;color:#999">{_tx(lang, "This is an automated message from Torneos Amistosos.", "Este es un mensaje autom\u00e1tico de Torneos Amistosos.", "Это автоматическое сообщение от Torneos Amistosos.")}</p>
+  {_no_reply_footer(lang)}
 </div>"""
     return subject, body
 
@@ -802,7 +855,7 @@ def render_player_space_magic_link(
   {f'<p style="text-align:center"><a href="{_esc(player_url)}" style="{_BUTTON_STYLE}">{_tx(lang, "Open Player Hub", "Abrir Player Hub", "Открыть личный кабинет")}</a></p>' if player_url else ""}
   <p style="font-size:.9em;color:#666">{_tx(lang, "If you didn't request this link, you can safely ignore this email \u2014 your account has not been changed.", "Si no solicitaste este enlace, pod\u00e9s ignorar este email \u2014 tu cuenta no fue modificada.", "Если вы не запрашивали эту ссылку, просто не обращайте внимания на это письмо. Ваш аккаунт не изменён.")}</p>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
-  <p style="font-size:.8em;color:#999">{_tx(lang, "This is an automated message from Torneos Amistosos.", "Este es un mensaje autom\u00e1tico de Torneos Amistosos.", "Это автоматическое сообщение от Torneos Amistosos.")}</p>
+  {_no_reply_footer(lang)}
 </div>"""
     return subject, body
 
@@ -827,22 +880,34 @@ def _footer(reply_to: str = "", lang: str = "en") -> str:
         msg = _tx(
             lang,
             "This is an automated message from the tournament organizer. "
-            "To contact the organizer, just hit <strong>Reply</strong> in your email client "
-            "\u2014 your reply will go directly to them.",
+            "To contact the organizer, reply to this email. Your reply goes directly to them.",
             "Este es un mensaje autom\u00e1tico del organizador del torneo. "
-            "Para contactar al organizador, simplemente respond\u00e9 este email "
-            "\u2014 tu respuesta llegar\u00e1 directamente a ellos.",
-            "Это автоматическое сообщение от организатора турнира. Чтобы связаться с организатором, нажмите <strong>Ответить</strong> в почтовой программе. Ответ придёт напрямую организатору.",
+            "Para contactar al organizador, respond\u00e9 este email. Tu respuesta le llega directamente.",
+            "Это автоматическое сообщение от организатора турнира. "
+            "Чтобы связаться с организатором, ответьте на это письмо. Ответ придёт напрямую организатору.",
         )
     else:
+        # No Reply-To: a reply would go to the sending address, which nobody reads.
         msg = _tx(
             lang,
             "This is an automated message from the tournament organizer. "
-            "Feel free to reply if you have any questions or need any assistance!",
+            "Do not reply to this email. Replies are not read. Contact the organizer directly.",
             "Este es un mensaje autom\u00e1tico del organizador del torneo. "
-            "\u00a1No dudes en responder si ten\u00e9s alguna pregunta o necesit\u00e1s ayuda!",
-            "Это автоматическое сообщение от организатора турнира. Если есть вопросы или нужна помощь, ответьте на это письмо.",
+            "No respondas este email. Las respuestas no se leen. Contact\u00e1 al organizador directamente.",
+            "Это автоматическое сообщение от организатора турнира. "
+            "Не отвечайте на это письмо. Ответы не читаются. Свяжитесь с организатором напрямую.",
         )
+    return f'<p style="font-size:.8em;color:#999">{msg}</p>'
+
+
+def _no_reply_footer(lang: str = "en") -> str:
+    """Footer for account emails (invites, password reset, Player Hub), which never have a Reply-To."""
+    msg = _tx(
+        lang,
+        "This is an automated message from Torneos Amistosos. Do not reply to this email. Replies are not read.",
+        "Este es un mensaje autom\u00e1tico de Torneos Amistosos. No respondas este email. Las respuestas no se leen.",
+        "Это автоматическое сообщение от Torneos Amistosos. Не отвечайте на это письмо. Ответы не читаются.",
+    )
     return f'<p style="font-size:.8em;color:#999">{msg}</p>'
 
 
