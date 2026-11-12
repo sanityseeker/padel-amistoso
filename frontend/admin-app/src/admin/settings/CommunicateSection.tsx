@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Button, Group, Stack, Text, TextInput, Textarea } from '@mantine/core';
+import { Button, Group, Radio, Stack, Text, TextInput, Textarea } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconMail } from '@tabler/icons-react';
+import { IconBell, IconMail } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { api, write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
@@ -11,20 +11,49 @@ import { Notice } from '../../ui/Notice';
 
 interface SendResult {
   sent?: number | boolean;
+  pushed?: number;
   skipped?: number;
   failed?: number;
 }
+type Delivery = 'email' | 'push_first' | 'both';
 interface EmailSettings {
   sender_name: string;
   reply_to: string;
+  // Tournaments only: lobbies have no push subscriptions.
+  delivery?: Delivery;
+  push_available?: boolean;
+  push_subscribers?: number;
 }
 
-const summary = (r: SendResult) =>
-  tx('Sent {sent}, skipped {skipped}, failed {failed}', {
+const summary = (r: SendResult) => {
+  const counts = {
     sent: typeof r.sent === 'number' ? r.sent : r.sent ? 1 : 0,
+    pushed: r.pushed ?? 0,
     skipped: r.skipped ?? 0,
     failed: r.failed ?? 0,
-  });
+  };
+  return counts.pushed
+    ? tx('Emails {sent}, notifications {pushed}, skipped {skipped}, failed {failed}', counts)
+    : tx('Sent {sent}, skipped {skipped}, failed {failed}', counts);
+};
+
+const DELIVERY: { value: Delivery; label: string; description: string }[] = [
+  {
+    value: 'email',
+    label: 'Email only',
+    description: 'Every player with an email address gets an email.',
+  },
+  {
+    value: 'push_first',
+    label: 'Notification first',
+    description: 'Players with notifications on get a notification. The others get an email.',
+  },
+  {
+    value: 'both',
+    label: 'Notification and email',
+    description: 'Players get a notification and an email, when they have them.',
+  },
+];
 
 interface Bulk {
   key: string;
@@ -32,6 +61,7 @@ interface Bulk {
   description: string;
   path: string;
   body?: unknown;
+  emailOnly?: boolean;
 }
 
 // Everything about e-mailing players for a running tournament or a registration lobby: sender
@@ -66,6 +96,11 @@ export function CommunicateSection({ kind, id }: { kind: 'tournament' | 'lobby';
     invalidate: [settingsKey],
     success: 'Email settings saved',
   });
+  const saveDelivery = useAdminMutation({
+    request: (delivery: Delivery) => write(`${base}/email-settings`, { delivery }, 'PATCH'),
+    invalidate: [settingsKey],
+    success: 'Delivery saved',
+  });
   const send = useAdminMutation({
     request: (bulk: Bulk) => write<SendResult>(`${base}/${bulk.path}`, bulk.body),
     success: (result) => summary(result),
@@ -75,6 +110,11 @@ export function CommunicateSection({ kind, id }: { kind: 'tournament' | 'lobby';
     },
   });
   const configured = status.data?.configured !== false;
+  const delivery: Delivery = (kind === 'tournament' && settings.data?.delivery) || 'email';
+  const pushReady = settings.data?.push_available === true;
+  const usesPush = delivery !== 'email' && pushReady;
+  // Bulk sends work when email is set up, or when push can reach someone instead.
+  const canSend = configured || usesPush;
   const bulks: Bulk[] =
     kind === 'tournament'
       ? [
@@ -87,8 +127,9 @@ export function CommunicateSection({ kind, id }: { kind: 'tournament' | 'lobby';
           {
             key: 'codes',
             label: 'Login codes',
-            description: 'Send each player their passphrase and link.',
+            description: 'Send each player their passphrase and link. Always by email.',
             path: 'send-all-emails',
+            emailOnly: true,
           },
           {
             key: 'round',
@@ -113,10 +154,55 @@ export function CommunicateSection({ kind, id }: { kind: 'tournament' | 'lobby';
         ];
   return (
     <Stack gap="md">
-      {!configured && (
+      {!configured && !usesPush && (
         <Notice tone="warning" icon={<IconMail size={18} />}>
           {tx('Email is not set up on this server, so sending is disabled.')}
         </Notice>
+      )}
+      {!configured && usesPush && (
+        <Notice tone="warning" icon={<IconMail size={18} />}>
+          {tx(
+            'Email is not set up on this server. Only players with notifications on are reached.',
+          )}
+        </Notice>
+      )}
+      {kind === 'tournament' && (
+        <Section
+          title={tx('Delivery')}
+          description={tx('How messages to players are sent. Login codes always go by email.')}
+        >
+          <Radio.Group
+            value={delivery}
+            onChange={(v) => saveDelivery.mutate(v as Delivery)}
+            aria-label={tx('Delivery')}
+          >
+            <Stack gap="sm">
+              {DELIVERY.map((d) => (
+                <Radio
+                  key={d.value}
+                  value={d.value}
+                  label={tx(d.label)}
+                  description={tx(d.description)}
+                  disabled={saveDelivery.isPending || (d.value !== 'email' && !pushReady)}
+                />
+              ))}
+            </Stack>
+          </Radio.Group>
+          {settings.data &&
+            (pushReady ? (
+              <Text size="xs" c="dimmed">
+                <IconBell size={12} style={{ verticalAlign: 'middle' }} />{' '}
+                {tx('Players with notifications on: {count}', {
+                  count: settings.data.push_subscribers ?? 0,
+                })}
+              </Text>
+            ) : (
+              <Text size="xs" c="dimmed">
+                {tx('Notifications are not set up on this server.')}
+              </Text>
+            ))}
+          <MutationError error={saveDelivery.error} />
+        </Section>
       )}
       <Section
         title={tx('Sender')}
@@ -148,7 +234,11 @@ export function CommunicateSection({ kind, id }: { kind: 'tournament' | 'lobby';
       </Section>
       <Section
         title={tx('Send to everyone')}
-        description={tx('Only players with an email address receive these.')}
+        description={
+          usesPush
+            ? tx('Players with no email address and no notifications are skipped.')
+            : tx('Only players with an email address receive these.')
+        }
       >
         <Stack gap="xs">
           {bulks.map((b) => (
@@ -163,7 +253,8 @@ export function CommunicateSection({ kind, id }: { kind: 'tournament' | 'lobby';
               </div>
               <Button
                 variant="light"
-                disabled={!configured}
+                flex="none"
+                disabled={b.emailOnly ? !configured : !canSend}
                 onClick={() => {
                   send.reset();
                   setPending(b);
@@ -178,7 +269,13 @@ export function CommunicateSection({ kind, id }: { kind: 'tournament' | 'lobby';
       {kind === 'tournament' && (
         <Section
           title={tx('Message to players')}
-          description={tx('A short note from you, sent to every player with an email address.')}
+          description={
+            usesPush
+              ? tx(
+                  'A short note from you, sent to every player with notifications or an email address.',
+                )
+              : tx('A short note from you, sent to every player with an email address.')
+          }
         >
           <Textarea
             aria-label={tx('Message to players')}
@@ -190,7 +287,7 @@ export function CommunicateSection({ kind, id }: { kind: 'tournament' | 'lobby';
           />
           <Group justify="flex-end">
             <Button
-              disabled={!configured || !message.trim()}
+              disabled={!canSend || !message.trim()}
               onClick={() => {
                 send.reset();
                 setPending({
@@ -238,7 +335,11 @@ export function CommunicateSection({ kind, id }: { kind: 'tournament' | 'lobby';
       <ConfirmAction
         opened={!!pending}
         title={pending ? tx(pending.label) : undefined}
-        description={tx('Send this email now? It cannot be recalled.')}
+        description={
+          usesPush && !pending?.emailOnly
+            ? tx('Send this now? It cannot be recalled.')
+            : tx('Send this email now? It cannot be recalled.')
+        }
         confirmLabel={tx('Send')}
         loading={send.isPending}
         error={send.error}

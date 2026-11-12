@@ -26,11 +26,11 @@ from ..email import (
     is_valid_email,
     render_organizer_message_email,
     render_tournament_message_email,
-    send_email,
 )
 from . import payments_store as store
 from . import player_secret_store as _pss
 from .db import get_db
+from .player_delivery import PlayerDelivery, any_channel_configured, ensure_can_send
 from .helpers import _require_editor_access
 from .player_secret_store import lookup_registrant_by_passphrase, lookup_registrant_by_token
 from .routes_crud import _get_email_settings as _get_tournament_email_settings
@@ -372,7 +372,7 @@ async def remind_unpaid_tournament(
     req: RemindUnpaidIn | None = None,
     user: User = Depends(get_current_user),
 ) -> RemindUnpaidOut:
-    if not email_is_configured():
+    if not any_channel_configured():
         raise HTTPException(400, "Email is not configured on this server")
     client_ip = _client_ip(request)
     _email_send_rate_limiter.check(client_ip, "Too many email send attempts — try again later")
@@ -394,36 +394,40 @@ async def remind_unpaid_tournament(
         settings=settings,
     )
     es = _get_tournament_email_settings(tid)
-    sent = failed = 0
+    ensure_can_send(es)
+    delivery = PlayerDelivery(tid, data, es)
     unreachable: list[str] = []
     for row in _pending_rows(listing):
         info = by_id.get(row.player_id)
-        email = (info or {}).get("email") or row.email
-        if not info or not email or not is_valid_email(email):
+        email = (info or {}).get("email") or row.email or ""
+        if not info or not delivery.reachable(row.player_id, email):
             unreachable.append(row.player_name)
             continue
         lang = info.get("lang", "en")
         message = (req.message if req and req.message else None) or store.reminder_message(
             settings, concept=row.concept, entity_name=data["name"], lang=lang
         )
-        subject, body = render_tournament_message_email(
-            tournament_name=data["name"],
-            player_name=row.player_name,
-            message=message,
-            token=info["token"],
-            tournament_id=tid,
-            tournament_alias=data.get("alias"),
-            reply_to=es.reply_to,
-            lang=lang,
+        await delivery.deliver(
+            row.player_id,
+            email,
+            render_email=lambda info=info, row=row, message=message, lang=lang: render_tournament_message_email(
+                tournament_name=data["name"],
+                player_name=row.player_name,
+                message=message,
+                token=info["token"],
+                tournament_id=tid,
+                tournament_alias=data.get("alias"),
+                reply_to=es.reply_to,
+                lang=lang,
+            ),
+            push_body=lambda message=message: message,
+            tag=f"{tid}-payment-reminder",
+            subject=req.subject if req and req.subject else None,
         )
-        if req and req.subject:
-            subject = req.subject
-        ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
-        if ok:
-            sent += 1
-        else:
-            failed += 1
-    return RemindUnpaidOut(sent=sent, failed=failed, skipped=len(unreachable), unreachable=unreachable)
+    c = delivery.counts
+    return RemindUnpaidOut(
+        sent=c.sent, pushed=c.pushed, failed=c.failed, skipped=len(unreachable), unreachable=unreachable
+    )
 
 
 # ────────────────────────────────────────────────────────────────────────────

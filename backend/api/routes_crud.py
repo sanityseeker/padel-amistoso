@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 
 import json
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
@@ -38,10 +39,20 @@ from .player_secret_store import (
     extract_partner_rival_stats,
     get_secrets_for_tournament,
 )
+from .player_delivery import (
+    PlayerDelivery,
+    any_channel_configured,
+    ensure_can_send,
+    push_next_round,
+    push_results,
+    push_started,
+)
+from .push import is_push_available, subscribed_player_ids
 from .rate_limit import BoundedRateLimiter
 from .schemas import (
-    EmailSettings,
-    EmailSettingsRequest,
+    TournamentEmailSettings,
+    TournamentEmailSettingsOut,
+    TournamentEmailSettingsRequest,
     SetAliasRequest,
     SetCommunityRequest,
     SetMatchCommentRequest,
@@ -288,23 +299,34 @@ async def update_tv_settings(tid: str, req: TvSettingsRequest, user: User = Depe
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def _get_email_settings(tid: str) -> EmailSettings:
+def _get_email_settings(tid: str) -> TournamentEmailSettings:
     """Return the current email settings for a tournament, falling back to defaults."""
     stored = _tournaments[tid].get("email_settings")
-    return EmailSettings(**stored) if stored else EmailSettings()
+    return TournamentEmailSettings(**stored) if stored else TournamentEmailSettings()
+
+
+def _email_settings_out(tid: str, settings: TournamentEmailSettings) -> dict:
+    available = is_push_available()
+    return TournamentEmailSettingsOut(
+        **settings.model_dump(),
+        push_available=available,
+        push_subscribers=len(subscribed_player_ids(tid)) if available else 0,
+    ).model_dump()
 
 
 @router.get("/{tid}/email-settings")
 async def get_email_settings(tid: str, user: User = Depends(get_current_user)) -> dict:
-    """Return the current per-tournament email customisation settings."""
+    """Return the per-tournament email settings, the delivery mode and how many players have push on."""
     _require_editor_access(tid, user)
     if tid not in _tournaments:
         raise HTTPException(404, "Tournament not found")
-    return _get_email_settings(tid).model_dump()
+    return _email_settings_out(tid, _get_email_settings(tid))
 
 
 @router.patch("/{tid}/email-settings")
-async def update_email_settings(tid: str, req: EmailSettingsRequest, user: User = Depends(get_current_user)) -> dict:
+async def update_email_settings(
+    tid: str, req: TournamentEmailSettingsRequest, user: User = Depends(get_current_user)
+) -> dict:
     """Partially update per-tournament email customisation settings.
 
     Only supplied (non-null) fields are changed.
@@ -318,7 +340,7 @@ async def update_email_settings(tid: str, req: EmailSettingsRequest, user: User 
         updated = current.model_copy(update=patch)
         _tournaments[tid]["email_settings"] = updated.model_dump()
         await save_tournament(tid)
-    return updated.model_dump()
+    return _email_settings_out(tid, updated)
 
 
 @router.patch("/{tid}/public")
@@ -708,8 +730,8 @@ async def email_status() -> dict:
 
 @router.post("/{tid}/notify-players")
 async def notify_tournament_players(tid: str, request: Request, user: User = Depends(get_current_user)) -> dict:
-    """Send a 'tournament started' email to all players with a valid email address."""
-    if not email_is_configured():
+    """Tell every player the tournament started, by push or email per the delivery setting."""
+    if not any_channel_configured():
         raise HTTPException(400, "Email is not configured on this server")
 
     client_ip = request.client.host if request.client else "unknown"
@@ -721,36 +743,29 @@ async def notify_tournament_players(tid: str, request: Request, user: User = Dep
         raise HTTPException(404, "Tournament not found")
 
     data = _tournaments[tid]
-    tournament_name = data["name"]
-    alias = data.get("alias")
     es = _get_email_settings(tid)
+    ensure_can_send(es)
 
-    secrets = get_secrets_for_tournament(tid)
-    sent = 0
-    skipped = 0
-    failed = 0
-    for pid, info in secrets.items():
-        email = info.get("email", "")
-        if not email or not is_valid_email(email):
-            skipped += 1
-            continue
-        subject, body = render_tournament_started_email(
-            tournament_name=tournament_name,
-            player_name=info["name"],
-            passphrase=info["passphrase"],
-            token=info["token"],
-            tournament_id=tid,
-            tournament_alias=alias,
-            reply_to=es.reply_to,
-            lang=info.get("lang", "en"),
+    delivery = PlayerDelivery(tid, data, es)
+    for pid, info in get_secrets_for_tournament(tid).items():
+        lang = info.get("lang", "en")
+        await delivery.deliver(
+            pid,
+            info.get("email", ""),
+            render_email=lambda info=info, lang=lang: render_tournament_started_email(
+                tournament_name=data["name"],
+                player_name=info["name"],
+                passphrase=info["passphrase"],
+                token=info["token"],
+                tournament_id=tid,
+                tournament_alias=data.get("alias"),
+                reply_to=es.reply_to,
+                lang=lang,
+            ),
+            push_body=lambda lang=lang: push_started(lang),
+            tag=f"{tid}-started",
         )
-        ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
-        if ok:
-            sent += 1
-        else:
-            failed += 1
-
-    return {"sent": sent, "skipped": skipped, "failed": failed}
+    return delivery.counts.model_dump()
 
 
 @router.post("/{tid}/send-email/{player_id}")
@@ -847,8 +862,8 @@ async def send_all_tournament_emails(tid: str, request: Request, user: User = De
 async def send_tournament_message_emails(
     tid: str, req: TournamentMessageRequest, request: Request, user: User = Depends(get_current_user)
 ) -> dict:
-    """Send an organizer message email to all tournament players with a valid email address."""
-    if not email_is_configured():
+    """Send an organizer message to every player, by push or email per the delivery setting."""
+    if not any_channel_configured():
         raise HTTPException(400, "Email is not configured on this server")
 
     client_ip = request.client.host if request.client else "unknown"
@@ -860,42 +875,35 @@ async def send_tournament_message_emails(
         raise HTTPException(404, "Tournament not found")
 
     data = _tournaments[tid]
-    tournament_name = data["name"]
-    alias = data.get("alias")
     es = _get_email_settings(tid)
+    ensure_can_send(es)
 
-    secrets = get_secrets_for_tournament(tid)
-    sent = 0
-    skipped = 0
-    failed = 0
-    for _pid, info in secrets.items():
-        email = info.get("email", "")
-        if not email or not is_valid_email(email):
-            skipped += 1
-            continue
-        subject, body = render_tournament_message_email(
-            tournament_name=tournament_name,
-            player_name=info["name"],
-            message=req.message,
-            token=info["token"],
-            tournament_id=tid,
-            tournament_alias=alias,
-            reply_to=es.reply_to,
-            lang=info.get("lang", "en"),
+    delivery = PlayerDelivery(tid, data, es)
+    tag = f"{tid}-message-{int(time.time())}"
+    for pid, info in get_secrets_for_tournament(tid).items():
+        await delivery.deliver(
+            pid,
+            info.get("email", ""),
+            render_email=lambda info=info: render_tournament_message_email(
+                tournament_name=data["name"],
+                player_name=info["name"],
+                message=req.message,
+                token=info["token"],
+                tournament_id=tid,
+                tournament_alias=data.get("alias"),
+                reply_to=es.reply_to,
+                lang=info.get("lang", "en"),
+            ),
+            push_body=lambda: req.message,
+            tag=tag,
         )
-        ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
-        if ok:
-            sent += 1
-        else:
-            failed += 1
-
-    return {"sent": sent, "skipped": skipped, "failed": failed}
+    return delivery.counts.model_dump()
 
 
 @router.post("/{tid}/send-next-round-emails")
 async def send_next_round_emails(tid: str, request: Request, user: User = Depends(get_current_user)) -> dict:
-    """Send a next-round notification email to all players with matches in the current round."""
-    if not email_is_configured():
+    """Tell the players in the current round where to go, by push or email per the delivery setting."""
+    if not any_channel_configured():
         raise HTTPException(400, "Email is not configured on this server")
 
     client_ip = request.client.host if request.client else "unknown"
@@ -911,6 +919,7 @@ async def send_next_round_emails(tid: str, request: Request, user: User = Depend
     tournament_name = data["name"]
     alias = data.get("alias")
     es = _get_email_settings(tid)
+    ensure_can_send(es)
 
     # Determine current round matches across all tournament types
     current_matches: list = []
@@ -1073,43 +1082,38 @@ async def send_next_round_emails(tid: str, request: Request, user: User = Depend
 
     if not player_matches:
         raise HTTPException(400, "No current-round matches to notify about")
-    sent = 0
-    skipped = 0
-    failed = 0
+    delivery = PlayerDelivery(tid, data, es)
     for pid, matches_info in player_matches.items():
         info = secrets.get(pid)
         if not info:
-            skipped += 1
+            delivery.counts.skipped += 1
             continue
-        email = info.get("email", "")
-        if not email or not is_valid_email(email):
-            skipped += 1
-            continue
-        subject, body = render_next_round_email(
-            tournament_name=tournament_name,
-            player_name=info["name"],
-            round_number=round_number,
-            matches_info=matches_info,
-            stage=stage,
-            token=info["token"],
-            tournament_id=tid,
-            tournament_alias=alias,
-            reply_to=es.reply_to,
-            lang=info.get("lang", "en"),
+        lang = info.get("lang", "en")
+        await delivery.deliver(
+            pid,
+            info.get("email", ""),
+            render_email=lambda info=info, matches_info=matches_info, lang=lang: render_next_round_email(
+                tournament_name=tournament_name,
+                player_name=info["name"],
+                round_number=round_number,
+                matches_info=matches_info,
+                stage=stage,
+                token=info["token"],
+                tournament_id=tid,
+                tournament_alias=alias,
+                reply_to=es.reply_to,
+                lang=lang,
+            ),
+            push_body=lambda matches_info=matches_info, lang=lang: push_next_round(lang, round_number, matches_info),
+            tag=f"{tid}-next-round",
         )
-        ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
-        if ok:
-            sent += 1
-        else:
-            failed += 1
-
-    return {"sent": sent, "skipped": skipped, "failed": failed}
+    return delivery.counts.model_dump()
 
 
 @router.post("/{tid}/send-results-emails")
 async def send_results_emails(tid: str, request: Request, user: User = Depends(get_current_user)) -> dict:
-    """Send final tournament results email to all players with a valid email."""
-    if not email_is_configured():
+    """Send the final standings to every player, by push or email per the delivery setting."""
+    if not any_channel_configured():
         raise HTTPException(400, "Email is not configured on this server")
 
     client_ip = request.client.host if request.client else "unknown"
@@ -1125,6 +1129,7 @@ async def send_results_emails(tid: str, request: Request, user: User = Depends(g
     tournament_name = data["name"]
     alias = data.get("alias")
     es = _get_email_settings(tid)
+    ensure_can_send(es)
 
     # Build leaderboard based on tournament type
     leaderboard: list[dict] = []
@@ -1175,40 +1180,34 @@ async def send_results_emails(tid: str, request: Request, user: User = Depends(g
     # Build a lookup: player_id -> leaderboard entry
     player_lb = {e["player_id"]: e for e in leaderboard}
 
-    secrets = get_secrets_for_tournament(tid)
-    sent = 0
-    skipped = 0
-    failed = 0
-    for pid, info in secrets.items():
-        email = info.get("email", "")
-        if not email or not is_valid_email(email):
-            skipped += 1
-            continue
+    delivery = PlayerDelivery(tid, data, es)
+    for pid, info in get_secrets_for_tournament(tid).items():
         entry = player_lb.get(pid)
         if not entry:
-            skipped += 1
+            delivery.counts.skipped += 1
             continue
-        subject, body = render_tournament_results_email(
-            tournament_name=tournament_name,
-            player_name=info["name"],
-            rank=entry["rank"],
-            total_players=total_players,
-            stats={
-                "wins": entry.get("wins", 0),
-                "losses": entry.get("losses", 0),
-                "draws": entry.get("draws", 0),
-            },
-            leaderboard_top=leaderboard_top,
-            token=info["token"],
-            tournament_id=tid,
-            tournament_alias=alias,
-            reply_to=es.reply_to,
-            lang=info.get("lang", "en"),
+        lang = info.get("lang", "en")
+        await delivery.deliver(
+            pid,
+            info.get("email", ""),
+            render_email=lambda info=info, entry=entry, lang=lang: render_tournament_results_email(
+                tournament_name=tournament_name,
+                player_name=info["name"],
+                rank=entry["rank"],
+                total_players=total_players,
+                stats={
+                    "wins": entry.get("wins", 0),
+                    "losses": entry.get("losses", 0),
+                    "draws": entry.get("draws", 0),
+                },
+                leaderboard_top=leaderboard_top,
+                token=info["token"],
+                tournament_id=tid,
+                tournament_alias=alias,
+                reply_to=es.reply_to,
+                lang=lang,
+            ),
+            push_body=lambda entry=entry, lang=lang: push_results(lang, entry["rank"], total_players),
+            tag=f"{tid}-results",
         )
-        ok = await send_email(email, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
-        if ok:
-            sent += 1
-        else:
-            failed += 1
-
-    return {"sent": sent, "skipped": skipped, "failed": failed}
+    return delivery.counts.model_dump()

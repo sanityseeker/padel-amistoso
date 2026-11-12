@@ -1109,22 +1109,22 @@ class TestNotifyPlayersEndpoint:
 
     def test_notify_fails_when_not_configured(self, client: TestClient, auth_headers: dict) -> None:
         tid = self._create_gp_tournament(client, auth_headers)
-        with patch("backend.api.routes_crud.email_is_configured", return_value=False):
+        with patch("backend.api.player_delivery.email_is_configured", return_value=False):
             r = client.post(f"/api/tournaments/{tid}/notify-players", headers=auth_headers)
         assert r.status_code == 400
 
     def test_notify_404_unknown_tournament(self, client: TestClient, auth_headers: dict) -> None:
-        with patch("backend.api.routes_crud.email_is_configured", return_value=True):
+        with patch("backend.api.player_delivery.email_is_configured", return_value=True):
             r = client.post("/api/tournaments/nonexistent/notify-players", headers=auth_headers)
         assert r.status_code == 404
 
-    @patch("backend.api.routes_crud.send_email", new_callable=AsyncMock, return_value=True)
+    @patch("backend.api.player_delivery.send_email", new_callable=AsyncMock, return_value=True)
     def test_notify_skips_all_when_no_emails(
         self, mock_send: AsyncMock, client: TestClient, auth_headers: dict
     ) -> None:
         """Without email addresses on secrets, all players are skipped."""
         tid = self._create_gp_tournament(client, auth_headers)
-        with patch("backend.api.routes_crud.email_is_configured", return_value=True):
+        with patch("backend.api.player_delivery.email_is_configured", return_value=True):
             r = client.post(f"/api/tournaments/{tid}/notify-players", headers=auth_headers)
         assert r.status_code == 200
         data = r.json()
@@ -1393,12 +1393,12 @@ class TestTournamentSendMessageEmails:
             headers=headers,
         ).json()["id"]
 
-    @patch("backend.api.routes_crud.send_email", new_callable=AsyncMock, return_value=True)
+    @patch("backend.api.player_delivery.send_email", new_callable=AsyncMock, return_value=True)
     def test_send_message_to_players_with_email(
         self, mock_send: AsyncMock, client: TestClient, auth_headers: dict
     ) -> None:
         tid = self._create_gp_with_email(client, auth_headers)
-        with patch("backend.api.routes_crud.email_is_configured", return_value=True):
+        with patch("backend.api.player_delivery.email_is_configured", return_value=True):
             r = client.post(
                 f"/api/tournaments/{tid}/send-message-emails",
                 json={"message": "Hello players!"},
@@ -1411,7 +1411,7 @@ class TestTournamentSendMessageEmails:
 
     def test_send_message_requires_message(self, client: TestClient, auth_headers: dict) -> None:
         tid = self._create_gp_with_email(client, auth_headers)
-        with patch("backend.api.routes_crud.email_is_configured", return_value=True):
+        with patch("backend.api.player_delivery.email_is_configured", return_value=True):
             r = client.post(
                 f"/api/tournaments/{tid}/send-message-emails",
                 json={"message": ""},
@@ -1421,7 +1421,7 @@ class TestTournamentSendMessageEmails:
 
     def test_send_message_fails_when_not_configured(self, client: TestClient, auth_headers: dict) -> None:
         tid = self._create_gp_with_email(client, auth_headers)
-        with patch("backend.api.routes_crud.email_is_configured", return_value=False):
+        with patch("backend.api.player_delivery.email_is_configured", return_value=False):
             r = client.post(
                 f"/api/tournaments/{tid}/send-message-emails",
                 json={"message": "hello"},

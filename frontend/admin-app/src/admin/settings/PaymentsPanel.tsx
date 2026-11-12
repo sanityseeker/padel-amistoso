@@ -627,12 +627,23 @@ export function PaymentsPanel({
   });
   const remind = useAdminMutation({
     request: () =>
-      write<{ sent: number; failed: number; skipped: number; unreachable?: string[] }>(
-        `${base}/payments/remind-unpaid`,
-        {},
-      ),
+      write<{
+        sent: number;
+        pushed?: number;
+        failed: number;
+        skipped: number;
+        unreachable?: string[];
+      }>(`${base}/payments/remind-unpaid`, {}),
     success: (r) => {
-      const summary = tx('Reminders sent: {sent}, skipped {skipped}, failed {failed}', r);
+      const summary = r.pushed
+        ? tx(
+            'Reminders: emails {sent}, notifications {pushed}, skipped {skipped}, failed {failed}',
+            {
+              ...r,
+              pushed: r.pushed,
+            },
+          )
+        : tx('Reminders sent: {sent}, skipped {skipped}, failed {failed}', r);
       return r.unreachable?.length
         ? `${summary}. ${tx('Without an e-mail address: {names}', { names: r.unreachable.join(', ') })}`
         : summary;

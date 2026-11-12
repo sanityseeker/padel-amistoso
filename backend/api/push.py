@@ -206,6 +206,11 @@ def get_subscriptions_for_tournament(tournament_id: str) -> list[tuple[str, dict
         return []
 
 
+def subscribed_player_ids(tournament_id: str) -> set[str]:
+    """Return the IDs of the players in a tournament who have notifications on."""
+    return {pid for pid, _sub in get_subscriptions_for_tournament(tournament_id)}
+
+
 def get_subscriptions_for_players(tournament_id: str, player_ids: set[str]) -> list[tuple[str, dict]]:
     """Return subscriptions only for the given player IDs in a tournament."""
     if not player_ids:

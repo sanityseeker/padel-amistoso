@@ -1963,5 +1963,22 @@
   "Payment confirmed by the organizer.": "Организатор подтвердил оплату.",
   "No charge. The organizer set your entry as free.": "Без оплаты. Организатор сделал ваше участие бесплатным.",
   "The organizer owes you a refund.": "Организатор должен вернуть вам деньги.",
-  "Refunded.": "Деньги возвращены."
+  "Refunded.": "Деньги возвращены.",
+  "Emails {sent}, notifications {pushed}, skipped {skipped}, failed {failed}": "Писем: {sent}, уведомлений: {pushed}, пропущено: {skipped}, ошибок: {failed}",
+  "Email only": "Только email",
+  "Every player with an email address gets an email.": "Письмо получит каждый игрок по email.",
+  "Notification first": "Сначала уведомление",
+  "Players with notifications on get a notification. The others get an email.": "Игроки с включёнными уведомлениями получат пуш. Остальные получат письмо.",
+  "Notification and email": "Уведомление и письмо",
+  "Players get a notification and an email, when they have them.": "Игроки получат уведомление и письмо, если у них включены уведомления и указан email.",
+  "Delivery saved": "Способ отправки сохранён",
+  "Send each player their passphrase and link. Always by email.": "Отправить каждому игроку кодовую фразу и ссылку. Всегда по email.",
+  "Email is not set up on this server. Only players with notifications on are reached.": "На этом сервере не настроен email. Сообщения получат только игроки с включёнными уведомлениями.",
+  "Delivery": "Способ отправки",
+  "How messages to players are sent. Login codes always go by email.": "Как отправлять сообщения игрокам. Коды для входа всегда отправляются по email.",
+  "Players with notifications on: {count}": "Игроков с включёнными уведомлениями: {count}",
+  "Players with no email address and no notifications are skipped.": "Игроки без адреса email и без уведомлений будут пропущены.",
+  "A short note from you, sent to every player with notifications or an email address.": "Короткое сообщение для всех игроков с уведомлениями или адресом email.",
+  "Send this now? It cannot be recalled.": "Отправить сейчас? Вернуть сообщение нельзя.",
+  "Reminders: emails {sent}, notifications {pushed}, skipped {skipped}, failed {failed}": "Напоминания — писем: {sent}, уведомлений: {pushed}, пропущено: {skipped}, ошибок: {failed}"
 }

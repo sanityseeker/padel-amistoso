@@ -1955,5 +1955,22 @@
   "Payment confirmed by the organizer.": "El organizador confirmó el pago.",
   "No charge. The organizer set your entry as free.": "Sin cargo. El organizador marcó tu inscripción como gratuita.",
   "The organizer owes you a refund.": "El organizador te debe una devolución.",
-  "Refunded.": "Devuelto."
+  "Refunded.": "Devuelto.",
+  "Emails {sent}, notifications {pushed}, skipped {skipped}, failed {failed}": "Correos {sent}, notificaciones {pushed}, omitidos {skipped}, fallidos {failed}",
+  "Email only": "Solo correo",
+  "Every player with an email address gets an email.": "Cada jugador con correo recibe un correo.",
+  "Notification first": "Primero notificación",
+  "Players with notifications on get a notification. The others get an email.": "Los jugadores con notificaciones activadas reciben una notificación. Los demás reciben un correo.",
+  "Notification and email": "Notificación y correo",
+  "Players get a notification and an email, when they have them.": "Los jugadores reciben una notificación y un correo, si tienen cada uno.",
+  "Delivery saved": "Forma de envío guardada",
+  "Send each player their passphrase and link. Always by email.": "Envía a cada jugador su clave y enlace. Siempre por correo.",
+  "Email is not set up on this server. Only players with notifications on are reached.": "Este servidor no tiene correo configurado. Solo se avisa a los jugadores con notificaciones activadas.",
+  "Delivery": "Forma de envío",
+  "How messages to players are sent. Login codes always go by email.": "Cómo se envían los mensajes a los jugadores. Las claves de acceso siempre van por correo.",
+  "Players with notifications on: {count}": "Jugadores con notificaciones activadas: {count}",
+  "Players with no email address and no notifications are skipped.": "Se omiten los jugadores sin correo y sin notificaciones.",
+  "A short note from you, sent to every player with notifications or an email address.": "Una nota breve tuya, enviada a todos los jugadores con notificaciones o correo.",
+  "Send this now? It cannot be recalled.": "¿Enviar ahora? No se puede retirar.",
+  "Reminders: emails {sent}, notifications {pushed}, skipped {skipped}, failed {failed}": "Recordatorios: correos {sent}, notificaciones {pushed}, omitidos {skipped}, fallidos {failed}"
 }

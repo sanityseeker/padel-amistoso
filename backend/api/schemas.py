@@ -401,6 +401,33 @@ class EmailSettings(BaseModel):
     reply_to: str = ""
 
 
+DeliveryMode = Literal["email", "push_first", "both"]
+"""How organizer sends reach tournament players.
+
+``email``: email only. ``push_first``: a push notification to players who turned
+notifications on, email to the rest. ``both``: push and email to everyone reachable.
+"""
+
+
+class TournamentEmailSettingsRequest(EmailSettingsRequest):
+    """Partial update for a tournament's email settings, plus the delivery mode."""
+
+    delivery: DeliveryMode | None = None
+
+
+class TournamentEmailSettings(EmailSettings):
+    """A tournament's email settings. Lobbies have no push, so only tournaments carry ``delivery``."""
+
+    delivery: DeliveryMode = "email"
+
+
+class TournamentEmailSettingsOut(TournamentEmailSettings):
+    """Tournament email settings plus what push can reach right now."""
+
+    push_available: bool = False
+    push_subscribers: int = 0
+
+
 class SetMatchCommentRequest(BaseModel):
     """Set or clear an optional admin comment on a pending match."""
 
@@ -1377,6 +1404,7 @@ class RemindUnpaidIn(BaseModel):
 
 class RemindUnpaidOut(BaseModel):
     sent: int = 0
+    pushed: int = 0
     failed: int = 0
     skipped: int = 0
     unreachable: list[str] = Field(default_factory=list)
