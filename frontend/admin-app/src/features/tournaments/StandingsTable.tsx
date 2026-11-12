@@ -303,7 +303,8 @@ export function StandingsTable({
                         onClick={() => toggle(c.key)}
                         aria-label={c.title ?? c.label}
                       >
-                        {c.label}
+                        {/* The arrow's slot sits before the label: the numbers are right-aligned,
+                            so the label has to end where they do. */}
                         <span aria-hidden className={classes.arrow}>
                           {active
                             ? sort.dir === 'desc'
@@ -313,6 +314,7 @@ export function StandingsTable({
                               ? '↓'
                               : ''}
                         </span>
+                        {c.label}
                       </UnstyledButton>
                     )}
                   </Table.Th>
