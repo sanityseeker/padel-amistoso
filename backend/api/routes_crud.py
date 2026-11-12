@@ -81,7 +81,8 @@ async def list_tournaments(current_user: User | None = Depends(get_current_user_
     shared_ids: set[str] = set()
     if current_user is not None and current_user.role != UserRole.ADMIN:
         shared_ids = set(get_shared_tournament_ids(current_user.username))
-    for tid, data in _tournaments.items():
+    # A snapshot: sync routes run in worker threads and can add a tournament while this loop runs.
+    for tid, data in list(_tournaments.items()):
         # Visibility filter
         if current_user is None:
             if not data.get("public", True):
@@ -394,7 +395,7 @@ async def set_alias(tid: str, req: SetAliasRequest, user: User = Depends(require
         if tid not in _tournaments:
             raise HTTPException(404, "Tournament not found")
         # Check uniqueness: no other tournament should have this alias.
-        for other_tid, data in _tournaments.items():
+        for other_tid, data in list(_tournaments.items()):
             if other_tid != tid and data.get("alias") == req.alias:
                 raise HTTPException(409, f"Alias '{req.alias}' is already used by tournament {other_tid}")
         _tournaments[tid]["alias"] = req.alias
@@ -422,7 +423,7 @@ async def resolve_alias(alias: str) -> dict:
     ``/tv/<tid>`` links (push notifications, shared links) don't produce a
     404 round-trip before the TV page falls back to the ID.
     """
-    for tid, data in _tournaments.items():
+    for tid, data in list(_tournaments.items()):
         if data.get("alias") == alias:
             return {"id": tid, "name": data["name"], "type": data["type"], "sport": data.get("sport", Sport.PADEL)}
     data = _tournaments.get(alias)
