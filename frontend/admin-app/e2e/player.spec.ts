@@ -70,11 +70,12 @@ test('player signup, profile editing, mobile layout and separate organizer login
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Anna Updated' })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  // Measure once the web fonts have settled: a swap re-flows the text.
+  // Measure once the web fonts have settled: a swap re-flows the text. The phone layout is picked by a
+  // media query after the resize, so poll until it is in place instead of measuring the first frame.
   await page.evaluate(() => document.fonts.ready);
-  expect(
-    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-  ).toBeTruthy();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
   await page.getByRole('main').getByRole('button', { name: 'Log out of Player Hub' }).click();
   await expect(page.getByRole('heading', { name: 'Player Hub' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('padel-auth-token'))).toBe(
