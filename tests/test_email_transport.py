@@ -88,6 +88,53 @@ def test_classify_resend_error(status: int, name: str, message: str, expected: S
     assert classify_resend_error(status, name, message) is expected
 
 
+# Replies recorded from the live Resend API on 2026-11-12.
+LIVE_INVALID_TO = {
+    "message": "Invalid `to` field. The email address needs to follow the `email@example.com` "
+    "or `Name <email@example.com>` format.",
+    "name": "validation_error",
+    "statusCode": 422,
+}
+LIVE_BAD_KEY = {"message": "API key is invalid", "name": "validation_error", "statusCode": 401}
+
+
+def test_live_invalid_to_is_recipient_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(422, json=LIVE_INVALID_TO)
+
+    with pytest.raises(EmailSendError) as info:
+        _run(_resend(handler).send(EMAIL))
+    assert info.value.failure is SendFailure.RECIPIENT
+
+
+def test_live_bad_key_fails_over_and_pauses() -> None:
+    sender = _sender()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json=LIVE_BAD_KEY)
+
+    smtp = FakeTransport("smtp")
+    assert _run(sender.send([_resend(handler), smtp], EMAIL)) == "smtp"
+    assert sender.paused_until("resend-api") > 0
+
+
+def test_live_strict_batch_rejection_isolates_bad_address() -> None:
+    """Live: a batch with one invalid address is rejected whole with the single-send 422 body."""
+    bad = "not-an-email"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/emails/batch":
+            return httpx.Response(422, json=LIVE_INVALID_TO)
+        if json.loads(request.content)["to"] == [bad]:
+            return httpx.Response(422, json=LIVE_INVALID_TO)
+        return httpx.Response(200, json={"id": "01a1cd64-536a-7c8d-80b6-f41cb5faf5c3"})
+
+    emails = [EMAIL, OutgoingEmail(to=bad, subject="S", html_body="<p>b</p>")]
+    smtp = FakeTransport("smtp")
+    assert _run(_sender().send_many([_resend(handler), smtp], emails)) == ["resend-api", None]
+    assert smtp.calls == 0
+
+
 def test_classify_smtp_errors() -> None:
     bad_rcpt = aiosmtplib.SMTPRecipientRefused(550, "No such user", "x@example.com")
     assert classify_smtp_error(aiosmtplib.SMTPRecipientsRefused([bad_rcpt])) is SendFailure.RECIPIENT
