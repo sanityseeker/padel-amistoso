@@ -91,12 +91,17 @@ def _clean_state(tmp_path):
     orig_smtp_from = email_mod.SMTP_FROM
     orig_smtp_user = email_mod.SMTP_USER
     orig_smtp_pass = email_mod.SMTP_PASS
+    orig_resend_key = email_mod.RESEND_API_KEY
+    orig_resend_from = email_mod.RESEND_FROM
     orig_aiosmtplib_send = email_mod.aiosmtplib.send
 
     email_mod.SMTP_HOST = None
     email_mod.SMTP_FROM = None
     email_mod.SMTP_USER = None
     email_mod.SMTP_PASS = None
+    email_mod.RESEND_API_KEY = None
+    email_mod.RESEND_FROM = None
+    email_mod._sender.reset()
 
     async def _mock_aiosmtplib_send(*args, **kwargs):
         return None
@@ -309,6 +314,9 @@ def _clean_state(tmp_path):
     email_mod.SMTP_FROM = orig_smtp_from
     email_mod.SMTP_USER = orig_smtp_user
     email_mod.SMTP_PASS = orig_smtp_pass
+    email_mod.RESEND_API_KEY = orig_resend_key
+    email_mod.RESEND_FROM = orig_resend_from
+    email_mod._sender.reset()
     email_mod.aiosmtplib.send = orig_aiosmtplib_send
 
     # Restore push state.
