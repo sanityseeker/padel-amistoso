@@ -1,3 +1,24 @@
+## v3.4.0 (2026-11-12)
+
+### Feat
+
+- **standings**: keep P on phones, explain W–L in the TV legend, match Russian descriptions to abbreviations
+- **lobbies**: let an organizer clear the recent answer changes
+- **lobbies**: keep answer changes "seen" per organizer on the server
+- **player**: clearer recent rating trend chart
+- **tv**: show the player card's matches from the player's side
+- **standings**: show one W–L record column on phones
+
+### Fix
+
+- **api**: iterate a snapshot of the in-memory tournaments
+- **lobbies**: keep the answers tab name free of the unseen count label
+- **api**: iterate a snapshot of the in-memory tournaments
+- **lobbies**: wrap the lobby settings tabs on phones
+- **theme**: keep field text at 16 px on touch screens
+- **standings**: line number column headers up with their values
+- tell recipients when replies are not read
+
 ## v3.3.0 (2026-11-12)
 
 ### Feat
