@@ -1,3 +1,9 @@
+## v3.5.3 (2026-11-12)
+
+### Fix
+
+- charge lobby fees only to registrants who pass the participant filter
+
 ## v3.5.2 (2026-11-12)
 
 ### Fix
