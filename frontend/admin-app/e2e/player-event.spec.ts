@@ -62,18 +62,18 @@ test('standings fit a phone and reveal the hidden statistics', async ({ page, re
   await expect(table).toBeVisible();
   const ana = table.getByRole('button', { name: 'Ana', exact: true });
   await expect(ana).toHaveAttribute('aria-expanded', 'false');
-  // A phone shows one W–L record instead of P, W and L; P moves to the expanded row.
-  await expect(table.getByRole('columnheader', { name: /Wins and losses/ })).toBeVisible();
+  // A phone shows P and one W–L record instead of separate W and L columns.
+  for (const title of ['Matches played', 'Wins and losses'])
+    await expect(table.getByRole('columnheader', { name: new RegExp(title) })).toBeVisible();
   await ana.click();
   await expect(ana).toHaveAttribute('aria-expanded', 'true');
-  await expect(table.getByText('Matches played')).toBeVisible();
   await expect(page.getByTestId('standings-legend')).toContainText('Wins and losses');
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
 });
 
-test('set-scored standings on a 360px phone keep the W–L record and game difference', async ({
+test('set-scored standings on a 360px phone keep P, the W–L record and game difference', async ({
   page,
   request,
 }) => {
@@ -100,9 +100,9 @@ test('set-scored standings on a 360px phone keep the W–L record and game diffe
   await page.goto(`/player/matches/tournament/${id}`);
   const table = page.getByRole('table').filter({ hasText: 'Ana' });
   await expect(table).toBeVisible();
-  for (const title of ['Wins and losses', 'Game difference'])
+  for (const title of ['Matches played', 'Wins and losses', 'Game difference'])
     await expect(table.getByRole('columnheader', { name: new RegExp(title) })).toBeVisible();
-  for (const title of ['Matches played', 'Set difference', 'Points for', 'Games for'])
+  for (const title of ['Set difference', 'Points for', 'Games for'])
     await expect(table.getByRole('columnheader', { name: new RegExp(title) })).toHaveCount(0);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),

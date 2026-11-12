@@ -83,6 +83,10 @@ const num =
   (r: StandingRow): number | null | undefined =>
     r[k] as number | null | undefined;
 
+const draws = (r: StandingRow) => Math.max(0, (r.played ?? 0) - (r.wins ?? 0) - (r.losses ?? 0));
+/** Whether the W–L record column also counts draws (W–L–D). A legend uses it to name the same column. */
+export const hasDraws = (rows: StandingRow[]) => rows.some((r) => draws(r) > 0);
+
 function columnsFor(
   preset: StandingsTableProps['preset'],
   rows: StandingRow[],
@@ -97,31 +101,30 @@ function columnsFor(
       { key: 'played', label: tx('Matches'), get: num('played') },
     ];
   // Separate P, W and L need room; a narrower table (a phone) shows one W–L record instead, as sports
-  // apps do, so losses never drop out. P is W + L (+ draws) and moves to the expanded row.
+  // apps do, so losses never drop out. P stays at every width.
   const RECORD = 460;
   const played: Column = {
     key: 'played',
     label: tx('P'),
-    title: tx('Matches played'),
+    // `abbr`: a description that starts with the abbreviation's letter (Russian И – Игры).
+    title: tx('Matches played', { context: 'abbr' }),
     get: (r) => r.played ?? 0,
-    min: RECORD,
   };
   const wins: Column = {
     key: 'wins',
     label: tx('W'),
-    title: tx('Wins'),
+    title: tx('Matches won'),
     get: (r) => r.wins ?? 0,
     min: RECORD,
   };
   const losses: Column = {
     key: 'losses',
     label: tx('L'),
-    title: tx('Losses'),
+    title: tx('Matches lost'),
     get: (r) => r.losses ?? 0,
     min: RECORD,
   };
-  const draws = (r: StandingRow) => Math.max(0, (r.played ?? 0) - (r.wins ?? 0) - (r.losses ?? 0));
-  const withDraws = rows.some((r) => draws(r) > 0);
+  const withDraws = hasDraws(rows);
   const record: Column = {
     key: 'record',
     label: withDraws ? tx('W–L–D') : tx('W–L'),
