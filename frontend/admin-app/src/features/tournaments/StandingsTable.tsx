@@ -68,8 +68,14 @@ interface Column {
   /** Value used for display and for sorting. */
   get: (r: StandingRow) => number | null | undefined;
   digits?: number;
+  /** Text shown instead of `get` (the W–L record); `get` still sorts. */
+  text?: (r: StandingRow) => string;
   /** Narrowest container width (px) that still shows the column; narrower ones move to the expanded row. */
   min?: number;
+  /** Widest container (px) that shows the column; a phone-only summary of columns that need `max` px. */
+  max?: number;
+  /** Columns this one sums up: they are left out of the expanded row while it is shown. */
+  covers?: string[];
   score?: boolean;
 }
 const num =
@@ -82,6 +88,7 @@ function columnsFor(
   rows: StandingRow[],
   eloLabel: string,
   setsMode = false,
+  tv = false,
 ): Column[] {
   const elo: Column = { key: 'elo', label: eloLabel, get: num('elo'), min: 620 };
   if (preset === 'leaderboard')
@@ -89,24 +96,41 @@ function columnsFor(
       { key: 'elo', label: eloLabel, get: num('elo'), score: true },
       { key: 'played', label: tx('Matches'), get: num('played') },
     ];
+  // Separate P, W and L need room; a narrower table (a phone) shows one W–L record instead, as sports
+  // apps do, so losses never drop out. P is W + L (+ draws) and moves to the expanded row.
+  const RECORD = 460;
   const played: Column = {
     key: 'played',
     label: tx('P'),
     title: tx('Matches played'),
     get: (r) => r.played ?? 0,
+    min: RECORD,
   };
   const wins: Column = {
     key: 'wins',
     label: tx('W'),
     title: tx('Wins'),
     get: (r) => r.wins ?? 0,
+    min: RECORD,
   };
   const losses: Column = {
     key: 'losses',
     label: tx('L'),
     title: tx('Losses'),
     get: (r) => r.losses ?? 0,
-    min: 460,
+    min: RECORD,
+  };
+  const draws = (r: StandingRow) => Math.max(0, (r.played ?? 0) - (r.wins ?? 0) - (r.losses ?? 0));
+  const withDraws = rows.some((r) => draws(r) > 0);
+  const record: Column = {
+    key: 'record',
+    label: withDraws ? tx('W–L–D') : tx('W–L'),
+    title: withDraws ? tx('Wins, losses and draws') : tx('Wins and losses'),
+    // More wins first, then fewer losses.
+    get: (r) => (r.wins ?? 0) - (r.losses ?? 0) / 1000,
+    text: (r) => [r.wins ?? 0, r.losses ?? 0, ...(withDraws ? [draws(r)] : [])].join('–'),
+    max: RECORD,
+    covers: ['wins', 'losses'],
   };
   if (preset === 'mexicano')
     return [
@@ -117,6 +141,7 @@ function columnsFor(
         get: (r) => r.points ?? 0,
         score: true,
       },
+      record,
       played,
       wins,
       losses,
@@ -126,8 +151,9 @@ function columnsFor(
         title: tx('Average points per match'),
         get: (r) => r.avg ?? 0,
         digits: 2,
-        // The Avg column stays when it decides the rank.
-        min: rows[0]?.rankedByAvg ? 0 : 340,
+        // The Avg column stays when it decides the rank. TV type is larger, so it needs more room there
+        // before the name gets squeezed.
+        min: rows[0]?.rankedByAvg ? 0 : tv ? 360 : 340,
       },
       {
         key: 'buchholz',
@@ -159,6 +185,7 @@ function columnsFor(
         score: true,
       };
   return [
+    record,
     played,
     wins,
     losses,
@@ -222,13 +249,15 @@ export function StandingsTable({
   const [open, setOpen] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>(null);
   const board = preset === 'leaderboard';
-  const all = columnsFor(preset, rows, eloLabel ?? tx('ELO'), sets);
-  const columns = all.filter((c) => !c.min || width >= c.min);
+  const all = columnsFor(preset, rows, eloLabel ?? tx('ELO'), sets, density === 'tv');
+  const columns = all.filter((c) => (!c.min || width >= c.min) && (!c.max || width < c.max));
   // Hide columns nobody has data for (ELO off, no Buchholz).
   const visible = columns.filter(
     (c) => c.key !== 'elo' || board || rows.some((r) => r.elo != null),
   );
-  const hidden = all.filter((c) => !visible.includes(c));
+  // A hidden phone summary repeats wider columns, and a shown one already says what it covers.
+  const covered = new Set(visible.flatMap((c) => c.covers ?? []));
+  const hidden = all.filter((c) => !visible.includes(c) && !c.max && !covered.has(c.key));
   const hasDetail = (r: StandingRow) =>
     !board && (hidden.some((c) => c.get(r) != null) || !!r.note);
   const deciding =
@@ -262,6 +291,7 @@ export function StandingsTable({
           .join(' · ')
       : '';
   const fmt = (c: Column, r: StandingRow) => {
+    if (c.text) return c.text(r);
     const v = c.get(r);
     return v == null ? '—' : c.digits ? v.toFixed(c.digits) : v;
   };

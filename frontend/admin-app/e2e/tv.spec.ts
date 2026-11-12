@@ -130,14 +130,21 @@ test('custom TV information stays hidden when empty and renders Markdown when fi
   await expect(info).toBeVisible();
 });
 
-test('standings keep P, W and the main column on a 360px phone', async ({ page, request }) => {
+test('standings keep the W–L record and the main column on a 360px phone', async ({
+  page,
+  request,
+}) => {
   const { id } = await mexicano(request, `TV Narrow ${stamp()}`);
   await patchTvSettings(request, id, { refresh_interval: 0 });
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto(`/tv/${id}`);
   const table = page.getByRole('table').first();
   await expect(table.getByRole('columnheader', { name: /Total points/ })).toBeVisible();
-  await expect(table.getByRole('columnheader', { name: /Matches played/ })).toBeVisible();
+  await expect(table.getByRole('columnheader', { name: /Wins and losses/ })).toBeVisible();
+  // The name keeps its room: the table fits the phone instead of scrolling sideways.
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
 });
 
 test('the organizer display flags and an old query link are honoured', async ({

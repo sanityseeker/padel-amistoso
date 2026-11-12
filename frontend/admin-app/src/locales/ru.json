@@ -1905,5 +1905,9 @@
   "PD": "РО",
   "Game difference": "Разница геймов",
   "Information": "Информация",
-  "We sent you a link to your player profile. Open it to see all your events in one place.": "Мы отправили вам ссылку на профиль игрока. Откройте её, чтобы видеть все ваши события в одном месте."
+  "We sent you a link to your player profile. Open it to see all your events in one place.": "Мы отправили вам ссылку на профиль игрока. Откройте её, чтобы видеть все ваши события в одном месте.",
+  "W–L": "В–П",
+  "W–L–D": "В–П–Н",
+  "Wins and losses": "Победы и поражения",
+  "Wins, losses and draws": "Победы, поражения и ничьи"
 }

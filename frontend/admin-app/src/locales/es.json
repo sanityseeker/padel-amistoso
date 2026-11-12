@@ -1898,5 +1898,9 @@
   "PD": "DP",
   "Game difference": "Diferencia de juegos",
   "Information": "Información",
-  "We sent you a link to your player profile. Open it to see all your events in one place.": "Te enviamos un enlace a tu perfil de jugador. Ábrelo para ver todos tus eventos en un solo lugar."
+  "We sent you a link to your player profile. Open it to see all your events in one place.": "Te enviamos un enlace a tu perfil de jugador. Ábrelo para ver todos tus eventos en un solo lugar.",
+  "W–L": "G–P",
+  "W–L–D": "G–P–E",
+  "Wins and losses": "Victorias y derrotas",
+  "Wins, losses and draws": "Victorias, derrotas y empates"
 }
