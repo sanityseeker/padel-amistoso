@@ -36,7 +36,9 @@ from ..email import (
     render_waitlist_spot_email,
     send_email,
     send_email_background,
+    send_emails,
 )
+from ..email_transport import OutgoingEmail
 from ..models import Court, GPPhase, Player, QuestionType, Sport, TournamentType
 from ..tournaments import GroupPlayoffTournament, MexicanoTournament, PlayoffTournament
 from ..tournaments.player_secrets import generate_passphrase, generate_token
@@ -133,23 +135,19 @@ _find_by_name_rate_limiter = BoundedRateLimiter(
 
 _registration_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
-# Cap concurrent SMTP sends per bulk-email request. Each send opens its own
-# TLS connection, so 2 parallel sends stay near the ~2 requests/s default rate
-# limit of providers such as Resend, while a 30-registrant blast still finishes
-# in well under a minute.
-_BULK_EMAIL_CONCURRENCY = 2
-
 
 async def _send_emails_bounded(jobs: list[tuple[str, str, str]], es: EmailSettings) -> tuple[int, int]:
-    """Send ``(recipient, subject, body)`` jobs concurrently; return (sent, failed)."""
-    semaphore = asyncio.Semaphore(_BULK_EMAIL_CONCURRENCY)
+    """Send ``(recipient, subject, body)`` jobs as one bulk send; return (sent, failed).
 
-    async def _send_one(recipient: str, subject: str, body: str) -> bool:
-        async with semaphore:
-            return await send_email(recipient, subject, body, sender_name=es.sender_name, reply_to=es.reply_to)
-
-    results = await asyncio.gather(*(_send_one(*job) for job in jobs))
-    sent = sum(1 for ok in results if ok)
+    ``send_emails`` uses the Resend batch API when available and sends one by
+    one (bounded concurrency) through SMTP otherwise.
+    """
+    emails = [
+        OutgoingEmail(to=to, subject=subject, html_body=body, sender_name=es.sender_name, reply_to=es.reply_to)
+        for to, subject, body in jobs
+    ]
+    results = await send_emails(emails)
+    sent = sum(results)
     return sent, len(results) - sent
 
 

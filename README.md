@@ -648,22 +648,29 @@ Public and TV payloads never contain the payment data of a player.
 
 ## Deployment & operations
 
-### SMTP email notifications (disabled by default)
+### Email notifications (disabled by default)
 
-Email notifications are **disabled by default**. They work only when SMTP is configured.
+Email notifications are **disabled by default**. They work when the Resend API, SMTP, or both are configured.
 
-- In `.env.example` and in the two Docker Compose files, the SMTP values are `None` placeholders.
+- In `.env.example` and in the two Docker Compose files, the email values are `None` placeholders.
 - `backend/config.py` treats `None`, `null`, and empty values as not set. Thus email stays disabled.
 
-To enable SMTP, set these environment variables. The example uses [Resend](https://resend.com), which sends from your own domain:
+The app has two email transports. It tries them in this order:
+
+1. **Resend HTTP API**, when `AMISTOSO_RESEND_API_KEY` is set. It uses HTTPS (port 443), so it also works on hosts that block SMTP ports. Bulk sends (registration announcements, payment reminders) use Resend's batch API, up to 100 emails per request.
+2. **SMTP**, when `AMISTOSO_SMTP_HOST` is set. With Resend configured, SMTP is the automatic backup. Without it, SMTP is the only transport.
+
+Recommended setup, [Resend](https://resend.com) with Gmail as the backup:
 
 ```bash
-AMISTOSO_SMTP_HOST=smtp.resend.com
+AMISTOSO_RESEND_API_KEY=re_your_resend_api_key
+AMISTOSO_RESEND_FROM_EMAIL=noreply@your-domain.com
+AMISTOSO_SMTP_HOST=smtp.gmail.com
 AMISTOSO_SMTP_PORT=587
 AMISTOSO_SMTP_USE_TLS=true
-AMISTOSO_SMTP_USER=resend
-AMISTOSO_SMTP_PASS=your_resend_api_key
-AMISTOSO_FROM_EMAIL=noreply@your-domain.com
+AMISTOSO_SMTP_USER=you@gmail.com
+AMISTOSO_SMTP_PASS=your_google_app_password
+AMISTOSO_FROM_EMAIL=you@gmail.com
 AMISTOSO_SITE_URL=https://your-domain.com
 ```
 
@@ -672,14 +679,30 @@ Resend setup:
 1. In Resend, add your domain (Domains → Add domain).
 2. Add the DKIM, MX and SPF records that Resend shows to your DNS. On Cloudflare, set each record to **DNS only**, not proxied.
 3. Wait until Resend shows the domain as verified. Resend rejects a `From` address on a domain that is not verified.
-4. Create an API key with **Sending access**, and use it as `AMISTOSO_SMTP_PASS`.
+4. Create an API key with **Sending access**, and use it as `AMISTOSO_RESEND_API_KEY`.
+
+Failover:
+
+| Resend error | What the app does |
+| --- | --- |
+| Daily or monthly quota exceeded (`429`), email above quota (`403`) | Sends through SMTP and skips Resend for `AMISTOSO_EMAIL_QUOTA_COOLDOWN_S` (default 3600 s) |
+| Rate limit (`429`) | Sends that email through SMTP; Resend stays in use |
+| Invalid `to` address (`400`/`422`) | No fallback: the backup would refuse it too |
+| Other invalid request (`400`/`422`) | Sends that email through SMTP; Resend stays in use |
+| Auth error, server error, network error, timeout | Sends through SMTP and skips Resend for `AMISTOSO_EMAIL_ERROR_COOLDOWN_S` (default 300 s) |
+
+- After the cooldown the app tries Resend again by itself. The log shows which transport sent each email, and why one failed.
+- In a bulk send, a Resend batch is all-or-nothing. When Resend rejects a batch as invalid (one bad address), the app resends it one email at a time through Resend, so only the bad email fails. When a batch fails for a quota or provider reason, the rest of the emails go through SMTP one at a time, two in parallel.
+- If every transport fails, the email is not sent. The failure is in the log, and bulk sends count it as failed.
+- `AMISTOSO_EMAIL_TIMEOUT_S` (default 20) limits each send attempt.
 
 Notes:
 
-- `AMISTOSO_FROM_EMAIL` can be any address on the verified domain. It does not need a mailbox. Replies go to the organizer, because the app sets `Reply-To`.
-- Use port 587 (or 2587). Port 465 does not work, because the app only supports STARTTLS.
-- Some hosts block outbound SMTP ports (for example, Render free web services). There, email cannot be sent through SMTP.
-- Any other SMTP provider also works. For Gmail, use `smtp.gmail.com`, your Gmail address as user and `From`, and a **Google App Password** (it needs 2-step verification).
+- `AMISTOSO_RESEND_FROM_EMAIL` can be any address on the verified domain. It does not need a mailbox. When it is not set, `AMISTOSO_FROM_EMAIL` is used. Replies go to the organizer, because the app sets `Reply-To`.
+- For the Gmail backup, use your Gmail address as `AMISTOSO_SMTP_USER` **and** `AMISTOSO_FROM_EMAIL`, and a **Google App Password** (it needs 2-step verification). Do not use your own domain as the Gmail `From`: the message would fail your domain's SPF/DMARC checks and go to spam. Gmail allows about 500 recipients per day (about 2000 with Google Workspace).
+- SMTP only: Resend's SMTP relay also works (`smtp.resend.com`, user `resend`, the API key as password), but then there is no backup.
+- Use port 587 (or 2587). Port 465 does not work, because the app only supports STARTTLS. `AMISTOSO_SMTP_USE_TLS` is on unless you set it to `false`.
+- Some hosts block outbound SMTP ports (for example, Render free web services). There, only the Resend API works.
 
 Docker Compose notes:
 

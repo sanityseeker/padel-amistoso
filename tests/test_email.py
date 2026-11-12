@@ -1013,7 +1013,11 @@ class TestSendAllEmailsEndpoint:
             r = client.post(f"/api/registrations/{rid}/send-all-emails", headers=auth_headers)
         assert r.status_code == 400
 
-    @patch("backend.api.routes_registration.send_email", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "backend.api.routes_registration.send_emails",
+        new_callable=AsyncMock,
+        side_effect=lambda emails: [True] * len(emails),
+    )
     def test_send_all_counts(self, mock_send: AsyncMock, client: TestClient, auth_headers: dict) -> None:
         rid = self._setup(client, auth_headers)
         with patch("backend.api.routes_registration.email_is_configured", return_value=True):
@@ -1023,9 +1027,14 @@ class TestSendAllEmailsEndpoint:
         assert data["sent"] == 2
         assert data["skipped"] == 1
         assert data["failed"] == 0
-        assert mock_send.call_count == 2
+        assert mock_send.call_count == 1  # one bulk send
+        assert len(mock_send.call_args[0][0]) == 2
 
-    @patch("backend.api.routes_registration.send_email", new_callable=AsyncMock, return_value=False)
+    @patch(
+        "backend.api.routes_registration.send_emails",
+        new_callable=AsyncMock,
+        side_effect=lambda emails: [False] * len(emails),
+    )
     def test_send_all_counts_failures(self, mock_send: AsyncMock, client: TestClient, auth_headers: dict) -> None:
         rid = self._setup(client, auth_headers)
         with patch("backend.api.routes_registration.email_is_configured", return_value=True):
@@ -1063,7 +1072,11 @@ class TestSendMessageEmailsEndpoint:
             r = client.post(f"/api/registrations/{rid}/send-message-emails", headers=auth_headers)
         assert r.status_code == 400
 
-    @patch("backend.api.routes_registration.send_email", new_callable=AsyncMock, return_value=True)
+    @patch(
+        "backend.api.routes_registration.send_emails",
+        new_callable=AsyncMock,
+        side_effect=lambda emails: [True] * len(emails),
+    )
     def test_send_message_counts(self, mock_send: AsyncMock, client: TestClient, auth_headers: dict) -> None:
         rid = self._setup(client, auth_headers)
         with patch("backend.api.routes_registration.email_is_configured", return_value=True):
@@ -1073,7 +1086,8 @@ class TestSendMessageEmailsEndpoint:
         assert data["sent"] == 2
         assert data["skipped"] == 1
         assert data["failed"] == 0
-        assert mock_send.call_count == 2
+        assert mock_send.call_count == 1  # one bulk send
+        assert len(mock_send.call_args[0][0]) == 2
 
 
 class TestNotifyPlayersEndpoint:
