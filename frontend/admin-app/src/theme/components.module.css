@@ -49,6 +49,13 @@
 .input[data-disabled] {
   background: var(--app-surface-2);
 }
+/* iOS Safari zooms into a focused field whose text is under 16 px, and the default interface size
+   (95 %) makes 1 rem 15.2 px. On touch screens a field's text never goes below 16 px. */
+@media (pointer: coarse) {
+  .input {
+    font-size: max(16px, var(--input-fz, var(--mantine-font-size-sm)));
+  }
+}
 .segmentedRoot {
   background: var(--app-surface-2);
 }

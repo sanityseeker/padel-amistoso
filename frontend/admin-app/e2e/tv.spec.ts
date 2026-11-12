@@ -40,10 +40,45 @@ test('group standings have room for their statistics at medium screen widths', a
   await page.goto(`/tv/${id}`);
   const tables = page.locator('[data-section="standings"] table');
   await expect(tables).toHaveCount(2);
-  await expect(tables.first().getByRole('button', { name: 'Losses' })).toBeVisible();
+  await expect(tables.first().getByRole('button', { name: 'Matches lost' })).toBeVisible();
   const first = await tables.nth(0).boundingBox();
   const second = await tables.nth(1).boundingBox();
   expect(second!.y).toBeGreaterThan(first!.y + first!.height);
+});
+
+test('the group legend names the columns the table shows, points or sets', async ({
+  page,
+  request,
+}) => {
+  const legendRows = async (id: string) => {
+    await page.goto(`/tv/${id}`);
+    await page
+      .locator('[data-section="standings"]')
+      .getByRole('button', { name: 'Column legend' })
+      .click();
+    const legend = page.getByRole('dialog');
+    await expect(legend).toBeVisible();
+    return legend;
+  };
+  const points = await createTournament(request, 'gp', `TV legend ${stamp()}`);
+  await patchTvSettings(request, points.id, { refresh_interval: 0 });
+  let legend = await legendRows(points.id);
+  // The phone's combined record column is explained too.
+  await expect(legend.getByRole('cell', { name: 'W–L', exact: true })).toBeVisible();
+  await expect(legend.getByText('Wins and losses')).toBeVisible();
+  await expect(legend.getByText('Point difference')).toBeVisible();
+  await expect(legend.getByText('Set difference')).toHaveCount(0);
+  await expect(legend.getByText('Game difference')).toHaveCount(0);
+
+  const sets = await createTournament(request, 'gp', `TV legend sets ${stamp()}`);
+  await patchTvSettings(request, sets.id, {
+    refresh_interval: 0,
+    score_mode: { 'gp-group': 'sets' },
+  });
+  legend = await legendRows(sets.id);
+  await expect(legend.getByText('Set difference')).toBeVisible();
+  await expect(legend.getByText('Game difference')).toBeVisible();
+  await expect(legend.getByText('Point difference')).toHaveCount(0);
 });
 
 async function mexicano(
@@ -130,14 +165,29 @@ test('custom TV information stays hidden when empty and renders Markdown when fi
   await expect(info).toBeVisible();
 });
 
-test('standings keep P, W and the main column on a 360px phone', async ({ page, request }) => {
+test('standings keep P, the W–L record and the main column on a 360px phone', async ({
+  page,
+  request,
+}) => {
   const { id } = await mexicano(request, `TV Narrow ${stamp()}`);
   await patchTvSettings(request, id, { refresh_interval: 0 });
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto(`/tv/${id}`);
   const table = page.getByRole('table').first();
   await expect(table.getByRole('columnheader', { name: /Total points/ })).toBeVisible();
+  await expect(table.getByRole('columnheader', { name: /Wins and losses/ })).toBeVisible();
   await expect(table.getByRole('columnheader', { name: /Matches played/ })).toBeVisible();
+  // The legend explains the phone's record column.
+  await page
+    .locator('[data-section="standings"]')
+    .getByRole('button', { name: 'Column legend' })
+    .click();
+  await expect(page.getByRole('dialog').getByText('Wins and losses')).toBeVisible();
+  await page.keyboard.press('Escape');
+  // The name keeps its room: the table fits the phone instead of scrolling sideways.
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
 });
 
 test('the organizer display flags and an old query link are honoured', async ({

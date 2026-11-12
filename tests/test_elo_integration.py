@@ -586,6 +586,9 @@ class TestTournamentPlayerPublicCard:
         assert isinstance(body["recent_matches"], list)
         assert len(body["recent_matches"]) == 1
         assert body["recent_matches"][0]["score"] == [20, 12]
+        assert body["recent_matches"][0]["side"] == 1
+        loser = client.get(f"/api/tournaments/{tid}/players/{m['team2_ids'][0]}/public-card").json()
+        assert loser["recent_matches"][0]["side"] == 2
         assert body["elo"] is not None
         assert isinstance(body["elo_history"], list)
         assert "email" not in body

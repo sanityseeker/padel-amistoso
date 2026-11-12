@@ -31,6 +31,7 @@ RU_CONTEXT_KEYS = (
     "Points for_games",
     "Points against_games",
     "Point difference_games",
+    "Matches played_abbr",
 )
 
 
@@ -57,7 +58,7 @@ def missing_keys(locale: str = "es") -> list[str]:
 
 def _source_of(key: str) -> str:
     """The English text a key stands for: context keys carry a suffix after the text."""
-    for context in ("_games", "_knockout", "_action", "_status", "_bracket", "_result"):
+    for context in ("_games", "_abbr", "_knockout", "_action", "_status", "_bracket", "_result"):
         if key.endswith(context):
             return key.removesuffix(context)
     return key

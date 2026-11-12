@@ -219,10 +219,14 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
-/* Phones: a name stays on one line (ellipsis, the full name is the title) so a row keeps its height. */
+/* Phones: a name stays on one line (ellipsis, the full name is the title) so a row keeps its height.
+   It takes the width the numbers leave (`max-width: 0` stops its text from widening the table), but
+   never less than a readable name. */
 @media (max-width: 47.99em) {
   .table[data-density='tv'] .name {
-    max-width: 9.5rem;
+    width: 100%;
+    max-width: 0;
+    min-width: 7.5rem;
   }
   .table[data-density='tv'] .nameText {
     white-space: nowrap;

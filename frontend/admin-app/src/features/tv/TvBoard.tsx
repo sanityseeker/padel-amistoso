@@ -21,7 +21,7 @@ import type { PlayerMatch } from '../../player/types';
 import type { Ctx } from '../../admin/tournament/scoring';
 import { MatchActions } from '../player/MatchActions';
 import type { ScoringData } from '../player/eventData';
-import { MatchCard, StandingsTable, toMatchView, toStandingRows } from '../tournaments';
+import { hasDraws, MatchCard, StandingsTable, toMatchView, toStandingRows } from '../tournaments';
 import { BracketImage } from './BracketImage';
 import { ctxOf, isTbd, sortTbdLast, type Breakdown, type TvLive, type TvMeta } from './model';
 import type { useTvPlayer } from './useTvPlayer';
@@ -41,27 +41,48 @@ const ENDPOINT: Record<Ctx, string> = {
 
 // ---- Column legend --------------------------------------------------------------------------------------
 
-function Legend({ kind }: { kind: 'standings' | 'leaderboard' | 'double' }) {
+type LegendRow = [abbrev: string, full: string, context?: string];
+
+// `sets`: the table counts games (PF/PA read as games won/lost) and ranks by game difference, so the
+// legend names the same columns the table shows. `draws`: the phone record column reads W–L–D.
+function Legend({
+  kind,
+  sets = false,
+  draws = false,
+}: {
+  kind: 'standings' | 'leaderboard' | 'double';
+  sets?: boolean;
+  draws?: boolean;
+}) {
   useLocale();
-  const rows =
+  // A phone shows one W–L record column instead of W and L; it is listed at every width, since the
+  // popover cannot tell which columns the table shows.
+  const record: LegendRow[] = [
+    ['P', 'Matches played'],
+    ['W', 'Matches won'],
+    ['L', 'Matches lost'],
+    draws ? ['W–L–D', 'Wins, losses and draws'] : ['W–L', 'Wins and losses'],
+  ];
+  const scoring: LegendRow[] = sets
+    ? [
+        ['SW', 'Sets won'],
+        ['SL', 'Sets lost'],
+        ['SD', 'Set difference'],
+        ['PF', 'Points for', 'games'],
+        ['PA', 'Points against', 'games'],
+        ['GD', 'Game difference'],
+      ]
+    : [
+        ['PF', 'Points for'],
+        ['PA', 'Points against'],
+        ['PD', 'Point difference'],
+      ];
+  const rows: LegendRow[] =
     kind === 'standings'
-      ? [
-          ['P', 'Matches played'],
-          ['W', 'Matches won'],
-          ['L', 'Matches lost'],
-          ['SW', 'Sets won'],
-          ['SL', 'Sets lost'],
-          ['SD', 'Set difference'],
-          ['PF', 'Points for'],
-          ['PA', 'Points against'],
-          ['GD', 'Game difference'],
-          ['PD', 'Point difference'],
-        ]
+      ? [...record, ...scoring]
       : [
           ['Pts', 'Total points'],
-          ['P', 'Matches played'],
-          ['W', 'Matches won'],
-          ['L', 'Matches lost'],
+          ...record,
           ['Avg', 'Average points per match'],
           ['Bh', 'Buchholz tie-break'],
         ];
@@ -102,10 +123,11 @@ function Legend({ kind }: { kind: 'standings' | 'leaderboard' | 'double' }) {
           <Stack gap="xs">
             <Table withRowBorders={false} verticalSpacing={2}>
               <Table.Tbody>
-                {rows.map(([abbrev, full]) => (
+                {rows.map(([abbrev, full, context]) => (
                   <Table.Tr key={abbrev}>
-                    <Table.Td fw={700}>{tx(abbrev)}</Table.Td>
-                    <Table.Td>{tx(full)}</Table.Td>
+                    <Table.Td fw={700}>{tx(abbrev, { context })}</Table.Td>
+                    {/* `abbr` descriptions start with the abbreviation's letter; most keys have none. */}
+                    <Table.Td>{tx(full, { context: context ?? 'abbr' })}</Table.Td>
                   </Table.Tr>
                 ))}
               </Table.Tbody>
@@ -591,15 +613,20 @@ function GroupStandings({
   useLocale();
   const status = live.status;
   const teams = Object.keys(status.team_roster ?? {}).length > 0;
+  const groups = Object.entries(live.groups?.standings ?? {});
+  const all = groups.flatMap(([, rows]) => standingsRows(rows));
+  const setsMode = live.settings.score_mode?.['gp-group'] === 'sets';
+  // The same test StandingsTable uses to switch to set columns.
+  const sets = setsMode || all.some((r) => (r.setsWon ?? 0) > 0 || (r.setsLost ?? 0) > 0);
   return (
     <Section
       id="standings"
       title={tx('Group standings')}
       state={state}
-      info={<Legend kind="standings" />}
+      info={<Legend kind="standings" sets={sets} draws={hasDraws(all)} />}
     >
       <div className={classes.groups}>
-        {Object.entries(live.groups?.standings ?? {}).map(([name, rows]) => (
+        {groups.map(([name, rows]) => (
           <Stack key={name} gap="xs">
             <Title order={3} className={classes.text}>
               {tx('Group {value}', { value: name })}
@@ -608,7 +635,7 @@ function GroupStandings({
               rows={standingsRows(rows)}
               preset="group"
               density="tv"
-              sets={live.settings.score_mode?.['gp-group'] === 'sets'}
+              sets={setsMode}
               highlightId={highlight}
               nameLabel={teams ? tx('Team') : undefined}
               eloLabel={meta && status.elo_scope === 'club' ? tx('Club ELO') : undefined}
@@ -644,15 +671,16 @@ function Leaderboard({
   useLocale();
   const status = live.status;
   const teams = Object.keys(status.team_roster ?? {}).length > 0;
+  const rows = standingsRows(status.leaderboard ?? []);
   return (
     <Section
       id="standings"
       title={tx('Leaderboard')}
       state={state}
-      info={<Legend kind="leaderboard" />}
+      info={<Legend kind="leaderboard" draws={hasDraws(rows)} />}
     >
       <StandingsTable
-        rows={standingsRows(status.leaderboard ?? [])}
+        rows={rows}
         preset="mexicano"
         density="tv"
         highlightId={highlight}

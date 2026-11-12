@@ -5,3 +5,8 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # A merge can join two appended JSON blocks without the comma between them (locale files).
+      - id: check-json
