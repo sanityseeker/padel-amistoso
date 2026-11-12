@@ -1904,5 +1904,7 @@
   "Wins and losses": "Victorias y derrotas",
   "Wins, losses and draws": "Victorias, derrotas y empates",
   "vs {names}": "contra {names}",
-  "with {names}": "con {names}"
+  "with {names}": "con {names}",
+  "Recent form, oldest to newest": "Forma reciente, de la más antigua a la más reciente",
+  "over {n} rating changes": "en {n} cambios de puntuación"
 }

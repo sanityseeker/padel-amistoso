@@ -1911,5 +1911,7 @@
   "Wins and losses": "Победы и поражения",
   "Wins, losses and draws": "Победы, поражения и ничьи",
   "vs {names}": "Соперники: {names}",
-  "with {names}": "Партнёр: {names}"
+  "with {names}": "Партнёр: {names}",
+  "Recent form, oldest to newest": "Последняя форма, от старых к новым",
+  "over {n} rating changes": "изменений рейтинга: {n}"
 }

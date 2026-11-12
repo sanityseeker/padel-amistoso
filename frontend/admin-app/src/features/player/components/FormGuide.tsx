@@ -21,28 +21,32 @@ const BADGE: Record<
   D: { color: 'gray', variant: 'light', name: () => tx('Draw'), letter: () => tx('D') },
 };
 
-// The last results as W / L / D badges, newest first (the same letters as the Played list).
+// The last results as W / L / D badges (the same letters as the Played list). `form` is newest first;
+// the badges read oldest to newest, like the rating chart beside them, so the newest sits on the right.
 export function FormGuide({ form }: { form: FormResult[] }) {
   useLocale();
   if (!form.length) return null;
   return (
-    <Group gap={6} role="list" aria-label={tx('Recent form')}>
+    <Group gap={6} role="list" aria-label={tx('Recent form, oldest to newest')}>
       <Text variant="eyebrow" mr={4}>
         {tx('Form')}
       </Text>
-      {form.map((r, i) => (
-        <Badge
-          key={i}
-          role="listitem"
-          circle
-          size="lg"
-          color={BADGE[r].color}
-          variant={BADGE[r].variant}
-          aria-label={BADGE[r].name()}
-        >
-          {BADGE[r].letter()}
-        </Badge>
-      ))}
+      {form
+        .slice()
+        .reverse()
+        .map((r, i) => (
+          <Badge
+            key={i}
+            role="listitem"
+            circle
+            size="lg"
+            color={BADGE[r].color}
+            variant={BADGE[r].variant}
+            aria-label={BADGE[r].name()}
+          >
+            {BADGE[r].letter()}
+          </Badge>
+        ))}
     </Group>
   );
 }

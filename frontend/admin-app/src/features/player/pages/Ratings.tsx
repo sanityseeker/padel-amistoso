@@ -33,6 +33,8 @@ export default function Ratings() {
   const history = historyOf(space, sport);
   const [shown, setShown] = useState(10);
   const recent = history.slice().reverse();
+  const now = history.length ? history[history.length - 1].elo_after : 0;
+  const change = history.length ? Math.round(now - history[0].elo_before) : 0;
   const visible = recent.slice(0, shown);
   const scopeName = scopeOptions.find((o) => o.value === scope)?.label ?? tx('All my communities');
   return (
@@ -61,8 +63,23 @@ export default function Ratings() {
         <Stack gap="xl">
           {history.length > 1 ? (
             <Paper p="lg">
-              <Group justify="space-between" mb="sm">
-                <Title order={3}>{tx('Recent rating trend')}</Title>
+              <Group justify="space-between" align="flex-start" mb="sm">
+                <Stack gap={2}>
+                  <Title order={3}>{tx('Recent rating trend')}</Title>
+                  {/* The line's end value: where the rating is now and how far it moved. */}
+                  <Group gap={8} align="baseline" data-testid="rating-trend-now">
+                    <Text fw={700} size="lg" ff="var(--font-display)">
+                      {Math.round(now)}
+                    </Text>
+                    <Text size="sm" fw={650} c={change >= 0 ? 'success' : 'danger'}>
+                      {change > 0 ? '+' : ''}
+                      {change}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {tx('over {n} rating changes', { n: history.length })}
+                    </Text>
+                  </Group>
+                </Stack>
                 <FormGuide form={formOf(space, sport)} />
               </Group>
               <Suspense fallback={<Skeleton h={240} />}>
@@ -83,7 +100,7 @@ export default function Ratings() {
                   })}
                 />
               </Suspense>
-              <Text size="xs" c="dimmed">
+              <Text size="xs" c="dimmed" mt="md">
                 {tx('Oldest to newest · Up to 50 recent rating changes across sports')}
               </Text>
             </Paper>
