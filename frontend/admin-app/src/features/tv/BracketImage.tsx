@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActionIcon, Box, Group, Loader, Modal, Stack, Text, UnstyledButton } from '@mantine/core';
 import {
   IconArrowUpRight,
@@ -9,6 +9,7 @@ import {
 } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
 import type { TvSettings } from '../../types';
+import { ZoomableImage, type ZoomableImageHandle } from '../../ui';
 import { prefixFor, type Playoffs, type TvMeta } from './model';
 import classes from './Tv.module.css';
 
@@ -99,6 +100,7 @@ export function BracketImage({
   useLocale();
   const [open, setOpen] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  const zoomer = useRef<ZoomableImageHandle>(null);
   const query = new URLSearchParams({
     fmt: settings.schema_format || 'svg',
     box_scale: String(settings.schema_box_scale || 1),
@@ -110,10 +112,7 @@ export function BracketImage({
   });
   const base = `/api/tournaments/${tid}/${prefixFor(kind)}/playoffs-schema?${query}`;
   const sided = espejo || doubleElimination;
-  const close = () => {
-    setOpen(null);
-    setZoom(1);
-  };
+  const close = () => setOpen(null);
   return (
     <Box className={classes.bracket} data-testid="tv-bracket">
       {sided ? (
@@ -146,11 +145,15 @@ export function BracketImage({
             <ActionIcon
               variant="default"
               aria-label={tx('Zoom out')}
-              onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.25).toFixed(2)))}
+              onClick={() => zoomer.current?.zoomOut()}
             >
               <IconMinus size={16} />
             </ActionIcon>
-            <ActionIcon variant="default" aria-label={tx('Reset zoom')} onClick={() => setZoom(1)}>
+            <ActionIcon
+              variant="default"
+              aria-label={tx('Reset zoom')}
+              onClick={() => zoomer.current?.reset()}
+            >
               <IconZoomReset size={16} />
             </ActionIcon>
             <Text size="sm" aria-live="polite">
@@ -159,7 +162,7 @@ export function BracketImage({
             <ActionIcon
               variant="default"
               aria-label={tx('Zoom in')}
-              onClick={() => setZoom((z) => Math.min(4, +(z + 0.25).toFixed(2)))}
+              onClick={() => zoomer.current?.zoomIn()}
             >
               <IconPlus size={16} />
             </ActionIcon>
@@ -185,16 +188,21 @@ export function BracketImage({
           </Group>
         }
       >
-        <Box className={classes.lightbox}>
-          {open && (
-            <img
-              className={classes.lightboxImage}
-              src={open}
-              alt={tx('Bracket')}
-              style={{ width: `${zoom * 100}%` }}
-            />
-          )}
-        </Box>
+        {open && (
+          <ZoomableImage
+            ref={zoomer}
+            src={open}
+            alt={tx('Bracket')}
+            className={classes.lightbox}
+            imageClassName={classes.lightboxImage}
+            maxHeight="calc(100dvh - 9rem)"
+            onScaleChange={setZoom}
+            testId="tv-bracket-zoom"
+          />
+        )}
+        <Text size="xs" c="dimmed" ta="center" mt="xs">
+          {tx('Pinch or double-tap to zoom')}
+        </Text>
       </Modal>
     </Box>
   );

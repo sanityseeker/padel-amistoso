@@ -16,6 +16,7 @@ from backend.models import Sport
 from backend.tournaments.elo import DEFAULT_RATING, EloUpdate
 
 from .db import get_db
+from .rating_scope import RatingScope, scope_stats, scoped_recent_logs
 
 logger = logging.getLogger(__name__)
 
@@ -410,101 +411,33 @@ def get_live_profile_elo_stats(
     profile_ids: list[str] | None = None,
     community_id: str | None = None,
     conn=None,
+    *,
+    scope: RatingScope | None = None,
 ) -> dict[str, dict[str, dict[str, float | int | None]]]:
     """Derive per-profile, per-sport ``{matches, elo}`` live from ``player_elo_log``.
 
-    ``matches`` counts non-manual log rows across every tournament the profile
-    is linked to (via ``player_secrets`` or ``player_history``); ``elo`` is the
-    ``elo_after`` of the chronologically latest row.  With *community_id* the
-    log is restricted to that community's tournaments.  Profiles with no log
-    rows in scope are absent from the result so callers can fall back to the
-    stored snapshot.
+    ``matches`` counts non-manual log rows in *scope* across every tournament
+    the profile is linked to (via ``player_secrets`` or ``player_history``);
+    ``elo`` is the ``elo_after`` of the chronologically latest row.  Without a
+    *scope* the log is global, or restricted to *community_id* when given.
+    Profiles with no log rows in scope are absent from the result so callers
+    can fall back to the stored snapshot.
 
-    This is the single source of truth for the counts shown in the admin
-    Players tab and in the Player Hub's global / community headers, so they
-    agree with the per-scope leaderboards (which live-derive the same way)
-    instead of reading the ``profile_community_elo`` snapshots — those hold a
-    per-community *chain* count that is seeded from the player's prior state
-    and therefore neither a community-only nor a global total.
+    The scope rules live in :mod:`.rating_scope`, shared with every
+    leaderboard and history view, so all of them agree on these numbers.
     """
-    params: list[str] = []
-    id_filter = ""
-    if profile_ids is not None:
-        if not profile_ids:
-            return {}
-        placeholders = ",".join("?" for _ in profile_ids)
-        id_filter = f" AND profile_id IN ({placeholders})"
-    community_join = ""
-    if community_id is not None:
-        community_join = " JOIN tournaments t ON t.id = l.tournament_id AND t.community_id = ?"
-
-    sql = f"""
-        WITH linked AS (
-            SELECT ps.profile_id AS profile_id, ps.tournament_id AS tournament_id, ps.player_id AS player_id
-              FROM player_secrets ps
-             WHERE ps.profile_id IS NOT NULL{id_filter.replace("profile_id", "ps.profile_id")}
-            UNION
-            SELECT ph.profile_id AS profile_id, ph.entity_id AS tournament_id, ph.player_id AS player_id
-              FROM player_history ph
-             WHERE ph.entity_type = 'tournament'
-               AND ph.profile_id IS NOT NULL{id_filter.replace("profile_id", "ph.profile_id")}
-        ),
-        scoped AS (
-            SELECT lp.profile_id AS profile_id,
-                   l.sport       AS sport,
-                   l.elo_after   AS elo_after,
-                   l.is_manual   AS is_manual,
-                   l.updated_at  AS updated_at,
-                   l.match_order AS match_order
-              FROM player_elo_log l
-              JOIN linked lp
-                ON lp.tournament_id = l.tournament_id
-               AND lp.player_id = l.player_id{community_join}
-        ),
-        agg AS (
-            SELECT profile_id, sport,
-                   SUM(CASE WHEN is_manual = 0 THEN 1 ELSE 0 END) AS matches
-              FROM scoped
-          GROUP BY profile_id, sport
-        ),
-        latest AS (
-            SELECT profile_id, sport, elo_after,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY profile_id, sport
-                       ORDER BY updated_at DESC, match_order DESC
-                   ) AS rn
-              FROM scoped
-        )
-        SELECT a.profile_id AS profile_id,
-               a.sport      AS sport,
-               a.matches    AS matches,
-               lt.elo_after AS elo
-          FROM agg a
-     LEFT JOIN latest lt
-            ON lt.profile_id = a.profile_id
-           AND lt.sport = a.sport
-           AND lt.rn = 1
-    """
-    if profile_ids is not None:
-        params.extend(profile_ids)
-        params.extend(profile_ids)
-    if community_id is not None:
-        params.append(community_id)
-
-    def _query(c):
-        return c.execute(sql, params).fetchall()
-
-    rows = _query(conn) if conn is not None else None
-    if rows is None:
+    if scope is None:
+        scope = RatingScope(community_id=community_id or None)
+    if profile_ids is not None and not profile_ids:
+        return {}
+    if conn is not None:
+        stats = scope_stats(conn, scope, profile_ids=profile_ids)
+    else:
         with get_db() as c:
-            rows = _query(c)
-
+            stats = scope_stats(c, scope, profile_ids=profile_ids)
     out: dict[str, dict[str, dict[str, float | int | None]]] = {}
-    for r in rows:
-        out.setdefault(r["profile_id"], {})[r["sport"]] = {
-            "matches": int(r["matches"] or 0),
-            "elo": r["elo"],
-        }
+    for (profile_id, sport), st in stats.items():
+        out.setdefault(profile_id, {})[sport] = {"matches": st.matches, "elo": st.elo}
     return out
 
 
@@ -558,103 +491,27 @@ def get_profile_recent_elo_logs(
     limit: int = 20,
     community_id: str | None = None,
     club_id: str | None = None,
+    *,
+    scope: RatingScope | None = None,
 ) -> list[dict]:
     """Return recent per-match ELO logs for a profile across linked tournaments.
 
     Returns up to *limit* rows **per sport** so the frontend can switch
     between padel and tennis without a round-trip.
 
-    When *community_id* is provided, only matches from tournaments in that
-    community are returned. When *club_id* is provided, only matches from
-    tournaments whose season belongs to that club are returned (manual
-    adjustments logged with ``tournament_id == club_id`` are also kept), and
-    every rating — the row's and each payload participant's — is the club's
-    own rating (:mod:`.club_elo`) instead of the community one.
+    The rows are restricted by *scope* (or by *community_id* / *club_id*, which
+    build one): a community keeps its tournaments' matches; a club keeps the
+    matches of tournaments with that ``club_id`` plus the club's manual
+    adjustments; a season keeps its tournaments.  In club and season scope
+    every rating -- the row's and each payload participant's -- is the club's
+    own rating (:mod:`.club_elo`), and sports the club hides for the profile
+    are left out.  The global scope never includes club-only manual rows.
     """
-    # Build the scope filter. ``club_id`` takes precedence over ``community_id``
-    # since clubs are nested inside communities.
-    scope_filter = ""
-    params: list[str | int] = [profile_id, profile_id, profile_id, profile_id]
-    elo_columns = "l.elo_before, l.elo_after, l.elo_delta"
-    if club_id is not None:
-        # Manual adjustments use the club_id as their tournament_id, so accept
-        # both real club tournaments and manual log rows targeting this club.
-        scope_filter = " AND (t.club_id = ? OR (l.is_manual = 1 AND l.tournament_id = ?))"
-        # Manual rows have no club columns: their elo values are club values.
-        elo_columns = (
-            "COALESCE(l.club_elo_before, l.elo_before) AS elo_before,"
-            " COALESCE(l.club_elo_after, l.elo_after) AS elo_after,"
-            " COALESCE(l.club_elo_after - l.club_elo_before, l.elo_delta) AS elo_delta"
-        )
-        params.append(club_id)
-        params.append(club_id)
-    elif community_id is not None:
-        scope_filter = " AND t.community_id = ?"
-        params.append(community_id)
-    params.append(limit)
-
+    if scope is None:
+        scope = RatingScope(club_id=club_id or None, community_id=community_id or None)
     with get_db() as conn:
-        rows = conn.execute(
-            f"""
-            WITH linked_tournament_players AS (
-                SELECT ps.tournament_id AS tournament_id, ps.player_id AS player_id
-                  FROM player_secrets ps
-                 WHERE ps.profile_id = ?
-                UNION
-                SELECT ph.entity_id AS tournament_id, ph.player_id AS player_id
-                  FROM player_history ph
-                 WHERE ph.profile_id = ?
-                   AND ph.entity_type = 'tournament'
-                UNION
-                SELECT DISTINCT l.tournament_id, l.player_id
-                  FROM player_elo_log l
-                 WHERE l.is_manual = 1
-                   AND l.player_id IN (
-                       SELECT ps.player_id FROM player_secrets ps WHERE ps.profile_id = ?
-                       UNION
-                       SELECT ph.player_id FROM player_history ph WHERE ph.profile_id = ?
-                   )
-            ),
-            ranked AS (
-                SELECT l.tournament_id,
-                       l.sport,
-                       l.match_id,
-                       l.player_id,
-                       l.match_order,
-                       {elo_columns},
-                       l.match_payload,
-                       l.updated_at,
-                       l.is_manual,
-                       l.adjustment_reason,
-                       l.adjusted_by,
-                       COALESCE(t.name, mc.name) AS tournament_name,
-                       t.alias AS tournament_alias,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY l.sport
-                           ORDER BY l.updated_at DESC, l.match_order DESC
-                       ) AS rn
-                  FROM player_elo_log l
-                  JOIN linked_tournament_players lp
-                    ON lp.tournament_id = l.tournament_id
-                   AND lp.player_id = l.player_id
-                  LEFT JOIN tournaments t
-                    ON t.id = l.tournament_id
-                  LEFT JOIN clubs mc
-                    ON l.is_manual = 1 AND mc.id = l.tournament_id
-                 WHERE 1=1{scope_filter}
-            )
-            SELECT tournament_id, sport, match_id, player_id, match_order,
-                   elo_before, elo_after, elo_delta, match_payload,
-                   updated_at, tournament_name, tournament_alias,
-                   is_manual, adjustment_reason, adjusted_by
-              FROM ranked
-             WHERE rn <= ?
-          ORDER BY updated_at DESC, match_order DESC
-            """,
-            params,
-        ).fetchall()
-    logs = [dict(r) for r in rows]
-    if club_id is not None:
+        logs = scoped_recent_logs(conn, scope, profile_id, limit)
+    if scope.uses_club_chain:
         for log in logs:
             log["match_payload"] = _payload_with_club_ratings(log["match_payload"])
     return logs

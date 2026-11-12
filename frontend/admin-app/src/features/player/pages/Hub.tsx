@@ -7,7 +7,7 @@ import { EmptyState, PageHeader } from '../../../ui';
 import { ActiveEmpty } from '../components/ActiveEmpty';
 import { TournamentNavCard } from '../components/ActiveTournaments';
 import { CareerStats } from '../components/CareerStats';
-import { useLeaderboard } from '../components/Leaderboard';
+import { isMe, useLeaderboard } from '../components/Leaderboard';
 import { PastTournaments } from '../components/PastTournaments';
 import { PlayerCard } from '../components/PlayerCard';
 import { TodoCards } from '../components/TodoCards';
@@ -30,7 +30,9 @@ export default function Hub() {
     (e) => e.status === 'active' && e.entity_type === 'tournament' && !e.entity_deleted,
   );
   const board = useLeaderboard(scopeQuery);
-  const rank = board.data?.[sport].find((r) => r.name === space.profile.name)?.rank ?? null;
+  const rank = board.data?.[sport].find((r) => isMe(r, space.profile))?.rank ?? null;
+  // Career statistics and past events follow the picked sport, like the rating and form beside them.
+  const sportEntries = space.entries.filter((e) => e.sport === sport);
   const scopeName = scopeOptions.find((o) => o.value === scope)?.label ?? tx('All my communities');
   const rated = sports.length > 0;
   return (
@@ -56,7 +58,7 @@ export default function Hub() {
         )}
       </Stack>
 
-      <PastTournaments entries={space.entries} />
+      <PastTournaments entries={rated ? sportEntries : space.entries} />
 
       <Stack gap="md" component="section" aria-labelledby="hub-rating">
         <Title order={2} id="hub-rating" size="h3">
@@ -79,7 +81,7 @@ export default function Hub() {
             {tx('Your rated match results will appear here.')}
           </EmptyState>
         )}
-        <CareerStats entries={space.entries} />
+        <CareerStats entries={rated ? sportEntries : space.entries} />
         {rated && (
           // Form and the leaderboard live on the Ratings page; the Hub keeps the summary and a link.
           <Button

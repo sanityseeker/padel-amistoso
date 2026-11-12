@@ -8,6 +8,7 @@ import {
   IconLogout,
   IconUserSearch,
   IconUserShield,
+  IconWorld,
 } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth';
@@ -16,6 +17,7 @@ import { INFO_HREF } from '../features/switcher/destinations';
 import { DisplayPanel } from './DisplayMenu';
 import { PagesNav } from './PagesNav';
 import { useShellUi } from './ShellUi';
+import { useSubdomainClub } from './subdomainClub';
 import classes from './Shell.module.css';
 
 function HubCard({
@@ -66,6 +68,7 @@ export function MenuSheet() {
   useLocale();
   const { menuOpen, setMenuOpen, setPasswordOpen, install } = useShellUi();
   const { user, username, logout } = useAuth();
+  const host = useSubdomainClub();
   const close = () => setMenuOpen(false);
   const cards = [user?.role === 'admin', user?.role === 'admin', install.state !== 'hidden'].filter(
     Boolean,
@@ -142,6 +145,16 @@ export function MenuSheet() {
           >
             {tx('Change password')}
           </Button>
+          {host && (
+            <Button
+              component="a"
+              href={host.apexUrl}
+              variant="default"
+              leftSection={<IconWorld size={16} />}
+            >
+              {tx('Open platform admin')}
+            </Button>
+          )}
           <Button
             color="red"
             variant="light"

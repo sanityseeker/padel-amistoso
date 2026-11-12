@@ -96,7 +96,9 @@ test('create a lobby, add a player, update fee and payment status', async ({ pag
   await page.getByRole('button', { name: 'Payment settings' }).click();
   await page.getByLabel('Fee per player (EUR)').fill('15');
   await page.getByRole('button', { name: 'Save settings' }).click();
-  await page.getByLabel('Payment status for Sample Player').selectOption('paid');
+  await page.getByRole('button', { name: 'Mark paid', exact: true }).click();
+  await page.getByRole('dialog').getByText('Cash', { exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Mark paid', exact: true }).click();
   await expect(page.getByText(/15.*/).first()).toBeVisible();
   await expect(page.getByTestId('stat-collected')).toContainText('15');
   await page.getByRole('button', { name: 'Close registration' }).click();

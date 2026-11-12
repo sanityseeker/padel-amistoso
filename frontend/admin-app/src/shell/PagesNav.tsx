@@ -12,6 +12,7 @@ import {
 import { Link, useLocation } from 'react-router-dom';
 import { t as tx, useLocale } from '../i18n';
 import { getClubSubdomain } from '../club-context';
+import { usePlayerScope } from '../player/scope';
 import { usePlayerSession } from '../player/session';
 import { useAuth } from '../auth';
 import { isDemoInstance, rememberPage } from './env';
@@ -120,6 +121,9 @@ export function PagesNav({
     (page) => !omit?.includes(page.key),
   );
   const label = tx('Pages');
+  const scope = usePlayerScope();
+  // Phone Hub tabs: with a scope picked, the four tabs after Events sit on one tray (Events is global).
+  const grouped = variant === 'bottom' && !!scope && pages.length > 2 && pages[0]?.key === 'events';
   const go = (page: Page) => () => {
     remember(page);
     onNavigate?.();
@@ -127,9 +131,13 @@ export function PagesNav({
   if (variant === 'bottom')
     return (
       <nav aria-label={label} className={classes.bottomNav}>
-        {pages.map((page) => {
+        {pages.map((page, index) => {
+          const scoped = grouped && index > 0;
           const common = {
             className: classes.tab,
+            'data-scoped': scoped || undefined,
+            'data-scoped-first': (scoped && index === 1) || undefined,
+            'data-scoped-last': (scoped && index === pages.length - 1) || undefined,
             'data-active': page.active || undefined,
             'aria-current': page.active ? ('page' as const) : undefined,
             onClick: go(page),

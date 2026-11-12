@@ -182,3 +182,62 @@ test('fields are at least 16 px on a touch screen, so iOS does not zoom in on fo
   await expect(page.getByRole('textbox').first()).toBeVisible();
   expect(await smallest()).toBeGreaterThanOrEqual(16);
 });
+
+// Two fingers through the Chrome DevTools protocol: Playwright's touchscreen only taps.
+async function pinch(
+  page: import('@playwright/test').Page,
+  x: number,
+  y: number,
+  from: number,
+  to: number,
+) {
+  const cdp = await page.context().newCDPSession(page);
+  const points = (d: number) => [
+    { x: x - d / 2, y, id: 1 },
+    { x: x + d / 2, y, id: 2 },
+  ];
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: points(from) });
+  for (let i = 1; i <= 10; i++)
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: points(from + ((to - from) * i) / 10),
+    });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+}
+
+const scaleOf = (img: import('@playwright/test').Locator) =>
+  img.evaluate((el) => Number(/scale\(([\d.]+)\)/.exec((el as HTMLElement).style.transform)?.[1]));
+
+test('bracket pictures zoom with a pinch and a double tap, on the workspace and the TV', async ({
+  page,
+  request,
+}) => {
+  const { id } = await createTournament(request, 'po', `Zoom ${stamp()}`);
+  await loginAdmin(page);
+  await page.goto(`/admin/t/${id}`);
+  await page.getByTestId('bracket').getByText('Diagram', { exact: true }).click();
+  const img = page.getByTestId('bracket-diagram').getByRole('img');
+  await expect(img).toBeVisible({ timeout: 30_000 });
+  await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).complete)).toBe(true);
+  const box = (await img.boundingBox())!;
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.touchscreen.tap(cx, cy);
+  await page.touchscreen.tap(cx, cy);
+  await expect.poll(() => scaleOf(img)).toBe(2.5);
+  await page.touchscreen.tap(cx, cy);
+  await page.touchscreen.tap(cx, cy);
+  await expect.poll(() => scaleOf(img)).toBe(1);
+  await pinch(page, cx, cy, 60, 180);
+  await expect.poll(() => scaleOf(img)).toBeGreaterThan(2);
+
+  await page.goto(`/tv/${id}`);
+  await page.getByTestId('tv-bracket').getByRole('button').first().click();
+  const zoom = page.getByTestId('tv-bracket-zoom').getByRole('img');
+  await expect(zoom).toBeVisible();
+  const lb = (await zoom.boundingBox())!;
+  await pinch(page, lb.x + lb.width / 2, lb.y + lb.height / 2, 60, 180);
+  await expect.poll(() => scaleOf(zoom)).toBeGreaterThan(2);
+  await page.getByRole('button', { name: 'Reset zoom' }).click();
+  await expect.poll(() => scaleOf(zoom)).toBe(1);
+});

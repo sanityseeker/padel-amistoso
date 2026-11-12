@@ -18,22 +18,31 @@ export const useLeaderboard = (scopeQuery: string) =>
 export type BoardRow = Board['padel'][number];
 
 /** Top three plus the player (when further down), or the whole board. */
-export function previewRows(rows: BoardRow[], name: string, full: boolean): BoardRow[] {
+export const isMe = (r: BoardRow, me: { id: string; name: string }) =>
+  r.profile_id ? r.profile_id === me.id : r.name === me.name;
+
+/** Top three plus the player (when further down), or the whole board. The player is matched by profile
+    id, falling back to the name for rows without one (unlinked participants). */
+export function previewRows(
+  rows: BoardRow[],
+  me: { id: string; name: string },
+  full: boolean,
+): BoardRow[] {
   if (full || rows.length <= 4) return rows;
-  const me = rows.find((r) => r.name === name);
+  const mine = rows.find((r) => isMe(r, me));
   const top = rows.slice(0, 3);
-  return me && !top.includes(me) ? [...top, me] : top;
+  return mine && !top.includes(mine) ? [...top, mine] : top;
 }
 
 export function Leaderboard({
   scopeQuery,
   sport,
-  name,
+  me: profile,
   full = false,
 }: {
   scopeQuery: string;
   sport: Sport;
-  name: string;
+  me: { id: string; name: string };
   full?: boolean;
 }) {
   useLocale();
@@ -42,8 +51,8 @@ export function Leaderboard({
   if (board.error) return <ErrorState error={board.error} retry={() => void board.refetch()} />;
   const rows = board.data[sport];
   if (!rows.length) return <Text c="dimmed">{tx('No rated players in this scope yet.')}</Text>;
-  const shown = previewRows(rows, name, full);
-  const me = rows.find((r) => r.name === name);
+  const shown = previewRows(rows, profile, full);
+  const me = rows.find((r) => isMe(r, profile));
   return (
     <StandingsTable
       preset="leaderboard"

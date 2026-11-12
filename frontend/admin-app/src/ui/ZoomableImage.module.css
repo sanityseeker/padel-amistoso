@@ -1,0 +1,24 @@
+.box {
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-x pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: zoom-in;
+}
+.box[data-zoomed] {
+  touch-action: none;
+  cursor: grab;
+}
+.box[data-zoomed]:active {
+  cursor: grabbing;
+}
+.image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+  transform-origin: 0 0;
+  will-change: transform;
+}

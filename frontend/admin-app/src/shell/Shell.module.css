@@ -90,6 +90,20 @@
   color: var(--color-nav-ink-active);
   box-shadow: inset 0 3px 0 var(--color-primary);
 }
+/* A picked Hub scope: the tabs after Events share one rounded tray, Events stays plain (global). */
+.tab[data-scoped] {
+  background: var(--app-surface-2);
+  margin-block: 6px;
+}
+.tab[data-scoped-first] {
+  margin-inline-start: 6px;
+  border-start-start-radius: var(--mantine-radius-md);
+  border-end-start-radius: var(--mantine-radius-md);
+}
+.tab[data-scoped-last] {
+  border-start-end-radius: var(--mantine-radius-md);
+  border-end-end-radius: var(--mantine-radius-md);
+}
 .tab[data-accent] {
   color: var(--color-primary);
 }

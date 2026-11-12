@@ -1,20 +1,10 @@
-import { useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getClubSubdomain } from '../club-context';
 import { playerApi } from '../player/api';
 
-// On `{club}.{domain}/admin` the organizer works inside one club: a banner names it and the create
-// forms are locked to it. This is a convenience only; every permission check stays on the server.
-const DISMISS_KEY = 'admin-subdomain-banner-dismissed';
-const listeners = new Set<() => void>();
-const readDismissed = () => {
-  try {
-    return sessionStorage.getItem(DISMISS_KEY) === '1';
-  } catch {
-    return false;
-  }
-};
-let dismissed = readDismissed();
+// On `{club}.{domain}/admin` the organizer works inside one club: the Hub lists only its events, the
+// create forms are locked to it, and the account menu links to the platform admin on the apex
+// domain. This is a convenience only; every permission check stays on the server.
 
 export interface SubdomainClub {
   club_id: string;
@@ -26,13 +16,6 @@ export interface SubdomainClub {
 
 export function useSubdomainClub() {
   const slug = getClubSubdomain();
-  const hidden = useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    () => dismissed,
-  );
   const club = useQuery({
     queryKey: ['public', 'subdomain-club', slug],
     enabled: !!slug,
@@ -59,17 +42,5 @@ export function useSubdomainClub() {
       return { club: found, apexUrl: apex.href };
     },
   });
-  if (!slug || hidden || !club.data) return null;
-  return {
-    ...club.data,
-    dismiss: () => {
-      dismissed = true;
-      try {
-        sessionStorage.setItem(DISMISS_KEY, '1');
-      } catch {
-        /* Dismissed for this visit only. */
-      }
-      listeners.forEach((listener) => listener());
-    },
-  };
+  return slug ? (club.data ?? null) : null;
 }

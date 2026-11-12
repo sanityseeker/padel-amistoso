@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { adminHeaders, chooseLanguage, expectFooter } from './helpers';
+import { ADMIN, adminHeaders, chooseLanguage, createTournament, expectFooter } from './helpers';
 
 const stamp = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
@@ -159,4 +159,77 @@ test('the club page fits a phone', async ({ page, request }) => {
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
   ).toBeTruthy();
+});
+
+test('the admin on a club subdomain lists only that club and links to the platform admin', async ({
+  page,
+  request,
+}) => {
+  const c = await club(request);
+  const elsewhere = `Elsewhere ${c.s}`;
+  await createTournament(request, 'mex', elsewhere);
+  await page.goto(`http://${c.slug}.localhost:${PORT}/admin`);
+  await page.getByLabel(/^Username/).fill(ADMIN.username);
+  await page.getByLabel(/^Password/).fill(ADMIN.password);
+  await page.getByRole('button', { name: 'Log in', exact: true }).click();
+  await page.getByPlaceholder('Search tournaments').fill(c.s);
+  await expect(page.getByText(`Landing first ${c.s}`).first()).toBeVisible();
+  await expect(page.getByText(`Landing sign-up ${c.s}`).first()).toBeVisible();
+  await expect(page.getByText(elsewhere)).toHaveCount(0);
+  // No banner: the way out is the account menu, and it changes the domain.
+  await expect(page.getByText(/You are managing/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Account menu' }).first().click();
+  await expect(page.getByRole('menuitem', { name: 'Open platform admin' })).toHaveAttribute(
+    'href',
+    `http://localhost:${PORT}/admin`,
+  );
+});
+
+test('a leaderboard row opens a card for that board sport only', async ({ page, request }) => {
+  const c = await club(request);
+  const row = (rank: number, name: string, profile_id: string) => ({
+    rank,
+    name,
+    elo: 1100 - rank,
+    tier_name: null,
+    matches: 3,
+    profile_id,
+  });
+  let cardUrl = '';
+  await page.route('**/api/clubs/*/public-leaderboard*', (route) =>
+    route.fulfill({
+      json: { padel: [row(1, 'Pala Pro', 'pp_pala')], tennis: [row(1, 'Net Ace', 'pp_net')] },
+    }),
+  );
+  await page.route('**/api/clubs/*/players/*/public-card*', (route) => {
+    cardUrl = route.request().url();
+    return route.fulfill({
+      json: {
+        profile_id: 'pp_pala',
+        name: 'Pala Pro',
+        elo_padel: 1099,
+        elo_tennis: null,
+        matches_padel: 3,
+        matches_tennis: 0,
+        tier_name_padel: null,
+        tier_name_tennis: null,
+        rank_padel: 1,
+        rank_tennis: null,
+        recent_matches: [],
+        elo_history_padel: [1090, 1099],
+        elo_history_tennis: [],
+        scope: { sport: 'padel', season_id: null },
+      },
+    });
+  });
+  await page.goto(`/club/${c.slug}`);
+  await page.evaluate(() => localStorage.setItem('padel-player-profile', 'any-session-is-mocked'));
+  await page.reload();
+  await page.getByRole('button', { name: 'Open profile for Pala Pro' }).first().click();
+  const card = page.getByTestId('club-player-card');
+  await expect(card).toBeVisible();
+  expect(cardUrl).toContain('sport=padel');
+  // Only the padel panel: no tennis panel on a padel card.
+  await expect(card.getByText('Padel', { exact: true })).toHaveCount(1);
+  await expect(card.getByText('Tennis', { exact: true })).toHaveCount(0);
 });

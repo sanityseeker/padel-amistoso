@@ -486,7 +486,11 @@ export function LobbyPage() {
           <ParticipantFilter key={JSON.stringify(lobby.participant_filter ?? [])} lobby={lobby} />
         </Tabs.Panel>
         <Tabs.Panel value="payments">
-          <PaymentsPanel base={`/registrations/${id}`} scope="lobby" />
+          <PaymentsPanel
+            base={`/registrations/${id}`}
+            scope="lobby"
+            convertedTo={linked.map((l) => ({ id: l.id, name: l.name }))}
+          />
         </Tabs.Panel>
         <Tabs.Panel value="codes">
           <CodesPanel lobbyId={id} />
@@ -512,7 +516,9 @@ export function LobbyPage() {
       <ConfirmAction
         opened={!!removing}
         title={tx('Remove {name}?', { name: removing?.player_name })}
-        description={tx('They leave the sign-up list and their payment record is removed.')}
+        description={tx(
+          'They leave the sign-up list. If they paid, the payment is marked refund due. An unpaid record is deleted.',
+        )}
         confirmLabel={tx('Remove')}
         color="red"
         loading={remove.isPending}

@@ -104,7 +104,8 @@ export function collectAnswers(
 
 export const isEmail = (value: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value.trim());
 
-/** Link-type payment methods (Revolut, PayPal.me) open with the amount filled in. */
+/** Link-type payment methods (Revolut, PayPal) open with the amount filled in;
+ * a paypal.me link gets the amount in its path, any other PayPal link opens as given. */
 export function paymentHref(m: PaymentMethod, cents: number, currency: string): string | null {
   if (!m.value || (m.kind !== 'revolut' && m.kind !== 'paypal_me')) return null;
   let url = String(m.value).trim();
@@ -116,7 +117,7 @@ export function paymentHref(m: PaymentMethod, cents: number, currency: string): 
     const u = new URL(url);
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
     if (m.kind === 'paypal_me') {
-      if (!/\/\d+(\.\d+)?[A-Za-z]{3}$/.test(u.pathname))
+      if (/(^|\.)paypal\.me$/i.test(u.hostname) && !/\/\d+(\.\d+)?[A-Za-z]{3}$/.test(u.pathname))
         u.pathname = `${u.pathname.replace(/\/$/, '')}/${amount}${code}`;
     } else if (!u.searchParams.has('amount')) {
       u.searchParams.set('amount', amount);

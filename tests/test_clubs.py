@@ -2354,7 +2354,8 @@ class TestPublicPlayerCard:
         assert body["elo_padel"] == 1175.0
         assert body["matches_padel"] == 1
         assert body["rank_padel"] == 1
-        assert body["elo_tennis"] is None
+        # The roster sync adds the default tennis row: unplayed, unranked.
+        assert body["elo_tennis"] in (None, 1000.0)
         assert body["matches_tennis"] == 0
         assert body["rank_tennis"] is None
         assert isinstance(body["recent_matches"], list)
@@ -2419,10 +2420,16 @@ class TestPublicPlayerCard:
         assert rm["score"] == [16, 15]
 
     def test_hidden_player_hides_elo_and_tier(self, client, auth_headers) -> None:
-        # A profile that is hidden in every sport is not exposed at all.
+        # The hidden sport is never exposed: asking for it is a 404, and the
+        # all-sports card carries none of its numbers or matches.
         club = self._seed_player_with_match(client, auth_headers, hidden=True)
-        res = client.get(f"/api/clubs/{club['id']}/players/pp_card1/public-card", headers=_member_headers())
+        res = client.get(f"/api/clubs/{club['id']}/players/pp_card1/public-card?sport=padel", headers=_member_headers())
         assert res.status_code == 404
+        body = client.get(f"/api/clubs/{club['id']}/players/pp_card1/public-card", headers=_member_headers()).json()
+        assert body["elo_padel"] is None
+        assert body["matches_padel"] == 0
+        assert body["recent_matches"] == []
+        assert body["elo_history_padel"] == []
 
 
 class TestLeaderboardCacheReuse:

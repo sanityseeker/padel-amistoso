@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -29,6 +30,7 @@ from .db import get_db
 from .schemas import (
     PAYMENT_STATUSES,
     HubPaymentOut,
+    PayableTeammateOut,
     PaymentInfoOut,
     PaymentMethod,
     PaymentPublicOut,
@@ -216,16 +218,18 @@ def set_status(
     reference: str | None = None,
     note: str | None = None,
     settings: PaymentSettings | None = None,
+    conn: sqlite3.Connection | None = None,
 ) -> dict:
     """Create-or-update the payment row for one participant and log the event.
 
+    Pass *conn* to take part in the caller's transaction (it then commits or rolls back with it).
     Returns the stored row as a dict.
     """
     if status not in PAYMENT_STATUSES:
         raise ValueError(f"Unknown payment status: {status}")
     settings = settings or get_settings(kind, entity_id)
     now = _now()
-    with get_db() as conn:
+    with nullcontext(conn) if conn is not None else get_db() as conn:
         existing = conn.execute(
             f"SELECT * FROM registrant_payments WHERE {_entity_column(kind)} = ? AND player_id = ?",  # noqa: S608
             (entity_id, player_id),
@@ -309,6 +313,107 @@ def report_payment(
         reference=reference,
         method=method,
     )
+
+
+class PayForOthersError(ValueError):
+    """A player tried to report a payment for someone who is not eligible."""
+
+
+def entity_participants(kind: EntityKind, entity_id: str) -> list[dict]:
+    """``[{player_id, player_name, email}]`` of a lobby (registrants) or tournament (player_secrets)."""
+    with get_db() as conn:
+        if kind == "registration":
+            rows = conn.execute(
+                "SELECT player_id, player_name, email FROM registrants WHERE registration_id = ? ORDER BY registered_at",
+                (entity_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT player_id, player_name, email FROM player_secrets WHERE tournament_id = ?",
+                (entity_id,),
+            ).fetchall()
+    return [
+        {"player_id": r["player_id"], "player_name": r["player_name"] or "", "email": r["email"] or ""} for r in rows
+    ]
+
+
+def _eligible_participants(kind: EntityKind, entity_id: str, reporter_id: str) -> list[dict]:
+    """Other players of the event whose payment is still ``unpaid`` (or has no row yet)."""
+    if get_settings(kind, entity_id).fee_cents <= 0:
+        return []
+    out = []
+    for participant in entity_participants(kind, entity_id):
+        if participant["player_id"] == reporter_id:
+            continue
+        row = get_row(kind, entity_id, participant["player_id"])
+        if row is None or row["status"] == "unpaid":
+            out.append(participant)
+    return out
+
+
+def payable_teammates(kind: EntityKind, entity_id: str, reporter_id: str) -> list[PayableTeammateOut]:
+    """Id and display name only: no e-mail, no amounts, no status of other players."""
+    return [
+        PayableTeammateOut(player_id=p["player_id"], player_name=p["player_name"])
+        for p in _eligible_participants(kind, entity_id, reporter_id)
+    ]
+
+
+def report_payment_for_players(
+    kind: EntityKind,
+    entity_id: str,
+    reporter: dict,
+    *,
+    reference: str | None,
+    method: str | None,
+    also_for: list[str],
+) -> None:
+    """Report the reporter's own payment and, in the same transaction, one for each id in *also_for*.
+
+    Every id must be another player of this event whose row is ``unpaid`` or missing; otherwise
+    :class:`PayForOthersError` is raised before anything is written. Each selected row becomes
+    ``reported`` with the note "Paid by <reporter>" and the reporter as actor in the audit trail.
+    The reporter's own row follows :func:`report_payment` (never downgraded past ``unpaid``).
+    """
+    wanted = list(dict.fromkeys(also_for))
+    eligible = {p["player_id"]: p for p in _eligible_participants(kind, entity_id, reporter["player_id"])}
+    if any(pid not in eligible for pid in wanted):
+        raise PayForOthersError("One of the selected players cannot be paid for")
+    settings = get_settings(kind, entity_id)
+    with get_db() as conn:
+        own = conn.execute(
+            f"SELECT status FROM registrant_payments WHERE {_entity_column(kind)} = ? AND player_id = ?",  # noqa: S608
+            (entity_id, reporter["player_id"]),
+        ).fetchone()
+        if own is None or own["status"] == "unpaid":
+            set_status(
+                kind,
+                entity_id,
+                reporter["player_id"],
+                status="reported",
+                actor="player",
+                player_name=reporter.get("player_name"),
+                email=reporter.get("email"),
+                reference=reference,
+                method=method,
+                settings=settings,
+                conn=conn,
+            )
+        for pid in wanted:
+            set_status(
+                kind,
+                entity_id,
+                pid,
+                status="reported",
+                actor=f"player:{reporter.get('player_name') or reporter['player_id']}",
+                player_name=eligible[pid]["player_name"],
+                email=eligible[pid]["email"] or None,
+                reference=reference,
+                method=method,
+                note=f"Paid by {reporter.get('player_name') or reporter['player_id']}",
+                settings=settings,
+                conn=conn,
+            )
 
 
 def get_row(kind: EntityKind, entity_id: str, player_id: str) -> dict | None:

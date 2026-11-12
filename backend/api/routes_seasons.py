@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from ..auth.deps import get_current_user, require_profile_or_user
 from ..auth.models import User
 from .db import get_db
+from .rating_scope import RatingScope, scoped_log_cte
 from .routes_clubs import _get_club, _require_club_admin
 from .state import _tournaments
 
@@ -414,16 +415,17 @@ def _compute_live_standings(season_id: str) -> SeasonStandingsResponse:
 
         placeholders = ",".join("?" for _ in season_tids)
 
+        # Rating rows come from the shared season scope: a row belongs to a
+        # profile through its own (tournament, player) pair, and sports the
+        # club hides for the profile are left out, as on the club board.
+        cte, cte_params = scoped_log_cte(RatingScope(club_id=season["club_id"], season_id=season_id))
         elo_rows = conn.execute(
-            f"""SELECT player_id, sport,
-                       COALESCE(club_elo_before, elo_before) AS elo_before,
-                       COALESCE(club_elo_after, elo_after) AS elo_after,
-                       COALESCE(club_elo_after - club_elo_before, elo_delta) AS elo_delta,
-                       match_order, tournament_id
-                FROM player_elo_log
-                WHERE tournament_id IN ({placeholders})
-                ORDER BY updated_at ASC, match_order ASC""",
-            season_tids,
+            f"""{cte}
+            SELECT profile_id AS player_id, sport, elo_before, elo_after, elo_delta, match_order, tournament_id
+              FROM scoped_log
+             WHERE is_manual = 0
+          ORDER BY updated_at ASC, match_order ASC""",
+            cte_params,
         ).fetchall()
 
         history_rows = conn.execute(
@@ -436,28 +438,8 @@ def _compute_live_standings(season_id: str) -> SeasonStandingsResponse:
             season_tids,
         ).fetchall()
 
-    # Resolve player_id → profile_id mapping
-    all_player_ids = {r["player_id"] for r in elo_rows}
-    profile_for_player: dict[str, str] = {}
-    if all_player_ids:
-        with get_db() as conn:
-            ph = ",".join("?" for _ in all_player_ids)
-            rows = conn.execute(
-                f"SELECT player_id, profile_id FROM player_secrets WHERE profile_id IS NOT NULL AND player_id IN ({ph})",
-                list(all_player_ids),
-            ).fetchall()
-            for r in rows:
-                profile_for_player[r["player_id"]] = r["profile_id"]
-            remaining = all_player_ids - set(profile_for_player.keys())
-            if remaining:
-                ph2 = ",".join("?" for _ in remaining)
-                rows2 = conn.execute(
-                    f"SELECT player_id, profile_id FROM player_history WHERE profile_id IS NOT NULL AND player_id IN ({ph2})",
-                    list(remaining),
-                ).fetchall()
-                for r in rows2:
-                    if r["player_id"] not in profile_for_player:
-                        profile_for_player[r["player_id"]] = r["profile_id"]
+    # Rows are already keyed by profile id (see the query above).
+    profile_for_player: dict[str, str] = {r["player_id"]: r["player_id"] for r in elo_rows}
 
     padel_entries = _aggregate_standings(
         [r for r in elo_rows if r["sport"] == "padel"],

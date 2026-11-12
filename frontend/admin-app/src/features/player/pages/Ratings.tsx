@@ -113,7 +113,7 @@ export default function Ratings() {
             <Title order={3} mb="md">
               {tx('Community leaderboard')}
             </Title>
-            <Leaderboard scopeQuery={scopeQuery} sport={sport} name={space.profile.name} full />
+            <Leaderboard scopeQuery={scopeQuery} sport={sport} me={space.profile} full />
           </Paper>
         </Stack>
         {recent.length > 0 && (

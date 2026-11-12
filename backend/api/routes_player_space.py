@@ -49,7 +49,8 @@ from .player_secret_store import (
     resolve_passphrase,
 )
 from .rate_limit import BoundedRateLimiter
-from .routes_clubs import ensure_club_roster_synced
+from .rating_scope import RatingScope, resolve_scope, scope_stats
+from .routes_clubs import _compute_club_leaderboard_rows, ensure_club_roster_synced, project_club_board
 from .state import bump_tournament_version, get_tournament_data
 from .elo_recalc import mark_elo_dirty
 from .elo_store import (
@@ -325,6 +326,7 @@ class LeaderboardEntry(BaseModel):
     matches: int
     has_profile: bool = True
     tier_name: str | None = None
+    profile_id: str | None = None
 
 
 class LeaderboardCommunityRef(BaseModel):
@@ -1027,25 +1029,24 @@ def _deduplicate_entries(entries: list[PlayerSpaceEntry]) -> list[PlayerSpaceEnt
 def _filter_entries_by_scope(
     entries: list[PlayerSpaceEntry],
     *,
-    community_id: str | None,
-    club_id: str | None,
+    scope: RatingScope,
 ) -> list[PlayerSpaceEntry]:
     """Restrict entries to those matching the active stats scope.
 
     Applies to active and finished entries alike, so a club subdomain (or a
     club/community picked in the Hub scope selector) never lists events from
     other clubs or communities:
-    - ``club_id`` keeps only entries (tournaments and lobbies) of that club.
-    - ``community_id`` keeps only entries belonging to that community.
-    - Neither set returns the list unchanged.
+    - a club keeps only entries (tournaments and lobbies) of that club.
+    - a community keeps only entries belonging to that community.
+    - the global scope returns the list unchanged.
     """
-    if not club_id and not community_id:
+    if scope.kind == "global":
         return entries
 
     def _keep(entry: PlayerSpaceEntry) -> bool:
-        if club_id:
-            return entry.club_id == club_id
-        return entry.community_id == community_id
+        if scope.club_id:
+            return entry.club_id == scope.club_id
+        return entry.community_id == scope.community_id
 
     return [e for e in entries if _keep(e)]
 
@@ -1075,6 +1076,8 @@ def _build_elo_history(
     limit: int = 5,
     community_id: str | None = None,
     club_id: str | None = None,
+    *,
+    scope: RatingScope | None = None,
 ) -> list[EloHistoryMatch]:
     """Return the latest per-match ELO events for a profile across tournaments."""
     rows = get_profile_recent_elo_logs(
@@ -1082,6 +1085,7 @@ def _build_elo_history(
         limit=limit,
         community_id=community_id,
         club_id=club_id,
+        scope=scope,
     )
     events: list[EloHistoryMatch] = []
 
@@ -2099,98 +2103,21 @@ def _leaderboard_for_sport(sport: str, community_id: str = "", club_id: str | No
     are aggregated.
     """
     if club_id:
+        # Same cached rows, projection and order as the public club leaderboard.
         ensure_club_roster_synced(club_id)
         with get_db() as conn:
-            rows = conn.execute(
-                """
-                WITH linked_tournament_players AS (
-                    SELECT ps.profile_id    AS profile_id,
-                           ps.tournament_id AS tournament_id,
-                           ps.player_id     AS player_id
-                      FROM player_secrets ps
-                     WHERE ps.profile_id IN (
-                         SELECT profile_id FROM profile_club_elo WHERE club_id = ?
-                     )
-                    UNION
-                    SELECT ph.profile_id    AS profile_id,
-                           ph.entity_id     AS tournament_id,
-                           ph.player_id     AS player_id
-                      FROM player_history ph
-                     WHERE ph.entity_type = 'tournament'
-                       AND ph.profile_id IN (
-                           SELECT profile_id FROM profile_club_elo WHERE club_id = ?
-                       )
-                    UNION
-                    SELECT lp2.profile_id   AS profile_id,
-                           l.tournament_id  AS tournament_id,
-                           l.player_id      AS player_id
-                      FROM player_elo_log l
-                      JOIN (
-                           SELECT profile_id, player_id FROM player_secrets WHERE profile_id IS NOT NULL
-                           UNION
-                           SELECT profile_id, player_id FROM player_history
-                            WHERE entity_type = 'tournament' AND profile_id IS NOT NULL
-                      ) lp2 ON lp2.player_id = l.player_id
-                     WHERE l.is_manual = 1 AND l.tournament_id = ?
-                ),
-                scoped AS (
-                    SELECT lp.profile_id AS profile_id,
-                           COALESCE(l.club_elo_after, l.elo_after) AS elo_after,
-                           l.is_manual   AS is_manual,
-                           l.updated_at  AS updated_at,
-                           l.match_order AS match_order
-                      FROM player_elo_log l
-                      JOIN linked_tournament_players lp
-                        ON lp.tournament_id = l.tournament_id
-                       AND lp.player_id = l.player_id
-                 LEFT JOIN tournaments t
-                        ON t.id = l.tournament_id
-                     WHERE (t.club_id = ? OR (l.is_manual = 1 AND l.tournament_id = ?))
-                       AND l.sport = ?
-                ),
-                matches_agg AS (
-                    SELECT s.profile_id,
-                           SUM(CASE WHEN s.is_manual = 0 THEN 1 ELSE 0 END) AS matches
-                      FROM scoped s
-                  GROUP BY s.profile_id
-                ),
-                latest AS (
-                    SELECT s.profile_id,
-                           s.elo_after,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY s.profile_id
-                               ORDER BY s.updated_at DESC, s.match_order DESC
-                           ) AS rn
-                      FROM scoped s
-                )
-                SELECT pp.name      AS name,
-                       pp.is_ghost  AS is_ghost,
-                       ct.name      AS tier_name,
-                       COALESCE(m.matches, 0) AS matches,
-                       COALESCE(lt.elo_after, pce.elo) AS elo
-                  FROM profile_club_elo pce
-                  JOIN player_profiles pp ON pp.id = pce.profile_id
-             LEFT JOIN club_tiers ct ON ct.id = pce.tier_id
-             LEFT JOIN matches_agg m ON m.profile_id = pce.profile_id
-             LEFT JOIN latest lt ON lt.profile_id = pce.profile_id AND lt.rn = 1
-                 WHERE pce.club_id = ?
-                   AND pce.sport = ?
-                   AND pce.hidden = 0
-                   AND COALESCE(m.matches, 0) > 0
-              ORDER BY elo DESC
-                """,
-                (club_id, club_id, club_id, club_id, club_id, sport, club_id, sport),
-            ).fetchall()
+            club_rows = _compute_club_leaderboard_rows(conn, club_id)
         return [
             LeaderboardEntry(
-                rank=i + 1,
-                name=row["name"],
-                elo=row["elo"],
-                matches=row["matches"],
-                has_profile=not bool(row["is_ghost"]),
-                tier_name=row["tier_name"],
+                rank=e["rank"],
+                name=e["name"],
+                elo=e["elo"],
+                matches=e["matches"],
+                has_profile=not e["is_ghost"],
+                tier_name=e["tier_name"],
+                profile_id=e["profile_id"],
             )
-            for i, row in enumerate(rows)
+            for e in project_club_board(club_rows, sport)
         ]
 
     all_communities = community_id == ""
@@ -2214,7 +2141,7 @@ def _leaderboard_for_sport(sport: str, community_id: str = "", club_id: str | No
             # The 'open' snapshot mirrors the player's *latest community chain*
             # (seeded from their prior count), not a cross-community total, so
             # overlay the live log-derived count / latest rating where available.
-            live = get_live_profile_elo_stats(community_id=None, conn=conn)
+            live = get_live_profile_elo_stats(scope=RatingScope(), conn=conn)
             profile_rows = []
             for r in snapshot_rows:
                 stats = live.get(r["profile_id"], {}).get(sport)
@@ -2231,67 +2158,25 @@ def _leaderboard_for_sport(sport: str, community_id: str = "", club_id: str | No
             # match counts stay consistent with (and never smaller than) the club
             # rosters nested inside it.  The snapshot ``pce.elo`` is only a
             # fallback for players with no logged matches (tier/manual seeds).
-            profile_rows = conn.execute(
-                """
-                WITH linked_tournament_players AS (
-                    SELECT ps.profile_id AS profile_id,
-                           ps.tournament_id AS tournament_id,
-                           ps.player_id AS player_id
-                      FROM player_secrets ps
-                     WHERE ps.profile_id IS NOT NULL
-                    UNION
-                    SELECT ph.profile_id AS profile_id,
-                           ph.entity_id AS tournament_id,
-                           ph.player_id AS player_id
-                      FROM player_history ph
-                     WHERE ph.entity_type = 'tournament'
-                       AND ph.profile_id IS NOT NULL
-                ),
-                scoped AS (
-                    SELECT lp.profile_id AS profile_id,
-                           l.elo_after   AS elo_after,
-                           l.is_manual   AS is_manual,
-                           l.updated_at  AS updated_at,
-                           l.match_order AS match_order
-                      FROM player_elo_log l
-                      JOIN linked_tournament_players lp
-                        ON lp.tournament_id = l.tournament_id
-                       AND lp.player_id = l.player_id
-                      JOIN tournaments t ON t.id = l.tournament_id
-                     WHERE t.community_id = ?
-                       AND l.sport = ?
-                ),
-                matches_agg AS (
-                    SELECT s.profile_id,
-                           SUM(CASE WHEN s.is_manual = 0 THEN 1 ELSE 0 END) AS matches
-                      FROM scoped s
-                  GROUP BY s.profile_id
-                ),
-                latest AS (
-                    SELECT s.profile_id,
-                           s.elo_after,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY s.profile_id
-                               ORDER BY s.updated_at DESC, s.match_order DESC
-                           ) AS rn
-                      FROM scoped s
-                )
-                SELECT pp.name      AS name,
-                       pp.is_ghost  AS is_ghost,
-                       ct.name      AS tier_name,
-                       COALESCE(m.matches, 0) AS matches,
-                       COALESCE(lt.elo_after, pce.elo) AS elo
-                  FROM profile_community_elo pce
-                  JOIN player_profiles pp ON pp.id = pce.profile_id
-             LEFT JOIN club_tiers ct ON ct.id = pce.tier_id
-             LEFT JOIN matches_agg m ON m.profile_id = pce.profile_id
-             LEFT JOIN latest lt ON lt.profile_id = pce.profile_id AND lt.rn = 1
-                 WHERE pce.community_id = ?
-                   AND pce.sport = ?
-                   AND COALESCE(m.matches, 0) > 0
-                """,
-                (community_id, sport, community_id, sport),
+            stats = scope_stats(conn, RatingScope(community_id=community_id, sport=sport))
+            base = conn.execute(
+                "SELECT pce.profile_id AS profile_id, pce.elo AS elo, pp.name AS name, pp.is_ghost AS is_ghost,"
+                "       ct.name AS tier_name"
+                "  FROM profile_community_elo pce"
+                "  JOIN player_profiles pp ON pp.id = pce.profile_id"
+                "  LEFT JOIN club_tiers ct ON ct.id = pce.tier_id"
+                " WHERE pce.community_id = ? AND pce.sport = ?",
+                (community_id, sport),
             ).fetchall()
+            profile_rows = []
+            for r in base:
+                st = stats.get((r["profile_id"], sport))
+                if st is None or st.matches <= 0:
+                    continue
+                row = dict(r)
+                row["matches"] = st.matches
+                row["elo"] = st.elo if st.elo is not None else r["elo"]
+                profile_rows.append(row)
 
         # 2) Unlinked tournament participants: aggregate from player_elo + player_secrets
         #    Exclude player_ids already linked to a profile to avoid duplicates.
@@ -2351,6 +2236,7 @@ def _leaderboard_for_sport(sport: str, community_id: str = "", club_id: str | No
                 "matches": r["matches"],
                 "has_profile": not bool(r["is_ghost"]),
                 "tier_name": r["tier_name"],
+                "profile_id": r["profile_id"],
             }
         )
 
@@ -2362,7 +2248,14 @@ def _leaderboard_for_sport(sport: str, community_id: str = "", club_id: str | No
     for r in unlinked_rows:
         if r["name"] not in profile_names:
             combined.append(
-                {"name": r["name"], "elo": r["elo"], "matches": r["matches"], "has_profile": False, "tier_name": None}
+                {
+                    "name": r["name"],
+                    "elo": r["elo"],
+                    "matches": r["matches"],
+                    "has_profile": False,
+                    "tier_name": None,
+                    "profile_id": None,
+                }
             )
 
     combined.sort(key=lambda x: x["elo"], reverse=True)
@@ -2374,6 +2267,7 @@ def _leaderboard_for_sport(sport: str, community_id: str = "", club_id: str | No
             matches=e["matches"],
             has_profile=e["has_profile"],
             tier_name=e["tier_name"],
+            profile_id=e["profile_id"],
         )
         for i, e in enumerate(combined)
     ]
@@ -2565,93 +2459,26 @@ def _get_club_community_id(club_id: str) -> str | None:
 def _get_profile_club_elo(profile_id: str, club_id: str) -> dict[str, float | int]:
     """Return profile ELO values scoped to one club, derived per match.
 
-    The match count is the number of non-manual ``player_elo_log`` rows for
-    tournaments belonging to this club where the profile was a participant.
-    The ELO value is the latest ``elo_after`` from any log row in scope
-    (manual adjustments are honoured for the rating, but do not inflate the
-    match count). Hidden sport rows in ``profile_club_elo`` cause the
-    corresponding sport to be reported with defaults so the UI hides it.
+    Uses the shared club scope (:mod:`.rating_scope`): the match count is the
+    number of non-manual log rows of this club's tournaments, the rating is the
+    latest club-chain value (manual adjustments count for the rating only).
+    Sports the club hides for the profile are absent from the scope and so are
+    reported with defaults, which the UI hides.
     """
     with get_db() as conn:
-        hidden_rows = conn.execute(
-            """
-            SELECT sport
-              FROM profile_club_elo
-             WHERE profile_id = ?
-               AND club_id = ?
-               AND hidden = 1
-            """,
-            (profile_id, club_id),
-        ).fetchall()
-        hidden_sports = {r["sport"] for r in hidden_rows}
-
-        rows = conn.execute(
-            """
-            WITH linked_tournament_players AS (
-                SELECT ps.tournament_id AS tournament_id, ps.player_id AS player_id
-                  FROM player_secrets ps
-                 WHERE ps.profile_id = ?
-                UNION
-                SELECT ph.entity_id AS tournament_id, ph.player_id AS player_id
-                  FROM player_history ph
-                 WHERE ph.profile_id = ?
-                   AND ph.entity_type = 'tournament'
-                UNION
-                SELECT DISTINCT l.tournament_id, l.player_id
-                  FROM player_elo_log l
-                 WHERE l.is_manual = 1
-                   AND l.player_id IN (
-                       SELECT ps.player_id FROM player_secrets ps WHERE ps.profile_id = ?
-                       UNION
-                       SELECT ph.player_id FROM player_history ph WHERE ph.profile_id = ?
-                   )
-            ),
-            scoped AS (
-                SELECT l.sport,
-                       COALESCE(l.club_elo_after, l.elo_after) AS elo_after,
-                       l.is_manual,
-                       l.updated_at,
-                       l.match_order
-                  FROM player_elo_log l
-                  JOIN linked_tournament_players lp
-                    ON lp.tournament_id = l.tournament_id
-                   AND lp.player_id = l.player_id
-                  LEFT JOIN tournaments t
-                    ON t.id = l.tournament_id
-                 WHERE t.club_id = ?
-                    OR (l.is_manual = 1 AND l.tournament_id = ?)
-            )
-            SELECT s.sport AS sport,
-                   SUM(CASE WHEN s.is_manual = 0 THEN 1 ELSE 0 END) AS matches,
-                   (SELECT s2.elo_after
-                      FROM scoped s2
-                     WHERE s2.sport = s.sport
-                  ORDER BY s2.updated_at DESC, s2.match_order DESC
-                     LIMIT 1) AS elo
-              FROM scoped s
-          GROUP BY s.sport
-            """,
-            (profile_id, profile_id, profile_id, profile_id, club_id, club_id),
-        ).fetchall()
-
+        stats = scope_stats(conn, RatingScope(club_id=club_id), profile_ids=[profile_id])
     result: dict[str, float | int] = {
         "elo_padel": DEFAULT_RATING,
         "elo_tennis": DEFAULT_RATING,
         "elo_padel_matches": 0,
         "elo_tennis_matches": 0,
     }
-    for row in rows:
-        sport = row["sport"]
-        if sport in hidden_sports:
+    for sport in (Sport.PADEL, Sport.TENNIS):
+        st = stats.get((profile_id, sport))
+        if st is None:
             continue
-        matches = int(row["matches"] or 0)
-        elo = row["elo"] if row["elo"] is not None else DEFAULT_RATING
-        if sport == Sport.PADEL:
-            result["elo_padel"] = elo
-            result["elo_padel_matches"] = matches
-        elif sport == Sport.TENNIS:
-            result["elo_tennis"] = elo
-            result["elo_tennis_matches"] = matches
+        result[f"elo_{sport}"] = st.elo if st.elo is not None else DEFAULT_RATING
+        result[f"elo_{sport}_matches"] = st.matches
     return result
 
 
@@ -3033,7 +2860,12 @@ async def recover_by_participation(req: ProfileRecoverRequest, request: Request)
     return {"ok": True}
 
 
-def _overlay_live_elo(profile_out: ProfileOut, profile_id: str, community_id: str | None = None) -> None:
+def _overlay_live_elo(
+    profile_out: ProfileOut,
+    profile_id: str,
+    community_id: str | None = None,
+    scope: RatingScope | None = None,
+) -> None:
     """Replace snapshot ELO / match counts on *profile_out* with log-derived values.
 
     The snapshot columns hold the latest per-community *chain* state (seeded from
@@ -3041,7 +2873,7 @@ def _overlay_live_elo(profile_out: ProfileOut, profile_id: str, community_id: st
     global total.  Deriving from ``player_elo_log`` keeps the header consistent
     with the leaderboards.  Sports without any logged match keep the snapshot.
     """
-    live = get_live_profile_elo_stats([profile_id], community_id=community_id).get(profile_id, {})
+    live = get_live_profile_elo_stats([profile_id], community_id=community_id, scope=scope).get(profile_id, {})
     padel = live.get(Sport.PADEL)
     if padel is not None:
         profile_out.elo_padel_matches = int(padel["matches"] or 0)
@@ -3077,7 +2909,8 @@ def get_player_space(
     active = _build_active_entries(identity.profile_id)
     history = _build_history_entries(identity.profile_id)
     all_entries = _annotate_counterpart_identities(_deduplicate_entries(active + history))
-    scoped_entries = _filter_entries_by_scope(all_entries, community_id=community_id, club_id=club_id)
+    scope = resolve_scope(community_id=community_id, club_id=club_id)
+    scoped_entries = _filter_entries_by_scope(all_entries, scope=scope)
     scoped_entries = _apply_club_elo_spans(scoped_entries, club_id)
 
     # De-duplicate: a registration that was converted to a tournament should
@@ -3098,7 +2931,7 @@ def get_player_space(
         profile_out.elo_tennis = community_elo.get("elo_tennis")
         profile_out.elo_padel_matches = int(community_elo.get("elo_padel_matches") or 0)
         profile_out.elo_tennis_matches = int(community_elo.get("elo_tennis_matches") or 0)
-        _overlay_live_elo(profile_out, identity.profile_id, community_id=community_id)
+        _overlay_live_elo(profile_out, identity.profile_id, scope=scope)
     else:
         _overlay_live_elo(profile_out, identity.profile_id)
     return PlayerSpaceResponse(
@@ -3108,8 +2941,7 @@ def get_player_space(
         elo_history=_build_elo_history(
             identity.profile_id,
             limit=elo_history_limit,
-            community_id=community_id,
-            club_id=club_id,
+            scope=scope,
         ),
         player_communities=_get_player_communities(identity.profile_id),
         player_clubs=_get_player_clubs(identity.profile_id),

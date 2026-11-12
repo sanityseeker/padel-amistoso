@@ -47,12 +47,14 @@ from .routes_registration import (
 from .schemas import (
     HubPaymentOut,
     HubPaymentReportIn,
+    PayableTeammateOut,
     PaymentInfoOut,
     PaymentPatchIn,
     PaymentRowOut,
     PaymentSettings,
     PaymentSettingsPatch,
     PaymentsListOut,
+    PlayerPaymentAuthIn,
     PlayerPaymentReportIn,
     RemindUnpaidIn,
     RemindUnpaidOut,
@@ -443,15 +445,32 @@ async def player_payment_report(rid: str, req: PlayerPaymentReportIn, request: R
         raise HTTPException(400, "No fee configured for this lobby")
     registrant = _resolve_registrant(reg_id, req.passphrase, req.token)
     email = next((r.get("email") for r in _get_registrants(reg_id) if r["player_id"] == registrant["player_id"]), "")
-    store.report_payment(
-        "registration",
-        reg_id,
-        registrant["player_id"],
-        player_name=registrant["player_name"],
-        email=email or None,
-        reference=req.reference,
-        method=req.method,
-    )
+    if req.also_for:
+        try:
+            store.report_payment_for_players(
+                "registration",
+                reg_id,
+                {
+                    "player_id": registrant["player_id"],
+                    "player_name": registrant["player_name"],
+                    "email": email or None,
+                },
+                reference=req.reference,
+                method=req.method,
+                also_for=req.also_for,
+            )
+        except store.PayForOthersError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    else:
+        store.report_payment(
+            "registration",
+            reg_id,
+            registrant["player_id"],
+            player_name=registrant["player_name"],
+            email=email or None,
+            reference=req.reference,
+            method=req.method,
+        )
     info = store.player_payment_info(
         "registration",
         reg_id,
@@ -463,6 +482,17 @@ async def player_payment_report(rid: str, req: PlayerPaymentReportIn, request: R
     if info is None:  # pragma: no cover — fee > 0 was checked above
         raise HTTPException(400, "No fee configured for this lobby")
     return info
+
+
+@router.post("/api/registrations/{rid}/player-payment-teammates", response_model=list[PayableTeammateOut])
+async def player_payment_teammates(rid: str, req: PlayerPaymentAuthIn, request: Request) -> list[PayableTeammateOut]:
+    """Players of this lobby the caller may also report a payment for (same auth as the report)."""
+    client_ip = _client_ip(request)
+    _public_passphrase_rate_limiter.check(client_ip, "Too many attempts — try again later")
+    _public_passphrase_rate_limiter.record(client_ip)
+    reg = _get_registration(rid)
+    registrant = _resolve_registrant(reg["id"], req.passphrase, req.token)
+    return store.payable_teammates("registration", reg["id"], registrant["player_id"])
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -478,13 +508,7 @@ def hub_list_payments(identity: ProfileIdentity | None = Depends(get_current_pro
     return store.hub_payments_for_profile(identity.profile_id)
 
 
-@router.post("/api/player-profile/payments/{key}/report", response_model=list[HubPaymentOut])
-async def hub_report_payment(
-    key: str,
-    req: HubPaymentReportIn | None = None,
-    identity: ProfileIdentity | None = Depends(get_current_profile),
-) -> list[HubPaymentOut]:
-    """Self-report from the Hub; the key must belong to one of the profile's own entries."""
+def _owned_hub_entry(identity: ProfileIdentity | None, key: str) -> tuple[store.EntityKind, str, str, dict]:
     if identity is None:
         raise HTTPException(401, "Profile authentication required")
     parsed = store.parse_hub_key(key)
@@ -501,15 +525,49 @@ async def hub_report_payment(
     )
     if owned is None:
         raise HTTPException(404, "Payment not found")
+    return kind, entity_id, player_id, owned
+
+
+@router.get("/api/player-profile/payments/{key}/teammates", response_model=list[PayableTeammateOut])
+def hub_payment_teammates(
+    key: str, identity: ProfileIdentity | None = Depends(get_current_profile)
+) -> list[PayableTeammateOut]:
+    """Other players of the same event the profile may also report a payment for."""
+    kind, entity_id, player_id, _owned = _owned_hub_entry(identity, key)
+    return store.payable_teammates(kind, entity_id, player_id)
+
+
+@router.post("/api/player-profile/payments/{key}/report", response_model=list[HubPaymentOut])
+async def hub_report_payment(
+    key: str,
+    req: HubPaymentReportIn | None = None,
+    identity: ProfileIdentity | None = Depends(get_current_profile),
+) -> list[HubPaymentOut]:
+    """Self-report from the Hub; the key must belong to one of the profile's own entries."""
+    kind, entity_id, player_id, owned = _owned_hub_entry(identity, key)
+    assert identity is not None
     if store.get_settings(kind, entity_id).fee_cents <= 0 and store.get_row(kind, entity_id, player_id) is None:
         raise HTTPException(400, "No fee configured")
-    store.report_payment(
-        kind,
-        entity_id,
-        player_id,
-        player_name=owned.get("player_name"),
-        email=owned.get("email"),
-        reference=req.reference if req else None,
-        method=req.method if req else None,
-    )
+    if req and req.also_for:
+        try:
+            store.report_payment_for_players(
+                kind,
+                entity_id,
+                {"player_id": player_id, "player_name": owned.get("player_name"), "email": owned.get("email")},
+                reference=req.reference,
+                method=req.method,
+                also_for=req.also_for,
+            )
+        except store.PayForOthersError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    else:
+        store.report_payment(
+            kind,
+            entity_id,
+            player_id,
+            player_name=owned.get("player_name"),
+            email=owned.get("email"),
+            reference=req.reference if req else None,
+            method=req.method if req else None,
+        )
     return store.hub_payments_for_profile(identity.profile_id)

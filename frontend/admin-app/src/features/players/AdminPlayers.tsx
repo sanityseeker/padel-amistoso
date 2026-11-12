@@ -65,12 +65,13 @@ interface Preview {
 
 const LIST = ['admin', 'profiles-admin'];
 
-function ProfileSheet({ id, onClose }: { id: string; onClose: () => void }) {
+// `scope` is the list's club / community filter: the sheet then shows that scope's rating and matches.
+function ProfileSheet({ id, scope, onClose }: { id: string; scope: string; onClose: () => void }) {
   useLocale();
-  const detailKey = ['admin', 'profile', id];
+  const detailKey = ['admin', 'profile', id, scope];
   const detail = useQuery({
     queryKey: detailKey,
-    queryFn: () => api<Detail>(`/admin/player-profiles/${id}`),
+    queryFn: () => api<Detail>(`/admin/player-profiles/${id}${scope ? `?${scope}` : ''}`),
   });
   const invalidate = [detailKey, LIST];
   const [name, setName] = useState<string | null>(null);
@@ -401,6 +402,11 @@ export function AdminPlayersPage() {
   const params = new URLSearchParams({ q: debounced.trim(), limit: '300' });
   if (club) params.set('club_id', club);
   else if (community) params.set('community_id', community);
+  const scopeParams = club
+    ? `club_id=${encodeURIComponent(club)}`
+    : community
+      ? `community_id=${encodeURIComponent(community)}`
+      : '';
   const list = useQuery({
     queryKey: [...LIST, params.toString()],
     queryFn: () => api<Profile[]>(`/admin/player-profiles?${params.toString()}`),
@@ -534,7 +540,7 @@ export function AdminPlayersPage() {
           </Table.ScrollContainer>
         </Paper>
       )}
-      {open && <ProfileSheet id={open} onClose={() => setOpen(null)} />}
+      {open && <ProfileSheet id={open} scope={scopeParams} onClose={() => setOpen(null)} />}
     </Stack>
   );
 }

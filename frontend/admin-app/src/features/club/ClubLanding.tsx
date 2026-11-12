@@ -15,6 +15,7 @@ import {
   Text,
   TextInput,
   Title,
+  UnstyledButton,
 } from '@mantine/core';
 import { IconPin, IconSearch } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
@@ -58,11 +59,17 @@ interface BoardRow {
 }
 interface SeasonRow {
   player_name: string;
+  profile_id?: string | null;
   elo_end: number | null;
   elo_change: number | null;
   matches_played: number | null;
 }
 type Sport = 'padel' | 'tennis';
+interface CardTarget {
+  profileId: string;
+  sport: Sport;
+  seasonId: string | null;
+}
 
 const KEYS = {
   tab: 'amistoso-club-landing-items-tab',
@@ -150,18 +157,23 @@ function useMember<T>(path: string, enabled: boolean) {
   });
 }
 
+// The card shows the one sport of the board it was opened from, and for a season board only that
+// season's matches, so its numbers agree with the row that was clicked.
 function PlayerCard({
   clubId,
-  profileId,
+  target,
   onClose,
 }: {
   clubId: string;
-  profileId: string | null;
+  target: CardTarget | null;
   onClose: () => void;
 }) {
   useLocale();
+  const profileId = target?.profileId ?? null;
+  const sport = target?.sport ?? null;
+  const seasonId = target?.seasonId ?? null;
   const card = useQuery({
-    queryKey: ['public', 'club', clubId, 'card', profileId],
+    queryKey: ['public', 'club', clubId, 'card', profileId, sport, seasonId],
     enabled: !!profileId,
     retry: false,
     queryFn: () =>
@@ -181,14 +193,14 @@ function PlayerCard({
           elo_delta: number | null;
         }[];
       }>(
-        `/clubs/${encodeURIComponent(clubId)}/players/${encodeURIComponent(profileId!)}/public-card`,
+        `/clubs/${encodeURIComponent(clubId)}/players/${encodeURIComponent(profileId!)}/public-card?sport=${sport ?? 'all'}${seasonId ? `&season_id=${encodeURIComponent(seasonId)}` : ''}`,
         undefined,
         'GET',
         profileJwt(),
       ),
   });
   const data = card.data;
-  const sports: Sport[] = ['padel', 'tennis'];
+  const sports: Sport[] = sport ? [sport] : ['padel', 'tennis'];
   return (
     <Modal
       opened={!!profileId}
@@ -201,7 +213,7 @@ function PlayerCard({
       {card.error && <Notice tone="danger">{tx('Could not load player.')}</Notice>}
       {data && (
         <Stack gap="md" data-testid="club-player-card">
-          <SimpleGrid cols={{ base: 1, sm: 2 }}>
+          <SimpleGrid cols={{ base: 1, sm: sports.length }}>
             {sports.map((sport) => {
               const elo = data[`elo_${sport}`] as number | null;
               return (
@@ -242,7 +254,7 @@ function PlayerCard({
           <Text variant="eyebrow">{tx('Recent matches')}</Text>
           {!data.recent_matches?.length && (
             <Text c="dimmed" size="sm">
-              {tx('No matches yet.')}
+              {seasonId ? tx('No matches in this season yet.') : tx('No matches yet.')}
             </Text>
           )}
           {data.recent_matches?.map((m, i) => (
@@ -286,7 +298,15 @@ function PlayerCard({
   );
 }
 
-function Board({ rows, onCard }: { rows: BoardRow[]; onCard: (profileId: string) => void }) {
+function Board({
+  rows,
+  sport,
+  onCard,
+}: {
+  rows: BoardRow[];
+  sport: Sport;
+  onCard: (target: CardTarget) => void;
+}) {
   useLocale();
   if (!rows.length) return <Text c="dimmed">{tx('No players have played a match yet.')}</Text>;
   const standing: StandingRow[] = rows.map((r) => ({
@@ -303,13 +323,24 @@ function Board({ rows, onCard }: { rows: BoardRow[]; onCard: (profileId: string)
       eloLabel={tx('Club ELO')}
       onSelect={(row) => {
         const found = rows.find((r) => (r.profile_id || r.name) === row.id);
-        if (found?.profile_id) onCard(found.profile_id);
+        if (found?.profile_id) onCard({ profileId: found.profile_id, sport, seasonId: null });
       }}
     />
   );
 }
 
-function SeasonBoard({ rows }: { rows: SeasonRow[] }) {
+// Archived seasons show a frozen snapshot, so their rows do not open a card (it would show live data).
+function SeasonBoard({
+  rows,
+  sport,
+  seasonId,
+  onCard,
+}: {
+  rows: SeasonRow[];
+  sport: Sport;
+  seasonId: string;
+  onCard: ((target: CardTarget) => void) | null;
+}) {
   useLocale();
   if (!rows.length) return <Text c="dimmed">{tx('No players have played a match yet.')}</Text>;
   const sorted = [...rows].sort((a, b) => (b.elo_end ?? 0) - (a.elo_end ?? 0));
@@ -331,7 +362,18 @@ function SeasonBoard({ rows }: { rows: SeasonRow[] }) {
             return (
               <Table.Tr key={s.player_name + i}>
                 <Table.Td>{i + 1}</Table.Td>
-                <Table.Td>{s.player_name}</Table.Td>
+                <Table.Td>
+                  {onCard && s.profile_id ? (
+                    <UnstyledButton
+                      fz="inherit"
+                      onClick={() => onCard({ profileId: s.profile_id!, sport, seasonId })}
+                    >
+                      {s.player_name}
+                    </UnstyledButton>
+                  ) : (
+                    s.player_name
+                  )}
+                </Table.Td>
                 <Table.Td>{s.elo_end == null ? '—' : Math.round(s.elo_end)}</Table.Td>
                 <Table.Td
                   c={
@@ -364,7 +406,8 @@ function Leaderboard({
   const [scope, setScope] = useState(
     saved && seasons.some((s) => s.id === saved) ? saved : 'global',
   );
-  const [card, setCard] = useState<string | null>(null);
+  const [card, setCard] = useState<CardTarget | null>(null);
+  const seasonActive = seasons.find((x) => x.id === scope)?.active ?? false;
   const cid = encodeURIComponent(club.club_id);
   const global = scope === 'global';
   const board = useMember<BoardRow[] | { padel: BoardRow[]; tennis: BoardRow[] }>(
@@ -425,15 +468,20 @@ function Leaderboard({
             <Stack key={s} gap="xs" {...sportProps(s)}>
               {!sport && <SportMark sport={s} />}
               {global ? (
-                <Board rows={rowsOf(s)} onCard={setCard} />
+                <Board rows={rowsOf(s)} sport={s} onCard={setCard} />
               ) : (
-                <SeasonBoard rows={season.data?.[s] ?? []} />
+                <SeasonBoard
+                  rows={season.data?.[s] ?? []}
+                  sport={s}
+                  seasonId={scope}
+                  onCard={seasonActive ? setCard : null}
+                />
               )}
             </Stack>
           ))}
         </SimpleGrid>
       )}
-      <PlayerCard clubId={club.club_id} profileId={card} onClose={() => setCard(null)} />
+      <PlayerCard clubId={club.club_id} target={card} onClose={() => setCard(null)} />
     </Stack>
   );
 }

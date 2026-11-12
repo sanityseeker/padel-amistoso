@@ -50,7 +50,7 @@ import { CommentDialog, HistoryDrawer, MatchTools } from '../../../admin/tournam
 import { PairingsDialog } from '../../../admin/tournament/PairingsDialog';
 import { PlayoffsDialog } from '../../../admin/tournament/PlayoffsDialog';
 import { ExportDialog } from '../../../admin/tournament/ExportDialog';
-import { TournamentSettings } from '../../../admin/settings/TournamentSettings';
+import { TournamentSettings, type SettingsTab } from '../../../admin/settings/TournamentSettings';
 import {
   historyOnly,
   matchDecider,
@@ -108,7 +108,7 @@ type Dialog =
   | { kind: 'playoffs'; title: string }
   | { kind: 'export' }
   | { kind: 'activity' }
-  | { kind: 'settings' }
+  | { kind: 'settings'; tab?: SettingsTab }
   | { kind: 'delete' };
 
 // One workspace per tournament id: switching tournaments remounts it, so editors and filters never
@@ -136,7 +136,11 @@ function Workspace({ id }: { id: string }) {
     purpose: 'record' | 'resolve';
     from: 'list' | 'review';
   } | null>(null);
-  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [dialog, setDialog] = useState<Dialog | null>(() =>
+    new URLSearchParams(window.location.search).get('settings') === 'payments'
+      ? { kind: 'settings', tab: 'payments' }
+      : null,
+  );
   const [commentFor, setCommentFor] = useState<Match | null>(null);
   const [historyFor, setHistoryFor] = useState<Match | null>(null);
   // Owners and admins only: the API restricts delete, community moves, ELO recalculation and
@@ -1043,6 +1047,7 @@ function Workspace({ id }: { id: string }) {
           settings={settings}
           prefix={prefix}
           isOwnerOrAdmin={isOwnerOrAdmin}
+          initialTab={dialog.tab}
           onClose={() => setDialog(null)}
         />
       )}

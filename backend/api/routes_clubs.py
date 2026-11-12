@@ -65,6 +65,7 @@ from .leaderboard_cache import (
     get_mini_card_cached,
     invalidate_leaderboard_cache,
 )
+from .rating_scope import RatingScope, ScopeStats, resolve_scope, scope_stats
 from .routes_communities import DEFAULT_COMMUNITY_ID
 from .elo_recalc import flush_elo_recalculation, mark_elo_dirty
 from .routes_admin_players import hub_merge_preview, merge_hub_profiles
@@ -1013,7 +1014,7 @@ def _compute_club_leaderboard_rows_uncached(conn, club_id: str) -> list[dict]:
            FROM profile_club_elo pce
            JOIN player_profiles pp ON pp.id = pce.profile_id
            LEFT JOIN club_tiers ct ON ct.id = pce.tier_id
-           WHERE pce.club_id = ? AND pp.is_ghost = 0
+           WHERE pce.club_id = ?
              AND EXISTS (
                  SELECT 1 FROM profile_club_elo sub
                  WHERE sub.profile_id = pce.profile_id AND sub.club_id = ? AND sub.hidden = 0
@@ -1021,96 +1022,22 @@ def _compute_club_leaderboard_rows_uncached(conn, club_id: str) -> list[dict]:
            ORDER BY pp.name""",
         (club_id, club_id),
     ).fetchall()
-    live_rows = conn.execute(
-        """
-        WITH linked_tournament_players AS (
-            SELECT ps.profile_id AS profile_id,
-                   ps.tournament_id AS tournament_id,
-                   ps.player_id AS player_id
-              FROM player_secrets ps
-             WHERE ps.profile_id IN (
-                 SELECT profile_id FROM profile_club_elo WHERE club_id = ?
-             )
-            UNION
-            SELECT ph.profile_id AS profile_id,
-                   ph.entity_id AS tournament_id,
-                   ph.player_id AS player_id
-              FROM player_history ph
-             WHERE ph.entity_type = 'tournament'
-               AND ph.profile_id IN (
-                   SELECT profile_id FROM profile_club_elo WHERE club_id = ?
-               )
-            UNION
-            SELECT lp2.profile_id  AS profile_id,
-                   l.tournament_id AS tournament_id,
-                   l.player_id     AS player_id
-              FROM player_elo_log l
-              JOIN (
-                   SELECT profile_id, player_id FROM player_secrets WHERE profile_id IS NOT NULL
-                   UNION
-                   SELECT profile_id, player_id FROM player_history
-                    WHERE entity_type = 'tournament' AND profile_id IS NOT NULL
-              ) lp2 ON lp2.player_id = l.player_id
-             WHERE l.is_manual = 1 AND l.tournament_id = ?
-        ),
-        scoped AS (
-            SELECT lp.profile_id  AS profile_id,
-                   l.sport        AS sport,
-                   COALESCE(l.club_elo_after, l.elo_after) AS elo_after,
-                   l.is_manual    AS is_manual,
-                   l.updated_at   AS updated_at,
-                   l.match_order  AS match_order
-              FROM player_elo_log l
-              JOIN linked_tournament_players lp
-                ON lp.tournament_id = l.tournament_id
-               AND lp.player_id = l.player_id
-         LEFT JOIN tournaments t
-                ON t.id = l.tournament_id
-             WHERE t.club_id = ?
-                OR (l.is_manual = 1 AND l.tournament_id = ?)
-        ),
-        matches_agg AS (
-            SELECT s.profile_id,
-                   s.sport,
-                   SUM(CASE WHEN s.is_manual = 0 THEN 1 ELSE 0 END) AS matches
-              FROM scoped s
-          GROUP BY s.profile_id, s.sport
-        ),
-        latest AS (
-            SELECT s.profile_id,
-                   s.sport,
-                   s.elo_after,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY s.profile_id, s.sport
-                       ORDER BY s.updated_at DESC, s.match_order DESC
-                   ) AS rn
-              FROM scoped s
-        )
-        SELECT m.profile_id  AS profile_id,
-               m.sport       AS sport,
-               m.matches     AS matches,
-               lt.elo_after  AS elo
-          FROM matches_agg m
-     LEFT JOIN latest lt
-            ON lt.profile_id = m.profile_id
-           AND lt.sport = m.sport
-           AND lt.rn = 1
-        """,
-        (club_id, club_id, club_id, club_id, club_id),
-    ).fetchall()
-    live_by_key: dict[tuple[str, str], dict] = {
-        (r["profile_id"], r["sport"]): {
-            "matches": int(r["matches"] or 0),
-            "elo": r["elo"],
-        }
-        for r in live_rows
-    }
+    # Matches and latest rating come from the shared scope definition, so the
+    # club board, the mini-card and the Player Hub show the same numbers.
+    # Hidden sports stay in the rows (the admin roster shows them); every
+    # public projection drops them.
+    live_by_key = scope_stats(
+        conn,
+        RatingScope(club_id=club_id),
+        profile_ids=sorted({r["profile_id"] for r in base_rows}),
+        include_hidden=True,
+    )
     out: list[dict] = []
     for r in base_rows:
         key = (r["profile_id"], r["sport"])
-        live = live_by_key.get(key, {})
-        live_matches = int(live.get("matches") or 0)
-        live_elo = live.get("elo")
+        live = live_by_key.get(key)
+        live_matches = live.matches if live else 0
+        live_elo = live.elo if live else None
         # Prefer live ELO from match logs; fall back to the snapshot (tier base
         # ELO / manual overrides) when the player has no logged matches yet.
         effective_elo = live_elo if live_elo is not None else r["elo"]
@@ -1129,6 +1056,43 @@ def _compute_club_leaderboard_rows_uncached(conn, club_id: str) -> list[dict]:
             }
         )
     return out
+
+
+def _public_board(rows: list[dict], sport: str) -> list[dict]:
+    """:func:`project_club_board` without the fields the public payload keeps private."""
+    return [{k: v for k, v in e.items() if k != "is_ghost"} for e in project_club_board(rows, sport)]
+
+
+def _board_sort_key(entry: dict) -> tuple:
+    """Leaderboard order: rating, then matches played, then name."""
+    return (-(entry["elo"] or 0), -(entry["matches"]), entry["name"].lower())
+
+
+def project_club_board(rows: list[dict], sport: str) -> list[dict]:
+    """Ranked public board for one sport from :func:`_compute_club_leaderboard_rows` rows.
+
+    The one projection behind the public club leaderboard, the Player Hub club
+    leaderboard and the mini-card rank: visible (not hidden) players with a
+    rating and at least one match, ordered by :func:`_board_sort_key`, ghosts
+    included.  Each entry is ``{profile_id, name, is_ghost, elo, tier_name,
+    matches, rank}``.
+    """
+    entries = [
+        {
+            "profile_id": r["profile_id"],
+            "name": r["name"],
+            "is_ghost": bool(r.get("is_ghost")),
+            "elo": r["elo"],
+            "tier_name": r["tier_name"],
+            "matches": r["matches"],
+        }
+        for r in rows
+        if r["sport"] == sport and not r["hidden"] and r["elo"] is not None and r["matches"]
+    ]
+    entries.sort(key=_board_sort_key)
+    for idx, e in enumerate(entries, start=1):
+        e["rank"] = idx
+    return entries
 
 
 @router.get(
@@ -1160,29 +1124,12 @@ def get_club_public_leaderboard(
     _get_club(club_id)
     ensure_club_roster_synced(club_id)
 
-    def _project(rows: list[dict], target_sport: str) -> list[dict]:
-        entries = [
-            {
-                "profile_id": r["profile_id"],
-                "name": r["name"],
-                "elo": r["elo"],
-                "tier_name": r["tier_name"],
-                "matches": r["matches"],
-            }
-            for r in rows
-            if r["sport"] == target_sport and not r["hidden"] and r["elo"] is not None and r["matches"]
-        ]
-        entries.sort(key=lambda e: (-(e["elo"] or 0), -(e["matches"]), e["name"].lower()))
-        for idx, e in enumerate(entries, start=1):
-            e["rank"] = idx
-        return entries
-
     with get_db() as conn:
         all_rows = _compute_club_leaderboard_rows(conn, club_id)
     if sport == "all":
-        payload: dict | list[dict] = {s: _project(all_rows, s) for s in ("padel", "tennis")}
+        payload: dict | list[dict] = {s: _public_board(all_rows, s) for s in ("padel", "tennis")}
     else:
-        payload = _project(all_rows, sport)
+        payload = _public_board(all_rows, sport)
 
     tag = etag_for(payload)
     if request.headers.get("if-none-match") == tag:
@@ -1190,6 +1137,13 @@ def get_club_public_leaderboard(
     response.headers["ETag"] = tag
     response.headers["Cache-Control"] = "private, max-age=30"
     return payload
+
+
+class ClubCardScope(BaseModel):
+    """The sport and season a mini-card was built for."""
+
+    sport: str = "all"
+    season_id: str | None = None
 
 
 class ClubPlayerMiniCard(BaseModel):
@@ -1208,6 +1162,7 @@ class ClubPlayerMiniCard(BaseModel):
     recent_matches: list[dict]
     elo_history_padel: list[float]
     elo_history_tennis: list[float]
+    scope: ClubCardScope = ClubCardScope()
 
 
 @router.get(
@@ -1220,21 +1175,32 @@ def get_club_player_public_card(
     profile_id: str,
     request: Request,
     response: Response,
+    sport: str = Query(default="all", pattern=r"^(padel|tennis|all)$"),
+    season_id: str | None = Query(default=None, max_length=64),
 ) -> ClubPlayerMiniCard | Response:
     """Mini-card for a player at a club (signed-in profiles / organizers only).
 
-    Returns club-scoped ELO/tier/rank for both sports plus the most recent
-    matches and a short ELO sparkline history. No emails or other PII.
+    Returns club-scoped ELO/tier/rank plus the most recent matches and a short
+    ELO sparkline history.  ``sport=padel|tennis`` restricts every field --
+    numbers, recent matches and sparkline -- to that sport (the other sport's
+    fields stay empty); ``sport=all`` (default) returns both.  ``season_id``
+    restricts matches and ratings to that season of the club (404 when the
+    season belongs to another club).  Sports the club hides for the player are
+    never returned; 404 when the player is not visible in the requested scope.
+    No emails or other PII.
 
     Cached in-memory for ``MINI_CARD_TTL_S`` to absorb repeat clicks, and
     served with ``ETag`` + ``Cache-Control: private, max-age=30``.
     """
     _get_club(club_id)
+    scope = resolve_scope(club_id=club_id, season_id=season_id, sport=sport)
+    ensure_club_roster_synced(club_id)
 
     def _build() -> ClubPlayerMiniCard:
-        return _build_club_player_card(club_id, profile_id)
+        return _build_club_player_card(club_id, profile_id, scope)
 
-    card = get_mini_card_cached(("club", club_id, profile_id), _build)
+    key = ("club", club_id, profile_id, scope.sport or "all", scope.season_id or "")
+    card = get_mini_card_cached(key, _build)
     payload = card.model_dump()
     tag = etag_for(payload)
     if request.headers.get("if-none-match") == tag:
@@ -1244,32 +1210,50 @@ def get_club_player_public_card(
     return card
 
 
-def _build_club_player_card(club_id: str, profile_id: str) -> ClubPlayerMiniCard:
-    """Build (uncached) the public mini-card payload for a club player."""
+def _build_club_player_card(club_id: str, profile_id: str, scope: RatingScope | None = None) -> ClubPlayerMiniCard:
+    """Build (uncached) the public mini-card payload for a club player.
+
+    Ratings, match counts, recent matches and sparkline all come from the same
+    :class:`RatingScope`, so the card agrees with the club board it was opened
+    from.
+    """
+    scope = scope or RatingScope(club_id=club_id)
     with get_db() as conn:
         rows = _compute_club_leaderboard_rows(conn, club_id)
+        season_stats: dict[tuple[str, str], ScopeStats] = {}
+        if scope.season_id:
+            season_stats = scope_stats(conn, scope, profile_ids=[profile_id])
 
     by_sport: dict[str, dict] = {r["sport"]: r for r in rows if r["profile_id"] == profile_id}
     if not by_sport:
         raise HTTPException(404, "Player not in this club")
+    wanted = [s for s in ("padel", "tennis") if scope.sport in (None, s)]
+    visible = [s for s in wanted if s in by_sport and not by_sport[s]["hidden"]]
+    if not visible:
+        raise HTTPException(404, "Player not visible in this scope")
 
     name = next(iter(by_sport.values()))["name"]
+    boards = {s: project_club_board(rows, s) for s in visible}
 
     def _rank_for(sport: str) -> int | None:
-        # Ranked among the players who played this sport, as on the club leaderboard.
-        ordered = sorted(
-            (r for r in rows if r["sport"] == sport and not r["hidden"] and r["elo"] is not None and r["matches"]),
-            key=lambda r: (-(r["elo"] or 0), -r["matches"], r["name"].lower()),
-        )
-        for idx, r in enumerate(ordered, start=1):
-            if r["profile_id"] == profile_id:
-                return idx
-        return None
+        if scope.season_id:
+            return None
+        return next((e["rank"] for e in boards[sport] if e["profile_id"] == profile_id), None)
 
-    padel = by_sport.get("padel") or {}
-    tennis = by_sport.get("tennis") or {}
+    def _numbers(sport: str) -> tuple[float | None, int]:
+        if sport not in visible:
+            return None, 0
+        if scope.season_id:
+            st = season_stats.get((profile_id, sport))
+            return (st.elo if st else None), (st.matches if st else 0)
+        return by_sport[sport].get("elo"), by_sport[sport].get("matches") or 0
 
-    raw_logs = get_profile_recent_elo_logs(profile_id, limit=10, club_id=club_id)
+    elo_padel, matches_padel = _numbers("padel")
+    elo_tennis, matches_tennis = _numbers("tennis")
+    tier_padel = by_sport["padel"].get("tier_name") if "padel" in visible else None
+    tier_tennis = by_sport["tennis"].get("tier_name") if "tennis" in visible else None
+
+    raw_logs = get_profile_recent_elo_logs(profile_id, limit=10, scope=scope)
     recent: list[dict] = []
     history_by_sport: dict[str, list[float]] = {"padel": [], "tennis": []}
     round_info_cache: dict[str, dict[str, tuple[int, str]]] = {}
@@ -1326,17 +1310,18 @@ def _build_club_player_card(club_id: str, profile_id: str) -> ClubPlayerMiniCard
     return ClubPlayerMiniCard(
         profile_id=profile_id,
         name=name,
-        elo_padel=padel.get("elo") if not padel.get("hidden") else None,
-        elo_tennis=tennis.get("elo") if not tennis.get("hidden") else None,
-        matches_padel=padel.get("matches") or 0,
-        matches_tennis=tennis.get("matches") or 0,
-        tier_name_padel=padel.get("tier_name") if not padel.get("hidden") else None,
-        tier_name_tennis=tennis.get("tier_name") if not tennis.get("hidden") else None,
-        rank_padel=_rank_for("padel"),
-        rank_tennis=_rank_for("tennis"),
+        elo_padel=elo_padel,
+        elo_tennis=elo_tennis,
+        matches_padel=matches_padel,
+        matches_tennis=matches_tennis,
+        tier_name_padel=tier_padel,
+        tier_name_tennis=tier_tennis,
+        rank_padel=_rank_for("padel") if "padel" in visible else None,
+        rank_tennis=_rank_for("tennis") if "tennis" in visible else None,
         recent_matches=recent,
         elo_history_padel=history_by_sport["padel"],
         elo_history_tennis=history_by_sport["tennis"],
+        scope=ClubCardScope(sport=scope.sport or "all", season_id=scope.season_id),
     )
 
 
@@ -1752,6 +1737,10 @@ def list_club_players(
     # Rows include hidden sport rows so that hidden_padel / hidden_tennis flags are populated.
     players: dict[str, ClubPlayerOut] = {}
     for r in leaderboard_rows:
+        if r["is_ghost"]:
+            # Ghosts are opt-in for the organizer roster (see possible-members);
+            # the public boards list them once un-hidden.
+            continue
         pid = r["profile_id"]
         if pid not in players:
             players[pid] = ClubPlayerOut(

@@ -1,14 +1,23 @@
 import { ActionIcon, Button, Menu } from '@mantine/core';
-import { IconChevronDown, IconLockPassword, IconLogout, IconUserCircle } from '@tabler/icons-react';
+import {
+  IconChevronDown,
+  IconLockPassword,
+  IconLogout,
+  IconUserCircle,
+  IconWorld,
+} from '@tabler/icons-react';
 import { useAuth } from '../auth';
 import { t as tx, useLocale } from '../i18n';
 import { useShellUi } from './ShellUi';
+import { useSubdomainClub } from './subdomainClub';
 
-// "Account menu": the signed-in organizer, Change password and Log out. Icon-only on tablets.
+// "Account menu": the signed-in organizer, Change password and Log out (and, on a club subdomain, the
+// platform admin on the apex domain). Icon-only on tablets.
 export function AccountMenu({ compact = false }: { compact?: boolean }) {
   useLocale();
   const { hasToken, username, user, logout } = useAuth();
   const { setPasswordOpen } = useShellUi();
+  const host = useSubdomainClub();
   if (!hasToken) return null;
   const name = user?.username || username || tx('Admin');
   return (
@@ -40,6 +49,11 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
         >
           {tx('Change password')}
         </Menu.Item>
+        {host && (
+          <Menu.Item component="a" href={host.apexUrl} leftSection={<IconWorld size={16} />}>
+            {tx('Open platform admin')}
+          </Menu.Item>
+        )}
         <Menu.Item leftSection={<IconLogout size={16} />} onClick={logout}>
           {tx('Log out')}
         </Menu.Item>

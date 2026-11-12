@@ -20,6 +20,7 @@ import { Link } from 'react-router-dom';
 import { money } from '../../api';
 import { localeTag, t as tx, useLocale } from '../../i18n';
 import type { Question } from '../../types';
+import { AlsoPaidFor, type PayableTeammate } from '../../ui/AlsoPaidFor';
 import { Markdown } from '../public/Markdown';
 import {
   call,
@@ -119,16 +120,17 @@ export function LinkedTournaments({
   );
 }
 
-const METHOD_LABEL: Record<string, string> = {
-  bizum: 'Bizum (phone)',
-  iban: 'Bank transfer (IBAN)',
-  revolut: 'Revolut link',
-  paypal_me: 'PayPal.me link',
-  cash: 'Cash',
-  other: 'Other',
+const methodLabel = (m: { kind: string; label?: string | null }) => {
+  if (m.label) return m.label;
+  const labels: Record<string, string> = {
+    bizum: tx('Bizum (phone)'),
+    iban: tx('Bank transfer (IBAN)'),
+    revolut: tx('Revolut link'),
+    paypal_me: tx('PayPal'),
+    cash: tx('Cash'),
+  };
+  return labels[m.kind] ?? tx('Other');
 };
-const methodLabel = (m: { kind: string; label?: string | null }) =>
-  m.label || tx(METHOD_LABEL[m.kind] ?? 'Other');
 
 function Copy({ value }: { value: string }) {
   const clipboard = useClipboard({ timeout: 1800 });
@@ -193,12 +195,15 @@ export function FeeNotice({ payment }: { payment?: PublicLobby['payment'] }) {
   );
 }
 
-const STATUS_NOTE: Record<string, string> = {
-  reported: 'Reported — waiting for the organizer to confirm.',
-  paid: 'Payment confirmed by the organizer.',
-  waived: 'No payment needed — the organizer waived your fee.',
-  refund_due: 'The organizer owes you a refund.',
-  refunded: 'Refunded.',
+const statusNote = (status: string) => {
+  const notes: Record<string, string> = {
+    reported: tx('Reported. Waiting for the organizer to confirm.'),
+    paid: tx('Payment confirmed by the organizer.'),
+    waived: tx('No charge. The organizer set your entry as free.'),
+    refund_due: tx('The organizer owes you a refund.'),
+    refunded: tx('Refunded.'),
+  };
+  return notes[status] ?? status;
 };
 
 export function PaymentPanel({
@@ -216,15 +221,32 @@ export function PaymentPanel({
   const [reference, setReference] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [others, setOthers] = useState<PayableTeammate[]>([]);
+  const [alsoFor, setAlsoFor] = useState<string[]>([]);
   const pending = payment.status === 'unpaid' || payment.status === 'reported';
+  const unpaid = payment.status === 'unpaid';
+  useEffect(() => {
+    if (!unpaid) return;
+    let live = true;
+    call<PayableTeammate[]>(`${lobbyPath(rid)}/player-payment-teammates`, credential, 'POST')
+      .then((list) => live && setOthers(list))
+      .catch(() => live && setOthers([]));
+    return () => {
+      live = false;
+    };
+    // The credential object is rebuilt on every render; its values identify the player.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rid, unpaid, JSON.stringify(credential)]);
   const report = async () => {
     setBusy(true);
     setError('');
     try {
-      const body: Record<string, string> = { ...credential };
+      const body: Record<string, string | string[]> = { ...credential };
       if (reference.trim()) body.reference = reference.trim();
+      if (alsoFor.length) body.also_for = alsoFor;
       onChange(await call<PaymentInfo>(`${lobbyPath(rid)}/player-payment-report`, body, 'POST'));
       setReference('');
+      setAlsoFor([]);
     } catch (e) {
       setError((e as Error).message || tx('Could not update the payment. Try again.'));
     } finally {
@@ -244,7 +266,7 @@ export function PaymentPanel({
         {payment.instructions && <Text size="sm">{payment.instructions}</Text>}
         {payment.status !== 'unpaid' && (
           <Notice tone={payment.status === 'paid' ? 'success' : 'neutral'} role="status">
-            {tx(STATUS_NOTE[payment.status] ?? payment.status)}
+            {statusNote(payment.status)}
           </Notice>
         )}
         {pending && (
@@ -287,12 +309,15 @@ export function PaymentPanel({
               <Copy value={payment.concept} />
             </Group>
             {payment.status === 'unpaid' && (
+              <AlsoPaidFor players={others} value={alsoFor} onChange={setAlsoFor} />
+            )}
+            {payment.status === 'unpaid' && (
               <Group align="flex-end" wrap="nowrap">
                 <TextInput
                   flex={1}
                   maxLength={120}
-                  aria-label={tx('Reference or note (optional)')}
-                  placeholder={tx('Reference or note (optional)')}
+                  aria-label={tx('Reference or note')}
+                  placeholder={tx('Reference or note')}
                   value={reference}
                   onChange={(e) => setReference(e.currentTarget.value)}
                 />

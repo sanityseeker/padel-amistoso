@@ -89,14 +89,10 @@
   border-radius: var(--mantine-radius-md);
 }
 .lightbox {
-  overflow: auto;
-  max-height: calc(100dvh - 8rem);
+  height: calc(100dvh - 9rem);
 }
 .lightboxImage {
-  display: block;
-  max-width: none;
   background: white;
-  transform-origin: top left;
 }
 /* The page's own header bar, the same height and rule as the app header (which the TV route hides). */
 /* The TV route has no app header, so this bar clears the status bar itself (the shell already keeps

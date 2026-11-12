@@ -503,6 +503,142 @@ class TestPlayerHub:
         assert rows[0]["entity_id"] == tid
 
 
+# ── Reporting for other players ─────────────────────────────────────────────
+
+
+def _report(client: TestClient, rid: str, who: dict, **extra):
+    return client.post(f"/api/registrations/{rid}/player-payment-report", json={"token": who["token"], **extra})
+
+
+def _teammates(client: TestClient, rid: str, who: dict):
+    return client.post(f"/api/registrations/{rid}/player-payment-teammates", json={"token": who["token"]})
+
+
+class TestReportForOthers:
+    def _lobby_with_players(self, client, auth_headers, name="Pairs"):
+        rid = _lobby(client, auth_headers, name=name)
+        _set_fee(client, rid, auth_headers)
+        players = {n: _register(client, rid, n, email=f"{n.lower()}@example.com") for n in ("Ana", "Bob", "Cid")}
+        return rid, players
+
+    def test_lobby_happy_path(self, client, auth_headers):
+        rid, p = self._lobby_with_players(client, auth_headers)
+        r = _report(client, rid, p["Ana"], reference="ref 1", also_for=[p["Bob"]["player_id"], p["Cid"]["player_id"]])
+        assert r.status_code == 200, r.text
+        for name in ("Ana", "Bob", "Cid"):
+            assert _row(client, rid, auth_headers, p[name]["player_id"])["status"] == "reported"
+        bob = _row(client, rid, auth_headers, p["Bob"]["player_id"])
+        assert bob["note"] == "Paid by Ana" and bob["reference"] == "ref 1"
+        assert _row(client, rid, auth_headers, p["Ana"]["player_id"])["note"] is None
+        events = client.get(f"/api/registrations/{rid}/payments", headers=auth_headers)
+        assert events.status_code == 200
+        with db_mod.get_db() as conn:
+            ev = conn.execute(
+                "SELECT e.actor, e.to_status, e.note FROM payment_events e JOIN registrant_payments r "
+                "ON r.id = e.payment_id WHERE r.player_id = ?",
+                (p["Bob"]["player_id"],),
+            ).fetchall()
+        assert [(e["actor"], e["to_status"], e["note"]) for e in ev] == [("player:Ana", "reported", "Paid by Ana")]
+
+    def test_ineligible_ids_rejected_without_writes(self, client, auth_headers):
+        rid, p = self._lobby_with_players(client, auth_headers)
+        client.patch(
+            f"/api/registrations/{rid}/payments/{p['Cid']['player_id']}", json={"status": "paid"}, headers=auth_headers
+        )
+        for bad in (p["Cid"]["player_id"], p["Ana"]["player_id"], "nobody"):
+            r = _report(client, rid, p["Ana"], also_for=[p["Bob"]["player_id"], bad])
+            assert r.status_code == 400, (bad, r.text)
+        assert _db_row(p["Ana"]["player_id"]) is None
+        assert _db_row(p["Bob"]["player_id"]) is None
+        assert _db_row(p["Cid"]["player_id"])["status"] == "paid"
+
+    def test_reported_player_not_listed_or_accepted(self, client, auth_headers):
+        rid, p = self._lobby_with_players(client, auth_headers)
+        assert _report(client, rid, p["Bob"]).status_code == 200
+        assert _report(client, rid, p["Ana"], also_for=[p["Bob"]["player_id"]]).status_code == 400
+
+    def test_other_event_rejected(self, client, auth_headers):
+        rid, p = self._lobby_with_players(client, auth_headers)
+        rid2, q = self._lobby_with_players(client, auth_headers, name="Other")
+        r = _report(client, rid, p["Ana"], also_for=[q["Bob"]["player_id"]])
+        assert r.status_code == 400
+        assert _db_row(q["Bob"]["player_id"]) is None
+
+    def test_list_excludes_reporter_and_settled_and_hides_contact_data(self, client, auth_headers):
+        rid, p = self._lobby_with_players(client, auth_headers)
+        client.patch(
+            f"/api/registrations/{rid}/payments/{p['Cid']['player_id']}", json={"status": "paid"}, headers=auth_headers
+        )
+        r = _teammates(client, rid, p["Ana"])
+        assert r.status_code == 200, r.text
+        assert r.json() == [{"player_id": p["Bob"]["player_id"], "player_name": "Bob"}]
+        assert "example.com" not in r.text
+        assert _teammates(client, rid, {"token": "wrong"}).status_code == 401
+        assert client.post(f"/api/registrations/{rid}/player-payment-teammates", json={}).status_code in (400, 422)
+
+    def test_no_fee_lists_nobody(self, client, auth_headers):
+        rid = _lobby(client, auth_headers)
+        ana = _register(client, rid, "Ana")
+        _register(client, rid, "Bob")
+        assert _teammates(client, rid, ana).json() == []
+
+    def test_old_callers_unchanged(self, client, auth_headers):
+        rid, p = self._lobby_with_players(client, auth_headers)
+        r = _report(client, rid, p["Ana"], reference="solo")
+        assert r.status_code == 200 and r.json()["status"] == "reported"
+        assert _db_row(p["Bob"]["player_id"]) is None
+        assert _row(client, rid, auth_headers, p["Ana"]["player_id"])["reference"] == "solo"
+
+    def test_too_many_ids_rejected(self, client, auth_headers):
+        rid, p = self._lobby_with_players(client, auth_headers)
+        r = _report(client, rid, p["Ana"], also_for=[f"x{i}" for i in range(51)])
+        assert r.status_code == 422
+
+    def test_hub_tournament_flow(self, client, auth_headers):
+        rid = _lobby(client, auth_headers, name="Hub Cup")
+        _set_fee(client, rid, auth_headers)
+        players = {n: _register(client, rid, n, email=f"{n.lower()}@example.com") for n in ("Ana", "Bob", "Cid", "Dan")}
+        prof = client.post(
+            "/api/player-profile",
+            json={"name": "Ana", "email": "ana@example.com", "participant_passphrase": players["Ana"]["passphrase"]},
+        ).json()
+        headers = _hub_login(client, prof["profile"]["id"])
+        tid = client.post(
+            f"/api/registrations/{rid}/convert", json={"tournament_type": "mexicano"}, headers=auth_headers
+        ).json()["tournament_id"]
+        key = f"t:{tid}:{players['Ana']['player_id']}"
+        client.patch(
+            f"/api/tournaments/{tid}/payments/{players['Dan']['player_id']}",
+            json={"status": "paid"},
+            headers=auth_headers,
+        )
+
+        listed = client.get(f"/api/player-profile/payments/{key}/teammates", headers=headers)
+        assert listed.status_code == 200, listed.text
+        assert {t["player_name"] for t in listed.json()} == {"Bob", "Cid"}
+        assert all(set(t) == {"player_id", "player_name"} for t in listed.json())
+        assert client.get(f"/api/player-profile/payments/{key}/teammates").status_code == 401
+
+        bad = client.post(
+            f"/api/player-profile/payments/{key}/report",
+            json={"also_for": [players["Dan"]["player_id"]]},
+            headers=headers,
+        )
+        assert bad.status_code == 400
+        assert _db_row(players["Ana"]["player_id"]) is None
+
+        ok = client.post(
+            f"/api/player-profile/payments/{key}/report",
+            json={"reference": "hub", "also_for": [players["Bob"]["player_id"]]},
+            headers=headers,
+        )
+        assert ok.status_code == 200, ok.text
+        assert _db_row(players["Ana"]["player_id"])["status"] == "reported"
+        bob = _db_row(players["Bob"]["player_id"])
+        assert bob["status"] == "reported" and bob["note"] == "Paid by Ana" and bob["reference"] == "hub"
+        assert _db_row(players["Cid"]["player_id"]) is None
+
+
 # ── Reminders ───────────────────────────────────────────────────────────────
 
 

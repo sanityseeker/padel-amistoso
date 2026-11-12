@@ -3,6 +3,7 @@ import { Button, Group, Image, Loader, Modal, Stack, Text } from '@mantine/core'
 import { IconDownload, IconZoomIn } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
 import { Notice } from '../../ui/Notice';
+import { ZoomableImage } from '../../ui/ZoomableImage';
 
 export type SchemaFormat = 'png' | 'svg' | 'pdf';
 
@@ -119,8 +120,11 @@ export function SchemaImage({
           {tx('Download')}
         </Button>
       </Group>
-      <Modal opened={zoom} onClose={() => setZoom(false)} title={alt} size="auto" centered>
-        {image.src && <Image src={image.src} alt={alt} maw="90vw" mah="80vh" fit="contain" />}
+      <Modal opened={zoom} onClose={() => setZoom(false)} title={alt} size="xl" centered>
+        {image.src && <ZoomableImage src={image.src} alt={alt} maxHeight="75vh" />}
+        <Text size="xs" c="dimmed" ta="center" mt="xs">
+          {tx('Pinch or double-tap to zoom')}
+        </Text>
       </Modal>
     </Stack>
   );

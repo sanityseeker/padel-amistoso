@@ -175,9 +175,9 @@ test('the entry fee and payment report', async ({ page, request }) => {
   await signUp(page, 'Pay Player');
   const panel = page.getByTestId('payment-panel');
   await expect(panel).toContainText('Pay before the first match');
-  await panel.getByPlaceholder('Reference or note (optional)').fill('bank ref 77');
+  await panel.getByPlaceholder('Reference or note').fill('bank ref 77');
   await panel.getByRole('button', { name: "I've paid" }).click();
-  await expect(panel.getByText('Reported — waiting for the organizer to confirm.')).toBeVisible();
+  await expect(panel.getByText('Reported. Waiting for the organizer to confirm.')).toBeVisible();
 });
 
 test('the sign-up page works in Spanish and on a phone', async ({ page, request }) => {

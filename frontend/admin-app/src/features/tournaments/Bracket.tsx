@@ -1,10 +1,11 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Image, Paper, SegmentedControl, Stack, Text, Title } from '@mantine/core';
+import { Paper, SegmentedControl, Stack, Text, Title } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { t as tx, useLocale } from '../../i18n';
 import { formatRoundLabel } from '../../roundLabel';
 import type { Match, TvSettings } from '../../types';
 import type { Ctx } from '../../admin/tournament/scoring';
+import { ZoomableImage } from '../../ui';
 import { toMatchView } from './adapters';
 import { MatchCard } from './MatchCard';
 import classes from './Workspace.module.css';
@@ -124,14 +125,17 @@ export function Bracket({
       {mode === 'diagram' ? (
         <Stack gap="md">
           {sides.map((side) => (
-            <Image
+            <ZoomableImage
               key={side ?? 'main'}
               src={`/api/tournaments/${tid}/${prefix}/playoffs-schema${side && bands.length > 1 ? `?side=${side}` : ''}`}
               alt={side === 'losers' ? tx('Losers') : tx('Play-off bracket')}
-              fit="contain"
-              mah={560}
+              maxHeight={560}
+              testId="bracket-diagram"
             />
           ))}
+          <Text size="xs" c="dimmed">
+            {tx('Pinch or double-tap to zoom')}
+          </Text>
         </Stack>
       ) : phone ? (
         <Stack gap="sm">

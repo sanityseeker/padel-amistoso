@@ -113,8 +113,22 @@ export interface HubPayment {
   methods: { kind: string; label: string | null; value: string }[];
 }
 export interface Leaderboard {
-  padel: { rank: number; name: string; elo: number; matches: number; tier_name: string | null }[];
-  tennis: { rank: number; name: string; elo: number; matches: number; tier_name: string | null }[];
+  padel: {
+    rank: number;
+    name: string;
+    elo: number;
+    matches: number;
+    tier_name: string | null;
+    profile_id?: string | null;
+  }[];
+  tennis: {
+    rank: number;
+    name: string;
+    elo: number;
+    matches: number;
+    tier_name: string | null;
+    profile_id?: string | null;
+  }[];
 }
 
 export interface TvPlayerSettings {

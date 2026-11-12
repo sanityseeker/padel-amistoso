@@ -1215,6 +1215,7 @@ class AdminKFactorUpdate(BaseModel):
 
 PaymentMethodKind = Literal["bizum", "iban", "revolut", "paypal_me", "cash", "other"]
 PaymentStatus = Literal["unpaid", "reported", "paid", "waived", "refund_due", "refunded"]
+PAYMENT_ALSO_FOR_MAX = 50
 PAYMENT_STATUSES: tuple[str, ...] = ("unpaid", "reported", "paid", "waived", "refund_due", "refunded")
 
 
@@ -1328,11 +1329,27 @@ class PlayerPaymentReportIn(BaseModel):
     token: str | None = Field(default=None, min_length=1, max_length=256)
     reference: str | None = Field(default=None, max_length=120)
     method: str | None = Field(default=None, max_length=40)
+    also_for: list[str] = Field(default_factory=list, max_length=PAYMENT_ALSO_FOR_MAX)
+
+
+class PlayerPaymentAuthIn(BaseModel):
+    """Player credentials only (passphrase or token), to list the players they could also pay for."""
+
+    passphrase: str | None = Field(default=None, min_length=1, max_length=128)
+    token: str | None = Field(default=None, min_length=1, max_length=256)
+
+
+class PayableTeammateOut(BaseModel):
+    """A fellow player the reporter may also report a payment for: id and display name only."""
+
+    player_id: str
+    player_name: str
 
 
 class HubPaymentReportIn(BaseModel):
     reference: str | None = Field(default=None, max_length=120)
     method: str | None = Field(default=None, max_length=40)
+    also_for: list[str] = Field(default_factory=list, max_length=PAYMENT_ALSO_FOR_MAX)
 
 
 class HubPaymentOut(BaseModel):

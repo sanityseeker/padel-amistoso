@@ -14,7 +14,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { StatusBadge } from '../../../ui';
+import { AlsoPaidFor, StatusBadge, type PayableTeammate } from '../../../ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { IconCheck, IconCopy, IconCreditCard, IconMail } from '@tabler/icons-react';
@@ -178,6 +178,15 @@ function ReportPayment({ payment }: { payment: HubPayment }) {
   const [reporting, setReporting] = useState(false);
   const [method, setMethod] = useState<string | null>(null);
   const [reference, setReference] = useState('');
+  const [alsoFor, setAlsoFor] = useState<string[]>([]);
+  const teammates = useQuery({
+    queryKey: ['player', 'payments', 'teammates', payment.key],
+    queryFn: () =>
+      playerApi<PayableTeammate[]>(
+        `/player-profile/payments/${encodeURIComponent(payment.key)}/teammates`,
+      ),
+    enabled: reporting,
+  });
   const report = useMutation({
     mutationFn: () =>
       playerApi(
@@ -185,6 +194,7 @@ function ReportPayment({ payment }: { payment: HubPayment }) {
         {
           method,
           reference,
+          ...(alsoFor.length ? { also_for: alsoFor } : {}),
         },
         'POST',
       ),
@@ -193,6 +203,7 @@ function ReportPayment({ payment }: { payment: HubPayment }) {
         queryKey: ['player', 'payments'],
       });
       setReporting(false);
+      setAlsoFor([]);
       notifications.show({
         message: tx('Payment reported. Your organizer will confirm it.'),
         color: 'green',
@@ -257,6 +268,7 @@ function ReportPayment({ payment }: { payment: HubPayment }) {
               value={reference}
               onChange={(e) => setReference(e.currentTarget.value)}
             />
+            <AlsoPaidFor players={teammates.data ?? []} value={alsoFor} onChange={setAlsoFor} />
             <Group>
               <Button type="submit" loading={report.isPending}>
                 {tx('Report payment')}

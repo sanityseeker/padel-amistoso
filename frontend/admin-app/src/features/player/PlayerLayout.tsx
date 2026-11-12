@@ -8,6 +8,7 @@ import { ErrorState, Loading } from '../../components';
 import { resolveHostClub } from '../../club-context';
 import { playerApi, saveSession } from '../../player/api';
 import { PlayerLogin } from '../../player/PlayerLogin';
+import { setPlayerScope, usePlayerScope } from '../../player/scope';
 import { usePlayerSession } from '../../player/session';
 import type { Entry, Space } from '../../player/types';
 import { useLayoutMode } from '../../shell/layout';
@@ -19,12 +20,6 @@ import type { PlayerSpaceContext } from './context';
 import classes from './Player.module.css';
 import { Notice } from '../../ui/Notice';
 import { PageContainer } from '../../ui/PageContainer';
-
-const SCOPE_KEY = 'padel-player-community';
-const initialScope = () => {
-  const saved = localStorage.getItem(SCOPE_KEY) || '';
-  return saved && !saved.includes(':') ? `community:${saved}` : saved;
-};
 
 const SECTIONS = [
   { to: '/player', label: 'Hub', icon: IconHome, end: true },
@@ -70,7 +65,7 @@ export function PlayerLayout() {
   const [linkError, setLinkError] = useState('');
   const [notice, setNotice] = useState('');
   const [linking, setLinking] = useState(false);
-  const [scope, setScopeState] = useState(initialScope);
+  const scope = usePlayerScope();
   const initialized = useRef(false);
   const hostClub = useQuery({
     queryKey: ['public', 'host-club'],
@@ -78,11 +73,10 @@ export function PlayerLayout() {
     staleTime: Infinity,
   });
   useEffect(() => {
-    if (hostClub.data) setScopeState(`club:${hostClub.data.club_id}`);
+    if (hostClub.data) setPlayerScope(`club:${hostClub.data.club_id}`, false);
   }, [hostClub.data]);
   const setScope = (value: string) => {
-    setScopeState(value);
-    localStorage.setItem(SCOPE_KEY, value);
+    setPlayerScope(value);
   };
   const scopeId = scope.split(':').slice(1).join(':');
   const scopeKey = scope.startsWith('club:') ? 'club_id' : 'community_id';

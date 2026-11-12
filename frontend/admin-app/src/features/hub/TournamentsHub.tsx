@@ -21,6 +21,7 @@ import { t as tx, useLocale } from '../../i18n';
 import { ConfirmAction, EmptyState, EventRow, PageHeader, SportMark, StatusBadge } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 import { sportProps } from '../../theme';
+import { useSubdomainClub } from '../../shell/subdomainClub';
 import { EventMenu } from './EventMenu';
 import classes from './Hub.module.css';
 import { useStoredFilter } from './HubFilters';
@@ -82,6 +83,9 @@ export function TournamentsHub() {
   }, [wanted]);
   const [deleting, setDeleting] = useState<HubEvent | null>(null);
   const isAdmin = user?.role === 'admin';
+  // On `{club}.{domain}/admin` only that club's events show, until the subdomain banner is dismissed.
+  // Both ids must match, so an event whose club belongs to another community stays out.
+  const host = useSubdomainClub()?.club;
   const query = debounced.trim().toLowerCase();
 
   const toggle = useAdminMutation({
@@ -113,10 +117,14 @@ export function TournamentsHub() {
     onSuccess: () => setDeleting(null),
   });
 
-  const all = useMemo(
-    () => [...(tournaments.data ?? []).map(fromTournament), ...(lobbies.data ?? []).map(fromLobby)],
-    [tournaments.data, lobbies.data],
-  );
+  const all = useMemo(() => {
+    const inHost = (item: { club_id: string | null; community_id: string }) =>
+      !host || (item.club_id === host.club_id && item.community_id === host.community_id);
+    return [
+      ...(tournaments.data ?? []).filter(inHost).map(fromTournament),
+      ...(lobbies.data ?? []).filter(inHost).map(fromLobby),
+    ];
+  }, [tournaments.data, lobbies.data, host]);
   const mine = (e: HubEvent) => !isAdmin || e.owner === user?.username || e.shared;
   const matches = (e: HubEvent) =>
     (ownership !== 'mine' || mine(e)) &&

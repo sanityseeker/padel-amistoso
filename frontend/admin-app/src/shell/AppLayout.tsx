@@ -9,7 +9,6 @@ import { useLocale } from '../i18n';
 import { TopBarActionContext, TopBarTitleContext } from '../ui/PageHeader';
 import { usePageTitle, useRouteTitle } from './pageTitle';
 import { useShellHotkeys } from '../features/switcher/hotkeys';
-import { SubdomainBanner } from './SubdomainBanner';
 import { Palette } from '../features/switcher/Palette';
 import { ShortcutSheet } from '../features/switcher/ShortcutSheet';
 import { SwitcherSheet } from '../features/switcher/SwitcherSheet';
@@ -141,7 +140,6 @@ function Layout() {
               value={{ action: topBarAction, setAction: setTopBarAction }}
             >
               <ErrorBoundary key={pathname}>
-                {adminChrome && <SubdomainBanner />}
                 <Suspense fallback={<Loading />}>
                   <Outlet />
                 </Suspense>

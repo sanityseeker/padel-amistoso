@@ -27,7 +27,8 @@ from ..models import ParticipationStatus, Sport
 from ..tournaments.player_secrets import generate_passphrase
 from .db import get_db
 from .elo_recalc import flush_elo_recalculation, mark_elo_dirty
-from .elo_store import get_live_profile_elo_stats
+from .elo_store import DEFAULT_RATING, get_live_profile_elo_stats
+from .rating_scope import RatingScope, resolve_scope
 from .player_merge import (
     materialize_participants,
     merge_hub_profile_data,
@@ -132,7 +133,8 @@ def list_profiles(
     params.append(max(1, min(limit, 2000)))
     with get_db() as conn:
         rows = conn.execute(sql, params).fetchall()
-        live = get_live_profile_elo_stats([r["id"] for r in rows], conn=conn)
+        scope = resolve_scope(club_id=club_id, community_id=community_id)
+        live = get_live_profile_elo_stats([r["id"] for r in rows], conn=conn, scope=scope)
 
     return [
         AdminPlayerProfileSummary(
@@ -143,18 +145,20 @@ def list_profiles(
             created_at=r["created_at"],
             k_factor_override=r["k_factor_override"],
             is_ghost=bool(r["is_ghost"]),
-            **_live_elo_fields(r, live.get(r["id"], {})),
+            **_live_elo_fields(r, live.get(r["id"], {}), scope=scope),
         )
         for r in rows
     ]
 
 
-def _live_elo_fields(row, live: dict[str, dict]) -> dict[str, float | int | None]:
+def _live_elo_fields(row, live: dict[str, dict], scope: RatingScope | None = None) -> dict[str, float | int | None]:
     """ELO / match-count fields for an admin profile payload.
 
     Prefers the log-derived values (shared with the Player Hub header and the
     leaderboards) and falls back to the flat ``player_profiles`` snapshot for a
-    sport with no logged matches.
+    sport with no logged matches.  In a club or community *scope* the flat
+    snapshot is not a number of that scope, so a sport without matches there
+    shows the default rating and no matches instead.
     """
     out: dict[str, float | int | None] = {
         "elo_padel": row["elo_padel"],
@@ -162,6 +166,13 @@ def _live_elo_fields(row, live: dict[str, dict]) -> dict[str, float | int | None
         "elo_tennis": row["elo_tennis"],
         "elo_tennis_matches": row["elo_tennis_matches"],
     }
+    if scope is not None and scope.kind != "global":
+        out = {
+            "elo_padel": DEFAULT_RATING,
+            "elo_padel_matches": 0,
+            "elo_tennis": DEFAULT_RATING,
+            "elo_tennis_matches": 0,
+        }
     for sport in ("padel", "tennis"):
         stats = live.get(sport)
         if stats is None:
@@ -634,9 +645,16 @@ async def convert_ghost_to_hub_profile(
 @router.get("/{profile_id}", response_model=AdminPlayerProfileDetail)
 def get_profile_detail(
     profile_id: str,
+    club_id: str | None = None,
+    community_id: str | None = None,
     _admin: User = Depends(require_admin),
 ) -> AdminPlayerProfileDetail:
-    """Return a single profile along with all linked participations (active + history)."""
+    """Return a single profile along with all linked participations (active + history).
+
+    With ``club_id`` or ``community_id`` the ELO and match counts are those of
+    that scope (as in the list view's filter); otherwise they are global.
+    """
+    scope = resolve_scope(club_id=club_id, community_id=community_id)
     with get_db() as conn:
         profile = conn.execute(
             "SELECT id, name, email, contact, passphrase, created_at,"
@@ -649,7 +667,7 @@ def get_profile_detail(
             raise HTTPException(404, "Profile not found")
 
         participations = _build_participations(conn, profile_id)
-        live = get_live_profile_elo_stats([profile_id], conn=conn).get(profile_id, {})
+        live = get_live_profile_elo_stats([profile_id], conn=conn, scope=scope).get(profile_id, {})
 
     return AdminPlayerProfileDetail(
         id=profile["id"],
@@ -661,7 +679,7 @@ def get_profile_detail(
         k_factor_override=profile["k_factor_override"],
         is_ghost=bool(profile["is_ghost"]),
         participations=participations,
-        **_live_elo_fields(profile, live),
+        **_live_elo_fields(profile, live, scope=scope),
     )
 
 
