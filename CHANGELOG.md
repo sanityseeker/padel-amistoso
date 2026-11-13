@@ -1,3 +1,10 @@
+## v3.7.0 (2026-11-13)
+
+### Feat
+
+- show match contacts on the player event page and update translations
+- players see and report their entry fee after a lobby becomes a tournament, and filter the Player Hub by sport
+
 ## v3.6.1 (2026-11-13)
 
 ### Fix
