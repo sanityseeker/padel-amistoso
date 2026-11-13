@@ -1,3 +1,9 @@
+## v3.7.1 (2026-11-13)
+
+### Feat
+
+- clearer payment actions in the Player Hub and a Payments tab for tournaments
+
 ## v3.7.0 (2026-11-13)
 
 ### Feat
