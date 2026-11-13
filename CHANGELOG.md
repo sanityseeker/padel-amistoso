@@ -1,3 +1,9 @@
+## v3.9.0 (2026-11-13)
+
+### Feat
+
+- private organizer notes on tournaments and cleaner bracket diagrams
+
 ## v3.8.0 (2026-11-13)
 
 ### Feat
