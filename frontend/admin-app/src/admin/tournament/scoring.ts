@@ -4,14 +4,23 @@ import type {
   MatchData,
   Score,
   SetDecider,
+  Tournament,
   TournamentStatus,
   TvSettings,
+  WorkspaceTournament,
 } from '../../types';
+import type { TournamentPrefix } from './query';
 
 // Scoring contexts, the same ones the legacy admin uses (admin-gp.js _SCORE_ENDPOINTS).
 export type Ctx = 'gp-group' | 'gp-playoff' | 'mex' | 'mex-playoff' | 'po-playoff';
 
 export interface TournamentPageData {
+  type: Tournament['type'];
+  prefix: TournamentPrefix;
+  /** The caller's rights on this tournament (booleans from the server, never the owner's name). */
+  access: { canEdit: boolean; isOwnerOrAdmin: boolean };
+  /** The list entry; null unless the caller may edit. */
+  tournament: WorkspaceTournament | null;
   status: TournamentStatus;
   data: MatchData;
   settings: TvSettings;

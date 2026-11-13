@@ -55,6 +55,7 @@ from .routes_share import registration_share_router
 from .routes_push import router as push_router
 from .sse import router as sse_router
 from .routes_withdrawals import router as withdrawals_router
+from .routes_workspace import router as workspace_router
 from .state import (  # noqa: F401  — re-exported for tests
     _load_state,
     _tournaments,
@@ -429,6 +430,7 @@ app.include_router(push_router)
 app.include_router(seasons_router)
 app.include_router(sse_router)
 app.include_router(withdrawals_router)
+app.include_router(workspace_router)
 
 # ────────────────────────────────────────────────────────────────────────────
 # Config endpoint

@@ -3,7 +3,7 @@ import { useMediaQuery } from '@mantine/hooks';
 import { useState } from 'react';
 import { write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
-import type { Tournament, TournamentStatus, TvSettings } from '../../types';
+import type { TournamentStatus, TvSettings, WorkspaceTournament } from '../../types';
 import { ErrorState, Loading } from '../../components';
 import { Notice, Section, SectionHelp } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
@@ -40,7 +40,7 @@ export function TournamentSettings({
   onOpenPayments,
   onClose,
 }: {
-  tournament: Tournament;
+  tournament: WorkspaceTournament;
   status: TournamentStatus;
   settings: TvSettings;
   prefix: TournamentPrefix;

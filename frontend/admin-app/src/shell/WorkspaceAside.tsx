@@ -1,8 +1,7 @@
 import { Badge, Button, Group, ScrollArea, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { useTournamentList } from '../components';
 import { matchDecider, pageMatches, reviewItems } from '../admin/tournament/scoring';
-import { prefixOf, workspaceQuery } from '../admin/tournament/query';
+import { workspaceQuery } from '../admin/tournament/query';
 import { workspace, useWorkspaceInfo } from '../features/switcher/workspace';
 import { t as tx, useLocale } from '../i18n';
 import { formatRoundLabel } from '../roundLabel';
@@ -14,9 +13,7 @@ import classes from './Shell.module.css';
 export function WorkspaceAside({ tid }: { tid: string }) {
   useLocale();
   const info = useWorkspaceInfo();
-  const tournaments = useTournamentList();
-  const type = tournaments.data?.find((t) => t.id === tid)?.type;
-  const { data } = useQuery(workspaceQuery(tid, prefixOf(type), false));
+  const { data } = useQuery(workspaceQuery(tid, false));
   const matches = data ? pageMatches(data) : [];
   const reviews = data && info?.canEdit ? reviewItems(matches, data.settings) : [];
   return (

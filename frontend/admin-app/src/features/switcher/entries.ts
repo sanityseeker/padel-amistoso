@@ -6,7 +6,7 @@ import { useAuth } from '../../auth';
 import { t as tx, useLocale } from '../../i18n';
 import { formatRoundLabel } from '../../roundLabel';
 import { useLobbyList, useTournamentList } from '../../components';
-import { prefixOf, rememberType, workspaceQuery } from '../../admin/tournament/query';
+import { prefixOf, workspaceQuery } from '../../admin/tournament/query';
 import { pageMatches, reviewItems } from '../../admin/tournament/scoring';
 import type { Club, Community, Tournament, TournamentStatus } from '../../types';
 import { openPath, orderItems, useOpenItems, type OpenItem } from './openItems';
@@ -71,7 +71,7 @@ export function useEntryInfo(item: OpenItem): EntryInfo {
   const prefix = prefixOf(tournament?.type);
   const { pathname } = useLocation();
   const isActive = matchPath('/admin/t/:id', pathname)?.params.id === item.id;
-  const fullQuery = useQuery({ ...workspaceQuery(item.id, prefix, false) });
+  const fullQuery = useQuery({ ...workspaceQuery(item.id, false) });
   // Cached workspace data counts while it is the open page or was refreshed in the last two minutes.
   const fullData =
     fullQuery.data && (isActive || Date.now() - fullQuery.dataUpdatedAt < 120_000)
@@ -81,7 +81,8 @@ export function useEntryInfo(item: OpenItem): EntryInfo {
   const light = useQuery({
     queryKey: ['admin', 'tournament-status', item.id],
     queryFn: () => api<TournamentStatus>(`/tournaments/${item.id}/${prefix}/status`),
-    enabled: enabled && !!tournament && !full.data,
+    // The open workspace's own query carries its status: no second request for it.
+    enabled: enabled && !!tournament && !full.data && !isActive,
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
@@ -179,13 +180,9 @@ export const entryDescription = (info: EntryInfo) =>
 /** One-at-a-time workspace prefetch for hover and focus on a dock item. */
 export function usePrefetch() {
   const client = useQueryClient();
-  const tournaments = useTournamentList(false);
   return (item: OpenItem) => {
     if (item.kind !== 'tournament') return;
-    const type = tournaments.data?.find((t) => t.id === item.id)?.type;
-    if (!type) return;
-    rememberType(item.id, type);
-    void client.prefetchQuery({ ...workspaceQuery(item.id, prefixOf(type)), staleTime: 15_000 });
+    void client.prefetchQuery({ ...workspaceQuery(item.id), staleTime: 15_000 });
   };
 }
 
@@ -219,12 +216,8 @@ export function useSwitcherIndex(activeTournamentId?: string): IndexEntry[] {
     queryFn: () => api<Community[]>('/communities'),
     enabled,
   });
-  // Same query key as the workspace page, so the prefix must be the tournament's own: a fetch made
-  // through this observer would otherwise ask a wrong endpoint (a 404 after every write).
-  const activeType = tournaments.data?.find((t) => t.id === activeTournamentId)?.type;
-  const active = useQuery({
-    ...workspaceQuery(activeTournamentId ?? '', prefixOf(activeType), false),
-  });
+  // Same query key as the workspace page: this observer only reads what the page fetched.
+  const active = useQuery({ ...workspaceQuery(activeTournamentId ?? '', false) });
   return useMemo(() => {
     const out: IndexEntry[] = [];
     for (const t of tournaments.data ?? [])

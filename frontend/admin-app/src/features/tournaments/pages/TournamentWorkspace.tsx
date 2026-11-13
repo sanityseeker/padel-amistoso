@@ -33,15 +33,14 @@ import {
 } from '@tabler/icons-react';
 import { Button } from '@mantine/core';
 import { t as tx, useLocale } from '../../../i18n';
-import { formatType, write } from '../../../api';
-import { ErrorState, Loading, useOverview } from '../../../components';
-import { useAuth } from '../../../auth';
+import { ApiError, formatType, write } from '../../../api';
+import { ErrorState, Loading } from '../../../components';
 import { GhostPurgeField, purgeQuery, useGhostPurge } from '../GhostPurge';
 import { closeItem, useOpenItems } from '../../switcher';
 import { useItemActions } from '../../switcher/actions';
 import { useViewState } from '../../switcher/viewState';
 import { useRegisterWorkspace } from '../../switcher/workspace';
-import { knownType, prefixOf, rememberType, workspaceQuery } from '../../../admin/tournament/query';
+import { workspaceQuery } from '../../../admin/tournament/query';
 import { PlayerCodes } from '../../../admin/tournament/PlayerCodes';
 import { latestRound } from '../../../admin/tournament/pairings';
 import { ReviewQueue } from '../../../admin/tournament/ReviewQueue';
@@ -123,17 +122,17 @@ export function TournamentWorkspace() {
 function Workspace({ id }: { id: string }) {
   useLocale();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const client = useQueryClient();
-  const { tournaments } = useOverview();
   const items = useOpenItems();
   const itemActions = useItemActions();
-  const tournament = tournaments.data?.find((t) => t.id === id);
-  // The type remembered from an earlier visit starts the workspace request alongside the list
-  // instead of after it. The list stays the authority: a wrong guess is corrected below.
-  const [guessed] = useState(() => knownType(id));
-  const knownKind = tournament?.type ?? guessed;
-  const prefix = prefixOf(knownKind);
+  // One request: status, the phase's matches, settings, the list entry and the caller's rights.
+  const query = useQuery(workspaceQuery(id));
+  const page = query.data;
+  // The server sends the list entry to editors only, so a signed-in non-editor sees "not found", as
+  // when the overview list left the tournament out.
+  const tournament = page?.access.canEdit ? page.tournament : null;
+  const prefix = page?.prefix ?? 'po';
+  const missing = query.error instanceof ApiError && query.error.status === 404;
   const phone = !!useMediaQuery('(max-width: 767px)', false, { getInitialValueInEffect: false });
   const panes = !!useMediaQuery('(min-width: 62em)', false, { getInitialValueInEffect: false });
   // `inline` edits happen inside the match row on desktop; phones and the review queue use a sheet or dialog.
@@ -151,24 +150,8 @@ function Workspace({ id }: { id: string }) {
   const [historyFor, setHistoryFor] = useState<Match | null>(null);
   // Owners and admins only: the API restricts delete, community moves, ELO recalculation and
   // co-editor management to them (`_require_owner_or_admin`). Co-editors get `canEdit` only.
-  const isOwnerOrAdmin = user?.role === 'admin' || tournament?.owner === user?.username;
-  const canEdit = isOwnerOrAdmin || !!tournament?.shared;
-  // Before the list arrives, only a remembered type may start the request; once the list has
-  // resolved, a tournament it does not contain is not asked for at all.
-  const query = useQuery(workspaceQuery(id, prefix, tournaments.data ? !!tournament : !!guessed));
-  // The remembered type was wrong (or the id was reused): what that guess fetched is not shown, and
-  // the query starts over with the list's type.
-  const wrongGuess = !!tournament && !!guessed && guessed !== tournament.type;
-  const corrected = useRef(false);
-  const actualType = tournament?.type;
-  useEffect(() => {
-    if (!actualType) return;
-    rememberType(id, actualType);
-    if (wrongGuess && !corrected.current) {
-      corrected.current = true;
-      void client.resetQueries({ queryKey: ['admin', 'tournament', id], exact: true });
-    }
-  }, [actualType, wrongGuess, id, client]);
+  const isOwnerOrAdmin = !!page?.access.isOwnerOrAdmin;
+  const canEdit = !!page?.access.canEdit;
   // Only editors see payments; the request never goes out for anyone else.
   const payments = useAdminPayments(`/tournaments/${id}`, canEdit);
   const showPayments =
@@ -176,7 +159,6 @@ function Workspace({ id }: { id: string }) {
     !!payments.data &&
     (payments.data.settings.fee_cents > 0 || payments.data.rows.length > 0);
   const wide = !!useMediaQuery('(min-width: 88em)', false, { getInitialValueInEffect: false });
-  const page = query.data;
   // A Mexicano that ended without play-offs lists its round history, read-only.
   const history = !!page && historyOnly(page);
   const playoffCtx = !!page && !page.groupStage && page.path === 'playoffs' && !history;
@@ -281,10 +263,11 @@ function Workspace({ id }: { id: string }) {
       navigate('/admin');
     },
   });
-  // A tournament that is no longer listed disappears from the open-tournament chips.
+  // A tournament that is gone, or no longer editable, disappears from the open-tournament chips.
+  const gone = missing || (!!page && !page.access.canEdit);
   useEffect(() => {
-    if (tournaments.data && !tournament) closeItem(id);
-  }, [tournaments.data, tournament, id]);
+    if (gone) closeItem(id);
+  }, [gone, id]);
 
   const loaded = query.data;
   const loadedMatches = loaded ? pageMatches(loaded) : [];
@@ -457,22 +440,9 @@ function Workspace({ id }: { id: string }) {
     }
   }, [showStandingsPane, tab]);
 
-  if (
-    tournaments.isPending ||
-    (tournament && query.isPending) ||
-    (wrongGuess && !corrected.current)
-  )
-    return <Loading />;
-  if (tournaments.error || query.error)
-    return (
-      <ErrorState
-        error={tournaments.error || query.error}
-        retry={() => {
-          void tournaments.refetch();
-          void query.refetch();
-        }}
-      />
-    );
+  if (query.isPending) return <Loading />;
+  if (query.error && !missing)
+    return <ErrorState error={query.error} retry={() => void query.refetch()} />;
   if (!tournament || !query.data)
     return (
       <EmptyState title={tx('Tournament not found')}>

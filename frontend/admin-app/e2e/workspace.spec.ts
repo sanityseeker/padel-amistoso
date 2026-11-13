@@ -28,6 +28,23 @@ test('stage progress remains correct after reloading a workspace', async ({ page
   await expect(progress).toContainText(`${status.stage_played} / ${status.stage_total}`);
 });
 
+test('a cold load of a workspace asks for it in one request', async ({ page, request }) => {
+  const { id } = await createTournament(request, 'gp', `One call ${Date.now()}`);
+  await loginAdmin(page);
+  const calls: string[] = [];
+  page.on('request', (r) => {
+    const path = new URL(r.url()).pathname;
+    if (path.startsWith(`/api/tournaments/${id}/`)) calls.push(path);
+  });
+  await page.goto(`/admin/t/${id}`);
+  await expect(page.getByTestId('workspace-header')).toBeVisible();
+  // Let follow-up requests (payments, dock status) go out before counting.
+  await page.waitForTimeout(800);
+  expect(calls.filter((p) => p.endsWith('/workspace'))).toHaveLength(1);
+  // None of the per-piece reads the workspace used to chain (status, matches, settings).
+  expect(calls.filter((p) => /\/(gp|mex|po)\/|\/tv-settings$/.test(p))).toEqual([]);
+});
+
 async function scoreCurrentRound(request: APIRequestContext, id: string) {
   const headers = await adminHeaders(request);
   const matches = await (await request.get(`/api/tournaments/${id}/mex/matches`)).json();
@@ -282,7 +299,7 @@ test('group standings keep their position on selection and live refresh', async 
   const beforeRefresh = await position();
   const refreshedGroups = page.waitForResponse(
     (response) =>
-      response.url().endsWith(`/api/tournaments/${id}/gp/groups`) &&
+      response.url().endsWith(`/api/tournaments/${id}/workspace`) &&
       response.request().method() === 'GET',
   );
   expect(

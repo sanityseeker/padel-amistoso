@@ -27,6 +27,9 @@ export interface Tournament {
   season_id?: string | null;
   team_mode?: boolean;
 }
+/** The workspace's copy of a tournament's list entry (`GET /tournaments/{id}/workspace`, editors only):
+ *  the list fields without the owner and sharing flags. */
+export type WorkspaceTournament = Omit<Tournament, 'owner' | 'shared'>;
 export interface Community {
   id: string;
   name: string;
