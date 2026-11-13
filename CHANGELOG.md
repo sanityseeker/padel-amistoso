@@ -1,3 +1,9 @@
+## v3.6.1 (2026-11-13)
+
+### Fix
+
+- format court settings and admin tools spec with prettier
+
 ## v3.6.0 (2026-11-13)
 
 ### Feat
