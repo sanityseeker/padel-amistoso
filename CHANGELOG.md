@@ -1,3 +1,19 @@
+## v3.8.0 (2026-11-13)
+
+### Feat
+
+- serve the organizer workspace from one GET /api/tournaments/{tid}/workspace
+
+### Perf
+
+- memoize workspace match rows so a live refresh renders only changed rows
+- load the swipe strip carousel and the command palette on first use
+- load the Spanish texts on demand and preload them from the page
+- preload likely next routes while idle and on link intent
+- start the workspace request without waiting for the tournament list
+- keep the page's top-bar action in a small external store
+- reset the route error boundary on navigation instead of remounting
+
 ## v3.7.1 (2026-11-13)
 
 ### Feat
