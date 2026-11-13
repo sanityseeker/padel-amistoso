@@ -9,6 +9,7 @@ import { useLobbyList, useTournamentList } from '../../components';
 import { prefixOf, workspaceQuery } from '../../admin/tournament/query';
 import { pageMatches, reviewItems } from '../../admin/tournament/scoring';
 import type { Club, Community, Tournament, TournamentStatus } from '../../types';
+import { preloadFor } from '../../app/routes';
 import { openPath, orderItems, useOpenItems, type OpenItem } from './openItems';
 
 /** What the dock, rail, sheet, strip and hover card show about one open tournament or lobby. */
@@ -181,6 +182,8 @@ export const entryDescription = (info: EntryInfo) =>
 export function usePrefetch() {
   const client = useQueryClient();
   return (item: OpenItem) => {
+    // The page's code as well as its data, so the switch renders at once.
+    preloadFor(openPath(item));
     if (item.kind !== 'tournament') return;
     void client.prefetchQuery({ ...workspaceQuery(item.id), staleTime: 15_000 });
   };

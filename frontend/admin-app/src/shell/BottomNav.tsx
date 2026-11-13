@@ -1,6 +1,7 @@
 import { UnstyledButton } from '@mantine/core';
 import { IconBuildingCommunity, IconDotsVertical, IconPlus, IconTrophy } from '@tabler/icons-react';
 import { Link, useLocation } from 'react-router-dom';
+import { preloadProps } from '../app/routes';
 import { t as tx, useLocale } from '../i18n';
 import { useShellUi } from './ShellUi';
 import classes from './Shell.module.css';
@@ -21,6 +22,7 @@ export function AdminBottomNav() {
     <UnstyledButton
       component={Link}
       to={to}
+      {...preloadProps(to)}
       className={classes.tab}
       data-active={active || undefined}
       data-accent={accent || undefined}

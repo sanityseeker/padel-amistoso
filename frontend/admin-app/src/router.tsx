@@ -1,4 +1,4 @@
-import { lazy, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Box } from '@mantine/core';
 import { createBrowserRouter, Navigate, useParams } from 'react-router-dom';
 import { AdminGate } from './admin/AdminGate';
@@ -10,55 +10,29 @@ import { NotFound } from './shell/NotFound';
 import { RootRedirect } from './shell/RootRedirect';
 import { AppLayout } from './shell/AppLayout';
 
-const EventsApp = lazy(() =>
-  import('./features/events/EventsPage').then((m) => ({ default: m.EventsPage })),
-);
 // Read before the router exists, so email-link credentials survive any redirect.
 import './features/player/linkParams';
-const PlayerLayout = lazy(() =>
-  import('./features/player/PlayerLayout').then((m) => ({ default: m.PlayerLayout })),
-);
-const Hub = lazy(() => import('./features/player/pages/Hub'));
-const PlayerMatches = lazy(() => import('./features/player/pages/Matches'));
-const PlayerEvent = lazy(() => import('./features/player/pages/Event'));
-const PlayerRatings = lazy(() => import('./features/player/pages/Ratings'));
-const PlayerMe = lazy(() => import('./features/player/pages/Me'));
-const TournamentsPage = lazy(() =>
-  import('./features/hub/TournamentsHub').then((m) => ({ default: m.TournamentsHub })),
-);
-const NewTournamentPage = lazy(() =>
-  import('./features/create/NewTournamentPage').then((m) => ({ default: m.NewTournamentPage })),
-);
-const TournamentPage = lazy(() =>
-  import('./features/tournaments/pages/TournamentWorkspace').then((m) => ({
-    default: m.TournamentWorkspace,
-  })),
-);
-const LobbyPage = lazy(() =>
-  import('./features/lobbies/LobbyPage').then((m) => ({ default: m.LobbyPage })),
-);
-const ClubsPage = lazy(() =>
-  import('./features/organization/OrganizationPage').then((m) => ({ default: m.OrganizationPage })),
-);
-const ClubPage = lazy(() =>
-  import('./features/organization/ClubPage').then((m) => ({ default: m.ClubPage })),
-);
-const UsersPage = lazy(() =>
-  import('./features/organization/UsersPage').then((m) => ({ default: m.UsersPage })),
-);
-const InfoPage = lazy(() =>
-  import('./features/info/InfoPage').then((m) => ({ default: m.InfoPage })),
-);
-const TvPage = lazy(() => import('./features/tv/TvPage').then((m) => ({ default: m.TvPage })));
-const RegisterPage = lazy(() =>
-  import('./features/register/RegisterPage').then((m) => ({ default: m.RegisterPage })),
-);
-const ClubPathPage = lazy(() =>
-  import('./features/club/ClubLanding').then((m) => ({ default: m.ClubPathLanding })),
-);
-const PlayersPage = lazy(() =>
-  import('./features/players/AdminPlayers').then((m) => ({ default: m.AdminPlayersPage })),
-);
+import {
+  ClubPage,
+  ClubPathPage,
+  ClubsPage,
+  EventsApp,
+  Hub,
+  InfoPage,
+  LobbyPage,
+  NewTournamentPage,
+  PlayerEvent,
+  PlayerLayout,
+  PlayerMatches,
+  PlayerMe,
+  PlayerRatings,
+  PlayersPage,
+  RegisterPage,
+  TournamentPage,
+  TournamentsPage,
+  TvPage,
+  UsersPage,
+} from './app/routes';
 
 function AdminOnly({ children }: { children: ReactNode }) {
   const { user } = useAuth();

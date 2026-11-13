@@ -371,3 +371,26 @@ test('another lobby or club starts with its own fresh page state', async ({ page
   await expect(page.getByRole('tab', { name: 'Events' })).toHaveAttribute('aria-selected', 'true');
   expect(await page.evaluate(() => window.__bootId)).toBe(boot);
 });
+
+test.describe('route preloading', () => {
+  // The service worker precaches the shell on its own; keep its fetches out of the count.
+  test.use({ serviceWorkers: 'block' });
+
+  test('idle time on /admin warms the workspace chunk and never the guide or chart chunks', async ({
+    page,
+  }) => {
+    const chunks: string[] = [];
+    page.on('request', (r) => {
+      const path = new URL(r.url()).pathname;
+      if (path.startsWith('/admin-assets/')) chunks.push(path);
+    });
+    await loginAdmin(page);
+    await expect
+      .poll(() => chunks.some((p) => p.includes('/TournamentWorkspace-')), { timeout: 10_000 })
+      .toBe(true);
+    expect(chunks.some((p) => p.includes('/NewTournamentPage-'))).toBe(true);
+    // InfoContent comes with the new-tournament form (its format help); the service worker precaches
+    // it too. The Info page and the chart chunks stay unloaded until opened.
+    expect(chunks.filter((p) => /\/(InfoPage|EloChart|AreaGradient)-/.test(p))).toEqual([]);
+  });
+});

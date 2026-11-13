@@ -3,6 +3,7 @@ import { AppShell, rem } from '@mantine/core';
 import { useHeadroom, useLocalStorage } from '@mantine/hooks';
 import { Outlet, ScrollRestoration, useLocation } from 'react-router-dom';
 import { ChangePasswordModal } from '../admin/account/ChangePasswordModal';
+import { preloadSection } from '../app/routes';
 import { Loading } from '../components';
 import { useAuth } from '../auth';
 import { useLocale } from '../i18n';
@@ -24,6 +25,19 @@ import { ShellUiProvider, useShellUi } from './ShellUi';
 import { SupportFooter } from './SupportFooter';
 import { TopBar, useHeaderHeight } from './TopBar';
 import { WorkspaceAside } from './WorkspaceAside';
+
+// Idle-time route preloading, skipped when the visitor asked the browser to save data.
+function warmSectionWhenIdle(pathname: string): () => void {
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+  if (connection?.saveData) return () => undefined;
+  const warm = () => preloadSection(pathname);
+  if (typeof window.requestIdleCallback === 'function') {
+    const handle = window.requestIdleCallback(warm, { timeout: 4000 });
+    return () => window.cancelIdleCallback(handle);
+  }
+  const handle = window.setTimeout(warm, 1500);
+  return () => window.clearTimeout(handle);
+}
 
 const RAIL = 72;
 const DOCK = 280;
@@ -73,6 +87,9 @@ function Layout() {
     const section = pathname.split('/')[1];
     if (section === 'events' || section === 'player' || section === 'admin') rememberPage(section);
   }, [pathname]);
+  // Once the page is up, warm the section's likely next pages while the browser is idle.
+  const section = pathname.split('/')[1];
+  useEffect(() => warmSectionWhenIdle(`/${section}`), [section]);
 
   useShellHotkeys({ enabled: adminChrome, toggleDock });
 

@@ -10,6 +10,7 @@ import {
   IconUser,
 } from '@tabler/icons-react';
 import { Link, useLocation } from 'react-router-dom';
+import { preloadProps } from '../app/routes';
 import { t as tx, useLocale } from '../i18n';
 import { getClubSubdomain } from '../club-context';
 import { usePlayerScope } from '../player/scope';
@@ -149,7 +150,13 @@ export function PagesNav({
             </>
           );
           return (
-            <UnstyledButton key={page.to} component={Link} to={page.to} {...common}>
+            <UnstyledButton
+              key={page.to}
+              component={Link}
+              to={page.to}
+              {...preloadProps(page.to)}
+              {...common}
+            >
               {inner}
             </UnstyledButton>
           );
@@ -172,7 +179,13 @@ export function PagesNav({
             onClick: go(page),
           };
           return (
-            <Button key={page.to} component={Link} to={page.to} {...common}>
+            <Button
+              key={page.to}
+              component={Link}
+              to={page.to}
+              {...preloadProps(page.to)}
+              {...common}
+            >
               {page.label}
             </Button>
           );

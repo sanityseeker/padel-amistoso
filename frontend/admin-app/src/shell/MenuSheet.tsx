@@ -12,6 +12,7 @@ import {
 } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth';
+import { preloadProps } from '../app/routes';
 import { t as tx, useLocale } from '../i18n';
 import { INFO_HREF } from '../features/switcher/destinations';
 import { DisplayPanel } from './DisplayMenu';
@@ -47,7 +48,14 @@ function HubCard({
     </Stack>
   );
   return to ? (
-    <Card component={Link} to={to} onClick={onClick} padding="sm" className={classes.hubCard}>
+    <Card
+      component={Link}
+      to={to}
+      {...preloadProps(to)}
+      onClick={onClick}
+      padding="sm"
+      className={classes.hubCard}
+    >
       {content}
     </Card>
   ) : (
