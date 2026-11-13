@@ -303,7 +303,6 @@ test('communities that hold a club are hidden from organizers who cannot edit th
 // POST /tournaments/* accepts any `club_id` (helpers._store_tournament only aligns scope, it never
 // checks club editor access), so a stranger can file a tournament inside someone else's club.
 test('a tournament cannot be filed in a club the organizer cannot edit', async ({ request }) => {
-  test.fail(true, 'Tournament creation does not check access to the given club_id');
   const owner = await organizer(request, 'cown');
   const stranger = await organizer(request, 'cstr');
   const community = await (

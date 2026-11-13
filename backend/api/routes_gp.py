@@ -21,6 +21,7 @@ from ..models import Court, EliminationType, InputFormat, Player, ScoreConfirmat
 from ..tournaments import GroupPlayoffTournament
 from ..viz import render_playoff_schema
 from .helpers import (
+    _require_club_join_access,
     stage_progress_payload,
     tournament_winners,
     winners_payload,
@@ -99,6 +100,7 @@ async def create_group_playoff(
     _create_rate_limiter.record(client_ip)
     _require_demo_can_create_tournament(user)
     _sanitize_demo_create_request(req, user)
+    _require_club_join_access(req.club_id, user)
     individual_players = [Player(name=n) for n in req.player_names]
     courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 

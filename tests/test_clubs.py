@@ -2824,3 +2824,119 @@ class TestClubMalformedJsonResilience:
         res = client.get(f"/api/clubs/{club['id']}", headers=auth_headers)
         assert res.status_code == 200
         assert res.json()["email_settings"] is None
+
+
+# ---------------------------------------------------------------------------
+# Filing events in a club needs editing access to that club
+# ---------------------------------------------------------------------------
+
+_CREATE_BODIES = {
+    "/api/tournaments/group-playoff": {
+        "name": "Club Cup",
+        "player_names": ["A", "B", "C", "D"],
+        "court_names": ["Court 1"],
+        "num_groups": 1,
+    },
+    "/api/tournaments/mexicano": {
+        "name": "Club Mex",
+        "player_names": ["A", "B", "C", "D"],
+        "court_names": ["Court 1"],
+        "total_points_per_match": 32,
+        "num_rounds": 2,
+    },
+    "/api/tournaments/playoff": {
+        "name": "Club Play-off",
+        "participant_names": ["A", "B", "C", "D"],
+        "court_names": ["Court 1"],
+    },
+}
+
+
+class TestClubFilingAccess:
+    """Only the club owner, its co-editors and admins can put an event into a club."""
+
+    def _club(self, client, auth_headers, alice_headers) -> dict:
+        comm = _create_community(client, auth_headers, "Filing Community")
+        return _create_club(client, alice_headers, comm["id"], "Alice Club")
+
+    @pytest.mark.parametrize("path", list(_CREATE_BODIES))
+    def test_stranger_cannot_create_tournament_in_club(
+        self, client, auth_headers, alice_headers, bob_headers, path
+    ) -> None:
+        club = self._club(client, auth_headers, alice_headers)
+        body = {**_CREATE_BODIES[path], "community_id": club["community_id"], "club_id": club["id"]}
+        assert client.post(path, json=body, headers=bob_headers).status_code == 403
+        assert client.post(path, json=body, headers=alice_headers).status_code == 200
+
+    def test_co_editor_can_create_tournament_in_club(self, client, auth_headers, alice_headers, bob_headers) -> None:
+        club = self._club(client, auth_headers, alice_headers)
+        client.post(f"/api/clubs/{club['id']}/collaborators", json={"username": "bob"}, headers=alice_headers)
+        path = "/api/tournaments/group-playoff"
+        body = {**_CREATE_BODIES[path], "community_id": club["community_id"], "club_id": club["id"]}
+        res = client.post(path, json=body, headers=bob_headers)
+        assert res.status_code == 200, res.text
+
+    def test_unknown_club_is_not_found(self, client, alice_headers) -> None:
+        path = "/api/tournaments/group-playoff"
+        body = {**_CREATE_BODIES[path], "club_id": "cl_missing"}
+        assert client.post(path, json=body, headers=alice_headers).status_code == 404
+
+    def test_stranger_cannot_create_lobby_in_club(self, client, auth_headers, alice_headers, bob_headers) -> None:
+        club = self._club(client, auth_headers, alice_headers)
+        body = {"name": "Club Lobby", "community_id": club["community_id"], "club_id": club["id"]}
+        assert client.post("/api/registrations", json=body, headers=bob_headers).status_code == 403
+        assert client.post("/api/registrations", json=body, headers=alice_headers).status_code == 200
+
+    def test_stranger_cannot_move_tournament_or_lobby_into_club(
+        self, client, auth_headers, alice_headers, bob_headers
+    ) -> None:
+        club = self._club(client, auth_headers, alice_headers)
+        path = "/api/tournaments/group-playoff"
+        tid = client.post(
+            path, json={**_CREATE_BODIES[path], "community_id": club["community_id"]}, headers=bob_headers
+        ).json()["id"]
+        res = client.patch(f"/api/tournaments/{tid}/club", json={"club_id": club["id"]}, headers=bob_headers)
+        assert res.status_code == 403
+        rid = client.post(
+            "/api/registrations",
+            json={"name": "Bob Lobby", "community_id": club["community_id"]},
+            headers=bob_headers,
+        ).json()["id"]
+        res = client.patch(f"/api/registrations/{rid}/club", json={"club_id": club["id"]}, headers=bob_headers)
+        assert res.status_code == 403
+
+    def test_stranger_cannot_join_club_through_a_season(self, client, auth_headers, alice_headers, bob_headers) -> None:
+        club = self._club(client, auth_headers, alice_headers)
+        season = client.post(f"/api/clubs/{club['id']}/seasons", json={"name": "Spring"}, headers=alice_headers).json()
+        path = "/api/tournaments/group-playoff"
+        tid = client.post(
+            path, json={**_CREATE_BODIES[path], "community_id": club["community_id"]}, headers=bob_headers
+        ).json()["id"]
+        res = client.patch(f"/api/tournaments/{tid}/season", json={"season_id": season["id"]}, headers=bob_headers)
+        assert res.status_code == 403
+        rid = client.post(
+            "/api/registrations",
+            json={"name": "Bob Lobby", "community_id": club["community_id"]},
+            headers=bob_headers,
+        ).json()["id"]
+        res = client.patch(f"/api/registrations/{rid}/season", json={"season_id": season["id"]}, headers=bob_headers)
+        assert res.status_code == 403
+
+    def test_event_editor_keeps_managing_an_event_already_in_the_club(
+        self, client, auth_headers, alice_headers, bob_headers
+    ) -> None:
+        club = self._club(client, auth_headers, alice_headers)
+        season = client.post(f"/api/clubs/{club['id']}/seasons", json={"name": "Spring"}, headers=alice_headers).json()
+        path = "/api/tournaments/group-playoff"
+        tid = client.post(
+            path,
+            json={**_CREATE_BODIES[path], "community_id": club["community_id"], "club_id": club["id"]},
+            headers=alice_headers,
+        ).json()["id"]
+        # Alice shares the tournament with bob, who does not edit the club.
+        res = client.post(f"/api/tournaments/{tid}/collaborators", json={"username": "bob"}, headers=alice_headers)
+        assert res.status_code in (200, 201), res.text
+        res = client.patch(f"/api/tournaments/{tid}/season", json={"season_id": season["id"]}, headers=bob_headers)
+        assert res.status_code == 200, res.text
+        res = client.patch(f"/api/tournaments/{tid}/club", json={"club_id": None}, headers=bob_headers)
+        assert res.status_code == 200, res.text

@@ -46,6 +46,7 @@ from .db import add_co_editor, get_db, get_registration_co_editors, get_shared_r
 from .elo_integration import elo_init_tournament
 from .club_elo import resolve_initial_strengths
 from .helpers import (
+    _require_club_join_access,
     _store_tournament,
     align_community_to_club,
     get_scope_branding as _get_scope_branding,
@@ -604,6 +605,7 @@ async def create_registration(
     _create_rate_limiter.check(client_ip, "Too many registration creation attempts — try again later")
     _create_rate_limiter.record(client_ip)
     now = datetime.now(timezone.utc).isoformat()
+    _require_club_join_access(req.club_id, user)
     questions_json = json.dumps([q.model_dump() for q in req.questions]) if req.questions else None
     async with _reg_id_allocation_lock:
         rid = _next_registration_id()

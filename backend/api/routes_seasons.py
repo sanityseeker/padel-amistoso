@@ -20,6 +20,7 @@ from ..auth.deps import get_current_user, require_profile_or_user
 from ..auth.models import User
 from .db import get_db
 from .rating_scope import RatingScope, scoped_log_cte
+from .helpers import _require_club_join_access
 from .routes_clubs import _get_club, _require_club_admin
 from .state import _tournaments
 
@@ -249,6 +250,7 @@ async def set_tournament_season(tid: str, req: SetSeasonRequest, user: User = De
                     400,
                     f"Tournament belongs to community '{tournament_community}' but the season belongs to community '{club['community_id']}'",
                 )
+            _require_club_join_access(season["club_id"], user, _tournaments[tid].get("club_id"))
             new_club_id = season["club_id"]
         else:
             new_club_id = _tournaments[tid].get("club_id")
@@ -283,6 +285,7 @@ async def set_registration_season(rid: str, req: SetSeasonRequest, user: User = 
                 400,
                 f"Registration belongs to community '{reg_community}' but the season belongs to community '{club['community_id']}'",
             )
+        _require_club_join_access(season["club_id"], user, registration.get("club_id"))
         new_club_id = season["club_id"]
     else:
         new_club_id = registration.get("club_id")
@@ -324,6 +327,7 @@ async def set_tournament_club(tid: str, req: SetClubRequest, user: User = Depend
                     400,
                     f"Tournament belongs to community '{tournament_community}' but the club belongs to community '{club['community_id']}'",
                 )
+            _require_club_join_access(req.club_id, user, _tournaments[tid].get("club_id"))
 
         # Clear season_id if it no longer matches the new club
         existing_season_id = _tournaments[tid].get("season_id")
@@ -355,6 +359,7 @@ async def set_registration_club(rid: str, req: SetClubRequest, user: User = Depe
                 400,
                 f"Registration belongs to community '{reg_community}' but the club belongs to community '{club['community_id']}'",
             )
+        _require_club_join_access(req.club_id, user, registration.get("club_id"))
 
     # Clear season_id if no longer matches
     new_season_id = registration.get("season_id")

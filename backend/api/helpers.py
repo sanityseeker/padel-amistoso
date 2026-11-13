@@ -367,6 +367,20 @@ def _require_owner_or_admin(tid: str, user: User) -> None:
         raise HTTPException(403, "You do not have permission to modify this tournament")
 
 
+def _require_club_join_access(club_id: str | None, user: User, current_club_id: str | None = None) -> None:
+    """Raise 404/403 unless *user* may put an event into *club_id*.
+
+    Filing an event in a club needs editing access to that club (owner, co-editor
+    or admin). Nothing is checked when no club is given or the club does not change,
+    so an event's editors can still manage an event that already sits in a club.
+    """
+    if club_id is None or club_id == current_club_id:
+        return
+    from .routes_clubs import _get_club, _require_club_editor  # noqa: PLC0415
+
+    _require_club_editor(_get_club(club_id), user)
+
+
 def _require_demo_can_create_tournament(user: User) -> None:
     """Raise 403 if a demo user already owns a tournament (one at a time)."""
     if not user.is_demo:

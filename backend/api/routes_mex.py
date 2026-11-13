@@ -22,6 +22,7 @@ from ..tournaments import MexicanoTournament
 from ..tournaments.playoff import bracket_matches
 from ..viz import render_playoff_schema
 from .helpers import (
+    _require_club_join_access,
     stage_progress_payload,
     _get_tournament,
     _serialize_match,
@@ -95,6 +96,7 @@ async def create_mexicano(req: CreateMexicanoRequest, request: Request, user=Dep
     _create_rate_limiter.record(client_ip)
     _require_demo_can_create_tournament(user)
     _sanitize_demo_create_request(req, user)
+    _require_club_join_access(req.club_id, user)
     individual_players = [Player(name=n) for n in req.player_names]
     courts = [Court(name=n) for n in req.court_names] if req.assign_courts else []
 
