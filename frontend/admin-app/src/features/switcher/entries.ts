@@ -6,7 +6,7 @@ import { useAuth } from '../../auth';
 import { t as tx, useLocale } from '../../i18n';
 import { formatRoundLabel } from '../../roundLabel';
 import { useLobbyList, useTournamentList } from '../../components';
-import { prefixOf, workspaceQuery } from '../../admin/tournament/query';
+import { prefixOf, rememberType, workspaceQuery } from '../../admin/tournament/query';
 import { pageMatches, reviewItems } from '../../admin/tournament/scoring';
 import type { Club, Community, Tournament, TournamentStatus } from '../../types';
 import { openPath, orderItems, useOpenItems, type OpenItem } from './openItems';
@@ -184,6 +184,7 @@ export function usePrefetch() {
     if (item.kind !== 'tournament') return;
     const type = tournaments.data?.find((t) => t.id === item.id)?.type;
     if (!type) return;
+    rememberType(item.id, type);
     void client.prefetchQuery({ ...workspaceQuery(item.id, prefixOf(type)), staleTime: 15_000 });
   };
 }

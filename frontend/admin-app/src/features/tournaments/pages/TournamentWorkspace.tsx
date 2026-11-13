@@ -41,7 +41,7 @@ import { closeItem, useOpenItems } from '../../switcher';
 import { useItemActions } from '../../switcher/actions';
 import { useViewState } from '../../switcher/viewState';
 import { useRegisterWorkspace } from '../../switcher/workspace';
-import { prefixOf, workspaceQuery } from '../../../admin/tournament/query';
+import { knownType, prefixOf, rememberType, workspaceQuery } from '../../../admin/tournament/query';
 import { PlayerCodes } from '../../../admin/tournament/PlayerCodes';
 import { latestRound } from '../../../admin/tournament/pairings';
 import { ReviewQueue } from '../../../admin/tournament/ReviewQueue';
@@ -129,7 +129,11 @@ function Workspace({ id }: { id: string }) {
   const items = useOpenItems();
   const itemActions = useItemActions();
   const tournament = tournaments.data?.find((t) => t.id === id);
-  const prefix = prefixOf(tournament?.type);
+  // The type remembered from an earlier visit starts the workspace request alongside the list
+  // instead of after it. The list stays the authority: a wrong guess is corrected below.
+  const [guessed] = useState(() => knownType(id));
+  const knownKind = tournament?.type ?? guessed;
+  const prefix = prefixOf(knownKind);
   const phone = !!useMediaQuery('(max-width: 767px)', false, { getInitialValueInEffect: false });
   const panes = !!useMediaQuery('(min-width: 62em)', false, { getInitialValueInEffect: false });
   // `inline` edits happen inside the match row on desktop; phones and the review queue use a sheet or dialog.
@@ -149,7 +153,22 @@ function Workspace({ id }: { id: string }) {
   // co-editor management to them (`_require_owner_or_admin`). Co-editors get `canEdit` only.
   const isOwnerOrAdmin = user?.role === 'admin' || tournament?.owner === user?.username;
   const canEdit = isOwnerOrAdmin || !!tournament?.shared;
-  const query = useQuery(workspaceQuery(id, prefix, !!tournament));
+  // Before the list arrives, only a remembered type may start the request; once the list has
+  // resolved, a tournament it does not contain is not asked for at all.
+  const query = useQuery(workspaceQuery(id, prefix, tournaments.data ? !!tournament : !!guessed));
+  // The remembered type was wrong (or the id was reused): what that guess fetched is not shown, and
+  // the query starts over with the list's type.
+  const wrongGuess = !!tournament && !!guessed && guessed !== tournament.type;
+  const corrected = useRef(false);
+  const actualType = tournament?.type;
+  useEffect(() => {
+    if (!actualType) return;
+    rememberType(id, actualType);
+    if (wrongGuess && !corrected.current) {
+      corrected.current = true;
+      void client.resetQueries({ queryKey: ['admin', 'tournament', id], exact: true });
+    }
+  }, [actualType, wrongGuess, id, client]);
   // Only editors see payments; the request never goes out for anyone else.
   const payments = useAdminPayments(`/tournaments/${id}`, canEdit);
   const showPayments =
@@ -438,7 +457,12 @@ function Workspace({ id }: { id: string }) {
     }
   }, [showStandingsPane, tab]);
 
-  if (tournaments.isPending || (tournament && query.isPending)) return <Loading />;
+  if (
+    tournaments.isPending ||
+    (tournament && query.isPending) ||
+    (wrongGuess && !corrected.current)
+  )
+    return <Loading />;
   if (tournaments.error || query.error)
     return (
       <ErrorState
