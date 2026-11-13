@@ -1,3 +1,9 @@
+## v3.5.4 (2026-11-13)
+
+### Fix
+
+- fit settings drawers on phones and let organizers hide the schedule from players
+
 ## v3.5.3 (2026-11-12)
 
 ### Fix
