@@ -24,6 +24,7 @@ import { EntryPaymentStatus } from '../payments';
 import type { PathRound, PlayerMatch } from '../../../player/types';
 import { useEventData } from '../eventData';
 import { MatchActions } from '../MatchActions';
+import { MatchContacts, useMatchContacts } from '../MatchContacts';
 import { Notice } from '../../../ui/Notice';
 
 // One event, in the order a player needs it: one status banner, your next match (score, confirm,
@@ -43,6 +44,16 @@ export default function Event() {
     (entry.tournament_type === 'group_playoff' || entry.tournament_type === 'mexicano');
   // One request: the summary card draws it, the Played rows take each round's rank from it.
   const path = useTournamentPath(ranked ? entry : undefined);
+  // Contacts the other players shared, for the matches still to play (Up next and Later).
+  const schedule = event.data?.schedule;
+  const upcoming = schedule
+    ? [...(schedule.now ? [schedule.now] : []), ...schedule.waiting, ...schedule.next]
+    : [];
+  const contacts = useMatchContacts(
+    tournament ? entry.entity_id : undefined,
+    event.token,
+    upcoming.map((m) => m.id),
+  );
 
   if (!entry && liveLoading) return <Loading />;
   if (!entry)
@@ -134,6 +145,14 @@ export default function Event() {
         density="row"
         testId="player-match"
         courts={data.status.assign_courts !== false}
+        actions={
+          <MatchContacts
+            match={m}
+            people={contacts.get(m.id)}
+            expand={data.expand}
+            playerId={entry.player_id}
+          />
+        }
         footer={
           actions ? (
             <MatchActions match={m} entry={entry} data={data} token={event.token} />

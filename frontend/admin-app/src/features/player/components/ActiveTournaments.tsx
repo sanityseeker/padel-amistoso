@@ -11,6 +11,7 @@ import { StatusBadge } from '../../../ui';
 import { isTbd, lifecycleIn, useEventData } from '../eventData';
 import { entryPath } from '../context';
 import { MatchActions } from '../MatchActions';
+import { MatchContacts, useMatchContacts } from '../MatchContacts';
 import { PaymentBadge, useOpenPayment } from '../payments';
 import { sportProps } from '../../../theme';
 import classes from '../Player.module.css';
@@ -39,6 +40,7 @@ export function TournamentNavCard({ entry }: { entry: Entry }) {
   const pending = data?.pending ?? null;
   const state = pending && data ? lifecycleIn(pending, data, entry.player_id) : null;
   const client = useQueryClient();
+  const contacts = useMatchContacts(entry.entity_id, event.token, pending ? [pending.id] : []);
   const payment = useOpenPayment(entry);
   const finished = !!data?.finished;
   // Finished while the Hub list still has it as active: refresh so it moves to Past.
@@ -122,6 +124,14 @@ export function TournamentNavCard({ entry }: { entry: Entry }) {
               expand: data.expand,
               playerId: entry.player_id,
             })}
+            actions={
+              <MatchContacts
+                match={pending}
+                people={contacts.get(pending.id)}
+                expand={data.expand}
+                playerId={entry.player_id}
+              />
+            }
             footer={<MatchActions match={pending} entry={entry} data={data} token={event.token} />}
           >
             {/* The organizer's note for this match, as on the event page. */}

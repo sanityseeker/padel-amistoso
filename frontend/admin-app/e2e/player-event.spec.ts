@@ -319,6 +319,51 @@ test("the Hub match card shows the organizer's note and no court placeholder whe
   await expect(page.getByTestId('event-up-next')).not.toContainText('Waiting for a court');
 });
 
+test('the next match card shows the contacts the other players shared, and tap copies one', async ({
+  page,
+  request,
+}) => {
+  const { id, headers } = await createTournament(request, 'mex', `Contacts ${Date.now()}`);
+  const { session, playerId, secrets } = await profileFor(request, id, 'Ana', 'contacts');
+  const current = (await (await request.get(`/api/tournaments/${id}/mex/matches`)).json())
+    .current_matches as Match[];
+  const mine = current.find((m) => [...m.team1_ids, ...m.team2_ids].includes(playerId))!;
+  const own = mine.team1_ids.includes(playerId) ? mine.team1_ids : mine.team2_ids;
+  const partner = own.find((p) => p !== playerId)!;
+  const [rival, silent] = mine.team1_ids.includes(playerId) ? mine.team2_ids : mine.team1_ids;
+  await openHub(page, session.access_token);
+  const card = page.getByTestId('active-tournament');
+  await expect(card.getByTestId('player-match')).toBeVisible();
+  // Nobody shared a contact yet: no button.
+  await expect(card.getByTestId('match-contacts-button')).toHaveCount(0);
+  for (const [pid, contact] of [
+    [partner, '+34 611 111 111'],
+    [rival, 'rival@example.com'],
+  ]) {
+    const put = await request.put(`/api/tournaments/${id}/player-secrets/${pid}/contact`, {
+      headers,
+      data: { contact },
+    });
+    expect(put.ok()).toBeTruthy();
+  }
+  await page.reload();
+  await card.getByTestId('match-contacts-button').click();
+  const list = page.getByTestId('match-contacts');
+  await expect(list).toContainText(secrets[partner].name);
+  await expect(list).toContainText('Partner');
+  await expect(list).toContainText('+34 611 111 111');
+  await expect(list).toContainText(secrets[rival].name);
+  await expect(list).toContainText('Opponent');
+  await expect(list).not.toContainText(secrets[silent].name);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await list.getByRole('button', { name: `Copy the contact of ${secrets[rival].name}` }).click();
+  await expect(list).toContainText('Copied');
+  // The event page offers the same button on Up next.
+  await page.goto(`/player/matches/tournament/${id}`);
+  await page.getByTestId('event-up-next').getByTestId('match-contacts-button').click();
+  await expect(page.getByTestId('match-contacts')).toContainText('rival@example.com');
+});
+
 test('a player whose opponent is not decided yet cannot enter a score', async ({
   page,
   request,
