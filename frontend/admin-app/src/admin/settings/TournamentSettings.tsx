@@ -1,17 +1,18 @@
-import { Drawer, Stack, Switch, Tabs } from '@mantine/core';
+import { Button, Drawer, Group, Stack, Switch, Tabs, Text } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { useState } from 'react';
 import { write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
 import type { Tournament, TournamentStatus, TvSettings } from '../../types';
-import { Section, SectionHelp } from '../../ui';
+import { ErrorState, Loading } from '../../components';
+import { Notice, Section, SectionHelp } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 import type { TournamentPrefix } from '../tournament/query';
 import { AliasEditor } from './AliasEditor';
 import { Collaborators } from './Collaborators';
 import { CommunicateSection } from './CommunicateSection';
 import { CourtsSection, MexicanoSettings } from './CourtsSection';
-import { PaymentsPanel } from './PaymentsPanel';
+import { PaymentSettingsForm, useAdminPayments } from './PaymentsPanel';
 import { RatingSection } from './RatingSection';
 import { ScopeEditor } from './ScopeEditor';
 import { ScoringSection, TvSection, useTvPatch } from './ScoringSection';
@@ -36,6 +37,7 @@ export function TournamentSettings({
   prefix,
   isOwnerOrAdmin,
   initialTab = 'general',
+  onOpenPayments,
   onClose,
 }: {
   tournament: Tournament;
@@ -45,6 +47,8 @@ export function TournamentSettings({
   /** Co-editors cannot manage co-editors, move the community or recalculate ELO. */
   isOwnerOrAdmin: boolean;
   initialTab?: SettingsTab;
+  /** Closes the drawer and shows the workspace Payments tab. */
+  onOpenPayments?: () => void;
   onClose: () => void;
 }) {
   useLocale();
@@ -62,6 +66,7 @@ export function TournamentSettings({
     success: 'Visibility updated',
   });
   const tvPatch = useTvPatch(id);
+  const payments = useAdminPayments(`/tournaments/${id}`);
   const hasPlayoffs = prefix === 'po' || status.phase === 'playoffs' || prefix === 'gp';
   const sections = [
     { value: 'general', label: tx('General') },
@@ -208,7 +213,32 @@ export function TournamentSettings({
             <CommunicateSection kind="tournament" id={id} />
           </Tabs.Panel>
           <Tabs.Panel flex={1} miw={0} value="payments">
-            <PaymentsPanel base={`/tournaments/${id}`} scope="tournament" />
+            {payments.isPending ? (
+              <Loading />
+            ) : payments.error ? (
+              <ErrorState error={payments.error} retry={() => void payments.refetch()} />
+            ) : (
+              <Stack gap="md">
+                {payments.data.settings.fee_cents > 0 && onOpenPayments && (
+                  <Notice>
+                    <Group justify="space-between" gap="sm">
+                      <Text size="sm">
+                        {tx('Track who paid in the Payments tab of the tournament.')}
+                      </Text>
+                      <Button variant="default" size="compact-sm" onClick={onOpenPayments}>
+                        {tx('Open payments')}
+                      </Button>
+                    </Group>
+                  </Notice>
+                )}
+                <PaymentSettingsForm
+                  key={JSON.stringify(payments.data.settings)}
+                  base={`/tournaments/${id}`}
+                  scope="tournament"
+                  data={payments.data.settings}
+                />
+              </Stack>
+            )}
           </Tabs.Panel>
         </Tabs>
       </SectionHelp.Provider>

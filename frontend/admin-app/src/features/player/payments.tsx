@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Text, UnstyledButton } from '@mantine/core';
+import { Paper, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api';
@@ -8,6 +8,7 @@ import { playerApi } from '../../player/api';
 import type { Entry, HubPayment } from '../../player/types';
 import { PaymentSheet, type PaymentAdapter } from '../payments/OwnPaymentCard';
 import type { PayableTeammate } from '../../ui/AlsoPaidFor';
+import { PaymentAction, type PaymentActionProps } from '../../ui/PaymentAction';
 import { StatusBadge } from '../../ui/StatusBadge';
 
 // `enabled` is false while there is no session (or the e-mail link is still being exchanged): the call
@@ -73,7 +74,13 @@ const useSettledPayment = (entry: Entry, enabled: boolean) =>
   });
 
 /** The badge of an open payment. It opens the payment sheet; a reported payment updates the badge at once. */
-export function PaymentBadge({ payment }: { payment: HubPayment }) {
+export function PaymentBadge({
+  payment,
+  size,
+}: {
+  payment: HubPayment;
+  size?: PaymentActionProps['size'];
+}) {
   useLocale();
   const client = useQueryClient();
   const [opened, setOpened] = useState(false);
@@ -84,7 +91,7 @@ export function PaymentBadge({ payment }: { payment: HubPayment }) {
         ? tx('Payment reported')
         : tx('Refund owed to you');
   const tone =
-    payment.status === 'unpaid' ? 'warning' : payment.status === 'reported' ? 'neutral' : 'info';
+    payment.status === 'unpaid' ? 'due' : payment.status === 'reported' ? 'waiting' : 'refund';
   const path = `/player-profile/payments/${enc(payment.key)}`;
   const adapter: PaymentAdapter = {
     key: payment.key,
@@ -96,16 +103,15 @@ export function PaymentBadge({ payment }: { payment: HubPayment }) {
   };
   return (
     <>
-      <UnstyledButton
+      <PaymentAction
+        tone={tone}
+        label={label}
+        size={size}
         onClick={() => setOpened(true)}
         aria-label={`${label}: ${payment.entity_name}`}
         data-testid="payment-badge"
         data-status={payment.status}
-      >
-        <StatusBadge tone={tone} size="sm" style={{ cursor: 'pointer' }}>
-          {label}
-        </StatusBadge>
-      </UnstyledButton>
+      />
       <PaymentSheet
         opened={opened}
         onClose={() => setOpened(false)}
@@ -140,13 +146,31 @@ export function EntryPaymentBadge({ entry }: { entry: Entry }) {
   return payment ? <PaymentBadge payment={payment} /> : null;
 }
 
-/** Event page: the badge while the payment is open, one line of text once it is settled. */
+const paymentLabel = (status: HubPayment['status']) =>
+  status === 'unpaid'
+    ? tx('Payment due')
+    : status === 'reported'
+      ? tx('Payment reported')
+      : tx('Refund owed to you');
+
+/** Event page header: a plain status while the payment is open, one line of text once it is settled. */
 export function EntryPaymentStatus({ entry }: { entry: Entry }) {
   useLocale();
   const open = useOpenPayment(entry);
   const payments = usePayments(!entry.entity_deleted);
   const settled = useSettledPayment(entry, payments.isSuccess && !open);
-  if (open) return <PaymentBadge payment={open} />;
+  if (open)
+    return (
+      <StatusBadge
+        tone={
+          open.status === 'unpaid' ? 'warning' : open.status === 'reported' ? 'neutral' : 'info'
+        }
+        data-testid="payment-status"
+        data-status={open.status}
+      >
+        {paymentLabel(open.status)}
+      </StatusBadge>
+    );
   const status = settled.data?.status;
   const text =
     status === 'paid'
@@ -161,4 +185,19 @@ export function EntryPaymentStatus({ entry }: { entry: Entry }) {
       {text}
     </Text>
   ) : null;
+}
+
+/** Event page body: the open payment in its own block, with the control that opens the sheet. */
+export function EntryPaymentBlock({ entry }: { entry: Entry }) {
+  useLocale();
+  const open = useOpenPayment(entry);
+  if (!open) return null;
+  return (
+    <Paper variant="row" p="md" data-testid="event-payment">
+      <Stack gap="xs" align="flex-start">
+        <Text variant="eyebrow">{tx('Entry fee')}</Text>
+        <PaymentBadge payment={open} size="md" />
+      </Stack>
+    </Paper>
+  );
 }

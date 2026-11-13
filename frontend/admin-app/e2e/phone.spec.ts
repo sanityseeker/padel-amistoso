@@ -187,13 +187,19 @@ test('the tournament and lobby settings drawers fit the phone width', async ({ p
     'aria-selected',
     'true',
   );
-  // With a fee set, the payment rows render as cards that fit the drawer.
-  await expect(tournament.getByTestId('payment-row').first()).toBeVisible();
+  // The drawer holds the fee form only; it fits.
+  await expect(tournament.getByLabel(/^Fee per player/)).toBeVisible();
   expect(await fits(tournament)).toBe(true);
-  await expectInViewport(page, tournament.getByRole('button', { name: 'Mark paid' }).first());
   await tournament.getByRole('tab', { name: 'Scoring', exact: true }).click();
   expect(await fits(tournament)).toBe(true);
   await page.keyboard.press('Escape');
+  await expect(tournament).toBeHidden();
+
+  // With a fee set, the payment rows are in the workspace Payments tab, as cards that fit.
+  await page.getByRole('tab', { name: 'Payments', exact: true }).click();
+  await expect(page.getByTestId('payment-row').first()).toBeVisible();
+  expect(await noHorizontalOverflow(page)).toBe(true);
+  await expectInViewport(page, page.getByRole('button', { name: 'Mark paid' }).first());
 
   await page.goto(`/admin/lobby/${lobby.id}`);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();

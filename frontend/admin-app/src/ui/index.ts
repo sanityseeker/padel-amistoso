@@ -12,6 +12,7 @@ export {
 } from './PageHeader';
 export { Notice, type NoticeProps, type NoticeTone } from './Notice';
 export { PageContainer } from './PageContainer';
+export { PaymentAction, type PaymentActionProps, type PaymentTone } from './PaymentAction';
 export { OverflowMenu, type OverflowItem } from './OverflowMenu';
 export { ResponsiveSheet } from './ResponsiveSheet';
 export { ScoreDigits } from './ScoreDigits';

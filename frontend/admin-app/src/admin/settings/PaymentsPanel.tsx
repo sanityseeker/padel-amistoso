@@ -45,7 +45,7 @@ interface PayMethod {
   value: string;
   label?: string | null;
 }
-interface PaySettings {
+export interface PaySettings {
   fee_cents: number;
   currency: string;
   due_at?: string | null;
@@ -65,7 +65,7 @@ interface PayRow {
   note?: string | null;
   concept: string;
 }
-interface PayList {
+export interface PayList {
   settings: PaySettings;
   rows: PayRow[];
   summary: {
@@ -153,18 +153,17 @@ function kindLabel(kind: string): string {
   }
 }
 
-function SettingsSheet({
+/** The fee form. The drawer sheet and the tournament settings tab both render it. */
+export function PaymentSettingsForm({
   base,
   scope,
   data,
-  invalidate,
-  onClose,
+  onSaved,
 }: {
   base: string;
   scope: 'lobby' | 'tournament';
   data: PaySettings;
-  invalidate: string[][];
-  onClose: () => void;
+  onSaved?: () => void;
 }) {
   useLocale();
   const [fee, setFee] = useState<number | string>(data.fee_cents / 100);
@@ -201,144 +200,161 @@ function SettingsSheet({
         },
         'PATCH',
       ),
-    invalidate,
+    invalidate: [['admin', 'payments', base]],
     success: 'Payment settings saved',
-    onSuccess: onClose,
+    onSuccess: onSaved,
   });
   const patchMethod = (i: number, change: Partial<PayMethod>) =>
     setMethods(methods.map((x, j) => (j === i ? { ...x, ...change } : x)));
   return (
-    <ResponsiveSheet opened onClose={onClose} title={tx('Payment settings')} size="lg">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          save.mutate();
-        }}
-      >
-        <Stack>
-          <MutationError error={save.error} />
-          <NumberInput
-            label={tx('Fee per player ({value1})', { value1: currency })}
-            min={0}
-            decimalScale={2}
-            value={fee}
-            onChange={setFee}
-          />
-          <Stack gap="xs">
-            <Text size="sm" fw={600}>
-              {tx('Ways to pay')}
-            </Text>
-            {methods.map((m, i) => (
-              <Group key={i} gap="xs" wrap="nowrap" align="flex-end">
-                <Select
-                  aria-label={tx('Method')}
-                  allowDeselect={false}
-                  w={{ base: 112, xs: 140 }}
-                  value={m.kind}
-                  data={METHOD_KINDS.map((k) => ({ value: k, label: kindLabel(k) }))}
-                  onChange={(v) => v && patchMethod(i, { kind: v })}
-                />
-                <TextInput
-                  flex={1}
-                  aria-label={tx('Account or link')}
-                  placeholder={tx('Account or link')}
-                  maxLength={512}
-                  value={m.value}
-                  onChange={(e) => patchMethod(i, { value: e.currentTarget.value })}
-                />
-                <ActionIcon
-                  variant="subtle"
-                  color="red"
-                  aria-label={tx('Remove method')}
-                  onClick={() => setMethods(methods.filter((_, j) => j !== i))}
-                >
-                  <IconX size={16} />
-                </ActionIcon>
-              </Group>
-            ))}
-            {methods.length < 12 && (
-              <Button
-                variant="subtle"
-                size="compact-sm"
-                w="fit-content"
-                leftSection={<IconPlus size={14} />}
-                onClick={() => setMethods([...methods, { kind: 'bizum', value: '' }])}
-              >
-                {tx('Add a way to pay')}
-              </Button>
-            )}
-          </Stack>
-          <Textarea
-            label={tx('Instructions')}
-            maxLength={2000}
-            autosize
-            minRows={2}
-            value={instructions}
-            onChange={(e) => setInstructions(e.currentTarget.value)}
-          />
-          <Button
-            variant="subtle"
-            size="compact-sm"
-            w="fit-content"
-            aria-expanded={advanced}
-            leftSection={advanced ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
-            onClick={() => setAdvanced(!advanced)}
-          >
-            {tx('Advanced')}
-          </Button>
-          <Collapse expanded={advanced}>
-            <Stack>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        save.mutate();
+      }}
+    >
+      <Stack>
+        <MutationError error={save.error} />
+        <NumberInput
+          label={tx('Fee per player ({value1})', { value1: currency })}
+          min={0}
+          decimalScale={2}
+          value={fee}
+          onChange={setFee}
+        />
+        <Stack gap="xs">
+          <Text size="sm" fw={600}>
+            {tx('Ways to pay')}
+          </Text>
+          {methods.map((m, i) => (
+            <Group key={i} gap="xs" wrap="nowrap" align="flex-end">
               <Select
-                label={tx('Currency')}
+                aria-label={tx('Method')}
                 allowDeselect={false}
-                data={currencies}
-                value={currency}
-                onChange={(v) => v && setCurrency(v)}
+                w={{ base: 112, xs: 140 }}
+                value={m.kind}
+                data={METHOD_KINDS.map((k) => ({ value: k, label: kindLabel(k) }))}
+                onChange={(v) => v && patchMethod(i, { kind: v })}
               />
               <TextInput
-                label={tx('Due date (shown to players only)')}
-                type="date"
-                value={due ? due.slice(0, 10) : ''}
-                onChange={(e) => setDue(e.currentTarget.value)}
+                flex={1}
+                aria-label={tx('Account or link')}
+                placeholder={tx('Account or link')}
+                maxLength={512}
+                value={m.value}
+                onChange={(e) => patchMethod(i, { value: e.currentTarget.value })}
               />
-              {methods.length > 0 && (
-                <Stack gap="xs">
-                  <Text size="sm" fw={600}>
-                    {tx('Payment options')}
-                  </Text>
-                  {methods.map((m, i) => (
-                    <TextInput
-                      key={i}
-                      aria-label={tx('Label for {value1}', { value1: kindLabel(m.kind) })}
-                      placeholder={kindLabel(m.kind)}
-                      maxLength={80}
-                      value={m.label ?? ''}
-                      onChange={(e) => patchMethod(i, { label: e.currentTarget.value })}
-                    />
-                  ))}
-                </Stack>
-              )}
-              {scope === 'lobby' && (
-                <Stack gap={4}>
-                  <Checkbox
-                    label={tx('Show payment details on the public sign-up page')}
-                    checked={show === 'always'}
-                    onChange={(e) => setShow(e.currentTarget.checked ? 'always' : 'after_register')}
-                  />
-                  <Text size="xs" c="dimmed">
-                    {tx(
-                      'Anyone with the sign-up link sees these details, also before they register. If this is off, players see them after they register.',
-                    )}
-                  </Text>
-                </Stack>
-              )}
-            </Stack>
-          </Collapse>
-          <Button type="submit" loading={save.isPending}>
-            {tx('Save settings')}
-          </Button>
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                aria-label={tx('Remove method')}
+                onClick={() => setMethods(methods.filter((_, j) => j !== i))}
+              >
+                <IconX size={16} />
+              </ActionIcon>
+            </Group>
+          ))}
+          {methods.length < 12 && (
+            <Button
+              variant="subtle"
+              size="compact-sm"
+              w="fit-content"
+              leftSection={<IconPlus size={14} />}
+              onClick={() => setMethods([...methods, { kind: 'bizum', value: '' }])}
+            >
+              {tx('Add a way to pay')}
+            </Button>
+          )}
         </Stack>
-      </form>
+        <Textarea
+          label={tx('Instructions')}
+          maxLength={2000}
+          autosize
+          minRows={2}
+          value={instructions}
+          onChange={(e) => setInstructions(e.currentTarget.value)}
+        />
+        <Button
+          variant="subtle"
+          size="compact-sm"
+          w="fit-content"
+          aria-expanded={advanced}
+          leftSection={advanced ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
+          onClick={() => setAdvanced(!advanced)}
+        >
+          {tx('Advanced')}
+        </Button>
+        <Collapse expanded={advanced}>
+          <Stack>
+            <Select
+              label={tx('Currency')}
+              allowDeselect={false}
+              data={currencies}
+              value={currency}
+              onChange={(v) => v && setCurrency(v)}
+            />
+            <TextInput
+              label={tx('Due date (shown to players only)')}
+              type="date"
+              value={due ? due.slice(0, 10) : ''}
+              onChange={(e) => setDue(e.currentTarget.value)}
+            />
+            {methods.length > 0 && (
+              <Stack gap="xs">
+                <Text size="sm" fw={600}>
+                  {tx('Payment options')}
+                </Text>
+                {methods.map((m, i) => (
+                  <TextInput
+                    key={i}
+                    aria-label={tx('Label for {value1}', { value1: kindLabel(m.kind) })}
+                    placeholder={kindLabel(m.kind)}
+                    maxLength={80}
+                    value={m.label ?? ''}
+                    onChange={(e) => patchMethod(i, { label: e.currentTarget.value })}
+                  />
+                ))}
+              </Stack>
+            )}
+            {scope === 'lobby' && (
+              <Stack gap={4}>
+                <Checkbox
+                  label={tx('Show payment details on the public sign-up page')}
+                  checked={show === 'always'}
+                  onChange={(e) => setShow(e.currentTarget.checked ? 'always' : 'after_register')}
+                />
+                <Text size="xs" c="dimmed">
+                  {tx(
+                    'Anyone with the sign-up link sees these details, also before they register. If this is off, players see them after they register.',
+                  )}
+                </Text>
+              </Stack>
+            )}
+          </Stack>
+        </Collapse>
+        <Button type="submit" loading={save.isPending}>
+          {tx('Save settings')}
+        </Button>
+      </Stack>
+    </form>
+  );
+}
+
+function SettingsSheet({
+  base,
+  scope,
+  data,
+  onClose,
+}: {
+  base: string;
+  scope: 'lobby' | 'tournament';
+  data: PaySettings;
+  onClose: () => void;
+}) {
+  useLocale();
+  return (
+    <ResponsiveSheet opened onClose={onClose} title={tx('Payment settings')} size="lg">
+      <PaymentSettingsForm base={base} scope={scope} data={data} onSaved={onClose} />
     </ResponsiveSheet>
   );
 }
@@ -591,6 +607,15 @@ function ReadOnlySettings({
   );
 }
 
+/** Payment list for a tournament or lobby. Same query key as the panel, no polling. */
+export function useAdminPayments(base: string, enabled = true) {
+  return useQuery({
+    queryKey: ['admin', 'payments', base],
+    queryFn: () => api<PayList>(`${base}/payments`),
+    enabled,
+  });
+}
+
 // Fee, who paid, reminders. The same panel serves a lobby (`/registrations/{id}`) and a running
 // tournament (`/tournaments/{id}`): both expose the same payment routes. A converted lobby passes
 // the tournaments it became, and its settings turn read-only (rows stay editable).
@@ -839,7 +864,6 @@ export function PaymentsPanel({
           base={base}
           scope={scope}
           data={settings}
-          invalidate={[key]}
           onClose={() => setEditing(false)}
         />
       )}

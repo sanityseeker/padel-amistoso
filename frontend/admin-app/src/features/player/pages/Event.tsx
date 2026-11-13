@@ -20,7 +20,7 @@ import { playedPath, TournamentPath, useTournamentPath } from '../components/Tou
 import { sportProps } from '../../../theme';
 import { phaseText } from '../components/ActiveTournaments';
 import { usePlayerSpace } from '../context';
-import { EntryPaymentStatus } from '../payments';
+import { EntryPaymentBlock, EntryPaymentStatus } from '../payments';
 import type { PathRound, PlayerMatch } from '../../../player/types';
 import { useEventData } from '../eventData';
 import { MatchActions } from '../MatchActions';
@@ -111,6 +111,7 @@ export default function Event() {
     return (
       <Stack gap="md" {...sportProps(entry.sport)}>
         {head}
+        <EntryPaymentBlock entry={entry} />
         {notice(
           entry.entity_deleted
             ? tx('This event was removed by its organizer.')
@@ -262,6 +263,7 @@ export default function Event() {
         {head}
         {banner && notice(banner, 'event-banner')}
       </Stack>
+      <EntryPaymentBlock entry={entry} />
       {failure && <ErrorState error={failure} retry={() => void event.refetch()} />}
       {!failure && !data && <Loading />}
       {data && (

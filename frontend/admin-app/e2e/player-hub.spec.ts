@@ -466,6 +466,41 @@ test('a payment badge on the active tournament card opens the payment sheet', as
   await expect(page.getByTestId('payment-badge')).toHaveCount(0);
 });
 
+test('the event page puts the open payment in its own block above the matches', async ({
+  page,
+  request,
+}) => {
+  const { id, profile, headers } = await setup(request, 'Event fee');
+  expect(
+    (
+      await request.patch(`/api/tournaments/${id}/payment-settings`, {
+        headers,
+        data: { fee_cents: 1500, currency: 'EUR', instructions: 'Pay the organizer.' },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  await openHub(page, profile.access_token);
+  await page.getByTestId('active-tournament').getByRole('link').first().click();
+  await page.waitForURL(/\/player\/matches\/tournament\//);
+  const block = page.getByTestId('event-payment');
+  await expect(block).toBeVisible();
+  // The header keeps a plain status; the one button lives in the block.
+  await expect(page.getByTestId('payment-status')).toHaveText('Payment due');
+  await expect(page.getByTestId('payment-badge')).toHaveCount(1);
+  await expect(block.getByTestId('payment-badge')).toHaveText('Payment due');
+  // Above the match sections.
+  const upNext = page.getByTestId('event-up-next');
+  if (await upNext.count()) {
+    const b = (await block.boundingBox())!;
+    const u = (await upNext.boundingBox())!;
+    expect(b.y).toBeLessThan(u.y);
+  }
+  // Keyboard: focus the button, Enter opens the dialog.
+  await block.getByTestId('payment-badge').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog', { name: 'Entry fee' })).toContainText('Pay the organizer.');
+});
+
 test('a lobby payment lights the My events dot, not the Hub dot', async ({ page, request }) => {
   const { profile, headers } = await setup(request, 'Lobby dot');
   const lobby = await (

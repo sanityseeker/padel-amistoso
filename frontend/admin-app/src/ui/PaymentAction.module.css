@@ -1,0 +1,12 @@
+.action {
+  position: relative;
+}
+
+/* A finger needs more than the compact button: grow the hit area without changing the look. */
+@media (pointer: coarse) {
+  .action::before {
+    content: '';
+    position: absolute;
+    inset: -8px -4px;
+  }
+}

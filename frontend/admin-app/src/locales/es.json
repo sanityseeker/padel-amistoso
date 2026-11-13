@@ -1990,5 +1990,8 @@
   "Contacts of the other players": "Contactos de los demás jugadores",
   "Tap to copy": "Toca para copiar",
   "Partner": "Compañero",
-  "Opponent": "Rival"
+  "Opponent": "Rival",
+  "Open payments": "Abrir pagos",
+  "Track who paid in the Payments tab of the tournament.": "Controla quién pagó en la pestaña Pagos del torneo.",
+  "{n} to confirm": "{n} por confirmar"
 }

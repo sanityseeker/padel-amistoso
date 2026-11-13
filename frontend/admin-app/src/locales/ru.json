@@ -1998,5 +1998,8 @@
   "Contacts of the other players": "Контакты других игроков",
   "Tap to copy": "Нажмите, чтобы скопировать",
   "Partner": "Партнёр",
-  "Opponent": "Соперник"
+  "Opponent": "Соперник",
+  "Open payments": "Открыть оплату",
+  "Track who paid in the Payments tab of the tournament.": "Кто оплатил, видно на вкладке «Оплата» турнира.",
+  "{n} to confirm": "Ждут подтверждения: {n}"
 }

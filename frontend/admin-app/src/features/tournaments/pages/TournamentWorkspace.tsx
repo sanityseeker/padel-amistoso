@@ -59,7 +59,8 @@ import {
 } from '../../../admin/tournament/scoring';
 import { useRecordScore, useReviewActions } from '../../../admin/tournament/useScoreActions';
 import type { Match } from '../../../types';
-import { ActionBar, ConfirmAction, EmptyState, ResponsiveSheet } from '../../../ui';
+import { ActionBar, ConfirmAction, EmptyState, ResponsiveSheet, StatusBadge } from '../../../ui';
+import { PaymentsPanel, useAdminPayments } from '../../../admin/settings/PaymentsPanel';
 import { MatchList } from '../MatchList';
 import { ActivityList } from '../../../shell/ActivityList';
 import { StandingsTable, groupHighlight } from '../StandingsTable';
@@ -149,6 +150,12 @@ function Workspace({ id }: { id: string }) {
   const isOwnerOrAdmin = user?.role === 'admin' || tournament?.owner === user?.username;
   const canEdit = isOwnerOrAdmin || !!tournament?.shared;
   const query = useQuery(workspaceQuery(id, prefix, !!tournament));
+  // Only editors see payments; the request never goes out for anyone else.
+  const payments = useAdminPayments(`/tournaments/${id}`, canEdit);
+  const showPayments =
+    canEdit &&
+    !!payments.data &&
+    (payments.data.settings.fee_cents > 0 || payments.data.rows.length > 0);
   const wide = !!useMediaQuery('(min-width: 88em)', false, { getInitialValueInEffect: false });
   const page = query.data;
   // A Mexicano that ended without play-offs lists its round history, read-only.
@@ -170,10 +177,11 @@ function Workspace({ id }: { id: string }) {
     ...(playoffCtx && !bracketOnly ? ['bracket'] : []),
     ...(hasReview ? ['review'] : []),
     ...(canEdit ? ['players'] : []),
+    ...(showPayments ? ['payments'] : []),
   ];
   const view = useViewState(
     id,
-    !!page,
+    !!page && (!canEdit || !payments.isPending),
     allowed,
     page?.status.phase === 'finished' ? 'all' : undefined,
   );
@@ -889,6 +897,25 @@ function Workspace({ id }: { id: string }) {
             </Tabs.Tab>
           )}
           {canEdit && <Tabs.Tab value="players">{tx('Players')}</Tabs.Tab>}
+          {showPayments && (
+            <Tabs.Tab
+              value="payments"
+              rightSection={
+                payments.data && payments.data.summary.reported > 0 ? (
+                  <StatusBadge
+                    size="sm"
+                    circle
+                    tone="warning"
+                    aria-label={tx('{n} to confirm', { n: payments.data.summary.reported })}
+                  >
+                    {payments.data.summary.reported}
+                  </StatusBadge>
+                ) : undefined
+              }
+            >
+              {tx('Payments')}
+            </Tabs.Tab>
+          )}
         </Tabs.List>
         {!twoPane && !bracketOnly && <Tabs.Panel value="matches">{matchesPane}</Tabs.Panel>}
         {!twoPane && hasStandings && <Tabs.Panel value="standings">{standingsPane}</Tabs.Panel>}
@@ -956,6 +983,11 @@ function Workspace({ id }: { id: string }) {
               }}
               roster={{ prefix, phase: status.phase, groups: loaded?.groupStage ? groupNames : [] }}
             />
+          </Tabs.Panel>
+        )}
+        {showPayments && (
+          <Tabs.Panel value="payments">
+            <PaymentsPanel base={`/tournaments/${id}`} scope="tournament" />
           </Tabs.Panel>
         )}
       </Tabs>
@@ -1060,6 +1092,10 @@ function Workspace({ id }: { id: string }) {
           prefix={prefix}
           isOwnerOrAdmin={isOwnerOrAdmin}
           initialTab={dialog.tab}
+          onOpenPayments={() => {
+            setDialog(null);
+            setTab('payments');
+          }}
           onClose={() => setDialog(null)}
         />
       )}

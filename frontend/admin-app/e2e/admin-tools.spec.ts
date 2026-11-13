@@ -116,7 +116,8 @@ test('settings drawer: alias, courts, scoring and co-editors', async ({ page, re
   // One event is safe to recalculate again, so there is no confirm.
   await expect(page.getByText('Ratings recalculated')).toBeVisible();
   await drawer.getByRole('tab', { name: 'Payments' }).click();
-  await expect(drawer.getByTestId('stat-collected')).toBeVisible();
+  await expect(drawer.getByLabel(/^Fee per player/)).toBeVisible();
+  await expect(drawer.getByTestId('stat-collected')).toHaveCount(0);
   await drawer.getByRole('tab', { name: 'Email' }).click();
   await expect(drawer.getByRole('button', { name: 'Save sender' })).toBeVisible();
   drawer = page.getByRole('dialog', { name: 'Tournament settings' });
