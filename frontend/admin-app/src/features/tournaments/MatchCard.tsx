@@ -132,9 +132,9 @@ export function MatchCard({
               </Text>
             )}
             {yours && (
-              <Badge color="court" size="xs">
+              <StatusBadge tone="info" size="xs">
                 {tx('Your match')}
-              </Badge>
+              </StatusBadge>
             )}
             {match.flags.map((f) => (
               <StatusBadge key={f.key} tone={f.tone} variant={f.variant ?? 'light'} size="xs">

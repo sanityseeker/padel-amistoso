@@ -32,7 +32,6 @@ function Details({ lobby }: { lobby: LobbyDetail }) {
     name: lobby.name,
     description: lobby.description ?? '',
     message: lobby.message ?? '',
-    admin_notes: lobby.admin_notes ?? '',
     join_code: lobby.join_code ?? '',
     email_requirement: lobby.email_requirement ?? 'optional',
     auto_send_email: !!lobby.auto_send_email,
@@ -48,7 +47,6 @@ function Details({ lobby }: { lobby: LobbyDetail }) {
           clear_description: !form.description.trim(),
           message: form.message,
           clear_message: !form.message.trim(),
-          admin_notes: form.admin_notes,
           join_code: form.join_code.trim() || undefined,
           clear_join_code: !form.join_code.trim() && !!lobby.join_code,
           email_requirement: form.email_requirement,
@@ -91,15 +89,6 @@ function Details({ lobby }: { lobby: LobbyDetail }) {
           maxLength={5000}
           value={form.message}
           onChange={(e) => set('message', e.currentTarget.value)}
-        />
-        <Textarea
-          label={tx('Private notes')}
-          description={tx('Only organizers see these.')}
-          autosize
-          minRows={2}
-          maxLength={10000}
-          value={form.admin_notes}
-          onChange={(e) => set('admin_notes', e.currentTarget.value)}
         />
       </Section>
       <Section title={tx('Sign-up rules')}>

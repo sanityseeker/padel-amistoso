@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import {
   adminHeaders,
   createTournament,
@@ -6,6 +6,12 @@ import {
   openMatchTool,
   patchTvSettings,
 } from './helpers';
+
+/** Withdraw sits in each player row's options menu. */
+async function openWithdraw(page: Page, player: string) {
+  await page.getByRole('button', { name: `Player options: ${player}` }).click();
+  await page.getByRole('menuitem', { name: 'Withdraw', exact: true }).click();
+}
 
 test('stage progress remains correct after reloading a workspace', async ({ page, request }) => {
   const { id, headers } = await createTournament(request, 'mex', `Progress ${Date.now()}`);
@@ -331,7 +337,7 @@ test('withdrawing a player in a rotating-partner group stage leaves them out of 
   await loginAdmin(page);
   await page.goto(`/admin/t/${id}`);
   await page.getByRole('tab', { name: 'Players' }).click();
-  await page.getByRole('button', { name: 'Withdraw: Ana' }).click();
+  await openWithdraw(page, 'Ana');
   const dialog = page.getByRole('dialog', { name: /^Withdraw Ana/ });
   await expect(
     dialog.getByText('The entry is left out of the next rounds. Results stay.'),
@@ -350,7 +356,10 @@ test('withdrawing a player in a rotating-partner group stage leaves them out of 
     .getByRole('dialog', { name: 'Undo withdrawal' })
     .getByRole('button', { name: 'Undo withdrawal' })
     .click();
-  await expect(page.getByRole('button', { name: 'Withdraw: Ana' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Undo withdrawal' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Player options: Ana' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Withdraw', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
   await expect
     .poll(
       async () =>

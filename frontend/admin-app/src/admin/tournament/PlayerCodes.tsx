@@ -121,7 +121,7 @@ function QrDialog({
     staleTime: Infinity,
   });
   return (
-    <Modal opened onClose={onClose} title={player.name} centered size="sm">
+    <Modal opened onClose={onClose} title={player.name} size="sm">
       <Stack align="center" gap="sm">
         {qr.data ? (
           <Image
@@ -218,41 +218,25 @@ export interface WithdrawalContext {
   canWithdraw: boolean;
 }
 
-function WithdrawCell({
-  tid,
-  id,
-  name,
-  ctx,
-  onWithdraw,
-}: {
-  tid: string;
-  id: string;
-  name: string;
-  ctx: WithdrawalContext;
-  onWithdraw: (id: string) => void;
-}) {
-  const done = ctx.list.find((w) => w.member_ids.includes(id));
-  if (done)
-    return (
-      <Group gap={6} wrap="nowrap">
-        <WithdrawnBadge />
-        {done.undo_allowed && (
-          <UndoWithdrawal tid={tid} entryKey={done.entry_key} name={done.name} />
-        )}
-      </Group>
-    );
-  if (!ctx.canWithdraw || ctx.phase === 'finished' || ctx.unavailable.includes(id)) return null;
+/** Whether the row can still withdraw: the action lives in the row's options menu. */
+function canWithdrawEntry(id: string, ctx: WithdrawalContext) {
   return (
-    <Button
-      size="compact-md"
-      variant="default"
-      color="red"
-      leftSection={<IconUserMinus size={15} />}
-      aria-label={`${tx('Withdraw')}: ${name}`}
-      onClick={() => onWithdraw(id)}
-    >
-      {tx('Withdraw')}
-    </Button>
+    ctx.canWithdraw &&
+    ctx.phase !== 'finished' &&
+    !ctx.unavailable.includes(id) &&
+    !ctx.list.some((w) => w.member_ids.includes(id))
+  );
+}
+
+/** A withdrawn entry shows its badge (and Undo while it is allowed) in the row. */
+function WithdrawnStatus({ tid, id, ctx }: { tid: string; id: string; ctx: WithdrawalContext }) {
+  const done = ctx.list.find((w) => w.member_ids.includes(id));
+  if (!done) return null;
+  return (
+    <Group gap={6} wrap="nowrap">
+      <WithdrawnBadge />
+      {done.undo_allowed && <UndoWithdrawal tid={tid} entryKey={done.entry_key} name={done.name} />}
+    </Group>
   );
 }
 
@@ -454,15 +438,7 @@ export function PlayerCodes({
                 </Anchor>
               </Stack>
               <Group gap={4} wrap="nowrap">
-                {withdrawals && (
-                  <WithdrawCell
-                    tid={tid}
-                    id={id}
-                    name={p.name}
-                    ctx={withdrawals}
-                    onWithdraw={setWithdrawFor}
-                  />
-                )}
+                {withdrawals && <WithdrawnStatus tid={tid} id={id} ctx={withdrawals} />}
                 <ActionIcon
                   size="touch"
                   aria-label={`${tx('QR code')}: ${p.name}`}
@@ -513,6 +489,18 @@ export function PlayerCodes({
                         {tx('Player Hub profile')}
                         {p.profile_id ? ` · ${tx('Linked')}` : ''}
                       </Menu.Item>
+                    )}
+                    {withdrawals && canWithdrawEntry(id, withdrawals) && (
+                      <>
+                        <Menu.Divider />
+                        <Menu.Item
+                          color="red"
+                          leftSection={<IconUserMinus size={16} />}
+                          onClick={() => setWithdrawFor(id)}
+                        >
+                          {tx('Withdraw')}
+                        </Menu.Item>
+                      </>
                     )}
                     {canRemove && (
                       <>
@@ -579,7 +567,6 @@ export function PlayerCodes({
         opened={confirmAll}
         onClose={() => setConfirmAll(false)}
         title={tx('Regenerate all codes?')}
-        centered
       >
         <Stack>
           <Text size="sm">

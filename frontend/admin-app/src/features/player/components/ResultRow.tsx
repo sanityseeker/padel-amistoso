@@ -65,7 +65,7 @@ export function ResultRow({ m, locale }: { m: EloMatch; locale: string }) {
             leftSection={<IconSettings size={12} />}
             title={m.adjustment_reason ?? undefined}
           >
-            {tx('Manual adjustment')}
+            {tx('Manual adjustment', { context: 'badge' })}
           </Badge>
           {m.adjusted_by && (
             <Text size="xs" c="dimmed">

@@ -50,7 +50,7 @@ export function LinkEvent({ close }: { close: () => void }) {
     },
   });
   return (
-    <Modal opened onClose={close} title={tx('Link an event')} centered>
+    <Modal opened onClose={close} title={tx('Link an event')}>
       <form
         onSubmit={(e) => {
           e.preventDefault();

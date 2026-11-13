@@ -192,12 +192,16 @@ test('on a phone the TV leaderboard keeps a long name on one line', async ({ pag
     .filter({ hasText: long })
     .first();
   await expect(name).toBeVisible();
-  const info = await name.evaluate((el) => ({
-    whiteSpace: getComputedStyle(el).whiteSpace,
-    height: el.getBoundingClientRect().height,
-    lineHeight: parseFloat(getComputedStyle(el).lineHeight) || 0,
-    clipped: el.scrollWidth > el.clientWidth,
-  }));
+  // A single name is one unbreakable part: it shrinks, then truncates (team names wrap between partners).
+  const info = await name.evaluate((el) => {
+    const part = el.querySelector<HTMLElement>('[class*="member"]')!;
+    return {
+      whiteSpace: getComputedStyle(part).whiteSpace,
+      height: el.getBoundingClientRect().height,
+      lineHeight: parseFloat(getComputedStyle(el).lineHeight) || 0,
+      clipped: part.scrollWidth > part.clientWidth,
+    };
+  });
   expect(info.whiteSpace).toBe('nowrap');
   expect(info.clipped).toBe(true);
   expect(info.height).toBeLessThan(info.lineHeight * 1.6 || 60);
@@ -271,9 +275,9 @@ test('the play-offs dialog estimates the matches and marks estimated Mexicano po
   const dialog = page.getByRole('dialog', { name: 'Start the play-offs?' });
   await expect(dialog.getByText('31.5* pts').first()).toBeVisible();
   await expect(dialog.getByText(/Estimated points/)).toBeVisible();
-  await expect(dialog.getByTestId('playoff-estimate')).toContainText('~1 matches');
+  await expect(dialog.getByTestId('playoff-estimate')).toContainText('1 matches');
   await dialog.getByText('Double elimination', { exact: true }).click();
-  await expect(dialog.getByTestId('playoff-estimate')).toContainText('~2 matches');
+  await expect(dialog.getByTestId('playoff-estimate')).toContainText('2 matches');
   await expect(dialog.getByTestId('playoff-estimate')).toContainText('Winners bracket');
 });
 

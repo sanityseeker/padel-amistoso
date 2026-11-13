@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS tournaments (
     community_id     TEXT    NOT NULL DEFAULT 'open' REFERENCES communities(id),
     created_at       TEXT    NOT NULL DEFAULT '',
     season_id        TEXT,
-    club_id          TEXT    REFERENCES clubs(id) ON DELETE SET NULL
+    club_id          TEXT    REFERENCES clubs(id) ON DELETE SET NULL,
+    admin_notes      TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tournaments_alias
@@ -749,6 +750,10 @@ def init_db() -> None:
         if "club_id" not in cols:
             conn.execute("ALTER TABLE tournaments ADD COLUMN club_id TEXT REFERENCES clubs(id) ON DELETE SET NULL")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tournaments_club ON tournaments (club_id)")
+        # Migrate: private organizer notepad on tournaments. Written only by the
+        # notes routes, never by the save_tournament upsert.
+        if "admin_notes" not in cols:
+            conn.execute("ALTER TABLE tournaments ADD COLUMN admin_notes TEXT")
         # Migrate: add season_id to registrations if missing
         reg_cols = {r[1] for r in conn.execute("PRAGMA table_info(registrations)").fetchall()}
         if reg_cols and "season_id" not in reg_cols:

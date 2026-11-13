@@ -56,6 +56,7 @@ export function ExportDialog({
               tid,
               prefix,
               !!page.status.espejo || !!page.status.double_elimination,
+              page.settings,
             )
           : [];
       const report = buildReport({
@@ -78,7 +79,7 @@ export function ExportDialog({
   };
   const finished = page?.status.phase === 'finished';
   return (
-    <Modal opened onClose={onClose} title={tx('Export results')} centered>
+    <Modal opened onClose={onClose} title={tx('Export results')}>
       <Stack>
         {error && <Notice tone="danger">{error}</Notice>}
         <Switch

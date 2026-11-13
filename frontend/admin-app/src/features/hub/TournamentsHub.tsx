@@ -33,7 +33,7 @@ const LIVE_CARDS = 6;
 
 function lobbyBadge(e: HubEvent) {
   return (
-    <StatusBadge tone={e.live ? 'success' : 'neutral'} size="sm">
+    <StatusBadge tone={e.live ? 'success' : 'neutral'}>
       {e.phaseLabel === 'archived'
         ? tx('Archived')
         : e.phaseLabel === 'open'
@@ -332,10 +332,10 @@ export function TournamentsHub() {
                           </Table.Td>
                           <Table.Td>
                             <Group gap={6}>
-                              <StatusBadge size="sm" variant="outline">
+                              <StatusBadge variant="outline">
                                 {e.listed ? tx('Public') : tx('Private')}
                               </StatusBadge>
-                              {e.shared && <Badge size="sm">{tx('Shared')}</Badge>}
+                              {e.shared && <Badge>{tx('Shared')}</Badge>}
                             </Group>
                           </Table.Td>
                           <Table.Td>{menu(e)}</Table.Td>

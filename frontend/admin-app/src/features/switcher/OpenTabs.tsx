@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { StatusBadge } from '../../ui/StatusBadge';
 import {
   ActionIcon,
-  Badge,
   Button,
   Group,
   HoverCard,
@@ -67,9 +67,9 @@ export function EntryIcon({ info, size = 30 }: { info: EntryInfo; size?: number 
 export function ReviewBadge({ count }: { count: number }) {
   if (!count) return null;
   return (
-    <Badge size="sm" circle color="red" aria-hidden>
+    <StatusBadge circle tone="danger" aria-hidden>
       {count}
-    </Badge>
+    </StatusBadge>
   );
 }
 

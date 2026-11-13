@@ -51,12 +51,15 @@ import { PlayoffPreview } from './PlayoffPreview';
 import { ScopeFields } from './ScopeFields';
 import { TeamBuilder } from './TeamBuilder';
 import {
+  bracketMatches,
   clean,
   defaultEntry,
   defaultGroupName,
   entryRules,
   filledTeams,
   groupMatches,
+  groupRoundMatches,
+  groupSizes,
   newTeam,
   teamLabel,
   teamMembers,
@@ -348,17 +351,40 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
         { label: tx('Rounds'), value: rolling ? tx('Rolling') : Number(rounds) || 0 },
       ];
     if (kind === 'group_playoff') {
-      const per = Math.floor(entries.length / groupCount);
+      const sizes = activeDraw
+        ? activeDraw.map((g) => g.players.length)
+        : groupSizes(entries.length, groupCount);
+      const sum = (f: (size: number) => number) => sizes.reduce((acc, size) => acc + f(size), 0);
       return [
         { label: tx('Groups'), value: groupCount },
-        {
-          label: tx('Group matches'),
-          value: groupCount * groupMatches(per, rules.teamMode),
-        },
+        rules.teamMode
+          ? { label: tx('Group matches'), value: sum(groupMatches) }
+          : { label: tx('Group matches per round'), value: sum(groupRoundMatches) },
       ];
     }
-    return [{ label: tx('Bracket matches'), value: Math.max(0, entries.length - 1) }];
-  }, [kind, entries.length, rolling, rounds, groupCount, rules.teamMode]);
+    return [
+      {
+        label: tx('Bracket matches'),
+        value: bracketMatches(
+          entries.length,
+          poChoice.format,
+          poChoice.winners,
+          poChoice.thirdPlace,
+        ),
+      },
+    ];
+  }, [
+    kind,
+    entries.length,
+    rolling,
+    rounds,
+    groupCount,
+    rules.teamMode,
+    activeDraw,
+    poChoice.format,
+    poChoice.winners,
+    poChoice.thirdPlace,
+  ]);
 
   const submit = (
     <Button

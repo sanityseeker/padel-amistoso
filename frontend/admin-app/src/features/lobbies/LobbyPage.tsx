@@ -29,6 +29,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { PaymentsPanel } from '../../admin/settings/PaymentsPanel';
+import { LobbyNotes } from '../../admin/settings/NotesPanel';
 import { api, ApiError, write } from '../../api';
 import { ErrorState, Loading } from '../../components';
 import { t as tx, useLocale } from '../../i18n';
@@ -367,7 +368,7 @@ function Lobby({ id }: { id: string }) {
             <Tabs.Tab
               value="claims"
               rightSection={
-                <StatusBadge size="sm" circle tone="danger">
+                <StatusBadge circle tone="danger">
                   {claims.data.length}
                 </StatusBadge>
               }
@@ -381,7 +382,7 @@ function Lobby({ id }: { id: string }) {
               value="changes"
               rightSection={
                 lobby.unseen_answer_changes ? (
-                  <StatusBadge size="sm" circle tone="danger">
+                  <StatusBadge circle tone="danger">
                     {lobby.unseen_answer_changes}
                   </StatusBadge>
                 ) : undefined
@@ -394,7 +395,7 @@ function Lobby({ id }: { id: string }) {
             value="filter"
             rightSection={
               lobby.participant_filter?.length ? (
-                <StatusBadge size="sm">
+                <StatusBadge>
                   {lobby.eligible_player_ids?.length ?? 0}/{lobby.registrants.length}
                 </StatusBadge>
               ) : undefined
@@ -404,6 +405,7 @@ function Lobby({ id }: { id: string }) {
           </Tabs.Tab>
           <Tabs.Tab value="payments">{tx('Payments')}</Tabs.Tab>
           <Tabs.Tab value="codes">{tx('Player codes')}</Tabs.Tab>
+          <Tabs.Tab value="notes">{tx('Notes')}</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="players">
           {!lobby.registrants.length ? (
@@ -499,6 +501,9 @@ function Lobby({ id }: { id: string }) {
         </Tabs.Panel>
         <Tabs.Panel value="codes">
           <CodesPanel lobbyId={id} />
+        </Tabs.Panel>
+        <Tabs.Panel value="notes">
+          <LobbyNotes lobbyId={id} notes={lobby.admin_notes} />
         </Tabs.Panel>
       </Tabs>
       {editing && (

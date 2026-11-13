@@ -1,6 +1,7 @@
 import { t as tx, localeTag } from '../../i18n';
 import { formatRoundLabel } from '../../roundLabel';
-import type { Match, Standing, Score } from '../../types';
+import type { Match, Standing, Score, TvSettings } from '../../types';
+import { schemaQuery } from '../../bracketSchema';
 import { formatSets, type TournamentPageData } from './scoring';
 
 export interface ExportOptions {
@@ -111,8 +112,11 @@ export async function bracketImages(
   tid: string,
   prefix: string,
   sides: boolean,
+  settings?: Partial<TvSettings> | null,
 ): Promise<string[]> {
-  const urls = sides ? [`?side=winners`, `?side=losers`] : [''];
+  const urls = (sides ? [{ side: 'winners' }, { side: 'losers' }] : [{}]).map(
+    (extra) => `?${schemaQuery(settings, extra)}`,
+  );
   const out: string[] = [];
   for (const q of urls) {
     try {

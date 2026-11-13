@@ -7,7 +7,7 @@ import type { PlayerMatch } from '../../player/types';
 import type { ScoringEntry } from './eventData';
 import type { InputFormat } from '../../types';
 import { ScoreEntry } from '../tournaments';
-import { formatKeyOf, type ScorePayload } from '../../admin/tournament/scoring';
+import { formatKeyOf, formatScore, type ScorePayload } from '../../admin/tournament/scoring';
 import { ResponsiveSheet } from '../../ui';
 import { refreshAfterError, type ScoringData } from './eventData';
 
@@ -36,6 +36,23 @@ export function ScoreSheet({
     data.setsAvailable
       ? 'sets'
       : 'points';
+  // A correction starts from the score the other side submitted, in the format it was entered in.
+  const submittedSets = mode === 'correct' && match.sets?.length ? match.sets : null;
+  const initial: ScorePayload | null =
+    mode !== 'correct'
+      ? null
+      : submittedSets
+        ? { kind: 'sets', sets: submittedSets }
+        : match.score
+          ? { kind: 'points', score: match.score }
+          : null;
+  const initialMode: InputFormat = initial?.kind === 'sets' ? 'sets' : defaultMode;
+  const submittedText =
+    mode === 'correct' && initial
+      ? tx('Submitted score: {score}', {
+          score: formatScore(match.score ?? null, match.sets ?? null, decider),
+        })
+      : '';
   const defaultKey = formatKeyOf(defaultMode, decider);
   const defaultFormatLabel =
     defaultKey === 'points'
@@ -63,6 +80,7 @@ export function ScoreSheet({
         token,
       );
       void client.invalidateQueries({ queryKey: ['player'] });
+      void client.invalidateQueries({ queryKey: ['public', 'tv', entry.entity_id] });
       notifications.show({ message: tx('Correction sent to the other side.'), color: 'green' });
       return;
     }
@@ -75,6 +93,7 @@ export function ScoreSheet({
       token,
     );
     void client.invalidateQueries({ queryKey: ['player'] });
+    void client.invalidateQueries({ queryKey: ['public', 'tv', entry.entity_id] });
     notifications.show({
       message: tx(
         result.review
@@ -92,14 +111,17 @@ export function ScoreSheet({
     >
       <ScoreEntry
         names={[match.team1.join(' & '), match.team2.join(' & ')]}
-        meta={[formatRoundLabel(match.round_label), match.court].filter(Boolean).join(' · ')}
+        meta={[formatRoundLabel(match.round_label), match.court, submittedText]
+          .filter(Boolean)
+          .join(' · ')}
         rules={{
           modes: data.setsAvailable ? ['points', 'sets'] : ['points'],
           defaultMode,
           total: match.effective_points_target ?? 0,
           decider,
         }}
-        initialMode={defaultMode}
+        initial={initial}
+        initialMode={initialMode}
         surface="sheet"
         fieldNames="sides"
         submitLabel={mode === 'correct' ? tx('Send correction') : tx('Submit score')}

@@ -22,3 +22,25 @@
 .clear {
   margin-right: auto;
 }
+.board {
+  width: 100%;
+  max-width: 22rem;
+  margin-inline: auto;
+}
+.form[data-surface='inline'] .board {
+  max-width: 32rem;
+}
+.setsGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(4.5rem, auto) minmax(0, 1fr);
+  column-gap: var(--mantine-spacing-xs);
+  row-gap: var(--mantine-spacing-sm);
+  align-items: center;
+  justify-items: center;
+}
+.setsGrid > .team {
+  text-align: center;
+}
+.setLabel {
+  white-space: nowrap;
+}

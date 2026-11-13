@@ -15,6 +15,7 @@ import { formatRoundLabel } from '../../roundLabel';
 import type { Match, TvSettings } from '../../types';
 import type { Ctx } from '../../admin/tournament/scoring';
 import { ZoomableImage } from '../../ui';
+import { schemaQuery } from '../../bracketSchema';
 import { useAuthedImageUrl } from '../../admin/tournament/useAuthedImageUrl';
 import { toMatchView } from './adapters';
 import { MatchCard } from './MatchCard';
@@ -59,11 +60,12 @@ export function bandsOf(matches: Match[]): Band[] {
 }
 
 // The diagram is withheld from anonymous viewers while the schedule is hidden, so it loads with the
-// organizer's token.
+// organizer's token. It fills the width like the TV page; a tall bracket scrolls with the page instead
+// of shrinking to a fixed height.
 function DiagramImage({ src, alt }: { src: string; alt: string }) {
   const url = useAuthedImageUrl(src);
   if (!url) return <Loader size="sm" />;
-  return <ZoomableImage src={url} alt={alt} maxHeight={560} testId="bracket-diagram" />;
+  return <ZoomableImage src={url} alt={alt} testId="bracket-diagram" />;
 }
 
 function Slot({
@@ -160,7 +162,7 @@ export function Bracket({
           {sides.map((side) => (
             <DiagramImage
               key={side ?? 'main'}
-              src={`/api/tournaments/${tid}/${prefix}/playoffs-schema${side && bands.length > 1 ? `?side=${side}` : ''}`}
+              src={`/api/tournaments/${tid}/${prefix}/playoffs-schema?${schemaQuery(settings, side && bands.length > 1 ? { side } : {})}`}
               alt={side === 'losers' ? tx('Losers') : tx('Play-off bracket')}
             />
           ))}

@@ -8,3 +8,6 @@
   overflow-y: auto;
   padding-bottom: calc(var(--mantine-spacing-md) + env(safe-area-inset-bottom));
 }
+.bodyFlush {
+  padding-inline: var(--mantine-spacing-xs);
+}

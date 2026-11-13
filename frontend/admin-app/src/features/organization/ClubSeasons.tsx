@@ -162,7 +162,7 @@ export function ClubSeasons({ clubId }: { clubId: string }) {
               <Group justify="space-between" wrap="nowrap">
                 <Group gap="sm">
                   <Text fw={600}>{s.name}</Text>
-                  <StatusBadge tone={s.active ? 'success' : 'neutral'} size="sm">
+                  <StatusBadge tone={s.active ? 'success' : 'neutral'}>
                     {s.active ? tx('Active') : tx('Archived')}
                   </StatusBadge>
                 </Group>

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Badge, Card, Group, Skeleton, Stack, Text, Title, UnstyledButton } from '@mantine/core';
+import { Card, Group, Skeleton, Stack, Text, Title, UnstyledButton } from '@mantine/core';
 import { IconChevronRight, IconMessage } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -87,14 +87,14 @@ export function TournamentNavCard({ entry }: { entry: Entry }) {
                 <Skeleton h={20} w={90} />
               )}
               {state === 'confirm' && (
-                <Badge color="yellow" variant="light">
-                  {tx('Confirm score')}
-                </Badge>
+                <StatusBadge tone="warning" variant="light">
+                  {tx('Confirm score', { context: 'badge' })}
+                </StatusBadge>
               )}
               {(state === 'correction' || state === 'escalated') && (
-                <Badge color="red" variant="light">
+                <StatusBadge tone="danger" variant="light">
                   {tx('Dispute')}
-                </Badge>
+                </StatusBadge>
               )}
             </Group>
           </Stack>

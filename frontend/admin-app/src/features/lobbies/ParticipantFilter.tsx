@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
+import { StatusBadge } from '../../ui/StatusBadge';
 import {
-  Badge,
   Button,
   Chip,
   Group,
@@ -159,9 +159,9 @@ export function ParticipantFilter({ lobby }: { lobby: LobbyDetail }) {
             {eligible.length ? (
               <Group gap={6}>
                 {eligible.map((r) => (
-                  <Badge key={r.player_id} variant="light" color="court" size="lg">
+                  <StatusBadge key={r.player_id} variant="light" tone="info" size="lg">
                     {r.player_name}
-                  </Badge>
+                  </StatusBadge>
                 ))}
               </Group>
             ) : (
@@ -174,7 +174,7 @@ export function ParticipantFilter({ lobby }: { lobby: LobbyDetail }) {
       </Paper>
       <MutationError error={save.error ?? clear.error} />
       <Group justify="flex-end" gap="sm">
-        {dirty && <Badge color="yellow">{tx('Unsaved changes')}</Badge>}
+        {dirty && <StatusBadge tone="warning">{tx('Unsaved changes')}</StatusBadge>}
         <Button
           variant="default"
           loading={clear.isPending}

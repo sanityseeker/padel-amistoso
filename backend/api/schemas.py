@@ -305,6 +305,18 @@ class CreatePlayoffRequest(BaseModel):
         return self
 
 
+class TournamentNotes(BaseModel):
+    """Private organizer notepad of a tournament (editors only)."""
+
+    admin_notes: str | None = None
+
+
+class TournamentNotesRequest(BaseModel):
+    """Replace the organizer notepad; a blank text clears it."""
+
+    admin_notes: str = Field(max_length=10000)
+
+
 class TvSettingsRequest(BaseModel):
     """Partial update for TV display settings."""
 

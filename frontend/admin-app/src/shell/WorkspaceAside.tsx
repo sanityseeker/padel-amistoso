@@ -1,4 +1,5 @@
-import { Badge, Button, Group, ScrollArea, Stack, Text } from '@mantine/core';
+import { Button, Group, ScrollArea, Stack, Text } from '@mantine/core';
+import { StatusBadge } from '../ui/StatusBadge';
 import { useQuery } from '@tanstack/react-query';
 import { matchDecider, pageMatches, reviewItems } from '../admin/tournament/scoring';
 import { workspaceQuery } from '../admin/tournament/query';
@@ -23,9 +24,9 @@ export function WorkspaceAside({ tid }: { tid: string }) {
           <Group justify="space-between">
             <Text variant="eyebrow">{tx('Review')}</Text>
             {reviews.length > 0 && (
-              <Badge color="red" size="sm" circle>
+              <StatusBadge tone="danger" circle>
                 {reviews.length}
-              </Badge>
+              </StatusBadge>
             )}
           </Group>
           {reviews.length === 0 ? (

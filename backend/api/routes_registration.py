@@ -1844,6 +1844,13 @@ async def convert_registration(
             newly_assigned_registrant_ids = {pid for name, pid in player_entries if name in registrant_by_name}
             all_now_assigned = all_registrant_ids.issubset(already_assigned | newly_assigned_registrant_ids)
 
+            # The lobby's private notes start the tournament's notepad.
+            if registration.get("admin_notes"):
+                conn.execute(
+                    "UPDATE tournaments SET admin_notes = ? WHERE id = ?",
+                    (registration["admin_notes"], tid),
+                )
+
             if all_now_assigned:
                 conn.execute(
                     "UPDATE registrations SET converted_to_tids = ?, converted_to_tid = ?, open = 0 WHERE id = ?",

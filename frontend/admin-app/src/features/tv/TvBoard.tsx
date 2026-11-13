@@ -1,7 +1,7 @@
 import { useState } from 'react';
+import { StatusBadge } from '../../ui/StatusBadge';
 import {
   ActionIcon,
-  Badge,
   Box,
   Collapse,
   Group,
@@ -501,9 +501,9 @@ function Courts({
                   <Group justify="space-between" mb="xs">
                     <Text className={classes.courtName}>{name}</Text>
                     {yours && (
-                      <Badge color="court" size="lg">
+                      <StatusBadge tone="info" size="lg">
                         {tx('Your match')}
-                      </Badge>
+                      </StatusBadge>
                     )}
                   </Group>
                   <TvMatch m={m} ctx={ctx} scope={scope} pending court />

@@ -68,7 +68,7 @@ export function ItemMenu({
       }}
       position="bottom-start"
       withinPortal
-      width={230}
+      width="14.5rem"
     >
       <Menu.Target>
         <Box

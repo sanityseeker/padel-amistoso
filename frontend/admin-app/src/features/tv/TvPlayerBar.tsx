@@ -76,7 +76,7 @@ function LoginModal({
     );
   };
   return (
-    <Modal opened={opened} onClose={onClose} title={tx('Player Login')} centered>
+    <Modal opened={opened} onClose={onClose} title={tx('Player Login')}>
       <Stack
         component="form"
         gap="sm"

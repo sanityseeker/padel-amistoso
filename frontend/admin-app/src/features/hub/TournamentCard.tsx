@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Badge, Button, Group, Paper, RingProgress, Stack, Text } from '@mantine/core';
+import { StatusBadge } from '../../ui/StatusBadge';
+import { Button, Group, Paper, RingProgress, Stack, Text } from '@mantine/core';
 import { IconArrowRight } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { t as tx, useLocale } from '../../i18n';
@@ -58,14 +59,14 @@ export function TournamentCard({ event, menu }: { event: HubEvent; menu: ReactNo
             )}
             <Stack gap={4}>
               {event.kind === 'tournament' && !sized && info.live && (
-                <Badge color="live" variant="light">
+                <StatusBadge tone="live" variant="light">
                   {tx('In progress')}
-                </Badge>
+                </StatusBadge>
               )}
               {info.review > 0 && (
-                <Badge color="red" variant="light">
+                <StatusBadge tone="danger" variant="light">
                   {tx('{n} to review', { n: info.review })}
-                </Badge>
+                </StatusBadge>
               )}
             </Stack>
           </Group>

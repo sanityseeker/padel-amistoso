@@ -135,7 +135,7 @@ function Rows({ items, hideSport }: { items: ClubEvent[]; hideSport: boolean }) 
               </Text>
               {event.join_code_required && (
                 <StatusBadge size="xs" variant="outline">
-                  {tx('Join code')}
+                  {tx('Join code', { context: 'badge' })}
                 </StatusBadge>
               )}
             </>
@@ -202,13 +202,7 @@ function PlayerCard({
   const data = card.data;
   const sports: Sport[] = sport ? [sport] : ['padel', 'tennis'];
   return (
-    <Modal
-      opened={!!profileId}
-      onClose={onClose}
-      centered
-      size="lg"
-      title={data?.name ?? tx('Loading')}
-    >
+    <Modal opened={!!profileId} onClose={onClose} size="lg" title={data?.name ?? tx('Loading')}>
       {card.isPending && <Loader aria-label={tx('Loading')} />}
       {card.error && <Notice tone="danger">{tx('Could not load player.')}</Notice>}
       {data && (

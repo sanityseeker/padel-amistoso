@@ -1287,7 +1287,6 @@
   "1 — Champion (Final)": "1 — Campeón (Final)",
   "3 — Semi-Finals + 3rd-place match": "3 — Semifinales + partido por el tercer puesto",
   "3rd-place match": "Partido por el tercer puesto",
-  "About {n} matches": "Unos {n} partidos",
   "Add a second group to preview a draw.": "Añade un segundo grupo para previsualizar el sorteo.",
   "Add questions to the sign-up form in the lobby settings, then filter by the answers.": "Añade preguntas al formulario de inscripción en los ajustes del lobby y filtra por las respuestas.",
   "Add questions to the sign-up form in the lobby settings.": "Añade preguntas al formulario de inscripción en los ajustes del lobby.",
@@ -1726,7 +1725,6 @@
   "{n} past participants are not on the roster": "{n} participantes pasados no están en la plantilla",
   "{n} pts": "{n} pts",
   "{place} of {total}": "{place} de {total}",
-  "~{n} matches": "~{n} partidos",
   "Lobby updated": "Lobby actualizado",
   "linked to past participant {value}": "vinculado al participante pasado {value}",
   "linked to {value}": "vinculado a {value}",
@@ -1993,5 +1991,14 @@
   "Opponent": "Rival",
   "Open payments": "Abrir pagos",
   "Track who paid in the Payments tab of the tournament.": "Controla quién pagó en la pestaña Pagos del torneo.",
-  "{n} to confirm": "{n} por confirmar"
+  "{n} to confirm": "{n} por confirmar",
+  "{n} matches": "{n} partidos",
+  "{n} matches per round": "{n} partidos por ronda",
+  "Group matches per round": "Partidos de grupo por ronda",
+  "Submitted score: {score}": "Resultado enviado: {score}",
+  "Manual adjustment_badge": "Ajuste manual",
+  "Confirm score_badge": "Confirmar resultado",
+  "Join code_badge": "Código de acceso",
+  "Notes": "Notas",
+  "Notes saved": "Notas guardadas"
 }

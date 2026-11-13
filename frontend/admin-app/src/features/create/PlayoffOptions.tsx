@@ -97,7 +97,7 @@ export function PlayoffOptions({
       )}
       {teams >= 2 && (
         <Text size="sm" c="dimmed">
-          {tx('About {n} matches', {
+          {tx('{n} matches', {
             n: bracketMatches(teams, e.format, e.winners, e.thirdPlace),
           })}
         </Text>

@@ -106,9 +106,21 @@ export function drawGroups(
   }));
 }
 
-/** Round-robin match count of one group: pairs for fixed sides, quads for dynamic doubles. */
-export const groupMatches = (size: number, fixedSides: boolean) =>
-  fixedSides ? Math.floor((size * (size - 1)) / 2) : Math.ceil((size * (size - 1)) / 4);
+/** Matches in a fixed-team group: everyone plays everyone once. */
+export const groupMatches = (size: number) => Math.floor((size * (size - 1)) / 2);
+
+/**
+ * Matches in one round of a rotating-partner group (one 2v2 per four players). These groups have no
+ * fixed total: the organizer generates rounds one at a time and can start the play-offs whenever.
+ */
+export const groupRoundMatches = (size: number) => Math.floor(size / 4);
+
+/** Group sizes when `n` entries are dealt into `count` groups (sizes differ by at most one). */
+export const groupSizes = (n: number, count: number) =>
+  Array.from(
+    { length: Math.max(1, count) },
+    (_, i) => Math.floor(n / Math.max(1, count)) + (i < n % Math.max(1, count) ? 1 : 0),
+  );
 
 const nextPowerOfTwo = (n: number) => 2 ** Math.ceil(Math.log2(Math.max(1, n)));
 

@@ -135,7 +135,7 @@ export function OrganizationPage() {
                   }
                   meta={communities.data.find((cm) => cm.id === c.community_id)?.name}
                   badges={
-                    <Badge size="sm" variant="light">
+                    <Badge variant="light">
                       {tx('{n} tournaments', {
                         n: (tournaments.data ?? []).filter((t) => t.club_id === c.id).length,
                       })}

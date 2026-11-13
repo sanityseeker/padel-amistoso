@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { Drawer } from '@mantine/core';
+import { PhoneSheet } from './ResponsiveSheet';
 
-// A bottom sheet that is exactly as tall as its content (Mantine's `size="auto"` fills the screen),
-// capped at 92% of the viewport and padded for the home indicator.
+// A bottom sheet that is exactly as tall as its content, on every screen size. It is the phone
+// branch of ResponsiveSheet, so menus and forms share corners, keyboard handling and padding.
 export function BottomDrawer({
   opened,
   onClose,
@@ -18,20 +18,8 @@ export function BottomDrawer({
   minHeight?: string;
 }) {
   return (
-    <Drawer
-      opened={opened}
-      onClose={onClose}
-      position="bottom"
-      title={title}
-      padding="md"
-      styles={{
-        content: { height: 'auto', width: '100%', flex: '0 0 auto', maxHeight: '92dvh', minHeight },
-        body: {
-          paddingBottom: 'calc(var(--mantine-spacing-md) + env(safe-area-inset-bottom, 0px))',
-        },
-      }}
-    >
+    <PhoneSheet opened={opened} onClose={onClose} title={title} minHeight={minHeight}>
       {children}
-    </Drawer>
+    </PhoneSheet>
   );
 }

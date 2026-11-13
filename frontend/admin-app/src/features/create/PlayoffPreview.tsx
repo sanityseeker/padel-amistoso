@@ -55,6 +55,7 @@ export function PlayoffPreview({
         onClose={() => setOpen(false)}
         title={tx('Bracket preview')}
         size="xl"
+        fullHeight
       >
         {open && (
           <Stack gap="md">
@@ -62,6 +63,7 @@ export function PlayoffPreview({
               url={url(names, format === 'espejo' ? tx('Winners bracket') : title.trim(), true)}
               filename="bracket"
               alt={tx('Bracket preview')}
+              inlineZoom
             />
             {format === 'espejo' &&
               (losers.length >= 2 ? (
@@ -69,6 +71,7 @@ export function PlayoffPreview({
                   url={url(losers, tx('Losers bracket'), false)}
                   filename="bracket-losers"
                   alt={tx('Losers bracket')}
+                  inlineZoom
                 />
               ) : (
                 <Text size="sm" c="dimmed">

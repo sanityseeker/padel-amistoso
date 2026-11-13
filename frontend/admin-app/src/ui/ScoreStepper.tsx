@@ -22,6 +22,9 @@ export interface ScoreStepperProps {
   onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
 }
 
+/** Class of the score field itself, for other score boxes (QuickScore) that must match the stepper. */
+export const scoreInputClass = classes.input;
+
 const HOLD_DELAY = 400;
 const HOLD_RATE = 90;
 

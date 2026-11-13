@@ -194,9 +194,7 @@ export function ClubEvents({ club }: { club: Club }) {
       badges={
         <>
           <SportMark sport={r.sport} size="xs" />
-          <StatusBadge tone={STATE[r.state].tone} size="sm">
-            {stateLabel(r.state)}
-          </StatusBadge>
+          <StatusBadge tone={STATE[r.state].tone}>{stateLabel(r.state)}</StatusBadge>
           {r.registrants != null && (
             <Text size="xs">{tx('{count} registered', { count: r.registrants })}</Text>
           )}

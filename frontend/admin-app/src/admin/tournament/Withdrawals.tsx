@@ -122,7 +122,6 @@ export function WithdrawDialog({
       onClose={onClose}
       title={p ? tx('Withdraw {name}', { name: p.entry_name }) : tx('Withdraw')}
       size="lg"
-      centered
     >
       <Stack>
         {preview.isPending ? (
@@ -294,7 +293,7 @@ export function UndoWithdrawal({
       <Button size="compact-md" variant="light" onClick={() => setOpen(true)}>
         {tx('Undo withdrawal')}
       </Button>
-      <Modal opened={open} onClose={() => setOpen(false)} title={tx('Undo withdrawal')} centered>
+      <Modal opened={open} onClose={() => setOpen(false)} title={tx('Undo withdrawal')}>
         <Stack>
           {undo.error && <Notice tone="danger">{tx(undo.error.message)}</Notice>}
           <Text size="sm">{tx('Bring {name} back into the tournament?', { name })}</Text>
@@ -312,8 +311,4 @@ export function UndoWithdrawal({
   );
 }
 
-export const WithdrawnBadge = () => (
-  <StatusBadge size="sm" variant="outline">
-    {tx('Withdrawn')}
-  </StatusBadge>
-);
+export const WithdrawnBadge = () => <StatusBadge variant="outline">{tx('Withdrawn')}</StatusBadge>;

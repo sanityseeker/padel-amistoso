@@ -80,6 +80,8 @@ export function MatchActions({
       playerApi(`/tournaments/${entry.entity_id}/matches/${match.id}/${action}`, {}, 'POST', token),
     onSuccess: (_r, vars) => {
       void client.invalidateQueries({ queryKey: ['player'] });
+      // The TV page reads its own copy of the match; without this it keeps showing the old buttons.
+      void client.invalidateQueries({ queryKey: ['public', 'tv', entry.entity_id] });
       notifications.show({ message: vars.done, color: 'green' });
     },
     // The other side may have acted first: show the card as it is now.

@@ -66,9 +66,9 @@ function StandingCell({ standing }: { standing?: Standing }) {
       </span>
     );
   return standing.eliminated ? (
-    <Badge size="xs" variant="light" color="red">
+    <StatusBadge size="xs" variant="light" tone="danger">
       {tx('Eliminated')}
-    </Badge>
+    </StatusBadge>
   ) : null;
 }
 

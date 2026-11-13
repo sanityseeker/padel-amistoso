@@ -281,7 +281,7 @@ export function ScoreEntry({
       {review ? (
         <Stack key="review" gap="md" data-testid="score-review">
           <Text variant="eyebrow">{tx('Check the score before you send it')}</Text>
-          <Text fw={700} fz={28} ta="center" data-testid="review-score">
+          <Text fw={700} fz="1.75rem" ta="center" data-testid="review-score">
             {review.kind === 'sets'
               ? formatSets(review.sets, review.decider ?? decider, ' / ')
               : `${review.score[0]} – ${review.score[1]}`}
@@ -322,7 +322,7 @@ export function ScoreEntry({
                 opened={formatOpen}
                 onChange={setFormatOpen}
                 position="bottom-start"
-                width={300}
+                width="min(18.75rem, calc(100vw - 2rem))"
                 shadow="md"
                 withinPortal={false}
                 trapFocus
@@ -381,11 +381,11 @@ export function ScoreEntry({
               />
             ))}
           {mode === 'points' ? (
-            <Stack gap="sm">
+            <Stack gap="sm" className={classes.board}>
               <SimpleGrid cols={surface === 'inline' ? 2 : 1} spacing="md">
                 {([0, 1] as const).map((side) => (
                   <Stack key={side} gap={6}>
-                    <Text fw={600} className={classes.team}>
+                    <Text fw={600} ta="center" className={classes.team}>
                       {names[side] || tx('To be decided')}
                     </Text>
                     <ScoreStepper
@@ -403,19 +403,19 @@ export function ScoreEntry({
                   </Stack>
                 ))}
               </SimpleGrid>
-              <Text size="sm" c="dimmed">
+              <Text size="sm" c="dimmed" ta="center">
                 {rules.total > 0
                   ? tx('Scores must add up to {target}.', { target: rules.total })
                   : tx('Enter the score for each side.')}
               </Text>
             </Stack>
           ) : (
-            <SimpleGrid cols={3} spacing="xs" verticalSpacing="sm" style={{ alignItems: 'center' }}>
-              <Text fw={600} size="sm" className={classes.team}>
+            <div className={`${classes.board} ${classes.setsGrid}`}>
+              <Text fw={600} size="sm" ta="center" className={classes.team}>
                 {names[0]}
               </Text>
               <span />
-              <Text fw={600} size="sm" ta="right" className={classes.team}>
+              <Text fw={600} size="sm" ta="center" className={classes.team}>
                 {names[1]}
               </Text>
               {sets.flatMap((row, i) => [
@@ -438,6 +438,7 @@ export function ScoreEntry({
                   size="xs"
                   c="dimmed"
                   ta="center"
+                  className={classes.setLabel}
                   title={
                     isTiebreakSet(i, 3, decider)
                       ? tx(
@@ -462,7 +463,7 @@ export function ScoreEntry({
                   }}
                 />,
               ])}
-            </SimpleGrid>
+            </div>
           )}
           {formatNotice && currentKey !== defaultKey && (
             <Notice tone="warning">{formatNotice}</Notice>

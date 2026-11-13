@@ -84,16 +84,14 @@ function EntryCard({ entry, onUnlink }: { entry: Entry; onUnlink: (entry: Entry)
         />
       </Group>
       <Group gap={6} mt="xs">
-        <Badge size="sm" variant="light">
-          {tx(entry.sport === 'tennis' ? 'Tennis' : 'Padel')}
-        </Badge>
+        <Badge variant="light">{tx(entry.sport === 'tennis' ? 'Tennis' : 'Padel')}</Badge>
         <Text size="xs" c="dimmed">
           {entry.tournament_type ? formatType(entry.tournament_type) : tx('Registration lobby')}
         </Text>
-        {entry.rank && <StatusBadge size="sm">#{entry.rank}</StatusBadge>}
+        {entry.rank && <StatusBadge>#{entry.rank}</StatusBadge>}
         <EntryPaymentBadge entry={entry} />
         {entry.status === 'finished' && entry.finished_at && (
-          <StatusBadge size="sm" variant="outline">
+          <StatusBadge variant="outline">
             {new Date(entry.finished_at).toLocaleDateString(localeTag())}
           </StatusBadge>
         )}

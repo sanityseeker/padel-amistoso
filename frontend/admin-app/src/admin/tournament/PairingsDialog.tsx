@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   Accordion,
-  Badge,
   Button,
   Group,
   Loader,
@@ -126,23 +125,21 @@ function ProposalCard({ proposal, details }: { proposal: PairingProposal; detail
           <Group gap={6}>
             <Text fw={700}>{proposal.label}</Text>
             {proposal.recommended && (
-              <Badge size="sm" color="court" variant="light">
+              <StatusBadge tone="info" variant="light">
                 {tx('Recommended')}
-              </Badge>
-            )}
-            {proposal.strategy === 'seeded' && (
-              <StatusBadge size="sm" variant="outline">
-                {tx('Seeded')}
               </StatusBadge>
             )}
+            {proposal.strategy === 'seeded' && (
+              <StatusBadge variant="outline">{tx('Seeded')}</StatusBadge>
+            )}
             {proposal.repeat_count > 0 ? (
-              <Badge size="sm" color="yellow" variant="light">
+              <StatusBadge tone="warning" variant="light">
                 {tx('{n} repeats', { n: fixed(proposal.repeat_count) })}
-              </Badge>
+              </StatusBadge>
             ) : (
-              <Badge size="sm" color="green" variant="light">
+              <StatusBadge tone="success" variant="light">
                 {tx('No repeats')}
-              </Badge>
+              </StatusBadge>
             )}
           </Group>
           <Metrics

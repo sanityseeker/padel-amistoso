@@ -58,6 +58,8 @@ from .schemas import (
     SetMatchCommentRequest,
     SetPublicRequest,
     TournamentMessageRequest,
+    TournamentNotes,
+    TournamentNotesRequest,
     TvSettings,
     TvSettingsRequest,
 )
@@ -261,6 +263,27 @@ async def get_tournament_version(tid: str, request: Request) -> Response:
         media_type="application/json",
         headers={"ETag": etag, "Cache-Control": "private, no-cache, max-age=0, must-revalidate"},
     )
+
+
+@router.get("/{tid}/notes", response_model=TournamentNotes)
+def get_tournament_notes(tid: str, user: User = Depends(get_current_user)) -> TournamentNotes:
+    """Return the private organizer notepad. Never part of public, TV, player or share output."""
+    _require_editor_access(tid, user)
+    with get_db() as conn:
+        row = conn.execute("SELECT admin_notes FROM tournaments WHERE id = ?", (tid,)).fetchone()
+    return TournamentNotes(admin_notes=row["admin_notes"] if row else None)
+
+
+@router.put("/{tid}/notes", response_model=TournamentNotes)
+def update_tournament_notes(
+    tid: str, req: TournamentNotesRequest, user: User = Depends(get_current_user)
+) -> TournamentNotes:
+    """Replace the organizer notepad (a blank text clears it)."""
+    _require_editor_access(tid, user)
+    notes = req.admin_notes if req.admin_notes.strip() else None
+    with get_db() as conn:
+        conn.execute("UPDATE tournaments SET admin_notes = ? WHERE id = ?", (notes, tid))
+    return TournamentNotes(admin_notes=notes)
 
 
 @router.get("/{tid}/tv-settings")

@@ -10,7 +10,7 @@ export { PaymentAction, type PaymentActionProps, type PaymentTone } from './Paym
 export { OverflowMenu, type OverflowItem } from './OverflowMenu';
 export { ResponsiveSheet } from './ResponsiveSheet';
 export { ScoreDigits } from './ScoreDigits';
-export { ScoreStepper } from './ScoreStepper';
+export { ScoreStepper, scoreInputClass } from './ScoreStepper';
 export { SportMark } from './SportMark';
 export { StatTile } from './StatTile';
 export { StatusBadge, type StatusTone } from './StatusBadge';

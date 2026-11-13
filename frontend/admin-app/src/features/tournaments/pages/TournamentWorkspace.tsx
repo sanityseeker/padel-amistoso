@@ -42,6 +42,7 @@ import { useViewState } from '../../switcher/viewState';
 import { useRegisterWorkspace } from '../../switcher/workspace';
 import { workspaceQuery } from '../../../admin/tournament/query';
 import { PlayerCodes } from '../../../admin/tournament/PlayerCodes';
+import { TournamentNotes } from '../../../admin/settings/NotesPanel';
 import { latestRound } from '../../../admin/tournament/pairings';
 import { ReviewQueue } from '../../../admin/tournament/ReviewQueue';
 import { AdminScoreDialog, AdminScoreEntry } from '../../../admin/tournament/AdminScoreEntry';
@@ -183,6 +184,7 @@ function Workspace({ id }: { id: string }) {
     ...(hasReview ? ['review'] : []),
     ...(canEdit ? ['players'] : []),
     ...(showPayments ? ['payments'] : []),
+    ...(canEdit ? ['notes'] : []),
   ];
   const view = useViewState(
     id,
@@ -798,8 +800,14 @@ function Workspace({ id }: { id: string }) {
     !data.standings && loaded?.groups?.matches && !Array.isArray(loaded.groups.matches)
       ? (loaded.groups.matches[standingsGroup ?? ''] ?? [])
       : [];
+  // Team events name the column "Team", as the TV page does.
+  const nameLabel = Object.keys(status.team_roster ?? {}).length ? tx('Team') : undefined;
   const standingsPane = status.leaderboard ? (
-    <StandingsTable rows={toStandingRows(status.leaderboard)} preset="mexicano" />
+    <StandingsTable
+      rows={toStandingRows(status.leaderboard)}
+      preset="mexicano"
+      nameLabel={nameLabel}
+    />
   ) : standingGroups ? (
     <Stack gap="md">
       {groupNames.length > 1 && (
@@ -819,6 +827,7 @@ function Workspace({ id }: { id: string }) {
             rows={toStandingRows(standingGroups[standingsGroup] ?? [])}
             preset="group"
             density="compact"
+            nameLabel={nameLabel}
             highlightPlaces={groupHighlight(settings, standingsGroup)}
             sets={settings.score_mode['gp-group'] === 'sets'}
           />
@@ -925,6 +934,7 @@ function Workspace({ id }: { id: string }) {
               {tx('Payments')}
             </Tabs.Tab>
           )}
+          {canEdit && <Tabs.Tab value="notes">{tx('Notes')}</Tabs.Tab>}
         </Tabs.List>
         {!twoPane && !bracketOnly && <Tabs.Panel value="matches">{matchesPane}</Tabs.Panel>}
         {!twoPane && hasStandings && <Tabs.Panel value="standings">{standingsPane}</Tabs.Panel>}
@@ -997,6 +1007,11 @@ function Workspace({ id }: { id: string }) {
         {showPayments && (
           <Tabs.Panel value="payments">
             <PaymentsPanel base={`/tournaments/${id}`} scope="tournament" />
+          </Tabs.Panel>
+        )}
+        {canEdit && (
+          <Tabs.Panel value="notes">
+            <TournamentNotes tid={id} />
           </Tabs.Panel>
         )}
       </Tabs>

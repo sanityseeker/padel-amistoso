@@ -140,7 +140,7 @@ export function CommentDialog({
     },
   });
   return (
-    <Modal opened onClose={onClose} title={tx('Match comment')} centered>
+    <Modal opened onClose={onClose} title={tx('Match comment')}>
       <form
         onSubmit={(e) => {
           e.preventDefault();

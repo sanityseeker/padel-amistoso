@@ -2,6 +2,7 @@
 .compactControl {
   width: 100%;
   min-width: 0;
+  margin-inline: auto;
 }
 .control {
   max-width: 16rem;
@@ -9,19 +10,21 @@
 .compactControl {
   max-width: 10rem;
 }
+/* Height and size go through Mantine's own input variables, set on the input itself, so they beat
+   the wrapper's size variables and the touch rule in theme/components.module.css (which reads them). */
 .input {
+  --input-fz: 1.5rem;
+  --input-height: max(48px, 3.125rem);
   text-align: center;
   font-family: var(--font-display);
   font-weight: 700;
   font-variant-numeric: tabular-nums lining-nums;
-  font-size: 1.5rem;
-  min-height: 3rem;
 }
 .auto {
   color: var(--color-text-faint);
 }
 .compact {
-  font-size: 1.25rem;
-  min-height: 2.75rem;
+  --input-fz: 1.25rem;
+  --input-height: max(44px, 2.75rem);
   min-width: 2.75rem;
 }

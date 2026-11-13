@@ -52,9 +52,9 @@ export function PastTournaments({ entries }: { entries: Entry[] }) {
               .join(' · ')}
             badges={
               <>
-                {entry.rank ? <StatusBadge size="sm">#{entry.rank}</StatusBadge> : null}
+                {entry.rank ? <StatusBadge>#{entry.rank}</StatusBadge> : null}
                 <EntryPaymentBadge entry={entry} />
-                <Badge size="sm" variant="light">
+                <Badge variant="light">
                   {entry.wins} {tx('wins ·')} {entry.losses} {tx('losses')}
                 </Badge>
               </>

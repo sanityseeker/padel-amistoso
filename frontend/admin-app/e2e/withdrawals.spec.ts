@@ -1,5 +1,19 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { adminHeaders, createTournament, openTournament, PLAYERS } from './helpers';
+
+/** Withdraw sits in each player row's options menu. */
+async function openWithdraw(page: Page, player: string) {
+  await page.getByRole('button', { name: `Player options: ${player}` }).click();
+  await page.getByRole('menuitem', { name: 'Withdraw', exact: true }).click();
+}
+
+/** Whether the player's options menu offers Withdraw (the menu is closed again afterwards). */
+async function expectNoWithdraw(page: Page, player: string) {
+  await page.getByRole('button', { name: `Player options: ${player}` }).click();
+  await expect(page.getByRole('menuitem', { name: 'Contact and email' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Withdraw', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+}
 
 // Withdrawal outcomes, chosen by the backend (backend/tournaments/withdrawal.py):
 //   - fixed teams / singles group stage: the 50% rule. 2 * played >= total -> walkovers, else annul.
@@ -75,7 +89,7 @@ test('50% rule: exactly half played keeps the results and turns the rest into wa
   const { id, name } = await fiveTeamGroup(request, 'Half', 2);
   await openTournament(page, id, name);
   await page.getByRole('tab', { name: 'Players' }).click();
-  await page.getByRole('button', { name: 'Withdraw: Ana' }).click();
+  await openWithdraw(page, 'Ana');
   const dialog = page.getByRole('dialog', { name: /^Withdraw Alpha/ });
   await expect(dialog.getByText('2 of 4 matches already played.')).toBeVisible();
   await expect(
@@ -113,7 +127,7 @@ test('50% rule: less than half played annuls the entry and removes it from the g
   const { id, name } = await fiveTeamGroup(request, 'Annul', 1);
   await openTournament(page, id, name);
   await page.getByRole('tab', { name: 'Players' }).click();
-  await page.getByRole('button', { name: 'Withdraw: Ana' }).click();
+  await openWithdraw(page, 'Ana');
   const dialog = page.getByRole('dialog', { name: /^Withdraw Alpha/ });
   await expect(
     dialog.getByText('Every result of this entry is annulled and it leaves the standings.'),
@@ -167,7 +181,7 @@ test('play-off withdrawal forfeits the pending match, advances the opponent and 
 
   await openTournament(page, id, name);
   await page.getByRole('tab', { name: 'Players' }).click();
-  await page.getByRole('button', { name: `Withdraw: ${member}` }).click();
+  await openWithdraw(page, member);
   const dialog = page.getByRole('dialog', { name: new RegExp(`^Withdraw ${leaver}`) });
   await expect(
     dialog.getByText('The entry forfeits its play-off match and the opponent advances.'),
@@ -191,7 +205,7 @@ test('play-off withdrawal forfeits the pending match, advances the opponent and 
   // No Undo anywhere, and the withdrawn entry has no Withdraw button any more.
   await expect(page.getByText('Withdrawn', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Undo withdrawal' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: `Withdraw: ${member}` })).toHaveCount(0);
+  await expectNoWithdraw(page, member);
   const undo = await request.delete(`/api/tournaments/${id}/withdrawals/${record!.entry_key}`, {
     headers,
   });
@@ -209,7 +223,7 @@ test('Mexicano: no Withdraw during the rounds, a play-off forfeit afterwards', a
   await openTournament(page, id, name);
   await page.getByRole('tab', { name: 'Players' }).click();
   await expect(page.getByTestId('code-row').first()).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Withdraw: / })).toHaveCount(0);
+  await expectNoWithdraw(page, PLAYERS[0]!);
   // The backend agrees: the rounds use the remove endpoint.
   const secrets = (
     await (await request.get(`/api/tournaments/${id}/player-secrets`, { headers })).json()
@@ -248,7 +262,7 @@ test('Mexicano: no Withdraw during the rounds, a play-off forfeit afterwards', a
 
   await page.reload();
   await page.getByRole('tab', { name: 'Players' }).click();
-  await page.getByRole('button', { name: `Withdraw: ${leaving}` }).click();
+  await openWithdraw(page, leaving);
   const dialog = page.getByRole('dialog', { name: /^Withdraw / });
   await expect(
     dialog.getByText('The entry forfeits its play-off match and the opponent advances.'),

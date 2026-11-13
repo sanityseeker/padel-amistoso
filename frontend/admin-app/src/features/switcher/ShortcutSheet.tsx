@@ -29,7 +29,6 @@ export function ShortcutSheet() {
       onClose={() => setShortcutsOpen(false)}
       title={tx('Keyboard shortcuts')}
       size="md"
-      centered
     >
       <Table verticalSpacing="xs">
         <Table.Tbody>

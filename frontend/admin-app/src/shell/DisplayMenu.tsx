@@ -54,7 +54,7 @@ function Choice({ mark, name, tip }: { mark: React.ReactNode; name: string; tip?
 // Language (EN / ES / RU, from SELECTABLE), theme (auto, light, dark) and interface size as small segmented
 // controls, about 200 px wide. Theme "Auto" follows the OS and is stored as an absent amistoso-theme key.
 // Used in the header popover, and in the phone More menu sheet.
-export function DisplayPanel({ maxWidth = 220 }: { maxWidth?: number | string }) {
+export function DisplayPanel({ maxWidth = '14rem' }: { maxWidth?: number | string }) {
   useLocale();
   const { colorScheme, setColorScheme } = useMantineColorScheme();
   const uiScale = useUiScale();
@@ -132,7 +132,7 @@ export function DisplayButton({ compact = false }: { compact?: boolean }) {
   const label = useDisplayLabels();
   const name = tx('Preferences: {value}', { value: label.long });
   return (
-    <Popover position="bottom-end" width={256} shadow="md" withinPortal>
+    <Popover position="bottom-end" width="16rem" shadow="md" withinPortal>
       <Popover.Target>
         {compact ? (
           <ActionIcon size="touch" style={{ flexShrink: 0 }} aria-label={name} title={label.long}>

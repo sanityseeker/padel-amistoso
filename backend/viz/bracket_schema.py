@@ -147,16 +147,34 @@ def _filter_layout_by_side(layout: dict, side: str) -> dict:
     else:
         keep = {n for n in positions if n.startswith("l_") or n == "grand_final"}
     G: nx.DiGraph = layout["graph"]
+    # The combined layout interleaves winners and losers columns; one side alone
+    # would keep the other side's columns as empty space.
+    kept = _columns_by_stage(
+        {n: p for n, p in positions.items() if n in keep},
+        [st for st in layout["stages"] if any(n in keep for n in st.get("nodes", []))],
+        layout["node_meta"],
+    )
+    if side == "losers" and "grand_final" in kept:
+        # Bring the grand final level with the losers final that feeds it.
+        feeders = [n for n in G.predecessors("grand_final") if n in kept]
+        if feeders:
+            kept["grand_final"] = (kept["grand_final"][0], sum(kept[n][1] for n in feeders) / len(feeders))
+
+    def stage_x(st: dict) -> float:
+        xs = [kept[n][0] for n in st.get("nodes", []) if n in kept]
+        return sum(xs) / len(xs) if xs else st["x"]
+
     return {
         "graph": G.subgraph(keep).copy(),
-        "positions": {n: p for n, p in positions.items() if n in keep},
+        "positions": kept,
         "node_meta": {n: m for n, m in layout["node_meta"].items() if n in keep},
         "stages": [
-            {**s, "nodes": [n for n in s.get("nodes", []) if n in keep]}
+            {**s, "x": stage_x(s), "nodes": [n for n in s.get("nodes", []) if n in keep]}
             for s in layout["stages"]
             if any(n in keep for n in s.get("nodes", []))
         ],
         "elimination": layout.get("elimination"),
+        "sided": True,
     }
 
 
@@ -232,21 +250,26 @@ def _round_label(num_rounds: int, r: int) -> str:
     return _ROUND_LABELS.get(remaining, f"Round of {2**remaining}")
 
 
-def _label_from_match_data(data: dict, max_name: int = 16) -> str:
-    """Format team names (and optional score) as a compact multiline node label."""
+def _team_lines(name: str | None, max_name: int = 24) -> list[str]:
+    """A team name as label lines: one line per player ("Ana García &" / "Eva Gil")."""
+    out: list[str] = []
+    for part in (name or "TBD").split("\n"):
+        players = part.split(" & ")
+        out += [p + " &" for p in players[:-1]] + players[-1:]
+    return [line if len(line) <= max_name else line[: max_name - 1] + "…" for line in out]
 
-    def trunc(s: str) -> str:
-        return s if len(s) <= max_name else s[: max_name - 1] + "…"
 
-    t1 = trunc(data.get("team1") or "TBD")
-    t2 = trunc(data.get("team2") or "TBD")
+def _label_from_match_data(data: dict, max_name: int = 24) -> str:
+    """Format team names (and optional score) as a multiline node label, one player per line."""
+    t1 = "\n".join(_team_lines(data.get("team1"), max_name))
+    t2 = "\n".join(_team_lines(data.get("team2"), max_name))
     score = data.get("score")
     if score:
         return f"{t1}\n{score}\n{t2}"
     return f"{t1}\nvs\n{t2}"
 
 
-def _strike_lines(data: dict, max_name: int = 16) -> list[int]:
+def _strike_lines(data: dict, max_name: int = 24) -> list[int]:
     """Indices of the label lines (see :func:`_label_from_match_data`) to strike through.
 
     A walkover match carries ``walkover_loser`` (``"team1"`` / ``"team2"``): the
@@ -256,8 +279,8 @@ def _strike_lines(data: dict, max_name: int = 16) -> list[int]:
     side = data.get("walkover_loser")
     if side not in ("team1", "team2"):
         return []
-    n1 = len(((data.get("team1") or "TBD")[:max_name]).split("\n"))
-    n2 = len(((data.get("team2") or "TBD")[:max_name]).split("\n"))
+    n1 = len(_team_lines(data.get("team1"), max_name))
+    n2 = len(_team_lines(data.get("team2"), max_name))
     return list(range(n1)) if side == "team1" else list(range(n1 + 1, n1 + 1 + n2))
 
 
@@ -456,6 +479,9 @@ def _compute_playoff_layout(
             match_labels=match_labels,
         )
 
+    if match_labels:
+        _drop_participant_column(G, positions, node_meta, stages)
+
     return {
         "graph": G,
         "positions": positions,
@@ -463,6 +489,64 @@ def _compute_playoff_layout(
         "stages": stages,
         "elimination": elimination,
     }
+
+
+def _drop_participant_column(G: nx.DiGraph, positions: dict, node_meta: dict, stages: list) -> None:
+    """Remove the participants column when the match boxes already name the teams.
+
+    A live bracket shows both teams inside each first-round box, so the column
+    only repeats them and costs a column of width.  A team with a first-round
+    bye keeps a box: its BYE marker takes the team's name.  Nothing changes
+    unless every participant is accounted for that way.
+    """
+    seeds = [n for n in G.nodes if n.startswith("seed_")]
+    for seed in seeds:
+        for succ in G.successors(seed):
+            meta = node_meta.get(succ, {})
+            if not (meta.get("has_teams") or meta.get("kind") == BracketNodeKind.BYE):
+                return
+    for seed in seeds:
+        for succ in list(G.successors(seed)):
+            if node_meta[succ].get("kind") == BracketNodeKind.BYE:
+                node_meta[succ] = {
+                    **node_meta[succ],
+                    "label": "\n".join(_team_lines(node_meta[seed]["label"])),
+                    "kind": BracketNodeKind.ADVANCE,
+                    "bye_team": True,
+                }
+        G.remove_node(seed)
+        positions.pop(seed, None)
+        node_meta.pop(seed, None)
+    stages[:] = [st for st in stages if st.get("name") != "Participants"]
+    byes = [n for n in G.nodes if n.startswith("bye_") and node_meta[n].get("kind") == BracketNodeKind.ADVANCE]
+    if byes and stages:
+        # The teams with a bye share the first round's column.
+        stages[0] = {**stages[0], "nodes": [*stages[0].get("nodes", []), *byes]}
+
+
+def _columns_by_stage(positions: dict, stages: list[dict], node_meta: dict, step: float = 3.0) -> dict:
+    """One column per stage (round), in stage order, with no empty columns between.
+
+    The double-elimination layout staggers matches of one round across several
+    x positions; one side drawn alone reads better with a column per round.
+    Boxes that end up too close in a column are spread apart vertically.
+    """
+    column: dict[str, int] = {}
+    for i, st in enumerate(stages):
+        for n in st.get("nodes", []):
+            if n in positions:
+                column.setdefault(n, i)
+    # Nodes in no stage keep their left-to-right order after the stage columns.
+    leftovers = sorted({round(p[0], 6) for n, p in positions.items() if n not in column})
+    for n, (x, _y) in positions.items():
+        if n not in column:
+            column[n] = len(stages) + leftovers.index(round(x, 6))
+    out = {n: (column[n] * step, y) for n, (_x, y) in positions.items()}
+    for i in set(column.values()):
+        ids: list[str | None] = [n for n in out if column[n] == i]
+        gap = 2.1 if any(node_meta.get(n, {}).get("has_teams") for n in ids if n) else 1.2
+        _enforce_min_spacing(out, ids, min_gap=gap)
+    return out
 
 
 def _enforce_min_spacing(
@@ -1119,13 +1203,27 @@ def _draw(
     ys = [p[1] for p in positions.values()]
     x_span = max(xs) - min(xs) + 4
     y_span = max(ys) - min(ys) + 4
-    _is_double = layout.get("elimination") == EliminationType.DOUBLE
+    # One side of a double bracket has the column density of a single bracket.
+    _is_double = layout.get("elimination") == EliminationType.DOUBLE and not layout.get("sided")
     if figsize is None:
         if _is_double:
             figsize = (max(16, x_span * 1.55), max(10, y_span * 1.35))
         else:
             figsize = (max(12, x_span * 1.3), max(6, y_span * 1.1))
     figsize = (max(4.0, figsize[0] * output_scale), max(3.0, figsize[1] * output_scale))
+
+    # Box text is sized to the boxes: points per data unit, relative to the
+    # 1.3 in (x) / 1.0 in (y) per unit the automatic figure size gives.  A
+    # figure stretched to its minimum size, or scaled by ``output_scale``,
+    # keeps the same text-to-box ratio.
+    y_top = max(ys) + 1.5
+    margin = 2.0
+    x_lim = (min(xs) - margin, max(xs) + margin)
+    y_lim = (min(ys) - margin, y_top + 1.0)
+    text_k = box_scale * min(
+        figsize[0] / (x_lim[1] - x_lim[0]) / 1.3,
+        figsize[1] / (y_lim[1] - y_lim[0]) / 1.0,
+    )
 
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
     fig.set_facecolor("#FAFAFA")
@@ -1173,6 +1271,9 @@ def _draw(
             # Taller & slightly wider box to fit 3-line team display
             bh = 1.8 * box_scale
             bw = max(bw, 2.1 * box_scale)
+        elif meta.get("bye_team"):
+            # A team with a bye, in the first-round column next to the match boxes.
+            bw, bh = 2.1 * box_scale, 1.0 * box_scale
         node_sizes[nid] = (bw, bh)
 
     # ── Draw edges ──────────────────────────────────────────────────────
@@ -1256,9 +1357,11 @@ def _draw(
         ax.add_patch(box)
 
         label_txt = None
-        fontsize = (7 if kind == BracketNodeKind.BYE else (8 if kind == BracketNodeKind.ADVANCE else 9)) * box_scale
+        fontsize = (8 if kind == BracketNodeKind.BYE else (9 if kind == BracketNodeKind.ADVANCE else 10)) * text_k
+        if meta.get("bye_team"):
+            fontsize = 13 * text_k
         round_header = meta.get("round_header", "")
-        header_fs = 8 * box_scale * title_font_scale
+        header_fs = 10 * text_k * title_font_scale
         if round_header and meta.get("has_teams"):
             # 3-line: italic round header, separator, team names + score
             ax.text(
@@ -1288,7 +1391,7 @@ def _draw(
                 label,
                 ha="center",
                 va="center",
-                fontsize=9 * box_scale,
+                fontsize=14 * text_k,
                 fontweight="bold",
                 color=style["tc"],
                 zorder=4,
@@ -1322,7 +1425,7 @@ def _draw(
                     label,
                     ha="center",
                     va="center",
-                    fontsize=7 * box_scale,
+                    fontsize=10 * text_k,
                     fontweight="bold",
                     color=style["tc"],
                     zorder=4,
@@ -1342,10 +1445,13 @@ def _draw(
         if label_txt is not None and meta.get("strike_lines"):
             strike_jobs.append((label_txt, meta["strike_lines"], style["tc"]))
         if label_txt is not None and kind == BracketNodeKind.ADVANCE:
-            fit_jobs.append((label_txt, x, y, bw, bh))
+            fit_jobs.append((label_txt, x, y, bw, bh, True))
+        elif label_txt is not None and meta.get("has_teams"):
+            # Team names sit below the header: fit them to the rest of the box.
+            # No wrapping, so the struck line indices stay valid.
+            fit_jobs.append((label_txt, x, y - 0.2 * box_scale, bw - 0.2 * box_scale, bh - 0.55 * box_scale, False))
 
     # ── Stage column labels (top) ───────────────────────────────────────
-    y_top = max(p[1] for p in positions.values()) + 1.5
     seen_x: set[float] = set()
     for stage in stages:
         sx = stage["x"]
@@ -1358,15 +1464,13 @@ def _draw(
             stage["name"],
             ha="center",
             va="bottom",
-            fontsize=10,
+            fontsize=12 * text_k / box_scale,
             fontstyle="italic",
             color="#555555",
         )
 
-    # Adjust limits
-    margin = 2.0
-    ax.set_xlim(min(xs) - margin, max(xs) + margin)
-    ax.set_ylim(min(ys) - margin, y_top + 1.0)
+    ax.set_xlim(*x_lim)
+    ax.set_ylim(*y_lim)
 
     fig.tight_layout()
     _fit_labels(fig, ax, fit_jobs)
@@ -1374,8 +1478,11 @@ def _draw(
     return fig
 
 
-def _fit_labels(fig: plt.Figure, ax: plt.Axes, jobs: list[tuple[object, float, float, float, float]]) -> None:
+def _fit_labels(fig: plt.Figure, ax: plt.Axes, jobs: list[tuple]) -> None:
     """Keep each label inside its box: shrink, then wrap at " & ", then truncate.
+
+    A job is ``(text, x, y, box_w, box_h)`` plus an optional ``wrap`` flag
+    (default True); without wrapping, only shrinking and truncation apply.
 
     Measured with the renderer after ``tight_layout`` so the check holds for
     any figure size, dpi and ``box_scale``.
@@ -1383,7 +1490,8 @@ def _fit_labels(fig: plt.Figure, ax: plt.Axes, jobs: list[tuple[object, float, f
     if not jobs:
         return
     renderer = fig.canvas.get_renderer()
-    for txt, x, y, bw, bh in jobs:
+    for txt, x, y, bw, bh, *rest in jobs:
+        wrap = rest[0] if rest else True
         (px0, py0), (px1, py1) = ax.transData.transform([(x - bw / 2, y - bh / 2), (x + bw / 2, y + bh / 2)])
         max_w, max_h = px1 - px0, py1 - py0
 
@@ -1398,12 +1506,12 @@ def _fit_labels(fig: plt.Figure, ax: plt.Axes, jobs: list[tuple[object, float, f
         txt.set_fontsize(min_size)
         if fits():
             continue
-        if " & " in full:
+        if wrap and " & " in full:
             txt.set_text(full.replace(" & ", " &\n", 1))
             if fits():
                 continue
         lines = txt.get_text().split("\n")
-        if txt.get_window_extent(renderer).height > max_h:
+        if wrap and txt.get_window_extent(renderer).height > max_h:
             lines = [full]
         props = txt.get_fontproperties()
 

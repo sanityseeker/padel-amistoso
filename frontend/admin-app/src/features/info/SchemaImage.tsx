@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Group, Image, Loader, Modal, Stack, Text } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconDownload, IconZoomIn } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
 import { Notice } from '../../ui/Notice';
@@ -56,13 +57,17 @@ export function SchemaImage({
   format = 'png',
   filename,
   alt,
+  inlineZoom = false,
 }: {
   url: string | null;
   format?: SchemaFormat;
   filename: string;
   alt: string;
+  /** Pinch and double-tap zoom on the picture itself, for small screens. */
+  inlineZoom?: boolean;
 }) {
   useLocale();
+  const phone = useMediaQuery('(max-width: 767px)', false, { getInitialValueInEffect: false });
   const image = useSchemaImage(url, format);
   const [zoom, setZoom] = useState(false);
   if (!url) return null;
@@ -86,7 +91,19 @@ export function SchemaImage({
   };
   return (
     <Stack gap="xs" align="center">
-      {image.src ? (
+      {image.src && inlineZoom ? (
+        <>
+          <ZoomableImage
+            src={image.src}
+            alt={alt}
+            testId="schema-image"
+            maxHeight="calc(100dvh - 12rem)"
+          />
+          <Text size="xs" c="dimmed" ta="center">
+            {tx('Pinch or double-tap to zoom')}
+          </Text>
+        </>
+      ) : image.src ? (
         <Image
           src={image.src}
           alt={alt}
@@ -120,8 +137,20 @@ export function SchemaImage({
           {tx('Download')}
         </Button>
       </Group>
-      <Modal opened={zoom} onClose={() => setZoom(false)} title={alt} size="xl" centered>
-        {image.src && <ZoomableImage src={image.src} alt={alt} maxHeight="75vh" />}
+      <Modal
+        opened={zoom}
+        onClose={() => setZoom(false)}
+        title={alt}
+        size="xl"
+        fullScreen={!!phone}
+      >
+        {image.src && (
+          <ZoomableImage
+            src={image.src}
+            alt={alt}
+            maxHeight={phone ? 'calc(100dvh - 7rem)' : '75vh'}
+          />
+        )}
         <Text size="xs" c="dimmed" ta="center" mt="xs">
           {tx('Pinch or double-tap to zoom')}
         </Text>

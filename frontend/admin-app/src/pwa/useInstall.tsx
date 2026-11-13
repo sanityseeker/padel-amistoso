@@ -28,7 +28,7 @@ function ShareGlyph() {
 function IosHint({ opened, onClose }: { opened: boolean; onClose: () => void }) {
   useLocale();
   return (
-    <Modal opened={opened} onClose={onClose} title={tx('Install the app')} centered size="sm">
+    <Modal opened={opened} onClose={onClose} title={tx('Install the app')} size="sm">
       <Stack gap="sm">
         {/* Safari has Share in its toolbar (iOS 26: inside the ⋯ menu); Chrome in the address bar;
             Edge and Firefox in their menu. */}

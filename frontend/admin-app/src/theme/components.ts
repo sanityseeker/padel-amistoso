@@ -32,7 +32,7 @@ const variantClass = (prefix: string, variant: string | undefined) =>
 export const components: MantineThemeComponents = {
   Button: Button.extend({ defaultProps: { fw: 600 } }),
   ActionIcon: ActionIcon.extend({ defaultProps: { variant: 'subtle', color: 'gray' } }),
-  Badge: Badge.extend({ defaultProps: { tt: 'none', radius: 'xl', fw: 600 } }),
+  Badge: Badge.extend({ defaultProps: { size: 'sm', tt: 'none', radius: 'xl', fw: 600 } }),
   // Surfaces are bordered but flat; only floating layers cast a shadow.
   Paper: Paper.extend({
     defaultProps: { withBorder: true, radius: 'lg', shadow: undefined },
@@ -45,7 +45,7 @@ export const components: MantineThemeComponents = {
     classNames: { root: classes.paper },
   }),
   Modal: Modal.extend({
-    defaultProps: { radius: 'lg' },
+    defaultProps: { radius: 'lg', centered: true },
     classNames: { content: classes.surface, header: classes.surface, overlay: classes.overlay },
   }),
   Drawer: Drawer.extend({

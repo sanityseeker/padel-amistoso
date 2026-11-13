@@ -9,6 +9,7 @@ import {
 } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
 import type { TvSettings } from '../../types';
+import { schemaQuery } from '../../bracketSchema';
 import { ZoomableImage, type ZoomableImageHandle } from '../../ui';
 import { prefixFor, type Playoffs, type TvMeta } from './model';
 import classes from './Tv.module.css';
@@ -101,15 +102,7 @@ export function BracketImage({
   const [open, setOpen] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const zoomer = useRef<ZoomableImageHandle>(null);
-  const query = new URLSearchParams({
-    fmt: settings.schema_format || 'svg',
-    box_scale: String(settings.schema_box_scale || 1),
-    line_width: String(settings.schema_line_width || 1),
-    arrow_scale: String(settings.schema_arrow_scale || 1),
-    title_font_scale: String(settings.schema_title_font_scale || 1),
-    output_scale: String(settings.schema_output_scale || 1),
-    _k: hash(JSON.stringify(playoffs)),
-  });
+  const query = schemaQuery(settings, { _k: hash(JSON.stringify(playoffs)) });
   const base = `/api/tournaments/${tid}/${prefixFor(kind)}/playoffs-schema?${query}`;
   const sided = espejo || doubleElimination;
   const close = () => setOpen(null);

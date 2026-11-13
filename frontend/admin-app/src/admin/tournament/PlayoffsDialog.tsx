@@ -423,7 +423,7 @@ export function PlayoffsDialog({
         {estimate && (
           <Stack gap={2} data-testid="playoff-estimate">
             <Text size="sm" fw={600}>
-              {tx('~{n} matches', { n: estimate.count })}
+              {tx('{n} matches', { n: estimate.count })}
               {split && ` · ${tx('Gold')} ${goldN} · ${tx('Silver')} ${silverN}`}
             </Text>
             {estimate.rows

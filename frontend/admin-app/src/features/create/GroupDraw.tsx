@@ -2,7 +2,7 @@ import { Button, Group, Paper, SimpleGrid, Stack, Text } from '@mantine/core';
 import { IconArrowsExchange, IconDice3, IconX } from '@tabler/icons-react';
 import { OverflowMenu } from '../../ui/OverflowMenu';
 import { t as tx, useLocale } from '../../i18n';
-import { drawGroups, groupMatches, type GroupDraw as Draw } from './rules';
+import { drawGroups, groupMatches, groupRoundMatches, type GroupDraw as Draw } from './rules';
 import { StatusBadge } from '../../ui/StatusBadge';
 
 // The seeded group draw, previewed before the tournament exists. Strengths snake-draft the players;
@@ -54,7 +54,11 @@ export function GroupDraw({
     if (player) next[to]!.players.push(player);
     onChange(next);
   };
-  const total = value.reduce((sum, g) => sum + groupMatches(g.players.length, fixedSides), 0);
+  const total = value.reduce(
+    (sum, g) =>
+      sum + (fixedSides ? groupMatches(g.players.length) : groupRoundMatches(g.players.length)),
+    0,
+  );
   return (
     <Stack gap="sm" data-testid="group-draw">
       <SimpleGrid cols={{ base: 1, xs: 2, md: Math.min(4, value.length) }} spacing="sm">
@@ -107,7 +111,7 @@ export function GroupDraw({
       </SimpleGrid>
       <Group justify="space-between" gap="sm">
         <Text size="sm" c="dimmed">
-          {tx('About {n} matches', { n: total })}
+          {fixedSides ? tx('{n} matches', { n: total }) : tx('{n} matches per round', { n: total })}
         </Text>
         <Group gap="xs">
           <Button

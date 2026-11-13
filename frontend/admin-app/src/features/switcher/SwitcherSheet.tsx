@@ -217,7 +217,7 @@ export function SwitcherSheet() {
                     label={t.name}
                     description={t.owner}
                     leftSection={
-                      <Badge size="sm" variant="light" circle>
+                      <Badge variant="light" circle>
                         {monogram(t.name).slice(0, 2)}
                       </Badge>
                     }

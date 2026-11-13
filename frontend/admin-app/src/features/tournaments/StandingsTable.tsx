@@ -234,6 +234,32 @@ function columnsFor(
 
 type Sort = { key: string; dir: 'asc' | 'desc' } | null;
 
+/** A team name breaks only between partners ("Ana Pérez &" / "Bea Ruiz"), never inside a name. */
+function NameText({ name, withdrawn }: { name: string; withdrawn?: boolean }) {
+  const parts = name.split(/(?<=\s[&/])\s+/);
+  return (
+    <span
+      className={classes.nameText}
+      title={name}
+      data-withdrawn={withdrawn ? '' : undefined}
+      // Long names get smaller type to fit the column (StandingsTable.module.css).
+      style={
+        {
+          '--len': name.length,
+          '--part': Math.max(...parts.map((p) => p.length)),
+        } as CSSProperties
+      }
+    >
+      {parts.map((part, i) => (
+        <Fragment key={i}>
+          {i > 0 && ' '}
+          <span className={classes.member}>{part}</span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
 /** Places a group's table marks: the group's own value, else the tournament default, else 3. */
 export function groupHighlight(
   settings:
@@ -404,7 +430,7 @@ export function StandingsTable({
                             title={r.name}
                             onClick={() => setOpen(open === r.id ? null : r.id)}
                           >
-                            <span className={classes.nameText}>{r.name}</span>
+                            <NameText name={r.name} withdrawn={r.withdrawn} />
                             <IconChevronDown
                               size={14}
                               className={classes.chevron}
@@ -413,13 +439,7 @@ export function StandingsTable({
                             />
                           </UnstyledButton>
                         ) : (
-                          <span
-                            className={classes.nameText}
-                            title={r.name}
-                            data-withdrawn={r.withdrawn ? '' : undefined}
-                          >
-                            {r.name}
-                          </span>
+                          <NameText name={r.name} withdrawn={r.withdrawn} />
                         )}
                         {onSelect && !r.removed && (
                           <ActionIcon

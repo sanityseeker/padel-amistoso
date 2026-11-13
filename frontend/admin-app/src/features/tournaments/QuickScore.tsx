@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { ActionIcon, Button, Group, NumberInput } from '@mantine/core';
 import { IconAdjustmentsHorizontal, IconCheck } from '@tabler/icons-react';
+import { scoreInputClass } from '../../ui';
 import { t as tx, useLocale } from '../../i18n';
 import { validatePoints, type ScorePayload, type SetRow } from '../../admin/tournament/scoring';
 
@@ -48,8 +49,9 @@ export function QuickScore({
           ref={(el) => {
             refs.current[side] = el;
           }}
-          w={64}
+          w="4rem"
           size="md"
+          classNames={{ input: scoreInputClass }}
           hideControls
           inputMode="numeric"
           min={0}
@@ -76,6 +78,7 @@ export function QuickScore({
       ))}
       <Button
         size="md"
+        h="var(--ai-size-score)"
         variant="light"
         color="court"
         leftSection={<IconCheck size={16} />}
@@ -87,7 +90,7 @@ export function QuickScore({
         {tx('Save')}
       </Button>
       <ActionIcon
-        size="lg"
+        size="score"
         variant="subtle"
         color="gray"
         aria-label={tx('More scoring options: {names}', { names: names.join(' vs ') })}

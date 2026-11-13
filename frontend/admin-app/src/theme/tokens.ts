@@ -48,7 +48,7 @@ export const sharedTokens: Record<string, string> = {
   '--button-padding-x-touch': '1rem',
   '--button-fz-touch': '1rem',
   '--ai-size-touch': '44px',
-  '--ai-size-score': '48px',
+  '--ai-size-score': 'max(48px, 3.125rem)',
   // The spectator screen ("tv" size): type that reads from across a room. Each step grows with the
   // viewport, from a phone up to a 4K display, and stops at a ceiling so a 4K TV is not comically large.
   '--fs-tv-sm': 'clamp(0.875rem, 0.55vw + 0.45rem, 1.75rem)',
