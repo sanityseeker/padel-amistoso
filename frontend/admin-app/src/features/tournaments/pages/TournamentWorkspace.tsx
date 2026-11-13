@@ -1,5 +1,5 @@
 import { sportProps } from '../../../theme';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Badge,
   Group,
@@ -55,6 +55,7 @@ import {
   matchDecider,
   pageMatches,
   reviewItems,
+  type ScorePayload,
 } from '../../../admin/tournament/scoring';
 import { useRecordScore, useReviewActions } from '../../../admin/tournament/useScoreActions';
 import type { Match } from '../../../types';
@@ -72,6 +73,9 @@ import { NextStepButton, WorkspaceHeader, type MenuEntry, type NextStep } from '
 import classes from '../Workspace.module.css';
 import { Notice } from '../../../ui/Notice';
 import { GroupHighlightInput } from '../../../admin/tournament/GroupHighlightInput';
+
+// Read-only match lists never score; one function keeps their memoized rows stable.
+const ignoreScore = () => undefined;
 
 // Opens the first pending match's Score button (or the given match's) once the editor has closed.
 function focusScoreAction(matchId: string, next: boolean) {
@@ -202,6 +206,29 @@ function Workspace({ id }: { id: string }) {
     focusScoreAction(matchId, afterSave);
   };
   const review = useReviewActions(id);
+  // Stable match-row callbacks: the rows are memoized, so a live refresh re-renders only the rows
+  // whose match changed. (`mutate` is stable and always uses the latest options.)
+  const recordMutate = record.mutate;
+  const scoreFromList = useCallback(
+    (m: Match) => setEditing({ id: m.id, purpose: 'record', from: 'list' }),
+    [],
+  );
+  const quickSave = useCallback(
+    (m: Match, payload: ScorePayload) => {
+      void recordMutate({ match: m, payload });
+      focusScoreAction(m.id, true);
+    },
+    [recordMutate],
+  );
+  const totalPoints = page?.status.total_points_per_match ?? 0;
+  const quick = useMemo(
+    () => (phone ? undefined : { totalPoints, onSave: quickSave }),
+    [phone, totalPoints, quickSave],
+  );
+  const renderMenu = useCallback(
+    (m: Match) => <MatchTools match={m} onComment={setCommentFor} onHistory={setHistoryFor} />,
+    [],
+  );
   const refresh = () => {
     void client.invalidateQueries({ queryKey: ['admin', 'tournament', id] });
     void client.invalidateQueries({ queryKey: ['admin', 'tournaments'] });
@@ -737,21 +764,9 @@ function Workspace({ id }: { id: string }) {
           canEdit={scoreable}
           selectedId={selectedId}
           editingId={editing && !phone && editing.from === 'list' ? editing.id : null}
-          onScore={(m) => setEditing({ id: m.id, purpose: 'record', from: 'list' })}
-          quick={
-            phone
-              ? undefined
-              : {
-                  totalPoints: status.total_points_per_match ?? 0,
-                  onSave: (m, payload) => {
-                    void record.mutate({ match: m, payload });
-                    focusScoreAction(m.id, true);
-                  },
-                }
-          }
-          renderMenu={(m) => (
-            <MatchTools match={m} onComment={setCommentFor} onHistory={setHistoryFor} />
-          )}
+          onScore={scoreFromList}
+          quick={quick}
+          renderMenu={renderMenu}
           renderEditor={(m) => (
             <AdminScoreEntry
               key={`${m.id}-record`}
@@ -826,7 +841,7 @@ function Workspace({ id }: { id: string }) {
             courts={status.assign_courts !== false}
             settings={settings}
             canEdit={false}
-            onScore={() => undefined}
+            onScore={ignoreScore}
           />
         </Stack>
       )}
