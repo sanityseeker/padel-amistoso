@@ -260,11 +260,14 @@ export default function Event() {
               <PlayedList testId="event-played" items={played} path={pathRounds} />
             </Stack>
           )}
-          {noMatches && (
-            <EmptyState title={tx('Your court is waiting')}>
-              {tx('Your organizer will publish pairings here when the next round is ready.')}
-            </EmptyState>
-          )}
+          {noMatches &&
+            (data?.tv.hide_schedule ? (
+              <EmptyState title={tx('The organizer has not published the schedule yet.')} />
+            ) : (
+              <EmptyState title={tx('Your court is waiting')}>
+                {tx('Your organizer will publish pairings here when the next round is ready.')}
+              </EmptyState>
+            ))}
         </>
       )}
       {!data?.finished && standingsBlock}

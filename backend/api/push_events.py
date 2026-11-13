@@ -61,6 +61,8 @@ def notify_matches_ready(tid: str, data: dict, matches: list[Match]) -> None:
     """
     if not matches:
         return
+    if (data.get("tv_settings") or {}).get("hide_schedule", False):
+        return
 
     player_ids: set[str] = set()
     for m in matches:

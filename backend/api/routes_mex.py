@@ -33,6 +33,8 @@ from .helpers import (
     _schema_image_response,
     _require_demo_can_create_tournament,
     _require_editor_access,
+    _visible_match,
+    schedule_hidden_for,
     _require_score_permission,
     _sanitize_demo_create_request,
     _find_match,
@@ -211,7 +213,7 @@ def _mex_stage_progress(t: MexicanoTournament) -> dict:
 
 
 @router.get("/{tid}/mex/status")
-async def mex_status(tid: str) -> dict:
+async def mex_status(tid: str, user: User | None = Depends(get_current_user_optional)) -> dict:
     """Return comprehensive Mexicano tournament status including leaderboard, rounds, and sit-out info."""
     data = _get_tournament(tid, _MEX)
     t: MexicanoTournament = data["tournament"]
@@ -253,7 +255,10 @@ async def mex_status(tid: str) -> dict:
         # Ids sitting out the round in play (empty once the Mexicano rounds have ended).
         "current_sit_out_ids": (
             [p.id for p in t.sit_outs[-1]]
-            if t.sit_outs and len(t.sit_outs) == len(t.rounds) and not t.mexicano_ended
+            if t.sit_outs
+            and len(t.sit_outs) == len(t.rounds)
+            and not t.mexicano_ended
+            and not schedule_hidden_for(tid, user)
             else []
         ),
         "missed_games": {
@@ -274,9 +279,17 @@ async def mex_status(tid: str) -> dict:
 
 
 @router.get("/{tid}/mex/matches")
-async def mex_matches(tid: str) -> dict:
+async def mex_matches(tid: str, user: User | None = Depends(get_current_user_optional)) -> dict:
     """Return current-round matches, all pending matches, and historical match list with breakdowns."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+    if schedule_hidden_for(tid, user):
+        return {
+            "current_round": t.current_round,
+            "current_matches": [],
+            "pending": [],
+            "all_matches": [_serialize_match(m, t._points_target_for(m)) for m in t.all_matches() if _visible_match(m)],
+            "breakdowns": t.all_match_breakdowns(),
+        }
     return {
         "current_round": t.current_round,
         "current_matches": [_serialize_match(m, t._points_target_for(m)) for m in t.current_round_matches()],
@@ -537,13 +550,14 @@ async def mex_finish(tid: str, user=Depends(get_current_user)) -> dict:
 
 
 @router.get("/{tid}/mex/playoffs")
-async def mex_playoffs(tid: str) -> dict:
+async def mex_playoffs(tid: str, user: User | None = Depends(get_current_user_optional)) -> dict:
     """Get play-off bracket status and matches."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+    hidden = schedule_hidden_for(tid, user)
     return {
         "phase": t.phase,
-        "matches": [_serialize_match(m) for m in t.playoff_matches()],
-        "pending": [_serialize_match(m) for m in t.pending_playoff_matches()],
+        "matches": [_serialize_match(m) for m in t.playoff_matches() if not hidden or _visible_match(m)],
+        "pending": [] if hidden else [_serialize_match(m) for m in t.pending_playoff_matches()],
         "champion": [p.name for p in t.champion()] if t.champion() else None,
     }
 
@@ -559,9 +573,12 @@ async def mex_playoffs_schema(
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(1.0, ge=0.5, le=3.0),
     side: Literal["winners", "losers"] | None = Query(None),
+    user: User | None = Depends(get_current_user_optional),
 ) -> Response:
     """Generate a schema image/document for the active Mexicano play-off bracket."""
     t: MexicanoTournament = _get_tournament(tid, _MEX)["tournament"]
+    if schedule_hidden_for(tid, user):
+        raise HTTPException(404, "Play-off bracket is not published")
     if t.playoff_bracket is None:
         raise HTTPException(400, "Play-offs have not started")
 

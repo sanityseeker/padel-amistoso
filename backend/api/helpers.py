@@ -394,6 +394,31 @@ def _sanitize_demo_create_request(req, user: User) -> None:
     req.player_profile_ids = {}
 
 
+def _is_editor(tid: str, user: User | None) -> bool:
+    """Return True when *user* is an admin, the owner, or a co-editor of *tid* (never raises)."""
+    if user is None:
+        return False
+    if user.role == UserRole.ADMIN:
+        return True
+    data = _tournaments.get(tid)
+    if data is None:
+        return False
+    if data.get("owner") == user.username:
+        return True
+    return user.username in get_co_editors(tid)
+
+
+def schedule_hidden_for(tid: str, user: User | None) -> bool:
+    """True when the organizer hid the schedule and *user* is not an editor."""
+    tv_settings = _tournaments.get(tid, {}).get("tv_settings") or {}
+    return bool(tv_settings.get("hide_schedule", False)) and not _is_editor(tid, user)
+
+
+def _visible_match(match: Match) -> bool:
+    """A match players may see while the schedule is hidden: already played."""
+    return match.status == MatchStatus.COMPLETED or match.score is not None
+
+
 def _require_editor_access(tid: str, user: User) -> None:
     """Raise 403 if *user* may not edit the tournament.
 
@@ -405,11 +430,7 @@ def _require_editor_access(tid: str, user: User) -> None:
     data = _tournaments.get(tid)
     if data is None:
         raise HTTPException(404, "Tournament not found")
-    if user.role == UserRole.ADMIN:
-        return
-    if data.get("owner") == user.username:
-        return
-    if user.username in get_co_editors(tid):
+    if _is_editor(tid, user):
         return
     raise HTTPException(403, "You do not have permission to modify this tournament")
 
@@ -456,6 +477,8 @@ def _require_score_permission(
             team_roster: dict[str, list[str]] = getattr(tournament, "team_roster", None) or {}
             is_participant = any(player.player_id in team_roster.get(team_pid, []) for team_pid in match_player_ids)
         if is_participant:
+            if tv_settings.get("hide_schedule", False) and not _visible_match(match):
+                raise HTTPException(403, "Scores are entered by the organizer while the schedule is hidden")
             # A recorded (or pending) score is never overwritten by a player; changes go
             # through accept / correct / escalate, or the organizer.
             if match.score is not None:

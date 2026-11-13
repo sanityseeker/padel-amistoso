@@ -1,11 +1,21 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Paper, SegmentedControl, Stack, Text, Title } from '@mantine/core';
+import {
+  Loader,
+  NativeSelect,
+  Paper,
+  ScrollArea,
+  SegmentedControl,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { t as tx, useLocale } from '../../i18n';
 import { formatRoundLabel } from '../../roundLabel';
 import type { Match, TvSettings } from '../../types';
 import type { Ctx } from '../../admin/tournament/scoring';
 import { ZoomableImage } from '../../ui';
+import { useAuthedImageUrl } from '../../admin/tournament/useAuthedImageUrl';
 import { toMatchView } from './adapters';
 import { MatchCard } from './MatchCard';
 import classes from './Workspace.module.css';
@@ -46,6 +56,14 @@ export function bandsOf(matches: Match[]): Band[] {
     });
   }
   return out;
+}
+
+// The diagram is withheld from anonymous viewers while the schedule is hidden, so it loads with the
+// organizer's token.
+function DiagramImage({ src, alt }: { src: string; alt: string }) {
+  const url = useAuthedImageUrl(src);
+  if (!url) return <Loader size="sm" />;
+  return <ZoomableImage src={url} alt={alt} maxHeight={560} testId="bracket-diagram" />;
 }
 
 function Slot({
@@ -108,6 +126,21 @@ export function Bracket({
         <Text c="dimmed">{tx('The bracket appears once the play-offs start.')}</Text>
       </Paper>
     );
+  const roundValue = picked ? `${picked.band}:${picked.label}` : 'pending';
+  const roundOptions = [
+    ...(withPending ? [{ value: 'pending', label: tx('To play') }] : []),
+    ...rounds.map((r) => {
+      const name = formatRoundLabel(r.label);
+      const banded = /^(Winners|Losers)\b/.test(r.label);
+      return {
+        value: `${r.band}:${r.label}`,
+        label:
+          bands.length > 1 && !banded
+            ? `${r.band === 'losers' ? tx('L', { context: 'bracket' }) : tx('W', { context: 'bracket' })} ${name}`
+            : name,
+      };
+    }),
+  ];
   const sides = bands.length > 1 ? ['winners', 'losers'] : [undefined];
   return (
     <Stack gap="md" data-testid="bracket">
@@ -125,12 +158,10 @@ export function Bracket({
       {mode === 'diagram' ? (
         <Stack gap="md">
           {sides.map((side) => (
-            <ZoomableImage
+            <DiagramImage
               key={side ?? 'main'}
               src={`/api/tournaments/${tid}/${prefix}/playoffs-schema${side && bands.length > 1 ? `?side=${side}` : ''}`}
               alt={side === 'losers' ? tx('Losers') : tx('Play-off bracket')}
-              maxHeight={560}
-              testId="bracket-diagram"
             />
           ))}
           <Text size="xs" c="dimmed">
@@ -139,23 +170,25 @@ export function Bracket({
         </Stack>
       ) : phone ? (
         <Stack gap="sm">
-          <SegmentedControl
-            size="xs"
-            fullWidth
-            value={picked ? `${picked.band}:${picked.label}` : 'pending'}
-            onChange={setRound}
-            data={[
-              ...(withPending ? [{ value: 'pending', label: tx('To play') }] : []),
-              ...rounds.map((r) => ({
-                value: `${r.band}:${r.label}`,
-                label:
-                  bands.length > 1
-                    ? `${r.band === 'losers' ? tx('L', { context: 'bracket' }) : tx('W', { context: 'bracket' })} ${formatRoundLabel(r.label)}`
-                    : formatRoundLabel(r.label),
-              })),
-            ]}
-            aria-label={tx('Round', { context: 'knockout' })}
-          />
+          {roundOptions.length > 5 ? (
+            <NativeSelect
+              size="sm"
+              value={roundValue}
+              onChange={(e) => setRound(e.currentTarget.value)}
+              data={roundOptions}
+              aria-label={tx('Round', { context: 'knockout' })}
+            />
+          ) : (
+            <ScrollArea type="never" scrollbars="x">
+              <SegmentedControl
+                size="xs"
+                value={roundValue}
+                onChange={setRound}
+                data={roundOptions}
+                aria-label={tx('Round', { context: 'knockout' })}
+              />
+            </ScrollArea>
+          )}
           {(showPending
             ? pending.slice().sort((a, b) => (a.slot_number ?? 0) - (b.slot_number ?? 0))
             : (picked?.matches ?? [])

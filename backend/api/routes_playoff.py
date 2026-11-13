@@ -28,6 +28,8 @@ from .helpers import (
     _is_bye_match,
     _require_demo_can_create_tournament,
     _require_editor_access,
+    _visible_match,
+    schedule_hidden_for,
     _require_score_permission,
     _sanitize_demo_create_request,
     _find_match,
@@ -208,12 +210,15 @@ async def po_status(tid: str) -> dict:
 
 
 @router.get("/{tid}/po/playoffs")
-async def po_playoffs(tid: str) -> dict:
+async def po_playoffs(tid: str, user: User | None = Depends(get_current_user_optional)) -> dict:
     """Return all play-off matches, pending matches, and the champion (if decided)."""
     t: PlayoffTournament = _get_tournament(tid, _PO)["tournament"]
+    hidden = schedule_hidden_for(tid, user)
 
-    matches = _serialize_playoff_matches(t.bracket, [m for m in t.all_matches() if not _is_bye_match(m)])
-    pending = _serialize_playoff_matches(t.bracket, t.pending_matches())
+    matches = _serialize_playoff_matches(
+        t.bracket, [m for m in t.all_matches() if not _is_bye_match(m) and (not hidden or _visible_match(m))]
+    )
+    pending = [] if hidden else _serialize_playoff_matches(t.bracket, t.pending_matches())
 
     return {
         "matches": matches,
@@ -233,6 +238,7 @@ async def po_playoffs_schema(
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(1.0, ge=0.5, le=3.0),
     side: Literal["winners", "losers"] | None = Query(None),
+    user: User | None = Depends(get_current_user_optional),
 ) -> Response:
     """Generate a schema image for the active Play-off bracket.
 
@@ -241,6 +247,8 @@ async def po_playoffs_schema(
     returned (backwards-compatible default).
     """
     t: PlayoffTournament = _get_tournament(tid, _PO)["tournament"]
+    if schedule_hidden_for(tid, user):
+        raise HTTPException(404, "Play-off bracket is not published")
 
     # Pick the right bracket object and names.
     if t.espejo:

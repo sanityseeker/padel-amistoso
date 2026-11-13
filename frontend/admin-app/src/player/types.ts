@@ -134,6 +134,8 @@ export interface Leaderboard {
 }
 
 export interface TvPlayerSettings {
+  /** The organizer hides unplayed matches, groups and the bracket from players. */
+  hide_schedule?: boolean;
   allow_player_scoring: boolean;
   score_mode: Record<string, string>;
   set_decider: 'full_set' | 'match_tiebreak';

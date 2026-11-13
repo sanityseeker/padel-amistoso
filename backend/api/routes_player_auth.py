@@ -28,7 +28,7 @@ from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .db import get_db
 from .elo_recalc import mark_elo_dirty
 from .elo_store import refresh_profile_elo
-from .helpers import _require_editor_access
+from .helpers import _require_editor_access, schedule_hidden_for
 from .player_secret_store import (
     add_player_secret,
     get_contacts_for_tournament,
@@ -598,6 +598,9 @@ async def get_player_opponents(
         raise HTTPException(403, "Token is for a different tournament")
     if tid not in _tournaments:
         raise HTTPException(404, "Tournament not found")
+
+    if schedule_hidden_for(tid, None):
+        return {"opponents": []}
 
     tournament_data = _tournaments[tid]
     t = tournament_data["tournament"]

@@ -27,6 +27,7 @@ import { ctxOf, isTbd, sortTbdLast, type Breakdown, type TvLive, type TvMeta } f
 import type { useTvPlayer } from './useTvPlayer';
 import { Section, type OpenState } from './TvSection';
 import classes from './Tv.module.css';
+import { EmptyState } from '../../ui/EmptyState';
 import { Notice } from '../../ui/Notice';
 
 type Player = ReturnType<typeof useTvPlayer>;
@@ -744,11 +745,21 @@ export function sectionKeys(live: TvLive): TvSectionInfo[] {
   const phase = live.status.phase || '';
   const out: TvSectionInfo[] = [];
   const hasCourts = live.status.assign_courts !== false;
-  if ((hasCourts && s.show_courts !== false) || s.show_pending_matches === true)
+  const hidden = s.hide_schedule === true;
+  // A hidden schedule has no courts, no group tables and no bracket; only played matches remain.
+  const hideGroups = hidden && live.kind === 'group_playoff';
+  if (!hidden && ((hasCourts && s.show_courts !== false) || s.show_pending_matches === true))
     out.push({ key: 'courts', label: tx('Court assignments') });
-  if (s.show_standings && live.kind !== 'playoff' && phase !== 'playoffs' && phase !== 'finished')
+  if (
+    !hideGroups &&
+    s.show_standings &&
+    live.kind !== 'playoff' &&
+    phase !== 'playoffs' &&
+    phase !== 'finished'
+  )
     out.push({ key: 'standings', label: tx('Standings') });
   if (
+    !hidden &&
     s.show_bracket &&
     live.kind !== 'mexicano' &&
     (phase === 'playoffs' || phase === 'finished' || live.kind === 'playoff')
@@ -756,6 +767,7 @@ export function sectionKeys(live: TvLive): TvSectionInfo[] {
     out.push({ key: 'bracket', label: tx('Play off bracket') });
   // A Mexicano that ended without play-offs has no bracket to show.
   if (
+    !hidden &&
     s.show_bracket &&
     live.kind === 'mexicano' &&
     (phase === 'playoffs' || phase === 'finished') &&
@@ -793,6 +805,7 @@ export function TvBoard({
 }) {
   useLocale();
   const { settings, status, playoffs } = live;
+  const hidden = settings.hide_schedule === true;
   const phase = status.phase || '';
   const playoffPhase = phase === 'playoffs' || phase === 'finished';
   const split = status.espejo_split === true;
@@ -846,24 +859,26 @@ export function TvBoard({
   }
 
   const hasBracket = kind !== 'mexicano' || playoffs.matches.length > 0;
-  const bracket = settings.show_bracket && (kind === 'playoff' || (playoffPhase && hasBracket)) && (
-    <Section
-      id="bracket"
-      title={tx('Play off bracket')}
-      state={state}
-      info={status.double_elimination && !status.espejo ? <Legend kind="double" /> : undefined}
-    >
-      <BracketImage
-        tid={tid}
-        kind={kind}
-        settings={settings}
-        playoffs={playoffs}
-        doubleElimination={status.double_elimination === true && status.espejo !== true}
-        espejo={status.espejo === true}
-        split={split}
-      />
-    </Section>
-  );
+  const bracket = !hidden &&
+    settings.show_bracket &&
+    (kind === 'playoff' || (playoffPhase && hasBracket)) && (
+      <Section
+        id="bracket"
+        title={tx('Play off bracket')}
+        state={state}
+        info={status.double_elimination && !status.espejo ? <Legend kind="double" /> : undefined}
+      >
+        <BracketImage
+          tid={tid}
+          kind={kind}
+          settings={settings}
+          playoffs={playoffs}
+          doubleElimination={status.double_elimination === true && status.espejo !== true}
+          espejo={status.espejo === true}
+          split={split}
+        />
+      </Section>
+    );
   const playoffPast = playoffs.matches.filter((m) => m.status === 'completed');
   const playoffCtx =
     kind === 'playoff' ? 'po-playoff' : kind === 'group_playoff' ? 'gp-playoff' : 'mex-playoff';
@@ -881,6 +896,7 @@ export function TvBoard({
     );
   const standings =
     settings.show_standings &&
+    !(hidden && kind === 'group_playoff') &&
     (kind === 'group_playoff' && !playoffPhase ? (
       <GroupStandings live={live} meta={meta} scope={scope} state={state} highlight={sid} />
     ) : kind === 'mexicano' ? (
@@ -889,7 +905,10 @@ export function TvBoard({
 
   return (
     <Stack gap="lg">
-      {show('courts') && (
+      {hidden && !only && (
+        <EmptyState title={tx('The organizer has not published the schedule yet.')} />
+      )}
+      {!hidden && show('courts') && (
         <Courts
           title={courtTitle}
           matches={pendingMatches}
@@ -901,7 +920,7 @@ export function TvBoard({
           state={state}
         />
       )}
-      {!only && settings.show_pending_matches !== true && (
+      {!hidden && !only && settings.show_pending_matches !== true && (
         <YourMatches
           matches={pendingMatches}
           onCourt={showCourts ? [...currentByCourt(pendingMatches).values()] : []}

@@ -785,12 +785,14 @@ function Workspace({ id }: { id: string }) {
   ) : standingGroups ? (
     <Stack gap="md">
       {groupNames.length > 1 && (
-        <SegmentedControl
-          value={standingsGroup}
-          onChange={(value) => view.patch({ group: value }, { replace: true })}
-          aria-label={tx('Group')}
-          data={groupNames.map((name) => ({ value: name, label: tx('Group {name}', { name }) }))}
-        />
+        <ScrollArea type="never" scrollbars="x">
+          <SegmentedControl
+            value={standingsGroup}
+            onChange={(value) => view.patch({ group: value }, { replace: true })}
+            aria-label={tx('Group')}
+            data={groupNames.map((name) => ({ value: name, label: tx('Group {name}', { name }) }))}
+          />
+        </ScrollArea>
       )}
       {standingsGroup && (
         <Stack gap="xs">

@@ -38,6 +38,8 @@ from .helpers import (
     _schema_image_response,
     _require_demo_can_create_tournament,
     _require_editor_access,
+    _visible_match,
+    schedule_hidden_for,
     _require_score_permission,
     _sanitize_demo_create_request,
     _find_match,
@@ -232,7 +234,7 @@ async def gp_status(tid: str) -> dict:
 
 
 @router.get("/{tid}/gp/groups")
-async def gp_groups(tid: str) -> dict:
+async def gp_groups(tid: str, user: User | None = Depends(get_current_user_optional)) -> dict:
     """Return standings, all matches for each group, and whether more rounds can be generated."""
     data = _get_tournament(tid, _GP)
     t: GroupPlayoffTournament = data["tournament"]
@@ -242,6 +244,13 @@ async def gp_groups(tid: str) -> dict:
     for group_entries in standings.values():
         for entry in group_entries:
             entry["elo"] = round(elos.get(entry["player_id"], 0), 1) or None
+    if schedule_hidden_for(tid, user):
+        # Organizer hid the schedule: only played matches, no line-ups or standings.
+        return {
+            "standings": {},
+            "matches": {g.name: [_serialize_match(m) for m in g.matches if _visible_match(m)] for g in t.groups},
+            "has_more_rounds": t.has_more_group_rounds,
+        }
     return {
         "standings": standings,
         "matches": {g.name: [_serialize_match(m) for m in g.matches] for g in t.groups},
@@ -444,14 +453,16 @@ async def gp_start_playoffs(
 
 
 @router.get("/{tid}/gp/playoffs")
-async def gp_playoffs(tid: str) -> dict:
+async def gp_playoffs(tid: str, user: User | None = Depends(get_current_user_optional)) -> dict:
     """Return all play-off matches, pending matches, and the champion (if decided)."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+    hidden = schedule_hidden_for(tid, user)
     return {
         "matches": _serialize_playoff_matches(
-            t.playoff_bracket, [m for m in t.playoff_matches() if not _is_bye_match(m)]
+            t.playoff_bracket,
+            [m for m in t.playoff_matches() if not _is_bye_match(m) and (not hidden or _visible_match(m))],
         ),
-        "pending": _serialize_playoff_matches(t.playoff_bracket, t.pending_playoff_matches()),
+        "pending": [] if hidden else _serialize_playoff_matches(t.playoff_bracket, t.pending_playoff_matches()),
         **winners_payload(t),
     }
 
@@ -467,9 +478,12 @@ async def gp_playoffs_schema(
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(1.0, ge=0.5, le=3.0),
     side: Literal["winners", "losers"] | None = Query(None),
+    user: User | None = Depends(get_current_user_optional),
 ) -> Response:
     """Generate a schema image/document for the active Group+Playoff bracket."""
     t: GroupPlayoffTournament = _get_tournament(tid, _GP)["tournament"]
+    if schedule_hidden_for(tid, user):
+        raise HTTPException(404, "Play-off bracket is not published")
     if t.playoff_bracket is None:
         raise HTTPException(400, "Play-offs have not started")
 

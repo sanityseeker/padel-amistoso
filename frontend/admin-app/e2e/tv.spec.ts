@@ -31,6 +31,23 @@ test('pending group matches show their round once and omit disabled courts', asy
   );
 });
 
+test('a hidden schedule leaves the TV screen with a notice and no courts or standings', async ({
+  page,
+  request,
+}) => {
+  const { id } = await createTournament(request, 'gp', `TV hidden ${stamp()}`);
+  await patchTvSettings(request, id, { refresh_interval: 0, hide_schedule: true });
+  await page.goto(`/tv/${id}`);
+  await expect(page.getByText('The organizer has not published the schedule yet.')).toBeVisible();
+  await expect(page.getByTestId('tv-court')).toHaveCount(0);
+  await expect(page.getByText('Your matches')).toHaveCount(0);
+  await expect(page.locator('[data-section="standings"]')).toHaveCount(0);
+  await patchTvSettings(request, id, { hide_schedule: false });
+  await page.reload();
+  await expect(page.getByTestId('tv-court')).toHaveCount(2);
+  await expect(page.getByText('The organizer has not published the schedule yet.')).toHaveCount(0);
+});
+
 test('group standings have room for their statistics at medium screen widths', async ({
   page,
   request,

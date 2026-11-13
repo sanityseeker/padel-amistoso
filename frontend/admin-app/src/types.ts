@@ -254,6 +254,7 @@ export interface TvSettings {
   show_standings?: boolean;
   show_bracket?: boolean;
   show_pending_matches?: boolean;
+  hide_schedule?: boolean;
   allow_player_scoring?: boolean;
   refresh_interval?: number;
   schema_box_scale?: number;

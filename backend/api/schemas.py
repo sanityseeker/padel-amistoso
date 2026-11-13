@@ -310,6 +310,7 @@ class TvSettingsRequest(BaseModel):
     show_standings: bool | None = None
     show_bracket: bool | None = None
     show_pending_matches: bool | None = None
+    hide_schedule: bool | None = None
     allow_player_scoring: bool | None = None
     refresh_interval: int | None = Field(default=None, ge=-1, le=300)
     schema_box_scale: float | None = Field(default=None, ge=0.3, le=3.0)
@@ -339,6 +340,8 @@ class TvSettings(BaseModel):
     show_standings: bool = True
     show_bracket: bool = True
     show_pending_matches: bool = False
+    # Withhold unplayed matches, groups, standings and the bracket from non-editors.
+    hide_schedule: bool = False
     allow_player_scoring: bool = True
     refresh_interval: int = -1
     schema_box_scale: float = 1.0

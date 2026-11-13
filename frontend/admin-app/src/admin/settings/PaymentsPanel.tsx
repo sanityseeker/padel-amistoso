@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useMediaQuery } from '@mantine/hooks';
 import {
   ActionIcon,
   Anchor,
@@ -232,7 +233,7 @@ function SettingsSheet({
                 <Select
                   aria-label={tx('Method')}
                   allowDeselect={false}
-                  w={140}
+                  w={{ base: 112, xs: 140 }}
                   value={m.kind}
                   data={METHOD_KINDS.map((k) => ({ value: k, label: kindLabel(k) }))}
                   onChange={(v) => v && patchMethod(i, { kind: v })}
@@ -604,6 +605,7 @@ export function PaymentsPanel({
   });
   const [editing, setEditing] = useState(false);
   const [filter, setFilter] = useState('all');
+  const phone = useMediaQuery('(max-width: 767px)', false, { getInitialValueInEffect: false });
   const [confirmRemind, setConfirmRemind] = useState(false);
   const [marking, setMarking] = useState<PayRow | null>(null);
   const [editingRow, setEditingRow] = useState<PayRow | null>(null);
@@ -731,6 +733,31 @@ export function PaymentsPanel({
                 <Text size="sm" c="dimmed">
                   {tx('No players match this filter.')}
                 </Text>
+              ) : phone ? (
+                <Stack gap="xs">
+                  {visible.map((p) => (
+                    <Paper key={p.player_id} p="sm" variant="row" data-testid="payment-row">
+                      <Stack gap={6}>
+                        <Group justify="space-between" wrap="wrap" gap="xs">
+                          <Group gap="sm">
+                            <Text fw={600} size="sm">
+                              {p.player_name}
+                            </Text>
+                            <Text size="sm">{money(p.amount_cents, p.currency)}</Text>
+                          </Group>
+                          <StatusChip status={p.status} />
+                        </Group>
+                        {p.email && (
+                          <Text size="xs" c="dimmed">
+                            {p.email}
+                          </Text>
+                        )}
+                        <RowDetails p={p} />
+                        {actionsFor(p)}
+                      </Stack>
+                    </Paper>
+                  ))}
+                </Stack>
               ) : (
                 <Paper>
                   <Table.ScrollContainer minWidth={640}>

@@ -1,4 +1,4 @@
-import { Drawer, ScrollArea, Stack, Switch, Tabs } from '@mantine/core';
+import { Drawer, Stack, Switch, Tabs } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { useState } from 'react';
 import { write } from '../../api';
@@ -14,7 +14,7 @@ import { CourtsSection, MexicanoSettings } from './CourtsSection';
 import { PaymentsPanel } from './PaymentsPanel';
 import { RatingSection } from './RatingSection';
 import { ScopeEditor } from './ScopeEditor';
-import { ScoringSection, TvSection } from './ScoringSection';
+import { ScoringSection, TvSection, useTvPatch } from './ScoringSection';
 
 export type SettingsTab = 'general' | 'scoring' | 'tv' | 'courts' | 'communicate' | 'payments';
 
@@ -61,6 +61,7 @@ export function TournamentSettings({
     invalidate,
     success: 'Visibility updated',
   });
+  const tvPatch = useTvPatch(id);
   const hasPlayoffs = prefix === 'po' || status.phase === 'playoffs' || prefix === 'gp';
   const sections = [
     { value: 'general', label: tx('General') },
@@ -78,7 +79,6 @@ export function TournamentSettings({
       size={phone ? '92%' : 'min(860px, 100vw)'}
       title={tx('Tournament settings')}
       padding="md"
-      scrollAreaComponent={ScrollArea.Autosize}
       closeButtonProps={{ 'aria-label': tx('Close') }}
     >
       <Switch
@@ -139,6 +139,15 @@ export function TournamentSettings({
                   checked={tournament.public}
                   disabled={visibility.isPending}
                   onChange={(e) => visibility.mutate(e.currentTarget.checked)}
+                />
+                <Switch
+                  label={tx('Hide the schedule from players')}
+                  description={tx(
+                    'Players and the TV screen see only played matches. Groups and the bracket stay hidden until you turn this off.',
+                  )}
+                  checked={settings.hide_schedule ?? false}
+                  disabled={tvPatch.isPending}
+                  onChange={(e) => tvPatch.mutate({ hide_schedule: e.currentTarget.checked })}
                 />
               </Section>
               <Section title={tx('Public address')}>

@@ -1981,5 +1981,8 @@
   "Players with no email address and no notifications are skipped.": "Игроки без адреса email и без уведомлений будут пропущены.",
   "A short note from you, sent to every player with notifications or an email address.": "Короткое сообщение для всех игроков с уведомлениями или адресом email.",
   "Send this now? It cannot be recalled.": "Отправить сейчас? Вернуть сообщение нельзя.",
-  "Reminders: emails {sent}, notifications {pushed}, skipped {skipped}, failed {failed}": "Напоминания — писем: {sent}, уведомлений: {pushed}, пропущено: {skipped}, ошибок: {failed}"
+  "Reminders: emails {sent}, notifications {pushed}, skipped {skipped}, failed {failed}": "Напоминания — писем: {sent}, уведомлений: {pushed}, пропущено: {skipped}, ошибок: {failed}",
+  "Hide the schedule from players": "Скрыть расписание от игроков",
+  "Players and the TV screen see only played matches. Groups and the bracket stay hidden until you turn this off.": "Игроки и экран ТВ видят только сыгранные матчи. Группы и сетка скрыты, пока вы не выключите этот параметр.",
+  "The organizer has not published the schedule yet.": "Организатор ещё не опубликовал расписание."
 }

@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { adminHeaders, createTournament, loginAdmin } from './helpers';
+import { adminHeaders, createTournament, loginAdmin, patchTvSettings } from './helpers';
 
 test('stage progress remains correct after reloading a workspace', async ({ page, request }) => {
   const { id, headers } = await createTournament(request, 'mex', `Progress ${Date.now()}`);
@@ -131,6 +131,22 @@ test('bracket renders for a direct play-off and shows the diagram', async ({ pag
   );
   await bracket.getByText('Diagram', { exact: true }).click();
   await diagram;
+  await expect(bracket.getByRole('img', { name: 'Play-off bracket' })).toBeVisible();
+});
+
+test('an organizer still sees the whole bracket and its diagram while the schedule is hidden', async ({
+  page,
+  request,
+}) => {
+  const { id } = await createTournament(request, 'po', `Hidden bracket ${Date.now()}`);
+  await patchTvSettings(request, id, { hide_schedule: true });
+  expect((await request.get(`/api/tournaments/${id}/po/playoffs-schema`)).status()).toBe(404);
+  await loginAdmin(page);
+  await page.goto(`/admin/t/${id}`);
+  await page.getByRole('tab', { name: 'Bracket' }).click();
+  const bracket = page.getByTestId('bracket');
+  await expect(bracket.getByTestId('bracket-slot')).toHaveCount(3);
+  await bracket.getByText('Diagram', { exact: true }).click();
   await expect(bracket.getByRole('img', { name: 'Play-off bracket' })).toBeVisible();
 });
 

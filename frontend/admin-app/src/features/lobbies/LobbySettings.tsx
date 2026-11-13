@@ -6,7 +6,6 @@ import {
   Group,
   Input,
   NativeSelect,
-  ScrollArea,
   Stack,
   Switch,
   Tabs,
@@ -292,7 +291,6 @@ export function LobbySettings({ lobby, onClose }: { lobby: LobbyDetail; onClose:
       position={phone ? 'bottom' : 'right'}
       size={phone ? '92%' : 'min(560px, 100vw)'}
       title={tx('Lobby settings')}
-      scrollAreaComponent={ScrollArea.Autosize}
       closeButtonProps={{ 'aria-label': tx('Close') }}
     >
       <Tabs value={tab} onChange={(v) => setTab(v ?? 'details')}>

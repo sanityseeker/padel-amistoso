@@ -236,6 +236,20 @@ test('the event page lists Up next first, then Played', async ({ page, request }
   await expect(row.getByTestId('played-rank')).toContainText(/^#\d+/);
 });
 
+test('a hidden schedule leaves the event page without Up next or Later', async ({
+  page,
+  request,
+}) => {
+  const { id } = await createTournament(request, 'mex', `Hidden ${Date.now()}`);
+  await patchTvSettings(request, id, { hide_schedule: true });
+  const { session } = await profileFor(request, id, 'Ana', 'hidden');
+  await openHub(page, session.access_token);
+  await page.goto(`/player/matches/tournament/${id}`);
+  await expect(page.getByText('The organizer has not published the schedule yet.')).toBeVisible();
+  await expect(page.getByTestId('event-up-next')).toHaveCount(0);
+  await expect(page.getByTestId('event-later')).toHaveCount(0);
+});
+
 test('a round sat out has its own row, and a tap on the rank chart shows that round', async ({
   page,
   request,

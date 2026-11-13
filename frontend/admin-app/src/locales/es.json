@@ -1973,5 +1973,8 @@
   "Players with no email address and no notifications are skipped.": "Se omiten los jugadores sin correo y sin notificaciones.",
   "A short note from you, sent to every player with notifications or an email address.": "Una nota breve tuya, enviada a todos los jugadores con notificaciones o correo.",
   "Send this now? It cannot be recalled.": "¿Enviar ahora? No se puede retirar.",
-  "Reminders: emails {sent}, notifications {pushed}, skipped {skipped}, failed {failed}": "Recordatorios: correos {sent}, notificaciones {pushed}, omitidos {skipped}, fallidos {failed}"
+  "Reminders: emails {sent}, notifications {pushed}, skipped {skipped}, failed {failed}": "Recordatorios: correos {sent}, notificaciones {pushed}, omitidos {skipped}, fallidos {failed}",
+  "Hide the schedule from players": "Ocultar el calendario a los jugadores",
+  "Players and the TV screen see only played matches. Groups and the bracket stay hidden until you turn this off.": "Los jugadores y la pantalla de TV solo ven los partidos jugados. Los grupos y el cuadro siguen ocultos hasta que lo desactives.",
+  "The organizer has not published the schedule yet.": "El organizador aún no ha publicado el calendario."
 }

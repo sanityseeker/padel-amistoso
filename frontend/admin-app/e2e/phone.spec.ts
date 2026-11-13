@@ -148,7 +148,7 @@ test.afterAll(async ({ request }) => {
   const headers = await adminHeaders(request);
   const list = await (await request.get('/api/tournaments', { headers })).json();
   for (const t of list as { id: string; name: string }[])
-    if (/^Phone (Create|Bracket) /.test(t.name))
+    if (/^Phone (Create|Bracket|DE) /.test(t.name))
       await request.delete(`/api/tournaments/${t.id}`, { headers });
 });
 
@@ -156,6 +156,11 @@ test.afterAll(async ({ request }) => {
 test('the tournament and lobby settings drawers fit the phone width', async ({ page, request }) => {
   const { id } = await createTournament(request, 'mex', `Drawer ${Date.now()}`);
   const headers = await adminHeaders(request);
+  const fee = await request.patch(`/api/tournaments/${id}/payment-settings`, {
+    headers,
+    data: { fee_cents: 1500 },
+  });
+  expect(fee.ok()).toBeTruthy();
   const lobby = await (
     await request.post('/api/registrations', {
       headers,
@@ -182,6 +187,12 @@ test('the tournament and lobby settings drawers fit the phone width', async ({ p
     'aria-selected',
     'true',
   );
+  // With a fee set, the payment rows render as cards that fit the drawer.
+  await expect(tournament.getByTestId('payment-row').first()).toBeVisible();
+  expect(await fits(tournament)).toBe(true);
+  await expectInViewport(page, tournament.getByRole('button', { name: 'Mark paid' }).first());
+  await tournament.getByRole('tab', { name: 'Scoring', exact: true }).click();
+  expect(await fits(tournament)).toBe(true);
   await page.keyboard.press('Escape');
 
   await page.goto(`/admin/lobby/${lobby.id}`);
@@ -189,10 +200,42 @@ test('the tournament and lobby settings drawers fit the phone width', async ({ p
   const lobbyDrawer = page.getByRole('dialog');
   await expect(lobbyDrawer.getByRole('tab', { name: 'Details' })).toBeVisible();
   expect(await fits(lobbyDrawer)).toBe(true);
+  await lobbyDrawer.getByRole('tab', { name: 'Address and scope' }).click();
+  expect(await fits(lobbyDrawer)).toBe(true);
   await lobbyDrawer.getByRole('tab', { name: 'Email' }).click();
   await expect(lobbyDrawer.getByRole('tab', { name: 'Email' })).toHaveAttribute(
     'aria-selected',
     'true',
   );
+  expect(await noHorizontalOverflow(page)).toBe(true);
+});
+
+test('bracket: double elimination round picker reaches the last round on a phone', async ({
+  page,
+  request,
+}) => {
+  const name = `Phone DE ${Date.now()}`;
+  const headers = await adminHeaders(request);
+  const created = await request.post('/api/tournaments/playoff', {
+    headers,
+    data: {
+      name,
+      participant_names: ['A1', 'B2', 'C3', 'D4', 'E5', 'F6', 'G7', 'H8'],
+      court_names: ['Court 1'],
+      double_elimination: true,
+    },
+  });
+  expect(created.ok()).toBeTruthy();
+  const id = (await created.json()).id as string;
+  await openTournament(page, id, name);
+  await page.getByRole('tab', { name: 'Matches' }).click();
+  await expect(page.getByTestId('bracket')).toBeVisible();
+  expect(await noHorizontalOverflow(page)).toBe(true);
+  // Double elimination has too many rounds for chips: a select reaches every one, in the viewport.
+  const picker = page.getByRole('combobox', { name: 'Round' });
+  await expectInViewport(page, picker);
+  await expect(picker.locator('option', { hasText: 'Grand Final' }).first()).toBeAttached();
+  await picker.selectOption({ index: (await picker.locator('option').count()) - 1 });
+  await expect(page.getByTestId('bracket-slot')).toHaveCount(1);
   expect(await noHorizontalOverflow(page)).toBe(true);
 });
