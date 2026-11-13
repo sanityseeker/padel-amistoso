@@ -139,8 +139,8 @@ function Layout() {
             <TopBarActionContext.Provider
               value={{ action: topBarAction, setAction: setTopBarAction }}
             >
-              <ErrorBoundary key={pathname}>
-                <Suspense fallback={<Loading />}>
+              <ErrorBoundary resetKey={pathname}>
+                <Suspense fallback={<Loading testId="route-loading" />}>
                   <Outlet />
                 </Suspense>
               </ErrorBoundary>

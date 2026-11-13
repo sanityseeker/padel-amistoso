@@ -69,8 +69,13 @@ function useCountdown(updatedAt: number, seconds: number) {
 // the organizer chose: every N seconds, "on update" (server-sent events, with polling as a fallback) or
 // by hand. "Present" cycles through the sections for an unattended venue screen.
 export function TvPage() {
-  useLocale();
   const { slug = '' } = useParams();
+  // Keyed by slug: another tournament's screen starts with fresh state.
+  return <Tv key={slug} slug={slug} />;
+}
+
+function Tv({ slug }: { slug: string }) {
+  useLocale();
   const [params] = useSearchParams();
   const resolved = useQuery({
     queryKey: ['public', 'tv', 'resolve', slug],

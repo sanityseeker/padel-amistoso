@@ -37,10 +37,10 @@ export function useOverview() {
     communities,
   };
 }
-export function Loading() {
+export function Loading({ testId }: { testId?: string } = {}) {
   useLocale();
   return (
-    <Center mih={240}>
+    <Center mih={240} data-testid={testId}>
       <Loader aria-label={tx('Loading')} />
     </Center>
   );

@@ -714,5 +714,5 @@ export function ClubHostLanding() {
 /** `/club/<slug>`: the same page for hosts without subdomains. */
 export function ClubPathLanding() {
   const { slug = '' } = useParams();
-  return <ClubLanding slug={slug} />;
+  return <ClubLanding key={slug} slug={slug} />;
 }

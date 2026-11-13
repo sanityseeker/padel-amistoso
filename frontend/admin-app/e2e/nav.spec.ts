@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { chooseLanguage, expectFooter, logoutAdmin } from './helpers';
+import { adminHeaders, chooseLanguage, expectFooter, logoutAdmin } from './helpers';
 
 async function loginAdmin(page: Page, path = '/admin') {
   await page.goto(path);
@@ -272,4 +272,102 @@ test('the service worker precaches the React build under a build-hashed cache', 
   for (const shell of ['/', '/events', '/player', '/admin'])
     expect(cached.entries).toContain(shell);
   expect(cached.entries.some((p) => p.startsWith('/api/'))).toBe(false);
+});
+
+// ---- Navigation keeps the shell mounted ----------------------------------------------------------
+
+/** Client-side navigation, the way a Link does it, without a document load. */
+async function goClient(page: Page, path: string) {
+  await page.evaluate((to) => {
+    history.pushState({}, '', to);
+    dispatchEvent(new PopStateEvent('popstate'));
+  }, path);
+}
+
+const fallbackCount = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __routeFallbacks: number }).__routeFallbacks);
+
+test('moving between loaded routes never shows the route loading fallback', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __routeFallbacks: number };
+    w.__routeFallbacks = 0;
+    new MutationObserver((records) => {
+      for (const r of records)
+        for (const n of r.addedNodes)
+          if (
+            n instanceof Element &&
+            (n.matches('[data-testid="route-loading"]') ||
+              n.querySelector('[data-testid="route-loading"]'))
+          )
+            w.__routeFallbacks++;
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await loginAdmin(page);
+  const nav = page.getByRole('navigation', { name: 'Pages' });
+  // Load each section once, then go round again: nothing may fall back to the spinner.
+  await nav.getByRole('link', { name: 'Player Hub' }).click();
+  await expect(page.getByRole('heading', { name: 'Player Hub' })).toBeVisible();
+  await nav.getByRole('link', { name: 'Events' }).click();
+  await expect(page.getByRole('tab', { name: /^Live/ })).toBeVisible();
+  await nav.getByRole('link', { name: 'Admin' }).click();
+  await expect(page.getByRole('heading', { name: 'Tournaments', exact: true })).toBeVisible();
+  const before = await fallbackCount(page);
+  const paths = { 'Player Hub': /\/player$/, Events: /\/events$/, Admin: /\/admin$/ };
+  for (const link of ['Player Hub', 'Events', 'Admin', 'Player Hub', 'Admin'] as const) {
+    await nav.getByRole('link', { name: link }).click();
+    await expect(page).toHaveURL(paths[link]);
+  }
+  await expect(page.getByRole('heading', { name: 'Tournaments', exact: true })).toBeVisible();
+  expect(await fallbackCount(page)).toBe(before);
+});
+
+test('another lobby or club starts with its own fresh page state', async ({ page, request }) => {
+  const headers = await adminHeaders(request);
+  const stamp = Date.now();
+  const lobbies: { id: string; name: string }[] = [];
+  for (const name of [`Nav lobby A ${stamp}`, `Nav lobby B ${stamp}`]) {
+    const res = await request.post('/api/registrations', {
+      headers,
+      data: { name, auto_send_email: false },
+    });
+    expect(res.ok()).toBeTruthy();
+    lobbies.push({ id: (await res.json()).id, name });
+  }
+  const community = await (
+    await request.post('/api/communities', { headers, data: { name: `Nav community ${stamp}` } })
+  ).json();
+  const clubs: { id: string; name: string }[] = [];
+  for (const name of [`Nav club A ${stamp}`, `Nav club B ${stamp}`]) {
+    const res = await request.post('/api/clubs', {
+      headers,
+      data: { name, community_id: community.id },
+    });
+    expect(res.ok()).toBeTruthy();
+    clubs.push({ id: (await res.json()).id, name });
+  }
+  await loginAdmin(page);
+  const boot = await page.evaluate(() => window.__bootId);
+
+  await goClient(page, `/admin/lobby/${lobbies[0].id}`);
+  await expect(page.getByRole('heading', { name: lobbies[0].name })).toBeVisible();
+  await page.getByRole('tab', { name: 'Payments' }).click();
+  await expect(page.getByRole('tab', { name: 'Payments' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await goClient(page, `/admin/lobby/${lobbies[1].id}`);
+  await expect(page.getByRole('heading', { name: lobbies[1].name })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Players' })).toHaveAttribute('aria-selected', 'true');
+
+  await goClient(page, `/admin/clubs/${clubs[0].id}`);
+  await expect(page.getByRole('heading', { name: clubs[0].name })).toBeVisible();
+  await page.getByRole('tab', { name: 'Skill tiers' }).click();
+  await expect(page.getByRole('tab', { name: 'Skill tiers' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await goClient(page, `/admin/clubs/${clubs[1].id}`);
+  await expect(page.getByRole('heading', { name: clubs[1].name })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Events' })).toHaveAttribute('aria-selected', 'true');
+  expect(await page.evaluate(() => window.__bootId)).toBe(boot);
 });

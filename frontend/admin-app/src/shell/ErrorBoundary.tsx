@@ -24,13 +24,25 @@ function Fallback({ message }: { message: string }) {
   );
 }
 
-export class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+type Props = {
+  children: ReactNode;
+  // A new value clears a caught error (the shell passes the pathname), so leaving a broken page
+  // recovers without remounting the subtree on every navigation.
+  resetKey?: unknown;
+};
+
+export class ErrorBoundary extends Component<Props, { error: Error | null }> {
   state = { error: null as Error | null };
   static getDerivedStateFromError(error: Error) {
     return { error };
   }
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error(error, info.componentStack);
+  }
+  componentDidUpdate(prev: Props) {
+    if (this.state.error && !Object.is(prev.resetKey, this.props.resetKey)) {
+      this.setState({ error: null });
+    }
   }
   render() {
     return this.state.error ? <Fallback message={this.state.error.message} /> : this.props.children;

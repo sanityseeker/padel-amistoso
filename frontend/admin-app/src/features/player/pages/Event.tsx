@@ -31,8 +31,13 @@ import { Notice } from '../../../ui/Notice';
 // correct, escalate), later and played matches, a standings snapshot, your path and notifications.
 // Live refresh comes from LiveUpdates (it follows this tournament's stream).
 export default function Event() {
+  const { kind = '', id = '' } = useParams();
+  // Keyed by event: another event starts with fresh per-event state.
+  return <EventView key={`${kind}:${id}`} kind={kind} id={id} />;
+}
+
+function EventView({ kind, id }: { kind: string; id: string }) {
   useLocale();
-  const { kind, id = '' } = useParams();
   const { space, liveEntries, liveLoading } = usePlayerSpace();
   const entry =
     liveEntries.find((e) => e.entity_type === kind && e.entity_id === id) ??

@@ -14,8 +14,13 @@ import { ClubTiers } from './ClubTiers';
 
 // One club: its seasons, skill tiers, player roster and settings.
 export function ClubPage() {
-  useLocale();
   const { id = '' } = useParams();
+  // Keyed by id: another club starts on its default tab.
+  return <Club key={id} id={id} />;
+}
+
+function Club({ id }: { id: string }) {
+  useLocale();
   const { user } = useAuth();
   const { clubs, communities } = useOverview();
   const [tab, setTab] = useState<string | null>('events');

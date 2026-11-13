@@ -94,6 +94,15 @@ export function PlayerLayout() {
   const scope = usePlayerScope();
   const savedSport = usePlayerSport();
   const initialized = useRef(false);
+  // The layout stays mounted across Hub pages, so a one-off notice clears when the page changes
+  // (as it did when every navigation remounted the layout).
+  const lastPath = useRef(pathname);
+  useEffect(() => {
+    if (lastPath.current === pathname) return;
+    lastPath.current = pathname;
+    setNotice('');
+    setLinkError('');
+  }, [pathname]);
   const hostClub = useQuery({
     queryKey: ['public', 'host-club'],
     queryFn: resolveHostClub,

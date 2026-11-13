@@ -658,8 +658,13 @@ function HubSections({
 // own entry (by passphrase, by Player Hub login, or by the e-mailed link `?token=`), withdraw, and report
 // a payment. Nothing here sends the organizer token.
 export function RegisterPage() {
-  useLocale();
   const { slug = '' } = useParams();
+  // Keyed by slug: another lobby's sign-up starts with no entry or form state.
+  return <Register key={slug} slug={slug} />;
+}
+
+function Register({ slug }: { slug: string }) {
+  useLocale();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const client = useQueryClient();

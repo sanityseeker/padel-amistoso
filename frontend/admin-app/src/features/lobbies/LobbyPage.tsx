@@ -123,8 +123,13 @@ function RowMenu({
 // A lobby: share the sign-up link, manage the people who registered, collect fees, and turn the
 // list into a tournament.
 export function LobbyPage() {
-  useLocale();
   const { id = '' } = useParams();
+  // Keyed by id: per-lobby state (open tab, dialogs) starts fresh on another lobby.
+  return <Lobby key={id} id={id} />;
+}
+
+function Lobby({ id }: { id: string }) {
+  useLocale();
   const navigate = useNavigate();
   const phone = !!useMediaQuery('(max-width: 767px)', false, { getInitialValueInEffect: false });
   const [editing, setEditing] = useState<Registrant | 'new' | null>(null);
