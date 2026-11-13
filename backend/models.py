@@ -226,6 +226,8 @@ class Match:
     # Index of the concurrent "time slot" this match belongs to (0-based).
     # Matches sharing the same slot_number are played simultaneously on different courts.
     slot_number: int = 0
+    # True while the match holds its court (being played now); see tournaments/live_courts.py.
+    on_court: bool = False
     round_number: int = 0
     round_label: str = ""
     # Pair position within the round (0-based bracket index, including bye slots).

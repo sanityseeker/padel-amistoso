@@ -46,7 +46,13 @@ from .helpers import (
     _is_off_format_player_submit,
     _mark_admin_score,
 )
-from .schemas import CreatePlayoffRequest, RecordScoreRequest, RecordTennisScoreRequest, UpdateCourtsRequest
+from .schemas import (
+    CreatePlayoffRequest,
+    RecordScoreRequest,
+    RecordTennisScoreRequest,
+    UpdateCourtPreferencesRequest,
+    UpdateCourtsRequest,
+)
 from .routes_withdrawals import withdraw_unavailable_ids, withdrawal_summaries
 from .state import allocate_tournament_id, _tournament_versions, get_tournament_lock, save_tournament
 from .player_secret_store import create_secrets_for_tournament
@@ -129,6 +135,7 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
             initial_strength=initial_strength,
             num_winners=req.num_winners,
             third_place=req.third_place,
+            bracket_courts=req.bracket_courts if req.espejo else None,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -177,6 +184,20 @@ async def po_update_courts(tid: str, req: UpdateCourtsRequest, user=Depends(get_
     return {"courts": [{"id": c.id, "name": c.name} for c in t.courts]}
 
 
+@router.patch("/{tid}/po/court-preferences")
+async def po_update_court_preferences(
+    tid: str, req: UpdateCourtPreferencesRequest, user=Depends(get_current_user)
+) -> dict:
+    """Set the preferred courts of each Espejo bracket side (main / consolation)."""
+    _require_editor_access(tid, user)
+    async with get_tournament_lock(tid):
+        data = _get_tournament(tid, _PO)
+        t: PlayoffTournament = data["tournament"]
+        t.set_court_preferences(req.bracket_courts)
+        await save_tournament(tid)
+    return {"bracket_courts": t.bracket_courts}
+
+
 @router.get("/{tid}/po/status")
 async def po_status(tid: str) -> dict:
     """Return high-level status (phase, champion, bracket type) for a standalone Play-off tournament."""
@@ -193,6 +214,7 @@ async def po_status(tid: str) -> dict:
         "espejo_losers_bracket_seeded": (t.bracket.losers_bracket is not None if espejo else False),
         "assign_courts": data.get("assign_courts", True),
         "courts": [{"id": c.id, "name": c.name} for c in t.courts],
+        "bracket_courts": t.bracket_courts,
         **winners_payload(t),
         # Known as soon as the Winners final is played (before the tournament ends).
         "winners_champion": (

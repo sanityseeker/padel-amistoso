@@ -4,6 +4,7 @@ export { MatchList, MatchListFrame } from './MatchList';
 export { ScoreEntry, type ScoreEntryProps, type ScoreRules } from './ScoreEntry';
 export {
   StandingsTable,
+  groupHighlight,
   hasDraws,
   type StandingRow,
   type StandingsTableProps,

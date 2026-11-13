@@ -39,6 +39,8 @@ export interface StandingsTableProps {
   preset: 'group' | 'mexicano' | 'leaderboard';
   /** The signed-in player's row gets a rule and a tint. */
   highlightId?: string;
+  /** How many places are marked: 1-3 in podium colors, the rest with an accent ring (default 3). */
+  highlightPlaces?: number;
   /** The first N rows qualify; a dashed line closes them. */
   qualifyCount?: number;
   density?: 'md' | 'compact' | 'tv';
@@ -232,6 +234,15 @@ function columnsFor(
 
 type Sort = { key: string; dir: 'asc' | 'desc' } | null;
 
+/** Places a group's table marks: the group's own value, else the tournament default, else 3. */
+export function groupHighlight(
+  settings:
+    { highlight_places?: number; highlight_places_by_group?: Record<string, number> } | undefined,
+  group: string,
+): number {
+  return settings?.highlight_places_by_group?.[group] ?? settings?.highlight_places ?? 3;
+}
+
 // Phones show rank, name and the key columns; tapping a row reveals the rest. Wider screens show
 // every column. Column headers sort (default order is the backend ranking). Gold, silver and bronze
 // mark the podium; the column that decides the Mexicano rank is bold.
@@ -239,6 +250,7 @@ export function StandingsTable({
   rows,
   preset,
   highlightId,
+  highlightPlaces = 3,
   qualifyCount,
   density = 'md',
   nameLabel,
@@ -372,7 +384,13 @@ export function StandingsTable({
                     <Table.Td className={classes.rank}>
                       <span
                         className={classes.mark}
-                        data-rank={place != null && place <= 3 && !sort ? place : undefined}
+                        data-rank={
+                          place != null && place <= highlightPlaces && !sort
+                            ? place <= 3
+                              ? place
+                              : 'top'
+                            : undefined
+                        }
                       >
                         {place ?? '—'}
                       </span>

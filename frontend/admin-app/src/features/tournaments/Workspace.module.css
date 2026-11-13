@@ -59,8 +59,15 @@
   .standingsPane {
     position: sticky;
     top: calc(var(--app-shell-header-offset, 0px) + 140px);
-    max-height: calc(100dvh - var(--app-shell-header-offset, 0px) - 170px);
+    max-height: calc(100dvh - var(--app-shell-header-offset, 0px) - 152px);
     overflow: auto;
+  }
+}
+/* Wide screens: a match card reads fine at half the width, and the standings need the room for their
+   score columns (sets, PF/PA, ELO drop out below ~520–620px of table). */
+@media (min-width: 75em) {
+  .panes {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 .standingsPane:focus-visible {

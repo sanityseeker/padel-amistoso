@@ -15,6 +15,7 @@ from fastapi.responses import Response
 from ..auth.deps import PlayerIdentity
 from ..auth.models import User, UserRole
 from ..models import InputFormat, Match, MatchStatus, SetDecider
+from ..tournaments import live_courts
 from ..tournaments.playoff import THIRD_PLACE_LABEL, EspejoParallelBracket
 from ..tournaments.set_format import format_sets, match_decider, totals_from_sets, validate_decider_sets
 from .db import get_co_editors
@@ -313,6 +314,7 @@ def _serialize_match(m: Match, points_target: int | None = None) -> dict:
         "sets": [list(s) for s in m.sets] if m.sets else None,
         "third_set_loss": m.third_set_loss,
         "slot_number": m.slot_number,
+        "on_court": live_courts.is_on_court(m),
         "round_number": m.round_number,
         "round_label": m.round_label,
         "comment": m.comment or "",

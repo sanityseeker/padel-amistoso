@@ -72,7 +72,7 @@ export interface MatchCardProps {
   hideScores?: boolean;
   /** `false` drops the court from the meta line (the spectator court cards title it themselves). */
   showCourt?: boolean;
-  /** `false` when the tournament does not assign courts: no "No court assigned" placeholder. */
+  /** `false` when the tournament does not assign courts: no "Waiting for a court" placeholder. */
   courts?: boolean;
   /** Spectator lists: a scheduled match of the signed-in player, tinted and labelled "Your match". */
   yours?: boolean;
@@ -99,7 +99,11 @@ export function MatchCard({
   const tv = density === 'tv';
   const meta = [
     match.roundLabel && formatRoundLabel(match.roundLabel),
-    showCourt ? match.court || (courts ? tx('No court assigned') : null) : null,
+    // A court means "playing there now"; a match still to play without one waits in the queue.
+    showCourt
+      ? match.court ||
+        (courts && match.rawStatus === 'scheduled' ? tx('Waiting for a court') : null)
+      : null,
   ]
     .filter(Boolean)
     .join(' · ');

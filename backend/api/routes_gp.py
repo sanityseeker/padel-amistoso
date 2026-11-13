@@ -54,6 +54,7 @@ from .schemas import (
     RecordScoreRequest,
     RecordTennisScoreRequest,
     StartGroupPlayoffsRequest,
+    UpdateCourtPreferencesRequest,
     UpdateCourtsRequest,
 )
 from .state import (
@@ -156,6 +157,7 @@ async def create_group_playoff(
         group_assignments=req.group_assignments,
         team_roster=team_roster,
         team_member_names=team_member_names,
+        group_courts=req.group_courts,
     )
     try:
         t.generate()
@@ -214,6 +216,9 @@ async def gp_status(tid: str) -> dict:
         "espejo_losers_bracket_seeded": bool(espejo and bracket.losers_bracket is not None),
         "assign_courts": data.get("assign_courts", True),
         "courts": [{"id": c.id, "name": c.name} for c in t.courts],
+        "group_names": [g.name for g in t.groups],
+        "group_courts": t.group_courts,
+        "bracket_courts": t.bracket_courts,
         **winners_payload(t),
         # Known as soon as the Winners final is played (before the tournament ends).
         "winners_champion": [p.name for p in bracket.winners_champion()]
@@ -384,6 +389,20 @@ async def gp_update_courts(tid: str, req: UpdateCourtsRequest, user=Depends(get_
         data["assign_courts"] = len(courts) > 0
         await save_tournament(tid)
     return {"courts": [{"id": c.id, "name": c.name} for c in t.courts]}
+
+
+@router.patch("/{tid}/gp/court-preferences")
+async def gp_update_court_preferences(
+    tid: str, req: UpdateCourtPreferencesRequest, user=Depends(get_current_user)
+) -> dict:
+    """Set the preferred courts of each group and each Espejo bracket side."""
+    _require_editor_access(tid, user)
+    async with get_tournament_lock(tid):
+        data = _get_tournament(tid, _GP)
+        t: GroupPlayoffTournament = data["tournament"]
+        t.set_court_preferences(req.group_courts, req.bracket_courts)
+        await save_tournament(tid)
+    return {"group_courts": t.group_courts, "bracket_courts": t.bracket_courts}
 
 
 @router.post("/{tid}/gp/next-group-round")

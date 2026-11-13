@@ -62,7 +62,7 @@ import type { Match } from '../../../types';
 import { ActionBar, ConfirmAction, EmptyState, ResponsiveSheet } from '../../../ui';
 import { MatchList } from '../MatchList';
 import { ActivityList } from '../../../shell/ActivityList';
-import { StandingsTable } from '../StandingsTable';
+import { StandingsTable, groupHighlight } from '../StandingsTable';
 import { toStandingRows } from '../adapters';
 import { Bracket } from '../Bracket';
 import { formatRoundLabel } from '../../../roundLabel';
@@ -71,6 +71,7 @@ import { RoundBar } from '../RoundBar';
 import { NextStepButton, WorkspaceHeader, type MenuEntry, type NextStep } from '../WorkspaceHeader';
 import classes from '../Workspace.module.css';
 import { Notice } from '../../../ui/Notice';
+import { GroupHighlightInput } from '../../../admin/tournament/GroupHighlightInput';
 
 // Opens the first pending match's Score button (or the given match's) once the editor has closed.
 function focusScoreAction(matchId: string, next: boolean) {
@@ -801,8 +802,17 @@ function Workspace({ id }: { id: string }) {
             rows={toStandingRows(standingGroups[standingsGroup] ?? [])}
             preset="group"
             density="compact"
+            highlightPlaces={groupHighlight(settings, standingsGroup)}
             sets={settings.score_mode['gp-group'] === 'sets'}
           />
+          {canEdit && (
+            <GroupHighlightInput
+              key={standingsGroup}
+              tid={id}
+              group={standingsGroup}
+              value={groupHighlight(settings, standingsGroup)}
+            />
+          )}
         </Stack>
       )}
       {readOnlyGroupMatches.length > 0 && (

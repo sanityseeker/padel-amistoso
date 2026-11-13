@@ -1635,6 +1635,7 @@ async def convert_registration(
                 team_roster=team_roster,
                 team_member_names=team_member_names,
                 group_assignments=req.group_assignments,
+                group_courts=req.group_courts,
             )
             try:
                 t.generate()

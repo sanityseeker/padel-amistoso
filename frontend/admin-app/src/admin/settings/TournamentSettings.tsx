@@ -195,6 +195,7 @@ export function TournamentSettings({
               hasCourts={(status.courts?.length ?? 0) > 0}
               hasPlayoffs={hasPlayoffs}
               mexicano={prefix === 'mex'}
+              groups={prefix === 'gp'}
             />
           </Tabs.Panel>
           <Tabs.Panel flex={1} miw={0} value="courts">

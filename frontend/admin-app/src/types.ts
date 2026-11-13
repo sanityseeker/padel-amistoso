@@ -204,6 +204,8 @@ export interface Match {
   sets: Score[] | null;
   third_set_loss?: boolean;
   slot_number?: number;
+  /** Being played now: the match holds its court. */
+  on_court?: boolean;
   round_number?: number;
   round_label: string;
   comment?: string;
@@ -255,6 +257,10 @@ export interface TvSettings {
   show_bracket?: boolean;
   show_pending_matches?: boolean;
   hide_schedule?: boolean;
+  /** Places marked in each group's standings (default 3). */
+  highlight_places?: number;
+  /** Group name -> places for that group; other groups use `highlight_places`. */
+  highlight_places_by_group?: Record<string, number>;
   allow_player_scoring?: boolean;
   refresh_interval?: number;
   schema_box_scale?: number;
@@ -337,6 +343,13 @@ export interface TournamentStatus {
   team_roster?: Record<string, string[]>;
   courts?: { id: string; name: string }[];
   assign_courts?: boolean;
+  /** Group+Playoff: group names, in order. */
+  group_names?: string[];
+  espejo_split?: boolean;
+  /** Preferred court names per group (Group+Playoff). */
+  group_courts?: Record<string, string[]>;
+  /** Preferred court names per Espejo side (`winners` / `losers`). */
+  bracket_courts?: Record<string, string[]>;
   skill_gap?: number | null;
   win_bonus?: number;
   strength_weight?: number;

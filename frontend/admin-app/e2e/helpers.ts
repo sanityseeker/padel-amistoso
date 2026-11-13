@@ -155,6 +155,6 @@ export async function fillNames(page: Page, field: 'players' | 'courts', value: 
   const toggle = page.locator('label', { hasText: /^(Text|Texto|Текст)$/ });
   await (field === 'players' ? toggle.first() : toggle.last()).click();
   await page
-    .getByLabel(field === 'players' ? /^(Players|Jugadores|Игроки)/ : /^(Courts|Pistas|Корты)/)
+    .getByLabel(field === 'players' ? /^(Players|Jugadores|Игроки)/ : /^(Courts|Pistas|Корты)$/)
     .fill(value);
 }

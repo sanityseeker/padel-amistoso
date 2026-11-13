@@ -136,6 +136,10 @@ export interface Leaderboard {
 export interface TvPlayerSettings {
   /** The organizer hides unplayed matches, groups and the bracket from players. */
   hide_schedule?: boolean;
+  /** Places marked in each group's standings (default 3). */
+  highlight_places?: number;
+  /** Group name -> places for that group; other groups use `highlight_places`. */
+  highlight_places_by_group?: Record<string, number>;
   allow_player_scoring: boolean;
   score_mode: Record<string, string>;
   set_decider: 'full_set' | 'match_tiebreak';

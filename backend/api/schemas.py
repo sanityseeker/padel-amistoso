@@ -110,6 +110,8 @@ class CreateGroupPlayoffRequest(BaseModel):
     num_groups: int = Field(default=2, ge=1, le=32)
     group_names: list[str] = Field(default=[], max_length=32)
     group_assignments: dict[str, list[str]] = Field(default_factory=dict)
+    # Preferred courts per group name (court names from court_names; others may still be borrowed).
+    group_courts: dict[str, list[str]] = Field(default_factory=dict, max_length=32)
     top_per_group: int = Field(default=2, ge=1)
     double_elimination: bool = False
     public: bool = True
@@ -251,6 +253,8 @@ class CreatePlayoffRequest(BaseModel):
         default=False,
         description="Deprecated and ignored: the Espejo Super Final was removed. Accepted so old clients keep working.",
     )
+    # Espejo only: preferred courts per side, keys "winners" (main) and "losers" (consolation).
+    bracket_courts: dict[str, list[str]] = Field(default_factory=dict, max_length=2)
     # Number of equal winners (single elimination only; 1 = classic champion, 3 needs third_place).
     num_winners: int = Field(default=1, ge=1, le=64)
     # Play a 3rd-place match (single elimination or Espejo).
@@ -311,6 +315,9 @@ class TvSettingsRequest(BaseModel):
     show_bracket: bool | None = None
     show_pending_matches: bool | None = None
     hide_schedule: bool | None = None
+    highlight_places: int | None = Field(default=None, ge=0, le=32)
+    # Per-group overrides of highlight_places, merged into the stored map.
+    highlight_places_by_group: dict[str, Annotated[int, Field(ge=0, le=32)]] | None = None
     allow_player_scoring: bool | None = None
     refresh_interval: int | None = Field(default=None, ge=-1, le=300)
     schema_box_scale: float | None = Field(default=None, ge=0.3, le=3.0)
@@ -342,6 +349,10 @@ class TvSettings(BaseModel):
     show_pending_matches: bool = False
     # Withhold unplayed matches, groups, standings and the bracket from non-editors.
     hide_schedule: bool = False
+    # Places marked in each group's standings (1-3 in podium colors, the rest with an accent ring).
+    highlight_places: int = 3
+    # Group name -> places for that group; groups not listed use highlight_places.
+    highlight_places_by_group: dict[str, int] = Field(default_factory=dict)
     allow_player_scoring: bool = True
     refresh_interval: int = -1
     schema_box_scale: float = 1.0
@@ -551,6 +562,19 @@ class MatchFormatResponse(BaseModel):
 
 class UpdateCourtsRequest(BaseModel):
     court_names: list[str] = Field(default_factory=list, max_length=64)
+
+
+class UpdateCourtPreferencesRequest(BaseModel):
+    """Preferred courts per group and per Espejo side; replaces the stored preferences."""
+
+    group_courts: dict[str, list[str]] = Field(default_factory=dict, max_length=32)
+    bracket_courts: dict[str, list[str]] = Field(default_factory=dict, max_length=2)
+
+    @model_validator(mode="after")
+    def validate_sides(self) -> "UpdateCourtPreferencesRequest":
+        if set(self.bracket_courts) - {"winners", "losers"}:
+            raise ValueError('bracket_courts keys must be "winners" or "losers"')
+        return self
 
 
 class PatchMexSettingsRequest(BaseModel):
@@ -1030,6 +1054,8 @@ class ConvertRegistrationRequest(BaseModel):
     num_groups: int = Field(default=2, ge=1, le=32)
     group_names: list[str] = []
     group_assignments: dict[str, list[str]] = Field(default_factory=dict)
+    # Preferred courts per group name (court names from court_names; others may still be borrowed).
+    group_courts: dict[str, list[str]] = Field(default_factory=dict, max_length=32)
     top_per_group: int = Field(default=2, ge=1)
     double_elimination: bool = False
     # Play-off specific (single elimination only for num_winners > 1)

@@ -314,9 +314,9 @@ test("the Hub match card shows the organizer's note and no court placeholder whe
   await openHub(page, session.access_token);
   const card = page.getByTestId('active-tournament');
   await expect(card.getByTestId('match-comment')).toContainText('Court 3 is wet');
-  await expect(card).not.toContainText('No court assigned');
+  await expect(card).not.toContainText('Waiting for a court');
   await page.goto(`/player/matches/tournament/${id}`);
-  await expect(page.getByTestId('event-up-next')).not.toContainText('No court assigned');
+  await expect(page.getByTestId('event-up-next')).not.toContainText('Waiting for a court');
 });
 
 test('a player whose opponent is not decided yet cannot enter a score', async ({

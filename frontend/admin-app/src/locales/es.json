@@ -156,7 +156,6 @@
   "Played": "Jugados",
   "Enter a score for both sides.": "Introduce el resultado de ambos lados.",
   "Record match score": "Registrar resultado del partido",
-  "Unassigned court": "Pista sin asignar",
   "Scores must add up to": "Los resultados deben sumar",
   "points.": "puntos.",
   "Save score": "Guardar resultado",
@@ -183,7 +182,7 @@
   "Every point is in.": "Todos los resultados están registrados.",
   "No matches to show": "No hay partidos para mostrar",
   "Switch the filter to see other matches, or generate the next round.": "Cambia el filtro para ver otros partidos o genera la siguiente ronda.",
-  "No court assigned": "Sin pista asignada",
+  "Waiting for a court": "Esperando pista",
   "To be decided": "Por decidir",
   "Sets:": "Sets:",
   "Edit score": "Editar resultado",
@@ -1976,5 +1975,12 @@
   "Reminders: emails {sent}, notifications {pushed}, skipped {skipped}, failed {failed}": "Recordatorios: correos {sent}, notificaciones {pushed}, omitidos {skipped}, fallidos {failed}",
   "Hide the schedule from players": "Ocultar el calendario a los jugadores",
   "Players and the TV screen see only played matches. Groups and the bracket stay hidden until you turn this off.": "Los jugadores y la pantalla de TV solo ven los partidos jugados. Los grupos y el cuadro siguen ocultos hasta que lo desactives.",
-  "The organizer has not published the schedule yet.": "El organizador aún no ha publicado el calendario."
+  "The organizer has not published the schedule yet.": "El organizador aún no ha publicado el calendario.",
+  "Highlighted places in every group": "Puestos destacados en cada grupo",
+  "Marked in the group standings for players, the TV screen and you. Places 1-3 keep gold, silver and bronze; 0 turns the marks off. Change one group under its table in Standings.": "Se marcan en la clasificación de cada grupo para los jugadores, la pantalla de TV y para ti. Los puestos 1-3 mantienen oro, plata y bronce; 0 quita las marcas. Cambia un grupo concreto bajo su tabla en Clasificación.",
+  "Highlighted places in this group": "Puestos destacados en este grupo",
+  "Courts per group or bracket": "Pistas por grupo o cuadro",
+  "Matches use their own courts first. When those are busy, they use any free court.": "Los partidos usan primero sus propias pistas. Si están ocupadas, usan cualquier pista libre.",
+  "Any court": "Cualquier pista",
+  "A court that no group or bracket picks is shared by all.": "Una pista que no elige ningún grupo ni cuadro es común para todos."
 }

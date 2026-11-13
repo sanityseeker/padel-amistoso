@@ -288,6 +288,15 @@ async def update_tv_settings(tid: str, req: TvSettingsRequest, user: User = Depe
         if "score_mode" in patch:
             merged = {**current.score_mode, **patch.pop("score_mode")}
             patch["score_mode"] = merged
+        if "highlight_places_by_group" in patch:
+            groups = getattr(_tournaments[tid].get("tournament"), "groups", None) or []
+            unknown = set(patch["highlight_places_by_group"]) - {g.name for g in groups}
+            if unknown:
+                raise HTTPException(400, f"Unknown group: {', '.join(sorted(unknown))}")
+            patch["highlight_places_by_group"] = {
+                **current.highlight_places_by_group,
+                **patch["highlight_places_by_group"],
+            }
         updated = current.model_copy(update=patch)
         _tournaments[tid]["tv_settings"] = updated.model_dump()
         await save_tournament(tid)

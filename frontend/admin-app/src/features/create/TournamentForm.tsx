@@ -34,6 +34,12 @@ import { ConvertPlayers } from './ConvertPlayers';
 import classes from './Create.module.css';
 import { GroupDraw } from './GroupDraw';
 import { NameListField } from './NameListField';
+import {
+  CourtPreferencesFields,
+  cleanPreferences,
+  espejoScopes,
+  type CourtPreferences,
+} from './CourtPreferencesFields';
 import { PlayerDetails, PlayersFields, type PlayerMeta } from './PlayersFields';
 import {
   effectiveChoice,
@@ -101,6 +107,8 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
   const [extras, setExtras] = useState<string[]>([]);
   const [courts, setCourts] = useState('Court 1\nCourt 2');
   const [assignCourts, setAssignCourts] = useState(true);
+  const [perScopeCourts, setPerScopeCourts] = useState(false);
+  const [courtPrefs, setCourtPrefs] = useState<CourtPreferences>({});
   const [rolling, setRolling] = useState(false);
   const [rounds, setRounds] = useState<number | string>(6);
   const [points, setPoints] = useState<number | string>(32);
@@ -179,6 +187,15 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
   const activeDraw = draw && draw.sig === drawSig ? draw.groups : null;
   const minPlayers = rules.teamMode ? 2 : 4;
   const poChoice = effectiveChoice(playoff, entries.length);
+  // Preferred courts: per group (Group+Playoff) or per Espejo bracket (direct play-offs).
+  const courtScopes =
+    kind === 'group_playoff'
+      ? groupNames.map((g) => ({ key: g, label: tx('Group {name}', { name: g }) }))
+      : kind === 'playoff' && poChoice.format === 'espejo'
+        ? espejoScopes()
+        : [];
+  const scopedCourts =
+    assignCourts && perScopeCourts ? cleanPreferences(courtPrefs, courtScopes, courtNames) : {};
 
   const create = useAdminMutation({
     request: async () => {
@@ -228,6 +245,7 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
             ? {
                 num_groups: groupCount,
                 group_names: groupNames,
+                group_courts: scopedCourts,
                 ...(activeDraw
                   ? {
                       group_assignments: Object.fromEntries(
@@ -239,6 +257,7 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
             : {
                 double_elimination: poChoice.format === 'double',
                 espejo: poChoice.format === 'espejo',
+                ...(poChoice.format === 'espejo' ? { bracket_courts: scopedCourts } : {}),
                 num_winners: poChoice.winners,
                 third_place: poChoice.thirdPlace,
               };
@@ -472,6 +491,16 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
                   itemPlaceholder={(n) => tx('Court {n}', { n })}
                   removeLabel={(n) => tx('Remove court {n}', { n })}
                   addLabel={tx('Add court')}
+                />
+              )}
+              {assignCourts && (
+                <CourtPreferencesFields
+                  enabled={perScopeCourts}
+                  onEnabledChange={setPerScopeCourts}
+                  scopes={courtScopes}
+                  courtNames={courtNames}
+                  value={courtPrefs}
+                  onChange={setCourtPrefs}
                 />
               )}
               {kind === 'mexicano' && (

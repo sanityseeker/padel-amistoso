@@ -37,6 +37,7 @@ export function NameListField({
   itemPlaceholder,
   minRows = 3,
   required = true,
+  hideLabel = false,
 }: {
   label: string;
   description?: string;
@@ -50,6 +51,8 @@ export function NameListField({
   itemPlaceholder: (n: number) => string;
   minRows?: number;
   required?: boolean;
+  /** The surrounding block already names the list (a settings Section title); keep only the switch. */
+  hideLabel?: boolean;
 }) {
   useLocale();
   const [view, setView] = useState<'text' | 'form'>('form');
@@ -88,8 +91,8 @@ export function NameListField({
 
   return (
     <Stack gap="xs">
-      <Group justify="space-between" align="flex-end" wrap="nowrap">
-        <Input.Label required={required}>{label}</Input.Label>
+      <Group justify={hideLabel ? 'flex-end' : 'space-between'} align="flex-end" wrap="nowrap">
+        {!hideLabel && <Input.Label required={required}>{label}</Input.Label>}
         <SegmentedControl
           size="xs"
           aria-label={tx('Input mode')}

@@ -18,10 +18,14 @@ import itertools
 import random
 import string
 from collections import defaultdict
+from typing import TYPE_CHECKING
 
 from ..models import Court, GroupStanding, Match, MatchStatus, Player
 from . import pairing as pairing_mod
 from .set_format import games_from_sets, match_decider
+
+if TYPE_CHECKING:
+    from .court_preferences import CourtPlan
 
 
 def _schedule_round_robin(players: list) -> list[list[tuple]]:
@@ -471,6 +475,7 @@ def assign_courts(
     courts: list[Court],
     *,
     court_offset: int = 0,
+    plan: CourtPlan | None = None,
 ) -> list[Match]:
     """
     Assign courts to unassigned matches, distributing them across time slots.
@@ -495,6 +500,9 @@ def assign_courts(
     court_offset:
         Rotate the court list by this many positions so that successive
         batches of assignments spread across all courts.
+    plan:
+        Preferred courts per group / bracket side.  Within each slot a match
+        takes its own court first, then an unclaimed one, then any free one.
     """
     if not courts:
         return matches
@@ -505,16 +513,26 @@ def assign_courts(
 
     n_courts = len(courts)
 
+    use_plan = plan is not None and plan.active
+
     # Phase 1 — partition pool into time-slots.
     slots = _partition_into_slots(pool, n_courts)
+    if use_plan:
+        slots = _partition_for_plan(pool, n_courts, plan, slots)
 
     # Phase 2 — order: fuller slots first, rest-aware within same-size tiers.
     slots = _order_slots(slots)
 
     # Phase 3 — assign courts and slot numbers.
     for slot_idx, group in enumerate(slots):
+        if use_plan:
+            k = (slot_idx + court_offset) % n_courts
+            chosen = plan.pick(group, courts[k:] + courts[:k], rotate=slot_idx + court_offset)
         for i, m in enumerate(group):
-            m.court = courts[(slot_idx + i + court_offset) % n_courts]
+            if use_plan:
+                m.court = chosen[id(m)]
+            else:
+                m.court = courts[(slot_idx + i + court_offset) % n_courts]
             m.slot_number = slot_idx
 
     return matches
@@ -566,6 +584,79 @@ def _partition_into_slots(pool: list[Match], n_courts: int) -> list[list[Match]]
             break
         slots.append(group)
     return slots
+
+
+def _partition_for_plan(
+    pool: list[Match],
+    n_courts: int,
+    plan: CourtPlan,
+    baseline: list[list[Match]],
+    attempts: int = 30,
+) -> list[list[Match]]:
+    """Re-partition so each slot holds no more matches of a group than it has own courts.
+
+    Matches without own courts count against the unclaimed courts.  The
+    result never uses more slots than *baseline* (the plain partition), so
+    preferences never leave a court empty while a match could be played;
+    among partitions with the fewest slots, the one that borrows least wins.
+    """
+    shared = "\0shared"
+    n_unclaimed = sum(1 for c in plan.courts if c.id not in plan.claimed_ids)
+
+    def bucket(m: Match) -> str:
+        return plan.scope_of(m) if plan.preferred(m) else shared
+
+    caps = {scope: len(cs) for scope, cs in plan.by_scope.items()}
+    caps[shared] = n_unclaimed
+    ps = {id(m): _match_player_ids(m) for m in pool}
+    buckets = {id(m): bucket(m) for m in pool}
+
+    def overflow(slots: list[list[Match]]) -> int:
+        total = 0
+        for group in slots:
+            counts: defaultdict[str, int] = defaultdict(int)
+            for m in group:
+                counts[buckets[id(m)]] += 1
+            total += sum(max(0, n - caps[b]) for b, n in counts.items())
+        return total
+
+    def attempt() -> list[list[Match]]:
+        remaining = list(pool)
+        random.shuffle(remaining)
+        slots: list[list[Match]] = []
+        while remaining:
+            group: list[Match] = []
+            taken: set[int] = set()
+            gp: set[str] = set()
+            counts: defaultdict[str, int] = defaultdict(int)
+            # First matches that fit their own courts, then fill free courts with anything compatible.
+            for strict in (True, False):
+                for m in remaining:
+                    if len(group) >= n_courts:
+                        break
+                    if id(m) in taken or ps[id(m)] & gp:
+                        continue
+                    b = buckets[id(m)]
+                    if strict and counts[b] >= caps[b]:
+                        continue
+                    group.append(m)
+                    taken.add(id(m))
+                    gp |= ps[id(m)]
+                    counts[b] += 1
+            remaining = [m for m in remaining if id(m) not in taken]
+            slots.append(group)
+        return slots
+
+    best = baseline
+    best_key = (len(baseline), overflow(baseline))
+    for _ in range(attempts):
+        if best_key[1] == 0:
+            break
+        cand = attempt()
+        key = (len(cand), overflow(cand))
+        if key < best_key:
+            best, best_key = cand, key
+    return best
 
 
 def _matching_slots(pool: list[Match], compat: dict[int, set[int]]) -> list[list[Match]]:

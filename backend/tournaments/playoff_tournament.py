@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import time
 
-from ..models import Court, Match, MatchStatus, POPhase, Player
+from ..models import Court, Match, POPhase, Player
+from . import live_courts
 from . import withdrawal as wd
+from .court_preferences import CourtPlan, clean_preferences, espejo_scope_of
 from .errors import MatchClearBlocked, WithdrawalBlocked
 from .playoff import (
     DoubleEliminationBracket,
@@ -37,7 +39,13 @@ class PlayoffTournament:
         Cosmetic flag — *True* when each entry represents a pre-formed pair
         (e.g. "Alice & Bob"), *False* for individual players.  Does not
         affect bracket logic.
+    bracket_courts:
+        Espejo only: preferred court names per side (``"winners"`` /
+        ``"losers"``).
     """
+
+    # Class default covers older pickles; always replace, never mutate.
+    bracket_courts: dict[str, list[str]] = {}
 
     def __init__(
         self,
@@ -49,6 +57,7 @@ class PlayoffTournament:
         initial_strength: dict[str, float] | None = None,
         num_winners: int = 1,
         third_place: bool = False,
+        bracket_courts: dict[str, list[str]] | None = None,
     ):
         # Multi-winner only exists for plain single elimination; third place
         # is allowed for single elimination and Espejo (winners bracket).
@@ -62,6 +71,7 @@ class PlayoffTournament:
         self.third_place = third_place
         self.original_teams = list(teams)
         self.courts = courts or []
+        self.bracket_courts = clean_preferences(bracket_courts, self.courts)
         self.double_elimination = double_elimination
         self.espejo = espejo
         self.team_mode = team_mode
@@ -152,6 +162,10 @@ class PlayoffTournament:
         m = wd.bracket_match(self.bracket, match_id)
         if m is not None and m.walkover:
             raise MatchClearBlocked("This result is a walkover; clear the match that fed it instead")
+        if m is not None:
+            # It goes back to the queue; its old court may be in use by now.
+            m.court = None
+            m.on_court = False
         if wd.has_forfeits(self.withdrawals):
             snapshot = wd.snapshot_bracket(self.bracket)
             try:
@@ -249,30 +263,29 @@ class PlayoffTournament:
     def update_courts(self, courts: list[Court]) -> None:
         """Replace the court list and reassign courts across all pending bracket matches."""
         self.courts = list(courts)
-        all_matches = self.all_matches()
-        for m in all_matches:
-            if m.status != MatchStatus.COMPLETED:
-                m.court = None
+        self.bracket_courts = clean_preferences(self.bracket_courts, self.courts)
+        self._reassign_pending_courts()
+
+    def set_court_preferences(self, bracket_courts: dict[str, list[str]] | None) -> None:
+        """Replace the preferred courts per Espejo side and reassign pending matches."""
+        self.bracket_courts = clean_preferences(bracket_courts, self.courts)
+        self._reassign_pending_courts()
+
+    def _reassign_pending_courts(self) -> None:
+        matches = self.all_matches()
+        live_courts.remap_courts(matches, self.courts)
+        if live_courts.nothing_played(matches):
+            # Nothing played yet: plan again from scratch (new courts / preferences).
+            live_courts.clear_plan(matches)
         self._assign_courts_greedily()
 
     def _assign_courts_greedily(self) -> None:
-        """Assign free courts to ready matches that don't have one yet."""
+        """Fill every free court with a ready match; waiting matches get no court yet.
+
+        Matches on court keep it; among the waiting ones the most rested
+        players go first (see ``live_courts``).
+        """
         if not self.courts:
             return
-
-        all_matches = self.all_matches()
-
-        occupied_court_ids: set[str] = {
-            m.court.id for m in all_matches if m.court is not None and m.status != MatchStatus.COMPLETED
-        }
-
-        free_courts = [c for c in self.courts if c.id not in occupied_court_ids]
-        if not free_courts:
-            return
-
-        needs_court = [
-            m for m in all_matches if m.court is None and m.team1 and m.team2 and m.status != MatchStatus.COMPLETED
-        ]
-
-        for court, match in zip(free_courts, needs_court):
-            match.court = court
+        plan = CourtPlan(self.courts, self.bracket_courts, espejo_scope_of(self.bracket))
+        live_courts.refill_courts(self.all_matches(), self.courts, plan)

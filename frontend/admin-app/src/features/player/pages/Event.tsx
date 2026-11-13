@@ -9,6 +9,7 @@ import {
   MatchCard,
   MatchListFrame,
   StandingsTable,
+  groupHighlight,
   toPlayerMatchView,
   toStandingRows,
 } from '../../tournaments';
@@ -201,6 +202,7 @@ export default function Event() {
             rows={toStandingRows(s.rows)}
             preset={s.preset}
             highlightId={entry.player_id}
+            highlightPlaces={s.preset === 'group' ? groupHighlight(data?.tv, s.name) : undefined}
             sets={s.preset === 'group' && data?.tv.score_mode['gp-group'] === 'sets'}
           />
         </Paper>

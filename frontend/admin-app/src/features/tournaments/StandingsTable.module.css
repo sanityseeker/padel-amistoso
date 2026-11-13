@@ -96,6 +96,11 @@
   background: var(--color-rank-3);
   color: #fff;
 }
+/* Highlighted places after the podium, when the organizer marks more than three. */
+.mark[data-rank='top'] {
+  box-shadow: inset 0 0 0 2px var(--sport-accent);
+  color: var(--color-text);
+}
 .num {
   text-align: right;
   /* Display figures, tabular so the columns align; the bold one is the column that ranks. */

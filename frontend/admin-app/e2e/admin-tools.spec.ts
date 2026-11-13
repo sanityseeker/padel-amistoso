@@ -94,6 +94,7 @@ test('settings drawer: alias, courts, scoring and co-editors', async ({ page, re
     )
     .toBe('required');
   await drawer.getByRole('tab', { name: 'Courts and pairing' }).click();
+  await drawer.locator('label').filter({ hasText: /^Text$/ }).click();
   await drawer.getByRole('textbox', { name: 'Courts' }).fill('Centre\nSide');
   await drawer.getByRole('button', { name: 'Save courts' }).click();
   await expect
@@ -397,4 +398,21 @@ test('player profiles: search and edit a profile', async ({ page, request }) => 
   await sheet.getByLabel('Name', { exact: true }).fill('Ana Renamed');
   await sheet.getByRole('button', { name: 'Save', exact: true }).first().click();
   await expect(page.getByText('Name updated')).toBeVisible();
+});
+
+test('settings drawer: preferred courts per group', async ({ page, request }) => {
+  const { id } = await createTournament(request, 'gp', `Group courts ${Date.now()}`);
+  await loginAdmin(page);
+  await page.goto(`/admin/t/${id}`);
+  const drawer = await openSettings(page, 'Courts');
+  const perGroup = drawer.getByRole('switch', { name: /Courts per group/ });
+  await perGroup.click();
+  await expect(perGroup).toBeChecked();
+  await drawer.getByRole('combobox', { name: 'Group A' }).click();
+  await page.getByRole('option', { name: 'Court 2' }).click();
+  await page.keyboard.press('Escape');
+  await drawer.getByRole('button', { name: 'Save courts' }).click();
+  await expect
+    .poll(async () => (await (await request.get(`/api/tournaments/${id}/gp/status`)).json()).group_courts)
+    .toEqual({ A: ['Court 2'] });
 });

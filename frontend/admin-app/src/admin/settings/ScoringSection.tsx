@@ -157,12 +157,15 @@ export function TvSection({
   hasCourts,
   hasPlayoffs,
   mexicano,
+  groups = false,
 }: {
   tid: string;
   settings: TvSettings;
   hasCourts: boolean;
   hasPlayoffs: boolean;
   mexicano: boolean;
+  /** Group+Playoff: offer how many places each group table marks. */
+  groups?: boolean;
 }) {
   useLocale();
   const patch = useTvPatch(tid);
@@ -203,6 +206,24 @@ export function TvSection({
           {toggle('show_courts', 'Court assignments', true, !hasCourts)}
           {toggle('show_pending_matches', 'Pending matches', false)}
         </Stack>
+        {groups && (
+          <NumberInput
+            label={tx('Highlighted places in every group')}
+            description={tx(
+              'Marked in the group standings for players, the TV screen and you. Places 1-3 keep gold, silver and bronze; 0 turns the marks off. Change one group under its table in Standings.',
+            )}
+            min={0}
+            max={32}
+            allowDecimal={false}
+            allowNegative={false}
+            defaultValue={settings.highlight_places ?? 3}
+            onBlur={(e) => {
+              const value = Number(e.currentTarget.value);
+              if (Number.isFinite(value) && value !== (settings.highlight_places ?? 3))
+                patch.mutate({ highlight_places: value });
+            }}
+          />
+        )}
         <Textarea
           label={tx('Banner message')}
           description={tx('Shown across the top of the TV screen.')}

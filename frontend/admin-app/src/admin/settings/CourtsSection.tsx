@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Group, NumberInput, Stack, Text, Textarea } from '@mantine/core';
+import { Button, Group, NumberInput, Stack, Text } from '@mantine/core';
 import { write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
 import type { TournamentStatus } from '../../types';
@@ -9,6 +9,13 @@ import {
   MexicanoOptionFields,
   type MexicanoOptions,
 } from '../../features/mexicano/MexicanoOptions';
+import { NameListField } from '../../features/create/NameListField';
+import {
+  CourtPreferencesFields,
+  cleanPreferences,
+  espejoScopes,
+  type CourtPreferences,
+} from '../../features/create/CourtPreferencesFields';
 import type { TournamentPrefix } from '../tournament/query';
 
 export function CourtsSection({
@@ -22,18 +29,40 @@ export function CourtsSection({
 }) {
   useLocale();
   const [courts, setCourts] = useState((status.courts ?? []).map((c) => c.name).join('\n'));
+  const courtNames = courts
+    .split('\n')
+    .map((n) => n.trim())
+    .filter(Boolean);
+  // Group+Playoff: one scope per group, plus the two Espejo brackets once the play-offs run as Espejo.
+  // Direct play-offs: the two Espejo brackets. Mexicano play-offs have no Espejo, so no scopes.
+  // Keys are prefixed in the form so a group called "winners" never meets the Espejo side.
+  const groupScopes =
+    prefix === 'gp'
+      ? (status.group_names ?? []).map((g) => ({ key: `g:${g}`, label: tx('Group {name}', { name: g }) }))
+      : [];
+  const bracketScopes =
+    prefix !== 'mex' && status.espejo
+      ? espejoScopes().map((s) => ({ ...s, key: `b:${s.key}` }))
+      : [];
+  const scopes = [...groupScopes, ...bracketScopes];
+  const [prefs, setPrefs] = useState<CourtPreferences>(() => ({
+    ...withPrefix('g:', status.group_courts),
+    ...withPrefix('b:', status.bracket_courts),
+  }));
+  const [perScope, setPerScope] = useState(Object.keys(prefs).length > 0);
   const save = useAdminMutation({
-    request: () =>
-      write(
-        `/tournaments/${tid}/${prefix}/courts`,
+    request: async () => {
+      await write(`/tournaments/${tid}/${prefix}/courts`, { court_names: courtNames }, 'PATCH');
+      if (!scopes.length) return;
+      await write(
+        `/tournaments/${tid}/${prefix}/court-preferences`,
         {
-          court_names: courts
-            .split('\n')
-            .map((n) => n.trim())
-            .filter(Boolean),
+          group_courts: perScope ? withoutPrefix('g:', cleanPreferences(prefs, groupScopes, courtNames)) : {},
+          bracket_courts: perScope ? withoutPrefix('b:', cleanPreferences(prefs, bracketScopes, courtNames)) : {},
         },
         'PATCH',
-      ),
+      );
+    },
     invalidate: [['admin', 'tournament', tid]],
     success: 'Courts updated',
   });
@@ -42,12 +71,24 @@ export function CourtsSection({
       title={tx('Courts')}
       description={tx('One court per line. Changes apply to the next round and to the bracket.')}
     >
-      <Textarea
-        aria-label={tx('Courts')}
-        autosize
-        minRows={3}
+      <NameListField
+        label={tx('Courts')}
+        hideLabel
+        required={false}
         value={courts}
-        onChange={(e) => setCourts(e.currentTarget.value)}
+        onChange={setCourts}
+        itemLabel={(n) => tx('Court {n}', { n })}
+        itemPlaceholder={(n) => tx('Court {n}', { n })}
+        removeLabel={(n) => tx('Remove court {n}', { n })}
+        addLabel={tx('Add court')}
+      />
+      <CourtPreferencesFields
+        enabled={perScope}
+        onEnabledChange={setPerScope}
+        scopes={scopes}
+        courtNames={courtNames}
+        value={prefs}
+        onChange={setPrefs}
       />
       <MutationError error={save.error} />
       <Group justify="flex-end">
@@ -58,6 +99,11 @@ export function CourtsSection({
     </Section>
   );
 }
+
+const withPrefix = (p: string, prefs: CourtPreferences | undefined): CourtPreferences =>
+  Object.fromEntries(Object.entries(prefs ?? {}).map(([k, v]) => [p + k, v]));
+const withoutPrefix = (p: string, prefs: CourtPreferences): CourtPreferences =>
+  Object.fromEntries(Object.entries(prefs).map(([k, v]) => [k.slice(p.length), v]));
 
 interface MexForm extends MexicanoOptions {
   num_rounds: number;

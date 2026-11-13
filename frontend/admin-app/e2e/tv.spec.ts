@@ -24,7 +24,7 @@ test('pending group matches show their round once and omit disabled courts', asy
   await page.goto(`/tv/${id}`);
   const pending = page.locator('[data-section="pending"]');
   await expect(pending.getByTestId('tv-match').first()).toBeVisible();
-  await expect(pending).not.toContainText('No court assigned');
+  await expect(pending).not.toContainText('Waiting for a court');
   await expect(pending.getByText('Round 1', { exact: true }).first()).toBeVisible();
   await expect(pending.getByTestId('tv-match').first().locator('[data-part="meta"]')).toHaveCount(
     0,

@@ -21,7 +21,14 @@ import type { PlayerMatch } from '../../player/types';
 import type { Ctx } from '../../admin/tournament/scoring';
 import { MatchActions } from '../player/MatchActions';
 import type { ScoringData } from '../player/eventData';
-import { hasDraws, MatchCard, StandingsTable, toMatchView, toStandingRows } from '../tournaments';
+import {
+  groupHighlight,
+  hasDraws,
+  MatchCard,
+  StandingsTable,
+  toMatchView,
+  toStandingRows,
+} from '../tournaments';
 import { BracketImage } from './BracketImage';
 import { ctxOf, isTbd, sortTbdLast, type Breakdown, type TvLive, type TvMeta } from './model';
 import type { useTvPlayer } from './useTvPlayer';
@@ -637,6 +644,7 @@ function GroupStandings({
               preset="group"
               density="tv"
               sets={setsMode}
+              highlightPlaces={groupHighlight(live.settings, name)}
               highlightId={highlight}
               nameLabel={teams ? tx('Team') : undefined}
               eloLabel={meta && status.elo_scope === 'club' ? tx('Club ELO') : undefined}

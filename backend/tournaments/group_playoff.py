@@ -21,7 +21,9 @@ from collections import defaultdict
 
 from ..models import Court, GPPhase, Match, MatchStatus, Player, reset_match_result
 from .errors import MatchClearBlocked, WithdrawalBlocked
+from .court_preferences import CourtPlan, clean_preferences, espejo_scope_of, group_scope_of
 from .group_stage import Group, assign_courts, distribute_players_to_groups
+from . import live_courts
 from . import pairing as pairing_mod
 from . import withdrawal as wd
 from .playoff import (
@@ -35,6 +37,12 @@ from .playoff import (
 
 
 class GroupPlayoffTournament:
+    # Preferred courts (court names) per group name and per Espejo side
+    # ("winners" / "losers").  Class defaults cover older pickles; always
+    # replace these dicts, never mutate them in place.
+    group_courts: dict[str, list[str]] = {}
+    bracket_courts: dict[str, list[str]] = {}
+
     def __init__(
         self,
         players: list[Player],
@@ -48,6 +56,8 @@ class GroupPlayoffTournament:
         team_roster: dict[str, list[str]] | None = None,
         team_member_names: dict[str, list[str]] | None = None,
         group_assignments: dict[str, list[str]] | None = None,
+        group_courts: dict[str, list[str]] | None = None,
+        bracket_courts: dict[str, list[str]] | None = None,
     ):
         self.players = list(players)
         self.num_groups = num_groups
@@ -60,6 +70,8 @@ class GroupPlayoffTournament:
         self.team_roster = team_roster or {}
         self.team_member_names = team_member_names or {}
         self.group_assignments = group_assignments or {}
+        self.group_courts = clean_preferences(group_courts, self.courts)
+        self.bracket_courts = clean_preferences(bracket_courts, self.courts)
 
         self.groups: list[Group] = []
         self.playoff_bracket: SingleEliminationBracket | DoubleEliminationBracket | EspejoParallelBracket | None = None
@@ -140,8 +152,11 @@ class GroupPlayoffTournament:
             for g in self.groups:
                 g.generate_next_round()
             if self.courts:
-                assign_courts(self.all_group_matches(), self.courts)
+                assign_courts(self.all_group_matches(), self.courts, plan=self._group_plan())
         self._phase = GPPhase.GROUPS
+        # The plan above only orders the queue; nobody is on court yet.
+        live_courts.clear_plan(self.all_group_matches())
+        self.refill_group_courts()
 
     def generate_next_group_round(self) -> list[Match]:
         """Generate the next round of group matches across all groups.
@@ -168,9 +183,10 @@ class GroupPlayoffTournament:
             max_slot = self._max_slot_number()
             start_slot = max_slot + 1 if max_slot >= 0 else 0
             # Rotate courts so successive rounds use different physical courts.
-            assign_courts(new_matches, self.courts, court_offset=start_slot)
+            assign_courts(new_matches, self.courts, court_offset=start_slot, plan=self._group_plan())
             for m in new_matches:
                 m.slot_number += start_slot
+        self.refill_group_courts()
         return new_matches
 
     @property
@@ -183,20 +199,69 @@ class GroupPlayoffTournament:
     def update_courts(self, courts: list[Court]) -> None:
         """Replace the court list and reassign courts across all existing matches."""
         self.courts = list(courts)
-        # Clear existing court assignments so assign_courts can reassign them.
-        for m in self.all_group_matches():
-            m.court = None
-            m.slot_number = None
-        self._assign_group_courts()
-        if self.playoff_bracket is not None:
-            all_po = bracket_matches(self.playoff_bracket)
-            for m in all_po:
-                m.court = None
-                m.slot_number = None
-            # Espejo matches are assigned lazily in pending_playoff_matches()
-            # (the Losers Bracket does not exist yet), so skip the bulk pass.
-            if all_po and not self.espejo:
-                assign_courts(all_po, self.courts)
+        live_courts.remap_courts(self.all_group_matches() + self.playoff_matches(), self.courts)
+        # Preferences for courts that no longer exist are dropped.
+        self.group_courts = clean_preferences(self.group_courts, self.courts)
+        self.bracket_courts = clean_preferences(self.bracket_courts, self.courts)
+        self._reassign_courts()
+
+    def set_court_preferences(
+        self,
+        group_courts: dict[str, list[str]] | None,
+        bracket_courts: dict[str, list[str]] | None,
+    ) -> None:
+        """Replace the preferred courts per group / Espejo side and reassign courts."""
+        self.group_courts = clean_preferences(group_courts, self.courts)
+        self.bracket_courts = clean_preferences(bracket_courts, self.courts)
+        self._reassign_courts()
+
+    def _group_plan(self) -> CourtPlan:
+        return CourtPlan(self.courts, self.group_courts, group_scope_of(self.groups))
+
+    def _bracket_plan(self) -> CourtPlan:
+        return CourtPlan(self.courts, self.bracket_courts, espejo_scope_of(self.playoff_bracket))
+
+    def refill_group_courts(self) -> None:
+        """Put waiting group matches on free courts (see ``live_courts``)."""
+        if not self.courts or self._phase != GPPhase.GROUPS:
+            return
+        # How many matches each group can play at once: groups with more
+        # time left get free courts first, so the groups finish together.
+        per_match = 2 if self.team_mode else 4
+        capacity = {
+            g.name: max(1, sum(1 for p in g.players if p.id not in g.withdrawn_ids) // per_match) for g in self.groups
+        }
+        live_courts.refill_courts(
+            self.all_group_matches(),
+            self.courts,
+            self._group_plan(),
+            scope_of=group_scope_of(self.groups),
+            capacity=capacity,
+            round_order=True,
+        )
+
+    def refill_playoff_courts(self) -> None:
+        """Put ready play-off matches on free courts (see ``live_courts``)."""
+        if self.courts and self.playoff_bracket is not None:
+            live_courts.refill_courts(self.playoff_matches(), self.courts, self._bracket_plan())
+
+    def _reassign_courts(self) -> None:
+        """Re-plan courts after a court or preference edit.
+
+        Before any result the whole plan starts over; once matches are being
+        played, the ones on court keep their court and the queue is re-planned.
+        """
+        group_ms = self.all_group_matches()
+        if group_ms and live_courts.nothing_played(group_ms):
+            live_courts.clear_plan(group_ms)
+            for m in group_ms:
+                m.slot_number = 0
+            self._assign_group_courts()
+        self.refill_group_courts()
+        po_ms = self.playoff_matches()
+        if po_ms and live_courts.nothing_played(po_ms):
+            live_courts.clear_plan(po_ms)
+        self.refill_playoff_courts()
 
     def add_player_to_group(self, player: Player, group_name: str) -> list[Match]:
         """Add a new player to a specific group during the group stage.
@@ -255,10 +320,11 @@ class GroupPlayoffTournament:
         if new_matches and self.courts:
             max_slot = self._max_slot_number()
             start_slot = max_slot + 1 if max_slot >= 0 else 0
-            assign_courts(new_matches, self.courts, court_offset=start_slot)
+            assign_courts(new_matches, self.courts, court_offset=start_slot, plan=self._group_plan())
             for m in new_matches:
                 if m.slot_number is not None:
                     m.slot_number += start_slot
+        self.refill_group_courts()
 
         return new_matches
 
@@ -275,8 +341,9 @@ class GroupPlayoffTournament:
         round 2 slots, etc.).  This lets organizers instruct players to play all
         round-1 matches before starting round 2.
         """
+        plan = self._group_plan()
         if not self.team_mode:
-            assign_courts(self.all_group_matches(), self.courts)
+            assign_courts(self.all_group_matches(), self.courts, plan=plan)
             return
 
         # Team mode: partition by round_number and assign courts sequentially.
@@ -287,7 +354,7 @@ class GroupPlayoffTournament:
         slot_offset = 0
         for rn in sorted(rounds):
             batch = rounds[rn]
-            assign_courts(batch, self.courts, court_offset=slot_offset)
+            assign_courts(batch, self.courts, court_offset=slot_offset, plan=plan)
             # assign_courts numbers slots from 0; shift them up by the offset.
             max_batch_slot = max((m.slot_number for m in batch if m.slot_number is not None), default=-1)
             for m in batch:
@@ -343,6 +410,7 @@ class GroupPlayoffTournament:
                     m.sets = sets
                     m.third_set_loss = third_set_loss
                     m.status = MatchStatus.COMPLETED
+                    self.refill_group_courts()
                     return
         raise KeyError(f"Match {match_id} not found in any group")
 
@@ -366,6 +434,10 @@ class GroupPlayoffTournament:
                         raise MatchClearBlocked("Only the latest round of a group can be cleared")
                 reset_match_result(m)
                 g._standings_cache = None
+                # It goes back to the queue; its old court may be in use by now.
+                m.court = None
+                m.on_court = False
+                self.refill_group_courts()
                 return
         raise KeyError(f"Match {match_id} not found in any group")
 
@@ -598,10 +670,9 @@ class GroupPlayoffTournament:
         else:
             self.playoff_bracket = SingleEliminationBracket(teams, num_winners=num_winners, third_place=third_place)
 
-        if self.courts and not espejo:
-            assign_courts(bracket_matches(self.playoff_bracket), self.courts)
-
         self._phase = GPPhase.PLAYOFFS
+        live_courts.clear_plan(self.playoff_matches())
+        self.refill_playoff_courts()
 
     def _start_split_playoffs(
         self,
@@ -694,6 +765,7 @@ class GroupPlayoffTournament:
             lower_third_place=plata_third_place,
         )
         self._phase = GPPhase.PLAYOFFS
+        self.refill_playoff_courts()
 
     def _form_seeded_teams(
         self,
@@ -787,18 +859,9 @@ class GroupPlayoffTournament:
         if self.playoff_bracket is None:
             return []
         pending = self.playoff_bracket.pending_matches()
-        # Lazy court assignment for matches that just became ready.
-        # Offset slot numbers so newly assigned playoff slots come after
-        # any already-completed or already-scheduled playoff slots.
-        if self.courts:
-            needs_court = [m for m in pending if m.court is None]
-            if needs_court:
-                existing_slots = [m.slot_number for m in self.playoff_matches() if m.slot_number is not None]
-                start_slot = (max(existing_slots) + 1) if existing_slots else 0
-                assign_courts(needs_court, self.courts, court_offset=start_slot)
-                for m in needs_court:
-                    if m.slot_number is not None:
-                        m.slot_number += start_slot
+        # Safety net: a match that became ready without a court gets one now.
+        if self.courts and any(m.court is None and not live_courts.court_done(m) for m in pending):
+            self.refill_playoff_courts()
         return pending
 
     def record_playoff_result(
@@ -829,6 +892,7 @@ class GroupPlayoffTournament:
         created: list[Match] = []
         if self.playoff_bracket is not None:
             created = wd.resolve_bracket_forfeits(self.playoff_bracket, self.withdrawals)
+        self.refill_playoff_courts()
         # Finished only when the whole bracket is decided.  For Espejo the
         # bracket champion stays ``None`` until the consolation (Losers)
         # bracket is done as well, so the phase does not flip early.
@@ -847,8 +911,13 @@ class GroupPlayoffTournament:
         m = wd.bracket_match(self.playoff_bracket, match_id)
         if m is not None and m.walkover:
             raise MatchClearBlocked("This result is a walkover; clear the match that fed it instead")
+        if m is not None:
+            # It goes back to the queue; its old court may be in use by now.
+            m.court = None
+            m.on_court = False
         if not wd.has_forfeits(self.withdrawals):
             self.playoff_bracket.clear_result(match_id)
+            self.refill_playoff_courts()
             return
         snapshot = wd.snapshot_bracket(self.playoff_bracket)
         try:
@@ -955,6 +1024,7 @@ class GroupPlayoffTournament:
                 record = wd.apply_group_rotating_withdrawal(group, entry_id, by=by, at=at)
                 created = []
             self.withdrawals[record.entry_key] = record
+            self.refill_group_courts()
             return record, created
         assert self.playoff_bracket is not None
         snapshot = wd.snapshot_bracket(self.playoff_bracket)
@@ -1005,6 +1075,7 @@ class GroupPlayoffTournament:
         else:
             wd.undo_group_team_withdrawal(self.players, group, record, by=by, at=at)
         del self.withdrawals[entry_key]
+        self.refill_group_courts()
         return record
 
     def winners(self) -> list[list[Player]] | None:

@@ -97,8 +97,8 @@ class TestGroupPlayoffCreation:
         assert len(t.groups) == 2
 
         all_matches = t.all_group_matches()
-        for m in all_matches:
-            assert m.court is not None
+        # All 3 courts are in use from the start (only matches being played hold a court).
+        assert len({m.court.name for m in all_matches if m.on_court}) == 3
 
         # No participant plays two matches in the same slot.
         from collections import defaultdict
@@ -866,8 +866,11 @@ class TestUpdateCourts:
 
         t.update_courts([Court(name="NewCourt")])
         assert [c.name for c in t.courts] == ["NewCourt"]
-        for m in t.pending_playoff_matches():
-            assert m.court is not None and m.court.name == "NewCourt"
+        pending = t.pending_playoff_matches()
+        on = [m for m in pending if m.on_court]
+        # One court: exactly one match is on it; the rest wait without a court.
+        assert len(on) == 1 and on[0].court.name == "NewCourt"
+        assert all(m.court is None for m in pending if not m.on_court)
 
 
 # ── GroupPlayoffTournament.add_player_to_group ────────────────────────────────
@@ -950,7 +953,7 @@ class TestAddPlayerToGroup:
         assert all(hasattr(m, "id") for m in new_matches)
 
     def test_add_player_team_mode_with_courts_assigns_court(self):
-        """New team-mode matches must receive a court when courts are configured."""
+        """New team-mode matches join the queue and take a court once one is free."""
         players = _make_players(4)
         courts = _make_courts(2)
         t = GroupPlayoffTournament(players, num_groups=2, courts=courts, team_mode=True)
@@ -958,7 +961,11 @@ class TestAddPlayerToGroup:
 
         new_player = Player(name="Extra")
         new_matches = t.add_player_to_group(new_player, t.groups[0].name)
+        assert new_matches
 
+        # Play everything out: each new match is played on a court.
+        while on := [m for m in t.all_group_matches() if m.on_court]:
+            t.record_group_result(min(on, key=lambda m: m.slot_number).id, (6, 3))
         assert all(m.court is not None for m in new_matches)
 
     def test_add_player_team_mode_no_courts_no_assignment(self):
@@ -980,11 +987,11 @@ class TestAddPlayerToGroup:
 
 
 class TestTeamModeRoundOrderedCourts:
-    """Court slot numbers must respect round ordering when team_mode=True.
+    """Court slots follow the round order when team_mode=True.
 
-    Every match in round R must receive a strictly lower slot_number than
-    every match in round R+1.  This ensures the frontend (and organizers)
-    see round 1 before round 2, etc.
+    Earlier rounds go first; a later-round match only takes a court that no
+    earlier-round match can use (its players are busy), so no court waits
+    for a round to end.
     """
 
     def _generate(self, n_players: int, n_courts: int) -> GroupPlayoffTournament:
@@ -1014,20 +1021,24 @@ class TestTeamModeRoundOrderedCourts:
                 f"Round {r1} slots {round_slots[r1]} overlap with round {r2} slots {round_slots[r2]}"
             )
 
-    def test_round_slot_ordering_with_multiple_courts(self):
-        """Ordering holds regardless of how many courts are available."""
+    def test_later_round_only_fills_a_court_no_earlier_match_can_use(self):
+        """With spare courts a later round starts early, but never ahead of a playable earlier match."""
         t = self._generate(n_players=8, n_courts=3)
         matches = t.all_group_matches()
-
-        from collections import defaultdict
-
-        round_slots: dict[int, list[int]] = defaultdict(list)
-        for m in matches:
-            round_slots[m.round_number].append(m.slot_number)
-
-        sorted_rounds = sorted(round_slots)
-        for r1, r2 in zip(sorted_rounds, sorted_rounds[1:]):
-            assert max(round_slots[r1]) < min(round_slots[r2])
+        ids = {m.id: {p.id for p in m.team1 + m.team2} for m in matches}
+        slots = sorted({m.slot_number for m in matches})
+        mixed = False
+        for s in slots:
+            here = [m for m in matches if m.slot_number == s]
+            players = set().union(*(ids[m.id] for m in here))
+            top = max(m.round_number for m in here)
+            mixed |= len({m.round_number for m in here}) > 1
+            # Every earlier-round match left for later shares a player with this slot.
+            for m in matches:
+                if m.slot_number > s and m.round_number < top:
+                    assert ids[m.id] & players
+        # 4 matches per round on 3 courts: the second slot mixes rounds 1 and 2.
+        assert mixed
 
     def test_update_courts_preserves_round_slot_ordering(self):
         """Reassigning courts via update_courts must also keep round ordering."""
@@ -1045,9 +1056,14 @@ class TestTeamModeRoundOrderedCourts:
         for r1, r2 in zip(sorted_rounds, sorted_rounds[1:]):
             assert max(round_slots[r1]) < min(round_slots[r2])
 
-    def test_all_matches_have_court_assigned(self):
-        """With courts available, every group match must receive a court."""
+    def test_courts_mean_now_playing(self):
+        """Only matches being played hold a court; every match gets one by the end."""
         t = self._generate(n_players=6, n_courts=2)
+        ms = t.all_group_matches()
+        assert all((m.court is not None) == m.on_court for m in ms)
+        assert sum(m.on_court for m in ms) == 2
+        while on := [m for m in t.all_group_matches() if m.on_court]:
+            t.record_group_result(min(on, key=lambda m: m.slot_number).id, (6, 3))
         assert all(m.court is not None for m in t.all_group_matches())
 
 

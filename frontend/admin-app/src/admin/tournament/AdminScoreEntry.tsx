@@ -76,9 +76,7 @@ export function AdminScoreEntry(
   return (
     <ScoreEntry
       names={[match.team1.join(' & '), match.team2.join(' & ')]}
-      meta={[formatRoundLabel(match.round_label), match.court || tx('Unassigned court')]
-        .filter(Boolean)
-        .join(' · ')}
+      meta={[formatRoundLabel(match.round_label), match.court].filter(Boolean).join(' · ')}
       rules={rules}
       initial={resolve ? null : scorePayloadOf(match.score, match.sets)}
       initialMode={initialMode(props)}

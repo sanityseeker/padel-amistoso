@@ -508,7 +508,14 @@ function RowActions({
 
 function StatusChip({ status }: { status: PaymentStatus }) {
   return (
-    <Badge color={TONE[status]} variant="light" size="sm">
+    // Mantine clips the label (overflow: hidden), which lets the table shrink the Status column
+    // to nothing and cut the word. Status words are short: show them whole.
+    <Badge
+      color={TONE[status]}
+      variant="light"
+      size="sm"
+      styles={{ label: { overflow: 'visible' } }}
+    >
       {statusLabel(status)}
     </Badge>
   );
