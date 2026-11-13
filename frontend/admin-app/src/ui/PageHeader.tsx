@@ -1,11 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  type Dispatch,
-  type ReactNode,
-  type SetStateAction,
-} from 'react';
+import { createContext, useContext, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { Anchor, Group, Stack, Text, Title, VisuallyHidden } from '@mantine/core';
 import { IconArrowLeft } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
@@ -14,17 +7,35 @@ import classes from './PageHeader.module.css';
 
 /** True when the shell top bar already shows this page's title. */
 export const TopBarTitleContext = createContext(false);
-export const TopBarActionContext = createContext<{
-  action: ReactNode;
-  setAction: Dispatch<SetStateAction<ReactNode>>;
-}>({ action: null, setAction: () => undefined });
+// The page's own top-bar action (phone only). A tiny external store rather than shell state: setting it
+// re-renders the top bar alone, not the whole layout and the page under it.
+let topBarAction: ReactNode = null;
+const topBarListeners = new Set<() => void>();
+function setTopBarAction(action: ReactNode) {
+  if (Object.is(action, topBarAction)) return;
+  topBarAction = action;
+  for (const listener of topBarListeners) listener();
+}
+function subscribeTopBarAction(listener: () => void) {
+  topBarListeners.add(listener);
+  return () => {
+    topBarListeners.delete(listener);
+  };
+}
+const readTopBarAction = () => topBarAction;
 
+/** The action a page put in the top bar, if any. Read by the shell top bar only. */
+export function useTopBarAction(): ReactNode {
+  return useSyncExternalStore(subscribeTopBarAction, readTopBarAction, readTopBarAction);
+}
+
+/** Puts `children` in the top bar while mounted. Pass a memoized element: a new one each render
+ *  re-renders the top bar each render. */
 export function TopBarAction({ children }: { children: ReactNode }) {
-  const { setAction } = useContext(TopBarActionContext);
   useEffect(() => {
-    setAction(children);
-    return () => setAction(null);
-  }, [children, setAction]);
+    setTopBarAction(children);
+    return () => setTopBarAction(null);
+  }, [children]);
   return null;
 }
 

@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState, type ReactNode } from 'react';
+import { Suspense, useEffect } from 'react';
 import { AppShell, rem } from '@mantine/core';
 import { useHeadroom, useLocalStorage } from '@mantine/hooks';
 import { Outlet, ScrollRestoration, useLocation } from 'react-router-dom';
@@ -6,7 +6,7 @@ import { ChangePasswordModal } from '../admin/account/ChangePasswordModal';
 import { Loading } from '../components';
 import { useAuth } from '../auth';
 import { useLocale } from '../i18n';
-import { TopBarActionContext, TopBarTitleContext } from '../ui/PageHeader';
+import { TopBarTitleContext } from '../ui/PageHeader';
 import { usePageTitle, useRouteTitle } from './pageTitle';
 import { useShellHotkeys } from '../features/switcher/hotkeys';
 import { Palette } from '../features/switcher/Palette';
@@ -66,7 +66,6 @@ function Layout() {
 
   const routeTitle = useRouteTitle();
   const barTitle = usePageTitle();
-  const [topBarAction, setTopBarAction] = useState<ReactNode>(null);
   useEffect(() => {
     document.title = (routeTitle ? routeTitle + ' · ' : '') + 'Torneos Amistosos';
   }, [routeTitle, locale]);
@@ -113,7 +112,6 @@ function Layout() {
               onToggleDock={toggleDock}
               strip={header.strip}
               tabs={header.tabs}
-              pageAction={topBarAction}
             />
           </AppShell.Header>
         )}
@@ -136,15 +134,11 @@ function Layout() {
               paddingRight: showAside ? undefined : SAFE_RIGHT,
             }}
           >
-            <TopBarActionContext.Provider
-              value={{ action: topBarAction, setAction: setTopBarAction }}
-            >
-              <ErrorBoundary resetKey={pathname}>
-                <Suspense fallback={<Loading testId="route-loading" />}>
-                  <Outlet />
-                </Suspense>
-              </ErrorBoundary>
-            </TopBarActionContext.Provider>
+            <ErrorBoundary resetKey={pathname}>
+              <Suspense fallback={<Loading testId="route-loading" />}>
+                <Outlet />
+              </Suspense>
+            </ErrorBoundary>
           </div>
           <SupportFooter />
         </AppShell.Main>

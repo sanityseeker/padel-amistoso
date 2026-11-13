@@ -1,6 +1,5 @@
 import { ActionIcon, Box, Button, Group, Kbd, Text, UnstyledButton } from '@mantine/core';
 import { spotlight } from '@mantine/spotlight';
-import type { ReactNode } from 'react';
 import {
   IconArrowLeft,
   IconChevronDown,
@@ -22,6 +21,7 @@ import { DisplayButton } from './DisplayMenu';
 import { rememberPage } from './env';
 import { isAdminPath, useAdminRoute, type LayoutMode } from './layout';
 import { usePageTitle } from './pageTitle';
+import { useTopBarAction } from '../ui/PageHeader';
 import { PagesNav } from './PagesNav';
 import { AccountSlot } from './PlayerMenu';
 import { useShellUi } from './ShellUi';
@@ -98,7 +98,6 @@ export function TopBar({
   onToggleDock,
   strip,
   tabs,
-  pageAction,
 }: {
   mode: LayoutMode;
   adminChrome: boolean;
@@ -106,9 +105,9 @@ export function TopBar({
   onToggleDock: () => void;
   strip: boolean;
   tabs: boolean;
-  pageAction: ReactNode;
 }) {
   useLocale();
+  const pageAction = useTopBarAction();
   const { pathname } = useLocation();
   const { install, setSwitcherOpen } = useShellUi();
   const route = useAdminRoute();

@@ -3,13 +3,7 @@ export { ActionBar, ActionBarSpacer } from './ActionBar';
 export { BottomDrawer } from './BottomDrawer';
 export { ConfirmAction } from './ConfirmAction';
 export { EmptyState } from './EmptyState';
-export {
-  PageHeader,
-  PageLink,
-  TopBarAction,
-  TopBarActionContext,
-  TopBarTitleContext,
-} from './PageHeader';
+export { PageHeader, PageLink, TopBarAction, TopBarTitleContext } from './PageHeader';
 export { Notice, type NoticeProps, type NoticeTone } from './Notice';
 export { PageContainer } from './PageContainer';
 export { PaymentAction, type PaymentActionProps, type PaymentTone } from './PaymentAction';
