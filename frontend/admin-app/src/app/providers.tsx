@@ -4,8 +4,6 @@ import { Notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
-import '@mantine/spotlight/styles.css';
-import '@mantine/carousel/styles.css';
 import '../theme/fonts.css';
 import '../theme/sport.css';
 import '../app.css';

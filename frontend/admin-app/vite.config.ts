@@ -11,13 +11,18 @@ export default defineConfig({
       output: {
         // Long-lived vendor chunks cache across deploys; app code changes more often. @mantine/charts and
         // recharts stay out of the eager chunks: only the Hub and Ratings routes import them (lazy).
+        // @mantine/carousel and @mantine/spotlight too: the phone swipe strip and the command palette
+        // load on first use.
         codeSplitting: {
           groups: [
             {
               name: 'react',
               test: /node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/,
             },
-            { name: 'mantine', test: /node_modules[\\/]@mantine[\\/](?!charts)/ },
+            {
+              name: 'mantine',
+              test: /node_modules[\\/]@mantine[\\/](?!charts|carousel|spotlight)/,
+            },
             { name: 'query', test: /node_modules[\\/]@tanstack[\\/]/ },
             { name: 'i18n', test: /node_modules[\\/](i18next|react-i18next)[\\/]/ },
           ],

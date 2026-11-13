@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Carousel } from '@mantine/carousel';
+import '@mantine/carousel/styles.css';
 import { Group, Paper, Stack, Text } from '@mantine/core';
 import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import type { EmblaCarouselType } from 'embla-carousel';
@@ -41,8 +42,6 @@ function Slide({ item, active }: { item: OpenItem; active: boolean }) {
     </Carousel.Slide>
   );
 }
-
-export const STRIP_HEIGHT = 62;
 
 // Phone-only strip under the workspace title: one slide per open item with peeking neighbours.
 // Swiping settles on a neighbour and opens it; the arrow controls are the tap alternative. It lives

@@ -1,5 +1,5 @@
+import { lazy, Suspense } from 'react';
 import { ActionIcon, Box, Button, Group, Kbd, Text, UnstyledButton } from '@mantine/core';
-import { spotlight } from '@mantine/spotlight';
 import {
   IconArrowLeft,
   IconChevronDown,
@@ -15,7 +15,8 @@ import { useLobbyList, useTournamentList } from '../components';
 import { isMac } from '../features/switcher/hotkeys';
 import { useOrderedItems } from '../features/switcher/entries';
 import { OpenTabs, OPEN_TABS_HEIGHT } from '../features/switcher/OpenTabs';
-import { SwipeStrip, STRIP_HEIGHT } from '../features/switcher/SwipeStrip';
+import { STRIP_HEIGHT } from '../features/switcher/constants';
+import { openPalette, preloadPalette } from '../features/switcher/paletteOpen';
 import { t as tx, useLocale } from '../i18n';
 import { DisplayButton } from './DisplayMenu';
 import { rememberPage } from './env';
@@ -26,6 +27,11 @@ import { PagesNav } from './PagesNav';
 import { AccountSlot } from './PlayerMenu';
 import { useShellUi } from './ShellUi';
 import classes from './Shell.module.css';
+
+// The swipe strip (and its carousel library) loads on a phone workspace only.
+const SwipeStrip = lazy(() =>
+  import('../features/switcher/SwipeStrip').then((m) => ({ default: m.SwipeStrip })),
+);
 
 export const HEADER_HEIGHT = 52;
 /** Header height including the phone swipe strip or the tablet and desktop open tabs. */
@@ -77,7 +83,9 @@ function SearchBox({ wide }: { wide: boolean }) {
   return wide ? (
     <UnstyledButton
       className={classes.searchBox}
-      onClick={() => spotlight.open()}
+      onClick={openPalette}
+      onMouseEnter={preloadPalette}
+      onFocus={preloadPalette}
       aria-label={label}
     >
       <IconSearch size={16} aria-hidden />
@@ -85,7 +93,13 @@ function SearchBox({ wide }: { wide: boolean }) {
       <Kbd size="xs">{isMac() ? '⌘ K' : 'Ctrl K'}</Kbd>
     </UnstyledButton>
   ) : (
-    <ActionIcon size="lg" aria-label={label} onClick={() => spotlight.open()}>
+    <ActionIcon
+      size="lg"
+      aria-label={label}
+      onClick={openPalette}
+      onTouchStart={preloadPalette}
+      onFocus={preloadPalette}
+    >
       <IconSearch size={20} />
     </ActionIcon>
   );
@@ -177,7 +191,11 @@ export function TopBar({
             )}
           </Group>
         </Group>
-        {strip && <SwipeStrip />}
+        {strip && (
+          <Suspense fallback={<Box h={STRIP_HEIGHT} />}>
+            <SwipeStrip />
+          </Suspense>
+        )}
       </>
     );
 
