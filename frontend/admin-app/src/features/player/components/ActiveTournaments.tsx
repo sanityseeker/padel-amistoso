@@ -11,6 +11,7 @@ import { StatusBadge } from '../../../ui';
 import { isTbd, lifecycleIn, useEventData } from '../eventData';
 import { entryPath } from '../context';
 import { MatchActions } from '../MatchActions';
+import { PaymentBadge, useOpenPayment } from '../payments';
 import { sportProps } from '../../../theme';
 import classes from '../Player.module.css';
 
@@ -38,6 +39,7 @@ export function TournamentNavCard({ entry }: { entry: Entry }) {
   const pending = data?.pending ?? null;
   const state = pending && data ? lifecycleIn(pending, data, entry.player_id) : null;
   const client = useQueryClient();
+  const payment = useOpenPayment(entry);
   const finished = !!data?.finished;
   // Finished while the Hub list still has it as active: refresh so it moves to Past.
   useEffect(() => {
@@ -97,6 +99,11 @@ export function TournamentNavCard({ entry }: { entry: Entry }) {
           <IconChevronRight size={20} aria-hidden />
         </Group>
       </UnstyledButton>
+      {payment && (
+        <div className={classes.navCardBody}>
+          <PaymentBadge payment={payment} />
+        </div>
+      )}
       {idle && (
         <div className={classes.navCardBody}>
           <Text size="sm" c="dimmed" data-testid="active-tournament-idle">

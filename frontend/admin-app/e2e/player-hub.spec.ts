@@ -1,5 +1,11 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
-import { adminHeaders, createTournament, loginAdmin, patchTvSettings } from './helpers';
+import {
+  adminHeaders,
+  createTournament,
+  loginAdmin,
+  openMatchTool,
+  patchTvSettings,
+} from './helpers';
 
 interface Secret {
   name: string;
@@ -112,10 +118,9 @@ test('a player corrects the opponent score and the organizer sees it in the hist
   await page.goto(`/admin/t/${id}?view=review`);
   await expect(page.getByTestId('review-queue')).toBeVisible();
   await page.goto(`/admin/t/${id}?filter=all`);
-  await page
-    .locator(`[data-match-id="${match.id}"]`)
-    .getByRole('button', { name: 'Score history' })
-    .click();
+  const row = page.locator(`[data-match-id="${match.id}"]`);
+  await expect(row).toBeVisible();
+  await openMatchTool(page, row, 'Score history');
   await expect(page.getByTestId('history-list')).toContainText('Correction proposed');
 });
 
@@ -257,4 +262,280 @@ test('the community picker heads every Hub page and the sport choice carries acr
   await expect(filters.getByRole('radio')).toHaveCount(0);
   await page.goto('/player');
   await expect(page.getByTestId('player-card')).toContainText('Tennis rating');
+});
+
+// ---- Sport filter (Padel / Tennis / All) -----------------------------------------------------
+
+const SPORT_KEY = 'padel-player-sport';
+
+// Ana with an active padel and an active tennis tournament linked to one Hub profile.
+async function mixedSports(request: APIRequestContext, label: string) {
+  const base = await setup(request, label);
+  const tennisName = `${label} tennis ${Date.now()}`;
+  const tennis = await createTournament(request, 'mex', tennisName, { sport: 'tennis' });
+  const secrets = (
+    await (
+      await request.get(`/api/tournaments/${tennis.id}/player-secrets`, { headers: tennis.headers })
+    ).json()
+  ).players as Record<string, Secret>;
+  const ana = Object.values(secrets).find((p) => p.name === 'Ana')!;
+  const linked = await request.post('/api/player-profile/link', {
+    headers: { Authorization: `Bearer ${base.profile.access_token}` },
+    data: { entity_type: 'tournament', entity_id: tennis.id, passphrase: ana.passphrase },
+  });
+  expect(linked.ok()).toBeTruthy();
+  return { ...base, tennisId: tennis.id, tennisName };
+}
+
+// One handler for the space request: route.fetch() skips other handlers, so a second route would drop the first.
+const rated =
+  (
+    padel: number,
+    tennis: number,
+    mutate?: (space: { entries: Record<string, unknown>[] }) => void,
+  ) =>
+  async (page: Page) =>
+    page.route('**/api/player-profile/space?**', async (route) => {
+      const response = await route.fetch();
+      const json = await response.json();
+      json.profile.elo_padel_matches = padel;
+      json.profile.elo_tennis_matches = tennis;
+      mutate?.(json);
+      await route.fulfill({ response, json });
+    });
+
+test('the sport filter defaults to All, filters the Hub, survives a reload and is absent on Ratings', async ({
+  page,
+  request,
+}) => {
+  const { profile, tennisName } = await mixedSports(request, 'Sport filter');
+  await rated(3, 2)(page);
+  await openHub(page, profile.access_token);
+  const filters = page.getByTestId('hub-filters');
+  await expect(filters.getByRole('radio')).toHaveCount(3);
+  await expect(filters.getByRole('radio', { name: 'All' })).toBeChecked();
+  await expect(page.getByTestId('active-tournament')).toHaveCount(2);
+  await expect(page.getByTestId('player-card')).toHaveCount(2);
+
+  await filters.getByText('Tennis', { exact: true }).click();
+  await expect(page.getByTestId('active-tournament')).toHaveCount(1);
+  await expect(page.getByTestId('active-tournament')).toContainText(tennisName);
+  await expect(page.getByTestId('player-card')).toHaveCount(1);
+  await filters.getByText('Padel', { exact: true }).click();
+  await expect(page.getByTestId('active-tournament')).toHaveCount(1);
+  await expect(page.getByTestId('active-tournament')).not.toContainText(tennisName);
+
+  await filters.getByText('Tennis', { exact: true }).click();
+  await page.reload();
+  await expect(filters.getByRole('radio', { name: 'Tennis' })).toBeChecked();
+  await expect(page.getByTestId('active-tournament')).toHaveCount(1);
+
+  // Ratings shows one sport at a time: no All there.
+  await page.goto('/player/ratings');
+  await expect(filters.getByRole('radio')).toHaveCount(2);
+  await expect(filters.getByRole('radio', { name: 'All' })).toHaveCount(0);
+  await expect(filters.getByRole('radio', { name: 'Tennis' })).toBeChecked();
+  // With All saved, Ratings highlights the first sport and leaves the stored choice alone.
+  await page.goto('/player');
+  await filters.getByText('All', { exact: true }).click();
+  await page.goto('/player/ratings');
+  await expect(filters.getByRole('radio', { name: 'Padel' })).toBeChecked();
+  expect(await page.evaluate((key) => localStorage.getItem(key), SPORT_KEY)).toBe('all');
+});
+
+test('My events follows the sport filter, with All included', async ({ page, request }) => {
+  const { profile } = await mixedSports(request, 'My events sport');
+  await rated(3, 2)(page);
+  await openHub(page, profile.access_token);
+  await page.goto('/player/matches');
+  const filters = page.getByTestId('hub-filters');
+  await expect(filters.getByRole('radio')).toHaveCount(3);
+  await expect(filters.getByRole('radio', { name: 'All' })).toBeChecked();
+  await expect(page.getByTestId('event-card')).toHaveCount(2);
+  await expect(page.getByText('Active (2)', { exact: true })).toBeVisible();
+  await filters.getByText('Tennis', { exact: true }).click();
+  await expect(page.getByTestId('event-card')).toHaveCount(1);
+  await expect(page.getByText('Active (1)', { exact: true })).toBeVisible();
+});
+
+test('a filter that hides every active tournament offers to show all sports', async ({
+  page,
+  request,
+}) => {
+  const { profile } = await mixedSports(request, 'Sport empty');
+  // The padel tournament counts as finished here, so padel has nothing active.
+  await rated(3, 2, (space) => {
+    for (const entry of space.entries)
+      if (entry.sport === 'padel') {
+        entry.status = 'finished';
+        entry.finished_at = new Date().toISOString();
+      }
+  })(page);
+  await page.addInitScript((key) => localStorage.setItem(key, 'padel'), SPORT_KEY);
+  await openHub(page, profile.access_token);
+  await expect(page.getByText('No active tournaments in this sport.')).toBeVisible();
+  await expect(page.getByTestId('active-tournament')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Show all sports' }).click();
+  await expect(page.getByTestId('hub-filters').getByRole('radio', { name: 'All' })).toBeChecked();
+  await expect(page.getByTestId('active-tournament')).toHaveCount(1);
+});
+
+test('a player rated only in padel still sees an active tennis tournament', async ({
+  page,
+  request,
+}) => {
+  const { profile, tennisName } = await mixedSports(request, 'Sport unrated');
+  await rated(3, 0)(page);
+  await page.addInitScript((key) => localStorage.setItem(key, 'padel'), SPORT_KEY);
+  await openHub(page, profile.access_token);
+  // One rated sport: no switcher, and the saved padel choice does not hide the tennis event.
+  await expect(page.getByTestId('hub-filters')).toHaveCount(0);
+  await expect(page.getByTestId('active-tournament')).toHaveCount(2);
+  await expect(page.getByText(tennisName)).toBeVisible();
+});
+
+test('an empty stored sport reads as All', async ({ page, request }) => {
+  const { profile } = await mixedSports(request, 'Sport blank');
+  await rated(3, 2)(page);
+  await page.addInitScript((key) => localStorage.setItem(key, ''), SPORT_KEY);
+  await openHub(page, profile.access_token);
+  await expect(page.getByTestId('hub-filters').getByRole('radio', { name: 'All' })).toBeChecked();
+  await expect(page.getByTestId('active-tournament')).toHaveCount(2);
+});
+
+// The red dot on one item of the Hub navigation.
+const navDot = (page: Page, item: string) =>
+  page
+    .getByRole('navigation', { name: 'Player Hub' })
+    .getByRole('link', { name: item, exact: true })
+    .getByTestId('nav-dot');
+
+// ---- Entry fee badge --------------------------------------------------------------------------
+
+test('a payment badge on the active tournament card opens the payment sheet', async ({
+  page,
+  request,
+}) => {
+  const { id, profile, headers } = await setup(request, 'Hub fee');
+  expect(
+    (
+      await request.patch(`/api/tournaments/${id}/payment-settings`, {
+        headers,
+        data: { fee_cents: 1500, currency: 'EUR', instructions: 'Pay the organizer.' },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  await openHub(page, profile.access_token);
+  const card = page.getByTestId('active-tournament');
+  const badge = card.getByTestId('payment-badge');
+  await expect(badge).toHaveText('Payment due');
+  // A tournament badge is on the Hub, so the Hub item lights; My events shows no badge of its own here.
+  await expect(navDot(page, 'Hub')).toHaveCount(1);
+  await expect(navDot(page, 'My events')).toHaveCount(0);
+  await badge.click();
+  const sheet = page.getByRole('dialog', { name: 'Entry fee' });
+  await expect(sheet).toContainText('Pay the organizer.');
+  // The payment method is required before "I've paid".
+  await expect(sheet.getByRole('button', { name: "I've paid" })).toBeDisabled();
+  await sheet.getByRole('combobox', { name: 'Payment method' }).click();
+  await page.getByRole('option', { name: 'Bizum (phone)', exact: true }).click();
+  await sheet.getByLabel('Reference or note').fill('Bizum done');
+  await sheet.getByRole('button', { name: "I've paid" }).click();
+  await expect(sheet.getByRole('status')).toContainText('Reported');
+  await page.keyboard.press('Escape');
+  await expect(badge).toHaveText('Payment reported');
+  // A reported payment waits for the organizer: no dot.
+  await expect(navDot(page, 'Hub')).toHaveCount(0);
+  // The organizer's confirmation removes the badge and the event page says so in one line.
+  const secrets = (
+    await (await request.get(`/api/tournaments/${id}/player-secrets`, { headers })).json()
+  ).players as Record<string, Secret>;
+  const anaId = Object.entries(secrets).find(([, p]) => p.name === 'Ana')![0];
+  expect(
+    (
+      await request.patch(`/api/tournaments/${id}/payments/${anaId}`, {
+        headers,
+        data: { status: 'paid' },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  await page.goto(`/player/matches/tournament/${id}`);
+  await expect(page.getByTestId('payment-settled')).toHaveText('Entry fee: paid');
+  await expect(page.getByTestId('payment-badge')).toHaveCount(0);
+  await page.goto('/player');
+  await expect(page.getByTestId('payment-badge')).toHaveCount(0);
+});
+
+test('a lobby payment lights the My events dot, not the Hub dot', async ({ page, request }) => {
+  const { profile, headers } = await setup(request, 'Lobby dot');
+  const lobby = await (
+    await request.post('/api/registrations', {
+      headers,
+      data: { name: `Dot lobby ${Date.now()}`, auto_send_email: false },
+    })
+  ).json();
+  expect(
+    (
+      await request.post(`/api/registrations/${lobby.id}/registrant`, {
+        headers,
+        data: { player_name: 'Ana', profile_id: profile.profile.id },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  expect(
+    (
+      await request.patch(`/api/registrations/${lobby.id}/payment-settings`, {
+        headers,
+        data: { fee_cents: 1500, currency: 'EUR' },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  await openHub(page, profile.access_token);
+  // The lobby's badge is on My events only, so that item lights and the Hub item does not.
+  await expect(navDot(page, 'My events')).toHaveCount(1);
+  await expect(navDot(page, 'Hub')).toHaveCount(0);
+  await page.goto('/player/matches');
+  await expect(
+    page.getByTestId('event-card').filter({ hasText: 'Dot lobby' }).getByTestId('payment-badge'),
+  ).toHaveText('Payment due');
+});
+
+test('an open payment stays on the Hub when the sport filter hides its sport', async ({
+  page,
+  request,
+}) => {
+  const { profile, headers, tennisId, tennisName } = await mixedSports(request, 'Filter fee');
+  expect(
+    (
+      await request.patch(`/api/tournaments/${tennisId}/payment-settings`, {
+        headers,
+        data: { fee_cents: 1000, currency: 'EUR' },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  await rated(3, 2)(page);
+  await page.addInitScript((key) => localStorage.setItem(key, 'padel'), SPORT_KEY);
+  await openHub(page, profile.access_token);
+  const filters = page.getByTestId('hub-filters');
+  await expect(filters.getByRole('radio', { name: 'Padel' })).toBeChecked();
+  // The tennis tournament is outside the Padel filter but owes a fee: it stays, with its badge.
+  const owing = page.getByTestId('active-tournament').filter({ hasText: tennisName });
+  await expect(owing.getByTestId('payment-badge')).toHaveText('Payment due');
+  await expect(page.getByTestId('active-tournament')).toHaveCount(2);
+  await expect(navDot(page, 'Hub')).toHaveCount(1);
+  // Once it is paid the filter applies again.
+  const secrets = (
+    await (await request.get(`/api/tournaments/${tennisId}/player-secrets`, { headers })).json()
+  ).players as Record<string, Secret>;
+  const anaId = Object.entries(secrets).find(([, p]) => p.name === 'Ana')![0];
+  expect(
+    (
+      await request.patch(`/api/tournaments/${tennisId}/payments/${anaId}`, {
+        headers,
+        data: { status: 'paid' },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  await page.reload();
+  await expect(page.getByTestId('active-tournament')).toHaveCount(1);
 });

@@ -21,6 +21,7 @@ import type { Entry } from '../../../player/types';
 import { ConfirmAction, EmptyState, OverflowMenu, PageHeader } from '../../../ui';
 import { SocialLine, stageLabel } from '../components/CareerStats';
 import { entryPath, usePlayerSpace } from '../context';
+import { EntryPaymentBadge } from '../payments';
 import { entrySummary, rankedOf } from '../stats';
 import { sportProps } from '../../../theme';
 import classes from '../Player.module.css';
@@ -90,6 +91,7 @@ function EntryCard({ entry, onUnlink }: { entry: Entry; onUnlink: (entry: Entry)
           {entry.tournament_type ? formatType(entry.tournament_type) : tx('Registration lobby')}
         </Text>
         {entry.rank && <StatusBadge size="sm">#{entry.rank}</StatusBadge>}
+        <EntryPaymentBadge entry={entry} />
         {entry.status === 'finished' && entry.finished_at && (
           <StatusBadge size="sm" variant="outline">
             {new Date(entry.finished_at).toLocaleDateString(localeTag())}
@@ -135,7 +137,7 @@ export default function Matches() {
   const gap = useMatches({ base: 'md', sm: 'lg' });
   useLocale();
   const client = useQueryClient();
-  const { space, liveEntries, openLink } = usePlayerSpace();
+  const { space, liveEntries, openLink, sportFilter } = usePlayerSpace();
   const [params] = useSearchParams();
   const [which, setWhich] = useState<'active' | 'finished'>(
     params.get('tab') === 'finished' ? 'finished' : 'active',
@@ -157,8 +159,9 @@ export default function Matches() {
       });
     },
   });
-  const active = liveEntries.filter((e) => e.status === 'active');
-  const finished = space.entries.filter((e) => e.status === 'finished');
+  const inSport = (e: Entry) => sportFilter === 'all' || (e.sport || 'padel') === sportFilter;
+  const active = liveEntries.filter((e) => e.status === 'active' && inSport(e));
+  const finished = space.entries.filter((e) => e.status === 'finished' && inSport(e));
   const list = which === 'active' ? active : finished;
   return (
     <Stack gap={gap}>

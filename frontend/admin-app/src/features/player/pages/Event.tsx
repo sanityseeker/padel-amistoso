@@ -20,6 +20,7 @@ import { playedPath, TournamentPath, useTournamentPath } from '../components/Tou
 import { sportProps } from '../../../theme';
 import { phaseText } from '../components/ActiveTournaments';
 import { usePlayerSpace } from '../context';
+import { EntryPaymentStatus } from '../payments';
 import type { PathRound, PlayerMatch } from '../../../player/types';
 import { useEventData } from '../eventData';
 import { MatchActions } from '../MatchActions';
@@ -81,7 +82,12 @@ export default function Event() {
         tx(entry.sport === 'tennis' ? 'Tennis' : 'Padel'),
       ].join(' · ')}
       title={entry.entity_name}
-      meta={status}
+      meta={
+        <>
+          {status}
+          <EntryPaymentStatus entry={entry} />
+        </>
+      }
     />
   );
   // A notice sits right under the header, so the two read as one block.

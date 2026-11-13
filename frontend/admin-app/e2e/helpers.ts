@@ -1,4 +1,4 @@
-import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 
 const MOBILE_MAX = 767;
 const isMobile = (page: Page) => (page.viewportSize()?.width ?? 1280) <= MOBILE_MAX;
@@ -157,4 +157,20 @@ export async function fillNames(page: Page, field: 'players' | 'courts', value: 
   await page
     .getByLabel(field === 'players' ? /^(Players|Jugadores|Игроки)/ : /^(Courts|Pistas|Корты)$/)
     .fill(value);
+}
+
+/** Opens a match tool (comment or score history). A wide card shows it as a button beside the score
+ *  button; a narrow card keeps it in the "Match options" menu (CSS decides which one is visible). */
+export async function openMatchTool(
+  page: Page,
+  row: Locator,
+  name: 'Add comment' | 'Edit comment' | 'Score history',
+) {
+  const inline = row.getByRole('button', { name, exact: true });
+  if (await inline.isVisible()) {
+    await inline.click();
+    return;
+  }
+  await row.getByRole('button', { name: /^Match options/ }).click();
+  await page.getByRole('menuitem', { name, exact: true }).click();
 }

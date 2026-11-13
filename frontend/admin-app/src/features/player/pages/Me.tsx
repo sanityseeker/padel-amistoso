@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button, Group, Paper, Stack, Text, Title, useMatches } from '@mantine/core';
 import { IconLogout, IconSettings } from '@tabler/icons-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { t as tx, useLocale } from '../../../i18n';
 import { useAuth } from '../../../auth';
 import type { Entry } from '../../../player/types';
 import { usePlayerSession } from '../../../player/session';
-import { PlayerAccount, PlayerPayments } from '../components/Account';
+import { PlayerAccount } from '../components/Account';
 import { PushToggle } from '../components/PushToggle';
 import { PageHeader, StatusBadge } from '../../../ui';
 import { usePlayerSpace } from '../context';
@@ -17,16 +17,15 @@ function EntryPush({ entry }: { entry: Entry }) {
   return <PushToggle tid={entry.entity_id} token={token} label={entry.entity_name} />;
 }
 
-// Me: profile, email verification, passphrase, payments, notifications and the advanced tools.
+// Me: profile, email verification, passphrase, notifications and the advanced tools.
 // Install, language and theme live in the top bar, not here. Log out of the Player Hub lives here and
 // in the header's player menu.
 export default function Me() {
   const gap = useMatches({ base: 'md', sm: 'lg' });
   useLocale();
-  const { space, liveEntries, clubEntries } = usePlayerSpace();
+  const { space, liveEntries } = usePlayerSpace();
   const { logout } = usePlayerSession();
   const auth = useAuth();
-  const { hash } = useLocation();
   const [editing, setEditing] = useState(false);
   const profile = space.profile;
   // Every tournament in progress, whatever community is picked: the scope narrows ratings and
@@ -38,10 +37,6 @@ export default function Me() {
       !e.entity_deleted &&
       !!e.auto_login_token,
   );
-  useEffect(() => {
-    if (hash === '#payments')
-      window.setTimeout(() => document.getElementById('payments')?.scrollIntoView?.(), 100);
-  }, [hash]);
   return (
     <Stack gap={gap}>
       <PageHeader
@@ -64,9 +59,6 @@ export default function Me() {
         profile={profile}
         editing={editing}
       />
-      <Stack gap="xs" id="payments">
-        <PlayerPayments only={clubEntries} />
-      </Stack>
       {live.length > 0 && (
         <Paper p="md">
           <Title order={2} size="h3" mb="xs">

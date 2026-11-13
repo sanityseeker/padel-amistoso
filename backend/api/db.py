@@ -465,8 +465,9 @@ CREATE INDEX IF NOT EXISTS idx_payment_events_payment
 -- Tournament-level fee settings live outside the pickled tournament blob so
 -- the in-memory state module stays untouched (see payments_store.py).
 CREATE TABLE IF NOT EXISTS tournament_payment_settings (
-    tournament_id TEXT PRIMARY KEY,
-    settings      TEXT NOT NULL
+    tournament_id   TEXT PRIMARY KEY,
+    settings        TEXT NOT NULL,
+    registration_id TEXT              -- lobby the tournament was converted from; outlives the lobby row
 );
 """
 
@@ -906,6 +907,27 @@ def init_db() -> None:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_profile_club_elo_profile ON profile_club_elo (profile_id, sport)"
             )
+
+        # Migrate: remember the source lobby of converted tournaments on the tournament side, so the
+        # shared lobby payment row is still found after the lobby (and its converted_to_tids) is deleted.
+        pay_set_cols = {r[1] for r in conn.execute("PRAGMA table_info(tournament_payment_settings)").fetchall()}
+        if "registration_id" not in pay_set_cols:
+            conn.execute("ALTER TABLE tournament_payment_settings ADD COLUMN registration_id TEXT")
+            for reg_id, tids_raw in conn.execute(
+                "SELECT id, converted_to_tids FROM registrations WHERE converted_to_tids != '[]'"
+            ).fetchall():
+                try:
+                    converted = json.loads(tids_raw)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                for converted_tid in converted:
+                    conn.execute(
+                        """INSERT INTO tournament_payment_settings (tournament_id, settings, registration_id)
+                           VALUES (?, '{}', ?)
+                           ON CONFLICT(tournament_id) DO UPDATE SET
+                               registration_id = COALESCE(registration_id, excluded.registration_id)""",
+                        (converted_tid, reg_id),
+                    )
 
         # Migrate: the organizer's "cleared up to" marker for lobby answer changes
         seen_cols = {r[1] for r in conn.execute("PRAGMA table_info(registration_answer_seen)").fetchall()}

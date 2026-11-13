@@ -45,22 +45,29 @@ export function usePlayerScope(): string {
   );
 }
 
-// The Player Hub's chosen sport, kept across its pages and visits like the scope above. Pages fall
-// back to the player's first sport when the saved one is not among theirs.
+// The Player Hub's sport filter, kept across its pages and visits like the scope above: 'padel',
+// 'tennis' or 'all' (the default). An empty or unknown stored value reads as 'all'. The Ratings page
+// needs one concrete sport and falls back to the player's first one without writing anything.
 const SPORT_KEY = 'padel-player-sport';
 
-const readSport = (): string => {
+export type SportFilter = 'padel' | 'tennis' | 'all';
+
+const normalize = (value: string | null): SportFilter =>
+  value === 'padel' || value === 'tennis' ? value : 'all';
+
+const readSport = (): SportFilter => {
   try {
-    return localStorage.getItem(SPORT_KEY) || '';
+    return normalize(localStorage.getItem(SPORT_KEY));
   } catch {
-    return '';
+    return 'all';
   }
 };
 
-let sport = readSport();
+let sport: SportFilter = readSport();
 const sportListeners = new Set<() => void>();
 
-export function setPlayerSport(value: string) {
+export function setPlayerSport(next: SportFilter) {
+  const value = normalize(next);
   try {
     localStorage.setItem(SPORT_KEY, value);
   } catch {
@@ -71,7 +78,7 @@ export function setPlayerSport(value: string) {
   sportListeners.forEach((listener) => listener());
 }
 
-export function usePlayerSport(): string {
+export function usePlayerSport(): SportFilter {
   return useSyncExternalStore(
     (listener) => {
       sportListeners.add(listener);
@@ -80,6 +87,6 @@ export function usePlayerSport(): string {
       };
     },
     () => sport,
-    () => '',
+    () => 'all',
   );
 }

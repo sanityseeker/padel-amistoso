@@ -14,13 +14,18 @@ import {
   Textarea,
   TextInput,
 } from '@mantine/core';
-import { IconCheck, IconCopy, IconUser } from '@tabler/icons-react';
-import { useClipboard } from '@mantine/hooks';
+import { IconUser } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { money } from '../../api';
 import { localeTag, t as tx, useLocale } from '../../i18n';
 import type { Question } from '../../types';
-import { AlsoPaidFor, type PayableTeammate } from '../../ui/AlsoPaidFor';
+import type { PayableTeammate } from '../../ui/AlsoPaidFor';
+import {
+  formatDue,
+  methodLabel,
+  OwnPaymentCard,
+  type PaymentAdapter,
+} from '../payments/OwnPaymentCard';
 import { Markdown } from '../public/Markdown';
 import {
   call,
@@ -32,7 +37,6 @@ import {
   type PaymentInfo,
   type PublicLobby,
 } from './model';
-import { Notice } from '../../ui/Notice';
 import { StatusBadge } from '../../ui/StatusBadge';
 
 // ---- Small pieces --------------------------------------------------------------------------------------
@@ -120,32 +124,6 @@ export function LinkedTournaments({
   );
 }
 
-const methodLabel = (m: { kind: string; label?: string | null }) => {
-  if (m.label) return m.label;
-  const labels: Record<string, string> = {
-    bizum: tx('Bizum (phone)'),
-    iban: tx('Bank transfer (IBAN)'),
-    revolut: tx('Revolut link'),
-    paypal_me: tx('PayPal'),
-    cash: tx('Cash'),
-  };
-  return labels[m.kind] ?? tx('Other');
-};
-
-function Copy({ value }: { value: string }) {
-  const clipboard = useClipboard({ timeout: 1800 });
-  return (
-    <Button
-      size="compact-sm"
-      variant="default"
-      leftSection={clipboard.copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-      onClick={() => clipboard.copy(value)}
-    >
-      {clipboard.copied ? tx('Copied') : tx('Copy')}
-    </Button>
-  );
-}
-
 /** The entry fee: the public notice before signing up, the full payment panel after. */
 export function FeeNotice({ payment }: { payment?: PublicLobby['payment'] }) {
   useLocale();
@@ -159,7 +137,11 @@ export function FeeNotice({ payment }: { payment?: PublicLobby['payment'] }) {
             {money(payment.fee_cents, payment.currency)}
           </Text>
         </Group>
-        {payment.due_at && <Text size="sm">{tx('Due by {date}', { date: payment.due_at })}</Text>}
+        {payment.due_at && (
+          <Text size="sm">
+            {tx('Due by {date}', { date: formatDue(payment.due_at, localeTag()) })}
+          </Text>
+        )}
         {payment.instructions && <Text size="sm">{payment.instructions}</Text>}
         {payment.methods?.length ? (
           payment.methods.map((m, i) => {
@@ -195,17 +177,6 @@ export function FeeNotice({ payment }: { payment?: PublicLobby['payment'] }) {
   );
 }
 
-const statusNote = (status: string) => {
-  const notes: Record<string, string> = {
-    reported: tx('Reported. Waiting for the organizer to confirm.'),
-    paid: tx('Payment confirmed by the organizer.'),
-    waived: tx('No charge. The organizer set your entry as free.'),
-    refund_due: tx('The organizer owes you a refund.'),
-    refunded: tx('Refunded.'),
-  };
-  return notes[status] ?? status;
-};
-
 export function PaymentPanel({
   rid,
   payment,
@@ -217,121 +188,24 @@ export function PaymentPanel({
   credential: { passphrase: string } | { token: string };
   onChange: (next: PaymentInfo) => void;
 }) {
-  useLocale();
-  const [reference, setReference] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [others, setOthers] = useState<PayableTeammate[]>([]);
-  const [alsoFor, setAlsoFor] = useState<string[]>([]);
-  const pending = payment.status === 'unpaid' || payment.status === 'reported';
-  const unpaid = payment.status === 'unpaid';
-  useEffect(() => {
-    if (!unpaid) return;
-    let live = true;
-    call<PayableTeammate[]>(`${lobbyPath(rid)}/player-payment-teammates`, credential, 'POST')
-      .then((list) => live && setOthers(list))
-      .catch(() => live && setOthers([]));
-    return () => {
-      live = false;
-    };
-    // The credential object is rebuilt on every render; its values identify the player.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rid, unpaid, JSON.stringify(credential)]);
-  const report = async () => {
-    setBusy(true);
-    setError('');
-    try {
-      const body: Record<string, string | string[]> = { ...credential };
-      if (reference.trim()) body.reference = reference.trim();
-      if (alsoFor.length) body.also_for = alsoFor;
-      onChange(await call<PaymentInfo>(`${lobbyPath(rid)}/player-payment-report`, body, 'POST'));
-      setReference('');
-      setAlsoFor([]);
-    } catch (e) {
-      setError((e as Error).message || tx('Could not update the payment. Try again.'));
-    } finally {
-      setBusy(false);
-    }
+  // The lobby adapter: the credential identifies the player, the lobby routes carry it in the body.
+  const adapter: PaymentAdapter = {
+    key: `${rid}:${JSON.stringify(credential)}`,
+    loadTeammates: () =>
+      call<PayableTeammate[]>(`${lobbyPath(rid)}/player-payment-teammates`, credential, 'POST'),
+    report: ({ method, reference, also_for }) =>
+      call<PaymentInfo>(
+        `${lobbyPath(rid)}/player-payment-report`,
+        {
+          ...credential,
+          method,
+          ...(reference ? { reference } : {}),
+          ...(also_for ? { also_for } : {}),
+        },
+        'POST',
+      ),
   };
-  return (
-    <Paper p="md" data-testid="payment-panel">
-      <Stack gap="xs">
-        <Group justify="space-between">
-          <Text fw={700}>{tx('Entry fee')}</Text>
-          <Text variant="score" size="xl">
-            {money(payment.amount_cents, payment.currency)}
-          </Text>
-        </Group>
-        {payment.due_at && <Text size="sm">{tx('Due by {date}', { date: payment.due_at })}</Text>}
-        {payment.instructions && <Text size="sm">{payment.instructions}</Text>}
-        {payment.status !== 'unpaid' && (
-          <Notice tone={payment.status === 'paid' ? 'success' : 'neutral'} role="status">
-            {statusNote(payment.status)}
-          </Notice>
-        )}
-        {pending && (
-          <>
-            {payment.methods.map((m, i) => {
-              const href = paymentHref(m, payment.amount_cents, payment.currency);
-              return (
-                <Group key={i} gap="xs" justify="space-between" wrap="nowrap">
-                  <Stack gap={0} miw={0}>
-                    <Text size="xs" c="dimmed">
-                      {methodLabel(m)}
-                    </Text>
-                    {href ? (
-                      <Text
-                        component="a"
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        size="sm"
-                      >
-                        {m.value}
-                      </Text>
-                    ) : (
-                      <Text size="sm">{m.value}</Text>
-                    )}
-                  </Stack>
-                  {m.value && <Copy value={m.value} />}
-                </Group>
-              );
-            })}
-            <Group gap="xs" justify="space-between" wrap="nowrap">
-              <Stack gap={0} miw={0}>
-                <Text size="xs" c="dimmed">
-                  {tx('Concept for the transfer')}
-                </Text>
-                <Text ff="monospace" size="sm">
-                  {payment.concept}
-                </Text>
-              </Stack>
-              <Copy value={payment.concept} />
-            </Group>
-            {payment.status === 'unpaid' && (
-              <AlsoPaidFor players={others} value={alsoFor} onChange={setAlsoFor} />
-            )}
-            {payment.status === 'unpaid' && (
-              <Group align="flex-end" wrap="nowrap">
-                <TextInput
-                  flex={1}
-                  maxLength={120}
-                  aria-label={tx('Reference or note')}
-                  placeholder={tx('Reference or note')}
-                  value={reference}
-                  onChange={(e) => setReference(e.currentTarget.value)}
-                />
-                <Button loading={busy} onClick={() => void report()}>
-                  {tx("I've paid")}
-                </Button>
-              </Group>
-            )}
-          </>
-        )}
-        {error && <Notice tone="danger">{error}</Notice>}
-      </Stack>
-    </Paper>
-  );
+  return <OwnPaymentCard payment={payment} adapter={adapter} onChange={onChange} />;
 }
 
 // ---- Identity ------------------------------------------------------------------------------------------

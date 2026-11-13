@@ -182,15 +182,23 @@ test('email login link is stripped and player can report a pending payment', asy
   await page.goto(`/player#token=${encodeURIComponent(session.access_token)}`);
   await expect(page.getByRole('heading', { name: 'Anna Player' })).toBeVisible();
   expect(new URL(page.url()).hash).toBe('');
-  // A payment due shows as a to-do card on the Hub and in full on /player/me.
-  await expect(page.getByText('Payment due', { exact: true })).toBeVisible();
-  await page.getByRole('link', { name: 'Pay or report' }).click();
-  await expect(page).toHaveURL(/\/player\/me#payments$/);
-  await expect(page.getByRole('heading', { name: 'Player Payment Social' })).toBeVisible();
-  await page.getByRole('button', { name: 'I’ve paid' }).click();
-  await page.getByLabel(/^Payment reference/).fill('Cash at reception');
-  await page.getByRole('button', { name: 'Report payment', exact: true }).click();
-  await expect(page.getByText('Awaiting confirmation', { exact: true })).toBeVisible();
+  // A payment due is a badge on the lobby's card in My events; it opens the payment sheet.
+  await page.goto('/player/matches');
+  const card = page.getByTestId('event-card').filter({ hasText: 'Player Payment Social' });
+  const badge = card.getByTestId('payment-badge');
+  await expect(badge).toHaveText('Payment due');
+  await badge.click();
+  const sheet = page.getByRole('dialog', { name: 'Entry fee' });
+  await expect(sheet).toContainText('Pay the organizer in cash.');
+  // The payment method is required before "I've paid".
+  await expect(sheet.getByRole('button', { name: "I've paid" })).toBeDisabled();
+  await sheet.getByRole('combobox', { name: 'Payment method' }).click();
+  await page.getByRole('option', { name: 'Cash', exact: true }).click();
+  await sheet.getByLabel('Reference or note').fill('Cash at reception');
+  await sheet.getByRole('button', { name: "I've paid" }).click();
+  await expect(sheet.getByRole('status')).toContainText('Reported');
+  await page.keyboard.press('Escape');
+  await expect(badge).toHaveText('Payment reported');
 });
 
 test('player links another event and respects organizer scoring controls', async ({

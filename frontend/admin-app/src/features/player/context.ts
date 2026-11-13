@@ -1,5 +1,6 @@
 import { useOutletContext } from 'react-router-dom';
 import type { Entry, Space } from '../../player/types';
+import type { SportFilter } from '../../player/scope';
 import type { Sport } from './stats';
 
 export interface PlayerSpaceContext {
@@ -15,10 +16,12 @@ export interface PlayerSpaceContext {
   setScope: (scope: string) => void;
   /** On a club subdomain: that club's entries. Everything on the Hub, payments included, keeps to them. */
   clubEntries: Entry[] | null;
-  /** The picked sport, kept across Hub pages; always one of `sports` when the player has any. */
+  /** One concrete sport for the per-sport widgets (rating card, chart, leaderboard); always one of `sports` when the player has any. */
   sport: Sport;
   sports: Sport[];
-  setSport: (sport: Sport) => void;
+  /** What the sport switcher filters the lists by. Always 'all' while the switcher is hidden (one sport). Never index with it. */
+  sportFilter: Sport | 'all';
+  setSport: (sport: SportFilter) => void;
   openLink: () => void;
   notice: string;
   clearNotice: () => void;

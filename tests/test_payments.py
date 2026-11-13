@@ -772,3 +772,440 @@ class TestParticipantFilterScope:
         assert prof.status_code == 200, prof.text
         headers = _hub_login(client, prof.json()["profile"]["id"])
         assert client.get("/api/player-profile/payments", headers=headers).json() == []
+
+
+# ── Tournament player (player JWT) ──────────────────────────────────────────
+
+NAMES4 = ("Ana", "Bob", "Cid", "Dan")
+
+
+def _player_jwt(client: TestClient, tid: str, who: dict) -> dict:
+    r = client.post(f"/api/tournaments/{tid}/player-auth", json={"passphrase": who["passphrase"]})
+    assert r.status_code == 200, r.text
+    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+
+def _mark(client: TestClient, headers: dict, path: str, pid: str, status: str) -> None:
+    r = client.patch(f"{path}/payments/{pid}", json={"status": status}, headers=headers)
+    assert r.status_code == 200, r.text
+
+
+def _converted(client: TestClient, headers: dict, *, fee: bool = True, names=NAMES4, name: str = "Open Night"):
+    rid = _lobby(client, headers, name=name)
+    if fee:
+        _set_fee(client, rid, headers)
+    players = {n: _register(client, rid, n, email=f"{n.lower()}@example.com") for n in names}
+    r = client.post(
+        f"/api/registrations/{rid}/convert",
+        json={"tournament_type": "mexicano", "player_names": list(names)},
+        headers=headers,
+    )
+    assert r.status_code == 200, r.text
+    return rid, r.json()["tournament_id"], players
+
+
+def _hub_for(client: TestClient, who: dict, name: str) -> dict:
+    prof = client.post(
+        "/api/player-profile",
+        json={"name": name, "email": f"{name.lower()}@example.com", "participant_passphrase": who["passphrase"]},
+    )
+    assert prof.status_code == 200, prof.text
+    return _hub_login(client, prof.json()["profile"]["id"])
+
+
+class TestTournamentPlayerPayment:
+    def _get(self, client, tid, headers):
+        return client.get(f"/api/tournaments/{tid}/player/payment", headers=headers)
+
+    def _report(self, client, tid, headers, **body):
+        return client.post(f"/api/tournaments/{tid}/player/payment/report", json=body, headers=headers)
+
+    def test_reads_own_row_including_paid(self, client, auth_headers):
+        rid, tid, players = _converted(client, auth_headers)
+        _mark(client, auth_headers, f"/api/registrations/{rid}", players["Ana"]["player_id"], "paid")
+        ana = _player_jwt(client, tid, players["Ana"])
+        body = self._get(client, tid, ana).json()
+        assert body["status"] == "paid" and body["amount_cents"] == 1500
+        assert body["concept"] == "PADEL-OPENNIGHT-ANA"
+        bob = _player_jwt(client, tid, players["Bob"])
+        assert self._get(client, tid, bob).json()["status"] == "unpaid"
+
+    def test_report_shows_in_lobby_tournament_and_hub(self, client, auth_headers):
+        rid, tid, players = _converted(client, auth_headers)
+        hub = _hub_for(client, players["Ana"], "Ana")
+        ana = _player_jwt(client, tid, players["Ana"])
+        r = self._report(client, tid, ana, reference="ref-1", method="bizum")
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "reported" and r.json()["reference"] == "ref-1"
+        pid = players["Ana"]["player_id"]
+        assert _row(client, rid, auth_headers, pid)["status"] == "reported"
+        t_rows = client.get(f"/api/tournaments/{tid}/payments", headers=auth_headers).json()["rows"]
+        assert next(x for x in t_rows if x["player_id"] == pid)["status"] == "reported"
+        hub_rows = client.get("/api/player-profile/payments", headers=hub).json()
+        assert [(x["entity_id"], x["status"]) for x in hub_rows] == [(tid, "reported")]
+
+    def test_paid_row_never_downgraded(self, client, auth_headers):
+        rid, tid, players = _converted(client, auth_headers)
+        pid = players["Ana"]["player_id"]
+        _mark(client, auth_headers, f"/api/registrations/{rid}", pid, "paid")
+        ana = _player_jwt(client, tid, players["Ana"])
+        r = self._report(client, tid, ana)
+        assert r.status_code == 200 and r.json()["status"] == "paid"
+        assert _db_row(pid)["status"] == "paid"
+
+    def test_also_for_teammate(self, client, auth_headers):
+        _rid, tid, players = _converted(client, auth_headers)
+        ana = _player_jwt(client, tid, players["Ana"])
+        mates = client.get(f"/api/tournaments/{tid}/player/payment/teammates", headers=ana).json()
+        assert {m["player_name"] for m in mates} == {"Bob", "Cid", "Dan"}
+        assert all(set(m) == {"player_id", "player_name"} for m in mates)
+        bob_id = players["Bob"]["player_id"]
+        assert self._report(client, tid, ana, also_for=[bob_id]).status_code == 200
+        assert _db_row(bob_id)["status"] == "reported"
+        mates = client.get(f"/api/tournaments/{tid}/player/payment/teammates", headers=ana).json()
+        assert bob_id not in {m["player_id"] for m in mates}
+        assert self._report(client, tid, ana, also_for=["nobody"]).status_code == 400
+
+    def test_auth_rules(self, client, auth_headers):
+        _rid, tid, players = _converted(client, auth_headers)
+        _rid2, tid2, players2 = _converted(client, auth_headers, name="Other")
+        url = f"/api/tournaments/{tid}/player/payment"
+        for method, path in (("get", url), ("get", url + "/teammates"), ("post", url + "/report")):
+            assert getattr(client, method)(path).status_code == 401
+            assert getattr(client, method)(path, headers=auth_headers).status_code == 401  # admin JWT
+        foreign = _player_jwt(client, tid2, players2["Ana"])
+        assert client.get(url, headers=foreign).status_code == 403
+        assert client.get(url + "/teammates", headers=foreign).status_code == 403
+        assert client.post(url + "/report", json={}, headers=foreign).status_code == 403
+        assert _db_row(players2["Ana"]["player_id"]) is None
+
+    def test_body_player_id_is_ignored(self, client, auth_headers):
+        _rid, tid, players = _converted(client, auth_headers)
+        ana = _player_jwt(client, tid, players["Ana"])
+        bob_id = players["Bob"]["player_id"]
+        r = self._report(client, tid, ana, player_id=bob_id, playerId=bob_id)
+        assert r.status_code == 200
+        assert _db_row(bob_id) is None
+        assert _db_row(players["Ana"]["player_id"])["status"] == "reported"
+
+    def test_no_fee_returns_null_and_report_400(self, client, auth_headers):
+        _rid, tid, players = _converted(client, auth_headers, fee=False)
+        ana = _player_jwt(client, tid, players["Ana"])
+        r = self._get(client, tid, ana)
+        assert r.status_code == 200 and r.json() is None
+        assert self._report(client, tid, ana).status_code == 400
+
+    def test_tournament_created_directly_with_fee(self, client, auth_headers):
+        r = client.post(
+            "/api/tournaments/mexicano",
+            json={"player_names": list(NAMES4), "court_names": ["C1"], "num_rounds": 3},
+            headers=auth_headers,
+        )
+        tid = r.json()["id"]
+        assert (
+            client.patch(f"/api/tournaments/{tid}/payment-settings", json=FEE, headers=auth_headers).status_code == 200
+        )
+        secrets = client.get(f"/api/tournaments/{tid}/player-secrets", headers=auth_headers).json()["players"]
+        pid, info = next(iter(secrets.items()))
+        jwt = client.post(f"/api/tournaments/{tid}/player-auth", json={"passphrase": info["passphrase"]}).json()
+        headers = {"Authorization": f"Bearer {jwt['access_token']}"}
+        assert self._get(client, tid, headers).json()["status"] == "unpaid"
+        assert self._report(client, tid, headers).json()["status"] == "reported"
+        assert _db_row(pid)["tournament_id"] == tid
+
+    def test_player_added_at_conversion_gets_lazy_row(self, client, auth_headers):
+        rid = _lobby(client, auth_headers)
+        _set_fee(client, rid, auth_headers)
+        for n in NAMES4[:3]:
+            _register(client, rid, n)
+        r = client.post(
+            f"/api/registrations/{rid}/convert",
+            json={"tournament_type": "mexicano", "player_names": [*NAMES4[:3], "Newbie"]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        tid = r.json()["tournament_id"]
+        with db_mod.get_db() as conn:
+            sec = conn.execute(
+                "SELECT player_id, passphrase FROM player_secrets WHERE tournament_id = ? AND player_name = ?",
+                (tid, "Newbie"),
+            ).fetchone()
+        pid, info = sec["player_id"], {"passphrase": sec["passphrase"]}
+        jwt = client.post(f"/api/tournaments/{tid}/player-auth", json={"passphrase": info["passphrase"]}).json()
+        headers = {"Authorization": f"Bearer {jwt['access_token']}"}
+        assert self._get(client, tid, headers).json()["status"] == "unpaid"
+        assert _db_row(pid) is None
+        assert self._report(client, tid, headers).json()["status"] == "reported"
+        assert _db_row(pid)["tournament_id"] == tid
+
+    def test_withdrawn_player_keeps_paid_row(self, client, auth_headers):
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        from backend.api import state as state_mod  # noqa: PLC0415
+
+        rid, tid, players = _converted(client, auth_headers)
+        ana_id, bob_id = players["Ana"]["player_id"], players["Bob"]["player_id"]
+        _mark(client, auth_headers, f"/api/registrations/{rid}", ana_id, "paid")
+        t = state_mod._tournaments[tid]["tournament"]
+        t.withdrawals = {"k": SimpleNamespace(member_ids=[ana_id])}
+        ana = _player_jwt(client, tid, players["Ana"])
+        assert self._get(client, tid, ana).json()["status"] == "paid"
+        assert _db_row(ana_id)["status"] == "paid"
+        bob = _player_jwt(client, tid, players["Bob"])
+        mates = client.get(f"/api/tournaments/{tid}/player/payment/teammates", headers=bob).json()
+        assert ana_id not in {m["player_id"] for m in mates}
+        assert self._report(client, tid, bob, also_for=[ana_id]).status_code == 400
+        assert bob_id not in {m["player_id"] for m in mates}
+
+    def test_hub_get_by_key_and_foreign_key(self, client, auth_headers):
+        rid, tid, players = _converted(client, auth_headers)
+        _mark(client, auth_headers, f"/api/registrations/{rid}", players["Ana"]["player_id"], "paid")
+        hub = _hub_for(client, players["Ana"], "Ana")
+        key = f"t:{tid}:{players['Ana']['player_id']}"
+        r = client.get(f"/api/player-profile/payments/{key}", headers=hub)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["status"] == "paid" and body["entity_id"] == tid
+        assert "due_at" in body and "reference" in body
+        # Settled rows are not part of the Hub listing.
+        assert client.get("/api/player-profile/payments", headers=hub).json() == []
+        foreign = f"t:{tid}:{players['Bob']['player_id']}"
+        assert client.get(f"/api/player-profile/payments/{foreign}", headers=hub).status_code == 404
+        assert client.get(f"/api/player-profile/payments/{key}").status_code == 401
+
+    def test_hub_listing_includes_refund_due(self, client, auth_headers):
+        rid = _lobby(client, auth_headers, name="Refunds")
+        _set_fee(client, rid, auth_headers)
+        ana = _register(client, rid, "Ana", email="ana@example.com")
+        _register(client, rid, "Bob")
+        hub = _hub_for(client, ana, "Ana")
+        _mark(client, auth_headers, f"/api/registrations/{rid}", ana["player_id"], "refund_due")
+        rows = client.get("/api/player-profile/payments", headers=hub).json()
+        assert [r["status"] for r in rows] == ["refund_due"]
+
+    def test_deleting_converted_lobby_keeps_tournament_rows(self, client, auth_headers):
+        rid, tid, players = _converted(client, auth_headers)
+        ana_id, bob_id = players["Ana"]["player_id"], players["Bob"]["player_id"]
+        _mark(client, auth_headers, f"/api/registrations/{rid}", ana_id, "paid")
+        _mark(client, auth_headers, f"/api/registrations/{rid}", bob_id, "unpaid")
+        before = client.get(f"/api/tournaments/{tid}/payments", headers=auth_headers).json()["rows"]
+        assert client.delete(f"/api/registrations/{rid}", headers=auth_headers).status_code == 200
+        after = client.get(f"/api/tournaments/{tid}/payments", headers=auth_headers).json()["rows"]
+        assert {(r["player_id"], r["status"]) for r in before} == {(r["player_id"], r["status"]) for r in after}
+        assert _db_row(ana_id)["status"] == "paid" and _db_row(bob_id)["status"] == "unpaid"
+
+    def test_second_tournament_from_same_lobby_shows_lobby_row(self, client, auth_headers):
+        rid, tid1, players = _converted(client, auth_headers)
+        ana_id, bob_id = players["Ana"]["player_id"], players["Bob"]["player_id"]
+        _mark(client, auth_headers, f"/api/registrations/{rid}", ana_id, "paid")
+        r = client.post(
+            f"/api/registrations/{rid}/convert",
+            json={"tournament_type": "mexicano", "player_names": list(NAMES4)},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        tid2 = r.json()["tournament_id"]
+        ana = _player_jwt(client, tid2, players["Ana"])
+        assert self._get(client, tid2, ana).json()["status"] == "paid"
+        # An open payment is one fee: reporting in the second tournament updates the shared row.
+        bob = _player_jwt(client, tid2, players["Bob"])
+        assert self._get(client, tid2, bob).json()["status"] == "unpaid"
+        assert self._report(client, tid2, bob).json()["status"] == "reported"
+        assert _db_row(bob_id)["status"] == "reported"
+        bob1 = _player_jwt(client, tid1, players["Bob"])
+        assert self._get(client, tid1, bob1).json()["status"] == "reported"
+        with db_mod.get_db() as conn:
+            n = conn.execute("SELECT COUNT(*) FROM registrant_payments WHERE player_id = ?", (bob_id,)).fetchone()[0]
+        assert n == 1
+
+    def test_anonymous_payloads_carry_no_payment_fields(self, client, auth_headers):
+        rid, tid, players = _converted(client, auth_headers)
+        _mark(client, auth_headers, f"/api/registrations/{rid}", players["Ana"]["player_id"], "paid")
+        for path in (f"/api/tournaments/{tid}/public", f"/api/tournaments/{tid}/mex/status"):
+            r = client.get(path)
+            if r.status_code == 200:
+                assert "fee_cents" not in r.text and "refund_due" not in r.text and "payment" not in r.text.lower()
+
+
+# ── One fee per lobby, several tournaments ──────────────────────────────────
+
+
+def _convert_again(client: TestClient, headers: dict, rid: str, names=NAMES4) -> str:
+    r = client.post(
+        f"/api/registrations/{rid}/convert",
+        json={"tournament_type": "mexicano", "player_names": list(names)},
+        headers=headers,
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["tournament_id"]
+
+
+def _t_row(client: TestClient, headers: dict, tid: str, pid: str) -> dict:
+    rows = client.get(f"/api/tournaments/{tid}/payments", headers=headers).json()["rows"]
+    return next(r for r in rows if r["player_id"] == pid)
+
+
+def _count_rows(pid: str) -> int:
+    with db_mod.get_db() as conn:
+        return conn.execute("SELECT COUNT(*) FROM registrant_payments WHERE player_id = ?", (pid,)).fetchone()[0]
+
+
+class TestSharedLobbyFee:
+    def test_source_lobby_is_stored_on_the_tournament(self, client, auth_headers):
+        rid, tid1, _players = _converted(client, auth_headers)
+        tid2 = _convert_again(client, auth_headers, rid)
+        with db_mod.get_db() as conn:
+            stored = {
+                r["tournament_id"]: r["registration_id"]
+                for r in conn.execute("SELECT * FROM tournament_payment_settings").fetchall()
+            }
+        assert stored[tid1] == rid and stored[tid2] == rid
+
+    def test_migration_backfills_existing_tournaments(self, client, auth_headers):
+        rid, tid1, _players = _converted(client, auth_headers)
+        tid2 = _convert_again(client, auth_headers, rid)
+        with db_mod.get_db() as conn:
+            conn.execute("DROP TABLE tournament_payment_settings")
+            conn.execute(
+                "CREATE TABLE tournament_payment_settings (tournament_id TEXT PRIMARY KEY, settings TEXT NOT NULL)"
+            )
+            conn.execute("INSERT INTO tournament_payment_settings VALUES (?, '{\"fee_cents\": 700}')", (tid1,))
+        db_mod.init_db()
+        with db_mod.get_db() as conn:
+            stored = {
+                r["tournament_id"]: (r["registration_id"], r["settings"])
+                for r in conn.execute("SELECT * FROM tournament_payment_settings").fetchall()
+            }
+        assert stored[tid1] == (rid, '{"fee_cents": 700}')  # existing settings are kept
+        assert stored[tid2][0] == rid
+
+    def test_organizer_listing_in_second_tournament_shows_paid_row(self, client, auth_headers):
+        rid, tid1, players = _converted(client, auth_headers)
+        ana_id = players["Ana"]["player_id"]
+        _mark(client, auth_headers, f"/api/registrations/{rid}", ana_id, "paid")
+        tid2 = _convert_again(client, auth_headers, rid)
+        listing = client.get(f"/api/tournaments/{tid2}/payments", headers=auth_headers).json()
+        row = next(r for r in listing["rows"] if r["player_id"] == ana_id)
+        assert row["status"] == "paid" and row["synthesized"] is False
+        assert listing["summary"]["paid"] == 1 and listing["summary"]["unpaid"] == 3
+        assert _t_row(client, auth_headers, tid1, ana_id)["status"] == "paid"
+
+    def test_remind_unpaid_in_second_tournament_skips_paid_player(self, client, auth_headers, monkeypatch):
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        import backend.api.routes_payments as rp  # noqa: PLC0415
+
+        delivered: list[str] = []
+
+        class FakeDelivery:
+            def __init__(self, tid, data, es):
+                self.counts = SimpleNamespace(sent=0, pushed=0, failed=0)
+
+            def reachable(self, player_id, email):
+                return True
+
+            async def deliver(self, player_id, email, **_kw):
+                delivered.append(player_id)
+                self.counts.sent += 1
+
+        monkeypatch.setattr(rp, "any_channel_configured", lambda: True)
+        monkeypatch.setattr(rp, "ensure_can_send", lambda es: None)
+        monkeypatch.setattr(rp, "PlayerDelivery", FakeDelivery)
+
+        rid, _tid1, players = _converted(client, auth_headers)
+        ana_id = players["Ana"]["player_id"]
+        _mark(client, auth_headers, f"/api/registrations/{rid}", ana_id, "paid")
+        tid2 = _convert_again(client, auth_headers, rid)
+        r = client.post(f"/api/tournaments/{tid2}/payments/remind-unpaid", headers=auth_headers)
+        assert r.status_code == 200, r.text
+        assert ana_id not in delivered
+        assert set(delivered) == {players[n]["player_id"] for n in ("Bob", "Cid", "Dan")}
+
+    def test_organizer_mark_paid_in_second_tournament_updates_the_one_row(self, client, auth_headers):
+        rid, tid1, players = _converted(client, auth_headers)
+        bob_id = players["Bob"]["player_id"]
+        tid2 = _convert_again(client, auth_headers, rid)
+        _mark(client, auth_headers, f"/api/tournaments/{tid2}", bob_id, "paid")
+        assert _count_rows(bob_id) == 1
+        assert _db_row(bob_id)["status"] == "paid"
+        assert _t_row(client, auth_headers, tid1, bob_id)["status"] == "paid"
+        assert _row(client, rid, auth_headers, bob_id)["status"] == "paid"
+        # A later change from the first tournament still hits the same row.
+        _mark(client, auth_headers, f"/api/tournaments/{tid1}", bob_id, "unpaid")
+        assert _count_rows(bob_id) == 1
+        assert _t_row(client, auth_headers, tid2, bob_id)["status"] == "unpaid"
+
+    def test_paid_survives_lobby_deletion_for_player_and_organizer(self, client, auth_headers):
+        rid, tid1, players = _converted(client, auth_headers)
+        ana_id = players["Ana"]["player_id"]
+        _mark(client, auth_headers, f"/api/registrations/{rid}", ana_id, "paid")
+        tid2 = _convert_again(client, auth_headers, rid)
+        assert client.delete(f"/api/registrations/{rid}", headers=auth_headers).status_code == 200
+        ana = _player_jwt(client, tid2, players["Ana"])
+        assert client.get(f"/api/tournaments/{tid2}/player/payment", headers=ana).json()["status"] == "paid"
+        assert _t_row(client, auth_headers, tid2, ana_id)["status"] == "paid"
+        assert _t_row(client, auth_headers, tid1, ana_id)["status"] == "paid"
+        # Organizer changes in tournament 2 still reuse the row.
+        _mark(client, auth_headers, f"/api/tournaments/{tid2}", ana_id, "refund_due")
+        assert _count_rows(ana_id) == 1
+        assert _t_row(client, auth_headers, tid1, ana_id)["status"] == "refund_due"
+
+    def test_hub_lists_a_shared_fee_once(self, client, auth_headers):
+        rid, tid1, players = _converted(client, auth_headers)
+        hub = _hub_for(client, players["Ana"], "Ana")
+        tid2 = _convert_again(client, auth_headers, rid)
+        ana_id = players["Ana"]["player_id"]
+        rows = client.get("/api/player-profile/payments", headers=hub).json()
+        assert len(rows) == 1
+        # Earliest tournament wins the key; every entry that shows the fee is listed on the item.
+        assert rows[0]["key"] == f"t:{tid1}:{ana_id}"
+        assert set(rows[0]["entry_keys"]) == {f"t:{tid1}:{ana_id}", f"t:{tid2}:{ana_id}", f"r:{rid}:{ana_id}"}
+        # A report (here through the second tournament's key) is still one row, one item.
+        r = client.post(f"/api/player-profile/payments/t:{tid2}:{ana_id}/report", json={}, headers=hub)
+        assert r.status_code == 200, r.text
+        rows = client.get("/api/player-profile/payments", headers=hub).json()
+        assert [(x["key"], x["status"]) for x in rows] == [(f"t:{tid1}:{ana_id}", "reported")]
+        assert _count_rows(ana_id) == 1
+
+    def test_report_route_is_not_limited_by_the_passphrase_limiter(self, client, auth_headers):
+        _rid, tid, players = _converted(client, auth_headers)
+        ana = _player_jwt(client, tid, players["Ana"])
+        for _ in range(100):
+            assert client.post(f"/api/tournaments/{tid}/player/payment/report", json={}, headers=ana).status_code == 200
+
+
+class TestWithdrawnAndRemovedPlayers:
+    def _setup(self, client, auth_headers, attr: str):
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        from backend.api import state as state_mod  # noqa: PLC0415
+
+        _rid, tid, players = _converted(client, auth_headers)
+        gone = players["Cid"]["player_id"]
+        t = state_mod._tournaments[tid]["tournament"]
+        if attr == "withdrawals":
+            t.withdrawals = {"k": SimpleNamespace(member_ids=[gone])}
+        else:
+            t._removed_players = [SimpleNamespace(id=gone, name="Cid")]
+        return tid, players, gone
+
+    def test_tournament_route_excludes_and_rejects(self, client, auth_headers):
+        for attr in ("withdrawals", "_removed_players"):
+            tid, players, gone = self._setup(client, auth_headers, attr)
+            ana = _player_jwt(client, tid, players["Ana"])
+            mates = client.get(f"/api/tournaments/{tid}/player/payment/teammates", headers=ana).json()
+            assert {m["player_name"] for m in mates} == {"Bob", "Dan"}
+            r = client.post(f"/api/tournaments/{tid}/player/payment/report", json={"also_for": [gone]}, headers=ana)
+            assert r.status_code == 400
+            assert _db_row(gone) is None
+
+    def test_hub_route_excludes_and_rejects(self, client, auth_headers):
+        for attr in ("withdrawals", "_removed_players"):
+            tid, players, gone = self._setup(client, auth_headers, attr)
+            hub = _hub_for(client, players["Ana"], f"Ana{attr[:2]}")
+            key = f"t:{tid}:{players['Ana']['player_id']}"
+            mates = client.get(f"/api/player-profile/payments/{key}/teammates", headers=hub).json()
+            assert {m["player_name"] for m in mates} == {"Bob", "Dan"}
+            r = client.post(f"/api/player-profile/payments/{key}/report", json={"also_for": [gone]}, headers=hub)
+            assert r.status_code == 400
+            assert _db_row(gone) is None

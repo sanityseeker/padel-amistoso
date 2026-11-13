@@ -4,23 +4,30 @@ import type { Sport } from '../stats';
 
 // The Hub's filters, at the top of every Hub page so a player sees what the page is narrowed to
 // before reading it: the community or club (ratings, leaderboard and history) and, on pages that
-// split by sport, padel or tennis. Both choices are kept across pages and visits.
+// split by sport, padel, tennis or all. Both choices are kept across pages and visits.
 export function HubFilters({
   scope,
   scopeOptions,
   onScope,
   sport,
+  fallbackSport,
   sports,
   onSport,
   showSport,
+  withAll,
 }: {
   scope: string;
   scopeOptions: { value: string; label: string }[];
   onScope: (scope: string) => void;
-  sport: Sport;
+  /** The saved filter. */
+  sport: Sport | 'all';
+  /** Highlighted on a page without All (Ratings) while the saved filter is All. */
+  fallbackSport: Sport;
   sports: Sport[];
-  onSport: (sport: Sport) => void;
+  onSport: (sport: Sport | 'all') => void;
   showSport: boolean;
+  /** Offer All as the first option (not on Ratings, which shows one sport at a time). */
+  withAll: boolean;
 }) {
   useLocale();
   const withScope = scopeOptions.length > 1;
@@ -42,10 +49,11 @@ export function HubFilters({
       )}
       {withSport && (
         <SegmentedControl
-          value={sport}
-          onChange={(v) => onSport(v as Sport)}
-          aria-label={tx('Rating sport')}
+          value={sport === 'all' && !withAll ? fallbackSport : sport}
+          onChange={(v) => onSport(v as Sport | 'all')}
+          aria-label={tx('Sport')}
           data={[
+            ...(withAll ? [{ value: 'all', label: tx('All') }] : []),
             { value: 'padel', label: tx('Padel') },
             { value: 'tennis', label: tx('Tennis') },
           ]}

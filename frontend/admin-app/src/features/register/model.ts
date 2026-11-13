@@ -16,6 +16,7 @@ export interface PaymentInfo {
   instructions?: string | null;
   methods: PaymentMethod[];
   concept: string;
+  reference?: string | null;
 }
 export interface PublicLobby {
   id: string;

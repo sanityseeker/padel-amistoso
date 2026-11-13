@@ -2,27 +2,19 @@ import { t as tx, useLocale } from '../../../i18n';
 import { useState } from 'react';
 import {
   Button,
-  Card,
   CopyButton,
-  Group,
   Paper,
   PasswordInput,
-  Select,
   Stack,
   Text,
-  Textarea,
   TextInput,
   Title,
 } from '@mantine/core';
-import { AlsoPaidFor, StatusBadge, type PayableTeammate } from '../../../ui';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconCheck, IconCopy, IconCreditCard, IconMail } from '@tabler/icons-react';
-import { ErrorState, Loading } from '../../../components';
-import { money } from '../../../api';
+import { IconCheck, IconCopy, IconMail } from '@tabler/icons-react';
 import { playerApi } from '../../../player/api';
-import type { Entry, HubPayment, Profile } from '../../../player/types';
-import { usePayments } from './TodoCards';
+import type { Profile } from '../../../player/types';
 import { Notice } from '../../../ui/Notice';
 export function PlayerAccount({
   profile,
@@ -171,142 +163,5 @@ export function PlayerAccount({
         </Stack>
       )}
     </Stack>
-  );
-}
-function ReportPayment({ payment }: { payment: HubPayment }) {
-  useLocale();
-  const client = useQueryClient();
-  const [reporting, setReporting] = useState(false);
-  const [method, setMethod] = useState<string | null>(null);
-  const [reference, setReference] = useState('');
-  const [alsoFor, setAlsoFor] = useState<string[]>([]);
-  const teammates = useQuery({
-    queryKey: ['player', 'payments', 'teammates', payment.key],
-    queryFn: () =>
-      playerApi<PayableTeammate[]>(
-        `/player-profile/payments/${encodeURIComponent(payment.key)}/teammates`,
-      ),
-    enabled: reporting,
-  });
-  const report = useMutation({
-    mutationFn: () =>
-      playerApi(
-        `/player-profile/payments/${encodeURIComponent(payment.key)}/report`,
-        {
-          method,
-          reference,
-          ...(alsoFor.length ? { also_for: alsoFor } : {}),
-        },
-        'POST',
-      ),
-    onSuccess: () => {
-      void client.invalidateQueries({
-        queryKey: ['player', 'payments'],
-      });
-      setReporting(false);
-      setAlsoFor([]);
-      notifications.show({
-        message: tx('Payment reported. Your organizer will confirm it.'),
-        color: 'green',
-      });
-    },
-  });
-  return (
-    <Card withBorder p="sm">
-      <Group justify="space-between">
-        <IconCreditCard color="var(--app-primary)" />
-        <StatusBadge tone={payment.status === 'reported' ? 'warning' : 'neutral'}>
-          {payment.status === 'reported'
-            ? tx('Awaiting confirmation')
-            : tx(payment.status.replace('_', ' '))}
-        </StatusBadge>
-      </Group>
-      <Title order={3} size="sm" mt="sm">
-        {payment.entity_name}
-      </Title>
-      <Text fw={650}>{money(payment.amount_cents, payment.currency)}</Text>
-      {payment.instructions && (
-        <Text size="sm" c="dimmed" mb="sm">
-          {payment.instructions}
-        </Text>
-      )}
-      <Text size="xs" c="dimmed">
-        {tx('Transfer reference')}
-      </Text>
-      <Text size="sm" fw={600} mb="md">
-        {payment.concept}
-      </Text>
-      {payment.methods.map((m, i) => (
-        <Paper p="sm" key={i} mb="xs">
-          <Text size="xs" c="dimmed">
-            {m.label || m.kind}
-          </Text>
-          <Text size="sm">{m.value}</Text>
-        </Paper>
-      ))}
-      {reporting ? (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            report.mutate();
-          }}
-        >
-          <Stack mt="md">
-            {report.error && <Notice tone="danger">{tx(report.error.message)}</Notice>}
-            <Select
-              label={tx('Payment method')}
-              clearable
-              value={method}
-              onChange={setMethod}
-              data={['Cash', 'Bank transfer', 'Bizum', 'Other'].map((value) => ({
-                value,
-                label: tx(value),
-              }))}
-            />
-            <Textarea
-              label={tx('Payment reference')}
-              maxLength={120}
-              value={reference}
-              onChange={(e) => setReference(e.currentTarget.value)}
-            />
-            <AlsoPaidFor players={teammates.data ?? []} value={alsoFor} onChange={setAlsoFor} />
-            <Group>
-              <Button type="submit" loading={report.isPending}>
-                {tx('Report payment')}
-              </Button>
-              <Button variant="subtle" onClick={() => setReporting(false)}>
-                {tx('Cancel')}
-              </Button>
-            </Group>
-          </Stack>
-        </form>
-      ) : (
-        payment.status === 'unpaid' && (
-          <Button mt="md" variant="light" onClick={() => setReporting(true)}>
-            {tx('I’ve paid')}
-          </Button>
-        )
-      )}
-    </Card>
-  );
-}
-export function PlayerPayments({ only }: { only?: Entry[] | null }) {
-  useLocale();
-  const payments = usePayments(true, only);
-  if (payments.isPending) return <Loading />;
-  if (payments.error)
-    return <ErrorState error={payments.error} retry={() => void payments.refetch()} />;
-  if (!payments.data.length) return null;
-  return (
-    <Paper p="md">
-      <Title order={2} size="h3" mb="sm">
-        {tx('Pending payments')}
-      </Title>
-      <Stack gap="sm">
-        {payments.data.map((p) => (
-          <ReportPayment key={p.key} payment={p} />
-        ))}
-      </Stack>
-    </Paper>
   );
 }

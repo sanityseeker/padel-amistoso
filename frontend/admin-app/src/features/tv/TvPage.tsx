@@ -37,6 +37,7 @@ import { PlayerCardModal } from './PlayerCardModal';
 import { Champions, sectionKeys, TvBoard } from './TvBoard';
 import { Section, useOpenState } from './TvSection';
 import { HubInvite, TvPlayerBar } from './TvPlayerBar';
+import { TvPaymentButton } from './TvPayment';
 import { loadLive, resolveSlug, type TvMeta } from './model';
 import { useTvPlayer } from './useTvPlayer';
 import classes from './Tv.module.css';
@@ -313,6 +314,7 @@ export function TvPage() {
         </Stack>
 
         {data && tid && <HubInvite tid={tid} player={player} />}
+        {data && tid && <TvPaymentButton tid={tid} session={player.session} />}
         {data?.settings.banner_text?.trim() && (
           <Notice icon={<IconSpeakerphone />} data-testid="tv-banner">
             <Text className={classes.banner}>{data.settings.banner_text.trim()}</Text>

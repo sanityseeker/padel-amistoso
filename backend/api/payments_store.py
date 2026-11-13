@@ -23,8 +23,11 @@ import json
 import re
 import sqlite3
 from contextlib import nullcontext
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
+
+from pydantic import BaseModel
 
 from .db import get_db
 from .schemas import (
@@ -43,6 +46,51 @@ from .schemas import (
 EntityKind = Literal["registration", "tournament"]
 
 _CONCEPT_MAX_LEN = 30
+
+
+class PaymentRecord(BaseModel):
+    """One ``registrant_payments`` row."""
+
+    id: int
+    registration_id: str | None = None
+    tournament_id: str | None = None
+    player_id: str
+    player_name: str | None = None
+    email: str | None = None
+    status: str
+    amount_cents: int | None = None
+    currency: str | None = None
+    method: str | None = None
+    reference: str | None = None
+    note: str | None = None
+    updated_by: str | None = None
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class Participant(BaseModel):
+    """A player of a lobby or tournament (``token`` / ``lang`` only filled for tournaments)."""
+
+    player_id: str
+    player_name: str = ""
+    email: str = ""
+    token: str = ""
+    lang: str = "en"
+
+
+@dataclass(frozen=True)
+class PaymentTarget:
+    """Where a player's payment row lives (own entity, or the lobby's shared row)."""
+
+    kind: EntityKind
+    entity_id: str
+
+
+class _Unset:
+    """Sentinel type: "argument not given" (``None`` is a real value for a missing row)."""
+
+
+UNSET = _Unset()
 
 
 def _now() -> str:
@@ -148,12 +196,35 @@ def _entity_column(kind: EntityKind) -> str:
     return "tournament_id" if kind == "tournament" else "registration_id"
 
 
-def _load_rows(conn: sqlite3.Connection, kind: EntityKind, entity_id: str) -> dict[str, dict]:
+def _load_rows(conn: sqlite3.Connection, kind: EntityKind, entity_id: str) -> dict[str, PaymentRecord]:
     rows = conn.execute(
         f"SELECT * FROM registrant_payments WHERE {_entity_column(kind)} = ?",  # noqa: S608 — column is internal
         (entity_id,),
     ).fetchall()
-    return {r["player_id"]: dict(r) for r in rows}
+    return {r["player_id"]: PaymentRecord(**dict(r)) for r in rows}
+
+
+def source_registration_id(conn: sqlite3.Connection, tid: str) -> str | None:
+    """The lobby this tournament was converted from, or ``None``.
+
+    Stored on the tournament side at conversion (``tournament_payment_settings.registration_id``),
+    so it survives the deletion of the lobby and its ``converted_to_tids``.
+    """
+    row = conn.execute(
+        "SELECT registration_id FROM tournament_payment_settings WHERE tournament_id = ?", (tid,)
+    ).fetchone()
+    return row["registration_id"] if row and row["registration_id"] else None
+
+
+def _shared_lobby_row(conn: sqlite3.Connection, tid: str, player_id: str) -> PaymentRecord | None:
+    """The player's row in the source lobby of *tid* (one fee per lobby), whatever tournament it is stamped with."""
+    rid = source_registration_id(conn, tid)
+    if rid is None:
+        return None
+    row = conn.execute(
+        "SELECT * FROM registrant_payments WHERE registration_id = ? AND player_id = ?", (rid, player_id)
+    ).fetchone()
+    return PaymentRecord(**dict(row)) if row else None
 
 
 def _linked_tournament_id(conn: sqlite3.Connection, rid: str, player_id: str) -> str | None:
@@ -175,18 +246,14 @@ def _linked_tournament_id(conn: sqlite3.Connection, rid: str, player_id: str) ->
 
 
 def _linked_registration_id(conn: sqlite3.Connection, tid: str, player_id: str) -> str | None:
-    """Lobby this tournament was converted from that contains this registrant, if any."""
-    rows = conn.execute(
-        "SELECT id, converted_to_tids FROM registrations WHERE converted_to_tids LIKE ?",
-        (f'%"{tid}"%',),
-    ).fetchall()
-    for reg in rows:
-        hit = conn.execute(
-            "SELECT 1 FROM registrants WHERE registration_id = ? AND player_id = ?", (reg["id"], player_id)
-        ).fetchone()
-        if hit:
-            return reg["id"]
-    return None
+    """Source lobby of this tournament, when it still contains this registrant."""
+    rid = source_registration_id(conn, tid)
+    if rid is None:
+        return None
+    hit = conn.execute(
+        "SELECT 1 FROM registrants WHERE registration_id = ? AND player_id = ?", (rid, player_id)
+    ).fetchone()
+    return rid if hit else None
 
 
 def _insert_event(
@@ -219,11 +286,11 @@ def set_status(
     note: str | None = None,
     settings: PaymentSettings | None = None,
     conn: sqlite3.Connection | None = None,
-) -> dict:
+) -> PaymentRecord:
     """Create-or-update the payment row for one participant and log the event.
 
     Pass *conn* to take part in the caller's transaction (it then commits or rolls back with it).
-    Returns the stored row as a dict.
+    A tournament without its own row updates the shared lobby row instead of inserting a second one.
     """
     if status not in PAYMENT_STATUSES:
         raise ValueError(f"Unknown payment status: {status}")
@@ -234,6 +301,12 @@ def set_status(
             f"SELECT * FROM registrant_payments WHERE {_entity_column(kind)} = ? AND player_id = ?",  # noqa: S608
             (entity_id, player_id),
         ).fetchone()
+        if existing is None and kind == "tournament":
+            shared = conn.execute(
+                "SELECT * FROM registrant_payments WHERE registration_id = ? AND player_id = ?",
+                (source_registration_id(conn, entity_id), player_id),
+            ).fetchone()
+            existing = shared
         if existing is None:
             rid = entity_id if kind == "registration" else _linked_registration_id(conn, entity_id, player_id)
             tid = entity_id if kind == "tournament" else _linked_tournament_id(conn, entity_id, player_id)
@@ -275,7 +348,7 @@ def set_status(
             if existing["status"] != status:
                 _insert_event(conn, payment_id, existing["status"], status, actor, note)
         row = conn.execute("SELECT * FROM registrant_payments WHERE id = ?", (payment_id,)).fetchone()
-    return dict(row)
+    return PaymentRecord(**dict(row))
 
 
 def report_payment(
@@ -288,23 +361,20 @@ def report_payment(
     reference: str | None,
     method: str | None,
     actor: str = "player",
-) -> dict | None:
+) -> PaymentRecord | None:
     """Player self-report: ``unpaid`` (or no row) -> ``reported``.
 
     Any other state is left untouched (a confirmed ``paid`` row is never
     downgraded). Returns the row, or ``None`` when nothing changed and no row
     exists.
     """
-    with get_db() as conn:
-        existing = conn.execute(
-            f"SELECT * FROM registrant_payments WHERE {_entity_column(kind)} = ? AND player_id = ?",  # noqa: S608
-            (entity_id, player_id),
-        ).fetchone()
-    if existing is not None and existing["status"] != "unpaid":
-        return dict(existing)
+    target = resolve_target(kind, entity_id, player_id)
+    existing = get_row(target.kind, target.entity_id, player_id)
+    if existing is not None and existing.status != "unpaid":
+        return existing
     return set_status(
-        kind,
-        entity_id,
+        target.kind,
+        target.entity_id,
         player_id,
         status="reported",
         actor=actor,
@@ -331,9 +401,9 @@ def lobby_eligible_ids(rid: str) -> set[str]:
     return set(_eligible_player_ids(dict(reg), [dict(r) for r in registrants]))
 
 
-def _owes_nothing(kind: EntityKind, entity_id: str, player_id: str, row: dict | None) -> bool:
+def _owes_nothing(kind: EntityKind, entity_id: str, player_id: str, row: PaymentRecord | None) -> bool:
     """True for a lobby registrant outside the participant filter with nothing paid or reported."""
-    if kind != "registration" or (row is not None and row["status"] != "unpaid"):
+    if kind != "registration" or (row is not None and row.status != "unpaid"):
         return False
     return player_id not in lobby_eligible_ids(entity_id)
 
@@ -342,8 +412,8 @@ class PayForOthersError(ValueError):
     """A player tried to report a payment for someone who is not eligible."""
 
 
-def entity_participants(kind: EntityKind, entity_id: str) -> list[dict]:
-    """``[{player_id, player_name, email}]`` of a lobby (eligible registrants) or tournament (player_secrets)."""
+def entity_participants(kind: EntityKind, entity_id: str) -> list[Participant]:
+    """Eligible registrants of a lobby, or the players of a tournament (``player_secrets``)."""
     with get_db() as conn:
         if kind == "registration":
             rows = conn.execute(
@@ -357,22 +427,43 @@ def entity_participants(kind: EntityKind, entity_id: str) -> list[dict]:
             ).fetchall()
     eligible = lobby_eligible_ids(entity_id) if kind == "registration" else None
     return [
-        {"player_id": r["player_id"], "player_name": r["player_name"] or "", "email": r["email"] or ""}
+        Participant(player_id=r["player_id"], player_name=r["player_name"] or "", email=r["email"] or "")
         for r in rows
         if eligible is None or r["player_id"] in eligible
     ]
 
 
-def _eligible_participants(kind: EntityKind, entity_id: str, reporter_id: str) -> list[dict]:
-    """Other players of the event whose payment is still ``unpaid`` (or has no row yet)."""
+def _excluded_tournament_ids(tid: str) -> set[str]:
+    """Players of a running tournament who no longer take part: withdrawn, or removed mid-rounds (Mexicano)."""
+    from .state import _tournaments  # noqa: PLC0415 — state imports the persistence layer
+
+    tournament = (_tournaments.get(tid) or {}).get("tournament")
+    out: set[str] = set()
+    for record in (getattr(tournament, "withdrawals", None) or {}).values():
+        out.update(record.member_ids)
+    out.update(p.id for p in getattr(tournament, "_removed_players", None) or [])
+    return out
+
+
+def _eligible_participants(kind: EntityKind, entity_id: str, reporter_id: str) -> list[Participant]:
+    """Other players of the event whose payment is still ``unpaid`` (or has no row yet).
+
+    Tournament players who withdrew or were removed are left out. Rows are loaded once (own plus the
+    source lobby's) and merged in memory.
+    """
     if get_settings(kind, entity_id).fee_cents <= 0:
         return []
+    participants = entity_participants(kind, entity_id)
+    with get_db() as conn:
+        rows = effective_rows(conn, kind, entity_id)
+    excluded = _excluded_tournament_ids(entity_id) if kind == "tournament" else set()
     out = []
-    for participant in entity_participants(kind, entity_id):
-        if participant["player_id"] == reporter_id:
+    for participant in participants:
+        pid = participant.player_id
+        if pid == reporter_id or pid in excluded:
             continue
-        row = get_row(kind, entity_id, participant["player_id"])
-        if row is None or row["status"] == "unpaid":
+        row = rows.get(pid)
+        if row is None or row.status == "unpaid":
             out.append(participant)
     return out
 
@@ -380,7 +471,7 @@ def _eligible_participants(kind: EntityKind, entity_id: str, reporter_id: str) -
 def payable_teammates(kind: EntityKind, entity_id: str, reporter_id: str) -> list[PayableTeammateOut]:
     """Id and display name only: no e-mail, no amounts, no status of other players."""
     return [
-        PayableTeammateOut(player_id=p["player_id"], player_name=p["player_name"])
+        PayableTeammateOut(player_id=p.player_id, player_name=p.player_name)
         for p in _eligible_participants(kind, entity_id, reporter_id)
     ]
 
@@ -388,7 +479,7 @@ def payable_teammates(kind: EntityKind, entity_id: str, reporter_id: str) -> lis
 def report_payment_for_players(
     kind: EntityKind,
     entity_id: str,
-    reporter: dict,
+    reporter: Participant,
     *,
     reference: str | None,
     method: str | None,
@@ -396,59 +487,103 @@ def report_payment_for_players(
 ) -> None:
     """Report the reporter's own payment and, in the same transaction, one for each id in *also_for*.
 
-    Every id must be another player of this event whose row is ``unpaid`` or missing; otherwise
-    :class:`PayForOthersError` is raised before anything is written. Each selected row becomes
-    ``reported`` with the note "Paid by <reporter>" and the reporter as actor in the audit trail.
-    The reporter's own row follows :func:`report_payment` (never downgraded past ``unpaid``).
+    Every id must be another player of this event whose row is ``unpaid`` or missing, and (in a
+    tournament) not withdrawn or removed; otherwise :class:`PayForOthersError` is raised before
+    anything is written. Each selected row becomes ``reported`` with the note "Paid by <reporter>"
+    and the reporter as actor in the audit trail. The reporter's own row follows
+    :func:`report_payment` (never downgraded past ``unpaid``).
     """
     wanted = list(dict.fromkeys(also_for))
-    eligible = {p["player_id"]: p for p in _eligible_participants(kind, entity_id, reporter["player_id"])}
+    eligible = {p.player_id: p for p in _eligible_participants(kind, entity_id, reporter.player_id)}
     if any(pid not in eligible for pid in wanted):
         raise PayForOthersError("One of the selected players cannot be paid for")
     settings = get_settings(kind, entity_id)
+    payer = reporter.player_name or reporter.player_id
+    # Resolved before the transaction opens: the helpers use their own get_db() blocks (shared connection).
+    own = resolve_target(kind, entity_id, reporter.player_id)
+    targets = {pid: resolve_target(kind, entity_id, pid) for pid in wanted}
     with get_db() as conn:
-        own = conn.execute(
-            f"SELECT status FROM registrant_payments WHERE {_entity_column(kind)} = ? AND player_id = ?",  # noqa: S608
-            (entity_id, reporter["player_id"]),
+        own_row = conn.execute(
+            f"SELECT status FROM registrant_payments WHERE {_entity_column(own.kind)} = ? AND player_id = ?",  # noqa: S608
+            (own.entity_id, reporter.player_id),
         ).fetchone()
-        if own is None or own["status"] == "unpaid":
+        if own_row is None or own_row["status"] == "unpaid":
             set_status(
-                kind,
-                entity_id,
-                reporter["player_id"],
+                own.kind,
+                own.entity_id,
+                reporter.player_id,
                 status="reported",
                 actor="player",
-                player_name=reporter.get("player_name"),
-                email=reporter.get("email"),
+                player_name=reporter.player_name,
+                email=reporter.email or None,
                 reference=reference,
                 method=method,
                 settings=settings,
                 conn=conn,
             )
         for pid in wanted:
+            target = targets[pid]
             set_status(
-                kind,
-                entity_id,
+                target.kind,
+                target.entity_id,
                 pid,
                 status="reported",
-                actor=f"player:{reporter.get('player_name') or reporter['player_id']}",
-                player_name=eligible[pid]["player_name"],
-                email=eligible[pid]["email"] or None,
+                actor=f"player:{payer}",
+                player_name=eligible[pid].player_name,
+                email=eligible[pid].email or None,
                 reference=reference,
                 method=method,
-                note=f"Paid by {reporter.get('player_name') or reporter['player_id']}",
+                note=f"Paid by {payer}",
                 settings=settings,
                 conn=conn,
             )
 
 
-def get_row(kind: EntityKind, entity_id: str, player_id: str) -> dict | None:
+def resolve_target(kind: EntityKind, entity_id: str, player_id: str) -> PaymentTarget:
+    """Where the player's payment row lives: a tournament without its own row uses the lobby's."""
+    if kind == "tournament":
+        with get_db() as conn:
+            own = conn.execute(
+                "SELECT 1 FROM registrant_payments WHERE tournament_id = ? AND player_id = ?", (entity_id, player_id)
+            ).fetchone()
+            shared = None if own else _shared_lobby_row(conn, entity_id, player_id)
+        if shared is not None and shared.registration_id:
+            return PaymentTarget("registration", shared.registration_id)
+    return PaymentTarget(kind, entity_id)
+
+
+def effective_rows(conn: sqlite3.Connection, kind: EntityKind, entity_id: str) -> dict[str, PaymentRecord]:
+    """Every stored row visible for the event, in two queries: own rows plus, for a tournament, the
+    source lobby's rows for players without a row of their own (one fee per lobby)."""
+    rows = _load_rows(conn, kind, entity_id)
+    if kind == "tournament":
+        rid = source_registration_id(conn, entity_id)
+        if rid is not None:
+            for pid, row in _load_rows(conn, "registration", rid).items():
+                rows.setdefault(pid, row)
+    return rows
+
+
+def effective_row(kind: EntityKind, entity_id: str, player_id: str) -> PaymentRecord | None:
+    """Own row of the player; for a tournament without one, the source lobby's row."""
     with get_db() as conn:
-        row = conn.execute(
-            f"SELECT * FROM registrant_payments WHERE {_entity_column(kind)} = ? AND player_id = ?",  # noqa: S608
-            (entity_id, player_id),
-        ).fetchone()
-    return dict(row) if row else None
+        own = _get_row(conn, kind, entity_id, player_id)
+        if own is None and kind == "tournament":
+            return _shared_lobby_row(conn, entity_id, player_id)
+    return own
+
+
+def _get_row(conn: sqlite3.Connection, kind: EntityKind, entity_id: str, player_id: str) -> PaymentRecord | None:
+    row = conn.execute(
+        f"SELECT * FROM registrant_payments WHERE {_entity_column(kind)} = ? AND player_id = ?",  # noqa: S608
+        (entity_id, player_id),
+    ).fetchone()
+    return PaymentRecord(**dict(row)) if row else None
+
+
+def get_row(kind: EntityKind, entity_id: str, player_id: str) -> PaymentRecord | None:
+    with get_db() as conn:
+        return _get_row(conn, kind, entity_id, player_id)
 
 
 def list_events(payment_id: int) -> list[dict]:
@@ -463,28 +598,26 @@ def list_events(payment_id: int) -> list[dict]:
 
 
 def _row_out(
-    row: dict | None,
-    participant: dict,
+    row: PaymentRecord | None,
+    participant: Participant,
     settings: PaymentSettings,
     entity_name: str,
 ) -> PaymentRowOut:
-    name = (row or {}).get("player_name") or participant.get("player_name") or ""
+    name = (row.player_name if row else None) or participant.player_name or ""
     return PaymentRowOut(
-        id=row["id"] if row else None,
-        player_id=participant["player_id"],
+        id=row.id if row else None,
+        player_id=participant.player_id,
         player_name=name,
-        email=(row or {}).get("email") or participant.get("email") or "",
-        status=row["status"] if row else "unpaid",
-        amount_cents=(row or {}).get("amount_cents")
-        if row and row.get("amount_cents") is not None
-        else settings.fee_cents,
-        currency=(row or {}).get("currency") or settings.currency,
-        method=(row or {}).get("method"),
-        reference=(row or {}).get("reference"),
-        note=(row or {}).get("note"),
+        email=(row.email if row else None) or participant.email or "",
+        status=row.status if row else "unpaid",
+        amount_cents=row.amount_cents if row and row.amount_cents is not None else settings.fee_cents,
+        currency=(row.currency if row else None) or settings.currency,
+        method=row.method if row else None,
+        reference=row.reference if row else None,
+        note=row.note if row else None,
         concept=make_concept(entity_name, name),
-        updated_by=(row or {}).get("updated_by"),
-        updated_at=(row or {}).get("updated_at"),
+        updated_by=row.updated_by if row else None,
+        updated_at=row.updated_at if row else None,
         synthesized=row is None,
     )
 
@@ -494,35 +627,35 @@ def build_listing(
     entity_id: str,
     *,
     entity_name: str,
-    participants: list[dict],
+    participants: list[Participant],
     settings: PaymentSettings | None = None,
 ) -> PaymentsListOut:
     """Merge stored rows with the current participant list.
 
-    *participants* is ``[{"player_id", "player_name", "email"}]``. Participants
-    without a row are synthesized as ``unpaid`` only when a fee is configured;
-    stored rows for participants who left (refund_due etc.) are still listed.
+    Participants without a row are synthesized as ``unpaid`` only when a fee is
+    configured; stored rows for participants who left (refund_due etc.) are
+    still listed. A tournament converted from a lobby shows the lobby's row for
+    a player without a row of its own (one fee per lobby), for participants only.
     For a lobby, *participants* are its eligible registrants only; a stored
     ``unpaid`` row of anyone else is left out too (they owe nothing).
     """
     settings = settings or get_settings(kind, entity_id)
     with get_db() as conn:
         stored = _load_rows(conn, kind, entity_id)
+        merged = effective_rows(conn, kind, entity_id)
     out: list[PaymentRowOut] = []
     seen: set[str] = set()
     for p in participants:
-        pid = p["player_id"]
+        pid = p.player_id
         seen.add(pid)
-        row = stored.get(pid)
+        row = merged.get(pid)
         if row is None and settings.fee_cents <= 0:
             continue
         out.append(_row_out(row, p, settings, entity_name))
     for pid, row in stored.items():
-        if pid in seen or (kind == "registration" and row["status"] == "unpaid"):
+        if pid in seen or (kind == "registration" and row.status == "unpaid"):
             continue
-        out.append(
-            _row_out(row, {"player_id": pid, "player_name": row.get("player_name") or ""}, settings, entity_name)
-        )
+        out.append(_row_out(row, Participant(player_id=pid, player_name=row.player_name or ""), settings, entity_name))
     summary = PaymentSummaryOut(total=len(out))
     for r in out:
         if r.status == "paid":
@@ -552,19 +685,19 @@ def player_payment_info(
 ) -> PaymentInfoOut | None:
     """A registered player's own payment view, or ``None`` when no fee is set."""
     settings = settings or get_settings(kind, entity_id)
-    row = get_row(kind, entity_id, player_id)
+    row = effective_row(kind, entity_id, player_id)
     if (settings.fee_cents <= 0 and row is None) or _owes_nothing(kind, entity_id, player_id, row):
         return None
     return PaymentInfoOut(
-        status=row["status"] if row else "unpaid",
-        amount_cents=row["amount_cents"] if row and row.get("amount_cents") is not None else settings.fee_cents,
-        currency=(row or {}).get("currency") or settings.currency,
+        status=row.status if row else "unpaid",
+        amount_cents=row.amount_cents if row and row.amount_cents is not None else settings.fee_cents,
+        currency=(row.currency if row else None) or settings.currency,
         due_at=settings.due_at,
         instructions=settings.instructions,
         methods=list(settings.methods),
         concept=make_concept(entity_name, player_name),
-        reference=(row or {}).get("reference"),
-        method=(row or {}).get("method"),
+        reference=row.reference if row else None,
+        method=row.method if row else None,
     )
 
 
@@ -598,31 +731,41 @@ def on_participant_removed(kind: EntityKind, entity_id: str, player_id: str, act
 
 
 def on_registration_deleted(rid: str, actor: str | None = None) -> None:
-    """Lobby deleted: same rule for every row; rows keep ``registration_id`` for the audit trail."""
+    """Lobby deleted: same rule for lobby-only rows; rows keep ``registration_id`` for the audit trail.
+
+    Rows already stamped with a ``tournament_id`` belong to a tournament that still has the
+    player, so deleting the lobby leaves them untouched.
+    """
     with get_db() as conn:
-        rows = conn.execute("SELECT * FROM registrant_payments WHERE registration_id = ?", (rid,)).fetchall()
+        rows = conn.execute(
+            "SELECT * FROM registrant_payments WHERE registration_id = ? AND tournament_id IS NULL", (rid,)
+        ).fetchall()
         for row in rows:
             _apply_removal(conn, row, actor, "lobby deleted")
 
 
 def on_registration_converted(rid: str, tid: str, player_ids: list[str], reg_settings_raw: str | None) -> None:
-    """Attach *tid* to the lobby's payment rows for the converted players and copy settings."""
-    if not player_ids:
-        return
-    settings = parse_payment_settings(reg_settings_raw)
+    """Attach *tid* to the lobby's payment rows, copy settings and remember the source lobby.
+
+    The source lobby id is stored on the tournament side so a second tournament from the same
+    lobby keeps finding the shared row after the lobby itself is deleted.
+    """
     with get_db() as conn:
-        placeholders = ",".join("?" * len(player_ids))
-        conn.execute(
-            f"""UPDATE registrant_payments SET tournament_id = ?
-                WHERE registration_id = ? AND tournament_id IS NULL AND player_id IN ({placeholders})""",  # noqa: S608
-            (tid, rid, *player_ids),
-        )
-        if reg_settings_raw:
+        if player_ids:
+            placeholders = ",".join("?" * len(player_ids))
             conn.execute(
-                """INSERT INTO tournament_payment_settings (tournament_id, settings) VALUES (?, ?)
-                   ON CONFLICT(tournament_id) DO UPDATE SET settings = excluded.settings""",
-                (tid, json.dumps(settings.model_dump())),
+                f"""UPDATE registrant_payments SET tournament_id = ?
+                    WHERE registration_id = ? AND tournament_id IS NULL AND player_id IN ({placeholders})""",  # noqa: S608
+                (tid, rid, *player_ids),
             )
+        settings_json = json.dumps(parse_payment_settings(reg_settings_raw).model_dump()) if reg_settings_raw else "{}"
+        conn.execute(
+            """INSERT INTO tournament_payment_settings (tournament_id, settings, registration_id) VALUES (?, ?, ?)
+               ON CONFLICT(tournament_id) DO UPDATE SET
+                   settings = CASE WHEN ? THEN excluded.settings ELSE settings END,
+                   registration_id = excluded.registration_id""",
+            (tid, settings_json, rid, 1 if reg_settings_raw else 0),
+        )
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -644,7 +787,7 @@ def parse_hub_key(key: str) -> tuple[EntityKind, str, str] | None:
 
 
 def profile_participations(profile_id: str) -> list[dict]:
-    """``[{kind, entity_id, entity_name, player_id, player_name, email}]`` for a Hub profile.
+    """``[{kind, entity_id, entity_name, player_id, player_name, email, created_at?}]`` for a Hub profile.
 
     Lobby rows come from ``registrants.profile_id``; tournament rows from
     ``player_secrets.profile_id``. Tournament names are read from the
@@ -661,7 +804,8 @@ def profile_participations(profile_id: str) -> list[dict]:
         for r in reg_rows:
             out.append({"kind": "registration", **dict(r)})
         t_rows = conn.execute(
-            """SELECT ps.tournament_id AS entity_id, t.name AS entity_name, ps.player_id, ps.player_name, ps.email
+            """SELECT ps.tournament_id AS entity_id, t.name AS entity_name, t.created_at AS created_at,
+                      ps.player_id, ps.player_name, ps.email
                FROM player_secrets ps JOIN tournaments t ON t.id = ps.tournament_id
                WHERE ps.profile_id = ?""",
             (profile_id,),
@@ -671,55 +815,73 @@ def profile_participations(profile_id: str) -> list[dict]:
     return out
 
 
-def hub_payments_for_profile(profile_id: str) -> list[HubPaymentOut]:
-    """Pending (unpaid / reported) payments across every lobby and tournament of a profile.
+HUB_LISTED_STATUSES = ("unpaid", "reported", "refund_due")
 
-    A lobby that was converted and a tournament created from it share one row;
-    the tournament entry wins so the player sees it once.
+
+def hub_payment_for(p: dict, row: PaymentRecord | None | _Unset = UNSET) -> HubPaymentOut | None:
+    """One Hub payment (any status) for a profile participation, or ``None`` when nothing is owed.
+
+    *row* is the already loaded row (``None`` = the player has none); leave it out to load it.
+    """
+    kind: EntityKind = p["kind"]
+    settings = get_settings(kind, p["entity_id"])
+    if isinstance(row, _Unset):
+        row = effective_row(kind, p["entity_id"], p["player_id"])
+    if (row is None and settings.fee_cents <= 0) or _owes_nothing(kind, p["entity_id"], p["player_id"], row):
+        return None
+    key = hub_key(kind, p["entity_id"], p["player_id"])
+    return HubPaymentOut(
+        key=key,
+        entry_keys=[key],
+        entity_type=kind,
+        entity_id=p["entity_id"],
+        entity_name=p["entity_name"] or "",
+        player_id=p["player_id"],
+        status=row.status if row else "unpaid",
+        amount_cents=row.amount_cents if row and row.amount_cents is not None else settings.fee_cents,
+        currency=(row.currency if row else None) or settings.currency,
+        due_at=settings.due_at,
+        instructions=settings.instructions,
+        methods=list(settings.methods),
+        concept=make_concept(p["entity_name"] or "", p["player_name"] or ""),
+        reference=row.reference if row else None,
+    )
+
+
+def hub_payments_for_profile(profile_id: str) -> list[HubPaymentOut]:
+    """Open payments (unpaid / reported / refund_due) across every lobby and tournament of a profile.
+
+    One fee per lobby and player is listed once, keyed on the payment row id (before a row exists:
+    on the lobby and player). The item carries the key of the earliest tournament of the profile
+    that shows the fee (a lobby entry only when no tournament does); ``entry_keys`` lists every
+    entry that shows it, so each card can badge the same single debt.
     """
     parts = profile_participations(profile_id)
-    out: list[HubPaymentOut] = []
-    seen_payment_ids: set[int] = set()
-    tournament_keys = {(p["entity_id"], p["player_id"]) for p in parts if p["kind"] == "tournament"}
-    # Tournaments first so shared (converted) rows are attributed to them.
-    parts.sort(key=lambda p: 0 if p["kind"] == "tournament" else 1)
+    parts.sort(key=lambda p: (p["kind"] != "tournament", p.get("created_at") or "", p["entity_id"]))
+    groups: dict[tuple, tuple[dict, PaymentRecord | None, list[str]]] = {}
     for p in parts:
         kind: EntityKind = p["kind"]
-        settings = get_settings(kind, p["entity_id"])
-        row = get_row(kind, p["entity_id"], p["player_id"])
-        if (row is None and settings.fee_cents <= 0) or _owes_nothing(kind, p["entity_id"], p["player_id"], row):
-            continue
+        row = effective_row(kind, p["entity_id"], p["player_id"])
         if row is not None:
-            if row["id"] in seen_payment_ids:
-                continue
-            seen_payment_ids.add(row["id"])
-        elif kind == "registration":
-            # No row yet: a lobby entry already converted into one of the
-            # profile's tournaments is shown under that tournament only.
-            with get_db() as conn:
-                linked_tid = _linked_tournament_id(conn, p["entity_id"], p["player_id"])
-            if linked_tid and (linked_tid, p["player_id"]) in tournament_keys:
-                continue
-        status = row["status"] if row else "unpaid"
-        if status not in ("unpaid", "reported"):
-            continue
-        out.append(
-            HubPaymentOut(
-                key=hub_key(kind, p["entity_id"], p["player_id"]),
-                entity_type=kind,
-                entity_id=p["entity_id"],
-                entity_name=p["entity_name"] or "",
-                player_id=p["player_id"],
-                status=status,
-                amount_cents=row["amount_cents"] if row and row.get("amount_cents") is not None else settings.fee_cents,
-                currency=(row or {}).get("currency") or settings.currency,
-                due_at=settings.due_at,
-                instructions=settings.instructions,
-                methods=list(settings.methods),
-                concept=make_concept(p["entity_name"] or "", p["player_name"] or ""),
-                reference=(row or {}).get("reference"),
-            )
-        )
+            group: tuple = ("row", row.id)
+        else:
+            if kind == "registration":
+                lobby_id: str | None = p["entity_id"]
+            else:
+                with get_db() as conn:
+                    lobby_id = source_registration_id(conn, p["entity_id"])
+            group = ("lobby", lobby_id, p["player_id"]) if lobby_id else ("own", kind, p["entity_id"], p["player_id"])
+        key = hub_key(kind, p["entity_id"], p["player_id"])
+        if group in groups:
+            groups[group][2].append(key)
+        else:
+            groups[group] = (p, row, [key])
+    out: list[HubPaymentOut] = []
+    for p, row, keys in groups.values():
+        item = hub_payment_for(p, row)
+        if item is not None and item.status in HUB_LISTED_STATUSES:
+            item.entry_keys = keys
+            out.append(item)
     return out
 
 

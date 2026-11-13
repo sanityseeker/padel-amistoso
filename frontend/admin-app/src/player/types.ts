@@ -107,12 +107,17 @@ export interface HubPayment {
   entity_type: 'tournament' | 'registration';
   entity_id: string;
   entity_name: string;
-  status: string;
+  player_id?: string;
+  status: 'unpaid' | 'reported' | 'paid' | 'waived' | 'refund_due' | 'refunded';
   amount_cents: number;
   currency: string;
+  due_at: string | null;
   instructions: string | null;
   concept: string;
+  reference: string | null;
   methods: { kind: string; label: string | null; value: string }[];
+  /** Keys of every entry that shows this one fee (a lobby converted into several tournaments). */
+  entry_keys?: string[];
 }
 export interface Leaderboard {
   padel: {

@@ -15,7 +15,7 @@ import { useLayoutMode } from '../../shell/layout';
 import { linkToken, participantPassphrase, verifyToken } from './linkParams';
 import { HubFilters } from './components/HubFilters';
 import { LinkEvent } from './components/LinkEvent';
-import { dueOf, usePayments } from './components/TodoCards';
+import { paymentKey, usePayments } from './payments';
 import { lifecycleIn, type EventData } from './eventData';
 import type { PlayerSpaceContext } from './context';
 import { hubSportsOf, type Sport } from './stats';
@@ -55,8 +55,27 @@ function useDots(
       return state === 'confirm' || state === 'correction';
     });
   });
-  const meWaits = !!space && (!space.profile.email_verified || dueOf(payments.data).length > 0);
-  return { matches: scoreWaits, me: meWaits };
+  const meWaits = !!space && !space.profile.email_verified;
+  // A dot lights only where the page itself shows a badge the player can act on. Tournament badges
+  // (unpaid, refund due) are on the Hub; lobby badges (unpaid) are on My events. A reported payment
+  // waits for the organizer, so it lights nothing.
+  const shown = (kind: Entry['entity_type'], statuses: string[]) => {
+    const keys = new Set(
+      [...entries, ...(space?.entries ?? [])]
+        .filter((e) => e.entity_type === kind && !e.entity_deleted)
+        .filter((e) => kind === 'registration' || e.status === 'active' || e.status === 'finished')
+        .map(paymentKey),
+    );
+    return (payments.data ?? []).some(
+      (p) =>
+        p.entity_type === kind &&
+        statuses.includes(p.status) &&
+        (p.entry_keys ?? [p.key]).some((k) => keys.has(k)),
+    );
+  };
+  const hubWaits = shown('tournament', ['unpaid', 'refund_due']);
+  const lobbyWaits = shown('registration', ['unpaid']);
+  return { matches: scoreWaits || lobbyWaits, me: meWaits, hub: hubWaits };
 }
 
 // The session gate and shell of every /player/* route. Without a session the login and onboarding
@@ -194,6 +213,10 @@ export function PlayerLayout() {
   const sport: Sport = sports.includes(savedSport as Sport)
     ? (savedSport as Sport)
     : (sports[0] ?? 'padel');
+  // The filter only counts while the switcher is visible: with one sport an active tournament in a
+  // sport the player has no rating in must still show.
+  const sportFilter: Sport | 'all' =
+    sports.length > 1 && sports.includes(savedSport as Sport) ? (savedSport as Sport) : 'all';
   const context: PlayerSpaceContext = {
     space,
     scope,
@@ -205,6 +228,7 @@ export function PlayerLayout() {
     clubEntries,
     sport,
     sports,
+    sportFilter,
     setSport: setPlayerSport,
     openLink: () => setLinking(true),
     notice,
@@ -215,7 +239,13 @@ export function PlayerLayout() {
   // The filters sit on the four Hub pages, not on one event's page (which shows that event whole).
   const section = SECTIONS.find((s) => pathname.replace(/\/$/, '') === s.to);
   const dotFor = (to: string) =>
-    to === '/player/matches' ? dots.matches : to === '/player/me' ? dots.me : false;
+    to === '/player'
+      ? dots.hub
+      : to === '/player/matches'
+        ? dots.matches
+        : to === '/player/me'
+          ? dots.me
+          : false;
   const outlet = (
     <Stack gap="md">
       {linkError && <Notice tone="danger">{linkError}</Notice>}
@@ -230,11 +260,13 @@ export function PlayerLayout() {
           // A club subdomain shows that club only, so there is nothing to pick.
           scopeOptions={host ? [] : scopeOptions}
           onScope={setScope}
-          sport={sport}
+          sport={sportFilter}
+          fallbackSport={sport}
           sports={sports}
           onSport={setPlayerSport}
-          // Only the Hub and Ratings split by sport.
-          showSport={section.to === '/player' || section.to === '/player/ratings'}
+          // The Hub and My events filter by sport (with All); Ratings shows one sport at a time.
+          showSport={section.to !== '/player/me'}
+          withAll={section.to !== '/player/ratings'}
         />
       )}
       <Outlet context={context} />
@@ -286,7 +318,7 @@ export function PlayerLayout() {
                 leftSection={<Icon size={18} aria-hidden />}
                 rightSection={
                   dotFor(to) ? (
-                    <Indicator size={8} color="red" disabled={false}>
+                    <Indicator size={8} color="red" disabled={false} data-testid="nav-dot">
                       <span />
                     </Indicator>
                   ) : undefined

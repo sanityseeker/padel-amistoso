@@ -1424,6 +1424,9 @@ class HubPaymentOut(BaseModel):
     methods: list[PaymentMethod] = Field(default_factory=list)
     concept: str
     reference: str | None = None
+    # Hub keys of every entry of the profile that shows this one fee (its own key first). A lobby
+    # converted into several tournaments has one fee per player, listed once.
+    entry_keys: list[str] = Field(default_factory=list)
 
 
 class RemindUnpaidIn(BaseModel):

@@ -1,5 +1,11 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { adminHeaders, createTournament, loginAdmin, patchTvSettings } from './helpers';
+import {
+  adminHeaders,
+  createTournament,
+  loginAdmin,
+  openMatchTool,
+  patchTvSettings,
+} from './helpers';
 
 test('stage progress remains correct after reloading a workspace', async ({ page, request }) => {
   const { id, headers } = await createTournament(request, 'mex', `Progress ${Date.now()}`);
@@ -155,7 +161,8 @@ test('match comment and score history beside the score button', async ({ page, r
   await loginAdmin(page);
   await page.goto(`/admin/t/${id}`);
   const first = page.getByTestId('match-row').first();
-  await first.getByRole('button', { name: 'Add comment' }).click();
+  await expect(first).toBeVisible();
+  await openMatchTool(page, first, 'Add comment');
   const dialog = page.getByRole('dialog', { name: 'Match comment' });
   await dialog.getByLabel('Comment').fill('Court 2 has a wet corner');
   await dialog.getByRole('button', { name: 'Save comment' }).click();
@@ -163,11 +170,7 @@ test('match comment and score history beside the score button', async ({ page, r
   const matches = await (await request.get(`/api/tournaments/${id}/gp/groups`)).json();
   const all = Object.values(matches.matches as Record<string, { comment: string }[]>).flat();
   expect(all.some((m) => m.comment === 'Court 2 has a wet corner')).toBeTruthy();
-  await page
-    .getByTestId('match-row')
-    .first()
-    .getByRole('button', { name: 'Score history' })
-    .click();
+  await openMatchTool(page, page.getByTestId('match-row').first(), 'Score history');
   await expect(page.getByRole('dialog', { name: 'Score history' })).toBeVisible();
   await expect(page.getByTestId('history-empty')).toBeVisible();
 });

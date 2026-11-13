@@ -245,7 +245,7 @@ test('the Player Hub on a club subdomain keeps to that club, profile page includ
       await request.get(`/api/tournaments/${c.first}/player-secrets`, { headers: c.headers })
     ).json()
   ).players as Record<string, { name: string; passphrase: string }>;
-  const ana = Object.values(secrets).find((p) => p.name === 'Ana')!;
+  const [anaId, ana] = Object.entries(secrets).find(([, p]) => p.name === 'Ana')!;
   const profile = await (
     await request.post('/api/player-profile', {
       data: {
@@ -257,11 +257,11 @@ test('the Player Hub on a club subdomain keeps to that club, profile page includ
   ).json();
   // One fee in this club and one elsewhere: only the club's own shows here.
   const payment = (entity_id: string, entity_name: string) => ({
-    key: `tournament:${entity_id}:p`,
+    key: `t:${entity_id}:${entity_id === c.first ? anaId : 'p'}`,
     entity_type: 'tournament',
     entity_id,
     entity_name,
-    player_id: 'p',
+    player_id: entity_id === c.first ? anaId : 'p',
     status: 'unpaid',
     amount_cents: 1000,
     currency: 'EUR',
@@ -289,10 +289,11 @@ test('the Player Hub on a club subdomain keeps to that club, profile page includ
     `http://${c.slug}.localhost:${PORT}/player#token=${encodeURIComponent(profile.access_token)}`,
   );
   await expect(page.getByRole('heading', { name: 'Your active tournaments' })).toBeVisible();
+  // The fee shows as a badge on the club's tournament card; the fee elsewhere has no card here.
+  await expect(page.getByRole('button', { name: `Payment due: Club fee ${c.s}` })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Other fee/ })).toHaveCount(0);
   await page.goto(`http://${c.slug}.localhost:${PORT}/player/me`);
-  await expect(page.getByRole('heading', { name: 'Pending payments' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: `Club fee ${c.s}` })).toBeVisible();
-  await expect(page.getByText(`Other fee ${c.s}`)).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Pending payments' })).toHaveCount(0);
   // The club is the scope: no picker to move it, and every request asked for the club.
   await expect(page.locator('input[aria-label="Player stats scope"]')).toHaveCount(0);
   expect(spaceUrls.length).toBeGreaterThan(0);
@@ -348,8 +349,9 @@ test('on a club subdomain the Hub shows only the sports the player has in that c
 
   // The main site has both sports, so the toggle shows.
   await page.goto(`/player${hub}`);
-  await expect(page.getByTestId('player-card')).toBeVisible();
-  await expect(page.getByTestId('hub-filters').getByRole('radio')).toHaveCount(2);
+  // All sports: one rating card per sport.
+  await expect(page.getByTestId('player-card')).toHaveCount(2);
+  await expect(page.getByTestId('hub-filters').getByRole('radio')).toHaveCount(3);
 
   // The club has tennis only: no toggle, tennis everywhere, even with padel saved.
   await page.evaluate(() => localStorage.setItem('padel-player-sport', 'padel'));

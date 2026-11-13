@@ -5,6 +5,7 @@ import { formatType } from '../../../api';
 import type { Entry } from '../../../player/types';
 import { EventRow } from '../../../ui';
 import { entryPath } from '../context';
+import { EntryPaymentBadge, openPaymentOf, usePayments } from '../payments';
 import { StatusBadge } from '../../../ui/StatusBadge';
 
 const SHOWN = 3;
@@ -19,7 +20,11 @@ export const pastOf = (entries: Entry[]) =>
 // Finished banner); the full list with unlink lives on My events.
 export function PastTournaments({ entries }: { entries: Entry[] }) {
   useLocale();
-  const past = pastOf(entries);
+  const payments = usePayments();
+  // Rows with an open payment come first and are never cut off: their badge must stay reachable.
+  const owing = pastOf(entries).filter((e) => openPaymentOf(payments.data, e));
+  const rest = pastOf(entries).filter((e) => !openPaymentOf(payments.data, e));
+  const past = [...owing, ...rest];
   if (!past.length) return null;
   return (
     <Stack gap="sm" component="section" aria-labelledby="hub-past">
@@ -32,7 +37,7 @@ export function PastTournaments({ entries }: { entries: Entry[] }) {
         </Anchor>
       </Group>
       <Stack gap="xs">
-        {past.slice(0, SHOWN).map((entry) => (
+        {past.slice(0, Math.max(SHOWN, owing.length)).map((entry) => (
           <EventRow
             key={entry.entity_id}
             testId="past-tournament"
@@ -48,6 +53,7 @@ export function PastTournaments({ entries }: { entries: Entry[] }) {
             badges={
               <>
                 {entry.rank ? <StatusBadge size="sm">#{entry.rank}</StatusBadge> : null}
+                <EntryPaymentBadge entry={entry} />
                 <Badge size="sm" variant="light">
                   {entry.wins} {tx('wins ·')} {entry.losses} {tx('losses')}
                 </Badge>

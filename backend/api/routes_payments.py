@@ -1,15 +1,20 @@
 """
 Player payment tracking routes (phase 1).
 
-Three audiences share the same ``registrant_payments`` rows:
+Four audiences share the same ``registrant_payments`` rows:
 
 - **Editors** (JWT admin/organizer accounts): fee settings, the per-participant
   payments table, "mark paid" style status changes and reminder emails — on
   both registration lobbies and tournaments.
 - **Players on the registration page** (passphrase / token, same auth as the
   ``player-answers`` route): "I've paid" self-report.
-- **Player Hub profiles** (profile JWT): pending payments across every lobby
-  and tournament linked to the profile, with the same self-report.
+- **Player Hub profiles** (profile JWT): open payments (unpaid / reported /
+  refund due) across every lobby and tournament linked to the profile, one
+  entry in any status by key, and the same self-report.
+- **Tournament players** (tournament player JWT from ``/{tid}/player-auth``):
+  their *own* row only, the teammates they may also pay for (id and name) and
+  the same self-report. The identity comes from the token alone; an admin JWT
+  or a token of another tournament is never accepted.
 
 Nothing here is ever reachable from ``/public`` endpoints, TV views or share
 exports — see ``tests/test_payments.py``.
@@ -17,9 +22,12 @@ exports — see ``tests/test_payments.py``.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from ..auth.deps import ProfileIdentity, get_current_profile, get_current_user
+from ..auth.deps import PlayerIdentity, ProfileIdentity, get_current_player, get_current_profile, get_current_user
 from ..auth.models import User
 from ..email import (
     is_configured as email_is_configured,
@@ -78,7 +86,7 @@ def _tournament_or_404(tid: str) -> dict:
     return data
 
 
-def _tournament_participants(tid: str) -> list[dict]:
+def _tournament_participants(tid: str) -> list[store.Participant]:
     """Players of a tournament from ``player_secrets`` (lang included for reminder emails).
 
     Reads the table directly — the cached ``get_secrets_for_tournament`` is the
@@ -91,33 +99,33 @@ def _tournament_participants(tid: str) -> list[dict]:
         ).fetchall()
     if rows:
         return [
-            {
-                "player_id": r["player_id"],
-                "player_name": r["player_name"],
-                "email": r["email"] or "",
-                "token": r["token"],
-                "lang": r["lang"] or "en",
-            }
+            store.Participant(
+                player_id=r["player_id"],
+                player_name=r["player_name"] or "",
+                email=r["email"] or "",
+                token=r["token"] or "",
+                lang=r["lang"] or "en",
+            )
             for r in rows
         ]
     secrets = _pss.get_secrets_for_tournament(tid)
     return [
-        {
-            "player_id": pid,
-            "player_name": info.get("name", ""),
-            "email": info.get("email", "") or "",
-            "token": info.get("token", ""),
-            "lang": info.get("lang", "en"),
-        }
+        store.Participant(
+            player_id=pid,
+            player_name=info.get("name", ""),
+            email=info.get("email", "") or "",
+            token=info.get("token", ""),
+            lang=info.get("lang", "en"),
+        )
         for pid, info in secrets.items()
     ]
 
 
-def _registration_participants(reg_id: str) -> list[dict]:
+def _registration_participants(reg_id: str) -> list[store.Participant]:
     """Registrants who owe the lobby fee: those passing the participant filter."""
     eligible = store.lobby_eligible_ids(reg_id)
     return [
-        {"player_id": r["player_id"], "player_name": r["player_name"], "email": r.get("email", "") or ""}
+        store.Participant(player_id=r["player_id"], player_name=r["player_name"] or "", email=r.get("email", "") or "")
         for r in _get_registrants(reg_id)
         if r["player_id"] in eligible
     ]
@@ -221,24 +229,26 @@ def _patch_payment(
     kind: store.EntityKind,
     entity_id: str,
     entity_name: str,
-    participants: list[dict],
+    participants: list[store.Participant],
     player_id: str,
     req: PaymentPatchIn,
     actor: str,
 ) -> PaymentRowOut:
-    by_id = {p["player_id"]: p for p in participants}
+    by_id = {p.player_id: p for p in participants}
     participant = by_id.get(player_id)
-    if participant is None and store.get_row(kind, entity_id, player_id) is None:
+    if participant is None and store.effective_row(kind, entity_id, player_id) is None:
         raise HTTPException(404, "Player not found")
     settings = store.get_settings(kind, entity_id)
+    # A tournament player whose fee sits in the shared lobby row updates that row (never a second one).
+    target = store.resolve_target(kind, entity_id, player_id)
     row = store.set_status(
-        kind,
-        entity_id,
+        target.kind,
+        target.entity_id,
         player_id,
         status=req.status,
         actor=actor,
-        player_name=(participant or {}).get("player_name"),
-        email=(participant or {}).get("email"),
+        player_name=participant.player_name if participant else None,
+        email=participant.email if participant else None,
         amount_cents=req.amount_cents,
         method=req.method,
         note=req.note,
@@ -256,13 +266,13 @@ def _patch_payment(
             return out
     # Unreachable in practice: the row was just written.
     return PaymentRowOut(
-        id=row["id"],
+        id=row.id,
         player_id=player_id,
-        player_name=row.get("player_name") or "",
-        status=row["status"],
-        amount_cents=row.get("amount_cents") or settings.fee_cents,
-        currency=row.get("currency") or settings.currency,
-        concept=store.make_concept(entity_name, row.get("player_name") or ""),
+        player_name=row.player_name or "",
+        status=row.status,
+        amount_cents=row.amount_cents or settings.fee_cents,
+        currency=row.currency or settings.currency,
+        concept=store.make_concept(entity_name, row.player_name or ""),
     )
 
 
@@ -388,7 +398,7 @@ async def remind_unpaid_tournament(
         raise HTTPException(400, "No fee configured for this tournament")
 
     participants = _tournament_participants(tid)
-    by_id = {p["player_id"]: p for p in participants}
+    by_id = {p.player_id: p for p in participants}
     listing = store.build_listing(
         "tournament",
         tid,
@@ -402,11 +412,11 @@ async def remind_unpaid_tournament(
     unreachable: list[str] = []
     for row in _pending_rows(listing):
         info = by_id.get(row.player_id)
-        email = (info or {}).get("email") or row.email or ""
+        email = (info.email if info else "") or row.email or ""
         if not info or not delivery.reachable(row.player_id, email):
             unreachable.append(row.player_name)
             continue
-        lang = info.get("lang", "en")
+        lang = info.lang
         message = (req.message if req and req.message else None) or store.reminder_message(
             settings, concept=row.concept, entity_name=data["name"], lang=lang
         )
@@ -417,7 +427,7 @@ async def remind_unpaid_tournament(
                 tournament_name=data["name"],
                 player_name=row.player_name,
                 message=message,
-                token=info["token"],
+                token=info.token,
                 tournament_id=tid,
                 tournament_alias=data.get("alias"),
                 reply_to=es.reply_to,
@@ -452,32 +462,14 @@ async def player_payment_report(rid: str, req: PlayerPaymentReportIn, request: R
         raise HTTPException(400, "No fee configured for this lobby")
     registrant = _resolve_registrant(reg_id, req.passphrase, req.token)
     email = next((r.get("email") for r in _get_registrants(reg_id) if r["player_id"] == registrant["player_id"]), "")
-    if req.also_for:
-        try:
-            store.report_payment_for_players(
-                "registration",
-                reg_id,
-                {
-                    "player_id": registrant["player_id"],
-                    "player_name": registrant["player_name"],
-                    "email": email or None,
-                },
-                reference=req.reference,
-                method=req.method,
-                also_for=req.also_for,
-            )
-        except store.PayForOthersError as exc:
-            raise HTTPException(400, str(exc)) from exc
-    else:
-        store.report_payment(
-            "registration",
-            reg_id,
-            registrant["player_id"],
-            player_name=registrant["player_name"],
-            email=email or None,
-            reference=req.reference,
-            method=req.method,
-        )
+    _report(
+        "registration",
+        reg_id,
+        store.Participant(
+            player_id=registrant["player_id"], player_name=registrant["player_name"] or "", email=email or ""
+        ),
+        req,
+    )
     info = store.player_payment_info(
         "registration",
         reg_id,
@@ -503,13 +495,126 @@ async def player_payment_teammates(rid: str, req: PlayerPaymentAuthIn, request: 
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# Tournament player (player JWT)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class TournamentPlayerContext:
+    """The tournament's state data and the participant the player token belongs to."""
+
+    data: dict[str, Any]
+    me: store.Participant
+
+
+def _tournament_player(tid: str, player: PlayerIdentity | None) -> TournamentPlayerContext:
+    """Tournament data and participant of the token's player; the body never names the player."""
+    if not isinstance(player, PlayerIdentity):
+        raise HTTPException(401, "Player authentication required")
+    if player.tournament_id != tid:
+        raise HTTPException(403, "Token is for a different tournament")
+    data = _tournament_or_404(tid)
+    me = next((p for p in _tournament_participants(tid) if p.player_id == player.player_id), None)
+    if me is None:
+        raise HTTPException(404, "Player not found in this tournament")
+    return TournamentPlayerContext(data=data, me=me)
+
+
+def _report(
+    kind: store.EntityKind,
+    entity_id: str,
+    reporter: store.Participant,
+    req: PlayerPaymentReportIn | HubPaymentReportIn | None,
+) -> None:
+    """Shared "I've paid" write for the registration page, the tournament page and the Hub.
+
+    Unpaid (or missing) -> reported for the reporter and, with ``also_for``, for each selected
+    teammate in one transaction; a confirmed row is never downgraded. 400 when there is no fee or
+    a selected player is not payable (not in the event, already settled, withdrawn or removed).
+    """
+    if (
+        store.get_settings(kind, entity_id).fee_cents <= 0
+        and store.effective_row(kind, entity_id, reporter.player_id) is None
+    ):
+        raise HTTPException(400, "No fee configured")
+    if req and req.also_for:
+        try:
+            store.report_payment_for_players(
+                kind,
+                entity_id,
+                reporter,
+                reference=req.reference,
+                method=req.method,
+                also_for=req.also_for,
+            )
+        except store.PayForOthersError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    else:
+        store.report_payment(
+            kind,
+            entity_id,
+            reporter.player_id,
+            player_name=reporter.player_name,
+            email=reporter.email or None,
+            reference=req.reference if req else None,
+            method=req.method if req else None,
+        )
+
+
+def _own_tournament_payment(tid: str, ctx: TournamentPlayerContext) -> PaymentInfoOut | None:
+    return store.player_payment_info(
+        "tournament",
+        tid,
+        entity_name=ctx.data["name"],
+        player_id=ctx.me.player_id,
+        player_name=ctx.me.player_name,
+    )
+
+
+@router.get("/api/tournaments/{tid}/player/payment", response_model=PaymentInfoOut | None)
+def tournament_player_payment(
+    tid: str, player: PlayerIdentity | None = Depends(get_current_player)
+) -> PaymentInfoOut | None:
+    """The signed-in player's own payment (any status); ``null`` when no fee and no row."""
+    return _own_tournament_payment(tid, _tournament_player(tid, player))
+
+
+@router.get("/api/tournaments/{tid}/player/payment/teammates", response_model=list[PayableTeammateOut])
+def tournament_player_payment_teammates(
+    tid: str, player: PlayerIdentity | None = Depends(get_current_player)
+) -> list[PayableTeammateOut]:
+    """Other players the caller may also pay for: id and name only, withdrawn and removed players left out."""
+    ctx = _tournament_player(tid, player)
+    return store.payable_teammates("tournament", tid, ctx.me.player_id)
+
+
+@router.post("/api/tournaments/{tid}/player/payment/report", response_model=PaymentInfoOut)
+def tournament_player_payment_report(
+    tid: str,
+    req: HubPaymentReportIn | None = None,
+    player: PlayerIdentity | None = Depends(get_current_player),
+) -> PaymentInfoOut:
+    """ "I've paid" from the tournament page: ``unpaid`` -> ``reported``, never downgrades a confirmed row.
+
+    No IP rate limiter: the tournament player token already authenticates the caller, and the
+    passphrase limiter would lock out players sharing one venue Wi-Fi address.
+    """
+    ctx = _tournament_player(tid, player)
+    _report("tournament", tid, ctx.me, req)
+    info = _own_tournament_payment(tid, ctx)
+    if info is None:  # pragma: no cover - the fee check above guarantees a row or a fee
+        raise HTTPException(400, "No fee configured")
+    return info
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # Player Hub
 # ────────────────────────────────────────────────────────────────────────────
 
 
 @router.get("/api/player-profile/payments", response_model=list[HubPaymentOut])
 def hub_list_payments(identity: ProfileIdentity | None = Depends(get_current_profile)) -> list[HubPaymentOut]:
-    """Pending payments (unpaid / reported) across the profile's lobbies and tournaments."""
+    """Open payments (unpaid / reported / refund due) across the profile's lobbies and tournaments."""
     if identity is None:
         raise HTTPException(401, "Profile authentication required")
     return store.hub_payments_for_profile(identity.profile_id)
@@ -535,6 +640,16 @@ def _owned_hub_entry(identity: ProfileIdentity | None, key: str) -> tuple[store.
     return kind, entity_id, player_id, owned
 
 
+@router.get("/api/player-profile/payments/{key}", response_model=HubPaymentOut)
+def hub_get_payment(key: str, identity: ProfileIdentity | None = Depends(get_current_profile)) -> HubPaymentOut:
+    """One of the profile's own payments in any status (paid, waived, refunded included)."""
+    kind, entity_id, player_id, owned = _owned_hub_entry(identity, key)
+    item = store.hub_payment_for({"kind": kind, **owned})
+    if item is None:
+        raise HTTPException(404, "Payment not found")
+    return item
+
+
 @router.get("/api/player-profile/payments/{key}/teammates", response_model=list[PayableTeammateOut])
 def hub_payment_teammates(
     key: str, identity: ProfileIdentity | None = Depends(get_current_profile)
@@ -553,28 +668,8 @@ async def hub_report_payment(
     """Self-report from the Hub; the key must belong to one of the profile's own entries."""
     kind, entity_id, player_id, owned = _owned_hub_entry(identity, key)
     assert identity is not None
-    if store.get_settings(kind, entity_id).fee_cents <= 0 and store.get_row(kind, entity_id, player_id) is None:
-        raise HTTPException(400, "No fee configured")
-    if req and req.also_for:
-        try:
-            store.report_payment_for_players(
-                kind,
-                entity_id,
-                {"player_id": player_id, "player_name": owned.get("player_name"), "email": owned.get("email")},
-                reference=req.reference,
-                method=req.method,
-                also_for=req.also_for,
-            )
-        except store.PayForOthersError as exc:
-            raise HTTPException(400, str(exc)) from exc
-    else:
-        store.report_payment(
-            kind,
-            entity_id,
-            player_id,
-            player_name=owned.get("player_name"),
-            email=owned.get("email"),
-            reference=req.reference if req else None,
-            method=req.method if req else None,
-        )
+    reporter = store.Participant(
+        player_id=player_id, player_name=owned.get("player_name") or "", email=owned.get("email") or ""
+    )
+    _report(kind, entity_id, reporter, req)
     return store.hub_payments_for_profile(identity.profile_id)

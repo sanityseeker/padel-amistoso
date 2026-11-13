@@ -428,3 +428,73 @@ test('a set-scored group shows game difference before any match is played', asyn
   await expect(table.getByRole('columnheader', { name: /Game difference/ })).toBeVisible();
   await expect(table.getByRole('columnheader', { name: /Point difference/ })).toHaveCount(0);
 });
+
+// ---- Entry fee on the public page ---------------------------------------------------------------
+
+async function withFee(request: APIRequestContext, name: string) {
+  const { id, headers } = await mexicano(request, name);
+  await patchTvSettings(request, id, { refresh_interval: 0, allow_player_scoring: true });
+  expect(
+    (
+      await request.patch(`/api/tournaments/${id}/payment-settings`, {
+        headers,
+        data: { fee_cents: 1200, currency: 'EUR', instructions: 'Bizum to the organizer.' },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  const secrets = (
+    await (await request.get(`/api/tournaments/${id}/player-secrets`, { headers })).json()
+  ).players as Record<string, { name: string; token: string }>;
+  const [playerId, me] = Object.entries(secrets).find(([, p]) => p.name === 'Ana')!;
+  return { id, headers, playerId, token: me.token };
+}
+
+test('a signed-in player with an open entry fee reports it from the spectator screen', async ({
+  page,
+  request,
+}) => {
+  const { id, headers, playerId, token } = await withFee(request, `TV fee ${stamp()}`);
+  await page.goto(`/tv/${id}?player_token=${encodeURIComponent(token)}`);
+  const button = page.getByTestId('tv-payment-button');
+  await expect(button).toHaveText('Entry fee: pay');
+  await button.click();
+  const sheet = page.getByRole('dialog', { name: 'Entry fee' });
+  await expect(sheet).toContainText('Bizum to the organizer.');
+  // The payment method is required before "I've paid".
+  await expect(sheet.getByRole('button', { name: "I've paid" })).toBeDisabled();
+  await sheet.getByRole('combobox', { name: 'Payment method' }).click();
+  await page.getByRole('option', { name: 'Bizum (phone)', exact: true }).click();
+  await sheet.getByLabel('Reference or note').fill('Bizum 12:30');
+  await sheet.getByRole('button', { name: "I've paid" }).click();
+  await expect(sheet.getByRole('status')).toContainText('Reported');
+  await page.keyboard.press('Escape');
+  await expect(button).toHaveText('Payment reported');
+  const listing = await (await request.get(`/api/tournaments/${id}/payments`, { headers })).json();
+  const row = listing.rows.find((r: { player_id: string }) => r.player_id === playerId);
+  expect(row.status).toBe('reported');
+  expect(row.reference).toBe('Bizum 12:30');
+  // Once the organizer confirms it, the button is gone.
+  expect(
+    (
+      await request.patch(`/api/tournaments/${id}/payments/${playerId}`, {
+        headers,
+        data: { status: 'paid' },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Player menu: Ana' })).toBeVisible();
+  await expect(page.getByTestId('tv-payment-button')).toHaveCount(0);
+});
+
+test('a spectator who is not signed in never sees the entry fee button', async ({
+  page,
+  request,
+}) => {
+  const { id } = await withFee(request, `TV fee spectator ${stamp()}`);
+  await page.goto(`/tv/${id}`);
+  await expect(page.getByTestId('tv-court').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+  await expect(page.getByTestId('tv-payment-button')).toHaveCount(0);
+  await expect(page.getByText(/Entry fee/)).toHaveCount(0);
+});
