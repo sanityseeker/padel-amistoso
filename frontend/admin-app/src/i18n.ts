@@ -1,7 +1,6 @@
 import i18next from 'i18next';
 import { initReactI18next, useTranslation } from 'react-i18next';
 import { notifications } from '@mantine/notifications';
-import spanish from './locales/es.json';
 
 export const LANGUAGES = [
   { code: 'en', name: 'English', short: 'EN', tag: 'en-GB' },
@@ -12,12 +11,17 @@ export type Language = (typeof LANGUAGES)[number]['code'];
 /** Languages a person can pick today. A stored language outside this list is still honored. */
 export const SELECTABLE: readonly Language[] = ['en', 'es', 'ru'];
 export const LANGUAGE_KEY = 'amistoso-lang';
-// Languages whose texts load on demand instead of in the entry chunk.
+// Languages whose texts load on demand instead of in the entry chunk (English is the keys). The server
+// adds a <link rel="modulepreload"> for the stored language's chunk to the page (backend/api
+// `_language_preload_script`), so it downloads alongside the entry chunk.
 const LAZY: Partial<Record<Language, () => Promise<{ default: Record<string, string> }>>> = {
+  es: () => import('./locales/es.json'),
   ru: () => import('./locales/ru.json'),
 };
 const isLanguage = (value: unknown): value is Language =>
   LANGUAGES.some((language) => language.code === value);
+// Mirrored by the inline language-preload script the backend injects into index.html: keep the two in
+// step.
 function initialLanguage(): Language {
   try {
     const saved = localStorage.getItem(LANGUAGE_KEY);
@@ -43,7 +47,7 @@ void i18n.use(initReactI18next).init({
   lng: LAZY[wanted] ? 'en' : wanted,
   fallbackLng: 'en',
   supportedLngs: LANGUAGES.map((language) => language.code),
-  resources: { en: { translation: {} }, es: { translation: spanish } },
+  resources: { en: { translation: {} } },
   keySeparator: false,
   nsSeparator: false,
   interpolation: { escapeValue: false, prefix: '{', suffix: '}' },

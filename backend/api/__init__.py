@@ -572,7 +572,65 @@ def _html_page(filename: str, fallback: str) -> Response:
 
 _HTML_OPEN_TAG_RE = re.compile(r"<html\b([^>]*)>", re.IGNORECASE)
 _HTML_CLASS_ATTR_RE = re.compile(r"""\bclass\s*=\s*(["'])(.*?)\1""", re.IGNORECASE)
-_spa_index_cache: dict[tuple[str, int, int, bool], tuple[str, str]] = {}
+_spa_index_cache: dict[tuple[object, ...], tuple[str, str]] = {}
+
+# The lazily loaded translation chunks, by language code (English is built in).
+_LOCALE_ENTRIES = {"es": "src/locales/es.json", "ru": "src/locales/ru.json"}
+# Picks the visitor's language exactly as frontend/admin-app/src/i18n.ts ``initialLanguage`` does
+# (amistoso-lang, then the old padel-lang, then the browser language) and preloads that language's
+# chunk, so its texts download alongside the entry chunk instead of after it. Read-only: i18n.ts
+# migrates the old key itself.
+_LANGUAGE_PRELOAD_SCRIPT = """<script>
+      (function () {
+        var files = __FILES__;
+        var lang;
+        try {
+          var saved = localStorage.getItem('amistoso-lang');
+          var old = localStorage.getItem('padel-lang');
+          if (!saved && (old === 'en' || old === 'es')) lang = old;
+          else if (saved === 'en' || saved === 'es' || saved === 'ru') lang = saved;
+        } catch (_) {}
+        if (!lang) {
+          var b = ((navigator.languages && navigator.languages[0]) || navigator.language || '').toLowerCase();
+          lang = b.indexOf('es') === 0 ? 'es' : b.indexOf('ru') === 0 ? 'ru' : 'en';
+        }
+        if (!files[lang]) return;
+        var link = document.createElement('link');
+        link.rel = 'modulepreload';
+        link.crossOrigin = '';
+        link.href = files[lang];
+        document.head.appendChild(link);
+      })();
+    </script>
+    """
+
+
+def _locale_chunk_paths(manifest_path: Path) -> dict[str, str]:
+    """Return ``{language: "/admin-assets/<chunk>.js"}`` for the lazy translation chunks in the build."""
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, ValueError):
+        return {}
+    paths: dict[str, str] = {}
+    for language, source in _LOCALE_ENTRIES.items():
+        entry = manifest.get(source)
+        file = entry.get("file") if isinstance(entry, dict) else None
+        if isinstance(file, str) and file.startswith("admin-assets/"):
+            paths[language] = f"/{file}"
+    return paths
+
+
+def _inject_language_preload(html: str, chunks: dict[str, str]) -> str:
+    """Insert the language-preload script before the first module script (or ``</head>``)."""
+    if not chunks:
+        return html
+    # Escape "<" so no file name can close the script element.
+    script = _LANGUAGE_PRELOAD_SCRIPT.replace("__FILES__", json.dumps(chunks).replace("<", "\\u003c"))
+    for marker in ('<script type="module"', "</head>"):
+        at = html.find(marker)
+        if at != -1:
+            return html[:at] + script + html[at:]
+    return html
 
 
 def _mark_demo_instance(html: str) -> str:
@@ -599,14 +657,20 @@ def _spa_index() -> tuple[str, str] | None:
     redeploy (or a test rewriting the file) is picked up without a restart.
     """
     index = ADMIN_BUILD_DIR / "index.html"
+    manifest = ADMIN_BUILD_DIR / ".vite" / "manifest.json"
     try:
         stat = index.stat()
     except OSError:
         return None
-    key = (str(index), stat.st_mtime_ns, stat.st_size, bool(config.DEMO_INSTANCE))
+    try:
+        manifest_stat = manifest.stat()
+        manifest_key: tuple[int, int] | None = (manifest_stat.st_mtime_ns, manifest_stat.st_size)
+    except OSError:
+        manifest_key = None
+    key = (str(index), stat.st_mtime_ns, stat.st_size, manifest_key, bool(config.DEMO_INSTANCE))
     cached = _spa_index_cache.get(key)
     if cached is None:
-        html = index.read_text()
+        html = _inject_language_preload(index.read_text(), _locale_chunk_paths(manifest))
         if config.DEMO_INSTANCE:
             html = _mark_demo_instance(html)
         etag = f'"s{hashlib.sha256(html.encode()).hexdigest()[:16]}"'

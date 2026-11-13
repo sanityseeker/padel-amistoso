@@ -79,6 +79,10 @@ test('switching Events, Player Hub and Admin never reloads the document', async 
 test('root redirects by session and last page', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveURL(/\/events$/);
+  // Let the shell record this visit first, or it can overwrite the value set below.
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('amistoso-last-page')))
+    .toBe('events');
   await page.evaluate(() => localStorage.setItem('amistoso-last-page', 'player'));
   await page.goto('/');
   await expect(page).toHaveURL(/\/player$/);

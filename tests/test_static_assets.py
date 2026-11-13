@@ -2353,6 +2353,7 @@ def spa_build(tmp_path, monkeypatch):
         "src/pages/Lobbies.tsx": {"file": "admin-assets/Lobbies-ccc.js", "isDynamicEntry": True},
         "_shared.js": {"file": "admin-assets/shared-ddd.js", "assets": ["admin-assets/font-eee.woff2"]},
         "src/locales/ru.json": {"file": "admin-assets/ru-fff.js", "isDynamicEntry": True},
+        "src/locales/es.json": {"file": "admin-assets/es-ggg.js", "isDynamicEntry": True},
     }
     (build / ".vite" / "manifest.json").write_text(json.dumps(manifest))
     monkeypatch.setattr(api_module, "ADMIN_BUILD_DIR", build)
@@ -2378,6 +2379,55 @@ def test_service_worker_lists_every_react_build_file(client, spa_build):
 
 def test_service_worker_does_not_precache_the_russian_bundle(client, spa_build):
     assert "/admin-assets/ru-fff.js" not in _service_worker(client)
+
+
+def test_service_worker_precaches_the_spanish_bundle(client, spa_build):
+    assert '"/admin-assets/es-ggg.js"' in _service_worker(client)
+
+
+def _preloaded_language_chunks(html: str) -> dict[str, str]:
+    import json
+
+    found = re.search(r"var files = (\{.*?\});", html)
+    assert found, "the shell must carry the language-preload script"
+    return json.loads(found.group(1))
+
+
+def test_shell_preloads_the_stored_language_chunk_from_the_manifest(client, spa_build):
+    import json
+
+    (spa_build / "index.html").write_text(
+        '<html><head><title>v1</title><script type="module" src="/admin-assets/index-aaa.js"></script>'
+        "</head><body></body></html>"
+    )
+    html = client.get("/admin").text
+    chunks = _preloaded_language_chunks(html)
+    assert chunks == {"es": "/admin-assets/es-ggg.js", "ru": "/admin-assets/ru-fff.js"}
+    manifest = json.loads((spa_build / ".vite" / "manifest.json").read_text())
+    files = {f"/{entry['file']}" for entry in manifest.values()}
+    assert set(chunks.values()) <= files
+    # It runs before the entry module so the chunk downloads alongside it.
+    assert html.index("var files =") < html.index('<script type="module"')
+    # Same detection order as i18n.ts: amistoso-lang, then padel-lang, then the browser.
+    assert html.index("'amistoso-lang'") < html.index("'padel-lang'") < html.index("navigator.languages")
+
+
+def test_shell_without_a_manifest_has_no_language_preload(client, spa_build):
+    (spa_build / ".vite" / "manifest.json").unlink()
+    (spa_build / "index.html").write_text("<html><head><title>v3</title></head></html>")
+    assert "var files =" not in client.get("/admin").text
+
+
+def test_built_shell_preloads_existing_language_chunks(client):
+    """Against the real Vite build, when there is one: every preloaded href is a built file."""
+    import backend.api as api_module
+
+    if not (api_module.ADMIN_BUILD_DIR / ".vite" / "manifest.json").is_file():
+        pytest.skip("no React build")
+    chunks = _preloaded_language_chunks(client.get("/admin").text)
+    assert set(chunks) == {"es", "ru"}
+    for href in chunks.values():
+        assert (api_module.ADMIN_BUILD_DIR / href.lstrip("/")).is_file()
 
 
 def test_service_worker_cache_name_follows_the_react_build(client, spa_build):

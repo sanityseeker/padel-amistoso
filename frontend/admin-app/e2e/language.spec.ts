@@ -183,3 +183,30 @@ test('Russian admin navigation fits a 360 px phone', async ({ page }) => {
   expect(clipped).toEqual([]);
   await chooseLanguage(page, 'English');
 });
+
+test('a stored Spanish choice paints Spanish first, with its texts preloaded by the page', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('amistoso-lang', 'es');
+    const w = window as unknown as { __firstPaint: string | null };
+    w.__firstPaint = null;
+    new MutationObserver((_records, observer) => {
+      const root = document.getElementById('root');
+      if (root && root.childElementCount > 0) {
+        w.__firstPaint = root.textContent ?? '';
+        observer.disconnect();
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await page.goto('/events');
+  await expect(page.getByRole('tab', { name: /^En directo/ })).toBeVisible();
+  const first = await page.evaluate(
+    () => (window as unknown as { __firstPaint: string | null }).__firstPaint,
+  );
+  expect(first).toContain('Eventos');
+  expect(first).not.toContain('Player Hub');
+  // The server-injected script preloads the Spanish chunk next to the entry chunk.
+  await expect(page.locator('link[rel="modulepreload"][href*="/es-"]')).toHaveCount(1);
+  await expect(page.locator('link[rel="modulepreload"][href*="/ru-"]')).toHaveCount(0);
+});
