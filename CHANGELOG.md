@@ -1,3 +1,9 @@
+## v3.6.0 (2026-11-13)
+
+### Feat
+
+- court preferences, live court tracking and highlighted group places
+
 ## v3.5.4 (2026-11-13)
 
 ### Fix
