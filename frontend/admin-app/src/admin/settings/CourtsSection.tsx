@@ -38,7 +38,10 @@ export function CourtsSection({
   // Keys are prefixed in the form so a group called "winners" never meets the Espejo side.
   const groupScopes =
     prefix === 'gp'
-      ? (status.group_names ?? []).map((g) => ({ key: `g:${g}`, label: tx('Group {name}', { name: g }) }))
+      ? (status.group_names ?? []).map((g) => ({
+          key: `g:${g}`,
+          label: tx('Group {name}', { name: g }),
+        }))
       : [];
   const bracketScopes =
     prefix !== 'mex' && status.espejo
@@ -57,8 +60,12 @@ export function CourtsSection({
       await write(
         `/tournaments/${tid}/${prefix}/court-preferences`,
         {
-          group_courts: perScope ? withoutPrefix('g:', cleanPreferences(prefs, groupScopes, courtNames)) : {},
-          bracket_courts: perScope ? withoutPrefix('b:', cleanPreferences(prefs, bracketScopes, courtNames)) : {},
+          group_courts: perScope
+            ? withoutPrefix('g:', cleanPreferences(prefs, groupScopes, courtNames))
+            : {},
+          bracket_courts: perScope
+            ? withoutPrefix('b:', cleanPreferences(prefs, bracketScopes, courtNames))
+            : {},
         },
         'PATCH',
       );

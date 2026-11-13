@@ -94,7 +94,10 @@ test('settings drawer: alias, courts, scoring and co-editors', async ({ page, re
     )
     .toBe('required');
   await drawer.getByRole('tab', { name: 'Courts and pairing' }).click();
-  await drawer.locator('label').filter({ hasText: /^Text$/ }).click();
+  await drawer
+    .locator('label')
+    .filter({ hasText: /^Text$/ })
+    .click();
   await drawer.getByRole('textbox', { name: 'Courts' }).fill('Centre\nSide');
   await drawer.getByRole('button', { name: 'Save courts' }).click();
   await expect
@@ -413,6 +416,9 @@ test('settings drawer: preferred courts per group', async ({ page, request }) =>
   await page.keyboard.press('Escape');
   await drawer.getByRole('button', { name: 'Save courts' }).click();
   await expect
-    .poll(async () => (await (await request.get(`/api/tournaments/${id}/gp/status`)).json()).group_courts)
+    .poll(
+      async () =>
+        (await (await request.get(`/api/tournaments/${id}/gp/status`)).json()).group_courts,
+    )
     .toEqual({ A: ['Court 2'] });
 });
