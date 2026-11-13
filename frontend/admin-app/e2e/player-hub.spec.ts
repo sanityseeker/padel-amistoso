@@ -118,7 +118,8 @@ test('a player corrects the opponent score and the organizer sees it in the hist
   await page.goto(`/admin/t/${id}?view=review`);
   await expect(page.getByTestId('review-queue')).toBeVisible();
   await page.goto(`/admin/t/${id}?filter=all`);
-  const row = page.locator(`[data-match-id="${match.id}"]`);
+  // The Review tab keeps its own card for this match mounted (hidden), so pick the match row.
+  const row = page.locator(`[data-testid="match-row"][data-match-id="${match.id}"]`);
   await expect(row).toBeVisible();
   await openMatchTool(page, row, 'Score history');
   await expect(page.getByTestId('history-list')).toContainText('Correction proposed');
