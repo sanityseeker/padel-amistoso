@@ -1,3 +1,9 @@
+## v3.9.1 (2026-11-14)
+
+### Fix
+
+- Player Hub community/club filter also narrows active tournaments and My events
+
 ## v3.9.0 (2026-11-13)
 
 ### Feat
